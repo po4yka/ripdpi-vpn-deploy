@@ -11,7 +11,8 @@ yamllint==1.38.0
 # transitively by ansible-lint, no explicit pin here).
 PyYAML==6.0.3
 Jinja2==3.1.6
-referencing<0.37
+referencing<0.38
+typing-extensions==4.15.0
 
 # Test-only; installed from the hash-pinned lock in CI.
 pytest==9.0.3
