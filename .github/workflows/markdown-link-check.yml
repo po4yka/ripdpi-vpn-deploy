@@ -28,8 +28,8 @@ jobs:
             --timeout 20
             --retry-wait-time 5
             --max-retries 2
-            --exclude-mail
             --exclude-path archive
+            --exclude-path tests/bats/test_helper
             './**/*.md'
           fail: true
           token: ${{ secrets.GITHUB_TOKEN }}

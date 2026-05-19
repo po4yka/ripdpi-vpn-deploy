@@ -431,9 +431,6 @@ tf-policy:
 	@for p in upcloud hetzner vultr; do \
 	  echo "== $$p =="; \
 	  terraform -chdir=terraform/providers/$$p init -backend=false >/dev/null && \
-	  terraform -chdir=terraform/providers/$$p plan \
-	    -out=$$p.plan \
-	    -var-file=environments/prod.tfvars.example && \
-	  terraform -chdir=terraform/providers/$$p show -json $$p.plan \
-	    | conftest test -p terraform/policy/ -; \
+	  terraform -chdir=terraform/providers/$$p test; \
 	done
+	conftest verify --rego-version v0 -p terraform/policy/

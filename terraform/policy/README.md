@@ -18,18 +18,15 @@ Fail-on-violation only — no `--warn` flag is passed (Open Question 6 resolutio
 ## Running locally
 
 ```sh
-# 1. Generate the plan JSON for a provider
+# 1. Run native provider tests; they use mock_provider and do not contact provider APIs.
 terraform -chdir=terraform/providers/upcloud init -backend=false
-terraform -chdir=terraform/providers/upcloud plan \
-  -out=plan.bin \
-  -var-file=environments/prod.tfvars.example
-terraform -chdir=terraform/providers/upcloud show -json plan.bin > plan.json
+terraform -chdir=terraform/providers/upcloud test
 
-# 2. Run conftest against all policies
-conftest test -p terraform/policy/ plan.json
+# 2. Verify Conftest policy modules.
+conftest verify --rego-version v0 -p terraform/policy/
 ```
 
-Repeat with `hetzner` and `vultr` as the `-chdir` target.
+Repeat the Terraform test step with `hetzner` and `vultr` as the `-chdir` target. Do not run CI policy checks against `environments/prod.tfvars.example`; provider plans require real operator credentials and the UpCloud example intentionally contains a placeholder template UUID.
 
 ## Make target
 
@@ -37,8 +34,7 @@ Repeat with `hetzner` and `vultr` as the `-chdir` target.
 make tf-policy
 ```
 
-Iterates over all three providers automatically (requires `terraform` and
-`conftest` on `PATH`).
+Runs native Terraform tests for all three providers and verifies the Conftest policy modules in Rego v0 mode (requires `terraform` and `conftest` on `PATH`).
 
 ## Validation
 
@@ -49,7 +45,7 @@ Rego syntax can be checked without a running plan:
 opa fmt --diff terraform/policy/*.rego
 
 # With Conftest installed:
-conftest verify -p terraform/policy/
+conftest verify --rego-version v0 -p terraform/policy/
 ```
 
-The CI workflow (`tf-policy.yml`) runs the full check on every pull request.
+The CI workflow (`tf-policy.yml`) runs the same provider tests plus Conftest verification on every pull request.

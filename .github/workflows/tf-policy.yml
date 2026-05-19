@@ -22,28 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
 
-      - uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85  # v4
-
-      - name: terraform init (no backend)
-        run: terraform -chdir=terraform/providers/${{ matrix.provider }} init -backend=false
-
-      - name: terraform plan
-        run: |
-          terraform -chdir=terraform/providers/${{ matrix.provider }} plan \
-            -out=plan.bin \
-            -var-file=environments/prod.tfvars.example
-        env:
-          # Provider credentials are not needed for a plan against the example
-          # tfvars; set minimal stubs so the provider initialises without error.
-          UPCLOUD_USERNAME: ci-stub
-          UPCLOUD_PASSWORD: ci-stub
-          HCLOUD_TOKEN: ci-stub-token-000000000000000000000000000000000000000000000000000000000000000
-          TF_VAR_vultr_api_key: ci-stub
-
-      - name: terraform show (JSON)
-        run: |
-          terraform -chdir=terraform/providers/${{ matrix.provider }} \
-            show -json plan.bin > plan.json
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4
+        with:
+          terraform_version: "1.15.2"
 
       - name: install conftest
         # Conftest 0.57.0 — pinned SHA256 verified against upstream release
@@ -52,10 +33,15 @@ jobs:
           curl -sSL \
             https://github.com/open-policy-agent/conftest/releases/download/v0.57.0/conftest_0.57.0_Linux_x86_64.tar.gz \
             -o conftest.tar.gz
-          echo "7aef7ab0a36e1f56e2dc18c02e23e35e9d3b06b71f7e46fbb0b45ae3f1f65a44  conftest.tar.gz" | sha256sum -c -
+          echo "db1018a7e301cada4d4bd8a70880a13314daae27b3f4d409c7ffba1847718392  conftest.tar.gz" | sha256sum -c -
           tar xf conftest.tar.gz conftest
           sudo install conftest /usr/local/bin/
 
-      - name: conftest policy check
-        # fail-on-violation only (Open Question 6 resolution: no --warn flag)
-        run: conftest test -p terraform/policy/ plan.json
+      - name: terraform native tests
+        working-directory: terraform/providers/${{ matrix.provider }}
+        run: |
+          terraform init -backend=false
+          terraform test
+
+      - name: conftest policy unit tests
+        run: conftest verify --rego-version v0 -p terraform/policy/
