@@ -121,6 +121,26 @@ release-please drives versioning from Conventional Commits. Don't edit
 | AWG cohort profiles | `ansible/roles/amneziawg/vars/cohorts/` | `docs/AWG-COHORTS.md` |
 | Xray version pin | `ansible/roles/xray/defaults/main.yml` | `docs/XRAY-RELEASE-LINE.md` |
 
+## Task tracking
+
+Tasks live as Obsidian Tasks–compatible Markdown under `docs/tasks/`. The
+infrastructure was mirrored from the RIPDPI client repo on 2026-05-22 by
+the `ripdpi-improvements` skill (in `~/GitRep/censorship-bypass`).
+
+- `docs/tasks/issues/<slug>.md` — source of truth, one note per task/epic.
+- `docs/tasks/active.md`, `backlog.md`, `blocked.md`, `epics.md`,
+  `dashboard.md`, `board.md` — query-only views (do not add tasks here).
+- Canonical task line:
+  `- [ ] #task <title> #repo/RIPDPI-VPN-DEPLOY #area/<area> #status/<status> <priority>`
+- Allowed areas: `ansible | terraform | vpnd | xray-config | ci | sbom | scripts | secrets | docs | epic`.
+- Lifecycle is delete-on-close (git history is the audit trail).
+
+Full schema, allowed statuses, priority markers, and workflows are in
+`.claude/skills/repo-task-board/SKILL.md`. Tasks created by the vault's
+`ripdpi-improvements` skill carry two extension fields (`source_wiki_pages`,
+`linked_task`) for cross-referencing the censorship-bypass wiki and the
+sibling RIPDPI Android task.
+
 ## When the user says "remember"
 
 Save to the relevant folder's `CLAUDE.md`, not to a memory system. The
