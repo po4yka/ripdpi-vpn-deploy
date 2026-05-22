@@ -11,8 +11,6 @@ import stat
 import subprocess
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STUBS_BIN = REPO_ROOT / "tests" / "stubs" / "bin"
 SCRIPT = REPO_ROOT / "scripts" / "tspu-canary.sh"

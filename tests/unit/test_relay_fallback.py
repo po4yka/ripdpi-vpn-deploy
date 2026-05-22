@@ -22,7 +22,7 @@ import re as _re
 from pathlib import Path
 
 import yaml
-from jinja2 import Environment, FileSystemLoader, StrictUndefined, UndefinedError, select_autoescape
+from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ROLES_DIR = REPO_ROOT / "ansible" / "roles"
