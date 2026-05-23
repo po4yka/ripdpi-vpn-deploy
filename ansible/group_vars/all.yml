@@ -116,6 +116,17 @@ allowed_ssh_cidrs: []  # populated from terraform tfvars; see render-inventory.s
 
 # Ports
 xray_port: 443
+# Secondary VLESS+REALITY+Vision inbound on a non-443 port. Lets a
+# client carry both endpoints in its selector group and roll over to
+# the alt-port when the TLS-connection-cap policing rule on the home
+# ISP fires on port 443 specifically. Default 2053 because it is one
+# of Cloudflare's published alternate HTTPS ports — looks like
+# ordinary HTTPS to a censor and clear of every existing toggle in
+# this repo (8443 collides with nginx_xhttp_public_port; 8444 with
+# subscription-host and hysteria-realm). Set to 0 to disable; ignored
+# entirely when xray.cohorts is non-empty (multi-cohort layouts carry
+# their own ports). Rotate when the alt-port itself gets targeted.
+xray_fallback_port: 2053
 nginx_xhttp_public_port: 8443 # public nginx listener; direct-only cohorts may override to 443
 nginx_xhttp_port: 10085       # localhost-only Xray XHTTP inbound behind nginx
 hysteria_port: 443

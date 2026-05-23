@@ -4,6 +4,7 @@
   become: true
   vars:
     xray_port: 443
+    xray_fallback_port: 2053
     nginx_xhttp_port: 10085
     vpn:
       enable_nginx_xhttp: true

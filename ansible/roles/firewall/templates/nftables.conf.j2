@@ -6,10 +6,14 @@ flush ruleset
 {% set ssh_v4_cidrs = ssh_cidrs | select('match', '^(?!.*:).*') | list %}
 {% set ssh_v6_cidrs = ssh_cidrs | select('match', '.*:.*') | list %}
 {% set _xray_cohorts = (xray.cohorts | default([])) if xray is defined else [] %}
+{% set _xray_fallback_port = xray_fallback_port | default(0) | int %}
 {% if _xray_cohorts | length > 0 %}
 {%   set xray_tcp_ports = _xray_cohorts | map(attribute='port') | map('int') | list %}
 {% else %}
 {%   set xray_tcp_ports = [xray_port | default(443) | int] %}
+{%   if _xray_fallback_port > 0 and _xray_fallback_port not in xray_tcp_ports %}
+{%     set _ = xray_tcp_ports.append(_xray_fallback_port) %}
+{%   endif %}
 {% endif %}
 {% set nginx_tcp_port = nginx_xhttp_public_port | default(8443) | int %}
 {% set nginx_collides_with_xray = (vpn.enable_xray_reality | default(true)) and (nginx_tcp_port in xray_tcp_ports) %}

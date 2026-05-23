@@ -12,6 +12,10 @@ flush ruleset
 
 
 
+
+
+
+
 table inet filter {
 
 
@@ -38,6 +42,9 @@ table inet filter {
     # P0 — REALITY over TCP
 
     tcp dport 443 accept
+
+
+    tcp dport 2053 accept
 
 
 
