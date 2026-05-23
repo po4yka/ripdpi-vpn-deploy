@@ -1,0 +1,40 @@
+---
+# narrow-junk-sequential AmneziaWG obfuscation profile.
+#
+# Distinguishing parameters relative to the broad role baseline:
+#   * narrow junk-length range (Jmin=10..Jmax=50) — junks stay short
+#     and close in size, so the handshake-payload size distribution
+#     differs from the broad Jmin=40..Jmax=70 baseline.
+#   * zero header sizes (S1=0, S2=0) — no extra bytes prepended to
+#     the init or response packets.
+#   * literal sequential header magic (H1..H4 = 1, 2, 3, 4) — fixed,
+#     non-random per-cohort.
+#
+# Use when a DPI rule discriminates against the broad-baseline shape
+# (long junks + non-zero S1/S2) but still accepts the compact form
+# with sequential header magic. Observed against such a rule: the
+# handshake completes most of the time but occasionally stalls and
+# the client needs 3–4 retries.
+#
+# WARNING: the literal 1, 2, 3, 4 magic set is intentional for this
+# profile. Reusing the same set in another cohort creates a
+# cross-cohort fingerprint — randomise H1..H4 per peer for any other
+# profile (see docs/AWG-COHORTS.md "Operational notes").
+
+amneziawg_cohort:
+  name: narrow-junk-sequential
+
+  # Junk packet count + length bounds (bytes).
+  jc: 4
+  jmin: 10
+  jmax: 50
+
+  # Init / response header sizes (bytes).
+  s1: 0
+  s2: 0
+
+  # Header magic values — literal sequential, see warning above.
+  h1: 1
+  h2: 2
+  h3: 3
+  h4: 4
