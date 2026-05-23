@@ -53,6 +53,15 @@ The Makefile is the canonical operator surface.
 - Use CDN as the RU baseline. See `docs/CDN-DECISION.md`.
 - Commit pre-release versions to production toggles. Pre-releases go through
   staging only.
+- Reference external Obsidian vaults anywhere in this repo — vault names,
+  vault filesystem paths, wiki page slugs, or "wiki page" citations in code,
+  comments, docs, commit messages, or task notes. Knowledge that needs to
+  live in this repo lives in this repo.
+- Name files, slugs, variables, doc table cells, or comments after carriers,
+  ISPs, geography, or operators — e.g. no `rtk-south`, `mts-mobile`,
+  "Rostelecom", "Beeline", "MegaFon", "Rostov Oblast". Describe cohorts,
+  profiles, and configurations by their technical signature instead: packet
+  shape, protocol parameters, threshold values, observed DPI behaviour.
 
 ## Conventions — DO
 
@@ -134,8 +143,8 @@ When working inside a subtree, the nearest `AGENTS.md` wins.
 
 ### New AmneziaWG cohort
 
-1. Create `ansible/roles/amneziawg/vars/cohorts/<carrier>.yml` with the obfuscation parameters.
-2. Add a row to `docs/AWG-COHORTS.md` (carrier, junk packet sizes, init/response packet sizes, obfuscation key).
+1. Create `ansible/roles/amneziawg/vars/cohorts/<technical-slug>.yml` with the obfuscation parameters. Slug names the packet shape, not the carrier — e.g. `narrow-junk-sequential`, `wide-junk-random-headers`. Per the hard rules above, do not name cohorts after the carrier, ISP, or geography where the shape was measured.
+2. Add a row to `docs/AWG-COHORTS.md` (profile slug, junk packet sizes, init/response packet sizes, H1..H4 strategy).
 3. Add a `group_vars` hint or comment if the cohort requires non-default operator awareness at deploy time.
 
 ## When the user says "remember"

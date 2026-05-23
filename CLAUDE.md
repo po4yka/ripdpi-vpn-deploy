@@ -19,6 +19,15 @@ operator surface; `vpnd/` is a convenience CLI in front of it (see
 - Pinned versions; pre-releases through staging only.
 - Gitleaks gates CI.
 - CDN is **not** the RU baseline (see `docs/CDN-DECISION.md`).
+- **No references to external Obsidian vaults** (vault names, vault filesystem
+  paths, wiki page slugs, "wiki page" citations) anywhere in this repo — code,
+  comments, docs, commit messages, task notes. Knowledge that needs to live in
+  this repo lives in this repo.
+- **No carrier / ISP / geographic / operator-identifying labels** in file names,
+  slugs, variable names, doc table cells, or comments — e.g. no `rtk-south`,
+  `mts-mobile`, "Rostelecom", "Beeline", "MegaFon", "Rostov Oblast". Describe
+  cohorts, profiles, and configurations by their technical signature instead:
+  packet shape, protocol parameters, threshold values, observed DPI behaviour.
 
 ## Layered ownership
 
@@ -105,8 +114,8 @@ release-please drives versioning from Conventional Commits. Don't edit
 
 ### New AmneziaWG cohort
 
-1. Create `ansible/roles/amneziawg/vars/cohorts/<carrier>.yml` with the obfuscation parameters.
-2. Add a row to `docs/AWG-COHORTS.md` (carrier, junk packet sizes, init/response packet sizes, obfuscation key).
+1. Create `ansible/roles/amneziawg/vars/cohorts/<technical-slug>.yml` with the obfuscation parameters. Slug names the packet shape, not the carrier — e.g. `narrow-junk-sequential`, `wide-junk-random-headers`. Per the hard rules above, do not name cohorts after the carrier, ISP, or geography where the shape was measured.
+2. Add a row to `docs/AWG-COHORTS.md` (profile slug, junk packet sizes, init/response packet sizes, H1..H4 strategy).
 3. Add a `group_vars` hint or comment if the cohort requires non-default operator awareness at deploy time.
 
 ## Source of truth
@@ -123,9 +132,10 @@ release-please drives versioning from Conventional Commits. Don't edit
 
 ## Task tracking
 
-Tasks live as Obsidian Tasks–compatible Markdown under `docs/tasks/`. The
-infrastructure was mirrored from the RIPDPI client repo on 2026-05-22 by
-the `ripdpi-improvements` skill (in `~/GitRep/censorship-bypass`).
+Tasks live as Markdown notes (Obsidian-Tasks-compatible line format) under
+`docs/tasks/`. The format is documented locally in
+`.claude/skills/repo-task-board/SKILL.md`; nothing outside this repo is
+load-bearing.
 
 - `docs/tasks/issues/<slug>.md` — source of truth, one note per task/epic.
 - `docs/tasks/active.md`, `backlog.md`, `blocked.md`, `epics.md`,
@@ -136,10 +146,10 @@ the `ripdpi-improvements` skill (in `~/GitRep/censorship-bypass`).
 - Lifecycle is delete-on-close (git history is the audit trail).
 
 Full schema, allowed statuses, priority markers, and workflows are in
-`.claude/skills/repo-task-board/SKILL.md`. Tasks created by the vault's
-`ripdpi-improvements` skill carry two extension fields (`source_wiki_pages`,
-`linked_task`) for cross-referencing the censorship-bypass wiki and the
-sibling RIPDPI Android task.
+`.claude/skills/repo-task-board/SKILL.md`. Some task notes carry optional
+extension fields (`source_wiki_pages`, `linked_task`) used by external
+authoring tools; treat them as opaque metadata — do not chase the links
+from inside this repo.
 
 ## When the user says "remember"
 
