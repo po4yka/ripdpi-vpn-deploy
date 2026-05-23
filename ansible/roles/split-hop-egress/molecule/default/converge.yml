@@ -21,8 +21,8 @@
       keepalive_seconds: 25
     split_hop_egress_secrets:
       node_b_private_key: "MOLECULE_STUB_PRIVATE_KEY_NOT_REAL_AAAAAAAAAAAAAAAA="
-      node_a_public_key:  "MOLECULE_STUB_PUBLIC_KEY_NOT_REAL_BBBBBBBBBBBBBBBBBB="
-      node_a_public_ip:   "203.0.113.1"
+      node_a_public_key: "MOLECULE_STUB_PUBLIC_KEY_NOT_REAL_BBBBBBBBBBBBBBBBBB="
+      node_a_public_ip: "203.0.113.1"
       preshared_key: ""
 
   pre_tasks:

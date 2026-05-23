@@ -52,7 +52,7 @@ jobs:
         id: baseline
         env:
           EXIT_IP: ${{ github.event.inputs.exit_ip }}
-          PROXY:   ${{ github.event.inputs.proxy }}
+          PROXY: ${{ github.event.inputs.proxy }}
           RKN_BLOCK_CHECKER_VERSION: ${{ github.event.inputs.rkn_block_checker_version }}
         run: |
           set -euo pipefail
