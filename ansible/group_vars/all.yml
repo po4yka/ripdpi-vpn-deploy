@@ -88,14 +88,14 @@ vpn:
   xray_finalmask: false
 
   # AmneziaWG cohort profile selector. Slug must match a file under
-  # `ansible/roles/amneziawg/vars/cohorts/<slug>.yml` (e.g. `rtk-south`).
-  # When set, the role loads that file and uses its
-  # jc/jmin/jmax/s1/s2/h1..h4 as defaults; `amneziawg_secrets` still
-  # takes precedence if the operator supplies explicit values there.
-  # Empty string keeps the broad MTS/Beeline/MegaFon baseline baked
-  # into the role defaults. See docs/AWG-COHORTS.md for the currently
-  # shipped profiles. Ignored when `amneziawg_secrets.instances` is
-  # non-empty — multi-instance layouts carry their own per-instance
+  # `ansible/roles/amneziawg/vars/cohorts/<slug>.yml` (e.g.
+  # `narrow-junk-sequential`). When set, the role loads that file
+  # and uses its jc/jmin/jmax/s1/s2/h1..h4 as defaults;
+  # `amneziawg_secrets` still takes precedence if the operator
+  # supplies explicit values there. Empty string keeps the broad-rule
+  # baseline baked into the role defaults. See docs/AWG-COHORTS.md
+  # for the shipped profiles. Ignored when `amneziawg_secrets.instances`
+  # is non-empty — multi-instance layouts carry their own per-instance
   # obfuscation parameters.
   awg_cohort: ""
 

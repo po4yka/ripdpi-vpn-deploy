@@ -2,7 +2,8 @@
 # Verify amneziawg static-config scenario.
 # No live wg-quick or kernel module assertions — we only check that the
 # rendered interface config carries the correct cohort obfuscation params.
-# Cohort chosen: RTK South (jc=4, jmin=10, jmax=50, s1=0, s2=0, h1..h4=1..4)
+# Cohort under test: narrow-junk-sequential
+# (jc=4, jmin=10, jmax=50, s1=0, s2=0, h1..h4=1..4).
 
 - name: Verify amneziawg cohort config shape
   hosts: all
@@ -29,7 +30,7 @@
       ansible.builtin.set_fact:
         awg_conf_text: "{{ awg_conf_raw.content | b64decode }}"
 
-    - name: Cohort Jc matches RTK South value (4)
+    - name: Cohort Jc matches profile value (4)
       ansible.builtin.assert:
         that:
           - awg_conf_text is search('(?m)^Jc\s*=\s*4\s*$')
@@ -37,25 +38,25 @@
           Jc not found or wrong value in awg0.conf.
           Content: {{ awg_conf_text }}
 
-    - name: Cohort Jmin matches RTK South value (10)
+    - name: Cohort Jmin matches profile value (10)
       ansible.builtin.assert:
         that:
           - awg_conf_text is search('(?m)^Jmin\s*=\s*10\s*$')
         fail_msg: "Jmin not 10 in awg0.conf"
 
-    - name: Cohort Jmax matches RTK South value (50)
+    - name: Cohort Jmax matches profile value (50)
       ansible.builtin.assert:
         that:
           - awg_conf_text is search('(?m)^Jmax\s*=\s*50\s*$')
         fail_msg: "Jmax not 50 in awg0.conf"
 
-    - name: Cohort S1 matches RTK South value (0)
+    - name: Cohort S1 matches profile value (0)
       ansible.builtin.assert:
         that:
           - awg_conf_text is search('(?m)^S1\s*=\s*0\s*$')
         fail_msg: "S1 not 0 in awg0.conf"
 
-    - name: Cohort S2 matches RTK South value (0)
+    - name: Cohort S2 matches profile value (0)
       ansible.builtin.assert:
         that:
           - awg_conf_text is search('(?m)^S2\s*=\s*0\s*$')

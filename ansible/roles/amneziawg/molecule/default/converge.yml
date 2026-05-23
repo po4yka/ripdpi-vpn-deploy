@@ -16,11 +16,11 @@
       address_v4: "10.66.66.1/24"
       address_v6: "fd42:42:42::1/64"
     # Cohort selection drives jc/jmin/jmax/s1/s2/h1..h4 from
-    # roles/amneziawg/vars/cohorts/rtk-south.yml — the inline
-    # obfuscation params here are intentionally omitted so verify.yml
-    # exercises the cohort-file load path.
+    # roles/amneziawg/vars/cohorts/narrow-junk-sequential.yml — the
+    # inline obfuscation params here are intentionally omitted so
+    # verify.yml exercises the cohort-file load path.
     vpn:
-      awg_cohort: rtk-south
+      awg_cohort: narrow-junk-sequential
     amneziawg_secrets:
       server_private_key: "MOLECULE_STUB_PRIVATE_KEY_NOT_REAL_AAAAAAAAAAAAA="
       peers: []

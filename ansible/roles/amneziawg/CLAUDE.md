@@ -6,11 +6,12 @@
 only path that supports the cohort obfuscation params (jc/jmin/jmax/s1/s2 and
 2.0 finalmask/headers). Kernel WG doesn't.
 
-**Cohort profiles are config, not code** — `vars/cohorts/<carrier>.yml` is the
+**Cohort profiles are config, not code** — `vars/cohorts/<slug>.yml` is the
 SOT. New cohort = new file. See `docs/AWG-COHORTS.md`. Currently shipped as
-a YAML file: RTK South. The MTS / Beeline / MegaFon broad-rule baseline is
-encoded as the role's hard-coded defaults (no separate cohort file needed —
-that profile is the safe starting point on any unmeasured network).
+a YAML file: `narrow-junk-sequential`. The broad-rule baseline (long junks
++ non-zero S1/S2 + random per-peer H1..H4) is encoded as the role's
+hard-coded defaults — no separate cohort file needed, that profile is the
+safe starting point on any unmeasured network.
 
 **One peer key per device, never shared** — enforced by `scripts/new-client.sh`.
 Reused keys break replay protection.
