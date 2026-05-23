@@ -16,7 +16,7 @@
   },
   "inbounds": [
     {
-      "tag": "vless-reality",
+      "tag": "vless-reality-primary",
       "listen": "0.0.0.0",
       "port": 443,
       "protocol": "vless",
@@ -25,7 +25,43 @@
           {
             "id": "REPLACE_WITH_UUID",
             "flow": "xtls-rprx-vision",
-            "email": "phone"
+            "email": "phone-primary"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "raw",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "target": "REPLACE_WITH_LOW_PROFILE_HTTPS_TARGET:443",
+          "xver": 0,
+          "serverNames": ["REPLACE_WITH_LOW_PROFILE_HOSTNAME"],
+          "privateKey": "REPLACE_WITH_PRIVATE_KEY",
+          "shortIds": [
+            "REPLACE_WITH_8HEX"
+          ]
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"],
+        "metadataOnly": false,
+        "routeOnly": false
+      }
+    },
+    {
+      "tag": "vless-reality-fallback",
+      "listen": "0.0.0.0",
+      "port": 2053,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "REPLACE_WITH_UUID",
+            "flow": "xtls-rprx-vision",
+            "email": "phone-fallback"
           }
         ],
         "decryption": "none"
@@ -118,7 +154,7 @@
       {
         "type": "field",
         "comment": "DNS hijack — keep client DNS lookups visible to xray and resolvable",
-        "inboundTag": ["vless-reality","vless-xhttp-localhost"
+        "inboundTag": ["vless-reality-primary","vless-reality-fallback","vless-xhttp-localhost"
         ],
         "port": "53",
         "outboundTag": "dns-out"

@@ -16,6 +16,21 @@
           - cfg.stat.gr_name == "xray"
           - cfg.stat.mode == "0640"
 
+    - name: Two REALITY inbounds rendered (primary + fallback)
+      # Asserts the fallback-port feature: when xray_fallback_port is set
+      # (2053 in this scenario) the config carries both the primary
+      # inbound on 443 and the fallback on 2053, sharing Reality identity.
+      ansible.builtin.command:
+        cmd: >-
+          jq -e '
+            [.inbounds[]?
+             | select(.protocol == "vless")
+             | select(.streamSettings?.security == "reality")
+             | .port
+            ] | sort == [443, 2053]
+          ' /etc/xray/config.json
+      changed_when: false
+
     - name: config.json is valid JSON and contains a REALITY inbound
       # Single jq invocation replaces three earlier shell+grep tasks and
       # the python json.load sanity check. If jq parses the file and finds

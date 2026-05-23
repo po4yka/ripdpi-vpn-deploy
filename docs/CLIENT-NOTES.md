@@ -76,6 +76,32 @@ that a proxy is running by probing the local port. Per-app routing
 should be configured via packageNameRegex (see the wiki page) rather
 than via app-side SOCKS5.
 
+## VLESS+REALITY alt-port roll-over (xray_fallback_port)
+
+The server stack ships a secondary VLESS+REALITY+Vision inbound on a
+non-443 port by default. The Ansible variable is `xray_fallback_port`
+(default 2053; set to 0 to disable). The default value matches one of
+the published Cloudflare alternate HTTPS ports, so the listener looks
+indistinguishable from any other HTTPS endpoint to a censor.
+
+When `make emit-singbox CLIENT=name` runs, every `xray_fallback_port`
+≠ 0 ≠ `xray_port` adds a second outbound to the emitted bundle. The
+two outbounds share the same Reality identity (private key, server
+names, short IDs); only the port differs. The selector + urltest
+group treats them as peer endpoints, so a client whose port-443 path
+gets policed by a TLS-handshake-count rule on the home ISP can roll
+over to the alt-port automatically.
+
+Operationally:
+
+- The alt-port is itself a finite resource. Rotate `xray_fallback_port`
+  before clients begin seeing the same policing pattern on it.
+- A multi-cohort deploy (`xray.cohorts` non-empty in secrets) bypasses
+  the default fallback and uses the operator-defined cohort ports
+  instead.
+- The firewall role already opens both ports; no manual nftables
+  edits are needed when toggling the fallback on or off.
+
 ## v2rayN-class clients: prefer the sing-box bundle
 
 When `make emit-singbox CLIENT=name` is available, prefer the sing-box

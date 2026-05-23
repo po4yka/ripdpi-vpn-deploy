@@ -190,6 +190,7 @@ for i in "${!host_pairs[@]}"; do
   enable_hysteria="$(toggle_enabled "$vpn_json" enable_hysteria false)"
   flow_mode="$(jq -r '.xray_flow_mode // "vision"' <<< "$vpn_json")"
   xray_server_port="$(jq -r '.xray_port // 443' <<< "$host_json")"
+  xray_fallback_port="$(jq -r '.xray_fallback_port // 0' <<< "$host_json")"
   xhttp_server_port="$(jq -r '.nginx_xhttp_public_port // 443' <<< "$host_json")"
   hysteria_server_port="$(jq -r '.hysteria_port // 443' <<< "$host_json")"
   hysteria_port_range="$(jq -r '.hysteria_port_range // ""' <<< "$host_json")"
@@ -246,8 +247,16 @@ for i in "${!host_pairs[@]}"; do
     }
 
     if (( n_cohorts == 0 )); then
-      # Legacy single-cohort: one outbound on xray_port with global flow_mode.
+      # Single-cohort: one outbound on xray_port with global flow_mode,
+      # plus a second outbound on xray_fallback_port when configured.
+      # Both share the same Reality identity — the client treats them as
+      # peer endpoints in its selector group so a TLS-cap-policed
+      # port-443 path can roll over to the alt-port. Skip the second
+      # outbound when fallback is unset or matches the primary port.
       emit_reality_outbound "" "$xray_server_port" "$flow_mode"
+      if (( xray_fallback_port > 0 )) && (( xray_fallback_port != xray_server_port )); then
+        emit_reality_outbound "-fallback" "$xray_fallback_port" "$flow_mode"
+      fi
     else
       # Multi-cohort: emit one outbound per cohort that lists this client.
       client_cohorts="$(jq -c --arg name "$CLIENT_NAME" \
