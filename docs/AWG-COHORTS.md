@@ -22,11 +22,30 @@ Reference: censorship-bypass wiki page
 
 ## Known-good profiles
 
-| Cohort | Jc | Jmin | Jmax | S1 | S2 | H1..H4 |
-|---|---|---|---|---|---|---|
-| RTK South (Rostov Oblast, 2026-05) | 4 | 10 | 50 | 0 | 0 | 1,2,3,4 |
-| MTS / Beeline / MegaFon mobile (baseline) | 4 | 40 | 70 | 50 | 100 | random per peer |
-| Home ISP, broad-rule (default) | 4 | 40 | 70 | 50 | 100 | random per peer |
+| Cohort | Jc | Jmin | Jmax | S1 | S2 | H1..H4 | Cohort file |
+|---|---|---|---|---|---|---|---|
+| RTK South (Rostov Oblast, 2026-05) | 4 | 10 | 50 | 0 | 0 | 1,2,3,4 | `ansible/roles/amneziawg/vars/cohorts/rtk-south.yml` |
+| MTS / Beeline / MegaFon mobile (baseline) | 4 | 40 | 70 | 50 | 100 | random per peer | — (role defaults) |
+| Home ISP, broad-rule (default) | 4 | 40 | 70 | 50 | 100 | random per peer | — (role defaults) |
+
+## Selecting a cohort
+
+Cohort profiles ship as YAML files under
+`ansible/roles/amneziawg/vars/cohorts/<slug>.yml`. Activate one by
+setting `vpn.awg_cohort: <slug>` in `ansible/group_vars/all.yml` (or a
+host-specific group_vars file). The role reads the cohort file at
+runtime and uses its `jc/jmin/jmax/s1/s2/h1..h4` as defaults;
+explicit values in `amneziawg_secrets` still win, so the cohort file
+sets the profile and SOPS overrides anything per-deployment.
+
+Leaving `vpn.awg_cohort` empty keeps the broad
+MTS/Beeline/MegaFon baseline baked into the role defaults — that is
+the right starting point on any network without a documented profile.
+
+`vpn.awg_cohort` is ignored when `amneziawg_secrets.instances` is
+non-empty: multi-instance layouts carry their own per-instance
+obfuscation parameters and choose the profile inline (see
+"Operational notes" below for the multi-instance pattern).
 
 H1..H4 should be **random integers per peer** outside the RTK-South
 case — using literal `1,2,3,4` everywhere creates a template the

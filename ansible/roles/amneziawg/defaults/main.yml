@@ -19,3 +19,9 @@ amneziawg:
   dns_servers:
     - "1.1.1.1"
     - "1.0.0.1"
+
+# Cohort profile data, populated by include_vars when vpn.awg_cohort is
+# set to a slug matching vars/cohorts/<slug>.yml. Empty by default so
+# the role falls back to either amneziawg_secrets.* (explicit per-deploy
+# overrides) or the hard-coded broad defaults below.
+amneziawg_cohort: {}

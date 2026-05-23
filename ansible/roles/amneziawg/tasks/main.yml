@@ -118,6 +118,13 @@
     group: root
     mode: "0700"
 
+- name: Load AmneziaWG cohort profile
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/vars/cohorts/{{ vpn.awg_cohort }}.yml"
+  when:
+    - vpn.awg_cohort | default('') | length > 0
+    - amneziawg_secrets.instances | default([]) | length == 0
+
 - name: Compute effective AmneziaWG instances
   ansible.builtin.set_fact:
     _awg_instances: >-
@@ -129,15 +136,15 @@
            'address_v4': amneziawg.address_v4,
            'address_v6': amneziawg.address_v6,
            'server_private_key': amneziawg_secrets.server_private_key,
-           'jc':   amneziawg_secrets.jc   | default(4),
-           'jmin': amneziawg_secrets.jmin | default(40),
-           'jmax': amneziawg_secrets.jmax | default(70),
-           's1':   amneziawg_secrets.s1   | default(50),
-           's2':   amneziawg_secrets.s2   | default(100),
-           'h1':   amneziawg_secrets.h1,
-           'h2':   amneziawg_secrets.h2,
-           'h3':   amneziawg_secrets.h3,
-           'h4':   amneziawg_secrets.h4,
+           'jc': amneziawg_secrets.jc | default(amneziawg_cohort.jc | default(4)),
+           'jmin': amneziawg_secrets.jmin | default(amneziawg_cohort.jmin | default(40)),
+           'jmax': amneziawg_secrets.jmax | default(amneziawg_cohort.jmax | default(70)),
+           's1': amneziawg_secrets.s1 | default(amneziawg_cohort.s1 | default(50)),
+           's2': amneziawg_secrets.s2 | default(amneziawg_cohort.s2 | default(100)),
+           'h1': amneziawg_secrets.h1 | default(amneziawg_cohort.h1),
+           'h2': amneziawg_secrets.h2 | default(amneziawg_cohort.h2),
+           'h3': amneziawg_secrets.h3 | default(amneziawg_cohort.h3),
+           'h4': amneziawg_secrets.h4 | default(amneziawg_cohort.h4),
            'peers': amneziawg_secrets.peers,
          }] }}
 
