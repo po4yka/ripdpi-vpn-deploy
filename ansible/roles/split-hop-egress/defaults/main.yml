@@ -1,0 +1,61 @@
+---
+# split-hop-egress — Node B in the two-node split-hop topology.
+#
+# Node B is the *initiator* of a persistent WireGuard tunnel to Node A.
+# Once the tunnel is up, every flow B participates in is one B
+# initiated (the tunnel itself, plus the per-destination upstream
+# flows). Node A appears single-role (only accepts inbound) because
+# its traffic to the upstream rides back through the pre-existing
+# UDP flow that B initiated — A never opens a fresh outbound socket.
+#
+# This file carries only configuration shape. The keys, peer IPs,
+# and listen port live in SOPS as `split_hop_egress_secrets.*`.
+#
+# See docs/SPLIT-HOP-TOPOLOGY.md for the architecture rationale and
+# the threat-model coverage table; docs/RUNBOOK-split-hop-pilot.md
+# for operator-side stand procedure.
+#
+# Off by default. Operators that opt in must provision a second VPS
+# and route Node A's egress through the tunnel — that wiring lives in
+# the ingress-side cohort file (TBD as a follow-up task; the egress
+# role is the first concrete artifact of the topology).
+
+split_hop_egress:
+  # WireGuard interface name on Node B. Kept distinct from the
+  # `amneziawg` role's `awg0` so a host that runs both roles does not
+  # collide on the interface name.
+  wg_interface: shop0
+
+  # WG listen port on Node A that Node B initiates a handshake to.
+  # B writes this into its peer config; the value lives in secrets
+  # because rotating it does not require a role change.
+  peer_listen_port: 51821
+
+  # IPv4 subnet of the WG tunnel. /30 is sufficient for a two-peer
+  # link; pinning the subnet keeps the role idempotent.
+  tunnel_subnet: "10.200.0.0/30"
+  node_b_address: "10.200.0.2/30"
+  node_a_address: "10.200.0.1/30"
+
+  # NAT egress over the WG interface — every flow forwarded from
+  # Node A through the tunnel is SNAT'd to Node B's public IP on the
+  # way out.
+  forward_iface: "eth0"
+
+  # PersistentKeepalive (seconds). B is the initiator, so its
+  # keepalive maintains the tunnel through any NAT in front of A.
+  # 25s is the standard WG figure — short enough to keep NAT
+  # entries alive on every commodity router.
+  keepalive_seconds: 25
+
+# Secrets — empty defaults so check-secrets-coverage.py accepts the
+# template references when the role is disabled.
+split_hop_egress_secrets:
+  # WG private key for Node B.
+  node_b_private_key: ""
+  # WG public key of Node A (B trusts only this one peer).
+  node_a_public_key: ""
+  # Public IP of Node A — B handshakes to this:peer_listen_port.
+  node_a_public_ip: ""
+  # Optional preshared key for the tunnel. Empty disables PSK.
+  preshared_key: ""

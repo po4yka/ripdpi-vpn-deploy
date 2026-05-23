@@ -1,0 +1,55 @@
+---
+# Converge for split-hop-egress static-verify scenario.
+# WireGuard userspace + nftables NAT both need kernel surface the
+# molecule container does not have. We stub the wg-quick@<iface>
+# systemd unit so the role's enable+start step passes; verify.yml
+# then only asserts the rendered config + sysctl drop-in shape.
+
+- name: Converge split-hop-egress role (config-render only, stubbed wg-quick)
+  hosts: all
+  become: true
+  vars:
+    vpn:
+      enable_split_hop_egress: true
+    split_hop_egress:
+      wg_interface: shop0
+      peer_listen_port: 51821
+      tunnel_subnet: "10.200.0.0/30"
+      node_b_address: "10.200.0.2/30"
+      node_a_address: "10.200.0.1/30"
+      forward_iface: "eth0"
+      keepalive_seconds: 25
+    split_hop_egress_secrets:
+      node_b_private_key: "MOLECULE_STUB_PRIVATE_KEY_NOT_REAL_AAAAAAAAAAAAAAAA="
+      node_a_public_key:  "MOLECULE_STUB_PUBLIC_KEY_NOT_REAL_BBBBBBBBBBBBBBBBBB="
+      node_a_public_ip:   "203.0.113.1"
+      preshared_key: ""
+
+  pre_tasks:
+    - name: Ensure /etc/wireguard exists
+      ansible.builtin.file:
+        path: /etc/wireguard
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Stub wg-quick@<iface> systemd unit (kernel module absent in CI)
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/wg-quick@shop0.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=stub wg-quick@%i for molecule
+          [Service]
+          Type=oneshot
+          RemainAfterExit=yes
+          ExecStart=/bin/true
+          ExecStop=/bin/true
+          [Install]
+          WantedBy=multi-user.target
+
+  roles:
+    - role: split-hop-egress

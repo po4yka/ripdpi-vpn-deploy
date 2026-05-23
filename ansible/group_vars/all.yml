@@ -58,6 +58,15 @@ vpn:
                                   # alpha.22 required on every peer
                                   # — see roles/hysteria-realm/CLAUDE.md
                                   # for the alpha-tier risk profile.
+  enable_split_hop_egress: false  # opt-in; runs on Node B in the
+                                  # two-VPS split-hop topology. Node B
+                                  # initiates a persistent WireGuard
+                                  # tunnel to Node A and NAT-forwards
+                                  # decapsulated client traffic to
+                                  # upstream. Mitigates the FOCI 2026
+                                  # per-IP dual-role flow classifier.
+                                  # See docs/SPLIT-HOP-TOPOLOGY.md
+                                  # and docs/RUNBOOK-split-hop-pilot.md.
 
   # When enable_warp_outbound is true AND this list is non-empty, the
   # xray config gains a SOCKS outbound tagged "warp-out" and routing

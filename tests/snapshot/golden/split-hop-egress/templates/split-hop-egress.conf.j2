@@ -1,0 +1,34 @@
+# Managed by Ansible role `split-hop-egress`. Hand edits will be overwritten.
+#
+# Node B (egress) WireGuard interface. Node B is the WG initiator —
+# the [Peer] block's Endpoint points at Node A and PersistentKeepalive
+# is set so B drives the handshake. Removing the keepalive flips the
+# initiator direction and re-introduces the dual-role signal on
+# Node A; do not delete it.
+
+[Interface]
+PrivateKey = REPLACE_WITH_NODE_B_WG_PRIVATE_KEY
+Address = 10.200.0.2/30
+# No ListenPort — B is the initiator. WG picks an ephemeral source
+# port for the outbound handshake.
+
+# NAT every flow that enters the tunnel out through the public iface.
+# nft is the canonical surface elsewhere in this repo (see the
+# firewall role); wg-quick's PostUp/PostDown does not preempt that
+# global ruleset — it adds a scoped rule attached to the WG iface.
+PostUp   = nft add table inet split_hop_egress; \
+           nft 'add chain inet split_hop_egress postrouting { type nat hook postrouting priority 100; }'; \
+           nft "add rule inet split_hop_egress postrouting iifname shop0 oifname eth0 masquerade"
+PostDown = nft delete table inet split_hop_egress || true
+
+[Peer]
+# Node A — the single peer Node B trusts. B holds A's public key; A
+# never sees B's private key.
+PublicKey = REPLACE_WITH_NODE_A_WG_PUBLIC_KEY
+
+Endpoint = REPLACE_WITH_NODE_A_PUBLIC_IPV4:51821
+# Route everything the tunnel can reach back to Node A — that's the
+# tunnel subnet itself. Client traffic that Node A wants to push
+# through this tunnel hits the AllowedIPs on A's side, not B's.
+AllowedIPs = 10.200.0.1/30
+PersistentKeepalive = 25
