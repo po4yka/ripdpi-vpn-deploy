@@ -1,0 +1,195 @@
+---
+name: transport-reachability-matrix
+
+# Per-transport-profile reachability sweep. Provisions one ephemeral
+# UpCloud VPS, then iterates through a configured list of transport
+# profile sets — reconfiguring the VPS between iterations — and runs
+# the `rkn-block-checker` four-layer baseline from the GitHub runner
+# against the exit IP after each profile applies. The runner has no
+# filtered-network vantage; that half is operator-driven and stitched
+# in offline (see docs/TRANSPORT-REACHABILITY-MATRIX.md).
+#
+# Cost: one ~30 min VPS lifetime per workflow run plus the time taken
+# by each profile's deploy + probe sweep.
+#
+# Triggered manually (workflow_dispatch) or by adding the
+# `ci-real-deploy` label to a PR — same gating as
+# real-vps-deploy.yml. Will refuse to run from a fork PR.
+#
+# Required secrets (same set as real-vps-deploy):
+#   UPCLOUD_USERNAME, UPCLOUD_PASSWORD, CI_SOPS_AGE_KEY,
+#   CI_SSH_PRIVATE_KEY, CI_UPCLOUD_TEMPLATE_UUID
+
+on:
+  workflow_dispatch:
+    inputs:
+      profiles:
+        description: >-
+          Comma-separated transport-profile sets. Each entry is a
+          shorthand for an ansible extra-vars block (see
+          docs/TRANSPORT-REACHABILITY-MATRIX.md). Default exercises
+          P0 alone, P0+P1, P0+P1+P2.
+        required: false
+        default: "p0,p0p1,p0p1p2"
+      zone:
+        description: "UpCloud zone (e.g. fi-hel1, de-fra1)"
+        required: false
+        default: "fi-hel1"
+      rkn_block_checker_version:
+        description: "Pinned rkn-block-checker version."
+        required: false
+        default: "0.1.0"
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-real-deploy'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    concurrency:
+      group: transport-reachability-matrix
+      cancel-in-progress: false
+
+    env:
+      UPCLOUD_USERNAME: ${{ secrets.UPCLOUD_USERNAME }}
+      UPCLOUD_PASSWORD: ${{ secrets.UPCLOUD_PASSWORD }}
+      ANSIBLE_HOST_KEY_CHECKING: "False"
+      CI_UPCLOUD_TEMPLATE_UUID: ${{ secrets.CI_UPCLOUD_TEMPLATE_UUID }}
+      PROFILES_INPUT: ${{ github.event.inputs.profiles || 'p0,p0p1,p0p1p2' }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          persist-credentials: false
+
+      - name: Refuse to run on a fork PR
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::error::transport-reachability-matrix will not run on a fork PR — secrets are not exposed to forks."
+          exit 1
+
+      - name: Short-circuit when template UUID is unset
+        id: gate
+        run: |
+          if [ -z "${CI_UPCLOUD_TEMPLATE_UUID:-}" ]; then
+            echo "::notice::CI_UPCLOUD_TEMPLATE_UUID is empty — skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify required secrets are present
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          for v in UPCLOUD_USERNAME UPCLOUD_PASSWORD CI_SOPS_AGE_KEY CI_SSH_PRIVATE_KEY CI_UPCLOUD_TEMPLATE_UUID; do
+            if [ -z "${!v:-}" ] && [ -z "$(printenv "$v" || true)" ]; then
+              echo "::error::Secret $v is unset — configure it in repo settings."
+              exit 1
+            fi
+          done
+        env:
+          CI_SOPS_AGE_KEY: ${{ secrets.CI_SOPS_AGE_KEY }}
+          CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
+
+      - name: Set up tooling
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          RKN_VERSION: ${{ github.event.inputs.rkn_block_checker_version }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip jq age unzip
+          curl -fsSL "https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64" -o /tmp/sops
+          echo "0d65660fbe785647ff4f1764d7f69edf598f79d6d79ebbef4a501909b6ff6b82  /tmp/sops" | sha256sum -c -
+          sudo install -m 0755 /tmp/sops /usr/local/bin/sops
+          curl -fsSL "https://releases.hashicorp.com/terraform/1.9.5/terraform_1.9.5_linux_amd64.zip" -o /tmp/tf.zip
+          echo "9cf727b4d6bd2d4d2908f08bd282f9e4809d6c3071c3b8ebe53558bee6dc913b  /tmp/tf.zip" | sha256sum -c -
+          (cd /tmp && unzip -o tf.zip && sudo install -m 0755 terraform /usr/local/bin/terraform)
+          pip3 install --user --require-hashes --no-deps -r requirements.txt
+          pip3 install --user "rkn-block-checker==${RKN_VERSION}"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Stage SSH key + age key + CI tfvars
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh ~/.config/vpn-provision
+          chmod 0700 ~/.ssh ~/.config/vpn-provision
+          printf '%s\n' "${{ secrets.CI_SSH_PRIVATE_KEY }}" > ~/.ssh/vpn_deploy
+          chmod 0600 ~/.ssh/vpn_deploy
+          ssh-keygen -y -f ~/.ssh/vpn_deploy > ~/.ssh/vpn_deploy.pub
+          printf '%s\n' "${{ secrets.CI_SOPS_AGE_KEY }}" > ~/.config/vpn-provision/age.key
+          chmod 0600 ~/.config/vpn-provision/age.key
+          ts="$(date -u +%Y%m%d-%H%M%S)"
+          ci_env="ci-${{ github.run_id }}-trm-${ts}"
+          server_name="vpn-${ci_env}.ci.test"
+          echo "CI_ENV=${ci_env}" >> "$GITHUB_ENV"
+          echo "CI_SERVER_NAME=${server_name}" >> "$GITHUB_ENV"
+          cat > "terraform/providers/upcloud/environments/${ci_env}.tfvars" <<TFVARS
+          server_name          = "${server_name}"
+          zone                 = "${{ github.event.inputs.zone || 'fi-hel1' }}"
+          plan                 = "1xCPU-2GB"
+          storage_template     = "${CI_UPCLOUD_TEMPLATE_UUID}"
+          admin_ssh_public_key = file("~/.ssh/vpn_deploy.pub")
+          allowed_ssh_cidrs    = ["0.0.0.0/0"]
+          build_env            = "${ci_env}"
+          TFVARS
+
+      - name: Generate synthetic CI secrets
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          export SECRETS_FILE="/tmp/vpn-${CI_ENV}.secrets.yaml"
+          OUT="$SECRETS_FILE" SERVER_NAME="$CI_SERVER_NAME" CLIENT_NAME="ci-test" \
+            ./scripts/ci-bootstrap-secrets.sh
+          echo "SECRETS_FILE=$SECRETS_FILE" >> "$GITHUB_ENV"
+
+      - name: Provision VPS
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          export ENV="$CI_ENV"
+          export PROVIDER=upcloud
+          make init plan apply inventory wait
+
+      - name: Sweep transport-profile matrix
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          ANSIBLE_SSH_PRIVATE_KEY_FILE: /home/runner/.ssh/vpn_deploy
+          SKIP_PRECHECK: "1"
+        run: |
+          set -euo pipefail
+          export ENV="$CI_ENV"
+          export PROVIDER=upcloud
+          ./scripts/transport-reachability-matrix.sh \
+            --profiles "$PROFILES_INPUT" \
+            --secrets "$SECRETS_FILE" \
+            --output-dir "${GITHUB_WORKSPACE}/.transport-reachability"
+
+      - name: Upload reachability matrix artifact
+        if: always() && steps.gate.outputs.skip != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: transport-reachability-matrix-${{ github.run_id }}
+          path: .transport-reachability/
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Always destroy the ephemeral VPS
+        if: always() && steps.gate.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          export ENV="$CI_ENV"
+          export PROVIDER=upcloud
+          echo "yes" | echo "yes" | make destroy || true
+
+      - name: Cleanup CI tfvars file
+        if: always() && steps.gate.outputs.skip != 'true'
+        run: |
+          rm -f "terraform/providers/upcloud/environments/${CI_ENV}.tfvars" || true
