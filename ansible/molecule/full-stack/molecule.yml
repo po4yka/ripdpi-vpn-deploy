@@ -44,8 +44,27 @@ provisioner:
     ANSIBLE_ROLES_PATH: ../../roles
     VPN_SECRETS_FILE: ${MOLECULE_SCENARIO_DIRECTORY}/test-secrets.yaml
   inventory:
-    host_vars:
-      vpn-fullstack-debian13:
+    # playbooks/site.yml targets `hosts: vpn`, so the test container must
+    # be a member of that group. Also mirror the top-level (non-`vpn:`)
+    # keys from ansible/group_vars/all.yml: molecule's temp inventory dir
+    # does not auto-load that file.
+    group_vars:
+      all:
+        xray_port: 443
+        nginx_xhttp_public_port: 8443
+        nginx_xhttp_port: 10085
+        hysteria_port: 443
+        hysteria_port_range: ""
+        hysteria_hop_interval: "30s"
+        xray_install_root: /opt/xray
+        xray_config_dir: /etc/xray
+        xray_log_dir: /var/log/xray
+        hysteria_install_root: /opt/hysteria
+        hysteria_config_dir: /etc/hysteria
+        hysteria_log_dir: /var/log/hysteria
+        amneziawg_config_dir: /etc/amnezia/amneziawg
+        restic_repo_dir: /var/backups/vpn-restic
+      vpn:
         ansible_user: root
         allowed_ssh_cidrs: ["0.0.0.0/0"]
         vpn:
@@ -64,6 +83,10 @@ provisioner:
           enable_probe_ratelimit: true
           xray_flow_mode: vision
           xray_finalmask: false
+    hosts:
+      vpn:
+        hosts:
+          vpn-fullstack-debian13:
   config_options:
     defaults:
       callback_result_format: yaml
