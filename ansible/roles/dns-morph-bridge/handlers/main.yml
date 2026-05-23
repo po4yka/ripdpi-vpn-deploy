@@ -1,0 +1,11 @@
+---
+- name: Restart dns-morph-bridge
+  ansible.builtin.systemd_service:
+    name: dns-morph-bridge.service
+    state: restarted
+    daemon_reload: true
+
+- name: Restart unbound
+  ansible.builtin.systemd_service:
+    name: unbound.service
+    state: restarted

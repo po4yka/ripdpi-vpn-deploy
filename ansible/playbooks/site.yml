@@ -90,3 +90,7 @@
     - role: probe-ratelimit
       when: (vpn.enable_probe_ratelimit | default(false)) and not (vpn_subscription_only | default(false))
       tags: [probe-ratelimit, defensive]
+
+    - role: dns-morph-bridge
+      when: (vpn.enable_dns_morph_bridge | default(false)) and not (vpn_subscription_only | default(false))
+      tags: [dns-morph-bridge, p4, transport, bootstrap]

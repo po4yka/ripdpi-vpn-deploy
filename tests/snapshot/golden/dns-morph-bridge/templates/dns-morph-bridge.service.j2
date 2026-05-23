@@ -1,0 +1,39 @@
+[Unit]
+Description=DNS-Morph bridge — bootstrap-channel listener on UDP/53
+Documentation=https://github.com/po4yka/vpn-deploy/blob/main/ansible/roles/dns-morph-bridge/defaults/main.yml
+After=network-online.target unbound.service
+Wants=network-online.target
+Requires=unbound.service
+
+[Service]
+Type=simple
+User=dns-morph-bridge
+Group=dns-morph-bridge
+ExecStart=/usr/local/bin/dns-morph-bridge --config /etc/dns-morph-bridge/dns-morph-bridge.yaml
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+
+# Hardening
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/log/dns-morph-bridge
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+[Install]
+WantedBy=multi-user.target

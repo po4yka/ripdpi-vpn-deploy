@@ -1,0 +1,75 @@
+---
+# Verify dns-morph-bridge rendered-config scenario.
+# We do not assert the live daemon binds — the stub binary cannot speak
+# the DNS-Morph protocol and the molecule container has no UDP/53 path.
+# Instead we check that every file the role is supposed to render is
+# present with the expected ownership + shape.
+
+- name: Verify dns-morph-bridge file rendering
+  hosts: all
+  become: true
+  tasks:
+    - name: Bridge config exists with restricted mode
+      ansible.builtin.stat:
+        path: /etc/dns-morph-bridge/dns-morph-bridge.yaml
+      register: bridge_cfg
+      failed_when: >
+        not bridge_cfg.stat.exists
+        or bridge_cfg.stat.mode != "0640"
+
+    - name: Unbound forwarder snippet exists
+      ansible.builtin.stat:
+        path: /etc/unbound/unbound.conf.d/dns-morph-bridge-fwd.conf
+      register: unbound_cfg
+      failed_when: not unbound_cfg.stat.exists
+
+    - name: Systemd unit exists
+      ansible.builtin.stat:
+        path: /etc/systemd/system/dns-morph-bridge.service
+      register: svc_unit
+      failed_when: not svc_unit.stat.exists
+
+    - name: Bridge binary is in place and executable
+      ansible.builtin.stat:
+        path: /usr/local/bin/dns-morph-bridge
+      register: bin_stat
+      failed_when: not bin_stat.stat.exists or not bin_stat.stat.executable
+
+    - name: Read bridge config content
+      ansible.builtin.slurp:
+        src: /etc/dns-morph-bridge/dns-morph-bridge.yaml
+      register: bridge_cfg_raw
+
+    - name: Decode bridge config
+      ansible.builtin.set_fact:
+        bridge_cfg_text: "{{ bridge_cfg_raw.content | b64decode }}"
+
+    - name: Listener bound on UDP/53 in rendered config
+      ansible.builtin.assert:
+        that:
+          - bridge_cfg_text is search('(?m)^\s*port:\s*53\s*$')
+          - bridge_cfg_text is search('(?m)^\s*address:\s*"0.0.0.0"\s*$')
+        fail_msg: "Bridge config did not bind 0.0.0.0:53"
+
+    - name: Forward block points at 127.0.0.1:5353 (active-probing defense)
+      ansible.builtin.assert:
+        that:
+          - bridge_cfg_text is search('(?m)^\s*port:\s*5353\s*$')
+          - bridge_cfg_text is search('(?m)^\s*address:\s*"127.0.0.1"\s*$')
+        fail_msg: "Bridge forward block did not target 127.0.0.1:5353"
+
+    - name: Read unbound snippet content
+      ansible.builtin.slurp:
+        src: /etc/unbound/unbound.conf.d/dns-morph-bridge-fwd.conf
+      register: unbound_cfg_raw
+
+    - name: Decode unbound snippet
+      ansible.builtin.set_fact:
+        unbound_cfg_text: "{{ unbound_cfg_raw.content | b64decode }}"
+
+    - name: Unbound refuses external recursion (anti-reflection)
+      ansible.builtin.assert:
+        that:
+          - unbound_cfg_text is search('access-control:\s*0\.0\.0\.0/0\s+refuse')
+          - unbound_cfg_text is search('access-control:\s*127\.0\.0\.0/8\s+allow')
+        fail_msg: "Unbound is not configured to refuse public recursion"

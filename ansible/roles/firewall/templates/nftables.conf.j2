@@ -102,6 +102,11 @@ table inet filter {
     # Active-probing canary (logs probes; no real service behind it)
     tcp dport {{ honeypot.port | default(4443) }} accept
 {% endif %}
+{% if vpn.enable_dns_morph_bridge | default(false) %}
+
+    # P4 — DNS-Morph bootstrap-channel listener on UDP/53
+    udp dport {{ dns_morph_bridge.listen_port | default(53) }} accept
+{% endif %}
 
 {% if vpn.enable_cdn_front | default(false) %}
     # Tactical CDN-fronted XHTTP listener — when origin_firewall is on,

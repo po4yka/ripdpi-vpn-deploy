@@ -1,0 +1,64 @@
+---
+# Converge for dns-morph-bridge static-verify scenario.
+# The bridge daemon is not released as a downloadable artifact and the
+# molecule container has no network egress to an internal artifact
+# store. We stub the binary on disk, stub the upstream URL fetch by
+# substituting a file:// source, and let the role render the unbound +
+# bridge configs so verify.yml can assert their shape.
+
+- name: Converge dns-morph-bridge role (config-render only, stubbed binary)
+  hosts: all
+  become: true
+  vars:
+    vpn:
+      enable_dns_morph_bridge: true
+
+    dns_morph_bridge:
+      install_root: /opt/dns-morph-bridge
+      bin_path: /usr/local/bin/dns-morph-bridge
+      listen_addr: "0.0.0.0"
+      listen_port: 53
+      recursor_addr: "127.0.0.1"
+      recursor_port: 5353
+      upstream_endpoint: "127.0.0.1:443"
+      events_per_minute_max: 5000
+      log_dir: /var/log/dns-morph-bridge
+      config_dir: /etc/dns-morph-bridge
+      binary_url: ""
+      binary_sha256: ""
+
+    dns_morph_bridge_secrets:
+      signing_key: "MOLECULE_STUB_SIGNING_KEY_NOT_REAL_AAAAAAAAAAAAAAAAAAAA="
+      binary_url: "file:///opt/dns-morph-bridge/stub-binary"
+      # sha256 of the stub binary content rendered in pre_tasks below.
+      binary_sha256: "REPLACED_AT_RUNTIME"
+
+  pre_tasks:
+    - name: Ensure install_root exists so the stub binary can be staged
+      ansible.builtin.file:
+        path: /opt/dns-morph-bridge
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Stage stub bridge binary (so get_url checksum has a stable source)
+      ansible.builtin.copy:
+        dest: /opt/dns-morph-bridge/stub-binary
+        owner: root
+        group: root
+        mode: "0755"
+        content: "#!/bin/sh\necho 'dns-morph-bridge stub' && sleep infinity\n"
+
+    - name: Compute sha256 of stub binary
+      ansible.builtin.stat:
+        path: /opt/dns-morph-bridge/stub-binary
+        checksum_algorithm: sha256
+      register: stub_stat
+
+    - name: Override binary_sha256 with the stub's real digest
+      ansible.builtin.set_fact:
+        dns_morph_bridge_secrets: "{{ dns_morph_bridge_secrets | combine({'binary_sha256': stub_stat.stat.checksum}) }}"
+
+  roles:
+    - role: dns-morph-bridge
