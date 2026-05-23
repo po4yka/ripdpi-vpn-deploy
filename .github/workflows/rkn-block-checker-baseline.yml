@@ -1,0 +1,75 @@
+---
+name: rkn-block-checker-baseline
+
+# Operator-triggered regression baseline. Runs the four-layer
+# diagnostic against an exit IP (or the local resolver path when no
+# IP is given) and uploads the JSON report + diff as a workflow
+# artifact. Not run on push or PR — the upstream tool issues real
+# network probes that are out of place in CI lanes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      exit_ip:
+        description: "Exit IP to anchor the report key. Use 'local' to run from the GitHub runner directly."
+        required: true
+        default: "local"
+      proxy:
+        description: "Optional socks5:// URL routing the probes through a bypass channel."
+        required: false
+        default: ""
+      rkn_block_checker_version:
+        description: "Pinned rkn-block-checker version (overrides the default in the wrapper)."
+        required: false
+        default: "0.1.0"
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    name: rkn-block-checker baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.13"
+
+      - name: Install pinned rkn-block-checker + jq
+        env:
+          VERSION: ${{ github.event.inputs.rkn_block_checker_version }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          python3 -m pip install "rkn-block-checker==${VERSION}" PyYAML
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends jq
+
+      - name: Run baseline
+        id: baseline
+        env:
+          EXIT_IP: ${{ github.event.inputs.exit_ip }}
+          PROXY:   ${{ github.event.inputs.proxy }}
+          RKN_BLOCK_CHECKER_VERSION: ${{ github.event.inputs.rkn_block_checker_version }}
+        run: |
+          set -euo pipefail
+          args=("$EXIT_IP")
+          if [[ -n "$PROXY" ]]; then
+            args+=(--proxy "$PROXY")
+          fi
+          # State dir inside the runner workspace so the upload step picks it up.
+          args+=(--state-dir "${GITHUB_WORKSPACE}/.rkn-baseline")
+          # Wrapper exits non-zero when verdicts shift; capture but do not fail
+          # the job — the diff itself is the deliverable.
+          ./scripts/run-rkn-block-checker.sh "${args[@]}" || true
+
+      - name: Upload baseline report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: rkn-block-checker-baseline-${{ github.event.inputs.exit_ip }}
+          path: .rkn-baseline/
+          if-no-files-found: error
+          retention-days: 90

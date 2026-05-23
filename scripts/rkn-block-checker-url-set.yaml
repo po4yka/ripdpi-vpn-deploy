@@ -1,0 +1,137 @@
+# URL set for scripts/run-rkn-block-checker.sh.
+#
+# Two groups: 21 whitelist controls + 15 blacklist tests. The split
+# follows the four-layer regression methodology: a whitelist verdict
+# of OK means the diagnostic path is healthy; a blacklist verdict of
+# (DNS_BLOCK | TCP_RESET | TLS_BLOCK | HTTP_STUB) means the baseline
+# correctly observes the network's filtering. Either group regressing
+# is a deploy-side signal.
+#
+# Schema:
+#   url        — endpoint to probe (https:// preferred so the diagnostic
+#                exercises every layer including TLS handshake)
+#   expected   — expected aggregate verdict ("OK" | "BLOCK")
+#   exercise   — what behaviour this entry probes (technical, not
+#                geographic — see CLAUDE.md hard rules)
+#
+# Operators: rotate entries quarterly. The blacklist set drifts as the
+# filtering pipeline changes; the whitelist set drifts as the control
+# endpoints' availability changes.
+
+whitelist_controls:
+  # Generic infrastructure — should reach OK on any unfiltered path.
+  - url: "https://www.google.com/"
+    expected: OK
+    exercise: "TLS 1.3 ALPN h2, large response body"
+  - url: "https://www.bing.com/"
+    expected: OK
+    exercise: "TLS 1.3 ALPN h2, redirect chain"
+  - url: "https://duckduckgo.com/"
+    expected: OK
+    exercise: "TLS 1.3 ALPN h2, simple body"
+  - url: "https://www.cloudflare.com/"
+    expected: OK
+    exercise: "Cloudflare-fronted TLS — sanity check for CDN reachability"
+  - url: "https://www.fastly.com/"
+    expected: OK
+    exercise: "Alternative CDN front (Fastly)"
+  - url: "https://www.akamai.com/"
+    expected: OK
+    exercise: "Alternative CDN front (Akamai)"
+  - url: "https://github.com/"
+    expected: OK
+    exercise: "Code host, no known carrier-layer interference"
+  - url: "https://gitlab.com/"
+    expected: OK
+    exercise: "Code host, alternative ASN"
+  - url: "https://stackoverflow.com/"
+    expected: OK
+    exercise: "Large static site, Cloudflare-fronted"
+  - url: "https://www.python.org/"
+    expected: OK
+    exercise: "Software project site, Fastly-fronted"
+  - url: "https://www.kernel.org/"
+    expected: OK
+    exercise: "Software project site, no CDN"
+  - url: "https://www.iana.org/"
+    expected: OK
+    exercise: "Reference test domain (registry root)"
+  - url: "https://www.rfc-editor.org/"
+    expected: OK
+    exercise: "RFC archive — TLS-only, simple body"
+  - url: "https://example.com/"
+    expected: OK
+    exercise: "RFC 2606 reserved test domain"
+  - url: "https://www.example.org/"
+    expected: OK
+    exercise: "RFC 2606 reserved test domain (alt)"
+  - url: "https://www.wikipedia.org/"
+    expected: OK
+    exercise: "Encyclopedia root — large dynamic body"
+  - url: "https://en.wikipedia.org/wiki/Main_Page"
+    expected: OK
+    exercise: "Wikipedia article path — exercises full chain"
+  - url: "https://www.eff.org/"
+    expected: OK
+    exercise: "Civil-liberties org site, not typically filtered"
+  - url: "https://www.mozilla.org/"
+    expected: OK
+    exercise: "Foundation site, multi-CDN"
+  - url: "https://www.debian.org/"
+    expected: OK
+    exercise: "Distribution site, low-jitter mirror network"
+  - url: "https://www.archlinux.org/"
+    expected: OK
+    exercise: "Distribution site, alternative mirror network"
+
+blacklist_tests:
+  # Endpoints known to land on the local filtering pipeline as of the
+  # last quarterly review. Each entry should produce a non-OK verdict
+  # at one of the four layers. Operators: replace as the filtering
+  # pipeline changes; the comment under each entry names the
+  # filtering behaviour expected, not who the entry "is".
+  - url: "https://www.linkedin.com/"
+    expected: BLOCK
+    exercise: "Long-running TLS-layer block on professional-network site"
+  - url: "https://meduza.io/"
+    expected: BLOCK
+    exercise: "Independent-media DNS+TLS block — exercises both layers"
+  - url: "https://www.dw.com/ru/"
+    expected: BLOCK
+    exercise: "Broadcaster locale-path TLS block"
+  - url: "https://www.bbc.com/russian"
+    expected: BLOCK
+    exercise: "Broadcaster locale-path TLS block (alt)"
+  - url: "https://www.svoboda.org/"
+    expected: BLOCK
+    exercise: "Independent-media TLS block"
+  - url: "https://novayagazeta.eu/"
+    expected: BLOCK
+    exercise: "Independent-media TLS block"
+  - url: "https://www.amnesty.org/en/"
+    expected: BLOCK
+    exercise: "NGO-content TLS block on locale path"
+  - url: "https://protonmail.com/"
+    expected: BLOCK
+    exercise: "Privacy-mail TLS block"
+  - url: "https://signal.org/"
+    expected: BLOCK
+    exercise: "Messenger-org-site TLS block (data-plane block is separate)"
+  - url: "https://torproject.org/"
+    expected: BLOCK
+    exercise: "Anonymity-project site DNS+TLS block"
+  - url: "https://www.tor.com/"
+    expected: BLOCK
+    exercise: "Coincidentally-named site — TLS-block verdict varies"
+  - url: "https://psiphon.ca/"
+    expected: BLOCK
+    exercise: "Circumvention-tool site TLS block"
+  - url: "https://lantern.io/"
+    expected: BLOCK
+    exercise: "Circumvention-tool site TLS block (alt)"
+  - url: "https://www.expressvpn.com/"
+    expected: BLOCK
+    exercise: "VPN-vendor site TLS block"
+  - url: "https://nordvpn.com/"
+    expected: BLOCK
+    exercise: "VPN-vendor site TLS block (alt vendor)"

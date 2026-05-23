@@ -163,6 +163,8 @@ Then:
     delivery role on a dedicated VPS via `vpn_subscription_only`.
 16. `docs/CI-REAL-DEPLOY.md` — workflow_dispatch ephemeral-UpCloud
     deploy gate for PRs labelled `ci-real-deploy`.
+17. `docs/REGRESSION-BASELINE.md` — `rkn-block-checker` four-layer
+    verdict harness for before/after deploy measurement.
 
 Operational runbooks: `docs/RUNBOOK-{rotate,rollback,incident,restore,add-fallback}.md`.
 
