@@ -171,6 +171,9 @@ Then:
 19. `docs/TRANSPORT-REACHABILITY-MATRIX.md` — two-vantage per-profile
     reachability sweep, CI-driven non-filtered half + operator-driven
     filtered half.
+20. `docs/SPLIT-HOP-TOPOLOGY.md` + `docs/RUNBOOK-split-hop-pilot.md`
+    — ADR + operator runbook for the two-VPS split-hop topology that
+    breaks the FOCI 2026 per-IP dual-role flow classifier.
 
 Operational runbooks: `docs/RUNBOOK-{rotate,rollback,incident,restore,add-fallback}.md`.
 

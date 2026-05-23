@@ -1,0 +1,57 @@
+---
+# Verify split-hop-egress rendered config shape.
+
+- name: Verify split-hop-egress rendering
+  hosts: all
+  become: true
+  tasks:
+    - name: WG config exists with restricted mode
+      ansible.builtin.stat:
+        path: /etc/wireguard/shop0.conf
+      register: cfg
+      failed_when: not cfg.stat.exists or cfg.stat.mode != "0600"
+
+    - name: Sysctl drop-in exists
+      ansible.builtin.stat:
+        path: /etc/sysctl.d/60-split-hop-egress.conf
+      register: sysctl
+      failed_when: not sysctl.stat.exists
+
+    - name: Read WG config content
+      ansible.builtin.slurp:
+        src: /etc/wireguard/shop0.conf
+      register: cfg_raw
+
+    - name: Decode WG config
+      ansible.builtin.set_fact:
+        cfg_text: "{{ cfg_raw.content | b64decode }}"
+
+    - name: PersistentKeepalive is set (initiator direction)
+      # Load-bearing — see roles/split-hop-egress/CLAUDE.md pitfall.
+      # Without keepalive, Node A becomes the initiator and the
+      # dual-role signal re-appears on A.
+      ansible.builtin.assert:
+        that:
+          - cfg_text is search('(?m)^PersistentKeepalive\s*=\s*25\s*$')
+        fail_msg: "PersistentKeepalive missing/wrong — initiator direction not enforced"
+
+    - name: ListenPort is NOT set on [Interface]
+      # Setting ListenPort would make B a passive listener — flips
+      # initiator role and breaks the topology guarantee.
+      ansible.builtin.assert:
+        that:
+          - cfg_text is not search('(?m)^ListenPort\s*=')
+        fail_msg: "ListenPort present on Node B — initiator direction broken"
+
+    - name: Endpoint points at Node A's public IP
+      ansible.builtin.assert:
+        that:
+          - cfg_text is search('(?m)^Endpoint\s*=\s*203\.0\.113\.1:51821\s*$')
+        fail_msg: "Endpoint does not reference Node A's public IP:port"
+
+    - name: AllowedIPs is scoped to Node A's tunnel address (not 0.0.0.0/0)
+      ansible.builtin.assert:
+        that:
+          - cfg_text is search('(?m)^AllowedIPs\s*=\s*10\.200\.0\.1/30\s*$')
+          - cfg_text is not search('AllowedIPs\s*=\s*0\.0\.0\.0/0')
+        fail_msg: "AllowedIPs widened beyond Node A's tunnel address"

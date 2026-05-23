@@ -98,3 +98,7 @@
     - role: hysteria-realm
       when: (vpn.enable_hysteria_realm | default(false)) and not (vpn_subscription_only | default(false))
       tags: [hysteria-realm, p5, transport, rendezvous]
+
+    - role: split-hop-egress
+      when: (vpn.enable_split_hop_egress | default(false)) and not (vpn_subscription_only | default(false))
+      tags: [split-hop-egress, topology]
