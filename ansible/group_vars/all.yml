@@ -52,6 +52,12 @@ vpn:
                                   # active-probing-defense forward path.
                                   # See roles/dns-morph-bridge/CLAUDE.md
                                   # and docs/PROVIDER-NOTES.md.
+  enable_hysteria_realm: false    # opt-in; sing-box realm-service
+                                  # rendezvous for UDP hole-punching
+                                  # (P5 fallback tier). Sing-box ≥
+                                  # alpha.22 required on every peer
+                                  # — see roles/hysteria-realm/CLAUDE.md
+                                  # for the alpha-tier risk profile.
 
   # When enable_warp_outbound is true AND this list is non-empty, the
   # xray config gains a SOCKS outbound tagged "warp-out" and routing

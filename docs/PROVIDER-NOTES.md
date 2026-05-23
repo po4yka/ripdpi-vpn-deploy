@@ -160,6 +160,40 @@ Build on a trusted workstation and publish to an internal artifact
 store before enabling. See `ansible/roles/dns-morph-bridge/CLAUDE.md`
 for the per-role design notes.
 
+## P5 rendezvous transport tier
+
+The Ansible role `hysteria-realm` adds a sing-box realm-service inbound
+that mediates UDP-hole-punching handshakes between two peers. The VPN
+data plane never touches this VPS — only the small TLS-wrapped
+rendezvous handshake. Operational profile:
+
+- **Port:** TCP/`hysteria_realm.listen_port` (default 8444). The realm
+  flow is TLS-wrapped because the handshake payload is small enough to
+  ride any TLS server, which buys ASN-blocklist resistance.
+- **Co-residency:** non-colliding with P0 (TCP/443), P1 (TCP/8443),
+  P2 (UDP/443, UDP/cohort), P4 (UDP/53). Collides with the
+  subscription-host default port (8444) — operators that enable both on
+  the same VPS must override one.
+- **Sing-box version pin:** realm-service ships on the alpha line.
+  `hysteria_realm.version` is pinned in `defaults/main.yml`; the
+  matching tarball sha256 is in `hysteria_realm_secrets.linux_*_sha256`
+  so a version bump touches the secrets file only. Both peer sides
+  must run sing-box ≥ the pinned tag — asymmetric deployment against
+  mainline `apernet/hysteria` is not yet supported upstream.
+- **Auth-token discipline:** a single pre-shared `auth_token` mediates
+  every handshake. Rotation invalidates every peer; treat it as
+  long-lived and rotate only on compromise.
+- **TLS material:** with `share_hysteria_tls: true` (default) the role
+  symlinks the P2 hysteria role's cert/key into this role's config dir;
+  one renewal path covers both tiers.
+- **Provider compatibility:** any provider that allows arbitrary TCP
+  inbound rules. UpCloud/Hetzner/Vultr all accept TCP/8444 in their
+  hypervisor firewall once the Terraform provider opens it.
+
+The role's `MemoryDenyWriteExecute=true` lockdown depends on sing-box
+remaining a static Go binary — verify before any future upstream switch
+to a runtime that JITs.
+
 ## What every provider root must export for inventory compatibility
 
 `scripts/render-inventory.sh` reads exactly these Terraform outputs:

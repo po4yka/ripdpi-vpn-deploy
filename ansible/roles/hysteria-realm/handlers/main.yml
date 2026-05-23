@@ -1,0 +1,20 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart hysteria-realm
+  ansible.builtin.systemd_service:
+    name: hysteria-realm.service
+    state: restarted
+  listen: Restart hysteria-realm
+
+- name: Wait for hysteria-realm to become active
+  ansible.builtin.command:
+    cmd: systemctl is-active hysteria-realm.service
+  register: hr_active
+  retries: 5
+  delay: 2
+  until: hr_active.stdout == "active"
+  changed_when: false
+  listen: Restart hysteria-realm
