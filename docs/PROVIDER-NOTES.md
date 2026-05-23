@@ -128,6 +128,38 @@ Uses:
   sensitive variable `vultr_api_key`; export `TF_VAR_vultr_api_key` instead
   of writing tokens into tfvars.
 
+## P4 fallback transport tier
+
+The Ansible role `dns-morph-bridge` adds a bootstrap-channel listener
+on UDP/53 — a fallback tier beyond P0–P2 used when transport-layer
+discovery is itself being interfered with. Operational profile:
+
+- **Port:** UDP/53, public listener (must be allowed inbound on the
+  provider's hypervisor firewall — UpCloud/Hetzner/Vultr all default
+  to closed; add an explicit allow rule in the provider's tfvars).
+- **Co-residency:** non-colliding with P0 (TCP/443), P1 (TCP/8443),
+  P2 (UDP/443, UDP/cohort). Safe to enable alongside the full stack
+  on a single VPS.
+- **Active-probing defense:** the role co-installs `unbound` bound to
+  `127.0.0.1:5353`. Any query the bridge does not recognise as a
+  handshake fragment is forwarded verbatim so the listener responds
+  like a normal recursive resolver under probe.
+- **Reflection-attack posture:** unbound refuses recursion for every
+  source outside `127.0.0.0/8`. The listener is not an open resolver.
+- **Operational noise:** UDP/53 attracts indiscriminate scanner
+  traffic. The role caps the active-probing-defense path via
+  `dns_morph_bridge.events_per_minute_max` (default 5000/min) to keep
+  log volume bounded.
+- **Provider compatibility:** any provider that allows arbitrary UDP
+  inbound rules. UpCloud and Hetzner accept UDP/53 in their hypervisor
+  firewall; Vultr requires an explicit rule on the firewall group.
+
+The role's binary is operator-supplied (`dns_morph_bridge_secrets.
+binary_url` + `.binary_sha256`); no public release artifact exists.
+Build on a trusted workstation and publish to an internal artifact
+store before enabling. See `ansible/roles/dns-morph-bridge/CLAUDE.md`
+for the per-role design notes.
+
 ## What every provider root must export for inventory compatibility
 
 `scripts/render-inventory.sh` reads exactly these Terraform outputs:

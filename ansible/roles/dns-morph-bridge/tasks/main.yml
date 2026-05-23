@@ -1,0 +1,94 @@
+---
+# DNS-Morph bridge — see defaults/main.yml for rationale.
+
+- name: Pre-flight — bridge binary URL + sha256 must be set
+  ansible.builtin.assert:
+    that:
+      - (dns_morph_bridge_secrets.binary_url | default('') | length) > 0
+      - (dns_morph_bridge_secrets.binary_sha256 | default('') | length) > 0
+    fail_msg: |
+      dns-morph-bridge requires dns_morph_bridge_secrets.binary_url and
+      dns_morph_bridge_secrets.binary_sha256 to be set. Build the bridge
+      on a trusted workstation, publish the artifact, and add both keys
+      to the SOPS secrets file before enabling the role.
+
+- name: Ensure bridge system user
+  ansible.builtin.user:
+    name: dns-morph-bridge
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ dns_morph_bridge.install_root }}"
+    create_home: false
+
+- name: Ensure bridge directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ dns_morph_bridge.install_root }}"
+      owner: root
+      group: root
+      mode: "0755"
+    - path: "{{ dns_morph_bridge.config_dir }}"
+      owner: root
+      group: dns-morph-bridge
+      mode: "0750"
+    - path: "{{ dns_morph_bridge.log_dir }}"
+      owner: dns-morph-bridge
+      group: dns-morph-bridge
+      mode: "0750"
+
+- name: Install unbound recursor for active-probing-defense forwarder
+  ansible.builtin.apt:
+    name:
+      - unbound
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Render unbound forwarder config
+  ansible.builtin.template:
+    src: unbound-fwd.conf.j2
+    dest: /etc/unbound/unbound.conf.d/dns-morph-bridge-fwd.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart unbound
+
+- name: Fetch bridge binary by sha256
+  ansible.builtin.get_url:
+    url: "{{ dns_morph_bridge_secrets.binary_url }}"
+    dest: "{{ dns_morph_bridge.bin_path }}"
+    checksum: "sha256:{{ dns_morph_bridge_secrets.binary_sha256 }}"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart dns-morph-bridge
+
+- name: Render bridge config
+  ansible.builtin.template:
+    src: dns-morph-bridge.yaml.j2
+    dest: "{{ dns_morph_bridge.config_dir }}/dns-morph-bridge.yaml"
+    owner: root
+    group: dns-morph-bridge
+    mode: "0640"
+  notify: Restart dns-morph-bridge
+
+- name: Install systemd unit
+  ansible.builtin.template:
+    src: dns-morph-bridge.service.j2
+    dest: /etc/systemd/system/dns-morph-bridge.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart dns-morph-bridge
+
+- name: Enable + start dns-morph-bridge
+  ansible.builtin.systemd_service:
+    name: dns-morph-bridge.service
+    enabled: true
+    state: started
+    daemon_reload: true

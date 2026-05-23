@@ -94,7 +94,7 @@ release-please drives versioning from Conventional Commits. Don't edit
 4. Write a molecule scenario under `ansible/roles/<name>/molecule/` or add a justified skip to `docs/TESTING.md`.
 5. Create `ansible/roles/<name>/CLAUDE.md` (Design decisions / Done well / Pitfalls).
 6. Update `README.md` if operator-facing behaviour changed.
-7. Include the role in `ansible/site.yml` behind the toggle.
+7. Include the role in `ansible/playbooks/site.yml` behind the toggle.
 
 ### New Terraform provider
 

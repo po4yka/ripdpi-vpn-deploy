@@ -1,0 +1,25 @@
+# Managed by Ansible role `dns-morph-bridge`. Hand edits will be overwritten.
+#
+# Active-probing-defense forwarder. The dns-morph bridge listens on
+# {{ dns_morph_bridge.listen_addr }}:{{ dns_morph_bridge.listen_port }};
+# every non-handshake query is forwarded here so the public listener
+# answers like a normal recursive resolver under probe.
+
+server:
+    interface: {{ dns_morph_bridge.recursor_addr }}@{{ dns_morph_bridge.recursor_port }}
+    port: {{ dns_morph_bridge.recursor_port }}
+    do-ip4: yes
+    do-ip6: no
+    do-udp: yes
+    do-tcp: yes
+    access-control: 127.0.0.0/8 allow
+    access-control: 0.0.0.0/0 refuse
+    hide-identity: yes
+    hide-version: yes
+    qname-minimisation: yes
+    harden-glue: yes
+    harden-dnssec-stripped: yes
+    use-caps-for-id: yes
+    prefetch: yes
+    cache-min-ttl: 60
+    cache-max-ttl: 86400

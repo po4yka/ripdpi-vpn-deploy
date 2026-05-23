@@ -46,6 +46,12 @@ vpn:
                                   # in SOCKS5 mode on 127.0.0.1:40000.
                                   # See vpn.warp_outbound_routes below
                                   # for the xray routing hook.
+  enable_dns_morph_bridge: false  # opt-in; UDP/53 bootstrap-channel
+                                  # listener (P4 fallback tier). Co-installs
+                                  # unbound on 127.0.0.1:5353 for the
+                                  # active-probing-defense forward path.
+                                  # See roles/dns-morph-bridge/CLAUDE.md
+                                  # and docs/PROVIDER-NOTES.md.
 
   # When enable_warp_outbound is true AND this list is non-empty, the
   # xray config gains a SOCKS outbound tagged "warp-out" and routing

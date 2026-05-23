@@ -1,0 +1,34 @@
+# Managed by Ansible role `dns-morph-bridge`. Hand edits will be overwritten.
+#
+# Schema matches the reference daemon. When swapping for a re-implementation,
+# keep the top-level keys (`listen`, `forward`, `morph`, `limits`) stable so
+# this template renders the same shape.
+
+listen:
+  address: "0.0.0.0"
+  port: 53
+
+forward:
+  # Active-probing-defense path. Every query that does not match the
+  # DNS-Morph handshake shape is forwarded verbatim to the localhost
+  # recursor so the bridge answers like a normal DNS server.
+  address: "127.0.0.1"
+  port: 5353
+  protocol: udp
+
+morph:
+  # Per-bridge signing key (Ed25519, base64). Clients pin this in their
+  # bootstrap config. Rotation invalidates every issued client config.
+  signing_key: "REPLACE_WITH_ED25519_BASE64_OR_LEAVE_BLANK_IF_DISABLED"
+
+  # Where decoded fragments egress to. Empty string keeps the bridge in
+  # echo-only mode (smoke testing).
+  upstream_endpoint: ""
+
+limits:
+  # Per-minute cap on the active-probing-defense path (handshake-shaped
+  # queries are exempt). See defaults/main.yml for the disk-fill rationale.
+  events_per_minute_max: 5000
+
+log:
+  dir: "/var/log/dns-morph-bridge"

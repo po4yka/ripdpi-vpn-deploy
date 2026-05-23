@@ -153,8 +153,8 @@ Then:
 10. `docs/SUBSCRIPTION-PLANE.md` — gap matrix against the wiki spec.
 11. `docs/XRAY-RELEASE-LINE.md` — Xray-core 2026 release-line tracker
     (v26.2.6 → v26.5.3) with breaking-change notes for upgrades.
-12. `docs/AWG-COHORTS.md` — AmneziaWG cohort obfuscation profiles
-    (RTK South, MTS/Beeline/MegaFon).
+12. `docs/AWG-COHORTS.md` — AmneziaWG cohort obfuscation profiles by
+    packet-shape signature (e.g. `narrow-junk-sequential`).
 13. `docs/MULTI-COHORT.md` — multiple VLESS+REALITY inbounds per host,
     each with its own port/flow_mode/finalmask/clients.
 14. `docs/MULTI-OPERATOR.md` — per-scope SOPS rules, role-scoped secrets
