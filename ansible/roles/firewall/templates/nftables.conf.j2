@@ -107,6 +107,11 @@ table inet filter {
     # P4 — DNS-Morph bootstrap-channel listener on UDP/53
     udp dport {{ dns_morph_bridge.listen_port | default(53) }} accept
 {% endif %}
+{% if vpn.enable_hysteria_realm | default(false) %}
+
+    # P5 — Hysteria Realm rendezvous (TLS-wrapped sing-box realm-service)
+    tcp dport {{ hysteria_realm.listen_port | default(8444) }} accept
+{% endif %}
 
 {% if vpn.enable_cdn_front | default(false) %}
     # Tactical CDN-fronted XHTTP listener — when origin_firewall is on,

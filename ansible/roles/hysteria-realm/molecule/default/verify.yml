@@ -1,0 +1,85 @@
+---
+# Verify hysteria-realm rendered-config scenario.
+# The stub sing-box binary cannot speak the realm protocol, so we only
+# assert that every file the role is supposed to render is present with
+# the right ownership / mode / content shape.
+
+- name: Verify hysteria-realm rendering
+  hosts: all
+  become: true
+  tasks:
+    - name: config.json exists with restricted mode
+      ansible.builtin.stat:
+        path: /etc/hysteria-realm/config.json
+      register: cfg
+      failed_when: not cfg.stat.exists or cfg.stat.mode != "0640"
+
+    - name: config.json owned by root:hysteria-realm
+      ansible.builtin.assert:
+        that:
+          - cfg.stat.pw_name == "root"
+          - cfg.stat.gr_name == "hysteria-realm"
+
+    - name: Systemd unit exists
+      ansible.builtin.stat:
+        path: /etc/systemd/system/hysteria-realm.service
+      register: unit
+      failed_when: not unit.stat.exists
+
+    - name: sing-box-realm symlink points at install_root/current/sing-box
+      ansible.builtin.stat:
+        path: /usr/local/bin/sing-box-realm
+        follow: false
+      register: bin_link
+      failed_when: >
+        not bin_link.stat.exists
+        or not bin_link.stat.islnk
+        or bin_link.stat.lnk_target != "/opt/hysteria-realm/current/sing-box"
+
+    - name: TLS cert + key are present
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: tls_files
+      loop:
+        - /etc/hysteria-realm/server.fullchain.pem
+        - /etc/hysteria-realm/server.key
+      failed_when: not tls_files.stat.exists
+
+    - name: Read config.json content
+      ansible.builtin.slurp:
+        src: /etc/hysteria-realm/config.json
+      register: cfg_raw
+
+    - name: Decode config.json
+      ansible.builtin.set_fact:
+        cfg_text: "{{ cfg_raw.content | b64decode }}"
+        cfg_json: "{{ cfg_raw.content | b64decode | from_json }}"
+
+    - name: Inbound binds realm-service on the configured port
+      ansible.builtin.assert:
+        that:
+          - cfg_json.inbounds[0].type == "realm-service"
+          - cfg_json.inbounds[0].listen_port == 8444
+          - cfg_json.inbounds[0].auth_token == "MOLECULE_STUB_AUTH_TOKEN_NOT_REAL"
+        fail_msg: "Realm inbound missing or misconfigured in config.json"
+
+    - name: TLS block points at the staged cert + key
+      ansible.builtin.assert:
+        that:
+          - cfg_json.inbounds[0].tls.enabled
+          - cfg_json.inbounds[0].tls.certificate_path == "/etc/hysteria-realm/server.fullchain.pem"
+          - cfg_json.inbounds[0].tls.key_path == "/etc/hysteria-realm/server.key"
+        fail_msg: "TLS block in config.json does not reference the staged material"
+
+    - name: Per-minute handshake cap is rendered
+      ansible.builtin.assert:
+        that:
+          - cfg_json.inbounds[0].limits.events_per_minute_max == 600
+        fail_msg: "events_per_minute_max not rendered correctly"
+
+    - name: hysteria-realm.service is not in failed state
+      ansible.builtin.command:
+        cmd: systemctl is-failed hysteria-realm.service
+      register: hr_failed
+      changed_when: false
+      failed_when: hr_failed.stdout == "failed"

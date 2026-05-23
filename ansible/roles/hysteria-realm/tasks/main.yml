@@ -1,0 +1,175 @@
+---
+# Hysteria Realm rendezvous — see defaults/main.yml for rationale.
+
+- name: Pre-flight — sing-box archive sha256 must be pinned in secrets
+  ansible.builtin.assert:
+    that:
+      - (hysteria_realm_secrets.linux_amd64_sha256 | default('') | length) > 0
+        or (hysteria_realm_secrets.linux_arm64_sha256 | default('') | length) > 0
+      - (hysteria_realm_secrets.auth_token | default('') | length) > 0
+    fail_msg: |
+      hysteria-realm requires hysteria_realm_secrets.linux_{amd64,arm64}_sha256
+      (at least one matching the host architecture) and
+      hysteria_realm_secrets.auth_token to be set in the SOPS secrets file.
+
+- name: Set architecture-specific sing-box archive facts
+  ansible.builtin.set_fact:
+    sing_box_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+    sing_box_sha256: >-
+      {{ (hysteria_realm_secrets.linux_amd64_sha256
+          if ansible_architecture == 'x86_64'
+          else hysteria_realm_secrets.linux_arm64_sha256 | default('')) }}
+
+- name: SHA256 for current architecture is set
+  ansible.builtin.assert:
+    that:
+      - sing_box_sha256 | length > 0
+    fail_msg: "Add hysteria_realm_secrets.linux_{{ sing_box_arch }}_sha256 to your secrets file."
+
+- name: Ensure system user
+  ansible.builtin.user:
+    name: hysteria-realm
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ hysteria_realm.install_root }}"
+    create_home: false
+
+- name: Ensure directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ hysteria_realm.install_root }}/releases"
+      owner: root
+      group: root
+      mode: "0755"
+    - path: "{{ hysteria_realm.config_dir }}"
+      owner: root
+      group: hysteria-realm
+      mode: "0750"
+    - path: "{{ hysteria_realm.log_dir }}"
+      owner: hysteria-realm
+      group: hysteria-realm
+      mode: "0750"
+
+- name: Check whether the pinned sing-box release is already on disk
+  ansible.builtin.stat:
+    path: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}/sing-box"
+  register: sing_box_release_binary
+
+- name: Compose sing-box archive URL
+  ansible.builtin.set_fact:
+    sing_box_archive_url: >-
+      https://github.com/SagerNet/sing-box/releases/download/{{ hysteria_realm.version
+      }}/sing-box-{{ hysteria_realm.version | regex_replace('^v', '')
+      }}-linux-{{ sing_box_arch }}.tar.gz
+
+- name: Download pinned sing-box release archive
+  ansible.builtin.get_url:
+    url: "{{ sing_box_archive_url }}"
+    dest: "/tmp/sing-box-{{ hysteria_realm.version }}-linux-{{ sing_box_arch }}.tar.gz"
+    checksum: "sha256:{{ sing_box_sha256 }}"
+    mode: "0644"
+  when: not sing_box_release_binary.stat.exists
+
+- name: Create release directory
+  ansible.builtin.file:
+    path: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: not sing_box_release_binary.stat.exists
+
+- name: Extract sing-box binary
+  ansible.builtin.unarchive:
+    src: "/tmp/sing-box-{{ hysteria_realm.version }}-linux-{{ sing_box_arch }}.tar.gz"
+    dest: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}"
+    remote_src: true
+    extra_opts:
+      - "--strip-components=1"
+      - "--wildcards"
+      - "*/sing-box"
+    owner: root
+    group: root
+    mode: "0755"
+    creates: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}/sing-box"
+  when: not sing_box_release_binary.stat.exists
+
+- name: Point current symlink at pinned release
+  ansible.builtin.file:
+    src: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}"
+    dest: "{{ hysteria_realm.install_root }}/current"
+    state: link
+    force: true
+  notify: Restart hysteria-realm
+
+- name: Link sing-box into local bin
+  ansible.builtin.file:
+    src: "{{ hysteria_realm.install_root }}/current/sing-box"
+    dest: /usr/local/bin/sing-box-realm
+    state: link
+    force: true
+
+- name: Drop TLS material when not sharing the hysteria cert
+  ansible.builtin.copy:
+    content: "{{ item.content }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: hysteria-realm
+    mode: "0640"
+  loop:
+    - content: "{{ hysteria.cert_pem | default('') }}"
+      dest: "{{ hysteria_realm.tls_cert_path }}"
+    - content: "{{ hysteria.key_pem | default('') }}"
+      dest: "{{ hysteria_realm.tls_key_path }}"
+  no_log: true
+  diff: false
+  when:
+    - not (hysteria_realm.share_hysteria_tls | default(true))
+    - (hysteria.cert_pem | default('') | length) > 0
+
+- name: Stage shared TLS material from hysteria config dir
+  ansible.builtin.file:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    state: link
+    force: true
+  loop:
+    - src: "{{ hysteria_config_dir }}/server.fullchain.pem"
+      dest: "{{ hysteria_realm.tls_cert_path }}"
+    - src: "{{ hysteria_config_dir }}/server.key"
+      dest: "{{ hysteria_realm.tls_key_path }}"
+  when: hysteria_realm.share_hysteria_tls | default(true)
+
+- name: Render sing-box realm config
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: "{{ hysteria_realm.config_dir }}/config.json"
+    owner: root
+    group: hysteria-realm
+    mode: "0640"
+  no_log: true
+  diff: false
+  notify: Restart hysteria-realm
+
+- name: Install systemd unit
+  ansible.builtin.template:
+    src: hysteria-realm.service.j2
+    dest: /etc/systemd/system/hysteria-realm.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart hysteria-realm
+
+- name: Enable + start hysteria-realm
+  ansible.builtin.systemd_service:
+    name: hysteria-realm.service
+    enabled: true
+    state: started
+    daemon_reload: true

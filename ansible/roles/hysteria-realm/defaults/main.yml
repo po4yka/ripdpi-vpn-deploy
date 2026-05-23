@@ -1,0 +1,68 @@
+---
+# Hysteria Realm rendezvous service — P5 fallback tier.
+#
+# Mediates endpoint exchange between two sing-box peers, then drops
+# out of the data path once UDP hole-punching completes. The data
+# plane never traverses this VPS — only the small TLS-wrapped
+# rendezvous handshake. That property is the entire point of the
+# tier: a censored client can reach a foreign VPS for the handshake,
+# then hole-punches directly to a peer that has no fixed-server
+# dependency at all.
+#
+# Off by default (vpn.enable_hysteria_realm in group_vars/all.yml).
+# Sing-box upstream does not yet support asymmetric deployment, so
+# every peer in the bypass must also run sing-box ≥ the pinned tag
+# below; downgrading the server tag without downgrading clients
+# breaks the handshake.
+
+hysteria_realm:
+  # Sing-box release pin. Realm-service is alpha-tier upstream; track
+  # the upstream release line carefully before bumping.
+  version: "v1.14.0-alpha.22"
+
+  install_root: /opt/hysteria-realm
+  config_dir: /etc/hysteria-realm
+  log_dir: /var/log/hysteria-realm
+
+  # Rendezvous-service public listener. TCP because the realm flow is
+  # TLS-wrapped; UDP/QUIC is reserved for the data-plane hole-punch
+  # that bypasses this VPS entirely. 8444 by default — clear of P0/P1
+  # (443/8443) and any subscription-host default (8444 collides only
+  # if vpn.enable_subscription_host is also true on the same host;
+  # operators that enable both must override one).
+  listen_port: 8444
+  listen_addr: "::"
+
+  # TLS material for the rendezvous channel. With `share_hysteria_tls:
+  # true` (default) the role reuses the hysteria role's cert/key —
+  # both tiers ride the same domain. Set false to point the listener
+  # at a separate cert/key the operator pre-stages at
+  # `tls_cert_path` / `tls_key_path` before the role runs.
+  share_hysteria_tls: true
+  tls_cert_path: "{{ hysteria_realm.config_dir }}/server.fullchain.pem"
+  tls_key_path: "{{ hysteria_realm.config_dir }}/server.key"
+
+  # SNI clients use when reaching the rendezvous endpoint. Defaults to
+  # the nginx_xhttp server name so all three tiers (P1/P2/P5) ride a
+  # single hostname; override only if the operator splits hostnames.
+  sni: "{{ nginx_xhttp.server_name | default('vpn.example.com') }}"
+
+  # Per-minute cap on rendezvous handshakes. The handshake is cheap
+  # but a flood would still exhaust file descriptors; cap to a level
+  # that no plausible client population would breach.
+  events_per_minute_max: 600
+
+# Secrets surface — declared with empty defaults so the role does not
+# blow up `check-secrets-coverage.py` when disabled. Populated from
+# SOPS at deploy time.
+hysteria_realm_secrets:
+  # Sing-box release archive checksum. Mandatory when the role is
+  # enabled — set per-architecture so cross-arch deploys do not need
+  # a per-host secrets variant.
+  linux_amd64_sha256: ""
+  linux_arm64_sha256: ""
+
+  # Pre-shared auth token presented by peers during the rendezvous
+  # exchange. Treat as a long-lived secret; rotation invalidates every
+  # peer that has cached the value.
+  auth_token: ""

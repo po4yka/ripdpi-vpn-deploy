@@ -1,0 +1,33 @@
+{
+  "log": {
+    "level": "warn",
+    "output": "{{ hysteria_realm.log_dir }}/sing-box.log",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "realm-service",
+      "tag": "realm-in",
+      "listen": "{{ hysteria_realm.listen_addr }}",
+      "listen_port": {{ hysteria_realm.listen_port }},
+      "tcp_fast_open": false,
+      "auth_token": "{{ hysteria_realm_secrets.auth_token }}",
+      "limits": {
+        "events_per_minute_max": {{ hysteria_realm.events_per_minute_max }}
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "{{ hysteria_realm.sni }}",
+        "certificate_path": "{{ hysteria_realm.tls_cert_path }}",
+        "key_path": "{{ hysteria_realm.tls_key_path }}",
+        "alpn": ["h2", "http/1.1"]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}

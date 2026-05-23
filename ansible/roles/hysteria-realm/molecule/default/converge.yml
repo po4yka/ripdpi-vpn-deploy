@@ -1,0 +1,76 @@
+---
+# Converge for hysteria-realm static-verify scenario.
+# Sing-box is downloaded as a tarball from GitHub releases — molecule
+# containers have no egress, so we pre-stage the binary at the path the
+# role's `stat` check guards on, which short-circuits get_url+unarchive.
+# We also pre-stage TLS material at the expected paths and disable
+# `share_hysteria_tls` so the role does not assume the hysteria role
+# has run.
+
+- name: Converge hysteria-realm role (template-only, stub binary)
+  hosts: all
+  become: true
+  vars:
+    vpn:
+      enable_hysteria_realm: true
+
+    hysteria_config_dir: /etc/hysteria
+    nginx_xhttp:
+      server_name: vpn.example.test
+
+    hysteria_realm:
+      version: "v1.14.0-alpha.22"
+      install_root: /opt/hysteria-realm
+      config_dir: /etc/hysteria-realm
+      log_dir: /var/log/hysteria-realm
+      listen_port: 8444
+      listen_addr: "::"
+      share_hysteria_tls: false
+      tls_cert_path: /etc/hysteria-realm/server.fullchain.pem
+      tls_key_path: /etc/hysteria-realm/server.key
+      sni: vpn.example.test
+      events_per_minute_max: 600
+
+    hysteria_realm_secrets:
+      linux_amd64_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      linux_arm64_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      auth_token: "MOLECULE_STUB_AUTH_TOKEN_NOT_REAL"
+
+    hysteria:
+      cert_pem: |
+        -----BEGIN CERTIFICATE-----
+        STUB_CERT_FOR_MOLECULE
+        -----END CERTIFICATE-----
+      key_pem: |
+        -----BEGIN PRIVATE KEY-----
+        STUB_KEY_FOR_MOLECULE
+        -----END PRIVATE KEY-----
+
+  pre_tasks:
+    - name: Stub release directory
+      ansible.builtin.file:
+        path: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Drop stub sing-box binary
+      ansible.builtin.copy:
+        dest: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}/sing-box"
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          if [ "$1" = "run" ]; then
+            trap 'exit 0' TERM INT
+            while true; do
+              sleep 3600 &
+              wait $!
+            done
+          fi
+          exit 0
+
+  roles:
+    - role: hysteria-realm
