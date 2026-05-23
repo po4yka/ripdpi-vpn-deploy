@@ -29,6 +29,25 @@
       owner: "{{ xray_runtime_user }}"
       group: "{{ xray_runtime_group }}"
 
+# A previous failed start (e.g. missing config.json during the first
+# converge, or systemd restarting xray under root before User=xray took
+# effect) can leave access.log / error.log root-owned; xray then crash-
+# loops with "permission denied" on its next start. Pre-create the files
+# with the right ownership and force ownership on re-runs so a bad state
+# self-heals.
+- name: Ensure xray log files exist with xray ownership
+  ansible.builtin.file:
+    path: "{{ xray_log_path }}/{{ item }}"
+    state: touch
+    owner: "{{ xray_runtime_user }}"
+    group: "{{ xray_runtime_group }}"
+    mode: "0640"
+    modification_time: preserve
+    access_time: preserve
+  loop:
+    - access.log
+    - error.log
+
 - name: Set architecture-specific Xray archive facts
   ansible.builtin.set_fact:
     xray_arch: "{{ '64' if ansible_architecture == 'x86_64' else 'arm64-v8a' }}"
