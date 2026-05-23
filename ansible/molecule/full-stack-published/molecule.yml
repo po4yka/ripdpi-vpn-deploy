@@ -1,0 +1,110 @@
+---
+# Sibling of `full-stack` that publishes the production listeners to host
+# ports so an external client (e.g. the RIPDPI Android app running on a
+# Mac-host emulator) can reach the in-container stack.
+#
+# Identical role set and inventory to `full-stack`; only the platform
+# spec differs (added `published_ports`). The converge playbook is
+# imported from the same `playbooks/site.yml` via `converge.yml`.
+#
+# CI keeps using `full-stack` — that scenario stays portless to match
+# the original "single shared docker bridge, no host exposure" semantics.
+#
+# Host port map:
+#   12222/tcp  -> container 22/tcp    (sshd; debugging only)
+#   31443/tcp  -> container 443/tcp   (xray VLESS+REALITY+Vision, P0)
+#   31443/udp  -> container 443/udp   (hysteria2, P2)
+#   31844/tcp  -> container 8443/tcp  (nginx XHTTP front, P1)
+#
+# Designed to run via:
+#   cd ansible && molecule -c molecule/full-stack-published/molecule.yml converge
+# or via the RIPDPI-side wrapper at test-lab/vpn-deploy/ in the sibling repo.
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../../requirements.yml
+
+driver:
+  name: docker
+
+platforms:
+  - name: vpn-fullstack-debian13-published
+    image: geerlingguy/docker-debian13-ansible:latest
+    pre_build_image: true
+    privileged: true
+    command: /lib/systemd/systemd
+    capabilities:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroupns_mode: host
+    published_ports:
+      - "12222:22/tcp"
+      - "31443:443/tcp"
+      - "31443:443/udp"
+      - "31844:8443/tcp"
+
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: ../../roles
+    VPN_SECRETS_FILE: ${MOLECULE_SCENARIO_DIRECTORY}/test-secrets.yaml
+  inventory:
+    # playbooks/site.yml targets `hosts: vpn`, so the test container must
+    # join that group (the sibling full-stack scenario relies on the same
+    # convention via molecule's auto-group plumbing).
+    #
+    # The deploy repo's group_vars/all.yml is not auto-loaded by molecule's
+    # temp inventory dir, so we mirror the top-level keys it defines for the
+    # roles to find (hysteria/xray paths, ports, etc.).
+    group_vars:
+      all:
+        xray_port: 443
+        nginx_xhttp_public_port: 8443
+        nginx_xhttp_port: 10085
+        hysteria_port: 443
+        hysteria_port_range: ""
+        hysteria_hop_interval: "30s"
+        xray_install_root: /opt/xray
+        xray_config_dir: /etc/xray
+        xray_log_dir: /var/log/xray
+        hysteria_install_root: /opt/hysteria
+        hysteria_config_dir: /etc/hysteria
+        hysteria_log_dir: /var/log/hysteria
+        amneziawg_config_dir: /etc/amnezia/amneziawg
+        restic_repo_dir: /var/backups/vpn-restic
+      vpn:
+        ansible_user: root
+        allowed_ssh_cidrs: ["0.0.0.0/0"]
+        vpn:
+          enable_xray_reality: true
+          enable_nginx_xhttp: true
+          enable_naive: false
+          enable_hysteria: true
+          enable_amneziawg: false
+          enable_geodata: false
+          enable_monitoring: false
+          enable_watchdog: true
+          enable_backup: false
+          enable_subscription_host: false
+          enable_warp_outbound: false
+          enable_honeypot: true
+          enable_probe_ratelimit: true
+          xray_flow_mode: vision
+          xray_finalmask: false
+    hosts:
+      vpn:
+        hosts:
+          vpn-fullstack-debian13-published:
+  config_options:
+    defaults:
+      callback_result_format: yaml
+
+verifier:
+  name: ansible
+
+# Default test_sequence omitted on purpose: this scenario is invoked
+# via `converge` from the sibling wrapper so the container stays up.
+# Use `molecule destroy -s full-stack-published` to tear down.

@@ -1,0 +1,3 @@
+---
+- name: Verify — reuse the sibling full-stack verify
+  ansible.builtin.import_playbook: ../full-stack/verify.yml
