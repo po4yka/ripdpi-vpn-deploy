@@ -168,6 +168,9 @@ Then:
 18. `docs/PROBE-MATRIX.md` — `vpnd probe-matrix` multi-protocol
     simultaneity DPI probe over a (protocol × destination-class) ×
     time matrix.
+19. `docs/TRANSPORT-REACHABILITY-MATRIX.md` — two-vantage per-profile
+    reachability sweep, CI-driven non-filtered half + operator-driven
+    filtered half.
 
 Operational runbooks: `docs/RUNBOOK-{rotate,rollback,incident,restore,add-fallback}.md`.
 
