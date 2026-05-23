@@ -41,6 +41,7 @@ complete -c vpnd -n "__fish_vpnd_needs_command" -f -a "reconverge" -d 'Idempoten
 complete -c vpnd -n "__fish_vpnd_needs_command" -f -a "share" -d 'Bundled recipient handoff (URL + QR + sing-box + app cards)'
 complete -c vpnd -n "__fish_vpnd_needs_command" -f -a "doctor" -d 'Diagnostic bundle'
 complete -c vpnd -n "__fish_vpnd_needs_command" -f -a "probe" -d 'Profile-aware probing'
+complete -c vpnd -n "__fish_vpnd_needs_command" -f -a "probe-matrix" -d 'Multi-protocol simultaneity DPI probe across a configured matrix'
 complete -c vpnd -n "__fish_vpnd_needs_command" -f -a "preflight" -d 'Pre-deploy guards (spot-check, certs, perms, render, schema)'
 complete -c vpnd -n "__fish_vpnd_needs_command" -f -a "fleet" -d 'Fleet-wide operations'
 complete -c vpnd -n "__fish_vpnd_needs_command" -f -a "host" -d 'Local host registry'
@@ -100,6 +101,17 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand probe" -l explain -d 'Print th
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe" -s y -l yes -d 'Skip interactive confirmation prompts'
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe" -l json -d 'Emit machine-readable JSON instead of human output (where supported)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe" -s h -l help -d 'Print help'
+complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -l duration -d 'Run duration. Accepts plain seconds or NN{s,m,h,d}' -r
+complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -l poll-interval-seconds -d 'Poll interval between matrix sweeps (seconds). Overrides config' -r
+complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -l config -d 'Path to the matrix config YAML. Default: <root>/vpnd/config/probe-matrix.yaml' -r -F
+complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -l output -d 'Output path for the report JSON. Default: <root>/vpnd/state/probe-matrix-<unix-ms>.json' -r -F
+complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -s e -l env -d 'Target environment' -r
+complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -s p -l provider -d 'Cloud provider Terraform root' -r
+complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
+complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -l explain -d 'Print the underlying shell invocations and exit without running them'
+complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -s y -l yes -d 'Skip interactive confirmation prompts'
+complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -l json -d 'Emit machine-readable JSON instead of human output (where supported)'
+complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand preflight" -s e -l env -d 'Target environment' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand preflight" -s p -l provider -d 'Cloud provider Terraform root' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand preflight" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
@@ -216,18 +228,19 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand completions" -l explain -d 'Pr
 complete -c vpnd -n "__fish_vpnd_using_subcommand completions" -s y -l yes -d 'Skip interactive confirmation prompts'
 complete -c vpnd -n "__fish_vpnd_using_subcommand completions" -l json -d 'Emit machine-readable JSON instead of human output (where supported)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand completions" -s h -l help -d 'Print help'
-complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe preflight fleet host ai-docs update completions help" -f -a "deploy" -d 'Interactive deploy wizard'
-complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe preflight fleet host ai-docs update completions help" -f -a "reconverge" -d 'Idempotent re-deploy against existing host(s)'
-complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe preflight fleet host ai-docs update completions help" -f -a "share" -d 'Bundled recipient handoff (URL + QR + sing-box + app cards)'
-complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe preflight fleet host ai-docs update completions help" -f -a "doctor" -d 'Diagnostic bundle'
-complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe preflight fleet host ai-docs update completions help" -f -a "probe" -d 'Profile-aware probing'
-complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe preflight fleet host ai-docs update completions help" -f -a "preflight" -d 'Pre-deploy guards (spot-check, certs, perms, render, schema)'
-complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe preflight fleet host ai-docs update completions help" -f -a "fleet" -d 'Fleet-wide operations'
-complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe preflight fleet host ai-docs update completions help" -f -a "host" -d 'Local host registry'
-complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe preflight fleet host ai-docs update completions help" -f -a "ai-docs" -d 'Machine-readable docs endpoints for AI assistants'
-complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe preflight fleet host ai-docs update completions help" -f -a "update" -d 'Check for a newer vpnd release on GitHub (cached 24 h)'
-complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe preflight fleet host ai-docs update completions help" -f -a "completions" -d 'Emit shell completions to stdout'
-complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe preflight fleet host ai-docs update completions help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help" -f -a "deploy" -d 'Interactive deploy wizard'
+complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help" -f -a "reconverge" -d 'Idempotent re-deploy against existing host(s)'
+complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help" -f -a "share" -d 'Bundled recipient handoff (URL + QR + sing-box + app cards)'
+complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help" -f -a "doctor" -d 'Diagnostic bundle'
+complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help" -f -a "probe" -d 'Profile-aware probing'
+complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help" -f -a "probe-matrix" -d 'Multi-protocol simultaneity DPI probe across a configured matrix'
+complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help" -f -a "preflight" -d 'Pre-deploy guards (spot-check, certs, perms, render, schema)'
+complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help" -f -a "fleet" -d 'Fleet-wide operations'
+complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help" -f -a "host" -d 'Local host registry'
+complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help" -f -a "ai-docs" -d 'Machine-readable docs endpoints for AI assistants'
+complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help" -f -a "update" -d 'Check for a newer vpnd release on GitHub (cached 24 h)'
+complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help" -f -a "completions" -d 'Emit shell completions to stdout'
+complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand help; and __fish_seen_subcommand_from fleet" -f -a "status" -d 'Summary table across every host:env pair'
 complete -c vpnd -n "__fish_vpnd_using_subcommand help; and __fish_seen_subcommand_from fleet" -f -a "rotate" -d 'Coordinated rotation across the fleet (`scripts/fleet-rotate.sh`)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand help; and __fish_seen_subcommand_from fleet" -f -a "drift" -d 'Diff fleet state against the last known-good tag'

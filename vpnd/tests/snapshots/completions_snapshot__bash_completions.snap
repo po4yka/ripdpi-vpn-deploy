@@ -47,6 +47,9 @@ _vpnd() {
             vpnd,probe)
                 cmd="vpnd__subcmd__probe"
                 ;;
+            vpnd,probe-matrix)
+                cmd="vpnd__subcmd__probe__subcmd__matrix"
+                ;;
             vpnd,reconverge)
                 cmd="vpnd__subcmd__reconverge"
                 ;;
@@ -106,6 +109,9 @@ _vpnd() {
                 ;;
             vpnd__subcmd__help,probe)
                 cmd="vpnd__subcmd__help__subcmd__probe"
+                ;;
+            vpnd__subcmd__help,probe-matrix)
+                cmd="vpnd__subcmd__help__subcmd__probe__subcmd__matrix"
                 ;;
             vpnd__subcmd__help,reconverge)
                 cmd="vpnd__subcmd__help__subcmd__reconverge"
@@ -174,7 +180,7 @@ _vpnd() {
 
     case "${cmd}" in
         vpnd)
-            opts="-e -p -y -h -V --explain --env --provider --yes --json --root --help --version deploy reconverge share doctor probe preflight fleet host ai-docs update completions help"
+            opts="-e -p -y -h -V --explain --env --provider --yes --json --root --help --version deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -566,7 +572,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__help)
-            opts="deploy reconverge share doctor probe preflight fleet host ai-docs update completions help"
+            opts="deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -790,6 +796,20 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__help__subcmd__probe)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        vpnd__subcmd__help__subcmd__probe__subcmd__matrix)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -1146,6 +1166,56 @@ _vpnd() {
                     ;;
                 --profile)
                     COMPREPLY=($(compgen -W "p0 p1 p2 all" -- "${cur}"))
+                    return 0
+                    ;;
+                --env)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -e)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --provider)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -p)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --root)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        vpnd__subcmd__probe__subcmd__matrix)
+            opts="-e -p -y -h --duration --poll-interval-seconds --config --output --explain --env --provider --yes --json --root --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --duration)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --poll-interval-seconds)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --config)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --output)
+                    COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
                 --env)

@@ -165,6 +165,9 @@ Then:
     deploy gate for PRs labelled `ci-real-deploy`.
 17. `docs/REGRESSION-BASELINE.md` — `rkn-block-checker` four-layer
     verdict harness for before/after deploy measurement.
+18. `docs/PROBE-MATRIX.md` — `vpnd probe-matrix` multi-protocol
+    simultaneity DPI probe over a (protocol × destination-class) ×
+    time matrix.
 
 Operational runbooks: `docs/RUNBOOK-{rotate,rollback,incident,restore,add-fallback}.md`.
 

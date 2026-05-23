@@ -48,6 +48,8 @@ pub enum Command {
     Doctor(DoctorArgs),
     /// Profile-aware probing.
     Probe(ProbeArgs),
+    /// Multi-protocol simultaneity DPI probe across a configured matrix.
+    ProbeMatrix(ProbeMatrixArgs),
     /// Pre-deploy guards (spot-check, certs, perms, render, schema).
     Preflight(PreflightArgs),
     /// Fleet-wide operations.
@@ -135,6 +137,22 @@ pub enum Profile {
     P1,
     P2,
     All,
+}
+
+#[derive(Args, Debug)]
+pub struct ProbeMatrixArgs {
+    /// Run duration. Accepts plain seconds or NN{s,m,h,d}.
+    #[arg(long, default_value = "4h")]
+    pub duration: String,
+    /// Poll interval between matrix sweeps (seconds). Overrides config.
+    #[arg(long)]
+    pub poll_interval_seconds: Option<u64>,
+    /// Path to the matrix config YAML. Default: <root>/vpnd/config/probe-matrix.yaml.
+    #[arg(long)]
+    pub config: Option<std::path::PathBuf>,
+    /// Output path for the report JSON. Default: <root>/vpnd/state/probe-matrix-<unix-ms>.json.
+    #[arg(long)]
+    pub output: Option<std::path::PathBuf>,
 }
 
 #[derive(Args, Debug)]
