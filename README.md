@@ -174,6 +174,9 @@ Then:
 20. `docs/SPLIT-HOP-TOPOLOGY.md` + `docs/RUNBOOK-split-hop-pilot.md`
     — ADR + operator runbook for the two-VPS split-hop topology that
     breaks the FOCI 2026 per-IP dual-role flow classifier.
+21. `docs/RUNBOOK-idle-cycle-measurement.md` + `docs/measurements/`
+    — measurement spike for the bare-HTTPS idle-cycle access-attempt
+    pattern: driver + correlation tool + dated-report template.
 
 Operational runbooks: `docs/RUNBOOK-{rotate,rollback,incident,restore,add-fallback}.md`.
 
