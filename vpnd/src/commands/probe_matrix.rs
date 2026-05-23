@@ -468,11 +468,13 @@ pub fn synthetic_report_for_snapshot() -> MatrixReport {
 }
 
 #[doc(hidden)]
+#[allow(clippy::expect_used)]
 pub fn report_to_json(report: &MatrixReport) -> String {
     serde_json::to_string_pretty(report).expect("MatrixReport serialises")
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 
