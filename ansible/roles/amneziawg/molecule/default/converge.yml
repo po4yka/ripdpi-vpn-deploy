@@ -15,18 +15,14 @@
       interface: awg0
       address_v4: "10.66.66.1/24"
       address_v6: "fd42:42:42::1/64"
-    # Cohort: RTK South (Rostov Oblast) — values from docs/AWG-COHORTS.md
+    # Cohort selection drives jc/jmin/jmax/s1/s2/h1..h4 from
+    # roles/amneziawg/vars/cohorts/rtk-south.yml — the inline
+    # obfuscation params here are intentionally omitted so verify.yml
+    # exercises the cohort-file load path.
+    vpn:
+      awg_cohort: rtk-south
     amneziawg_secrets:
       server_private_key: "MOLECULE_STUB_PRIVATE_KEY_NOT_REAL_AAAAAAAAAAAAA="
-      jc: 4
-      jmin: 10
-      jmax: 50
-      s1: 0
-      s2: 0
-      h1: 1
-      h2: 2
-      h3: 3
-      h4: 4
       peers: []
 
   pre_tasks:
@@ -125,6 +121,10 @@
           WantedBy=multi-user.target
         force: false
 
+    - name: Load cohort profile (mirrors tasks/main.yml include_vars)
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../../../roles/amneziawg/vars/cohorts/{{ vpn.awg_cohort }}.yml"
+
     - name: Render awg0.conf directly (bypasses live role tasks that need TUN)
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../../../../roles/amneziawg/templates/awg0.conf.j2"
@@ -133,4 +133,18 @@
         group: root
         mode: "0600"
       vars:
-        _inst: "{{ amneziawg_secrets }}"
+        _inst:
+          server_private_key: "{{ amneziawg_secrets.server_private_key }}"
+          listen_port: "{{ amneziawg.listen_port }}"
+          address_v4: "{{ amneziawg.address_v4 }}"
+          address_v6: "{{ amneziawg.address_v6 }}"
+          jc: "{{ amneziawg_secrets.jc | default(amneziawg_cohort.jc) }}"
+          jmin: "{{ amneziawg_secrets.jmin | default(amneziawg_cohort.jmin) }}"
+          jmax: "{{ amneziawg_secrets.jmax | default(amneziawg_cohort.jmax) }}"
+          s1: "{{ amneziawg_secrets.s1 | default(amneziawg_cohort.s1) }}"
+          s2: "{{ amneziawg_secrets.s2 | default(amneziawg_cohort.s2) }}"
+          h1: "{{ amneziawg_secrets.h1 | default(amneziawg_cohort.h1) }}"
+          h2: "{{ amneziawg_secrets.h2 | default(amneziawg_cohort.h2) }}"
+          h3: "{{ amneziawg_secrets.h3 | default(amneziawg_cohort.h3) }}"
+          h4: "{{ amneziawg_secrets.h4 | default(amneziawg_cohort.h4) }}"
+          peers: "{{ amneziawg_secrets.peers }}"

@@ -1,0 +1,37 @@
+---
+# RTK South (Rostelecom South / RTK Юг) — Rostov Oblast, RU.
+#
+# Community-tested AmneziaWG obfuscation profile confirmed working
+# against TSPU at this ISP. Source: censorship-bypass wiki page
+# `tspu-dpi-internals/wiki/concepts/wireguard-rtk-south-amneziawg-bypass`.
+#
+# Observed behaviour: probabilistic pass — the handshake completes most
+# of the time but sometimes stalls and the client needs 3–4 retries.
+# Parameters were measured at one vantage; per-node variance within
+# RTK South is real, other Rostov-region RTK nodes may need tuning.
+#
+# WARNING: H1..H4 here are the literal magic set 1,2,3,4 that this
+# specific cohort is known to accept. Do NOT reuse this exact set for
+# other cohorts — using literal 1,2,3,4 everywhere creates a template
+# the censor can train on. Randomise H1..H4 per peer for other
+# carriers (see docs/AWG-COHORTS.md "Operational notes").
+
+amneziawg_cohort:
+  name: rtk-south
+  carrier: "Rostelecom South (Rostov Oblast)"
+  reference: "tspu-dpi-internals/wiki/concepts/wireguard-rtk-south-amneziawg-bypass"
+
+  # Junk packet count + length bounds (bytes). Small, narrow range.
+  jc: 4
+  jmin: 10
+  jmax: 50
+
+  # Init / response header sizes. Both zero for this cohort.
+  s1: 0
+  s2: 0
+
+  # Header magic values — literal 1..4 (NOT random), see warning above.
+  h1: 1
+  h2: 2
+  h3: 3
+  h4: 4
