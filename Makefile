@@ -301,6 +301,15 @@ probe-asn:
 	@test -n "$(HOST)" || { echo "usage: make probe-asn HOST=mirror.example.com"; exit 1; }
 	./scripts/probe-asn.sh $(HOST)
 
+# Per-cell probe invoked by `vpnd probe-matrix`. Emits one JSON line on
+# stdout (verdict + rtt_ms). See scripts/probe-matrix-cell.sh.
+probe-matrix-cell:
+	@test -n "$(PROTOCOL)" || { echo "usage: make probe-matrix-cell PROTOCOL=... DEST_CLASS=... DEST=ip:port VANTAGE=label"; exit 1; }
+	@test -n "$(DEST_CLASS)" || { echo "usage: make probe-matrix-cell PROTOCOL=... DEST_CLASS=... DEST=ip:port VANTAGE=label"; exit 1; }
+	@test -n "$(DEST)" || { echo "usage: make probe-matrix-cell PROTOCOL=... DEST_CLASS=... DEST=ip:port VANTAGE=label"; exit 1; }
+	@test -n "$(VANTAGE)" || { echo "usage: make probe-matrix-cell PROTOCOL=... DEST_CLASS=... DEST=ip:port VANTAGE=label"; exit 1; }
+	@PROTOCOL=$(PROTOCOL) DEST_CLASS=$(DEST_CLASS) DEST=$(DEST) VANTAGE=$(VANTAGE) ./scripts/probe-matrix-cell.sh
+
 emit-qr:
 	@test -n "$(CLIENT)" || { echo "usage: make emit-qr CLIENT=phone [TYPE=singbox|uri] [OUT=phone.png]"; exit 1; }
 	./scripts/emit-qr.sh $(CLIENT) \

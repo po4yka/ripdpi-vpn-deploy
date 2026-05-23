@@ -6,6 +6,7 @@ pub mod fleet;
 pub mod host;
 pub mod preflight;
 pub mod probe;
+pub mod probe_matrix;
 pub mod reconverge;
 pub mod share;
 pub mod update;

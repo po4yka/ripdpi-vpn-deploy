@@ -28,6 +28,7 @@ async fn main() -> Result<()> {
         cli::Command::Share(args) => commands::share::run(&ctx, args).await,
         cli::Command::Doctor(args) => commands::doctor::run(&ctx, args).await,
         cli::Command::Probe(args) => commands::probe::run(&ctx, args).await,
+        cli::Command::ProbeMatrix(args) => commands::probe_matrix::run(&ctx, args).await,
         cli::Command::Preflight(args) => commands::preflight::run(&ctx, args).await,
         cli::Command::Fleet(args) => commands::fleet::run(&ctx, args).await,
         cli::Command::Host(args) => commands::host::run(&ctx, args).await,

@@ -130,6 +130,25 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
+(probe-matrix)
+_arguments "${_arguments_options[@]}" : \
+'--duration=[Run duration. Accepts plain seconds or NN{s,m,h,d}]:DURATION:_default' \
+'--poll-interval-seconds=[Poll interval between matrix sweeps (seconds). Overrides config]:POLL_INTERVAL_SECONDS:_default' \
+'--config=[Path to the matrix config YAML. Default\: <root>/vpnd/config/probe-matrix.yaml]:CONFIG:_files' \
+'--output=[Output path for the report JSON. Default\: <root>/vpnd/state/probe-matrix-<unix-ms>.json]:OUTPUT:_files' \
+'-e+[Target environment]:ENV:_default' \
+'--env=[Target environment]:ENV:_default' \
+'-p+[Cloud provider Terraform root]:PROVIDER:_default' \
+'--provider=[Cloud provider Terraform root]:PROVIDER:_default' \
+'--root=[Override the vpn-deploy repo root (default\: discover from cwd)]:ROOT:_files' \
+'--explain[Print the underlying shell invocations and exit without running them]' \
+'-y[Skip interactive confirmation prompts]' \
+'--yes[Skip interactive confirmation prompts]' \
+'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (preflight)
 _arguments "${_arguments_options[@]}" : \
 '-e+[Target environment]:ENV:_default' \
@@ -458,6 +477,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(probe-matrix)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (preflight)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -555,6 +578,7 @@ _vpnd_commands() {
 'share:Bundled recipient handoff (URL + QR + sing-box + app cards)' \
 'doctor:Diagnostic bundle' \
 'probe:Profile-aware probing' \
+'probe-matrix:Multi-protocol simultaneity DPI probe across a configured matrix' \
 'preflight:Pre-deploy guards (spot-check, certs, perms, render, schema)' \
 'fleet:Fleet-wide operations' \
 'host:Local host registry' \
@@ -648,6 +672,7 @@ _vpnd__subcmd__help_commands() {
 'share:Bundled recipient handoff (URL + QR + sing-box + app cards)' \
 'doctor:Diagnostic bundle' \
 'probe:Profile-aware probing' \
+'probe-matrix:Multi-protocol simultaneity DPI probe across a configured matrix' \
 'preflight:Pre-deploy guards (spot-check, certs, perms, render, schema)' \
 'fleet:Fleet-wide operations' \
 'host:Local host registry' \
@@ -747,6 +772,11 @@ _vpnd__subcmd__help__subcmd__probe_commands() {
     local commands; commands=()
     _describe -t commands 'vpnd help probe commands' commands "$@"
 }
+(( $+functions[_vpnd__subcmd__help__subcmd__probe-matrix_commands] )) ||
+_vpnd__subcmd__help__subcmd__probe-matrix_commands() {
+    local commands; commands=()
+    _describe -t commands 'vpnd help probe-matrix commands' commands "$@"
+}
 (( $+functions[_vpnd__subcmd__help__subcmd__reconverge_commands] )) ||
 _vpnd__subcmd__help__subcmd__reconverge_commands() {
     local commands; commands=()
@@ -838,6 +868,11 @@ _vpnd__subcmd__preflight_commands() {
 _vpnd__subcmd__probe_commands() {
     local commands; commands=()
     _describe -t commands 'vpnd probe commands' commands "$@"
+}
+(( $+functions[_vpnd__subcmd__probe-matrix_commands] )) ||
+_vpnd__subcmd__probe-matrix_commands() {
+    local commands; commands=()
+    _describe -t commands 'vpnd probe-matrix commands' commands "$@"
 }
 (( $+functions[_vpnd__subcmd__reconverge_commands] )) ||
 _vpnd__subcmd__reconverge_commands() {

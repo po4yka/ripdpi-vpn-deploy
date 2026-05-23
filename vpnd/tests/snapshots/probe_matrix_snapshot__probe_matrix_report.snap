@@ -1,0 +1,144 @@
+---
+source: tests/probe_matrix_snapshot.rs
+expression: json
+---
+{
+  "schema_version": 1,
+  "vantage": "synthetic",
+  "started_at_unix_ms": 1700000000000,
+  "finished_at_unix_ms": 1700000600000,
+  "poll_interval_seconds": 300,
+  "cells": [
+    {
+      "timestamp_unix_ms": 1700000000000,
+      "protocol": "mtproto",
+      "destination_class": "domestic-allowlisted",
+      "endpoint": "10.0.0.1:443",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "timestamp_unix_ms": 1700000000000,
+      "protocol": "mtproto",
+      "destination_class": "foreign-non-allowlist",
+      "endpoint": "203.0.113.1:443",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "timestamp_unix_ms": 1700000000000,
+      "protocol": "xhttp-vless",
+      "destination_class": "domestic-allowlisted",
+      "endpoint": "10.0.0.1:443",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "timestamp_unix_ms": 1700000000000,
+      "protocol": "xhttp-vless",
+      "destination_class": "foreign-non-allowlist",
+      "endpoint": "203.0.113.1:443",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "timestamp_unix_ms": 1700000000000,
+      "protocol": "tcp-trojan",
+      "destination_class": "domestic-allowlisted",
+      "endpoint": "10.0.0.1:443",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "timestamp_unix_ms": 1700000000000,
+      "protocol": "tcp-trojan",
+      "destination_class": "foreign-non-allowlist",
+      "endpoint": "203.0.113.1:443",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "timestamp_unix_ms": 1700000300000,
+      "protocol": "mtproto",
+      "destination_class": "domestic-allowlisted",
+      "endpoint": "10.0.0.1:443",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "timestamp_unix_ms": 1700000300000,
+      "protocol": "mtproto",
+      "destination_class": "foreign-non-allowlist",
+      "endpoint": "203.0.113.1:443",
+      "verdict": "blocked"
+    },
+    {
+      "timestamp_unix_ms": 1700000300000,
+      "protocol": "xhttp-vless",
+      "destination_class": "domestic-allowlisted",
+      "endpoint": "10.0.0.1:443",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "timestamp_unix_ms": 1700000300000,
+      "protocol": "xhttp-vless",
+      "destination_class": "foreign-non-allowlist",
+      "endpoint": "203.0.113.1:443",
+      "verdict": "blocked"
+    },
+    {
+      "timestamp_unix_ms": 1700000300000,
+      "protocol": "tcp-trojan",
+      "destination_class": "domestic-allowlisted",
+      "endpoint": "10.0.0.1:443",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "timestamp_unix_ms": 1700000300000,
+      "protocol": "tcp-trojan",
+      "destination_class": "foreign-non-allowlist",
+      "endpoint": "203.0.113.1:443",
+      "verdict": "blocked"
+    }
+  ],
+  "windows": [
+    {
+      "protocol": "mtproto",
+      "destination_class": "domestic-allowlisted",
+      "onset_unix_ms": null,
+      "recovery_unix_ms": null
+    },
+    {
+      "protocol": "mtproto",
+      "destination_class": "foreign-non-allowlist",
+      "onset_unix_ms": 1700000300000,
+      "recovery_unix_ms": null
+    },
+    {
+      "protocol": "tcp-trojan",
+      "destination_class": "domestic-allowlisted",
+      "onset_unix_ms": null,
+      "recovery_unix_ms": null
+    },
+    {
+      "protocol": "tcp-trojan",
+      "destination_class": "foreign-non-allowlist",
+      "onset_unix_ms": 1700000300000,
+      "recovery_unix_ms": null
+    },
+    {
+      "protocol": "xhttp-vless",
+      "destination_class": "domestic-allowlisted",
+      "onset_unix_ms": null,
+      "recovery_unix_ms": null
+    },
+    {
+      "protocol": "xhttp-vless",
+      "destination_class": "foreign-non-allowlist",
+      "onset_unix_ms": 1700000300000,
+      "recovery_unix_ms": null
+    }
+  ]
+}

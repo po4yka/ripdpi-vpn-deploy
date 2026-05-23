@@ -1,0 +1,34 @@
+# Example probe-matrix configuration.
+#
+# Copy to `vpnd/config/probe-matrix.yaml` and fill the `endpoint:` fields
+# with operator-supplied addresses. The classification (`class:`) is the
+# *technical signature* of the destination ASN bucket — see
+# docs/PROBE-MATRIX.md for what each class means and how to map an actual
+# IP to a class.
+
+# Operator-supplied label for the probe origin VPS. Free-form; the report
+# JSON carries it verbatim so analysis tools can cross-reference runs.
+vantage: ""
+
+# Sweep interval. 300s (5 min) is the recommended starting point —
+# coarse enough that a 4h run stays manageable, fine enough that onset/
+# recovery windows resolve usefully.
+poll_interval_seconds: 300
+
+protocols:
+  - mtproto
+  - xhttp-vless
+  - xhttp-trojan
+  - tcp-trojan
+  - tls-non-443
+
+# At least one entry per class is recommended so the matrix gives you
+# a same-tick comparison. Operators choose actual addresses; the code
+# carries no IPs.
+destinations:
+  - class: domestic-allowlisted
+    endpoint: ""
+  - class: domestic-generic
+    endpoint: ""
+  - class: foreign-non-allowlist
+    endpoint: ""
