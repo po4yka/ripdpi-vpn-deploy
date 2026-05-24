@@ -11,6 +11,15 @@ CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
 
+# Self-heal log file ownership before each start. A previous failed start
+# (e.g. systemd briefly starting xray as root before User=xray took effect,
+# or a misconfigured first converge) can leave access.log/error.log root-
+# owned, after which xray crash-loops on "permission denied". Run as root
+# via the `+` prefix; the rest of the unit still runs as User=xray. This
+# is idempotent and cheap (~1ms), so it pays for itself the first time it
+# rescues a drifted install.
+ExecStartPre=+/bin/sh -c '[ -e {{ xray_log_path }}/access.log ] || install -o {{ xray_runtime_user }} -g {{ xray_runtime_group }} -m 0640 /dev/null {{ xray_log_path }}/access.log; [ -e {{ xray_log_path }}/error.log ] || install -o {{ xray_runtime_user }} -g {{ xray_runtime_group }} -m 0640 /dev/null {{ xray_log_path }}/error.log; chown {{ xray_runtime_user }}:{{ xray_runtime_group }} {{ xray_log_path }}/access.log {{ xray_log_path }}/error.log; chmod 0640 {{ xray_log_path }}/access.log {{ xray_log_path }}/error.log'
+
 ExecStart=/usr/local/bin/xray run -config {{ xray_etc_dir }}/config.json
 Restart=on-failure
 RestartSec=5s
