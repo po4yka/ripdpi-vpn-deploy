@@ -106,6 +106,63 @@ def validate_json(text: str, label: str) -> str | None:
         return f"{label}: invalid JSON — {exc}"
 
 
+def validate_xray(text: str, label: str) -> str | None:
+    """Run `xray run -test -config <rendered>` to catch semantic errors that
+    JSON parsing misses. Caught classes:
+     - routing rule of "type": "field" with no selector (port/network/domain/
+       ip/source/inboundTag/protocol). v26+ rejects with "this rule has no
+       effective fields" and the role crashes mid-converge.
+     - reality `serverNames`/`shortIds` shape errors.
+     - inbound port collisions across cohorts.
+    Skipped (no failure) if neither the `xray` binary nor the pinned docker
+    image is available locally — keeps the script useful in stripped CI envs.
+    """
+    xray_bin = shutil.which("xray")
+    docker_bin = shutil.which("docker") if not xray_bin else None
+    image = "ghcr.io/xtls/xray-core:latest"
+
+    if not xray_bin and docker_bin:
+        # Use docker only if the image is cached; pulling 50MB inside a
+        # template lint step is hostile to local-dev iteration.
+        inspect = subprocess.run(
+            [docker_bin, "image", "inspect", image],
+            capture_output=True,
+        )
+        if inspect.returncode != 0:
+            return None  # skip silently
+
+    if not xray_bin and not docker_bin:
+        return None  # skip silently
+
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".json", delete=False, dir="/tmp"
+    ) as fh:
+        fh.write(text)
+        cfg_path = fh.name
+    try:
+        if xray_bin:
+            cmd = [xray_bin, "run", "-test", "-config", cfg_path]
+        else:
+            cmd = [
+                docker_bin, "run", "--rm",
+                "-v", f"{cfg_path}:/cfg.json:ro",
+                image,
+                "xray", "run", "-test", "-config", "/cfg.json",
+            ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            msg = (result.stderr.strip() or result.stdout.strip()).splitlines()
+            # Trim to last 4 lines — xray banners and log routing noise drown
+            # the actual error otherwise.
+            tail = "\n    ".join(msg[-4:]) if msg else "(no output)"
+            return f"{label}: xray -test failed —\n    {tail}"
+        return None
+    except subprocess.TimeoutExpired:
+        return f"{label}: xray -test timed out after 30s"
+    finally:
+        Path(cfg_path).unlink(missing_ok=True)
+
+
 def validate_nginx(text: str, label: str) -> str | None:
     """nginx syntax check. ssl_certificate / ssl_certificate_key / listen
     *ssl* directives reference files that don't exist on the CI runner;
@@ -209,6 +266,15 @@ def main() -> int:
             err = validate_json(output, str(rel))
             if err:
                 failures.append(err)
+            # Xray configs get an extra semantic pass via `xray run -test`.
+            # This is what catches the "field rule with no selector" class
+            # that JSON parsing happily accepts but xray v26+ rejects at
+            # start time (and that the existing molecule converge only
+            # surfaces ~10 min into a run).
+            if tpl.parent.parent.name == "xray":
+                err = validate_xray(output, str(rel))
+                if err:
+                    failures.append(err)
         elif "nginx" in tpl.parent.parent.name and tpl.name.endswith(".conf.j2"):
             err = validate_nginx(output, str(rel))
             if err:
