@@ -18,11 +18,6 @@ on:
         description: "Optional socks5:// URL routing the probes through a bypass channel."
         required: false
         default: ""
-      rkn_block_checker_version:
-        description: "Pinned rkn-block-checker version (overrides the default in the wrapper)."
-        required: false
-        default: "0.1.0"
-
 permissions:
   contents: read
 
@@ -36,15 +31,12 @@ jobs:
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
-          python-version: "3.13"
+          python-version: "3.12"
 
-      - name: Install pinned rkn-block-checker + jq
-        env:
-          VERSION: ${{ github.event.inputs.rkn_block_checker_version }}
+      - name: Install hash-pinned Python tooling + jq
         run: |
           set -euo pipefail
-          python3 -m pip install --upgrade pip
-          python3 -m pip install "rkn-block-checker==${VERSION}" PyYAML
+          python3 -m pip install --require-hashes --no-deps -r requirements.txt
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends jq
 
@@ -53,7 +45,6 @@ jobs:
         env:
           EXIT_IP: ${{ github.event.inputs.exit_ip }}
           PROXY: ${{ github.event.inputs.proxy }}
-          RKN_BLOCK_CHECKER_VERSION: ${{ github.event.inputs.rkn_block_checker_version }}
         run: |
           set -euo pipefail
           args=("$EXIT_IP")

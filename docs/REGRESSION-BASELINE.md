@@ -32,10 +32,9 @@ pipeline the filter is acting.
 
 ## Installation
 
-The tool issues real network probes. It is intentionally **not**
-listed in the repo's hash-locked `requirements.txt` — adding it there
-would make every CI lane pull the package and the lockfile would
-have to be regenerated on every upstream bump. Install it ad-hoc:
+The tool issues real network probes. CI installs it from the repo's
+hash-locked `requirements.txt`; operator workstations can install the
+same pinned version ad-hoc:
 
 ```bash
 # Operator workstation (recommended):
@@ -48,10 +47,10 @@ pip install --user rkn-block-checker==0.1.0
 The pinned version lives in **two** places, in sync:
 
 - `scripts/run-rkn-block-checker.sh` → `RKN_BLOCK_CHECKER_VERSION="0.1.0"`
-- `.github/workflows/rkn-block-checker-baseline.yml` → `rkn_block_checker_version` input default
+- `requirements.in` / `requirements.txt` → `rkn-block-checker==0.1.0`
 
-Bumping the pin = edit both. The workflow accepts an override input
-so an ad-hoc test of a newer version does not need a commit.
+Bumping the pin = edit both and regenerate the hash-locked
+`requirements.txt`.
 
 ## Running locally
 
@@ -88,7 +87,6 @@ Inputs:
 |-------|---------|-------|
 | `exit_ip` | `local` | Anchors the report key. Use the literal `local` when running from the runner itself. |
 | `proxy`   | (empty) | Optional `socks5://…` URL. |
-| `rkn_block_checker_version` | `0.1.0` | Override to test an upstream bump without committing. |
 
 The lane uploads the full JSON report + diff as a workflow artifact
 (`rkn-block-checker-baseline-<exit_ip>`, 90-day retention).
