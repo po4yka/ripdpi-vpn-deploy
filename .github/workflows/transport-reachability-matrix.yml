@@ -35,10 +35,6 @@ on:
         description: "UpCloud zone (e.g. fi-hel1, de-fra1)"
         required: false
         default: "fi-hel1"
-      rkn_block_checker_version:
-        description: "Pinned rkn-block-checker version."
-        required: false
-        default: "0.1.0"
   pull_request:
     types: [labeled]
 
@@ -100,8 +96,6 @@ jobs:
 
       - name: Set up tooling
         if: steps.gate.outputs.skip != 'true'
-        env:
-          RKN_VERSION: ${{ github.event.inputs.rkn_block_checker_version }}
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-pip jq age unzip
@@ -112,7 +106,6 @@ jobs:
           echo "9cf727b4d6bd2d4d2908f08bd282f9e4809d6c3071c3b8ebe53558bee6dc913b  /tmp/tf.zip" | sha256sum -c -
           (cd /tmp && unzip -o tf.zip && sudo install -m 0755 terraform /usr/local/bin/terraform)
           pip3 install --user --require-hashes --no-deps -r requirements.txt
-          pip3 install --user "rkn-block-checker==${RKN_VERSION}"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Stage SSH key + age key + CI tfvars

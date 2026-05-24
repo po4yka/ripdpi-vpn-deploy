@@ -44,8 +44,7 @@ manual run when the corresponding tier is under investigation.
 
 `.github/workflows/transport-reachability-matrix.yml` runs on:
 
-- `workflow_dispatch` with inputs `profiles`, `zone`,
-  `rkn_block_checker_version`.
+- `workflow_dispatch` with inputs `profiles`, `zone`.
 - `pull_request` labeled `ci-real-deploy` — same gating as
   `real-vps-deploy.yml`.
 

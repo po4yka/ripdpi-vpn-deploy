@@ -14,5 +14,8 @@ Jinja2==3.1.6
 referencing<0.38
 typing-extensions==4.15.0
 
+# Operator-triggered reachability baselines; installed from the hash-pinned lock in CI.
+rkn-block-checker==0.1.0
+
 # Test-only; installed from the hash-pinned lock in CI.
 pytest==9.0.3
