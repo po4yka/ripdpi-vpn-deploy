@@ -65,7 +65,7 @@
 - name: Accept WARP terms (idempotent)
   ansible.builtin.command: warp-cli --accept-tos registration new
   register: warp_register
-  changed_when: "'Success' in warp_register.stdout or warp_register.rc == 0"
+  changed_when: "'Success' in warp_register.stdout"
   failed_when:
     - warp_register.rc != 0
     - "'already registered' not in warp_register.stdout"
