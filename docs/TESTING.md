@@ -29,6 +29,9 @@ real VPS. This doc enumerates each layer and where coverage gaps exist
 | **Ansible role: honeypot** | ansible-lint | render check | **molecule** + idempotence | verifies service active, listener bound to configured port, script installed. |
 | **Ansible role: probe-ratelimit** | ansible-lint | render check | **molecule** + idempotence | verifies daemon script + systemd unit + active state. nftables `probe_offenders` set is exercised in the full-stack scenario. |
 | **Ansible role: warp-outbound** | ansible-lint | render check | **molecule (syntax-only sequence)** | Cloudflare WARP installer expects systemd-networkd + a registerable endpoint not available in CI; structure validation only. |
+| **Ansible role: dns-morph-bridge** | ansible-lint | render check | **molecule** (converge + idempotence + verify) | binary install skipped when `binary_url` is a placeholder; verify play checks service unit presence and signing-key file perms. |
+| **Ansible role: hysteria-realm** | ansible-lint | render check | **molecule** (converge + idempotence + verify) | sing-box tarball fetch gated on non-placeholder sha256; verify play checks realm-service unit + auth-token file perms. |
+| **Ansible role: split-hop-egress** | ansible-lint | render check | **molecule** (converge + idempotence + verify) | WireGuard peer config rendered from placeholder keys; verify play checks wg-quick unit and key file perms on Node B. |
 | **Full stack** | ansible-lint | render check | **`make molecule-full-stack`** (manual) | runs the entire `site.yml` end-to-end inside a privileged Debian-13 container with NET_ADMIN; verifies every enabled service is up + listening. See `ansible/molecule/full-stack/`. |
 | **Shell scripts (39)** | `bash -n` syntax + **`shellcheck -s bash -S warning`** (CI) | n/a | n/a | every shell script in `scripts/` runs through shellcheck. |
 | **Python validators** | implicit — they validate everything else | n/a | n/a | |
