@@ -1,3 +1,9 @@
+variable "vultr_api_key" {
+  type        = string
+  sensitive   = true
+  description = "Vultr API key. Prefer TF_VAR_vultr_api_key in the operator environment."
+}
+
 variable "server_name" {
   type        = string
   description = "Hostname / Terraform name of the VPS."
