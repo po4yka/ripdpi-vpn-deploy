@@ -22,10 +22,24 @@
     group: root
     mode: "0755"
 
-- name: Seed CF prefix list (first run, ignore failure)
+- name: Seed CF prefix list (first run)
   ansible.builtin.command: /etc/cron.daily/cdn-front-refresh-cf-prefixes
+  register: _cf_seed
   changed_when: false
-  failed_when: false
+  # Tolerate transient network failures on first-deploy (rc != 0 and empty
+  # output is expected when the VPS has no internet egress at provision time).
+  # Surface failures that indicate a genuine misconfiguration: a non-zero
+  # exit with non-empty stderr that is NOT a network/curl/wget error.
+  failed_when:
+    - _cf_seed.rc != 0
+    - >-
+      not (
+        'Could not resolve' in (_cf_seed.stderr | default('')) or
+        'Connection refused' in (_cf_seed.stderr | default('')) or
+        'Network is unreachable' in (_cf_seed.stderr | default('')) or
+        'curl' in (_cf_seed.stderr | default('')) or
+        'wget' in (_cf_seed.stderr | default(''))
+      )
 
 - name: Drop nginx CDN-front site
   ansible.builtin.template:
