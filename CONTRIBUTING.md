@@ -21,6 +21,18 @@ and tag releases.
 
 `feat!` / `fix!` (or a `BREAKING CHANGE:` trailer) bumps the major version.
 
+## First-time setup
+
+After cloning, run this once to wire up the local pre-commit hooks:
+
+```bash
+make install-hooks
+```
+
+This installs the hooks for shellcheck, secrets-coverage, templates-render,
+placeholder-scan, gitleaks, terraform fmt, and ansible-lint. Without this step
+the pre-commit checks that gate `git push` will not run locally.
+
 ## Local pre-flight
 
 Before `git push`:
