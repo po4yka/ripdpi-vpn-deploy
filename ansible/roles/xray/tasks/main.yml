@@ -203,6 +203,11 @@
     - Reload systemd
     - Restart xray
 
+- name: Check if previous Xray config exists
+  ansible.builtin.stat:
+    path: "{{ xray_etc_dir }}/config.json"
+  register: _xray_config_stat
+
 - name: Backup previous Xray config if exists
   ansible.builtin.copy:
     src: "{{ xray_etc_dir }}/config.json"
@@ -211,7 +216,7 @@
     owner: root
     group: "{{ xray_runtime_group }}"
     mode: "0640"
-  ignore_errors: true
+  when: _xray_config_stat.stat.exists
   changed_when: false
 
 - name: Render and validate Xray config
