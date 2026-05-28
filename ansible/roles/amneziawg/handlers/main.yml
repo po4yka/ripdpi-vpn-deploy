@@ -5,5 +5,8 @@
 
 - name: Reload amneziawg
   ansible.builtin.command:
-    cmd: awg syncconf {{ amneziawg.interface }} {{ amneziawg_config_dir }}/{{ amneziawg.interface }}.conf
+    cmd: awg syncconf {{ item.name }} {{ amneziawg_config_dir }}/{{ item.name }}.conf
+  loop: "{{ _awg_instances | default([{'name': amneziawg.interface}]) }}"
+  loop_control:
+    label: "{{ item.name }}"
   changed_when: true
