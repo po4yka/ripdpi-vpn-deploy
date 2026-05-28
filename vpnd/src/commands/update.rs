@@ -48,7 +48,9 @@ pub async fn run(ctx: &Context, args: UpdateArgs) -> Result<()> {
             let cache = Cache { checked_at: now_secs, latest_tag: tag.clone() };
             // Best-effort write; ignore errors.
             let _ = std::fs::create_dir_all(&ctx.config_dir);
-            let _ = std::fs::write(&cache_path, toml::to_string(&cache).unwrap_or_default());
+            if let Ok(s) = toml::to_string(&cache) {
+                let _ = std::fs::write(&cache_path, s);
+            }
             print_notice(&tag);
         }
         Err(e) => {
