@@ -73,8 +73,18 @@ hys_sha="$( sha256sum "$tmpdir/hysteria" | awk '{print $1}')"
 
 # ---------------------------------------------------------------------------
 # REALITY keypair. Use Xray docker image so we don't need a local xray.
+# Note: ghcr.io/xtls/xray-core:<version> is a floating tag; a digest pin is
+# preferred for supply-chain safety but cannot be resolved offline. Capture
+# the actual image digest after pull so it is logged and auditable.
 # ---------------------------------------------------------------------------
 reality_raw="$(docker run --rm "ghcr.io/xtls/xray-core:${xray_version}" x25519 2>/dev/null || true)"
+# Log the resolved image digest for audit purposes.
+xray_image_digest="$(docker inspect --format '{{.Id}}' "ghcr.io/xtls/xray-core:${xray_version}" 2>/dev/null || true)"
+if [[ -n "$xray_image_digest" ]]; then
+  echo "ci-bootstrap: xray image digest: ${xray_image_digest}" >&2
+else
+  echo "ci-bootstrap: warning: could not resolve xray image digest (image may not be locally cached)" >&2
+fi
 if [[ -z "$reality_raw" ]]; then
   # Fall back to a local xray binary if available (post-deploy reruns
   # on the operator workstation).
