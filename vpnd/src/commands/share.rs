@@ -65,7 +65,9 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
             ShareType::Singbox => format!("https://{host}/sub/{}.json", &client.name),
             ShareType::Uri => format!("https://{host}/sub/{}", &client.name),
         };
-        qr::write_png(&payload, &out.join("qr.png"))?;
+        // Emit SVG only; the recipient page references qr.svg.
+        // write_png emits a PBM file renamed to .png which is not a valid PNG;
+        // a real PNG encoder is intentionally omitted (no-new-deps constraint).
         qr::write_svg(&payload, &out.join("qr.svg"))?;
         qr::write_png(&ripdpi_deeplink, &out.join("qr-ripdpi.png"))?;
         qr::write_svg(&ripdpi_deeplink, &out.join("qr-ripdpi.svg"))?;
@@ -76,7 +78,7 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
     println!("  recipient URL:  https://{host}/sub/{}", &client.name);
     println!("  landing page:   {}", out.join("index.html").display());
     if args.qr {
-        println!("  QR (png/svg):   {}", out.join("qr.png").display());
+        println!("  QR (svg):       {}", out.join("qr.svg").display());
     }
     println!();
     println!(
