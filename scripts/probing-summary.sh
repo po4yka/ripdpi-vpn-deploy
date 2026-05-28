@@ -28,6 +28,12 @@ today="$(date -u +%Y-%m-%d)"
 local_out="${REPO_ROOT}/reports/probing-${PROVIDER}-${ENV}-${today}.md"
 mkdir -p "${REPO_ROOT}/reports"
 
+# StrictHostKeyChecking=accept-new: trusts the host key on first connect and
+# rejects changed keys thereafter. This lowers friction on reprovisioned nodes
+# (new VPS, same IP, rotated host key) because the operator must manually
+# clear the known_hosts entry rather than the script silently accepting a
+# potentially MITMed key. Use StrictHostKeyChecking=yes with a pre-seeded
+# known_hosts entry if you need stronger TOFU enforcement.
 ssh_opts=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 
 # Pipe the aggregator script over stdin to avoid a world-readable /tmp drop
