@@ -17,6 +17,7 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
     // Decrypt happens via the Makefile, so SOPS gating and audit-log behavior match operator habit.
     if !ctx.secrets_file.is_file() {
         make::target(ctx, "decrypt").run(ctx.explain).await?;
+        ctx.secure_secrets_file();
     }
 
     if ctx.explain {
