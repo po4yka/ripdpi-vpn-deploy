@@ -30,18 +30,13 @@ mkdir -p "${REPO_ROOT}/reports"
 
 ssh_opts=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 
-# Push the aggregator
-scp -q "${ssh_opts[@]}" \
-  "${REPO_ROOT}/scripts/probing-summary-remote.py" \
-  "${admin}@${ip}:/tmp/probing-summary.py"
-
-# Run it (needs root to read /var/log/xray/access.log)
+# Pipe the aggregator script over stdin to avoid a world-readable /tmp drop
+# (scp-to-/tmp + sudo python3 /tmp/script is a root TOCTOU). The script is
+# executed entirely in memory; no file is written to the remote /tmp.
 ssh "${ssh_opts[@]}" "${admin}@${ip}" \
-  "sudo python3 /tmp/probing-summary.py && sudo cat /var/log/vpn-probing-summary-${today}.md" \
+  "sudo python3 - && sudo cat /var/log/vpn-probing-summary-${today}.md" \
+  < "${REPO_ROOT}/scripts/probing-summary-remote.py" \
   > "$local_out"
-
-# Cleanup
-ssh "${ssh_opts[@]}" "${admin}@${ip}" "rm -f /tmp/probing-summary.py" || true
 
 echo "wrote $local_out"
 echo
