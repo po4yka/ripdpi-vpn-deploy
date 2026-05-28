@@ -87,10 +87,10 @@ Walk the directory tree — every meaningful folder has its own `AGENTS.md`
 AGENTS.md / CLAUDE.md                                — this file (root)
 ansible/                                             — playbook order, group_vars contract
 ansible/roles/{amneziawg,backup,baseline,cdn-front,
-              firewall,geodata,honeypot,hysteria,
-              monitoring,naive,nginx-xhttp,
-              probe-ratelimit,subscription-host,
-              warp-outbound,watchdog,xray}/          — 16 roles
+              dns-morph-bridge,firewall,geodata,honeypot,
+              hysteria,hysteria-realm,monitoring,naive,
+              nginx-xhttp,probe-ratelimit,split-hop-egress,
+              subscription-host,warp-outbound,watchdog,xray}/  — 19 roles
 terraform/                                           — provider-root strategy
 terraform/providers/{hetzner,upcloud,vultr}/         — per-provider quirks
 terraform/shared/                                    — cloud-init contract
