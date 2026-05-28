@@ -222,7 +222,12 @@ emit-awg:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/emit-awg.sh $(CLIENT)
 
 install-hooks:
-	pip install --user pre-commit
+	# TODO: route via hash-pinned requirements.txt once pip-compile
+	# --generate-hashes has been run to add pre-commit to the lock file
+	# (pip-compile requires network access and cannot run in the offline
+	# sandbox; tracked in requirements.in). Until then install without
+	# --user so the binary lands on PATH inside a venv or CI container.
+	python3 -m pip install pre-commit
 	pre-commit install
 	pre-commit install --hook-type commit-msg
 
