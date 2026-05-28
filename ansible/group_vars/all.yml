@@ -135,6 +135,18 @@ xray_port: 443
 # subscription-host and hysteria-realm). Set to 0 to disable; ignored
 # entirely when xray.cohorts is non-empty (multi-cohort layouts carry
 # their own ports). Rotate when the alt-port itself gets targeted.
+# xray_fallback_port must not collide with any other listener on the host.
+# Known collisions to avoid:
+#   8443 — nginx_xhttp_public_port (P1 direct listener)
+#   8444 — subscription.port (vpn-bootstrap, default) AND
+#           hysteria_realm.listen_port (sing-box rendezvous, default)
+#           If both subscription-host and hysteria-realm are enabled on the
+#           same node, override one of those ports too. An assert in
+#           roles/hysteria-realm/tasks/main.yml enforces the realm/sub
+#           collision at deploy time.
+# Default 2053 is a Cloudflare alternate-HTTPS port — appears as ordinary
+# HTTPS to a censor and is clear of all existing toggles listed above.
+# Set to 0 to disable; ignored when xray.cohorts is non-empty.
 xray_fallback_port: 2053
 nginx_xhttp_public_port: 8443 # public nginx listener; direct-only cohorts may override to 443
 nginx_xhttp_port: 10085       # localhost-only Xray XHTTP inbound behind nginx
