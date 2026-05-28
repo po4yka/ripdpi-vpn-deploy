@@ -49,6 +49,7 @@ NON_SECRET_TOPLEVEL = {
 EXPECTED_SECRET_TOPLEVEL = {
     "xray", "nginx_xhttp", "hysteria", "amneziawg_secrets",
     "backup", "watchdog_secrets", "naive_secrets",
+    "dns_morph_bridge_secrets", "hysteria_realm_secrets", "split_hop_egress_secrets",
 }
 
 # Non-greedy capture of {{ ... }} with optional whitespace
