@@ -45,8 +45,8 @@ fn find_client_miss_returns_none() {
 fn extra_preserves_unknown_top_level_keys() {
     let s = load_fixture();
     // The fixture has keys: xray, nginx_xhttp, hysteria, amneziawg_*, backup, watchdog_secrets
-    // All unknown to the typed struct → they land in _extra.
-    assert!(!s._extra.is_empty(), "_extra must not be empty for fixture with many custom keys");
+    // All unknown to the typed struct → they land in the extra mapping.
+    assert!(s.extra_key_count() > 0, "extra_key_count must be non-zero for fixture with many custom keys");
 }
 
 #[test]
@@ -56,19 +56,15 @@ fn extra_roundtrip_preserves_unknown_keys() {
     std::fs::write(tmp_in.path(), FIXTURE).unwrap();
     let s1 = Secrets::load(tmp_in.path()).unwrap();
 
-    // Serialise _extra keys to YAML manually for round-trip check
-    let extra_keys_before: Vec<String> = s1._extra.keys()
-        .filter_map(|k| k.as_str().map(|s| s.to_string()))
-        .collect();
+    // Collect extra key names via the public accessor
+    let extra_keys_before: Vec<String> = s1.extra_key_names().into_iter().map(|s| s.to_string()).collect();
     assert!(!extra_keys_before.is_empty(), "fixture must have extra keys");
 
     // Re-load from same fixture bytes
     let tmp_in2 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(tmp_in2.path(), FIXTURE).unwrap();
     let s2 = Secrets::load(tmp_in2.path()).unwrap();
-    let extra_keys_after: Vec<String> = s2._extra.keys()
-        .filter_map(|k| k.as_str().map(|s| s.to_string()))
-        .collect();
+    let extra_keys_after: Vec<String> = s2.extra_key_names().into_iter().map(|s| s.to_string()).collect();
 
     for k in &extra_keys_before {
         assert!(extra_keys_after.contains(k), "round-trip must preserve key '{k}'");
