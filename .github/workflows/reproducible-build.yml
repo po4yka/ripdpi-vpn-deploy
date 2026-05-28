@@ -88,6 +88,14 @@ jobs:
           schema_sha="${{ steps.pin.outputs.sha }}"
           echo "schema:  ${schema_sha}"
           echo "rebuild: ${local_sha}"
+          # xray mismatch is advisory only: Go releases are not reproducible
+          # by default (build IDs, timestamps, toolchain version all affect
+          # the binary). A mismatch here does NOT indicate tampering — it
+          # means upstream's toolchain differs from ours. The role downloads
+          # the upstream release asset and verifies its sha256; that check is
+          # the actual integrity gate. Hysteria uses a downloaded release
+          # asset verified against a pinned sha256, making it the blocking
+          # reproducibility gate for this workflow.
           if [[ "${local_sha}" != "${schema_sha}" ]]; then
             echo "::warning::Rebuild sha256 does not match schema pin."
             echo "::warning::This usually means upstream ships a different toolchain build."
