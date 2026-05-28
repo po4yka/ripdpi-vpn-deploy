@@ -2,6 +2,15 @@
 # P0 primary transport: Xray with VLESS+REALITY+XTLS-Vision.
 # Pinning, symlink rollback, validate-before-restart, .prev backup.
 
+- name: Pre-flight — xray version must be pinned
+  ansible.builtin.assert:
+    that:
+      - xray.version | default('') | length > 0
+    fail_msg: >-
+      xray.version is empty. Set xray.version (and the matching
+      linux_amd64_sha256 / linux_arm64_sha256) in your secrets file or
+      group_vars before running this role.
+
 - name: Create xray system user
   ansible.builtin.user:
     name: "{{ xray_runtime_user }}"

@@ -1,0 +1,9 @@
+---
+# Version sentinel — must be overridden in secrets/group_vars.
+# The role asserts this is non-empty at task start.
+hysteria:
+  version: ""
+  linux_amd64_sha256: ""
+  linux_arm64_sha256: ""
+  cert_pem: ""
+  key_pem: ""
