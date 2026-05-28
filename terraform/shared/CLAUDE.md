@@ -7,7 +7,7 @@ provider root with identical inputs. Behavior is consistent across providers
 by construction.
 
 **No secrets in here** — cloud-init creates the admin user, hardens sshd,
-installs `python3`, drops a marker file at `/etc/vpn-deploy/cloud-init-done`,
+installs `python3`, drops a marker file at `/var/lib/cloud-init-vpn-bootstrap.done`,
 and exits. The Ansible run handles the rest. Anything secret stays in SOPS.
 
 ## What's done well
