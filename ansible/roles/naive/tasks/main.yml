@@ -70,23 +70,52 @@
   block:
     - name: go install xcaddy
       ansible.builtin.command:
-        cmd: go install github.com/caddyserver/xcaddy/cmd/xcaddy@{{ naive.xcaddy_version }}
+        argv:
+          - go
+          - install
+          - "github.com/caddyserver/xcaddy/cmd/xcaddy@{{ naive.xcaddy_version }}"
       environment:
         GOPATH: /tmp/gopath
         HOME: /tmp
+        GOFLAGS: "-mod=readonly"
+        GONOSUMDB: ""
       changed_when: true
 
     - name: xcaddy build caddy-naive
       ansible.builtin.command:
-        cmd: |
-          /tmp/gopath/bin/xcaddy build {{ naive.caddy_version }}
-            --with {{ naive.forwardproxy_module }}
-            --output /usr/local/bin/caddy-naive
+        argv:
+          - /tmp/gopath/bin/xcaddy
+          - build
+          - "{{ naive.caddy_version }}"
+          - "--with"
+          - "{{ naive.forwardproxy_module }}"
+          - "--output"
+          - /usr/local/bin/caddy-naive
       environment:
         GOPATH: /tmp/gopath
         HOME: /tmp
         CGO_ENABLED: "0"
+        GOFLAGS: "-mod=readonly"
+        GONOSUMDB: ""
       changed_when: true
+
+    - name: Verify caddy-naive binary sha256 (when pin is set)
+      ansible.builtin.stat:
+        path: /usr/local/bin/caddy-naive
+        checksum_algorithm: sha256
+      register: _caddy_naive_stat
+      when: naive.xcaddy_sha256 | default('') | length > 0
+
+    - name: Assert caddy-naive matches pinned sha256
+      ansible.builtin.assert:
+        that:
+          - _caddy_naive_stat.stat.checksum == naive.xcaddy_sha256
+        fail_msg: >-
+          caddy-naive binary sha256 mismatch: got
+          {{ _caddy_naive_stat.stat.checksum }} but naive.xcaddy_sha256 pins
+          {{ naive.xcaddy_sha256 }}. Supply-chain substitution possible — review
+          xcaddy/forwardproxy source and update the pin only when trusted.
+      when: naive.xcaddy_sha256 | default('') | length > 0
 
     - name: Set perms on caddy-naive
       ansible.builtin.file:
