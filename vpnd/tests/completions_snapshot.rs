@@ -44,7 +44,10 @@ fn fish_completion_snapshot() {
 fn bash_completion_contains_vpnd_subcommands() {
     let output = generate_completion("bash");
     // Each top-level subcommand must appear in the completion script
-    for subcmd in ["deploy", "share", "doctor", "host", "update", "completions"] {
+    for subcmd in [
+        "deploy", "share", "doctor", "host", "update", "completions",
+        "reconverge", "probe", "probe-matrix", "preflight", "fleet", "ai-docs",
+    ] {
         assert!(
             output.contains(subcmd),
             "bash completion must mention '{subcmd}'"
@@ -55,7 +58,10 @@ fn bash_completion_contains_vpnd_subcommands() {
 #[test]
 fn zsh_completion_contains_vpnd_subcommands() {
     let output = generate_completion("zsh");
-    for subcmd in ["deploy", "share", "doctor", "host", "update", "completions"] {
+    for subcmd in [
+        "deploy", "share", "doctor", "host", "update", "completions",
+        "reconverge", "probe", "probe-matrix", "preflight", "fleet", "ai-docs",
+    ] {
         assert!(
             output.contains(subcmd),
             "zsh completion must mention '{subcmd}'"
@@ -66,7 +72,10 @@ fn zsh_completion_contains_vpnd_subcommands() {
 #[test]
 fn fish_completion_contains_vpnd_subcommands() {
     let output = generate_completion("fish");
-    for subcmd in ["deploy", "share", "doctor", "host", "update", "completions"] {
+    for subcmd in [
+        "deploy", "share", "doctor", "host", "update", "completions",
+        "reconverge", "probe", "probe-matrix", "preflight", "fleet", "ai-docs",
+    ] {
         assert!(
             output.contains(subcmd),
             "fish completion must mention '{subcmd}'"
