@@ -3,8 +3,13 @@ package terraform.policy.no_secrets_in_user_data
 # cloud_init_user_data_contains_no_secrets
 #
 # Deny if any server resource's user_data (cloud-init) contains a plaintext
-# secret-like pattern: a key/value pair matching
-#   (secret|password|token|key)\s*[:=]\s*[^\s]{6,}
+# secret-like pattern: a line-start key/value pair matching
+#   (password|token|api_key|secret)\s*[:=]\s*[^\s]{6,}
+#
+# "key" is intentionally excluded from the keyword list — it is too generic
+# and produces false-positives on valid cloud-init ssh_authorized_keys blocks
+# (e.g. "ssh_authorized_keys: ssh-ed25519 AAAA..."). Use api_key to catch
+# real API key leaks.
 #
 # Placeholder substitutions (e.g. "{{ admin_user }}") produced by Terraform's
 # templatefile() are acceptable; only literal non-whitespace values of 6+
@@ -19,8 +24,15 @@ server_resource_types := {
 }
 
 # Regex matches literal secret assignments in plaintext.
-# Pattern: secret/password/token/key followed by : or = and 6+ non-space chars.
-secret_pattern := `(?i)(secret|password|token|key)\s*[:=]\s*[^\s]{6,}`
+# Matches: password/token/api_key/secret followed by : or = and 6+ non-space chars,
+# where the keyword appears at the start of the line (optional leading whitespace).
+# This avoids false-positives on SSH public-key lines such as:
+#   ssh_authorized_keys:
+#     - ssh-ed25519 AAAA...
+# because those lines begin with "ssh_authorized_keys" or "- ssh-", not a secret keyword.
+# The bare word "key" is intentionally excluded — it is too generic and matches
+# ssh_authorized_keys / ssh-ed25519 key material. Use api_key instead.
+secret_pattern := `(?im)^\s*(password|token|api_key|secret)\s*[:=]\s*[^\s]{6,}`
 
 deny[msg] {
   rc := input.resource_changes[_]
