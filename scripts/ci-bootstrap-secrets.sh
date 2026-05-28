@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck shell=bash
 # Generate a complete, self-contained secrets YAML for a CI deploy.
 # Used by .github/workflows/real-vps-deploy.yml — no SOPS-encrypted
 # blob is committed to the repo; every CI run gets fresh crypto.
