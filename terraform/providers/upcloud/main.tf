@@ -29,10 +29,13 @@ resource "upcloud_server" "vpn" {
     size    = var.storage_size_gb
     title   = "${var.server_name}-root"
 
-    backup_rule {
-      interval  = "daily"
-      time      = "0300"
-      retention = 7
+    dynamic "backup_rule" {
+      for_each = var.enable_backups ? [1] : []
+      content {
+        interval  = "daily"
+        time      = "0300"
+        retention = 7
+      }
     }
   }
 

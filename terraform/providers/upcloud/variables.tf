@@ -87,6 +87,18 @@ variable "labels" {
   description = "Provider-specific resource tags/labels."
 }
 
+variable "enable_ipv6" {
+  type        = bool
+  default     = true
+  description = "Allocate and expose a public IPv6 address."
+}
+
+variable "enable_backups" {
+  type        = bool
+  default     = true
+  description = "Enable provider-side server backups (daily, 7-day retention)."
+}
+
 variable "additional_public_ip" {
   type        = bool
   default     = false
