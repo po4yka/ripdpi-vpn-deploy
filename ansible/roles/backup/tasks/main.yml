@@ -16,6 +16,8 @@
     name:
       - rclone
     state: present
+    update_cache: true
+    cache_valid_time: 3600
   when: backup.remote.enabled | default(false)
 
 - name: Ensure restic repo directory
@@ -26,9 +28,17 @@
     group: root
     mode: "0700"
 
+- name: Ensure /etc/restic directory
+  ansible.builtin.file:
+    path: /etc/restic
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
 - name: Drop restic password file
   ansible.builtin.copy:
-    content: "{{ backup.restic_password }}"
+    content: "{{ backup.restic_password | default('') }}"
     dest: /etc/restic/password
     owner: root
     group: root

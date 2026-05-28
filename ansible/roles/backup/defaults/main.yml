@@ -1,0 +1,15 @@
+---
+# Safe defaults for the backup role.
+# Override in group_vars or SOPS secrets (backup.restic_password is a secret).
+
+backup:
+  # restic encryption password. Must be set in SOPS secrets before enabling
+  # this role. The default empty string causes the role to fail closed at
+  # the `restic init` step if not overridden.
+  restic_password: ""
+
+  remote:
+    # Set to true and supply rclone_config (from SOPS) to sync the local
+    # restic repo to an object store after each backup run.
+    enabled: false
+    rclone_config: ""
