@@ -31,8 +31,12 @@ if [[ -z "${TARGET:-}" || -z "${SERVER_NAMES:-}" ]]; then
   command -v jq   >/dev/null 2>&1 || { echo "missing: jq"   >&2; exit 1; }
   TMP="$(mktemp -t vpn-target.XXXXXX)"
   chmod 0600 "$TMP"
-  # Note: a broader EXIT trap covering TARGET_OUT/TARGET_LOG is installed
-  # after the mktemp calls below; TMP cleanup is folded into that trap.
+  # Install the cleanup trap BEFORE the decrypt so a sops/jq failure (under
+  # set -euo pipefail) cannot leave the decrypted secrets file on disk.
+  # TARGET_OUT/TARGET_LOG are created later and are covered by the same trap
+  # once set (guarded with :- until then). The trap is re-installed identically
+  # after those mktemp calls for the env-provided-target code path.
+  trap 'rm -f "${TARGET_OUT:-}" "${TARGET_LOG:-}"; [[ -n "${TMP:-}" ]] && { shred -u "$TMP" 2>/dev/null || rm -f "$TMP"; }' EXIT
   sops --decrypt --output-type json "$SOPS_FILE" > "$TMP"
   TARGET="${TARGET:-$(jq -r '.xray.target' "$TMP")}"
   SERVER_NAMES="${SERVER_NAMES:-$(jq -r '.xray.server_names | join(" ")' "$TMP")}"
