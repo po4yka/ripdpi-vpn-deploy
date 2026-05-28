@@ -22,7 +22,8 @@ output "server_hostname" {
 }
 
 output "zone" {
-  value = upcloud_server.vpn.zone
+  value       = upcloud_server.vpn.zone
+  description = "Provider-specific zone/region/location identifier."
 }
 
 # Do NOT output:

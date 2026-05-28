@@ -23,5 +23,5 @@ output "server_hostname" {
 
 output "zone" {
   value       = hcloud_server.vpn.location
-  description = "Provider location for compatibility with the UpCloud output name."
+  description = "Provider-specific zone/region/location identifier."
 }

@@ -23,5 +23,5 @@ output "server_hostname" {
 
 output "zone" {
   value       = vultr_instance.vpn.region
-  description = "Provider region for compatibility with the UpCloud output name."
+  description = "Provider-specific zone/region/location identifier."
 }
