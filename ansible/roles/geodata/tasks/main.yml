@@ -32,7 +32,6 @@
     dest: "{{ geodata.install_dir }}/geosite.dat"
     mode: "0644"
     checksum: "sha256:{{ geodata.geosite_sha256 }}"
-    force: true
   notify: Reload xray geodata
 
 - name: Download geoip.dat
@@ -41,7 +40,6 @@
     dest: "{{ geodata.install_dir }}/geoip.dat"
     mode: "0644"
     checksum: "sha256:{{ geodata.geoip_sha256 }}"
-    force: true
   notify: Reload xray geodata
 
 - name: Drop refresh script
