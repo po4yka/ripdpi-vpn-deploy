@@ -2,8 +2,9 @@
 # install-vpnd.sh — download and install the vpnd binary from GitHub releases.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/po4yka/vpn-deploy/main/scripts/install-vpnd.sh | sh
-#   PREFIX=/usr/local sh scripts/install-vpnd.sh
+#   curl -fsSL https://raw.githubusercontent.com/po4yka/vpn-deploy/main/scripts/install-vpnd.sh \
+#     -o install-vpnd.sh && chmod +x install-vpnd.sh && ./install-vpnd.sh
+#   PREFIX=/usr/local ./install-vpnd.sh
 #
 # Environment variables:
 #   PREFIX                 Installation prefix (default: /usr/local); binary goes to $PREFIX/bin/vpnd
