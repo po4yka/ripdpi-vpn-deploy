@@ -36,8 +36,13 @@ pub async fn run(ctx: &Context, args: DoctorArgs) -> Result<()> {
         let excerpts = docs_bundle::relevant_runbook_excerpts(&report);
         let prompt = ai_prompt(ctx, args.host.as_deref(), &report, &excerpts);
         if args.clip {
-            try_copy_to_clipboard(&prompt)?;
-            eprintln!("{}", "AI prompt copied to clipboard".green());
+            match try_copy_to_clipboard(&prompt).await {
+                Ok(()) => eprintln!("{}", "AI prompt copied to clipboard".green()),
+                Err(e) => {
+                    eprintln!("{} {}; printing to stdout", "note:".yellow(), e);
+                    println!("{prompt}");
+                }
+            }
         } else {
             println!("{prompt}");
         }
@@ -165,9 +170,9 @@ pub fn redact_secrets(s: String) -> String {
         .join("\n")
 }
 
-fn try_copy_to_clipboard(s: &str) -> Result<()> {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
+async fn try_copy_to_clipboard(s: &str) -> Result<()> {
+    use tokio::io::AsyncWriteExt as _;
+    use tokio::process::Command;
     let candidates: &[&[&str]] = &[
         &["pbcopy"],
         &["wl-copy"],
@@ -178,19 +183,14 @@ fn try_copy_to_clipboard(s: &str) -> Result<()> {
         if which::which(cmd[0]).is_ok() {
             let mut child = Command::new(cmd[0])
                 .args(&cmd[1..])
-                .stdin(Stdio::piped())
+                .stdin(std::process::Stdio::piped())
                 .spawn()?;
             if let Some(stdin) = child.stdin.as_mut() {
-                stdin.write_all(s.as_bytes())?;
+                stdin.write_all(s.as_bytes()).await?;
             }
-            child.wait()?;
+            child.wait().await?;
             return Ok(());
         }
     }
-    eprintln!(
-        "{} no clipboard binary found (tried pbcopy, wl-copy, xclip, xsel); printing to stdout",
-        "note:".yellow()
-    );
-    println!("{s}");
-    Ok(())
+    Err(anyhow::anyhow!("no clipboard binary found (tried pbcopy, wl-copy, xclip, xsel)"))
 }
