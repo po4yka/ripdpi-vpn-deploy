@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.15"
+  required_version = ">= 1.15, < 2.0"
 
   required_providers {
     vultr = {
