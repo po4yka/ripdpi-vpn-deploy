@@ -27,7 +27,7 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
     let secrets = Secrets::load(&ctx.secrets_file)?;
     let client = secrets
         .find_client(&args.client)
-        .ok_or_else(|| anyhow!("client '{}' not found in {}", args.client, ctx.secrets_file.display()))?;
+        .ok_or_else(|| anyhow!("client '{}' not found in the decrypted secrets file", args.client))?;
 
     // sing-box bundle from existing script — preserves multi-host + cohort awareness.
     let singbox = make::target_with(ctx, "emit-singbox", &[("CLIENT", &args.client)]).capture(false).await?;
