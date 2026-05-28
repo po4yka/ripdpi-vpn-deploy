@@ -124,7 +124,8 @@ release-please drives versioning from Conventional Commits. Don't edit
 |---|---|---|
 | CLI flags / subcommands | `vpnd/src/cli.rs` | README, runbooks, command builder if added |
 | Package versions | release-please + `CHANGELOG.md` | `vpnd/Cargo.toml` `[package].version` |
-| Secrets schema | `scripts/check-secrets-coverage.py` + `scripts/validate-secrets.py` | `ansible/roles/*/`, `vpnd::secrets` |
+| Secrets schema (structure) | `secrets/schema.json` + `scripts/validate-secrets.py` | `ansible/roles/*/`, `vpnd::secrets` |
+| Secrets schema (coverage) | `scripts/check-secrets-coverage.py` | `secrets/prod.secrets.example.yaml`, all Jinja2 templates |
 | Protocol toggles | `ansible/group_vars/all.yml` | `ansible/roles/*/`, vpnd config templates |
 | Recipient page | `vpnd/templates/recipient.html` | `ansible/roles/subscription-host/`, `docs/demo/` |
 | AWG cohort profiles | `ansible/roles/amneziawg/vars/cohorts/` | `docs/AWG-COHORTS.md` |
