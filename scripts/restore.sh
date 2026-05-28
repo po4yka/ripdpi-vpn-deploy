@@ -1,5 +1,9 @@
 #!/bin/sh
 # Disaster-recovery restore orchestrator. Mirrors RUNBOOK-restore.md.
+# Note: intentional POSIX /bin/sh shebang — pipefail is a bash extension
+# and is not available in POSIX sh. set -eu provides the necessary fail-fast
+# behaviour within plain sh; pipelines in this script do not need pipefail
+# because none of them discard failure through a pipe.
 #
 # Usage:
 #   scripts/restore.sh --env <name> --provider <name> --path-a [--dry-run]
