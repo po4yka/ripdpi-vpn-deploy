@@ -107,7 +107,8 @@ When working inside a subtree, the nearest `AGENTS.md` wins.
 |---|---|
 | CLI flags / subcommands | `vpnd/src/cli.rs` |
 | Package versions | release-please + `CHANGELOG.md` |
-| Secrets schema | `scripts/check-secrets-coverage.py` + `scripts/validate-secrets.py` |
+| Secrets schema (structure) | `secrets/schema.json` + `scripts/validate-secrets.py` |
+| Secrets schema (coverage) | `scripts/check-secrets-coverage.py` |
 | Protocol toggles | `ansible/group_vars/all.yml` + cohort files (`vpn-p0.yml`, `vpn-p1p2.yml`, `vpn-fullstack.yml`) |
 | Recipient page | `vpnd/templates/recipient.html` |
 | AWG cohort profiles | `ansible/roles/amneziawg/vars/cohorts/` |
