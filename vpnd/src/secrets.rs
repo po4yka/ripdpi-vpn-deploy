@@ -41,7 +41,10 @@ pub struct Client {
 
 impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // name is a human label, not a secret — keep it for diagnostics.
+        // uuid, short_id and _extra are secret-bearing and are omitted.
         f.debug_struct("Client")
+            .field("name", &self.name)
             .finish_non_exhaustive()
     }
 }
