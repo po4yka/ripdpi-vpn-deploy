@@ -191,7 +191,10 @@ async fn try_copy_to_clipboard(s: &str) -> Result<()> {
                 .args(&cmd[1..])
                 .stdin(std::process::Stdio::piped())
                 .spawn()?;
-            if let Some(stdin) = child.stdin.as_mut() {
+            // take() moves the handle out so it drops (sending EOF) before
+            // wait(); pbcopy/xclip read stdin until EOF, so leaving the handle
+            // open across wait() would deadlock.
+            if let Some(mut stdin) = child.stdin.take() {
                 stdin.write_all(s.as_bytes()).await?;
             }
             child.wait().await?;
