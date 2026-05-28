@@ -36,6 +36,7 @@ variable "admin_user" {
 
 variable "admin_ssh_public_key" {
   type        = string
+  sensitive   = true
   description = "Public SSH key only. The matching private key stays outside this repo."
 }
 
