@@ -5,11 +5,11 @@ variable "server_name" {
 
 variable "location" {
   type        = string
-  description = "Hetzner Cloud location, e.g. hel1, nbg1, fsn1."
+  description = "Hetzner Cloud location. Allowed: nbg1 (Nuremberg), fsn1 (Falkenstein), hel1 (Helsinki)."
 
   validation {
-    condition     = contains(["nbg1", "fsn1", "hel1", "ash", "hil", "sin"], var.location)
-    error_message = "location must be one of: nbg1, fsn1, hel1, ash, hil, sin."
+    condition     = contains(["nbg1", "fsn1", "hel1"], var.location)
+    error_message = "location must be one of: nbg1, fsn1, hel1 (EU-only; US/Singapore DCs excluded by threat model)."
   }
 }
 
