@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # install-vpnd.sh — download and install the vpnd binary from GitHub releases.
 #
 # Usage:
@@ -22,9 +22,9 @@
 #       --owner po4yka \
 #       --signer-workflow .github/workflows/release-vpnd.yml
 #
-# shellcheck shell=sh
+# shellcheck shell=bash
 
-set -eu
+set -euo pipefail
 
 REPO="po4yka/vpn-deploy"
 RELEASES_BASE="https://github.com/${REPO}/releases/latest/download"
