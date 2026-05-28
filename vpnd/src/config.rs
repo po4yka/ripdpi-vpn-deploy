@@ -66,6 +66,16 @@ impl Context {
     pub fn ansible_cfg(&self) -> PathBuf {
         self.ansible_dir.join("ansible.cfg")
     }
+
+    /// Ensure the decrypted secrets file has mode 0600 if it exists.
+    /// Called immediately after a successful decrypt step.
+    pub fn secure_secrets_file(&self) {
+        use std::os::unix::fs::PermissionsExt;
+        if self.secrets_file.exists() {
+            let perms = std::fs::Permissions::from_mode(0o600);
+            let _ = std::fs::set_permissions(&self.secrets_file, perms);
+        }
+    }
 }
 
 fn find_repo_root() -> Result<PathBuf> {

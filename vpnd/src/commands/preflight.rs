@@ -8,6 +8,7 @@ pub async fn run(ctx: &Context, args: PreflightArgs) -> Result<()> {
     // Ensure we have a decrypted secrets file to inspect.
     if !ctx.secrets_file.is_file() {
         make::target(ctx, "decrypt").run(ctx.explain).await?;
+        ctx.secure_secrets_file();
     }
 
     let mut steps: Vec<Cmd> = vec![
