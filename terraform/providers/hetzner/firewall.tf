@@ -2,6 +2,9 @@ locals {
   public_source_ips = ["0.0.0.0/0", "::/0"]
 }
 
+# hcloud_firewall is an allowlist-only model: any inbound traffic that does
+# not match an explicit rule is implicitly dropped by Hetzner's edge. There
+# is no need for an explicit default-deny rule — the safety net is built in.
 resource "hcloud_firewall" "vpn" {
   name   = "${var.server_name}-vpn"
   labels = local.base_labels
