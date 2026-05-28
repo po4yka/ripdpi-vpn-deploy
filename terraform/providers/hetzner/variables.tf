@@ -25,7 +25,13 @@ variable "server_type" {
 
 variable "image" {
   type        = string
-  description = "Hetzner image slug, e.g. debian-12 or ubuntu-24.04."
+  default     = "debian-12"
+  description = "Hetzner image slug. Allowed: debian-12, ubuntu-24.04."
+
+  validation {
+    condition     = contains(["debian-12", "ubuntu-24.04"], var.image)
+    error_message = "image must be one of: debian-12, ubuntu-24.04."
+  }
 }
 
 variable "admin_user" {
