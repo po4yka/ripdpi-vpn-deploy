@@ -1,6 +1,17 @@
 ---
 # Hysteria Realm rendezvous — see defaults/main.yml for rationale.
 
+- name: Pre-flight — hysteria-realm port must not collide with subscription-host
+  ansible.builtin.assert:
+    that:
+      - not (vpn.enable_subscription_host | default(false) and
+             hysteria_realm.listen_port == subscription.port | default(8444))
+    fail_msg: >-
+      hysteria_realm.listen_port ({{ hysteria_realm.listen_port }}) collides
+      with subscription.port ({{ subscription.port | default(8444) }}). Both
+      are enabled on this host. Override one of the ports in host_vars or
+      group_vars before deploying. See roles/hysteria-realm/CLAUDE.md pitfalls.
+
 - name: Pre-flight — sing-box archive sha256 must be pinned in secrets
   ansible.builtin.assert:
     that:
