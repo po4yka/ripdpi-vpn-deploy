@@ -5,11 +5,11 @@ variable "server_name" {
 
 variable "zone" {
   type        = string
-  description = "UpCloud zone, e.g. fi-hel1, de-fra1, us-nyc1."
+  description = "UpCloud zone. Allowed: fi-hel1 (Helsinki), de-fra1 (Frankfurt), nl-ams1 (Amsterdam), sg-sin1 (Singapore)."
 
   validation {
-    condition     = can(regex("^[a-z]{2}-[a-z]{3}[0-9]$", var.zone))
-    error_message = "zone must match the UpCloud zone format, e.g. fi-hel1, de-fra1, nl-ams1."
+    condition     = contains(["fi-hel1", "de-fra1", "nl-ams1", "sg-sin1"], var.zone)
+    error_message = "zone must be one of: fi-hel1, de-fra1, nl-ams1, sg-sin1."
   }
 }
 
