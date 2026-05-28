@@ -2,8 +2,8 @@ package terraform.policy.admin_port
 
 # no_admin_port_exposed_to_world
 #
-# Deny any firewall rule that allows TCP/22, TCP/3389, or var.panel_port
-# from 0.0.0.0/0 or ::/0.  SSH must be restricted to var.allowed_ssh_cidrs.
+# Deny any firewall rule that allows TCP/22 or TCP/3389 from 0.0.0.0/0
+# or ::/0.  SSH must be restricted to var.allowed_ssh_cidrs.
 #
 # Provider-specific attribute mappings:
 #
@@ -20,7 +20,11 @@ admin_ports := {"22", "3389"}
 
 world_cidrs := {"0.0.0.0/0", "::/0"}
 
-panel_port := input.variables.panel_port.value
+# panel_port rules removed: no admin panel is deployed in this stack (see
+# docs/CDN-DECISION.md and the hard rules in the root CLAUDE.md). The
+# input.variables.panel_port path does not exist in any provider root, so
+# deny rules referencing it silently never fired — removing them keeps the
+# policy honest.
 
 # Helper: is this a "world" source for upcloud (address range covers all IPs)?
 upcloud_is_world(rule) {
@@ -50,23 +54,6 @@ deny[msg] {
   )
 }
 
-# upcloud_firewall_rules — deny world-open panel_port if defined
-deny[msg] {
-  rc := input.resource_changes[_]
-  rc.type == "upcloud_firewall_rules"
-  rule := rc.change.after.firewall_rule[_]
-  rule.action == "accept"
-  rule.direction == "in"
-  rule.protocol == "tcp"
-  upcloud_is_world(rule)
-  rule.destination_port_start == sprintf("%v", [panel_port])
-
-  msg := sprintf(
-    "resource %q: firewall rule allows panel_port (%v) from world",
-    [rc.address, panel_port],
-  )
-}
-
 # hcloud_firewall — deny world-open TCP/22 or TCP/3389
 deny[msg] {
   rc := input.resource_changes[_]
@@ -80,22 +67,6 @@ deny[msg] {
   msg := sprintf(
     "resource %q: hcloud firewall rule allows TCP/%s from world; SSH must be restricted to allowed_ssh_cidrs",
     [rc.address, rule.port],
-  )
-}
-
-# hcloud_firewall — deny world-open panel_port if defined
-deny[msg] {
-  rc := input.resource_changes[_]
-  rc.type == "hcloud_firewall"
-  rule := rc.change.after.rule[_]
-  rule.direction == "in"
-  rule.protocol == "tcp"
-  world_cidrs[rule.source_ips[_]]
-  rule.port == sprintf("%v", [panel_port])
-
-  msg := sprintf(
-    "resource %q: hcloud firewall rule allows panel_port (%v) from world",
-    [rc.address, panel_port],
   )
 }
 
@@ -118,16 +89,3 @@ deny[msg] {
   )
 }
 
-# vultr_firewall_rule — deny world-open panel_port if defined
-deny[msg] {
-  rc := input.resource_changes[_]
-  rc.type == "vultr_firewall_rule"
-  rc.change.after.protocol == "tcp"
-  vultr_is_world(rc)
-  rc.change.after.port == sprintf("%v", [panel_port])
-
-  msg := sprintf(
-    "resource %q: vultr firewall rule allows panel_port (%v) from world",
-    [rc.address, panel_port],
-  )
-}
