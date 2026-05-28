@@ -9,15 +9,18 @@ async fn main() -> Result<()> {
 
     let cli = cli::Cli::parse();
 
-    // Completions and update --explain don't need a repo root.
-    match &cli.command {
-        cli::Command::Completions(args) => return commands::completions::run(args.clone()),
-        cli::Command::Update(args) if args.explain || cli.explain => {
+    // Completions doesn't need a repo root — handle it before Context::discover.
+    if let cli::Command::Completions(args) = &cli.command {
+        return commands::completions::run(args.clone());
+    }
+
+    // update --explain also doesn't need a repo root.
+    if let cli::Command::Update(args) = &cli.command {
+        if args.explain || cli.explain {
             println!("# vpnd update would query:");
             println!("  GET https://api.github.com/repos/po4yka/vpn-deploy/releases/latest");
             return Ok(());
         }
-        _ => {}
     }
 
     let ctx = config::Context::discover(&cli)?;
