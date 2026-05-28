@@ -31,7 +31,8 @@ if [[ -z "${TARGET:-}" || -z "${SERVER_NAMES:-}" ]]; then
   command -v jq   >/dev/null 2>&1 || { echo "missing: jq"   >&2; exit 1; }
   TMP="$(mktemp -t vpn-target.XXXXXX)"
   chmod 0600 "$TMP"
-  trap 'shred -u "$TMP" 2>/dev/null || rm -f "$TMP"' EXIT
+  # Note: a broader EXIT trap covering TARGET_OUT/TARGET_LOG is installed
+  # after the mktemp calls below; TMP cleanup is folded into that trap.
   sops --decrypt --output-type json "$SOPS_FILE" > "$TMP"
   TARGET="${TARGET:-$(jq -r '.xray.target' "$TMP")}"
   SERVER_NAMES="${SERVER_NAMES:-$(jq -r '.xray.server_names | join(" ")' "$TMP")}"
@@ -48,19 +49,29 @@ echo
 fails=0
 warns=0
 
+# Temp files for the TLS handshake; cleaned up on EXIT.
+# Also covers the SOPS secret TMP (set above when TARGET/SERVER_NAMES
+# were read from the SOPS file; empty otherwise).
+TARGET_OUT="$(mktemp -t vpn-target-out.XXXXXX)"
+TARGET_LOG="$(mktemp -t vpn-target-log.XXXXXX)"
+trap 'rm -f "$TARGET_OUT" "$TARGET_LOG"; [[ -n "${TMP:-}" ]] && { shred -u "$TMP" 2>/dev/null || rm -f "$TMP"; }' EXIT
+
 # ---------------------------------------------------------------------------
 # 1. TLS handshake works at all (mandatory)
 # ---------------------------------------------------------------------------
 echo "[1/8] TLS 1.3 handshake to ${HOST}:${PORT}"
 if ! openssl s_client -connect "${HOST}:${PORT}" -servername "${HOST}" \
-       -tls1_3 -alpn h2,http/1.1 < /dev/null 2>/tmp/.target.log >/tmp/.target.out; then
+       -tls1_3 -alpn h2,http/1.1 < /dev/null 2>"$TARGET_LOG" >"$TARGET_OUT"; then
   echo "  FAIL: TLS handshake failed"
+  echo "  --- openssl stderr ---"
+  cat "$TARGET_LOG" >&2
+  echo "  --- end ---"
   fails=$((fails+1))
 fi
 
 # Extract handshake metadata
-CIPHER="$(grep -E 'New, .*Cipher is' /tmp/.target.out | head -1 | sed -E 's/.*Cipher is //')"
-ALPN="$(grep -E 'ALPN protocol' /tmp/.target.out | head -1 | awk -F': ' '{print $2}')"
+CIPHER="$(grep -E 'New, .*Cipher is' "$TARGET_OUT" | head -1 | sed -E 's/.*Cipher is //')"
+ALPN="$(grep -E 'ALPN protocol' "$TARGET_OUT" | head -1 | awk -F': ' '{print $2}')"
 [[ -n "$CIPHER" ]] && echo "  cipher: $CIPHER"
 [[ -n "$ALPN"   ]] && echo "  ALPN:   $ALPN"
 
