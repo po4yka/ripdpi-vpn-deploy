@@ -74,6 +74,7 @@ for i in "${!host_pairs[@]}"; do
   fi
 
   ip="$(terraform -chdir="$tf_dir" output -raw server_ipv4)"
+  ipv6="$(terraform -chdir="$tf_dir" output -raw server_ipv6 2>/dev/null || true)"
   user="$(terraform -chdir="$tf_dir" output -raw admin_user)"
   hostname="$(terraform -chdir="$tf_dir" output -raw server_hostname)"
   allowed_ssh_cidrs="$(terraform_json_var "$tf_dir" "$tfvars_rel" "var.allowed_ssh_cidrs")"
@@ -85,6 +86,10 @@ for i in "${!host_pairs[@]}"; do
 
   vpn_line="${hostname} ansible_host=${ip} ansible_user=${user} provider=${prov} env=${env}"
   vpn_line+=" allowed_ssh_cidrs=${allowed_ssh_cidrs}"
+  # Append the required server_ipv6 output when the provider allocates one.
+  if [[ -n "$ipv6" && "$ipv6" != "null" ]]; then
+    vpn_line+=" server_ipv6=${ipv6}"
+  fi
   if [[ -n "$honey_ip" && "$honey_ip" != "null" ]] \
      && [[ "$honey_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     vpn_line+=" honeypot_listen_addr=${honey_ip}"
