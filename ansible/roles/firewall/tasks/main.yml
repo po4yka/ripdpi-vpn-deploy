@@ -18,3 +18,4 @@
     name: nftables
     enabled: true
     state: started
+  when: ansible_virtualization_type | default('') != 'docker'
