@@ -22,17 +22,6 @@ dns_morph_bridge:
   install_root: /opt/dns-morph-bridge
   bin_path: /usr/local/bin/dns-morph-bridge
 
-  # Bridge fetch parameters. No default download URL is shipped because
-  # the reference implementation has no released artifact suitable for
-  # this deployment — operators either build from source on a trusted
-  # workstation and serve the binary from their own artifact store, or
-  # point at an internally-hosted release. Set both fields in secrets
-  # (dns_morph_bridge_secrets.binary_url / .binary_sha256). When unset,
-  # the install task fails closed with an explicit message rather than
-  # silently skipping.
-  binary_url: ""
-  binary_sha256: ""
-
   # Listener binding. 0.0.0.0 is the operational baseline because UDP/53
   # is unauthenticated and any address-specific bind would require a
   # second public IP (out of scope for v1 single-VPS deploys).
