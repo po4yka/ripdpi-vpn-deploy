@@ -10,14 +10,14 @@ use vpnd::commands::probe_matrix::{report_to_json, synthetic_report_for_snapshot
 #[test]
 fn probe_matrix_report_snapshot() {
     let report = synthetic_report_for_snapshot();
-    let json = report_to_json(&report);
+    let json = report_to_json(&report).expect("MatrixReport serialises");
     insta::assert_snapshot!("probe_matrix_report", json);
 }
 
 #[test]
 fn probe_matrix_report_carries_required_top_level_fields() {
     let report = synthetic_report_for_snapshot();
-    let json = report_to_json(&report);
+    let json = report_to_json(&report).expect("MatrixReport serialises");
     for required in [
         "\"schema_version\"",
         "\"vantage\"",
@@ -37,7 +37,7 @@ fn probe_matrix_report_carries_required_top_level_fields() {
 #[test]
 fn probe_matrix_destination_classes_are_technical_signatures() {
     let report = synthetic_report_for_snapshot();
-    let json = report_to_json(&report);
+    let json = report_to_json(&report).expect("MatrixReport serialises");
     // Enforces the repo hard rule: destination labels must describe
     // technical signature, not operator / geography / carrier.
     for forbidden in [

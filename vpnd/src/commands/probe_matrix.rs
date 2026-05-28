@@ -468,9 +468,8 @@ pub fn synthetic_report_for_snapshot() -> MatrixReport {
 }
 
 #[doc(hidden)]
-#[allow(clippy::expect_used)]
-pub fn report_to_json(report: &MatrixReport) -> String {
-    serde_json::to_string_pretty(report).expect("MatrixReport serialises")
+pub fn report_to_json(report: &MatrixReport) -> Result<String, serde_json::Error> {
+    serde_json::to_string_pretty(report)
 }
 
 #[cfg(test)]
