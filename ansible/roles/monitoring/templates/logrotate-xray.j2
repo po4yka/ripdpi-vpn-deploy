@@ -1,0 +1,12 @@
+{{ xray_log_dir }}/*.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+    create 0640 {{ xray_runtime_user | default('xray') }} {{ xray_runtime_group | default('xray') }}
+    sharedscripts
+    postrotate
+        systemctl kill -s HUP xray.service 2>/dev/null || true
+    endscript
+}

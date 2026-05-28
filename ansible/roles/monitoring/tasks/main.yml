@@ -53,24 +53,12 @@
   notify: Restart journald
 
 - name: Drop logrotate config for xray
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: logrotate-xray.j2
     dest: /etc/logrotate.d/xray
     owner: root
     group: root
     mode: "0644"
-    content: |
-      {{ xray_log_dir }}/*.log {
-          daily
-          rotate 7
-          compress
-          missingok
-          notifempty
-          create 0640 xray xray
-          sharedscripts
-          postrotate
-              systemctl kill -s HUP xray.service 2>/dev/null || true
-          endscript
-      }
   when: vpn.enable_xray_reality | default(true)
 
 - name: Drop logrotate config for nginx
@@ -92,4 +80,7 @@
               systemctl reload nginx 2>/dev/null || true
           endscript
       }
-  when: vpn.enable_nginx_xhttp | default(true)
+  when: >-
+    (vpn.enable_nginx_xhttp | default(true)) or
+    (vpn.enable_cdn_front | default(false)) or
+    (vpn.enable_subscription_host | default(false))
