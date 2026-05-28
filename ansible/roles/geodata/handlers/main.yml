@@ -6,5 +6,15 @@
 - name: Reload xray geodata
   ansible.builtin.command:
     cmd: systemctl kill --signal=HUP xray.service
+  register: _geodata_reload
   changed_when: true
-  failed_when: false
+  # Tolerate "xray not loaded/not found" — the service may not be running
+  # on the first converge or on geodata-only nodes. Surface all other errors.
+  failed_when:
+    - _geodata_reload.rc != 0
+    - >-
+      not (
+        'not loaded' in (_geodata_reload.stderr | default('')) or
+        'not found' in (_geodata_reload.stderr | default('')) or
+        'No such' in (_geodata_reload.stderr | default(''))
+      )
