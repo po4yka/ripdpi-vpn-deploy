@@ -158,7 +158,9 @@ async fn run_capture(program: &str, args: &[&str]) -> Vec<u8> {
 
 /// Replace lines containing /tmp/vpn-*.secrets.yaml with a redaction notice.
 pub fn redact_secrets(s: String) -> String {
-    s.lines()
+    let trailing_newline = s.ends_with('\n');
+    let mut result = s
+        .lines()
         .map(|line| {
             if line.contains("/tmp/vpn-") && line.contains(".secrets.yaml") {
                 "<redacted: secrets file path>"
@@ -167,7 +169,11 @@ pub fn redact_secrets(s: String) -> String {
             }
         })
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    if trailing_newline {
+        result.push('\n');
+    }
+    result
 }
 
 async fn try_copy_to_clipboard(s: &str) -> Result<()> {
