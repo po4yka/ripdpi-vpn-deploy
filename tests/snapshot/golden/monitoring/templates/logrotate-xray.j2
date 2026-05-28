@@ -1,0 +1,12 @@
+/var/log/xray/*.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+    create 0640 xray xray
+    sharedscripts
+    postrotate
+        systemctl kill -s HUP xray.service 2>/dev/null || true
+    endscript
+}
