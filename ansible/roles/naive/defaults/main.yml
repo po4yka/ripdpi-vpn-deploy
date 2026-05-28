@@ -18,3 +18,11 @@ naive:
   log_dir: /var/log/naive
   bind_port: 443        # must be 443 to look like a real HTTPS site
   decoy_root: /var/www/naive-decoy
+  # Optional post-build sha256 of the caddy-naive binary. When non-empty the
+  # role asserts the freshly-built binary matches this hash so a supply-chain
+  # substitution in xcaddy/forwardproxy is caught at deploy time. Compute
+  # after a trusted first build:
+  #   sha256sum /usr/local/bin/caddy-naive
+  # Leave empty to skip the check (TOFU — acceptable only for initial builds;
+  # pin before deploying to production).
+  xcaddy_sha256: ""
