@@ -42,13 +42,13 @@
       "versioningTemplate": "semver-coerced"
     },
     {
-      "description": "Realm version pin in Ansible role defaults",
+      "description": "Hysteria-realm (sing-box) version pin in Ansible role defaults",
       "customType": "regex",
-      "fileMatch": ["^ansible/roles/realm/defaults/main\\.yml$"],
+      "fileMatch": ["^ansible/roles/hysteria-realm/defaults/main\\.yml$"],
       "matchStrings": [
-        "realm_version:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+        "hysteria_realm:\\s*\\n(?:[^\\n]*\\n)*?\\s+version:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
       ],
-      "depNameTemplate": "zhboner/realm",
+      "depNameTemplate": "SagerNet/sing-box",
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver-coerced"
     },
