@@ -280,7 +280,8 @@ fn parse_duration(s: &str) -> Result<Duration> {
 
 fn unix_ms(t: SystemTime) -> u64 {
     t.duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
+        // as_millis() returns u128; clamp to u64::MAX on overflow (year ~584 million)
+        .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
         .unwrap_or(0)
 }
 
