@@ -188,7 +188,24 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
         );
         for protocol in &cfg.protocols {
             for dest in &cfg.destinations {
-                let result = probe_cell(ctx, &cfg.vantage, *protocol, dest, now).await?;
+                let cell_timeout = Duration::from_secs(30);
+                let result = match tokio::time::timeout(
+                    cell_timeout,
+                    probe_cell(ctx, &cfg.vantage, *protocol, dest, now),
+                )
+                .await
+                {
+                    Ok(r) => r?,
+                    Err(_elapsed) => CellResult {
+                        timestamp_unix_ms: unix_ms(now),
+                        protocol: *protocol,
+                        destination_class: dest.class,
+                        endpoint: dest.endpoint.clone(),
+                        verdict: Verdict::Unknown,
+                        rtt_ms: None,
+                        error_kind: Some("timeout".to_string()),
+                    },
+                };
                 cells.push(result);
             }
         }
