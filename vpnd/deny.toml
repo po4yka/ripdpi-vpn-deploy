@@ -1,0 +1,48 @@
+[advisories]
+version = 2
+# Deny crates listed in the RustSec advisory database as containing
+# known vulnerabilities, and deny yanked crates outright.
+db-urls = ["https://github.com/rustsec/advisory-db"]
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "deny"
+notice = "warn"
+ignore = []
+
+[licenses]
+version = 2
+# Acceptable SPDX license expressions. Adjust if a new dep uses a
+# different approved licence.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "MPL-2.0",
+    "Zlib",
+    "OpenSSL",
+]
+deny = []
+copyleft = "warn"
+private = { ignore = true }
+
+[bans]
+# Deny duplicate versions of the same crate (semver-incompatible
+# duplicates are a common source of bloat and subtle bugs).
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
