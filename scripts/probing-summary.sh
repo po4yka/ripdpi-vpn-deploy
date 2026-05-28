@@ -39,9 +39,13 @@ ssh_opts=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-
 # Pipe the aggregator script over stdin to avoid a world-readable /tmp drop
 # (scp-to-/tmp + sudo python3 /tmp/script is a root TOCTOU). The script is
 # executed entirely in memory; no file is written to the remote /tmp.
+# Run the aggregator first, discarding its status stdout, then fetch the report
+# in a SEPARATE call. Merging both into one stdout (as `python3 - && cat`) would
+# prepend the aggregator's "wrote ..." status lines to the markdown report.
+ssh "${ssh_opts[@]}" "${admin}@${ip}" "sudo python3 - >/dev/null" \
+  < "${REPO_ROOT}/scripts/probing-summary-remote.py"
 ssh "${ssh_opts[@]}" "${admin}@${ip}" \
-  "sudo python3 - && sudo cat /var/log/vpn-probing-summary-${today}.md" \
-  < "${REPO_ROOT}/scripts/probing-summary-remote.py" \
+  "sudo cat /var/log/vpn-probing-summary-${today}.md" \
   > "$local_out"
 
 echo "wrote $local_out"
