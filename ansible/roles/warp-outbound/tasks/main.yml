@@ -23,6 +23,28 @@
     force: false
   when: warp_outbound.install_warp_cli | default(true)
 
+- name: Verify Cloudflare WARP GPG key checksum (when pin is set)
+  ansible.builtin.stat:
+    path: /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+    checksum_algorithm: sha256
+  register: _warp_gpg_stat
+  when:
+    - warp_outbound.install_warp_cli | default(true)
+    - warp_outbound.pubkey_sha256 | default('') | length > 0
+
+- name: Assert GPG key matches pinned sha256
+  ansible.builtin.assert:
+    that:
+      - _warp_gpg_stat.stat.checksum == warp_outbound.pubkey_sha256
+    fail_msg: >-
+      Cloudflare WARP GPG key checksum mismatch: got
+      {{ _warp_gpg_stat.stat.checksum }} but warp_outbound.pubkey_sha256 pins
+      {{ warp_outbound.pubkey_sha256 }}. Verify the key has not been rotated
+      upstream and update the pin if intentional.
+  when:
+    - warp_outbound.install_warp_cli | default(true)
+    - warp_outbound.pubkey_sha256 | default('') | length > 0
+
 - name: Add Cloudflare WARP apt source
   ansible.builtin.copy:
     dest: /etc/apt/sources.list.d/cloudflare-warp.list

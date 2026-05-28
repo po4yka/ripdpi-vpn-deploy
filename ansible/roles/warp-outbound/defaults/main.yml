@@ -15,6 +15,13 @@ warp_outbound:
   # have warp-cli or wgcf provisioned out of band.
   install_warp_cli: true
 
+  # SHA-256 checksum of the Cloudflare WARP GPG public key. Pin this value
+  # after fetching the key once from a trusted network:
+  #   sha256sum /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+  # Leaving it empty disables the checksum check (TOFU — acceptable only
+  # for initial bootstrap; pin before deploying to production).
+  pubkey_sha256: ""
+
   # WARP mode. "warp+doh" tunnels everything; "proxy" exposes a SOCKS5
   # listener on 127.0.0.1:40000 that Xray can target as an outbound.
   # We default to proxy mode so Xray (not the whole host) routes through
