@@ -48,16 +48,16 @@ ${MARKER_BEGIN}
 # Operator-side cron jobs for ${PROVIDER}:${ENV}. Re-run
 # scripts/install-operator-crons.sh to refresh, --remove to uninstall.
 
-*/30 * * * *   cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make burn-check          >>/tmp/vpn-burn.log 2>&1
-@daily         cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make asn-drift           >>/tmp/vpn-asn.log 2>&1
-@daily         cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make check-ip-reputation >>/tmp/vpn-iprep.log 2>&1
-@daily         cd ${repo} && make tspu-canary                                         >>/tmp/vpn-canary.log 2>&1
-@daily         cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make probing-summary     >>/tmp/vpn-probing.log 2>&1
-@daily         cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make backup-state        >>/tmp/vpn-state.log 2>&1
+*/30 * * * *   cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make burn-check          2>&1 | logger -t vpn-burn
+@daily         cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make asn-drift           2>&1 | logger -t vpn-asn
+@daily         cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make check-ip-reputation 2>&1 | logger -t vpn-iprep
+@daily         cd ${repo} && make tspu-canary                                         2>&1 | logger -t vpn-canary
+@daily         cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make probing-summary     2>&1 | logger -t vpn-probing
+@daily         cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make backup-state        2>&1 | logger -t vpn-state
 EOF
   if [[ -n "$WARM_SPARE_ENV" ]]; then
     cat <<EOF
-*/2 * * * *    cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} GREEN_ENV=${WARM_SPARE_ENV} make watch-spare  >>/tmp/vpn-spare.log 2>&1
+*/2 * * * *    cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} GREEN_ENV=${WARM_SPARE_ENV} make watch-spare  2>&1 | logger -t vpn-spare
 EOF
   fi
   echo "${MARKER_END}"
