@@ -162,24 +162,30 @@ def main() -> int:
             "Xray routing geoip database",
         ))
 
+    _AWG_NO_HASH_PROP = [{"name": "sha256-pinned", "value": "false"}]
+
     awg_go = _public_str(data, "amneziawg_go_version")
     awg_tools = _public_str(data, "amneziawg_tools_version")
     if awg_go:
-        components.append(component(
+        c = component(
             "amneziawg-go", awg_go,
             _purl("github", "amnezia-vpn", "amneziawg-go", version=awg_go),
             [],
             f"https://github.com/amnezia-vpn/amneziawg-go/releases/tag/{awg_go}",
             "Userspace AmneziaWG implementation (no sha256 pin in v1 schema)",
-        ))
+        )
+        c["properties"] = _AWG_NO_HASH_PROP
+        components.append(c)
     if awg_tools:
-        components.append(component(
+        c = component(
             "amneziawg-tools", awg_tools,
             _purl("github", "amnezia-vpn", "amneziawg-tools", version=awg_tools),
             [],
             f"https://github.com/amnezia-vpn/amneziawg-tools/releases/tag/{awg_tools}",
             "AmneziaWG userspace tools (no sha256 pin in v1 schema)",
-        ))
+        )
+        c["properties"] = _AWG_NO_HASH_PROP
+        components.append(c)
 
     reali_ver, reali_sha = reali_pin()
     components.append(component(
