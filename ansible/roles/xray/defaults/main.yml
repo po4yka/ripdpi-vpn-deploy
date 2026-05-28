@@ -6,3 +6,10 @@ xray_runtime_group: xray
 xray_install_dir: "{{ xray_install_root | default('/opt/xray') }}"
 xray_etc_dir: "{{ xray_config_dir | default('/etc/xray') }}"
 xray_log_path: "{{ xray_log_dir | default('/var/log/xray') }}"
+
+# Version sentinel — must be overridden in secrets/group_vars.
+# The role asserts this is non-empty at task start.
+xray:
+  version: ""
+  linux_amd64_sha256: ""
+  linux_arm64_sha256: ""
