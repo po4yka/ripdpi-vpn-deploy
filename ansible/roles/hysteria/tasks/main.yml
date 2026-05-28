@@ -104,6 +104,11 @@
   no_log: true
   diff: false
 
+- name: Check if previous Hysteria config exists
+  ansible.builtin.stat:
+    path: "{{ hysteria_config_dir }}/config.yaml"
+  register: _hysteria_config_stat
+
 - name: Backup previous Hysteria config if exists
   ansible.builtin.copy:
     src: "{{ hysteria_config_dir }}/config.yaml"
@@ -112,7 +117,7 @@
     owner: root
     group: hysteria
     mode: "0640"
-  ignore_errors: true
+  when: _hysteria_config_stat.stat.exists
   changed_when: false
 
 - name: Render Hysteria config
