@@ -177,6 +177,9 @@ Then:
 21. `docs/RUNBOOK-idle-cycle-measurement.md` + `docs/measurements/`
     — measurement spike for the bare-HTTPS idle-cycle access-attempt
     pattern: driver + correlation tool + dated-report template.
+22. `docs/CLIENT-INTEGRATION.md` — how to deliver config to the RIPDPI
+    client: emitters, the `ripdpi://` one-tap deep link, subscription
+    delivery, the RIPDPI bundle, and the AmneziaWG device-key handoff.
 
 Operational runbooks: `docs/RUNBOOK-{rotate,rollback,incident,restore,add-fallback}.md`.
 
