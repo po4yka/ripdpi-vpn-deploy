@@ -82,7 +82,6 @@ if [[ -z "$peer_json" || "$peer_json" == "null" ]]; then
   exit 1
 fi
 
-peer_pubkey="$(jq -r '.public_key' <<< "$peer_json")"
 peer_psk="$(jq -r '.preshared_key' <<< "$peer_json")"
 peer_allowed_ips="$(jq -r '.allowed_ips' <<< "$peer_json")"
 
@@ -192,11 +191,7 @@ fi
 
 # Optional I1..I5 (init-packet size overrides) — present in some cohorts.
 # Emit only when the param is present in secrets or cohort; no hard default.
-i1="$(resolve_param i1 "")"
-i2="$(resolve_param i2 "")"
-i3="$(resolve_param i3 "")"
-i4="$(resolve_param i4 "")"
-i5="$(resolve_param i5 "")"
+# (Resolved inline in the "Emit I1..I5" loop below.)
 
 # DNS servers come from the role defaults (not cohort-specific).
 dns_servers="1.1.1.1, 1.0.0.1"
@@ -232,7 +227,7 @@ EOF
 
 # Emit I1..I5 only when they are configured.
 for i_param in i1 i2 i3 i4 i5; do
-  eval "i_val=\"\${${i_param}}\""
+  i_val="$(resolve_param "$i_param" "")"
   if [[ -n "$i_val" ]]; then
     upper_param="$(echo "$i_param" | tr '[:lower:]' '[:upper:]')"
     printf '%s = %s\n' "$upper_param" "$i_val"
