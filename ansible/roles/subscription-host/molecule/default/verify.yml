@@ -60,6 +60,14 @@
         executable: /bin/bash
       changed_when: false
 
+    - name: revoked-hashes file contains the seeded revoked entry
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep -q 'deadbeefdeadbeefdeadbeef' /var/lib/vpn-subscription/revoked
+        executable: /bin/bash
+      changed_when: false
+
     - name: vpn-bootstrap.service journal has no fatal entries
       ansible.builtin.shell:
         cmd: |
