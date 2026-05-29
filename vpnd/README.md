@@ -27,6 +27,7 @@ vpnd doctor --host prod --ai      # diagnostic bundle as AI-ready prompt
 vpnd probe --profile p0           # profile-aware probing
 vpnd preflight                    # pre-deploy guards
 vpnd host list                    # local host registry
+vpnd ai-docs [--out DIR]          # emit repo docs as structured markdown for AI context (default: ./ai-docs/)
 ```
 
 ## `--explain`
