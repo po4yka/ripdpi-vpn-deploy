@@ -217,6 +217,7 @@ make backup-state                         # age-encrypt local TF state
 make burn-check                           # external IP reachability probe
 make diff-secrets                         # drift detection
 make emit-singbox CLIENT=<name>           # full sing-box client JSON
+make emit-awg CLIENT=<name>              # AmneziaWG wg-quick .conf for a named peer
 make install-hooks                        # one-time pre-commit setup
 make molecule-test ROLE=<name>            # role-level idempotence test
 make validate-target                      # pre-deploy REALITY target probe (8-step audit)
