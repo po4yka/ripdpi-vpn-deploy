@@ -91,3 +91,23 @@ test_allow_vultr_ssh_listed_cidr {
   }
   count(result) == 0
 }
+
+test_allow_upcloud_ssh_listed_cidr {
+  result := deny with input as {
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}},
+    "resource_changes": [{
+      "address": "upcloud_firewall_rules.vpn",
+      "type": "upcloud_firewall_rules",
+      "change": {"after": {"firewall_rule": [{
+        "action": "accept",
+        "direction": "in",
+        "protocol": "tcp",
+        "destination_port_start": "22",
+        "comment": "SSH allow 203.0.113.42/32",
+        "source_address_start": "203.0.113.42",
+        "source_address_end": "203.0.113.42",
+      }]}},
+    }],
+  }
+  count(result) == 0
+}
