@@ -7,3 +7,9 @@ hysteria:
   linux_arm64_sha256: ""
   cert_pem: ""
   key_pem: ""
+  # Masquerade behaviour presented to active probers.
+  # 'proxy' (default) forwards unmatched requests to masquerade_url,
+  # making the server look like a reverse proxy rather than a VPN endpoint.
+  # '404' is the upstream Hysteria2 default but is a well-known fingerprint.
+  masquerade_type: "proxy"
+  masquerade_url: "https://www.bing.com"

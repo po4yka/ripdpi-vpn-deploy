@@ -24,7 +24,12 @@ bandwidth:
   down: 200 mbps
 
 masquerade:
-  type: 404
+  type: proxy
+
+  proxy:
+    url: https://www.bing.com
+    rewriteHost: true
+
 
 quic:
   initStreamReceiveWindow: 8388608
