@@ -297,7 +297,7 @@ fn write_report(report: &MatrixReport, path: &Path) -> Result<()> {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating {}", parent.display()))?;
     }
-    let raw = serde_json::to_string_pretty(report)?;
+    let raw = report_to_json(report).map_err(anyhow::Error::from)?;
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, raw).with_context(|| format!("writing {}", tmp.display()))?;
     std::fs::rename(&tmp, path).with_context(|| format!("renaming {}", path.display()))?;
