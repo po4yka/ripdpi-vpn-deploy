@@ -75,4 +75,24 @@ impl Secrets {
     pub fn extra_key_names(&self) -> Vec<&str> {
         self._extra.keys().filter_map(|k| k.as_str()).collect()
     }
+
+    /// Subscription server hostname from `_extra["subscription"]["server_name"]`.
+    /// Returns `None` if the key is absent or not a string.
+    pub fn subscription_host(&self) -> Option<&str> {
+        self._extra
+            .get(serde_yaml::Value::String("subscription".into()))?
+            .as_mapping()?
+            .get(serde_yaml::Value::String("server_name".into()))?
+            .as_str()
+    }
+
+    /// Subscription port from `_extra["subscription"]["port"]`.
+    /// Returns `None` if the key is absent or not an integer.
+    pub fn subscription_port(&self) -> Option<u64> {
+        self._extra
+            .get(serde_yaml::Value::String("subscription".into()))?
+            .as_mapping()?
+            .get(serde_yaml::Value::String("port".into()))?
+            .as_u64()
+    }
 }
