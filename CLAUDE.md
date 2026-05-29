@@ -129,7 +129,7 @@ release-please drives versioning from Conventional Commits. Don't edit
 | Protocol toggles | `ansible/group_vars/all.yml` | `ansible/roles/*/`, vpnd config templates |
 | Recipient page | `vpnd/templates/recipient.html` | `ansible/roles/subscription-host/`, `docs/demo/` |
 | AWG cohort profiles | `ansible/roles/amneziawg/vars/cohorts/` | `docs/AWG-COHORTS.md` |
-| Xray version pin | `ansible/roles/xray/defaults/main.yml` | `docs/XRAY-RELEASE-LINE.md` |
+| Xray version pin | SOPS secret `xray.version` (see `secrets/prod.secrets.example.yaml`) | `ansible/roles/xray/defaults/main.yml` (sentinel only), `docs/XRAY-RELEASE-LINE.md` |
 
 ## Task tracking
 
