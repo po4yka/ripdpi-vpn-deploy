@@ -22,7 +22,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RELEASE_LINE_DOC = REPO_ROOT / "docs" / "XRAY-RELEASE-LINE.md"
-EXAMPLE_SECRETS = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
+EXAMPLE_PIN_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 
 # Matches a version heading that is marked as the current Latest, e.g.:
 #   ## v26.3.27 — ~2026-03-27 (current Latest as of 2026-05-10)
@@ -52,8 +52,8 @@ def main() -> int:
     if not RELEASE_LINE_DOC.exists():
         print(f"missing: {RELEASE_LINE_DOC}", file=sys.stderr)
         return 1
-    if not EXAMPLE_SECRETS.exists():
-        print(f"missing: {EXAMPLE_SECRETS}", file=sys.stderr)
+    if not EXAMPLE_PIN_FILE.exists():
+        print(f"missing: {EXAMPLE_PIN_FILE}", file=sys.stderr)
         return 1
 
     doc_text = RELEASE_LINE_DOC.read_text(encoding="utf-8")
@@ -67,11 +67,11 @@ def main() -> int:
         )
         return 1
 
-    example_data = yaml.safe_load(EXAMPLE_SECRETS.read_text(encoding="utf-8")) or {}
+    example_data = yaml.safe_load(EXAMPLE_PIN_FILE.read_text(encoding="utf-8")) or {}
     pin_version = extract_pin_version(example_data)
     if pin_version is None:
         print(
-            f"could not find xray.version in {EXAMPLE_SECRETS}",
+            f"could not find xray.version in {EXAMPLE_PIN_FILE}",
             file=sys.stderr,
         )
         return 1
