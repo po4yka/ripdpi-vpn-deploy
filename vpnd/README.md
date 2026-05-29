@@ -6,7 +6,7 @@ Convenience CLI for [vpn-deploy](../).
 roots, Ansible playbooks, and SOPS-encrypted secrets. The Makefile and
 `scripts/` keep working unchanged — `vpnd` does not replace them.
 
-Spec and rationale: [`docs/GOAL-vpnd-cli.md`](../docs/GOAL-vpnd-cli.md).
+Subcommand definitions: [`vpnd/src/cli.rs`](src/cli.rs). Design decisions: [`vpnd/CLAUDE.md`](CLAUDE.md).
 
 ## Build
 

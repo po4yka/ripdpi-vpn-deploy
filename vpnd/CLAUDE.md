@@ -5,7 +5,7 @@
 **Convenience layer, not replacement** — every subcommand maps to a documented
 `make <target>` invocation. `--explain` prints the underlying shell calls and
 exits. The Makefile and `scripts/` are the canonical surface; `vpnd` is the
-front door. See `docs/GOAL-vpnd-cli.md`.
+front door. Subcommand definitions live in `vpnd/src/cli.rs`.
 
 **Runner abstraction** — `runner/process.rs::Cmd` is a fluent builder that
 carries program + args + env + cwd + a human description. `--explain` calls

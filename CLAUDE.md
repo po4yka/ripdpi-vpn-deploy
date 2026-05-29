@@ -8,7 +8,7 @@ P3 manual reachability). Threat model is RU-internet / TSPU-aware.
 
 Nodes are disposable. Secrets are SOPS+age. The Makefile is the canonical
 operator surface; `vpnd/` is a convenience CLI in front of it (see
-`docs/GOAL-vpnd-cli.md`).
+`vpnd/CLAUDE.md` and `vpnd/src/cli.rs`).
 
 ## Hard rules
 
@@ -65,7 +65,7 @@ terraform/shared/CLAUDE.md               — cloud-init contract
 scripts/CLAUDE.md                        — shell/python conventions
 tests/CLAUDE.md                          — unit + snapshot + molecule + tf-test layers
 vpnd/CLAUDE.md                           — Rust convenience CLI
-docs/GOAL-vpnd-cli.md                    — vpnd spec (Phase 1–3)
+vpnd/src/cli.rs                          — vpnd subcommand + flag definitions (canonical SOT)
 docs/CDN-DECISION.md                     — ADR: CDN is not the RU baseline
 ```
 
