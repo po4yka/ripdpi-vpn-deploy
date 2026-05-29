@@ -119,10 +119,10 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
             ShareType::Singbox => &urls.qr_singbox,
             ShareType::Uri => &urls.qr_uri,
         };
-        // write_png emits a PBM file renamed to .png which is not a valid PNG;
-        // a real PNG encoder is intentionally omitted (no-new-deps constraint).
+        // Emit SVG QR codes only. write_png produces a PBM file renamed to
+        // .png (no real PNG encoder — no-new-deps constraint), which browsers
+        // refuse to render; the recipient page references qr.svg / qr-ripdpi.svg.
         qr::write_svg(payload, &out.join("qr.svg"))?;
-        qr::write_png(&ripdpi_deeplink, &out.join("qr-ripdpi.png"))?;
         qr::write_svg(&ripdpi_deeplink, &out.join("qr-ripdpi.svg"))?;
     }
 
