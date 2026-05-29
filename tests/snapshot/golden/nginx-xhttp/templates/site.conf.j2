@@ -22,11 +22,7 @@ server {
 
     add_header Strict-Transport-Security "max-age=31536000" always;
 
-    # Realistic-looking healthcheck endpoint
-    location = /health {
-        return 200 "ok\n";
-        add_header Content-Type text/plain;
-    }
+
 
     # XHTTP path → Xray localhost inbound
     location /app-sync/ {
