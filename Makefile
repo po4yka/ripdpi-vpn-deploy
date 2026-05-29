@@ -106,7 +106,11 @@ help:
 	@echo "  snapshot-update            Refresh the goldens (run after intentional change)"
 	@echo "  validate-secrets           jsonschema check (strict if SECRETS_FILE is set)"
 	@echo "  tf-test                    terraform test (mock_provider; needs TF 1.6+)"
-	@echo "  ci-fast                    Cheap pre-PR bundle: unit + snapshot + schema + render + syntax"
+	@echo "  ci-fast                    Cheap pre-PR bundle: unit + snapshot + schema + render + syntax + vpnd"
+	@echo "  bats-test                  Run bats shell tests (tests/bats/)"
+	@echo "  vpnd-test                  cargo test --release inside vpnd/"
+	@echo "  vpnd-clippy                cargo clippy --release (deny warnings) inside vpnd/"
+	@echo "  tf-policy                  terraform test + conftest OPA policy check for all providers"
 	@echo "  molecule-test ROLE=<name>  Run one role's molecule scenario"
 	@echo "  molecule-full-stack        site.yml end-to-end inside a Docker container"
 
@@ -269,6 +273,13 @@ ci-fast:
 	fi
 	@echo "== unit tests =="; python3 -m pytest tests/unit/ -q
 	@echo "== bats shell tests =="; bats tests/bats/
+	@if command -v cargo >/dev/null 2>&1; then \
+	  echo "== vpnd clippy =="; cd vpnd && cargo clippy --release --all-targets -- -D warnings; \
+	  echo "== vpnd tests =="; cargo test --release; \
+	else \
+	  echo "== vpnd clippy == (skipped: cargo not on PATH)"; \
+	  echo "== vpnd tests == (skipped: cargo not on PATH)"; \
+	fi
 	@echo "ci-fast: OK"
 
 # Union gate: everything in validate + everything in ci-fast.
