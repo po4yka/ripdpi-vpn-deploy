@@ -1284,7 +1284,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__share)
-            opts="-e -p -y -h --qr --type --out --explain --env --provider --yes --json --root --help <CLIENT>"
+            opts="-e -p -y -h --qr --type --out --token --explain --env --provider --yes --json --root --help <CLIENT>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1295,6 +1295,10 @@ _vpnd() {
                     return 0
                     ;;
                 --out)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --token)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
