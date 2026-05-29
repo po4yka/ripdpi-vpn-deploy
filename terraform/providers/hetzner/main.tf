@@ -5,11 +5,13 @@ locals {
     build_env            = var.build_env
   })
 
+  # Labels are intentionally minimal to limit provider-side fingerprinting.
+  # role and provisioner are omitted — they identify the workload type to
+  # a cloud provider's analytics pipeline. managed_by and env are kept for
+  # cost-allocation and operational filtering.
   base_labels = merge(var.labels, {
-    role        = "vpn"
-    managed_by  = "terraform"
-    provisioner = "ansible"
-    env         = var.build_env
+    managed_by = "terraform"
+    env        = var.build_env
   })
 }
 
