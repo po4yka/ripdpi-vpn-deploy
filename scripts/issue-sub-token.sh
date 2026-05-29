@@ -14,6 +14,7 @@
 #   make issue-sub-token CLIENT=phone
 #   scripts/issue-sub-token.sh phone --expires 2026-12-31 --qr
 #   scripts/issue-sub-token.sh phone --refresh-token <existing-token>
+#   scripts/issue-sub-token.sh phone --print-token-only   # emit bare token on stdout only
 #
 # The token IS the bearer. Distribute the URL over a secure channel.
 set -euo pipefail
@@ -28,11 +29,13 @@ shift
 EXPIRES=""
 EMIT_QR=0
 REFRESH_TOKEN=""
+PRINT_TOKEN_ONLY=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --expires)       EXPIRES="$2"; shift 2 ;;
-    --qr)            EMIT_QR=1; shift ;;
-    --refresh-token) REFRESH_TOKEN="$2"; shift 2 ;;
+    --expires)          EXPIRES="$2"; shift 2 ;;
+    --qr)               EMIT_QR=1; shift ;;
+    --refresh-token)    REFRESH_TOKEN="$2"; shift 2 ;;
+    --print-token-only) PRINT_TOKEN_ONLY=1; shift ;;
     *) echo "unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -81,6 +84,11 @@ sub_port="$(sops --decrypt --output-type json "$sops_file" | \
   python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('subscription') or {}).get('port') or 8444)")"
 
 url="https://${sub_host}:${sub_port}/sub/${token}"
+
+if (( PRINT_TOKEN_ONLY )); then
+  printf '%s\n' "$token"
+  exit 0
+fi
 
 echo
 echo "Subscription URL (long-lived, refresh-able):"
