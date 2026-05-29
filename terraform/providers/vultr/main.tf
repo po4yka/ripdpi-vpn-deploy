@@ -5,8 +5,12 @@ locals {
     build_env            = var.build_env
   })
 
+  # Tags are intentionally minimal to limit provider-side fingerprinting.
+  # "vpn" and "ansible" are omitted — they identify the workload type to
+  # a cloud provider's analytics pipeline. "terraform" (managed_by) and
+  # build_env are kept for cost-allocation and operational filtering.
   base_tags = distinct(concat(
-    ["vpn", "terraform", "ansible", var.build_env],
+    ["terraform", var.build_env],
     [for key, value in var.labels : "${key}:${value}"],
   ))
 }
