@@ -30,6 +30,14 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
         .find_client(&args.client)
         .ok_or_else(|| anyhow!("client '{}' not found in the decrypted secrets file", args.client))?;
 
+    // TODO(security): use issue-sub-token random token instead of client.name
+    // The subscription path should use an opaque random token issued by
+    // `make issue-sub-token CLIENT=…` so that /sub/<token> is not enumerable.
+    // Wiring the token retrieval requires SOPS + SSH + Terraform state that is
+    // unavailable in the offline build sandbox, so client.name is percent-encoded
+    // as a minimal safety measure until the full token integration is done.
+    let encoded_name = urlencode(&client.name);
+
     // sing-box bundle from existing script — preserves multi-host + cohort awareness.
     let singbox = make::target_with(ctx, "emit-singbox", &[("CLIENT", &args.client)]).capture(false).await?;
 
@@ -41,10 +49,10 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
 
     // Recipient landing page
     let host = secrets.xhttp_host.as_deref().or(secrets.server_name.as_deref()).unwrap_or("(unset)");
-    let subscription_url = format!("https://{host}/sub/{}", &client.name);
+    let subscription_url = format!("https://{host}/sub/{encoded_name}");
     let singbox_deeplink = format!(
         "sing-box://import-remote-profile?url={}",
-        urlencode(&format!("https://{host}/sub/{}.json", &client.name)),
+        urlencode(&format!("https://{host}/sub/{encoded_name}.json")),
     );
     let ripdpi_deeplink = format!("ripdpi://import?sub={}", urlencode(&subscription_url));
     let page = recipient::render(&recipient::RecipientCtx {
@@ -62,8 +70,8 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
     // QR
     if args.qr {
         let payload = match args.r#type {
-            ShareType::Singbox => format!("https://{host}/sub/{}.json", &client.name),
-            ShareType::Uri => format!("https://{host}/sub/{}", &client.name),
+            ShareType::Singbox => format!("https://{host}/sub/{encoded_name}.json"),
+            ShareType::Uri => format!("https://{host}/sub/{encoded_name}"),
         };
         // Emit SVG only; the recipient page references qr.svg.
         // write_png emits a PBM file renamed to .png which is not a valid PNG;
@@ -75,7 +83,7 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
 
     println!();
     println!("{} {}", "share bundle:".green().bold(), out.display());
-    println!("  recipient URL:  https://{host}/sub/{}", &client.name);
+    println!("  recipient URL:  https://{host}/sub/{encoded_name}");
     println!("  landing page:   {}", out.join("index.html").display());
     if args.qr {
         println!("  QR (svg):       {}", out.join("qr.svg").display());
