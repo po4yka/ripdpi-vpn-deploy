@@ -136,8 +136,15 @@ table inet filter {
     type filter hook forward priority 0;
 {% if vpn.enable_amneziawg | default(false) %}
     policy accept;
+{% if _awg_inst | length > 0 %}
+{% for inst in _awg_inst %}
+    iifname "{{ inst.name }}" accept
+    oifname "{{ inst.name }}" accept
+{% endfor %}
+{% else %}
     iifname "awg0" accept
     oifname "awg0" accept
+{% endif %}
 {% else %}
     policy drop;
 {% endif %}
@@ -153,7 +160,13 @@ table inet filter {
 table inet nat {
   chain postrouting {
     type nat hook postrouting priority 100;
+{% if _awg_inst | length > 0 %}
+{% for inst in _awg_inst %}
+    iifname "{{ inst.name }}" oifname != "{{ inst.name }}" masquerade
+{% endfor %}
+{% else %}
     iifname "awg0" oifname != "awg0" masquerade
+{% endif %}
   }
 }
 {% endif %}

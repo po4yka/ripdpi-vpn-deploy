@@ -81,8 +81,10 @@ table inet filter {
     type filter hook forward priority 0;
 
     policy accept;
+
     iifname "awg0" accept
     oifname "awg0" accept
+
 
   }
 
@@ -96,7 +98,9 @@ table inet filter {
 table inet nat {
   chain postrouting {
     type nat hook postrouting priority 100;
+
     iifname "awg0" oifname != "awg0" masquerade
+
   }
 }
 
