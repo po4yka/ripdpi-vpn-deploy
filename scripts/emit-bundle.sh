@@ -253,7 +253,6 @@ for i in "${!host_pairs[@]}"; do
       listen_port="$(jq -r '.amneziawg_secrets.listen_port // empty' "$secrets_tmp")"
       [[ -z "$listen_port" ]] && listen_port=51820
 
-      peer_pubkey="$(jq -r '.public_key'    <<< "$peer_json")"
       peer_psk="$(jq -r    '.preshared_key' <<< "$peer_json")"
       peer_addr="$(jq -r   '.allowed_ips'   <<< "$peer_json")"
 
@@ -286,12 +285,6 @@ for i in "${!host_pairs[@]}"; do
         exit 1
       fi
 
-      i1="$(resolve_awg_param i1 "" "$secrets_tmp" "$cohort_yml_path")"
-      i2="$(resolve_awg_param i2 "" "$secrets_tmp" "$cohort_yml_path")"
-      i3="$(resolve_awg_param i3 "" "$secrets_tmp" "$cohort_yml_path")"
-      i4="$(resolve_awg_param i4 "" "$secrets_tmp" "$cohort_yml_path")"
-      i5="$(resolve_awg_param i5 "" "$secrets_tmp" "$cohort_yml_path")"
-
       # Build the AWG JSON object; conditionally include i1..i5
       awg_obj="$(jq -n \
         --arg tag "p2-awg-${CLIENT_NAME}" \
@@ -323,7 +316,7 @@ for i in "${!host_pairs[@]}"; do
 
       # Splice in i1..i5 only when present
       for i_param in i1 i2 i3 i4 i5; do
-        eval "i_val=\"\${${i_param}}\""
+        i_val="$(resolve_awg_param "$i_param" "" "$secrets_tmp" "$cohort_yml_path")"
         if [[ -n "$i_val" ]]; then
           awg_obj="$(jq --arg k "$i_param" --argjson v "$i_val" '. + {($k): $v}' <<< "$awg_obj")"
         fi
