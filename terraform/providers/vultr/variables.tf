@@ -93,9 +93,10 @@ variable "enable_ipv6" {
 }
 
 variable "enable_backups" {
-  type        = bool
-  default     = true
-  description = "Enable provider-side server backups."
+  type    = bool
+  default = false
+  # Vultr snapshots are unencrypted; backups owned by the restic+age backup role.
+  description = "Enable provider-side server backups. Off by default: Vultr snapshots are unencrypted and bypass the restic+age backup chain."
 }
 
 variable "additional_public_ip" {
