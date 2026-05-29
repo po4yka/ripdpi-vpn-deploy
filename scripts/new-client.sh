@@ -31,6 +31,19 @@ if [[ ! -f "$SOPS_FILE" ]]; then
   exit 1
 fi
 
+# Fail fast if a client with this name already exists in any profile.
+existing_xray="$(sops --decrypt --extract '["xray"]["clients"]' --output-type json "$SOPS_FILE" 2>/dev/null \
+  | python3 -c "import sys,json; peers=json.load(sys.stdin); print(any(p.get('name')==\"${NAME}\" for p in (peers or [])))" 2>/dev/null || echo False)"
+existing_hy="$(sops --decrypt --extract '["hysteria"]["clients"]' --output-type json "$SOPS_FILE" 2>/dev/null \
+  | python3 -c "import sys,json; peers=json.load(sys.stdin); print(any(p.get('name')==\"${NAME}\" for p in (peers or [])))" 2>/dev/null || echo False)"
+existing_awg="$(sops --decrypt --extract '["amneziawg_secrets"]["peers"]' --output-type json "$SOPS_FILE" 2>/dev/null \
+  | python3 -c "import sys,json; peers=json.load(sys.stdin); print(any(p.get('name')==\"${NAME}\" for p in (peers or [])))" 2>/dev/null || echo False)"
+if [[ "$existing_xray" == "True" || "$existing_hy" == "True" || "$existing_awg" == "True" ]]; then
+  echo "error: client '${NAME}' already exists in secrets (xray=${existing_xray} hysteria=${existing_hy} awg=${existing_awg})" >&2
+  echo "To replace a client, remove the existing entries first, then re-run." >&2
+  exit 1
+fi
+
 UUID="$(uuidgen)"
 SHORT_ID="$(openssl rand -hex 4)"
 HY_PASSWORD="$(openssl rand -base64 24)"
