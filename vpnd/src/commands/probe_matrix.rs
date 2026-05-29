@@ -191,7 +191,7 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
                 let cell_timeout = Duration::from_secs(30);
                 let result = match tokio::time::timeout(
                     cell_timeout,
-                    probe_cell(ctx, &cfg.vantage, *protocol, dest, now),
+                    probe_cell(ctx, &cfg.vantage, *protocol, dest, now, ctx.explain),
                 )
                 .await
                 {
@@ -310,6 +310,7 @@ async fn probe_cell(
     protocol: Protocol,
     dest: &Destination,
     now: SystemTime,
+    explain: bool,
 ) -> Result<CellResult> {
     let cmd = make::target_with(
         ctx,
@@ -322,7 +323,7 @@ async fn probe_cell(
         ],
     );
 
-    match cmd.capture(false).await {
+    match cmd.capture(explain).await {
         Ok(out) => match serde_json::from_str::<CellProbeOutput>(&out.stdout) {
             Ok(probe) => Ok(CellResult {
                 timestamp_unix_ms: unix_ms(now),
