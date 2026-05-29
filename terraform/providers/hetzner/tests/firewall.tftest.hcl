@@ -1,4 +1,14 @@
 # Native Terraform tests for the Hetzner provider root.
+#
+# DEFAULT-DENY MODEL (implicit):
+# Hetzner Cloud firewalls are allowlist-only. Any inbound traffic that does not
+# match an explicit rule is implicitly dropped at the Hetzner edge — there is no
+# separate "drop all" rule required in the emitted HCL. The safety net is built
+# in to the hcloud_firewall resource model.
+#
+# The assertion firewall_ssh_carries_cidr_constraint below documents and
+# machine-verifies this property: it checks that no SSH rule lists 0.0.0.0/0
+# or ::/0 as a source, which would defeat the implicit default-deny for port 22.
 
 mock_provider "hcloud" {}
 
@@ -157,4 +167,21 @@ run "rejects_invalid_xhttp_port_zero" {
   }
 
   expect_failures = [var.nginx_xhttp_public_port]
+}
+
+# Implicit default-deny contract: SSH must never accept from world-readable CIDRs.
+# Public ports (443, xhttp, UDP/443) intentionally list 0.0.0.0/0 and ::/0 as
+# sources; SSH must always be CIDR-scoped to preserve the implicit default-deny.
+run "firewall_ssh_carries_cidr_constraint" {
+  command = plan
+
+  assert {
+    condition = length([
+      for r in hcloud_firewall.vpn.rule :
+      r if r.protocol == "tcp"
+      && r.port == "22"
+      && (contains(r.source_ips, "0.0.0.0/0") || contains(r.source_ips, "::/0"))
+    ]) == 0
+    error_message = "SSH rules must carry a CIDR constraint; 0.0.0.0/0 or ::/0 SSH violates the implicit default-deny contract"
+  }
 }

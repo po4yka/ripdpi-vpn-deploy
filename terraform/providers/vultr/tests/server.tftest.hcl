@@ -26,15 +26,17 @@ run "server_cloud_init_user_data_is_wired" {
   }
 }
 
-run "server_defaults_to_ipv6_and_backups_enabled" {
+run "server_defaults_to_ipv6_enabled_backups_disabled" {
   command = plan
 
   assert {
     condition = (
       vultr_instance.vpn.enable_ipv6 == true
-      && vultr_instance.vpn.backups == "enabled"
+      && vultr_instance.vpn.backups == "disabled"
     )
-    error_message = "Default Vultr deploy must keep IPv6 and provider backups enabled"
+    # Backups are disabled by default: Vultr snapshots are unencrypted.
+    # Backup ownership belongs to the restic+age backup role.
+    error_message = "Default Vultr deploy must have IPv6 enabled and provider backups disabled (unencrypted snapshots)"
   }
 }
 
