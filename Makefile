@@ -13,7 +13,7 @@ export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
 .PHONY: help init validate plan apply inventory wait decrypt dry-run deploy verify clean \
         pre-deploy-check \
         rollback-xray rollback-config rotate-credentials check-prereqs \
-        destroy backup-state burn-check diff-secrets emit-singbox emit-awg install-hooks \
+        destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
         molecule-test smoke-test validate-target scan-targets blue-green \
         spot-check-secrets bootstrap-secrets probe-asn emit-qr check-certs \
         audit-permissions asn-drift check-ip-reputation issue-bootstrap \
@@ -72,6 +72,7 @@ help:
 	@echo "── CLIENT / DELIVERY ──────────────────────────────────────────────────"
 	@echo "  emit-singbox CLIENT=…      Full sing-box client JSON (multi-host + cohort aware)"
 	@echo "  emit-awg CLIENT=…          AmneziaWG wg-quick .conf for a named peer"
+	@echo "  emit-bundle CLIENT=…       RIPDPI-extended sing-box JSON (singbox + ripdpi object)"
 	@echo "  emit-qr CLIENT=…           PNG QR for the client (TYPE=singbox|uri, OUT=path)"
 	@echo "  issue-bootstrap CLIENT=…   Issue a one-time /bootstrap/<token> URL"
 	@echo "  issue-sub-token CLIENT=…   Issue a long-lived /sub/<token> URL (EXPIRES=… QR=1)"
@@ -224,6 +225,10 @@ emit-singbox:
 emit-awg:
 	@test -n "$(CLIENT)" || { echo "CLIENT=<name> required"; exit 1; }
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/emit-awg.sh $(CLIENT)
+
+emit-bundle:
+	@test -n "$(CLIENT)" || { echo "CLIENT=<name> required"; exit 1; }
+	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/emit-bundle.sh $(CLIENT)
 
 install-hooks:
 	# TODO: route via hash-pinned requirements.txt once pip-compile
