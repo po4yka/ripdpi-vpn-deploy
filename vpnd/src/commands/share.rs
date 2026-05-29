@@ -40,13 +40,20 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
 
     // Recipient landing page
     let host = secrets.xhttp_host.as_deref().or(secrets.server_name.as_deref()).unwrap_or("(unset)");
+    let subscription_url = format!("https://{host}/sub/{}", &client.name);
+    let singbox_deeplink = format!(
+        "sing-box://import-remote-profile?url={}",
+        urlencode(&format!("https://{host}/sub/{}.json", &client.name)),
+    );
+    let ripdpi_deeplink = format!("ripdpi://import?sub={}", urlencode(&subscription_url));
     let page = recipient::render(&recipient::RecipientCtx {
         client_name: &client.name,
         host,
         env: &ctx.env,
         provider: &ctx.provider,
-        subscription_url: &format!("https://{host}/sub/{}", &client.name),
-        singbox_deeplink: &format!("sing-box://import-remote-profile?url={}", urlencode(&format!("https://{host}/sub/{}.json", &client.name))),
+        subscription_url: &subscription_url,
+        singbox_deeplink: &singbox_deeplink,
+        ripdpi_deeplink: &ripdpi_deeplink,
         apps: per_platform_apps(),
     })?;
     std::fs::write(out.join("index.html"), &page)?;
@@ -59,6 +66,8 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
         };
         qr::write_png(&payload, &out.join("qr.png"))?;
         qr::write_svg(&payload, &out.join("qr.svg"))?;
+        qr::write_png(&ripdpi_deeplink, &out.join("qr-ripdpi.png"))?;
+        qr::write_svg(&ripdpi_deeplink, &out.join("qr-ripdpi.svg"))?;
     }
 
     println!();

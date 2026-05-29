@@ -16,6 +16,8 @@ fn recipient_page_renders_with_expected_sections() {
         subscription_url: "https://vpn.example.com/sub/phone",
         singbox_deeplink:
             "sing-box://import-remote-profile?url=https%3A%2F%2Fvpn.example.com%2Fsub%2Fphone.json",
+        ripdpi_deeplink:
+            "ripdpi://import?sub=https%3A%2F%2Fvpn.example.com%2Fsub%2Fphone",
         apps: vec![
             AppCard {
                 platform: "iOS".to_string(),
@@ -43,6 +45,7 @@ fn recipient_page_renders_with_expected_sections() {
     assert!(out.contains("For <strong>phone</strong>"));
     assert!(out.contains("https://vpn.example.com/sub/phone"));
     assert!(out.contains("sing-box://import-remote-profile"));
+    assert!(out.contains("ripdpi://import?sub="));
     assert!(out.contains("Streisand"));
     assert!(out.contains("v2rayNG"));
     assert!(out.contains("Hiddify"));
@@ -60,6 +63,7 @@ fn recipient_page_escapes_hostile_input() {
         provider: "upcloud",
         subscription_url: "https://vpn.example.com/sub/x",
         singbox_deeplink: "sing-box://import-remote-profile?url=x",
+        ripdpi_deeplink: "ripdpi://import?sub=https%3A%2F%2Fvpn.example.com%2Fsub%2Fx",
         apps: vec![],
     };
     let out = render(&ctx).expect("render must succeed");
