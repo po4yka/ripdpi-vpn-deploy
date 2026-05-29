@@ -34,6 +34,9 @@ LISTEN_PORT = {{ honeypot.port }}
 LOG_DIR = pathlib.Path("{{ honeypot.log_dir }}")
 TEXTFILE_DIR = pathlib.Path("{{ honeypot.textfile_dir }}")
 EVENTS_PER_MINUTE_MAX = {{ honeypot.events_per_minute_max | default(1000) }}
+# Cap unique-IP and unique-SNI sets to avoid unbounded memory growth
+# under mass-scan conditions (mirrors the bounded _recent_minutes deque).
+UNIQUE_SETS_MAX = {{ honeypot.unique_sets_max | default(50000) }}
 
 logging.basicConfig(
     format="honeypot[%(process)d]: %(levelname)s %(message)s",
@@ -123,8 +126,9 @@ def _bump(source_ip: str, sni: str | None) -> bool:
             return False
         _recent_minutes[-1] = (now_min, cur_min_count + 1)
         _total_events += 1
-        _unique_ips.add(source_ip)
-        if sni:
+        if len(_unique_ips) < UNIQUE_SETS_MAX:
+            _unique_ips.add(source_ip)
+        if sni and len(_unique_snis) < UNIQUE_SETS_MAX:
             _unique_snis.add(sni)
     return True
 
