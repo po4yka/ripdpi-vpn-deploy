@@ -81,6 +81,20 @@ test_allow_null_user_data {
   count(result) == 0
 }
 
+# -- multiline user_data: secret on a non-first line must still be caught --
+# Validates that the (?im) flags make ^ anchor per-line, not just string-start.
+# Without (?m), the regex would only match if the keyword is at byte-0 of the blob.
+test_deny_on_secret_in_multiline_user_data {
+  result := deny with input as {
+    "resource_changes": [{
+      "address": "upcloud_server.vpn",
+      "type": "upcloud_server",
+      "change": {"after": {"user_data": "#cloud-config\npackages:\n  - python3\npassword: hunter2secret\n"}},
+    }]
+  }
+  count(result) == 1
+}
+
 test_allow_non_server_resource_type {
   result := deny with input as {
     "resource_changes": [{
