@@ -22,11 +22,16 @@ server {
 
     add_header Strict-Transport-Security "max-age=31536000" always;
 
-    # Realistic-looking healthcheck endpoint
+{% if nginx_xhttp.health_endpoint_enabled | default(false) %}
+    # Optional healthcheck endpoint — disabled by default (DPI fingerprint risk).
+    # Enable only for internal monitoring that cannot use a separate probe path.
+    # Set nginx_xhttp.health_endpoint_enabled: true to activate.
+    # Consumers: scripts/healthcheck.sh
     location = /health {
         return 200 "ok\n";
         add_header Content-Type text/plain;
     }
+{% endif %}
 
     # XHTTP path → Xray localhost inbound
     location {{ xray.xhttp_path | default('/app-sync') }}/ {
