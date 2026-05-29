@@ -30,6 +30,8 @@ server {
 
     # XHTTP path → Xray localhost inbound
     location {{ xray.xhttp_path | default('/app-sync') }}/ {
+        access_log off;
+
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto https;
