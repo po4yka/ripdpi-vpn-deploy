@@ -143,8 +143,9 @@ toggle_enabled() {
 }
 
 # Each host's secrets get decrypted to its own tempfile; cleaned on exit.
+umask 0077
 WORK="$(mktemp -d -t vpn-singbox.XXXXXX)"
-trap 'rm -rf "$WORK"' EXIT
+trap 'find "$WORK" -type f -exec shred -u {} \; 2>/dev/null; rm -rf "$WORK"' EXIT
 
 OUTBOUNDS='[]'
 
