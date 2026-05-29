@@ -3,7 +3,7 @@ subscription:
   port: 8444
   rate_limit: "5r/m"   # per-IP request rate (nginx limit_req)
   rate_burst: 3        # burst allowance before queuing/rejecting
-  revoked_tokens: []   # populated from secrets when revocation happens
+  revoked_tokens: []   # list of sha256 hex hashes; populated from secrets when revocation happens
   # server_name defaults to nginx_xhttp.server_name when not set
 
   # One-time bootstrap tokens (SUBSCRIPTION-PLANE.md item 1). When
