@@ -1,4 +1,17 @@
 # Native Terraform tests for the Vultr provider root.
+#
+# DEFAULT-DENY MODEL (implicit):
+# Vultr firewall groups are allowlist-only. Any inbound traffic that does not
+# match an explicit rule is implicitly dropped by Vultr's edge — there is no
+# separate "drop all" rule in the emitted HCL. The safety net is built in to
+# the Vultr firewall group model.
+#
+# The assertion firewall_no_unrestricted_tcp_accept below documents and
+# machine-verifies this property: it checks that no TCP rule opens an accept-all
+# source (0.0.0.0/0 or ::/0), which would defeat the implicit default-deny for
+# that port. SSH is the only port with source-restricted rules; public ports
+# (443, xhttp) intentionally accept from 0.0.0.0 / :: — that is correct and
+# is not tested here (see the REALITY and hysteria assertions above).
 
 mock_provider "vultr" {}
 
@@ -141,4 +154,19 @@ run "rejects_invalid_xhttp_port_zero" {
   }
 
   expect_failures = [var.nginx_xhttp_public_port]
+}
+
+# Implicit default-deny contract: no SSH rule must open an unrestricted source.
+# Public ports (443, xhttp) are intentionally world-accessible; SSH must always
+# carry a CIDR constraint (subnet_size > 0 or subnet != "0.0.0.0"/"::").
+run "firewall_ssh_carries_cidr_constraint" {
+  command = plan
+
+  assert {
+    condition = length([
+      for r in values(vultr_firewall_rule.ssh) :
+      r if r.subnet == "0.0.0.0" && r.subnet_size == 0
+    ]) == 0
+    error_message = "SSH rules must carry a CIDR constraint; unrestricted 0.0.0.0/0 SSH violates the implicit default-deny contract"
+  }
 }
