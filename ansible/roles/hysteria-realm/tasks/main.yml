@@ -5,10 +5,10 @@
   ansible.builtin.assert:
     that:
       - not (vpn.enable_subscription_host | default(false) and
-             hysteria_realm.listen_port == subscription.port | default(8444))
+             hysteria_realm.listen_port == (subscription | default({})).port | default(8444))
     fail_msg: >-
       hysteria_realm.listen_port ({{ hysteria_realm.listen_port }}) collides
-      with subscription.port ({{ subscription.port | default(8444) }}). Both
+      with subscription.port ({{ (subscription | default({})).port | default(8444) }}). Both
       are enabled on this host. Override one of the ports in host_vars or
       group_vars before deploying. See roles/hysteria-realm/CLAUDE.md pitfalls.
 
