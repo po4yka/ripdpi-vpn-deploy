@@ -97,6 +97,10 @@ pub struct ShareArgs {
     /// Output directory for generated artifacts (default: ./share/<client>/).
     #[arg(long)]
     pub out: Option<std::path::PathBuf>,
+    /// Opaque subscription token from `make issue-sub-token CLIENT=<c> --print-token-only`.
+    /// If omitted, the URL falls back to the (enumerable) client name.
+    #[arg(long)]
+    pub token: Option<String>,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
