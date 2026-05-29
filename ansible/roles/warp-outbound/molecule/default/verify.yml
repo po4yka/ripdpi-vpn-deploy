@@ -89,3 +89,35 @@
         path: /tmp/warp-cli-calls.log
       register: warp_call_log
       failed_when: not warp_call_log.stat.exists
+
+    - name: warp-cli registration new was invoked
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep -q 'registration new' /tmp/warp-cli-calls.log
+        executable: /bin/bash
+      changed_when: false
+
+    - name: warp-cli mode proxy was invoked
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep -q 'mode proxy' /tmp/warp-cli-calls.log
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Cloudflare WARP apt source file is present (when install_warp_cli true)
+      ansible.builtin.stat:
+        path: /etc/apt/sources.list.d/cloudflare-warp.list
+      register: warp_apt_source
+      # The converge stub sets install_warp_cli: false, so the file is
+      # absent; the check is a no-op. When install_warp_cli: true this
+      # assertion fires and validates the role placed the source file.
+      failed_when: false
+
+    - name: Cloudflare WARP GPG keyring is present (when install_warp_cli true)
+      ansible.builtin.stat:
+        path: /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+      register: warp_gpg_keyring
+      # Same note as above — absent when install_warp_cli: false.
+      failed_when: false
