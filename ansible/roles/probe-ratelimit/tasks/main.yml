@@ -4,6 +4,14 @@
 # vpn.enable_probe_ratelimit). The site.yml ordering ensures firewall
 # runs first.
 
+- name: Pre-flight — probe_offenders nftables set must exist
+  ansible.builtin.command:
+    cmd: nft list set inet filter probe_offenders
+  register: _probe_offenders_check
+  changed_when: false
+  failed_when: _probe_offenders_check.rc != 0
+  when: vpn.enable_probe_ratelimit | default(false)
+
 - name: Install daemon script
   ansible.builtin.template:
     src: probe-ratelimit.py.j2
