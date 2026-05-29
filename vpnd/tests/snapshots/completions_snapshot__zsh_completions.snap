@@ -79,6 +79,7 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 '--type=[QR payload type]:TYPE:(singbox uri)' \
 '--out=[Output directory for generated artifacts (default\: ./share/<client>/)]:OUT:_files' \
+'--token=[Opaque subscription token from \`make issue-sub-token CLIENT=<c> --print-token-only\`. If omitted, the URL falls back to the (enumerable) client name]:TOKEN:_default' \
 '-e+[Target environment]:ENV:_default' \
 '--env=[Target environment]:ENV:_default' \
 '-p+[Cloud provider Terraform root]:PROVIDER:_default' \
