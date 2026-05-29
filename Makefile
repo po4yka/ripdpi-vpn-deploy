@@ -129,7 +129,7 @@ validate:
 
 decrypt:
 	@test -f "$(SOPS_FILE)" || { echo "missing $(SOPS_FILE)"; exit 1; }
-	sops --decrypt $(SOPS_FILE) > $(SECRETS_FILE)
+	sops --decrypt --output $(SECRETS_FILE) $(SOPS_FILE)
 	chmod 0600 $(SECRETS_FILE)
 	@echo "decrypted to $(SECRETS_FILE)"
 
