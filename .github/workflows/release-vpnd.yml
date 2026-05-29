@@ -125,7 +125,7 @@ jobs:
         env:
           SBOM_LABEL: ${{ github.ref_name }}
         run: |
-          python3 -m pip install --quiet pyyaml
+          python3 -m pip install --quiet --require-hashes --no-deps -r requirements.txt
           python3 scripts/emit-sbom.py
           cp "sbom/${SBOM_LABEL}.json" dist/sbom.json
 
