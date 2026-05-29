@@ -47,7 +47,7 @@
 <body>
   <div class="wrap">
     <h1>Connect to {{ host }}</h1>
-    <p class="sub">For <strong>{{ client_name }}</strong>. One profile, three steps: install an app, import this profile, connect.</p>
+    <p class="sub">For <strong>{{ client_name }}</strong>. One profile, four steps: install an app, import this profile, connect.</p>
 
     <noscript>
       <div class="card">
@@ -58,11 +58,25 @@
     </noscript>
 
     <div class="card">
-      <h3>1. Scan the QR or tap the deep link</h3>
+      <h3>1. Add to RIPDPI</h3>
+      <div class="row">
+        <div class="qr"><img src="qr-ripdpi.png" alt="RIPDPI QR code"></div>
+        <div>
+          <a class="btn" href="{{ ripdpi_deeplink }}">Add to RIPDPI</a>
+          <details>
+            <summary>Show the raw URL</summary>
+            <p class="mono">{{ ripdpi_deeplink }}</p>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>2. Or use sing-box / subscription URL</h3>
       <div class="row">
         <div class="qr"><img src="qr.png" alt="QR code"></div>
         <div>
-          <a class="btn" href="{{ singbox_deeplink }}">Open in sing-box</a>
+          <a class="btn secondary" href="{{ singbox_deeplink }}">Open in sing-box</a>
           <div class="row">
             <a class="btn secondary" href="{{ subscription_url }}">Subscription URL</a>
           </div>
@@ -74,7 +88,7 @@
       </div>
     </div>
 
-    <h2>2. Install a VPN app</h2>
+    <h2>3. Install a VPN app</h2>
     {% for app in apps %}
     <div class="card">
       <h3>{{ app.platform }}</h3>
@@ -90,7 +104,7 @@
     </div>
     {% endfor %}
 
-    <h2>3. Connect</h2>
+    <h2>4. Connect</h2>
     <div class="card">
       <p>After importing the profile, toggle the VPN on in the app. If something looks wrong:</p>
       <ul>

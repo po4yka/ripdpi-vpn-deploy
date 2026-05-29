@@ -70,6 +70,7 @@ fn share_bundle_directory_structure_index_html() {
         provider: "upcloud",
         subscription_url: "https://vpn.example.com/sub/phone",
         singbox_deeplink: "sing-box://import-remote-profile?url=https%3A%2F%2Fvpn.example.com%2Fsub%2Fphone.json",
+        ripdpi_deeplink: "ripdpi://import?sub=https%3A%2F%2Fvpn.example.com%2Fsub%2Fphone",
         apps: vec![],
     };
     let html = recipient::render(&ctx).unwrap();
@@ -137,6 +138,7 @@ fn recipient_subscription_url_matches_host_and_client() {
         provider: "upcloud",
         subscription_url: &sub_url,
         singbox_deeplink: "sing-box://import-remote-profile?url=x",
+        ripdpi_deeplink: "ripdpi://import?sub=x",
         apps: vec![],
     };
     let html = recipient::render(&ctx).unwrap();

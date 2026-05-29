@@ -27,6 +27,7 @@ pub struct RecipientCtx<'a> {
     pub provider: &'a str,
     pub subscription_url: &'a str,
     pub singbox_deeplink: &'a str,
+    pub ripdpi_deeplink: &'a str,
     pub apps: Vec<AppCard>,
 }
 
@@ -39,6 +40,7 @@ struct RecipientTemplate<'a> {
     provider: &'a str,
     subscription_url: &'a str,
     singbox_deeplink: &'a str,
+    ripdpi_deeplink: &'a str,
     apps: &'a [AppCard],
 }
 
@@ -50,6 +52,7 @@ pub fn render(ctx: &RecipientCtx<'_>) -> Result<String> {
         provider: ctx.provider,
         subscription_url: ctx.subscription_url,
         singbox_deeplink: ctx.singbox_deeplink,
+        ripdpi_deeplink: ctx.ripdpi_deeplink,
         apps: &ctx.apps,
     };
     Ok(t.render()?)
