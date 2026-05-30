@@ -17,6 +17,29 @@
       on TCP/443 for full-stack hosts and move nginx-xhttp to another public port,
       or disable REALITY for a direct-only cohort before using 443.
 
+- name: Pre-flight — fallback frontend port must not collide with other listeners
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (
+          (nginx_xhttp.fallback_enabled | default(false) | bool)
+          and (
+            (nginx_xhttp_fallback_port | default(2083) | int) in [
+              xray_port | default(443) | int,
+              xray_fallback_port | default(0) | int,
+              nginx_xhttp_public_port | default(8443) | int,
+              cdn_front.port | default(8443) | int,
+            ]
+          )
+        )
+    fail_msg: |
+      nginx_xhttp_fallback_port={{ nginx_xhttp_fallback_port | default(2083) }} collides
+      with an existing public listener (xray_port={{ xray_port | default(443) }},
+      xray_fallback_port={{ xray_fallback_port | default(0) }},
+      nginx_xhttp_public_port={{ nginx_xhttp_public_port | default(8443) }},
+      cdn_front.port={{ cdn_front.port | default(8443) }}). Pick a free port for the
+      direct (non-CDN) XHTTP fallback frontend.
+
 - name: Install nginx
   ansible.builtin.apt:
     name:
@@ -53,6 +76,32 @@
     mode: "0600"
   no_log: true
   diff: false
+
+- name: Drop fallback server certificate (full chain) when a distinct domain is used
+  ansible.builtin.copy:
+    content: "{{ nginx_xhttp.fallback_cert_pem }}"
+    dest: /etc/nginx/tls/{{ nginx_xhttp.fallback_server_name }}.fullchain.pem
+    owner: root
+    group: root
+    mode: "0644"
+  no_log: true
+  diff: false
+  when:
+    - nginx_xhttp.fallback_enabled | default(false) | bool
+    - (nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name)) != nginx_xhttp.server_name
+
+- name: Drop fallback server certificate key when a distinct domain is used
+  ansible.builtin.copy:
+    content: "{{ nginx_xhttp.fallback_key_pem }}"
+    dest: /etc/nginx/tls/{{ nginx_xhttp.fallback_server_name }}.key
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+  when:
+    - nginx_xhttp.fallback_enabled | default(false) | bool
+    - (nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name)) != nginx_xhttp.server_name
 
 - name: Disable default nginx site
   ansible.builtin.file:

@@ -1,0 +1,52 @@
+---
+# fallback-on scenario — exercises the optional second, DIRECT (non-CDN)
+# HTTPS XHTTP frontend with nginx_xhttp.fallback_enabled: true.
+# This variant asserts:
+#   * a second `listen 2083 ssl http2;` server block is present
+#   * it reuses the shared Xray localhost upstream (127.0.0.1:10085)
+#   * it carries NO Cloudflare real_ip directives (RU baseline holds)
+#   * nginx binds the fallback port at runtime
+#   * the primary 8443 listener and its assertions still pass
+#
+# Distinct from the default scenario, which keeps the fallback off.
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../../../requirements.yml
+
+driver:
+  name: docker
+
+platforms:
+  - name: vpn-nginx-fallback-on-debian13
+    image: geerlingguy/docker-debian13-ansible:latest
+    pre_build_image: true
+    privileged: true
+    command: /lib/systemd/systemd
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroupns_mode: host
+
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: ../../..
+  inventory:
+    host_vars:
+      vpn-nginx-fallback-on-debian13:
+        ansible_user: root
+
+verifier:
+  name: ansible
+
+scenario:
+  test_sequence:
+    - dependency
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
