@@ -11,7 +11,36 @@
       rate_burst: 3
       revoked_tokens:
         - "deadbeefdeadbeefdeadbeef"
+      # Exercise the continuous payload mirror. rsync with a colon-free
+      # local source path performs a local copy (the -e ssh shell is
+      # ignored), so the timer-driven pull works self-contained in the
+      # container without sshd. The pre_tasks below seed the source tree.
+      mirror:
+        enabled: true
+        backend: rsync
+        interval: "5min"
+        source: "/tmp/mirror-src/"
   pre_tasks:
+    - name: Seed a fake mirror source payload tree
+      ansible.builtin.file:
+        path: "/tmp/mirror-src/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - sub
+        - bootstrap
+    - name: Seed a fake sub payload + meta sidecar
+      ansible.builtin.copy:
+        dest: "/tmp/mirror-src/sub/{{ item.name }}"
+        content: "{{ item.content }}"
+        mode: "0644"
+      loop:
+        - name: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          content: "{\"v\":1}\n"
+        - name: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.meta"
+          content: "{}\n"
+      loop_control:
+        label: "{{ item.name }}"
     - name: Install nginx + openssl
       ansible.builtin.apt:
         name: [nginx, openssl]

@@ -76,10 +76,35 @@ transport host generates. Options:
     `emit-singbox.sh`) and scp to the subscription host via
     `issue-bootstrap.sh`. This is the v1 default and stays the
     simplest path.
-  * For continuous-issuance scenarios, replicate
-    `/var/lib/vpn-sub/` from a build worker via restic / rsync.
-    Document the bandwidth + freshness trade-off; not automated in
-    v1.
+  * For continuous-issuance scenarios, the subscription host can PULL
+    the hashed-on-disk payload tree (`{{ subscription.subscription_dir }}`,
+    default `/var/lib/vpn-subscription`, holding `sub/<hash>`,
+    `bootstrap/<hash>`, and `.meta` sidecars) from a build worker on a
+    timer. This is the **continuous payload mirror** — opt-in via
+    `subscription.mirror.enabled` (default `false`). A systemd oneshot
+    (`vpn-sub-mirror.service`, `User=vpn-bootstrap`) driven by
+    `vpn-sub-mirror.timer` (`OnUnitActiveSec={{ subscription.mirror.interval }}`,
+    default `5min`) runs the pull and re-asserts the role's perm model
+    (dir `0700` / file `0600`, owned `vpn-bootstrap:vpn-bootstrap`) so
+    the loopback Python service can read what landed.
+
+    Two backends, selected by `subscription.mirror.backend`:
+
+      * `rsync` (default): `rsync -az --delete` over ssh from
+        `subscription.mirror.source` using a pull key
+        (`subscription.mirror.ssh_key`, rendered to
+        `ssh_key_path`).
+      * `restic`: `restic restore latest` from
+        `subscription.mirror.restic_repo` (subtree
+        `restic_snapshot_path`), password from
+        `subscription.mirror.restic_password`.
+
+    The mirror is an **outbound pull only** — it opens no new public
+    surface and preserves the host's loopback-only serving posture. The
+    pull runs exclusively inside the timer-driven unit, so it stays
+    idempotent across Ansible converges (config files only). Mind the
+    bandwidth + freshness trade-off: a shorter `interval` keeps the host
+    fresher at the cost of repeated transfers.
 
 ## What this does not buy you
 

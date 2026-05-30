@@ -1,0 +1,34 @@
+[Unit]
+Description=VPN subscription payload mirror (pull hashed-on-disk tree from build worker)
+Documentation=https://github.com/po4yka/vpn-deploy/blob/main/docs/SUBSCRIPTION-HOST-SEPARATION.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=vpn-bootstrap
+Group=vpn-bootstrap
+ExecStart=/usr/local/bin/vpn-sub-mirror.sh
+
+# Hardening — mirrors vpn-bootstrap.service.j2. MemoryDenyWriteExecute is
+# intentionally omitted: the mirror invokes rsync/ssh (and optionally
+# restic), which may map writable+executable pages on some libc builds.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths={{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=yes
+LockPersonality=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+[Install]
+WantedBy=multi-user.target

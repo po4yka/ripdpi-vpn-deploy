@@ -77,3 +77,61 @@
             | grep -iE 'traceback|fatal|critical'
         executable: /bin/bash
       changed_when: false
+
+    # -----------------------------------------------------------------
+    # Continuous payload mirror (subscription.mirror.enabled: true).
+    # -----------------------------------------------------------------
+    - name: vpn-sub-mirror.timer is enabled
+      ansible.builtin.command:
+        cmd: systemctl is-enabled vpn-sub-mirror.timer
+      register: mirror_timer_enabled
+      changed_when: false
+      failed_when: mirror_timer_enabled.stdout != "enabled"
+
+    - name: vpn-sub-mirror.timer is active
+      ansible.builtin.command:
+        cmd: systemctl is-active vpn-sub-mirror.timer
+      register: mirror_timer_active
+      changed_when: false
+      failed_when: mirror_timer_active.stdout != "active"
+
+    - name: Trigger one mirror pull (oneshot) so payload lands on disk
+      ansible.builtin.command:
+        cmd: systemctl start vpn-sub-mirror.service
+      changed_when: false
+
+    - name: Wait for the oneshot to settle
+      ansible.builtin.command:
+        cmd: systemctl is-active vpn-sub-mirror.service
+      register: mirror_oneshot
+      changed_when: false
+      # oneshot reports "inactive" after a successful run; "failed" is the
+      # error case we want to catch.
+      failed_when: mirror_oneshot.stdout == "failed"
+
+    - name: Mirror produced the sub payload under subscription_dir
+      ansible.builtin.stat:
+        path: "/var/lib/vpn-subscription/sub/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      register: mirrored_payload
+      failed_when: not mirrored_payload.stat.exists
+
+    - name: Mirrored payload has 0600 perms owned by vpn-bootstrap
+      ansible.builtin.assert:
+        that:
+          - mirrored_payload.stat.mode == "0600"
+          - mirrored_payload.stat.pw_name == "vpn-bootstrap"
+          - mirrored_payload.stat.gr_name == "vpn-bootstrap"
+        fail_msg: >-
+          mirrored payload perms/ownership wrong:
+          mode={{ mirrored_payload.stat.mode }}
+          owner={{ mirrored_payload.stat.pw_name }}:{{ mirrored_payload.stat.gr_name }}
+
+    - name: vpn-sub-mirror.service journal has no fatal entries
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          ! journalctl -u vpn-sub-mirror.service --since "5 minutes ago" \
+            --no-pager --output=cat \
+            | grep -iE 'traceback|fatal|critical'
+        executable: /bin/bash
+      changed_when: false

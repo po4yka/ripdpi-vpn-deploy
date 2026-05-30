@@ -9,3 +9,9 @@
     name: vpn-bootstrap.service
     state: restarted
     daemon_reload: true
+
+- name: Restart vpn-sub-mirror timer
+  ansible.builtin.systemd_service:
+    name: vpn-sub-mirror.timer
+    state: restarted
+    daemon_reload: true

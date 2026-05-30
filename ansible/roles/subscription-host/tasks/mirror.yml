@@ -1,0 +1,87 @@
+---
+# Continuous payload mirror. A systemd oneshot + timer PULLs the
+# hashed-on-disk payload tree from a build worker so this delivery host
+# stays fresh between deploys. Outbound pull only — no new public surface.
+#
+# IDEMPOTENCY: the actual data pull (rsync/restic) runs ONLY inside the
+# timer-driven oneshot unit. Ansible manages just the config files
+# (credentials, script, unit, timer), all of which are idempotent — so the
+# second converge reports changed=0. We never invoke rsync/restic from a
+# task that runs on every converge.
+#
+# Gated by the caller with `when: subscription.mirror.enabled`.
+
+- name: Install mirror client (rsync)
+  ansible.builtin.apt:
+    name:
+      - rsync
+      - openssh-client
+    state: present
+  when: (subscription.mirror.backend | default('rsync')) == 'rsync'
+
+- name: Install mirror client (restic)
+  ansible.builtin.apt:
+    name:
+      - restic
+    state: present
+  when: (subscription.mirror.backend | default('rsync')) == 'restic'
+
+- name: Drop rsync ssh key
+  ansible.builtin.copy:
+    content: "{{ subscription.mirror.ssh_key }}"
+    dest: "{{ subscription.mirror.ssh_key_path | default('/var/lib/vpn-subscription/.mirror_ssh_key') }}"
+    owner: vpn-bootstrap
+    group: vpn-bootstrap
+    mode: "0600"
+  no_log: true
+  diff: false
+  when:
+    - (subscription.mirror.backend | default('rsync')) == 'rsync'
+    - subscription.mirror.ssh_key | default('') | length > 0
+
+- name: Drop restic password file
+  ansible.builtin.copy:
+    content: "{{ subscription.mirror.restic_password }}"
+    dest: "{{ subscription.mirror.restic_password_file | default('/var/lib/vpn-subscription/.mirror_restic_password') }}"
+    owner: vpn-bootstrap
+    group: vpn-bootstrap
+    mode: "0600"
+  no_log: true
+  diff: false
+  when:
+    - (subscription.mirror.backend | default('rsync')) == 'restic'
+    - subscription.mirror.restic_password | default('') | length > 0
+
+- name: Render mirror sync script
+  ansible.builtin.template:
+    src: vpn-sub-mirror.sh.j2
+    dest: /usr/local/bin/vpn-sub-mirror.sh
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart vpn-sub-mirror timer
+
+- name: Install mirror systemd service
+  ansible.builtin.template:
+    src: vpn-sub-mirror.service.j2
+    dest: /etc/systemd/system/vpn-sub-mirror.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart vpn-sub-mirror timer
+
+- name: Install mirror systemd timer
+  ansible.builtin.template:
+    src: vpn-sub-mirror.timer.j2
+    dest: /etc/systemd/system/vpn-sub-mirror.timer
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart vpn-sub-mirror timer
+
+- name: Enable + start mirror timer
+  ansible.builtin.systemd_service:
+    name: vpn-sub-mirror.timer
+    enabled: true
+    state: started
+    daemon_reload: true

@@ -1,0 +1,11 @@
+[Unit]
+Description=Pull VPN subscription payloads every {{ subscription.mirror.interval | default('5min') }}
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec={{ subscription.mirror.interval | default('5min') }}
+RandomizedDelaySec=30
+Persistent=true
+
+[Install]
+WantedBy=timers.target
