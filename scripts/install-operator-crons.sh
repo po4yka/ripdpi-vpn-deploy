@@ -20,12 +20,15 @@
 #   @daily  tspu-canary               TSPU rule-drift probes
 #   @daily  probing-summary           7-day rollup
 #   @daily  backup-state              encrypted local TF state backup
+#   @daily  probe-payload-throttle    per-ASN ~16 KiB payload-throttle probe
+#                                      (only when PAYLOAD_THROTTLE_HOST is set)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 WARM_SPARE_ENV="${WARM_SPARE_ENV:-}"
+PAYLOAD_THROTTLE_HOST="${PAYLOAD_THROTTLE_HOST:-}"
 
 DRY_RUN=0
 REMOVE=0
@@ -58,6 +61,11 @@ EOF
   if [[ -n "$WARM_SPARE_ENV" ]]; then
     cat <<EOF
 */2 * * * *    cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} GREEN_ENV=${WARM_SPARE_ENV} make watch-spare  2>&1 | logger -t vpn-spare
+EOF
+  fi
+  if [[ -n "$PAYLOAD_THROTTLE_HOST" ]]; then
+    cat <<EOF
+@daily         cd ${repo} && make probe-payload-throttle HOST=${PAYLOAD_THROTTLE_HOST} >>/tmp/vpn-payload-throttle.log 2>&1
 EOF
   fi
   echo "${MARKER_END}"

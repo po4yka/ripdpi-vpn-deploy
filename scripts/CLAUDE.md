@@ -42,3 +42,23 @@ flag exists for testing but is undocumented.
 - **Python scripts must run under the venv-less system python3** — operator
   workstations don't all have uv/poetry. Use stdlib + the pinned deps in
   `requirements.in`. Don't import `requests` (use `urllib.request`).
+
+## Probe scripts (`probe-*.sh`)
+
+Client-side probes (`test-tls-policing.sh`, `probe-payload-throttle.sh`)
+run from a filtered client path, NOT the VPS, and emit exactly one JSON
+verdict object on stdout: `{"verdict":"ok|throttled|blocked|unknown|error",
+"rtt_ms":<int|null>}` (+`error_kind` only on `error`). All diagnostics go
+to stderr; non-zero exit reads as `error` to orchestrators. Emit `unknown`
+(never `ok`) for indeterminate so unexpected-OK alerts aren't swallowed.
+
+- **`probe-asn.sh` column order is the printf, not the header.** It prints
+  5 TAB columns `IP ASN PREFIX COUNTRY ORG`; parse ASN with
+  `awk -F'\t' '{print $2}'`, prefix with `$3`. Reuse it — never re-implement
+  whois. Its exit 1 (Cymru unreachable) is an `error` verdict, not a crash.
+- **Key verdicts by `AS<num>` + technical signature only.** The ORG/COUNTRY
+  columns MUST NOT leak into slugs, filenames, state paths, or verdict
+  output — no carrier/ISP/geographic brand names anywhere (root CLAUDE.md).
+  `probe-payload-throttle.sh` persists state at
+  `${XDG_STATE_HOME:-~/.local/state}/vpn-deploy/payload-throttle/AS<num>.json`,
+  written atomically (tmp+`mv`, `chmod 0600`) like `asn-drift.sh`.
