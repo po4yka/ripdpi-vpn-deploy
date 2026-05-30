@@ -58,7 +58,12 @@ subscription:
     source: ""
     rsync_opts: "-az --delete"
     # Private key used by rsync-over-ssh (rendered from secrets when set).
-    ssh_key_path: "/var/lib/vpn-subscription/.mirror_ssh_key"
+    # MUST live OUTSIDE subscription_dir: the rsync `--delete` reconciles the
+    # destination against the source tree (which only carries sub/ and
+    # bootstrap/), so a credential stored under subscription_dir would be
+    # deleted on the first pull. /etc/vpn-subscription is owned by
+    # vpn-bootstrap and is never an rsync/restic target.
+    ssh_key_path: "/etc/vpn-subscription/mirror_ssh_key"
     # Extra ssh options passed via rsync -e (StrictHostKeyChecking etc.).
     ssh_opts: "-o StrictHostKeyChecking=accept-new -o BatchMode=yes"
     # restic backend: repository URL/path and the snapshot subtree to
@@ -66,4 +71,5 @@ subscription:
     # restic_password_file). Leave empty for the rsync backend.
     restic_repo: ""
     restic_snapshot_path: ""
-    restic_password_file: "/var/lib/vpn-subscription/.mirror_restic_password"
+    # Also kept outside subscription_dir — see ssh_key_path rationale above.
+    restic_password_file: "/etc/vpn-subscription/mirror_restic_password"

@@ -19,7 +19,8 @@ BACKEND="{{ subscription.mirror.backend | default('rsync') }}"
 # the per-route subdirectories land where the Python service reads them.
 # ---------------------------------------------------------------------------
 SOURCE="{{ subscription.mirror.source | default('') }}"
-SSH_KEY="{{ subscription.mirror.ssh_key_path | default('/var/lib/vpn-subscription/.mirror_ssh_key') }}"
+# Credential is kept outside DEST so the `--delete` below never erases it.
+SSH_KEY="{{ subscription.mirror.ssh_key_path | default('/etc/vpn-subscription/mirror_ssh_key') }}"
 SSH_OPTS="{{ subscription.mirror.ssh_opts | default('-o StrictHostKeyChecking=accept-new -o BatchMode=yes') }}"
 
 if [ -z "$SOURCE" ]; then
@@ -38,7 +39,7 @@ rsync {{ subscription.mirror.rsync_opts | default('-az --delete') }} \
 # ---------------------------------------------------------------------------
 REPO="{{ subscription.mirror.restic_repo | default('') }}"
 SNAPSHOT_PATH="{{ subscription.mirror.restic_snapshot_path | default('') }}"
-export RESTIC_PASSWORD_FILE="{{ subscription.mirror.restic_password_file | default('/var/lib/vpn-subscription/.mirror_restic_password') }}"
+export RESTIC_PASSWORD_FILE="{{ subscription.mirror.restic_password_file | default('/etc/vpn-subscription/mirror_restic_password') }}"
 
 if [ -z "$REPO" ]; then
   echo "vpn-sub-mirror: restic backend selected but mirror.restic_repo is empty" >&2
@@ -60,7 +61,7 @@ fi
 # ---------------------------------------------------------------------------
 chown -R vpn-bootstrap:vpn-bootstrap "$DEST"
 find "$DEST" -type d -exec chmod 0700 {} +
-# Leave the credential files (ssh key / restic password) and the script out
-# of the 0600-everything sweep is unnecessary: those live under DEST too and
-# 0600 is already their target perm.
+# Credentials live under /etc/vpn-subscription (outside DEST), so this sweep
+# only touches the pulled payload tree — it never re-perms the ssh key /
+# restic password (already 0600 from the Ansible copy task).
 find "$DEST" -type f -exec chmod 0600 {} +

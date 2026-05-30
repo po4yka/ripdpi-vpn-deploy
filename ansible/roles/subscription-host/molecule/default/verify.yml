@@ -126,6 +126,14 @@
           mode={{ mirrored_payload.stat.mode }}
           owner={{ mirrored_payload.stat.pw_name }}:{{ mirrored_payload.stat.gr_name }}
 
+    - name: Mirror ssh credential survives the --delete pull (lives outside DEST)
+      ansible.builtin.stat:
+        path: /etc/vpn-subscription/mirror_ssh_key
+      register: mirror_ssh_key
+      failed_when: >-
+        not mirror_ssh_key.stat.exists
+        or mirror_ssh_key.stat.mode != "0600"
+
     - name: vpn-sub-mirror.service journal has no fatal entries
       ansible.builtin.shell:
         cmd: |
