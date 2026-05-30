@@ -1,0 +1,49 @@
+---
+- name: Converge nginx-xhttp role (direct fallback frontend on)
+  hosts: all
+  become: true
+  vars:
+    nginx_xhttp_public_port: 8443
+    nginx_xhttp_port: 10085
+    # group_vars/all.yml is NOT auto-loaded by molecule — mirror the port here.
+    nginx_xhttp_fallback_port: 2083
+    xray:
+      xhttp_path: "/app-sync"
+    nginx_xhttp:
+      server_name: vpn.example.test
+      fallback_enabled: true
+      cert_pem: |
+        -----BEGIN CERTIFICATE-----
+        STUB_CERT_FOR_MOLECULE
+        -----END CERTIFICATE-----
+      key_pem: |
+        -----BEGIN PRIVATE KEY-----
+        STUB_KEY_FOR_MOLECULE
+        -----END PRIVATE KEY-----
+  pre_tasks:
+    - name: Generate a real self-signed cert/key so nginx -t passes
+      ansible.builtin.command:
+        cmd: |
+          openssl req -x509 -newkey rsa:2048 -nodes
+            -keyout /tmp/molecule.key
+            -out /tmp/molecule.crt
+            -subj /CN=vpn.example.test
+            -days 1
+        creates: /tmp/molecule.crt
+    - name: Read the cert
+      ansible.builtin.slurp:
+        src: /tmp/molecule.crt
+      register: stub_cert
+    - name: Read the key
+      ansible.builtin.slurp:
+        src: /tmp/molecule.key
+      register: stub_key
+    - name: Override the role's cert/key with the molecule-generated pair
+      ansible.builtin.set_fact:
+        nginx_xhttp:
+          server_name: vpn.example.test
+          fallback_enabled: true
+          cert_pem: "{{ stub_cert.content | b64decode }}"
+          key_pem: "{{ stub_key.content | b64decode }}"
+  roles:
+    - role: nginx-xhttp

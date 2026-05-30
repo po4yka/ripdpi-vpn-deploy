@@ -103,6 +103,12 @@ table inet filter {
     # P1 — nginx-xhttp public HTTPS listener
     tcp dport {{ nginx_tcp_port }} accept
 {% endif %}
+{% set _nginx_xhttp_fallback = (nginx_xhttp.fallback_enabled | default(false)) if nginx_xhttp is defined else false %}
+{% if (vpn.enable_nginx_xhttp | default(true)) and _nginx_xhttp_fallback %}
+    # P1 — nginx-xhttp direct (non-CDN) fallback HTTPS listener. Plain TCP
+    # accept; the CF origin-firewall machinery does NOT apply to this path.
+    tcp dport {{ nginx_xhttp_fallback_port | default(2083) }} accept
+{% endif %}
 
 {% if vpn.enable_hysteria | default(false) %}
     # P2 — Hysteria2 UDP

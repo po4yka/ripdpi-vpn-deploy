@@ -177,6 +177,17 @@ xray_port: 443
 xray_fallback_port: 2053
 nginx_xhttp_public_port: 8443 # public nginx listener; direct-only cohorts may override to 443
 nginx_xhttp_port: 10085       # localhost-only Xray XHTTP inbound behind nginx
+# Public port for the optional SECOND, direct (non-CDN) HTTPS XHTTP frontend.
+# Opt-in via nginx_xhttp.fallback_enabled (off by default); when on, nginx
+# renders an extra server block that shares the same Xray localhost upstream
+# so XHTTP delivery survives a Cloudflare/cdn-front outage. Default 2083
+# because it is one of Cloudflare's published alternate HTTPS ports — looks
+# like ordinary HTTPS to a censor and is clear of every existing toggle in
+# this repo (443 = REALITY tcp / Hysteria udp; 2053 = xray_fallback_port;
+# 8443 = nginx_xhttp_public_port AND cdn_front.port; 8444 = subscription-host
+# / hysteria-realm). A pre-flight assert in the nginx-xhttp role rejects a
+# collision with any of those. Rotate if the alt-port itself gets targeted.
+nginx_xhttp_fallback_port: 2083
 hysteria_port: 443
 # Optional Hysteria2 port-hopping. When set to a "low-high" string
 # (e.g. "20000-40000") the role opens that UDP range in nftables, the

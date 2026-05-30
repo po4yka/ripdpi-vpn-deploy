@@ -1,0 +1,103 @@
+---
+- name: Verify nginx-xhttp role (direct fallback frontend on)
+  hosts: all
+  become: true
+  tasks:
+    - name: nginx -t
+      ansible.builtin.command:
+        cmd: nginx -t
+      changed_when: false
+
+    - name: Site is enabled
+      ansible.builtin.stat:
+        path: /etc/nginx/sites-enabled/vpn-xhttp.conf
+      register: site
+      failed_when: not site.stat.exists or not site.stat.islnk
+
+    - name: TLS material present with safe perms
+      ansible.builtin.stat:
+        path: /etc/nginx/tls/vpn.example.test.key
+      register: keyf
+      failed_when: keyf.stat.mode != "0600"
+
+    - name: Default site is disabled
+      ansible.builtin.stat:
+        path: /etc/nginx/sites-enabled/default
+      register: default_site
+      failed_when: default_site.stat.exists
+
+    - name: Site config references the XHTTP path
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep -q '/app-sync/' /etc/nginx/sites-available/vpn-xhttp.conf
+        executable: /bin/bash
+      changed_when: false
+
+    # Primary frontend (must keep passing)
+    - name: Primary site listens on 8443 and proxies to localhost XHTTP
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep -q 'listen 8443 ssl http2;' /etc/nginx/sites-available/vpn-xhttp.conf
+          grep -q 'proxy_pass http://127.0.0.1:10085;' /etc/nginx/sites-available/vpn-xhttp.conf
+        executable: /bin/bash
+      changed_when: false
+
+    # Fallback frontend
+    - name: Fallback site listens on the distinct fallback port
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep -q 'listen 2083 ssl http2;' /etc/nginx/sites-available/vpn-xhttp.conf
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Fallback frontend shares the same localhost XHTTP upstream
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          # Two proxy_pass lines to the same upstream: primary + fallback.
+          test "$(grep -c 'proxy_pass http://127.0.0.1:10085;' /etc/nginx/sites-available/vpn-xhttp.conf)" -eq 2
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Fallback frontend uses 404 (never 444) for unmatched paths
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          ! grep -q 'return 444' /etc/nginx/sites-available/vpn-xhttp.conf
+        executable: /bin/bash
+      changed_when: false
+
+    - name: No Cloudflare-specific real_ip directives anywhere (RU baseline)
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          ! grep -q 'CF-Connecting-IP\|real_ip_header\|set_real_ip_from' /etc/nginx/sites-available/vpn-xhttp.conf
+        executable: /bin/bash
+      changed_when: false
+
+    # State-level
+    - name: nginx.service is active
+      ansible.builtin.command:
+        cmd: systemctl is-active nginx.service
+      register: nginx_active
+      changed_when: false
+      failed_when: nginx_active.stdout != "active"
+
+    - name: nginx binds the primary public XHTTP port
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          ss -lntp '( sport = :8443 )' | grep -q ':8443'
+        executable: /bin/bash
+      changed_when: false
+
+    - name: nginx binds the fallback XHTTP port
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          ss -lntp '( sport = :2083 )' | grep -q ':2083'
+        executable: /bin/bash
+      changed_when: false
