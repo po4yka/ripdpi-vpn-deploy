@@ -135,3 +135,11 @@
 
 - name: Ingest share bundles
   ansible.builtin.import_tasks: share-bundles.yml
+
+# ---------------------------------------------------------------------------
+# Continuous payload mirror — opt-in pull from a build worker.
+# ---------------------------------------------------------------------------
+
+- name: Install continuous payload mirror
+  ansible.builtin.import_tasks: mirror.yml
+  when: subscription.mirror.enabled | default(false)

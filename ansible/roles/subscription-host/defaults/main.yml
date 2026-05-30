@@ -35,3 +35,35 @@ subscription:
   # subscription.bootstrap_dir; the service no longer reads from this
   # path. New deploys should not set it.
   bootstrap_dir: ""
+
+  # Continuous payload mirror (SUBSCRIPTION-HOST-SEPARATION.md
+  # "continuous-issuance" path). When enabled, a systemd oneshot +
+  # timer periodically PULLs the hashed-on-disk payload tree
+  # (subscription_dir/{sub,bootstrap}/<hash> + .meta sidecars) from a
+  # build worker, keeping this delivery host fresh without manual scp.
+  # This is an outbound pull only — it opens no new public surface and
+  # preserves the host's loopback-only serving posture.
+  #
+  # All keys default to safe no-ops so existing deploys (where the
+  # mirror block is unset, hence mirror.enabled=false) are unchanged.
+  mirror:
+    enabled: false
+    # "rsync" (rsync-over-ssh) or "restic" (restore from a restic repo).
+    backend: "rsync"
+    # systemd OnUnitActiveSec cadence between pulls.
+    interval: "5min"
+    # rsync backend: a remote source spec, e.g.
+    # "build@worker.internal:/var/lib/vpn-subscription/". Trailing slash
+    # controls rsync directory semantics — keep it.
+    source: ""
+    rsync_opts: "-az --delete"
+    # Private key used by rsync-over-ssh (rendered from secrets when set).
+    ssh_key_path: "/var/lib/vpn-subscription/.mirror_ssh_key"
+    # Extra ssh options passed via rsync -e (StrictHostKeyChecking etc.).
+    ssh_opts: "-o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+    # restic backend: repository URL/path and the snapshot subtree to
+    # restore. The repo password is supplied via secrets (rendered to
+    # restic_password_file). Leave empty for the rsync backend.
+    restic_repo: ""
+    restic_snapshot_path: ""
+    restic_password_file: "/var/lib/vpn-subscription/.mirror_restic_password"

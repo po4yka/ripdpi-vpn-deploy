@@ -39,6 +39,14 @@ NON_SECRET_TOPLEVEL = {
     "xray_runtime_user", "xray_runtime_group",
     "xray_install_dir", "xray_etc_dir", "xray_log_path",
     "amneziawg",  # role defaults
+    # `subscription` covers the subscription-host role, including the
+    # opt-in continuous-mirror sub-keys (subscription.mirror.{enabled,
+    # backend,interval,source,ssh_key,ssh_key_path,restic_repo,
+    # restic_snapshot_path,restic_password,restic_password_file}). The
+    # real secret fields there are mirror.ssh_key and
+    # mirror.restic_password; sub-key schema lives in the example file
+    # (subscription block) and is documentation-only, since the checker
+    # validates only top-level identifiers.
     "monitoring", "subscription", "watchdog", "geodata", "naive",
     # Role-internal compute (set_fact)
     "xray_arch", "xray_sha256", "hysteria_arch", "hysteria_sha256",

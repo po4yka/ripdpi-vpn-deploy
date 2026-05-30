@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Managed by Ansible role `subscription-host`. Runs via vpn-sub-mirror.timer
+# under systemd (User=vpn-bootstrap). Pulls the hashed-on-disk payload tree
+# (subscription_dir/{sub,bootstrap}/<hash> + .meta sidecars) from a build
+# worker so this delivery host stays fresh between deploys.
+#
+# Outbound pull only — no inbound surface is opened. The vpn-bootstrap user
+# has /usr/sbin/nologin, so this script is driven by systemd, never run
+# interactively.
+set -euo pipefail
+
+DEST="{{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}"
+BACKEND="{{ subscription.mirror.backend | default('rsync') }}"
+
+{% if (subscription.mirror.backend | default('rsync')) == 'rsync' %}
+# ---------------------------------------------------------------------------
+# rsync-over-ssh backend. The remote source is expected to expose the same
+# hashed-on-disk layout (sub/ and bootstrap/ subtrees). We sync into DEST so
+# the per-route subdirectories land where the Python service reads them.
+# ---------------------------------------------------------------------------
+SOURCE="{{ subscription.mirror.source | default('') }}"
+SSH_KEY="{{ subscription.mirror.ssh_key_path | default('/var/lib/vpn-subscription/.mirror_ssh_key') }}"
+SSH_OPTS="{{ subscription.mirror.ssh_opts | default('-o StrictHostKeyChecking=accept-new -o BatchMode=yes') }}"
+
+if [ -z "$SOURCE" ]; then
+  echo "vpn-sub-mirror: rsync backend selected but mirror.source is empty" >&2
+  exit 1
+fi
+
+rsync {{ subscription.mirror.rsync_opts | default('-az --delete') }} \
+  -e "ssh -i ${SSH_KEY} ${SSH_OPTS}" \
+  "$SOURCE" "${DEST}/"
+{% else %}
+# ---------------------------------------------------------------------------
+# restic backend. Restore the latest snapshot of the payload subtree into
+# DEST. Password handling mirrors the `backup` role: a password file, never
+# an inline secret. (Pattern: roles/backup/templates/vpn-backup.sh.j2.)
+# ---------------------------------------------------------------------------
+REPO="{{ subscription.mirror.restic_repo | default('') }}"
+SNAPSHOT_PATH="{{ subscription.mirror.restic_snapshot_path | default('') }}"
+export RESTIC_PASSWORD_FILE="{{ subscription.mirror.restic_password_file | default('/var/lib/vpn-subscription/.mirror_restic_password') }}"
+
+if [ -z "$REPO" ]; then
+  echo "vpn-sub-mirror: restic backend selected but mirror.restic_repo is empty" >&2
+  exit 1
+fi
+
+if [ -n "$SNAPSHOT_PATH" ]; then
+  restic -r "$REPO" restore latest --target "$DEST" --include "$SNAPSHOT_PATH"
+else
+  restic -r "$REPO" restore latest --target "$DEST"
+fi
+{% endif %}
+
+# ---------------------------------------------------------------------------
+# Ownership / permission fix-up. The loopback Python service runs as
+# vpn-bootstrap and requires dir 0700 / file 0600 to read payloads; loose
+# perms would also leak the hashed tree. Re-assert the role's perm model on
+# every pull so a misconfigured source cannot weaken on-disk perms.
+# ---------------------------------------------------------------------------
+chown -R vpn-bootstrap:vpn-bootstrap "$DEST"
+find "$DEST" -type d -exec chmod 0700 {} +
+# Leave the credential files (ssh key / restic password) and the script out
+# of the 0600-everything sweep is unnecessary: those live under DEST too and
+# 0600 is already their target perm.
+find "$DEST" -type f -exec chmod 0600 {} +
