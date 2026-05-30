@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Managed by Ansible role `subscription-host`. Runs via vpn-sub-mirror.timer
+# under systemd (User=vpn-bootstrap). Pulls the hashed-on-disk payload tree
+# (subscription_dir/{sub,bootstrap}/<hash> + .meta sidecars) from a build
+# worker so this delivery host stays fresh between deploys.
+#
+# Outbound pull only — no inbound surface is opened. The vpn-bootstrap user
+# has /usr/sbin/nologin, so this script is driven by systemd, never run
+# interactively.
+set -euo pipefail
+
+DEST="/var/lib/vpn-subscription"
+BACKEND="rsync"
+
+
+# ---------------------------------------------------------------------------
+# rsync-over-ssh backend. The remote source is expected to expose the same
+# hashed-on-disk layout (sub/ and bootstrap/ subtrees). We sync into DEST so
+# the per-route subdirectories land where the Python service reads them.
+# ---------------------------------------------------------------------------
+SOURCE=""
+# Credential is kept outside DEST so the `--delete` below never erases it.
+SSH_KEY="/etc/vpn-subscription/mirror_ssh_key"
+SSH_OPTS="-o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+
+if [ -z "$SOURCE" ]; then
+  echo "vpn-sub-mirror: rsync backend selected but mirror.source is empty" >&2
+  exit 1
+fi
+
+rsync -az --delete \
+  -e "ssh -i ${SSH_KEY} ${SSH_OPTS}" \
+  "$SOURCE" "${DEST}/"
+
+
+# ---------------------------------------------------------------------------
+# Ownership / permission fix-up. The loopback Python service runs as
+# vpn-bootstrap and requires dir 0700 / file 0600 to read payloads; loose
+# perms would also leak the hashed tree. Re-assert the role's perm model on
+# every pull so a misconfigured source cannot weaken on-disk perms.
+# ---------------------------------------------------------------------------
+chown -R vpn-bootstrap:vpn-bootstrap "$DEST"
+find "$DEST" -type d -exec chmod 0700 {} +
+# Credentials live under /etc/vpn-subscription (outside DEST), so this sweep
+# only touches the pulled payload tree — it never re-perms the ssh key /
+# restic password (already 0600 from the Ansible copy task).
+find "$DEST" -type f -exec chmod 0600 {} +
