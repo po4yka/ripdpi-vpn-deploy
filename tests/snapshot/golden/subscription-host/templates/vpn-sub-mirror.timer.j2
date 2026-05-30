@@ -1,0 +1,11 @@
+[Unit]
+Description=Pull VPN subscription payloads every 5min
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30
+Persistent=true
+
+[Install]
+WantedBy=timers.target
