@@ -109,8 +109,10 @@ one_request() {
   local size="$1"
   local out="${WORK}/body-${size}"
   local url t0 t1 ms ok=0
-  # printf '%q' so an operator-supplied host can never break out of the
-  # URL; the size is integer-validated below before reaching here.
+  # The assembled URL is passed to curl as a single quoted argument (no
+  # shell re-parsing), and HOST/PORT/SCHEME/ECHO_PATH are operator-supplied
+  # (trusted) while size is integer-validated below — so there is no shell
+  # or argument injection surface here.
   url="$(printf '%s://%s:%s%s?bytes=%s' \
     "$SCHEME" "$HOST" "$PORT" "$ECHO_PATH" "$size")"
   t0="$(now_ms)"

@@ -20,6 +20,10 @@
         backend: rsync
         interval: "5min"
         source: "/tmp/mirror-src/"
+        # A stub credential exercises the "Drop rsync ssh key" task so the
+        # regression guard in verify.yml can prove the key survives a
+        # `--delete` pull (it lives outside subscription_dir by design).
+        ssh_key: "STUB-NOT-A-REAL-KEY\n"
   pre_tasks:
     - name: Seed a fake mirror source payload tree
       ansible.builtin.file:

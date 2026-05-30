@@ -26,10 +26,22 @@
     state: present
   when: (subscription.mirror.backend | default('rsync')) == 'restic'
 
+# Credentials live OUTSIDE subscription_dir so the rsync `--delete` pull
+# (which reconciles the destination against the sub/ + bootstrap/ source
+# tree) can never erase them. See defaults/main.yml mirror.ssh_key_path.
+- name: Ensure mirror credential directory
+  ansible.builtin.file:
+    path: /etc/vpn-subscription
+    state: directory
+    owner: vpn-bootstrap
+    group: vpn-bootstrap
+    mode: "0700"
+  when: subscription.mirror.enabled | default(false)
+
 - name: Drop rsync ssh key
   ansible.builtin.copy:
     content: "{{ subscription.mirror.ssh_key }}"
-    dest: "{{ subscription.mirror.ssh_key_path | default('/var/lib/vpn-subscription/.mirror_ssh_key') }}"
+    dest: "{{ subscription.mirror.ssh_key_path | default('/etc/vpn-subscription/mirror_ssh_key') }}"
     owner: vpn-bootstrap
     group: vpn-bootstrap
     mode: "0600"
@@ -42,7 +54,7 @@
 - name: Drop restic password file
   ansible.builtin.copy:
     content: "{{ subscription.mirror.restic_password }}"
-    dest: "{{ subscription.mirror.restic_password_file | default('/var/lib/vpn-subscription/.mirror_restic_password') }}"
+    dest: "{{ subscription.mirror.restic_password_file | default('/etc/vpn-subscription/mirror_restic_password') }}"
     owner: vpn-bootstrap
     group: vpn-bootstrap
     mode: "0600"
