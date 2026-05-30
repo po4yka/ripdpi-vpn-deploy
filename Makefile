@@ -17,7 +17,7 @@ export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
         molecule-test smoke-test validate-target probe-sni-survival scan-targets blue-green \
         spot-check-secrets bootstrap-secrets probe-asn emit-qr check-certs \
         audit-permissions asn-drift check-ip-reputation issue-bootstrap \
-        test-tls-policing fleet-status drift-since-tag fleet-rotate \
+        test-tls-policing probe-payload-throttle fleet-status drift-since-tag fleet-rotate \
         watch-spare promote-spare probing-summary tspu-canary \
         emit-sbom molecule-full-stack audit-log audit-log-append pyinfra-audit \
         setup-yubikey check-killswitch install-operator-crons \
@@ -95,6 +95,7 @@ help:
 	@echo "  probing-summary            7-day Xray/nginx/honeypot rollup"
 	@echo "  tspu-canary                Daily TSPU rule-drift probes (in-cohort box)"
 	@echo "  test-tls-policing HOST=…   Probe the ~12-concurrent-TLS home-ISP rule"
+	@echo "  probe-payload-throttle HOST=… Probe per-ASN ~16 KiB payload throttling"
 	@echo "  fleet-status [HOSTS=…]     Summary table across every host:env pair"
 	@echo "  install-operator-crons     Wire all of the above into crontab as a managed block"
 	@echo "  remove-operator-crons      Strip the vpn-deploy cron block"
@@ -371,6 +372,16 @@ probe-matrix-cell:
 	@test -n "$(DEST)" || { echo "usage: make probe-matrix-cell PROTOCOL=... DEST_CLASS=... DEST=ip:port VANTAGE=label"; exit 1; }
 	@test -n "$(VANTAGE)" || { echo "usage: make probe-matrix-cell PROTOCOL=... DEST_CLASS=... DEST=ip:port VANTAGE=label"; exit 1; }
 	@PROTOCOL=$(PROTOCOL) DEST_CLASS=$(DEST_CLASS) DEST=$(DEST) VANTAGE=$(VANTAGE) ./scripts/probe-matrix-cell.sh
+
+# Per-ASN ~16 KiB payload-throttling probe. Emits one JSON verdict line
+# on stdout keyed to the target ASN. Run from a filtered client path,
+# NOT the VPS. See scripts/probe-payload-throttle.sh.
+probe-payload-throttle:
+	@test -n "$(HOST)" || { echo "usage: make probe-payload-throttle HOST=endpoint [PORT=443] [SIZES=1024,4096,8192,16384,24576,32768] [ASN=AS64500]"; exit 1; }
+	@./scripts/probe-payload-throttle.sh --host $(HOST) \
+	  $(if $(PORT),--port $(PORT)) \
+	  $(if $(SIZES),--sizes $(SIZES)) \
+	  $(if $(ASN),--asn $(ASN))
 
 emit-qr:
 	@test -n "$(CLIENT)" || { echo "usage: make emit-qr CLIENT=phone [TYPE=singbox|uri] [OUT=phone.png]"; exit 1; }
