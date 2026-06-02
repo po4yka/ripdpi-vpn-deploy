@@ -53,6 +53,11 @@ jobs:
           format: sarif
           output: trivy-results.sarif
           trivyignores: .trivyignore
+          # Without this, trivy-action `unset`s the severity filter for SARIF
+          # output ("Building SARIF report with all severities"), so exit-code
+          # fires on MEDIUM/LOW findings too — defeating the HIGH,CRITICAL gate.
+          # Keep the SARIF (and the exit-code) limited to the severities above.
+          limit-severities-for-sarif: true
 
       - name: Upload Trivy SARIF results
         if: always()
