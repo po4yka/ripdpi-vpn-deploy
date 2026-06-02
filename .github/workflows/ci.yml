@@ -30,9 +30,6 @@ jobs:
           GITLEAKS_NOTIFY_USER_LIST: ""
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
           GITLEAKS_ENABLE_COMMENTS: "false"
-          # gitleaks-action still ships Node 20 (no v3 yet); opt in to
-          # Node 24 ahead of the June 2026 deprecation cutoff.
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
   terraform:
     name: terraform fmt + validate
