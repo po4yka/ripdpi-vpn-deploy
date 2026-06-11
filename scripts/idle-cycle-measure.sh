@@ -25,6 +25,20 @@
 
 set -euo pipefail
 
+# Portable bounded-run wrapper. macOS lacks `timeout` (coreutils ships it as
+# `gtimeout`); use that, or run without a limit if neither is present. On Linux
+# this resolves to `timeout`, so behaviour there is unchanged.
+run_timeout() {
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$secs" "$@"
+  else
+    "$@"
+  fi
+}
+
 TARGET=""
 SNI=""
 VANTAGE=""
@@ -79,7 +93,7 @@ fi
 parse_seconds() {
   local s="$1"
   local n="${s%[a-zA-Z]*}"
-  local u="${s#$n}"
+  local u="${s#"$n"}"
   case "$u" in
     s|"")  echo "$n" ;;
     m)     echo $(( n * 60 )) ;;
@@ -101,7 +115,7 @@ probe() {
   local port="${target#*:}"
   local pre_ms post_ms elapsed verdict err
   pre_ms="$(date +%s%3N)"
-  if err="$(timeout 30 openssl s_client \
+  if err="$(run_timeout 30 openssl s_client \
       -connect "$host:$port" -servername "$sni" \
       -verify_quiet -brief -no_ign_eof < /dev/null 2>&1)"; then
     verdict="ok"

@@ -26,6 +26,20 @@
 # proceed to host N+1 until the operator confirms host N completed.
 set -euo pipefail
 
+# Portable bounded-run wrapper. macOS lacks `timeout` (coreutils ships it as
+# `gtimeout`); use that, or run without a limit if neither is present. On Linux
+# this resolves to `timeout`, so behaviour there is unchanged.
+run_timeout() {
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$secs" "$@"
+  else
+    "$@"
+  fi
+}
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STATE_DIR="${REPO_ROOT}/.omc/state"
 mkdir -p "$STATE_DIR"
@@ -93,7 +107,7 @@ count_reachable() {
     local ip
     ip="$(terraform -chdir="$tf" output -raw server_ipv4 2>/dev/null || true)"
     if [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] \
-       && timeout 5 bash -c "</dev/tcp/$ip/443" 2>/dev/null; then
+       && run_timeout 5 bash -c "</dev/tcp/$ip/443" 2>/dev/null; then
       ok=$((ok+1))
     fi
   done <<< "$pairs"
