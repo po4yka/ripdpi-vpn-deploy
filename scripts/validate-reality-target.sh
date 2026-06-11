@@ -239,8 +239,13 @@ else
     target_org="$(echo "$asn_line" | awk -F'|' '{gsub(/^ +| +$/,"",$7); print $7}')"
     echo "  target_ip=$target_ip  asn=AS${target_asn}  org=${target_org}"
 
-    # Flag the "Avoid" tier (docs/PROVIDER-NOTES.md) outright — these prefixes
-    # are bucketed as foreign-datacenter by TSPU and trigger TCP freeze.
+    # Flag the "Avoid" tier ASNs outright. The set is sourced from the internal
+    # heuristic list in docs/PROVIDER-NOTES.md — it is NOT an enumerated external
+    # standard or authoritative blacklist. It represents current operator judgment
+    # that these prefixes are bucketed as foreign-datacenter by TSPU path scoring
+    # and trigger TCP freeze on measured paths. Revisit as ASN reputation shifts:
+    # an ASN that is Avoid-tier today may recover (or a new one may emerge) as
+    # hosting providers change their peering and RU routing posture.
     case "$target_asn" in
       13335|16276|24940|14061|26383|216071)
         echo "  WARN: target ASN AS${target_asn} is in the Avoid tier (see docs/PROVIDER-NOTES.md)"

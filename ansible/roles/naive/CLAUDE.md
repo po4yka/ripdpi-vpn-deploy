@@ -6,8 +6,10 @@
 useful tactical option for HTTP/2 + Chromium TLS fingerprint, but its v147
 preamble change (see `docs/CLIENT-NOTES.md`) burned an upgrade cycle.
 
-**Reuses nginx-xhttp's cert + port** — when on, NaiveProxy lives on
-`/naive/<path>` behind the same TLS as XHTTP. Don't allocate a second port.
+**Mutually exclusive with nginx-xhttp** — both want 443/tcp; a pre-flight
+assert blocks deployment if `vpn.enable_nginx_xhttp` is also true. The role
+runs caddy-naive standalone with its own cert (from SOPS) on port 443 —
+there is no shared listener.
 
 ## What's done well
 

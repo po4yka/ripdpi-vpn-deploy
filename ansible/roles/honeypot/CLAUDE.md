@@ -25,3 +25,4 @@ Auto-blocking probers is bait — they rotate IPs faster than we can ban.
   drops before the honeypot sees the hit, and you record nothing.
 - **Rate-limit log writes** — a Shodan-style scan can fill the disk
   otherwise. logrotate + size limit, both configured.
+- **Canary shares the relay IP — observability, not guaranteed early warning** — because the honeypot listeners and the REALITY/VLESS port live on the same IP, a probe that targets the honeypot port and a probe that targets the VPN port are identical from a routing perspective. Under netflow-seeded or infrastructure-enumeration targeting, the adversary may probe both ports simultaneously or probe the VPN port directly without ever hitting the canary. The canary therefore provides a useful probing signal when it fires, but the absence of a canary hit does NOT mean the VPN port was not probed. A separate-IP canary (different VPS, same operator) is the path to real early-warning with meaningful lead time.
