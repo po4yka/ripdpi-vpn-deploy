@@ -71,6 +71,31 @@ done
   matches the documented `narrow-junk-sequential` probabilistic
   behaviour; no further change needed.
 
+## arm64 Android / S3-S4 (must stay zero)
+
+**`S3 = S4 = 0` must hold for any cohort targeting arm64 Android — which is
+every family client.** S3/S4 are the junk-size parameters that feed the H4
+transport-packet header writer (junk-header insertion on data packets). Per
+`amneziawg-go#110` (amnezia-client #2582, no fix as of 2026-05-28), a non-zero
+S3/S4 triggers a byte-offset misalignment in the H4 header writer on `awg-go`
+arm64 (Android 14, awg-go v0.2.16): the handshake succeeds and the tunnel comes
+up, but transport packets are then **silently dropped** — connected interface,
+zero data flow, no error surfaced. Reproducer from upstream: `S1=47, S2=45,
+S3=38, S4=22` drops; `S3=S4=0` (keeping S1/S2) restores connectivity.
+
+The role does **not** emit S3/S4 today (`awg0.conf.j2` writes only Jc/Jmin/Jmax,
+S1/S2, H1–H4), so the baseline is already safe. This is enforced forward: the
+amneziawg role fails the play if any cohort file, `amneziawg_secrets`, or
+`instances[]` entry sets S3 or S4 to a non-zero value, citing `amneziawg-go#110`.
+
+**Obfuscation tradeoff.** Holding `S3=S4=0` disables H4 junk-header insertion on
+transport packets, so obfuscation is reduced to S1/S2 handshake-junk only —
+there is no transport-packet-level junk to defeat a per-packet size/shape rule.
+That is an accepted constraint while #110 is open: reliability on arm64 Android
+beats transport obfuscation that silently breaks the tunnel. If a deployment
+genuinely needs transport-packet obfuscation against arm64 targets, route it
+over VLESS+REALITY instead of AmneziaWG until upstream fixes #110.
+
 ## Operational notes
 
 - The same H1..H4 set must be deployed on both server and client. If
