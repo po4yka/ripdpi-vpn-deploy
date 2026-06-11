@@ -61,7 +61,7 @@ Final tier with each angle's vote. "Contested" = the three did not agree.
 | watchdog | CORE | CORE | CORE | **CORE** | Two-level supervision is what prevents 3 AM manual intervention. Its transport-liveness probe is currently weak (AUDIT-SILENT-FAILURE) but process-liveness still prevents permanent death. |
 | backup | CORE | CORE | CORE | **CORE** | restic+age is the only recovery path on burn. Integrity check is missing (AUDIT remediation) but that's a fix, not a demotion. |
 | subscription-host | TACTICAL | CORE | CORE | **TACTICAL** *(contested)* | (a) wins: `enable_subscription_host: false` (default-off); ARCHITECTURE lists it "optional"; v1 delivery is `emit-singbox.sh` + scp. (b)/(c)'s "zero-intervention reconfig" is a later hardening aspiration, not the current baseline. |
-| probe-ratelimit | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; recently re-scoped to a routing-blackhole abuse limiter that cannot see external probes by design (AUDIT-SILENT-FAILURE + role README). Enable after the nftables-meter remediation. |
+| policy-ratelimit | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; recently re-scoped to a routing-blackhole abuse limiter that cannot see external probes by design (AUDIT-SILENT-FAILURE + role README). Enable after the nftables-meter remediation. |
 | honeypot | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; AUDIT-SILENT-FAILURE found all four alert-chain links broken. Adds listeners (2222/9000/9100) with zero actionable signal until repaired. |
 | cdn-front | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; `CDN-DECISION.md` ADR rules CDN out as the RU baseline. Short-term IP-rotation cover only. |
 | naive | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; xcaddy from-source build + v147 preamble breakage. Enable only when HTTP/2+Chromium fingerprint is specifically the threat. |
@@ -173,7 +173,7 @@ earns promotion with evidence.
    degraded (watchdog transport-liveness, backup integrity, check-certs EC
    modulus, burn-check freeze). A baseline with no real self-healing signal and
    no certifiable backup is the top priority — ahead of any new capability.
-2. **Keep TACTICAL roles default-off and fix-before-enable.** probe-ratelimit
+2. **Keep TACTICAL roles default-off and fix-before-enable.** policy-ratelimit
    and honeypot must have their AUDIT-SILENT-FAILURE remediations landed before
    they are turned on anywhere; the rest (cdn-front, naive, warp-outbound,
    subscription-host) enable only on their specific trigger condition.

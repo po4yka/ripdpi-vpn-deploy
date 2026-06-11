@@ -2,7 +2,7 @@
 # Routing-blackhole abuse rate-limiter. Tails the Xray access log on the
 # VPS, counts blackhole/rejected events per source IP, and adds offenders
 # to an nftables set with a TTL. The firewall role wires the set into the
-# input chain as an early drop when vpn.enable_probe_ratelimit is true.
+# input chain as an early drop when vpn.enable_policy_ratelimit is true.
 #
 # NOTE: this daemon does NOT see external active-probing of REALITY — those
 # failures are forwarded to the camouflage target and logged (if at all) to
@@ -15,7 +15,7 @@
 # rate — too aggressive and you ban a NAT pool whose first leak tripped a
 # block rule; too lax and a leaking client noises the node for longer.
 
-probe_ratelimit:
+policy_ratelimit:
   # how many blackhole/rejected events from one IP within window_seconds
   # trigger a ban
   rejects_per_window: 5
@@ -25,6 +25,6 @@ probe_ratelimit:
   # textfile output for graphing
   textfile_dir: /var/lib/node_exporter/textfile
   # after this many tailed lines with zero matched events, the daemon flips
-  # the vpn_probe_ratelimit_dead_contract gauge to 1 (investigate: broken
+  # the vpn_policy_ratelimit_dead_contract gauge to 1 (investigate: broken
   # sink/token, or a genuinely quiet cohort)
   dead_contract_min_lines: 5000

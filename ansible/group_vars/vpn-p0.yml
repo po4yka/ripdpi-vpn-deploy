@@ -13,7 +13,7 @@ vpn:
   enable_watchdog: true
   enable_backup: true
   enable_subscription_host: false
-  enable_probe_ratelimit: false
+  enable_policy_ratelimit: false
   enable_cdn_front: false
   enable_honeypot: false
   enable_warp_outbound: false

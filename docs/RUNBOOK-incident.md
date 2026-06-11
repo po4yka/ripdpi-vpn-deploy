@@ -15,7 +15,7 @@ symptom; cross-reference the linked runbook for the recovery procedure.
 | Slow / lossy on one network only, fine elsewhere | Routing / ISP-specific | try Hysteria2 fallback; if persistent, blue-green to different region; for the RU home-ISP TLS-policing rule run `make test-tls-policing HOST=…` then flip the cohort to `xray_flow_mode: mux` |
 | `xray run -test -config` fails after deploy | Config bug | `RUNBOOK-rollback.md` § 1 (config rollback, automatic via handler rescue); `make drift-since-tag` shows what changed since last known-good |
 | New Xray release crashes / leaks | Binary | `RUNBOOK-rollback.md` § 2 (binary rollback) |
-| watchdog alerts with `class=active_probing` | TSPU probing wave | `make probing-summary` for the rollup; enable `vpn.enable_probe_ratelimit` if not already; nothing to do server-side beyond observe |
+| watchdog alerts with `class=active_probing` | TSPU probing wave | `make probing-summary` for the rollup; enable `vpn.enable_policy_ratelimit` if not already; nothing to do server-side beyond observe |
 | watchdog alerts with `class=tcp_listen_wedge` | Xray hung | `systemctl restart xray`; if recurring, check `vpn.xray_flow_mode` cohort match |
 | watchdog alerts with `class=nginx_403_spike` | Probe/scrape wave | usually benign; if rate climbs, `make check-ip-reputation` to see if IP appeared on a public blocklist |
 | `make asn-drift` alert | Provider IP reassignment | check `docs/PROVIDER-NOTES.md` — if new ASN is in Avoid tier, blue-green now |

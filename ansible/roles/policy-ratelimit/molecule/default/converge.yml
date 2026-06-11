@@ -1,5 +1,5 @@
 ---
-- name: Converge probe-ratelimit role
+- name: Converge policy-ratelimit role
   hosts: all
   become: true
   pre_tasks:
@@ -14,4 +14,4 @@
         group: root
         mode: "0755"
   roles:
-    - role: probe-ratelimit
+    - role: policy-ratelimit

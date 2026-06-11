@@ -59,7 +59,7 @@ into `user_data`) are a `REJECT`.
 - No public admin panel. Ever. Internal-only or wireguard-fronted only.
 - No remote installer piped to root shell (`curl ... | sudo bash` patterns).
 - Probe endpoints (subscription-host, etc.) must rate-limit at nftables level via the
-  `probe-ratelimit` role — application-layer rate limiting is insufficient.
+  `policy-ratelimit` role — application-layer rate limiting is insufficient.
 
 ### 5. RU baseline
 

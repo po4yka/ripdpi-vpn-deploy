@@ -40,7 +40,7 @@ tiers:
   backup: core              # restic+age recovery path
 
   # TACTICAL — opt-in, situational, default-off
-  probe-ratelimit: tactical # routing-blackhole abuse limiter (see README)
+  policy-ratelimit: tactical # routing-blackhole abuse limiter (see README)
   honeypot: tactical        # active-probing canary listener
   cdn-front: tactical       # CF-fronted XHTTP; NOT the RU baseline (CDN-DECISION)
   naive: tactical           # NaiveProxy; xcaddy from-source build
@@ -65,7 +65,7 @@ toggle_role_map:
   enable_watchdog: watchdog
   enable_backup: backup
   enable_subscription_host: subscription-host
-  enable_probe_ratelimit: probe-ratelimit
+  enable_policy_ratelimit: policy-ratelimit
   enable_cdn_front: cdn-front
   enable_honeypot: honeypot
   enable_warp_outbound: warp-outbound

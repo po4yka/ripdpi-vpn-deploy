@@ -13,7 +13,7 @@ Every control examined under this lens failed. The shared root cause is a coupli
 
 | # | Control | Contract it silently depends on | Verdict | Conf. | Cross-check |
 |---|---------|--------------------------------|---------|-------|-------------|
-| 1 | `probe-ratelimit` daemon (`ansible/roles/probe-ratelimit/templates/probe-ratelimit.py.j2`) | Xray access.log emits `REJECT`/`rejected`/`graylist` for probers or blackholed traffic | **BROKEN** | high | agreed |
+| 1 | `policy-ratelimit` daemon (`ansible/roles/policy-ratelimit/templates/policy-ratelimit.py.j2`) | Xray access.log emits `REJECT`/`rejected`/`graylist` for probers or blackholed traffic | **BROKEN** | high | agreed |
 | 2 | `watchdog` transport-liveness (`ansible/roles/watchdog/templates/vpn-watchdog.sh.j2`) | A live local socket implies a working REALITY transport end-to-end | **BROKEN** | high | agreed |
 | 3 | `watchdog` `active_probing` class (same file, lines 84-90) | Same `REJECT|graylist` grep on access.log | **BROKEN** | high | agreed |
 | 4 | `check-singbox-killswitch.py` (K1-K5) | Only `route.final` reaches direct egress; TUN family coverage need not be checked | **BROKEN** | high | agreed |
@@ -26,7 +26,7 @@ Seven controls, eight findings (watchdog splits into two). All `BROKEN`. No `VER
 
 ---
 
-## 1. `probe-ratelimit` — log-token coupling is dead
+## 1. `policy-ratelimit` — log-token coupling is dead
 
 **Contract.** The daemon tails `/var/log/xray/access.log` and bans IPs whose lines match `EVENT_RE = (REJECT|rejected|graylist)`. Effectiveness depends on Xray-core emitting one of those substrings for (a) external probers whose REALITY handshake fails, or (b) authenticated clients routed to the `block` blackhole.
 
@@ -39,12 +39,12 @@ Seven controls, eight findings (watchdog splits into two). All `BROKEN`. No `VER
 - `loglevel: "warning"` does **not** suppress access logs: `app/log/log.go` routes `*log.AccessMessage` unconditionally, gating only `*log.GeneralMessage` by severity. Loglevel is a red herring here — the token simply never appears.
 - The only path that ever writes `rejected` is a post-TLS VLESS header parse failure (already-authenticated client sending a malformed header) — irrelevant to the prober threat model.
 
-**Silent failure mode.** Daemon runs, counters stay at `vpn_probe_ratelimit_events_total 0` / `bans_total 0`, `probe_offenders` is never populated. An operator reads the zero as "no probing," not "detector dead." The role's `CLAUDE.md` ("per-IP rate limit on failed handshakes") describes a capability that does not exist.
+**Silent failure mode.** Daemon runs, counters stay at `vpn_policy_ratelimit_events_total 0` / `bans_total 0`, `policy_offenders` is never populated. An operator reads the zero as "no probing," not "detector dead." The role's `CLAUDE.md` ("per-IP rate limit on failed handshakes") describes a capability that does not exist.
 
 **Remediation.**
-- *Recommended (covers real probers):* move rate-limiting to nftables on the REALITY port, independent of any app log — e.g. `tcp dport 443 ct state new meter probe_meter { ip saddr timeout 60s limit rate over 20/minute } add @probe_offenders { ip saddr timeout 300s }`. This fires before REALITY runs, so it sees actual probers.
+- *Recommended (covers real probers):* move rate-limiting to nftables on the REALITY port, independent of any app log — e.g. `tcp dport 443 ct state new meter probe_meter { ip saddr timeout 60s limit rate over 20/minute } add @policy_offenders { ip saddr timeout 300s }`. This fires before REALITY runs, so it sees actual probers.
 - *Partial (authenticated blackhole traffic only):* change `EVENT_RE` to match the real token, e.g. `re.compile(r"\[.*?->\s*block\]")`. Does **not** cover probers (no log line exists for them).
-- Add a meta-alert: `vpn_probe_ratelimit_events_total == 0` for a long window should page "detector may be broken," not be read as quiet.
+- Add a meta-alert: `vpn_policy_ratelimit_events_total == 0` for a long window should page "detector may be broken," not be read as quiet.
 - Correct the role `CLAUDE.md` to state REALITY handshake failures are invisible to a log-tailer.
 
 ---
@@ -156,7 +156,7 @@ Works for RSA, P-256/P-384, and X25519. Update the line-97 comment.
 
 The eight findings share one shape: **a control trusts an external contract it never asserts, and its failure is indistinguishable from "all quiet."** Fixing the eight individually is necessary but not sufficient; the class will regrow without structural guards.
 
-1. **Every counter that can read "0 = healthy" needs a liveness assertion.** `probe-ratelimit`, both watchdog signals, and the honeypot all present a dead detector as a quiet one. Add "this detector has seen at least one event in N days, or it is presumed broken" meta-checks, or inject a synthetic event on deploy and assert it is counted.
+1. **Every counter that can read "0 = healthy" needs a liveness assertion.** `policy-ratelimit`, both watchdog signals, and the honeypot all present a dead detector as a quiet one. Add "this detector has seen at least one event in N days, or it is presumed broken" meta-checks, or inject a synthetic event on deploy and assert it is counted.
 
 2. **Pin the upstream log/format contracts and test them.** The `REJECT|graylist` token is the canonical instance: it never matched any Xray release. A render-time or molecule test that feeds a known Xray access-log sample through the regex would have caught it. Do the same for any control that greps third-party output.
 

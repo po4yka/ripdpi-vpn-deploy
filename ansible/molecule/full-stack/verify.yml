@@ -14,7 +14,7 @@
           - "'hysteria-server.service' in ansible_facts.services"
           - "'vpn-watchdog.timer' in ansible_facts.services or 'vpn-watchdog.service' in ansible_facts.services"
           - "'honeypot.service' in ansible_facts.services"
-          - "'probe-ratelimit.service' in ansible_facts.services"
+          - "'policy-ratelimit.service' in ansible_facts.services"
 
     - name: xray config validates
       ansible.builtin.command:
@@ -29,9 +29,9 @@
       changed_when: false
       failed_when: nft_443.stdout == ""
 
-    - name: probe_offenders set is declared (probe-ratelimit ON)
+    - name: policy_offenders set is declared (policy-ratelimit ON)
       ansible.builtin.command:
-        cmd: "nft list set inet filter probe_offenders"
+        cmd: "nft list set inet filter policy_offenders"
       register: nft_set
       changed_when: false
       failed_when: nft_set.rc != 0

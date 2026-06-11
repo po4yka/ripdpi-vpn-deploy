@@ -21,7 +21,7 @@ load balancing. Discard upstream examples that reference those.
   fingerprint that lights up a flow classifier.
 - ALPN must include `h2` and `http/1.1`.
 - Cover page must be plausible for the SNI used — `example.com` is not plausible.
-- Rate limiting is enforced at **nftables** via the `probe-ratelimit` role, not in nginx.
+- Rate limiting is enforced at **nftables** via the `policy-ratelimit` role, not in nginx.
   Do not add `limit_req_zone` blocks — they conflict with the firewall layer.
 
 ## Hard rules

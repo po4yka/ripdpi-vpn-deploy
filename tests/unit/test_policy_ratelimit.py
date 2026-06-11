@@ -1,4 +1,4 @@
-"""Regression guard for the probe-ratelimit daemon.
+"""Regression guard for the policy-ratelimit daemon.
 
 The daemon ships as a Jinja2 template; this test renders it against the role
 defaults, execs the rendered module, and exercises the pure `RateLimiter`
@@ -19,8 +19,8 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ROLE = REPO_ROOT / "ansible" / "roles" / "probe-ratelimit"
-TEMPLATE = ROLE / "templates" / "probe-ratelimit.py.j2"
+ROLE = REPO_ROOT / "ansible" / "roles" / "policy-ratelimit"
+TEMPLATE = ROLE / "templates" / "policy-ratelimit.py.j2"
 DEFAULTS = ROLE / "defaults" / "main.yml"
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 ACCESS_LOG = FIXTURES / "xray-access-sample.log"
@@ -39,7 +39,7 @@ def _render_daemon() -> dict:
     defaults = yaml.safe_load(DEFAULTS.read_text())
     env = jinja2.Environment(keep_trailing_newline=True)
     src = env.from_string(TEMPLATE.read_text()).render(**defaults)
-    ns: dict = {"__name__": "probe_ratelimit_rendered"}
+    ns: dict = {"__name__": "policy_ratelimit_rendered"}
     exec(compile(src, str(TEMPLATE), "exec"), ns)  # noqa: S102 — trusted template
     return ns
 
@@ -62,7 +62,7 @@ def _error_lines() -> list[str]:
 # ---------------------------------------------------------------------------
 
 def test_defaults_match_fixture_assumptions():
-    cfg = yaml.safe_load(DEFAULTS.read_text())["probe_ratelimit"]
+    cfg = yaml.safe_load(DEFAULTS.read_text())["policy_ratelimit"]
     assert cfg["rejects_per_window"] == 5
     assert cfg["window_seconds"] == 60
     assert "dead_contract_min_lines" in cfg

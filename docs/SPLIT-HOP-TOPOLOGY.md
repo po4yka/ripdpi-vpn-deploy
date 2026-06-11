@@ -84,7 +84,7 @@ swapping the cohort file under `split-hop-egress`.
 | Payload-shape DPI on client→A flows | No — independent; handled by per-transport obfuscation |
 | Per-IP dual-role flow score on A    | **Yes** — A only accepts inbound |
 | Per-IP dual-role flow score on B    | **Yes** — B only initiates outbound |
-| Active probing of A's listeners     | No — handled by `honeypot` + `probe-ratelimit` roles |
+| Active probing of A's listeners     | No — handled by `honeypot` + `policy-ratelimit` roles |
 | ASN-bucket TCP-freeze on B's egress | No — independent; handled by provider/zone choice |
 | Cross-VPS correlation by RTT timing | **Partial** — adding two-VPS RTT noise makes timing correlation harder but not impossible. Out of scope for this ADR |
 
