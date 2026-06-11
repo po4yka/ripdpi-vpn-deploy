@@ -7,6 +7,16 @@ xray_install_dir: "{{ xray_install_root | default('/opt/xray') }}"
 xray_etc_dir: "{{ xray_config_dir | default('/etc/xray') }}"
 xray_log_path: "{{ xray_log_dir | default('/var/log/xray') }}"
 
+# Blackhole outbound QUIC (UDP/443) at the routing layer. ON by default —
+# preserves the existing anti-fingerprint behaviour: proxied clients never
+# emit UDP/443, so the exit cannot be distinguished by a QUIC-leak signature.
+# TRADE-OFF: this DISABLES HTTP/3 for every proxied client. Browsers and apps
+# transparently fall back to HTTP/2 over TCP — slower on lossy / high-latency
+# links, but no functional break. Set to false per-deploy to allow QUIC/HTTP3
+# egress (e.g. a cohort where HTTP/3 performance matters more than the
+# fingerprint surface). See roles/xray/README.md.
+xray_block_quic_outbound: true
+
 # Version sentinel — must be overridden in secrets/group_vars.
 # The role asserts this is non-empty at task start.
 xray:
