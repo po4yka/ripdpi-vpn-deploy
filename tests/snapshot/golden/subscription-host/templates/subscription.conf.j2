@@ -16,6 +16,7 @@ server {
     add_header Strict-Transport-Security "max-age=31536000" always;
     add_header Cache-Control "no-store" always;
     add_header Referrer-Policy "no-referrer" always;
+    add_header X-Robots-Tag "noindex, nofollow" always;
 
     # Long-lived /sub/<token>. Proxied to the local vpn-bootstrap
     # service, which:
@@ -34,10 +35,12 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
 
-        # Make Cache-Control / Referrer-Policy explicit at the location
-        # level — see /bootstrap/ for the inheritance-reset rationale.
-        add_header Cache-Control "no-store"     always;
-        add_header Referrer-Policy "no-referrer" always;
+        # Make Cache-Control / Referrer-Policy / X-Robots-Tag explicit at
+        # the location level — see /bootstrap/ for the inheritance-reset
+        # rationale.
+        add_header Cache-Control "no-store"                always;
+        add_header Referrer-Policy "no-referrer"           always;
+        add_header X-Robots-Tag "noindex, nofollow"        always;
 
         access_log off;
     }

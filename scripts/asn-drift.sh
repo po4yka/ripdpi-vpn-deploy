@@ -47,12 +47,21 @@ if [[ -f "$STATE_FILE" ]]; then
   old_asn="$(awk -F'\t' '{print $2}' "$STATE_FILE")"
 fi
 
-if [[ -z "$old_asn" ]]; then
-  echo "first run: recording AS${new_asn} (${new_org})"
-elif [[ "$old_asn" != "$new_asn" ]]; then
-  msg="ASN drift on ${PROVIDER}:${ENV} IP=${IP}
-old=AS${old_asn} → new=AS${new_asn} (${new_org})
-Review docs/PROVIDER-NOTES.md tier table and rotate if Avoid."
+# ASN tier blocklist (must mirror validate-reality-target.sh step 8).
+AVOID_ASNS=(13335 16276 24940 14061 26383 216071)
+
+in_avoid_tier() {
+  local asn="$1"
+  local bad
+  for bad in "${AVOID_ASNS[@]}"; do
+    [[ "$asn" == "$bad" ]] && return 0
+  done
+  return 1
+}
+
+send_alert() {
+  local msg="$1"
+  local title="$2"
   echo "$msg"
   if [[ -n "${NTFY_URL:-${NTFY_TOPIC:-}}" ]]; then
     NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
@@ -60,7 +69,7 @@ Review docs/PROVIDER-NOTES.md tier table and rotate if Avoid."
       auth=()
       [[ -n "${NTFY_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer ${NTFY_TOKEN}")
       curl -fsS -X POST \
-        -H "Title: ASN drift ${PROVIDER}:${ENV}" \
+        -H "Title: ${title}" \
         -H "Priority: high" \
         -H "Tags: warning,vpn,asn-drift" \
         "${auth[@]}" \
@@ -68,6 +77,23 @@ Review docs/PROVIDER-NOTES.md tier table and rotate if Avoid."
         "${NTFY_URL%/}/${NTFY_TOPIC}" >/dev/null || true
     fi
   fi
+}
+
+if [[ -z "$old_asn" ]]; then
+  echo "first run: recording AS${new_asn} (${new_org})"
+  if in_avoid_tier "$new_asn"; then
+    echo "WARNING: AS${new_asn} is in the Avoid tier — review docs/PROVIDER-NOTES.md" >&2
+  fi
+elif [[ "$old_asn" != "$new_asn" ]]; then
+  msg="ASN drift on ${PROVIDER}:${ENV} IP=${IP}
+old=AS${old_asn} → new=AS${new_asn} (${new_org})
+Review docs/PROVIDER-NOTES.md tier table and rotate if Avoid."
+  send_alert "$msg" "ASN drift ${PROVIDER}:${ENV}"
+elif in_avoid_tier "$new_asn"; then
+  msg="ASN Avoid-tier on ${PROVIDER}:${ENV} IP=${IP}
+AS${new_asn} (${new_org}) is in the Avoid tier (no number change).
+Review docs/PROVIDER-NOTES.md tier table and rotate."
+  send_alert "$msg" "ASN Avoid-tier ${PROVIDER}:${ENV}"
 else
   echo "no drift: AS${new_asn} (${new_org})"
 fi

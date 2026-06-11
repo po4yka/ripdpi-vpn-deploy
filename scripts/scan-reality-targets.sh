@@ -45,7 +45,7 @@ REALI_BIN="${TOOL_CACHE}/RealiTLScanner-${REALI_VERSION}"
 # Over-template list — REALITY targets too popular to be useful. Mirrored
 # from validate-reality-target.sh and the wiki reality-target-selection-2026
 # page. Keep these in sync.
-OVERUSED_RE='^(www\.)?(cloudflare\.com|microsoft\.com|apple\.com|google\.com|discord\.com|icloud\.com)$'
+OVERUSED_RE='^(([a-zA-Z0-9_-]+\.)+)?(cloudflare\.com|microsoft\.com|apple\.com|google\.com|discord\.com|icloud\.com)$'
 
 # ASN tier blocklist (see docs/PROVIDER-NOTES.md).
 AVOID_ASNS=(13335 16276 24940 14061 26383 216071)

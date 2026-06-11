@@ -32,7 +32,9 @@
 
 set -euo pipefail
 
-RKN_BLOCK_CHECKER_VERSION="${RKN_BLOCK_CHECKER_VERSION:-0.1.0}"
+# jq normalisation in assemble_report assumes top-level .verdicts/.verdict shape;
+# re-verify against the tool's actual JSON output on every version bump.
+RKN_BLOCK_CHECKER_VERSION="${RKN_BLOCK_CHECKER_VERSION:-0.5.0}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEFAULT_URL_SET="${REPO_ROOT}/scripts/rkn-block-checker-url-set.yaml"

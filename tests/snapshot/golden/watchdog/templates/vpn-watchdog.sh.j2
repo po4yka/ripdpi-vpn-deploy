@@ -75,17 +75,17 @@ probe "disk root <90%" \
 # Failure-class detectors. Each detector that fires adds a tag to the
 # alert. Operators index runbooks off the tag instead of triaging a
 # generic up/down failure. See docs/RUNBOOK-incident.md for the mapping
-# (active_probing → "graylist spikes"; tcp_listen_wedge → "wedged
-# listener"; nginx_403_spike → "probe/scrape wave").
+# (policy_reject_spike → "blackhole/VLESS-reject spike"; tcp_listen_wedge
+# → "wedged listener"; nginx_403_spike → "probe/scrape wave").
 # ---------------------------------------------------------------------------
 declare -A classes=()
 
 xray_access="/var/log/xray/access.log"
 if [[ "${ENABLE_XRAY:-true}" == "true" && -r "$xray_access" ]]; then
   recent_reject="$(tail -n 2000 "$xray_access" 2>/dev/null \
-    | grep -c -E 'REJECT|graylist' || true)"
+    | grep -c -E '(\[[^]]*\bblock\])|(^| )rejected( |$)' || true)"
   if [[ "${recent_reject:-0}" -gt 20 ]]; then
-    classes[active_probing]="${recent_reject} REJECT/graylist events in tail"
+    classes[policy_reject_spike]="${recent_reject} blackhole/VLESS-reject events in tail"
   fi
 fi
 
@@ -124,7 +124,7 @@ if (( STATE[consecutive_fails] >= FAIL_THRESHOLD )) \
   should_alert=1
 fi
 # An active failure-class event is always alert-worthy even without N
-# consecutive probe failures (a graylist spike can be live without
+# consecutive probe failures (a policy_reject_spike can be live without
 # breaking the listener). The non-emptiness check uses ${!classes[*]}
 # (returns the keys) rather than the array-length form, because the
 # array-length form embeds a Jinja2 comment delimiter inside this

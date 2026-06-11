@@ -11,6 +11,17 @@
       linux_amd64_sha256 / linux_arm64_sha256) in your secrets file or
       group_vars before running this role.
 
+- name: Pre-flight — REALITY target and serverNames must be set
+  ansible.builtin.assert:
+    that:
+      - xray.target | default('') | length > 0
+      - xray.server_names | default([]) | length > 0
+    fail_msg: >-
+      xray.target is empty or xray.server_names is an empty list.
+      Validate the target with scripts/validate-reality-target.sh and
+      probe SNI survivability from a filtered vantage with
+      scripts/probe-sni-survival.sh before converging a new target.
+
 - name: Create xray system user
   ansible.builtin.user:
     name: "{{ xray_runtime_user }}"

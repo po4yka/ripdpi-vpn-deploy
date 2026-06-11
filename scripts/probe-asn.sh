@@ -50,6 +50,17 @@ if [[ -z "$line" ]] || echo "$line" | grep -qiE '^bulk|^error|<html'; then
   exit 1
 fi
 
+# Guard: the result line must have exactly 7 pipe-delimited fields and the
+# first field (ASN) must be numeric. Any other shape (NO_DATA, truncated
+# line, format change) is treated as a lookup failure rather than silently
+# returning a wrong value.
+_nf="$(echo "$line" | awk -F'|' '{print NF}')"
+_asn_raw="$(echo "$line" | awk -F'|' '{gsub(/^ +| +$/,"",$1); print $1}')"
+if [[ "$_nf" -ne 7 ]] || ! [[ "$_asn_raw" =~ ^[0-9]+$ ]]; then
+  echo "Team Cymru lookup failed for $ip (unexpected response format)" >&2
+  exit 1
+fi
+
 asn="$(   echo "$line" | awk -F'|' '{gsub(/^ +| +$/,"",$1); print $1}')"
 prefix="$(echo "$line" | awk -F'|' '{gsub(/^ +| +$/,"",$3); print $3}')"
 country="$(echo "$line" | awk -F'|' '{gsub(/^ +| +$/,"",$4); print $4}')"
