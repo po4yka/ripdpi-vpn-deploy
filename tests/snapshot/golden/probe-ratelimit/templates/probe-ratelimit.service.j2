@@ -1,6 +1,6 @@
 [Unit]
-Description=VPN active-probing rate-limiter (Xray access.log → nftables set)
-Documentation=https://github.com/po4yka/vpn-deploy/blob/main/ansible/roles/probe-ratelimit/defaults/main.yml
+Description=VPN routing-blackhole abuse rate-limiter (Xray access.log → nftables set)
+Documentation=https://github.com/po4yka/vpn-deploy/blob/main/ansible/roles/probe-ratelimit/README.md
 After=network-online.target nftables.service xray.service
 Wants=network-online.target
 
