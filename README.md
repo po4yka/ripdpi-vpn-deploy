@@ -1,9 +1,9 @@
 # vpn-deploy
 
-[![ci](https://github.com/po4yka/vpn-deploy/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/po4yka/vpn-deploy/actions/workflows/ci.yml)
-[![codeql](https://github.com/po4yka/vpn-deploy/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/po4yka/vpn-deploy/actions/workflows/codeql.yml)
-[![scorecard](https://api.securityscorecards.dev/projects/github.com/po4yka/vpn-deploy/badge)](https://securityscorecards.dev/viewer/?uri=github.com/po4yka/vpn-deploy)
-[![release](https://img.shields.io/github/v/release/po4yka/vpn-deploy?sort=semver)](https://github.com/po4yka/vpn-deploy/releases)
+[![ci](https://github.com/po4yka/ripdpi-vpn-deploy/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/po4yka/ripdpi-vpn-deploy/actions/workflows/ci.yml)
+[![codeql](https://github.com/po4yka/ripdpi-vpn-deploy/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/po4yka/ripdpi-vpn-deploy/actions/workflows/codeql.yml)
+[![scorecard](https://api.securityscorecards.dev/projects/github.com/po4yka/ripdpi-vpn-deploy/badge)](https://securityscorecards.dev/viewer/?uri=github.com/po4yka/ripdpi-vpn-deploy)
+[![release](https://img.shields.io/github/v/release/po4yka/ripdpi-vpn-deploy?sort=semver)](https://github.com/po4yka/ripdpi-vpn-deploy/releases)
 
 Reproducible VPN deployment automation for the multi-profile access stack
 (`P0` VLESS+REALITY+Vision → `P1` nginx+XHTTP direct → `P2` Hysteria2 +
