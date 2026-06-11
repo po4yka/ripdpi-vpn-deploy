@@ -85,6 +85,13 @@ repos:
         pass_filenames: false
         files: ^secrets/(prod\.secrets\.example\.yaml|schema\.json)$
 
+      - id: deploy-profile-tier
+        name: deploy-profile-tier (no research-tier role in a family profile)
+        entry: python3 scripts/check-deploy-profile.py
+        language: system
+        pass_filenames: false
+        files: ^ansible/(role-tiers\.yml|group_vars/.*\.yml|host_vars/.*\.yml|roles/.*)$
+
       - id: cargo-clippy
         name: cargo-clippy (workspace warnings as errors)
         entry: cargo clippy --manifest-path vpnd/Cargo.toml --workspace --all-targets -- -D warnings
