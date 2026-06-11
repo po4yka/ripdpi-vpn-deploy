@@ -32,3 +32,8 @@ for blue-green; pointless if the operator only runs one VPS.
   smaller billing tier silently.
 - **Region affects RU latency more than provider** — Helsinki / Frankfurt /
   Amsterdam are baseline; LON / NYC add jitter the cohort tuning won't fix.
+- **UDP/443 edge rule ≠ UDP delivery** — `firewall.tf` opens UDP/443 under
+  `enable_hysteria` (v4+v6), but a present rule does not guarantee the provider
+  network delivers inbound UDP. After deploy, verify externally with
+  `make burn-check` (QUIC probe); on-host `nft`/`ss` ACCEPT is not evidence.
+  See `docs/PROVIDER-NOTES.md` → "UDP/443 edge reachability".

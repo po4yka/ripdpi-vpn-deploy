@@ -23,3 +23,9 @@ to AMS / FRA / LHR for low-latency RU paths.
   TLS metadata.
 - **Vultr ASN (20473) is a heavily-flagged VPN exit** — same caveat as
   Hetzner; lean harder on REALITY camouflage + cohort tuning here.
+- **UDP/443 edge rule ≠ UDP delivery** — `firewall.tf` opens UDP/443 under
+  `enable_hysteria` (`vultr_firewall_rule.hysteria`, v4+v6), but a present rule
+  does not guarantee the provider network delivers inbound UDP. After deploy,
+  verify externally with `make burn-check` (QUIC probe); on-host `nft`/`ss`
+  ACCEPT is not evidence. See `docs/PROVIDER-NOTES.md` → "UDP/443 edge
+  reachability".

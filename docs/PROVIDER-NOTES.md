@@ -19,6 +19,49 @@ same VPS IP will hit the TCP-freeze rule when the upstream is on one of
 the "Avoid" ASNs. Split-hop egress (separate exit IP, e.g. via WARP) is
 documented in `docs/ARCHITECTURE.md` once that role lands.
 
+## UDP/443 edge reachability (Hysteria2 / P2)
+
+Source: `censorship-bypass/wikis/transport-protocols/wiki/concepts/cloud-firewall-udp-egress-friction`
+(RCQ, 2026-05-27).
+
+All three provider roots open inbound **UDP/443 under `enable_hysteria`** at the
+edge firewall, with IPv4 + IPv6 parity:
+
+| Provider | Resource opening UDP/443 | Parity |
+|---|---|---|
+| UpCloud | `upcloud_firewall_rules.vpn` dynamic `firewall_rule` (`v4`,`v6`) | yes |
+| Hetzner | `hcloud_firewall.vpn` dynamic `rule` (`source_ips = 0.0.0.0/0, ::/0`) | yes |
+| Vultr | `vultr_firewall_rule.hysteria` over `public_networks` (`v4`,`v6`) | yes |
+
+**The gap is not a missing rule — it is silent edge drop.** On ≥2 of 4 cloud
+providers the KB source tested, inbound UDP/443 is dropped by the
+**provider-edge** firewall even when the rule is applied, the instance's own
+`nftables` shows ACCEPT, and the listener is bound. The instance kernel cannot
+see this layer, so on-host checks (`nft list`, `ss -ulnp`, `iptables -L`) all
+look correct while the datagram never arrives.
+
+Diagnostic rule: **trust `tcpdump` showing inbound packets, not `nft list`
+showing ACCEPT.** Verification chain after a deploy:
+
+1. Listener bound — `ss -ulnp` shows hysteria on `:443` (the in-host smoke-test
+   already dials it from localhost).
+2. External probe — `make burn-check` sends an unauthenticated QUIC
+   Version-Negotiation trigger from the operator vantage to `UDP/443` and
+   treats any reply as proof of end-to-end delivery (non-fatal WARN otherwise).
+3. If the probe gets no reply, `tcpdump -i any udp port 443` on the server
+   disambiguates: **zero inbound packets ⇒ the provider edge is dropping UDP.**
+
+**Deploy-time manual step when the edge drops UDP despite the rule.** None of
+the three providers above require a UI action to *declare* the UDP/443 rule —
+all accept it through Terraform. But if the burn-check UDP probe fails while
+TCP/443 succeeds, the provider network is dropping UDP at a layer Terraform
+cannot reach. The fix is provider-side and manual: open/confirm UDP/443 in the
+provider's web console security group, or file a support request to lift a
+UDP-default-closed policy. Do not chase the on-host firewall — it is not the
+cause. (Note Hysteria2 also supports a non-443 UDP port via `hysteria_port`;
+moving to e.g. UDP/8443 sidesteps both edge friction and RU QUIC-throttling on
+UDP/443.)
+
 ## UpCloud (primary, v1)
 
 UpCloud is the primary provider in v1. Resource shape:

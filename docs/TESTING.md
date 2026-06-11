@@ -180,6 +180,24 @@ gh attestation verify ./vpnd-x86_64-unknown-linux-gnu \
 `VPND_SKIP_ATTESTATION` is unset. The script warns and continues if `gh` is
 missing — set `VPND_SKIP_ATTESTATION=1` to opt out explicitly.
 
+## External reachability (post-deploy, operator-side)
+
+| Surface | Probe | Vantage | Notes |
+|---|---|---|---|
+| **TCP/443 (REALITY)** | `make burn-check` via check-host.net nodes | RU + EU third-party | Exits non-zero when ≥`FAIL_THRESHOLD` vantages can't connect — the IP-burn signal. |
+| **UDP/443 (Hysteria2/QUIC)** | `make burn-check` QUIC Version-Negotiation probe | operator workstation | **Always non-fatal (WARN).** Sends an unauthenticated QUIC long-header packet with a `0x?a?a?a?a` force-VN version, padded to QUIC's 1200-byte minimum; any reply proves UDP/443 was delivered end-to-end. Skips (WARN) when `ENABLE_HYSTERIA=false` or `HYSTERIA_SALAMANDER=true` (obfs makes external blackbox probing impossible). Exports `vpn_burn_udp_reachable`. |
+
+**Why on-host UDP checks are insufficient.** Per the censorship-bypass KB
+concept `cloud-firewall-udp-egress-friction`, several cloud providers silently
+drop inbound UDP/443 at the **provider-edge** firewall even when the instance's
+own `nftables` shows ACCEPT and the listener is bound (`ss -ulnp` correct). The
+instance kernel cannot see that layer, so a server-side or molecule check can
+never detect the gap — it must be probed from outside the data center. Diagnostic
+rule: trust `tcpdump` showing inbound packets, not `nft list` showing ACCEPT. If
+the burn-check UDP probe gets no reply, `tcpdump -i any udp port 443` on the
+server disambiguates a provider-edge drop (zero inbound) from server-side silence
+(packets present). See `docs/PROVIDER-NOTES.md` → "UDP/443 edge reachability".
+
 ## Pre-commit hooks
 
 Local pre-commit configuration (`.pre-commit-config.yaml`) catches common
@@ -219,7 +237,8 @@ Generated `terraform/providers/<name>/README.md` files are committed; the
   `ci-real-deploy` label workflow.
 - **End-to-end traffic against geographic locations** (RU, EU, US). Would
   require live infrastructure with the right BGP. This is what
-  `make burn-check` (operator-side cron) covers post-deploy.
+  `make burn-check` (operator-side cron) covers post-deploy — including the
+  external UDP/443 edge-reachability probe (see "External reachability" above).
 - **Long-running stability** (memory leaks, descriptor exhaustion). Out of
   scope for unit-level testing; the watchdog role catches it post-deploy.
 - **Active-probing simulation** against the deployed REALITY listener. The
