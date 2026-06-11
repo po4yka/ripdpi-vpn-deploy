@@ -125,6 +125,41 @@
     - vpn.awg_cohort | default('') | length > 0
     - amneziawg_secrets.instances | default([]) | length == 0
 
+# Forward guard: the role does not emit S3/S4 today, but a future cohort or
+# instance author might add them. Non-zero S3/S4 trigger an H4 transport-header
+# byte misalignment in awg-go on arm64 Android (amneziawg-go#110, unfixed as of
+# 2026-05-28) that SILENTLY drops transport packets. Fail closed instead of
+# shipping a tunnel that comes up but carries no data on family arm64 peers.
+- name: "Guard: AmneziaWG S3/S4 must stay zero (amneziawg-go#110 — arm64 Android silent packet drop)"
+  vars:
+    _awg_instances_raw: "{{ amneziawg_secrets.instances | default([]) }}"
+    _awg_s34: >-
+      {{ ([ (amneziawg_cohort | default({})).s3 | default(0),
+            (amneziawg_cohort | default({})).s4 | default(0),
+            (amneziawg_secrets | default({})).s3 | default(0),
+            (amneziawg_secrets | default({})).s4 | default(0) ]
+          + (_awg_instances_raw | selectattr('s3', 'defined') | map(attribute='s3') | list)
+          + (_awg_instances_raw | selectattr('s4', 'defined') | map(attribute='s4') | list)
+         ) | map('int') | list }}
+  ansible.builtin.assert:
+    that:
+      - _awg_s34 | max == 0
+    quiet: true
+    fail_msg: |
+      AmneziaWG S3/S4 must be 0 — a cohort or instance set a non-zero value
+      (S3/S4 values seen: {{ _awg_s34 }}).
+
+      Per amneziawg-go#110 (no fix as of 2026-05-28), non-zero S3/S4 cause an
+      H4 transport-header byte misalignment in awg-go on arm64 Android: the
+      tunnel handshake succeeds but transport packets are SILENTLY dropped —
+      a family arm64-Android peer gets a connected interface with zero data
+      flow and no error. Keep S3=S4=0 (the role emits neither today).
+
+      Tradeoff: S3=S4=0 disables H4 transport-junk, so obfuscation degrades to
+      S1/S2 handshake-junk only. If transport-packet obfuscation is required on
+      arm64, use VLESS+REALITY instead. See docs/AWG-COHORTS.md.
+    success_msg: "AmneziaWG S3/S4 are zero — safe for arm64 Android (amneziawg-go#110)."
+
 - name: Compute effective AmneziaWG instances
   ansible.builtin.set_fact:
     _awg_instances: >-
