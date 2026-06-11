@@ -268,6 +268,7 @@ tf-test:
 ci-fast:
 	@echo "== render check =="; python3 scripts/check-templates-render.py
 	@echo "== secrets coverage =="; python3 scripts/check-secrets-coverage.py
+	@echo "== deploy-profile tier guard =="; python3 scripts/check-deploy-profile.py
 	@echo "== snapshot diff =="; python3 scripts/render-snapshots.py
 	@echo "== schema validation =="; python3 scripts/validate-secrets.py
 	@if command -v ansible-playbook >/dev/null 2>&1; then \

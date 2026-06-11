@@ -1,0 +1,83 @@
+---
+# Canonical role tier classification — the single source of truth tagging
+# every Ansible role as CORE, TACTICAL, or RESEARCH.
+#
+# Rationale and the full ADR (three independent angles + reconciliation) live
+# in docs/ROLE-TIERING.md. Tiers:
+#
+#   core      — required for the family-VPN baseline (P0+P1+P2). Default-on
+#               (or always-on). If it breaks, the family loses connectivity
+#               or recoverability.
+#   tactical  — opt-in, situational. Production-safe to enable for a specific
+#               condition, but not default-on for a family node.
+#   research  — experimental / unconfirmed-in-prod / measurement-only. MUST
+#               NOT appear enabled in a default family deploy profile.
+#
+# ENFORCEMENT (so a research role can never silently reach a family deploy):
+#   * CI/static: scripts/check-deploy-profile.py fails if any role tagged
+#     `research` here has its enable toggle true in a family profile
+#     (group_vars/all.yml, vpn-p0, vpn-p1p2, vpn-fullstack) or anywhere it is
+#     not explicitly allowlisted. Wired into `make ci-fast` + pre-commit.
+#   * Deploy-time: a pre_task assert in playbooks/site.yml blocks a research
+#     role at converge unless the host's inventory lists it in
+#     `allow_research_roles` (an explicit, git-visible per-host opt-in).
+#
+# Adding a role: add it to `tiers` (and, if it is toggle-gated, to
+# `toggle_role_map`). The lint fails closed on any role missing a tier or any
+# enable toggle missing from the map.
+
+tiers:
+  # CORE — the family baseline (always-on or default-on in all.yml)
+  baseline: core            # always-on; sysctl/SSH/time-sync/forwarding
+  firewall: core            # always-on; nftables default-drop perimeter
+  xray: core                # P0 VLESS+REALITY+Vision (TCP/443)
+  nginx-xhttp: core         # P1 XHTTP direct (TCP/8443)
+  hysteria: core            # P2 Hysteria2 (UDP/443)
+  amneziawg: core           # P2 device-VPN (obfuscated WG UDP)
+  geodata: core             # geosite/geoip feed; firewall geo-block depends on it
+  monitoring: core          # local-first node_exporter + log rotation
+  watchdog: core            # service supervision + alerting
+  backup: core              # restic+age recovery path
+
+  # TACTICAL — opt-in, situational, default-off
+  probe-ratelimit: tactical # routing-blackhole abuse limiter (see README)
+  honeypot: tactical        # active-probing canary listener
+  cdn-front: tactical       # CF-fronted XHTTP; NOT the RU baseline (CDN-DECISION)
+  naive: tactical           # NaiveProxy; xcaddy from-source build
+  warp-outbound: tactical   # Cloudflare WARP egress; changes ASN
+  subscription-host: tactical # self-service config pull; v1 default is scp
+
+  # RESEARCH — experimental / unconfirmed; never in a family deploy
+  split-hop-egress: research  # two-VPS dual-role defense; pilot, unconfirmed
+  hysteria-realm: research    # sing-box alpha rendezvous; P5 fallback
+  dns-morph-bridge: research  # UDP/53 bootstrap channel; self-built binary, P4
+
+# Maps each enable toggle (under the `vpn:` dict) to its role. Roles without a
+# toggle (baseline, firewall) are always-on and intentionally absent here.
+toggle_role_map:
+  enable_xray_reality: xray
+  enable_nginx_xhttp: nginx-xhttp
+  enable_naive: naive
+  enable_hysteria: hysteria
+  enable_amneziawg: amneziawg
+  enable_geodata: geodata
+  enable_monitoring: monitoring
+  enable_watchdog: watchdog
+  enable_backup: backup
+  enable_subscription_host: subscription-host
+  enable_probe_ratelimit: probe-ratelimit
+  enable_cdn_front: cdn-front
+  enable_honeypot: honeypot
+  enable_warp_outbound: warp-outbound
+  enable_dns_morph_bridge: dns-morph-bridge
+  enable_hysteria_realm: hysteria-realm
+  enable_split_hop_egress: split-hop-egress
+
+# Profiles that constitute a "family" deploy. The lint forbids any research
+# role from being enabled (directly or by inheriting all.yml) in these, and
+# forbids the allow_research_roles override from appearing in them.
+family_profiles:
+  - group_vars/all.yml
+  - group_vars/vpn-p0.yml
+  - group_vars/vpn-p1p2.yml
+  - group_vars/vpn-fullstack.yml

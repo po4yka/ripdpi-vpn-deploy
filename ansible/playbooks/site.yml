@@ -23,6 +23,43 @@
           VPN_SECRETS_FILE is not set. Run `make decrypt` or export the path
           to your decrypted secrets file before running this playbook.
 
+    # Role-tier guard: a role tagged `research` in ansible/role-tiers.yml must
+    # never converge on a family node. A lab/pilot host opts in explicitly by
+    # listing the role in `allow_research_roles` in its inventory (git-visible).
+    # The static half of this guard is scripts/check-deploy-profile.py (CI).
+    - name: Load role tier manifest
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../role-tiers.yml"
+      run_once: true
+
+    - name: Guard — block RESEARCH-tier roles in a family deploy
+      vars:
+        _enabled_research_roles: >-
+          {{ toggle_role_map | dict2items
+             | selectattr('key', 'in',
+                 (vpn | default({}) | dict2items
+                  | selectattr('value', 'equalto', true)
+                  | map(attribute='key') | list))
+             | map(attribute='value') | list
+             | select('in',
+                 (tiers | dict2items
+                  | selectattr('value', 'equalto', 'research')
+                  | map(attribute='key') | list))
+             | list }}
+        _forbidden: "{{ _enabled_research_roles | difference(allow_research_roles | default([])) }}"
+      ansible.builtin.assert:
+        that:
+          - _forbidden | length == 0
+        fail_msg: >-
+          Refusing to deploy: RESEARCH-tier role(s) {{ _forbidden }} are enabled
+          on this host but not approved in `allow_research_roles`. Research /
+          experimental roles are not part of the family (P0/P1/P2) baseline. To
+          run one on a lab or pilot node, add it to `allow_research_roles` in
+          that host's inventory (e.g. allow_research_roles: [split-hop-egress]).
+          See docs/ROLE-TIERING.md.
+        success_msg: "Tier guard OK — no unapproved research-tier roles enabled."
+      run_once: true
+
   # Hosts in the `vpn-subscription-only` inventory group skip every
   # transport-class role and run only baseline + firewall + the
   # subscription-host role + supporting services (monitoring /
