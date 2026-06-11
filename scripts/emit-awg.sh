@@ -189,6 +189,16 @@ if [[ -z "$h1" || -z "$h2" || -z "$h3" || -z "$h4" ]]; then
   exit 1
 fi
 
+# AWG 2.0 requires that H1..H4 are pairwise distinct (non-overlapping header magic).
+# Duplicate values cause the server to mis-classify handshake packet types.
+# POSIX sort|uniq -d keeps this portable (no bash-4 associative array).
+_dup_h="$(printf '%s\n' "$h1" "$h2" "$h3" "$h4" | sort | uniq -d | head -1)"
+if [[ -n "$_dup_h" ]]; then
+  echo "H1..H4 must be pairwise distinct: value ${_dup_h} is used more than once" >&2
+  exit 1
+fi
+unset _dup_h
+
 # Optional I1..I5 (init-packet size overrides) — present in some cohorts.
 # Emit only when the param is present in secrets or cohort; no hard default.
 # (Resolved inline in the "Emit I1..I5" loop below.)

@@ -93,7 +93,7 @@ echo "exit-ip: $EXIT_IP"
 
 # Top-level index gets appended to as profiles complete.
 INDEX="${OUTPUT_DIR}/index.json"
-echo '{"schema_version": 1, "exit_ip": "'"$EXIT_IP"'", "sni_survival_report": "sni-survival.json", "profiles": {}}' > "$INDEX"
+echo '{"schema_version": 1, "vantage": "unfiltered", "exit_ip": "'"$EXIT_IP"'", "sni_survival_report": "sni-survival.json", "profiles": {}}' > "$INDEX"
 
 IFS=',' read -r -a profile_list <<< "$PROFILES"
 for profile in "${profile_list[@]}"; do

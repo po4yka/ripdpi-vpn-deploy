@@ -286,6 +286,9 @@ for i in "${!host_pairs[@]}"; do
       fi
 
       # Build the AWG JSON object; conditionally include i1..i5
+      # S3/S4 are intentionally absent: amneziawg-go#110 causes silent packet
+      # drop on arm64-Android clients when S3/S4 are non-zero; this repo pins
+      # S3=S4=0 for the whole arm64-Android family, enforced by the amneziawg role guard.
       awg_obj="$(jq -n \
         --arg tag "p2-awg-${CLIENT_NAME}" \
         --argjson addr "$(jq -nc --arg a "$peer_addr" '[$a]')" \

@@ -1,5 +1,22 @@
 # xray role — operator notes
 
+## REALITY target and serverNames validation
+
+`xray.target` and `xray.server_names` are passed verbatim into the REALITY
+inbound config. The role asserts at pre-flight that both values are non-empty,
+but correctness of the chosen target is the operator's responsibility:
+
+- Run `scripts/validate-reality-target.sh <target>` to check TLS
+  fingerprint compatibility, cert chain, and H2/H3 support before adopting a
+  new target.
+- Run `scripts/probe-sni-survival.sh <target>` from a filtered vantage point
+  (a node inside the target network, or a probe machine on the relevant
+  access path) to verify the SNI passes the censor's filters.
+
+Choosing a target that is itself blocked or that leaks a distinctive
+fingerprint negates the REALITY camouflage. The pre-flight assert catches
+empty values but cannot substitute for operational verification.
+
 ## QUIC / HTTP-3 outbound blocking (`xray_block_quic_outbound`)
 
 The routing config in `templates/config.json.j2` carries an anti-fingerprint

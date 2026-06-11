@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# Probe the home-ISP TLS policing rule documented in
-# tls-policing-home-isps (MTS/MGTS/RTK Izhevsk/JustLan/LanInterCom; 50+
-# ASNs as of 2026-05). The rule: more than ~12 concurrent TLS handshakes
-# to a single IP:443 triggers a 60-120 s silent block on that pair.
+# Probe TLS policing behaviour on the path between the client and a target IP.
+# Two distinct threshold regimes are known:
+#   - Mobile/residential cohorts: >~12 concurrent TLS handshakes to a single
+#     IP:443 triggers a 60-120 s silent block on that pair.
+#   - Hosting-AS cohorts: the threshold can be as low as ~3 parallel
+#     connections within a ~120 s window — so drops can appear at N=3 before
+#     N=12 is ever reached. The low-N steps (2, 3) in the default step list
+#     exist specifically to detect this tighter regime.
 #
 # This script opens N parallel TLS handshakes (using openssl s_client)
 # and measures how many actually complete the handshake. The shape of
@@ -11,11 +15,11 @@
 #
 # Run from a client network you care about — NOT from the VPS itself.
 # A common pattern is to ssh into a low-cost VPS inside the cohort's
-# carrier and run this against the production VPS.
+# AS and run this against the production VPS.
 #
 # Usage:
 #   scripts/test-tls-policing.sh --host vpn.example.com --port 443
-#   scripts/test-tls-policing.sh --host 1.2.3.4 --steps 1,4,8,12,16,24
+#   scripts/test-tls-policing.sh --host 1.2.3.4 --steps 1,2,3,4,8,12,16,24
 #
 # Reports a table: N → completed / dropped / median handshake ms.
 set -euo pipefail
@@ -36,7 +40,11 @@ run_timeout() {
 
 HOST=""
 PORT=443
-STEPS="1,4,8,12,16,24"
+# Default step list includes low-N values (2, 3) to detect hosting-AS cohorts
+# that trip at ~3 parallel connections within ~120 s, well before the N≈12
+# threshold characteristic of mobile/residential cohorts. Override with
+# --steps if you only care about one regime.
+STEPS="1,2,3,4,8,12,16,24"
 TIMEOUT=10
 COOLDOWN=120
 
@@ -118,6 +126,9 @@ done
 
 echo
 echo "Interpretation:"
-echo "  * dropped rises sharply at N≈12  → switch this cohort to xray_flow_mode: mux"
-echo "  * dropped flat across all N       → home-ISP policing not active for this path"
-echo "  * P50 spikes >5000 ms at large N  → soft policing (rate-limit), not silent block"
+echo "  * dropped rises sharply at N=2-3  → hosting-AS tight-threshold policing (~3 parallel/120s)"
+echo "                                       switch this cohort to xray_flow_mode: mux"
+echo "  * dropped rises sharply at N≈12   → mobile/residential cohort policing (~12 parallel/60-120s)"
+echo "                                       switch this cohort to xray_flow_mode: mux"
+echo "  * dropped flat across all N        → TLS policing not active for this path"
+echo "  * P50 spikes >5000 ms at large N   → soft policing (rate-limit), not silent block"

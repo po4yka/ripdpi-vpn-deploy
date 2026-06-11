@@ -138,6 +138,7 @@ exact-match drop table for this path.
 ```jsonc
 {
   "schema_version": 1,
+  "vantage": "unfiltered",
   "exit_ip": "203.0.113.1",
   "sni_survival_report": "sni-survival.json",
   "profiles": {
@@ -149,6 +150,8 @@ exact-match drop table for this path.
   }
 }
 ```
+
+The CI (unfiltered) runner always writes `"vantage": "unfiltered"`. The operator filtered-half run records `"vantage": "filtered"` in its own `index.json` so that tooling stitching the two artifacts can identify which half is which without relying on file-name conventions.
 
 `.transport-reachability/sni-survival.json` (the unfiltered baseline; the
 operator writes a `filtered` counterpart):

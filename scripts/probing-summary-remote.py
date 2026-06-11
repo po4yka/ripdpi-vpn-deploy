@@ -29,11 +29,11 @@ HONEYPOT_LOG = pathlib.Path("/var/log/honeypot/connections.log")
 TEXTFILE_DIR = pathlib.Path("/var/lib/node_exporter/textfile")
 REPORT_DIR = pathlib.Path("/var/log")
 
-# Xray access.log lines:
-#   2026/05/11 12:34:56 1.2.3.4:53456 rejected ...
-#   2026/05/11 12:34:56 1.2.3.4:53456 graylist hit ...
+# Xray access.log lines that indicate a rejected or blackholed connection:
+#   2026/05/11 12:34:56 1.2.3.4:53456 rejected  ...   (VLESS-layer AccessRejected)
+#   2026/05/11 12:34:56 1.2.3.4:53456 [... block] ... (blackhole detour)
 XRAY_TS_RE = re.compile(r"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})\s")
-XRAY_EVENT_RE = re.compile(r"(REJECT|graylist|rejected)", re.IGNORECASE)
+XRAY_EVENT_RE = re.compile(r"(\[[^\]]*\bblock\])|(^| )rejected( |$)")
 
 
 def _bucket_hour(ts: dt.datetime) -> str:
@@ -165,7 +165,7 @@ def main() -> int:
     md_path = REPORT_DIR / f"vpn-probing-summary-{today}.md"
     with md_path.open("w") as fh:
         fh.write(f"# Probing summary — {today} (last {WINDOW_HOURS} h)\n\n")
-        fh.write(f"* Xray REJECT/graylist events: **{xray_n}**\n")
+        fh.write(f"* Xray blackhole/VLESS-reject events: **{xray_n}**\n")
         fh.write(f"* nginx 403/444 responses: **{nginx_n}**\n")
         fh.write(f"* Honeypot connections: **{honey_n}**\n")
         fh.write(f"* Classification: **{cls}**\n\n")
@@ -186,7 +186,7 @@ def main() -> int:
     prom_path = TEXTFILE_DIR / "vpn_probing.prom"
     tmp_path = prom_path.with_suffix(".prom.tmp")
     with tmp_path.open("w") as fh:
-        fh.write("# HELP vpn_probing_xray_events_7d Xray REJECT/graylist events in last 7d\n")
+        fh.write("# HELP vpn_probing_xray_events_7d Xray blackhole/VLESS-reject events in last 7d\n")
         fh.write("# TYPE vpn_probing_xray_events_7d gauge\n")
         fh.write(f"vpn_probing_xray_events_7d {xray_n}\n")
         fh.write("# HELP vpn_probing_nginx_4xx_7d nginx 403/444 in last 7d\n")
