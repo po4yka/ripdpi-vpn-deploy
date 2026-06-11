@@ -20,7 +20,7 @@ Do **NOT** open a public issue for these:
 Channel:
 
 - Preferred: open a **private security advisory** at
-  <https://github.com/po4yka/vpn-deploy/security/advisories/new> —
+  <https://github.com/po4yka/ripdpi-vpn-deploy/security/advisories/new> —
   it lets the maintainer triage privately and publish a fix
   alongside a CVE if warranted.
 - Fallback: encrypted DM to the maintainer (Signal / age-encrypted
