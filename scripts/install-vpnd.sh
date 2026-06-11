@@ -2,7 +2,7 @@
 # install-vpnd.sh — download and install the vpnd binary from GitHub releases.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/po4yka/vpn-deploy/main/scripts/install-vpnd.sh \
+#   curl -fsSL https://raw.githubusercontent.com/po4yka/ripdpi-vpn-deploy/main/scripts/install-vpnd.sh \
 #     -o install-vpnd.sh && chmod +x install-vpnd.sh && ./install-vpnd.sh
 #   PREFIX=/usr/local ./install-vpnd.sh
 #
@@ -26,7 +26,7 @@
 
 set -euo pipefail
 
-REPO="po4yka/vpn-deploy"
+REPO="po4yka/ripdpi-vpn-deploy"
 RELEASES_BASE="https://github.com/${REPO}/releases/latest/download"
 
 # ---------------------------------------------------------------------------

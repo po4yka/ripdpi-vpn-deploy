@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.75"
 license = "BSD-3-Clause"
 description = "Convenience CLI wrapping the vpn-deploy Make/Terraform/Ansible/SOPS layers"
-repository = "https://github.com/po4yka/vpn-deploy"
+repository = "https://github.com/po4yka/ripdpi-vpn-deploy"
 publish = false
 
 [lib]

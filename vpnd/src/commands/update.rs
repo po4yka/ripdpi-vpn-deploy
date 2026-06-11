@@ -7,7 +7,7 @@ use crate::cli::UpdateArgs;
 use crate::config::Context;
 
 const GITHUB_API_URL: &str =
-    "https://api.github.com/repos/po4yka/vpn-deploy/releases/latest";
+    "https://api.github.com/repos/po4yka/ripdpi-vpn-deploy/releases/latest";
 const CACHE_FILE: &str = "last-update-check.toml";
 const TTL_SECS: u64 = 86_400; // 24 h
 
@@ -89,7 +89,7 @@ fn print_notice(latest_tag: &str) {
         let stripped = latest_tag.trim_start_matches("vpnd-");
         eprintln!(
             "{} A newer vpnd release is available: {} (you have {}). \
-             See https://github.com/po4yka/vpn-deploy/releases",
+             See https://github.com/po4yka/ripdpi-vpn-deploy/releases",
             "notice:".yellow(),
             stripped.green().bold(),
             current.dimmed(),
