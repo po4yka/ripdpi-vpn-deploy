@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
-# Pre-deploy validator for the REALITY target host. Runs an 8-step check
+# Pre-deploy validator for the REALITY target host. Runs a 9-step check
 # (TLS 1.3 handshake, ALPN h2, certificate SAN coverage, plausible
 # public CA, real HTTP body, Chrome-uTLS compatibility, anti-template
-# heuristic, ASN plausibility) and exits non-zero on any hard failure.
+# heuristic, ASN plausibility, bare-vs-www SNI variant hygiene) and exits
+# non-zero on any hard failure.
+#
+# SCOPE — HYGIENE, NOT RU SURVIVAL. This runs from the operator/local (non-RU)
+# vantage and can only validate TLS/certificate hygiene. It does NOT — and from
+# a non-RU vantage CANNOT — establish whether a given SNI survives RU/TSPU
+# filtering. TSPU on several paths matches the SNI by exact dot-component
+# string, so `foo.com` and `www.foo.com` can survive differently; step 9 tests
+# both variants' hygiene and reports them separately, but the survival decision
+# belongs to `scripts/probe-sni-survival.sh` run from a filtered vantage (see
+# docs/TRANSPORT-REACHABILITY-MATRIX.md). Choose server_names by what survived
+# there, never by the topologically "canonical" form.
 #
 # Usage:
 #   scripts/validate-reality-target.sh                # reads from secrets
@@ -16,7 +27,7 @@
 # Optional:
 #   SOPS_FILE       path to encrypted secrets file
 #   ENV             default: prod
-#   VPS_ASN         ASN integer; if set, [8/8] flags ASN mismatch as a warning
+#   VPS_ASN         ASN integer; if set, [8/9] flags ASN mismatch as a warning
 set -euo pipefail
 
 ENV="${ENV:-prod}"
@@ -63,7 +74,7 @@ trap 'rm -f "$TARGET_OUT" "$TARGET_LOG"; [[ -n "${TMP:-}" ]] && { shred -u "$TMP
 # ---------------------------------------------------------------------------
 # 1. TLS handshake works at all (mandatory)
 # ---------------------------------------------------------------------------
-echo "[1/8] TLS 1.3 handshake to ${HOST}:${PORT}"
+echo "[1/9] TLS 1.3 handshake to ${HOST}:${PORT}"
 if ! openssl s_client -connect "${HOST}:${PORT}" -servername "${HOST}" \
        -tls1_3 -alpn h2,http/1.1 < /dev/null 2>"$TARGET_LOG" >"$TARGET_OUT"; then
   echo "  FAIL: TLS handshake failed"
@@ -82,7 +93,7 @@ ALPN="$(grep -E 'ALPN protocol' "$TARGET_OUT" | head -1 | awk -F': ' '{print $2}
 # ---------------------------------------------------------------------------
 # 2. ALPN includes h2 (mandatory — REALITY relies on H2)
 # ---------------------------------------------------------------------------
-echo "[2/8] H2 (ALPN h2) supported"
+echo "[2/9] H2 (ALPN h2) supported"
 if [[ "$ALPN" != "h2" ]]; then
   echo "  FAIL: ALPN is '${ALPN}', expected 'h2'"
   fails=$((fails+1))
@@ -91,7 +102,7 @@ fi
 # ---------------------------------------------------------------------------
 # 3. Certificate SAN covers every serverName (mandatory)
 # ---------------------------------------------------------------------------
-echo "[3/8] Certificate SAN covers every serverName"
+echo "[3/9] Certificate SAN covers every serverName"
 SAN="$(openssl s_client -connect "${HOST}:${PORT}" -servername "${HOST}" \
         -showcerts < /dev/null 2>/dev/null \
         | openssl x509 -noout -ext subjectAltName 2>/dev/null \
@@ -120,7 +131,7 @@ done
 # ---------------------------------------------------------------------------
 # 4. Common Name plausibility (warn) — discourage exotic / mismatched CNs
 # ---------------------------------------------------------------------------
-echo "[4/8] Subject / issuer plausibility"
+echo "[4/9] Subject / issuer plausibility"
 SUBJECT="$(openssl s_client -connect "${HOST}:${PORT}" -servername "${HOST}" \
             < /dev/null 2>/dev/null | openssl x509 -noout -subject 2>/dev/null || true)"
 ISSUER="$(openssl s_client -connect "${HOST}:${PORT}" -servername "${HOST}" \
@@ -137,7 +148,7 @@ fi
 # ---------------------------------------------------------------------------
 # 5. HTTP/2 200 on /  (mandatory — empty/redirect-loop targets fail probes)
 # ---------------------------------------------------------------------------
-echo "[5/8] HTTPS GET / returns a real response"
+echo "[5/9] HTTPS GET / returns a real response"
 HTTP_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
               --resolve "${HOST}:${PORT}:$(getent hosts "$HOST" | awk '{print $1}' | head -1)" \
               "https://${HOST}:${PORT}/" || echo 000)"
@@ -162,7 +173,7 @@ esac
 # ---------------------------------------------------------------------------
 # 6. uTLS Chrome fingerprint compatibility (warn)
 # ---------------------------------------------------------------------------
-echo "[6/8] uTLS Chrome compatibility (mimic ClientHello)"
+echo "[6/9] uTLS Chrome compatibility (mimic ClientHello)"
 if curl -fsS --max-time 10 \
      -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36' \
      --tls-max 1.3 \
@@ -176,7 +187,7 @@ fi
 # ---------------------------------------------------------------------------
 # 7. Anti-template OPSEC heuristic (warn) — overused REALITY targets
 # ---------------------------------------------------------------------------
-echo "[7/8] Target popularity heuristic"
+echo "[7/9] Target popularity heuristic"
 overused="www.cloudflare.com www.microsoft.com www.apple.com www.google.com discord.com"
 for o in $overused; do
   if [[ "$HOST" == "$o" ]]; then
@@ -192,7 +203,7 @@ done
 #    VPS-hosting IP creates an ASN/SNI mismatch that TSPU's IP-reputation
 #    pipeline can score against. See reality-target-selection-2026.
 # ---------------------------------------------------------------------------
-echo "[8/8] Target ASN plausibility"
+echo "[8/9] Target ASN plausibility"
 target_ip="$(getent hosts "$HOST" | awk '{print $1}' | head -1)"
 if [[ -z "$target_ip" ]]; then
   echo "  WARN: could not resolve $HOST to compare ASN"
@@ -228,7 +239,63 @@ else
   fi
 fi
 
+# ---------------------------------------------------------------------------
+# 9. SNI variant hygiene (bare vs www.) — LOCAL HYGIENE ONLY, NOT RU SURVIVAL.
+#    TSPU on several non-CF paths matches the SNI by EXACT dot-component string,
+#    not by suffix, so the bare `foo.com` and `www.foo.com` form of the same
+#    name can survive very differently — in either direction. That asymmetry is
+#    observable ONLY from inside an RU/filtered vantage. This step tests the
+#    TLS/cert hygiene of BOTH variants and reports them SEPARATELY; it does NOT
+#    and CANNOT tell you which variant survives RU TSPU. For the survival
+#    decision run `scripts/probe-sni-survival.sh` from the filtered vantage and
+#    choose `server_names` by the variant that survived — see
+#    docs/TRANSPORT-REACHABILITY-MATRIX.md. (KB:
+#    sni-exact-match-vs-suffix-classification-2026.)
+# ---------------------------------------------------------------------------
+echo "[9/9] SNI variant hygiene (bare vs www.) — local TLS/cert only, NOT RU survival"
+seen_variants=""
+for sn in $SERVER_NAMES; do
+  sn_clean="${sn//,/}"
+  [[ -z "$sn_clean" ]] && continue
+  bare="${sn_clean#www.}"
+  for variant in "$bare" "www.$bare"; do
+    case " $seen_variants " in *" $variant "*) continue ;; esac
+    seen_variants="$seen_variants $variant"
+
+    v_out="$(openssl s_client -connect "${HOST}:${PORT}" -servername "$variant" \
+              -tls1_3 -alpn h2 </dev/null 2>/dev/null || true)"
+    if ! printf '%s' "$v_out" | grep -q -- '-----BEGIN CERTIFICATE-----'; then
+      echo "  WARN: ${variant}: target returned no cert for this SNI (hygiene only)"
+      warns=$((warns+1))
+      continue
+    fi
+    # SAN coverage of THIS variant against the cert the target returned for it.
+    v_san="$(printf '%s' "$v_out" | openssl x509 -noout -ext subjectAltName 2>/dev/null \
+              | grep DNS: | tr ',' '\n' | sed -E 's/.*DNS://; s/[[:space:]]//g')"
+    v_match=0
+    while IFS= read -r san_entry; do
+      [[ -z "$san_entry" ]] && continue
+      if [[ "$san_entry" == \*\.* ]]; then
+        san_suffix=".${san_entry#*.}"
+        [[ "$variant" == *"$san_suffix" ]] && v_match=1 && break
+      fi
+      [[ "$san_entry" == "$variant" ]] && v_match=1 && break
+    done <<< "$v_san"
+    if (( v_match )); then
+      echo "  ok:   ${variant}: TLS handshake + in cert SAN (local hygiene)"
+    else
+      echo "  WARN: ${variant}: handshake ok but not in cert SAN (hygiene only)"
+      warns=$((warns+1))
+    fi
+  done
+done
+echo "  note: which variant to put in xray.server_names is decided by RU-vantage"
+echo "        survival (scripts/probe-sni-survival.sh), never by this local check."
+
 echo
 echo "summary: ${fails} hard failure(s), ${warns} warning(s)"
+echo "note: this validator tests TLS/cert HYGIENE from the local (non-RU) vantage"
+echo "      only. It does NOT establish RU/TSPU survival of any SNI — that is"
+echo "      decided by scripts/probe-sni-survival.sh from a filtered vantage."
 (( fails == 0 )) || exit 1
 exit 0
