@@ -28,3 +28,8 @@ shared template as UpCloud (`terraform/shared/cloud-init.yaml.tftpl`).
 - **Hetzner ASN (24940) is a known VPN exit ASN** — REALITY camouflage still
   helps, but cohort tuning should account for "Hetzner egress" appearing in
   recipient ASN logs as a known signal.
+- **UDP/443 edge rule ≠ UDP delivery** — `firewall.tf` opens UDP/443 under
+  `enable_hysteria` (public v4+v6 `source_ips`), but a present rule does not
+  guarantee the provider network delivers inbound UDP. After deploy, verify
+  externally with `make burn-check` (QUIC probe); on-host `nft`/`ss` ACCEPT is
+  not evidence. See `docs/PROVIDER-NOTES.md` → "UDP/443 edge reachability".
