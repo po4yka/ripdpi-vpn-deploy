@@ -14,6 +14,13 @@
 # Per-host SOPS files: by default each pair uses
 # ~/.config/vpn-provision/<ENV>.secrets.sops.yaml. Override with SOPS_FILE
 # (single shared file) or SOPS_FILES (comma-separated, one per host).
+#
+# Client uTLS fingerprint (REALITY + XHTTP outbounds; Hysteria2's QUIC TLS has
+# no uTLS knob): per-profile via group_vars `xray_utls_fingerprint` (declared in
+# the xray role defaults; default "chrome"). A global UTLS_FINGERPRINT env var
+# overrides it for a single run. Allowed values are whatever the target sing-box
+# supports (chrome, firefox, edge, safari, ios, android, random, …). See
+# docs/CLIENT-NOTES.md for when a non-default choice matters (RU-AS cascade only).
 set -euo pipefail
 
 CLIENT_NAME="${1:-}"
@@ -196,6 +203,11 @@ for i in "${!host_pairs[@]}"; do
   hysteria_server_port="$(jq -r '.hysteria_port // 443' <<< "$host_json")"
   hysteria_port_range="$(jq -r '.hysteria_port_range // ""' <<< "$host_json")"
   hysteria_hop_interval="$(jq -r '.hysteria_hop_interval // "30s"' <<< "$host_json")"
+  # Client uTLS fingerprint for this profile. Per-profile via group_vars
+  # (xray_utls_fingerprint), default "chrome"; a global UTLS_FINGERPRINT env
+  # overrides. Used by the REALITY and XHTTP outbounds only.
+  utls_fp="${UTLS_FINGERPRINT:-$(jq -r '.xray_utls_fingerprint // "chrome"' <<< "$host_json")}"
+  [[ -z "$utls_fp" || "$utls_fp" == "null" ]] && utls_fp="chrome"
 
   if [[ "$enable_reality" == "true" || "$enable_xhttp" == "true" ]]; then
     client_json="$(jq --arg name "$CLIENT_NAME" '.xray.clients[]? | select(.name==$name)' "$secrets_tmp")"
@@ -228,6 +240,7 @@ for i in "${!host_pairs[@]}"; do
         --arg tag "p0-reality-${tag_prefix}${suffix}"
         --arg ip "$server_ip" --arg uuid "$uuid"
         --arg sni "$sni" --arg pk "$reality_pubkey" --arg sid "$short_id"
+        --arg fp "$utls_fp"
         --argjson port "$port"
       )
       if [[ "$flow" == "mux" ]]; then
@@ -235,14 +248,14 @@ for i in "${!host_pairs[@]}"; do
           '. += [{type:"vless", tag:$tag, server:$ip, server_port:$port, uuid:$uuid,
                   multiplex:{enabled:true, protocol:"smux", max_streams:8},
                   tls:{enabled:true, server_name:$sni,
-                       utls:{enabled:true, fingerprint:"chrome"},
+                       utls:{enabled:true, fingerprint:$fp},
                        reality:{enabled:true, public_key:$pk, short_id:$sid}}}]')"
       else
         OUTBOUNDS="$(echo "$OUTBOUNDS" | jq "${outb_args[@]}" \
           '. += [{type:"vless", tag:$tag, server:$ip, server_port:$port, uuid:$uuid,
                   flow:"xtls-rprx-vision",
                   tls:{enabled:true, server_name:$sni,
-                       utls:{enabled:true, fingerprint:"chrome"},
+                       utls:{enabled:true, fingerprint:$fp},
                        reality:{enabled:true, public_key:$pk, short_id:$sid}}}]')"
       fi
     }
@@ -289,10 +302,11 @@ for i in "${!host_pairs[@]}"; do
       --arg tag "p1-xhttp-${tag_prefix}" \
       --arg ip "$server_ip" --arg host "$nginx_host" \
       --arg uuid "$uuid" --arg path "$xhttp_path" \
+      --arg fp "$utls_fp" \
       --argjson port "$xhttp_server_port" \
       '. += [{type:"vless", tag:$tag, server:$ip, server_port:$port, uuid:$uuid,
               tls:{enabled:true, server_name:$host,
-                   utls:{enabled:true, fingerprint:"chrome"}},
+                   utls:{enabled:true, fingerprint:$fp}},
               transport:{type:"xhttp", host:$host, path:$path}}]')"
   fi
 
