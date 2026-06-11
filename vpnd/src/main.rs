@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
     if let cli::Command::Update(args) = &cli.command {
         if args.explain || cli.explain {
             println!("# vpnd update would query:");
-            println!("  GET https://api.github.com/repos/po4yka/vpn-deploy/releases/latest");
+            println!("  GET https://api.github.com/repos/po4yka/ripdpi-vpn-deploy/releases/latest");
             return Ok(());
         }
     }
