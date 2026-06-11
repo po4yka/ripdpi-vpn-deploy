@@ -14,7 +14,7 @@ export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
         pre-deploy-check \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
-        molecule-test smoke-test validate-target scan-targets blue-green \
+        molecule-test smoke-test validate-target probe-sni-survival scan-targets blue-green \
         spot-check-secrets bootstrap-secrets probe-asn emit-qr check-certs \
         audit-permissions asn-drift check-ip-reputation issue-bootstrap \
         test-tls-policing fleet-status drift-since-tag fleet-rotate \
@@ -38,7 +38,8 @@ help:
 	@echo "  bootstrap-secrets …        Generate full crypto + SOPS-encrypt"
 	@echo "  setup-yubikey [REENCRYPT=1]  Hardware-backed age identity on YubiKey"
 	@echo "  scan-targets {SEEDS=…|CIDR=…|CRAWL=…}  Discover REALITY targets (RealiTLScanner)"
-	@echo "  validate-target            8-step REALITY target audit"
+	@echo "  validate-target            9-step REALITY target audit (local hygiene only)"
+	@echo "  probe-sni-survival         EXIT_IP=… bare/www SNI survival probe (run on RU vantage)"
 	@echo "  probe-asn HOST=…           Team Cymru ASN lookup"
 	@echo "  install-hooks              Install pre-commit hooks"
 	@echo ""
@@ -308,6 +309,13 @@ smoke-test:
 validate-target:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }
 	SOPS_FILE=$(SOPS_FILE) ENV=$(ENV) ./scripts/validate-reality-target.sh
+
+# Run this from the FILTERED (RU) vantage — it decides which SNI variant survives.
+# EXIT_IP=<vps-ip> make probe-sni-survival   (VANTAGE defaults to "filtered")
+probe-sni-survival:
+	@test -n "$(EXIT_IP)" || { echo "set EXIT_IP=<vps-ip> — run this from the filtered RU vantage"; exit 1; }
+	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }
+	VANTAGE="$${VANTAGE:-filtered}" ./scripts/probe-sni-survival.sh "$(EXIT_IP)" --secrets "$(SECRETS_FILE)"
 
 bootstrap-secrets:
 	@test -n "$(TARGET)$(SERVER_NAME)" || { \

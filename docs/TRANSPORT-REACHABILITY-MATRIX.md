@@ -87,6 +87,50 @@ manual procedure:
    doc per coordinated measurement run). Use the template at the
    bottom of this file.
 
+## SNI-variant survival (REALITY server_names selection)
+
+The matrix also measures **which SNI variant of each REALITY `server_name`
+survives**. Per the censorship-bypass concept
+`sni-exact-match-vs-suffix-classification-2026`, TSPU on several non-CF paths
+matches the SNI by **exact dot-component string, not by suffix**: the bare
+`foo.com` and `www.foo.com` form of the *same* name can survive very
+differently, in either direction. The topologically "canonical" form is not
+privileged — you must pick `xray.server_names` by the variant that actually
+survives the RU vantage.
+
+**This decision cannot be made locally.** `scripts/validate-reality-target.sh`
+runs from the operator/non-RU vantage and can only validate TLS/cert *hygiene*
+of each variant (step 9). The asymmetry is observable only from inside an RU
+TSPU path, so the survival verdict comes from `scripts/probe-sni-survival.sh`,
+which probes both variants per name against the exit IP and records
+`survived | blocked | error` per variant.
+
+Like the rkn-block-checker, it runs in **both vantages**:
+
+- **Unfiltered (CI):** `transport-reachability-matrix.sh` runs it once after
+  resolving the exit IP and writes `sni-survival.json` (`vantage: unfiltered`)
+  alongside the profile reports. Here every variant is expected to survive —
+  this is the hygiene/baseline half. A `blocked`/`error` from this vantage
+  means the server or cert is wrong, not the filter.
+- **Filtered (operator, RU vantage):** run the same probe from the filtered
+  network against the same exit IP:
+  ```bash
+  EXIT_IP="$EXIT_IP" VANTAGE=filtered make probe-sni-survival
+  # or directly:
+  scripts/probe-sni-survival.sh "$EXIT_IP" --secrets "$SECRETS_FILE" --vantage filtered \
+    --out ~/.local/state/vpn-deploy/transport-reachability/sni-survival-filtered.json
+  ```
+  The variant marked `survived` in the **filtered** report is the one to put in
+  `xray.server_names`. If bare and `www.` disagree, that disagreement is the
+  whole point — do not assume the canonical form. If both survive, prefer the
+  one already covered by the target certificate SAN (validate-reality-target.sh
+  step 9).
+
+Stitch the two `sni-survival.json` files the same way as the per-profile
+reports: a variant that is `survived` unfiltered but `blocked` filtered
+attributes the drop to the network in between — i.e. that SNI string is on the
+exact-match drop table for this path.
+
 ## Output schema
 
 `.transport-reachability/index.json`:
@@ -95,6 +139,7 @@ manual procedure:
 {
   "schema_version": 1,
   "exit_ip": "203.0.113.1",
+  "sni_survival_report": "sni-survival.json",
   "profiles": {
     "p0": {
       "extra_vars": "vpn.enable_xray_reality=true …",
@@ -102,6 +147,29 @@ manual procedure:
     },
     "p0p1": { … }
   }
+}
+```
+
+`.transport-reachability/sni-survival.json` (the unfiltered baseline; the
+operator writes a `filtered` counterpart):
+
+```jsonc
+{
+  "schema_version": 1,
+  "vantage": "unfiltered",
+  "exit_ip": "203.0.113.1",
+  "port": 443,
+  "captured_at": "2026-06-11T00:00:00+00:00",
+  "results": [
+    {
+      "server_name": "candidate.example",
+      "variants": {
+        "candidate.example": "survived",
+        "www.candidate.example": "survived"
+      },
+      "survived": ["candidate.example", "www.candidate.example"]
+    }
+  ]
 }
 ```
 

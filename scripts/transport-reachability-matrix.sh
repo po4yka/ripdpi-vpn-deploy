@@ -75,9 +75,25 @@ EXIT_IP="$(terraform -chdir="${REPO_ROOT}/terraform/providers/${PROVIDER}" outpu
 [[ -n "$EXIT_IP" ]] || { echo "could not resolve server_ipv4 from terraform" >&2; exit 1; }
 echo "exit-ip: $EXIT_IP"
 
+# ---------------------------------------------------------------------------
+# SNI-variant survival baseline. For each REALITY server_name, probe both the
+# bare and the www.-prefixed SNI against the exit IP and record which survives
+# (KB: sni-exact-match-vs-suffix-classification-2026). This runner is the
+# *unfiltered* vantage, so every variant is expected to survive here — that is
+# the hygiene baseline. The decision-grade measurement is the operator's
+# filtered (RU) vantage: `EXIT_IP=$EXIT_IP VANTAGE=filtered make probe-sni-survival`.
+# The exit IP / Reality identity are constant across profiles, so this is
+# probed once, not per profile. Non-fatal.
+# ---------------------------------------------------------------------------
+"${REPO_ROOT}/scripts/probe-sni-survival.sh" "$EXIT_IP" \
+  --secrets "$SECRETS" \
+  --vantage "${VANTAGE:-unfiltered}" \
+  --out "${OUTPUT_DIR}/sni-survival.json" \
+  || echo "::warning::SNI-variant survival probe failed (non-fatal)"
+
 # Top-level index gets appended to as profiles complete.
 INDEX="${OUTPUT_DIR}/index.json"
-echo '{"schema_version": 1, "exit_ip": "'"$EXIT_IP"'", "profiles": {}}' > "$INDEX"
+echo '{"schema_version": 1, "exit_ip": "'"$EXIT_IP"'", "sni_survival_report": "sni-survival.json", "profiles": {}}' > "$INDEX"
 
 IFS=',' read -r -a profile_list <<< "$PROFILES"
 for profile in "${profile_list[@]}"; do
