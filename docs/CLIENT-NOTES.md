@@ -102,6 +102,44 @@ Operationally:
 - The firewall role already opens both ports; no manual nftables
   edits are needed when toggling the fallback on or off.
 
+## uTLS fingerprint + the "TLS frozen" failover caveat (RU-AS cascade only)
+
+The client uTLS fingerprint for the REALITY and XHTTP outbounds is configurable
+per profile via `xray_utls_fingerprint` (xray role default `chrome`; override in
+group_vars, or `UTLS_FINGERPRINT=firefox make emit-singbox CLIENT=name` for a
+single run). Hysteria2's QUIC TLS has no uTLS knob, so this does not apply to it.
+
+**Honest scope — not active on the baseline.** This matters only under the
+June-2026 RKN three-condition TLS pattern
+(`june-2026-rkn-tls-three-condition-block`), whose Condition 1 requires the
+*server* to sit on a flagged Russian cloud AS (Selectel / Yandex Cloud /
+Cloud.ru). The baseline runs foreign VPS (UpCloud / Hetzner / Vultr), which take
+a different enforcement path (TCP port-range, not this TLS-rate rule). So this is
+a **latent** caveat for any RU-hosted relay/cascade node and general client
+guidance — **not** an active baseline threat. Do not over-state it elsewhere.
+
+Under that RU-AS pattern:
+
+- **Fingerprint class (Condition 2)** flags Chrome/Safari/iOS; Firefox and
+  standard Android currently pass. For a RU-hosted cohort, pre-selecting
+  `xray_utls_fingerprint: firefox` sidesteps Condition 2 — but pick once and
+  hold it (see the caveat below).
+- **Failover-backoff caveat.** When the observed failure shape is **"TCP
+  reachable but TLS frozen"** (TCP handshakes still connect, TLS stalls), the
+  client should **back off and wait out the freeze** rather than thrashing
+  through transports/fingerprints. The first violation is a ~120 s TLS freeze;
+  **rotating the uTLS fingerprint while that freeze is active escalates it to a
+  600 s full block.** An automated fingerprint-rotation loop is therefore
+  counterproductive here. (Rolling over to a structurally different transport or
+  port is not itself the trigger — it is *fingerprint* churn during the freeze
+  that escalates. The emitted bundle never rotates the uTLS fingerprint, and
+  `interrupt_exist_connections` is `false`, so the default config does not trip
+  this on its own.)
+- **HTTP/2 structural advantage (XHTTP).** The XHTTP path multiplexes concurrent
+  requests into a single TLS session, keeping the per-SNI TLS connection count
+  below Condition 3's burst trigger (>3 parallel TLS to the same SNI within
+  ~350–400 ms).
+
 ## v2rayN-class clients: prefer the sing-box bundle
 
 When `make emit-singbox CLIENT=name` is available, prefer the sing-box

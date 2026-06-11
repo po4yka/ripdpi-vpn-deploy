@@ -100,9 +100,13 @@ def _build_env(tmp_path: Path, sops_file: Path) -> dict[str, str]:
     return env
 
 
-def _run_script(client: str, tmp_path: Path) -> subprocess.CompletedProcess:
+def _run_script(
+    client: str, tmp_path: Path, extra_env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
     secrets_json = _secrets_as_json(tmp_path)
     env = _build_env(tmp_path, secrets_json)
+    if extra_env:
+        env.update(extra_env)
     return subprocess.run(
         ["bash", str(SCRIPT), client],
         capture_output=True,
@@ -110,6 +114,16 @@ def _run_script(client: str, tmp_path: Path) -> subprocess.CompletedProcess:
         env=env,
         cwd=str(REPO_ROOT),
     )
+
+
+def _utls_fingerprints(bundle: dict) -> list[str]:
+    """Every uTLS fingerprint emitted across the protocol outbounds."""
+    fps = []
+    for ob in bundle["outbounds"]:
+        utls = ob.get("tls", {}).get("utls")
+        if isinstance(utls, dict) and "fingerprint" in utls:
+            fps.append(utls["fingerprint"])
+    return fps
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +193,32 @@ def test_emit_singbox_no_placeholder_leaks(tmp_path):
     serialised = result.stdout
     for bad in ("TODO", "REPLACE", "PLACEHOLDER"):
         assert bad not in serialised, f"placeholder string {bad!r} found in output"
+
+
+def test_emit_singbox_default_utls_fingerprint_is_chrome(tmp_path):
+    """Default behaviour is unchanged: every uTLS outbound emits 'chrome'."""
+    _require_tool("jq")
+
+    result = _run_script("laptop", tmp_path)
+    if result.returncode != 0:
+        pytest.skip(f"emit-singbox.sh failed: {result.stderr[:400]}")
+
+    fps = _utls_fingerprints(json.loads(result.stdout))
+    assert fps, "no uTLS fingerprints found (REALITY/XHTTP outbound expected)"
+    assert set(fps) == {"chrome"}, f"default fingerprint drifted: {fps}"
+
+
+def test_emit_singbox_utls_fingerprint_env_override(tmp_path):
+    """UTLS_FINGERPRINT overrides the fingerprint on every uTLS outbound."""
+    _require_tool("jq")
+
+    result = _run_script("laptop", tmp_path, extra_env={"UTLS_FINGERPRINT": "firefox"})
+    if result.returncode != 0:
+        pytest.skip(f"emit-singbox.sh failed: {result.stderr[:400]}")
+
+    fps = _utls_fingerprints(json.loads(result.stdout))
+    assert fps, "no uTLS fingerprints found"
+    assert set(fps) == {"firefox"}, f"override not applied: {fps}"
 
 
 def test_emit_singbox_missing_client_exits_nonzero(tmp_path):

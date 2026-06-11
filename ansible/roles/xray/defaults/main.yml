@@ -17,6 +17,17 @@ xray_log_path: "{{ xray_log_dir | default('/var/log/xray') }}"
 # fingerprint surface). See roles/xray/README.md.
 xray_block_quic_outbound: true
 
+# Client uTLS (browser-mimic) fingerprint emitted into sing-box client bundles
+# for the REALITY and XHTTP outbounds. CLIENT-side only — the server has no uTLS
+# knob — but declared here as the canonical per-profile default; override in
+# group_vars (e.g. a RU-hosted cohort). `scripts/emit-singbox.sh` reads it
+# (UTLS_FINGERPRINT env overrides for a single run). Default "chrome"; sing-box
+# also accepts firefox/edge/safari/ios/android/random/…. Changing this is only
+# materially relevant under the June-2026 RU-AS cascade pattern (Chrome/Safari/iOS
+# flagged, Firefox/Android pass) — NOT on the foreign-VPS baseline. See
+# docs/CLIENT-NOTES.md. Do NOT rotate it automatically; see the failover caveat.
+xray_utls_fingerprint: "chrome"
+
 # Version sentinel — must be overridden in secrets/group_vars.
 # The role asserts this is non-empty at task start.
 xray:
