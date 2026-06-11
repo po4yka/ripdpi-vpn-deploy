@@ -16,6 +16,20 @@
 # block the whole run.
 set -euo pipefail
 
+# Portable bounded-run wrapper. macOS lacks `timeout` (coreutils ships it as
+# `gtimeout`); use that, or run without a limit if neither is present. On Linux
+# this resolves to `timeout`, so behaviour there is unchanged.
+run_timeout() {
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$secs" "$@"
+  else
+    "$@"
+  fi
+}
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 HOSTS="${HOSTS:-${PROVIDER:-upcloud}:${ENV:-prod}}"
@@ -74,7 +88,7 @@ for pair in "${host_pairs[@]}"; do
   burn="-"
   # Skip live burn-check (paid API surface): just show TCP-reachable
   # by trying a local short connect.
-  if timeout 5 bash -c "</dev/tcp/${ip}/443" 2>/dev/null; then
+  if run_timeout 5 bash -c "</dev/tcp/${ip}/443" 2>/dev/null; then
     burn=reachable
   else
     burn=blocked

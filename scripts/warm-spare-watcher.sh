@@ -18,6 +18,20 @@
 # and the operator's local workstation to consume the OTP.
 set -euo pipefail
 
+# Portable bounded-run wrapper. macOS lacks `timeout` (coreutils ships it as
+# `gtimeout`); use that, or run without a limit if neither is present. On Linux
+# this resolves to `timeout`, so behaviour there is unchanged.
+run_timeout() {
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$secs" "$@"
+  else
+    "$@"
+  fi
+}
+
 PROVIDER="${PROVIDER:-upcloud}"
 BLUE_ENV="${BLUE_ENV:-${ENV:-prod}}"
 GREEN_ENV="${GREEN_ENV:-spare}"
@@ -51,7 +65,7 @@ else
   streak=0
 fi
 
-if timeout "$PROBE_TIMEOUT" bash -c "</dev/tcp/$blue_ip/443" 2>/dev/null; then
+if run_timeout "$PROBE_TIMEOUT" bash -c "</dev/tcp/$blue_ip/443" 2>/dev/null; then
   date +%s > "$last_seen_file"
   echo 0 > "$streak_file"
   echo "watch-spare: blue ok (${blue_ip}:443)"

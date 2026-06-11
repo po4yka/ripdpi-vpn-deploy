@@ -21,6 +21,20 @@
 #   plain-https   — control: GET / over plain TLS to a baseline site
 set -euo pipefail
 
+# Portable bounded-run wrapper. macOS lacks `timeout` (coreutils ships it as
+# `gtimeout`); use that, or run without a limit if neither is present. On Linux
+# this resolves to `timeout`, so behaviour there is unchanged.
+run_timeout() {
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$secs" "$@"
+  else
+    "$@"
+  fi
+}
+
 STATE_DIR="${HOME}/.cache/vpn-deploy/tspu-canary"
 mkdir -p "$STATE_DIR"
 
@@ -45,7 +59,7 @@ probe() {
 
 run_tls() {
   local host="$1" port="$2"
-  if timeout 8 openssl s_client -connect "${host}:${port}" -servername "${host}" \
+  if run_timeout 8 openssl s_client -connect "${host}:${port}" -servername "${host}" \
         -tls1_3 -alpn h2 </dev/null 2>/dev/null \
         | grep -q "BEGIN CERTIFICATE"; then
     echo pass
@@ -56,7 +70,7 @@ run_tls() {
 
 run_dtls() {
   local host="$1" port="$2"
-  if timeout 8 openssl s_client -connect "${host}:${port}" -dtls1_2 \
+  if run_timeout 8 openssl s_client -connect "${host}:${port}" -dtls1_2 \
         </dev/null 2>/dev/null \
         | grep -q "BEGIN CERTIFICATE"; then
     echo pass

@@ -15,9 +15,29 @@ set -euo pipefail
 target="${1:-}"
 [[ -n "$target" ]] || { echo "usage: $0 <ip|hostname>" >&2; exit 2; }
 
+# Portable first-IPv4 resolver. `getent` is Linux-only (macOS operator boxes
+# lack it), so fall back through dig / host / python3 — whichever is present.
+resolve_ipv4() {
+  local h="$1" out=""
+  if command -v getent >/dev/null 2>&1; then
+    out="$(getent ahostsv4 "$h" 2>/dev/null | awk 'NR==1{print $1}')"
+    [[ -z "$out" ]] && out="$(getent hosts "$h" 2>/dev/null | awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/{print $1; exit}')"
+  fi
+  if [[ -z "$out" ]] && command -v dig >/dev/null 2>&1; then
+    out="$(dig +short A "$h" 2>/dev/null | awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/{print; exit}')"
+  fi
+  if [[ -z "$out" ]] && command -v host >/dev/null 2>&1; then
+    out="$(host -t A "$h" 2>/dev/null | awk '/has address/{print $NF; exit}')"
+  fi
+  if [[ -z "$out" ]] && command -v python3 >/dev/null 2>&1; then
+    out="$(python3 -c 'import socket,sys; print(socket.gethostbyname(sys.argv[1]))' "$h" 2>/dev/null || true)"
+  fi
+  printf '%s' "$out"
+}
+
 ip="$target"
 if ! [[ "$target" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  ip="$(getent hosts "$target" | awk '{print $1}' | head -1)"
+  ip="$(resolve_ipv4 "$target")"
   if [[ -z "$ip" ]]; then
     echo "could not resolve: $target" >&2
     exit 1

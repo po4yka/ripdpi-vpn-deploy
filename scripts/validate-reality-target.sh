@@ -64,6 +64,26 @@ echo
 fails=0
 warns=0
 
+# Portable first-IPv4 resolver. `getent` is Linux-only (macOS operator boxes
+# lack it), so fall back through dig / host / python3 — whichever is present.
+resolve_ipv4() {
+  local h="$1" out=""
+  if command -v getent >/dev/null 2>&1; then
+    out="$(getent ahostsv4 "$h" 2>/dev/null | awk 'NR==1{print $1}')"
+    [[ -z "$out" ]] && out="$(getent hosts "$h" 2>/dev/null | awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/{print $1; exit}')"
+  fi
+  if [[ -z "$out" ]] && command -v dig >/dev/null 2>&1; then
+    out="$(dig +short A "$h" 2>/dev/null | awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/{print; exit}')"
+  fi
+  if [[ -z "$out" ]] && command -v host >/dev/null 2>&1; then
+    out="$(host -t A "$h" 2>/dev/null | awk '/has address/{print $NF; exit}')"
+  fi
+  if [[ -z "$out" ]] && command -v python3 >/dev/null 2>&1; then
+    out="$(python3 -c 'import socket,sys; print(socket.gethostbyname(sys.argv[1]))' "$h" 2>/dev/null || true)"
+  fi
+  printf '%s' "$out"
+}
+
 # Temp files for the TLS handshake; cleaned up on EXIT.
 # Also covers the SOPS secret TMP (set above when TARGET/SERVER_NAMES
 # were read from the SOPS file; empty otherwise).
@@ -150,7 +170,7 @@ fi
 # ---------------------------------------------------------------------------
 echo "[5/9] HTTPS GET / returns a real response"
 HTTP_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
-              --resolve "${HOST}:${PORT}:$(getent hosts "$HOST" | awk '{print $1}' | head -1)" \
+              --resolve "${HOST}:${PORT}:$(resolve_ipv4 "$HOST")" \
               "https://${HOST}:${PORT}/" || echo 000)"
 echo "  HTTP $HTTP_CODE"
 case "$HTTP_CODE" in
@@ -204,7 +224,7 @@ done
 #    pipeline can score against. See reality-target-selection-2026.
 # ---------------------------------------------------------------------------
 echo "[8/9] Target ASN plausibility"
-target_ip="$(getent hosts "$HOST" | awk '{print $1}' | head -1)"
+target_ip="$(resolve_ipv4 "$HOST")"
 if [[ -z "$target_ip" ]]; then
   echo "  WARN: could not resolve $HOST to compare ASN"
   warns=$((warns+1))

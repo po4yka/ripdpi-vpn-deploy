@@ -20,6 +20,20 @@
 # Reports a table: N → completed / dropped / median handshake ms.
 set -euo pipefail
 
+# Portable bounded-run wrapper. macOS lacks `timeout` (coreutils ships it as
+# `gtimeout`); use that, or run without a limit if neither is present. On Linux
+# this resolves to `timeout`, so behaviour there is unchanged.
+run_timeout() {
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$secs" "$@"
+  else
+    "$@"
+  fi
+}
+
 HOST=""
 PORT=443
 STEPS="1,4,8,12,16,24"
@@ -53,7 +67,7 @@ one_handshake() {
   local out="${WORK}/h-${id}"
   local t0 t1 ms ok=0
   t0="$(python3 -c 'import time; print(int(time.time()*1000))')"
-  if timeout "$TIMEOUT" \
+  if run_timeout "$TIMEOUT" \
        openssl s_client -connect "${HOST}:${PORT}" -servername "$HOST" \
                         -tls1_3 -alpn h2 \
                         < /dev/null >"$out" 2>&1; then
