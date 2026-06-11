@@ -167,7 +167,7 @@
       },
       {
         "type": "field",
-        "comment": "Probe-defense: refuse QUIC outbound to prevent UDP leak fingerprint",
+        "comment": "Probe-defense: blackhole outbound QUIC (UDP/443) to deny a UDP/443 leak fingerprint. TRADE-OFF: this disables HTTP/3 for every proxied client — browsers and apps transparently fall back to HTTP/2 over TCP (slower on lossy / high-latency links, no functional break). Disable per-deploy with xray_block_quic_outbound=false; see roles/xray/README.md.",
         "network": "udp",
         "port": "443",
         "outboundTag": "block"
