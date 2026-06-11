@@ -31,6 +31,11 @@ defaults. Don't mix these — XHTTP needs long-lived streams.
 
 - **`http2 on;` is required, not implied** — nginx 1.25+ split it from
   `listen … http2`. Without it ALPN downgrades to HTTP/1.1, a fingerprint.
+  The value of HTTP/2 here is an authentic web-server TLS fingerprint (real
+  nginx stack, not Go uTLS). It is NOT the June-2026 Condition-3
+  multiplexing-protection pattern, which applies only to Russian-cloud-AS
+  servers; the foreign-VPS baseline uses a different enforcement path (TCP
+  port-range) and that pattern is irrelevant here.
 - **Stream module is dynamic on Ubuntu distro nginx** — we use nginx.org
   official repo to get a build with stream as static. If you ever swap to the
   distro package, `libnginx-mod-stream` must be installed and the module

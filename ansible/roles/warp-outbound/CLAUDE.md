@@ -29,3 +29,4 @@ through WARP — too easy to lock yourself out.
 - **WARP changes egress IP** — anything keying on the server's public IPv4
   (asn-drift, burn-check) sees a different reality through WARP. Probes must
   account for this when WARP is on.
+- **On-host health check is vantage-limited — does not confirm RU reachability** — the `warp=on` liveness check that the role performs runs from the VPS itself (non-RU vantage) and confirms only that the local WARP daemon is up and the SOCKS5 proxy responds. It does NOT verify that WARP egress survives RU ISP filtering. WARP's default transports (WireGuard UDP 2408/UDP 500, and the HTTP/2 fallback) were broadly blocked on RU ISPs by early 2026. Operators should verify WARP egress end-to-end from a filtered RU vantage after deployment and after any WARP version or config change; a clean on-host health check is a necessary but not sufficient signal.
