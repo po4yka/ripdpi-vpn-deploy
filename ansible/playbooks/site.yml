@@ -124,9 +124,9 @@
       when: (vpn.enable_honeypot | default(false)) and not (vpn_subscription_only | default(false))
       tags: [honeypot, defensive]
 
-    - role: probe-ratelimit
-      when: (vpn.enable_probe_ratelimit | default(false)) and not (vpn_subscription_only | default(false))
-      tags: [probe-ratelimit, defensive]
+    - role: policy-ratelimit
+      when: (vpn.enable_policy_ratelimit | default(false)) and not (vpn_subscription_only | default(false))
+      tags: [policy-ratelimit, defensive]
 
     - role: dns-morph-bridge
       when: (vpn.enable_dns_morph_bridge | default(false)) and not (vpn_subscription_only | default(false))

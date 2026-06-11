@@ -27,7 +27,7 @@ real VPS. This doc enumerates each layer and where coverage gaps exist
 | **Ansible role: geodata** | ansible-lint | render check | **molecule (syntax-only sequence)** | converge would couple to upstream URL availability + rate limits; scenario still exercises task-file structure. Use `molecule converge` manually for ad-hoc full-path testing. |
 | **Ansible role: naive** | ansible-lint | render check (Caddyfile syntax NOT validated — Caddy not in CI matrix) | **molecule (syntax-only sequence)** | xcaddy from-source build skipped in CI to avoid Go-module-network flakiness; `molecule converge` runs it locally. |
 | **Ansible role: honeypot** | ansible-lint | render check | **molecule** + idempotence | verifies service active, listener bound to configured port, script installed. |
-| **Ansible role: probe-ratelimit** | ansible-lint | render check | **molecule** + idempotence | verifies daemon script + systemd unit + active state. nftables `probe_offenders` set is exercised in the full-stack scenario. **Decision-core logic** (token coupling, RFC1918 exemption, ban thresholds, dead-contract gauge) is unit-tested against golden Xray v26.3.27 log fixtures in `tests/unit/test_probe_ratelimit.py` — including the assertion that external REALITY probes (error.log) are never bannable. See `ansible/roles/probe-ratelimit/README.md`. |
+| **Ansible role: policy-ratelimit** | ansible-lint | render check | **molecule** + idempotence | verifies daemon script + systemd unit + active state. nftables `policy_offenders` set is exercised in the full-stack scenario. **Decision-core logic** (token coupling, RFC1918 exemption, ban thresholds, dead-contract gauge) is unit-tested against golden Xray v26.3.27 log fixtures in `tests/unit/test_policy_ratelimit.py` — including the assertion that external REALITY probes (error.log) are never bannable. See `ansible/roles/policy-ratelimit/README.md`. |
 | **Ansible role: warp-outbound** | ansible-lint | render check | **molecule (syntax-only sequence)** | Cloudflare WARP installer expects systemd-networkd + a registerable endpoint not available in CI; structure validation only. |
 | **Ansible role: dns-morph-bridge** | ansible-lint | render check | **molecule** (converge + idempotence + verify) | binary install skipped when `binary_url` is a placeholder; verify play checks service unit presence and signing-key file perms. |
 | **Ansible role: hysteria-realm** | ansible-lint | render check | **molecule** (converge + idempotence + verify) | sing-box tarball fetch gated on non-placeholder sha256; verify play checks realm-service unit + auth-token file perms. |
@@ -48,7 +48,7 @@ real VPS. This doc enumerates each layer and where coverage gaps exist
 | **Kill-switch validation** | **`scripts/check-singbox-killswitch.py`** (operator-driven) | static JSON analysis | n/a | Verifies auto_route + strict_route, route.final ≠ direct, DNS detour ≠ direct, no IPv6-only outbounds. |
 | **vpnd Rust crate (114 tests)** | `cargo clippy --release --all-targets -- -D warnings` (CI) | n/a | `cargo test --release` (CI, blocking) | Covers runner builders (process, make, ansible, terraform, sops), config discovery, secrets parsing, registry round-trip, QR encode, update-cache, completions snapshot, ai-docs emit, host CRUD, doctor bundle, share bundle. Plus 4 proptest properties for `urlencode` round-trip and `redact_secrets` per-line invariants. |
 | **vpnd mutation testing (weekly)** | `cargo mutants` (`.github/workflows/mutants.yml`) | n/a | n/a | Scheduled Monday 08:00 UTC. Targets `src/runner/**`, `src/commands/doctor.rs`, `src/pages/qr.rs`, `src/secrets.rs`. Non-blocking — surviving mutants posted to a rolling tracking issue with label `automation:mutation-testing`. |
-| **Python unit tests (118 tests, 3 skips)** | pytest (CI) | n/a | n/a | Covers emit-singbox, SOPS round-trip, render-inventory, relay/fallback, subscription token revocation lifecycle, tspu-canary, scan-reality-targets, singbox kill-switch, probe-ratelimit ban logic. (Shell orchestrator dry-runs migrated to bats — see below.) |
+| **Python unit tests (118 tests, 3 skips)** | pytest (CI) | n/a | n/a | Covers emit-singbox, SOPS round-trip, render-inventory, relay/fallback, subscription token revocation lifecycle, tspu-canary, scan-reality-targets, singbox kill-switch, policy-ratelimit ban logic. (Shell orchestrator dry-runs migrated to bats — see below.) |
 | **Shell-orchestrator bats tests (29 tests)** | `bats tests/bats/` (CI, blocking) | n/a | n/a | Covers `blue-green.sh --dry-run`, `fleet-rotate.sh --dry-run`, `age-recovery-combine.sh` 3-of-5 round-trip, `restore.sh --dry-run` (path-A + path-B). Uses the same `tests/stubs/bin/` PATH-prepend harness as the Python tests. bats-support v0.3.0 + bats-assert v2.1.0 vendored under `tests/bats/test_helper/`. |
 | **Terraform policy (cross-provider, Conftest)** | `.github/workflows/tf-policy.yml` per PR | n/a | n/a | Runs each provider's native Terraform tests with `mock_provider`, then `conftest verify -p terraform/policy/` for Rego syntax/unit-test validation. The workflow intentionally does not run real provider plans against example tfvars because those require operator credentials and provider API access. `make tf-policy` for local. |
 | **Container image scanning (Trivy)** | `.github/workflows/image-scan.yml` per PR | n/a | n/a | Dynamically enumerates base images from `ansible/roles/*/molecule/*/molecule.yml`. Uploads HIGH/CRITICAL SARIF to the Security tab without blocking unrelated PRs on upstream base-image CVEs. Escalate by adding an allow-list entry only with rationale + expiry + owner in `.trivyignore`. |
@@ -71,7 +71,7 @@ All shared test inputs live under `tests/fixtures/` and stub binaries under
 | `fleet-plan-sample.yaml` | Input shape for `fleet-rotate.sh --dry-run` tests |
 | `age-recovery-shares/` | 5 Shamir shares (3-of-5 threshold) for age-recovery round-trip tests |
 | `singbox-killswitch-valid.json` | Valid sing-box bundle for kill-switch positive-case test |
-| `xray-access-sample.log` | Real-shaped Xray v26.3.27 access-log lines (benign + blackholed + rejected) for the probe-ratelimit ban-logic test |
+| `xray-access-sample.log` | Real-shaped Xray v26.3.27 access-log lines (benign + blackholed + rejected) for the policy-ratelimit ban-logic test |
 | `xray-error-sample.log` | Real-shaped Xray error-log REALITY probe lines (`processed invalid connection`); proves the daemon cannot ban external probers |
 
 ### `tests/stubs/bin/`
@@ -225,13 +225,16 @@ Generated `terraform/providers/<name>/README.md` files are committed; the
 - **Active-probing simulation** against the deployed REALITY listener. The
   validator covers the static OPSEC properties; behavior under real
   probing is observable only against live infrastructure. Note: the
-  `probe-ratelimit` daemon does **not** detect external REALITY probes by
-  design — REALITY forwards failed-auth probes to the camouflage target and
-  logs them to error.log at `[Info]` (suppressed at `loglevel: "warning"`),
-  never to the access.log the daemon tails. The daemon rate-limits
-  routing-blackhole abuse instead; `tests/unit/test_probe_ratelimit.py`
-  asserts both the enforceable bans and the prober-invisibility. See
-  `ansible/roles/probe-ratelimit/README.md`.
+  `policy-ratelimit` daemon does **not** detect external REALITY probes by
+  design — `xtls/reality`'s `func Server` proxies failed-auth probes to the
+  camouflage `Dest` ("steal-oneself") and surfaces only a returned
+  `fmt.Errorf` logged at `[Info]` to error.log (suppressed at
+  `loglevel: "warning"`), never to the access.log the daemon tails. The daemon
+  rate-limits policy-violating egress (blackholed + VLESS-rejected traffic)
+  instead; `tests/unit/test_policy_ratelimit.py` asserts both the enforceable
+  bans and the prober-invisibility. The role README carries the full ADR (path
+  (b): no nginx-stream front). See
+  `ansible/roles/policy-ratelimit/README.md`.
 
 ## Adding a new role
 

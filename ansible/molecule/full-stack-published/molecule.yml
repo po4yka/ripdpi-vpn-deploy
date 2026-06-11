@@ -89,7 +89,7 @@ provisioner:
           enable_subscription_host: false
           enable_warp_outbound: false
           enable_honeypot: true
-          enable_probe_ratelimit: true
+          enable_policy_ratelimit: true
           xray_flow_mode: vision
           xray_finalmask: false
     hosts:

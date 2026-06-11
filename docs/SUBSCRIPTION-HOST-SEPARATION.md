@@ -19,7 +19,7 @@ It does NOT run:
 
   * `xray`, `geodata`, `nginx-xhttp`, `naive`
   * `hysteria`, `amneziawg`
-  * `warp-outbound`, `honeypot`, `probe-ratelimit`
+  * `warp-outbound`, `honeypot`, `policy-ratelimit`
 
 The transport VPS keeps every transport role, drops `subscription-host`
 (or keeps it disabled).

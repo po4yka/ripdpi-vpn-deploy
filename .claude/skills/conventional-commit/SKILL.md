@@ -42,7 +42,7 @@ secrets schema).
 Pick from this list; one scope per commit:
 
 - Protocols: `xray`, `hysteria`, `amneziawg`, `naive`, `nginx-xhttp`, `cdn-front`
-- Infrastructure: `baseline`, `firewall`, `probe-ratelimit`, `geodata`, `warp-outbound`,
+- Infrastructure: `baseline`, `firewall`, `policy-ratelimit`, `geodata`, `warp-outbound`,
   `honeypot`, `watchdog`, `backup`, `subscription-host`, `monitoring`
 - Layers: `terraform`, `ansible`, `vpnd`, `make`, `scripts`, `secrets`, `tests`, `docs`
 - Cross-cutting: `release`, `ci`

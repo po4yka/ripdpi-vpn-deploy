@@ -14,7 +14,7 @@ only the bare minimum (admin user + SSH key + python3). Everything else is Ansib
 |---|---|
 | `baseline` | sshd, sysctl, sudoers, journal limits, time sync |
 | `firewall` | nftables policy and tables |
-| `probe-ratelimit` | nftables rate-limit chains for probed endpoints |
+| `policy-ratelimit` | nftables rate-limit chains for probed endpoints |
 | `watchdog` | health + restart timers (see `[[systemd]]`) |
 | `honeypot` | optional decoy SSH on a different port |
 
@@ -85,7 +85,7 @@ table inet vpn-deploy {
 }
 ```
 
-Rate-limit chains for subscription endpoints are added by `probe-ratelimit` — keep them
+Rate-limit chains for subscription endpoints are added by `policy-ratelimit` — keep them
 out of the base policy file.
 
 ## sysctl floor
@@ -143,6 +143,6 @@ drop-in (`/etc/sysctl.d/30-amneziawg.conf`).
 
 - `ansible/roles/baseline/CLAUDE.md`
 - `ansible/roles/firewall/CLAUDE.md`
-- `ansible/roles/probe-ratelimit/CLAUDE.md`
+- `ansible/roles/policy-ratelimit/CLAUDE.md`
 - `[[systemd]]` — service-level hardening
 - `[[security-review]]` — what to look for in PRs touching these roles

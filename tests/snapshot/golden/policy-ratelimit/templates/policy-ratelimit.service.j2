@@ -1,6 +1,6 @@
 [Unit]
-Description=VPN routing-blackhole abuse rate-limiter (Xray access.log → nftables set)
-Documentation=https://github.com/po4yka/ripdpi-vpn-deploy/blob/main/ansible/roles/probe-ratelimit/README.md
+Description=VPN policy-violation rate-limiter (Xray access.log → nftables set)
+Documentation=https://github.com/po4yka/ripdpi-vpn-deploy/blob/main/ansible/roles/policy-ratelimit/README.md
 After=network-online.target nftables.service xray.service
 Wants=network-online.target
 
@@ -10,7 +10,7 @@ Type=simple
 # the seccomp surface inside @system-service.
 User=root
 Group=root
-ExecStart=/usr/local/bin/probe-ratelimit.py
+ExecStart=/usr/local/bin/policy-ratelimit.py
 Restart=on-failure
 RestartSec=5s
 

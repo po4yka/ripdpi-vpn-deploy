@@ -89,7 +89,7 @@ ansible/                                             — playbook order, group_v
 ansible/roles/{amneziawg,backup,baseline,cdn-front,
               dns-morph-bridge,firewall,geodata,honeypot,
               hysteria,hysteria-realm,monitoring,naive,
-              nginx-xhttp,probe-ratelimit,split-hop-egress,
+              nginx-xhttp,policy-ratelimit,split-hop-egress,
               subscription-host,warp-outbound,watchdog,xray}/  — 19 roles
 terraform/                                           — provider-root strategy
 terraform/providers/{hetzner,upcloud,vultr}/         — per-provider quirks

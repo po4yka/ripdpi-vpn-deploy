@@ -76,7 +76,7 @@ Disabled roles in CI (via `ANSIBLE_EXTRA_VARS`):
   * `enable_backup=false`    — restic-against-localhost adds noise
   * `enable_monitoring=false` — node_exporter not interesting here
   * `enable_warp_outbound=false` / `enable_honeypot=false` /
-    `enable_probe_ratelimit=false` — defensive roles tested in
+    `enable_policy_ratelimit=false` — defensive roles tested in
     their own molecule scenarios
 
 ## Cleanup invariants

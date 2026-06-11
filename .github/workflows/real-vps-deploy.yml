@@ -200,7 +200,7 @@ jobs:
           # platform feature CI can't reproduce.
           export ANSIBLE_EXTRA_VARS="vpn.enable_amneziawg=false vpn.enable_geodata=false vpn.enable_backup=false"
           ANSIBLE_EXTRA_VARS="${ANSIBLE_EXTRA_VARS} vpn.enable_monitoring=false vpn.enable_warp_outbound=false"
-          ANSIBLE_EXTRA_VARS="${ANSIBLE_EXTRA_VARS} vpn.enable_honeypot=false vpn.enable_probe_ratelimit=false"
+          ANSIBLE_EXTRA_VARS="${ANSIBLE_EXTRA_VARS} vpn.enable_honeypot=false vpn.enable_policy_ratelimit=false"
           make init plan apply inventory wait
           VPN_SECRETS_FILE=$SECRETS_FILE \
             ansible-playbook ansible/playbooks/site.yml --extra-vars "$ANSIBLE_EXTRA_VARS"

@@ -27,10 +27,10 @@ vpn:
   #     bytewise-reproducible upstream change is caught at restart
   #     time
   build_xray_from_source: false
-  enable_probe_ratelimit: false   # opt-in; daemon tails xray access.log,
+  enable_policy_ratelimit: false   # opt-in; daemon tails xray access.log,
                                   # adds offending IPs to an nftables
-                                  # set `probe_offenders` with TTL.
-                                  # See roles/probe-ratelimit/.
+                                  # set `policy_offenders` with TTL.
+                                  # See roles/policy-ratelimit/.
   enable_cdn_front: false         # opt-in; tactical CF-fronted XHTTP
                                   # vhost with real-IP restoration +
                                   # optional origin-firewall lockdown.

@@ -47,7 +47,7 @@ mkdir -p "$OUTPUT_DIR"
 # `vpn.enable_*=true|false` extra-vars. Roles that need real hardware
 # (TUN, kernel modules, external network) stay off in every CI profile.
 # ---------------------------------------------------------------------------
-CI_BASE_VARS="vpn.enable_amneziawg=false vpn.enable_geodata=false vpn.enable_backup=false vpn.enable_monitoring=false vpn.enable_warp_outbound=false vpn.enable_honeypot=false vpn.enable_probe_ratelimit=false vpn.enable_dns_morph_bridge=false vpn.enable_hysteria_realm=false"
+CI_BASE_VARS="vpn.enable_amneziawg=false vpn.enable_geodata=false vpn.enable_backup=false vpn.enable_monitoring=false vpn.enable_warp_outbound=false vpn.enable_honeypot=false vpn.enable_policy_ratelimit=false vpn.enable_dns_morph_bridge=false vpn.enable_hysteria_realm=false"
 
 profile_extra_vars() {
   case "$1" in
@@ -59,10 +59,10 @@ profile_extra_vars() {
       echo "vpn.enable_xray_reality=true vpn.enable_nginx_xhttp=true vpn.enable_hysteria=true $CI_BASE_VARS" ;;
     p0p4)
       # P4 = dns-morph-bridge. Override the base toggle for this profile.
-      echo "vpn.enable_xray_reality=true vpn.enable_nginx_xhttp=false vpn.enable_hysteria=false vpn.enable_amneziawg=false vpn.enable_geodata=false vpn.enable_backup=false vpn.enable_monitoring=false vpn.enable_warp_outbound=false vpn.enable_honeypot=false vpn.enable_probe_ratelimit=false vpn.enable_dns_morph_bridge=true vpn.enable_hysteria_realm=false" ;;
+      echo "vpn.enable_xray_reality=true vpn.enable_nginx_xhttp=false vpn.enable_hysteria=false vpn.enable_amneziawg=false vpn.enable_geodata=false vpn.enable_backup=false vpn.enable_monitoring=false vpn.enable_warp_outbound=false vpn.enable_honeypot=false vpn.enable_policy_ratelimit=false vpn.enable_dns_morph_bridge=true vpn.enable_hysteria_realm=false" ;;
     p0p5)
       # P5 = hysteria-realm. Same approach.
-      echo "vpn.enable_xray_reality=true vpn.enable_nginx_xhttp=false vpn.enable_hysteria=false vpn.enable_amneziawg=false vpn.enable_geodata=false vpn.enable_backup=false vpn.enable_monitoring=false vpn.enable_warp_outbound=false vpn.enable_honeypot=false vpn.enable_probe_ratelimit=false vpn.enable_dns_morph_bridge=false vpn.enable_hysteria_realm=true" ;;
+      echo "vpn.enable_xray_reality=true vpn.enable_nginx_xhttp=false vpn.enable_hysteria=false vpn.enable_amneziawg=false vpn.enable_geodata=false vpn.enable_backup=false vpn.enable_monitoring=false vpn.enable_warp_outbound=false vpn.enable_honeypot=false vpn.enable_policy_ratelimit=false vpn.enable_dns_morph_bridge=false vpn.enable_hysteria_realm=true" ;;
     *)
       echo "" ;;
   esac
