@@ -1,0 +1,4 @@
+2026/06/11 10:16:05.610001 [Info] transport/internet/reality: REALITY: processed invalid connection from 203.0.113.250:41122: failed to read client hello
+2026/06/11 10:16:05.610002 [Info] transport/internet/tcp: REALITY: processed invalid connection from 203.0.113.250:41123: failed to read client hello
+2026/06/11 10:16:06.620003 [Warning] transport/internet/reality: REALITY: processed invalid connection
+2026/06/11 10:16:06.620004 [Info] transport/internet/reality: REALITY: processed invalid connection from 198.51.100.251:55001: EOF

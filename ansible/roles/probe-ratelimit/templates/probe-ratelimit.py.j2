@@ -1,16 +1,43 @@
 #!/usr/bin/env python3
-"""Active-probing rate-limiter daemon.
+"""Routing-blackhole abuse rate-limiter daemon.
 
-Tails /var/log/xray/access.log. Each line that matches "REJECT" or
-"graylist" carries a source IP — when the same IP exceeds
-REJECTS_PER_WINDOW within WINDOW_SECONDS, the IP is added to the
-nftables set `inet filter probe_offenders` with a BAN_SECONDS timeout.
-nftables already has an early-drop rule for that set.
+Tails the Xray access log and bans source IPs that repeatedly have their
+traffic routed to the blackhole outbound (tag `block`) or rejected at the
+VLESS protocol layer. Offenders are added to the nftables set
+`inet filter probe_offenders` with a BAN_SECONDS timeout; nftables already
+has an early-drop rule for that set.
 
-Why nftables instead of an Xray runtime API: Xray doesn't expose
-graylist policy at runtime, so we can't tighten the response from the
-proxy itself. Network-layer drop closes the door before the
-ClientHello even arrives.
+WHAT THIS DOES AND DOES NOT SEE
+-------------------------------
+This daemon does NOT — and by design CANNOT — see external active-probing
+of the REALITY listener. When a prober's ClientHello fails REALITY
+authentication, Xray-core forwards the connection to the camouflage
+`target` ("steal-oneself") and emits `REALITY: processed invalid
+connection ...` to the *error* log at [Info] severity
+(transport/internet/reality/reality.go). That path:
+  * writes to error.log, not the access.log this daemon tails;
+  * is suppressed entirely at the pinned `loglevel: "warning"`;
+  * carries no REJECT/rejected/graylist token.
+Surfacing it would require bumping the error log to `info`, which dumps
+every client's connection metadata (destinations, sniffed SNIs) into a
+persistent corpus — rejected under the RU/TSPU threat model. So prober IPs
+are intentionally unobservable here; external probing is mitigated at other
+layers (firewall, honeypot, non-443 fallback), not by this daemon.
+
+What it DOES enforce is real and access-log-visible regardless of loglevel
+(access messages bypass severity filtering — app/log/log.go): authenticated
+clients whose traffic is sent to the `block` outbound by the routing rules
+(BitTorrent, QUIC/UDP-443, RFC1918 destinations) or rejected at the VLESS
+layer. A source that trips these repeatedly is leaking a DPI-visible
+fingerprint or scanning; rate-limiting it protects the node.
+
+The Xray access-log line for a blackholed connection looks like:
+  2026/06/11 10:15:42.123456 from tcp:203.0.113.55:51999 accepted \
+    udp:142.250.1.1:443 [vless-reality -> block] email: <client>
+The detour separator varies by routing path (`->`, `>>`, `==>`,
+app/dispatcher/default.go); BLOCK_RE matches the `block` tag regardless.
+
+Pinned against Xray-core v26.3.27. See README.md for the full rationale.
 
 Managed by Ansible role probe-ratelimit; do not hand-edit.
 """
@@ -20,7 +47,6 @@ import collections
 import logging
 import pathlib
 import re
-import shlex
 import subprocess
 import sys
 import time
@@ -30,9 +56,19 @@ REJECTS_PER_WINDOW = {{ probe_ratelimit.rejects_per_window | default(5) }}
 WINDOW_SECONDS = {{ probe_ratelimit.window_seconds | default(60) }}
 BAN_SECONDS = {{ probe_ratelimit.ban_seconds | default(300) }}
 TEXTFILE_DIR = pathlib.Path("{{ probe_ratelimit.textfile_dir | default('/var/lib/node_exporter/textfile') }}")
+# After this many tailed lines with zero matched events, flip the
+# dead-contract gauge so a broken token/sink contract is observable
+# instead of looking like "the cohort is quiet".
+DEAD_CONTRACT_MIN_LINES = {{ probe_ratelimit.dead_contract_min_lines | default(5000) }}
 
 IP_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
-EVENT_RE = re.compile(r"(REJECT|rejected|graylist)", re.IGNORECASE)
+# A connection routed to the blackhole outbound: "[<inbound> <sep> block]".
+# Separator is one of " -> ", " >> ", " ==> " (app/dispatcher/default.go),
+# so match the bracketed detour ending in the `block` tag, separator-agnostic.
+BLOCK_RE = re.compile(r"\[[^\]]*\bblock\]")
+# A VLESS-layer rejection: access status word "rejected" (common/log/access.go
+# AccessRejected). Space-bounded to avoid matching it inside an email/host.
+REJECT_RE = re.compile(r"(?:^| )rejected(?: |$)")
 
 logging.basicConfig(
     format="probe-ratelimit[%(process)d]: %(levelname)s %(message)s",
@@ -40,30 +76,118 @@ logging.basicConfig(
 )
 
 
-def add_offender(ip: str) -> None:
+def classify_line(line: str) -> str | None:
+    """Return the actionable event class for an access-log line, or None.
+
+    "block"    — routed to the blackhole outbound (policy-blocked traffic).
+    "rejected" — rejected at the VLESS protocol layer.
+    None       — benign (e.g. "accepted ... [vless-reality -> direct]") or
+                 anything else, including REALITY error-log noise that never
+                 reaches this access-log sink.
+    """
+    if BLOCK_RE.search(line):
+        return "block"
+    if REJECT_RE.search(line):
+        return "rejected"
+    return None
+
+
+def is_exempt_ip(ip: str) -> bool:
+    """RFC1918 / loopback / null — never ban an internal address."""
+    if ip.startswith(("10.", "127.", "192.168.")) or ip == "0.0.0.0":
+        return True
+    if ip.startswith("172."):
+        second = int(ip.split(".", 2)[1])
+        if 16 <= second <= 31:
+            return True
+    return False
+
+
+class RateLimiter:
+    """Pure decision core — no I/O, so it is unit-testable in isolation.
+
+    Feed access-log lines via observe(); it returns the source IP to ban
+    when that IP crosses REJECTS_PER_WINDOW actionable events inside
+    WINDOW_SECONDS, else None. Counters (lines/events/bans) drive the
+    Prometheus textfile and the dead-contract gauge.
+    """
+
+    def __init__(self, rejects_per_window: int, window_seconds: int,
+                 ban_seconds: int) -> None:
+        self.rejects_per_window = rejects_per_window
+        self.window_seconds = window_seconds
+        self.ban_seconds = ban_seconds
+        self.history: dict[str, collections.deque[float]] = (
+            collections.defaultdict(
+                lambda: collections.deque(maxlen=max(rejects_per_window * 4, 4)))
+        )
+        self.lines = 0
+        self.events = 0
+        self.bans = 0
+
+    def observe(self, line: str, now: float) -> str | None:
+        """Process one line at logical time `now`. Returns IP to ban or None."""
+        self.lines += 1
+        if classify_line(line) is None:
+            return None
+        m = IP_RE.search(line)
+        if not m:
+            return None
+        ip = m.group(1)
+        if is_exempt_ip(ip):
+            return None
+        self.events += 1
+        dq = self.history[ip]
+        dq.append(now)
+        while dq and now - dq[0] > self.window_seconds:
+            dq.popleft()
+        if len(dq) >= self.rejects_per_window:
+            dq.clear()  # avoid re-banning every event during a ban
+            self.bans += 1
+            return ip
+        return None
+
+    def dead_contract(self, min_lines: int) -> bool:
+        """True once we've tailed enough volume with zero matched events.
+
+        Distinguishes "detector is broken / sink or token wrong" from
+        "cohort is genuinely quiet". A 1 means *investigate*: either the
+        contract regressed or this cohort never trips a blackhole route.
+        """
+        return self.lines >= min_lines and self.events == 0
+
+
+def add_offender(ip: str, ban_seconds: int) -> None:
     cmd = [
         "nft", "add", "element", "inet", "filter", "probe_offenders",
-        "{", f"{ip} timeout {BAN_SECONDS}s", "}",
+        "{", f"{ip} timeout {ban_seconds}s", "}",
     ]
     rc = subprocess.run(cmd, capture_output=True).returncode
     if rc == 0:
-        logging.info("banned %s for %ds", ip, BAN_SECONDS)
+        logging.info("banned %s for %ds", ip, ban_seconds)
     else:
         logging.warning("nft add element failed for %s (rc=%d)", ip, rc)
 
 
-def flush_textfile(bans: int, observed: int) -> None:
+def flush_textfile(limiter: RateLimiter) -> None:
     try:
         TEXTFILE_DIR.mkdir(parents=True, exist_ok=True)
         out = TEXTFILE_DIR / "vpn_probe_ratelimit.prom"
         tmp = out.with_suffix(".prom.tmp")
+        dead = 1 if limiter.dead_contract(DEAD_CONTRACT_MIN_LINES) else 0
         tmp.write_text(
             "# HELP vpn_probe_ratelimit_bans_total Total IPs banned since service start\n"
             "# TYPE vpn_probe_ratelimit_bans_total counter\n"
-            f"vpn_probe_ratelimit_bans_total {bans}\n"
-            "# HELP vpn_probe_ratelimit_events_total REJECT/graylist events tailed since service start\n"
+            f"vpn_probe_ratelimit_bans_total {limiter.bans}\n"
+            "# HELP vpn_probe_ratelimit_events_total Blackhole/rejected events matched since service start\n"
             "# TYPE vpn_probe_ratelimit_events_total counter\n"
-            f"vpn_probe_ratelimit_events_total {observed}\n"
+            f"vpn_probe_ratelimit_events_total {limiter.events}\n"
+            "# HELP vpn_probe_ratelimit_lines_total Access-log lines tailed since service start\n"
+            "# TYPE vpn_probe_ratelimit_lines_total counter\n"
+            f"vpn_probe_ratelimit_lines_total {limiter.lines}\n"
+            "# HELP vpn_probe_ratelimit_dead_contract 1 if many lines tailed but zero events matched — investigate broken sink/token or genuinely-quiet cohort\n"
+            "# TYPE vpn_probe_ratelimit_dead_contract gauge\n"
+            f"vpn_probe_ratelimit_dead_contract {dead}\n"
         )
         tmp.replace(out)
     except OSError as exc:
@@ -94,39 +218,15 @@ def tail(path: pathlib.Path):
 
 
 def main() -> None:
-    history: dict[str, collections.deque[float]] = collections.defaultdict(
-        lambda: collections.deque(maxlen=REJECTS_PER_WINDOW * 4))
-    bans = 0
-    observed = 0
+    limiter = RateLimiter(REJECTS_PER_WINDOW, WINDOW_SECONDS, BAN_SECONDS)
     last_flush = 0.0
     for line in tail(XRAY_LOG):
-        if not EVENT_RE.search(line):
-            continue
-        m = IP_RE.search(line)
-        if not m:
-            continue
-        ip = m.group(1)
-        # Drop RFC1918 etc. — we'd never ban an internal address.
-        if ip.startswith(("10.", "127.", "192.168.")) or ip == "0.0.0.0":
-            continue
-        if ip.startswith("172."):
-            second = int(ip.split(".", 2)[1])
-            if 16 <= second <= 31:
-                continue
-        observed += 1
         now = time.time()
-        dq = history[ip]
-        dq.append(now)
-        # Prune anything outside the window
-        while dq and now - dq[0] > WINDOW_SECONDS:
-            dq.popleft()
-        if len(dq) >= REJECTS_PER_WINDOW:
-            add_offender(ip)
-            bans += 1
-            dq.clear()  # avoid re-banning every event during a ban
-
+        ip = limiter.observe(line, now)
+        if ip is not None:
+            add_offender(ip, BAN_SECONDS)
         if now - last_flush > 15:
-            flush_textfile(bans, observed)
+            flush_textfile(limiter)
             last_flush = now
 
 

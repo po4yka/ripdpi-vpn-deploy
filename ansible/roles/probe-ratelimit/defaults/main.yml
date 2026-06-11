@@ -1,19 +1,30 @@
 ---
-# Active-probing rate-limiter. Tails the Xray access log on the VPS,
-# counts REJECT events per source IP, and adds offenders to an nftables
-# set with a TTL. The firewall role wires the set into the input chain
-# as an early drop when vpn.enable_probe_ratelimit is true.
+# Routing-blackhole abuse rate-limiter. Tails the Xray access log on the
+# VPS, counts blackhole/rejected events per source IP, and adds offenders
+# to an nftables set with a TTL. The firewall role wires the set into the
+# input chain as an early drop when vpn.enable_probe_ratelimit is true.
 #
-# Off by default. Tune thresholds based on the cohort's normal probe
-# rate — too aggressive and you ban legit clients whose first attempt
-# was REJECTed by REALITY's graylist; too lax and TSPU's active-probing
-# wave hits the real listener before the set absorbs it.
+# NOTE: this daemon does NOT see external active-probing of REALITY — those
+# failures are forwarded to the camouflage target and logged (if at all) to
+# error.log at [Info], never to the access.log tailed here. It rate-limits
+# authenticated clients whose traffic is routed to the `block` outbound
+# (BitTorrent / QUIC-443 / RFC1918) or rejected at the VLESS layer. See
+# README.md for the full threat-model rationale.
+#
+# Off by default. Tune thresholds against the cohort's normal blackhole-hit
+# rate — too aggressive and you ban a NAT pool whose first leak tripped a
+# block rule; too lax and a leaking client noises the node for longer.
 
 probe_ratelimit:
-  # how many REJECTs from one IP within window_seconds trigger a ban
+  # how many blackhole/rejected events from one IP within window_seconds
+  # trigger a ban
   rejects_per_window: 5
   window_seconds: 60
   # how long the IP stays in the offenders set (nftables timeout)
   ban_seconds: 300
   # textfile output for graphing
   textfile_dir: /var/lib/node_exporter/textfile
+  # after this many tailed lines with zero matched events, the daemon flips
+  # the vpn_probe_ratelimit_dead_contract gauge to 1 (investigate: broken
+  # sink/token, or a genuinely quiet cohort)
+  dead_contract_min_lines: 5000

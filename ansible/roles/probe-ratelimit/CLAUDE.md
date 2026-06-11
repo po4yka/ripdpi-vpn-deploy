@@ -1,29 +1,45 @@
-# role: probe-ratelimit — Xray-side active-probing throttle
+# role: probe-ratelimit — routing-blackhole abuse rate-limiter
 
 ## Design decisions
 
-**Per-IP rate limit on failed handshakes** — Xray's Reality rejects bad
-handshakes silently, but a probing IP can still burn CPU and noise the logs.
-This role adds an nft chain that drops repeated failed-handshake sources.
+**Bans blackhole/rejected abuse, NOT external probes** — the historical
+name implied it throttles REALITY active-probing. It cannot: REALITY
+forwards failed-auth probes to the camouflage `target` and logs
+`REALITY: processed invalid connection` to *error.log* at `[Info]`
+(suppressed at `loglevel: "warning"`), never to the access.log this daemon
+tails. See `README.md`. What it actually enforces: authenticated clients
+whose traffic is routed to the `block` outbound (BitTorrent / QUIC-443 /
+RFC1918) or `rejected` at the VLESS layer — both access-log-visible
+regardless of loglevel (access messages bypass severity filtering).
 
-**Threshold is conservative** — defaults are 20 failed handshakes / minute /
-IP. Aggressive limits break NAT'd users whose hands-haker churns.
+**Network-layer drop, not Xray policy** — Xray exposes no runtime graylist
+API, so offenders go into the nftables `probe_offenders` set (firewall role
+owns it) for an early drop.
+
+**Threshold is conservative** — defaults 5 events / 60s / IP. The source IP
+on a blackhole line is the *client's* real IP, so a strict limit on a
+carrier-NAT pool takes out legitimate clients first.
 
 ## What's done well
 
-- **Whitelist for known prober buckets** — Shodan/Censys ranges are *not*
-  whitelisted (we want them dropped); CloudFront/Cloudflare edges *are*
-  (legitimate users from those ranges hit us).
-- **Ephemeral state** — the per-IP counter set is tmpfs-backed; reboots wipe.
+- **Decision core is a pure `RateLimiter` class** — no I/O, unit-tested
+  against golden fixtures (`tests/unit/test_probe_ratelimit.py`).
+- **Separator-agnostic block match** — `BLOCK_RE` matches `[... block]`
+  across the `->`/`>>`/`==>` detour forms (app/dispatcher/default.go).
+- **Dead-contract gauge** — `vpn_probe_ratelimit_dead_contract` flips to 1
+  after N lines with zero matched events, so a regressed sink/token is
+  observable instead of looking like a quiet cohort.
+- **Ephemeral state** — per-IP counters are in-memory; restart wipes.
 
 ## Pitfalls
 
-- **Rate-limiting at the firewall layer ≠ at the Xray layer** — Xray sees
-  the source IP only if no NAT/proxy is in front. CDN-fronted paths
-  effectively limit by the CDN edge IP, which is useless. Disable this role
-  when `cdn-front` is on.
-- **Don't tune below the carrier-grade NAT threshold** — RU mobile NAT
-  pools share an IP across thousands of users; a strict limit takes out
-  legitimate clients first.
-- **Pair with `honeypot`** — the same IPs hitting honeypot ports often
-  trigger here. Cross-correlate in `probing-summary`.
+- **It does not see probers — do not market it as probe defence.** External
+  active-probing is mitigated by firewall + honeypot + non-443 fallback.
+- **CDN-fronted paths break source attribution** — behind a CDN the source
+  IP is the edge IP. Disable this role when `cdn-front` is on.
+- **Don't tune below the carrier-NAT threshold** — banning a NAT IP bans
+  every user behind it, including their working tunnel.
+- **Token/sink are pinned to Xray-core v26.3.27 access-log format** — re-run
+  `tests/unit/test_probe_ratelimit.py` after any Xray pin bump; if the
+  access-log line shape changed, the dead-contract gauge will also rise on
+  live nodes.

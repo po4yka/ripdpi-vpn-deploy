@@ -1,0 +1,27 @@
+2026/06/11 10:15:40.100001 from tcp:198.51.100.10:33001 accepted tcp:142.250.190.78:443 [vless-reality -> direct] email: alice
+2026/06/11 10:15:40.100002 from tcp:198.51.100.10:33002 accepted tcp:140.82.121.4:443 [vless-reality -> direct] email: alice
+2026/06/11 10:15:40.100003 from tcp:198.51.100.10:33003 accepted tcp:151.101.1.69:443 [vless-reality -> direct] email: alice
+2026/06/11 10:15:40.100004 from tcp:198.51.100.10:33004 accepted udp:142.250.190.78:53 [vless-reality -> dns-out] email: alice
+2026/06/11 10:15:40.100005 from tcp:198.51.100.10:33005 accepted tcp:13.107.21.200:443 [vless-reality -> direct] email: alice
+2026/06/11 10:15:40.100006 from tcp:198.51.100.10:33006 accepted tcp:142.250.190.78:443 [vless-reality -> direct] email: alice
+2026/06/11 10:15:40.100007 from tcp:198.51.100.10:33007 accepted tcp:140.82.121.4:80 [vless-reality -> direct] email: alice
+2026/06/11 10:15:40.100008 from tcp:198.51.100.10:33008 accepted tcp:151.101.1.69:443 [vless-reality -> direct] email: alice
+2026/06/11 10:16:01.200001 from tcp:203.0.113.55:51990 accepted tcp:198.51.100.200:6881 [vless-reality -> block] email: bob
+2026/06/11 10:16:01.200002 from tcp:203.0.113.55:51991 accepted udp:142.250.190.78:443 [vless-reality -> block] email: bob
+2026/06/11 10:16:01.200003 from tcp:203.0.113.55:51992 accepted tcp:185.125.190.39:6969 [vless-reality >> block] email: bob
+2026/06/11 10:16:01.200004 from tcp:203.0.113.55:52050 accepted tcp:192.168.1.1:80 [vless-reality -> block] email: bob
+2026/06/11 10:16:01.200005 from tcp:203.0.113.55:51993 accepted udp:142.250.190.78:443 [vless-reality ==> block] email: bob
+2026/06/11 10:16:01.200006 from tcp:203.0.113.55:51994 accepted tcp:198.51.100.200:51413 [vless-reality -> block] email: bob
+2026/06/11 10:16:02.300001 from tcp:203.0.113.99:53000 rejected tcp:142.250.190.78:443
+2026/06/11 10:16:02.300002 from tcp:203.0.113.99:53001 rejected tcp:140.82.121.4:443
+2026/06/11 10:16:02.300003 from tcp:203.0.113.99:53002 rejected tcp:151.101.1.69:443
+2026/06/11 10:16:02.300004 from tcp:203.0.113.99:53003 rejected tcp:13.107.21.200:443
+2026/06/11 10:16:02.300005 from tcp:203.0.113.99:53004 rejected tcp:142.250.190.78:443
+2026/06/11 10:16:03.400001 from tcp:198.51.100.20:40001 accepted udp:142.250.190.78:443 [vless-reality -> block] email: carol
+2026/06/11 10:16:03.400002 from tcp:198.51.100.20:40002 accepted tcp:198.51.100.200:6881 [vless-reality -> block] email: carol
+2026/06/11 10:16:04.500001 from tcp:10.0.0.5:44001 accepted tcp:198.51.100.200:6881 [vless-reality -> block] email: dave
+2026/06/11 10:16:04.500002 from tcp:10.0.0.5:44002 accepted udp:142.250.190.78:443 [vless-reality -> block] email: dave
+2026/06/11 10:16:04.500003 from tcp:10.0.0.5:44003 accepted tcp:198.51.100.200:6881 [vless-reality -> block] email: dave
+2026/06/11 10:16:04.500004 from tcp:10.0.0.5:44004 accepted udp:142.250.190.78:443 [vless-reality -> block] email: dave
+2026/06/11 10:16:04.500005 from tcp:10.0.0.5:44005 accepted tcp:198.51.100.200:6881 [vless-reality -> block] email: dave
+2026/06/11 10:16:04.500006 from tcp:10.0.0.5:44006 accepted udp:142.250.190.78:443 [vless-reality -> block] email: dave
