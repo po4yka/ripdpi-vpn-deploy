@@ -722,9 +722,9 @@ rich==15.0.0 \
     # via
     #   enrich
     #   molecule
-rkn-block-checker==0.5.0 \
-    --hash=sha256:61484a15fed65a9a070fcad24928a2bf92856d112347aece860a9615f2facf48 \
-    --hash=sha256:e25322753f5831882db36426985b90678caec3fd9234d8089187ff0afd4fe1d3
+rkn-block-checker==0.5.1 \
+    --hash=sha256:3826fe21aff90945707800f7cdc9bc43dacbe762be6491eece78f11d91ea43e0 \
+    --hash=sha256:476de9ba8995d9cffa6396637c03da003c8c9cef5721504e429aadbdd3d6db22
     # via -r requirements.in
 rpds-py==0.30.0 \
     --hash=sha256:07ae8a593e1c3c6b82ca3292efbe73c30b61332fd612e05abee07c79359f292f \
