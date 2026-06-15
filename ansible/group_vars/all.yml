@@ -140,7 +140,11 @@ security_controls:
   lynis: false
   auditd: false
 
-# nftables policy
+# nftables policy. `permissive` preserves the historical output-chain behavior
+# (`policy accept`). `logged` keeps accept but adds low-noise counters only.
+# `strict` is opt-in and default-drop for host-originated egress; transport
+# egress is allowed when the corresponding VPN profile needs it.
+firewall_egress_policy: permissive  # valid: permissive, logged, strict
 allowed_ssh_cidrs: []  # populated from terraform tfvars; see render-inventory.sh
 
 # Ports

@@ -3,6 +3,12 @@
 # Hypervisor firewall (provider-specific) is the outer layer; this is
 # the inner layer co-located with the workload.
 
+- name: Validate firewall egress policy mode
+  ansible.builtin.assert:
+    that:
+      - firewall_egress_policy | default('permissive') in ['permissive', 'logged', 'strict']
+    fail_msg: "firewall_egress_policy must be one of: permissive, logged, strict."
+
 - name: Render nftables config
   ansible.builtin.template:
     src: nftables.conf.j2

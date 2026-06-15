@@ -17,6 +17,8 @@ flush ruleset
 {% endif %}
 {% set nginx_tcp_port = nginx_xhttp_public_port | default(8443) | int %}
 {% set nginx_collides_with_xray = (vpn.enable_xray_reality | default(true)) and (nginx_tcp_port in xray_tcp_ports) %}
+{% set egress_policy = firewall_egress_policy | default('permissive') -%}
+{% set transport_needs_open_egress = (vpn.enable_xray_reality | default(true)) or (vpn.enable_hysteria | default(false)) or (vpn.enable_naive | default(false)) -%}
 
 table inet filter {
 {% if (security_controls | default({})).fail2ban | default(false) %}
@@ -174,7 +176,42 @@ table inet filter {
 
   chain output {
     type filter hook output priority 0;
+{% if egress_policy == 'strict' %}
+    policy drop;
+
+    oif "lo" accept
+    ct state established,related accept
+    ct state invalid drop
+
+    # Host infrastructure egress: resolver, time sync, package updates,
+    # geodata refresh, backup remotes, monitoring alerts, and HTTPS APIs.
+    udp dport 53 accept
+    tcp dport 53 accept
+    udp dport 123 accept
+    tcp dport { 80, 443 } accept
+{% if vpn.enable_warp_outbound | default(false) %}
+    # Cloudflare WARP control/data plane. WARP role still runs in proxy mode;
+    # this only permits the local warp-svc to establish its tunnel.
+    udp dport { 2408, 500, 4500 } accept
+{% endif %}
+{% if transport_needs_open_egress %}
+
+    # Enabled proxy transports need arbitrary upstream egress for client data.
+    # Keep strict opt-in: hosts without these profiles remain narrow.
+    tcp accept
+    udp accept
+{% endif %}
+
+    counter drop
+{% elif egress_policy == 'logged' %}
     policy accept;
+
+    # Observation-only mode: counters for non-baseline egress, no packet logs.
+    tcp dport != { 53, 80, 443 } ct state new counter comment "egress-observe-unexpected-tcp"
+    udp dport != { 53, 123, 443 } ct state new counter comment "egress-observe-unexpected-udp"
+{% else %}
+    policy accept;
+{%- endif %}
   }
 }
 
