@@ -146,6 +146,9 @@ security_controls:
 # egress is allowed when the corresponding VPN profile needs it.
 firewall_egress_policy: permissive  # valid: permissive, logged, strict
 allowed_ssh_cidrs: []  # populated from terraform tfvars; see render-inventory.sh
+# Explicit public listener collision exceptions. Keep empty for normal hosts.
+# Each item is either "tcp/8443" or a mapping like {protocol: udp, range: "20000-40000", reason: "..."}.
+listener_collision_allowlist: []
 
 # Ports
 xray_port: 443
