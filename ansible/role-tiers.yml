@@ -29,6 +29,7 @@
 tiers:
   # CORE — the family baseline (always-on or default-on in all.yml)
   baseline: core            # always-on; sysctl/SSH/time-sync/forwarding
+  package_updates: core     # opt-in unattended security updates; no auto reboot
   firewall: core            # always-on; nftables default-drop perimeter
   xray: core                # P0 VLESS+REALITY+Vision (TCP/443)
   nginx-xhttp: core         # P1 XHTTP direct (TCP/8443)

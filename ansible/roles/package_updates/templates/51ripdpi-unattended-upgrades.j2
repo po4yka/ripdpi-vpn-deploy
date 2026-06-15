@@ -1,0 +1,26 @@
+// Managed by Ansible role `package_updates`. Hand edits will be overwritten.
+
+APT::Periodic::Update-Package-Lists "{{ '1' if package_updates.enabled | default(true) else '0' }}";
+APT::Periodic::Download-Upgradeable-Packages "{{ '1' if package_updates.enabled | default(true) else '0' }}";
+APT::Periodic::Unattended-Upgrade "{{ '1' if package_updates.enabled | default(true) else '0' }}";
+APT::Periodic::AutocleanInterval "7";
+
+Unattended-Upgrade::Origins-Pattern {
+{% if package_updates.security_only | default(true) %}
+  "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
+  "origin=Debian,codename=${distro_codename},label=Debian-Security";
+  "origin=Ubuntu,codename=${distro_codename}-security,label=Ubuntu";
+{% else %}
+  "origin=Debian,codename=${distro_codename},label=Debian";
+  "origin=Debian,codename=${distro_codename}-updates,label=Debian";
+  "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
+  "origin=Ubuntu,codename=${distro_codename},label=Ubuntu";
+  "origin=Ubuntu,codename=${distro_codename}-updates,label=Ubuntu";
+  "origin=Ubuntu,codename=${distro_codename}-security,label=Ubuntu";
+{% endif %}
+};
+
+Unattended-Upgrade::Automatic-Reboot "{{ 'true' if package_updates.automatic_reboot | default(false) else 'false' }}";
+Unattended-Upgrade::Remove-Unused-Dependencies "{{ 'true' if package_updates.remove_unused_dependencies | default(true) else 'false' }}";
+Unattended-Upgrade::Mail "{{ package_updates.mail | default('root') }}";
+Unattended-Upgrade::MailReport "{{ 'only-on-error' if package_updates.mail_only_on_error | default(true) else 'on-change' }}";

@@ -1,0 +1,14 @@
+---
+# Safe defaults for unattended package security updates. The role itself is
+# gated in site.yml by security_controls.unattended_upgrades.
+
+package_updates:
+  enabled: true
+  security_only: true
+  automatic_reboot: false
+  mail: root
+  mail_only_on_error: true
+  remove_unused_dependencies: true
+  # apticron is intentionally opt-in: on some distros it pulls mail tooling and
+  # overlaps unattended-upgrades reporting.
+  install_apticron: false

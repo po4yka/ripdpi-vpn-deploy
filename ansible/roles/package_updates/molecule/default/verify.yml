@@ -1,0 +1,39 @@
+---
+- name: Verify package_updates role
+  hosts: all
+  become: true
+  tasks:
+    - name: unattended-upgrades package installed
+      ansible.builtin.command:
+        cmd: dpkg-query -W -f=${Status} unattended-upgrades
+      register: unattended_status
+      changed_when: false
+      failed_when: "'install ok installed' not in unattended_status.stdout"
+
+    - name: apt-listchanges package installed
+      ansible.builtin.command:
+        cmd: dpkg-query -W -f=${Status} apt-listchanges
+      register: listchanges_status
+      changed_when: false
+      failed_when: "'install ok installed' not in listchanges_status.stdout"
+
+    - name: Managed unattended-upgrades config exists
+      ansible.builtin.stat:
+        path: /etc/apt/apt.conf.d/51ripdpi-unattended-upgrades
+      register: package_updates_config
+      failed_when: not package_updates_config.stat.exists or not package_updates_config.stat.isreg
+
+    - name: Managed config keeps automatic reboot disabled
+      ansible.builtin.command:
+        cmd: grep -F 'Unattended-Upgrade::Automatic-Reboot "false";' /etc/apt/apt.conf.d/51ripdpi-unattended-upgrades
+      changed_when: false
+
+    - name: Managed config enables periodic unattended upgrade
+      ansible.builtin.command:
+        cmd: grep -F 'APT::Periodic::Unattended-Upgrade "1";' /etc/apt/apt.conf.d/51ripdpi-unattended-upgrades
+      changed_when: false
+
+    - name: unattended-upgrades dry-run succeeds
+      ansible.builtin.command:
+        cmd: unattended-upgrade -d --dry-run
+      changed_when: false

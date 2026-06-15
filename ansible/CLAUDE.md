@@ -40,8 +40,8 @@ exercises `site.yml` end-to-end.
   changed every run, breaking idempotency assertions.
 - **`gather_facts: true` on every play** — needed for OS-specific branches.
   Don't disable globally; disable per-play if you must.
-- **Role ordering matters** — baseline → firewall → geodata → (xray,
-  nginx-xhttp, hysteria, amneziawg) → monitoring → backup → watchdog.
+- **Role ordering matters** — baseline → package_updates → firewall →
+  geodata → (xray, nginx-xhttp, hysteria, amneziawg) → monitoring → backup → watchdog.
   `site.yml` enforces this; don't rely on `meta: dependencies`.
 - **Handler queues fire at end-of-play** — a service restart triggered in
   role A doesn't happen until role B is done. Use `meta: flush_handlers` if
