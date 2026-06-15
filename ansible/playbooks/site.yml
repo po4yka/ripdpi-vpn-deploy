@@ -69,6 +69,10 @@
     - role: baseline
       tags: [baseline, always]
 
+    - role: package_updates
+      when: (security_controls | default({})).unattended_upgrades | default(false)
+      tags: [baseline, security, updates]
+
     - role: firewall
       tags: [firewall, always]
 

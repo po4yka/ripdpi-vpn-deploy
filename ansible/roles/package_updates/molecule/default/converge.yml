@@ -1,0 +1,6 @@
+---
+- name: Converge package_updates role
+  hosts: all
+  become: true
+  roles:
+    - role: package_updates

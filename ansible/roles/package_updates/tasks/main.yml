@@ -1,0 +1,73 @@
+---
+# Configure safe unattended security updates for Debian-family hosts. This role
+# does not reboot hosts and does not touch application package pins.
+
+- name: Package updates role supports Debian-family hosts only
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == "Debian"
+    fail_msg: "package_updates supports Debian/Ubuntu hosts only."
+
+- name: Install unattended update packages
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+      - apt-listchanges
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    install_recommends: false
+  when: package_updates.enabled | default(true)
+
+- name: Check whether apticron is available
+  ansible.builtin.command:
+    cmd: apt-cache policy apticron
+  register: package_updates_apticron_policy
+  changed_when: false
+  failed_when: false
+  when:
+    - package_updates.enabled | default(true)
+    - package_updates.install_apticron | default(false)
+
+- name: Install apticron when explicitly enabled and available
+  ansible.builtin.apt:
+    name:
+      - apticron
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    install_recommends: false
+  when:
+    - package_updates.enabled | default(true)
+    - package_updates.install_apticron | default(false)
+    - "'Candidate: (none)' not in (package_updates_apticron_policy.stdout | default('Candidate: (none)'))"
+
+- name: Configure apt-listchanges for noninteractive reporting
+  ansible.builtin.copy:
+    dest: /etc/apt/listchanges.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [apt]
+      frontend=text
+      email_address={{ package_updates.mail | default('root') }}
+      confirm=false
+      save_seen=/var/lib/apt/listchanges.db
+      which=both
+  when: package_updates.enabled | default(true)
+
+- name: Configure unattended security updates
+  ansible.builtin.template:
+    src: 51ripdpi-unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/51ripdpi-unattended-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+  when: package_updates.enabled | default(true)
+
+- name: Validate unattended-upgrades configuration
+  ansible.builtin.command:
+    cmd: unattended-upgrade -d --dry-run
+  changed_when: false
+  when: package_updates.enabled | default(true)
