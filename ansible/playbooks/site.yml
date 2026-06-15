@@ -60,6 +60,18 @@
         success_msg: "Tier guard OK — no unapproved research-tier roles enabled."
       run_once: true
 
+    - name: Build effective public listener manifest
+      ansible.builtin.set_fact:
+        public_listener_manifest: "{{ lookup('template', playbook_dir ~ '/../templates/listener-manifest.json.j2') | from_json }}"
+
+    - name: Guard — block public listener collisions before convergence
+      ansible.builtin.command:
+        cmd: "python3 {{ playbook_dir }}/../../scripts/check-listener-collisions.py"
+        stdin: "{{ {'listeners': public_listener_manifest, 'allowlist': listener_collision_allowlist | default([])} | to_json }}"
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
   # Hosts in the `vpn-subscription-only` inventory group skip every
   # transport-class role and run only baseline + firewall + the
   # subscription-host role + supporting services (monitoring /

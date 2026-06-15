@@ -1,0 +1,116 @@
+{% set ns = namespace(listeners=[]) %}
+{% set subscription_only = vpn_subscription_only | default(false) %}
+{% set xray_enabled = (vpn.enable_xray_reality | default(true)) and not subscription_only %}
+{% set xray_cohorts = (xray.cohorts | default([])) if xray is defined else [] %}
+{% if xray_enabled and (xray_cohorts | length > 0) %}
+{% for cohort in xray_cohorts %}
+{% set _ = ns.listeners.append({
+  "role": "xray",
+  "protocol": "tcp",
+  "port": cohort.port | int,
+  "enabled": true,
+  "reason": "P0 REALITY cohort " ~ (cohort.name | default(loop.index))
+}) %}
+{% endfor %}
+{% else %}
+{% set _ = ns.listeners.append({
+  "role": "xray",
+  "protocol": "tcp",
+  "port": xray_port | default(443) | int,
+  "enabled": xray_enabled,
+  "reason": "P0 REALITY primary listener"
+}) %}
+{% set _xray_fallback_port = xray_fallback_port | default(0) | int %}
+{% set _ = ns.listeners.append({
+  "role": "xray",
+  "protocol": "tcp",
+  "port": _xray_fallback_port,
+  "enabled": xray_enabled and _xray_fallback_port > 0,
+  "reason": "P0 REALITY fallback listener"
+}) %}
+{% endif %}
+{% set _ = ns.listeners.append({
+  "role": "nginx-xhttp",
+  "protocol": "tcp",
+  "port": nginx_xhttp_public_port | default(8443) | int,
+  "enabled": (vpn.enable_nginx_xhttp | default(true)) and not subscription_only,
+  "reason": "P1 direct XHTTP listener"
+}) %}
+{% set _ = ns.listeners.append({
+  "role": "hysteria",
+  "protocol": "udp",
+  "port": hysteria_port | default(443) | int,
+  "enabled": (vpn.enable_hysteria | default(false)) and not subscription_only,
+  "reason": "P2 Hysteria2 listener"
+}) %}
+{% set _hysteria_range = hysteria_port_range | default('') | string %}
+{% set _ = ns.listeners.append({
+  "role": "hysteria",
+  "protocol": "udp",
+  "range": _hysteria_range,
+  "enabled": (vpn.enable_hysteria | default(false)) and not subscription_only and (_hysteria_range | length > 0),
+  "reason": "P2 Hysteria2 port-hopping range"
+}) %}
+{% set awg_instances = (amneziawg_secrets.instances | default([])) if amneziawg_secrets is defined else [] %}
+{% if awg_instances | length > 0 %}
+{% for inst in awg_instances %}
+{% set _ = ns.listeners.append({
+  "role": "amneziawg",
+  "protocol": "udp",
+  "port": inst.listen_port | int,
+  "enabled": (vpn.enable_amneziawg | default(false)) and not subscription_only,
+  "reason": "P2 AmneziaWG instance " ~ (inst.name | default(loop.index))
+}) %}
+{% endfor %}
+{% else %}
+{% set _ = ns.listeners.append({
+  "role": "amneziawg",
+  "protocol": "udp",
+  "port": (amneziawg | default({})).listen_port | default(51820) | int,
+  "enabled": (vpn.enable_amneziawg | default(false)) and not subscription_only,
+  "reason": "P2 AmneziaWG listener"
+}) %}
+{% endif %}
+{% set _ = ns.listeners.append({
+  "role": "subscription-host",
+  "protocol": "tcp",
+  "port": (subscription | default({})).port | default(8444) | int,
+  "enabled": (vpn.enable_subscription_host | default(false)) or subscription_only,
+  "reason": "subscription delivery HTTPS listener"
+}) %}
+{% set _ = ns.listeners.append({
+  "role": "honeypot",
+  "protocol": "tcp",
+  "port": (honeypot | default({})).port | default(4443) | int,
+  "enabled": (vpn.enable_honeypot | default(false)) and not subscription_only,
+  "reason": "active-probing canary listener"
+}) %}
+{% set _ = ns.listeners.append({
+  "role": "dns-morph-bridge",
+  "protocol": "udp",
+  "port": (dns_morph_bridge | default({})).listen_port | default(53) | int,
+  "enabled": (vpn.enable_dns_morph_bridge | default(false)) and not subscription_only,
+  "reason": "DNS-Morph bootstrap listener"
+}) %}
+{% set _ = ns.listeners.append({
+  "role": "hysteria-realm",
+  "protocol": "tcp",
+  "port": (hysteria_realm | default({})).listen_port | default(8444) | int,
+  "enabled": (vpn.enable_hysteria_realm | default(false)) and not subscription_only,
+  "reason": "Hysteria Realm rendezvous listener"
+}) %}
+{% set _ = ns.listeners.append({
+  "role": "cdn-front",
+  "protocol": "tcp",
+  "port": (cdn_front | default({})).port | default(8443) | int,
+  "enabled": (vpn.enable_cdn_front | default(false)) and not subscription_only,
+  "reason": "CDN-fronted XHTTP listener"
+}) %}
+{% set _ = ns.listeners.append({
+  "role": "naive",
+  "protocol": "tcp",
+  "port": (naive | default({})).bind_port | default(443) | int,
+  "enabled": (vpn.enable_naive | default(false)) and not subscription_only,
+  "reason": "NaiveProxy public listener"
+}) %}
+{{ ns.listeners | to_json }}

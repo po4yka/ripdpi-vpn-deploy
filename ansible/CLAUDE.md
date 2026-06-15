@@ -15,6 +15,8 @@ you everything it exposes.
 reads `terraform output -json` and emits `inventory/<env>.yml`. Don't edit
 the rendered file.
 
+**Listener collisions fail before convergence** — `site.yml` renders a sanitized public listener manifest and runs `scripts/check-listener-collisions.py` in pre_tasks before any role mutates services or nftables.
+
 **`molecule` for testing roles, full-stack for site.yml** — `molecule-test
 ROLE=<name>` runs in a Docker container per role. `molecule-full-stack`
 exercises `site.yml` end-to-end.
