@@ -3,9 +3,24 @@ KbdInteractiveAuthentication no
 PermitRootLogin no
 PubkeyAuthentication yes
 X11Forwarding no
-AllowTcpForwarding yes
+AllowTcpForwarding no
+
+AllowAgentForwarding no
+PermitTunnel no
+PermitUserEnvironment no
+PermitEmptyPasswords no
+IgnoreRhosts yes
+LogLevel VERBOSE
+
 ClientAliveInterval 60
 ClientAliveCountMax 3
 MaxAuthTries 3
+
+MaxSessions 2
+MaxStartups 10:30:20
+
 LoginGraceTime 20
+
 AllowUsers deploy
+
+Subsystem sftp internal-sftp -f AUTHPRIV -l INFO

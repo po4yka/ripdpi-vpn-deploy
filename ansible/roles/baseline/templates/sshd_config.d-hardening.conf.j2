@@ -1,11 +1,30 @@
+{% set ssh_controls = security_controls | default({}) -%}
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin no
 PubkeyAuthentication yes
 X11Forwarding no
-AllowTcpForwarding yes
+AllowTcpForwarding {{ 'yes' if (ssh_controls.ssh_allow_tcp_forwarding | default(false)) else 'no' }}
+{% if ssh_controls.ssh_strict | default(true) %}
+AllowAgentForwarding no
+PermitTunnel no
+PermitUserEnvironment no
+PermitEmptyPasswords no
+IgnoreRhosts yes
+LogLevel VERBOSE
+{% endif %}
 ClientAliveInterval 60
 ClientAliveCountMax 3
 MaxAuthTries 3
+{% if ssh_controls.ssh_strict | default(true) %}
+MaxSessions {{ ssh_controls.ssh_max_sessions | default(2) }}
+MaxStartups {{ ssh_controls.ssh_max_startups | default('10:30:20') }}
+{% endif %}
 LoginGraceTime 20
+{% if (ssh_controls.ssh_required_rsa_size | default(0) | int) > 0 %}
+RequiredRSASize {{ ssh_controls.ssh_required_rsa_size | int }}
+{% endif %}
 AllowUsers {{ ansible_user }}
+{% if ssh_controls.ssh_strict | default(true) %}
+Subsystem sftp internal-sftp -f AUTHPRIV -l INFO
+{% endif -%}

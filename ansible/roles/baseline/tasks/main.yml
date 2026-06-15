@@ -72,6 +72,15 @@
     group: root
     mode: "0755"
 
+- name: Disable packaged SFTP subsystem before managed drop-in
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^(\s*Subsystem\s+sftp\s+.*)$'
+    line: '# \1'
+    backrefs: true
+    validate: "sshd -t -f %s"
+  notify: Reload ssh
+
 - name: Drop SSH hardening config
   ansible.builtin.template:
     src: sshd_config.d-hardening.conf.j2
@@ -81,6 +90,10 @@
     mode: "0644"
     validate: "sshd -t -f %s"
   notify: Reload ssh
+
+- name: Prune weak SSH Diffie-Hellman moduli
+  ansible.builtin.include_tasks: ssh_moduli.yml
+  when: (security_controls | default({})).ssh_prune_moduli | default(false)
 
 - name: Drop sysctl tuning
   ansible.builtin.template:

@@ -31,7 +31,7 @@ NON_SECRET_TOPLEVEL = {
     "ansible_user", "ansible_host", "ansible_facts", "ansible_architecture",
     "ansible_os_family", "ansible_distribution", "ansible_distribution_release",
     "ansible_python_interpreter",
-    "vpn", "allowed_ssh_cidrs",
+    "vpn", "security_controls", "allowed_ssh_cidrs",
     "xray_port", "nginx_xhttp_port", "hysteria_port",
     "xray_install_root", "xray_config_dir", "xray_log_dir",
     "hysteria_install_root", "hysteria_config_dir", "hysteria_log_dir",

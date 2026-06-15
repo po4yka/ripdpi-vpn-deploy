@@ -85,6 +85,20 @@ def test_clean_synthetic_repo_passes(tmp_path):
     assert guard.check(_make_repo(tmp_path)) == []
 
 
+def test_security_controls_do_not_participate_in_role_tier_guard(tmp_path):
+    root = _make_repo(tmp_path, extra={
+        "group_vars/vpn-fullstack.yml": {
+            "vpn": ALL_OFF,
+            "security_controls": {
+                "ssh_strict": True,
+                "ssh_prune_moduli": True,
+                "fail2ban": False,
+            },
+        },
+    })
+    assert guard.check(root) == []
+
+
 def test_research_role_enabled_in_family_profile_fails(tmp_path):
     root = _make_repo(tmp_path, extra={
         "group_vars/vpn-fullstack.yml": {"vpn": {**ALL_OFF, "enable_split_hop_egress": True}},

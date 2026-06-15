@@ -1,0 +1,53 @@
+---
+# Optional SSH DH moduli pruning. Keep this separate from sshd_config rendering:
+# the file may be absent on minimal images, and changing it should reload ssh
+# only when /etc/ssh/moduli content actually changes.
+
+- name: Check whether SSH moduli file exists
+  ansible.builtin.stat:
+    path: /etc/ssh/moduli
+  register: baseline_ssh_moduli
+
+- name: Ensure SSH moduli backup exists
+  ansible.builtin.copy:
+    src: /etc/ssh/moduli
+    dest: /etc/ssh/moduli.prev
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+  when: baseline_ssh_moduli.stat.exists
+
+- name: Prune SSH moduli smaller than 3071 bits
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      src=/etc/ssh/moduli
+      backup=/etc/ssh/moduli.prev
+      tmp="$(mktemp /etc/ssh/moduli.pruned.XXXXXX)"
+      trap 'rm -f "$tmp"' EXIT
+
+      awk '$5 >= 3071' "$src" > "$tmp"
+      if [ ! -s "$tmp" ]; then
+        echo "refusing to install empty pruned moduli" >&2
+        exit 1
+      fi
+
+      if cmp -s "$tmp" "$src"; then
+        echo "moduli already pruned"
+        exit 0
+      fi
+
+      cp -f "$src" "$backup"
+      chown root:root "$backup"
+      chmod 0644 "$backup"
+      chown root:root "$tmp"
+      chmod 0644 "$tmp"
+      mv -f "$tmp" "$src"
+      echo "moduli pruned"
+    executable: /bin/bash
+  register: baseline_moduli_prune
+  changed_when: "'moduli pruned' in baseline_moduli_prune.stdout"
+  when: baseline_ssh_moduli.stat.exists
+  notify: Reload ssh

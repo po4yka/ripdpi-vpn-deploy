@@ -11,6 +11,9 @@ roles layer on top.
 flagged via the `reboot_required` fact and surfaced at the end of `verify.yml`.
 A reboot mid-deploy would burn idempotency.
 
+**SSH policy lives in `security_controls`** — the role still owns the drop-in,
+but operator posture knobs live under `security_controls.ssh_*`, not `vpn.*`.
+
 ## What's done well
 
 - **Single source for sysctl** — `templates/sysctl-vpn.conf.j2` consolidates
@@ -21,6 +24,12 @@ A reboot mid-deploy would burn idempotency.
 - **SSH hardening via drop-in** — `templates/sshd_config.d-hardening.conf.j2`
   is dropped at `/etc/ssh/sshd_config.d/20-ansible-hardening.conf` with
   `validate: sshd -t -f %s` before activation.
+- **SFTP is internal and managed once** — the packaged `Subsystem sftp` line is
+  commented before the drop-in declares `internal-sftp`, avoiding duplicate
+  Subsystem directives on Debian/Ubuntu while preserving Ansible file transfer.
+- **Moduli pruning is optional and idempotent** — when
+  `security_controls.ssh_prune_moduli` is true, `/etc/ssh/moduli` is pruned to
+  groups with field 5 >= 3071, with `/etc/ssh/moduli.prev` as local backup.
 - **IP forwarding is conditional** — enabled only when `vpn.enable_amneziawg`
   is true; removed when disabled. Avoids forwarding on P0-only nodes.
 
@@ -32,9 +41,10 @@ A reboot mid-deploy would burn idempotency.
 - **`systemd-resolved` stub listener is disabled** — the role drops
   `/etc/systemd/resolved.conf.d/no-stub.conf` (`DNSStubListener=no`) so
   port 53 is free for the dns-morph-bridge role when enabled.
-- **`PasswordAuthentication no` is set by cloud-init *first*** — baseline
-  doesn't re-set it. If you ever rip out cloud-init, this assumption breaks
-  silently (the SSH connection survives because keys still work; the
-  password path is suddenly open).
+- **Cloud-init still creates the admin user first** — baseline hardens sshd
+  after the first connection succeeds. Don't remove the cloud-init admin-user
+  path unless another first-boot access path replaces it.
+- **`RequiredRSASize` is opt-in** — default `security_controls.ssh_required_rsa_size`
+  is `0` so older OpenSSH versions never see an unsupported directive.
 - **Hostname change requires re-running cloud-init handlers** — don't
   change `ansible_hostname` mid-deploy.
