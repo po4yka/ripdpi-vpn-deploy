@@ -101,8 +101,48 @@
       register: sshd_t
       changed_when: false
 
-    - name: SSH disallows password auth
+    - name: SSH effective hardening is applied
+      vars:
+        _ssh_controls: "{{ security_controls | default({}) }}"
+        _ssh_allow_tcp_forwarding: "{{ 'yes' if (_ssh_controls.ssh_allow_tcp_forwarding | default(false)) else 'no' }}"
+        _ssh_max_sessions: "{{ _ssh_controls.ssh_max_sessions | default(2) }}"
+        _ssh_max_startups: "{{ _ssh_controls.ssh_max_startups | default('10:30:20') }}"
       ansible.builtin.assert:
         that:
-          - "'passwordauthentication no' in sshd_t.stdout | lower"
-          - "'permitrootlogin no' in sshd_t.stdout | lower"
+          - "'passwordauthentication no' in (sshd_t.stdout | lower)"
+          - "'permitrootlogin no' in (sshd_t.stdout | lower)"
+          - "'kbdinteractiveauthentication no' in (sshd_t.stdout | lower)"
+          - "'pubkeyauthentication yes' in (sshd_t.stdout | lower)"
+          - "'x11forwarding no' in (sshd_t.stdout | lower)"
+          - "'allowtcpforwarding ' ~ _ssh_allow_tcp_forwarding in (sshd_t.stdout | lower)"
+          - "not (_ssh_controls.ssh_strict | default(true)) or 'allowagentforwarding no' in (sshd_t.stdout | lower)"
+          - "not (_ssh_controls.ssh_strict | default(true)) or 'permittunnel no' in (sshd_t.stdout | lower)"
+          - "not (_ssh_controls.ssh_strict | default(true)) or 'permituserenvironment no' in (sshd_t.stdout | lower)"
+          - "not (_ssh_controls.ssh_strict | default(true)) or 'permitemptypasswords no' in (sshd_t.stdout | lower)"
+          - "not (_ssh_controls.ssh_strict | default(true)) or 'ignorerhosts yes' in (sshd_t.stdout | lower)"
+          - "not (_ssh_controls.ssh_strict | default(true)) or 'loglevel verbose' in (sshd_t.stdout | lower)"
+          - "not (_ssh_controls.ssh_strict | default(true)) or 'maxsessions ' ~ _ssh_max_sessions in (sshd_t.stdout | lower)"
+          - "not (_ssh_controls.ssh_strict | default(true)) or 'maxstartups ' ~ _ssh_max_startups in (sshd_t.stdout | lower)"
+
+    - name: SSH optional RSA key floor is applied
+      vars:
+        _ssh_controls: "{{ security_controls | default({}) }}"
+        _ssh_required_rsa_size: "{{ _ssh_controls.ssh_required_rsa_size | default(0) | int }}"
+      ansible.builtin.assert:
+        that:
+          - "'requiredrsasize ' ~ (_ssh_required_rsa_size | string) in (sshd_t.stdout | lower)"
+      when: _ssh_required_rsa_size | int > 0
+
+    - name: Check whether SSH moduli file exists
+      ansible.builtin.stat:
+        path: /etc/ssh/moduli
+      register: verify_ssh_moduli
+      when: (security_controls | default({})).ssh_prune_moduli | default(false)
+
+    - name: SSH moduli are pruned to at least 3071 bits
+      ansible.builtin.command:
+        cmd: awk '$5 < 3071 { print; bad=1 } END { exit bad }' /etc/ssh/moduli
+      changed_when: false
+      when:
+        - (security_controls | default({})).ssh_prune_moduli | default(false)
+        - verify_ssh_moduli.stat.exists | default(false)

@@ -47,11 +47,37 @@
       changed_when: false
       failed_when: sshd_active.stdout != "active"
 
-    - name: sshd -T applies the hardening drop-in
-      ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          sshd -T 2>/dev/null | awk '$1=="passwordauthentication"{print $2}' \
-            | grep -q '^no$'
-        executable: /bin/bash
+    - name: Collect effective sshd config
+      ansible.builtin.command:
+        cmd: sshd -T
+      register: sshd_t
       changed_when: false
+
+    - name: sshd -T applies the hardening drop-in
+      ansible.builtin.assert:
+        that:
+          - "'passwordauthentication no' in sshd_t.stdout | lower"
+          - "'kbdinteractiveauthentication no' in sshd_t.stdout | lower"
+          - "'permitrootlogin no' in sshd_t.stdout | lower"
+          - "'pubkeyauthentication yes' in sshd_t.stdout | lower"
+          - "'x11forwarding no' in sshd_t.stdout | lower"
+          - "'allowtcpforwarding no' in sshd_t.stdout | lower"
+          - "'allowagentforwarding no' in sshd_t.stdout | lower"
+          - "'permittunnel no' in sshd_t.stdout | lower"
+          - "'permituserenvironment no' in sshd_t.stdout | lower"
+          - "'permitemptypasswords no' in sshd_t.stdout | lower"
+          - "'ignorerhosts yes' in sshd_t.stdout | lower"
+          - "'loglevel verbose' in sshd_t.stdout | lower"
+          - "'maxsessions 2' in sshd_t.stdout | lower"
+          - "'maxstartups 10:30:20' in sshd_t.stdout | lower"
+
+    - name: Check whether SSH moduli file exists
+      ansible.builtin.stat:
+        path: /etc/ssh/moduli
+      register: verify_ssh_moduli
+
+    - name: SSH moduli are pruned to at least 3071 bits
+      ansible.builtin.command:
+        cmd: awk '$5 < 3071 { print; bad=1 } END { exit bad }' /etc/ssh/moduli
+      changed_when: false
+      when: verify_ssh_moduli.stat.exists
