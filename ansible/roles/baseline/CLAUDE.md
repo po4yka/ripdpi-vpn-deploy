@@ -19,6 +19,9 @@ but operator posture knobs live under `security_controls.ssh_*`, not `vpn.*`.
 - **Single source for sysctl** — `templates/sysctl-vpn.conf.j2` consolidates
   kernel tunables (`net.ipv4.tcp_fastopen`, `tcp_bbr`, UDP buffer sizes, etc).
   Loaded at priority 90 so cloud-init defaults can't override.
+- **Forwarding is isolated from hardening** — `90-vpn.conf` keeps forwarding
+  disabled; `91-vpn-forward.conf` is the only place that enables IPv4/IPv6
+  forwarding, and only when AmneziaWG is enabled.
 - **Time sync via `systemd-timesyncd`** — installed and enabled. REALITY breaks
   if clocks drift > 90 s; `verify.yml` asserts sync state.
 - **SSH hardening via drop-in** — `templates/sshd_config.d-hardening.conf.j2`
