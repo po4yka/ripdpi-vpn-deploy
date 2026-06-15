@@ -76,6 +76,10 @@
     - role: firewall
       tags: [firewall, always]
 
+    - role: intrusion_prevention
+      when: (security_controls | default({})).fail2ban | default(false)
+      tags: [security, intrusion-prevention]
+
     - role: xray
       when: (vpn.enable_xray_reality | default(true)) and not (vpn_subscription_only | default(false))
       tags: [xray, p0, transport]

@@ -1,0 +1,13 @@
+# Managed by Ansible role `intrusion_prevention`. Hand edits will be overwritten.
+
+[sshd]
+enabled = true
+mode = normal
+port = ssh
+filter = sshd
+logpath = %(sshd_log)s
+backend = systemd
+action = nftables-ripdpi[name=sshd]
+maxretry = 5
+findtime = 10m
+bantime = 1h

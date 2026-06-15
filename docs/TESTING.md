@@ -15,6 +15,7 @@ real VPS. This doc enumerates each layer and where coverage gaps exist
 | **Ansible playbooks** | `ansible-lint` + `ansible-playbook --syntax-check` (CI) | n/a | n/a | site.yml asserts VPN_SECRETS_FILE is set; CI passes the example schema as a stub. |
 | **Ansible role: baseline** | ansible-lint | render check | **molecule** (debian13 + ubuntu24.04) | tests sshd hardening, sysctl, timesync, IPv4 forwarding gating. |
 | **Ansible role: package_updates** | ansible-lint | render check | **molecule** | opt-in unattended security updates; verifies no automatic reboot and `unattended-upgrade -d --dry-run`. |
+| **Ansible role: intrusion_prevention** | ansible-lint | render check | **molecule** | opt-in Fail2Ban sshd jail; verifies nftables action config, ignoreip merge with `allowed_ssh_cidrs`, and service health. |
 | **Ansible role: firewall** | ansible-lint | render check | **molecule** | tests nftables.conf parse + presence of expected ports. |
 | **Ansible role: xray** | ansible-lint | render check (JSON validity) | **molecule** (template-only, stub binary) | tests config.json shape, systemd unit, symlink rollback. |
 | **Ansible role: nginx-xhttp** | ansible-lint | render check (`nginx -t`) | **molecule** (idempotence + verify) | self-signed cert generated in pre_tasks; verifies no Cloudflare-specific directives leaked into RU baseline. |
@@ -37,7 +38,7 @@ real VPS. This doc enumerates each layer and where coverage gaps exist
 | **Shell scripts (39)** | `bash -n` syntax + **`shellcheck -s bash -S warning`** (CI) | n/a | n/a | every shell script in `scripts/` runs through shellcheck. |
 | **Python validators** | implicit — they validate everything else | n/a | n/a | |
 | **Secrets schema** | **`scripts/check-secrets-coverage.py`** | n/a | n/a | Walks every Jinja2 template, ensures every top-level variable is declared in `secrets/prod.secrets.example.yaml`, `group_vars/all.yml`, or a role's `defaults/main.yml`. |
-| **Jinja2 templates (35)** | **`scripts/check-templates-render.py`** | renders all 35 role templates against synthetic + example data | n/a | Catches Jinja syntax errors, JSON-invalid output for `*.json.j2`, nginx parse errors for site configs. |
+| **Jinja2 templates (38)** | **`scripts/check-templates-render.py`** | renders all 38 role templates against synthetic + example data | n/a | Catches Jinja syntax errors, JSON-invalid output for `*.json.j2`, nginx parse errors for site configs. |
 | **Cohort group_vars** | render check (group_vars/all.yml + cohort file are merged into render env) | n/a | n/a | If a cohort file references a flag the role doesn't accept, render fails. |
 | **YAML formatting** | **yamllint** (CI) | n/a | n/a | uses `.yamllint.yml` profile. |
 | **Secret leak detection** | **gitleaks** with custom rules (CI + pre-commit) | n/a | n/a | Custom rules: VLESS/Trojan/Hysteria URIs, REALITY priv keys, WG priv keys, age-secret-key, subscription tokens. |
@@ -54,7 +55,7 @@ real VPS. This doc enumerates each layer and where coverage gaps exist
 | **Terraform policy (cross-provider, Conftest)** | `.github/workflows/tf-policy.yml` per PR | n/a | n/a | Runs each provider's native Terraform tests with `mock_provider`, then `conftest verify -p terraform/policy/` for Rego syntax/unit-test validation. The workflow intentionally does not run real provider plans against example tfvars because those require operator credentials and provider API access. `make tf-policy` for local. |
 | **Container image scanning (Trivy)** | `.github/workflows/image-scan.yml` per PR | n/a | n/a | Dynamically enumerates base images from `ansible/roles/*/molecule/*/molecule.yml`. Uploads HIGH/CRITICAL SARIF to the Security tab without blocking unrelated PRs on upstream base-image CVEs. Escalate by adding an allow-list entry only with rationale + expiry + owner in `.trivyignore`. |
 | **Repo drift (weekly)** | `.github/workflows/drift.yml` | `scripts/drift-since-tag.sh --repo-only` | n/a | Scheduled Monday 12:00 UTC. Diffs the repository against the last known-good tag. Updates a single rolling issue labelled `automation:drift` when drift is detected; silent when clean. Operator-side cron (against live servers) is unchanged and uses the script without `--repo-only`. |
-| **Jinja2 snapshot diff (35 templates)** | `scripts/render-snapshots.py` | golden-file diff | n/a | Fails on any unintended render change. Run `make snapshot-update` after intentional template edits. |
+| **Jinja2 snapshot diff (38 templates)** | `scripts/render-snapshots.py` | golden-file diff | n/a | Fails on any unintended render change. Run `make snapshot-update` after intentional template edits. |
 
 ## Test fixtures and stubs
 

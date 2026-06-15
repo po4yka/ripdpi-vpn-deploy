@@ -1,0 +1,231 @@
+---
+- name: Verify VPN VPS host security hardening
+  hosts: vpn
+  become: true
+  gather_facts: false
+
+  vars:
+    vpn_secrets_file: >-
+      {{
+        lookup('env', 'VPN_SECRETS_FILE')
+        | default(playbook_dir ~ '/../../secrets/prod.secrets.example.yaml', true)
+      }}
+
+  vars_files:
+    - "{{ vpn_secrets_file }}"
+
+  tasks:
+    - name: Ensure VPN_SECRETS_FILE was provided
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'VPN_SECRETS_FILE') | length > 0
+        fail_msg: |
+          VPN_SECRETS_FILE is not set. Run `make decrypt` or export the path to your decrypted secrets file before running this playbook.
+
+    - name: Collect effective sshd configuration
+      ansible.builtin.command:
+        cmd: sshd -T
+      register: security_sshd_t
+      changed_when: false
+
+    - name: SSH effective hardening is applied
+      vars:
+        _security_controls: "{{ security_controls | default({}) }}"
+      ansible.builtin.assert:
+        that:
+          - "'passwordauthentication no' in (security_sshd_t.stdout | lower)"
+          - "'kbdinteractiveauthentication no' in (security_sshd_t.stdout | lower)"
+          - "'permitrootlogin no' in (security_sshd_t.stdout | lower)"
+          - "'x11forwarding no' in (security_sshd_t.stdout | lower)"
+          - "(_security_controls.ssh_allow_tcp_forwarding | default(false) | bool) or 'allowtcpforwarding no' in (security_sshd_t.stdout | lower)"
+          - "not (_security_controls.ssh_strict | default(true) | bool) or 'allowagentforwarding no' in (security_sshd_t.stdout | lower)"
+          - "not (_security_controls.ssh_strict | default(true) | bool) or 'permittunnel no' in (security_sshd_t.stdout | lower)"
+          - "not (_security_controls.ssh_strict | default(true) | bool) or 'permitemptypasswords no' in (security_sshd_t.stdout | lower)"
+
+    - name: Sysctl hardening values are applied
+      ansible.builtin.command:
+        cmd: "sysctl -n {{ item.key }}"
+      loop:
+        - { key: "kernel.randomize_va_space", value: "2" }
+        - { key: "kernel.kptr_restrict", value: "2" }
+        - { key: "kernel.yama.ptrace_scope", value: "2" }
+        - { key: "fs.protected_hardlinks", value: "1" }
+        - { key: "fs.protected_symlinks", value: "1" }
+        - { key: "net.ipv4.conf.all.accept_redirects", value: "0" }
+      register: security_sysctl_value
+      changed_when: false
+      failed_when: security_sysctl_value.stdout != item.value
+
+    - name: nftables config syntax valid
+      ansible.builtin.command:
+        cmd: nft -c -f /etc/nftables.conf
+      changed_when: false
+
+    - name: Collect nftables input chain
+      ansible.builtin.command:
+        cmd: nft list chain inet filter input
+      register: security_nft_input_chain
+      changed_when: false
+
+    - name: Firewall input policy defaults to drop
+      ansible.builtin.assert:
+        that:
+          - "'policy drop' in (security_nft_input_chain.stdout | lower)"
+
+    - name: Initialize expected public listener manifest
+      ansible.builtin.set_fact:
+        security_expected_tcp_ports:
+          - 22
+        security_expected_udp_ports: []
+        security_expected_udp_ranges: []
+
+    - name: Add Xray TCP listeners to expected manifest
+      vars:
+        _security_xray_cohorts: "{{ (xray.cohorts | default([])) if xray is defined else [] }}"
+        _security_xray_fallback_port: "{{ xray_fallback_port | default(0) | int }}"
+        _security_xray_ports: >-
+          {{
+            (_security_xray_cohorts | map(attribute='port') | map('int') | list)
+            if (_security_xray_cohorts | length > 0)
+            else ([xray_port | default(443) | int] + ((_security_xray_fallback_port | int > 0) | ternary([_security_xray_fallback_port | int], [])))
+          }}
+      ansible.builtin.set_fact:
+        security_expected_tcp_ports: "{{ (security_expected_tcp_ports + _security_xray_ports) | unique | list }}"
+      when: vpn.enable_xray_reality | default(true)
+
+    - name: Add nginx-xhttp TCP listener to expected manifest
+      ansible.builtin.set_fact:
+        security_expected_tcp_ports: "{{ (security_expected_tcp_ports + [nginx_xhttp_public_port | default(8443) | int]) | unique | list }}"
+      when: vpn.enable_nginx_xhttp | default(true)
+
+    - name: Add NaiveProxy TCP listener to expected manifest
+      ansible.builtin.set_fact:
+        security_expected_tcp_ports: "{{ (security_expected_tcp_ports + [(naive | default({})).bind_port | default(443) | int]) | unique | list }}"
+      when: vpn.enable_naive | default(false)
+
+    - name: Add Hysteria UDP listener to expected manifest
+      ansible.builtin.set_fact:
+        security_expected_udp_ports: "{{ (security_expected_udp_ports + [hysteria_port | default(443) | int]) | unique | list }}"
+        security_expected_udp_ranges: "{{ (security_expected_udp_ranges + ([hysteria_port_range | string] if (hysteria_port_range | default('') | string | length > 0) else [])) | unique | list }}"
+      when: vpn.enable_hysteria | default(false)
+
+    - name: Add AmneziaWG UDP listeners to expected manifest
+      vars:
+        _security_awg_instances: "{{ (amneziawg_secrets.instances | default([])) if amneziawg_secrets is defined else [] }}"
+        _security_awg_ports: >-
+          {{
+            (_security_awg_instances | map(attribute='listen_port') | map('int') | list)
+            if (_security_awg_instances | length > 0)
+            else [(amneziawg | default({})).listen_port | default(51820) | int]
+          }}
+      ansible.builtin.set_fact:
+        security_expected_udp_ports: "{{ (security_expected_udp_ports + _security_awg_ports) | unique | list }}"
+      when: vpn.enable_amneziawg | default(false)
+
+    - name: Add optional public listeners to expected manifest
+      ansible.builtin.set_fact:
+        security_expected_tcp_ports: >-
+          {{
+            (
+              security_expected_tcp_ports
+              + ((vpn.enable_honeypot | default(false)) | ternary([(honeypot | default({})).port | default(4443) | int], []))
+              + ((vpn.enable_hysteria_realm | default(false)) | ternary([(hysteria_realm | default({})).listen_port | default(8444) | int], []))
+              + ((vpn.enable_cdn_front | default(false)) | ternary([(cdn_front | default({})).port | default(8443) | int], []))
+              + ((vpn.enable_subscription_host | default(false)) | ternary([(subscription | default({})).port | default(8444) | int], []))
+            ) | unique | list
+          }}
+        security_expected_udp_ports: >-
+          {{
+            (
+              security_expected_udp_ports
+              + ((vpn.enable_dns_morph_bridge | default(false)) | ternary([(dns_morph_bridge | default({})).listen_port | default(53) | int], []))
+            ) | unique | list
+          }}
+
+    - name: Public listeners match enabled profile manifest
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          expected_tcp=" {{ security_expected_tcp_ports | join(' ') }} "
+          expected_udp=" {{ security_expected_udp_ports | join(' ') }} "
+          expected_udp_ranges=" {{ security_expected_udp_ranges | join(' ') }} "
+
+          in_list() {
+            case "$1" in
+              *" $2 "*) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          in_ranges() {
+            local port="$1"
+            local range start end
+            for range in $expected_udp_ranges; do
+              case "$range" in
+                *-*)
+                  start="${range%-*}"
+                  end="${range#*-}"
+                  if [[ "$start" =~ ^[0-9]+$ && "$end" =~ ^[0-9]+$ && "$port" -ge "$start" && "$port" -le "$end" ]]; then
+                    return 0
+                  fi
+                  ;;
+              esac
+            done
+            return 1
+          }
+
+          ss -H -lntu | awk '{ print $1 " " $5 }' | while read -r proto addr; do
+            case "$addr" in
+              127.*|localhost:*|"[::1]:"*|"::1:"*) continue ;;
+            esac
+            port="${addr##*:}"
+            port="${port%]}"
+            [[ "$port" =~ ^[0-9]+$ ]] || continue
+            case "$proto" in
+              tcp*) in_list "$expected_tcp" "$port" || echo "$proto $addr" ;;
+              udp*) in_list "$expected_udp" "$port" || in_ranges "$port" || echo "$proto $addr" ;;
+            esac
+          done
+        executable: /bin/bash
+      register: security_unexpected_public_listeners
+      changed_when: false
+      failed_when: security_unexpected_public_listeners.stdout | length > 0
+
+    - name: unattended-upgrades timers are enabled
+      ansible.builtin.command:
+        cmd: "systemctl is-enabled {{ item }}"
+      loop:
+        - apt-daily.timer
+        - apt-daily-upgrade.timer
+      register: security_unattended_timers
+      changed_when: false
+      failed_when: security_unattended_timers.stdout not in ["enabled", "static", "indirect"]
+      when: (security_controls | default({})).unattended_upgrades | default(false)
+
+    - name: unattended-upgrades service is enabled or static
+      ansible.builtin.command:
+        cmd: systemctl is-enabled unattended-upgrades.service
+      register: security_unattended_service
+      changed_when: false
+      failed_when: security_unattended_service.stdout not in ["enabled", "static", "indirect"]
+      when: (security_controls | default({})).unattended_upgrades | default(false)
+
+    - name: fail2ban service is active
+      ansible.builtin.command:
+        cmd: systemctl is-active fail2ban
+      register: security_fail2ban_status
+      changed_when: false
+      failed_when: security_fail2ban_status.stdout != "active"
+      when: (security_controls | default({})).fail2ban | default(false)
+
+    - name: fail2ban daemon responds
+      ansible.builtin.command:
+        cmd: fail2ban-client status
+      changed_when: false
+      when: (security_controls | default({})).fail2ban | default(false)
+
+    - name: fail2ban sshd jail responds
+      ansible.builtin.command:
+        cmd: fail2ban-client status sshd
+      changed_when: false
+      when: (security_controls | default({})).fail2ban | default(false)

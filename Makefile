@@ -10,7 +10,7 @@ TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
 
 export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
 
-.PHONY: help init validate plan apply inventory wait decrypt dry-run deploy verify clean \
+.PHONY: help init validate plan apply inventory wait decrypt dry-run deploy verify security-verify clean \
         pre-deploy-check \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
@@ -55,6 +55,7 @@ help:
 	@echo "  dry-run                    ansible-playbook --check --diff"
 	@echo "  deploy                     ansible-playbook site.yml"
 	@echo "  verify [TAG_ON_SUCCESS=1]  ansible-playbook verify.yml (+ optional known-good git tag)"
+	@echo "  security-verify            Host hardening checks (SSH/sysctl/firewall/services)"
 	@echo "  smoke-test                 End-to-end traffic test through every enabled profile"
 	@echo "  clean                      shred $(SECRETS_FILE)"
 	@echo ""
@@ -182,6 +183,10 @@ verify: pre-deploy-check
 	  tag="vpn-deploy-known-good-$$(date +%Y-%m-%d-%H%M)"; \
 	  git tag "$$tag" && echo "tagged: $$tag"; \
 	fi
+
+security-verify: pre-deploy-check
+	VPN_SECRETS_FILE=$(SECRETS_FILE) \
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/security-verify.yml
 
 clean:
 	@if [ -f "$(SECRETS_FILE)" ]; then \

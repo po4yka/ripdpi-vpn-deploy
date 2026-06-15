@@ -2,9 +2,7 @@
 
 ## Design decisions
 
-**One playbook per intent** — `site.yml` (deploy), `verify.yml`, `smoke-test.yml`,
-`rollback-config.yml`, `rollback-xray.yml`, `rotate-credentials.yml`. No
-mega-playbook with conditional flags; new intent = new playbook.
+**One playbook per intent** — `site.yml` (deploy), `verify.yml`, `security-verify.yml`, `smoke-test.yml`, `rollback-config.yml`, `rollback-xray.yml`, `rotate-credentials.yml`. No mega-playbook with conditional flags; new intent = new playbook.
 
 **Roles are feature-toggleable** — `group_vars/all.yml` carries `vpn.enable_*`
 booleans. Disabling a profile is a config change, not a code change.
@@ -40,8 +38,7 @@ exercises `site.yml` end-to-end.
   changed every run, breaking idempotency assertions.
 - **`gather_facts: true` on every play** — needed for OS-specific branches.
   Don't disable globally; disable per-play if you must.
-- **Role ordering matters** — baseline → package_updates → firewall →
-  geodata → (xray, nginx-xhttp, hysteria, amneziawg) → monitoring → backup → watchdog.
+- **Role ordering matters** — baseline → package_updates → firewall → intrusion_prevention → geodata → (xray, nginx-xhttp, hysteria, amneziawg) → monitoring → backup → watchdog.
   `site.yml` enforces this; don't rely on `meta: dependencies`.
 - **Handler queues fire at end-of-play** — a service restart triggered in
   role A doesn't happen until role B is done. Use `meta: flush_handlers` if
