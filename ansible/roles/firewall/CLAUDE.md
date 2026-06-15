@@ -10,6 +10,11 @@ multi-profile stack; raw iptables is too easy to leak state.
 P0 (`xray_port` 443/tcp), P1 (`nginx_xhttp_public_port`), P2 (`hysteria_port`
 udp). Default policy drop.
 
+**Egress modes are opt-in** — `firewall_egress_policy: permissive` preserves
+the historical output-chain `policy accept`. `logged` adds counters only, and
+`strict` changes host-originated egress to default-drop while preserving
+enabled transport data-plane needs.
+
 **Geo blocking is optional** — `vpn.geo_block` toggles the geo set; default
 is on. Geo set is sourced from MaxMind via the `geodata` role.
 
@@ -36,3 +41,6 @@ is on. Geo set is sourced from MaxMind via the `geodata` role.
 - **Hysteria UDP port reuse** — if a host enables both Hysteria2 and AWG, do
   not put both on UDP 443 — only the first listener will bind. Pick distinct
   ports or disable one.
+- **Strict egress is not a privacy boundary for proxy traffic** — enabled
+  proxy transports need broad upstream egress to carry client traffic. Use
+  strict mode to constrain host services, not to classify client destinations.

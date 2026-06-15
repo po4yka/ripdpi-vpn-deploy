@@ -72,6 +72,20 @@
         that:
           - "'policy drop' in (security_nft_input_chain.stdout | lower)"
 
+    - name: Collect nftables output chain
+      ansible.builtin.command:
+        cmd: nft list chain inet filter output
+      register: security_nft_output_chain
+      changed_when: false
+
+    - name: Firewall output policy matches configured egress mode
+      vars:
+        _egress_policy: "{{ firewall_egress_policy | default('permissive') }}"
+        _expected_output_policy: "{{ 'drop' if _egress_policy == 'strict' else 'accept' }}"
+      ansible.builtin.assert:
+        that:
+          - "'policy ' ~ _expected_output_policy in (security_nft_output_chain.stdout | lower)"
+
     - name: Initialize expected public listener manifest
       ansible.builtin.set_fact:
         security_expected_tcp_ports:
