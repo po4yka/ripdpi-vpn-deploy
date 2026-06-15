@@ -1,0 +1,14 @@
+# Managed by Ansible role `intrusion_prevention`. Hand edits will be overwritten.
+{% set _allowed_ssh = [allowed_ssh_cidrs] if allowed_ssh_cidrs is string else (allowed_ssh_cidrs | default([])) -%}
+{% set _ignore = ((intrusion_prevention.ignore_cidrs | default(['127.0.0.1/8'])) + _allowed_ssh) | unique | list -%}
+
+[DEFAULT]
+ignoreip = {{ _ignore | join(' ') }}
+backend = systemd
+banaction = nftables-ripdpi
+banaction_allports = nftables-ripdpi
+destemail = root@localhost
+sender = fail2ban@localhost
+mta = sendmail
+protocol = tcp
+chain = input

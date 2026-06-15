@@ -19,6 +19,20 @@ flush ruleset
 {% set nginx_collides_with_xray = (vpn.enable_xray_reality | default(true)) and (nginx_tcp_port in xray_tcp_ports) %}
 
 table inet filter {
+{% if (security_controls | default({})).fail2ban | default(false) %}
+  # sshd offenders populated by Fail2Ban. The intrusion_prevention role owns
+  # set membership only; firewall owns the input-chain drop rules.
+  set f2b_sshd4 {
+    type ipv4_addr
+    flags timeout
+  }
+
+  set f2b_sshd6 {
+    type ipv6_addr
+    flags timeout
+  }
+{% endif -%}
+
 {% if vpn.enable_policy_ratelimit | default(false) %}
   # Offenders set populated by policy-ratelimit.service; per-element
   # timeout is set when the daemon adds an entry.
@@ -51,6 +65,14 @@ table inet filter {
     iif "lo" accept
     ct state established,related accept
     ct state invalid drop
+{% if (security_controls | default({})).fail2ban | default(false) %}
+
+    # Fail2Ban sshd bans. This stays ahead of the SSH allowlist so a source
+    # that is not in ignoreip cannot keep retrying after crossing the jail
+    # threshold.
+    ip saddr @f2b_sshd4 drop
+    ip6 saddr @f2b_sshd6 drop
+{% endif -%}
 {% if vpn.enable_policy_ratelimit | default(false) %}
 
     # Early drop for IPs the policy-ratelimit daemon has flagged

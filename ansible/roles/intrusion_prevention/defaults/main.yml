@@ -1,0 +1,17 @@
+---
+# Opt-in intrusion prevention. The site playbook gates this role behind
+# security_controls.fail2ban, which is false in group_vars/all.yml.
+
+intrusion_prevention:
+  provider: fail2ban
+  ignore_cidrs:
+    - 127.0.0.1/8
+  sshd:
+    enabled: true
+    maxretry: 5
+    findtime: 10m
+    bantime: 1h
+  # Future placeholder only. Do not add CrowdSec repositories or installers in
+  # this role without a separate design review.
+  crowdsec:
+    enabled: false

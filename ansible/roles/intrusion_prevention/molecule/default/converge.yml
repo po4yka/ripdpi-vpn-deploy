@@ -1,0 +1,27 @@
+---
+- name: Converge intrusion_prevention role
+  hosts: all
+  become: true
+  vars:
+    allowed_ssh_cidrs:
+      - 198.51.100.42/32
+      - 2001:db8::/32
+  pre_tasks:
+    - name: Install nftables and OpenSSH server
+      ansible.builtin.apt:
+        name:
+          - nftables
+          - openssh-server
+        state: present
+        update_cache: true
+        install_recommends: false
+
+    - name: Create minimal nftables table normally owned by firewall role
+      ansible.builtin.command:
+        cmd: nft add table inet filter
+      register: intrusion_prevention_molecule_nft_table
+      changed_when: intrusion_prevention_molecule_nft_table.rc == 0
+      failed_when: intrusion_prevention_molecule_nft_table.rc not in [0, 1]
+
+  roles:
+    - role: intrusion_prevention

@@ -47,6 +47,7 @@ tiers:
   naive: tactical           # NaiveProxy; xcaddy from-source build
   warp-outbound: tactical   # Cloudflare WARP egress; changes ASN
   subscription-host: tactical # self-service config pull; v1 default is scp
+  intrusion_prevention: tactical # opt-in Fail2Ban sshd jail, nftables-native
 
   # RESEARCH — experimental / unconfirmed; never in a family deploy
   split-hop-egress: research  # two-VPS dual-role defense; pilot, unconfirmed

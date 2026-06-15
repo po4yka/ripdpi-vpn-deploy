@@ -1,0 +1,50 @@
+---
+- name: Verify intrusion_prevention role
+  hosts: all
+  become: true
+  tasks:
+    - name: Fail2Ban package installed
+      ansible.builtin.command:
+        cmd: dpkg-query -W -f=${Status} fail2ban
+      register: fail2ban_package
+      changed_when: false
+      failed_when: "'install ok installed' not in fail2ban_package.stdout"
+
+    - name: Managed Fail2Ban jail exists
+      ansible.builtin.stat:
+        path: /etc/fail2ban/jail.d/ripdpi-sshd.local
+      register: fail2ban_sshd_jail
+      failed_when: not fail2ban_sshd_jail.stat.exists or not fail2ban_sshd_jail.stat.isreg
+
+    - name: Managed Fail2Ban action exists
+      ansible.builtin.stat:
+        path: /etc/fail2ban/action.d/nftables-ripdpi.conf
+      register: fail2ban_nft_action
+      failed_when: not fail2ban_nft_action.stat.exists or not fail2ban_nft_action.stat.isreg
+
+    - name: Fail2Ban ignoreip includes allowed SSH CIDRs
+      ansible.builtin.command:
+        cmd: grep -F 'ignoreip = 127.0.0.1/8 198.51.100.42/32 2001:db8::/32' /etc/fail2ban/jail.local
+      changed_when: false
+
+    - name: Fail2Ban nftables IPv4 set exists
+      ansible.builtin.command:
+        cmd: nft list set inet filter f2b_sshd4
+      changed_when: false
+
+    - name: Fail2Ban nftables IPv6 set exists
+      ansible.builtin.command:
+        cmd: nft list set inet filter f2b_sshd6
+      changed_when: false
+
+    - name: Fail2Ban configuration validates
+      ansible.builtin.command:
+        cmd: fail2ban-client -t
+      changed_when: false
+
+    - name: Fail2Ban service is active
+      ansible.builtin.command:
+        cmd: systemctl is-active fail2ban
+      register: fail2ban_service
+      changed_when: false
+      failed_when: fail2ban_service.stdout != "active"

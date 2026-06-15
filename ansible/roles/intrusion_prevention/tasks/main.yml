@@ -1,0 +1,109 @@
+---
+# Opt-in sshd intrusion prevention for nftables-first hosts. The firewall role
+# owns chain policy; Fail2Ban only adds/removes elements in dedicated sets.
+
+- name: intrusion_prevention supports Debian-family hosts only
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == "Debian"
+    fail_msg: "intrusion_prevention supports Debian/Ubuntu hosts only."
+
+- name: Fail closed on unsupported intrusion prevention providers
+  ansible.builtin.assert:
+    that:
+      - intrusion_prevention.provider | default('fail2ban') == "fail2ban"
+      - not ((intrusion_prevention.crowdsec | default({})).enabled | default(false))
+    fail_msg: "Only provider=fail2ban is implemented. CrowdSec is a future/off placeholder and must not be enabled here."
+
+- name: Install Fail2Ban
+  ansible.builtin.apt:
+    name:
+      - fail2ban
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    install_recommends: false
+
+- name: Ensure Fail2Ban config directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /etc/fail2ban
+    - /etc/fail2ban/jail.d
+    - /etc/fail2ban/action.d
+
+- name: Check nftables filter table for Fail2Ban integration
+  ansible.builtin.command:
+    cmd: nft list table inet filter
+  register: intrusion_prevention_nft_filter_table
+  changed_when: false
+  failed_when: intrusion_prevention_nft_filter_table.rc != 0
+
+- name: Check Fail2Ban IPv4 nftables set
+  ansible.builtin.command:
+    cmd: nft list set inet filter f2b_sshd4
+  register: intrusion_prevention_f2b_sshd4
+  changed_when: false
+  failed_when: false
+
+- name: Ensure Fail2Ban IPv4 nftables set exists
+  ansible.builtin.command:
+    cmd: nft add set inet filter f2b_sshd4 { type ipv4_addr; flags timeout; }
+  changed_when: true
+  when: intrusion_prevention_f2b_sshd4.rc != 0
+
+- name: Check Fail2Ban IPv6 nftables set
+  ansible.builtin.command:
+    cmd: nft list set inet filter f2b_sshd6
+  register: intrusion_prevention_f2b_sshd6
+  changed_when: false
+  failed_when: false
+
+- name: Ensure Fail2Ban IPv6 nftables set exists
+  ansible.builtin.command:
+    cmd: nft add set inet filter f2b_sshd6 { type ipv6_addr; flags timeout; }
+  changed_when: true
+  when: intrusion_prevention_f2b_sshd6.rc != 0
+
+- name: Configure Fail2Ban global defaults
+  ansible.builtin.template:
+    src: fail2ban-jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart fail2ban
+
+- name: Configure Fail2Ban nftables action
+  ansible.builtin.template:
+    src: action.d/nftables-ripdpi.conf.j2
+    dest: /etc/fail2ban/action.d/nftables-ripdpi.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart fail2ban
+
+- name: Configure Fail2Ban sshd jail
+  ansible.builtin.template:
+    src: fail2ban-sshd.local.j2
+    dest: /etc/fail2ban/jail.d/ripdpi-sshd.local
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart fail2ban
+  when: intrusion_prevention.sshd.enabled | default(true)
+
+- name: Validate Fail2Ban configuration
+  ansible.builtin.command:
+    cmd: fail2ban-client -t
+  changed_when: false
+
+- name: Enable and start Fail2Ban
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    enabled: true
+    state: started
