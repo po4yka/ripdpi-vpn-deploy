@@ -46,12 +46,18 @@
       ansible.builtin.command:
         cmd: "sysctl -n {{ item.key }}"
       loop:
-        - { key: "kernel.randomize_va_space", value: "2" }
-        - { key: "kernel.kptr_restrict", value: "2" }
-        - { key: "kernel.yama.ptrace_scope", value: "2" }
-        - { key: "fs.protected_hardlinks", value: "1" }
-        - { key: "fs.protected_symlinks", value: "1" }
-        - { key: "net.ipv4.conf.all.accept_redirects", value: "0" }
+        - key: "kernel.randomize_va_space"
+          value: "2"
+        - key: "kernel.kptr_restrict"
+          value: "2"
+        - key: "kernel.yama.ptrace_scope"
+          value: "2"
+        - key: "fs.protected_hardlinks"
+          value: "1"
+        - key: "fs.protected_symlinks"
+          value: "1"
+        - key: "net.ipv4.conf.all.accept_redirects"
+          value: "0"
       register: security_sysctl_value
       changed_when: false
       failed_when: security_sysctl_value.stdout != item.value
