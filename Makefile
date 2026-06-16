@@ -19,7 +19,7 @@ export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
         audit-permissions asn-drift check-ip-reputation issue-bootstrap \
         test-tls-policing fleet-status drift-since-tag fleet-rotate \
         watch-spare promote-spare probing-summary tspu-canary \
-        emit-sbom molecule-full-stack audit-log audit-log-append \
+        emit-sbom molecule-full-stack audit-log audit-log-append pyinfra-audit \
         setup-yubikey check-killswitch install-operator-crons \
         remove-operator-crons issue-sub-token sub-reads \
         test-unit snapshot-check snapshot-update validate-secrets \
@@ -103,6 +103,7 @@ help:
 	@echo "  audit-log-append ACTION=…  Append a record (operator-driven hook)"
 	@echo "  emit-sbom                  CycloneDX SBOM of pinned binaries → sbom/<label>.json"
 	@echo "  security-audit             Non-blocking host audit report (Lynis/listeners/systemd/nft/sshd/sysctl)"
+	@echo "  pyinfra-audit              Experimental read-only host audit (requires PYINFRA_HOSTS=host[,host])"
 	@echo ""
 	@echo "── TEST / CI ──────────────────────────────────────────────────────────"
 	@echo "  test-unit                  Run pytest unit tests (tests/unit/)"
@@ -191,6 +192,11 @@ security-verify: pre-deploy-check
 
 security-audit:
 	VPN_SECRETS_FILE=$(SECRETS_FILE) ansible-playbook $(ANSIBLE_DIR)/playbooks/security-audit.yml
+
+pyinfra-audit:
+	@test -n "$(PYINFRA_HOSTS)" || { echo "PYINFRA_HOSTS=host[,host...] required"; exit 1; }
+	@command -v pyinfra >/dev/null 2>&1 || { echo "missing: pyinfra (optional; see requirements.in and pyinfra/README.md)"; exit 1; }
+	pyinfra pyinfra/inventory.py pyinfra/deploys/read_only_audit.py
 
 clean:
 	@if [ -f "$(SECRETS_FILE)" ]; then \

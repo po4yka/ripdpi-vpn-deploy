@@ -25,3 +25,7 @@ pytest==9.1.0
 # requirements.txt, the Makefile install-hooks target should switch to
 # `pip install -r requirements.txt` so pre-commit is hash-verified.
 pre-commit
+
+# Optional experimental pyinfra read-only host audit pilot. Do not make this part
+# of deploy orchestration without a separate design review.
+pyinfra>=3,<4
