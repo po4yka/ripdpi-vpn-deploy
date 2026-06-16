@@ -129,9 +129,19 @@
       when: vpn.enable_naive | default(false)
 
     - name: Add Hysteria UDP listener to expected manifest
+      vars:
+        _security_hysteria_port_range: "{{ hysteria_port_range | default('') | string }}"
+        _security_hysteria_udp_ranges: >-
+          {{
+            [_security_hysteria_port_range]
+            if (_security_hysteria_port_range | length > 0)
+            else []
+          }}
       ansible.builtin.set_fact:
-        security_expected_udp_ports: "{{ (security_expected_udp_ports + [hysteria_port | default(443) | int]) | unique | list }}"
-        security_expected_udp_ranges: "{{ (security_expected_udp_ranges + ([hysteria_port_range | string] if (hysteria_port_range | default('') | string | length > 0) else [])) | unique | list }}"
+        security_expected_udp_ports: >-
+          {{ (security_expected_udp_ports + [hysteria_port | default(443) | int]) | unique | list }}
+        security_expected_udp_ranges: >-
+          {{ (security_expected_udp_ranges + _security_hysteria_udp_ranges) | unique | list }}
       when: vpn.enable_hysteria | default(false)
 
     - name: Add AmneziaWG UDP listeners to expected manifest

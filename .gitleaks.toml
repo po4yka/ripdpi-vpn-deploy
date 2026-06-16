@@ -56,8 +56,12 @@ paths = [
     '''ansible/molecule/.*''',
     '''scripts/new-client\.sh''',
     '''scripts/emit-singbox\.sh''',
+    '''tests/bats/age_recovery_roundtrip\.bats''',
+    '''tests/unit/test_age_recovery_roundtrip\.py''',
     '''tests/fixtures/age-test\.key''',
+    '''tests/fixtures/secrets-sample\.yml''',
     '''tests/fixtures/age-recovery-shares/.*''',
+    '''tests/snapshot/golden/.*''',
 ]
 regexes = [
     '''REPLACE_WITH_[A-Z_]+''',

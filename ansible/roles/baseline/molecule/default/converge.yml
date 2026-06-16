@@ -12,6 +12,8 @@
       enable_nginx_xhttp: true
       enable_hysteria: false
       enable_amneziawg: false
+    security_controls:
+      ssh_prune_moduli: true
   pre_tasks:
     - name: Create deploy user (mirrors what cloud-init does in prod)
       ansible.builtin.user:
