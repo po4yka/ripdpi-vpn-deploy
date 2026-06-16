@@ -1,0 +1,50 @@
+---
+- name: Install Lynis when enabled
+  ansible.builtin.apt:
+    name: lynis
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  register: security_audit_lynis_install
+  failed_when: false
+
+- name: Check Lynis availability
+  ansible.builtin.command:
+    cmd: lynis --version
+  register: security_audit_lynis_path
+  changed_when: false
+  failed_when: false
+
+- name: Run Lynis quick system audit
+  ansible.builtin.command:
+    cmd: lynis audit system --quick --no-colors
+  register: security_audit_lynis
+  changed_when: false
+  failed_when: false
+  when: security_audit_lynis_path.rc == 0
+
+- name: Write Lynis audit output
+  ansible.builtin.copy:
+    dest: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}/lynis.txt"
+    owner: root
+    group: root
+    mode: "0640"
+    content: |
+      install_rc={{ security_audit_lynis_install.rc | default('n/a') }}
+      lynis_path_rc={{ security_audit_lynis_path.rc | default('n/a') }}
+      audit_rc={{ (security_audit_lynis | default({})).rc | default('not-run') }}
+
+      # stdout
+      {{ (security_audit_lynis | default({})).stdout | default('Lynis unavailable; install failed or binary not on PATH.') }}
+
+      # stderr
+      {{ (security_audit_lynis | default({})).stderr | default('') }}
+
+- name: Fail on Lynis high findings when explicitly requested
+  ansible.builtin.assert:
+    that:
+      - "'[WARNING]' not in (security_audit_lynis.stdout | default(''))"
+    fail_msg: "Lynis reported warnings and security_audit.fail_on_high_findings=true."
+  when:
+    - security_audit.fail_on_high_findings | default(false)
+    - security_audit_lynis is defined

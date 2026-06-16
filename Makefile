@@ -10,7 +10,7 @@ TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
 
 export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
 
-.PHONY: help init validate plan apply inventory wait decrypt dry-run deploy verify security-verify clean \
+.PHONY: help init validate plan apply inventory wait decrypt dry-run deploy verify security-verify security-audit clean \
         pre-deploy-check \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
@@ -102,6 +102,7 @@ help:
 	@echo "  audit-log                  Decrypt and print the credential-issuance log"
 	@echo "  audit-log-append ACTION=…  Append a record (operator-driven hook)"
 	@echo "  emit-sbom                  CycloneDX SBOM of pinned binaries → sbom/<label>.json"
+	@echo "  security-audit             Non-blocking host audit report (Lynis/listeners/systemd/nft/sshd/sysctl)"
 	@echo ""
 	@echo "── TEST / CI ──────────────────────────────────────────────────────────"
 	@echo "  test-unit                  Run pytest unit tests (tests/unit/)"
@@ -187,6 +188,9 @@ verify: pre-deploy-check
 security-verify: pre-deploy-check
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/security-verify.yml
+
+security-audit:
+	VPN_SECRETS_FILE=$(SECRETS_FILE) ansible-playbook $(ANSIBLE_DIR)/playbooks/security-audit.yml
 
 clean:
 	@if [ -f "$(SECRETS_FILE)" ]; then \

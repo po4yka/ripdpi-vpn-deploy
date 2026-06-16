@@ -1,0 +1,23 @@
+---
+- name: Collect listening TCP/UDP sockets
+  ansible.builtin.command:
+    cmd: ss -tulpn
+  register: security_audit_listening_ports
+  changed_when: false
+  failed_when: false
+
+- name: Write listening port report
+  ansible.builtin.copy:
+    dest: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}/listening-ports.txt"
+    owner: root
+    group: root
+    mode: "0640"
+    content: |
+      command=ss -tulpn
+      rc={{ security_audit_listening_ports.rc }}
+
+      # stdout
+      {{ security_audit_listening_ports.stdout | default('') }}
+
+      # stderr
+      {{ security_audit_listening_ports.stderr | default('') }}
