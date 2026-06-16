@@ -1,0 +1,19 @@
+---
+security_audit:
+  lynis: true
+  aide: false
+  rkhunter: false
+  clamav: false
+  fail_on_high_findings: false
+  report_root: /var/log/ripdpi-vpn-deploy/security-audit
+  sysctl_keys:
+    - fs.protected_hardlinks
+    - fs.protected_symlinks
+    - kernel.randomize_va_space
+    - kernel.kptr_restrict
+    - kernel.yama.ptrace_scope
+    - net.ipv4.ip_forward
+    - net.ipv6.conf.all.forwarding
+    - net.ipv4.conf.all.accept_redirects
+    - net.ipv4.conf.all.send_redirects
+    - net.ipv4.conf.all.rp_filter

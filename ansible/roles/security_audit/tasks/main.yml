@@ -1,0 +1,52 @@
+---
+- name: Capture security audit timestamp
+  ansible.builtin.set_fact:
+    security_audit_run_id: "{{ ansible_date_time.iso8601_basic_short | default('%Y%m%dT%H%M%S' | strftime) }}"
+
+- name: Ensure security audit report directory
+  ansible.builtin.file:
+    path: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Record security audit metadata
+  ansible.builtin.copy:
+    dest: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}/README.txt"
+    owner: root
+    group: root
+    mode: "0640"
+    content: |
+      ripdpi-vpn-deploy security audit
+      generated_at={{ ansible_date_time.iso8601 | default(security_audit_run_id) }}
+      hostname={{ ansible_hostname | default(inventory_hostname) }}
+      non_blocking=true
+      aide_enabled={{ security_audit.aide | default(false) }}
+      rkhunter_enabled={{ security_audit.rkhunter | default(false) }}
+      clamav_enabled={{ security_audit.clamav | default(false) }}
+
+- name: Record deferred heavy audit controls
+  ansible.builtin.copy:
+    dest: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}/deferred-controls.txt"
+    owner: root
+    group: root
+    mode: "0640"
+    content: |
+      AIDE: {{ 'requested but not implemented by this non-blocking role yet' if (security_audit.aide | default(false)) else 'disabled by default' }}
+      rkhunter: {{ 'requested but intentionally not installed by default; add a reviewed implementation before enabling' if (security_audit.rkhunter | default(false)) else 'disabled by default' }}
+      ClamAV: {{ 'requested but intentionally not installed by default; too heavy for default VPS audit runs' if (security_audit.clamav | default(false)) else 'disabled by default' }}
+
+- name: Run Lynis audit
+  ansible.builtin.include_tasks: lynis.yml
+  when: security_audit.lynis | default(true)
+
+- name: Collect listening port audit
+  ansible.builtin.include_tasks: listening_ports.yml
+
+- name: Collect systemd, nftables, sshd, and sysctl audit
+  ansible.builtin.include_tasks: systemd.yml
+
+- name: Report security audit output path
+  ansible.builtin.debug:
+    msg: "security audit reports written to {{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}"

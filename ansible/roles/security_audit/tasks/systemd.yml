@@ -1,0 +1,91 @@
+---
+- name: Collect failed systemd units
+  ansible.builtin.command:
+    cmd: systemctl --failed --no-pager
+  register: security_audit_systemd_failed
+  changed_when: false
+  failed_when: false
+
+- name: Collect nftables ruleset
+  ansible.builtin.command:
+    cmd: nft list ruleset
+  register: security_audit_nftables
+  changed_when: false
+  failed_when: false
+
+- name: Collect effective sshd configuration
+  ansible.builtin.command:
+    cmd: sshd -T
+  register: security_audit_sshd
+  changed_when: false
+  failed_when: false
+
+- name: Collect selected sysctl values
+  ansible.builtin.command:
+    cmd: "sysctl -n {{ item }}"
+  loop: "{{ security_audit.sysctl_keys | default([]) }}"
+  register: security_audit_sysctl
+  changed_when: false
+  failed_when: false
+
+- name: Write systemd failed-unit report
+  ansible.builtin.copy:
+    dest: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}/systemd-failed.txt"
+    owner: root
+    group: root
+    mode: "0640"
+    content: |
+      command=systemctl --failed --no-pager
+      rc={{ security_audit_systemd_failed.rc }}
+
+      # stdout
+      {{ security_audit_systemd_failed.stdout | default('') }}
+
+      # stderr
+      {{ security_audit_systemd_failed.stderr | default('') }}
+
+- name: Write nftables ruleset report
+  ansible.builtin.copy:
+    dest: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}/nftables-ruleset.txt"
+    owner: root
+    group: root
+    mode: "0640"
+    content: |
+      command=nft list ruleset
+      rc={{ security_audit_nftables.rc }}
+
+      # stdout
+      {{ security_audit_nftables.stdout | default('') }}
+
+      # stderr
+      {{ security_audit_nftables.stderr | default('') }}
+
+- name: Write sshd effective config report
+  ansible.builtin.copy:
+    dest: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}/sshd-effective.txt"
+    owner: root
+    group: root
+    mode: "0640"
+    content: |
+      command=sshd -T
+      rc={{ security_audit_sshd.rc }}
+
+      # stdout
+      {{ security_audit_sshd.stdout | default('') }}
+
+      # stderr
+      {{ security_audit_sshd.stderr | default('') }}
+
+- name: Write sysctl report
+  ansible.builtin.copy:
+    dest: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}/sysctl.txt"
+    owner: root
+    group: root
+    mode: "0640"
+    content: |
+      {% for result in security_audit_sysctl.results | default([]) %}
+      {{ result.item }}={{ result.stdout | default('unavailable') }} rc={{ result.rc | default('n/a') }}
+      {% if result.stderr | default('') %}
+      stderr={{ result.stderr }}
+      {% endif %}
+      {% endfor %}

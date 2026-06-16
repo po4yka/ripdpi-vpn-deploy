@@ -1,0 +1,9 @@
+---
+- name: Run non-blocking VPN host security audit
+  hosts: vpn
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: security_audit
+      tags: [security, audit]
