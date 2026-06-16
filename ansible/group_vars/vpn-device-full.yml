@@ -1,16 +1,17 @@
 ---
-# Legacy split-profile cohort: P1+P2 nodes with no REALITY direct path. Used
-# by hosts in the [vpn-p1p2] inventory group. Keep for existing inventories;
-# new family hosts should usually choose vpn-family-standard or
-# vpn-device-full instead.
+# Profile: device-full family node.
+# Public listeners: family-standard plus AmneziaWG UDP. This preserves the
+# historical all.yml / vpn-fullstack surface where AmneziaWG is part of the
+# default device-VPN contract.
+# Legacy alias: ansible/group_vars/vpn-fullstack.yml.
 
 vpn:
-  enable_xray_reality: false
+  enable_xray_reality: true
   enable_nginx_xhttp: true
   enable_naive: false
   enable_hysteria: true
   enable_amneziawg: true
-  enable_geodata: false   # no xray here; nothing to feed geodata to
+  enable_geodata: true
   enable_monitoring: true
   enable_watchdog: true
   enable_backup: true

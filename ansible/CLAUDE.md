@@ -7,6 +7,11 @@
 **Roles are feature-toggleable** — `group_vars/all.yml` carries `vpn.enable_*`
 booleans. Disabling a profile is a config change, not a code change.
 
+**Deployment profiles are explicit** — prefer `vpn-p0-minimal`,
+`vpn-family-standard`, `vpn-device-full`, and `vpn-lab` group_vars for new
+inventory cohorts. Legacy `vpn-p0`, `vpn-p1p2`, and `vpn-fullstack` remain
+aliases for existing inventories and must stay guarded by `role-tiers.yml`.
+
 **Per-role `defaults/main.yml`** — every variable a role consumes has a
 default. `group_vars` only overrides. Reading a role's defaults file tells
 you everything it exposes.

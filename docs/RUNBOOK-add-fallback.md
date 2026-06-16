@@ -100,9 +100,16 @@ ansible-playbook ansible/playbooks/site.yml
 
 The pre-shipped cohort files are:
 
-- `ansible/group_vars/vpn-p0.yml`        — REALITY only
-- `ansible/group_vars/vpn-p1p2.yml`      — XHTTP + Hysteria + AWG (no REALITY)
-- `ansible/group_vars/vpn-fullstack.yml` — explicit "all profiles" cohort
+- `ansible/group_vars/vpn-p0-minimal.yml`      — REALITY only
+- `ansible/group_vars/vpn-family-standard.yml` — REALITY + XHTTP + Hysteria, no AWG
+- `ansible/group_vars/vpn-device-full.yml`     — family-standard + AWG
+- `ansible/group_vars/vpn-lab.yml`             — lab/pilot surface; research roles still require `allow_research_roles`
+
+Legacy aliases stay supported for existing inventories:
+
+- `ansible/group_vars/vpn-p0.yml`        — alias for `vpn-p0-minimal`
+- `ansible/group_vars/vpn-p1p2.yml`      — older XHTTP + Hysteria + AWG split host with REALITY disabled
+- `ansible/group_vars/vpn-fullstack.yml` — alias for `vpn-device-full`
 
 ## Operational consequences of multi-VPS
 

@@ -1,7 +1,7 @@
 ---
-# Cohort: full P0+P1+P2 stack on one node. Same as group_vars/all.yml
-# defaults but explicit, so a host placed in [vpn-fullstack] inherits it
-# even if all.yml is overridden later.
+# Legacy cohort alias for vpn-device-full. Same as group_vars/all.yml defaults
+# but explicit, so a host placed in [vpn-fullstack] inherits the historical
+# full device-VPN surface even if all.yml is overridden later.
 
 vpn:
   enable_xray_reality: true

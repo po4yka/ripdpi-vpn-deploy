@@ -16,7 +16,7 @@
 #   PROVIDER=upcloud ENV=prod  scripts/emit-bundle.sh laptop
 #   HOSTS="upcloud:prod,hetzner:prod"  scripts/emit-bundle.sh laptop
 #   HOSTS="upcloud:prod,upcloud:spare" scripts/emit-bundle.sh laptop
-#   HOSTS="upcloud:p0,upcloud:p1p2" COHORTS="p0,p1p2" scripts/emit-bundle.sh laptop
+#   HOSTS="upcloud:p0,upcloud:full" COHORTS="p0-minimal,device-full" scripts/emit-bundle.sh laptop
 #
 # AWG obfuscation parameter precedence (identical to emit-awg.sh):
 #   amneziawg_secrets.{jc,jmin,jmax,s1,s2,h1..h4}  (SOPS — highest)

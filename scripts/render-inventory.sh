@@ -10,8 +10,8 @@
 #   HOSTS="upcloud:prod,hetzner:prod" ./scripts/render-inventory.sh
 #
 # Cohort assignment: optional COHORTS env, comma-separated, one per host. The
-# host gets added to a [vpn-<cohort>] group.
-#   HOSTS="upcloud:prod,hetzner:prod" COHORTS="p0,p1p2" ./scripts/render-inventory.sh
+# host gets added to a [vpn-<cohort>] group, which maps to group_vars/vpn-<cohort>.yml.
+#   HOSTS="upcloud:prod,hetzner:prod" COHORTS="p0-minimal,device-full" ./scripts/render-inventory.sh
 #
 # Required env: ANSIBLE_SSH_PRIVATE_KEY_FILE.
 set -euo pipefail

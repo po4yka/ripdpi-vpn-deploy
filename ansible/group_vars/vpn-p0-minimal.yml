@@ -1,6 +1,7 @@
 ---
-# Legacy cohort alias for vpn-p0-minimal. Used by hosts in the [vpn-p0]
-# inventory group. New inventories should prefer COHORTS=p0-minimal.
+# Profile: minimal family node.
+# Public listeners: Xray REALITY TCP only, plus SSH from allowed CIDRs.
+# Legacy alias: ansible/group_vars/vpn-p0.yml.
 
 vpn:
   enable_xray_reality: true
