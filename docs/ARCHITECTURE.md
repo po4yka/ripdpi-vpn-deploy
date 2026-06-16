@@ -35,6 +35,18 @@ or this repo. Provider credentials live in env vars only.
 Cross-cutting roles: `baseline`, `firewall`, `monitoring`, `backup`,
 optional `subscription-host`.
 
+Deployment profile files make public listener surfaces explicit:
+
+| Profile file | Public transport surface |
+|---|---|
+| `vpn-p0-minimal.yml` | P0 REALITY only |
+| `vpn-family-standard.yml` | P0 REALITY + P1 XHTTP + P2 Hysteria2 |
+| `vpn-device-full.yml` | family-standard + P2 AmneziaWG |
+| `vpn-lab.yml` | lab/pilot surface; research roles require `allow_research_roles` |
+
+Legacy aliases remain for existing inventories: `vpn-p0.yml`, `vpn-p1p2.yml`,
+and `vpn-fullstack.yml`.
+
 Default single-host port ownership:
 
 | Port | Owner | Variable |

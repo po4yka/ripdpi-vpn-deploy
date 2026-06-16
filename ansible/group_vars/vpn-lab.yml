@@ -1,16 +1,19 @@
 ---
-# Legacy split-profile cohort: P1+P2 nodes with no REALITY direct path. Used
-# by hosts in the [vpn-p1p2] inventory group. Keep for existing inventories;
-# new family hosts should usually choose vpn-family-standard or
-# vpn-device-full instead.
+# Profile: lab/pilot host.
+# Starts from a family-safe device-full surface, but this file is deliberately
+# not listed in role-tiers.yml family_profiles. Research roles may be enabled
+# here only by also adding their role names to allow_research_roles in the same
+# file or host_vars entry.
+
+allow_research_roles: []
 
 vpn:
-  enable_xray_reality: false
+  enable_xray_reality: true
   enable_nginx_xhttp: true
   enable_naive: false
   enable_hysteria: true
   enable_amneziawg: true
-  enable_geodata: false   # no xray here; nothing to feed geodata to
+  enable_geodata: true
   enable_monitoring: true
   enable_watchdog: true
   enable_backup: true

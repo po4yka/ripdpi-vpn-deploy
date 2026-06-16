@@ -9,7 +9,7 @@
 # Multi-host:
 #   HOSTS="upcloud:prod,hetzner:prod"  scripts/emit-singbox.sh laptop
 #   HOSTS="upcloud:prod,upcloud:spare" scripts/emit-singbox.sh laptop
-#   HOSTS="upcloud:p0,upcloud:p1p2" COHORTS="p0,p1p2" scripts/emit-singbox.sh laptop
+#   HOSTS="upcloud:p0,upcloud:full" COHORTS="p0-minimal,device-full" scripts/emit-singbox.sh laptop
 #
 # Per-host SOPS files: by default each pair uses
 # ~/.config/vpn-provision/<ENV>.secrets.sops.yaml. Override with SOPS_FILE

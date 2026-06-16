@@ -88,22 +88,22 @@ Switch via `make PROVIDER=upcloud …`.
 
 ## Deploy profiles
 
-Default is P0+P1+P2 on one node. Partial deploys come from cohort
-`group_vars` files in `ansible/group_vars/`:
+Default remains the historical device-full surface from `all.yml`. New deploys should choose an explicit cohort `group_vars` file in `ansible/group_vars/`:
 
-- `vpn-p0.yml` — REALITY only.
-- `vpn-p1p2.yml` — XHTTP + Hysteria2 + AmneziaWG; REALITY off, nginx free
-  to take 443.
-- `vpn-fullstack.yml` — same as `all.yml` defaults, made explicit so a
-  host in `[vpn-fullstack]` is unambiguous.
+- `vpn-p0-minimal.yml` — Xray REALITY only, plus monitoring/watchdog/backup.
+- `vpn-family-standard.yml` — Xray REALITY + nginx-xhttp + Hysteria2, plus monitoring/watchdog/backup; no AmneziaWG.
+- `vpn-device-full.yml` — family-standard + AmneziaWG; this matches the historical `all.yml` / `vpn-fullstack.yml` surface.
+- `vpn-lab.yml` — lab/pilot profile. Research roles still require an explicit `allow_research_roles` opt-in in the same inventory scope.
+- Legacy aliases remain: `vpn-p0.yml` for `vpn-p0-minimal`, `vpn-fullstack.yml` for `vpn-device-full`, and `vpn-p1p2.yml` for the older no-REALITY split host.
 
 ```mermaid
 flowchart LR
     subgraph CH[cohort]
         direction TB
-        P0[vpn-p0]
-        PM[vpn-p1p2]
-        FS[vpn-fullstack]
+        P0[vpn-p0-minimal]
+        STD[vpn-family-standard]
+        DEV[vpn-device-full]
+        LAB[vpn-lab]
     end
     subgraph TR[transports on the VPS]
         direction TB
@@ -114,19 +114,23 @@ flowchart LR
     end
 
     P0 --> XR
-    PM --> NG
-    PM --> HY
-    PM --> AW
-    FS --> XR
-    FS --> NG
-    FS --> HY
-    FS --> AW
+    STD --> XR
+    STD --> NG
+    STD --> HY
+    DEV --> XR
+    DEV --> NG
+    DEV --> HY
+    DEV --> AW
+    LAB --> XR
+    LAB --> NG
+    LAB --> HY
+    LAB --> AW
 ```
 
 Assign a host to a cohort with `COHORTS=` on `render-inventory.sh`:
 
 ```bash
-HOSTS="upcloud:p0" COHORTS="p0" ./scripts/render-inventory.sh
+HOSTS="upcloud:prod" COHORTS="family-standard" ./scripts/render-inventory.sh
 ```
 
 Or skip the inventory rebuild and tag-scope the play:

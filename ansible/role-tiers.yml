@@ -15,9 +15,9 @@
 #
 # ENFORCEMENT (so a research role can never silently reach a family deploy):
 #   * CI/static: scripts/check-deploy-profile.py fails if any role tagged
-#     `research` here has its enable toggle true in a family profile
-#     (group_vars/all.yml, vpn-p0, vpn-p1p2, vpn-fullstack) or anywhere it is
-#     not explicitly allowlisted. Wired into `make ci-fast` + pre-commit.
+#     `research` here has its enable toggle true in a family profile listed
+#     below (including legacy aliases) or anywhere it is not explicitly
+#     allowlisted. Wired into `make ci-fast` + pre-commit.
 #   * Deploy-time: a pre_task assert in playbooks/site.yml blocks a research
 #     role at converge unless the host's inventory lists it in
 #     `allow_research_roles` (an explicit, git-visible per-host opt-in).
@@ -82,6 +82,9 @@ toggle_role_map:
 # forbids the allow_research_roles override from appearing in them.
 family_profiles:
   - group_vars/all.yml
+  - group_vars/vpn-p0-minimal.yml
+  - group_vars/vpn-family-standard.yml
+  - group_vars/vpn-device-full.yml
   - group_vars/vpn-p0.yml
   - group_vars/vpn-p1p2.yml
   - group_vars/vpn-fullstack.yml

@@ -34,6 +34,48 @@ def test_live_manifest_covers_every_role():
     assert set(tiers) == on_disk
 
 
+def test_live_family_profile_list_includes_explicit_profiles():
+    manifest = yaml.safe_load((REPO_ROOT / "ansible" / "role-tiers.yml").read_text())
+    family_profiles = set(manifest["family_profiles"])
+    assert {
+        "group_vars/vpn-p0-minimal.yml",
+        "group_vars/vpn-family-standard.yml",
+        "group_vars/vpn-device-full.yml",
+        "group_vars/vpn-p0.yml",
+        "group_vars/vpn-p1p2.yml",
+        "group_vars/vpn-fullstack.yml",
+    }.issubset(family_profiles)
+    assert "group_vars/vpn-lab.yml" not in family_profiles
+
+
+def test_live_explicit_profile_surfaces_are_locked():
+    group_vars = REPO_ROOT / "ansible" / "group_vars"
+    minimal = yaml.safe_load((group_vars / "vpn-p0-minimal.yml").read_text())["vpn"]
+    standard = yaml.safe_load((group_vars / "vpn-family-standard.yml").read_text())["vpn"]
+    device_full = yaml.safe_load((group_vars / "vpn-device-full.yml").read_text())["vpn"]
+    lab = yaml.safe_load((group_vars / "vpn-lab.yml").read_text())
+
+    assert minimal["enable_xray_reality"] is True
+    assert minimal["enable_nginx_xhttp"] is False
+    assert minimal["enable_hysteria"] is False
+    assert minimal["enable_amneziawg"] is False
+
+    assert standard["enable_xray_reality"] is True
+    assert standard["enable_nginx_xhttp"] is True
+    assert standard["enable_hysteria"] is True
+    assert standard["enable_amneziawg"] is False
+
+    assert device_full["enable_xray_reality"] is True
+    assert device_full["enable_nginx_xhttp"] is True
+    assert device_full["enable_hysteria"] is True
+    assert device_full["enable_amneziawg"] is True
+
+    assert lab["allow_research_roles"] == []
+    assert lab["vpn"]["enable_split_hop_egress"] is False
+    assert lab["vpn"]["enable_hysteria_realm"] is False
+    assert lab["vpn"]["enable_dns_morph_bridge"] is False
+
+
 # ---------------------------------------------------------------------------
 # Synthetic repo harness
 # ---------------------------------------------------------------------------
@@ -52,7 +94,13 @@ MANIFEST = {
         "enable_split_hop_egress": "split-hop-egress",
         "enable_hysteria_realm": "hysteria-realm",
     },
-    "family_profiles": ["group_vars/all.yml", "group_vars/vpn-fullstack.yml"],
+    "family_profiles": [
+        "group_vars/all.yml",
+        "group_vars/vpn-p0-minimal.yml",
+        "group_vars/vpn-family-standard.yml",
+        "group_vars/vpn-device-full.yml",
+        "group_vars/vpn-fullstack.yml",
+    ],
 }
 
 ALL_OFF = {
@@ -72,8 +120,10 @@ def _make_repo(tmp_path: Path, *, manifest=None, all_yml=None, extra=None) -> Pa
     (ans / "role-tiers.yml").write_text(yaml.safe_dump(manifest or MANIFEST))
     gv = ans / "group_vars"
     gv.mkdir()
-    (gv / "all.yml").write_text(yaml.safe_dump({"vpn": all_yml or ALL_OFF}))
-    (gv / "vpn-fullstack.yml").write_text(yaml.safe_dump({"vpn": all_yml or ALL_OFF}))
+    for rel in (manifest or MANIFEST)["family_profiles"]:
+        p = ans / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(yaml.safe_dump({"vpn": all_yml or ALL_OFF}))
     for rel, data in (extra or {}).items():
         p = ans / rel
         p.parent.mkdir(parents=True, exist_ok=True)
