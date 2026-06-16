@@ -1,0 +1,13 @@
+---
+# Machine-readable node capability manifest. Keep this role non-secret: it
+# records enabled surfaces and recovery paths, not credentials or client data.
+
+node_manifest:
+  dir: /var/lib/ripdpi-vpn-deploy
+  path: /var/lib/ripdpi-vpn-deploy/manifest.json
+  schema_version: 1
+  rollback_artifacts:
+    - /etc/xray/config.json.prev
+    - /etc/ssh/moduli.prev
+    - /opt/xray/releases
+    - /etc/hysteria/config.yaml.prev

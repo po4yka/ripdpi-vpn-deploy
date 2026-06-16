@@ -10,6 +10,7 @@
 #
 # Columns:
 #   PROV  ENV  IP             ASN     xray_ver       last_deploy  watchdog  burn
+# TODO(manifest): read /var/lib/ripdpi-vpn-deploy/manifest.json when the fleet table grows capability columns.
 #
 # All ssh calls use the admin_user exported by each terraform root, and
 # are bounded by a short ConnectTimeout so a single dead node doesn't

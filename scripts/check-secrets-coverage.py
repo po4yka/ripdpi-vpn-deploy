@@ -30,7 +30,7 @@ EXAMPLE_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 NON_SECRET_TOPLEVEL = {
     "ansible_user", "ansible_host", "ansible_facts", "ansible_architecture",
     "ansible_os_family", "ansible_distribution", "ansible_distribution_release",
-    "ansible_python_interpreter",
+    "ansible_python_interpreter", "ansible_hostname",
     "vpn", "security_controls", "allowed_ssh_cidrs",
     "xray_port", "nginx_xhttp_port", "hysteria_port",
     "xray_install_root", "xray_config_dir", "xray_log_dir",
@@ -42,6 +42,7 @@ NON_SECRET_TOPLEVEL = {
     "monitoring", "subscription", "watchdog", "geodata", "naive",
     # Role-internal compute (set_fact)
     "xray_arch", "xray_sha256", "hysteria_arch", "hysteria_sha256",
+    "node_manifest_environment", "node_manifest_provider",
 }
 
 # Top-level keys that are real secrets and must exist in the example file

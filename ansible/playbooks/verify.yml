@@ -29,6 +29,17 @@
       register: cloud_marker
       failed_when: not cloud_marker.stat.exists
 
+    - name: Node capability manifest exists
+      ansible.builtin.stat:
+        path: /var/lib/ripdpi-vpn-deploy/manifest.json
+      register: node_manifest_verify
+      failed_when: not node_manifest_verify.stat.exists
+
+    - name: Node capability manifest is valid JSON
+      ansible.builtin.command:
+        cmd: python3 -m json.tool /var/lib/ripdpi-vpn-deploy/manifest.json
+      changed_when: false
+
     - name: nftables config syntax valid
       ansible.builtin.command:
         cmd: nft -c -f /etc/nftables.conf

@@ -144,3 +144,39 @@ jobs:
               });
               core.notice(`Opened drift issue #${created.data.number}`);
             }
+
+      - name: Close resolved drift tracking issue
+        if: steps.drift.outputs.has_drift == 'false'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            const label = 'automation:drift';
+            const today = new Date().toISOString().slice(0, 10);
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: label,
+              state: 'open',
+              per_page: 10,
+            });
+
+            for (const issue of existing.data) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: [
+                  'Repo-only drift is now clear: no commits remain after the latest `vpn-deploy-known-good-*` tag.',
+                  '',
+                  `Closed automatically by [drift.yml](../.github/workflows/drift.yml) on ${today}.`,
+                ].join('\n'),
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+              });
+              core.notice(`Closed resolved drift issue #${issue.number}`);
+            }
