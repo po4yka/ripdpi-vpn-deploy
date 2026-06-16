@@ -10,7 +10,7 @@ TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
 
 export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
 
-.PHONY: help init validate plan apply inventory wait decrypt dry-run deploy verify security-verify security-audit clean \
+.PHONY: help init validate plan apply inventory wait decrypt dry-run deploy deploy-canary verify security-verify security-audit clean \
         pre-deploy-check \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
@@ -54,6 +54,7 @@ help:
 	@echo "  pre-deploy-check           spot-check-secrets + check-certs (auto for deploy/verify; SKIP_PRECHECK=1 to bypass)"
 	@echo "  dry-run                    ansible-playbook --check --diff"
 	@echo "  deploy                     ansible-playbook site.yml"
+	@echo "  deploy-canary              Deploy ENV=canary through the normal deploy flow"
 	@echo "  verify [TAG_ON_SUCCESS=1]  ansible-playbook verify.yml (+ optional known-good git tag)"
 	@echo "  security-verify            Host hardening checks (SSH/sysctl/firewall/services)"
 	@echo "  smoke-test                 End-to-end traffic test through every enabled profile"
@@ -177,6 +178,9 @@ deploy: pre-deploy-check
 	@ENV=$(ENV) PROVIDER=$(PROVIDER) ./scripts/audit-log.sh append-best-effort \
 	  --action site-deploy \
 	  --note "playbook=site.yml warp_outbound_role=conditional"
+
+deploy-canary:
+	$(MAKE) ENV=canary deploy
 
 verify: pre-deploy-check
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \

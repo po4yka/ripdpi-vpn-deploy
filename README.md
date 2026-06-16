@@ -207,7 +207,9 @@ make inventory   # render Ansible inventory from terraform outputs
 make wait        # wait for cloud-init to finish on the new VPS
 make dry-run     # ansible-playbook --check --diff
 make deploy      # ansible-playbook site.yml
+make deploy-canary # same deploy flow with ENV=canary
 make verify      # post-deploy verification playbook
+make security-verify # host hardening verification playbook
 make clean       # shred decrypted secrets
 
 # Rollback / rotation
@@ -229,6 +231,8 @@ vpnd ai-docs [--out DIR]                  # emit repo docs as structured markdow
 make molecule-test ROLE=<name>            # role-level idempotence test
 make validate-target                      # pre-deploy REALITY target probe (8-step audit)
 make scan-targets CIDR=<range>            # discover REALITY targets via RealiTLScanner
+make security-audit                       # non-blocking host audit report
+PYINFRA_HOSTS=host make pyinfra-audit      # experimental read-only pyinfra audit
 make smoke-test                           # end-to-end traffic test (real proxy dial)
 make blue-green GREEN_ENV=<name>          # orchestrate blue-green replacement
 ```

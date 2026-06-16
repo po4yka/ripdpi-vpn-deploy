@@ -16,12 +16,18 @@
         update_cache: true
         install_recommends: false
 
+    - name: Check minimal nftables table normally owned by firewall role
+      ansible.builtin.command:
+        cmd: nft list table inet filter
+      register: intrusion_prevention_molecule_nft_table
+      changed_when: false
+      failed_when: false
+
     - name: Create minimal nftables table normally owned by firewall role
       ansible.builtin.command:
         cmd: nft add table inet filter
-      register: intrusion_prevention_molecule_nft_table
-      changed_when: intrusion_prevention_molecule_nft_table.rc == 0
-      failed_when: intrusion_prevention_molecule_nft_table.rc not in [0, 1]
+      changed_when: true
+      when: intrusion_prevention_molecule_nft_table.rc != 0
 
   roles:
     - role: intrusion_prevention

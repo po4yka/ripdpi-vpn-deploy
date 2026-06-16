@@ -41,7 +41,7 @@
     cmd: nft list table inet filter
   register: intrusion_prevention_nft_filter_table
   changed_when: false
-  failed_when: intrusion_prevention_nft_filter_table.rc != 0
+  failed_when: false
 
 - name: Check Fail2Ban IPv4 nftables set
   ansible.builtin.command:
@@ -49,12 +49,15 @@
   register: intrusion_prevention_f2b_sshd4
   changed_when: false
   failed_when: false
+  when: intrusion_prevention_nft_filter_table.rc == 0
 
 - name: Ensure Fail2Ban IPv4 nftables set exists
   ansible.builtin.command:
     cmd: nft add set inet filter f2b_sshd4 { type ipv4_addr; flags timeout; }
   changed_when: true
-  when: intrusion_prevention_f2b_sshd4.rc != 0
+  when:
+    - intrusion_prevention_nft_filter_table.rc == 0
+    - intrusion_prevention_f2b_sshd4.rc != 0
 
 - name: Check Fail2Ban IPv6 nftables set
   ansible.builtin.command:
@@ -62,12 +65,15 @@
   register: intrusion_prevention_f2b_sshd6
   changed_when: false
   failed_when: false
+  when: intrusion_prevention_nft_filter_table.rc == 0
 
 - name: Ensure Fail2Ban IPv6 nftables set exists
   ansible.builtin.command:
     cmd: nft add set inet filter f2b_sshd6 { type ipv6_addr; flags timeout; }
   changed_when: true
-  when: intrusion_prevention_f2b_sshd6.rc != 0
+  when:
+    - intrusion_prevention_nft_filter_table.rc == 0
+    - intrusion_prevention_f2b_sshd6.rc != 0
 
 - name: Configure Fail2Ban global defaults
   ansible.builtin.template:

@@ -4,7 +4,7 @@
 
 **Fail2Ban first, sshd only** — the role installs and configures Fail2Ban for the sshd jail only. CrowdSec is represented only by future/off defaults; no repository setup or installer is present.
 
-**Firewall remains the nftables owner** — the firewall role renders the `f2b_sshd4` / `f2b_sshd6` sets and input-chain drops when `security_controls.fail2ban` is true. This role only keeps Fail2Ban's action pointed at those sets.
+**Firewall remains the nftables owner** — the firewall role renders the `f2b_sshd4` / `f2b_sshd6` sets and input-chain drops when `security_controls.fail2ban` is true. This role only keeps Fail2Ban's action pointed at those sets. If it runs before firewall, nftables set checks are opportunistic and firewall creates the durable sets later in the same play.
 
 **Allowed SSH CIDRs are never bannable** — `allowed_ssh_cidrs` is merged into Fail2Ban `ignoreip` with `intrusion_prevention.ignore_cidrs`.
 
@@ -16,6 +16,6 @@
 
 ## Pitfalls
 
-- **Run firewall before this role** — the action assumes the `inet filter` table and input-chain drop rules are managed by the firewall template.
+- **Do not make this role own firewall policy** — it may run before firewall, but only firewall owns the durable `inet filter` table, ban sets, and input-chain drop rules.
 - **Do not broaden jail scope casually** — transport logs have different privacy and NAT-pool risks; add a separate design note before watching anything beyond sshd.
 - **CrowdSec is future-only here** — do not add package repositories, enrollments, or `curl | sh` installers without a separate review.
