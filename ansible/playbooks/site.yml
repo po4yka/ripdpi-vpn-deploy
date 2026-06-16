@@ -159,3 +159,6 @@
     - role: split-hop-egress
       when: (vpn.enable_split_hop_egress | default(false)) and not (vpn_subscription_only | default(false))
       tags: [split-hop-egress, topology]
+
+    - role: node_manifest
+      tags: [manifest]

@@ -1,0 +1,74 @@
+{% set subscription_only = vpn_subscription_only | default(false) -%}
+{% set listeners = public_listener_manifest | default([]) -%}
+{% set ns = namespace(transports=[], public_listeners=[]) -%}
+{% if (vpn.enable_xray_reality | default(true)) and not subscription_only -%}
+{% set _ = ns.transports.append("xray-reality") -%}
+{% endif -%}
+{% if (vpn.enable_nginx_xhttp | default(true)) and not subscription_only -%}
+{% set _ = ns.transports.append("nginx-xhttp") -%}
+{% endif -%}
+{% if (vpn.enable_hysteria | default(false)) and not subscription_only -%}
+{% set _ = ns.transports.append("hysteria2") -%}
+{% endif -%}
+{% if (vpn.enable_amneziawg | default(false)) and not subscription_only -%}
+{% set _ = ns.transports.append("amneziawg") -%}
+{% endif -%}
+{% if (vpn.enable_cdn_front | default(false)) and not subscription_only -%}
+{% set _ = ns.transports.append("cdn-front") -%}
+{% endif -%}
+{% if (vpn.enable_naive | default(false)) and not subscription_only -%}
+{% set _ = ns.transports.append("naive") -%}
+{% endif -%}
+{% if (vpn.enable_dns_morph_bridge | default(false)) and not subscription_only -%}
+{% set _ = ns.transports.append("dns-morph-bridge") -%}
+{% endif -%}
+{% if (vpn.enable_hysteria_realm | default(false)) and not subscription_only -%}
+{% set _ = ns.transports.append("hysteria-realm") -%}
+{% endif -%}
+{% if (vpn.enable_subscription_host | default(false)) or subscription_only -%}
+{% set _ = ns.transports.append("subscription-host") -%}
+{% endif -%}
+{% for listener in listeners if listener.enabled | default(false) -%}
+{% set item = {"proto": listener.protocol, "role": listener.role} -%}
+{% if listener.port is defined -%}
+{% set _ = item.update({"port": listener.port | int}) -%}
+{% endif -%}
+{% if listener.range is defined and (listener.range | string | length > 0) -%}
+{% set _ = item.update({"range": listener.range | string}) -%}
+{% endif -%}
+{% set _ = ns.public_listeners.append(item) -%}
+{% endfor -%}
+{
+  "schema_version": {{ node_manifest.schema_version | default(1) | int }},
+  "generated_at": "{{ (ansible_date_time | default({})).iso8601 | default('1970-01-01T00:00:00Z') }}",
+  "hostname": "{{ ansible_hostname | default(inventory_hostname | default('unknown')) }}",
+  "environment": "{{ node_manifest_environment | default('') }}",
+  "provider": "{{ node_manifest_provider | default('') }}",
+  "enabled_transports": {{ ns.transports | to_json }},
+  "public_listeners": {{ ns.public_listeners | to_json }},
+  "security_controls": {
+    "ssh_strict": {{ (security_controls | default({})).ssh_strict | default(true) | to_json }},
+    "ssh_allow_tcp_forwarding": {{ (security_controls | default({})).ssh_allow_tcp_forwarding | default(false) | to_json }},
+    "ssh_prune_moduli": {{ (security_controls | default({})).ssh_prune_moduli | default(false) | to_json }},
+    "unattended_upgrades": {{ (security_controls | default({})).unattended_upgrades | default(false) | to_json }},
+    "fail2ban": {{ (security_controls | default({})).fail2ban | default(false) | to_json }},
+    "crowdsec": {{ (security_controls | default({})).crowdsec | default(false) | to_json }},
+    "firewall_egress_policy": {{ firewall_egress_policy | default('permissive') | to_json }}
+  },
+  "recovery": {
+    "backup": {
+      "enabled": {{ vpn.enable_backup | default(true) | to_json }},
+      "local_repo": {{ restic_repo_dir | default('/var/backups/vpn-restic') | to_json }},
+      "remote_sync": {{ (backup | default({})).remote.enabled | default(false) | to_json }}
+    },
+    "watchdog": {
+      "enabled": {{ vpn.enable_watchdog | default(true) | to_json }},
+      "state_file": {{ (watchdog | default({})).state_file | default('/var/lib/vpn-watchdog/state') | to_json }}
+    },
+    "monitoring": {
+      "enabled": {{ vpn.enable_monitoring | default(true) | to_json }},
+      "node_exporter_listen": {{ (monitoring | default({})).node_exporter_listen | default('127.0.0.1:9100') | to_json }}
+    },
+    "rollback_artifacts": {{ node_manifest.rollback_artifacts | default([]) | to_json }}
+  }
+}

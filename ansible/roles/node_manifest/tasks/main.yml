@@ -1,0 +1,27 @@
+---
+- name: Ensure node manifest directory
+  ansible.builtin.file:
+    path: "{{ node_manifest.dir | default('/var/lib/ripdpi-vpn-deploy') }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Capture operator environment labels for manifest
+  ansible.builtin.set_fact:
+    node_manifest_environment: "{{ lookup('env', 'ENV') | default('', true) }}"
+    node_manifest_provider: "{{ lookup('env', 'PROVIDER') | default('', true) }}"
+
+- name: Build public listener manifest when role runs directly
+  ansible.builtin.set_fact:
+    public_listener_manifest: "{{ lookup('template', playbook_dir ~ '/../templates/listener-manifest.json.j2') | from_json }}"
+  when: public_listener_manifest is not defined
+
+- name: Write node capability manifest
+  ansible.builtin.template:
+    src: manifest.json.j2
+    dest: "{{ node_manifest.path | default('/var/lib/ripdpi-vpn-deploy/manifest.json') }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "python3 -m json.tool %s"

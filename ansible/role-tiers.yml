@@ -39,6 +39,7 @@ tiers:
   monitoring: core          # local-first node_exporter + log rotation
   watchdog: core            # service supervision + alerting
   backup: core              # restic+age recovery path
+  node_manifest: core       # machine-readable enabled surfaces/recovery summary
 
   # TACTICAL — opt-in, situational, default-off
   policy-ratelimit: tactical # routing-blackhole abuse limiter (see README)
