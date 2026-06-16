@@ -22,9 +22,11 @@
 #     role at converge unless the host's inventory lists it in
 #     `allow_research_roles` (an explicit, git-visible per-host opt-in).
 #
-# Adding a role: add it to `tiers` (and, if it is toggle-gated, to
-# `toggle_role_map`). The lint fails closed on any role missing a tier or any
-# enable toggle missing from the map.
+# Adding a role: add it to `tiers`. If it is gated by a `vpn.enable_*` toggle,
+# add that toggle to `toggle_role_map`; host-hardening gates under
+# `security_controls.*` are intentionally not transport/profile toggles. The
+# lint fails closed on any role missing a tier or any unknown `vpn.enable_*`
+# toggle in group_vars/host_vars.
 
 tiers:
   # CORE — the family baseline (always-on or default-on in all.yml)
@@ -56,8 +58,9 @@ tiers:
   hysteria-realm: research    # sing-box alpha rendezvous; P5 fallback
   dns-morph-bridge: research  # UDP/53 bootstrap channel; self-built binary, P4
 
-# Maps each enable toggle (under the `vpn:` dict) to its role. Roles without a
-# toggle (baseline, firewall) are always-on and intentionally absent here.
+# Maps each transport/service enable toggle under `vpn:` to its role. Roles
+# gated by `security_controls.*` are classified above but intentionally absent
+# here so host-hardening policy cannot participate in transport tiering.
 toggle_role_map:
   enable_xray_reality: xray
   enable_nginx_xhttp: nginx-xhttp

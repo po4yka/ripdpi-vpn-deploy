@@ -85,20 +85,20 @@
       when: (security_controls | default({})).unattended_upgrades | default(false)
       tags: [baseline, security, updates]
 
-    - role: firewall
-      tags: [firewall, always]
-
     - role: intrusion_prevention
       when: (security_controls | default({})).fail2ban | default(false)
       tags: [security, intrusion-prevention]
 
-    - role: xray
-      when: (vpn.enable_xray_reality | default(true)) and not (vpn_subscription_only | default(false))
-      tags: [xray, p0, transport]
+    - role: firewall
+      tags: [firewall, always]
 
     - role: geodata
       when: (vpn.enable_xray_reality | default(true)) and (vpn.enable_geodata | default(true)) and not (vpn_subscription_only | default(false))
       tags: [geodata, xray]
+
+    - role: xray
+      when: (vpn.enable_xray_reality | default(true)) and not (vpn_subscription_only | default(false))
+      tags: [xray, p0, transport]
 
     - role: nginx-xhttp
       when: (vpn.enable_nginx_xhttp | default(true)) and not (vpn_subscription_only | default(false))
@@ -119,18 +119,6 @@
     - role: amneziawg
       when: (vpn.enable_amneziawg | default(false)) and not (vpn_subscription_only | default(false))
       tags: [amneziawg, awg, p2, transport]
-
-    - role: monitoring
-      when: vpn.enable_monitoring | default(true)
-      tags: [monitoring]
-
-    - role: backup
-      when: vpn.enable_backup | default(true)
-      tags: [backup]
-
-    - role: watchdog
-      when: vpn.enable_watchdog | default(true)
-      tags: [watchdog, monitoring]
 
     - role: subscription-host
       when: (vpn.enable_subscription_host | default(false)) or (vpn_subscription_only | default(false))
@@ -159,6 +147,18 @@
     - role: split-hop-egress
       when: (vpn.enable_split_hop_egress | default(false)) and not (vpn_subscription_only | default(false))
       tags: [split-hop-egress, topology]
+
+    - role: monitoring
+      when: vpn.enable_monitoring | default(true)
+      tags: [monitoring]
+
+    - role: backup
+      when: vpn.enable_backup | default(true)
+      tags: [backup]
+
+    - role: watchdog
+      when: vpn.enable_watchdog | default(true)
+      tags: [watchdog, monitoring]
 
     - role: node_manifest
       tags: [manifest]

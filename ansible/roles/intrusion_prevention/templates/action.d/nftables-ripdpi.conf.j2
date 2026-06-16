@@ -10,8 +10,8 @@ actionstart = nft list set inet filter f2b_<name>4 >/dev/null 2>&1 || nft add se
               nft list set inet filter f2b_<name>6 >/dev/null 2>&1 || nft add set inet filter f2b_<name>6 { type ipv6_addr\; flags timeout\; }
 actionstop =
 actioncheck = nft list set inet filter f2b_<name>4 >/dev/null 2>&1 && nft list set inet filter f2b_<name>6 >/dev/null 2>&1
-actionban = if printf '%s' '<ip>' | grep -q ':'; then nft add element inet filter f2b_<name>6 { <ip> timeout <bantime> } 2>/dev/null || true; else nft add element inet filter f2b_<name>4 { <ip> timeout <bantime> } 2>/dev/null || true; fi
-actionunban = if printf '%s' '<ip>' | grep -q ':'; then nft delete element inet filter f2b_<name>6 { <ip> } 2>/dev/null || true; else nft delete element inet filter f2b_<name>4 { <ip> } 2>/dev/null || true; fi
+actionban = if printf '%%s' '<ip>' | grep -q ':'; then nft add element inet filter f2b_<name>6 { <ip> timeout <bantime> } 2>/dev/null || true; else nft add element inet filter f2b_<name>4 { <ip> timeout <bantime> } 2>/dev/null || true; fi
+actionunban = if printf '%%s' '<ip>' | grep -q ':'; then nft delete element inet filter f2b_<name>6 { <ip> } 2>/dev/null || true; else nft delete element inet filter f2b_<name>4 { <ip> } 2>/dev/null || true; fi
 
 [Init]
 name = default
