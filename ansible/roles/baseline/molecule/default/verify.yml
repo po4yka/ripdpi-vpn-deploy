@@ -82,6 +82,11 @@
       changed_when: false
       when: verify_ssh_moduli.stat.exists
 
+    - name: Sysctl redirect hardening is rendered
+      ansible.builtin.command:
+        cmd: grep -Eq '^net\.ipv4\.conf\.(all|default)\.accept_redirects = 0$' /etc/sysctl.d/90-vpn.conf
+      changed_when: false
+
     - name: Sysctl hardening values are applied
       ansible.builtin.command:
         cmd: "sysctl -n {{ item.key }}"
@@ -91,7 +96,6 @@
         - { key: "kernel.randomize_va_space", value: "2" }
         - { key: "kernel.kptr_restrict", value: "2" }
         - { key: "kernel.yama.ptrace_scope", value: "2" }
-        - { key: "net.ipv4.conf.all.accept_redirects", value: "0" }
       register: verify_sysctl_value
       changed_when: false
       failed_when: verify_sysctl_value.stdout != item.value

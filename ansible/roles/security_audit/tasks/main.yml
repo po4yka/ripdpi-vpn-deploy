@@ -27,15 +27,25 @@
       clamav_enabled={{ security_audit.clamav | default(false) }}
 
 - name: Record deferred heavy audit controls
+  vars:
+    security_audit_aide_requested: "requested but not implemented by this non-blocking role yet"
+    security_audit_rkhunter_requested: "requested but intentionally not installed by default; add a reviewed implementation before enabling"
+    security_audit_clamav_requested: "requested but intentionally not installed by default; too heavy for default VPS audit runs"
+    security_audit_aide_status: >-
+      {{ security_audit_aide_requested if (security_audit.aide | default(false)) else 'disabled by default' }}
+    security_audit_rkhunter_status: >-
+      {{ security_audit_rkhunter_requested if (security_audit.rkhunter | default(false)) else 'disabled by default' }}
+    security_audit_clamav_status: >-
+      {{ security_audit_clamav_requested if (security_audit.clamav | default(false)) else 'disabled by default' }}
   ansible.builtin.copy:
     dest: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}/deferred-controls.txt"
     owner: root
     group: root
     mode: "0640"
     content: |
-      AIDE: {{ 'requested but not implemented by this non-blocking role yet' if (security_audit.aide | default(false)) else 'disabled by default' }}
-      rkhunter: {{ 'requested but intentionally not installed by default; add a reviewed implementation before enabling' if (security_audit.rkhunter | default(false)) else 'disabled by default' }}
-      ClamAV: {{ 'requested but intentionally not installed by default; too heavy for default VPS audit runs' if (security_audit.clamav | default(false)) else 'disabled by default' }}
+      AIDE: {{ security_audit_aide_status }}
+      rkhunter: {{ security_audit_rkhunter_status }}
+      ClamAV: {{ security_audit_clamav_status }}
 
 - name: Run Lynis audit
   ansible.builtin.include_tasks: lynis.yml
