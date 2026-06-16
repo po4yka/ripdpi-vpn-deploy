@@ -26,6 +26,4 @@ pytest==9.1.0
 # `pip install -r requirements.txt` so pre-commit is hash-verified.
 pre-commit
 
-# Optional experimental pyinfra read-only host audit pilot. Do not make this part
-# of deploy orchestration without a separate design review.
-pyinfra>=3,<4
+# Optional experimental pyinfra read-only host audit pilot is intentionally not part of the default hash-pinned toolchain while pyinfra depends on vulnerable Paramiko releases. Install pyinfra separately only when running `make pyinfra-audit`.
