@@ -254,6 +254,8 @@ jobs:
         run: pip install --require-hashes --no-deps -r requirements.txt
       - name: validate-secrets (lenient on example schema)
         run: python3 scripts/validate-secrets.py
+      - name: validate-bundle (ripdpi contract vs client)
+        run: python3 scripts/validate-bundle.py
 
   tf-test:
     name: terraform test (${{ matrix.provider }})

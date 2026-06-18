@@ -32,6 +32,8 @@
 #   SOPS_FILE    — explicit shared SOPS file path
 #   SOPS_FILES   — comma-separated SOPS paths, one per HOSTS entry
 #   AWG_COHORT   — cohort slug for AWG obfuscation defaults
+#   BUNDLE_EXPIRES — optional RFC3339/ISO-8601 UTC instant; when set, embedded
+#                  as ripdpi.expires so the client can warn before expiry
 #
 # Requires: sops, terraform, awg or wg, jq, python3
 set -euo pipefail
@@ -195,6 +197,7 @@ PY
 # ---------------------------------------------------------------------------
 AWG_BLOCK='[]'
 HY_EXTRAS='{}'
+TOPOLOGY_JSON=''
 
 for i in "${!host_pairs[@]}"; do
   pair="${host_pairs[$i]}"
@@ -228,6 +231,19 @@ for i in "${!host_pairs[@]}"; do
   host_json="$(host_config_json "$cohort")"
   vpn_json="$(jq -c '.vpn // {}' <<< "$host_json")"
   tag_prefix="${prov}-${env_name}"
+
+  # ------------------------------------------------------------------
+  # Topology — declared from the first host's group_vars so the client
+  # can tell a split-hop / realm-relayed endpoint from a direct one
+  # instead of mis-modelling a dual-role flow. Defaults: not split-hop,
+  # no realm (a plain single-VPS deployment).
+  # ------------------------------------------------------------------
+  if [[ -z "$TOPOLOGY_JSON" ]]; then
+    TOPOLOGY_JSON="$(jq -c '{
+      split_hop_egress: (.split_hop_egress // false),
+      hysteria_realm:   (.hysteria_realm // null)
+    }' <<< "$vpn_json")"
+  fi
 
   # ------------------------------------------------------------------
   # AWG block — build if AWG is enabled for this host and not yet built
@@ -317,13 +333,27 @@ for i in "${!host_pairs[@]}"; do
           }
         }')"
 
-      # Splice in i1..i5 only when present
+      # Splice in i1..i5 only when present. These are lowercase-hex strings
+      # (e.g. "deadbeef"), so emit them with --arg (string), not --argjson:
+      # the client parses them as strings and the bundle schema types them as
+      # `^[0-9a-f]+$`. --argjson would crash on a hex value that isn't valid
+      # JSON, or coerce a digit-only value to a number that fails the schema.
       for i_param in i1 i2 i3 i4 i5; do
         i_val="$(resolve_awg_param "$i_param" "" "$secrets_tmp" "$cohort_yml_path")"
         if [[ -n "$i_val" ]]; then
-          awg_obj="$(jq --arg k "$i_param" --argjson v "$i_val" '. + {($k): $v}' <<< "$awg_obj")"
+          awg_obj="$(jq --arg k "$i_param" --arg v "$i_val" '. + {($k): $v}' <<< "$awg_obj")"
         fi
       done
+
+      # Stamp the cohort fingerprint: a SHA-256 over the now-fully-resolved
+      # obfuscation params (jc..h4 + any i1..i5). The client recomputes it and
+      # warns "profile outdated, refresh subscription" on a mismatch instead of
+      # letting the AWG handshake stall silently. Algorithm is the single
+      # implementation in ripdpi_cohort_fingerprint.py (same one the contract
+      # test pins), so emit and verify can never disagree.
+      cohort_fp="$(jq -c '{jc,jmin,jmax,s1,s2,h1,h2,h3,h4,i1,i2,i3,i4,i5}' <<< "$awg_obj" \
+        | python3 "${REPO_ROOT}/scripts/ripdpi_cohort_fingerprint.py" -)"
+      awg_obj="$(jq --arg fp "$cohort_fp" '. + {cohort_fingerprint: $fp}' <<< "$awg_obj")"
 
       AWG_BLOCK="$(jq -nc --argjson obj "$awg_obj" '[$obj]')"
     fi
@@ -358,6 +388,17 @@ for i in "${!host_pairs[@]}"; do
         if [[ "$hy_obfs_enabled" == "true" && -n "$hy_obfs_pw" ]]; then
           hy_entry="$(jq --arg pw "$hy_obfs_pw" \
             '. + {obfs: {type: "salamander", password: $pw}}' <<< "$hy_entry")"
+
+          # salamander_upstream_tag: the Hysteria2 release this server runs.
+          # The Salamander algorithm ships with hysteria2, so its upstream tag
+          # IS hysteria.version — reuse it rather than carry a second secret.
+          # The client compares it to the version its bundled obfuscator
+          # implements and warns on a skew instead of a silent obfs failure.
+          hy_version="$(jq -r '.hysteria.version // empty' "$secrets_tmp")"
+          if [[ -n "$hy_version" && "$hy_version" != REPLACE_WITH_* ]]; then
+            hy_entry="$(jq --arg tag "$hy_version" \
+              '. + {salamander_upstream_tag: $tag}' <<< "$hy_entry")"
+          fi
         fi
 
         if [[ -n "$hysteria_port_range" ]]; then
@@ -382,10 +423,21 @@ done
 # ---------------------------------------------------------------------------
 # Step 3: assemble the ripdpi object and merge onto the base sing-box JSON
 # ---------------------------------------------------------------------------
+[[ -z "$TOPOLOGY_JSON" ]] && TOPOLOGY_JSON='{"split_hop_egress":false,"hysteria_realm":null}'
+
 ripdpi_json="$(jq -n \
   --argjson schema_version 1 \
   --argjson amneziawg "$AWG_BLOCK" \
   --argjson hysteria_extras "$HY_EXTRAS" \
-  '{schema_version: $schema_version, amneziawg: $amneziawg, hysteria_extras: $hysteria_extras}')"
+  --argjson topology "$TOPOLOGY_JSON" \
+  '{schema_version: $schema_version, amneziawg: $amneziawg, hysteria_extras: $hysteria_extras, topology: $topology}')"
+
+# expires: optional. When BUNDLE_EXPIRES is set (e.g. issue-sub-token.sh passes
+# its --expires through), embed it in the ripdpi object so the client can warn
+# "subscription expires in N days" proactively, rather than discovering expiry
+# only when the /sub fetch starts returning 410.
+if [[ -n "${BUNDLE_EXPIRES:-}" ]]; then
+  ripdpi_json="$(jq --arg expires "$BUNDLE_EXPIRES" '. + {expires: $expires}' <<< "$ripdpi_json")"
+fi
 
 jq --argjson r "$ripdpi_json" '. + {ripdpi: $r}' "$base_json_file"
