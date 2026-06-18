@@ -111,6 +111,7 @@ help:
 	@echo "  snapshot-check             Diff every Jinja render against tests/snapshot/golden/"
 	@echo "  snapshot-update            Refresh the goldens (run after intentional change)"
 	@echo "  validate-secrets           jsonschema check (strict if SECRETS_FILE is set)"
+	@echo "  validate-bundle            jsonschema + fingerprint check of a ripdpi bundle (BUNDLE=… or example)"
 	@echo "  tf-test                    terraform test (mock_provider; needs TF 1.6+)"
 	@echo "  ci-fast                    Cheap pre-PR bundle: unit + snapshot + schema + render + syntax + vpnd"
 	@echo "  bats-test                  Run bats shell tests (tests/bats/)"
@@ -276,6 +277,12 @@ validate-secrets:
 	  python3 scripts/validate-secrets.py; \
 	fi
 
+# Validate a RIPDPI bundle's ripdpi object against contract/ripdpi-bundle.schema.json
+# (the cross-repo contract with the Android client). BUNDLE=<file> to check a real
+# emitted bundle; defaults to the committed contract/ripdpi-bundle.example.json.
+validate-bundle:
+	python3 scripts/validate-bundle.py $(BUNDLE)
+
 tf-test:
 	@cd $(TF_ROOT) && terraform init -backend=false >/dev/null && terraform test
 
@@ -291,6 +298,7 @@ ci-fast:
 	@echo "== deploy-profile tier guard =="; python3 scripts/check-deploy-profile.py
 	@echo "== snapshot diff =="; python3 scripts/render-snapshots.py
 	@echo "== schema validation =="; python3 scripts/validate-secrets.py
+	@echo "== bundle contract =="; python3 scripts/validate-bundle.py
 	@if command -v ansible-playbook >/dev/null 2>&1; then \
 	  echo "== ansible syntax =="; \
 	  cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,'; \
