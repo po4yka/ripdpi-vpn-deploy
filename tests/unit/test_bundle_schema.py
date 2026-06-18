@@ -30,7 +30,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = REPO_ROOT / "contract" / "ripdpi-bundle.schema.json"
 EXAMPLE = REPO_ROOT / "contract" / "ripdpi-bundle.example.json"
 GOLDEN = REPO_ROOT / "contract" / "cohort-fingerprint.golden.json"
+GOLDEN_FULL = REPO_ROOT / "contract" / "ripdpi-bundle.golden-full.json"
+NEGATIVE_DIR = REPO_ROOT / "contract" / "negative"
 VALIDATOR = REPO_ROOT / "scripts" / "validate-bundle.py"
+
+
+def _ripdpi(doc):
+    """Return the ripdpi object from a full bundle, or the doc if it is one."""
+    return doc["ripdpi"] if isinstance(doc, dict) and "ripdpi" in doc else doc
 
 # Cross-repo drift pin. The client's SingBoxSubscriptionParser.RipdpiSchemaVersion
 # and its vendored schema's x-contract-version must equal this. Bumping it is a
@@ -172,3 +179,57 @@ def test_bad_expires_rejected(schema, example):
     doc = copy.deepcopy(example)
     doc["expires"] = "next tuesday"
     assert list(_validator(schema).iter_errors(doc))
+
+
+# ---------------------------------------------------------------------------
+# Realistic full bundle (sing-box document + ripdpi object) — the emit->parse
+# golden the client also consumes. Validates a populated outbounds list plus
+# i1..i5, salamander_upstream_tag, and a non-default topology.
+# ---------------------------------------------------------------------------
+def test_golden_full_ripdpi_validates(schema):
+    ripdpi = _ripdpi(json.loads(GOLDEN_FULL.read_text()))
+    errors = list(_validator(schema).iter_errors(ripdpi))
+    assert errors == [], [e.message for e in errors]
+
+
+def test_golden_full_awg_fingerprint_recomputes():
+    ripdpi = _ripdpi(json.loads(GOLDEN_FULL.read_text()))
+    entry = ripdpi["amneziawg"][0]
+    params = {k: entry[k] for k in ORDER if k in entry}
+    assert entry["cohort_fingerprint"] == cohort_fingerprint(params)
+
+
+def test_golden_full_validates_via_cli():
+    proc = subprocess.run(
+        [sys.executable, str(VALIDATOR), str(GOLDEN_FULL)],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
+# ---------------------------------------------------------------------------
+# Negative fixtures — the contract's strict half. Every fixture's ripdpi object
+# MUST be rejected by the schema (the client repo vendors the same files and
+# asserts the lenient parser handles each without throwing).
+# ---------------------------------------------------------------------------
+def _negative_files():
+    return sorted(NEGATIVE_DIR.glob("neg-*.json"))
+
+
+def test_negative_fixtures_present():
+    assert _negative_files(), "no negative fixtures found"
+
+
+@pytest.mark.parametrize("path", _negative_files(), ids=lambda p: p.name)
+def test_negative_fixture_is_rejected(path):
+    # Assert via the real validator so BOTH rejection classes are covered:
+    # schema violations AND a format-valid-but-wrong cohort_fingerprint (which
+    # the schema alone accepts — only _fingerprint_errors catches it).
+    proc = subprocess.run(
+        [sys.executable, str(VALIDATOR), str(path)],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 1, (
+        f"{path.name} should be rejected by validate-bundle.py "
+        f"(schema or fingerprint) but it passed:\n{proc.stdout}{proc.stderr}"
+    )
