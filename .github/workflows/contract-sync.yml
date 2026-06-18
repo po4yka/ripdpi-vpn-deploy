@@ -1,0 +1,94 @@
+---
+# Cross-repo contract drift detection.
+#
+# The `contract/` directory is the single source of truth for the RIPDPI bundle
+# contract; the Android client (po4yka/RIPDPI) vendors a byte-identical copy
+# under core/data/src/test/resources/contract/. That copy is maintained by hand,
+# so nothing automatically notices when this repo's schema changes and the
+# client copy goes stale — both repos stay green against their own copies. This
+# job closes that gap: it byte-compares the client's vendored copy against this
+# repo's SoT and fails on any drift, catching it at the source (the PR that
+# changes the schema here).
+#
+# Setup: add a read-only token with access to po4yka/RIPDPI as the repo secret
+# CONTRACT_SYNC_TOKEN (a fine-grained PAT with Contents:read on that repo). Until
+# it is set, this job degrades to a warning and passes, so it never blocks CI
+# before it is wired up.
+name: contract-sync
+
+on:
+  pull_request:
+    paths:
+      - "contract/**"
+      - ".github/workflows/contract-sync.yml"
+  push:
+    branches: [main]
+    paths:
+      - "contract/**"
+  schedule:
+    - cron: "17 4 * * 1"  # Mondays 04:17 UTC — catch drift even with no contract PR
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: client vendored copy matches SoT
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+
+      - name: Compare client vendored contract against this repo's SoT
+        env:
+          TOKEN: ${{ secrets.CONTRACT_SYNC_TOKEN }}
+          CLIENT_REPO: po4yka/RIPDPI
+          CLIENT_CONTRACT_DIR: core/data/src/test/resources/contract
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN}" ]; then
+            echo "::warning title=contract-sync disabled::Set CONTRACT_SYNC_TOKEN (read-only PAT on the client) to enable drift detection."
+            exit 0
+          fi
+
+          # Sparse-clone only the vendored contract dir from the client repo.
+          git clone --depth 1 --filter=blob:none --sparse \
+            "https://x-access-token:${TOKEN}@github.com/${CLIENT_REPO}.git" client
+          git -C client sparse-checkout set "${CLIENT_CONTRACT_DIR}"
+
+          client_dir="client/${CLIENT_CONTRACT_DIR}"
+          fail=0
+
+          # Every SoT file (except docs) must be byte-identical in the client.
+          while IFS= read -r f; do
+            rel="${f#contract/}"
+            case "$rel" in README.md|*/README.md) continue ;; esac
+            cf="${client_dir}/${rel}"
+            if [ ! -f "$cf" ]; then
+              echo "::error title=missing vendored file::client lacks ${rel}; vendor it from contract/${rel}."
+              fail=1
+            elif ! cmp -s "$f" "$cf"; then
+              echo "::error title=contract drift::contract/${rel} differs from the client vendored copy; re-vendor byte-for-byte."
+              fail=1
+            fi
+          done < <(find contract -type f | sort)
+
+          # Flag client-vendored files that no longer exist in the SoT.
+          if [ ! -d "${client_dir}" ]; then
+            echo "::error title=missing client dir::${CLIENT_CONTRACT_DIR} not found in ${CLIENT_REPO} (renamed or removed?)."
+            fail=1
+          else
+            while IFS= read -r cf; do
+              rel="${cf#"${client_dir}/"}"
+              case "$rel" in README.md|*/README.md) continue ;; esac
+              if [ ! -f "contract/${rel}" ]; then
+                echo "::error title=orphan vendored file::client vendors ${rel} but it no longer exists in contract/; remove it."
+                fail=1
+              fi
+            done < <(find "${client_dir}" -type f | sort)
+          fi
+
+          if [ "$fail" -eq 0 ]; then
+            echo "contract-sync: OK — client vendored copy is byte-identical to the SoT."
+          fi
+          exit "$fail"
