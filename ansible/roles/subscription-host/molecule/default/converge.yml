@@ -14,12 +14,13 @@
       # Exercise the continuous payload mirror. rsync with a colon-free
       # local source path performs a local copy (the -e ssh shell is
       # ignored), so the timer-driven pull works self-contained in the
-      # container without sshd. The pre_tasks below seed the source tree.
+      # container without sshd. The source lives outside /tmp because the
+      # systemd unit uses PrivateTmp=true.
       mirror:
         enabled: true
         backend: rsync
         interval: "5min"
-        source: "/tmp/mirror-src/"
+        source: "/var/lib/vpn-subscription-mirror-src/"
         # A stub credential exercises the "Drop rsync ssh key" task so the
         # regression guard in verify.yml can prove the key survives a
         # `--delete` pull (it lives outside subscription_dir by design).
@@ -27,7 +28,7 @@
   pre_tasks:
     - name: Seed a fake mirror source payload tree
       ansible.builtin.file:
-        path: "/tmp/mirror-src/{{ item }}"
+        path: "/var/lib/vpn-subscription-mirror-src/{{ item }}"
         state: directory
         mode: "0755"
       loop:
@@ -35,7 +36,7 @@
         - bootstrap
     - name: Seed a fake sub payload + meta sidecar
       ansible.builtin.copy:
-        dest: "/tmp/mirror-src/sub/{{ item.name }}"
+        dest: "/var/lib/vpn-subscription-mirror-src/sub/{{ item.name }}"
         content: "{{ item.content }}"
         mode: "0644"
       loop:
