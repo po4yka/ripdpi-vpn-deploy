@@ -87,7 +87,7 @@ jobs:
           persist-credentials: false
 
       - name: Refuse to run on a fork PR
-        if: github.event.pull_request.head.repo.full_name != github.repository
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
         run: |
           echo "::error::real-vps-deploy will not run on a fork PR — secrets are not exposed to forks."
           exit 1
@@ -208,7 +208,7 @@ jobs:
             ansible-playbook ansible/playbooks/verify.yml --extra-vars "$ANSIBLE_EXTRA_VARS"
 
       - name: Always destroy the ephemeral VPS
-        if: always() && steps.gate.outputs.skip != 'true'
+        if: always() && steps.gate.outputs.skip != 'true' && env.CI_ENV != ''
         run: |
           set -euo pipefail
           export ENV="$CI_ENV"
@@ -218,6 +218,6 @@ jobs:
           echo "yes" | echo "yes" | make destroy || true
 
       - name: Cleanup CI tfvars file
-        if: always() && steps.gate.outputs.skip != 'true'
+        if: always() && steps.gate.outputs.skip != 'true' && env.CI_ENV != ''
         run: |
           rm -f "terraform/providers/upcloud/environments/${CI_ENV}.tfvars" || true
