@@ -34,12 +34,15 @@ rsync -az --delete \
 
 
 # ---------------------------------------------------------------------------
-# Ownership / permission fix-up. The loopback Python service runs as
-# vpn-bootstrap and requires dir 0700 / file 0600 to read payloads; loose
-# perms would also leak the hashed tree. Re-assert the role's perm model on
-# every pull so a misconfigured source cannot weaken on-disk perms.
+# Permission fix-up. The loopback Python service runs as vpn-bootstrap and
+# requires dir 0700 / file 0600 to read payloads; loose perms would also leak
+# the hashed tree. The timer normally runs as vpn-bootstrap, so ownership is
+# inherited from the service user. A root-run maintenance invocation can still
+# repair ownership before tightening permissions.
 # ---------------------------------------------------------------------------
-chown -R vpn-bootstrap:vpn-bootstrap "$DEST"
+if [ "$(id -u)" -eq 0 ]; then
+  chown -R vpn-bootstrap:vpn-bootstrap "$DEST"
+fi
 find "$DEST" -type d -exec chmod 0700 {} +
 # Credentials live under /etc/vpn-subscription (outside DEST), so this sweep
 # only touches the pulled payload tree — it never re-perms the ssh key /
