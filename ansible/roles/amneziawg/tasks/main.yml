@@ -4,17 +4,23 @@
 # Userspace path is preferred for portability across kernels. The kernel module
 # variant ships separately and is not assumed here.
 
-- name: Pre-flight - AmneziaWG source refs are pinned
+- name: Pre-flight - AmneziaWG source refs and commits are pinned
   ansible.builtin.assert:
     that:
       - amneziawg_go_version | length > 0
       - amneziawg_tools_version | length > 0
+      - amneziawg_go_commit | length > 0
+      - amneziawg_tools_commit | length > 0
       - (amneziawg_go_version | lower) not in ['main', 'master', 'head']
       - (amneziawg_tools_version | lower) not in ['main', 'master', 'head']
+      - amneziawg_go_commit is match('^[0-9a-fA-F]{40,64}$')
+      - amneziawg_tools_commit is match('^[0-9a-fA-F]{40,64}$')
     fail_msg: |
       Set amneziawg_go_version and amneziawg_tools_version to pinned upstream
-      tags or commit SHAs. The role does not clone moving branches such as
-      main, master, or HEAD.
+      tags or commit SHAs, and set amneziawg_go_commit / amneziawg_tools_commit
+      to the exact resolved commit SHAs expected after checkout. The role does
+      not clone moving branches such as main, master, or HEAD, and it no longer
+      accepts tag-only pinning for family deploys.
 
 - name: Install build dependencies for AmneziaWG userspace
   ansible.builtin.apt:
@@ -43,7 +49,6 @@
     chdir: /opt/src/amneziawg-go
   register: _awg_go_head
   changed_when: false
-  when: amneziawg_go_commit | length > 0
 
 - name: Verify amneziawg-go resolved to the pinned commit
   ansible.builtin.assert:
@@ -54,7 +59,6 @@
       amneziawg_go_commit pins {{ amneziawg_go_commit }}. Tag
       {{ amneziawg_go_version }} appears to have moved upstream — refusing
       to build unverified source.
-  when: amneziawg_go_commit | length > 0
 
 - name: Build amneziawg-go
   ansible.builtin.command:
@@ -84,7 +88,6 @@
     chdir: /opt/src/amneziawg-tools
   register: _awg_tools_head
   changed_when: false
-  when: amneziawg_tools_commit | length > 0
 
 - name: Verify amneziawg-tools resolved to the pinned commit
   ansible.builtin.assert:
@@ -95,7 +98,6 @@
       amneziawg_tools_commit pins {{ amneziawg_tools_commit }}. Tag
       {{ amneziawg_tools_version }} appears to have moved upstream — refusing
       to build unverified source.
-  when: amneziawg_tools_commit | length > 0
 
 - name: Build amneziawg-tools
   ansible.builtin.command:
