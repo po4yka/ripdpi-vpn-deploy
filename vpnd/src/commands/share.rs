@@ -19,7 +19,7 @@ pub struct SubUrls {
 /// Build subscription URLs from a base URL and a path segment.
 ///
 /// `base` — e.g. `https://sub.example.com` or `https://sub.example.com:8444`
-/// `segment` — opaque token or percent-encoded client name; must already be safe to embed in a path
+/// `segment` — opaque token; must already be safe to embed in a path
 pub fn build_sub_urls(base: &str, segment: &str) -> SubUrls {
     let subscription_url = format!("{base}/sub/{segment}");
     let singbox_deeplink = format!(
@@ -64,30 +64,25 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
         .find_client(&args.client)
         .ok_or_else(|| anyhow!("client '{}' not found in the decrypted secrets file", args.client))?;
 
-    // Transport host — used when no subscription host is configured.
+    // Transport host — used only as a URL host fallback when no dedicated
+    // subscription host is configured. The path segment itself must always be
+    // an operator-issued opaque bearer token; client-name fallback is forbidden.
     let host = secrets.xhttp_host.as_deref().or(secrets.server_name.as_deref()).unwrap_or("(unset)");
 
-    // Build the base URL and path segment according to whether a token was supplied.
-    let (base, segment) = if let Some(ref tok) = args.token {
-        validate_token(tok)?;
-        let sub_host = secrets.subscription_host().unwrap_or(host);
-        let base = match secrets.subscription_port() {
-            Some(443) | None => format!("https://{sub_host}"),
-            Some(port) => format!("https://{sub_host}:{port}"),
-        };
-        (base, tok.clone())
-    } else {
-        eprintln!(
-            "{} no --token supplied — subscription URL uses the enumerable client name.\n  \
-             Run `make issue-sub-token CLIENT={} --print-token-only` and pass `--token <TOKEN>` \
-             to use an opaque subscription token.",
-            "WARNING:".yellow().bold(),
-            args.client,
-        );
-        (format!("https://{host}"), urlencode(&client.name))
+    let token = args.token.as_ref().ok_or_else(|| {
+        anyhow!(
+            "--token is required. Run `make issue-sub-token CLIENT={} --print-token-only` and pass the opaque token to `vpnd share`.",
+            args.client
+        )
+    })?;
+    validate_token(token)?;
+    let sub_host = secrets.subscription_host().unwrap_or(host);
+    let base = match secrets.subscription_port() {
+        Some(443) | None => format!("https://{sub_host}"),
+        Some(port) => format!("https://{sub_host}:{port}"),
     };
 
-    let urls = build_sub_urls(&base, &segment);
+    let urls = build_sub_urls(&base, token);
 
     // sing-box bundle from existing script — preserves multi-host + cohort awareness.
     let singbox = make::target_with(ctx, "emit-singbox", &[("CLIENT", &args.client)]).capture(false).await?;
