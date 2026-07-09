@@ -82,7 +82,7 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
              Run `make issue-sub-token CLIENT={} --print-token-only` and pass `--token <TOKEN>` \
              to use an opaque subscription token.",
             "WARNING:".yellow().bold(),
-            &args.client,
+            args.client,
         );
         (format!("https://{host}"), urlencode(&client.name))
     };
