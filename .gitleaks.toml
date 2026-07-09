@@ -46,16 +46,12 @@ regex = '''AGE-SECRET-KEY-[A-Z0-9]{58}'''
 tags = ["age", "secret"]
 
 [allowlist]
-description = "Examples and placeholders that look like secrets but are not"
+description = "Narrowly scoped fixtures/placeholders that intentionally look secret-like"
 paths = [
     '''secrets/prod\.secrets\.example\.yaml''',
-    '''docs/.*\.md''',
-    '''README\.md''',
     '''.*\.example\..*''',
     '''ansible/roles/.*/molecule/.*''',
     '''ansible/molecule/.*''',
-    '''scripts/new-client\.sh''',
-    '''scripts/emit-singbox\.sh''',
     '''tests/bats/age_recovery_roundtrip\.bats''',
     '''tests/unit/test_age_recovery_roundtrip\.py''',
     '''tests/fixtures/age-test\.key''',
