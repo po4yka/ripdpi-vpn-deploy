@@ -12,7 +12,7 @@ yamllint==1.38.0
 PyYAML==6.0.3
 Jinja2==3.1.6
 referencing<0.38
-typing-extensions==4.15.0
+typing-extensions==4.16.0
 
 # Operator-triggered reachability baselines; installed from the hash-pinned lock in CI.
 rkn-block-checker==0.5.1
