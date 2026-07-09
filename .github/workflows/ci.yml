@@ -102,7 +102,13 @@ jobs:
       - name: Install pinned tooling
         run: |
           pip install --require-hashes --no-deps -r requirements.txt
-          ansible-galaxy collection install -r requirements.yml
+          for attempt in 1 2 3; do
+            ansible-galaxy collection install -r requirements.yml && break
+            if [ "${attempt}" -eq 3 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
 
       - name: ansible-lint
         working-directory: ansible
@@ -144,7 +150,13 @@ jobs:
       - name: Install pinned tooling
         run: |
           pip install --require-hashes --no-deps -r requirements.txt
-          ansible-galaxy collection install -r requirements.yml
+          for attempt in 1 2 3; do
+            ansible-galaxy collection install -r requirements.yml && break
+            if [ "${attempt}" -eq 3 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
 
       - name: molecule test
         working-directory: ansible/roles/${{ matrix.role }}
@@ -311,7 +323,13 @@ jobs:
       - name: Install pinned tooling
         run: |
           pip install --require-hashes --no-deps -r requirements.txt
-          ansible-galaxy collection install -r requirements.yml
+          for attempt in 1 2 3; do
+            ansible-galaxy collection install -r requirements.yml && break
+            if [ "${attempt}" -eq 3 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
       - name: molecule test -s ${{ matrix.scenario }}
         working-directory: ansible/roles/${{ matrix.role }}
         run: molecule test -s ${{ matrix.scenario }}

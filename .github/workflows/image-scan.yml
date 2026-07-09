@@ -18,15 +18,34 @@ jobs:
       matrix: ${{ steps.images.outputs.matrix }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          fetch-depth: 0
 
       - name: Collect base images from molecule scenarios
         id: images
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          images=$(grep -rh 'image:' ansible/roles/*/molecule/*/molecule.yml \
-            | awk '{print $2}' \
-            | grep -v '^true$' \
-            | sort -u \
-            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          if [ -n "${BASE_SHA}" ]; then
+            git fetch --no-tags --depth=1 origin "${BASE_SHA}"
+            mapfile -t files < <(git diff --name-only "${BASE_SHA}" "${GITHUB_SHA}" -- \
+              'ansible/roles/*/molecule/*/molecule.yml' \
+              'ansible/molecule/*/molecule.yml')
+          else
+            mapfile -t files < <(find ansible/roles ansible/molecule -path '*/molecule.yml' -type f)
+          fi
+
+          if [ "${#files[@]}" -eq 0 ]; then
+            images='["__none__"]'
+          else
+            images=$(awk '/image:/ {print $2}' "${files[@]}" \
+              | grep -v '^true$' \
+              | sort -u \
+              | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            if [ "${images}" = "[]" ]; then
+              images='["__none__"]'
+            fi
+          fi
           echo "matrix=${images}" >> "$GITHUB_OUTPUT"
 
   scan:
@@ -43,7 +62,12 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
+      - name: No base image changes
+        if: matrix.image == '__none__'
+        run: echo "No molecule base image changes to scan."
+
       - name: Run Trivy vulnerability scanner
+        if: matrix.image != '__none__'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.31.0
         with:
           image-ref: ${{ matrix.image }}
@@ -60,7 +84,7 @@ jobs:
           limit-severities-for-sarif: true
 
       - name: Upload Trivy SARIF results
-        if: always()
+        if: always() && matrix.image != '__none__'
         uses: github/codeql-action/upload-sarif@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a  # v4
         with:
           sarif_file: trivy-results.sarif
