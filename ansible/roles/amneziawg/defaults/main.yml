@@ -4,10 +4,10 @@
 amneziawg_go_version: ""
 amneziawg_tools_version: ""
 
-# Optional supply-chain hardening. git tags are mutable — upstream can
-# re-point them. When a commit SHA is set here, the role runs
-# `git rev-parse HEAD` after clone and refuses to build if the tag has
-# moved off the expected commit. Leave empty to keep tag-only pinning.
+# Supply-chain hardening. git tags are mutable — upstream can re-point them.
+# Family deploys must provide both the tag/ref used for checkout and the exact
+# resolved commit SHA expected after clone; the role refuses to build if either
+# commit pin is empty or the checked-out tree resolves elsewhere.
 amneziawg_go_commit: ""
 amneziawg_tools_commit: ""
 
