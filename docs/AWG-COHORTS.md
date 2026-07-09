@@ -6,6 +6,24 @@ on most networks, but some DPI deployments apply WireGuard-shaped
 rules that need cohort-specific tuning. This file lists the shipped
 profiles; verify on the target network before locking.
 
+## Source pinning invariant
+
+The userspace role builds `amneziawg-go` and `amneziawg-tools` from upstream git.
+Tags are mutable, so a family deploy must pin both the checkout ref and the exact
+resolved commit SHA:
+
+```yaml
+amneziawg_go_version: "v0.2.16"        # tag or immutable commit ref to checkout
+amneziawg_go_commit: "<40-hex-sha>"    # expected `git rev-parse HEAD`
+amneziawg_tools_version: "v1.0.202406"
+amneziawg_tools_commit: "<40-hex-sha>"
+```
+
+The role refuses to build when either commit pin is empty, malformed, or does
+not match the checked-out tree. This keeps tag-only pinning out of production and
+turns an upstream tag re-point into a deploy-time failure instead of a silent
+binary change.
+
 ## Why this matters
 
 Plain WireGuard Initiation messages are deterministically identifiable:
