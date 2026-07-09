@@ -1,13 +1,19 @@
 # Real-VPS CI deploy gate
 
-The `real-vps-deploy` workflow approximates a production deploy in
-GitHub Actions: provision an ephemeral UpCloud VPS, run the full
-playbook plus `verify.yml` against it, then destroy it. Docker
-molecule scenarios catch most regressions; this gate catches the ones
-that depend on the real cloud environment (template behaviour,
-cloud-init quirks, provider firewall ordering, real systemd unit
-startup, etc.). It does not currently run `make smoke-test`; that
-remains an operator-driven live-traffic check.
+The `real-vps-deploy` workflow is a **partial-fidelity** production-deploy
+approximation in GitHub Actions: provision an ephemeral UpCloud VPS, run the
+full playbook plus `verify.yml` against it, then destroy it. Docker molecule
+scenarios catch most regressions; this gate catches the ones that depend on the
+real cloud environment (template behaviour, cloud-init quirks, provider firewall
+ordering, real systemd unit startup, etc.). It does not currently run
+`make smoke-test`; that remains an operator-driven live-traffic check.
+
+Partial-fidelity is intentional, not a production-equivalence claim. The job
+uses synthetic secrets, skips the strict pre-deploy secret/certificate checks,
+and disables roles that require real upstreams, persistent state, or platform
+features that CI cannot reproduce safely. A green run means "the real VPS deploy
+skeleton converges and verifies under CI constraints", not "the full production
+surface is healthy".
 
 ## When it runs
 
@@ -89,11 +95,17 @@ re-check UpCloud billing once a quarter.
 
 ## What this does NOT test
 
+  * Strict pre-deploy secret hygiene (`validate-secrets --strict`,
+    `spot-check-secrets`, `check-certs`) because the CI secrets are
+    intentionally synthetic.
+  * The full production role surface; several roles are disabled via
+    `ANSIBLE_EXTRA_VARS` as listed above.
   * Production traffic patterns (no real users dial the ephemeral
     REALITY endpoint).
   * Burn-check (the ephemeral IP isn't on RKN's radar long enough
     to provoke a block).
   * Long-running ASN / IP-reputation drift.
 
-Those stay in operator-driven cadence (`make burn-check`,
-`make asn-drift`, `make check-ip-reputation`).
+Those stay in operator-driven cadence (`make pre-deploy-check`,
+`make smoke-test`, `make burn-check`, `make asn-drift`,
+`make check-ip-reputation`).
