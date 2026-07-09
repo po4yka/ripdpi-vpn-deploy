@@ -98,8 +98,8 @@ pub struct ShareArgs {
     #[arg(long)]
     pub out: Option<std::path::PathBuf>,
     /// Opaque subscription token from `make issue-sub-token CLIENT=<c> --print-token-only`.
-    /// If omitted, the URL falls back to the (enumerable) client name.
-    #[arg(long)]
+    /// Required because subscription URLs are bearer secrets; client-name fallback is forbidden.
+    #[arg(long, required = true)]
     pub token: Option<String>,
 }
 

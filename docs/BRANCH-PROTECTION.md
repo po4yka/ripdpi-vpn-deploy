@@ -1,10 +1,10 @@
 # Branch protection
 
 `main` should require every CI gate to pass before merge, plus a
-CODEOWNERS review and a linear history. The default `GITHUB_TOKEN` does
-**not** carry `Administration: write`, so the protection rule is applied
-through `.github/workflows/branch-protection.yml`, gated on a
-fine-grained personal access token (PAT).
+CODEOWNERS review, a linear history, and admin enforcement. The default
+`GITHUB_TOKEN` does **not** carry `Administration: write`, so the
+protection rule is applied through `.github/workflows/branch-protection.yml`,
+gated on a fine-grained personal access token (PAT).
 
 ## One-time setup
 
@@ -52,6 +52,7 @@ Settings → Branches → `main` → see:
 - Require branches to be up to date before merging ✅
 - Require conversation resolution before merging ✅
 - Require linear history ✅
+- Include administrators ✅
 - Do not allow force pushes ✅
 - Do not allow deletions ✅
 
@@ -92,6 +93,14 @@ If you rename a CI job, update both the matrix in this workflow and the
 `CONTEXTS` list in `branch-protection.yml`. Otherwise GitHub treats the
 old name as a "missing" required check and the merge is blocked
 indefinitely.
+
+## Admin enforcement
+
+The workflow sets `enforce_admins: true`. This is deliberate: this repo
+deploys active VPN infrastructure, so maintainers should not be able to bypass
+the required CI, CODEOWNERS review, stale-review dismissal, or conversation
+resolution gates on `main`. Emergency production repair should happen through a
+short-lived PR with the same checks, not by pushing around branch protection.
 
 ## Why not just enable it in Settings?
 
