@@ -70,7 +70,7 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand reconverge" -s h -l help -d 'P
 complete -c vpnd -n "__fish_vpnd_using_subcommand share" -l type -d 'QR payload type' -r -f -a "singbox\t''
 uri\t''"
 complete -c vpnd -n "__fish_vpnd_using_subcommand share" -l out -d 'Output directory for generated artifacts (default: ./share/<client>/)' -r -F
-complete -c vpnd -n "__fish_vpnd_using_subcommand share" -l token -d 'Opaque subscription token from `make issue-sub-token CLIENT=<c> --print-token-only`. If omitted, the URL falls back to the (enumerable) client name' -r
+complete -c vpnd -n "__fish_vpnd_using_subcommand share" -l token -d 'Opaque subscription token from `make issue-sub-token CLIENT=<c> --print-token-only`. Required because subscription URLs are bearer secrets; client-name fallback is forbidden' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand share" -s e -l env -d 'Target environment' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand share" -s p -l provider -d 'Cloud provider Terraform root' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand share" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
