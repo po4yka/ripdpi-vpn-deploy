@@ -97,10 +97,12 @@ pub struct ShareArgs {
     /// Output directory for generated artifacts (default: ./share/<client>/).
     #[arg(long)]
     pub out: Option<std::path::PathBuf>,
-    /// Opaque subscription token from `make issue-sub-token CLIENT=<c> --print-token-only`.
-    /// Required because subscription URLs are bearer secrets; client-name fallback is forbidden.
-    #[arg(long, required = true)]
-    pub token: Option<String>,
+    /// Read the opaque subscription token from stdin.
+    #[arg(long, conflicts_with = "token_file", required_unless_present = "token_file")]
+    pub token_stdin: bool,
+    /// Read the opaque subscription token from a 0600 file.
+    #[arg(long, value_name = "PATH", conflicts_with = "token_stdin", required_unless_present = "token_stdin")]
+    pub token_file: Option<std::path::PathBuf>,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]

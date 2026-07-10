@@ -86,20 +86,15 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
         .as_deref()
         .unwrap_or("(unset)");
 
-    let token = args.token.as_ref().ok_or_else(|| {
-        anyhow!(
-            "--token is required. Run `make issue-sub-token CLIENT={} --print-token-only` and pass the opaque token to `vpnd share`.",
-            args.client
-        )
-    })?;
-    validate_token(token)?;
+    let token = read_token(&args)?;
+    validate_token(&token)?;
     let sub_host = secrets.subscription_host().unwrap_or(host);
     let base = match secrets.subscription_port() {
         Some(443) | None => format!("https://{sub_host}"),
         Some(port) => format!("https://{sub_host}:{port}"),
     };
 
-    let urls = build_sub_urls(&base, token);
+    let urls = build_sub_urls(&base, &token);
 
     // sing-box bundle from existing script — preserves multi-host + cohort awareness.
     let singbox = make::target_with(ctx, "emit-singbox", &[("CLIENT", &args.client)])
@@ -145,7 +140,7 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
 
     println!();
     println!("{} {}", "share bundle:".green().bold(), out.display());
-    println!("  recipient URL:  {}", urls.subscription_url);
+    println!("  recipient URL:  written only into the protected bundle");
     println!("  landing page:   {}", out.join("index.html").display());
     if args.qr {
         println!("  QR (svg):       {}", out.join("qr.svg").display());
@@ -156,6 +151,25 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
         "the URL".bold()
     );
     Ok(())
+}
+
+fn read_token(args: &ShareArgs) -> Result<String> {
+    let token = if args.token_stdin {
+        use std::io::Read;
+        let mut token = String::new();
+        std::io::stdin().read_to_string(&mut token)?;
+        token
+    } else if let Some(path) = &args.token_file {
+        use std::os::unix::fs::MetadataExt;
+        let metadata = std::fs::symlink_metadata(path)?;
+        if !metadata.file_type().is_file() || metadata.mode() & 0o077 != 0 {
+            return Err(anyhow!("token file must be a regular 0600 file"));
+        }
+        std::fs::read_to_string(path)?
+    } else {
+        return Err(anyhow!("provide --token-stdin or --token-file"));
+    };
+    Ok(token.trim().to_owned())
 }
 
 fn set_private_mode(path: &std::path::Path, mode: u32) -> Result<()> {
