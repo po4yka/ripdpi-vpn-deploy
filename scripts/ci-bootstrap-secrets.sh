@@ -6,7 +6,7 @@
 #
 # What this script generates:
 #   * REALITY x25519 keypair (xray)
-#   * one test client UUID + shortId
+#   * one test client plus one dedicated watchdog UUID + shortId
 #   * a self-signed cert (CA + leaf) for nginx_xhttp + hysteria, SAN-
 #     covering the ${SERVER_NAME} the workflow uses
 #   * Hysteria client password
@@ -18,7 +18,7 @@
 #     placeholders since the role's get_url is gated on
 #     vpn.enable_geodata)
 #   * backup restic_password
-#   * watchdog_secrets.ntfy_topic
+#   * watchdog_secrets.ntfy_topic + owned REALITY probe URL
 #
 # What this script does NOT generate:
 #   * Xray / Hysteria release-asset sha256s — those come from the
@@ -32,11 +32,18 @@
 #   OUT          path to write the YAML (e.g. /tmp/vpn-ci.secrets.yaml)
 #   SERVER_NAME  hostname the cert covers (e.g. vpn-ci.example.test)
 #   CLIENT_NAME  test client name (default: ci-test)
+#   REALITY_TARGET       owned REALITY target as host:port
+#   REALITY_SERVER_NAME  TLS server name for REALITY
+#   WATCHDOG_CANARY_URL  owned HTTPS endpoint returning exactly 204; optional
+#                        only for workflows that explicitly disable watchdog
 set -euo pipefail
 
 OUT="${OUT:?OUT path is required}"
 SERVER_NAME="${SERVER_NAME:?SERVER_NAME is required}"
 CLIENT_NAME="${CLIENT_NAME:-ci-test}"
+REALITY_TARGET="${REALITY_TARGET:?REALITY_TARGET is required}"
+REALITY_SERVER_NAME="${REALITY_SERVER_NAME:?REALITY_SERVER_NAME is required}"
+WATCHDOG_CANARY_URL="${WATCHDOG_CANARY_URL:-https://canary.invalid/healthz}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EXAMPLE="${REPO_ROOT}/secrets/prod.secrets.example.yaml"
@@ -115,6 +122,8 @@ key_pem="$( awk '{printf "    %s\n",$0}' "$tmpdir/key.pem")"
 # ---------------------------------------------------------------------------
 uuid="$(uuidgen | tr 'A-Z' 'a-z')"
 sid="$(openssl rand -hex 4)"
+watchdog_uuid="$(uuidgen | tr 'A-Z' 'a-z')"
+watchdog_sid="$(openssl rand -hex 4)"
 hys_pw="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
 awg_priv="$(wg genkey)"
 peer_priv="$(wg genkey)"
@@ -143,13 +152,16 @@ xray:
   linux_arm64_sha256: "${xray_sha}"
   reality_private_key: "${reality_priv}"
   reality_public_key:  "${reality_pub}"
-  target: "${SERVER_NAME}:443"
-  server_names: ["${SERVER_NAME}"]
+  target: "${REALITY_TARGET}"
+  server_names: ["${REALITY_SERVER_NAME}"]
   xhttp_path: "/$(openssl rand -hex 4)"
   clients:
     - name: ${CLIENT_NAME}
       uuid: "${uuid}"
       short_id: "${sid}"
+    - name: watchdog
+      uuid: "${watchdog_uuid}"
+      short_id: "${watchdog_sid}"
   cohorts: []
 
 nginx_xhttp:
@@ -226,6 +238,7 @@ backup:
 
 watchdog_secrets:
   ntfy_topic: "${ntfy_topic}"
+  reality_probe_url: "${WATCHDOG_CANARY_URL}"
 YAML
 chmod 0600 "$OUT"
 echo "ci-bootstrap: wrote ${OUT} (xray=${xray_version} hysteria=${hys_version})"

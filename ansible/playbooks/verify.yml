@@ -68,6 +68,24 @@
       changed_when: false
       when: vpn.enable_xray_reality | default(true)
 
+    - name: Run authenticated watchdog REALITY round trips
+      ansible.builtin.shell:
+        cmd: |
+          set -a
+          . /etc/vpn-watchdog.env
+          set +a
+          /usr/local/sbin/vpn-watchdog.sh
+        executable: /bin/bash
+      register: watchdog_reality_verify
+      changed_when: false
+      failed_when: >-
+        'FAIL  xray REALITY' in watchdog_reality_verify.stdout
+        or 'OK    xray REALITY' not in watchdog_reality_verify.stdout
+      when:
+        - vpn.enable_watchdog | default(true)
+        - vpn.enable_xray_reality | default(true)
+        - not (vpn_subscription_only | default(false))
+
     - name: nginx-xhttp public TCP listener active
       ansible.builtin.shell:
         cmd: |

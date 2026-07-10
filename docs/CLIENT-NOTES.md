@@ -4,6 +4,15 @@ The server stack is only one half of the story. These items are
 client-side, but the operator distributing clients should know about
 them because a vulnerable client undoes the server's protections.
 
+## Strict dual-stack kill-switch bundles
+
+`make emit-singbox` now emits the supported unified IPv4/IPv6 TUN
+`address` list and removes the default cleartext local-DNS and
+private-network routes. Regenerate and redistribute existing sing-box
+profiles after upgrading. `--per-app-bypass` still emits an intentional
+non-lockdown profile, but `make check-killswitch BUNDLE=…` rejects that
+profile by design.
+
 ## AmneziaWG Android split-tunnel localhost leak (issue #2457)
 
 Status: **open, unresolved** as of 2026-05-09. Source:

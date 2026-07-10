@@ -8,6 +8,11 @@ set -euo pipefail
 : "${FAIL_THRESHOLD:=3}"
 : "${STATE_FILE:=/var/lib/vpn-watchdog/state}"
 : "${ALERTS_PER_HOUR_MAX:=4}"
+: "${XRAY_BIN:=/usr/local/bin/xray}"
+: "${XRAY_REALITY_CONFIG:=/etc/vpn-watchdog-reality.json}"
+: "${XRAY_REALITY_PROBES:=}"
+: "${XRAY_REALITY_PROBE_URL:=}"
+: "${XRAY_REALITY_PROBE_TIMEOUT:=15}"
 HOSTNAME="${HOSTNAME:-$(hostname -f 2>/dev/null || hostname)}"
 
 mkdir -p "$(dirname "$STATE_FILE")"
@@ -43,12 +48,85 @@ probe() {
   fi
 }
 
+xray_probe_pid=""
+
+cleanup_reality_client() {
+  if [[ -n "$xray_probe_pid" ]] && kill -0 "$xray_probe_pid" 2>/dev/null; then
+    kill "$xray_probe_pid" 2>/dev/null || true
+    wait "$xray_probe_pid" 2>/dev/null || true
+  fi
+  xray_probe_pid=""
+}
+
+socks_listener_ready() {
+  local port="$1"
+  ss -lnt | awk '{print $4}' | grep -q ":${port}$"
+}
+
+reality_canary_round_trip() {
+  local socks_port="$1"
+  local status
+  kill -0 "$xray_probe_pid" 2>/dev/null || return 1
+  status="$(curl -sS -o /dev/null -w '%{http_code}' \
+    --max-time "$XRAY_REALITY_PROBE_TIMEOUT" \
+    --proxy "socks5h://127.0.0.1:${socks_port}" \
+    "$XRAY_REALITY_PROBE_URL")" || return 1
+  kill -0 "$xray_probe_pid" 2>/dev/null || return 1
+  [[ "$status" == "204" ]]
+}
+
+probe_reality_listeners() {
+  local spec server_port socks_port
+  local -a probe_specs=()
+  IFS=',' read -r -a probe_specs <<< "$XRAY_REALITY_PROBES"
+
+  if [[ -z "$XRAY_REALITY_PROBE_URL" || ! -r "$XRAY_REALITY_CONFIG" || -z "$XRAY_REALITY_PROBES" ]]; then
+    probe "xray REALITY round-trip configured" false
+    return
+  fi
+
+  "$XRAY_BIN" run -config "$XRAY_REALITY_CONFIG" >/dev/null 2>&1 &
+  xray_probe_pid=$!
+  trap cleanup_reality_client EXIT
+
+  local deadline=$(( SECONDS + XRAY_REALITY_PROBE_TIMEOUT ))
+  local all_ready=0
+  while (( SECONDS < deadline )); do
+    kill -0 "$xray_probe_pid" 2>/dev/null || break
+    all_ready=1
+    for spec in "${probe_specs[@]}"; do
+      socks_port="${spec#*:}"
+      if ! socks_listener_ready "$socks_port"; then
+        all_ready=0
+        break
+      fi
+    done
+    (( all_ready == 1 )) && break
+    sleep 0.2
+  done
+
+  for spec in "${probe_specs[@]}"; do
+    server_port="${spec%%:*}"
+    socks_port="${spec#*:}"
+    if (( all_ready == 1 )) && kill -0 "$xray_probe_pid" 2>/dev/null; then
+      probe "xray REALITY TCP/${server_port} round-trip" \
+        reality_canary_round_trip "$socks_port"
+    else
+      probe "xray REALITY TCP/${server_port} round-trip" false
+    fi
+  done
+
+  cleanup_reality_client
+  trap - EXIT
+}
+
 if [[ "${ENABLE_XRAY:-true}" == "true" ]]; then
   probe "xray.service active"      systemctl is-active --quiet xray
   probe "xray TCP/${XRAY_PORT:-443} listening" \
     bash -c "ss -lnt | awk '{print \$4}' | grep -q ':${XRAY_PORT:-443}\$'"
   probe "xray config valid" \
-    /usr/local/bin/xray run -test -config /etc/xray/config.json
+    "$XRAY_BIN" run -test -config /etc/xray/config.json
+  probe_reality_listeners
 fi
 
 if [[ "${ENABLE_NGINX_XHTTP:-true}" == "true" ]]; then

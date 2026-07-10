@@ -11,6 +11,14 @@
       enable_amneziawg: false
     amneziawg:
       interface: awg0
+    xray:
+      reality_public_key: "molecule-public-key"
+      server_names: ["canary.example.test"]
+      clients:
+        - name: watchdog
+          uuid: "98765432-1234-4234-8234-123456789abc"
+          short_id: "55667788"
+      cohorts: []
     xray_port: 443
     hysteria_port: 443
     watchdog:
@@ -20,8 +28,12 @@
       alerts_per_hour_max: 4
       provider: ntfy
       ntfy_url: "http://127.0.0.1:18080"   # local stub listener
+      reality_probe_client: watchdog
+      reality_probe_timeout: 15
+      reality_probe_socks_port: 31082
     watchdog_secrets:
       ntfy_topic: "molecule-failure-topic"
+      reality_probe_url: "https://canary.example.test/healthz"
 
   pre_tasks:
     - name: Install curl + python3 (stub listener + alert delivery)
@@ -96,6 +108,79 @@
       ansible.builtin.systemd_service:
         name: ntfy-stub.service
         enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Create fake Xray config directory
+      ansible.builtin.file:
+        path: /etc/xray
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Drop fake Xray server config
+      ansible.builtin.copy:
+        dest: /etc/xray/config.json
+        content: "{}\n"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Drop TCP listener used by the liveness-green Xray stub
+      ansible.builtin.copy:
+        dest: /usr/local/sbin/watchdog-tcp-stub.py
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/env python3
+          import socket
+          import sys
+
+          port = int(sys.argv[1])
+          with socket.socket() as server:
+              server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+              server.bind(("127.0.0.1", port))
+              server.listen()
+              while True:
+                  connection, _ = server.accept()
+                  connection.close()
+
+    - name: Drop liveness-green protocol-red Xray stub
+      ansible.builtin.copy:
+        dest: /usr/local/bin/xray
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if printf '%s\n' "$@" | grep -q -- '-test'; then
+            exit 0
+          fi
+          if printf '%s\n' "$@" | grep -q 'vpn-watchdog-reality.json'; then
+            exec /usr/local/sbin/watchdog-tcp-stub.py 31082
+          fi
+          exec /usr/local/sbin/watchdog-tcp-stub.py 443
+
+    - name: Install fake Xray service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/xray.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Test Xray liveness stub
+          [Service]
+          Type=simple
+          ExecStart=/usr/local/bin/xray run -config /etc/xray/config.json
+          Restart=on-failure
+
+    - name: Start fake Xray service
+      ansible.builtin.systemd_service:
+        name: xray.service
         state: started
         daemon_reload: true
 

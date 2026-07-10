@@ -1,8 +1,4 @@
-"""Tests for scripts/check-singbox-killswitch.py.
-
-Covers the positive case (valid fixture passes K1-K5) and selected negative
-cases (missing auto_route, DNS leak, bad domain_strategy).
-"""
+"""Behavior tests for the strict full-device sing-box kill-switch gate."""
 from __future__ import annotations
 
 import json
@@ -45,6 +41,7 @@ def test_valid_fixture_passes_all_checks():
         f"expected exit 0 for valid fixture:\n{result.stdout}\n{result.stderr}"
     )
     assert "OK" in result.stdout
+    assert "strict full-device dual-stack kill-switch verified" in result.stdout
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +72,46 @@ def test_k1_no_tun_inbound_fails(tmp_path):
     result = _run_dict(bundle, tmp_path)
     assert result.returncode == 1
     assert "K1" in result.stdout
+
+
+def test_k1_legacy_tun_address_fields_fail(tmp_path):
+    """Removed inet4/inet6 fields cannot certify a supported client bundle."""
+    bundle = _load_valid()
+    tun = next(i for i in bundle["inbounds"] if i["type"] == "tun")
+    del tun["address"]
+    tun["inet4_address"] = "172.19.0.1/30"
+    tun["inet6_address"] = "fdfe:dcba:9876::1/126"
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert "K1" in result.stdout
+    assert "address" in result.stdout
+
+
+def test_k1_ipv4_only_tun_address_fails(tmp_path):
+    bundle = _load_valid()
+    tun = next(i for i in bundle["inbounds"] if i["type"] == "tun")
+    tun["address"] = ["172.19.0.1/30"]
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert "no IPv6 prefix" in result.stdout
+
+
+def test_k1_ipv6_only_tun_address_fails(tmp_path):
+    bundle = _load_valid()
+    tun = next(i for i in bundle["inbounds"] if i["type"] == "tun")
+    tun["address"] = ["fdfe:dcba:9876::1/126"]
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert "no IPv4 prefix" in result.stdout
+
+
+def test_k1_malformed_tun_address_fails(tmp_path):
+    bundle = _load_valid()
+    tun = next(i for i in bundle["inbounds"] if i["type"] == "tun")
+    tun["address"] = ["172.19.0.1/30", "not-an-ipv6-prefix"]
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert "invalid prefix" in result.stdout
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +153,79 @@ def test_k3_route_final_auto_passes(tmp_path):
     assert result.returncode == 0
 
 
+def test_k3_route_rule_to_direct_type_alias_fails(tmp_path):
+    bundle = _load_valid()
+    direct = next(ob for ob in bundle["outbounds"] if ob["type"] == "direct")
+    direct["tag"] = "clear-egress"
+    bundle["route"]["rules"].insert(
+        0,
+        {
+            "package_name": ["example.app"],
+            "action": "route",
+            "outbound": "clear-egress",
+        },
+    )
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert "K3" in result.stdout
+    assert "route.rules[0]" in result.stdout
+
+
+def test_k3_private_network_direct_rule_fails(tmp_path):
+    bundle = _load_valid()
+    bundle["route"]["rules"].insert(
+        0,
+        {"ip_is_private": True, "action": "route", "outbound": "direct"},
+    )
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert "route.rules[0]" in result.stdout
+
+
+def test_k3_selector_that_can_choose_direct_fails(tmp_path):
+    bundle = _load_valid()
+    selector = next(ob for ob in bundle["outbounds"] if ob["tag"] == "select")
+    selector["outbounds"].append("direct")
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert "route.final 'select' can resolve to direct egress" in result.stdout
+
+
+def test_k3_bypass_action_fails_without_outbound(tmp_path):
+    bundle = _load_valid()
+    bundle["route"]["rules"].insert(
+        0,
+        {"package_name": ["example.app"], "action": "bypass"},
+    )
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert "uses bypass" in result.stdout
+
+
+def test_k3_undefined_outbound_reference_fails_closed(tmp_path):
+    bundle = _load_valid()
+    bundle["route"]["rules"].insert(
+        0,
+        {"package_name": ["example.app"], "action": "route", "outbound": "missing"},
+    )
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert "undefined" in result.stdout
+
+
+def test_k3_outbound_graph_cycle_fails_closed(tmp_path):
+    bundle = _load_valid()
+    bundle["outbounds"].extend(
+        [
+            {"type": "selector", "tag": "cycle-a", "outbounds": ["cycle-b"]},
+            {"type": "selector", "tag": "cycle-b", "outbounds": ["cycle-a"]},
+        ]
+    )
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert "outbound graph cycle" in result.stdout
+
+
 # ---------------------------------------------------------------------------
 # K4 — DNS remote detour
 # ---------------------------------------------------------------------------
@@ -135,6 +245,24 @@ def test_k4_dns_remote_detour_select_passes(tmp_path):
     # Fixture already has detour=select; just confirm it passes.
     result = _run_dict(bundle, tmp_path)
     assert result.returncode == 0
+
+
+def test_k4_missing_dns_servers_fails(tmp_path):
+    bundle = _load_valid()
+    bundle["dns"]["servers"] = []
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert "K4: dns.servers must contain" in result.stdout
+
+
+def test_k4_non_remote_dns_server_direct_detour_fails(tmp_path):
+    bundle = _load_valid()
+    bundle["dns"]["servers"].append(
+        {"tag": "local", "address": "local", "detour": "direct"}
+    )
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert "K4" in result.stdout
 
 
 # ---------------------------------------------------------------------------

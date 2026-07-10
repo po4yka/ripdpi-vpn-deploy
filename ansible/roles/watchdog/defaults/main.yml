@@ -4,6 +4,9 @@ watchdog:
   fail_threshold: 3            # consecutive failed probes before alerting
   state_file: /var/lib/vpn-watchdog/state
   alerts_per_hour_max: 4       # rate-limit so a flapping host doesn't spam
+  reality_probe_client: watchdog
+  reality_probe_timeout: 15
+  reality_probe_socks_port: 31082
   # Provider: ntfy.sh (default) or pushover.
   # ntfy is HTTP POST to ntfy.topic; no signup, but anyone with the topic
   # can read alerts. Use a long random topic name and treat it as a secret.

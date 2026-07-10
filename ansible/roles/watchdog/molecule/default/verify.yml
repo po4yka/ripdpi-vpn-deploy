@@ -15,12 +15,34 @@
       register: envf
       failed_when: envf.stat.mode != "0600"
 
+    - name: authenticated REALITY probe config installed with 0600
+      ansible.builtin.stat:
+        path: /etc/vpn-watchdog-reality.json
+      register: reality_cfg
+      failed_when: >-
+        not reality_cfg.stat.exists
+        or reality_cfg.stat.mode != "0600"
+
     - name: env file contains the topic but no obvious leaks
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
           grep -q 'NTFY_TOPIC=molecule-stub-topic' /etc/vpn-watchdog.env
+          grep -q 'XRAY_REALITY_PROBES=443:31082' /etc/vpn-watchdog.env
           ! grep -Fq 'HOSTNAME=$(hostname)' /etc/vpn-watchdog.env
+          ! grep -q '98765432-1234-4234-8234-123456789abc' /etc/vpn-watchdog.env
+          ! grep -q '55667788' /etc/vpn-watchdog.env
+        executable: /bin/bash
+      changed_when: false
+
+    - name: REALITY probe config maps the dedicated client to the public listener
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep -q '"address": "' /etc/vpn-watchdog-reality.json
+          grep -q '"port": 443' /etc/vpn-watchdog-reality.json
+          grep -q '"port": 31082' /etc/vpn-watchdog-reality.json
+          grep -q '98765432-1234-4234-8234-123456789abc' /etc/vpn-watchdog-reality.json
         executable: /bin/bash
       changed_when: false
 
@@ -35,3 +57,39 @@
       register: t
       changed_when: false
       failed_when: t.stdout != "enabled"
+
+    - name: Initialize duplicate-credential rejection result
+      ansible.builtin.set_fact:
+        duplicate_watchdog_credentials_rejected: false
+
+    - name: Exercise duplicate watchdog credential rejection
+      block:
+        - name: Re-run role with a watchdog identity copied from a device
+          ansible.builtin.include_role:
+            name: watchdog
+          vars:
+            vpn:
+              enable_xray_reality: true
+            xray:
+              reality_public_key: "molecule-public-key"
+              server_names: ["canary.example.test"]
+              clients:
+                - name: phone
+                  uuid: "12345678-1234-4234-8234-123456789abc"
+                  short_id: "aabbccdd"
+                - name: watchdog
+                  uuid: "12345678-1234-4234-8234-123456789abc"
+                  short_id: "aabbccdd"
+              cohorts: []
+            watchdog_secrets:
+              ntfy_topic: "molecule-stub-topic"
+              reality_probe_url: "https://canary.example.test/healthz"
+      rescue:
+        - name: Record that duplicate watchdog credentials were rejected
+          ansible.builtin.set_fact:
+            duplicate_watchdog_credentials_rejected: true
+
+    - name: Duplicate watchdog credentials fail before probe config rendering
+      ansible.builtin.assert:
+        that:
+          - duplicate_watchdog_credentials_rejected

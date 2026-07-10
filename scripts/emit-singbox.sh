@@ -381,6 +381,7 @@ if [[ -n "$PER_APP_BYPASS" ]]; then
   per_app_rules="$(jq -nc --arg csv "$PER_APP_BYPASS" '
     [{
       "package_name": ($csv | split(",") | map(select(length > 0))),
+      "action": "route",
       "outbound": "direct"
     }]')"
 fi
@@ -388,6 +389,7 @@ if [[ -n "$PER_APP_VIA_TUN" ]]; then
   via_tun_rule="$(jq -nc --arg csv "$PER_APP_VIA_TUN" '
     {
       "package_name": ($csv | split(",") | map(select(length > 0))),
+      "action": "route",
       "outbound": "select"
     }')"
   per_app_rules="$(jq -nc --argjson cur "$per_app_rules" --argjson r "$via_tun_rule" '$cur + [$r]')"
@@ -401,15 +403,13 @@ jq -n \
     "log": {"level":"warn", "timestamp":true},
     "dns": {
       "servers": [
-        {"tag":"remote", "address":"https://1.1.1.1/dns-query", "detour":"select"},
-        {"tag":"local",  "address":"local",                       "detour":"direct"}
-      ],
-      "rules": [{"outbound":["any"], "server":"local"}]
+        {"tag":"remote", "address":"https://1.1.1.1/dns-query", "detour":"select"}
+      ]
     },
     "inbounds": [{
       "type":"tun", "tag":"tun-in",
       "interface_name":"tun0",
-      "inet4_address":"172.19.0.1/30",
+      "address":["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
       "auto_route":true, "strict_route":true,
       "stack":"system", "sniff":true
     }],
@@ -418,8 +418,7 @@ jq -n \
       "rules":
         ($per_app +
         [
-          {"protocol":"dns", "outbound":"dns-out"},
-          {"ip_is_private":true, "outbound":"direct"}
+          {"protocol":"dns", "action":"route", "outbound":"dns-out"}
         ]),
       "final":"select",
       "auto_detect_interface":true

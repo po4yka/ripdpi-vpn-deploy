@@ -17,6 +17,7 @@ EXAMPLE_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 
 SYNTHETIC_FACTS = {
     "ansible_user": "deploy",
+    "ansible_host": "198.51.100.10",
     "ansible_architecture": "x86_64",
     "ansible_os_family": "Debian",
     "ansible_distribution": "Debian",
@@ -52,6 +53,13 @@ def merge_render_vars() -> dict:
     merged.setdefault("xray_sha256", "0" * 64)
     merged.setdefault("hysteria_arch", "amd64")
     merged.setdefault("hysteria_sha256", "0" * 64)
+    merged.setdefault(
+        "watchdog_reality_probes",
+        [
+            {"name": "primary", "port": 443, "flow_mode": "vision", "finalmask": False},
+            {"name": "fallback", "port": 2053, "flow_mode": "vision", "finalmask": False},
+        ],
+    )
     merged.setdefault(
         "public_listener_contract",
         [

@@ -1,5 +1,5 @@
 ---
-- name: Verify alert path fires when xray is missing
+- name: Verify alert path fires when REALITY completion fails
   hosts: all
   become: true
   tasks:
@@ -26,7 +26,7 @@
         src: /tmp/ntfy-stub.log
       register: alert_blob
 
-    - name: Decode + assert alert shape
+    - name: Decode + assert protocol-completion alert shape
       vars:
         records: >-
           {{
@@ -39,7 +39,14 @@
           - records[0].title is search('VPN\[')
           - records[0].title is search('failing')
           - records[0].tags is search('warning')
-          - records[0].body is search('xray.service active')
+          - records[0].body is search('OK    xray.service active')
+          - records[0].body is search('OK    xray TCP/443 listening')
+          - records[0].body is search('OK    xray config valid')
+          - records[0].body is search('FAIL  xray REALITY TCP/443 round-trip')
+          - records[0].title is not search('98765432-1234-4234-8234-123456789abc')
+          - records[0].body is not search('98765432-1234-4234-8234-123456789abc')
+          - records[0].body is not search('55667788')
+          - records[0].body is not search('https://canary.example.test/healthz')
         success_msg: |
           alert dispatched: {{ records[0].title }}
         fail_msg: |
@@ -68,3 +75,15 @@
       # signal — its absence isn't a fail on its own; the title-shape
       # assertion above is the load-bearing check.
       failed_when: false
+
+    - name: vpn-watchdog journal contains no probe credentials or canary URL
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          ! journalctl -u vpn-watchdog.service --no-pager --output=cat \
+            | grep -F \
+                -e '98765432-1234-4234-8234-123456789abc' \
+                -e '55667788' \
+                -e 'https://canary.example.test/healthz'
+        executable: /bin/bash
+      changed_when: false

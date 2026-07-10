@@ -23,6 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 STUBS_BIN = REPO_ROOT / "tests" / "stubs" / "bin"
 SCRIPT = REPO_ROOT / "scripts" / "emit-singbox.sh"
+KILLSWITCH_SCRIPT = REPO_ROOT / "scripts" / "check-singbox-killswitch.py"
 
 
 # ---------------------------------------------------------------------------
@@ -101,14 +102,17 @@ def _build_env(tmp_path: Path, sops_file: Path) -> dict[str, str]:
 
 
 def _run_script(
-    client: str, tmp_path: Path, extra_env: dict[str, str] | None = None
+    client: str,
+    tmp_path: Path,
+    extra_env: dict[str, str] | None = None,
+    extra_args: list[str] | None = None,
 ) -> subprocess.CompletedProcess:
     secrets_json = _secrets_as_json(tmp_path)
     env = _build_env(tmp_path, secrets_json)
     if extra_env:
         env.update(extra_env)
     return subprocess.run(
-        ["bash", str(SCRIPT), client],
+        ["bash", str(SCRIPT), client, *(extra_args or [])],
         capture_output=True,
         text=True,
         env=env,
@@ -180,6 +184,51 @@ def test_emit_singbox_dns_non_empty_and_detour(tmp_path):
     assert detour not in ("", "direct"), (
         f"remote DNS detour is {detour!r} — leaks DNS traffic to ISP"
     )
+
+
+def test_emit_singbox_default_is_strict_dual_stack_killswitch(tmp_path):
+    _require_tool("jq")
+
+    result = _run_script("laptop", tmp_path)
+    if result.returncode != 0:
+        pytest.fail(f"emit-singbox.sh failed: {result.stderr[:400]}")
+
+    bundle = json.loads(result.stdout)
+    tun = next(inbound for inbound in bundle["inbounds"] if inbound["type"] == "tun")
+    assert tun["address"] == ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]
+    assert "inet4_address" not in tun
+    assert "inet6_address" not in tun
+
+    check = subprocess.run(
+        ["python3", str(KILLSWITCH_SCRIPT), "-"],
+        input=result.stdout,
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+    )
+    assert check.returncode == 0, check.stdout
+
+
+def test_emit_singbox_per_app_bypass_fails_strict_killswitch(tmp_path):
+    _require_tool("jq")
+
+    result = _run_script(
+        "laptop",
+        tmp_path,
+        extra_args=["--per-app-bypass", "example.app"],
+    )
+    if result.returncode != 0:
+        pytest.fail(f"emit-singbox.sh failed: {result.stderr[:400]}")
+
+    check = subprocess.run(
+        ["python3", str(KILLSWITCH_SCRIPT), "-"],
+        input=result.stdout,
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+    )
+    assert check.returncode == 1
+    assert "route.rules[0]" in check.stdout
 
 
 def test_emit_singbox_no_placeholder_leaks(tmp_path):

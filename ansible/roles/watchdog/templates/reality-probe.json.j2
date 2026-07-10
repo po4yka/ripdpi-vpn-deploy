@@ -1,0 +1,57 @@
+{%- set _client = xray.clients | selectattr('name', 'equalto', watchdog.reality_probe_client | default('watchdog')) | list | first -%}
+{
+  "log": {"loglevel": "error"},
+  "inbounds": [
+    {%- for probe in watchdog_reality_probes %}
+    {
+      "tag": "watchdog-socks-{{ loop.index0 }}",
+      "listen": "127.0.0.1",
+      "port": {{ (watchdog.reality_probe_socks_port | default(31082)) + loop.index0 }},
+      "protocol": "socks",
+      "settings": {"auth": "noauth", "udp": false}
+    }{% if not loop.last %},{% endif %}
+    {%- endfor %}
+  ],
+  "outbounds": [
+    {%- for probe in watchdog_reality_probes %}
+    {
+      "tag": "watchdog-reality-{{ loop.index0 }}",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [{
+          "address": "{{ ansible_host }}",
+          "port": {{ probe.port }},
+          "users": [{
+            "id": "{{ _client.uuid }}",
+            "encryption": "none"{% if probe.flow_mode != "mux" %},
+            "flow": "xtls-rprx-vision"{% endif %}
+          }]
+        }]
+      },
+      "streamSettings": {
+        "network": "raw",
+        "security": "reality",
+        "realitySettings": {
+          "fingerprint": "chrome",
+          "serverName": "{{ xray.server_names[0] }}",
+          "publicKey": "{{ xray.reality_public_key }}",
+          "shortId": "{{ _client.short_id }}"
+        }{% if probe.finalmask %},
+        "sockopt": {"finalmask": "Sudoku"}{% endif %}
+      }{% if probe.flow_mode == "mux" %},
+      "mux": {"enabled": true, "concurrency": 8}{% endif %}
+    }{% if not loop.last %},{% endif %}
+    {%- endfor %}
+  ],
+  "routing": {
+    "rules": [
+      {%- for probe in watchdog_reality_probes %}
+      {
+        "type": "field",
+        "inboundTag": ["watchdog-socks-{{ loop.index0 }}"],
+        "outboundTag": "watchdog-reality-{{ loop.index0 }}"
+      }{% if not loop.last %},{% endif %}
+      {%- endfor %}
+    ]
+  }
+}
