@@ -6,7 +6,7 @@ molecule-plugins[docker]==25.8.12
 yamllint==1.38.0
 
 # Used by validators in CI (scripts/check-secrets-coverage.py +
-# scripts/check-templates-render.py +
+# scripts/check-templates-render.py + scripts/check-xray-breaking-changes.py +
 # scripts/validate-secrets.py — which uses the jsonschema pulled
 # transitively by ansible-lint, no explicit pin here).
 PyYAML==6.0.3

@@ -218,6 +218,8 @@ jobs:
           sudo apt-get install -y nginx-light
       - name: check-templates-render
         run: python3 scripts/check-templates-render.py
+      - name: check-xray-breaking-changes
+        run: python3 scripts/check-xray-breaking-changes.py
 
   yaml:
     name: yamllint

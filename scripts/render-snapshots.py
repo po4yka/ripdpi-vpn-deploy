@@ -26,85 +26,22 @@ from __future__ import annotations
 
 import argparse
 import difflib
-import json
-import os
-import re as _re
 import sys
 from pathlib import Path
 
-import yaml
-from jinja2 import Environment, FileSystemLoader, StrictUndefined, UndefinedError, select_autoescape
+from jinja2 import UndefinedError
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-ROLES_DIR = REPO_ROOT / "ansible" / "roles"
-GROUP_VARS = REPO_ROOT / "ansible" / "group_vars"
-EXAMPLE_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
+try:
+    from template_render import REPO_ROOT, ROLES_DIR, merge_render_vars, render_template
+except ModuleNotFoundError:  # Loaded by importlib from the repository root in tests.
+    from scripts.template_render import (
+        REPO_ROOT,
+        ROLES_DIR,
+        merge_render_vars,
+        render_template,
+    )
+
 GOLDEN_DIR = REPO_ROOT / "tests" / "snapshot" / "golden"
-
-SYNTHETIC_FACTS = {
-    "ansible_user": "deploy",
-    "ansible_architecture": "x86_64",
-    "ansible_os_family": "Debian",
-    "ansible_distribution": "Debian",
-    "ansible_distribution_release": "trixie",
-    "allowed_ssh_cidrs": ["198.51.100.42/32"],
-}
-
-
-def load_role_defaults() -> dict:
-    out: dict = {}
-    for defaults in ROLES_DIR.rglob("defaults/main.yml"):
-        data = yaml.safe_load(defaults.read_text()) or {}
-        for k, v in data.items():
-            if isinstance(v, dict) and isinstance(out.get(k), dict):
-                out[k].update(v)
-            else:
-                out[k] = v
-    return out
-
-
-def merge_render_vars() -> dict:
-    merged: dict = {}
-    merged.update(load_role_defaults())
-    all_yml = GROUP_VARS / "all.yml"
-    if all_yml.exists():
-        merged.update(yaml.safe_load(all_yml.read_text()) or {})
-    if EXAMPLE_FILE.exists():
-        merged.update(yaml.safe_load(EXAMPLE_FILE.read_text()) or {})
-    merged.update(SYNTHETIC_FACTS)
-    merged.setdefault("xray_arch", "64")
-    merged.setdefault("xray_sha256", "0" * 64)
-    merged.setdefault("hysteria_arch", "amd64")
-    merged.setdefault("hysteria_sha256", "0" * 64)
-    merged.setdefault("public_listener_contract", [
-        {"name": "xray", "protocol": "tcp", "port": 443, "port_range": None},
-        {"name": "xray-fallback", "protocol": "tcp", "port": 2053, "port_range": None},
-        {"name": "nginx-xhttp", "protocol": "tcp", "port": 8443, "port_range": None},
-        {"name": "hysteria", "protocol": "udp", "port": 443, "port_range": None},
-        {"name": "amneziawg", "protocol": "udp", "port": 51820, "port_range": None},
-    ])
-    return merged
-
-
-def render_template(path: Path, vars_: dict) -> str:
-    env = Environment(
-        loader=FileSystemLoader(str(path.parent)),
-        undefined=StrictUndefined,
-        keep_trailing_newline=True,
-        autoescape=select_autoescape(),
-    )
-    env.filters["to_json"] = lambda v: json.dumps(v)
-    env.filters["quote"] = lambda v: "'" + str(v).replace("'", "'\\''") + "'"
-    env.filters["dirname"] = lambda v: os.path.dirname(str(v))
-    env.filters["basename"] = lambda v: os.path.basename(str(v))
-    env.filters["regex_replace"] = lambda v, p, r: _re.sub(p, r, str(v))
-    env.filters["regex_search"] = lambda v, p: (
-        _re.search(p, str(v)).group(0) if _re.search(p, str(v)) else ""
-    )
-    env.filters["extract"] = lambda key, container: container[key]
-    env.tests["match"] = lambda v, p: bool(_re.search(p, str(v)))
-    env.tests["search"] = lambda v, p: bool(_re.search(p, str(v)))
-    return env.get_template(path.name).render(**vars_)
 
 
 def main() -> int:

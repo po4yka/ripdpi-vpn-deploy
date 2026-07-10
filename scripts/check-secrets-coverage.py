@@ -89,28 +89,6 @@ def extract_toplevel_vars(template_text: str) -> set[str]:
     return found - locals_
 
 
-def check_xray_breaking_changes(example: dict) -> list[str]:
-    """Catch fields that Xray-core removed or changed in recent releases.
-
-    The example schema and the per-environment SOPS files share the same shape,
-    so an unguarded field here typically means the same field exists in real
-    secrets and will fail at `xray test -config` after an upgrade. Better to
-    surface that in CI than at deploy.
-    """
-    xray = (example or {}).get("xray") or {}
-    issues: list[str] = []
-    # v26.5.3 removed `echForceQuery`; the field was already deprecated in
-    # v26.3.27 (default changed to "full"). Older configs containing it will
-    # fail to parse against v26.5.3+.
-    if "echForceQuery" in xray:
-        issues.append(
-            "xray.echForceQuery is removed in Xray-core v26.5.3 — "
-            "delete the field from the schema and from each SOPS file before "
-            "bumping the pinned xray version past v26.4.x"
-        )
-    return issues
-
-
 def main() -> int:
     if not EXAMPLE_FILE.exists():
         print(f"missing: {EXAMPLE_FILE}", file=sys.stderr)
@@ -118,12 +96,6 @@ def main() -> int:
 
     example = yaml.safe_load(EXAMPLE_FILE.read_text()) or {}
     example_keys = set(example.keys())
-
-    breaking = check_xray_breaking_changes(example)
-    if breaking:
-        for issue in breaking:
-            print(f"breaking-change guard: {issue}", file=sys.stderr)
-        return 1
 
     # Pre-flight: every expected secret top-level must be in the example
     missing_expected = EXPECTED_SECRET_TOPLEVEL - example_keys

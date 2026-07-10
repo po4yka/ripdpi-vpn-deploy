@@ -294,6 +294,7 @@ tf-test:
 # misleading green gate.
 ci-fast:
 	@echo "== render check =="; python3 scripts/check-templates-render.py
+	@echo "== Xray breaking-change guard =="; python3 scripts/check-xray-breaking-changes.py
 	@echo "== secrets coverage =="; python3 scripts/check-secrets-coverage.py
 	@echo "== deploy-profile tier guard =="; python3 scripts/check-deploy-profile.py
 	@echo "== snapshot diff =="; python3 scripts/render-snapshots.py
