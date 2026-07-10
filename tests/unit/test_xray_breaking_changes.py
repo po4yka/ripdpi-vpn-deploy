@@ -302,10 +302,90 @@ def test_diagnostics_never_include_document_values():
     issues = checker.evaluate_guards(
         [guard],
         "v1.0.0",
-        {"example-secrets": {"xray": {"removed": secret_value}}},
+        {"example-secrets": {"xray": {"tag": secret_value, "removed": secret_value}}},
     )
 
     assert secret_value not in "\n".join(issues)
+
+
+def test_exact_comparisons_do_not_coerce_booleans_to_numbers():
+    checker = _load_checker()
+    base = {
+        "applies_from": "v1.0.0",
+        "activation": "always",
+        "document": "rendered-xray",
+        "select": {"path": "outbounds", "where": {"protocol": "freedom"}},
+        "message": "Use the exact declared type.",
+    }
+    guards = [
+        base
+        | {
+            "id": "selector-type",
+            "select": {
+                "path": "outbounds",
+                "where": {"protocol": "freedom", "priority": 1},
+            },
+            "require": {"path": "settings.enabled"},
+        },
+        base
+        | {
+            "id": "equals-type",
+            "require": {"path": "settings.priority", "equals": 1},
+        },
+        base
+        | {
+            "id": "contains-type",
+            "require": {"path": "settings.priorities", "contains": 1},
+        },
+    ]
+    documents = {
+        "rendered-xray": {
+            "outbounds": [
+                {
+                    "tag": "direct",
+                    "protocol": "freedom",
+                    "priority": True,
+                    "settings": {
+                        "enabled": True,
+                        "priority": True,
+                        "priorities": [True],
+                    },
+                }
+            ]
+        }
+    }
+
+    issues = checker.evaluate_guards(guards, "v1.0.0", documents)
+
+    assert {issue.split(":", 1)[0] for issue in issues} == {
+        "selector-type",
+        "equals-type",
+        "contains-type",
+    }
+
+
+@pytest.mark.parametrize(
+    "invalid_tags",
+    [("direct",), ("direct-asis",), ("direct", "direct-asis")],
+)
+def test_future_pin_reports_each_invalid_freedom_outbound(
+    invalid_tags: tuple[str, ...],
+):
+    checker = _load_checker()
+    outbounds = []
+    for tag in ("direct", "direct-asis"):
+        settings = {} if tag in invalid_tags else {"finalRules": [{"action": "allow"}]}
+        outbounds.append({"tag": tag, "protocol": "freedom", "settings": settings})
+
+    issues = checker.evaluate_guards(
+        [_future_freedom_guard()],
+        "v26.5.3",
+        {"rendered-xray": {"outbounds": outbounds}},
+    )
+
+    assert len(issues) == len(invalid_tags)
+    for tag in invalid_tags:
+        assert f"tag {tag!r}" in "\n".join(issues)
 
 
 def test_cli_validates_the_current_checkout():
