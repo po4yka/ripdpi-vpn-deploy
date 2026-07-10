@@ -1,0 +1,130 @@
+---
+name: AmneziaWG arm64 version floor
+
+on:
+  schedule:
+    - cron: "23 10 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    name: watch upstream fix signals
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Check upstream issue states and release notes
+        id: floor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          output="$(python3 scripts/check-amneziawg-arm64-upstream.py 2>&1)"
+          exit_code=$?
+          set -e
+          printf '%s\n' "$output"
+          {
+            echo "exit_code=${exit_code}"
+            echo "output<<AWG_FLOOR_EOF"
+            echo "$output"
+            echo "AWG_FLOOR_EOF"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -eq 2 ]; then
+            exit 2
+          fi
+
+      - name: Open or update revalidation issue
+        if: steps.floor.outputs.exit_code == '1'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        env:
+          WATCH_OUTPUT: ${{ steps.floor.outputs.output }}
+        with:
+          script: |
+            const fs = require('fs');
+            const label = 'automation:amneziawg-arm64-floor';
+            const title = 'Revalidate claimed AmneziaWG arm64 S3/S4 fix';
+            const policy = JSON.parse(fs.readFileSync('contract/amneziawg-arm64-version-floor.json', 'utf8'));
+            const body = [
+              '## Upstream fix signal',
+              '',
+              process.env.WATCH_OUTPUT || '(no watcher output)',
+              '',
+              `Tracker cursor at signal: ${policy.release_watch.last_reviewed_release}`,
+              '',
+              'This is a review trigger only. Keep S3/S4 fail-closed until the physical arm64 checklist passes',
+              'and both repositories are updated together.',
+            ].join('\n');
+            try {
+              await github.rest.issues.getLabel({ owner: context.repo.owner, repo: context.repo.repo, name: label });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: label,
+                color: 'd93f0b',
+                description: 'Upstream AmneziaWG arm64 floor requires revalidation',
+              });
+            }
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: label,
+              state: 'open',
+              per_page: 1,
+            });
+            if (existing.data.length) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                title,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: [label] });
+            }
+
+      - name: Close reviewed signal issue
+        if: steps.floor.outputs.exit_code == '0'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            const label = 'automation:amneziawg-arm64-floor';
+            const policy = JSON.parse(fs.readFileSync('contract/amneziawg-arm64-version-floor.json', 'utf8'));
+            const cursor = policy.release_watch.last_reviewed_release;
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: label,
+              state: 'open',
+              per_page: 10,
+            });
+            for (const issue of existing.data) {
+              const signalledCursor = issue.body?.match(/^Tracker cursor at signal: (.+)$/m)?.[1];
+              if (!signalledCursor || signalledCursor === cursor) continue;
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: [
+                  `The reviewed release cursor was deliberately advanced from ${signalledCursor} to ${cursor}.`,
+                  'Closing the rolling signal issue; the committed guard policy is unchanged.',
+                ].join(' '),
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+              });
+            }
