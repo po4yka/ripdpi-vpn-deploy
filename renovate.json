@@ -31,17 +31,6 @@
   ],
   "customManagers": [
     {
-      "description": "Xray version pin in Ansible role defaults",
-      "customType": "regex",
-      "fileMatch": ["^ansible/roles/xray/defaults/main\\.yml$"],
-      "matchStrings": [
-        "xray_version:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
-      ],
-      "depNameTemplate": "XTLS/Xray-core",
-      "datasourceTemplate": "github-releases",
-      "versioningTemplate": "semver-coerced"
-    },
-    {
       "description": "Hysteria-realm (sing-box) version pin in Ansible role defaults",
       "customType": "regex",
       "fileMatch": ["^ansible/roles/hysteria-realm/defaults/main\\.yml$"],
@@ -49,17 +38,6 @@
         "hysteria_realm:\\s*\\n(?:[^\\n]*\\n)*?\\s+version:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
       ],
       "depNameTemplate": "SagerNet/sing-box",
-      "datasourceTemplate": "github-releases",
-      "versioningTemplate": "semver-coerced"
-    },
-    {
-      "description": "AmneziaWG version pin in Ansible role defaults",
-      "customType": "regex",
-      "fileMatch": ["^ansible/roles/amneziawg/defaults/main\\.yml$"],
-      "matchStrings": [
-        "amneziawg_version:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
-      ],
-      "depNameTemplate": "amnezia-vpn/amnezia-client",
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver-coerced"
     }
