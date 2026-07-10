@@ -228,8 +228,10 @@ rotate-credentials:
 	  --action rotate-credentials \
 	  --note "playbook=rotate-credentials.yml secrets_file=$(notdir $(SECRETS_FILE))"
 
+DESTROY_ARGS ?=
+
 destroy:
-	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/destroy.sh
+	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/destroy.sh $(DESTROY_ARGS)
 
 backup-state:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/backup-tf-state.sh
