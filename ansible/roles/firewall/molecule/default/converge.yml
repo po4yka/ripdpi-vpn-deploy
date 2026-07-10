@@ -8,7 +8,8 @@
       - "203.0.113.0/24"
     vpn:
       enable_hysteria: true
-      enable_amneziawg: false
+      enable_amneziawg: true
+    firewall_awg_uplink_interface: eth0
     amneziawg:
       listen_port: 51820
     public_listener_contract:
@@ -16,6 +17,7 @@
       - { name: xray-fallback, protocol: tcp, port: 2053, port_range: null }
       - { name: nginx-xhttp, protocol: tcp, port: 8443, port_range: null }
       - { name: hysteria, protocol: udp, port: 443, port_range: null }
+      - { name: amneziawg, protocol: udp, port: 51820, port_range: null }
   pre_tasks:
     - name: Install nftables (baseline normally does this)
       ansible.builtin.apt:
