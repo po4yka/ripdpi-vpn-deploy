@@ -47,6 +47,7 @@ tags = ["age", "secret"]
 
 [allowlist]
 description = "Narrowly scoped fixtures/placeholders that intentionally look secret-like"
+commits = ["0c241e6fa9c944445100d26d451c5e991d725ee8"]
 paths = [
     '''secrets/prod\.secrets\.example\.yaml''',
     '''.*\.example\..*''',

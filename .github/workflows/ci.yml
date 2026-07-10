@@ -31,6 +31,18 @@ jobs:
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
           GITLEAKS_ENABLE_COMMENTS: "false"
 
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+      - name: Lint workflows
+        run: |
+          actionlint_path="$(go env GOPATH)/bin/actionlint"
+          "$actionlint_path"
+
   terraform:
     name: terraform fmt + validate
     runs-on: ubuntu-24.04
@@ -340,7 +352,7 @@ jobs:
   required:
     name: required checks
     if: always()
-    needs: [gitleaks, terraform, cloud-init, ansible, molecule, shellcheck, secrets-coverage, templates-render, yaml, unit-tests, bats-test, snapshot, validate-schema, tf-test, vpnd-test, vpnd-clippy, molecule-failure-scenarios]
+    needs: [gitleaks, actionlint, terraform, cloud-init, ansible, molecule, shellcheck, secrets-coverage, templates-render, yaml, unit-tests, bats-test, snapshot, validate-schema, tf-test, vpnd-test, vpnd-clippy, molecule-failure-scenarios]
     runs-on: ubuntu-24.04
     steps:
       - env:
