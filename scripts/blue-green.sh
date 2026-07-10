@@ -40,7 +40,6 @@ GREEN_ZONE="${GREEN_ZONE:-}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 SOPS_FILE="${SOPS_FILE:-${HOME}/.config/vpn-provision/${BLUE_ENV}.secrets.sops.yaml}"
-SECRETS_FILE="/tmp/vpn-${BLUE_ENV}.secrets.yaml"
 
 if [[ "${BLUE_ENV}" == "${GREEN_ENV}" ]]; then
   echo "BLUE_ENV and GREEN_ENV must differ" >&2
@@ -90,9 +89,18 @@ if [[ ! -f "$SOPS_FILE" ]]; then
   echo "missing $SOPS_FILE" >&2
   exit 1
 fi
+
+umask 077
+SECRETS_DIR="$(mktemp -d -t vpn-blue-green.XXXXXX)"
+SECRETS_FILE="${SECRETS_DIR}/secrets.yaml"
+cleanup_secrets() {
+  if [[ -e "$SECRETS_FILE" || -L "$SECRETS_FILE" ]]; then
+    shred -u -- "$SECRETS_FILE" 2>/dev/null || rm -f -- "$SECRETS_FILE"
+  fi
+  rmdir "$SECRETS_DIR" 2>/dev/null || true
+}
+trap cleanup_secrets EXIT
 sops --decrypt "$SOPS_FILE" > "$SECRETS_FILE"
-chmod 0600 "$SECRETS_FILE"
-trap 'shred -u "$SECRETS_FILE" 2>/dev/null || rm -f "$SECRETS_FILE"' EXIT
 
 VPN_SECRETS_FILE="$SECRETS_FILE" \
   ENV="${BLUE_ENV}" PROVIDER="${PROVIDER}" \
