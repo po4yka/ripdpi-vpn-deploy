@@ -23,6 +23,7 @@ secrets/prod.secrets.example.yaml.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import re
@@ -47,6 +48,79 @@ def _walk_strings(node, path=""):
             yield from _walk_strings(v, f"{path}[{i}]")
     elif isinstance(node, str):
         yield path, node
+
+
+def _duplicate_values(items: list[object], key: str) -> set[str]:
+    values = [item[key] for item in items if isinstance(item, dict) and key in item]
+    return {value for value in values if values.count(value) > 1}
+
+
+def _semantic_errors(doc: dict) -> list[tuple[str, str]]:
+    """Validate relationships and network values JSON Schema cannot express."""
+    errors: list[tuple[str, str]] = []
+
+    xray = doc.get("xray") or {}
+    xray_clients = xray.get("clients") or []
+    client_names = {client.get("name") for client in xray_clients if isinstance(client, dict)}
+    for key in ("name", "uuid", "short_id"):
+        for value in sorted(_duplicate_values(xray_clients, key)):
+            errors.append(("xray.clients", f"duplicate {key}: {value}"))
+    cohorts = xray.get("cohorts") or []
+    for value in sorted(_duplicate_values(cohorts, "name")):
+        errors.append(("xray.cohorts", f"duplicate name: {value}"))
+    for cohort in cohorts:
+        if not isinstance(cohort, dict):
+            continue
+        refs = cohort.get("clients") or []
+        if len(refs) != len(set(refs)):
+            errors.append((f"xray.cohorts.{cohort.get('name', '?')}.clients", "duplicate client reference"))
+        for name in refs:
+            if name not in client_names:
+                errors.append((f"xray.cohorts.{cohort.get('name', '?')}.clients", f"unknown xray client: {name}"))
+
+    for path, peers in [("amneziawg_secrets.peers", (doc.get("amneziawg_secrets") or {}).get("peers") or [])]:
+        for key in ("name", "public_key"):
+            for value in sorted(_duplicate_values(peers, key)):
+                errors.append((path, f"duplicate {key}: {value}"))
+        for index, peer in enumerate(peers):
+            if not isinstance(peer, dict):
+                continue
+            try:
+                ipaddress.ip_network(peer.get("allowed_ips", ""), strict=False)
+            except ValueError:
+                errors.append((f"{path}.{index}.allowed_ips", "must be a valid IPv4 or IPv6 CIDR"))
+
+    instances = (doc.get("amneziawg_secrets") or {}).get("instances") or []
+    for value in sorted(_duplicate_values(instances, "name")):
+        errors.append(("amneziawg_secrets.instances", f"duplicate name: {value}"))
+    for value in sorted(_duplicate_values(instances, "listen_port")):
+        errors.append(("amneziawg_secrets.instances", f"duplicate listen_port: {value}"))
+    for index, instance in enumerate(instances):
+        if not isinstance(instance, dict):
+            continue
+        for field in ("address_v4", "address_v6"):
+            if field not in instance:
+                continue
+            try:
+                ipaddress.ip_network(instance[field], strict=False)
+            except ValueError:
+                errors.append((f"amneziawg_secrets.instances.{index}.{field}", "must be a valid IPv4 or IPv6 CIDR"))
+        peers = instance.get("peers") or []
+        for key in ("name", "public_key"):
+            for value in sorted(_duplicate_values(peers, key)):
+                errors.append((f"amneziawg_secrets.instances.{index}.peers", f"duplicate {key}: {value}"))
+        for peer_index, peer in enumerate(peers):
+            if not isinstance(peer, dict):
+                continue
+            try:
+                ipaddress.ip_network(peer.get("allowed_ips", ""), strict=False)
+            except ValueError:
+                errors.append((f"amneziawg_secrets.instances.{index}.peers.{peer_index}.allowed_ips", "must be a valid IPv4 or IPv6 CIDR"))
+
+    for path, clients in [("hysteria.clients", (doc.get("hysteria") or {}).get("clients") or [])]:
+        for value in sorted(_duplicate_values(clients, "name")):
+            errors.append((path, f"duplicate name: {value}"))
+    return errors
 
 
 def main() -> int:
@@ -98,6 +172,13 @@ def main() -> int:
         for e in errors:
             loc = ".".join(str(p) for p in e.absolute_path) or "<root>"
             print(f"  {loc}: {e.message}", file=sys.stderr)
+        return 1
+
+    semantic_errors = _semantic_errors(doc)
+    if semantic_errors:
+        print(f"validate-secrets: {len(semantic_errors)} semantic violation(s) in {target}:", file=sys.stderr)
+        for loc, message in semantic_errors:
+            print(f"  {loc}: {message}", file=sys.stderr)
         return 1
 
     if args.strict:
