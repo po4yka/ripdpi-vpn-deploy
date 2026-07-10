@@ -89,7 +89,7 @@ ansible/roles/{amneziawg,backup,baseline,cdn-front,
               dns-morph-bridge,firewall,geodata,honeypot,
               hysteria,hysteria-realm,monitoring,naive,
               nginx-xhttp,policy-ratelimit,split-hop-egress,
-              subscription-host,warp-outbound,watchdog,xray}/  — 19 roles
+              subscription-host,warp-outbound,watchdog,xray}/  — 23 roles
 terraform/                                           — provider-root strategy
 terraform/providers/{hetzner,upcloud,vultr}/         — per-provider quirks
 terraform/shared/                                    — cloud-init contract

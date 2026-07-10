@@ -95,4 +95,4 @@ provider-specific outputs (`server_ipv4`, `server_ipv6`, `admin_user`,
   v1 ships only `subscription-host` as a static-payload nginx vhost.
 - P3 reachability layer automation. By design — the reachability layer is
   network-specific and operator-judged, not deterministically deployable.
-- molecule / per-role tests. v2.
+- Per-role Molecule coverage for supported roles; selected red-path scenarios run in CI.
