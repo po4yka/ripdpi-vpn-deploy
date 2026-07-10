@@ -136,8 +136,10 @@ init:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) init
 
 validate:
-	terraform -chdir=$(TF_ROOT) fmt -check -recursive
-	terraform -chdir=$(TF_ROOT) validate
+	@for provider in upcloud hetzner vultr; do \
+	  terraform -chdir=terraform/providers/$$provider fmt -check -recursive; \
+	  terraform -chdir=terraform/providers/$$provider validate; \
+	done
 	gitleaks detect --source . --redact --no-banner
 	cd $(ANSIBLE_DIR) && ansible-lint
 	cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check
@@ -288,8 +290,8 @@ tf-test:
 # the equivalent jobs on .github/workflows/ci.yml so a passing local
 # run means a passing remote ci-fast (modulo molecule which is too slow
 # for this gate — run `make molecule-test ROLE=<name>` for that). The
-# ansible-syntax step is skipped (with a warning) on boxes without
-# ansible-playbook on PATH; CI always has it.
+# Missing local tooling is a failure, matching CI rather than producing a
+# misleading green gate.
 ci-fast:
 	@echo "== render check =="; python3 scripts/check-templates-render.py
 	@echo "== secrets coverage =="; python3 scripts/check-secrets-coverage.py
@@ -297,21 +299,13 @@ ci-fast:
 	@echo "== snapshot diff =="; python3 scripts/render-snapshots.py
 	@echo "== schema validation =="; python3 scripts/validate-secrets.py
 	@echo "== bundle contract =="; python3 scripts/validate-bundle.py
-	@if command -v ansible-playbook >/dev/null 2>&1; then \
-	  echo "== ansible syntax =="; \
-	  cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,'; \
-	else \
-	  echo "== ansible syntax == (skipped: ansible-playbook not on PATH)"; \
-	fi
+	@command -v ansible-playbook >/dev/null 2>&1 || { echo "missing: ansible-playbook" >&2; exit 1; }
+	@echo "== ansible syntax =="; cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,'
 	@echo "== unit tests =="; python3 -m pytest tests/unit/ -q
 	@echo "== bats shell tests =="; bats tests/bats/
-	@if command -v cargo >/dev/null 2>&1; then \
-	  echo "== vpnd clippy =="; cd vpnd && cargo clippy --release --all-targets -- -D warnings; \
-	  echo "== vpnd tests =="; cargo test --release; \
-	else \
-	  echo "== vpnd clippy == (skipped: cargo not on PATH)"; \
-	  echo "== vpnd tests == (skipped: cargo not on PATH)"; \
-	fi
+	@command -v cargo >/dev/null 2>&1 || { echo "missing: cargo" >&2; exit 1; }
+	@echo "== vpnd clippy =="; cd vpnd && cargo clippy --release --all-targets -- -D warnings
+	@echo "== vpnd tests =="; cd vpnd && cargo test --release
 	@echo "ci-fast: OK"
 
 # Union gate: everything in validate + everything in ci-fast.
