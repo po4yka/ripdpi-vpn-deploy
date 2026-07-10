@@ -17,9 +17,9 @@ the config template + adding a cohort file.
 
 **Scoped nft table, not global** — PostUp adds a table named
 `split_hop_egress` and PostDown deletes it. This does not preempt the
-`firewall` role's global ruleset; the tables compose. The firewall
-role still owns the input filter; this role only adds postrouting NAT
-for forwarded traffic.
+`firewall` role's owned tables; the tables compose. The firewall role
+still owns its input filter and NAT tables; this role only adds
+postrouting NAT for forwarded traffic.
 
 ## What's done well
 

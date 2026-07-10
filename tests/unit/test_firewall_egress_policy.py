@@ -93,6 +93,15 @@ def test_public_listener_contract_drives_nftables_rules():
     assert "udp dport 20000-40000 accept" in rendered
 
 
+def test_firewall_replaces_only_its_owned_tables():
+    rendered = _render()
+
+    assert "flush ruleset" not in rendered
+    assert "destroy table inet filter" in rendered
+    assert "destroy table inet nat" in rendered
+    assert "destroy table inet split_hop_egress" not in rendered
+
+
 def test_awg_forwarding_is_default_drop_with_only_uplink_egress():
     vars_ = ctr.merge_render_vars()
     vars_["vpn"] = {**vars_["vpn"], "enable_amneziawg": True}
