@@ -94,17 +94,21 @@ jobs:
           CI_SOPS_AGE_KEY: ${{ secrets.CI_SOPS_AGE_KEY }}
           CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
 
+      - name: Set up Terraform
+        if: steps.gate.outputs.skip != 'true'
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4
+        with:
+          # Keep in sync with ci.yml and terraform/providers/*/versions.tf.
+          terraform_version: "1.15.2"
+
       - name: Set up tooling
         if: steps.gate.outputs.skip != 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pip jq age unzip
+          sudo apt-get install -y python3-pip jq age
           curl -fsSL "https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64" -o /tmp/sops
           echo "0d65660fbe785647ff4f1764d7f69edf598f79d6d79ebbef4a501909b6ff6b82  /tmp/sops" | sha256sum -c -
           sudo install -m 0755 /tmp/sops /usr/local/bin/sops
-          curl -fsSL "https://releases.hashicorp.com/terraform/1.9.5/terraform_1.9.5_linux_amd64.zip" -o /tmp/tf.zip
-          echo "9cf727b4d6bd2d4d2908f08bd282f9e4809d6c3071c3b8ebe53558bee6dc913b  /tmp/tf.zip" | sha256sum -c -
-          (cd /tmp && unzip -o tf.zip && sudo install -m 0755 terraform /usr/local/bin/terraform)
           pip3 install --user --require-hashes --no-deps -r requirements.txt
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
