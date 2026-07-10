@@ -21,8 +21,17 @@
       ARGS="--web.listen-address={{ monitoring.node_exporter_listen | default('127.0.0.1:9100') }} \
             --collector.systemd \
             --collector.processes \
+            --collector.textfile.directory={{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }} \
             --no-collector.wifi"
   notify: Restart node_exporter
+
+- name: Ensure node_exporter textfile collector directory
+  ansible.builtin.file:
+    path: "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
 
 - name: Ensure node_exporter enabled
   ansible.builtin.systemd_service:
