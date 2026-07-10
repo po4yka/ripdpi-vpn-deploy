@@ -8,7 +8,15 @@ driver:
   name: docker
 
 platforms:
-  - name: vpn-backup-debian13
+  - name: vpn-backup-local-debian13
+    image: geerlingguy/docker-debian13-ansible:latest
+    pre_build_image: true
+    privileged: true
+    command: /lib/systemd/systemd
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroupns_mode: host
+  - name: vpn-backup-remote-debian13
     image: geerlingguy/docker-debian13-ansible:latest
     pre_build_image: true
     privileged: true
@@ -23,8 +31,28 @@ provisioner:
     ANSIBLE_ROLES_PATH: ../../..
   inventory:
     host_vars:
-      vpn-backup-debian13:
+      vpn-backup-local-debian13:
         ansible_user: root
+        restic_repo_dir: /var/backups/vpn-restic
+        backup:
+          restic_password: molecule-stub-password
+          remote:
+            enabled: false
+      vpn-backup-remote-debian13:
+        ansible_user: root
+        restic_repo_dir: /var/backups/vpn-restic
+        backup_restore_drill_enabled: false
+        backup:
+          restic_password: molecule-stub-password
+          remote:
+            enabled: true
+            rclone_remote: offsite
+            rclone_path: /var/backups/vpn-restic-offsite
+            transfers: 1
+            bwlimit: "off"
+            rclone_config: |
+              [offsite]
+              type = local
 
 verifier:
   name: ansible

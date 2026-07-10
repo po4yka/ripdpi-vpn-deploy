@@ -27,4 +27,20 @@ restic -r "$REPO" forget \
   --keep-daily 7 --keep-weekly 4 --keep-monthly 6 \
   --prune
 
+# Fail the backup run if repository integrity is damaged or no recent
+# vpn-stack snapshot is available for restore.
+restic -r "$REPO" check
+latest_snapshot="$(restic -r "$REPO" snapshots --tag vpn-stack --latest 1 --json | python3 -c '
+import datetime as dt, json, sys
+snapshots = json.load(sys.stdin)
+if not snapshots:
+    raise SystemExit("no vpn-stack snapshot")
+time = dt.datetime.fromisoformat(snapshots[-1]["time"].replace("Z", "+00:00"))
+age = dt.datetime.now(dt.timezone.utc) - time.astimezone(dt.timezone.utc)
+if age > dt.timedelta(hours=36):
+    raise SystemExit(f"latest vpn-stack snapshot is stale: {age}")
+print(snapshots[-1]["short_id"])
+')"
+echo "verified recent vpn-stack snapshot ${latest_snapshot}"
+
 

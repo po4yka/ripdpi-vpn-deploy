@@ -93,17 +93,33 @@ restic snapshot" case.
 
 ## Backup verification (recurring task)
 
-The `backup` role runs a daily restic snapshot. Verify quarterly:
+The `backup` role runs a daily snapshot and a monthly non-destructive restore
+drill. The drill restores the exact latest `vpn-stack` snapshot into private
+systemd runtime storage, validates the baseline and enabled transport
+artifacts, removes the restored secrets, and only then updates its success
+marker. When remote sync is enabled, the drill opens that offsite repository
+directly and does not fall back to the local copy.
 
 ```bash
 ssh deploy@<vps>
-sudo restic -r /var/backups/vpn-restic --password-file /etc/restic/password snapshots
-sudo restic -r /var/backups/vpn-restic --password-file /etc/restic/password \
-    restore latest --target /tmp/restic-test --dry-run
+sudo systemctl list-timers vpn-backup-restore-drill.timer
+sudo systemctl start vpn-backup-restore-drill.service
+sudo python3 -m json.tool /var/lib/vpn-backup/restore-drill-last-success.json
+sudo test ! -e /run/vpn-backup-restore-drill
 ```
 
-If `--dry-run` errors, the backup is corrupt. Investigate before you
-need it.
+`systemctl start` is the synchronous restore-verification gate and returns
+nonzero on a missing or stale snapshot, repository/decryption failure,
+missing artifact, malformed restored Xray JSON, or cleanup failure. Inspect a
+failure without printing restored file contents:
+
+```bash
+sudo systemctl status vpn-backup-restore-drill.service
+sudo journalctl -u vpn-backup-restore-drill.service --since today
+```
+
+Do not treat an older marker as proof that the latest scheduled run passed;
+the marker intentionally preserves the last success when a later drill fails.
 
 ## Backup repository leak
 

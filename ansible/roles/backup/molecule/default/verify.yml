@@ -3,29 +3,123 @@
   hosts: all
   become: true
   tasks:
-    - name: restic installed
+    - name: Restic installed
       ansible.builtin.command:
         cmd: restic version
-      register: rv
       changed_when: false
 
-    - name: restic repo initialized
+    - name: Restic repo initialized
       ansible.builtin.stat:
         path: /var/backups/vpn-restic/config
-      register: rrep
-      failed_when: not rrep.stat.exists
+      register: restic_repo
+      failed_when: not restic_repo.stat.exists
 
-    - name: backup script renders without remote-sync block when disabled
+    - name: Backup scripts pass shell syntax checks
+      ansible.builtin.command:
+        cmd: "bash -n {{ item }}"
+      loop:
+        - /usr/local/sbin/vpn-backup.sh
+        - /usr/local/sbin/vpn-backup-restore-drill.sh
+      changed_when: false
+
+    - name: Backup script remote block matches host configuration
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          ! grep -q 'rclone sync' /usr/local/sbin/vpn-backup.sh
+          if {{ backup.remote.enabled | bool | ternary('true', 'false') }}; then
+            grep -q 'rclone sync' /usr/local/sbin/vpn-backup.sh
+          else
+            ! grep -q 'rclone sync' /usr/local/sbin/vpn-backup.sh
+          fi
         executable: /bin/bash
       changed_when: false
 
-    - name: timer enabled
+    - name: Daily backup timer enabled
       ansible.builtin.command:
         cmd: systemctl is-enabled vpn-backup.timer
-      register: t
+      register: backup_timer
       changed_when: false
-      failed_when: t.stdout != "enabled"
+      failed_when: backup_timer.stdout != "enabled"
+
+    - name: Restore drill timer state matches configuration
+      ansible.builtin.command:
+        cmd: systemctl is-enabled vpn-backup-restore-drill.timer
+      register: drill_timer
+      changed_when: false
+      failed_when: >-
+        (backup_restore_drill_enabled | bool and drill_timer.stdout != 'enabled') or
+        (not (backup_restore_drill_enabled | bool) and drill_timer.stdout != 'disabled')
+
+    - name: Hash live sentinel before backup and restore drill
+      ansible.builtin.command:
+        cmd: sha256sum /etc/vpn-watchdog.env
+      register: live_hash_before
+      changed_when: false
+
+    - name: Take and verify a real backup
+      ansible.builtin.command:
+        cmd: systemctl start vpn-backup.service
+      changed_when: false
+
+    - name: Run a real isolated restore drill
+      ansible.builtin.command:
+        cmd: systemctl start vpn-backup-restore-drill.service
+      changed_when: false
+
+    - name: Read restore drill success marker
+      ansible.builtin.slurp:
+        src: /var/lib/vpn-backup/restore-drill-last-success.json
+      register: marker_before_failure
+
+    - name: Parse restore drill success marker
+      ansible.builtin.set_fact:
+        marker_payload: "{{ marker_before_failure.content | b64decode | from_json }}"
+
+    - name: Restore drill marker describes the selected repository
+      ansible.builtin.assert:
+        that:
+          - marker_payload.version == 1
+          - marker_payload.repository_source == ('remote' if backup.remote.enabled else 'local')
+          - marker_payload.snapshot_id | length == 64
+          - marker_payload.snapshot_time | length > 0
+          - marker_payload.verified_at | length > 0
+
+    - name: Hash live sentinel after restore drill
+      ansible.builtin.command:
+        cmd: sha256sum /etc/vpn-watchdog.env
+      register: live_hash_after
+      changed_when: false
+      failed_when: live_hash_after.stdout != live_hash_before.stdout
+
+    - name: Check restore runtime directory was removed
+      ansible.builtin.stat:
+        path: /run/vpn-backup-restore-drill
+      register: drill_runtime
+      failed_when: drill_runtime.stat.exists
+
+    - name: Break remote repository and require the drill to fail closed
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          remote_config="/var/backups/vpn-restic-offsite/$(hostname)/config"
+          mv "$remote_config" "${remote_config}.disabled"
+          trap 'mv "${remote_config}.disabled" "$remote_config"' EXIT
+          if systemctl start vpn-backup-restore-drill.service; then
+            echo "restore drill unexpectedly succeeded with broken remote" >&2
+            exit 1
+          fi
+        executable: /bin/bash
+      when: backup.remote.enabled | bool
+      changed_when: false
+
+    - name: Read marker after failed remote drill
+      ansible.builtin.slurp:
+        src: /var/lib/vpn-backup/restore-drill-last-success.json
+      register: marker_after_failure
+      when: backup.remote.enabled | bool
+
+    - name: Failed remote drill preserved previous success marker
+      ansible.builtin.assert:
+        that:
+          - marker_after_failure.content == marker_before_failure.content
+      when: backup.remote.enabled | bool

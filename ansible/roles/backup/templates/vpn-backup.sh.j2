@@ -37,7 +37,7 @@ if not snapshots:
     raise SystemExit("no vpn-stack snapshot")
 time = dt.datetime.fromisoformat(snapshots[-1]["time"].replace("Z", "+00:00"))
 age = dt.datetime.now(dt.timezone.utc) - time.astimezone(dt.timezone.utc)
-if age > dt.timedelta(hours=36):
+if age > dt.timedelta(hours={{ backup_snapshot_max_age_hours | int }}):
     raise SystemExit(f"latest vpn-stack snapshot is stale: {age}")
 print(snapshots[-1]["short_id"])
 ')"

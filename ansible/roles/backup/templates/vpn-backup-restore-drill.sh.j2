@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# Managed by Ansible role `backup`. Restores into private runtime storage only.
+set -euo pipefail
+umask 077
+
+: "${RUNTIME_DIRECTORY:?systemd must provide RUNTIME_DIRECTORY}"
+: "${STATE_DIRECTORY:?systemd must provide STATE_DIRECTORY}"
+
+export RESTIC_PASSWORD_FILE=/etc/restic/password
+{% if backup.remote.enabled | default(false) %}
+export RCLONE_CONFIG=/etc/rclone/rclone.conf
+REPO="rclone:{{ backup.remote.rclone_remote }}:{{ backup.remote.rclone_path }}/$(hostname)"
+REPOSITORY_SOURCE="remote"
+{% else %}
+REPO="{{ restic_repo_dir }}"
+REPOSITORY_SOURCE="local"
+{% endif %}
+
+restore_target="${RUNTIME_DIRECTORY}/restore"
+snapshot_metadata="${RUNTIME_DIRECTORY}/snapshot.json"
+marker="${STATE_DIRECTORY}/restore-drill-last-success.json"
+marker_tmp="${STATE_DIRECTORY}/.restore-drill-last-success.json.$$"
+
+cleanup() {
+  local status=$?
+  rm -rf -- "$restore_target" || status=1
+  rm -f -- "$snapshot_metadata" "$marker_tmp" || status=1
+  exit "$status"
+}
+trap cleanup EXIT
+
+test ! -e "$restore_target"
+restic -r "$REPO" --no-cache snapshots --tag vpn-stack --latest 1 --json > "$snapshot_metadata"
+
+mapfile -t snapshot < <(python3 - "$snapshot_metadata" <<'PY'
+import datetime as dt
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    snapshots = json.load(handle)
+if not snapshots:
+    raise SystemExit("no vpn-stack snapshot")
+snapshot = snapshots[-1]
+snapshot_time = dt.datetime.fromisoformat(snapshot["time"].replace("Z", "+00:00"))
+age = dt.datetime.now(dt.timezone.utc) - snapshot_time.astimezone(dt.timezone.utc)
+if age > dt.timedelta(hours={{ backup_snapshot_max_age_hours | int }}):
+    raise SystemExit(f"latest vpn-stack snapshot is stale: {age}")
+print(snapshot["id"])
+print(snapshot["time"])
+PY
+)
+snapshot_id="${snapshot[0]:?snapshot id missing}"
+snapshot_time="${snapshot[1]:?snapshot time missing}"
+
+mkdir -p -- "$restore_target"
+restic -r "$REPO" --no-cache restore "$snapshot_id" --target "$restore_target"
+
+require_file() {
+  local relative_path="$1"
+  if [[ ! -s "$restore_target/$relative_path" ]]; then
+    echo "restore drill: required artifact missing or empty: $relative_path" >&2
+    return 1
+  fi
+}
+
+require_nonempty_directory() {
+  local relative_path="$1"
+  if [[ ! -d "$restore_target/$relative_path" ]] ||
+     ! find "$restore_target/$relative_path" -maxdepth 1 -type f -size +0c -print -quit | grep -q .; then
+    echo "restore drill: required artifact directory empty: $relative_path" >&2
+    return 1
+  fi
+}
+
+require_file "etc/nftables.conf"
+require_file "etc/ssh/sshd_config.d/20-ansible-hardening.conf"
+require_file "etc/sysctl.d/90-vpn.conf"
+require_nonempty_directory "etc/systemd/system"
+{% if vpn.enable_xray_reality | default(true) %}
+require_file "etc/xray/config.json"
+python3 -m json.tool "$restore_target/etc/xray/config.json" >/dev/null
+{% endif %}
+{% if vpn.enable_nginx_xhttp | default(true) %}
+require_file "etc/nginx/sites-available/vpn-xhttp.conf"
+require_file "etc/nginx/tls/{{ nginx_xhttp.server_name }}.fullchain.pem"
+require_file "etc/nginx/tls/{{ nginx_xhttp.server_name }}.key"
+{% if nginx_xhttp.fallback_enabled | default(false) and
+      (nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name)) != nginx_xhttp.server_name %}
+require_file "etc/nginx/tls/{{ nginx_xhttp.fallback_server_name }}.fullchain.pem"
+require_file "etc/nginx/tls/{{ nginx_xhttp.fallback_server_name }}.key"
+{% endif %}
+{% endif %}
+{% if vpn.enable_hysteria | default(false) %}
+require_file "etc/hysteria/config.yaml"
+require_file "etc/hysteria/server.fullchain.pem"
+require_file "etc/hysteria/server.key"
+{% endif %}
+{% if vpn.enable_amneziawg | default(false) %}
+{% if amneziawg_secrets.instances | default([]) | length > 0 %}
+{% for instance in amneziawg_secrets.instances %}
+require_file "etc/amnezia/{{ instance.name }}.conf"
+{% endfor %}
+{% else %}
+require_file "etc/amnezia/{{ amneziawg.interface }}.conf"
+{% endif %}
+{% endif %}
+
+# Restored files contain live credentials. Remove and verify cleanup before
+# publishing any success signal.
+rm -rf -- "$restore_target"
+test ! -e "$restore_target"
+rm -f -- "$snapshot_metadata"
+
+python3 - "$marker_tmp" "$REPOSITORY_SOURCE" "$snapshot_id" "$snapshot_time" <<'PY'
+import datetime as dt
+import json
+import os
+import sys
+
+path, repository_source, snapshot_id, snapshot_time = sys.argv[1:]
+payload = {
+    "version": 1,
+    "repository_source": repository_source,
+    "snapshot_id": snapshot_id,
+    "snapshot_time": snapshot_time,
+    "verified_at": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
+}
+with open(path, "x", encoding="utf-8") as handle:
+    json.dump(payload, handle, sort_keys=True)
+    handle.write("\n")
+os.chmod(path, 0o600)
+PY
+mv -f -- "$marker_tmp" "$marker"
+echo "restore drill: verified snapshot ${snapshot_id:0:8} from ${REPOSITORY_SOURCE} repository"
