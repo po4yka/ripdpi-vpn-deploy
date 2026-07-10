@@ -85,12 +85,12 @@
       when: (security_controls | default({})).unattended_upgrades | default(false)
       tags: [baseline, security, updates]
 
+    - role: firewall
+      tags: [firewall, always]
+
     - role: intrusion_prevention
       when: (security_controls | default({})).fail2ban | default(false)
       tags: [security, intrusion-prevention]
-
-    - role: firewall
-      tags: [firewall, always]
 
     - role: geodata
       when: (vpn.enable_xray_reality | default(true)) and (vpn.enable_geodata | default(true)) and not (vpn_subscription_only | default(false))

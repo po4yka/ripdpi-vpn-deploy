@@ -20,10 +20,8 @@ rkn-block-checker==0.5.1
 # Test-only; installed from the hash-pinned lock in CI.
 pytest==9.1.1
 
-# Developer tooling — install via `make install-hooks`.
-# TODO: once pip-compile --generate-hashes has been run offline to regenerate
-# requirements.txt, the Makefile install-hooks target should switch to
-# `pip install -r requirements.txt` so pre-commit is hash-verified.
+# Developer tooling — installed by `make install-hooks` through the
+# hash-pinned requirements.txt lock.
 pre-commit
 
 # Optional experimental pyinfra read-only host audit pilot is intentionally not part of the default hash-pinned toolchain while pyinfra depends on vulnerable Paramiko releases. Install pyinfra separately only when running `make pyinfra-audit`.

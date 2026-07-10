@@ -1,0 +1,61 @@
+---
+# Profile: production-hardened family node.
+#
+# Transport surface matches vpn-device-full, but host hardening is stricter:
+# unattended security updates, Fail2Ban-backed SSH intrusion prevention,
+# tighter SSH session limits, and observation-mode egress counters.
+#
+# This profile deliberately avoids RESEARCH-tier roles; keep it in sync with
+# ansible/role-tiers.yml family_profiles.
+
+vpn:
+  enable_xray_reality: true
+  enable_nginx_xhttp: true
+  enable_naive: false
+  enable_hysteria: true
+  enable_amneziawg: true
+  enable_geodata: true
+  enable_monitoring: true
+  enable_watchdog: true
+  enable_backup: true
+  enable_subscription_host: false
+  enable_policy_ratelimit: false
+  enable_cdn_front: false
+  enable_honeypot: false
+  enable_warp_outbound: false
+  enable_dns_morph_bridge: false
+  enable_hysteria_realm: false
+  enable_split_hop_egress: false
+
+security_controls:
+  ssh_strict: true
+  ssh_allow_tcp_forwarding: false
+  ssh_prune_moduli: true
+  ssh_required_rsa_size: 3072
+  ssh_max_sessions: 1
+  ssh_max_startups: "5:30:10"
+  unattended_upgrades: true
+  automatic_reboot: false
+  fail2ban: true
+  crowdsec: false
+  proc_hidepid: false
+  aide: false
+  lynis: false
+  auditd: false
+
+package_updates:
+  enabled: true
+  install_apticron: false
+
+intrusion_prevention:
+  provider: fail2ban
+  sshd:
+    enabled: true
+    bantime: 1h
+    findtime: 10m
+    maxretry: 4
+
+# Observation-only egress counters. Use `strict` only for hosts whose outbound
+# needs have been measured; full transport nodes need broad upstream egress for
+# client traffic.
+firewall_egress_policy: logged
