@@ -1,5 +1,6 @@
 ---
 source: tests/completions_snapshot.rs
+assertion_line: 26
 expression: output
 ---
 _vpnd() {
@@ -1284,7 +1285,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__share)
-            opts="-e -p -y -h --qr --type --out --token --explain --env --provider --yes --json --root --help <CLIENT>"
+            opts="-e -p -y -h --qr --type --out --token-stdin --token-file --explain --env --provider --yes --json --root --help <CLIENT>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1298,7 +1299,7 @@ _vpnd() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --token)
+                --token-file)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;

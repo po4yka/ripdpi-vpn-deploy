@@ -1,5 +1,6 @@
 ---
 source: tests/completions_snapshot.rs
+assertion_line: 32
 expression: output
 ---
 #compdef vpnd
@@ -79,13 +80,14 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 '--type=[QR payload type]:TYPE:(singbox uri)' \
 '--out=[Output directory for generated artifacts (default\: ./share/<client>/)]:OUT:_files' \
-'--token=[Opaque subscription token from \`make issue-sub-token CLIENT=<c> --print-token-only\`. Required because subscription URLs are bearer secrets; client-name fallback is forbidden]:TOKEN:_default' \
+'(--token-stdin)--token-file=[Read the opaque subscription token from a 0600 file]:PATH:_files' \
 '-e+[Target environment]:ENV:_default' \
 '--env=[Target environment]:ENV:_default' \
 '-p+[Cloud provider Terraform root]:PROVIDER:_default' \
 '--provider=[Cloud provider Terraform root]:PROVIDER:_default' \
 '--root=[Override the vpn-deploy repo root (default\: discover from cwd)]:ROOT:_files' \
 '--qr[Also emit a QR code image]' \
+'(--token-file)--token-stdin[Read the opaque subscription token from stdin]' \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
