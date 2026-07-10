@@ -151,6 +151,15 @@
               udp*) in_list "$expected_udp" "$port" || in_ranges "$port" || echo "$proto $addr" ;;
             esac
           done
+
+          listeners="$(ss -H -lntu | awk '{ print $1 " " $5 }')"
+          for port in $expected_tcp; do
+            [[ "$port" == 22 ]] && continue
+            grep -Eq "^tcp.*(:|\])${port}$" <<< "$listeners" || echo "missing tcp ${port}"
+          done
+          for port in $expected_udp; do
+            grep -Eq "^udp.*(:|\])${port}$" <<< "$listeners" || echo "missing udp ${port}"
+          done
         executable: /bin/bash
       register: security_unexpected_public_listeners
       changed_when: false
