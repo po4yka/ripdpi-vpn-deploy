@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -11,6 +13,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHECK_SCRIPT = REPO_ROOT / "scripts" / "check-xray-breaking-changes.py"
+RELEASE_LINE = REPO_ROOT / "docs" / "XRAY-RELEASE-LINE.md"
 
 
 def _load_checker():
@@ -188,6 +191,124 @@ def _future_freedom_guard() -> dict:
         },
         "message": "Add an unconstrained first allow rule.",
     }
+
+
+def _pq_reality_hold_guard(checker) -> dict:
+    guards = checker.parse_guard_blocks(RELEASE_LINE.read_text())
+    return next(guard for guard in guards if guard["id"] == "pq-reality-hold")
+
+
+def _render_xray(checker, cohorts: list[dict] | None = None) -> dict:
+    variables = copy.deepcopy(checker.merge_render_vars())
+    variables["xray_fallback_port"] = 0
+    variables["xray"]["cohorts"] = cohorts or []
+    return json.loads(checker.render_template(checker.XRAY_TEMPLATE, variables))
+
+
+def _multi_cohorts() -> list[dict]:
+    return [
+        {
+            "name": "vision-shape",
+            "port": 443,
+            "flow_mode": "vision",
+            "finalmask": False,
+            "clients": ["phone", "watchdog"],
+        },
+        {
+            "name": "mux-shape",
+            "port": 2053,
+            "flow_mode": "mux",
+            "finalmask": False,
+            "clients": ["phone", "watchdog"],
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    "cohorts",
+    [None, _multi_cohorts()],
+)
+def test_pq_reality_hold_accepts_current_single_and_multi_cohort_renders(cohorts):
+    checker = _load_checker()
+    guard = _pq_reality_hold_guard(checker)
+    rendered = _render_xray(checker, cohorts)
+
+    assert guard["activation"] == "always"
+    assert checker.evaluate_guards(
+        [guard], "v26.3.27", {"rendered-xray": rendered}
+    ) == []
+
+
+@pytest.mark.parametrize("violation_count", [1, 2])
+def test_pq_reality_hold_reports_each_non_none_reality_inbound(violation_count):
+    checker = _load_checker()
+    guard = _pq_reality_hold_guard(checker)
+    rendered = _render_xray(checker, _multi_cohorts())
+    reality_inbounds = [
+        inbound
+        for inbound in rendered["inbounds"]
+        if inbound.get("streamSettings", {}).get("security") == "reality"
+    ]
+    for inbound in reality_inbounds[:violation_count]:
+        inbound["settings"]["decryption"] = "pq-enabled-test-value"
+
+    issues = checker.evaluate_guards(
+        [guard], "v26.3.27", {"rendered-xray": rendered}
+    )
+
+    assert len(issues) == violation_count
+    for inbound in reality_inbounds[:violation_count]:
+        assert f"tag {inbound['tag']!r}" in "\n".join(issues)
+
+
+def test_pq_reality_hold_ignores_non_reality_vless_and_unrelated_protocols():
+    checker = _load_checker()
+    guard = _pq_reality_hold_guard(checker)
+    rendered = _render_xray(checker)
+    rendered["inbounds"].extend(
+        [
+            {
+                "tag": "vless-xhttp-test",
+                "protocol": "vless",
+                "settings": {"decryption": "pq-enabled-test-value"},
+                "streamSettings": {"security": "none"},
+            },
+            {
+                "tag": "unrelated-test",
+                "protocol": "socks",
+                "settings": {"decryption": "pq-enabled-test-value"},
+                "streamSettings": {"security": "reality"},
+            },
+        ]
+    )
+
+    assert checker.evaluate_guards(
+        [guard], "v26.3.27", {"rendered-xray": rendered}
+    ) == []
+
+
+def test_malformed_pq_reality_hold_metadata_fails_closed():
+    checker = _load_checker()
+    release_line = """```yaml xray-ci-guards
+guards:
+  - id: pq-reality-hold
+    applies_from: v26.5.3
+    activation: operator-override
+    document: rendered-xray
+    select:
+      path: inbounds
+      where:
+        protocol: vless
+        streamSettings.security: reality
+    require:
+      path: settings.decryption
+      equals: none
+    message: Keep PQ-REALITY on HOLD.
+```
+"""
+
+    with pytest.raises(checker.GuardDefinitionError, match="unsupported activation"):
+        checker.parse_guard_blocks(release_line)
 
 
 def test_versions_are_compared_numerically():

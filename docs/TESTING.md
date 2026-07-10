@@ -18,6 +18,7 @@ real VPS. This doc enumerates each layer and where coverage gaps exist
 | **Ansible role: intrusion_prevention** | ansible-lint | render check | **molecule** | opt-in Fail2Ban sshd jail; verifies nftables action config, ignoreip merge with `allowed_ssh_cidrs`, and service health. In `site.yml` it can run before firewall; firewall still owns the durable nftables table and ban sets. |
 | **Ansible role: firewall** | ansible-lint | render check | **molecule** | tests nftables.conf parse + presence of expected ports. |
 | **Ansible role: xray** | ansible-lint | render check (JSON validity) | **molecule** (template-only, stub binary) | tests config.json shape, systemd unit, symlink rollback. |
+| **PQ-REALITY adoption policy** | `scripts/check-xray-breaking-changes.py` (pre-commit + CI + `make ci-fast`) | every rendered VLESS+REALITY inbound must retain `settings.decryption: "none"` | n/a while phase is HOLD | Unit tests cover single/multi-cohort renders, every violating inbound, selector scope, and fail-closed guard metadata. |
 | **Ansible role: nginx-xhttp** | ansible-lint | render check (`nginx -t`) | **molecule** (idempotence + verify) | self-signed cert generated in pre_tasks; verifies no Cloudflare-specific directives leaked into RU baseline. |
 | **Ansible role: cdn-front** | ansible-lint | render check (`nginx -t`) | **molecule** | opt-in tactical Cloudflare-fronted XHTTP role; not part of the RU baseline or required CI molecule matrix. |
 | **Ansible role: hysteria** | ansible-lint | render check | **molecule** (template-only, stub binary) | verifies clients render + Salamander disabled by default. |
@@ -96,7 +97,7 @@ the discipline contract and how to add a new stub.
 
 | Operator step | Tests that protect it |
 |---|---|
-| `git commit` (local) | pre-commit hooks: gitleaks, terraform fmt, ansible-lint, yamllint, **shellcheck**, **secrets-coverage**, **templates-render**, **placeholder-scan** |
+| `git commit` (local) | pre-commit hooks: gitleaks, terraform fmt, ansible-lint, yamllint, **shellcheck**, **secrets-coverage**, **templates-render**, **Xray release/PQ-REALITY guards**, **placeholder-scan** |
 | `git push` (PR) | CI matrix: terraform fmt+validate (3 providers), terraform test (3 providers), cloud-init schema, ansible-lint + syntax, required molecule scenarios for baseline/firewall/xray/hysteria/nginx-xhttp/watchdog/monitoring/backup/subscription-host plus watchdog failure, shellcheck, secrets-coverage, templates-render, yamllint, gitleaks, unit tests (157 pytest + 123 Rust + 29 bats), Conftest TF policy (3 providers), Trivy image scan, snapshot diff, secrets schema; reproducible-build covers xray + hysteria + RealiTLScanner sha256. |
 | PR labeled `ci-real-deploy` | **real-vps-deploy** workflow: provisions an ephemeral UpCloud VPS, runs site.yml + verify, destroys — closest approximation to production in CI. See `docs/CI-REAL-DEPLOY.md`. |
 | `make validate` (operator) | terraform fmt + validate + gitleaks + ansible-lint + ansible syntax-check |

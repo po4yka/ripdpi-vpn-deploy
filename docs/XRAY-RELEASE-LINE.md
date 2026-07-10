@@ -19,7 +19,7 @@ crossing.
   dynamic Chrome UA by default, replacing the static `Go-http-client`
   string. No config change required.
 
-## v26.3.27 — ~2026-03-27 (current Latest as of 2026-05-10)
+## v26.3.27 — ~2026-03-27 (current Latest as of 2026-07-10)
 
 - **REALITY auto-probe defence** improvements.
 - **ECH full mode** — `echForceQuery` default changed to `"full"`.
@@ -34,6 +34,10 @@ crossing.
 - New `trustedXForwardedFor` sockopt for XHTTP/WS inbounds. The
   `vless-xhttp-localhost` inbound in this repo's xray config template
   uses it.
+- uTLS gained the browser-facing `X25519MLKEM768` key share. This
+  updates the outer TLS fingerprint and is distinct from VLESS
+  Encryption (PQE), which operates inside VLESS and first appears on
+  the later Pre-release line.
 
 ## v26.4.x — Pre-release as of 2026-04-30
 
@@ -59,10 +63,24 @@ crossing.
   behaviour. The guard activates this requirement when the pin reaches
   v26.5.3.
 - ICMP tunnel transport added.
-- **Post-Quantum Encryption (PQE)** for VLESS — pre-release, fingerprint
-  considerations apply (larger `key_share` extension makes the
-  ClientHello distinct from typical browser traffic until Chrome's
-  ML-KEM rollout normalises in RU traffic).
+- **VLESS Encryption (PQE)** — an ML-KEM-768 + X25519 VLESS encryption
+  layer with its own server/client settings. It is not the uTLS
+  `X25519MLKEM768` ClientHello key share noted under v26.3.27. Adoption
+  remains on HOLD under `PQ-REALITY-ADOPTION.md`.
+
+## v26.5.9 — Pre-release as of 2026-05-09
+
+- Continues the VLESS Encryption (PQE) release line introduced in
+  v26.5.3. It does not change this repository's HOLD decision.
+
+## v26.6.1, v26.6.22, v26.6.27 — Pre-release as of 2026-07-10
+
+- These tags remain marked Pre-release upstream. v26.6.27 updates the
+  cryptographic dependency that supplies ML-KEM, but no stable release
+  or supported-client transition has occurred.
+- Production remains pinned to the GitHub-tagged Latest release. See
+  `PQ-REALITY-ADOPTION.md` for the separate STAGING and PRODUCTION
+  eligibility gates.
 
 The fenced registry below is the machine-readable source for CI. `always`
 rules apply before an upgrade when the migration is backwards-compatible;
@@ -94,6 +112,19 @@ guards:
       equals:
         action: allow
     message: Add an unconstrained first allow rule to every Freedom outbound before upgrading Xray-core.
+  - id: pq-reality-hold
+    applies_from: v26.5.3
+    activation: always
+    document: rendered-xray
+    select:
+      path: inbounds
+      where:
+        protocol: vless
+        streamSettings.security: reality
+    require:
+      path: settings.decryption
+      equals: none
+    message: Keep VLESS Encryption over REALITY on HOLD; see docs/PQ-REALITY-ADOPTION.md.
 ```
 
 ## Production rollout policy
@@ -108,6 +139,8 @@ guards:
 5. Keep the previous binary at `/opt/xray/bin/xray.prev` for
    single-flag rollback (`make rollback-xray
    ROLLBACK_XRAY_VERSION=vX.Y.Z`).
+
+VLESS Encryption over REALITY has additional client-compatibility and evidence gates. The general Xray rollout steps above do not override the HOLD decision in `PQ-REALITY-ADOPTION.md`.
 
 ## Build-from-source path
 

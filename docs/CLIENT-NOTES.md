@@ -4,6 +4,12 @@ The server stack is only one half of the story. These items are
 client-side, but the operator distributing clients should know about
 them because a vulnerable client undoes the server's protections.
 
+## PQ-REALITY is on HOLD
+
+The canonical capability is VLESS Encryption (PQE) over REALITY. It is distinct from the browser-facing `X25519MLKEM768` key share in uTLS. The current `make emit-singbox`, `make emit-bundle`, and VLESS URI paths remain classical: they do not emit Xray's VLESS Encryption setting and must not advertise PQE compatibility.
+
+Do not pair these artifacts with a PQE-enabled server inbound. Server-only enablement would make the supported client output incompatible. `docs/PQ-REALITY-ADOPTION.md` defines the machine-enforced HOLD phase and the evidence required before a future server/client implementation can enter STAGING.
+
 ## Strict dual-stack kill-switch bundles
 
 `make emit-singbox` now emits the supported unified IPv4/IPv6 TUN
