@@ -336,3 +336,13 @@ jobs:
         env:
           PY_COLORS: "1"
           ANSIBLE_FORCE_COLOR: "1"
+
+  required:
+    name: required checks
+    if: always()
+    needs: [gitleaks, terraform, cloud-init, ansible, molecule, shellcheck, secrets-coverage, templates-render, yaml, unit-tests, bats-test, snapshot, validate-schema, tf-test, vpnd-test, vpnd-clippy, molecule-failure-scenarios]
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: jq -e 'all(.[]; . == "success")' <<< "$RESULTS"
