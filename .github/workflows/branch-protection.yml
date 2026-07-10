@@ -38,6 +38,7 @@ jobs:
           # Required status checks must match exactly the job names in
           # .github/workflows/ci.yml + codeql.yml.
           CONTEXTS=$(jq -nc '[
+            "required checks",
             "gitleaks",
             "terraform fmt + validate (upcloud)",
             "terraform fmt + validate (hetzner)",
