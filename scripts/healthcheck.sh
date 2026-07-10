@@ -10,9 +10,8 @@ set -euo pipefail
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 
-IP="$(terraform -chdir="$TF_DIR" output -raw server_ipv4)"
+IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
 
 echo "== TCP/443 handshake to ${IP} =="
 if openssl s_client -connect "${IP}:443" -servername "${SNI_TARGET:-www.cloudflare.com}" -tls1_3 < /dev/null 2>/dev/null \

@@ -8,9 +8,7 @@ be variable-driven, so each provider gets its own root under
 `admin_user`, `server_hostname`. `scripts/render-inventory.sh` is therefore
 provider-neutral.
 
-**Local state by default** — we don't trust remote state with VPN
-infrastructure. Backed up via `make backup-state` (age-encrypted).
-Lose state → re-import (`docs/RUNBOOK-restore.md`).
+**Local state per provider and environment** — we don't trust remote state with VPN infrastructure. `ENV=prod` deliberately remains Terraform's legacy `default` workspace; every other `ENV` maps to its own same-named workspace. Initialize a new environment with `make PROVIDER=<provider> ENV=<env> init` before any plan, apply, or output. State is backed up via `make backup-state` (age-encrypted). Lose state → re-import (`docs/RUNBOOK-incident.md`).
 
 **No `local-exec` / `remote-exec`** — Terraform stays declarative.
 cloud-init owns first-boot bootstrap; Ansible owns runtime state.
@@ -42,3 +40,4 @@ operators skip it; blue-green operators turn it on.
 - **`tf-test`** uses `mock_provider`** — these tests verify the *shape*
   of plans, not that the cloud provider behaves correctly. Real-deploy
   validation is separate (`docs/CI-REAL-DEPLOY.md`).
+- **Raw Terraform bypasses environment selection** — operator paths must use `scripts/terraform-env.sh` (or the Makefile / `vpnd` wrappers), never direct `terraform output`, `plan`, or `apply`.

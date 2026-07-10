@@ -103,9 +103,8 @@ count_reachable() {
   while IFS= read -r pair; do
     [[ -z "$pair" ]] && continue
     local prov="${pair%:*}"
-    local tf="${REPO_ROOT}/terraform/providers/${prov}"
     local ip
-    ip="$(terraform -chdir="$tf" output -raw server_ipv4 2>/dev/null || true)"
+    ip="$(PROVIDER="$prov" ENV="${pair#*:}" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4 2>/dev/null || true)"
     if [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] \
        && run_timeout 5 bash -c "</dev/tcp/$ip/443" 2>/dev/null; then
       ok=$((ok+1))

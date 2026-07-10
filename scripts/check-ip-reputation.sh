@@ -32,8 +32,7 @@ PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 
 if [[ -z "${IP:-}" ]]; then
-  TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
-  IP="$(terraform -chdir="$TF_DIR" output -raw server_ipv4 2>/dev/null || true)"
+  IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4 2>/dev/null || true)"
 fi
 if [[ -z "${IP:-}" ]]; then
   echo "no IP available (terraform output missing? export IP=… to override)" >&2

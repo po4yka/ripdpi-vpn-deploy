@@ -48,7 +48,7 @@ TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 
 blue_ip=""
 if [[ -d "$TF_DIR" ]]; then
-  blue_ip="$(terraform -chdir="$TF_DIR" output -raw server_ipv4 2>/dev/null || true)"
+  blue_ip="$(PROVIDER="$PROVIDER" ENV="$BLUE_ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4 2>/dev/null || true)"
 fi
 if ! [[ "$blue_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "warm-spare: blue IP not available (provider=$PROVIDER env=$BLUE_ENV)" >&2

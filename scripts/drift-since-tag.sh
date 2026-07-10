@@ -59,7 +59,7 @@ else
   echo
   echo "[2/3] Terraform plan (no apply, --refresh-only):"
   if [[ -d "$TF_DIR" ]]; then
-    terraform -chdir="$TF_DIR" plan \
+    env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" plan \
       -refresh-only \
       -var-file="environments/${ENV}.tfvars" \
       -no-color 2>&1 | sed 's/^/  /' || echo "  (terraform plan failed — inspect manually)"

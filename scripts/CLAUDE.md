@@ -17,6 +17,8 @@ Never re-implement decryption.
 `audit-log.sh append-best-effort` after a successful run. The `--no-audit`
 flag exists for testing but is undocumented.
 
+**Terraform is workspace-routed centrally** — scripts call `scripts/terraform-env.sh`, which maps `PROVIDER` + `ENV` to the correct local state workspace. `prod` intentionally selects Terraform's legacy `default` workspace; new environments must be initialized through `make ... init`.
+
 ## What's done well
 
 - **`set -euo pipefail` everywhere** — fail-loud is the default.
@@ -42,6 +44,7 @@ flag exists for testing but is undocumented.
 - **Python scripts must run under the venv-less system python3** — operator
   workstations don't all have uv/poetry. Use stdlib + the pinned deps in
   `requirements.in`. Don't import `requests` (use `urllib.request`).
+- **Never run raw Terraform from an operator script** — it silently uses the active workspace. Set `PROVIDER` and `ENV` on `terraform-env.sh` instead.
 
 ## Probe scripts (`probe-*.sh`)
 

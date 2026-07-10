@@ -11,7 +11,6 @@ set -euo pipefail
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 SECRETS_FILE="${SECRETS_FILE:-/tmp/vpn-${ENV}.secrets.yaml}"
 
 for tool in terraform ssh ansible ansible-playbook diff jq python3; do
@@ -28,9 +27,9 @@ if [[ ! -f "$SECRETS_FILE" ]]; then
   exit 1
 fi
 
-IP="$(terraform -chdir="$TF_DIR" output -raw server_ipv4)"
-USER="$(terraform -chdir="$TF_DIR" output -raw admin_user)"
-HOSTNAME="$(terraform -chdir="$TF_DIR" output -raw server_hostname)"
+IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
+USER="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user)"
+HOSTNAME="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_hostname)"
 
 WORK="$(mktemp -d -t vpn-diff.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT

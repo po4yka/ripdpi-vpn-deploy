@@ -50,8 +50,8 @@ for pair in "${host_pairs[@]}"; do
 
   ip=""; admin=""
   if [[ -d "$tf_dir" ]]; then
-    ip="$(terraform -chdir="$tf_dir" output -raw server_ipv4 2>/dev/null || true)"
-    admin="$(terraform -chdir="$tf_dir" output -raw admin_user 2>/dev/null || echo admin)"
+    ip="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4 2>/dev/null || true)"
+    admin="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user 2>/dev/null || echo admin)"
   fi
   # Some terraform versions emit "Warning: No outputs found" on stdout even
   # when output -raw missed — only proceed if we got a real dotted-quad.

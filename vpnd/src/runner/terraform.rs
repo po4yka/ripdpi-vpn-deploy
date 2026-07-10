@@ -22,18 +22,19 @@ fn fake_ctx() -> Context {
 }
 
 pub fn init(ctx: &Context) -> Cmd {
-    Cmd::new("terraform")
-        .arg("-chdir")
-        .arg(ctx.tf_root.to_string_lossy().to_string())
+    Cmd::new(ctx.root.join("scripts/terraform-env.sh").to_string_lossy().to_string())
+        .env("PROVIDER", &ctx.provider)
+        .env("ENV", &ctx.env)
         .arg("init")
-        .describe(format!("terraform init in {}", ctx.tf_root.display()))
+        .describe(format!("terraform init for {}/{}", ctx.provider, ctx.env))
 }
 
 pub fn plan(ctx: &Context) -> Cmd {
     let tfvars = format!("environments/{}.tfvars", ctx.env);
     let tfplan = format!("{}.tfplan", ctx.env);
-    Cmd::new("terraform")
-        .arg(format!("-chdir={}", ctx.tf_root.display()))
+    Cmd::new(ctx.root.join("scripts/terraform-env.sh").to_string_lossy().to_string())
+        .env("PROVIDER", &ctx.provider)
+        .env("ENV", &ctx.env)
         .arg("plan")
         .arg(format!("-var-file={}", tfvars))
         .arg(format!("-out={}", tfplan))
@@ -42,16 +43,18 @@ pub fn plan(ctx: &Context) -> Cmd {
 
 pub fn apply(ctx: &Context) -> Cmd {
     let tfplan = format!("{}.tfplan", ctx.env);
-    Cmd::new("terraform")
-        .arg(format!("-chdir={}", ctx.tf_root.display()))
+    Cmd::new(ctx.root.join("scripts/terraform-env.sh").to_string_lossy().to_string())
+        .env("PROVIDER", &ctx.provider)
+        .env("ENV", &ctx.env)
         .arg("apply")
         .arg(tfplan.clone())
         .describe(format!("terraform apply {}", tfplan))
 }
 
 pub fn output(ctx: &Context) -> Cmd {
-    Cmd::new("terraform")
-        .arg(format!("-chdir={}", ctx.tf_root.display()))
+    Cmd::new(ctx.root.join("scripts/terraform-env.sh").to_string_lossy().to_string())
+        .env("PROVIDER", &ctx.provider)
+        .env("ENV", &ctx.env)
         .arg("output")
         .arg("-json")
         .describe("terraform output -json")
@@ -62,10 +65,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn init_program_is_terraform() {
+    fn init_uses_environment_wrapper() {
         let ctx = fake_ctx();
         let s = init(&ctx).explain();
-        assert!(s.contains("terraform"), "program must be terraform, got: {s}");
+        assert!(s.contains("scripts/terraform-env.sh"), "program must be wrapper, got: {s}");
+        assert!(s.contains("PROVIDER=upcloud"), "must pass provider, got: {s}");
+        assert!(s.contains("ENV=prod"), "must pass environment, got: {s}");
     }
 
     #[test]
@@ -104,7 +109,7 @@ mod tests {
     }
 
     #[test]
-    fn all_cmds_contain_chdir_to_tf_root() {
+    fn all_cmds_use_environment_wrapper() {
         let ctx = fake_ctx();
         for (name, s) in [
             ("plan", plan(&ctx).explain()),
@@ -112,8 +117,8 @@ mod tests {
             ("output", output(&ctx).explain()),
         ] {
             assert!(
-                s.contains("terraform/providers/upcloud"),
-                "{name}: must contain tf_root in chdir, got: {s}"
+                s.contains("scripts/terraform-env.sh"),
+                "{name}: must use workspace wrapper, got: {s}"
             );
         }
     }

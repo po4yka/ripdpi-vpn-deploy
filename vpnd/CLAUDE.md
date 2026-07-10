@@ -61,5 +61,6 @@ Pass `--token <tok>` (from `make issue-sub-token`) to use an opaque subscription
   every time. Subcommands check `secrets_file.is_file()` before triggering it.
 - **Make targets carry state via env** — `ENV` and `PROVIDER` must be passed on
   every invocation; `make::target()` does this. Don't bypass it.
+- **Terraform must use the workspace wrapper** — runner builders call `scripts/terraform-env.sh` with `PROVIDER` and `ENV`; do not construct raw Terraform commands, or non-production environments can select the wrong local state.
 - **`--explain` shows env + cwd + argv but cannot show what's inside the
   decrypted secrets file** — that's by design; the file is gated by SOPS.

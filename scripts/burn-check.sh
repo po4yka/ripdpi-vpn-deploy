@@ -39,7 +39,6 @@ set -euo pipefail
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 FAIL_THRESHOLD="${FAIL_THRESHOLD:-2}"
 DEFAULT_NODES="ru1.node.check-host.net,ru2.node.check-host.net,ru4.node.check-host.net,de1.node.check-host.net"
 NODES="${NODES:-$DEFAULT_NODES}"
@@ -54,7 +53,7 @@ for tool in curl jq terraform; do
   command -v "$tool" >/dev/null 2>&1 || { echo "missing: $tool" >&2; exit 1; }
 done
 
-IP="$(terraform -chdir="$TF_DIR" output -raw server_ipv4)"
+IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
 
 # check-host.net rest API: GET /check-tcp?host=<ip>:<port>&node=<n1>&node=<n2>…
 # returns a request_id; results are polled at /check-result/<request_id>.

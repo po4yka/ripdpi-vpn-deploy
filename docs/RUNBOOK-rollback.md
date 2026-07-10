@@ -78,7 +78,7 @@ ENV=green make plan apply inventory wait dry-run deploy verify
 #    can fail over to green's URI on next reconnect.
 
 # 5. Destroy blue:
-ENV=prod   terraform -chdir=terraform/providers/upcloud destroy
+PROVIDER=upcloud ENV=prod make destroy
 # (You'll need to remove `prevent_destroy = true` first — by design.)
 ```
 

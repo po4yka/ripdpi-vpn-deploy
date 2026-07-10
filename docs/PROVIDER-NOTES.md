@@ -104,7 +104,7 @@ After the zone is picked, validate the actual ASN that UpCloud assigns
 your VPS prefix:
 
 ```bash
-make probe-asn HOST=$(terraform -chdir=terraform/providers/upcloud output -raw server_ipv4)
+make probe-asn HOST=$(PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh output -raw server_ipv4)
 ```
 
 If the returned ASN is in the "Avoid" tier from the table at the top of

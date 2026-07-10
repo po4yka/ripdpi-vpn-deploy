@@ -71,7 +71,7 @@ profile_extra_vars() {
 # ---------------------------------------------------------------------------
 # Resolve the exit IP once — it does not change across profile sweeps.
 # ---------------------------------------------------------------------------
-EXIT_IP="$(terraform -chdir="${REPO_ROOT}/terraform/providers/${PROVIDER}" output -raw server_ipv4)"
+EXIT_IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
 [[ -n "$EXIT_IP" ]] || { echo "could not resolve server_ipv4 from terraform" >&2; exit 1; }
 echo "exit-ip: $EXIT_IP"
 

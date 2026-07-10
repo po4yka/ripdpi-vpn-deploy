@@ -57,7 +57,7 @@ Bumping the pin = edit both and regenerate the hash-locked
 ```bash
 # Anchor the report by the VPS's public IP. The baseline is stored at
 # ~/.local/state/vpn-deploy/rkn-baseline/<exit-ip>/.
-scripts/run-rkn-block-checker.sh "$(terraform -chdir=terraform/providers/upcloud output -raw server_ipv4)"
+scripts/run-rkn-block-checker.sh "$(PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh output -raw server_ipv4)"
 
 # Run via a bypass channel (sing-box exposing a SOCKS5 listener at
 # 127.0.0.1:10808 — adjust to whatever your local client exposes).

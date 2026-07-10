@@ -203,7 +203,6 @@ for i in "${!host_pairs[@]}"; do
   pair="${host_pairs[$i]}"
   prov="${pair%:*}"
   env_name="${pair#*:}"
-  tf_dir="${REPO_ROOT}/terraform/providers/${prov}"
 
   # Pick the SOPS file for this host
   if [[ -n "${SOPS_FILES:-}" ]]; then
@@ -254,7 +253,7 @@ for i in "${!host_pairs[@]}"; do
       '.amneziawg_secrets.peers[]? | select(.name == $name)' "$secrets_tmp")"
 
     if [[ -n "$peer_json" && "$peer_json" != "null" ]]; then
-      server_ip="$(terraform -chdir="$tf_dir" output -raw server_ipv4)"
+      server_ip="$(PROVIDER="$prov" ENV="$env_name" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
 
       # Derive server public key
       server_priv="$(jq -r '.amneziawg_secrets.server_private_key // empty' "$secrets_tmp")"

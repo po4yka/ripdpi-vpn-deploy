@@ -68,8 +68,7 @@ around.
 
 ## State loss
 
-Terraform's local state is the only record of which UpCloud resources
-belong to this deployment. Lose it and:
+Terraform's local state is the only record of which provider resources belong to this deployment. `ENV=prod` uses the legacy `default` workspace at `terraform/providers/<provider>/terraform.tfstate`; any other environment uses `terraform/providers/<provider>/terraform.tfstate.d/<ENV>/terraform.tfstate`. Lose the relevant state file and:
 
 - `terraform plan` shows everything as "needs creating".
 - `terraform destroy` does nothing (no resources to destroy).
@@ -86,14 +85,15 @@ age -d -i ~/.config/vpn-provision/age.key \
     "$LATEST"
 chmod 0600 terraform/providers/upcloud/terraform.tfstate
 
-terraform -chdir=terraform/providers/upcloud plan
+PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh plan
 # Expect: no changes
 ```
 
 Recovery path 1 — state was committed on a partner workstation:
 
 ```bash
-# Copy the state file back to where Terraform expects it
+# Copy the state file back to the workspace path for the restored environment.
+# `prod` is the legacy default workspace; use terraform.tfstate.d/<ENV>/ for any other ENV.
 cp ~/team-shared/vpn-prod-terraform.tfstate \
    terraform/providers/upcloud/terraform.tfstate
 ```
@@ -101,12 +101,11 @@ cp ~/team-shared/vpn-prod-terraform.tfstate \
 Recovery path 2 — re-import the existing VPS:
 
 ```bash
-cd terraform/providers/upcloud
-terraform init
-terraform import upcloud_server.vpn <SERVER_UUID>
-terraform import upcloud_firewall_rules.vpn <SERVER_UUID>
+PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh init
+PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh import upcloud_server.vpn <SERVER_UUID>
+PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh import upcloud_firewall_rules.vpn <SERVER_UUID>
 # Validate state matches reality
-terraform plan       # should show no changes
+PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh plan       # should show no changes
 ```
 
 Find `<SERVER_UUID>` in the UpCloud console (server details → "ID").

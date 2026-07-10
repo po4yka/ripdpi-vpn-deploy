@@ -56,7 +56,7 @@ if (( DRY_RUN )); then
 
   1/8  Verify blue health  (sops --decrypt, make verify) — read-only
   2/8  Bootstrap green tfvars if missing  (scripts/new-cohort.sh)
-  3/8  terraform plan -chdir=${TF_DIR} -var-file=environments/${GREEN_ENV}.tfvars
+  3/8  terraform plan via workspace wrapper: PROVIDER=${PROVIDER} ENV=${GREEN_ENV} scripts/terraform-env.sh plan -var-file=environments/${GREEN_ENV}.tfvars
   4/8  ansible-playbook ansible/playbooks/site.yml --check -l '*${GREEN_ENV}*'
   5/8  ansible-playbook ansible/playbooks/verify.yml --check -l '*${GREEN_ENV}*'
        ansible-playbook ansible/playbooks/smoke-test.yml --check -l '*${GREEN_ENV}*'
@@ -146,7 +146,7 @@ VPN_SECRETS_FILE="$SECRETS_FILE" \
 # 6. Operator pivot — flip clients / DNS / floating IP
 # ---------------------------------------------------------------------------
 step "6/8  Operator pivot"
-GREEN_IP="$(terraform -chdir="$TF_DIR" output -raw server_ipv4)"
+GREEN_IP="$(PROVIDER="$PROVIDER" ENV="$GREEN_ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
 cat <<EOF
 
 Green node is ready. Its public IPv4 is: ${GREEN_IP}

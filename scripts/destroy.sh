@@ -66,7 +66,7 @@ resource "upcloud_server" "vpn" {
 EOF
 
 # Plan destroy first so the operator sees the diff
-terraform -chdir="$TF_DIR" plan -destroy \
+env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" plan -destroy \
   -var-file="environments/${ENV}.tfvars" \
   -out="${ENV}.destroy.tfplan"
 
@@ -76,7 +76,7 @@ if [[ "$final" != "yes" ]]; then
   exit 1
 fi
 
-terraform -chdir="$TF_DIR" apply "${ENV}.destroy.tfplan"
+env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" apply "${ENV}.destroy.tfplan"
 rm -f "${TF_DIR}/${ENV}.destroy.tfplan"
 
 # Clean inventory and ask if they want a state backup

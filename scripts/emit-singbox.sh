@@ -160,7 +160,6 @@ for i in "${!host_pairs[@]}"; do
   pair="${host_pairs[$i]}"
   prov="${pair%:*}"
   env="${pair#*:}"
-  tf_dir="${REPO_ROOT}/terraform/providers/${prov}"
 
   # Pick the right SOPS file for this host
   if [[ -n "${SOPS_FILES:-}" ]]; then
@@ -184,8 +183,8 @@ for i in "${!host_pairs[@]}"; do
   sops --decrypt --output-type json "$sops_file" > "$secrets_tmp"
   chmod 0600 "$secrets_tmp"
 
-  server_ip="$(terraform -chdir="$tf_dir" output -raw server_ipv4)"
-  server_hostname="$(terraform -chdir="$tf_dir" output -raw server_hostname 2>/dev/null || true)"
+  server_ip="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
+  server_hostname="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_hostname 2>/dev/null || true)"
   tag_prefix="${prov}-${env}"
   cohort="${cohort_list[$i]:-}"
   if [[ -z "$cohort" && -n "$server_hostname" ]]; then
