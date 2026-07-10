@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -225,3 +226,97 @@ def test_allowed_ips_must_be_cidrish(filled):
     filled["amneziawg_secrets"]["peers"][0]["allowed_ips"] = "wat"
     errs = list(v.iter_errors(filled))
     assert errs
+
+
+def _validate_cli(doc, tmp_path):
+    path = tmp_path / "secrets.yaml"
+    path.write_text(yaml.safe_dump(doc))
+    return subprocess.run(
+        [sys.executable, str(VALIDATOR), str(path), "--strict"],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_unknown_fields_are_rejected_at_root_and_nested_levels(filled):
+    root_unknown = deepcopy(filled)
+    root_unknown["typo"] = "value"
+    nested_unknown = deepcopy(filled)
+    nested_unknown["xray"]["typo"] = "value"
+    cohort_unknown = deepcopy(filled)
+    cohort_unknown["xray"]["cohorts"] = [
+        {"name": "primary", "port": 443, "flow_mode": "vision", "typo": "value"}
+    ]
+    validator = _validator()
+
+    assert list(validator.iter_errors(root_unknown))
+    assert list(validator.iter_errors(nested_unknown))
+    assert list(validator.iter_errors(cohort_unknown))
+
+
+def test_duplicate_client_identity_is_rejected(filled, tmp_path):
+    doc = deepcopy(filled)
+    doc["xray"]["clients"].append(deepcopy(doc["xray"]["clients"][0]))
+
+    proc = _validate_cli(doc, tmp_path)
+
+    assert proc.returncode == 1
+    assert "duplicate name" in proc.stderr
+    assert "duplicate uuid" in proc.stderr
+    assert "duplicate short_id" in proc.stderr
+
+
+def test_cohort_client_reference_must_exist(filled, tmp_path):
+    doc = deepcopy(filled)
+    doc["xray"]["cohorts"] = [
+        {"name": "primary", "port": 443, "flow_mode": "vision", "clients": ["missing"]}
+    ]
+
+    proc = _validate_cli(doc, tmp_path)
+
+    assert proc.returncode == 1
+    assert "unknown xray client: missing" in proc.stderr
+
+
+def test_invalid_numeric_cidr_is_rejected_semantically(filled, tmp_path):
+    doc = deepcopy(filled)
+    doc["amneziawg_secrets"]["peers"][0]["allowed_ips"] = "999.66.66.2/32"
+
+    proc = _validate_cli(doc, tmp_path)
+
+    assert proc.returncode == 1
+    assert "valid IPv4 or IPv6 CIDR" in proc.stderr
+
+
+def test_awg_peer_public_keys_must_be_unique(filled, tmp_path):
+    doc = deepcopy(filled)
+    peer = deepcopy(doc["amneziawg_secrets"]["peers"][0])
+    peer["name"] = "laptop"
+    peer["allowed_ips"] = "10.66.66.3/32"
+    doc["amneziawg_secrets"]["peers"].append(peer)
+
+    proc = _validate_cli(doc, tmp_path)
+
+    assert proc.returncode == 1
+    assert "duplicate public_key" in proc.stderr
+
+
+def test_awg_instance_cidr_is_validated_semantically(filled, tmp_path):
+    doc = deepcopy(filled)
+    source = doc["amneziawg_secrets"]
+    doc["amneziawg_secrets"]["instances"] = [{
+        "name": "awg1",
+        "listen_port": 51820,
+        "address_v4": "999.66.66.1/24",
+        "address_v6": "fd42:42:42::1/64",
+        "server_private_key": source["server_private_key"],
+        "jc": source["jc"], "jmin": source["jmin"], "jmax": source["jmax"],
+        "s1": source["s1"], "s2": source["s2"],
+        "h1": source["h1"], "h2": source["h2"], "h3": source["h3"], "h4": source["h4"],
+        "peers": source["peers"],
+    }]
+
+    proc = _validate_cli(doc, tmp_path)
+
+    assert proc.returncode == 1
+    assert "instances.0.address_v4" in proc.stderr
