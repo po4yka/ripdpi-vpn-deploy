@@ -168,7 +168,7 @@ def test_emit_singbox_dns_non_empty_and_detour(tmp_path):
 
     result = _run_script("laptop", tmp_path)
     if result.returncode != 0:
-        pytest.skip(f"emit-singbox.sh failed (likely env issue): {result.stderr[:400]}")
+        pytest.fail(f"emit-singbox.sh failed: {result.stderr[:400]}")
 
     bundle = json.loads(result.stdout)
     servers = bundle.get("dns", {}).get("servers", [])
@@ -188,7 +188,7 @@ def test_emit_singbox_no_placeholder_leaks(tmp_path):
 
     result = _run_script("laptop", tmp_path)
     if result.returncode != 0:
-        pytest.skip(f"emit-singbox.sh failed: {result.stderr[:400]}")
+        pytest.fail(f"emit-singbox.sh failed: {result.stderr[:400]}")
 
     serialised = result.stdout
     for bad in ("TODO", "REPLACE", "PLACEHOLDER"):
@@ -201,7 +201,7 @@ def test_emit_singbox_default_utls_fingerprint_is_chrome(tmp_path):
 
     result = _run_script("laptop", tmp_path)
     if result.returncode != 0:
-        pytest.skip(f"emit-singbox.sh failed: {result.stderr[:400]}")
+        pytest.fail(f"emit-singbox.sh failed: {result.stderr[:400]}")
 
     fps = _utls_fingerprints(json.loads(result.stdout))
     assert fps, "no uTLS fingerprints found (REALITY/XHTTP outbound expected)"
