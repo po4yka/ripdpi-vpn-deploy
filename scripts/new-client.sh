@@ -20,6 +20,10 @@ if [[ -z "$NAME" ]]; then
   echo "usage: $0 [--emit-uri] <name>" >&2
   exit 1
 fi
+if ! [[ "$NAME" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; then
+  echo "client name must contain only letters, digits, underscores, or dashes" >&2
+  exit 1
+fi
 
 ENV="${ENV:-prod}"
 PROVIDER="${PROVIDER:-upcloud}"
@@ -32,12 +36,14 @@ if [[ ! -f "$SOPS_FILE" ]]; then
 fi
 
 # Fail fast if a client with this name already exists in any profile.
-existing_xray="$(sops --decrypt --extract '["xray"]["clients"]' --output-type json "$SOPS_FILE" 2>/dev/null \
-  | python3 -c "import sys,json; peers=json.load(sys.stdin); print(any(p.get('name')==\"${NAME}\" for p in (peers or [])))" 2>/dev/null || echo False)"
-existing_hy="$(sops --decrypt --extract '["hysteria"]["clients"]' --output-type json "$SOPS_FILE" 2>/dev/null \
-  | python3 -c "import sys,json; peers=json.load(sys.stdin); print(any(p.get('name')==\"${NAME}\" for p in (peers or [])))" 2>/dev/null || echo False)"
-existing_awg="$(sops --decrypt --extract '["amneziawg_secrets"]["peers"]' --output-type json "$SOPS_FILE" 2>/dev/null \
-  | python3 -c "import sys,json; peers=json.load(sys.stdin); print(any(p.get('name')==\"${NAME}\" for p in (peers or [])))" 2>/dev/null || echo False)"
+has_client() {
+  local extract="$1"
+  sops --decrypt --extract "$extract" --output-type json "$SOPS_FILE" 2>/dev/null |
+    CLIENT_NAME="$NAME" python3 -c 'import json, os, sys; peers = json.load(sys.stdin); print(any(p.get("name") == os.environ["CLIENT_NAME"] for p in (peers or [])))' 2>/dev/null || echo False
+}
+existing_xray="$(has_client '["xray"]["clients"]')"
+existing_hy="$(has_client '["hysteria"]["clients"]')"
+existing_awg="$(has_client '["amneziawg_secrets"]["peers"]')"
 if [[ "$existing_xray" == "True" || "$existing_hy" == "True" || "$existing_awg" == "True" ]]; then
   echo "error: client '${NAME}' already exists in secrets (xray=${existing_xray} hysteria=${existing_hy} awg=${existing_awg})" >&2
   echo "To replace a client, remove the existing entries first, then re-run." >&2

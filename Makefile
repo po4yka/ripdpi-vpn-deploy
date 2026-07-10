@@ -10,6 +10,7 @@ TFVARS        := $(TF_ROOT)/environments/$(ENV).tfvars
 TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
 
 export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
+export PROVIDER ENV CLIENT PLAN HOST
 
 .PHONY: help init validate plan apply inventory wait decrypt dry-run deploy deploy-canary verify security-verify security-audit clean \
         pre-deploy-check \
@@ -244,16 +245,16 @@ diff-secrets:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) SECRETS_FILE=$(SECRETS_FILE) ./scripts/diff-secrets.sh
 
 emit-singbox:
-	@test -n "$(CLIENT)" || { echo "CLIENT=<name> required"; exit 1; }
-	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/emit-singbox.sh $(CLIENT)
+	@test -n "$${CLIENT:-}" || { echo "CLIENT=<name> required"; exit 1; }
+	./scripts/emit-singbox.sh "$${CLIENT}"
 
 emit-awg:
-	@test -n "$(CLIENT)" || { echo "CLIENT=<name> required"; exit 1; }
-	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/emit-awg.sh $(CLIENT)
+	@test -n "$${CLIENT:-}" || { echo "CLIENT=<name> required"; exit 1; }
+	./scripts/emit-awg.sh "$${CLIENT}"
 
 emit-bundle:
-	@test -n "$(CLIENT)" || { echo "CLIENT=<name> required"; exit 1; }
-	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/emit-bundle.sh $(CLIENT)
+	@test -n "$${CLIENT:-}" || { echo "CLIENT=<name> required"; exit 1; }
+	./scripts/emit-bundle.sh "$${CLIENT}"
 
 install-hooks:
 	python3 -m pip install --require-hashes --no-deps -r requirements.txt
@@ -359,8 +360,8 @@ spot-check-secrets:
 	VPN_SECRETS_FILE=$(SECRETS_FILE) python3 ./scripts/spot-check-secrets.py
 
 probe-asn:
-	@test -n "$(HOST)" || { echo "usage: make probe-asn HOST=mirror.example.com"; exit 1; }
-	./scripts/probe-asn.sh $(HOST)
+	@test -n "$${HOST:-}" || { echo "usage: make probe-asn HOST=mirror.example.com"; exit 1; }
+	./scripts/probe-asn.sh "$${HOST}"
 
 # Per-cell probe invoked by `vpnd probe-matrix`. Emits one JSON line on
 # stdout (verdict + rtt_ms). See scripts/probe-matrix-cell.sh.
@@ -401,12 +402,12 @@ check-ip-reputation:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/check-ip-reputation.sh
 
 issue-bootstrap:
-	@test -n "$(CLIENT)" || { echo "usage: make issue-bootstrap CLIENT=phone"; exit 1; }
-	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/issue-bootstrap.sh $(CLIENT)
+	@test -n "$${CLIENT:-}" || { echo "usage: make issue-bootstrap CLIENT=phone"; exit 1; }
+	./scripts/issue-bootstrap.sh "$${CLIENT}"
 
 issue-sub-token:
-	@test -n "$(CLIENT)" || { echo "usage: make issue-sub-token CLIENT=phone [EXPIRES=YYYY-MM-DD] [QR=1]"; exit 1; }
-	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/issue-sub-token.sh $(CLIENT) \
+	@test -n "$${CLIENT:-}" || { echo "usage: make issue-sub-token CLIENT=phone [EXPIRES=YYYY-MM-DD] [QR=1]"; exit 1; }
+	./scripts/issue-sub-token.sh "$${CLIENT}" \
 	  $(if $(EXPIRES),--expires $(EXPIRES)) \
 	  $(if $(filter 1 yes true,$(QR)),--qr)
 
@@ -430,8 +431,8 @@ drift-since-tag:
 	  ./scripts/drift-since-tag.sh
 
 fleet-rotate:
-	@test -n "$(PLAN)" || { echo "usage: make fleet-rotate PLAN=~/.config/vpn-provision/fleet.yaml [RESUME=1] [DRY_RUN=1]"; exit 1; }
-	./scripts/fleet-rotate.sh --plan $(PLAN) \
+	@test -n "$${PLAN:-}" || { echo "usage: make fleet-rotate PLAN=~/.config/vpn-provision/fleet.yaml [RESUME=1] [DRY_RUN=1]"; exit 1; }
+	./scripts/fleet-rotate.sh --plan "$${PLAN}" \
 	  $(if $(filter 1 yes true,$(RESUME)),--resume) \
 	  $(if $(filter 1 yes true,$(DRY_RUN)),--dry-run)
 

@@ -24,6 +24,7 @@ CLIENT="${1:-}"
   sed -n '2,/^set -euo/p' "$0" | sed '$d' >&2
   exit 1
 }
+[[ "$CLIENT" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || { echo "client name must contain only letters, digits, underscores, or dashes" >&2; exit 1; }
 shift
 
 EXPIRES=""
