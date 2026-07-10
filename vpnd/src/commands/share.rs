@@ -110,9 +110,10 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
         .out
         .unwrap_or_else(|| ctx.root.join("share").join(&args.client));
     std::fs::create_dir_all(&out)?;
+    set_private_mode(&out, 0o700)?;
 
     // sing-box JSON (always emitted)
-    std::fs::write(out.join("config.singbox.json"), &singbox.stdout)?;
+    write_private(&out.join("config.singbox.json"), singbox.stdout.as_bytes())?;
 
     // Recipient landing page. ripdpi:// one-tap import derives from the
     // (token-aware) subscription URL computed above.
@@ -127,7 +128,7 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
         ripdpi_deeplink: &ripdpi_deeplink,
         apps: per_platform_apps(),
     })?;
-    std::fs::write(out.join("index.html"), &page)?;
+    write_private(&out.join("index.html"), page.as_bytes())?;
 
     // QR
     if args.qr {
@@ -154,6 +155,23 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
         "  Hand the recipient {} — it has the QR, deep link, and per-platform app cards.",
         "the URL".bold()
     );
+    Ok(())
+}
+
+fn set_private_mode(path: &std::path::Path, mode: u32) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
+    Ok(())
+}
+
+fn write_private(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let temp = path.with_extension("tmp");
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&temp)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    set_private_mode(&temp, 0o600)?;
+    std::fs::rename(temp, path)?;
     Ok(())
 }
 
