@@ -12,17 +12,18 @@
       - snell_secrets.linux_arm64_sha256 | default('') | length == 64
       - snell_secrets.variants | default([]) | length == snell.variants | length
       - snell.variants | map(attribute='id') | list | sort == snell_secrets.variants | map(attribute='id') | list | sort
-      - snell_secrets.evaluation_path_token | default('') | length >= 16 or not (snell.evaluation_enabled | bool)
+      - not (snell.evaluation_enabled | bool) or (snell_secrets.evaluation_path_token | default('') is match('^[A-Za-z0-9_-]{16,128}$'))
     fail_msg: "Snell requires architecture checksums, an exact secret variant set, and an evaluation token when measurement is enabled."
 
 - name: Pre-flight — every Snell secret variant has a PSK and users
   ansible.builtin.assert:
     that:
-      - item.psk | length >= 12
+      - item.psk | length > 0
+      - item.id is not match('^v6-') or item.psk | length >= 12
       - item.users | length > 0
       - item.users | map(attribute='name') | list | unique | length == item.users | length
       - item.users | map(attribute='userkey') | list | unique | length == item.users | length
-    fail_msg: "Snell variant {{ item.id }} requires a 12+ byte PSK and unique named users."
+    fail_msg: "Snell variant {{ item.id }} requires a PSK, a 12+ byte v6 PSK, and unique named users."
   loop: "{{ snell_secrets.variants | default([]) }}"
   loop_control:
     label: "{{ item.id }}"
@@ -94,7 +95,35 @@
     creates: "{{ snell.install_root }}/releases/{{ snell.version }}/sing-box"
   when: not snell_release_binary.stat.exists
 
-- name: Point Snell current symlink at pinned release
+- name: Render validated Snell configuration
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: "{{ snell.config_dir }}/config.json"
+    owner: root
+    group: snell
+    mode: "0640"
+    validate: "{{ snell.install_root }}/releases/{{ snell.version }}/sing-box check -c %s"
+  no_log: true
+  diff: false
+  notify: Restart snell
+
+- name: Inspect active Snell release symlink
+  ansible.builtin.stat:
+    path: "{{ snell.install_root }}/current"
+    follow: false
+  register: snell_current_release
+
+- name: Preserve previous Snell release symlink
+  ansible.builtin.file:
+    src: "{{ snell_current_release.stat.lnk_source }}"
+    dest: "{{ snell.install_root }}/previous"
+    state: link
+    force: true
+  when:
+    - snell_current_release.stat.islnk | default(false)
+    - snell_current_release.stat.lnk_source != snell.install_root ~ '/releases/' ~ snell.version
+
+- name: Point Snell current symlink at validated release
   ansible.builtin.file:
     src: "{{ snell.install_root }}/releases/{{ snell.version }}"
     dest: "{{ snell.install_root }}/current"
@@ -108,18 +137,6 @@
     dest: /usr/local/bin/sing-box-snell
     state: link
     force: true
-
-- name: Render validated Snell configuration
-  ansible.builtin.template:
-    src: config.json.j2
-    dest: "{{ snell.config_dir }}/config.json"
-    owner: root
-    group: snell
-    mode: "0640"
-    validate: "/usr/local/bin/sing-box-snell check -c %s"
-  no_log: true
-  diff: false
-  notify: Restart snell
 
 - name: Generate exact-size Snell evaluation fixtures
   ansible.builtin.command:

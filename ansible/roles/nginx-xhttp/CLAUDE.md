@@ -43,7 +43,9 @@ defaults. Don't mix these — XHTTP needs long-lived streams.
   HTTP-01; the role re-renews idempotently. `check-certs.sh` verifies SAN +
   expiry + modulus match.
 - **No public admin path** — there is no admin/status/management endpoint on
-  this vhost. The only public path is the XHTTP location.
+  this vhost. The only non-XHTTP public path is the opt-in, secret-token Snell
+  evaluation fixture location; it disables access logging and compression and
+  remains rate-limited.
 - **Profile-aware port choice** — REALITY-disabled cohorts can set
   `nginx_xhttp_public_port: 443`. Full-stack hosts must keep it off 443
   (Xray's REALITY inbound owns 443).

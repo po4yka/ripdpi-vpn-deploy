@@ -89,7 +89,9 @@
       rescue:
         - name: Assert checksum verification rejected the fixture
           ansible.builtin.assert:
-            that: "'checksum' in (ansible_failed_result.msg | lower)"
+            that:
+              - ansible_failed_result.msg != 'checksum mismatch unexpectedly succeeded'
+              - "'checksum' in (ansible_failed_result.msg | lower)"
 
     - name: Replace test binary with a rejecting config validator
       ansible.builtin.copy:
