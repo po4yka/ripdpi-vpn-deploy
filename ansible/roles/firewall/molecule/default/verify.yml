@@ -17,3 +17,17 @@
           grep -q 'udp dport 443' /etc/nftables.conf
         executable: /bin/bash
       changed_when: false
+
+    - name: Forward chain permits only AWG to uplink
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          forward_chain="$(nft list chain inet filter forward)"
+          grep -q 'policy drop' <<< "$forward_chain"
+          grep -q 'ct state established,related accept' <<< "$forward_chain"
+          grep -q 'ct state new iifname "awg0" oifname "eth0" accept' <<< "$forward_chain"
+          ! grep -q 'policy accept' <<< "$forward_chain"
+          ! grep -q 'iifname "awg0" accept' <<< "$forward_chain"
+          ! grep -q 'oifname "awg0" accept' <<< "$forward_chain"
+        executable: /bin/bash
+      changed_when: false

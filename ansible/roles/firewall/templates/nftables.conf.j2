@@ -18,6 +18,7 @@ flush ruleset
 {% set nginx_tcp_port = nginx_xhttp_public_port | default(8443) | int %}
 {% set nginx_collides_with_xray = (vpn.enable_xray_reality | default(true)) and (nginx_tcp_port in xray_tcp_ports) %}
 {% set _awg_inst = (amneziawg_secrets.instances | default([])) if amneziawg_secrets is defined else [] %}
+{% set awg_uplink_interface = firewall_awg_uplink_interface | default((ansible_default_ipv4 | default({})).interface | default('eth0')) %}
 {% set egress_policy = firewall_egress_policy | default('permissive') -%}
 {% set transport_needs_open_egress = (vpn.enable_xray_reality | default(true)) or (vpn.enable_hysteria | default(false)) or (vpn.enable_naive | default(false)) -%}
 
@@ -108,19 +109,17 @@ table inet filter {
 
   chain forward {
     type filter hook forward priority 0;
+    policy drop;
+    ct state established,related accept
 {% if vpn.enable_amneziawg | default(false) %}
-    policy accept;
 {% if _awg_inst | length > 0 %}
 {% for inst in _awg_inst %}
-    iifname "{{ inst.name }}" accept
-    oifname "{{ inst.name }}" accept
+    # New client traffic may leave only via the configured uplink; replies use conntrack above.
+    ct state new iifname "{{ inst.name }}" oifname "{{ awg_uplink_interface }}" accept
 {% endfor %}
 {% else %}
-    iifname "awg0" accept
-    oifname "awg0" accept
+    ct state new iifname "awg0" oifname "{{ awg_uplink_interface }}" accept
 {% endif %}
-{% else %}
-    policy drop;
 {% endif %}
   }
 

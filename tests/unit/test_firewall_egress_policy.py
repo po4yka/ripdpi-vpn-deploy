@@ -91,3 +91,17 @@ def test_public_listener_contract_drives_nftables_rules():
     assert "tcp dport 2053 accept" in rendered
     assert "udp dport 51820 accept" in rendered
     assert "udp dport 20000-40000 accept" in rendered
+
+
+def test_awg_forwarding_is_default_drop_with_only_uplink_egress():
+    vars_ = ctr.merge_render_vars()
+    vars_["vpn"] = {**vars_["vpn"], "enable_amneziawg": True}
+    vars_["firewall_awg_uplink_interface"] = "eth0"
+    rendered = ctr.render_template(TEMPLATE, vars_)
+    forward = rendered[rendered.index("  chain forward {"):rendered.index("  chain output {")]
+    assert "policy drop;" in forward
+    assert "ct state established,related accept" in forward
+    assert 'ct state new iifname "awg0" oifname "eth0" accept' in forward
+    assert "policy accept;" not in forward
+    assert 'iifname "awg0" accept' not in forward
+    assert 'oifname "awg0" accept' not in forward

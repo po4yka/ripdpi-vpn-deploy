@@ -17,6 +17,8 @@ the historical output-chain `policy accept`. `logged` adds counters only, and
 `strict` changes host-originated egress to default-drop while preserving
 enabled transport data-plane needs.
 
+**AWG forwarding is uplink-scoped** — the forward chain is always default-drop. New packets may only move from an AWG interface to `firewall_awg_uplink_interface` (or the fact-derived default route interface); reply packets use `established,related`. Never restore a broad forward `policy accept`.
+
 **Geo blocking is optional** — `vpn.geo_block` toggles the geo set; default
 is on. Geo set is sourced from MaxMind via the `geodata` role.
 
