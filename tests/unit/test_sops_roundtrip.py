@@ -34,10 +34,7 @@ AGE_KEY = FIXTURES / "age-test.key"
 def _require_binaries() -> None:
     missing = [b for b in ("sops", "age") if not shutil.which(b)]
     if missing:
-        pytest.skip(
-            f"real binary not available (needed for SOPS round-trip): "
-            f"{', '.join(missing)}"
-        )
+        pytest.fail(f"missing required SOPS round-trip binary: {', '.join(missing)}")
 
 
 # ---------------------------------------------------------------------------
