@@ -10,6 +10,8 @@ multi-profile stack; raw iptables is too easy to leak state.
 P0 (`xray_port` 443/tcp), P1 (`nginx_xhttp_public_port`), P2 (`hysteria_port`
 udp). Default policy drop.
 
+**Public listener ports come from Terraform's contract** — `site.yml` verifies `public_listener_contract` against the runtime manifest before this template renders. Do not add transport ports directly to `nftables.conf.j2`.
+
 **Egress modes are opt-in** — `firewall_egress_policy: permissive` preserves
 the historical output-chain `policy accept`. `logged` adds counters only, and
 `strict` changes host-originated egress to default-drop while preserving

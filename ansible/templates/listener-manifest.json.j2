@@ -22,13 +22,21 @@
 }) %}
 {% set _xray_fallback_port = xray_fallback_port | default(0) | int %}
 {% set _ = ns.listeners.append({
-  "role": "xray",
+  "role": "xray-fallback",
   "protocol": "tcp",
   "port": _xray_fallback_port,
   "enabled": xray_enabled and _xray_fallback_port > 0,
   "reason": "P0 REALITY fallback listener"
 }) %}
 {% endif %}
+{% set _nginx_xhttp_fallback = (nginx_xhttp.fallback_enabled | default(false)) if nginx_xhttp is defined else false %}
+{% set _ = ns.listeners.append({
+  "role": "nginx-xhttp-fallback",
+  "protocol": "tcp",
+  "port": nginx_xhttp_fallback_port | default(2083) | int,
+  "enabled": (vpn.enable_nginx_xhttp | default(true)) and not subscription_only and _nginx_xhttp_fallback,
+  "reason": "P1 direct XHTTP fallback listener"
+}) %}
 {% set _ = ns.listeners.append({
   "role": "nginx-xhttp",
   "protocol": "tcp",

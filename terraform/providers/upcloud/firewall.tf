@@ -35,52 +35,24 @@ resource "upcloud_firewall_rules" "vpn" {
     }
   }
 
-  # Primary REALITY
-  firewall_rule {
-    action                 = "accept"
-    direction              = "in"
-    family                 = "IPv4"
-    protocol               = "tcp"
-    destination_port_start = "443"
-    destination_port_end   = "443"
-    comment                = "TCP/443 VLESS+REALITY"
-  }
-
-  firewall_rule {
-    action                 = "accept"
-    direction              = "in"
-    family                 = "IPv6"
-    protocol               = "tcp"
-    destination_port_start = "443"
-    destination_port_end   = "443"
-    comment                = "TCP/443 VLESS+REALITY IPv6"
-  }
-
-  # nginx-xhttp public HTTPS listener, separate from REALITY by default
+  # Typed listener contract: every public runtime listener is opened here for
+  # both address families. The same resolved contract is exported to Ansible.
   dynamic "firewall_rule" {
-    for_each = var.nginx_xhttp_public_port == 443 ? [] : ["IPv4", "IPv6"]
-    content {
-      action                 = "accept"
-      direction              = "in"
-      family                 = firewall_rule.value
-      protocol               = "tcp"
-      destination_port_start = tostring(var.nginx_xhttp_public_port)
-      destination_port_end   = tostring(var.nginx_xhttp_public_port)
-      comment                = "TCP/${var.nginx_xhttp_public_port} nginx-xhttp"
+    for_each = {
+      for pair in setproduct(["IPv4", "IPv6"], values(local.public_listener_rules)) :
+      "${pair[0]}-${pair[1].protocol}-${coalesce(try(tostring(pair[1].port), null), try(pair[1].port_range, null))}" => {
+        family   = pair[0]
+        listener = pair[1]
+      }
     }
-  }
-
-  # Hysteria2 — UDP/443, conditional
-  dynamic "firewall_rule" {
-    for_each = var.enable_hysteria ? ["v4", "v6"] : []
     content {
       action                 = "accept"
       direction              = "in"
-      family                 = firewall_rule.value == "v4" ? "IPv4" : "IPv6"
-      protocol               = "udp"
-      destination_port_start = "443"
-      destination_port_end   = "443"
-      comment                = "UDP/443 Hysteria2"
+      family                 = firewall_rule.value.family
+      protocol               = firewall_rule.value.listener.protocol
+      destination_port_start = tostring(firewall_rule.value.listener.port != null ? firewall_rule.value.listener.port : tonumber(split("-", firewall_rule.value.listener.port_range)[0]))
+      destination_port_end   = tostring(firewall_rule.value.listener.port != null ? firewall_rule.value.listener.port : tonumber(split("-", firewall_rule.value.listener.port_range)[1]))
+      comment                = firewall_rule.value.listener.name == "xray" && firewall_rule.value.listener.protocol == "tcp" && firewall_rule.value.listener.port == 443 ? "TCP/443 VLESS+REALITY${firewall_rule.value.family == "IPv6" ? " IPv6" : ""}" : firewall_rule.value.listener.name == "hysteria" && firewall_rule.value.listener.protocol == "udp" && firewall_rule.value.listener.port == 443 ? "UDP/443 Hysteria2" : "${upper(firewall_rule.value.listener.protocol)}/${coalesce(try(tostring(firewall_rule.value.listener.port), null), firewall_rule.value.listener.port_range)} ${firewall_rule.value.listener.name}"
     }
   }
 

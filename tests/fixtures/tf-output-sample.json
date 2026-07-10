@@ -23,5 +23,16 @@
     "sensitive": false,
     "type": "string",
     "value": ""
+  },
+  "public_listeners": {
+    "sensitive": false,
+    "type": ["tuple", [["object", {"name":"string","port":"number","port_range":"dynamic","protocol":"string"}]]],
+    "value": [
+      {"name":"xray","protocol":"tcp","port":443,"port_range":null},
+      {"name":"xray-fallback","protocol":"tcp","port":2053,"port_range":null},
+      {"name":"nginx-xhttp","protocol":"tcp","port":8443,"port_range":null},
+      {"name":"hysteria","protocol":"udp","port":443,"port_range":null},
+      {"name":"amneziawg","protocol":"udp","port":51820,"port_range":null}
+    ]
   }
 }

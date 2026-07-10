@@ -67,6 +67,29 @@ variable "nginx_xhttp_public_port" {
   }
 }
 
+variable "public_listeners" {
+  type = list(object({
+    name       = string
+    protocol   = string
+    port       = optional(number)
+    port_range = optional(string)
+  }))
+  default     = []
+  description = "Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port_range for each entry."
+
+  validation {
+    condition = alltrue([
+      for listener in var.public_listeners :
+      trimspace(listener.name) != "" &&
+      contains(["tcp", "udp"], listener.protocol) &&
+      ((try(listener.port, null) != null) != (try(listener.port_range, null) != null)) &&
+      (try(listener.port, null) == null || (listener.port >= 1 && listener.port <= 65535)) &&
+      (try(listener.port_range, null) == null || (can(regex("^[1-9][0-9]*-[1-9][0-9]*$", listener.port_range)) ? (tonumber(split("-", listener.port_range)[0]) <= tonumber(split("-", listener.port_range)[1]) && tonumber(split("-", listener.port_range)[1]) <= 65535) : false))
+    ])
+    error_message = "Each public listener must use tcp or udp and exactly one valid port or port_range."
+  }
+}
+
 variable "build_env" {
   type        = string
   default     = "prod"

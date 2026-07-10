@@ -27,33 +27,15 @@ resource "hcloud_firewall" "vpn" {
     }
   }
 
-  rule {
-    direction   = "in"
-    protocol    = "tcp"
-    port        = "443"
-    source_ips  = local.public_source_ips
-    description = "TCP/443 VLESS+REALITY"
-  }
-
+  # Typed listener contract shared with Ansible through rendered inventory.
   dynamic "rule" {
-    for_each = var.nginx_xhttp_public_port == 443 ? [] : [var.nginx_xhttp_public_port]
+    for_each = local.public_listener_rules
     content {
       direction   = "in"
-      protocol    = "tcp"
-      port        = tostring(rule.value)
+      protocol    = rule.value.protocol
+      port        = coalesce(try(tostring(rule.value.port), null), try(rule.value.port_range, null))
       source_ips  = local.public_source_ips
-      description = "TCP/${rule.value} nginx-xhttp"
-    }
-  }
-
-  dynamic "rule" {
-    for_each = var.enable_hysteria ? [443] : []
-    content {
-      direction   = "in"
-      protocol    = "udp"
-      port        = tostring(rule.value)
-      source_ips  = local.public_source_ips
-      description = "UDP/${rule.value} Hysteria2"
+      description = rule.value.name == "xray" && rule.value.protocol == "tcp" && rule.value.port == 443 ? "TCP/443 VLESS+REALITY" : rule.value.name == "hysteria" && rule.value.protocol == "udp" && rule.value.port == 443 ? "UDP/443 Hysteria2" : "${upper(rule.value.protocol)}/${coalesce(try(tostring(rule.value.port), null), rule.value.port_range)} ${rule.value.name}"
     }
   }
 }

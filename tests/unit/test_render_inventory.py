@@ -62,7 +62,15 @@ case "${{1:-}}" in
   output)
     shift
     if [ "${{1:-}}" = "-json" ]; then
-      cat "${{FIXTURE}}"
+      if [ -n "${{2:-}}" ]; then
+        python3 -c "
+import json, sys
+d = json.load(open('${{FIXTURE}}'))
+print(json.dumps(d[sys.argv[1]]['value'], separators=(',', ':')))
+" "${{2}}"
+      else
+        cat "${{FIXTURE}}"
+      fi
       exit 0
     fi
     if [ "${{1:-}}" = "-raw" ]; then

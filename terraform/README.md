@@ -54,6 +54,12 @@ make PROVIDER=upcloud ENV=green plan apply
 
 Operator scripts and `vpnd` use `scripts/terraform-env.sh`; do not invoke raw `terraform output`, `plan`, or `apply`, because it can select the wrong workspace. Back up state out-of-band; without it Terraform cannot follow blue-green or rotate the floating IP. See `docs/RUNBOOK-incident.md` § "State loss".
 
+## Public listener contract
+
+`public_listeners` in each environment tfvars is the typed provider-edge allowlist. `render-inventory.sh` exports its resolved value to Ansible; `site.yml` fails before mutation unless it exactly matches the enabled runtime listener manifest. The firewall role and `security-verify.yml` consume the same contract. Update it whenever enabling an optional listener, multi-cohort port, or port-hopping range; do not add static provider firewall rules by hand.
+
+Each provider/environment contract is tied to the Ansible cohort deployed for that environment. If `COHORTS` selects a different profile, change and validate `public_listeners` in the matching tfvars before `make plan apply`; the fail-closed pre-task intentionally rejects a mismatched profile.
+
 ## Providers
 
 | Provider | Status | Notes |

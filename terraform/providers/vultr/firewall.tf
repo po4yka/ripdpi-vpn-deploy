@@ -20,15 +20,12 @@ locals {
     }
   }
 
-  public_tcp_ports = var.nginx_xhttp_public_port == 443 ? toset(["443"]) : toset([
-    "443",
-    tostring(var.nginx_xhttp_public_port),
-  ])
-
-  public_tcp_rules = {
-    for item in setproduct(keys(local.public_networks), local.public_tcp_ports) :
-    "${item[0]}-${item[1]}" => merge(local.public_networks[item[0]], {
-      port = item[1]
+  provider_public_listener_rules = {
+    for item in setproduct(keys(local.public_networks), values(local.public_listener_rules)) :
+    "${item[0]}-${item[1].protocol}-${coalesce(try(tostring(item[1].port), null), try(item[1].port_range, null))}" => merge(local.public_networks[item[0]], {
+      protocol = item[1].protocol
+      port     = coalesce(try(tostring(item[1].port), null), try(item[1].port_range, null))
+      name     = item[1].name
     })
   }
 }
@@ -57,25 +54,13 @@ resource "vultr_firewall_rule" "ssh" {
 }
 
 resource "vultr_firewall_rule" "tcp_public" {
-  for_each = local.public_tcp_rules
+  for_each = local.provider_public_listener_rules
 
   firewall_group_id = vultr_firewall_group.vpn.id
-  protocol          = "tcp"
+  protocol          = each.value.protocol
   ip_type           = each.value.ip_type
   subnet            = each.value.subnet
   subnet_size       = each.value.subnet_size
   port              = each.value.port
-  notes             = each.value.port == "443" ? "TCP/443 VLESS+REALITY" : "TCP/${each.value.port} nginx-xhttp"
-}
-
-resource "vultr_firewall_rule" "hysteria" {
-  for_each = var.enable_hysteria ? local.public_networks : {}
-
-  firewall_group_id = vultr_firewall_group.vpn.id
-  protocol          = "udp"
-  ip_type           = each.value.ip_type
-  subnet            = each.value.subnet
-  subnet_size       = each.value.subnet_size
-  port              = "443"
-  notes             = "UDP/443 Hysteria2"
+  notes             = each.value.name == "xray" && each.value.protocol == "tcp" && each.value.port == "443" ? "TCP/443 VLESS+REALITY" : each.value.name == "hysteria" && each.value.protocol == "udp" && each.value.port == "443" ? "UDP/443 Hysteria2" : "${upper(each.value.protocol)}/${each.value.port} ${each.value.name}"
 }

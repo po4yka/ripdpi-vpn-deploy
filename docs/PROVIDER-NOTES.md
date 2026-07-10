@@ -24,14 +24,13 @@ documented in `docs/ARCHITECTURE.md` once that role lands.
 Source: `censorship-bypass/wikis/transport-protocols/wiki/concepts/cloud-firewall-udp-egress-friction`
 (RCQ, 2026-05-27).
 
-All three provider roots open inbound **UDP/443 under `enable_hysteria`** at the
-edge firewall, with IPv4 + IPv6 parity:
+All three provider roots open exactly the typed `public_listeners` contract at the edge firewall, with IPv4 + IPv6 parity. The contract is checked against the runtime listener manifest before deployment:
 
-| Provider | Resource opening UDP/443 | Parity |
+| Provider | Resource enforcing `public_listeners` | Parity |
 |---|---|---|
 | UpCloud | `upcloud_firewall_rules.vpn` dynamic `firewall_rule` (`v4`,`v6`) | yes |
 | Hetzner | `hcloud_firewall.vpn` dynamic `rule` (`source_ips = 0.0.0.0/0, ::/0`) | yes |
-| Vultr | `vultr_firewall_rule.hysteria` over `public_networks` (`v4`,`v6`) | yes |
+| Vultr | `vultr_firewall_rule.tcp_public` over `public_networks` (`v4`,`v6`) | yes |
 
 **The gap is not a missing rule — it is silent edge drop.** On ≥2 of 4 cloud
 providers the KB source tested, inbound UDP/443 is dropped by the

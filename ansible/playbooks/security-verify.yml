@@ -103,93 +103,17 @@
         that:
           - "'policy ' ~ _expected_output_policy in (security_nft_output_chain.stdout | lower)"
 
-    - name: Initialize expected public listener manifest
+    - name: Decode provider listener contract from rendered inventory
       ansible.builtin.set_fact:
-        security_expected_tcp_ports:
-          - 22
-        security_expected_udp_ports: []
-        security_expected_udp_ranges: []
-
-    - name: Add Xray TCP listeners to expected manifest
-      vars:
-        _security_xray_cohorts: "{{ (xray.cohorts | default([])) if xray is defined else [] }}"
-        _security_xray_fallback_port: "{{ xray_fallback_port | default(0) | int }}"
-        _security_xray_ports: >-
-          {{
-            (_security_xray_cohorts | map(attribute='port') | map('int') | list)
-            if (_security_xray_cohorts | length > 0)
-            else ([xray_port | default(443) | int] + ((_security_xray_fallback_port | int > 0) | ternary([_security_xray_fallback_port | int], [])))
-          }}
-      ansible.builtin.set_fact:
-        security_expected_tcp_ports: "{{ (security_expected_tcp_ports + _security_xray_ports) | unique | list }}"
-      when: vpn.enable_xray_reality | default(true)
-
-    - name: Add nginx-xhttp TCP listener to expected manifest
-      ansible.builtin.set_fact:
-        security_expected_tcp_ports: "{{ (security_expected_tcp_ports + [nginx_xhttp_public_port | default(8443) | int]) | unique | list }}"
-      when: vpn.enable_nginx_xhttp | default(true)
-
-    - name: Add NaiveProxy TCP listener to expected manifest
-      ansible.builtin.set_fact:
-        security_expected_tcp_ports: "{{ (security_expected_tcp_ports + [(naive | default({})).bind_port | default(443) | int]) | unique | list }}"
-      when: vpn.enable_naive | default(false)
-
-    - name: Add Hysteria UDP listener to expected manifest
-      vars:
-        _security_hysteria_port_range: "{{ hysteria_port_range | default('') | string }}"
-        _security_hysteria_udp_ranges: >-
-          {{
-            [_security_hysteria_port_range]
-            if (_security_hysteria_port_range | length > 0)
-            else []
-          }}
-      ansible.builtin.set_fact:
-        security_expected_udp_ports: >-
-          {{ (security_expected_udp_ports + [hysteria_port | default(443) | int]) | unique | list }}
-        security_expected_udp_ranges: >-
-          {{ (security_expected_udp_ranges + _security_hysteria_udp_ranges) | unique | list }}
-      when: vpn.enable_hysteria | default(false)
-
-    - name: Add AmneziaWG UDP listeners to expected manifest
-      vars:
-        _security_awg_instances: "{{ (amneziawg_secrets.instances | default([])) if amneziawg_secrets is defined else [] }}"
-        _security_awg_ports: >-
-          {{
-            (_security_awg_instances | map(attribute='listen_port') | map('int') | list)
-            if (_security_awg_instances | length > 0)
-            else [(amneziawg | default({})).listen_port | default(51820) | int]
-          }}
-      ansible.builtin.set_fact:
-        security_expected_udp_ports: "{{ (security_expected_udp_ports + _security_awg_ports) | unique | list }}"
-      when: vpn.enable_amneziawg | default(false)
-
-    - name: Add optional public listeners to expected manifest
-      ansible.builtin.set_fact:
-        security_expected_tcp_ports: >-
-          {{
-            (
-              security_expected_tcp_ports
-              + ((vpn.enable_honeypot | default(false)) | ternary([(honeypot | default({})).port | default(4443) | int], []))
-              + ((vpn.enable_hysteria_realm | default(false)) | ternary([(hysteria_realm | default({})).listen_port | default(8444) | int], []))
-              + ((vpn.enable_cdn_front | default(false)) | ternary([(cdn_front | default({})).port | default(8443) | int], []))
-              + ((vpn.enable_subscription_host | default(false)) | ternary([(subscription | default({})).port | default(8444) | int], []))
-            ) | unique | list
-          }}
-        security_expected_udp_ports: >-
-          {{
-            (
-              security_expected_udp_ports
-              + ((vpn.enable_dns_morph_bridge | default(false)) | ternary([(dns_morph_bridge | default({})).listen_port | default(53) | int], []))
-            ) | unique | list
-          }}
+        public_listener_contract: "{{ terraform_public_listeners_b64 | b64decode | from_json }}"
 
     - name: Public listeners match enabled profile manifest
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
-          expected_tcp=" {{ security_expected_tcp_ports | join(' ') }} "
-          expected_udp=" {{ security_expected_udp_ports | join(' ') }} "
-          expected_udp_ranges=" {{ security_expected_udp_ranges | join(' ') }} "
+          expected_tcp=" 22 {% for listener in public_listener_contract if listener.protocol == 'tcp' and listener.port is not none %}{{ listener.port }} {% endfor %} "
+          expected_udp=" {% for listener in public_listener_contract if listener.protocol == 'udp' and listener.port is not none %}{{ listener.port }} {% endfor %} "
+          expected_udp_ranges=" {% for listener in public_listener_contract if listener.protocol == 'udp' and listener.port_range is not none %}{{ listener.port_range }} {% endfor %} "
 
           in_list() {
             case "$1" in

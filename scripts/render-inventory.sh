@@ -78,6 +78,8 @@ for i in "${!host_pairs[@]}"; do
   ipv6="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv6 2>/dev/null || true)"
   user="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user)"
   hostname="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_hostname)"
+  public_listeners="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -json public_listeners | jq -c .)"
+  public_listeners_b64="$(printf '%s' "$public_listeners" | base64 | tr -d '\n')"
   allowed_ssh_cidrs="$(terraform_json_var "$prov" "$env" "$tfvars_rel" "var.allowed_ssh_cidrs")"
   # Optional secondary public IP for the honeypot role. Surfaces as a
   # host var so the role binds the canary listener to a dedicated
@@ -87,6 +89,7 @@ for i in "${!host_pairs[@]}"; do
 
   vpn_line="${hostname} ansible_host=${ip} ansible_user=${user} provider=${prov} env=${env}"
   vpn_line+=" allowed_ssh_cidrs=${allowed_ssh_cidrs}"
+  vpn_line+=" terraform_public_listeners_b64=${public_listeners_b64}"
   # Append the required server_ipv6 output when the provider allocates one.
   if [[ -n "$ipv6" && "$ipv6" != "null" ]]; then
     vpn_line+=" server_ipv6=${ipv6}"

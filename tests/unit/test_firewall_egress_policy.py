@@ -78,3 +78,16 @@ def test_strict_keeps_transport_egress_when_proxy_profiles_are_enabled():
 def test_strict_allows_warp_control_ports_when_warp_is_enabled():
     chain = _output_chain(_render("strict", vpn={"enable_warp_outbound": True}))
     assert "udp dport { 2408, 500, 4500 } accept" in chain
+
+
+def test_public_listener_contract_drives_nftables_rules():
+    vars_ = ctr.merge_render_vars()
+    vars_["public_listener_contract"] = [
+        {"name": "xray-fallback", "protocol": "tcp", "port": 2053, "port_range": None},
+        {"name": "amneziawg", "protocol": "udp", "port": 51820, "port_range": None},
+        {"name": "hysteria", "protocol": "udp", "port": None, "port_range": "20000-40000"},
+    ]
+    rendered = ctr.render_template(TEMPLATE, vars_)
+    assert "tcp dport 2053 accept" in rendered
+    assert "udp dport 51820 accept" in rendered
+    assert "udp dport 20000-40000 accept" in rendered
