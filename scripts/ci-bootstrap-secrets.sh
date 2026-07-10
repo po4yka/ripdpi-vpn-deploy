@@ -206,7 +206,9 @@ geodata:
   refresh_interval: "1d"
 
 amneziawg_go_version: "v0.2.12"
-amneziawg_tools_version: "v1.0.20240725"
+amneziawg_go_commit: "2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf"
+amneziawg_tools_version: "v1.0.20241018"
+amneziawg_tools_commit: "c0b400c6dfc046f5cae8f3051b14cb61686fcf55"
 
 amneziawg_secrets:
   server_private_key: "${awg_priv}"

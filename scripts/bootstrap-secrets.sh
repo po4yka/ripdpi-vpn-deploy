@@ -24,6 +24,10 @@ TARGET=""
 SERVER_NAME=""
 XHTTP_HOST=""
 FORCE=0
+AWG_GO_VERSION="v0.2.12"
+AWG_GO_COMMIT="2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf"
+AWG_TOOLS_VERSION="v1.0.20241018"
+AWG_TOOLS_COMMIT="c0b400c6dfc046f5cae8f3051b14cb61686fcf55"
 
 usage() {
   cat >&2 <<USAGE
@@ -306,8 +310,10 @@ geodata:
   install_dir: /usr/local/share/xray
   refresh_interval: "1d"
 
-amneziawg_go_version: "REPLACE_WITH_PINNED_TAG_OR_COMMIT"
-amneziawg_tools_version: "REPLACE_WITH_PINNED_TAG_OR_COMMIT"
+amneziawg_go_version: "${AWG_GO_VERSION}"
+amneziawg_go_commit: "${AWG_GO_COMMIT}"
+amneziawg_tools_version: "${AWG_TOOLS_VERSION}"
+amneziawg_tools_commit: "${AWG_TOOLS_COMMIT}"
 
 amneziawg_secrets:
   server_private_key: "${AWG_SERVER_PRIV}"
@@ -355,6 +361,6 @@ echo "Still TODO (REPLACE_WITH_*):"
 echo "  * Xray / Hysteria / geodata version sha256 (release page)"
 echo "  * nginx_xhttp + hysteria + naive cert_pem + key_pem (LE / ACME)"
 echo "  * geodata pinned URLs"
-echo "  * amneziawg_go_version / amneziawg_tools_version"
+echo "  * verify AmneziaWG version/commit pairs before intentionally changing them"
 echo
 echo "Then run:  make spot-check-secrets   # catches remaining placeholders"

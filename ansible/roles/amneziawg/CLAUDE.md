@@ -16,6 +16,10 @@ safe starting point on any unmeasured network.
 **One peer key per device, never shared** — enforced by `scripts/new-client.sh`.
 Reused keys break replay protection.
 
+**Source refs require matching immutable commits** — the secrets example and
+both bootstrap generators emit each source tag with its resolved commit SHA.
+The role verifies the checkout still resolves to that SHA before building.
+
 **arm64 S3/S4 floor is a cross-repo policy** — `contract/amneziawg-arm64-version-floor.json` records known-broken versions, tracked upstream issue states, and candidate/verified floors. A release claim only opens a revalidation issue; the role and client remain fail-closed until physical arm64 evidence establishes a safe floor.
 
 ## What's done well
