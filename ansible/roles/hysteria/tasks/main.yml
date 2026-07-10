@@ -140,6 +140,19 @@
   diff: false
   notify: Restart hysteria
 
+- name: Validate Hysteria config when check mode is available
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      if /usr/local/bin/hysteria server --help 2>&1 | grep -Eq '(^|[[:space:]])check([[:space:]]|$)'; then
+        /usr/local/bin/hysteria server -c {{ hysteria_config_dir }}/config.yaml check
+      else
+        echo "hysteria binary exposes no config check mode; semantic validation skipped"
+      fi
+    executable: /bin/bash
+  changed_when: false
+  no_log: true
+
 - name: Install hysteria-server systemd unit
   ansible.builtin.template:
     src: hysteria-server.service.j2
