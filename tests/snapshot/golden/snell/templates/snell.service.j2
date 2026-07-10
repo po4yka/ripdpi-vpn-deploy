@@ -1,0 +1,27 @@
+[Unit]
+Description=Snell research transport (sing-box v1.14.0-alpha.42)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=snell
+Group=snell
+ExecStart=/usr/local/bin/sing-box-snell run -c /etc/snell/config.json
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/snell
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+MemoryDenyWriteExecute=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

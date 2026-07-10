@@ -60,6 +60,7 @@ tiers:
   dns-morph-bridge: research  # UDP/53 bootstrap channel; self-built binary, P4
   probe-matrix-target: research # five-listener owned measurement target
   split-hop-ingress: research # Node A responder for topology comparison
+  snell: research              # staged random-stream transport evaluation
 
 # Maps each transport/service enable toggle under `vpn:` to its role. Roles
 # gated by `security_controls.*` are classified above but intentionally absent
@@ -84,6 +85,7 @@ toggle_role_map:
   enable_split_hop_egress: split-hop-egress
   enable_probe_matrix_target: probe-matrix-target
   enable_split_hop_ingress: split-hop-ingress
+  enable_snell: snell
 
 # Profiles that constitute a "family" deploy. The lint forbids any research
 # role from being enabled (directly or by inheriting all.yml) in these, and

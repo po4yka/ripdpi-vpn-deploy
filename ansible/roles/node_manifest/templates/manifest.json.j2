@@ -25,6 +25,9 @@
 {% if (vpn.enable_hysteria_realm | default(false)) and not subscription_only -%}
 {% set _ = ns.transports.append("hysteria-realm") -%}
 {% endif -%}
+{% if (vpn.enable_snell | default(false)) and not subscription_only -%}
+{% set _ = ns.transports.append("snell") -%}
+{% endif -%}
 {% if (vpn.enable_subscription_host | default(false)) or subscription_only -%}
 {% set _ = ns.transports.append("subscription-host") -%}
 {% endif -%}

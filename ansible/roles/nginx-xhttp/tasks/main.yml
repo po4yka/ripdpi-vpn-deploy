@@ -119,7 +119,9 @@
     dest: /etc/nginx/sites-available/vpn-xhttp.conf
     owner: root
     group: root
-    mode: "0644"
+    mode: "0640"
+  no_log: true
+  diff: false
   notify: Reload nginx
 
 - name: Enable nginx site

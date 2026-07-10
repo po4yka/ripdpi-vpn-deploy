@@ -1,0 +1,147 @@
+---
+- name: Pre-flight — prerelease Snell builds are staging-only
+  ansible.builtin.assert:
+    that:
+      - not ((snell.version is search('-(alpha|beta|rc)')) and ((env | default(lookup('env', 'ENV'), true)) == 'prod'))
+    fail_msg: "Snell prerelease {{ snell.version }} is staging-only; refusing ENV=prod."
+
+- name: Pre-flight — Snell secrets and variants are complete
+  ansible.builtin.assert:
+    that:
+      - snell_secrets.linux_amd64_sha256 | default('') | length == 64
+      - snell_secrets.linux_arm64_sha256 | default('') | length == 64
+      - snell_secrets.variants | default([]) | length == snell.variants | length
+      - snell.variants | map(attribute='id') | list | sort == snell_secrets.variants | map(attribute='id') | list | sort
+      - snell_secrets.evaluation_path_token | default('') | length >= 16 or not (snell.evaluation_enabled | bool)
+    fail_msg: "Snell requires architecture checksums, an exact secret variant set, and an evaluation token when measurement is enabled."
+
+- name: Pre-flight — every Snell secret variant has a PSK and users
+  ansible.builtin.assert:
+    that:
+      - item.psk | length >= 12
+      - item.users | length > 0
+      - item.users | map(attribute='name') | list | unique | length == item.users | length
+      - item.users | map(attribute='userkey') | list | unique | length == item.users | length
+    fail_msg: "Snell variant {{ item.id }} requires a 12+ byte PSK and unique named users."
+  loop: "{{ snell_secrets.variants | default([]) }}"
+  loop_control:
+    label: "{{ item.id }}"
+  no_log: true
+
+- name: Pre-flight — evaluation endpoint requires nginx-xhttp
+  ansible.builtin.assert:
+    that:
+      - vpn.enable_nginx_xhttp | default(false) | bool
+    fail_msg: "Snell evaluation requires the same-node nginx-xhttp control endpoint."
+  when: snell.evaluation_enabled | bool
+
+- name: Set Snell architecture facts
+  ansible.builtin.set_fact:
+    snell_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+    snell_sha256: "{{ snell_secrets.linux_amd64_sha256 if ansible_architecture == 'x86_64' else snell_secrets.linux_arm64_sha256 }}"
+
+- name: Ensure Snell user
+  ansible.builtin.user:
+    name: snell
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ snell.install_root }}"
+    create_home: false
+
+- name: Ensure Snell directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ snell.install_root }}/releases", owner: root, group: root, mode: "0755"}
+    - {path: "{{ snell.config_dir }}", owner: root, group: snell, mode: "0750"}
+    - {path: "{{ snell.log_dir }}", owner: snell, group: snell, mode: "0750"}
+    - {path: "{{ snell.evaluation_root }}", owner: root, group: root, mode: "0755"}
+
+- name: Check pinned Snell binary
+  ansible.builtin.stat:
+    path: "{{ snell.install_root }}/releases/{{ snell.version }}/sing-box"
+  register: snell_release_binary
+
+- name: Download pinned Snell sing-box archive
+  ansible.builtin.get_url:
+    url: "{{ snell.download_url }}"
+    dest: "/tmp/sing-box-{{ snell.version }}-linux-{{ snell_arch }}.tar.gz"
+    checksum: "sha256:{{ snell_sha256 }}"
+    mode: "0644"
+  when: not snell_release_binary.stat.exists
+
+- name: Ensure pinned Snell release directory
+  ansible.builtin.file:
+    path: "{{ snell.install_root }}/releases/{{ snell.version }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Extract pinned Snell binary
+  ansible.builtin.unarchive:
+    src: "/tmp/sing-box-{{ snell.version }}-linux-{{ snell_arch }}.tar.gz"
+    dest: "{{ snell.install_root }}/releases/{{ snell.version }}"
+    remote_src: true
+    extra_opts: ["--strip-components=1", "--wildcards", "*/sing-box"]
+    owner: root
+    group: root
+    mode: "0755"
+    creates: "{{ snell.install_root }}/releases/{{ snell.version }}/sing-box"
+  when: not snell_release_binary.stat.exists
+
+- name: Point Snell current symlink at pinned release
+  ansible.builtin.file:
+    src: "{{ snell.install_root }}/releases/{{ snell.version }}"
+    dest: "{{ snell.install_root }}/current"
+    state: link
+    force: true
+  notify: Restart snell
+
+- name: Link Snell sing-box binary
+  ansible.builtin.file:
+    src: "{{ snell.install_root }}/current/sing-box"
+    dest: /usr/local/bin/sing-box-snell
+    state: link
+    force: true
+
+- name: Render validated Snell configuration
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: "{{ snell.config_dir }}/config.json"
+    owner: root
+    group: snell
+    mode: "0640"
+    validate: "/usr/local/bin/sing-box-snell check -c %s"
+  no_log: true
+  diff: false
+  notify: Restart snell
+
+- name: Generate exact-size Snell evaluation fixtures
+  ansible.builtin.command:
+    cmd: "truncate -s {{ item }} {{ snell.evaluation_root }}/{{ item }}.bin"
+    creates: "{{ snell.evaluation_root }}/{{ item }}.bin"
+  loop: "{{ snell.evaluation_sizes }}"
+  when: snell.evaluation_enabled | bool
+
+- name: Install Snell systemd unit
+  ansible.builtin.template:
+    src: snell.service.j2
+    dest: /etc/systemd/system/snell.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart snell
+
+- name: Enable and start Snell
+  ansible.builtin.systemd_service:
+    name: snell.service
+    enabled: true
+    state: started
+    daemon_reload: true

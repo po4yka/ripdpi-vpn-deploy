@@ -96,6 +96,10 @@ require_file "etc/hysteria/config.yaml"
 require_file "etc/hysteria/server.fullchain.pem"
 require_file "etc/hysteria/server.key"
 {% endif %}
+{% if vpn.enable_snell | default(false) %}
+require_file "etc/snell/config.json"
+python3 -m json.tool "$restore_target/etc/snell/config.json" >/dev/null
+{% endif %}
 {% if vpn.enable_amneziawg | default(false) %}
 {% if amneziawg_secrets.instances | default([]) | length > 0 %}
 {% for instance in amneziawg_secrets.instances %}

@@ -8,7 +8,7 @@ two-layer guard. Deprecation/removal of any role is a **recommendation only**.
 ## Context and problem
 
 The stated purpose is keeping a few non-technical family devices in RU online
-with minimal remote intervention. The repo has grown to **19 Ansible roles**
+with minimal remote intervention. The repo has grown to **24 Ansible roles**
 plus research-grade machinery (split-hop dual-role defense, probe-matrix,
 idle-cycle measurement, multi-operator). On a single operator the
 maintenance and silent-failure surface now scales super-linearly — against a
@@ -69,10 +69,11 @@ Final tier with each angle's vote. "Contested" = the three did not agree.
 | split-hop-egress | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | Pilot/unconfirmed; Node A has no Ansible coverage (manual iptables); doubles the fleet; watchdog has no per-leg probe so B going down is silent. FOCI-2026 classifier is published but unconfirmed as deployed. |
 | hysteria-realm | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | sing-box **alpha** pin ("treat every minor bump as breaking"); P5 fallback; hole-punch failure is silent server-side. No family NAT-traversal need justifies alpha-upstream risk. |
 | dns-morph-bridge | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | No upstream release artifact (self-built binary); P4 fallback; opens public UDP/53 (reflection surface); only works if the client uses the bridge IP as resolver — not true for RU carrier-DNS family devices. |
+| snell | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | sing-box 1.14 prerelease, no independent field evidence, and a measurement matrix that must remain outside automatic selection and rotation. |
 
-**Tally:** CORE 10 · TACTICAL 6 · RESEARCH 3. This matches exactly what the
+**Tally:** CORE 10 · TACTICAL 6 · RESEARCH 4. This matches exactly what the
 repo already ships (all 10 CORE roles are default-on/always-on; all 6 TACTICAL
-and all 3 RESEARCH are default-off). The tiering therefore *ratifies and
+and all 4 RESEARCH are default-off). The tiering therefore *ratifies and
 locks* the current default rather than changing behaviour — which is the point
 of the guard: keep it that way.
 
@@ -117,6 +118,7 @@ the recurring operator tax; silent-failure column is what bites unattended.
 |---|---|---|---|---|
 | xray | CORE | XTLS/Xray-core (pinned v26.3.27; v26.5.3 pre-release) | **high** | Breaking schema changes between minors (echForceQuery removed; flow-mode silent break). Mandatory staging + secrets-schema migration per bump; ~monthly. Unavoidable — it is the baseline. |
 | hysteria-realm | RESEARCH | SagerNet/sing-box **alpha** | **high** | Pinned to an alpha; every minor bump is potentially breaking. Hole-punch failure silent server-side. Research-grade upstream with no stable line. |
+| snell | RESEARCH | SagerNet/sing-box **alpha** | **high** | Three staged wire/shape variants plus per-device credentials; promotion requires a stable release and repeated filtered-vantage evidence. |
 | dns-morph-bridge | RESEARCH | self-built binary (no release artifact) | **high** | Operator must build+host the binary and hand-update `binary_url`/sha256; plus a second daemon (unbound). Stale URL fails closed but the P4 path vanishes with no alert. |
 | amneziawg | CORE | amneziawg-go (built from source at deploy) + client apps | **medium** | **Correction to the angle-analysis:** the role runs `make`/`make install` (installs `make`), i.e. it compiles amneziawg-go on the VPS at deploy — a real first-deploy cost and a Go-toolchain dependency, not a pre-built download. Ongoing tax is server↔client version-pin coordination (AWG 2.0 skew silently falls back to vanilla WG). |
 | geodata | CORE | MaxMind GeoLite2 license-free tier | **medium** | "License-free tier dies on a schedule" (role CLAUDE.md). Weekly job fails silently on key revocation → stale GeoIP; named fallbacks (IPinfo/DB-IP) are manual. |
@@ -177,10 +179,10 @@ earns promotion with evidence.
    and honeypot must have their AUDIT-SILENT-FAILURE remediations landed before
    they are turned on anywhere; the rest (cdn-front, naive, warp-outbound,
    subscription-host) enable only on their specific trigger condition.
-3. **Quarantine RESEARCH.** split-hop-egress, hysteria-realm, dns-morph-bridge
+3. **Quarantine RESEARCH.** split-hop-egress, hysteria-realm, dns-morph-bridge, and snell
    stay out of every family profile (now enforced — see Guard). Promote only
    after: confirmed pilot data (split-hop), an upstream *stable* line
-   (hysteria-realm), and a published+pinned artifact (dns-morph-bridge).
+   (hysteria-realm), a published+pinned artifact (dns-morph-bridge), and a stable release plus repeated filtered-vantage evidence (snell).
 4. **Recommendation (not done here): consider deprecating** the research roles
    and their docs out of the main tree (an `experimental/` area or a separate
    branch) if the pilots do not produce confirming data within a release cycle.

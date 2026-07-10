@@ -140,6 +140,21 @@ def main() -> int:
             "P2 transport — Hysteria2 UDP/QUIC",
         ))
 
+    snell_secrets = data.get("snell_secrets") or {}
+    snell_defaults_path = REPO_ROOT / "ansible" / "roles" / "snell" / "defaults" / "main.yml"
+    if snell_secrets and snell_defaults_path.exists():
+        snell_defaults = yaml.safe_load(snell_defaults_path.read_text()) or {}
+        snell_version = _public_str(snell_defaults.get("snell") or {}, "version")
+        if snell_version:
+            components.append(component(
+                "sing-box-snell", snell_version,
+                _purl("github", "SagerNet", "sing-box", version=snell_version),
+                [_release_hash("linux_amd64", _public_str(snell_secrets, "linux_amd64_sha256")),
+                 _release_hash("linux_arm64", _public_str(snell_secrets, "linux_arm64_sha256"))],
+                f"https://github.com/SagerNet/sing-box/releases/tag/{snell_version}",
+                "P3 RESEARCH transport — Snell v4/v6 refinement candidate",
+            ))
+
     geo = data.get("geodata") or {}
     geosite_url = _public_str(geo, "geosite_url")
     if geosite_url:

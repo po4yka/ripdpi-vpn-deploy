@@ -1,0 +1,10 @@
+{
+  "log": {"level": "warn", "output": "{{ snell.log_dir }}/sing-box.log", "timestamp": true},
+  "inbounds": [
+{% for variant in snell.variants %}
+{% set secret = snell_secrets.variants | selectattr('id', 'equalto', variant.id) | first %}
+    {"type": "snell", "tag": "snell-{{ variant.id }}-in", "listen": "{{ snell.listen_addr }}", "listen_port": {{ variant.listen_port }}, "version": {{ variant.server_version }}, "psk": "{{ secret.psk }}", "users": {{ secret.users | to_json }}{% if variant.server_version == 5 %}, "obfs_mode": "{{ variant.obfs_mode | default('none') }}"{% else %}, "mode": "{{ variant.mode | default('default') }}"{% endif %}}{% if not loop.last %},{% endif %}
+{% endfor %}
+  ],
+  "outbounds": [{"type": "direct", "tag": "direct"}]
+}

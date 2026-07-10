@@ -204,6 +204,56 @@
       changed_when: true
       failed_when: false
 
+    - name: Render Snell smoke client configuration
+      when: vpn.enable_snell | default(false)
+      ansible.builtin.copy:
+        dest: "{{ smoketest_dir }}/snell-client.json"
+        owner: root
+        group: root
+        mode: "0600"
+        content: "{{ lookup('template', playbook_dir ~ '/../roles/snell/templates/smoke-client.json.j2') }}"
+      no_log: true
+      diff: false
+
+    - name: Run Snell smoke client
+      when: vpn.enable_snell | default(false)
+      ansible.builtin.command:
+        cmd: >-
+          systemd-run --quiet --no-block --collect --unit=vpn-smoke-snell
+          --property=Type=simple /usr/local/bin/sing-box-snell run
+          -c {{ smoketest_dir }}/snell-client.json
+      args:
+        creates: /run/systemd/transient/vpn-smoke-snell.service
+      changed_when: true
+
+    - name: Wait for Snell smoke listeners
+      when: vpn.enable_snell | default(false)
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ snell.smoke_port_base + snell_index }}"
+        timeout: 10
+      loop: "{{ snell.variants }}"
+      loop_control: {index_var: snell_index}
+
+    - name: Probe through every Snell variant
+      when: vpn.enable_snell | default(false)
+      ansible.builtin.command:
+        cmd: >-
+          curl -sS -o /dev/null -w '%{http_code}' --max-time 15
+          --proxy socks5h://127.0.0.1:{{ snell.smoke_port_base + snell_index }}
+          {{ smoketest_target }}
+      register: snell_probe
+      changed_when: false
+      failed_when: snell_probe.stdout | int != smoketest_expected_code
+      loop: "{{ snell.variants }}"
+      loop_control: {index_var: snell_index}
+
+    - name: Stop Snell smoke client
+      when: vpn.enable_snell | default(false)
+      ansible.builtin.command: {cmd: systemctl stop vpn-smoke-snell.service}
+      changed_when: true
+      failed_when: false
+
     # ---------------------------------------------------------------
     # cleanup
     # ---------------------------------------------------------------
@@ -217,4 +267,5 @@
         msg: |
           REALITY: {{ reality_probe.stdout | default('skipped') }}
           Hysteria: {{ hysteria_probe.stdout | default('skipped') }}
+          Snell: {{ snell_probe.results | default('skipped') }}
           (AmneziaWG smoke-test is intentionally skipped — see watchdog role.)
