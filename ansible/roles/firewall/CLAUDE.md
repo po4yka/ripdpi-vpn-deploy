@@ -22,6 +22,11 @@ enabled transport data-plane needs.
 **Geo blocking is optional** — `vpn.geo_block` toggles the geo set; default
 is on. Geo set is sourced from MaxMind via the `geodata` role.
 
+**Dependent sets apply synchronously** — a rendered firewall config is
+reloaded before roles that pre-flight firewall-owned nftables sets run in the
+same play. Deferred handlers would make a first toggle fail against stale
+runtime state.
+
 ## What's done well
 
 - **Cleanup limited to known ports** — when toggling features (disabling

@@ -21,6 +21,19 @@ def test_firewall_precedes_intrusion_prevention_in_site_playbook():
     assert site.index("    - role: firewall") < site.index("    - role: intrusion_prevention")
 
 
+def test_firewall_applies_nftables_before_policy_ratelimit_preflight():
+    site = (REPO_ROOT / "ansible" / "playbooks" / "site.yml").read_text(encoding="utf-8")
+    tasks = (REPO_ROOT / "ansible" / "roles" / "firewall" / "tasks" / "main.yml").read_text(encoding="utf-8")
+    policy_tasks = (REPO_ROOT / "ansible" / "roles" / "policy-ratelimit" / "tasks" / "main.yml").read_text(encoding="utf-8")
+    molecule_converge = (REPO_ROOT / "ansible" / "roles" / "policy-ratelimit" / "molecule" / "default" / "converge.yml").read_text(encoding="utf-8")
+    assert site.index("    - role: firewall") < site.index("    - role: policy-ratelimit")
+    assert tasks.index("- name: Render nftables config") < tasks.index("- name: Reload nftables before dependent roles run")
+    assert "ansible.builtin.meta: flush_handlers" not in tasks
+    assert "policy_offenders" in policy_tasks
+    assert "policy_offenders6" in policy_tasks
+    assert molecule_converge.index("    - role: firewall") < molecule_converge.index("    - role: policy-ratelimit")
+
+
 def test_hysteria_role_does_not_run_the_server_as_a_config_check():
     tasks = (REPO_ROOT / "ansible" / "roles" / "hysteria" / "tasks" / "main.yml").read_text(encoding="utf-8")
     assert "server -c {{ hysteria_config_dir }}/config.yaml check" not in tasks

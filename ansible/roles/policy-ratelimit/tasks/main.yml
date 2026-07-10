@@ -4,12 +4,13 @@
 # vpn.enable_policy_ratelimit). The site.yml ordering ensures firewall
 # runs first.
 
-- name: Pre-flight — policy_offenders nftables set must exist
+- name: Pre-flight — policy-offender nftables sets must exist
   ansible.builtin.command:
-    cmd: nft list set inet filter policy_offenders
-  register: _policy_offenders_check
+    cmd: nft list set inet filter {{ item }}
+  loop:
+    - policy_offenders
+    - policy_offenders6
   changed_when: false
-  failed_when: _policy_offenders_check.rc != 0
   when: vpn.enable_policy_ratelimit | default(false)
 
 - name: Install daemon script

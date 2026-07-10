@@ -9,6 +9,7 @@
     vpn:
       enable_hysteria: true
       enable_amneziawg: true
+      enable_policy_ratelimit: true
     firewall_awg_uplink_interface: eth0
     amneziawg:
       listen_port: 51820

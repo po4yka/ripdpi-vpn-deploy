@@ -52,6 +52,15 @@
         executable: /bin/bash
       changed_when: false
 
+    - name: Policy-ratelimit offender sets exist after the firewall role
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          nft list set inet filter policy_offenders >/dev/null
+          nft list set inet filter policy_offenders6 >/dev/null
+        executable: /bin/bash
+      changed_when: false
+
     - name: Forward chain permits only AWG to uplink
       ansible.builtin.shell:
         cmd: |
