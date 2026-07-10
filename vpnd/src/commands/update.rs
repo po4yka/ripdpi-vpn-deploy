@@ -45,7 +45,10 @@ pub async fn run(ctx: &Context, args: UpdateArgs) -> Result<()> {
     // Fetch from GitHub — never block the caller on failure.
     match fetch_latest_tag() {
         Ok(tag) => {
-            let cache = Cache { checked_at: now_secs, latest_tag: tag.clone() };
+            let cache = Cache {
+                checked_at: now_secs,
+                latest_tag: tag.clone(),
+            };
             // Best-effort write; ignore errors.
             let _ = std::fs::create_dir_all(&ctx.config_dir);
             if let Ok(s) = toml::to_string(&cache) {

@@ -35,7 +35,10 @@ fn add_then_list_shows_host() {
     reg.upsert("prod-uc1", make_host("prod", "upcloud"));
     let loaded = save_and_reload(&reg, &path);
 
-    assert!(loaded.get("prod-uc1").is_some(), "host must appear after add+reload");
+    assert!(
+        loaded.get("prod-uc1").is_some(),
+        "host must appear after add+reload"
+    );
     assert_eq!(loaded.hosts.len(), 1);
 }
 
@@ -45,13 +48,16 @@ fn show_returns_correct_fields() {
     let path = dir.path().join("hosts.toml");
 
     let mut reg = Registry::default();
-    reg.upsert("myhost", Host {
-        env: "staging".into(),
-        provider: "hetzner".into(),
-        ipv4: Some("203.0.113.5".into()),
-        ipv6: None,
-        deployed_with: Some("0.2.0".into()),
-    });
+    reg.upsert(
+        "myhost",
+        Host {
+            env: "staging".into(),
+            provider: "hetzner".into(),
+            ipv4: Some("203.0.113.5".into()),
+            ipv6: None,
+            deployed_with: Some("0.2.0".into()),
+        },
+    );
     let loaded = save_and_reload(&reg, &path);
 
     let h = loaded.get("myhost").unwrap();
@@ -72,13 +78,19 @@ fn remove_existing_host_succeeds() {
     let mut loaded = save_and_reload(&reg, &path);
 
     let removed = loaded.remove("todelete");
-    assert!(removed.is_some(), "remove must return Some for existing host");
+    assert!(
+        removed.is_some(),
+        "remove must return Some for existing host"
+    );
     save_and_reload(&loaded, &path);
 
     // Re-load and verify gone
     let raw = std::fs::read_to_string(&path).unwrap();
     let final_reg: Registry = toml::from_str(&raw).unwrap();
-    assert!(final_reg.get("todelete").is_none(), "host must be absent after remove");
+    assert!(
+        final_reg.get("todelete").is_none(),
+        "host must be absent after remove"
+    );
 }
 
 #[test]
@@ -120,21 +132,27 @@ fn serialization_preserves_optional_ipv4_ipv6_deployed_with() {
 
     let mut reg = Registry::default();
     // All Some
-    reg.upsert("full", Host {
-        env: "prod".into(),
-        provider: "upcloud".into(),
-        ipv4: Some("192.0.2.1".into()),
-        ipv6: Some("2001:db8::1".into()),
-        deployed_with: Some("0.1.0".into()),
-    });
+    reg.upsert(
+        "full",
+        Host {
+            env: "prod".into(),
+            provider: "upcloud".into(),
+            ipv4: Some("192.0.2.1".into()),
+            ipv6: Some("2001:db8::1".into()),
+            deployed_with: Some("0.1.0".into()),
+        },
+    );
     // None for all optionals
-    reg.upsert("minimal", Host {
-        env: "prod".into(),
-        provider: "upcloud".into(),
-        ipv4: None,
-        ipv6: None,
-        deployed_with: None,
-    });
+    reg.upsert(
+        "minimal",
+        Host {
+            env: "prod".into(),
+            provider: "upcloud".into(),
+            ipv4: None,
+            ipv6: None,
+            deployed_with: None,
+        },
+    );
 
     let loaded = save_and_reload(&reg, &path);
 
@@ -156,6 +174,12 @@ fn two_registries_are_independent() {
     let mut reg2 = Registry::default();
     reg1.upsert("host-a", make_host("prod", "upcloud"));
     reg2.upsert("host-b", make_host("staging", "hetzner"));
-    assert!(reg1.get("host-b").is_none(), "reg1 must not see reg2's host");
-    assert!(reg2.get("host-a").is_none(), "reg2 must not see reg1's host");
+    assert!(
+        reg1.get("host-b").is_none(),
+        "reg1 must not see reg2's host"
+    );
+    assert!(
+        reg2.get("host-a").is_none(),
+        "reg2 must not see reg1's host"
+    );
 }

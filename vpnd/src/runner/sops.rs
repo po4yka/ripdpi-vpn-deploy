@@ -42,8 +42,10 @@ mod tests {
     fn decrypt_program_is_sops() {
         let ctx = fake_ctx();
         let s = decrypt(&ctx).explain();
-        assert!(s.starts_with("sops") || s.contains(" sops "),
-            "program must be sops, got: {s}");
+        assert!(
+            s.starts_with("sops") || s.contains(" sops "),
+            "program must be sops, got: {s}"
+        );
     }
 
     #[test]
@@ -58,13 +60,19 @@ mod tests {
         let ctx = fake_ctx();
         let s = decrypt(&ctx).explain();
         assert!(s.contains("--output"), "must contain --output, got: {s}");
-        assert!(s.contains("/tmp/vpn-prod.secrets.yaml"), "output must be secrets_file, got: {s}");
+        assert!(
+            s.contains("/tmp/vpn-prod.secrets.yaml"),
+            "output must be secrets_file, got: {s}"
+        );
     }
 
     #[test]
     fn decrypt_contains_sops_source_file() {
         let ctx = fake_ctx();
         let s = decrypt(&ctx).explain();
-        assert!(s.contains("prod.secrets.sops.yaml"), "must reference sops_file, got: {s}");
+        assert!(
+            s.contains("prod.secrets.sops.yaml"),
+            "must reference sops_file, got: {s}"
+        );
     }
 }

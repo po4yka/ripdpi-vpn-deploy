@@ -9,7 +9,10 @@ pub struct Link {
 
 impl From<(&str, &str)> for Link {
     fn from((label, url): (&str, &str)) -> Self {
-        Self { label: label.into(), url: url.into() }
+        Self {
+            label: label.into(),
+            url: url.into(),
+        }
     }
 }
 

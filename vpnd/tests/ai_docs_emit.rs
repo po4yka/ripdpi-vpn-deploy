@@ -37,13 +37,23 @@ async fn emits_llms_txt_index() {
     scaffold_docs(repo.path());
 
     let ctx = make_ctx(repo.path(), config.path(), false);
-    let args = AiDocsArgs { out: Some(out_dir.path().to_path_buf()) };
+    let args = AiDocsArgs {
+        out: Some(out_dir.path().to_path_buf()),
+    };
 
-    vpnd::commands::ai_docs::run(&ctx, args).await.expect("ai_docs must succeed");
+    vpnd::commands::ai_docs::run(&ctx, args)
+        .await
+        .expect("ai_docs must succeed");
 
     let index = fs::read_to_string(out_dir.path().join("llms.txt")).expect("llms.txt must exist");
-    assert!(index.contains("ALPHA"), "index must list ALPHA doc, got: {index}");
-    assert!(index.contains("BETA"), "index must list BETA doc, got: {index}");
+    assert!(
+        index.contains("ALPHA"),
+        "index must list ALPHA doc, got: {index}"
+    );
+    assert!(
+        index.contains("BETA"),
+        "index must list BETA doc, got: {index}"
+    );
 }
 
 #[tokio::test]
@@ -54,13 +64,22 @@ async fn emits_llms_full_txt_concatenation() {
     scaffold_docs(repo.path());
 
     let ctx = make_ctx(repo.path(), config.path(), false);
-    let args = AiDocsArgs { out: Some(out_dir.path().to_path_buf()) };
+    let args = AiDocsArgs {
+        out: Some(out_dir.path().to_path_buf()),
+    };
 
     vpnd::commands::ai_docs::run(&ctx, args).await.unwrap();
 
-    let full = fs::read_to_string(out_dir.path().join("llms-full.txt")).expect("llms-full.txt must exist");
-    assert!(full.contains("Alpha content here"), "full must contain alpha body, got: {full}");
-    assert!(full.contains("Beta content here"), "full must contain beta body, got: {full}");
+    let full =
+        fs::read_to_string(out_dir.path().join("llms-full.txt")).expect("llms-full.txt must exist");
+    assert!(
+        full.contains("Alpha content here"),
+        "full must contain alpha body, got: {full}"
+    );
+    assert!(
+        full.contains("Beta content here"),
+        "full must contain beta body, got: {full}"
+    );
 }
 
 #[tokio::test]
@@ -71,14 +90,22 @@ async fn emits_per_doc_copies_in_md_subdir() {
     scaffold_docs(repo.path());
 
     let ctx = make_ctx(repo.path(), config.path(), false);
-    let args = AiDocsArgs { out: Some(out_dir.path().to_path_buf()) };
+    let args = AiDocsArgs {
+        out: Some(out_dir.path().to_path_buf()),
+    };
 
     vpnd::commands::ai_docs::run(&ctx, args).await.unwrap();
 
     let md_dir = out_dir.path().join("md");
     assert!(md_dir.is_dir(), "md/ subdir must exist");
-    assert!(md_dir.join("ALPHA.md").is_file(), "ALPHA.md per-doc copy must exist");
-    assert!(md_dir.join("BETA.md").is_file(), "BETA.md per-doc copy must exist");
+    assert!(
+        md_dir.join("ALPHA.md").is_file(),
+        "ALPHA.md per-doc copy must exist"
+    );
+    assert!(
+        md_dir.join("BETA.md").is_file(),
+        "BETA.md per-doc copy must exist"
+    );
 }
 
 #[tokio::test]
@@ -93,13 +120,18 @@ async fn index_sorted_by_path() {
     fs::write(docs.join("AARDVARK.md"), "# Aardvark\n").unwrap();
 
     let ctx = make_ctx(repo.path(), config.path(), false);
-    let args = AiDocsArgs { out: Some(out_dir.path().to_path_buf()) };
+    let args = AiDocsArgs {
+        out: Some(out_dir.path().to_path_buf()),
+    };
     vpnd::commands::ai_docs::run(&ctx, args).await.unwrap();
 
     let index = fs::read_to_string(out_dir.path().join("llms.txt")).unwrap();
     let aardvark_pos = index.find("AARDVARK").unwrap();
     let zebra_pos = index.find("ZEBRA").unwrap();
-    assert!(aardvark_pos < zebra_pos, "index must be sorted alphabetically, got: {index}");
+    assert!(
+        aardvark_pos < zebra_pos,
+        "index must be sorted alphabetically, got: {index}"
+    );
 }
 
 #[tokio::test]
@@ -110,11 +142,19 @@ async fn explain_mode_does_not_write_files() {
     scaffold_docs(repo.path());
 
     let ctx = make_ctx(repo.path(), config.path(), true); // explain=true
-    let args = AiDocsArgs { out: Some(out_dir.path().to_path_buf()) };
+    let args = AiDocsArgs {
+        out: Some(out_dir.path().to_path_buf()),
+    };
 
     vpnd::commands::ai_docs::run(&ctx, args).await.unwrap();
 
     // With explain=true the output files must NOT be created
-    assert!(!out_dir.path().join("llms.txt").exists(), "--explain must not write llms.txt");
-    assert!(!out_dir.path().join("llms-full.txt").exists(), "--explain must not write llms-full.txt");
+    assert!(
+        !out_dir.path().join("llms.txt").exists(),
+        "--explain must not write llms.txt"
+    );
+    assert!(
+        !out_dir.path().join("llms-full.txt").exists(),
+        "--explain must not write llms-full.txt"
+    );
 }

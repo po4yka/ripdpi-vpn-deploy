@@ -50,20 +50,26 @@ fn upsert_three_hosts_save_load_all_fields_preserved() {
 
     let mut reg = Registry::default();
     reg.upsert("alpha", make_host("prod", "upcloud"));
-    reg.upsert("beta", Host {
-        env: "staging".into(),
-        provider: "hetzner".into(),
-        ipv4: None,
-        ipv6: Some("2001:db8::2".to_string()),
-        deployed_with: None,
-    });
-    reg.upsert("gamma", Host {
-        env: "prod".into(),
-        provider: "vultr".into(),
-        ipv4: Some("198.51.100.1".to_string()),
-        ipv6: None,
-        deployed_with: Some("0.2.0".to_string()),
-    });
+    reg.upsert(
+        "beta",
+        Host {
+            env: "staging".into(),
+            provider: "hetzner".into(),
+            ipv4: None,
+            ipv6: Some("2001:db8::2".to_string()),
+            deployed_with: None,
+        },
+    );
+    reg.upsert(
+        "gamma",
+        Host {
+            env: "prod".into(),
+            provider: "vultr".into(),
+            ipv4: Some("198.51.100.1".to_string()),
+            ipv6: None,
+            deployed_with: Some("0.2.0".to_string()),
+        },
+    );
 
     save_to(&reg, &path);
     let loaded = load_from(&path);
@@ -97,13 +103,16 @@ fn upsert_overwrites_existing_host() {
     save_to(&reg, &path);
 
     let mut reg2 = load_from(&path);
-    reg2.upsert("myhost", Host {
-        env: "staging".into(),
-        provider: "hetzner".into(),
-        ipv4: None,
-        ipv6: None,
-        deployed_with: None,
-    });
+    reg2.upsert(
+        "myhost",
+        Host {
+            env: "staging".into(),
+            provider: "hetzner".into(),
+            ipv4: None,
+            ipv6: None,
+            deployed_with: None,
+        },
+    );
     save_to(&reg2, &path);
 
     let loaded = load_from(&path);
@@ -118,8 +127,14 @@ fn remove_returns_some_for_existing_host() {
     let mut reg = Registry::default();
     reg.upsert("todelete", make_host("prod", "upcloud"));
     let removed = reg.remove("todelete");
-    assert!(removed.is_some(), "remove must return Some for existing host");
-    assert!(reg.get("todelete").is_none(), "host must be gone after remove");
+    assert!(
+        removed.is_some(),
+        "remove must return Some for existing host"
+    );
+    assert!(
+        reg.get("todelete").is_none(),
+        "host must be gone after remove"
+    );
 }
 
 #[test]
@@ -143,7 +158,11 @@ fn btreemap_ordering_is_stable_across_save_load() {
 
     let loaded = load_from(&path);
     let keys: Vec<&String> = loaded.hosts.keys().collect();
-    assert_eq!(keys, vec!["alpha", "mango", "zebra"], "BTreeMap must yield sorted order");
+    assert_eq!(
+        keys,
+        vec!["alpha", "mango", "zebra"],
+        "BTreeMap must yield sorted order"
+    );
 }
 
 #[test]

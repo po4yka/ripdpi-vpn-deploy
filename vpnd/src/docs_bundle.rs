@@ -5,7 +5,10 @@ pub static DOCS: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../docs");
 
 /// Keywords that trigger runbook excerpt injection in `doctor --ai` output.
 const KEYWORD_MAP: &[(&str, &[&str])] = &[
-    ("fleet-status", &["RUNBOOK-incident.md", "RUNBOOK-rollback.md"]),
+    (
+        "fleet-status",
+        &["RUNBOOK-incident.md", "RUNBOOK-rollback.md"],
+    ),
     ("asn-drift", &["RUNBOOK-incident.md"]),
     ("burn-check", &["RUNBOOK-incident.md", "RUNBOOK-rotate.md"]),
 ];
@@ -30,7 +33,9 @@ pub fn relevant_runbook_excerpts(report: &str) -> String {
             if let Some(f) = DOCS.get_file(fname) {
                 if let Some(text) = f.contents_utf8() {
                     let excerpt: String = text.lines().take(60).collect::<Vec<_>>().join("\n");
-                    out.push_str(&format!("\n---\n### Runbook excerpt: {fname}\n\n{excerpt}\n"));
+                    out.push_str(&format!(
+                        "\n---\n### Runbook excerpt: {fname}\n\n{excerpt}\n"
+                    ));
                 }
             }
         }
@@ -46,13 +51,19 @@ mod tests {
     #[test]
     fn empty_report_produces_empty_excerpts() {
         let result = relevant_runbook_excerpts("");
-        assert!(result.is_empty(), "empty report must yield empty excerpts, got: {result:?}");
+        assert!(
+            result.is_empty(),
+            "empty report must yield empty excerpts, got: {result:?}"
+        );
     }
 
     #[test]
     fn report_with_no_keywords_produces_empty_excerpts() {
         let result = relevant_runbook_excerpts("everything looks fine, no issues detected");
-        assert!(result.is_empty(), "no-keyword report must yield empty excerpts, got: {result:?}");
+        assert!(
+            result.is_empty(),
+            "no-keyword report must yield empty excerpts, got: {result:?}"
+        );
     }
 
     #[test]
@@ -61,8 +72,14 @@ mod tests {
         // If the runbook file exists in DOCS, we get content; either way the fn must not panic.
         // When docs are bundled, we expect some output:
         if DOCS.get_file("RUNBOOK-incident.md").is_some() {
-            assert!(!result.is_empty(), "fleet-status must produce excerpts when runbook exists");
-            assert!(result.contains("RUNBOOK-incident.md"), "must cite incident runbook, got: {result:?}");
+            assert!(
+                !result.is_empty(),
+                "fleet-status must produce excerpts when runbook exists"
+            );
+            assert!(
+                result.contains("RUNBOOK-incident.md"),
+                "must cite incident runbook, got: {result:?}"
+            );
         }
     }
 
@@ -70,16 +87,27 @@ mod tests {
     fn asn_drift_keyword_triggers_incident_runbook() {
         let result = relevant_runbook_excerpts("asn-drift detected");
         if DOCS.get_file("RUNBOOK-incident.md").is_some() {
-            assert!(result.contains("RUNBOOK-incident.md"), "asn-drift must cite incident runbook, got: {result:?}");
+            assert!(
+                result.contains("RUNBOOK-incident.md"),
+                "asn-drift must cite incident runbook, got: {result:?}"
+            );
         }
     }
 
     #[test]
     fn burn_check_keyword_triggers_multiple_runbooks() {
         let result = relevant_runbook_excerpts("burn-check alert");
-        if DOCS.get_file("RUNBOOK-incident.md").is_some() && DOCS.get_file("RUNBOOK-rotate.md").is_some() {
-            assert!(result.contains("RUNBOOK-incident.md"), "burn-check must cite incident runbook, got: {result:?}");
-            assert!(result.contains("RUNBOOK-rotate.md"), "burn-check must cite rotate runbook, got: {result:?}");
+        if DOCS.get_file("RUNBOOK-incident.md").is_some()
+            && DOCS.get_file("RUNBOOK-rotate.md").is_some()
+        {
+            assert!(
+                result.contains("RUNBOOK-incident.md"),
+                "burn-check must cite incident runbook, got: {result:?}"
+            );
+            assert!(
+                result.contains("RUNBOOK-rotate.md"),
+                "burn-check must cite rotate runbook, got: {result:?}"
+            );
         }
     }
 
@@ -88,7 +116,10 @@ mod tests {
         // Both fleet-status and asn-drift match RUNBOOK-incident.md — it must appear only once.
         let result = relevant_runbook_excerpts("fleet-status asn-drift");
         let count = result.matches("RUNBOOK-incident.md").count();
-        assert!(count <= 1, "duplicate runbook must be suppressed, got count={count} in: {result:?}");
+        assert!(
+            count <= 1,
+            "duplicate runbook must be suppressed, got count={count} in: {result:?}"
+        );
     }
 
     #[test]

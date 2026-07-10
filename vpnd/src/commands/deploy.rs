@@ -18,8 +18,14 @@ pub async fn run(ctx: &Context, args: DeployArgs) -> Result<()> {
         .add("repo", ctx.root.display().to_string())
         .add("sops file", ctx.sops_file.display().to_string())
         .add("secrets file", ctx.secrets_file.display().to_string())
-        .add("skip precheck", if args.skip_precheck { "yes" } else { "no" })
-        .add("tag on success", if args.tag_on_success { "yes" } else { "no" });
+        .add(
+            "skip precheck",
+            if args.skip_precheck { "yes" } else { "no" },
+        )
+        .add(
+            "tag on success",
+            if args.tag_on_success { "yes" } else { "no" },
+        );
     s.render();
 
     if !ctx.yes && !ctx.explain && !confirm("Proceed with these settings?", true)? {
@@ -71,14 +77,30 @@ fn success_summary(ctx: &Context) {
     println!();
     println!("{}", "Deploy complete.".green().bold());
     println!();
-    println!("  active profiles:  P0 REALITY, P1 nginx-xhttp, P2 hysteria + amneziawg (per group_vars)");
+    println!(
+        "  active profiles:  P0 REALITY, P1 nginx-xhttp, P2 hysteria + amneziawg (per group_vars)"
+    );
     println!("  env:              {}", ctx.env);
     println!("  provider:         {}", ctx.provider);
     println!();
     println!("  next:");
-    println!("    {} share a client: {}", "▸".cyan(), "vpnd share <name> --qr".bold());
-    println!("    {} diagnose:       {}", "▸".cyan(), "vpnd doctor".bold());
-    println!("    {} re-deploy:      {}", "▸".cyan(), "vpnd reconverge".bold());
+    println!(
+        "    {} share a client: {}",
+        "▸".cyan(),
+        "vpnd share <name> --qr".bold()
+    );
+    println!(
+        "    {} diagnose:       {}",
+        "▸".cyan(),
+        "vpnd doctor".bold()
+    );
+    println!(
+        "    {} re-deploy:      {}",
+        "▸".cyan(),
+        "vpnd reconverge".bold()
+    );
     println!();
-    println!("  runbooks: docs/RUNBOOK-deploy.md, docs/RUNBOOK-rollback.md, docs/RUNBOOK-incident.md");
+    println!(
+        "  runbooks: docs/RUNBOOK-deploy.md, docs/RUNBOOK-rollback.md, docs/RUNBOOK-incident.md"
+    );
 }

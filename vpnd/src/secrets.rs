@@ -90,7 +90,8 @@ impl Secrets {
             .trim()
             .parse::<u32>()
             .context("parse current uid")?;
-        if !metadata.file_type().is_file() || metadata.uid() != uid || metadata.mode() & 0o077 != 0 {
+        if !metadata.file_type().is_file() || metadata.uid() != uid || metadata.mode() & 0o077 != 0
+        {
             return Err(anyhow!(
                 "decrypted secrets at {} is missing or has unsafe owner, type, or permissions",
                 path.display()

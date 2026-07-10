@@ -11,7 +11,10 @@ pub struct Summary {
 
 impl Summary {
     pub fn new(title: impl Into<String>) -> Self {
-        Self { title: title.into(), rows: Vec::new() }
+        Self {
+            title: title.into(),
+            rows: Vec::new(),
+        }
     }
 
     pub fn add(&mut self, key: impl Into<String>, value: impl Into<String>) -> &mut Self {
@@ -23,7 +26,8 @@ impl Summary {
         println!();
         println!("{}", self.title.bold().underline());
         let mut t = Table::new();
-        t.load_preset(UTF8_FULL).set_content_arrangement(ContentArrangement::Dynamic);
+        t.load_preset(UTF8_FULL)
+            .set_content_arrangement(ContentArrangement::Dynamic);
         for (k, v) in &self.rows {
             t.add_row(vec![Cell::new(k), Cell::new(v)]);
         }

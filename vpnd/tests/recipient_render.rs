@@ -16,12 +16,15 @@ fn recipient_page_renders_with_expected_sections() {
         subscription_url: "https://vpn.example.com/sub/phone",
         singbox_deeplink:
             "sing-box://import-remote-profile?url=https%3A%2F%2Fvpn.example.com%2Fsub%2Fphone.json",
-        ripdpi_deeplink:
-            "ripdpi://import?sub=https%3A%2F%2Fvpn.example.com%2Fsub%2Fphone",
+        ripdpi_deeplink: "ripdpi://import?sub=https%3A%2F%2Fvpn.example.com%2Fsub%2Fphone",
         apps: vec![
             AppCard {
                 platform: "iOS".to_string(),
-                primary: ("Streisand", "https://apps.apple.com/app/streisand/id6450534064").into(),
+                primary: (
+                    "Streisand",
+                    "https://apps.apple.com/app/streisand/id6450534064",
+                )
+                    .into(),
                 also: vec![],
             },
             AppCard {

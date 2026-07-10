@@ -23,11 +23,20 @@ fn fake_ctx() -> Context {
 
 /// Builder for `ansible-playbook playbooks/<name>.yml` pinned to the repo's ansible config.
 pub fn playbook(ctx: &Context, name: &str) -> Cmd {
-    let path = ctx.ansible_dir.join("playbooks").join(format!("{name}.yml"));
+    let path = ctx
+        .ansible_dir
+        .join("playbooks")
+        .join(format!("{name}.yml"));
     Cmd::new("ansible-playbook")
         .arg(path.to_string_lossy().to_string())
-        .env("ANSIBLE_CONFIG", ctx.ansible_cfg().to_string_lossy().to_string())
-        .env("VPN_SECRETS_FILE", ctx.secrets_file.to_string_lossy().to_string())
+        .env(
+            "ANSIBLE_CONFIG",
+            ctx.ansible_cfg().to_string_lossy().to_string(),
+        )
+        .env(
+            "VPN_SECRETS_FILE",
+            ctx.secrets_file.to_string_lossy().to_string(),
+        )
         .describe(format!("ansible-playbook playbooks/{name}.yml"))
 }
 
@@ -48,7 +57,10 @@ pub fn rotate(ctx: &Context) -> Cmd {
 }
 
 pub fn dry_run(ctx: &Context) -> Cmd {
-    site(ctx).arg("--check").arg("--diff").describe("ansible-playbook site.yml --check --diff")
+    site(ctx)
+        .arg("--check")
+        .arg("--diff")
+        .describe("ansible-playbook site.yml --check --diff")
 }
 
 #[cfg(test)]
@@ -59,38 +71,62 @@ mod tests {
     fn playbook_program_is_ansible_playbook() {
         let ctx = fake_ctx();
         let s = playbook(&ctx, "site").explain();
-        assert!(s.contains("ansible-playbook"), "program must be ansible-playbook, got: {s}");
+        assert!(
+            s.contains("ansible-playbook"),
+            "program must be ansible-playbook, got: {s}"
+        );
     }
 
     #[test]
     fn playbook_path_contains_playbook_name() {
         let ctx = fake_ctx();
         let s = playbook(&ctx, "rotate-credentials").explain();
-        assert!(s.contains("rotate-credentials.yml"), "playbook path must include name.yml, got: {s}");
+        assert!(
+            s.contains("rotate-credentials.yml"),
+            "playbook path must include name.yml, got: {s}"
+        );
     }
 
     #[test]
     fn playbook_sets_ansible_config_env() {
         let ctx = fake_ctx();
         let s = playbook(&ctx, "site").explain();
-        assert!(s.contains("ANSIBLE_CONFIG="), "must set ANSIBLE_CONFIG, got: {s}");
-        assert!(s.contains("ansible.cfg"), "ANSIBLE_CONFIG must point to ansible.cfg, got: {s}");
+        assert!(
+            s.contains("ANSIBLE_CONFIG="),
+            "must set ANSIBLE_CONFIG, got: {s}"
+        );
+        assert!(
+            s.contains("ansible.cfg"),
+            "ANSIBLE_CONFIG must point to ansible.cfg, got: {s}"
+        );
     }
 
     #[test]
     fn playbook_sets_vpn_secrets_file_env() {
         let ctx = fake_ctx();
         let s = playbook(&ctx, "site").explain();
-        assert!(s.contains("VPN_SECRETS_FILE="), "must set VPN_SECRETS_FILE, got: {s}");
-        assert!(s.contains("/tmp/vpn-prod.secrets.yaml"), "VPN_SECRETS_FILE must be secrets_file, got: {s}");
+        assert!(
+            s.contains("VPN_SECRETS_FILE="),
+            "must set VPN_SECRETS_FILE, got: {s}"
+        );
+        assert!(
+            s.contains("/tmp/vpn-prod.secrets.yaml"),
+            "VPN_SECRETS_FILE must be secrets_file, got: {s}"
+        );
     }
 
     #[test]
     fn dry_run_appends_check_and_diff() {
         let ctx = fake_ctx();
         let s = dry_run(&ctx).explain();
-        assert!(s.contains("--check"), "dry_run must include --check, got: {s}");
-        assert!(s.contains("--diff"), "dry_run must include --diff, got: {s}");
+        assert!(
+            s.contains("--check"),
+            "dry_run must include --check, got: {s}"
+        );
+        assert!(
+            s.contains("--diff"),
+            "dry_run must include --diff, got: {s}"
+        );
     }
 
     #[test]
@@ -104,6 +140,9 @@ mod tests {
     fn rotate_uses_rotate_credentials_playbook() {
         let ctx = fake_ctx();
         let s = rotate(&ctx).explain();
-        assert!(s.contains("rotate-credentials.yml"), "rotate() must use rotate-credentials.yml, got: {s}");
+        assert!(
+            s.contains("rotate-credentials.yml"),
+            "rotate() must use rotate-credentials.yml, got: {s}"
+        );
     }
 }

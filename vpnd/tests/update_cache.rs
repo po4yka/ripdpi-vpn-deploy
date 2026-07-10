@@ -21,7 +21,7 @@ fn make_ctx_with_config_dir(root: &std::path::Path, config_dir: &std::path::Path
         sops_file: config_dir.join("prod.secrets.sops.yaml"),
         secrets_file: std::path::PathBuf::from("/tmp/vpn-prod.secrets.yaml"),
         config_dir: config_dir.to_path_buf(),
-        explain: true,  // explain=true → no network, no file writes
+        explain: true, // explain=true → no network, no file writes
         yes: false,
         json: false,
     }
@@ -31,8 +31,12 @@ fn scaffold_repo(dir: &TempDir) {
     std::fs::write(dir.path().join("Makefile"), "# fake\n").unwrap();
     std::fs::create_dir_all(dir.path().join("ansible")).unwrap();
     std::fs::create_dir_all(
-        dir.path().join("terraform").join("providers").join("upcloud")
-    ).unwrap();
+        dir.path()
+            .join("terraform")
+            .join("providers")
+            .join("upcloud"),
+    )
+    .unwrap();
 }
 
 #[tokio::test]
@@ -48,7 +52,11 @@ async fn explain_prints_github_api_url() {
     // We can't easily capture println! in tests, so we verify the function
     // does not error — the URL is printed to stdout but we trust the impl.
     let result = vpnd::commands::update::run(&ctx, args).await;
-    assert!(result.is_ok(), "update --explain must succeed, got: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "update --explain must succeed, got: {:?}",
+        result
+    );
 }
 
 #[tokio::test]
@@ -62,7 +70,11 @@ async fn ctx_explain_skips_network_and_succeeds() {
 
     // ctx.explain=true → early return without network
     let result = vpnd::commands::update::run(&ctx, args).await;
-    assert!(result.is_ok(), "update with ctx.explain must not error, got: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "update with ctx.explain must not error, got: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -76,10 +88,7 @@ fn cache_file_written_with_tag_is_readable_toml() {
         .unwrap_or(Duration::ZERO)
         .as_secs();
 
-    let toml_content = format!(
-        "checked_at = {}\nlatest_tag = \"vpnd-v0.1.0\"\n",
-        now_secs
-    );
+    let toml_content = format!("checked_at = {}\nlatest_tag = \"vpnd-v0.1.0\"\n", now_secs);
     std::fs::write(&cache_path, &toml_content).unwrap();
 
     // Verify it's valid TOML
@@ -111,7 +120,10 @@ fn stale_cache_has_old_timestamp() {
     let raw = std::fs::read_to_string(&cache_path).unwrap();
     let parsed: toml::Value = toml::from_str(&raw).unwrap();
     let age = now_secs.saturating_sub(parsed["checked_at"].as_integer().unwrap() as u64);
-    assert!(age >= 86_401, "stale cache must be older than 24h, age={age}s");
+    assert!(
+        age >= 86_401,
+        "stale cache must be older than 24h, age={age}s"
+    );
 }
 
 #[test]
@@ -128,7 +140,10 @@ fn non_vpnd_tag_format_suppresses_notice() {
     // If tag does NOT start with "vpnd-v", print_notice should skip output
     // Test the predicate logic directly
     let tag = "some-other-component-v1.0.0";
-    assert!(!tag.starts_with("vpnd-v"), "non-vpnd tag must not trigger notice");
+    assert!(
+        !tag.starts_with("vpnd-v"),
+        "non-vpnd tag must not trigger notice"
+    );
 }
 
 #[test]

@@ -15,9 +15,16 @@ pub async fn run(ctx: &Context, args: ProbeArgs) -> Result<()> {
     }
     if matches!(args.profile, Profile::P1 | Profile::All) {
         if let Some(host) = &args.host {
-            steps.push(make::target_with(ctx, "test-tls-policing", &[("HOST", host)]));
+            steps.push(make::target_with(
+                ctx,
+                "test-tls-policing",
+                &[("HOST", host)],
+            ));
         } else {
-            eprintln!("{} skipping P1 TLS policing test — needs --host", "note:".yellow());
+            eprintln!(
+                "{} skipping P1 TLS policing test — needs --host",
+                "note:".yellow()
+            );
         }
     }
     if matches!(args.profile, Profile::P2 | Profile::All) {

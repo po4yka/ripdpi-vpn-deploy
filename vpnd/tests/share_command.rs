@@ -1,8 +1,8 @@
 //! End-to-end coverage for the `vpnd share` command against canonical secrets.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::path::PathBuf;
 use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
 
 use tempfile::TempDir;
 use vpnd::cli::{ShareArgs, ShareType};
@@ -71,5 +71,13 @@ async fn share_generates_a_bundle_for_a_canonical_xray_client() {
     assert!(page.contains("phone"));
     assert!(page.contains("https://sub.example.com:8444/sub/test-token_123"));
     assert_eq!(out.metadata().unwrap().permissions().mode() & 0o777, 0o700);
-    assert_eq!(out.join("config.singbox.json").metadata().unwrap().permissions().mode() & 0o777, 0o600);
+    assert_eq!(
+        out.join("config.singbox.json")
+            .metadata()
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
 }

@@ -72,7 +72,11 @@ impl Cmd {
         }
         let mut s = parts.join(" ");
         if let Some(cwd) = &self.cwd {
-            s = format!("(cd {} && {})", shell_words::quote(&cwd.to_string_lossy()), s);
+            s = format!(
+                "(cd {} && {})",
+                shell_words::quote(&cwd.to_string_lossy()),
+                s
+            );
         }
         s
     }
@@ -117,11 +121,16 @@ impl Cmd {
     pub async fn capture(&self, explain_only: bool) -> Result<Output> {
         self.print_explain();
         if explain_only {
-            return Ok(Output { rc: 0, stdout: String::new() });
+            return Ok(Output {
+                rc: 0,
+                stdout: String::new(),
+            });
         }
 
         let mut cmd = Command::new(&self.program);
-        cmd.args(self.args.iter()).stdout(Stdio::piped()).stderr(Stdio::inherit());
+        cmd.args(self.args.iter())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit());
         for (k, v) in &self.env {
             cmd.env(k, v);
         }
@@ -149,7 +158,8 @@ impl Cmd {
     }
 }
 
-#[allow(dead_code)] // rc field kept for callers that need to distinguish exit codes under --explain semantics; stdout is used today, rc not yet read externally
+#[allow(dead_code)]
+// rc field kept for callers that need to distinguish exit codes under --explain semantics; stdout is used today, rc not yet read externally
 #[derive(Debug)]
 pub struct Output {
     pub rc: i32,
@@ -171,8 +181,10 @@ mod tests {
     fn explain_arg_with_spaces_is_quoted() {
         let cmd = Cmd::new("echo").arg("hello world");
         let s = cmd.explain();
-        assert!(s.contains("'hello world'") || s.contains("\"hello world\""),
-            "space in arg must be shell-quoted, got: {s}");
+        assert!(
+            s.contains("'hello world'") || s.contains("\"hello world\""),
+            "space in arg must be shell-quoted, got: {s}"
+        );
     }
 
     #[test]
@@ -180,9 +192,14 @@ mod tests {
         let cmd = Cmd::new("echo").arg("it's here");
         let s = cmd.explain();
         // shell-words should produce a form the shell can re-parse
-        assert!(s.contains("it") && s.contains("s here"),
-            "single-quoted arg must survive quoting, got: {s}");
-        assert!(!s.contains("it's here"), "bare unquoted apostrophe must not appear, got: {s}");
+        assert!(
+            s.contains("it") && s.contains("s here"),
+            "single-quoted arg must survive quoting, got: {s}"
+        );
+        assert!(
+            !s.contains("it's here"),
+            "bare unquoted apostrophe must not appear, got: {s}"
+        );
     }
 
     #[test]
@@ -190,11 +207,17 @@ mod tests {
         let cmd = Cmd::new("echo").arg("say \"hi\"");
         let s = cmd.explain();
         // shell-words must quote the argument (single or double quoting both valid)
-        assert!(s.len() > 10, "double-quoted arg must be represented, got: {s}");
+        assert!(
+            s.len() > 10,
+            "double-quoted arg must be represented, got: {s}"
+        );
         // The literal unquoted form `echo say "hi"` would split into three words;
         // shell-words must produce a single-token form like `'say "hi"'` or `"say \"hi\""`.
         let unquoted = "echo say \"hi\"";
-        assert_ne!(s, unquoted, "arg with double-quotes must be shell-quoted, got: {s}");
+        assert_ne!(
+            s, unquoted,
+            "arg with double-quotes must be shell-quoted, got: {s}"
+        );
     }
 
     #[test]
@@ -202,7 +225,10 @@ mod tests {
         let cmd = Cmd::new("echo").arg("$HOME");
         let s = cmd.explain();
         // $HOME must be quoted so the shell does not expand it
-        assert!(!s.ends_with(" $HOME"), "dollar-var must be shell-quoted, got: {s}");
+        assert!(
+            !s.ends_with(" $HOME"),
+            "dollar-var must be shell-quoted, got: {s}"
+        );
     }
 
     #[test]
@@ -210,8 +236,10 @@ mod tests {
         let cmd = Cmd::new("echo").arg("line1\nline2");
         let s = cmd.explain();
         // A literal newline in an unquoted token is a shell syntax error; shell-words must quote it
-        assert!(!s.contains('\n') || s.contains('\'') || s.contains('"'),
-            "newline in arg must be quoted, got: {s:?}");
+        assert!(
+            !s.contains('\n') || s.contains('\'') || s.contains('"'),
+            "newline in arg must be quoted, got: {s:?}"
+        );
     }
 
     #[test]
@@ -234,7 +262,10 @@ mod tests {
     fn explain_env_value_with_spaces_is_quoted() {
         let cmd = Cmd::new("echo").env("K", "value with spaces");
         let s = cmd.explain();
-        assert!(!s.contains("K=value with spaces"), "space in env value must be quoted, got: {s}");
+        assert!(
+            !s.contains("K=value with spaces"),
+            "space in env value must be quoted, got: {s}"
+        );
     }
 
     #[test]
@@ -250,7 +281,10 @@ mod tests {
     fn explain_cwd_with_spaces_is_quoted() {
         let cmd = Cmd::new("make").cwd(PathBuf::from("/path with spaces/repo"));
         let s = cmd.explain();
-        assert!(!s.contains("(cd /path with spaces"), "cwd with spaces must be quoted, got: {s}");
+        assert!(
+            !s.contains("(cd /path with spaces"),
+            "cwd with spaces must be quoted, got: {s}"
+        );
     }
 
     #[test]

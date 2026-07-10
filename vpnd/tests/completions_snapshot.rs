@@ -45,8 +45,18 @@ fn bash_completion_contains_vpnd_subcommands() {
     let output = generate_completion("bash");
     // Each top-level subcommand must appear in the completion script
     for subcmd in [
-        "deploy", "share", "doctor", "host", "update", "completions",
-        "reconverge", "probe", "probe-matrix", "preflight", "fleet", "ai-docs",
+        "deploy",
+        "share",
+        "doctor",
+        "host",
+        "update",
+        "completions",
+        "reconverge",
+        "probe",
+        "probe-matrix",
+        "preflight",
+        "fleet",
+        "ai-docs",
     ] {
         assert!(
             output.contains(subcmd),
@@ -59,8 +69,18 @@ fn bash_completion_contains_vpnd_subcommands() {
 fn zsh_completion_contains_vpnd_subcommands() {
     let output = generate_completion("zsh");
     for subcmd in [
-        "deploy", "share", "doctor", "host", "update", "completions",
-        "reconverge", "probe", "probe-matrix", "preflight", "fleet", "ai-docs",
+        "deploy",
+        "share",
+        "doctor",
+        "host",
+        "update",
+        "completions",
+        "reconverge",
+        "probe",
+        "probe-matrix",
+        "preflight",
+        "fleet",
+        "ai-docs",
     ] {
         assert!(
             output.contains(subcmd),
@@ -73,8 +93,18 @@ fn zsh_completion_contains_vpnd_subcommands() {
 fn fish_completion_contains_vpnd_subcommands() {
     let output = generate_completion("fish");
     for subcmd in [
-        "deploy", "share", "doctor", "host", "update", "completions",
-        "reconverge", "probe", "probe-matrix", "preflight", "fleet", "ai-docs",
+        "deploy",
+        "share",
+        "doctor",
+        "host",
+        "update",
+        "completions",
+        "reconverge",
+        "probe",
+        "probe-matrix",
+        "preflight",
+        "fleet",
+        "ai-docs",
     ] {
         assert!(
             output.contains(subcmd),
@@ -111,6 +141,8 @@ fn share_completions_offer_only_token_input_flags() {
 #[test]
 fn bash_completion_mentions_global_flags() {
     let output = generate_completion("bash");
-    assert!(output.contains("--explain") || output.contains("explain"),
-        "bash completion must include --explain flag");
+    assert!(
+        output.contains("--explain") || output.contains("explain"),
+        "bash completion must include --explain flag"
+    );
 }

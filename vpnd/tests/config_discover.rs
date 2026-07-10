@@ -3,17 +3,20 @@
 
 use std::fs;
 use tempfile::TempDir;
-use vpnd::config::Context;
 use vpnd::cli::Cli;
+use vpnd::config::Context;
 
 /// Build a minimal fake CLI pointing at `root` with the given provider.
 fn make_cli(root: &std::path::Path, provider: &str) -> Cli {
     use clap::Parser;
     Cli::parse_from([
         "vpnd",
-        "--root", root.to_str().unwrap(),
-        "--provider", provider,
-        "completions", "bash",
+        "--root",
+        root.to_str().unwrap(),
+        "--provider",
+        provider,
+        "completions",
+        "bash",
     ])
 }
 
@@ -44,7 +47,10 @@ fn missing_ansible_dir_returns_error() {
     fs::create_dir_all(root.join("terraform").join("providers").join("upcloud")).unwrap();
     let cli = make_cli(&root, "upcloud");
     let err = Context::discover(&cli).unwrap_err();
-    assert!(err.to_string().contains("ansible"), "error must mention ansible, got: {err}");
+    assert!(
+        err.to_string().contains("ansible"),
+        "error must mention ansible, got: {err}"
+    );
 }
 
 #[test]
@@ -66,11 +72,16 @@ fn missing_root_dir_returns_error() {
     use clap::Parser;
     let cli = Cli::parse_from([
         "vpnd",
-        "--root", "/nonexistent/path/that/does/not/exist",
-        "completions", "bash",
+        "--root",
+        "/nonexistent/path/that/does/not/exist",
+        "completions",
+        "bash",
     ]);
     let err = Context::discover(&cli).unwrap_err();
-    assert!(!err.to_string().is_empty(), "must return an error for missing --root");
+    assert!(
+        !err.to_string().is_empty(),
+        "must return an error for missing --root"
+    );
 }
 
 #[test]
@@ -80,10 +91,14 @@ fn context_env_and_provider_propagated() {
     use clap::Parser;
     let cli = Cli::parse_from([
         "vpnd",
-        "--root", root.to_str().unwrap(),
-        "--env", "staging",
-        "--provider", "hetzner",
-        "completions", "bash",
+        "--root",
+        root.to_str().unwrap(),
+        "--env",
+        "staging",
+        "--provider",
+        "hetzner",
+        "completions",
+        "bash",
     ]);
     let ctx = Context::discover(&cli).unwrap();
     assert_eq!(ctx.env, "staging");

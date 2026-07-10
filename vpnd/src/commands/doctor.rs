@@ -19,7 +19,11 @@ pub async fn run(ctx: &Context, args: DoctorArgs) -> Result<()> {
     let mut report = String::new();
     for cmd in &steps {
         let out = cmd.capture(ctx.explain).await?;
-        report.push_str(&format!("### {}\n\n```\n{}\n```\n\n", cmd.explain(), out.stdout));
+        report.push_str(&format!(
+            "### {}\n\n```\n{}\n```\n\n",
+            cmd.explain(),
+            out.stdout
+        ));
     }
 
     if ctx.explain {
@@ -29,7 +33,11 @@ pub async fn run(ctx: &Context, args: DoctorArgs) -> Result<()> {
     // --bundle: pack a gzip-tar with diagnostic info (orthogonal to --ai).
     if let Some(bundle_path) = &args.bundle {
         write_bundle(ctx, &report, bundle_path).await?;
-        eprintln!("{} bundle written to {}", "ok:".green(), bundle_path.display());
+        eprintln!(
+            "{} bundle written to {}",
+            "ok:".green(),
+            bundle_path.display()
+        );
     }
 
     if args.ai {
@@ -91,10 +99,7 @@ async fn write_bundle(ctx: &Context, report: &str, out_path: &std::path::Path) -
     ));
 
     // 2. uname -a
-    entries.push((
-        "uname.txt".into(),
-        run_capture("uname", &["-a"]).await,
-    ));
+    entries.push(("uname.txt".into(), run_capture("uname", &["-a"]).await));
 
     // 3. terraform --version
     entries.push((
@@ -115,10 +120,16 @@ async fn write_bundle(ctx: &Context, report: &str, out_path: &std::path::Path) -
         .await
         .map(|o| o.stdout)
         .unwrap_or_else(|e| format!("(audit-log unavailable: {e})\n"));
-    entries.push(("audit-log.txt".into(), redact_secrets(audit_out).into_bytes()));
+    entries.push((
+        "audit-log.txt".into(),
+        redact_secrets(audit_out).into_bytes(),
+    ));
 
     // 6. The full doctor report.
-    entries.push(("doctor-report.md".into(), redact_secrets(report.to_owned()).into_bytes()));
+    entries.push((
+        "doctor-report.md".into(),
+        redact_secrets(report.to_owned()).into_bytes(),
+    ));
 
     // Build gzip-tar in memory.
     let gz_buf: Vec<u8> = Vec::new();
@@ -146,11 +157,7 @@ async fn write_bundle(ctx: &Context, report: &str, out_path: &std::path::Path) -
 /// Run a program and capture stdout; on error, return a human note.
 async fn run_capture(program: &str, args: &[&str]) -> Vec<u8> {
     use tokio::process::Command;
-    match Command::new(program)
-        .args(args)
-        .output()
-        .await
-    {
+    match Command::new(program).args(args).output().await {
         Ok(out) => out.stdout,
         Err(e) => format!("({program} unavailable: {e})\n").into_bytes(),
     }
@@ -201,5 +208,7 @@ async fn try_copy_to_clipboard(s: &str) -> Result<()> {
             return Ok(());
         }
     }
-    Err(anyhow::anyhow!("no clipboard binary found (tried pbcopy, wl-copy, xclip, xsel)"))
+    Err(anyhow::anyhow!(
+        "no clipboard binary found (tried pbcopy, wl-copy, xclip, xsel)"
+    ))
 }

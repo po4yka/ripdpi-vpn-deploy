@@ -34,7 +34,8 @@ pub async fn run(ctx: &Context, args: AiDocsArgs) -> Result<()> {
             .ok_or_else(|| anyhow!("doc path has no file stem: {}", path.display()))?
             .to_string_lossy()
             .into_owned();
-        let body = std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+        let body =
+            std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
         index.push_str(&format!("- [{}](/md/{}.md)\n", slug, slug));
         full.push_str(&format!("\n\n---\n\n## {}\n\n{}", slug, body));
         if !ctx.explain {
@@ -43,7 +44,11 @@ pub async fn run(ctx: &Context, args: AiDocsArgs) -> Result<()> {
     }
 
     if ctx.explain {
-        eprintln!("{} would emit llms.txt, llms-full.txt, and per-doc markdown to {}", "→".cyan(), out.display());
+        eprintln!(
+            "{} would emit llms.txt, llms-full.txt, and per-doc markdown to {}",
+            "→".cyan(),
+            out.display()
+        );
         return Ok(());
     }
 
