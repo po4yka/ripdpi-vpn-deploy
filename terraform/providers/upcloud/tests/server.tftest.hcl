@@ -54,6 +54,28 @@ run "server_secondary_public_ip_when_honeypot_enabled" {
   }
 }
 
+run "server_ipv6_is_disabled_when_requested" {
+  command = plan
+
+  variables {
+    enable_ipv6 = false
+  }
+
+  assert {
+    condition = length([for ni in upcloud_server.vpn.network_interface : ni if ni.type == "public" && ni.ip_address_family == "IPv6"]) == 0
+    error_message = "enable_ipv6=false must not allocate a public IPv6 interface"
+  }
+}
+
+run "server_ipv6_is_allocated_by_default" {
+  command = plan
+
+  assert {
+    condition = length([for ni in upcloud_server.vpn.network_interface : ni if ni.type == "public" && ni.ip_address_family == "IPv6"]) == 1
+    error_message = "enable_ipv6=true must allocate one public IPv6 interface"
+  }
+}
+
 # Server template must always be a UUID-shaped string. Catches the
 # REPLACE_WITH_TEMPLATE_UUID placeholder leaking past PR review.
 run "rejects_unfilled_template_placeholder" {
