@@ -23,7 +23,8 @@ vpnd deploy                       # guided wizard
 vpnd deploy --explain             # print the underlying shell calls and exit
 vpnd reconverge --env prod        # idempotent re-deploy
 vpnd share phone --qr             # bundled recipient handoff (uses enumerable client name)
-vpnd share phone --token <TOKEN>  # same, but subscription URL uses opaque token
+printf '%s\n' "$TOKEN" | vpnd share phone --token-stdin  # opaque subscription URL
+vpnd share phone --token-file ~/.config/vpn-provision/sub-token  # same, from 0600 file
 vpnd doctor --host prod --ai      # diagnostic bundle as AI-ready prompt
 vpnd probe --profile p0           # profile-aware probing
 vpnd preflight                    # pre-deploy guards

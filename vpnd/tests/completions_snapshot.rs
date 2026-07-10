@@ -84,6 +84,31 @@ fn fish_completion_contains_vpnd_subcommands() {
 }
 
 #[test]
+fn share_completions_offer_only_token_input_flags() {
+    for shell in ["bash", "zsh", "fish"] {
+        let output = generate_completion(shell);
+        match shell {
+            "bash" => {
+                assert!(output.contains("--token-stdin"));
+                assert!(output.contains("--token-file"));
+                assert!(!output.contains("--token "));
+            }
+            "zsh" => {
+                assert!(output.contains("--token-stdin"));
+                assert!(output.contains("--token-file"));
+                assert!(!output.contains("--token=["));
+            }
+            "fish" => {
+                assert!(output.contains("-l token-stdin"));
+                assert!(output.contains("-l token-file"));
+                assert!(!output.contains(" -l token -d "));
+            }
+            _ => unreachable!("unsupported completion shell"),
+        }
+    }
+}
+
+#[test]
 fn bash_completion_mentions_global_flags() {
     let output = generate_completion("bash");
     assert!(output.contains("--explain") || output.contains("explain"),
