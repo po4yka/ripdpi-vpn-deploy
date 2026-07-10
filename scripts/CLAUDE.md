@@ -19,6 +19,8 @@ flag exists for testing but is undocumented.
 
 **Terraform is workspace-routed centrally** — scripts call `scripts/terraform-env.sh`, which maps `PROVIDER` + `ENV` to the correct local state workspace. `prod` intentionally selects Terraform's legacy `default` workspace; new environments must be initialized through `make ... init`.
 
+**Destroy is provider-aware and plan-verified** — `destroy.sh` maps each supported provider to its canonical server resource and checks that the destroy plan contains a delete action for that exact address before apply. Unknown providers fail before an override file is written.
+
 ## What's done well
 
 - **`set -euo pipefail` everywhere** — fail-loud is the default.
