@@ -53,6 +53,9 @@ __pycache__/
 
 # Operator-side artifacts (not for git)
 state-backups/
+share/
+vpnd/state/
+vpnd/config/*.yaml
 
 # OS
 .DS_Store
