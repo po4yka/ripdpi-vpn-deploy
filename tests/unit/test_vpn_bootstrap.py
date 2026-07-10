@@ -15,6 +15,7 @@ depend on:
 """
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import importlib.util
 import json
@@ -253,6 +254,25 @@ def test_expired_iso_with_timezone_offset(service):
     service.place("sub", token, b"x", expires="2000-01-01T00:00:00+00:00")
     assert service.get(f"/sub/{token}").status == 410
     assert service.reads()[-1]["outcome"] == "expired"
+
+
+def test_expiry_offset_preserves_the_instant(service, monkeypatch):
+    token = "offset00offset00"
+    monkeypatch.setattr(
+        service.module,
+        "_now_utc",
+        lambda: dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc),
+    )
+    service.place("sub", token, b"x", expires="2026-01-01T01:00:00+02:00")
+    assert service.get(f"/sub/{token}").status == 410
+
+
+def test_expiry_exact_boundary_is_expired(service, monkeypatch):
+    token = "boundaryboundary"
+    boundary = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+    monkeypatch.setattr(service.module, "_now_utc", lambda: boundary)
+    service.place("sub", token, b"x", expires="2026-01-01T00:00:00Z")
+    assert service.get(f"/sub/{token}").status == 410
 
 
 def test_unparseable_expires_fails_closed(service):

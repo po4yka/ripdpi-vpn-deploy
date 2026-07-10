@@ -12,7 +12,7 @@
 #
 # Usage:
 #   make issue-sub-token CLIENT=phone
-#   scripts/issue-sub-token.sh phone --expires 2026-12-31 --qr
+#   scripts/issue-sub-token.sh phone --format ripdpi --expires 2026-12-31 --qr
 #   scripts/issue-sub-token.sh phone --refresh-token <existing-token>
 #   scripts/issue-sub-token.sh phone --print-token-only   # emit bare token on stdout only
 #
@@ -28,12 +28,14 @@ CLIENT="${1:-}"
 shift
 
 EXPIRES=""
+FORMAT="singbox"
 EMIT_QR=0
 REFRESH_TOKEN=""
 PRINT_TOKEN_ONLY=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --expires)          EXPIRES="$2"; shift 2 ;;
+    --format)           FORMAT="$2"; shift 2 ;;
     --qr)               EMIT_QR=1; shift ;;
     --refresh-token)    REFRESH_TOKEN="$2"; shift 2 ;;
     --print-token-only) PRINT_TOKEN_ONLY=1; shift ;;
@@ -42,6 +44,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+case "$FORMAT" in
+  singbox|ripdpi) ;;
+  *) echo "format must be singbox or ripdpi" >&2; exit 1 ;;
+esac
+if [[ -n "$EXPIRES" ]]; then
+  EXPIRES="$(python3 "${REPO_ROOT}/scripts/normalize-subscription-expiry.py" "$EXPIRES")"
+fi
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 SUBSCRIPTION_DIR="${SUBSCRIPTION_DIR:-/var/lib/vpn-subscription}"
@@ -60,8 +69,14 @@ if [[ -z "$token_hash" ]]; then
   token_hash="$(printf '%s' "$token" | sha256sum | awk '{print $1}')"
 fi
 
-payload="$("${REPO_ROOT}/scripts/emit-singbox.sh" "$CLIENT")"
-[[ -n "$payload" ]] || { echo "empty payload from emit-singbox.sh" >&2; exit 1; }
+if [[ "$FORMAT" == "ripdpi" ]]; then
+  payload="$(BUNDLE_EXPIRES="$EXPIRES" "${REPO_ROOT}/scripts/emit-bundle.sh" "$CLIENT")"
+  emitter="emit-bundle.sh"
+else
+  payload="$("${REPO_ROOT}/scripts/emit-singbox.sh" "$CLIENT")"
+  emitter="emit-singbox.sh"
+fi
+[[ -n "$payload" ]] || { echo "empty payload from ${emitter}" >&2; exit 1; }
 
 remote_path="${SUBSCRIPTION_DIR}/sub/${token_hash}"
 
@@ -69,7 +84,7 @@ printf '%s' "$payload" | ssh "${admin_user}@${server_ip}" \
   "sudo install -o vpn-bootstrap -g vpn-bootstrap -m 0600 /dev/stdin '${remote_path}'"
 
 if [[ -n "$EXPIRES" ]]; then
-  meta="{\"expires\":\"${EXPIRES}\",\"client\":\"${CLIENT}\"}"
+  meta="$(jq -nc --arg expires "$EXPIRES" --arg client "$CLIENT" '{expires: $expires, client: $client}')"
   printf '%s' "$meta" | ssh "${admin_user}@${server_ip}" \
     "sudo install -o vpn-bootstrap -g vpn-bootstrap -m 0600 /dev/stdin '${remote_path}.meta'"
 fi
@@ -95,6 +110,7 @@ echo "Subscription URL (long-lived, refresh-able):"
 echo "  $url"
 echo
 echo "Properties:"
+echo "  * payload format: ${FORMAT}"
 echo "  * stored hash: ${token_hash:0:8}…"
 echo "  * hashed-on-disk; plaintext token never touches the server filesystem"
 echo "  * survives multiple fetches until ${EXPIRES:-revoked}"
@@ -115,7 +131,7 @@ fi
 
 # Audit-log the issuance without blocking token delivery if local logging is
 # unavailable.
-note="hash=${token_hash:0:16} expires=${EXPIRES:-none} qr=${EMIT_QR} refresh=${REFRESH_TOKEN:+yes}"
+note="hash=${token_hash:0:16} expires=${EXPIRES:-none} format=${FORMAT} qr=${EMIT_QR} refresh=${REFRESH_TOKEN:+yes}"
 ENV="$ENV" PROVIDER="$PROVIDER" \
   "${REPO_ROOT}/scripts/audit-log.sh" append-best-effort \
     --action issue-sub-token \

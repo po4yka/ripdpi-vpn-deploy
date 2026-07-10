@@ -240,14 +240,13 @@ the `ripdpi` object — in addition to the existing `.meta` sidecar — so the
 client can warn "subscription expires in N days, refresh" proactively, instead
 of only finding out when the next `/sub` fetch already failed.
 
-`emit-bundle.sh` emits it when `BUNDLE_EXPIRES` is set. Pair it with the same
-date the operator gives `issue-sub-token.sh --expires` (which writes the
-authoritative `.meta` sidecar and drives the `410`); the bundle field is the
-*early-warning* copy, the sidecar remains the enforcement point. Absent for
-non-expiring tokens. For example:
+`emit-bundle.sh` emits it when `BUNDLE_EXPIRES` is set. The supported issuance
+path normalizes `EXPIRES` once and writes the identical UTC instant into the
+authoritative `.meta` sidecar and the bundle's early-warning copy. Date-only
+input means midnight UTC. The field is absent for non-expiring tokens:
 
 ```bash
-BUNDLE_EXPIRES=2026-12-31T23:59:59Z make emit-bundle CLIENT=phone
+make issue-sub-token CLIENT=phone FORMAT=ripdpi EXPIRES=2026-12-31
 ```
 
 ## Merge guarantee

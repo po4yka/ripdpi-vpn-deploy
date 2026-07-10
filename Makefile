@@ -84,7 +84,7 @@ help:
 	@echo "  emit-bundle CLIENT=…       RIPDPI-extended sing-box JSON (singbox + ripdpi object)"
 	@echo "  emit-qr CLIENT=…           PNG QR for the client (TYPE=singbox|uri, OUT=path)"
 	@echo "  issue-bootstrap CLIENT=…   Issue a one-time /bootstrap/<token> URL"
-	@echo "  issue-sub-token CLIENT=…   Issue a long-lived /sub/<token> URL (EXPIRES=… QR=1)"
+	@echo "  issue-sub-token CLIENT=…   Issue a long-lived /sub/<token> URL (FORMAT=singbox|ripdpi EXPIRES=… QR=1)"
 	@echo "  sub-reads [SINCE=… ROUTE=… LIMIT=…]  Pull the server-side read-audit log"
 	@echo "  check-killswitch BUNDLE=…  Validate the kill-switch properties of a bundle"
 	@echo ""
@@ -408,8 +408,9 @@ issue-bootstrap:
 	./scripts/issue-bootstrap.sh "$${CLIENT}"
 
 issue-sub-token:
-	@test -n "$${CLIENT:-}" || { echo "usage: make issue-sub-token CLIENT=phone [EXPIRES=YYYY-MM-DD] [QR=1]"; exit 1; }
+	@test -n "$${CLIENT:-}" || { echo "usage: make issue-sub-token CLIENT=phone [FORMAT=singbox|ripdpi] [EXPIRES=YYYY-MM-DD] [QR=1]"; exit 1; }
 	./scripts/issue-sub-token.sh "$${CLIENT}" \
+	  $(if $(FORMAT),--format $(FORMAT)) \
 	  $(if $(EXPIRES),--expires $(EXPIRES)) \
 	  $(if $(filter 1 yes true,$(QR)),--qr)
 

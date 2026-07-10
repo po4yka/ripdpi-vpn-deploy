@@ -99,6 +99,10 @@ def _audit(route: str, token_hash: str, outcome: str, src_ip: str, n_bytes: int)
         logging.warning("audit append failed: %s", exc)
 
 
+def _now_utc() -> _dt.datetime:
+    return _dt.datetime.now(tz=_dt.timezone.utc)
+
+
 def _expired(meta_path: pathlib.Path) -> bool | None:
     if not meta_path.is_file():
         return False
@@ -112,7 +116,7 @@ def _expired(meta_path: pathlib.Path) -> bool | None:
     expires = meta.get("expires")
     if expires is None:
         return False
-    now = _dt.datetime.now(tz=_dt.timezone.utc)
+    now = _now_utc()
     if isinstance(expires, (int, float)):
         try:
             exp_dt = _dt.datetime.fromtimestamp(float(expires), tz=_dt.timezone.utc)
@@ -121,12 +125,15 @@ def _expired(meta_path: pathlib.Path) -> bool | None:
             return None
     else:
         try:
-            exp_dt = _dt.datetime.fromisoformat(str(expires)).replace(
-                tzinfo=_dt.timezone.utc)
+            exp_dt = _dt.datetime.fromisoformat(str(expires))
+            if exp_dt.tzinfo is None:
+                exp_dt = exp_dt.replace(tzinfo=_dt.timezone.utc)
+            else:
+                exp_dt = exp_dt.astimezone(_dt.timezone.utc)
         except ValueError as exc:
             logging.error("expiry metadata is invalid: %s", exc)
             return None
-    return exp_dt < now
+    return exp_dt <= now
 
 
 class Handler(BaseHTTPRequestHandler):
