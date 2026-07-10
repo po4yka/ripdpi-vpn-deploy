@@ -318,6 +318,17 @@ jobs:
       target: x86_64-unknown-linux-gnu
       cargo-command: clippy --release --all-targets -- -D warnings
 
+  vpnd-msrv:
+    name: vpnd MSRV check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88  # stable
+        with:
+          toolchain: "1.88.0"
+      - run: cargo +1.88.0 check --locked
+        working-directory: vpnd
+
   molecule-failure-scenarios:
     # Non-default Molecule scenarios that exercise red-path / failure
     # injection. Today: watchdog/failure (stub ntfy listener captures
@@ -356,7 +367,7 @@ jobs:
   required:
     name: required checks
     if: always()
-    needs: [gitleaks, actionlint, terraform, cloud-init, ansible, molecule, shellcheck, secrets-coverage, templates-render, yaml, unit-tests, bats-test, snapshot, validate-schema, tf-test, vpnd-test, vpnd-clippy, molecule-failure-scenarios]
+    needs: [gitleaks, actionlint, terraform, cloud-init, ansible, molecule, shellcheck, secrets-coverage, templates-render, yaml, unit-tests, bats-test, snapshot, validate-schema, tf-test, vpnd-test, vpnd-clippy, vpnd-msrv, molecule-failure-scenarios]
     runs-on: ubuntu-24.04
     steps:
       - env:

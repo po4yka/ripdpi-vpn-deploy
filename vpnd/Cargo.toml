@@ -2,7 +2,7 @@
 name = "vpnd"
 version = "1.3.0" # x-release-please-version
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.88"
 license = "BSD-3-Clause"
 description = "Convenience CLI wrapping the vpn-deploy Make/Terraform/Ansible/SOPS layers"
 repository = "https://github.com/po4yka/ripdpi-vpn-deploy"
