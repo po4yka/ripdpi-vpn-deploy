@@ -9,7 +9,7 @@ FORBIDDEN = (
     "roste" + "lecom", "bee" + "line", "mega" + "fon", "m" + "ts",
     "r" + "tk", "rost" + "ov", "izhe" + "vsk", "regime-landscape/" + "wiki",
     "censorship-bypass " + "vault", "source_" + "wiki_pages", "wiki" + " page",
-    "obsid" + "ian", "/wiki/" + "concepts/", "censorship-bypass/",
+    "obsid" + "ian", "/wiki/" + "concepts/", "censorship-" + "bypass/",
 )
 
 

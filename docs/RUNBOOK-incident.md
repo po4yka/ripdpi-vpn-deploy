@@ -12,6 +12,7 @@ symptom; cross-reference the linked runbook for the recovery procedure.
 | Subscription URL leaked publicly | Token | add the leaked token to `subscription.revoked_tokens`, run `make deploy`; reissue via `make issue-bootstrap CLIENT=… --expires DATE` |
 | Bootstrap URL leaked before client fetched | Token | re-issue with `make issue-bootstrap CLIENT=… --expires DATE` (old token returns 410 on first GET) |
 | TLS handshake to VPS fails from many networks | IP burned | `make burn-check` confirms; warm-spare → `make promote-spare OTP=…` (if pre-provisioned), else blue-green to new ASN |
+| Protocol sentinels report sustained authenticated failure while direct controls pass | Targeted path block | Inspect `make protocol-liveness LIVENESS_CONFIG=…`; after quorum and three consecutive evaluations, use the bound OTP from `watch-spare` to start the normal operator-confirmed warm-spare promotion |
 | Slow / lossy on one network only, fine elsewhere | Routing / ISP-specific | try Hysteria2 fallback; if persistent, blue-green to different region; for the RU home-ISP TLS-policing rule run `make test-tls-policing HOST=…` then flip the cohort to `xray_flow_mode: mux` |
 | `xray run -test -config` fails after deploy | Config bug | `RUNBOOK-rollback.md` § 1 (config rollback, automatic via handler rescue); `make drift-since-tag` shows what changed since last known-good |
 | New Xray release crashes / leaks | Binary | `RUNBOOK-rollback.md` § 2 (binary rollback) |

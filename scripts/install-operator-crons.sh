@@ -17,6 +17,7 @@
 #   @daily  asn-drift                 alerts on ASN reassignment
 #   @daily  check-ip-reputation       Spamhaus / optional FireHOL file / AbuseIPDB
 #   */2 *   watch-spare               (only when warm-spare ENV set)
+#                                      uses protocol quorum when LIVENESS_CONFIG is set
 #   @daily  tspu-canary               TSPU rule-drift probes
 #   @daily  probing-summary           7-day rollup
 #   @daily  backup-state              encrypted local TF state backup
@@ -32,6 +33,7 @@ ENV="${ENV:-prod}"
 WARM_SPARE_ENV="${WARM_SPARE_ENV:-}"
 PAYLOAD_THROTTLE_HOST="${PAYLOAD_THROTTLE_HOST:-}"
 REALITY_TARGET_VANTAGE="${REALITY_TARGET_VANTAGE:-}"
+LIVENESS_CONFIG="${LIVENESS_CONFIG:-}"
 
 DRY_RUN=0
 REMOVE=0
@@ -72,8 +74,16 @@ ${MARKER_BEGIN}
 @daily         cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make backup-state        2>&1 | logger -t vpn-state
 EOF
   if [[ -n "$WARM_SPARE_ENV" ]]; then
+    liveness_env=""
+    if [[ -n "$LIVENESS_CONFIG" ]]; then
+      [[ -f "$LIVENESS_CONFIG" ]] || { echo "LIVENESS_CONFIG not found: $LIVENESS_CONFIG" >&2; return 1; }
+      printf -v liveness_q '%q' "$LIVENESS_CONFIG"
+      liveness_env=" LIVENESS_CONFIG=${liveness_q}"
+    else
+      echo "warm-spare watcher will use legacy TCP-only reachability; set LIVENESS_CONFIG for protocol quorum" >&2
+    fi
     cat <<EOF
-*/2 * * * *    cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} GREEN_ENV=${WARM_SPARE_ENV} make watch-spare  2>&1 | logger -t vpn-spare
+*/2 * * * *    cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} GREEN_ENV=${WARM_SPARE_ENV}${liveness_env} make watch-spare  2>&1 | logger -t vpn-spare
 EOF
   fi
   if [[ -n "$PAYLOAD_THROTTLE_HOST" ]]; then
