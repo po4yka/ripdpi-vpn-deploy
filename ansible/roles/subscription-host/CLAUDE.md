@@ -35,3 +35,4 @@ Decryptable only with the audit-log key. See `scripts/sub-reads.sh`.
   changing the access log format silently breaks the audit pipeline.
 - **`vpn_subscription_only` host has NO proxy** — don't co-locate. The
   whole point is blast-radius separation.
+- **Expiry instants preserve explicit offsets** — normalize new issuance to UTC, treat legacy naive timestamps as UTC, keep numeric epoch sidecars compatible, fail closed on invalid metadata, and expire exactly when `now >= expires`.

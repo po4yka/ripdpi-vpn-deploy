@@ -38,6 +38,7 @@ not derive a URL from `clients[*].name`.
 | Revocation list | implemented in v1.2 | `subscription.revoked_tokens` | ✓ shipped |
 | Rate-limit | implemented in v1.2 | `subscription.rate_limit` + burst | ✓ shipped |
 | Token expiry per device | required | `<token>.meta` sidecar (ISO date or epoch); vpn-bootstrap returns 410 after `expires`. Works for BOTH /sub/ and /bootstrap/. | ✓ shipped |
+| RIPDPI client expiry warning | required | `make issue-sub-token FORMAT=ripdpi EXPIRES=…` normalizes one UTC instant into both the sidecar and `ripdpi.expires`; Android warns before the enforcement point. | ✓ shipped |
 | Delivery host separate from VPN node | required | `vpn_subscription_only` inventory var skips every transport role; pairs with multi-operator SOPS split | ✓ shipped (see `docs/SUBSCRIPTION-HOST-SEPARATION.md`) |
 | QR bootstrap flow | required | `issue-bootstrap.sh --qr` + `issue-sub-token.sh --qr` writes a PNG | ✓ shipped |
 | Audit log of token reads | recommended | `/var/log/vpn-subscription/reads.log` JSONL; one record per read (consumed/unknown/revoked/expired) with hash prefix + src_ip + bytes; pull via `make sub-reads` | ✓ shipped |
