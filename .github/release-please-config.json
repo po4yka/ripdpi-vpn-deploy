@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "simple",
-  "include-component-in-tag": false,
+  "include-component-in-tag": true,
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
   "draft": false,
@@ -10,6 +10,7 @@
   "last-release-sha": "1736c5632ff48f73f0f731ed80532f51b6600712",
   "packages": {
     ".": {
+      "component": "vpnd",
       "package-name": "vpn-deploy",
       "changelog-path": "CHANGELOG.md",
       "extra-files": ["vpnd/Cargo.toml"],
