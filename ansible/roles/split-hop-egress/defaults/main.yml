@@ -16,9 +16,8 @@
 # for operator-side stand procedure.
 #
 # Off by default. Operators that opt in must provision a second VPS
-# and route Node A's egress through the tunnel — that wiring lives in
-# the ingress-side cohort file (TBD as a follow-up task; the egress
-# role is the first concrete artifact of the topology).
+# and enable the paired `split-hop-ingress` role on Node A. The ingress role
+# owns responder configuration and conntrack-marked policy routing.
 
 split_hop_egress:
   # WireGuard interface name on Node B. Kept distinct from the

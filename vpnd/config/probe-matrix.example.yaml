@@ -1,19 +1,15 @@
-# Example probe-matrix configuration.
-#
-# Copy to `vpnd/config/probe-matrix.yaml` and fill the `endpoint:` fields
-# with operator-supplied addresses. The classification (`class:`) is the
-# *technical signature* of the destination ASN bucket — see
-# docs/PROBE-MATRIX.md for what each class means and how to map an actual
-# IP to a class.
-
-# Operator-supplied label for the probe origin VPS. Free-form; the report
-# JSON carries it verbatim so analysis tools can cross-reference runs.
-vantage: ""
-
-# Sweep interval. 300s (5 min) is the recommended starting point —
-# coarse enough that a 4h run stays manageable, fine enough that onset/
-# recovery windows resolve usefully.
+# Topology-aware probe-matrix configuration. Copy outside the repository and
+# replace every profile_file with an absolute path to an owner-controlled 0600
+# target profile generated for an owned research target.
+schema_version: 2
+vantage: filtered-path-a
 poll_interval_seconds: 300
+
+control:
+  url: https://control.example.com/generate-204
+  expected_status: 204
+  timeout_seconds: 15
+  degraded_after_ms: 3000
 
 protocols:
   - mtproto
@@ -22,13 +18,34 @@ protocols:
   - tcp-trojan
   - tls-non-443
 
-# At least one entry per class is recommended so the matrix gives you
-# a same-tick comparison. Operators choose actual addresses; the code
-# carries no IPs.
-destinations:
-  - class: domestic-allowlisted
-    endpoint: ""
-  - class: domestic-generic
-    endpoint: ""
-  - class: foreign-non-allowlist
-    endpoint: ""
+targets:
+  - id: allowlisted-dual
+    comparison_set: allowlisted-pair
+    destination_class: allowlist-pattern
+    topology: single-ip-dual-role
+    profile_file: /home/operator/.config/vpn-provision/probe-matrix/allowlisted-dual.json
+  - id: allowlisted-split
+    comparison_set: allowlisted-pair
+    destination_class: allowlist-pattern
+    topology: split-hop-ingress
+    profile_file: /home/operator/.config/vpn-provision/probe-matrix/allowlisted-split.json
+  - id: generic-dual
+    comparison_set: generic-pair
+    destination_class: neutral-pattern
+    topology: single-ip-dual-role
+    profile_file: /home/operator/.config/vpn-provision/probe-matrix/generic-dual.json
+  - id: generic-split
+    comparison_set: generic-pair
+    destination_class: neutral-pattern
+    topology: split-hop-ingress
+    profile_file: /home/operator/.config/vpn-provision/probe-matrix/generic-split.json
+  - id: non-allowlist-dual
+    comparison_set: non-allowlist-pair
+    destination_class: non-allowlist-pattern
+    topology: single-ip-dual-role
+    profile_file: /home/operator/.config/vpn-provision/probe-matrix/non-allowlist-dual.json
+  - id: non-allowlist-split
+    comparison_set: non-allowlist-pair
+    destination_class: non-allowlist-pattern
+    topology: split-hop-ingress
+    profile_file: /home/operator/.config/vpn-provision/probe-matrix/non-allowlist-split.json

@@ -1,0 +1,20 @@
+[Unit]
+Description=Probe matrix Xray target
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=probe-xray
+Group=probe-xray
+ExecStart=/usr/local/bin/xray run -config /etc/probe-matrix/xray.json
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/probe-matrix-xray
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

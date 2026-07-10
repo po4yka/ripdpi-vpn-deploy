@@ -1,0 +1,12 @@
+[Interface]
+PrivateKey = REPLACE_WITH_NODE_A_WG_PRIVATE_KEY
+Address = 10.200.0.1/30
+ListenPort = 51821
+Table = off
+PostUp = ip route replace default dev shop0 table 200; ip rule add fwmark 1 table 200 2>/dev/null || true; nft -f /etc/wireguard/split-hop-ingress.nft
+PostDown = ip rule del fwmark 1 table 200 2>/dev/null || true; ip route flush table 200; nft delete table inet split_hop_ingress 2>/dev/null || true
+
+[Peer]
+PublicKey = REPLACE_WITH_NODE_B_WG_PUBLIC_KEY
+
+AllowedIPs = 0.0.0.0/0

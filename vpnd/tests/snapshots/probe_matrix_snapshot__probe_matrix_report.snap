@@ -3,142 +3,414 @@ source: tests/probe_matrix_snapshot.rs
 expression: json
 ---
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "vantage": "synthetic",
   "started_at_unix_ms": 1700000000000,
   "finished_at_unix_ms": 1700000600000,
   "poll_interval_seconds": 300,
+  "controls": [
+    {
+      "tick": 0,
+      "timestamp_unix_ms": 1700000000000,
+      "verdict": "ok",
+      "rtt_ms": 20,
+      "sweep_duration_ms": 50,
+      "overrun_ms": 0
+    },
+    {
+      "tick": 1,
+      "timestamp_unix_ms": 1700000300000,
+      "verdict": "ok",
+      "rtt_ms": 20,
+      "sweep_duration_ms": 50,
+      "overrun_ms": 0
+    }
+  ],
   "cells": [
     {
+      "tick": 0,
       "timestamp_unix_ms": 1700000000000,
       "protocol": "mtproto",
-      "destination_class": "domestic-allowlisted",
-      "endpoint": "10.0.0.1:443",
+      "target_id": "allow-dual",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "single-ip-dual-role",
       "verdict": "ok",
       "rtt_ms": 42
     },
     {
+      "tick": 0,
       "timestamp_unix_ms": 1700000000000,
       "protocol": "mtproto",
-      "destination_class": "foreign-non-allowlist",
-      "endpoint": "203.0.113.1:443",
+      "target_id": "allow-split",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "split-hop-ingress",
       "verdict": "ok",
       "rtt_ms": 42
     },
     {
+      "tick": 0,
+      "timestamp_unix_ms": 1700000000000,
+      "protocol": "mtproto",
+      "target_id": "nonallow-dual",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "single-ip-dual-role",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "tick": 0,
+      "timestamp_unix_ms": 1700000000000,
+      "protocol": "mtproto",
+      "target_id": "nonallow-split",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "split-hop-ingress",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "tick": 0,
       "timestamp_unix_ms": 1700000000000,
       "protocol": "xhttp-vless",
-      "destination_class": "domestic-allowlisted",
-      "endpoint": "10.0.0.1:443",
+      "target_id": "allow-dual",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "single-ip-dual-role",
       "verdict": "ok",
       "rtt_ms": 42
     },
     {
+      "tick": 0,
       "timestamp_unix_ms": 1700000000000,
       "protocol": "xhttp-vless",
-      "destination_class": "foreign-non-allowlist",
-      "endpoint": "203.0.113.1:443",
+      "target_id": "allow-split",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "split-hop-ingress",
       "verdict": "ok",
       "rtt_ms": 42
     },
     {
+      "tick": 0,
+      "timestamp_unix_ms": 1700000000000,
+      "protocol": "xhttp-vless",
+      "target_id": "nonallow-dual",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "single-ip-dual-role",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "tick": 0,
+      "timestamp_unix_ms": 1700000000000,
+      "protocol": "xhttp-vless",
+      "target_id": "nonallow-split",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "split-hop-ingress",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "tick": 0,
       "timestamp_unix_ms": 1700000000000,
       "protocol": "tcp-trojan",
-      "destination_class": "domestic-allowlisted",
-      "endpoint": "10.0.0.1:443",
+      "target_id": "allow-dual",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "single-ip-dual-role",
       "verdict": "ok",
       "rtt_ms": 42
     },
     {
+      "tick": 0,
       "timestamp_unix_ms": 1700000000000,
       "protocol": "tcp-trojan",
-      "destination_class": "foreign-non-allowlist",
-      "endpoint": "203.0.113.1:443",
+      "target_id": "allow-split",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "split-hop-ingress",
       "verdict": "ok",
       "rtt_ms": 42
     },
     {
-      "timestamp_unix_ms": 1700000300000,
-      "protocol": "mtproto",
-      "destination_class": "domestic-allowlisted",
-      "endpoint": "10.0.0.1:443",
+      "tick": 0,
+      "timestamp_unix_ms": 1700000000000,
+      "protocol": "tcp-trojan",
+      "target_id": "nonallow-dual",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "single-ip-dual-role",
       "verdict": "ok",
       "rtt_ms": 42
     },
     {
+      "tick": 0,
+      "timestamp_unix_ms": 1700000000000,
+      "protocol": "tcp-trojan",
+      "target_id": "nonallow-split",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "split-hop-ingress",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "tick": 1,
       "timestamp_unix_ms": 1700000300000,
       "protocol": "mtproto",
-      "destination_class": "foreign-non-allowlist",
-      "endpoint": "203.0.113.1:443",
+      "target_id": "allow-dual",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "single-ip-dual-role",
       "verdict": "blocked"
     },
     {
+      "tick": 1,
       "timestamp_unix_ms": 1700000300000,
-      "protocol": "xhttp-vless",
-      "destination_class": "domestic-allowlisted",
-      "endpoint": "10.0.0.1:443",
+      "protocol": "mtproto",
+      "target_id": "allow-split",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "split-hop-ingress",
       "verdict": "ok",
       "rtt_ms": 42
     },
     {
+      "tick": 1,
       "timestamp_unix_ms": 1700000300000,
-      "protocol": "xhttp-vless",
-      "destination_class": "foreign-non-allowlist",
-      "endpoint": "203.0.113.1:443",
+      "protocol": "mtproto",
+      "target_id": "nonallow-dual",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "single-ip-dual-role",
       "verdict": "blocked"
     },
     {
+      "tick": 1,
       "timestamp_unix_ms": 1700000300000,
-      "protocol": "tcp-trojan",
-      "destination_class": "domestic-allowlisted",
-      "endpoint": "10.0.0.1:443",
+      "protocol": "mtproto",
+      "target_id": "nonallow-split",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "split-hop-ingress",
       "verdict": "ok",
       "rtt_ms": 42
     },
     {
+      "tick": 1,
+      "timestamp_unix_ms": 1700000300000,
+      "protocol": "xhttp-vless",
+      "target_id": "allow-dual",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "single-ip-dual-role",
+      "verdict": "blocked"
+    },
+    {
+      "tick": 1,
+      "timestamp_unix_ms": 1700000300000,
+      "protocol": "xhttp-vless",
+      "target_id": "allow-split",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "split-hop-ingress",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "tick": 1,
+      "timestamp_unix_ms": 1700000300000,
+      "protocol": "xhttp-vless",
+      "target_id": "nonallow-dual",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "single-ip-dual-role",
+      "verdict": "blocked"
+    },
+    {
+      "tick": 1,
+      "timestamp_unix_ms": 1700000300000,
+      "protocol": "xhttp-vless",
+      "target_id": "nonallow-split",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "split-hop-ingress",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "tick": 1,
       "timestamp_unix_ms": 1700000300000,
       "protocol": "tcp-trojan",
-      "destination_class": "foreign-non-allowlist",
-      "endpoint": "203.0.113.1:443",
+      "target_id": "allow-dual",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "single-ip-dual-role",
       "verdict": "blocked"
+    },
+    {
+      "tick": 1,
+      "timestamp_unix_ms": 1700000300000,
+      "protocol": "tcp-trojan",
+      "target_id": "allow-split",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "split-hop-ingress",
+      "verdict": "ok",
+      "rtt_ms": 42
+    },
+    {
+      "tick": 1,
+      "timestamp_unix_ms": 1700000300000,
+      "protocol": "tcp-trojan",
+      "target_id": "nonallow-dual",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "single-ip-dual-role",
+      "verdict": "blocked"
+    },
+    {
+      "tick": 1,
+      "timestamp_unix_ms": 1700000300000,
+      "protocol": "tcp-trojan",
+      "target_id": "nonallow-split",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "split-hop-ingress",
+      "verdict": "ok",
+      "rtt_ms": 42
     }
   ],
   "windows": [
     {
       "protocol": "mtproto",
-      "destination_class": "domestic-allowlisted",
+      "target_id": "allow-dual",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "single-ip-dual-role",
+      "onset_unix_ms": 1700000300000,
+      "recovery_unix_ms": null
+    },
+    {
+      "protocol": "mtproto",
+      "target_id": "allow-split",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "split-hop-ingress",
       "onset_unix_ms": null,
       "recovery_unix_ms": null
     },
     {
       "protocol": "mtproto",
-      "destination_class": "foreign-non-allowlist",
+      "target_id": "nonallow-dual",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "single-ip-dual-role",
       "onset_unix_ms": 1700000300000,
       "recovery_unix_ms": null
     },
     {
-      "protocol": "tcp-trojan",
-      "destination_class": "domestic-allowlisted",
-      "onset_unix_ms": null,
-      "recovery_unix_ms": null
-    },
-    {
-      "protocol": "tcp-trojan",
-      "destination_class": "foreign-non-allowlist",
-      "onset_unix_ms": 1700000300000,
-      "recovery_unix_ms": null
-    },
-    {
-      "protocol": "xhttp-vless",
-      "destination_class": "domestic-allowlisted",
+      "protocol": "mtproto",
+      "target_id": "nonallow-split",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "split-hop-ingress",
       "onset_unix_ms": null,
       "recovery_unix_ms": null
     },
     {
       "protocol": "xhttp-vless",
-      "destination_class": "foreign-non-allowlist",
+      "target_id": "allow-dual",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "single-ip-dual-role",
       "onset_unix_ms": 1700000300000,
       "recovery_unix_ms": null
+    },
+    {
+      "protocol": "xhttp-vless",
+      "target_id": "allow-split",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "split-hop-ingress",
+      "onset_unix_ms": null,
+      "recovery_unix_ms": null
+    },
+    {
+      "protocol": "xhttp-vless",
+      "target_id": "nonallow-dual",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "single-ip-dual-role",
+      "onset_unix_ms": 1700000300000,
+      "recovery_unix_ms": null
+    },
+    {
+      "protocol": "xhttp-vless",
+      "target_id": "nonallow-split",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "split-hop-ingress",
+      "onset_unix_ms": null,
+      "recovery_unix_ms": null
+    },
+    {
+      "protocol": "tcp-trojan",
+      "target_id": "allow-dual",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "single-ip-dual-role",
+      "onset_unix_ms": 1700000300000,
+      "recovery_unix_ms": null
+    },
+    {
+      "protocol": "tcp-trojan",
+      "target_id": "allow-split",
+      "comparison_set": "allow-pair",
+      "destination_class": "allowlist-pattern",
+      "topology": "split-hop-ingress",
+      "onset_unix_ms": null,
+      "recovery_unix_ms": null
+    },
+    {
+      "protocol": "tcp-trojan",
+      "target_id": "nonallow-dual",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "single-ip-dual-role",
+      "onset_unix_ms": 1700000300000,
+      "recovery_unix_ms": null
+    },
+    {
+      "protocol": "tcp-trojan",
+      "target_id": "nonallow-split",
+      "comparison_set": "nonallow-pair",
+      "destination_class": "non-allowlist-pattern",
+      "topology": "split-hop-ingress",
+      "onset_unix_ms": null,
+      "recovery_unix_ms": null
+    }
+  ],
+  "observations": [
+    {
+      "tick": 1,
+      "kind": "dual-role-targeting-candidate",
+      "comparison_sets": [
+        "allow-pair",
+        "nonallow-pair"
+      ],
+      "evidence_target_ids": [
+        "allow-dual",
+        "allow-split",
+        "nonallow-dual",
+        "nonallow-split"
+      ],
+      "reason": "single-IP targets are blocked while matched split-hop targets remain usable"
     }
   ]
 }

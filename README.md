@@ -171,9 +171,9 @@ Then:
     deploy gate for PRs labelled `ci-real-deploy`.
 18. `docs/REGRESSION-BASELINE.md` — `rkn-block-checker` four-layer
     verdict harness for before/after deploy measurement.
-19. `docs/PROBE-MATRIX.md` — `vpnd probe-matrix` multi-protocol
-    simultaneity DPI probe over a (protocol × destination-class) ×
-    time matrix.
+19. `docs/PROBE-MATRIX.md` — topology-aware authenticated probe matrix with
+    paired single-IP and split-hop targets, permission-checked profiles, and
+    conservative protocol/class/topology observations.
 20. `docs/TRANSPORT-REACHABILITY-MATRIX.md` — two-vantage per-profile
     reachability sweep, CI-driven non-filtered half + operator-driven
     filtered half.

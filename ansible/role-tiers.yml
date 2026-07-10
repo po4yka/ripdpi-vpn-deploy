@@ -42,6 +42,7 @@ tiers:
   watchdog: core            # service supervision + alerting
   backup: core              # restic+age recovery path
   node_manifest: core       # machine-readable enabled surfaces/recovery summary
+  xray-runtime: core        # shared pinned Xray binary installation; no listener
 
   # TACTICAL — opt-in, situational, default-off
   policy-ratelimit: tactical # routing-blackhole abuse limiter (see README)
@@ -57,6 +58,8 @@ tiers:
   split-hop-egress: research  # two-VPS dual-role defense; pilot, unconfirmed
   hysteria-realm: research    # sing-box alpha rendezvous; P5 fallback
   dns-morph-bridge: research  # UDP/53 bootstrap channel; self-built binary, P4
+  probe-matrix-target: research # five-listener owned measurement target
+  split-hop-ingress: research # Node A responder for topology comparison
 
 # Maps each transport/service enable toggle under `vpn:` to its role. Roles
 # gated by `security_controls.*` are classified above but intentionally absent
@@ -79,6 +82,8 @@ toggle_role_map:
   enable_dns_morph_bridge: dns-morph-bridge
   enable_hysteria_realm: hysteria-realm
   enable_split_hop_egress: split-hop-egress
+  enable_probe_matrix_target: probe-matrix-target
+  enable_split_hop_ingress: split-hop-ingress
 
 # Profiles that constitute a "family" deploy. The lint forbids any research
 # role from being enabled (directly or by inheriting all.yml) in these, and

@@ -131,6 +131,10 @@ table inet filter {
     ct state new iifname "awg0" oifname "{{ awg_uplink_interface }}" accept
 {% endif %}
 {% endif %}
+{% if vpn.enable_split_hop_egress | default(false) %}
+    # Node B forwards decapsulated traffic from the B-initiated split-hop flow.
+    ct state new iifname "{{ split_hop_egress.wg_interface }}" oifname "{{ split_hop_egress.forward_iface }}" accept
+{% endif %}
   }
 
   chain output {

@@ -1,0 +1,15 @@
+---
+split_hop_ingress:
+  manage_service: true
+  validate_policy: true
+  wg_interface: shop0
+  listen_port: 51821
+  node_a_address: 10.200.0.1/30
+  node_b_address: 10.200.0.2/32
+  routing_table: 200
+  fwmark: 1
+
+split_hop_ingress_secrets:
+  node_a_private_key: ""
+  node_b_public_key: ""
+  preshared_key: ""

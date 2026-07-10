@@ -1,0 +1,8 @@
+destroy table inet split_hop_ingress
+table inet split_hop_ingress {
+  chain output {
+    type route hook output priority mangle; policy accept;
+    ct state new ct direction original meta skuid { 971, 972 } ct mark set 1
+    ct mark 1 meta mark set ct mark
+  }
+}

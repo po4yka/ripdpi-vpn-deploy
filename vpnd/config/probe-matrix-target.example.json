@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "target_id": "generic-dual",
+  "endpoint": "192.0.2.10",
+  "expected_xray_version": "v26.3.27",
+  "expected_mtg_version": "v2.2.8",
+  "expected_mtproto_helper_version": "gotd-v0.160.0",
+  "protocols": {
+    "mtproto": { "port": 10443, "secret": "REPLACE_WITH_MTPROTO_SECRET" },
+    "xhttp-vless": { "port": 11443, "server_name": "probe.example.com", "path": "/vless", "uuid": "REPLACE_WITH_VLESS_UUID" },
+    "xhttp-trojan": { "port": 12443, "server_name": "probe.example.com", "path": "/trojan", "password": "REPLACE_WITH_XHTTP_TROJAN_PASSWORD" },
+    "tcp-trojan": { "port": 13443, "server_name": "probe.example.com", "password": "REPLACE_WITH_TCP_TROJAN_PASSWORD" },
+    "tls-non-443": { "port": 14443, "server_name": "probe.example.com" }
+  }
+}
