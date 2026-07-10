@@ -18,6 +18,25 @@
         executable: /bin/bash
       changed_when: false
 
+    - name: Textfile directory preserves honeypot write access
+      ansible.builtin.stat:
+        path: /var/lib/node_exporter/textfile
+      register: textfile_dir
+      failed_when: >-
+        textfile_dir.stat.pw_name != 'root' or
+        textfile_dir.stat.gr_name != 'node_exporter_textfile' or
+        textfile_dir.stat.mode != '3775'
+
+    - name: Honeypot user can create and remove its textfile metric
+      ansible.builtin.command:
+        cmd: |
+          runuser -u honeypot -- sh -c '
+            metric=/var/lib/node_exporter/textfile/vpn_honeypot.prom
+            printf "vpn_honeypot_events_total 0\\n" > "$metric"
+            rm "$metric"
+          '
+      changed_when: false
+
     - name: journald hardening config present
       ansible.builtin.stat:
         path: /etc/systemd/journald.conf.d/vpn.conf

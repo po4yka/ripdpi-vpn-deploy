@@ -39,6 +39,18 @@ def test_hysteria_role_does_not_run_the_server_as_a_config_check():
     assert "server -c {{ hysteria_config_dir }}/config.yaml check" not in tasks
 
 
+def test_monitoring_preserves_honeypot_textfile_write_access():
+    honeypot_tasks = (REPO_ROOT / "ansible" / "roles" / "honeypot" / "tasks" / "main.yml").read_text(encoding="utf-8")
+    monitoring_tasks = (REPO_ROOT / "ansible" / "roles" / "monitoring" / "tasks" / "main.yml").read_text(encoding="utf-8")
+    honeypot_defaults = (REPO_ROOT / "ansible" / "roles" / "honeypot" / "defaults" / "main.yml").read_text(encoding="utf-8")
+    assert "node_exporter_textfile" in honeypot_defaults
+    assert "node_exporter_textfile" in monitoring_tasks
+    assert 'mode: "3775"' in honeypot_tasks
+    assert 'mode: "3775"' in monitoring_tasks
+    assert "notify: Restart honeypot" in honeypot_tasks
+    assert "Ensure existing honeypot joins textfile writer group" in monitoring_tasks
+
+
 def test_galaxy_resolution_failures_return_tooling_error(monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["check-ansible-galaxy-updates.py"])
     with patch.object(galaxy_checker.shutil, "which", return_value="/usr/bin/ansible-galaxy"), patch.object(

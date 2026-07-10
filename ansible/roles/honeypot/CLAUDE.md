@@ -10,6 +10,11 @@ have no reason to touch them.
 **Logs only; no auto-block** — feeds `monitoring`'s probing summary.
 Auto-blocking probers is bait — they rotate IPs faster than we can ban.
 
+**Metrics use a shared writer group** — the textfile directory is root-owned,
+setgid and sticky for `node_exporter_textfile`; the honeypot service receives
+group write access while monitoring can manage the directory without revoking
+it or letting one producer replace another producer's metrics.
+
 ## What's done well
 
 - **Banner-free** — every honeypot port closes silently after TCP accept.

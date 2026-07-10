@@ -25,13 +25,42 @@
             --no-collector.wifi"
   notify: Restart node_exporter
 
+- name: Ensure node_exporter textfile writer group
+  ansible.builtin.group:
+    name: "{{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}"
+    system: true
+
+- name: Discover existing honeypot account
+  ansible.builtin.getent:
+    database: passwd
+    key: honeypot
+    fail_key: false
+  when: vpn.enable_honeypot | default(false)
+
+- name: Ensure existing honeypot joins textfile writer group
+  ansible.builtin.user:
+    name: honeypot
+    groups: "{{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}"
+    append: true
+  register: _monitoring_honeypot_writer_group
+  when:
+    - vpn.enable_honeypot | default(false)
+    - ansible_facts.getent_passwd.honeypot is defined
+
+- name: Restart honeypot after textfile writer group change # noqa no-handler
+  ansible.builtin.systemd_service:
+    name: honeypot.service
+    state: restarted
+  changed_when: false
+  when: _monitoring_honeypot_writer_group.changed | default(false)
+
 - name: Ensure node_exporter textfile collector directory
   ansible.builtin.file:
     path: "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}"
     state: directory
     owner: root
-    group: root
-    mode: "0755"
+    group: "{{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}"
+    mode: "3775"
 
 - name: Ensure node_exporter enabled
   ansible.builtin.systemd_service:

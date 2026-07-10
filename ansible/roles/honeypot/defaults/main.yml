@@ -17,7 +17,8 @@
 honeypot:
   port: 4443
   log_dir: /var/log/honeypot
-  textfile_dir: /var/lib/node_exporter/textfile
+  textfile_dir: "{{ (monitoring | default({})).node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}"
+  textfile_group: "{{ (monitoring | default({})).node_exporter_textfile_group | default('node_exporter_textfile') }}"
   # Sample rate cap — if probes start hammering us, only record up to
   # this many events per minute. Avoids disk-filling DoS via probe
   # storm; the per-minute COUNT still updates every event.

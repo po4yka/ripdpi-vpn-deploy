@@ -10,6 +10,11 @@ egresses unless the operator runs it.
 `MaxRetentionSec=14day`. Keeps logs useful without accumulating a corpus
 that could be seized. No syslog forwarding.
 
+**Textfile producers use a shared writer group** — monitoring owns the
+root-owned setgid and sticky directory, while unprivileged producers such as
+honeypot join `node_exporter_textfile`. This keeps collector reads available
+without granting those producers ownership or cross-producer replacement.
+
 ## What's done well
 
 - **Logrotate with retention** — xray and nginx-vpn logs rotated daily with
