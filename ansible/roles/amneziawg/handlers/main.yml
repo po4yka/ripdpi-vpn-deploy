@@ -4,8 +4,9 @@
     daemon_reload: true
 
 - name: Reload amneziawg
-  ansible.builtin.command:
-    cmd: awg syncconf {{ item.name }} {{ amneziawg_config_dir }}/{{ item.name }}.conf
+  ansible.builtin.systemd_service:
+    name: "awg-quick@{{ item.name }}"
+    state: reloaded
   loop: "{{ _awg_instances | default([{'name': amneziawg.interface}]) }}"
   loop_control:
     label: "{{ item.name }}"
