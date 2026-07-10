@@ -236,6 +236,7 @@ make scan-targets CIDR=<range>            # discover REALITY targets via RealiTL
 make security-audit                       # non-blocking host audit report
 PYINFRA_HOSTS=host make pyinfra-audit      # experimental read-only pyinfra audit
 make smoke-test                           # end-to-end traffic test (real proxy dial)
+make snell-refinement BUNDLE=<json> CONFIG=<yaml> VANTAGE=<technical-id> # staging-only Snell payload/refinement matrix
 make blue-green GREEN_ENV=<name>          # orchestrate blue-green replacement
 ```
 

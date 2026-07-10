@@ -4,7 +4,7 @@ Snell is a RESEARCH-tier, staging-only transport candidate. It is disabled in ev
 
 ## Deployment boundary
 
-Enable `vpn.enable_snell` only on a non-production host that explicitly lists `snell` in `allow_research_roles`. Add TCP listeners 2443, 2444, and 2445 to that staging environment's typed `public_listeners` contract. The prerelease guard refuses `env=prod` while the role pins sing-box `v1.14.0-alpha.42`.
+Enable `vpn.enable_snell` only on a non-production host that explicitly lists `snell` in `allow_research_roles`. Add TCP listeners 2443, 2444, and 2445 to that staging environment's typed `public_listeners` contract. The prerelease guard refuses `ENV=prod` while the role pins sing-box `v1.14.0-alpha.42`.
 
 The optional same-node control endpoint requires nginx-xhttp and `snell.evaluation_enabled: true`. It serves fixed, uncompressed payload files under the secret `snell_secrets.evaluation_path_token`; access logging is disabled for that location.
 

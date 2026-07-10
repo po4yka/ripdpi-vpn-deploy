@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -42,6 +44,8 @@ def test_snell_role_guards_the_exported_production_environment() -> None:
     tasks = (ROOT / "ansible/roles/snell/tasks/main.yml").read_text()
     assert "lookup('env', 'ENV')" in tasks
     assert "staging-only; refusing ENV=prod" in tasks
+    assert tasks.index("Render validated Snell configuration") < tasks.index("Point Snell current symlink at validated release")
+    assert "Preserve previous Snell release symlink" in tasks
 
 
 def test_enabled_snell_surfaces_three_listener_contract_entries() -> None:
@@ -80,6 +84,29 @@ def test_refinement_classifier_requires_control_and_two_of_three() -> None:
     assert snell_refinement.classify_profile(profile, [16384], 3, _observations(profile, [True, True, True], duration=30))["verdict"] == "throttled"
 
 
+def test_authentication_failure_is_error_not_blocked() -> None:
+    profile = "p3-snell-v6-default-fresh-test"
+    observations = _observations(profile, [False, False, False])
+    reports = [snell_refinement.classify_profile(profile, [16384], 3, observations)]
+    snell_refinement.mark_authentication_errors(reports, observations, "authentication failed for user")
+    assert reports[0]["verdict"] == "error"
+    assert reports[0]["first_failure_bytes"] is None
+
+
+def test_snell_schema_limits_v6_psks_and_secret_path_alphabet() -> None:
+    import jsonschema
+
+    schema = json.loads((ROOT / "secrets/schema.json").read_text())
+    document = yaml.safe_load((ROOT / "secrets/prod.secrets.example.yaml").read_text())
+    base = {"linux_amd64_sha256": "a" * 64, "linux_arm64_sha256": "b" * 64}
+    v4 = {**base, "evaluation_path_token": "safe_token-123456", "variants": [{"id": "v4-stream", "psk": "short", "users": [{"name": "a", "userkey": "long-user-key"}]}]}
+    jsonschema.validate({**document, "snell_secrets": v4}, schema)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({**document, "snell_secrets": {**base, "variants": [{"id": "v6-default", "psk": "short", "users": [{"name": "a", "userkey": "long-user-key"}]}]}}, schema)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({**document, "snell_secrets": {**v4, "evaluation_path_token": "unsafe|token-12345"}}, schema)
+
+
 def test_result_schema_accepts_redacted_report() -> None:
     import jsonschema
 
@@ -88,3 +115,31 @@ def test_result_schema_accepts_redacted_report() -> None:
     report = {"schema_version": 1, "observed_at": 1, "vantage": "size-cliff-a", "verdict": "ok", "config_sha256": "a" * 64, "profiles": [snell_refinement.classify_profile(profile, [16384], 3, _observations(profile, [True, True, True]))]}
     jsonschema.validate(report, schema)
     assert "endpoint" not in json.dumps(report)
+
+
+def test_result_schema_accepts_profileless_configuration_error() -> None:
+    import jsonschema
+
+    schema = json.loads((ROOT / "contract/snell-refinement-result.schema.json").read_text())
+    report = snell_refinement.report_payload("size-cliff-a", b"invalid config", "error", [])
+    jsonschema.validate(report, schema)
+    assert report["verdict"] == "error"
+
+
+def test_curl_probe_rejects_a_short_success_body(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    curl = tmp_path / "curl"
+    curl.write_text("#!/bin/sh\nprintf '200 7 0.010\\n'\n")
+    curl.chmod(0o700)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+    assert snell_refinement.curl_probe("https://control.invalid/8.bin", 8, 1)["completed"] is False
+
+
+def test_error_report_is_atomic_private_and_redacted(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    args = type("Args", (), {"state_dir": tmp_path, "vantage": "size-cliff-a"})()
+    report = snell_refinement.report_payload("size-cliff-a", b"config with secret endpoint", "error", [])
+    snell_refinement.emit_report(args, report)
+    output = capsys.readouterr().out
+    saved = next((tmp_path / "size-cliff-a").glob("*.json"))
+    assert saved.stat().st_mode & 0o777 == 0o600
+    assert "secret endpoint" not in output
+    assert "secret endpoint" not in saved.read_text()

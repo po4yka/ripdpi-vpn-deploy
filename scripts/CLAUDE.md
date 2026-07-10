@@ -75,4 +75,6 @@ to stderr; non-zero exit reads as `error` to orchestrators. Emit `unknown`
 
 **Protocol liveness is a two-part module** — `vpn-protocol-liveness.py` runs on a managed client-path sentinel and emits only redacted JSON; `protocol-liveness.py` pulls those reports over strict SSH and evaluates quorum. Only a fresh `blocked` result with a successful direct control may contribute to rotation. `unknown`, local dependency errors, authentication errors, stale output, and malformed output inhibit rotation.
 
+**Snell refinement is evidence-only** — `snell-refinement.py` runs only from an explicitly identified filtered client path, keeps all candidate proxies on localhost, interleaves exact-size direct controls, and persists schema-validated redacted reports beneath the XDG state directory. It never edits deployment, rotation, or route state; runtime, configuration, and authentication failures are `error`, not blocking evidence.
+
 **Sentinel privilege is fixed-command only** — AmneziaWG needs a temporary network namespace, so onboarding installs one root-owned runner and one exact sudoers command. Never accept a config path or private key through the remote command line, and always delete the namespace in a `finally`/trap path.
