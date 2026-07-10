@@ -94,12 +94,12 @@ print((end - datetime.now(timezone.utc)).days)
     fi
   fi
 
-  # Modulus match (RSA only; EC returns non-zero from openssl rsa).
-  local cm km
-  cm="$(printf '%s\n' "$cert" | openssl x509 -noout -modulus 2>/dev/null || true)"
-  km="$(printf '%s\n' "$key"  | openssl rsa  -noout -modulus 2>/dev/null || true)"
-  if [[ -n "$cm" && -n "$km" && "$cm" != "$km" ]]; then
-    report "RSA cert modulus does not match key modulus"
+  # Compare public-key DER digests. Unlike RSA modulus this works for EC too.
+  local cert_pub key_pub
+  cert_pub="$(printf '%s\n' "$cert" | openssl x509 -pubkey -noout 2>/dev/null | openssl pkey -pubin -outform DER 2>/dev/null | openssl sha256 2>/dev/null || true)"
+  key_pub="$(printf '%s\n' "$key" | openssl pkey -pubout -outform DER 2>/dev/null | openssl sha256 2>/dev/null || true)"
+  if [[ -z "$cert_pub" || -z "$key_pub" || "$cert_pub" != "$key_pub" ]]; then
+    report "certificate public key does not match private key"
   fi
 }
 
