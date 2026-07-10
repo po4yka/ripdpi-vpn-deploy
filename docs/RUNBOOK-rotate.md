@@ -2,6 +2,8 @@
 
 Three rotation scopes. Pick the smallest one that addresses the threat.
 
+Infrastructure rotation caused by sustained protocol failure is separate from credential rotation. Follow `docs/PROTOCOL-LIVENESS.md`: only fresh authenticated client-path failures with a successful direct control can create a quorum candidate, and the resulting OTP still enters the normal blue-green verification and operator-confirmation flow.
+
 ## 1. Single client leak
 
 A device was lost / stolen / decommissioned, or one client URI showed up
@@ -74,11 +76,10 @@ unreadable. Procedure:
 ```bash
 # Take a fresh full backup under the OLD password
 ssh deploy@<vps> sudo systemctl start vpn-backup.service
-ssh deploy@<vps> sudo restic -r /var/backups/vpn-restic --password-file /etc/restic/password snapshots
 
-# Verify a restore works (dry-run)
-ssh deploy@<vps> sudo restic -r /var/backups/vpn-restic --password-file /etc/restic/password \
-    restore latest --target /tmp/restic-test --dry-run
+# Gate deletion on a real isolated restore from the selected repository
+ssh deploy@<vps> sudo systemctl start vpn-backup-restore-drill.service
+ssh deploy@<vps> sudo python3 -m json.tool /var/lib/vpn-backup/restore-drill-last-success.json
 
 # Generate new password
 openssl rand -base64 32
@@ -97,8 +98,12 @@ make deploy
 make verify
 make clean
 
-# Discard the old password ONLY after the new repo has at least one snapshot
-# you've test-restored.
+# Take the first snapshot under the NEW password and verify it by real restore
+ssh deploy@<vps> sudo systemctl start vpn-backup.service
+ssh deploy@<vps> sudo systemctl start vpn-backup-restore-drill.service
+ssh deploy@<vps> sudo python3 -m json.tool /var/lib/vpn-backup/restore-drill-last-success.json
+
+# Discard the old password ONLY after the new restore drill succeeds.
 ```
 
 ## 5. SSH key for the deploy user

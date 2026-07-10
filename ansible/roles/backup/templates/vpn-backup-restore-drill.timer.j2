@@ -1,0 +1,10 @@
+[Unit]
+Description=Run VPN backup restore drill monthly
+
+[Timer]
+OnCalendar={{ backup_restore_drill_on_calendar }}
+RandomizedDelaySec={{ backup_restore_drill_randomized_delay }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

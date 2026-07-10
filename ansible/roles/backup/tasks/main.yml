@@ -51,7 +51,9 @@
     cmd: restic -r {{ restic_repo_dir }} --password-file /etc/restic/password init
     creates: "{{ restic_repo_dir }}/config"
   register: restic_init
-  changed_when: "'created restic repository' in (restic_init.stderr | default('')) or 'created restic repository' in (restic_init.stdout | default(''))"
+  changed_when: >-
+    'created restic repository' in (restic_init.stderr | default('')) or
+    'created restic repository' in (restic_init.stdout | default(''))
 
 - name: Ensure rclone config directory
   ansible.builtin.file:
@@ -80,6 +82,34 @@
     owner: root
     group: root
     mode: "0750"
+
+- name: Render backup restore drill script
+  ansible.builtin.template:
+    src: vpn-backup-restore-drill.sh.j2
+    dest: /usr/local/sbin/vpn-backup-restore-drill.sh
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Drop backup restore drill systemd service
+  ansible.builtin.template:
+    src: vpn-backup-restore-drill.service.j2
+    dest: /etc/systemd/system/vpn-backup-restore-drill.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Drop backup restore drill systemd timer
+  ansible.builtin.template:
+    src: vpn-backup-restore-drill.timer.j2
+    dest: /etc/systemd/system/vpn-backup-restore-drill.timer
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart backup restore drill timer
 
 - name: Drop backup systemd service
   ansible.builtin.copy:
@@ -124,4 +154,11 @@
     name: vpn-backup.timer
     enabled: true
     state: started
+    daemon_reload: true
+
+- name: Apply backup restore drill timer state
+  ansible.builtin.systemd_service:
+    name: vpn-backup-restore-drill.timer
+    enabled: "{{ backup_restore_drill_enabled | bool }}"
+    state: "{{ 'started' if (backup_restore_drill_enabled | bool) else 'stopped' }}"
     daemon_reload: true

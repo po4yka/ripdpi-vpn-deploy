@@ -13,3 +13,10 @@ backup:
     # restic repo to an object store after each backup run.
     enabled: false
     rclone_config: ""
+
+# A successful backup command is not proof that the selected snapshot can be
+# restored. Keep the restore drill enabled by default and run it monthly.
+backup_restore_drill_enabled: true
+backup_restore_drill_on_calendar: monthly
+backup_restore_drill_randomized_delay: 2h
+backup_snapshot_max_age_hours: 36

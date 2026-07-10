@@ -1,0 +1,18 @@
+[Unit]
+Description=Verify VPN backup with an isolated restore drill
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vpn-backup-restore-drill.sh
+RuntimeDirectory=vpn-backup-restore-drill
+RuntimeDirectoryMode=0700
+StateDirectory=vpn-backup
+StateDirectoryMode=0700
+UMask=0077
+PrivateTmp=true
+NoNewPrivileges=true
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

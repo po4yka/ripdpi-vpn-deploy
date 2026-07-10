@@ -2,3 +2,10 @@
 - name: Reload systemd
   ansible.builtin.systemd_service:
     daemon_reload: true
+
+- name: Restart backup restore drill timer
+  ansible.builtin.systemd_service:
+    name: vpn-backup-restore-drill.timer
+    state: restarted
+    daemon_reload: true
+  when: backup_restore_drill_enabled | bool
