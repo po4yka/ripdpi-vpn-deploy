@@ -8,6 +8,40 @@
         cmd: nft -c -f /etc/nftables.conf
       changed_when: false
 
+    - name: Install an independent split-hop NAT sentinel
+      ansible.builtin.shell:
+        cmd: |
+          nft -f - <<'NFT'
+          add table inet split_hop_egress
+          add chain inet split_hop_egress postrouting { type nat hook postrouting priority 100; }
+          add rule inet split_hop_egress postrouting counter comment "split-hop-sentinel"
+          NFT
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Remove firewall-owned tables before a fresh reload
+      ansible.builtin.shell:
+        cmd: |
+          nft delete table inet filter || true
+          nft delete table inet nat || true
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Apply firewall configuration with split-hop table present
+      ansible.builtin.command:
+        cmd: nft -f /etc/nftables.conf
+      changed_when: false
+
+    - name: Verify scoped reload preserves split-hop and restores firewall tables
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          nft list table inet split_hop_egress | grep -q 'split-hop-sentinel'
+          nft list table inet filter >/dev/null
+          nft list table inet nat >/dev/null
+        executable: /bin/bash
+      changed_when: false
+
     - name: nftables config mentions expected ports
       ansible.builtin.shell:
         cmd: |

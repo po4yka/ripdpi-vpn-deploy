@@ -1,7 +1,11 @@
 #!/usr/sbin/nft -f
 # Managed by Ansible role `firewall`. Hand edits will be overwritten.
 
-flush ruleset
+# Replace only tables owned by this role. Other components (for example the
+# split-hop egress NAT table) install independent nftables tables that must
+# survive a firewall reload. `destroy` is idempotent on a fresh host.
+destroy table inet filter
+destroy table inet nat
 {% set ssh_cidrs = [allowed_ssh_cidrs] if allowed_ssh_cidrs is string else (allowed_ssh_cidrs | default([])) %}
 {% set ssh_v4_cidrs = ssh_cidrs | select('match', '^(?!.*:).*') | list %}
 {% set ssh_v6_cidrs = ssh_cidrs | select('match', '.*:.*') | list %}

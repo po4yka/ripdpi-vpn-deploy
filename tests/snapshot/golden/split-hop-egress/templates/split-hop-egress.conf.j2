@@ -14,8 +14,8 @@ Address = 10.200.0.2/30
 
 # NAT every flow that enters the tunnel out through the public iface.
 # nft is the canonical surface elsewhere in this repo (see the
-# firewall role); wg-quick's PostUp/PostDown does not preempt that
-# global ruleset — it adds a scoped rule attached to the WG iface.
+# firewall role); wg-quick's PostUp/PostDown does not preempt the
+# firewall-owned tables — it adds a scoped table attached to the WG iface.
 PostUp   = nft add table inet split_hop_egress; \
            nft 'add chain inet split_hop_egress postrouting { type nat hook postrouting priority 100; }'; \
            nft "add rule inet split_hop_egress postrouting iifname shop0 oifname eth0 masquerade"
