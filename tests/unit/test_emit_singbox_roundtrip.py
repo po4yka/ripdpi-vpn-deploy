@@ -120,6 +120,61 @@ def _run_script(
     )
 
 
+def _run_snell_only_script(tmp_path: Path, *, omit_variant: str | None = None) -> subprocess.CompletedProcess:
+    repo = tmp_path / "snell-repo"
+    (repo / "scripts").mkdir(parents=True)
+    (repo / "ansible/group_vars").mkdir(parents=True)
+    (repo / "ansible/roles/snell/defaults").mkdir(parents=True)
+    (repo / "terraform/providers/upcloud").mkdir(parents=True)
+    shutil.copy2(SCRIPT, repo / "scripts/emit-singbox.sh")
+    shutil.copy2(REPO_ROOT / "scripts/terraform-env.sh", repo / "scripts/terraform-env.sh")
+    shutil.copy2(REPO_ROOT / "ansible/roles/snell/defaults/main.yml", repo / "ansible/roles/snell/defaults/main.yml")
+    (repo / "ansible/group_vars/all.yml").write_text(
+        yaml.safe_dump(
+            {
+                "vpn": {
+                    "enable_xray_reality": False,
+                    "enable_nginx_xhttp": False,
+                    "enable_hysteria": False,
+                    "enable_snell": True,
+                }
+            }
+        )
+    )
+    variants = [
+        {"id": "v4-stream", "psk": "v4-key", "users": [{"name": "laptop", "userkey": "v4-user-key-123"}]},
+        {"id": "v6-default", "psk": "v6-default-key", "users": [{"name": "laptop", "userkey": "v6-default-user"}]},
+        {"id": "v6-unshaped", "psk": "v6-unshaped-key", "users": [{"name": "laptop", "userkey": "v6-unshaped-user"}]},
+    ]
+    if omit_variant:
+        variants = [variant for variant in variants if variant["id"] != omit_variant]
+    secrets = tmp_path / "snell-secrets.json"
+    secrets.write_text(json.dumps({"snell_secrets": {"variants": variants}}))
+    fake_bin = tmp_path / "snell-bin"
+    fake_bin.mkdir()
+    (fake_bin / "sops").write_text("#!/bin/sh\ncat \"$SOPS_FILE\"\n")
+    (fake_bin / "terraform").write_text(
+        "#!/bin/sh\n"
+        "case \"$*\" in\n"
+        "  *'workspace select'*) exit 0 ;;\n"
+        "  *'server_ipv4'*) printf '203.0.113.10' ;;\n"
+        "  *'server_hostname'*) printf 'snell-test-node' ;;\n"
+        "  *) exit 0 ;;\n"
+        "esac\n"
+    )
+    (fake_bin / "sops").chmod(0o700)
+    (fake_bin / "terraform").chmod(0o700)
+    environment = os.environ.copy()
+    environment.update({"PATH": f"{fake_bin}:{environment['PATH']}", "SOPS_FILE": str(secrets), "PROVIDER": "upcloud", "ENV": "staging"})
+    return subprocess.run(
+        ["bash", str(repo / "scripts/emit-singbox.sh"), "laptop"],
+        capture_output=True,
+        text=True,
+        env=environment,
+        cwd=repo,
+    )
+
+
 def _utls_fingerprints(bundle: dict) -> list[str]:
     """Every uTLS fingerprint emitted across the protocol outbounds."""
     fps = []
@@ -164,6 +219,35 @@ def test_emit_singbox_json_structure(tmp_path):
     # At least one protocol outbound (p0-reality or p1-xhttp)
     proto_obs = [ob for ob in outbounds if ob.get("tag", "").startswith(("p0-", "p1-", "p2-"))]
     assert proto_obs, "no protocol outbounds (p0/p1/p2) found"
+
+
+def test_emit_singbox_snell_matrix_is_manual_only(tmp_path):
+    _require_tool("jq")
+    result = _run_snell_only_script(tmp_path)
+    assert result.returncode == 0, result.stderr
+    bundle = json.loads(result.stdout)
+    candidates = [outbound for outbound in bundle["outbounds"] if outbound.get("type") == "snell"]
+    assert len(candidates) == 6
+    assert {outbound["reuse"] for outbound in candidates} == {False, True}
+    v4 = [outbound for outbound in candidates if "v4-stream" in outbound["tag"]]
+    assert len(v4) == 2 and all(outbound["version"] == 4 and outbound["obfs_mode"] == "none" for outbound in v4)
+    v6_default = [outbound for outbound in candidates if "v6-default" in outbound["tag"]]
+    assert len(v6_default) == 2 and all(outbound["version"] == 6 and outbound["mode"] == "default" for outbound in v6_default)
+    v6_unshaped = [outbound for outbound in candidates if "v6-unshaped" in outbound["tag"]]
+    assert len(v6_unshaped) == 2 and all(outbound["version"] == 6 and outbound["mode"] == "unshaped" for outbound in v6_unshaped)
+    nested = next(outbound for outbound in bundle["outbounds"] if outbound.get("tag") == "snell-evaluation")
+    assert set(nested["outbounds"]) == {outbound["tag"] for outbound in candidates}
+    selector = next(outbound for outbound in bundle["outbounds"] if outbound.get("tag") == "select")
+    assert selector["default"] == "direct"
+    assert "snell-evaluation" in selector["outbounds"]
+    assert not any(outbound.get("type") == "urltest" for outbound in bundle["outbounds"])
+
+
+def test_emit_singbox_snell_missing_variant_credentials_fails(tmp_path):
+    _require_tool("jq")
+    result = _run_snell_only_script(tmp_path, omit_variant="v6-unshaped")
+    assert result.returncode != 0
+    assert "v6-unshaped' is missing from secrets" in result.stderr
 
 
 def test_emit_singbox_dns_non_empty_and_detour(tmp_path):

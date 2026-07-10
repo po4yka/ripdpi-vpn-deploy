@@ -58,6 +58,29 @@ def test_enabled_snell_surfaces_three_listener_contract_entries() -> None:
     assert [(item["protocol"], item["port"]) for item in snell] == [("tcp", 2443), ("tcp", 2444), ("tcp", 2445)]
 
 
+def test_node_manifest_exposes_snell_without_credentials() -> None:
+    from scripts.template_render import merge_render_vars, render_template
+
+    variables = merge_render_vars()
+    variables["vpn"] = {**variables["vpn"], "enable_snell": True}
+    variables["snell_secrets"] = {"variants": [{"id": "v4-stream", "psk": "must-not-appear", "users": [{"name": "probe", "userkey": "also-secret"}]}]}
+    rendered = render_template(ROOT / "ansible/roles/node_manifest/templates/manifest.json.j2", variables)
+    manifest = json.loads(rendered)
+    assert "snell" in manifest["enabled_transports"]
+    assert "must-not-appear" not in rendered
+    assert "also-secret" not in rendered
+
+
+def test_backup_restore_drill_requires_valid_snell_config() -> None:
+    from scripts.template_render import merge_render_vars, render_template
+
+    variables = merge_render_vars()
+    variables["vpn"] = {**variables["vpn"], "enable_snell": True}
+    rendered = render_template(ROOT / "ansible/roles/backup/templates/vpn-backup-restore-drill.sh.j2", variables)
+    assert 'require_file "etc/snell/config.json"' in rendered
+    assert 'python3 -m json.tool "$restore_target/etc/snell/config.json"' in rendered
+
+
 def test_client_emitter_keeps_snell_out_of_automatic_selection() -> None:
     source = (ROOT / "scripts/emit-singbox.sh").read_text()
     assert 'tag:"snell-evaluation"' in source

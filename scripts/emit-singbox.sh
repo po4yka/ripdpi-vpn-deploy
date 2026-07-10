@@ -396,7 +396,7 @@ OUTBOUNDS="$(jq -nc --argjson obs "$OUTBOUNDS" --argjson snell "$SNELL_TAGS" '
   ($obs | map(.tag) | map(select(. as $tag | ($snell | index($tag) | not)))) as $automatic |
   $obs +
   (if ($snell|length)>0 then [{type:"selector",tag:"snell-evaluation",outbounds:$snell,default:$snell[0],interrupt_exist_connections:false}] else [] end) +
-  [{type:"selector",tag:"select",outbounds:($automatic + (if ($automatic|length)>0 then ["auto"] else [] end) + (if ($snell|length)>0 then ["snell-evaluation"] else [] end)),default:(if ($automatic|length)>0 then "auto" else "snell-evaluation" end),interrupt_exist_connections:false}] +
+  [{type:"selector",tag:"select",outbounds:($automatic + (if ($automatic|length)>0 then ["auto"] else ["direct"] end) + (if ($snell|length)>0 then ["snell-evaluation"] else [] end)),default:(if ($automatic|length)>0 then "auto" else "direct" end),interrupt_exist_connections:false}] +
   (if ($automatic|length)>0 then [{type:"urltest",tag:"auto",outbounds:$automatic,url:"https://www.gstatic.com/generate_204",interval:"5m",tolerance:50}] else [] end) +
   [{type:"direct",tag:"direct"},{type:"block",tag:"block"},{type:"dns",tag:"dns-out"}]')"
 

@@ -45,6 +45,50 @@
       ansible.builtin.command: {cmd: systemctl is-active snell.service}
       changed_when: false
 
+    - name: Create upgraded test release directory
+      ansible.builtin.file:
+        path: /opt/snell/releases/v1.14.0-alpha.43
+        state: directory
+        mode: "0755"
+    - name: Copy test binary into upgraded release
+      ansible.builtin.copy:
+        src: /opt/snell/releases/v1.14.0-alpha.42/sing-box
+        dest: /opt/snell/releases/v1.14.0-alpha.43/sing-box
+        remote_src: true
+        mode: "0755"
+    - name: Converge an upgraded validated release
+      ansible.builtin.include_role: {name: snell}
+      vars:
+        env: staging
+        snell:
+          version: v1.14.0-alpha.43
+          download_url: unused
+          install_root: /opt/snell
+          config_dir: /etc/snell
+          log_dir: /var/log/snell
+          listen_addr: "::"
+          evaluation_enabled: false
+          evaluation_root: /var/lib/snell-evaluation
+          smoke_port_base: 31100
+          evaluation_sizes: [1024]
+          variants:
+            - {id: v4-stream, listen_port: 2443, server_version: 5, client_version: 4, obfs_mode: none}
+            - {id: v6-default, listen_port: 2444, server_version: 6, client_version: 6, mode: default}
+            - {id: v6-unshaped, listen_port: 2445, server_version: 6, client_version: 6, mode: unshaped}
+    - name: Inspect upgraded rollback symlinks
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop: [/opt/snell/current, /opt/snell/previous]
+      register: snell_upgrade_links
+    - name: Assert previous release is preserved after upgrade
+      ansible.builtin.assert:
+        that:
+          - snell_upgrade_links.results[0].stat.lnk_source == '/opt/snell/releases/v1.14.0-alpha.43'
+          - snell_upgrade_links.results[1].stat.lnk_source == '/opt/snell/releases/v1.14.0-alpha.42'
+    - name: Apply upgraded release handlers before failure-path checks
+      ansible.builtin.meta: flush_handlers
+
     - name: Verify prerelease production refusal
       block:
         - name: Attempt a production converge
