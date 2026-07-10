@@ -5,7 +5,7 @@
 # with a top-level "ripdpi" object carrying:
 #   - amneziawg: AmneziaWG device-VPN parameters (private_key_placeholder: true
 #                because the client key is never stored server-side)
-#   - hysteria_extras: salamander obfs + port-hopping metadata for the P2
+#   - hysteria_extras: selected Hysteria2 obfs + port-hopping metadata for P2
 #                      Hysteria2 outbound (keys match the tag emit-singbox emits)
 #
 # The RIPDPI Android client parses this single file as its subscription
@@ -106,6 +106,7 @@ host_config_json() {
   local cohort="$1"
   python3 - "$REPO_ROOT" "$cohort" <<'PY'
 import json
+import os
 import pathlib
 import sys
 
@@ -113,7 +114,7 @@ import yaml
 
 root = pathlib.Path(sys.argv[1])
 cohort = sys.argv[2]
-group_vars = root / "ansible" / "group_vars"
+group_vars = pathlib.Path(os.environ.get("VPN_GROUP_VARS_DIR", root / "ansible" / "group_vars"))
 
 
 def deep_merge(base, override):
@@ -191,9 +192,9 @@ PY
 
 # ---------------------------------------------------------------------------
 # Step 2: resolve the AWG block and Hysteria extras from each host's secrets.
-# For multi-host setups AWG is typically a single server; we use the first
-# host that has AWG enabled.  Hysteria extras likewise come from the first
-# host that has Hysteria enabled (the one whose tag appears in the base JSON).
+# For multi-host setups AWG is typically a single server, so we use the first
+# host that has AWG enabled. Hysteria extras are accumulated for every standard
+# Hysteria outbound so each tag has an identical extended representation.
 # ---------------------------------------------------------------------------
 AWG_BLOCK='[]'
 HY_EXTRAS='{}'
@@ -359,9 +360,8 @@ for i in "${!host_pairs[@]}"; do
   fi
 
   # ------------------------------------------------------------------
-  # Hysteria extras — build from the first host with Hysteria enabled
+  # Hysteria extras — build for every host with Hysteria enabled
   # ------------------------------------------------------------------
-  if [[ "$HY_EXTRAS" == '{}' ]]; then
     enable_hysteria="$(jq -r \
       'if has("enable_hysteria") then .enable_hysteria else false end | tostring | ascii_downcase' \
       <<< "$vpn_json")"
@@ -374,8 +374,32 @@ for i in "${!host_pairs[@]}"; do
         '.outbounds[]? | select(.tag == $t) | .tag' "$base_json_file" || true)"
 
       if [[ -n "$tag_present" ]]; then
-        hy_obfs_enabled="$(jq -r '.hysteria.salamander_enabled // false' "$secrets_tmp")"
-        hy_obfs_pw="$(jq -r '.hysteria.salamander_password // empty' "$secrets_tmp")"
+        hy_obfs_type="$(jq -r '.hysteria_obfs_type // ""' <<< "$host_json")"
+        hy_legacy_obfs_enabled="$(jq -r '.hysteria.salamander_enabled // false' "$secrets_tmp")"
+        hy_legacy_obfs_present="$(jq -r '.hysteria | has("salamander_enabled")' "$secrets_tmp")"
+        hy_legacy_obfs_pw="$(jq -r '.hysteria.salamander_password // empty' "$secrets_tmp")"
+        hy_canonical_obfs_pw="$(jq -r '.hysteria.obfs_password // empty' "$secrets_tmp")"
+        if [[ -n "$hy_canonical_obfs_pw" && -n "$hy_legacy_obfs_pw" && "$hy_canonical_obfs_pw" != "$hy_legacy_obfs_pw" ]]; then
+          echo "hysteria.obfs_password conflicts with hysteria.salamander_password in ${sops_file}" >&2
+          exit 1
+        fi
+        hy_obfs_pw="${hy_canonical_obfs_pw:-$hy_legacy_obfs_pw}"
+        if [[ -n "$hy_obfs_type" && "$hy_legacy_obfs_present" == "true" && "$hy_legacy_obfs_enabled" == "true" && "$hy_obfs_type" != "salamander" ]]; then
+          echo "hysteria_obfs_type conflicts with hysteria.salamander_enabled" >&2
+          exit 1
+        fi
+        if [[ -n "$hy_obfs_type" && "$hy_legacy_obfs_present" == "true" && "$hy_legacy_obfs_enabled" != "true" && "$hy_obfs_type" == "salamander" ]]; then
+          echo "hysteria_obfs_type conflicts with hysteria.salamander_enabled" >&2
+          exit 1
+        fi
+        if [[ -z "$hy_obfs_type" ]]; then
+          hy_obfs_type="$([[ "$hy_legacy_obfs_enabled" == "true" ]] && echo salamander || echo plain)"
+        fi
+        hy_gecko_min="$(jq -r '.hysteria_gecko_min_packet_size // 512' <<< "$host_json")"
+        hy_gecko_max="$(jq -r '.hysteria_gecko_max_packet_size // 1200' <<< "$host_json")"
+        hy_gecko_evidence_report="$(jq -r '.hysteria_gecko_evidence_report // ""' <<< "$host_json")"
+        hy_gecko_evidence_sha256="$(jq -r '.hysteria_gecko_evidence_sha256 // ""' <<< "$host_json")"
+        hy_gecko_evidence_scope="$(jq -r '.hysteria_gecko_evidence_scope // ""' <<< "$host_json")"
         hysteria_port_range="$(jq -r '.hysteria_port_range // ""' <<< "$host_json")"
         hysteria_hop_interval="$(jq -r '.hysteria_hop_interval // "30s"' <<< "$host_json")"
 
@@ -384,7 +408,7 @@ for i in "${!host_pairs[@]}"; do
           --argjson insecure false \
           '{insecure: $insecure}')"
 
-        if [[ "$hy_obfs_enabled" == "true" && -n "$hy_obfs_pw" ]]; then
+        if [[ "$hy_obfs_type" == "salamander" && -n "$hy_obfs_pw" ]]; then
           hy_entry="$(jq --arg pw "$hy_obfs_pw" \
             '. + {obfs: {type: "salamander", password: $pw}}' <<< "$hy_entry")"
 
@@ -398,6 +422,25 @@ for i in "${!host_pairs[@]}"; do
             hy_entry="$(jq --arg tag "$hy_version" \
               '. + {salamander_upstream_tag: $tag}' <<< "$hy_entry")"
           fi
+        elif [[ "$hy_obfs_type" == "gecko" && -n "$hy_obfs_pw" ]]; then
+          hy_version="$(jq -r '.hysteria.version // empty' "$secrets_tmp")"
+          python3 -c 'import re,sys; m=re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", sys.argv[1]); sys.exit(0 if m and tuple(map(int,m.groups())) >= (2,9,2) else 1)' "$hy_version" || { echo "Hysteria Gecko requires version >= v2.9.2" >&2; exit 1; }
+          python3 -c 'import sys; lo,hi=map(int,sys.argv[1:]); sys.exit(0 if 1 <= lo <= hi <= 2048 else 1)' "$hy_gecko_min" "$hy_gecko_max" || { echo "Hysteria Gecko requires 1 <= min_packet_size <= max_packet_size <= 2048" >&2; exit 1; }
+          python3 "${REPO_ROOT}/scripts/hysteria-gecko-evidence.py" validate "${REPO_ROOT}/${hy_gecko_evidence_report}" --scope "$hy_gecko_evidence_scope" --sha256 "$hy_gecko_evidence_sha256" --gecko-min-packet-size "$hy_gecko_min" --gecko-max-packet-size "$hy_gecko_max"
+          hy_entry="$(jq --arg pw "$hy_obfs_pw" --argjson min "$hy_gecko_min" --argjson max "$hy_gecko_max" '. + {obfs: {type: "gecko", password: $pw, min_packet_size: $min, max_packet_size: $max}}' <<< "$hy_entry")"
+          if [[ -n "$hy_version" && "$hy_version" != REPLACE_WITH_* ]]; then
+            hy_entry="$(jq --arg tag "$hy_version" '. + {salamander_upstream_tag: $tag, gecko_upstream_tag: $tag}' <<< "$hy_entry")"
+          fi
+        elif [[ "$hy_obfs_type" != "plain" ]]; then
+          echo "Hysteria obfuscation type '$hy_obfs_type' is invalid or missing its password" >&2
+          exit 1
+        fi
+
+        expected_obfs="$(jq -c '.obfs // null' <<< "$hy_entry")"
+        standard_obfs="$(jq -c --arg t "$hy_tag" '.outbounds[] | select(.tag == $t) | .obfs // null' "$base_json_file")"
+        if [[ "$expected_obfs" != "$standard_obfs" ]]; then
+          echo "Hysteria standard outbound and extended obfuscation metadata differ for ${hy_tag}" >&2
+          exit 1
         fi
 
         if [[ -n "$hysteria_port_range" ]]; then
@@ -411,12 +454,12 @@ for i in "${!host_pairs[@]}"; do
         fi
 
         HY_EXTRAS="$(jq -nc \
+          --argjson current "$HY_EXTRAS" \
           --arg tag "$hy_tag" \
           --argjson entry "$hy_entry" \
-          '{($tag): $entry}')"
+          '$current + {($tag): $entry}')"
       fi
     fi
-  fi
 done
 
 # ---------------------------------------------------------------------------

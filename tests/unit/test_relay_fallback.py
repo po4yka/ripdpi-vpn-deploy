@@ -32,6 +32,7 @@ EXAMPLE_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 # Templates under test
 NGINX_XHTTP_TEMPLATE = ROLES_DIR / "nginx-xhttp" / "templates" / "site.conf.j2"
 CDN_FRONT_TEMPLATE = ROLES_DIR / "cdn-front" / "templates" / "cdn-front.conf.j2"
+HYSTERIA_TEMPLATE = ROLES_DIR / "hysteria" / "templates" / "config.yaml.j2"
 
 
 def _load_role_defaults() -> dict:
@@ -179,3 +180,23 @@ class TestCdnOn:
         direct template must not pick them up."""
         rendered = _render(NGINX_XHTTP_TEMPLATE)
         assert "set_real_ip_from" not in rendered
+
+
+class TestHysteriaObfuscation:
+    def test_gecko_renders_native_hysteria_shape(self):
+        hysteria = dict(_base_vars()["hysteria"])
+        hysteria["obfs_password"] = "gecko-secret"
+        rendered = _render(HYSTERIA_TEMPLATE, {"hysteria": hysteria, "hysteria_obfs_type": "gecko", "hysteria_gecko_min_packet_size": 512, "hysteria_gecko_max_packet_size": 1200})
+        assert "type: gecko" in rendered
+        assert 'password: "gecko-secret"' in rendered
+        assert "minPacketSize: 512" in rendered
+        assert "maxPacketSize: 1200" in rendered
+        assert "salamander:" not in rendered
+
+    def test_legacy_salamander_fields_remain_compatible(self):
+        hysteria = dict(_base_vars()["hysteria"])
+        hysteria.pop("obfs_password", None)
+        hysteria.update({"salamander_enabled": True, "salamander_password": "legacy-secret"})
+        rendered = _render(HYSTERIA_TEMPLATE, {"hysteria": hysteria, "hysteria_obfs_type": ""})
+        assert "type: salamander" in rendered
+        assert 'password: "legacy-secret"' in rendered

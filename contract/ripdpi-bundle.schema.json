@@ -70,19 +70,17 @@
           "const": false
         },
         "obfs": {
-          "type": "object",
-          "required": ["type", "password"],
-          "additionalProperties": false,
-          "properties": {
-            "type": { "const": "salamander" },
-            "password": { "type": "string", "minLength": 1 }
-          }
+          "oneOf": [
+            {"type": "object", "required": ["type", "password"], "additionalProperties": false, "properties": {"type": {"const": "salamander"}, "password": {"type": "string", "minLength": 1}}},
+            {"type": "object", "required": ["type", "password", "min_packet_size", "max_packet_size"], "additionalProperties": false, "properties": {"type": {"const": "gecko"}, "password": {"type": "string", "minLength": 1}, "min_packet_size": {"type": "integer", "minimum": 1, "maximum": 2048}, "max_packet_size": {"type": "integer", "minimum": 1, "maximum": 2048}}}
+          ]
         },
         "salamander_upstream_tag": {
           "description": "The upstream Hysteria2 release tag (e.g. 'v2.9.0') whose Salamander algorithm this server runs. The client compares it to the Salamander version its bundled obfuscator implements and warns the user on a version skew instead of failing the handshake opaquely. Sourced from hysteria.version in SOPS.",
           "type": "string",
           "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z0-9.+-]+)?$"
         },
+        "gecko_upstream_tag": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z0-9.+-]+)?$"},
         "port_hopping": {
           "type": "object",
           "required": ["ports", "interval"],

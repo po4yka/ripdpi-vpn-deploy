@@ -14,7 +14,7 @@ export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
 export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CONFIG
 
 .PHONY: help init validate plan apply inventory wait decrypt dry-run deploy deploy-canary verify security-verify security-audit clean \
-        pre-deploy-check \
+        pre-deploy-check validate-gecko-evidence \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
         molecule-test smoke-test validate-target monitor-reality-target probe-sni-survival scan-targets blue-green \
@@ -169,6 +169,7 @@ wait:
 
 pre-deploy-check:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }
+	@$(MAKE) validate-gecko-evidence
 	@if [ "$(SKIP_PRECHECK)" = "1" ]; then \
 	  echo "pre-deploy-check: skipped (SKIP_PRECHECK=1)"; \
 	else \
@@ -281,6 +282,18 @@ validate-secrets:
 	else \
 	  python3 scripts/validate-secrets.py; \
 	fi
+
+validate-gecko-evidence:
+	@set -eu; \
+	  base="ansible/group_vars/all.yml ansible/group_vars/vpn.yml"; \
+	  python3 scripts/hysteria-gecko-evidence.py validate-config $$base --repo-root .; \
+	  { printf '%s\n' "$(COHORTS)" | tr ',' '\n'; \
+	    if [ -f ansible/inventory/generated.ini ]; then sed -n 's/^\[vpn-\([^]:]*\)\(:children\)\{0,1\}\]$$/\1/p' ansible/inventory/generated.ini; fi; \
+	  } | sed '/^$$/d' | sort -u | while IFS= read -r cohort; do \
+	    cohort_file="ansible/group_vars/vpn-$$cohort.yml"; \
+	    test -f "$$cohort_file" || { echo "missing $$cohort_file" >&2; exit 1; }; \
+	    python3 scripts/hysteria-gecko-evidence.py validate-config $$base "$$cohort_file" --repo-root .; \
+	  done
 
 # Validate a RIPDPI bundle's ripdpi object against contract/ripdpi-bundle.schema.json
 # (the cross-repo contract with the Android client). BUNDLE=<file> to check a real

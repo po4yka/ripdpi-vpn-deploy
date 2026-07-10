@@ -12,6 +12,11 @@ once in `config.yaml`; per-client tuning is in the client config emitted by
 **Pinned binary** — Hysteria version pinned in `defaults/main.yml`; checksum
 verified.
 
+**Evidence-gated Gecko** — Gecko is a symmetric, experimental obfuscator and
+cannot be enabled without a repository-local confirmed A-B-A report whose
+scope and SHA256 match group vars. The shared preflight runs on every target
+before role deployment or credential rotation mutates remote state.
+
 ## What's done well
 
 - **TLS uses the same cert as P1** — saves a renewal path. The `nginx-xhttp`
@@ -31,3 +36,6 @@ verified.
   flows. Set to `65536` in the unit file template.
 - **No JSON API surface** — Hysteria's optional traffic API would be a
   fingerprint vector if exposed; it's disabled.
+- **Gecko is a coordinated cutover** — Salamander-only clients cannot connect
+  after the server switches. Release the compatible client first and retain
+  the prior bundle/config for rollback.

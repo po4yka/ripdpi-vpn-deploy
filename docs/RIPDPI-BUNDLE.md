@@ -168,9 +168,7 @@ Object keyed by the exact Hysteria2 outbound `tag` that `emit-singbox.sh`
 emits for this host (`"p2-hysteria2-<provider>-<env>"`).  Empty object (`{}`)
 when Hysteria is not enabled or has no extras to convey.
 
-The RIPDPI client uses these extras to configure transport-layer properties
-that the standard sing-box Hysteria2 outbound schema does not expose in the
-subscription format.
+The RIPDPI client treats the standard sing-box Hysteria2 outbound as canonical. The extras repeat server-specific transport metadata used by the deployment contract. When both representations carry obfuscation, their type, password, and Gecko bounds must be identical; RIPDPI rejects the profile on any conflict.
 
 ### HysteriaExtras fields
 
@@ -179,10 +177,10 @@ subscription format.
   // Always present.
   "insecure": false,
 
-  // Present only when hysteria.salamander_enabled = true in SOPS.
+  // Present for Salamander or evidence-approved Gecko.
   "obfs": {
     "type":     "salamander",
-    "password": "<hysteria.salamander_password from SOPS>"
+    "password": "<hysteria.obfs_password from SOPS>"
   },
 
   // The upstream Hysteria2 release whose Salamander algorithm this server runs
@@ -198,6 +196,23 @@ subscription format.
 }
 ```
 
+For Gecko, the obfuscation block and upstream tag are:
+
+```jsonc
+{
+  "obfs": {
+    "type": "gecko",
+    "password": "<hysteria.obfs_password from SOPS>",
+    "min_packet_size": 512,
+    "max_packet_size": 1200
+  },
+  "salamander_upstream_tag": "v2.9.2",
+  "gecko_upstream_tag": "v2.9.2"
+}
+```
+
+Gecko is emitted only after the evidence gate in `docs/HYSTERIA-GECKO.md` validates a confirmed report bound to the configured scope and SHA-256. The bundle contract remains version 1 because these fields are additive.
+
 `insecure: false` is always present and non-negotiable.  The RIPDPI client
 treats a missing or `true` value as a configuration error and refuses to connect.
 
@@ -206,7 +221,7 @@ algorithm version against the one its bundled obfuscator implements. Salamander
 can change between Hysteria2 releases; on a skew the client warns the user
 ("obfuscation may not match this server — update the app") instead of failing
 the handshake opaquely. It reuses the existing `hysteria.version` secret — no
-new key to keep in sync.
+new key to keep in sync. `gecko_upstream_tag` pins the fragmentation implementation layered around Salamander.
 
 ## `ripdpi.topology`
 

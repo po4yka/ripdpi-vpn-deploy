@@ -1,5 +1,5 @@
 {
-  "_comment": "A realistic FULL bundle (sing-box document + ripdpi object) shaped exactly like emit-bundle.sh output, used as the cross-repo emit->parse golden: the server validates its ripdpi object against the schema (tests/unit/test_bundle_schema.py) and the RIPDPI client parses the WHOLE document through SingBoxSubscriptionParser (RipdpiBundleContractTest). It deliberately exercises what the bare example omits: a populated outbounds list with a hysteria2 tag that the hysteria_extras attaches to, i1..i5 values, salamander_upstream_tag, and a non-default topology. Regenerate from a real `make emit-bundle` if the emit format changes; the cohort_fingerprint must match the AWG params (sha256 over jc..h4 + i1..i5).",
+  "_comment": "A realistic FULL bundle (sing-box document + ripdpi object) shaped exactly like emit-bundle.sh output, used as the cross-repo emit->parse golden: the server validates its ripdpi object against the schema (tests/unit/test_bundle_schema.py) and the RIPDPI client parses the WHOLE document through SingBoxSubscriptionParser (RipdpiBundleContractTest). It deliberately exercises what the bare example omits: a populated outbound whose canonical Gecko fields match hysteria_extras, i1..i5 values, gecko_upstream_tag, and a non-default topology. Regenerate from a real `make emit-bundle` if the emit format changes; the cohort_fingerprint must match the AWG params (sha256 over jc..h4 + i1..i5).",
   "log": { "level": "warn" },
   "dns": { "servers": [{ "tag": "cloudflare", "address": "1.1.1.1" }] },
   "inbounds": [{ "type": "tun", "tag": "tun-in", "stack": "system" }],
@@ -23,7 +23,13 @@
       "tag": "p2-hysteria2-upcloud-prod",
       "server": "203.0.113.7",
       "server_port": 443,
-      "password": "EXAMPLEhysteriaClientPassword"
+      "password": "EXAMPLEhysteriaClientPassword",
+      "obfs": {
+        "type": "gecko",
+        "password": "EXAMPLEobfuscationPassword",
+        "min_packet_size": 512,
+        "max_packet_size": 1200
+      }
     },
     { "type": "selector", "tag": "select", "outbounds": ["p0-reality-upcloud-prod", "p2-hysteria2-upcloud-prod"] },
     { "type": "urltest", "tag": "auto", "outbounds": ["p0-reality-upcloud-prod", "p2-hysteria2-upcloud-prod"] }
@@ -62,8 +68,8 @@
     "hysteria_extras": {
       "p2-hysteria2-upcloud-prod": {
         "insecure": false,
-        "obfs": { "type": "salamander", "password": "EXAMPLEsalamanderPassword" },
-        "salamander_upstream_tag": "v2.9.0",
+        "obfs": { "type": "gecko", "password": "EXAMPLEobfuscationPassword", "min_packet_size": 512, "max_packet_size": 1200 },
+        "gecko_upstream_tag": "v2.9.2",
         "port_hopping": { "ports": "20000:50000", "interval": "30s" }
       }
     },

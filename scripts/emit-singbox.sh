@@ -102,6 +102,7 @@ host_config_json() {
   local cohort="$1"
   python3 - "$REPO_ROOT" "$cohort" <<'PY'
 import json
+import os
 import pathlib
 import sys
 
@@ -109,7 +110,7 @@ import yaml
 
 root = pathlib.Path(sys.argv[1])
 cohort = sys.argv[2]
-group_vars = root / "ansible" / "group_vars"
+group_vars = pathlib.Path(os.environ.get("VPN_GROUP_VARS_DIR", root / "ansible" / "group_vars"))
 
 
 def deep_merge(base, override):
@@ -207,6 +208,12 @@ for i in "${!host_pairs[@]}"; do
   hysteria_server_port="$(jq -r '.hysteria_port // 443' <<< "$host_json")"
   hysteria_port_range="$(jq -r '.hysteria_port_range // ""' <<< "$host_json")"
   hysteria_hop_interval="$(jq -r '.hysteria_hop_interval // "30s"' <<< "$host_json")"
+  hysteria_obfs_mode="$(jq -r '.hysteria_obfs_type // ""' <<< "$host_json")"
+  hysteria_gecko_min="$(jq -r '.hysteria_gecko_min_packet_size // 512' <<< "$host_json")"
+  hysteria_gecko_max="$(jq -r '.hysteria_gecko_max_packet_size // 1200' <<< "$host_json")"
+  hysteria_gecko_evidence_report="$(jq -r '.hysteria_gecko_evidence_report // ""' <<< "$host_json")"
+  hysteria_gecko_evidence_sha256="$(jq -r '.hysteria_gecko_evidence_sha256 // ""' <<< "$host_json")"
+  hysteria_gecko_evidence_scope="$(jq -r '.hysteria_gecko_evidence_scope // ""' <<< "$host_json")"
   # Client uTLS fingerprint for this profile. Per-profile via group_vars
   # (xray_utls_fingerprint), default "chrome"; a global UTLS_FINGERPRINT env
   # overrides. Used by the REALITY and XHTTP outbounds only.
@@ -318,8 +325,26 @@ for i in "${!host_pairs[@]}"; do
   if [[ "$enable_hysteria" == "true" ]]; then
     hy_pw="$(jq --arg n "$CLIENT_NAME" -r '.hysteria.clients[]? | select(.name==$n) | .password // empty' "$secrets_tmp")"
     hy_host="$(jq -r '.hysteria.server_name // .nginx_xhttp.server_name // empty' "$secrets_tmp")"
-    hy_obfs_enabled="$(jq -r '.hysteria.salamander_enabled // false' "$secrets_tmp")"
-    hy_obfs_pw="$(jq -r '.hysteria.salamander_password // empty' "$secrets_tmp")"
+    hy_legacy_obfs_enabled="$(jq -r '.hysteria.salamander_enabled // false' "$secrets_tmp")"
+    hy_legacy_obfs_present="$(jq -r '.hysteria | has("salamander_enabled")' "$secrets_tmp")"
+    hy_legacy_obfs_pw="$(jq -r '.hysteria.salamander_password // empty' "$secrets_tmp")"
+    hy_canonical_obfs_pw="$(jq -r '.hysteria.obfs_password // empty' "$secrets_tmp")"
+    if [[ -n "$hy_canonical_obfs_pw" && -n "$hy_legacy_obfs_pw" && "$hy_canonical_obfs_pw" != "$hy_legacy_obfs_pw" ]]; then
+      echo "hysteria.obfs_password conflicts with hysteria.salamander_password in ${sops_file}" >&2
+      exit 1
+    fi
+    hy_obfs_pw="${hy_canonical_obfs_pw:-$hy_legacy_obfs_pw}"
+    if [[ -n "$hysteria_obfs_mode" && "$hy_legacy_obfs_present" == "true" && "$hy_legacy_obfs_enabled" == "true" && "$hysteria_obfs_mode" != "salamander" ]]; then
+      echo "hysteria_obfs_type conflicts with hysteria.salamander_enabled" >&2
+      exit 1
+    fi
+    if [[ -n "$hysteria_obfs_mode" && "$hy_legacy_obfs_present" == "true" && "$hy_legacy_obfs_enabled" != "true" && "$hysteria_obfs_mode" == "salamander" ]]; then
+      echo "hysteria_obfs_type conflicts with hysteria.salamander_enabled" >&2
+      exit 1
+    fi
+    if [[ -z "$hysteria_obfs_mode" ]]; then
+      hysteria_obfs_mode="$([[ "$hy_legacy_obfs_enabled" == "true" ]] && echo salamander || echo plain)"
+    fi
     if [[ -z "$hy_pw" ]]; then
       echo "enabled Hysteria2 profile has no client named '$CLIENT_NAME' in ${sops_file} → hysteria.clients" >&2
       exit 1
@@ -329,9 +354,22 @@ for i in "${!host_pairs[@]}"; do
       exit 1
     fi
     obfs_arg=null
-    if [[ "$hy_obfs_enabled" == "true" && -n "$hy_obfs_pw" ]]; then
-      obfs_arg="$(jq -n --arg p "$hy_obfs_pw" '{type:"salamander", password:$p}')"
-    fi
+    case "$hysteria_obfs_mode" in
+      plain) ;;
+      salamander)
+        [[ -n "$hy_obfs_pw" ]] || { echo "Hysteria Salamander requires hysteria.obfs_password" >&2; exit 1; }
+        obfs_arg="$(jq -n --arg p "$hy_obfs_pw" '{type:"salamander", password:$p}')"
+        ;;
+      gecko)
+        [[ -n "$hy_obfs_pw" ]] || { echo "Hysteria Gecko requires hysteria.obfs_password" >&2; exit 1; }
+        hy_version="$(jq -r '.hysteria.version // empty' "$secrets_tmp")"
+        python3 -c 'import re,sys; m=re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", sys.argv[1]); sys.exit(0 if m and tuple(map(int,m.groups())) >= (2,9,2) else 1)' "$hy_version" || { echo "Hysteria Gecko requires hysteria.version >= v2.9.2" >&2; exit 1; }
+        python3 -c 'import sys; lo,hi=map(int,sys.argv[1:]); sys.exit(0 if 1 <= lo <= hi <= 2048 else 1)' "$hysteria_gecko_min" "$hysteria_gecko_max" || { echo "Hysteria Gecko requires 1 <= min_packet_size <= max_packet_size <= 2048" >&2; exit 1; }
+        python3 "${REPO_ROOT}/scripts/hysteria-gecko-evidence.py" validate "${REPO_ROOT}/${hysteria_gecko_evidence_report}" --scope "$hysteria_gecko_evidence_scope" --sha256 "$hysteria_gecko_evidence_sha256" --gecko-min-packet-size "$hysteria_gecko_min" --gecko-max-packet-size "$hysteria_gecko_max" >&2
+        obfs_arg="$(jq -n --arg p "$hy_obfs_pw" --argjson min "$hysteria_gecko_min" --argjson max "$hysteria_gecko_max" '{type:"gecko", password:$p, min_packet_size:$min, max_packet_size:$max}')"
+        ;;
+      *) echo "invalid hysteria_obfs_type: $hysteria_obfs_mode" >&2; exit 1 ;;
+    esac
     # Port-hopping: sing-box expects ["low:high", ...] in server_ports.
     hop_ports_arg=null
     hop_interval_arg=null

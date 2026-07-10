@@ -55,6 +55,19 @@ def _fingerprint_errors(ripdpi: dict) -> list[str]:
     return errors
 
 
+def _hysteria_errors(ripdpi: dict) -> list[str]:
+    errors: list[str] = []
+    for tag, entry in (ripdpi.get("hysteria_extras") or {}).items():
+        obfs = entry.get("obfs") if isinstance(entry, dict) else None
+        if not isinstance(obfs, dict) or obfs.get("type") != "gecko":
+            continue
+        minimum = obfs.get("min_packet_size")
+        maximum = obfs.get("max_packet_size")
+        if isinstance(minimum, int) and isinstance(maximum, int) and minimum > maximum:
+            errors.append(f"hysteria_extras.{tag}.obfs: min_packet_size exceeds max_packet_size")
+    return errors
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -91,16 +104,19 @@ def main() -> int:
     errors = sorted(validator.iter_errors(ripdpi), key=lambda e: list(e.absolute_path))
 
     fp_errors = _fingerprint_errors(ripdpi)
+    hysteria_errors = _hysteria_errors(ripdpi)
 
-    if errors or fp_errors:
+    if errors or fp_errors or hysteria_errors:
         print(
-            f"validate-bundle: {len(errors) + len(fp_errors)} violation(s) in {target}:",
+            f"validate-bundle: {len(errors) + len(fp_errors) + len(hysteria_errors)} violation(s) in {target}:",
             file=sys.stderr,
         )
         for e in errors:
             loc = ".".join(str(p) for p in e.absolute_path) or "<root>"
             print(f"  {loc}: {e.message}", file=sys.stderr)
         for msg in fp_errors:
+            print(f"  {msg}", file=sys.stderr)
+        for msg in hysteria_errors:
             print(f"  {msg}", file=sys.stderr)
         return 1
 

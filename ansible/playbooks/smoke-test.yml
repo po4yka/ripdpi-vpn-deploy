@@ -156,8 +156,28 @@
         group: root
         mode: "0600"
         content: |
+          {% set explicit_obfs_type = hysteria_obfs_type | default('') %}
+          {% set smoke_obfs_type =
+            explicit_obfs_type
+            if explicit_obfs_type
+            else ('salamander' if (hysteria.salamander_enabled | default(false)) else 'plain')
+          %}
+          {% set smoke_obfs_password = hysteria.obfs_password | default(hysteria.salamander_password | default(''), true) %}
           server: 127.0.0.1:{{ hysteria_port | default(443) }}
           auth: "{{ hysteria.clients[0].password }}"
+          {% if smoke_obfs_type == 'salamander' %}
+          obfs:
+            type: salamander
+            salamander:
+              password: "{{ smoke_obfs_password }}"
+          {% elif smoke_obfs_type == 'gecko' %}
+          obfs:
+            type: gecko
+            gecko:
+              password: "{{ smoke_obfs_password }}"
+              minPacketSize: {{ hysteria_gecko_min_packet_size | default(512) }}
+              maxPacketSize: {{ hysteria_gecko_max_packet_size | default(1200) }}
+          {% endif %}
           tls:
             sni: "{{ nginx_xhttp.server_name | default(xray.server_names[0]) }}"
             insecure: true

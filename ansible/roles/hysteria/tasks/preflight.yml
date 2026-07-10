@@ -1,0 +1,77 @@
+---
+- name: Pre-flight — hysteria version must be pinned
+  ansible.builtin.assert:
+    that:
+      - hysteria.version | default('') | length > 0
+    fail_msg: >-
+      hysteria.version is empty. Set hysteria.version and matching checksums before running this role.
+
+- name: Resolve Hysteria obfuscation compatibility fields
+  ansible.builtin.set_fact:
+    _hysteria_obfs_type: >-
+      {{
+        hysteria_obfs_type
+        if (hysteria_obfs_type | default('') | length > 0)
+        else ('salamander' if (hysteria.salamander_enabled | default(false)) else 'plain')
+      }}
+    _hysteria_obfs_password: >-
+      {{ hysteria.obfs_password | default(hysteria.salamander_password | default(''), true) }}
+  no_log: true
+
+- name: Validate Hysteria obfuscation settings before credential mutation
+  ansible.builtin.assert:
+    that:
+      - _hysteria_obfs_type in ['plain', 'salamander', 'gecko']
+      - _hysteria_obfs_type == 'plain' or (_hysteria_obfs_password | length > 0)
+      - >-
+        not (
+          (hysteria_obfs_type | default('') | length > 0)
+          and (hysteria.salamander_enabled is defined)
+          and (hysteria.salamander_enabled | bool)
+          and _hysteria_obfs_type != 'salamander'
+        )
+      - >-
+        not (
+          (hysteria_obfs_type | default('') | length > 0)
+          and (hysteria.salamander_enabled is defined)
+          and not (hysteria.salamander_enabled | bool)
+          and _hysteria_obfs_type == 'salamander'
+        )
+      - >-
+        not (
+          (hysteria.obfs_password | default('') | length > 0)
+          and (hysteria.salamander_password | default('') | length > 0)
+          and hysteria.obfs_password != hysteria.salamander_password
+        )
+      - _hysteria_obfs_type != 'gecko' or ((hysteria.version | regex_replace('^v', '')) is version('2.9.2', '>='))
+      - _hysteria_obfs_type != 'gecko' or (hysteria_gecko_min_packet_size | int) >= 1
+      - _hysteria_obfs_type != 'gecko' or (hysteria_gecko_min_packet_size | int) <= (hysteria_gecko_max_packet_size | int)
+      - _hysteria_obfs_type != 'gecko' or (hysteria_gecko_max_packet_size | int) <= 2048
+      - _hysteria_obfs_type != 'gecko' or hysteria_gecko_evidence_report is match('^docs/measurements/[A-Za-z0-9._/-]+\.json$')
+      - _hysteria_obfs_type != 'gecko' or '..' not in hysteria_gecko_evidence_report
+      - _hysteria_obfs_type != 'gecko' or hysteria_gecko_evidence_sha256 is match('^[0-9a-f]{64}$')
+      - _hysteria_obfs_type != 'gecko' or hysteria_gecko_evidence_scope | length > 0
+    fail_msg: Invalid Hysteria obfuscation configuration or Gecko evidence gate.
+  no_log: true
+
+- name: Validate Gecko evidence on the Ansible controller before credential mutation
+  ansible.builtin.command:
+    argv:
+      - python3
+      - scripts/hysteria-gecko-evidence.py
+      - validate
+      - "{{ hysteria_gecko_evidence_report }}"
+      - --scope
+      - "{{ hysteria_gecko_evidence_scope }}"
+      - --sha256
+      - "{{ hysteria_gecko_evidence_sha256 }}"
+      - --gecko-min-packet-size
+      - "{{ hysteria_gecko_min_packet_size | string }}"
+      - --gecko-max-packet-size
+      - "{{ hysteria_gecko_max_packet_size | string }}"
+  args:
+    chdir: "{{ role_path }}/../../.."
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  when: _hysteria_obfs_type == 'gecko'

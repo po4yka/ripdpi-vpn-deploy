@@ -225,6 +225,20 @@ def test_bandwidth_unit_required(filled):
     assert errs
 
 
+def test_hysteria_canonical_obfs_password_validates(filled, tmp_path):
+    filled["hysteria"]["obfs_password"] = "canonical-obfs-password"
+    proc = _validate_cli(filled, tmp_path)
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_hysteria_conflicting_legacy_and_canonical_passwords_fail(filled, tmp_path):
+    filled["hysteria"]["obfs_password"] = "canonical-obfs-password"
+    filled["hysteria"]["salamander_password"] = "different-legacy-password"
+    proc = _validate_cli(filled, tmp_path)
+    assert proc.returncode == 1
+    assert "conflicts with hysteria.obfs_password" in proc.stderr
+
+
 def test_allowed_ips_must_be_cidrish(filled):
     v = _validator()
     filled["amneziawg_secrets"]["peers"][0]["allowed_ips"] = "wat"

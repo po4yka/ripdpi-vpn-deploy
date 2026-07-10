@@ -88,7 +88,7 @@ See `secrets/prod.secrets.example.yaml` for the full schema. High-level:
 ```
 xray.{version, linux_*_sha256, reality_*, target, server_names, xhttp_path, clients[*]}
 nginx_xhttp.{server_name, cert_pem, key_pem}
-hysteria.{version, linux_*_sha256, cert_pem, key_pem, bandwidth_*, salamander_*, clients[*]}
+hysteria.{version, linux_*_sha256, cert_pem, key_pem, bandwidth_*, obfs_password, salamander_*, clients[*]}
 geodata.{geosite_url, geoip_url, geosite_sha256, geoip_sha256, install_dir, refresh_interval}
 amneziawg_go_version + amneziawg_go_commit / amneziawg_tools_version + amneziawg_tools_commit
 amneziawg_secrets.{server_private_key, jc/jmin/jmax/s1/s2/h1-h4, peers[*]}

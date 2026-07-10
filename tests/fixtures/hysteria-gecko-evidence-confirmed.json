@@ -1,0 +1,97 @@
+{
+  "canary_id": "test-canary",
+  "canary_endpoint_hmac_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "client_transport_hmac_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "client_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "client_version": "v2.9.2",
+  "control_endpoint_hmac_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "gecko_max_packet_size": 1200,
+  "gecko_min_packet_size": 512,
+  "obfs_password_hmac_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+  "phases": [
+    {
+      "attempts": 10,
+      "control_successes": 10,
+      "client_config_hmac_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "failure_classes": {
+        "authentication": 0,
+        "local_process": 0,
+        "malformed_config": 0,
+        "network": 9,
+        "tls": 0
+      },
+      "gecko_max_packet_size": null,
+      "gecko_min_packet_size": null,
+      "finished_at": "2026-07-10T00:10:00Z",
+      "hysteria_successes": 1,
+      "invalid_failures": 0,
+      "latency_ms": {
+        "max": 40,
+        "median": 30,
+        "min": 20
+      },
+      "network_failures": 9,
+      "obfs_type": "salamander",
+      "phase": "salamander-a1",
+      "started_at": "2026-07-10T00:00:00Z"
+    },
+    {
+      "attempts": 10,
+      "control_successes": 10,
+      "client_config_hmac_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "failure_classes": {
+        "authentication": 0,
+        "local_process": 0,
+        "malformed_config": 0,
+        "network": 1,
+        "tls": 0
+      },
+      "gecko_max_packet_size": 1200,
+      "gecko_min_packet_size": 512,
+      "finished_at": "2026-07-10T01:10:00Z",
+      "hysteria_successes": 9,
+      "invalid_failures": 0,
+      "latency_ms": {
+        "max": 40,
+        "median": 30,
+        "min": 20
+      },
+      "network_failures": 1,
+      "obfs_type": "gecko",
+      "phase": "gecko-b",
+      "started_at": "2026-07-10T01:00:00Z"
+    },
+    {
+      "attempts": 10,
+      "control_successes": 10,
+      "client_config_hmac_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "failure_classes": {
+        "authentication": 0,
+        "local_process": 0,
+        "malformed_config": 0,
+        "network": 9,
+        "tls": 0
+      },
+      "gecko_max_packet_size": null,
+      "gecko_min_packet_size": null,
+      "finished_at": "2026-07-10T02:10:00Z",
+      "hysteria_successes": 1,
+      "invalid_failures": 0,
+      "latency_ms": {
+        "max": 40,
+        "median": 30,
+        "min": 20
+      },
+      "network_failures": 9,
+      "obfs_type": "salamander",
+      "phase": "salamander-a2",
+      "started_at": "2026-07-10T02:00:00Z"
+    }
+  ],
+  "reason_codes": [],
+  "schema_version": 1,
+  "scope": "test-gecko-scope",
+  "target_endpoint_hmac_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "vantage_id": "test-vantage",
+  "verdict": "confirmed"
+}

@@ -197,6 +197,12 @@ nginx_xhttp_port: 10085       # localhost-only Xray XHTTP inbound behind nginx
 # collision with any of those. Rotate if the alt-port itself gets targeted.
 nginx_xhttp_fallback_port: 2083
 hysteria_port: 443
+hysteria_obfs_type: "" # empty preserves legacy hysteria.salamander_enabled
+hysteria_gecko_min_packet_size: 512
+hysteria_gecko_max_packet_size: 1200
+hysteria_gecko_evidence_report: ""
+hysteria_gecko_evidence_sha256: ""
+hysteria_gecko_evidence_scope: ""
 # Optional Hysteria2 port-hopping. When set to a "low-high" string
 # (e.g. "20000-40000") the role opens that UDP range in nftables, the
 # server listens on it, and emit-singbox.sh writes server_ports +

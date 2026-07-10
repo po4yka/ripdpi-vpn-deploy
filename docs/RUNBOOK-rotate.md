@@ -65,8 +65,7 @@ new public key from secrets) and redistribute.
 If the Hysteria server password format or AWG server private key leaks,
 rotate similarly: generate new server-side material, update secrets, run
 `make deploy`. AWG client public keys remain valid (only the server
-private key changed); Hysteria per-user passwords remain valid (only
-server cert / Salamander password changed if applicable).
+private key changed); Hysteria per-user passwords remain valid when only the server certificate or canonical `hysteria.obfs_password` changes. Rotate the obfuscation password only as a synchronized server-and-bundle cutover, retain the previous configuration and bundle for rollback, and confirm every target device has imported the replacement before removing the old material.
 
 ## 4. Restic password
 

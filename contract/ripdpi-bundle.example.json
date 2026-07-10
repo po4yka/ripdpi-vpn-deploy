@@ -1,5 +1,5 @@
 {
-  "_comment": "Representative `ripdpi` object exercising every field including the additive ones (cohort_fingerprint, salamander_upstream_tag, topology, expires). Validated against ripdpi-bundle.schema.json by tests/unit/test_bundle_schema.py and, vendored, by the client RipdpiBundleContractTest. Values are illustrative placeholders; the AWG params and cohort_fingerprint match contract/cohort-fingerprint.golden.json (narrow-junk-sequential).",
+  "_comment": "Representative `ripdpi` object exercising every field including the additive ones (cohort_fingerprint, Gecko metadata, topology, expires). Validated against ripdpi-bundle.schema.json by tests/unit/test_bundle_schema.py and, vendored, by the client RipdpiBundleContractTest. Values are illustrative placeholders; the AWG params and cohort_fingerprint match contract/cohort-fingerprint.golden.json (narrow-junk-sequential).",
   "schema_version": 1,
   "amneziawg": [
     {
@@ -31,10 +31,12 @@
     "p2-hysteria2-upcloud-prod": {
       "insecure": false,
       "obfs": {
-        "type": "salamander",
-        "password": "EXAMPLEsalamanderPassword"
+        "type": "gecko",
+        "password": "EXAMPLEobfuscationPassword",
+        "min_packet_size": 512,
+        "max_packet_size": 1200
       },
-      "salamander_upstream_tag": "v2.9.0",
+      "gecko_upstream_tag": "v2.9.2",
       "port_hopping": {
         "ports": "20000:50000",
         "interval": "30s"

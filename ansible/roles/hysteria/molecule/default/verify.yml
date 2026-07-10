@@ -31,11 +31,12 @@
         executable: /bin/bash
       changed_when: false
 
-    - name: Salamander disabled-by-default not in config
+    - name: Obfuscation disabled by default
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
           ! grep -q 'type: salamander' /etc/hysteria/config.yaml
+          ! grep -q 'type: gecko' /etc/hysteria/config.yaml
         executable: /bin/bash
       changed_when: false
 

@@ -15,15 +15,22 @@ auth:
     {{ client.name }}: "{{ client.password }}"
 {% endfor %}
 
-# Salamander obfuscation: disabled by default. Enable only if vanilla
-# Hysteria is being classified on the target network — turning it on
-# trades a vanilla-H2 fingerprint for a high-entropy UDP fingerprint,
-# which can itself be a signal.
-{% if hysteria.salamander_enabled | default(false) %}
+# Obfuscation is default-off; the role renders Gecko only after the controller-side evidence preflight succeeds.
+{% set explicit_obfs_type = hysteria_obfs_type | default('') %}
+{% set effective_obfs_type = explicit_obfs_type if explicit_obfs_type else ('salamander' if (hysteria.salamander_enabled | default(false)) else 'plain') %}
+{% set effective_obfs_password = hysteria.obfs_password | default(hysteria.salamander_password | default(''), true) %}
+{% if effective_obfs_type == 'salamander' %}
 obfs:
   type: salamander
   salamander:
-    password: "{{ hysteria.salamander_password }}"
+    password: "{{ effective_obfs_password }}"
+{% elif effective_obfs_type == 'gecko' %}
+obfs:
+  type: gecko
+  gecko:
+    password: "{{ effective_obfs_password }}"
+    minPacketSize: {{ hysteria_gecko_min_packet_size | default(512) }}
+    maxPacketSize: {{ hysteria_gecko_max_packet_size | default(1200) }}
 {% endif %}
 
 bandwidth:

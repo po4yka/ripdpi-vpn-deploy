@@ -250,6 +250,63 @@ def test_emit_singbox_snell_missing_variant_credentials_fails(tmp_path):
     assert "v6-unshaped' is missing from secrets" in result.stderr
 
 
+def test_emit_singbox_gecko_is_evidence_gated_and_carries_packet_bounds(tmp_path):
+    _require_tool("jq")
+    group_vars = tmp_path / "group_vars"
+    group_vars.mkdir()
+    for name in ("all", "vpn"):
+        data = yaml.safe_load((REPO_ROOT / "ansible" / "group_vars" / f"{name}.yml").read_text()) or {}
+        if name == "all":
+            data.update({
+                "hysteria_obfs_type": "gecko",
+                "hysteria_gecko_min_packet_size": 512,
+                "hysteria_gecko_max_packet_size": 1200,
+                "hysteria_gecko_evidence_report": "tests/fixtures/hysteria-gecko-evidence-confirmed.json",
+                "hysteria_gecko_evidence_sha256": "9b0a66c1e68f3382727a57e5bb8118ad72ad46f5c9142e3a0886795fe0f0851e",
+                "hysteria_gecko_evidence_scope": "test-gecko-scope",
+            })
+        (group_vars / f"{name}.yml").write_text(yaml.safe_dump(data))
+    secrets = json.loads(_secrets_as_json(tmp_path).read_text())
+    secrets["hysteria"]["version"] = "v2.9.2"
+    gecko_secrets = tmp_path / "gecko-secrets.json"
+    gecko_secrets.write_text(json.dumps(secrets))
+    result = _run_script(
+        "laptop",
+        tmp_path,
+        extra_env={"VPN_GROUP_VARS_DIR": str(group_vars), "SOPS_FILE": str(gecko_secrets)},
+    )
+    assert result.returncode == 0, result.stderr
+    hysteria = next(outbound for outbound in json.loads(result.stdout)["outbounds"] if outbound.get("type") == "hysteria2")
+    assert hysteria["obfs"] == {"type": "gecko", "password": "fixture-salamander-password-not-real", "min_packet_size": 512, "max_packet_size": 1200}
+
+
+def test_emit_singbox_canonical_salamander_does_not_require_legacy_toggle(tmp_path):
+    _require_tool("jq")
+    group_vars = tmp_path / "group_vars"
+    group_vars.mkdir()
+    for name in ("all", "vpn"):
+        data = yaml.safe_load((REPO_ROOT / "ansible" / "group_vars" / f"{name}.yml").read_text()) or {}
+        if name == "all":
+            data["hysteria_obfs_type"] = "salamander"
+        (group_vars / f"{name}.yml").write_text(yaml.safe_dump(data))
+    secrets = json.loads(_secrets_as_json(tmp_path).read_text())
+    secrets["hysteria"].pop("salamander_enabled", None)
+    secrets["hysteria"].pop("salamander_password", None)
+    secrets["hysteria"]["obfs_password"] = "canonical-obfs-password"
+    canonical_secrets = tmp_path / "canonical-secrets.json"
+    canonical_secrets.write_text(json.dumps(secrets))
+
+    result = _run_script(
+        "laptop",
+        tmp_path,
+        extra_env={"VPN_GROUP_VARS_DIR": str(group_vars), "SOPS_FILE": str(canonical_secrets)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    hysteria = next(outbound for outbound in json.loads(result.stdout)["outbounds"] if outbound.get("type") == "hysteria2")
+    assert hysteria["obfs"] == {"type": "salamander", "password": "canonical-obfs-password"}
+
+
 def test_emit_singbox_dns_non_empty_and_detour(tmp_path):
     """dns.servers must be non-empty and remote server must detour via tunnel."""
     _require_tool("jq")

@@ -169,6 +169,32 @@ def test_bad_salamander_tag_rejected(schema, example):
     assert list(_validator(schema).iter_errors(doc))
 
 
+def test_gecko_obfs_contract_accepts_packet_bounds_and_upstream_tag(schema, example):
+    doc = copy.deepcopy(example)
+    tag = next(iter(doc["hysteria_extras"]))
+    doc["hysteria_extras"][tag]["obfs"] = {"type": "gecko", "password": "gecko-password", "min_packet_size": 512, "max_packet_size": 1200}
+    doc["hysteria_extras"][tag]["gecko_upstream_tag"] = "v2.9.2"
+    assert list(_validator(schema).iter_errors(doc)) == []
+
+
+def test_gecko_obfs_contract_rejects_out_of_range_packet_bound(schema, example):
+    doc = copy.deepcopy(example)
+    tag = next(iter(doc["hysteria_extras"]))
+    doc["hysteria_extras"][tag]["obfs"] = {"type": "gecko", "password": "gecko-password", "min_packet_size": 512, "max_packet_size": 2049}
+    assert list(_validator(schema).iter_errors(doc))
+
+
+def test_gecko_obfs_cli_rejects_reversed_packet_bounds(example, tmp_path):
+    doc = copy.deepcopy(example)
+    tag = next(iter(doc["hysteria_extras"]))
+    doc["hysteria_extras"][tag]["obfs"] = {"type": "gecko", "password": "gecko-password", "min_packet_size": 1200, "max_packet_size": 512}
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(doc))
+    proc = subprocess.run([sys.executable, str(VALIDATOR), str(path)], capture_output=True, text=True)
+    assert proc.returncode == 1
+    assert "min_packet_size exceeds max_packet_size" in proc.stderr
+
+
 def test_bad_cohort_fingerprint_format_rejected(schema, example):
     doc = copy.deepcopy(example)
     doc["amneziawg"][0]["cohort_fingerprint"] = "deadbeef"

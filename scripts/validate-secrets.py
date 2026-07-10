@@ -135,6 +135,12 @@ def _semantic_errors(doc: dict) -> list[tuple[str, str]]:
         all_userkeys.extend(user.get("userkey") for user in users if isinstance(user, dict) and user.get("userkey"))
     if len(all_userkeys) != len(set(all_userkeys)):
         errors.append(("snell_secrets.variants.users", "userkeys must be unique across variants"))
+
+    hysteria = doc.get("hysteria") or {}
+    canonical_obfs_password = hysteria.get("obfs_password") or ""
+    legacy_obfs_password = hysteria.get("salamander_password") or ""
+    if canonical_obfs_password and legacy_obfs_password and canonical_obfs_password != legacy_obfs_password:
+        errors.append(("hysteria.salamander_password", "conflicts with hysteria.obfs_password"))
     return errors
 
 

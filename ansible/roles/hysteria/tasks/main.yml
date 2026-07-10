@@ -2,14 +2,8 @@
 # P2 transport: Hysteria2 over QUIC/HTTP3 on UDP/443. Pinned release with
 # symlink rollback, validate-before-restart pattern.
 
-- name: Pre-flight — hysteria version must be pinned
-  ansible.builtin.assert:
-    that:
-      - hysteria.version | default('') | length > 0
-    fail_msg: >-
-      hysteria.version is empty. Set hysteria.version (and the matching
-      linux_amd64_sha256 / linux_arm64_sha256) in your secrets file or
-      group_vars before running this role.
+- name: Run Hysteria preflight before remote mutation
+  ansible.builtin.include_tasks: preflight.yml
 
 - name: Create hysteria system user
   ansible.builtin.user:
