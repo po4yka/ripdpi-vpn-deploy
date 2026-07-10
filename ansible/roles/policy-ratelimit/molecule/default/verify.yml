@@ -15,6 +15,14 @@
       register: unit
       failed_when: not unit.stat.exists
 
+    - name: Firewall dependency provides both offender sets
+      ansible.builtin.command:
+        cmd: nft list set inet filter {{ item }}
+      loop:
+        - policy_offenders
+        - policy_offenders6
+      changed_when: false
+
     - name: Service is active
       ansible.builtin.command:
         cmd: systemctl is-active policy-ratelimit.service

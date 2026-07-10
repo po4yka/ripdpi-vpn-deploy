@@ -2,6 +2,9 @@
 - name: Converge policy-ratelimit role
   hosts: all
   become: true
+  vars:
+    vpn:
+      enable_policy_ratelimit: true
   pre_tasks:
     # The role expects /var/log/xray/access.log; the daemon waits for the
     # file rather than failing, so we just need to ensure the directory
@@ -13,5 +16,11 @@
         owner: root
         group: root
         mode: "0755"
+    - name: Install nftables for the firewall dependency
+      ansible.builtin.apt:
+        name: nftables
+        state: present
+        update_cache: true
   roles:
+    - role: firewall
     - role: policy-ratelimit
