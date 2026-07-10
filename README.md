@@ -156,29 +156,31 @@ Then:
    sing-box NaiveProxy padding leak, NaiveProxy v147 preamble).
 10. `docs/SUBSCRIPTION-PLANE.md` — subscription-delivery contract matrix.
 11. `docs/XRAY-RELEASE-LINE.md` — Xray-core 2026 release-line tracker
-    (v26.2.6 → v26.5.3) with breaking-change notes for upgrades.
-12. `docs/AWG-COHORTS.md` — AmneziaWG cohort obfuscation profiles by
+    (v26.2.6 → v26.6.27) with breaking-change notes for upgrades.
+12. `docs/PQ-REALITY-ADOPTION.md` — enforced HOLD/STAGING/PRODUCTION policy
+    for VLESS Encryption (PQE) over REALITY.
+13. `docs/AWG-COHORTS.md` — AmneziaWG cohort obfuscation profiles by
     packet-shape signature (e.g. `narrow-junk-sequential`).
-13. `docs/MULTI-COHORT.md` — multiple VLESS+REALITY inbounds per host,
+14. `docs/MULTI-COHORT.md` — multiple VLESS+REALITY inbounds per host,
     each with its own port/flow_mode/finalmask/clients.
-14. `docs/MULTI-OPERATOR.md` — per-scope SOPS rules, role-scoped secrets
+15. `docs/MULTI-OPERATOR.md` — per-scope SOPS rules, role-scoped secrets
     files, audit-log boundaries.
-15. `docs/SUBSCRIPTION-HOST-SEPARATION.md` — run the subscription
+16. `docs/SUBSCRIPTION-HOST-SEPARATION.md` — run the subscription
     delivery role on a dedicated VPS via `vpn_subscription_only`.
-16. `docs/CI-REAL-DEPLOY.md` — workflow_dispatch ephemeral-UpCloud
+17. `docs/CI-REAL-DEPLOY.md` — workflow_dispatch ephemeral-UpCloud
     deploy gate for PRs labelled `ci-real-deploy`.
-17. `docs/REGRESSION-BASELINE.md` — `rkn-block-checker` four-layer
+18. `docs/REGRESSION-BASELINE.md` — `rkn-block-checker` four-layer
     verdict harness for before/after deploy measurement.
-18. `docs/PROBE-MATRIX.md` — `vpnd probe-matrix` multi-protocol
+19. `docs/PROBE-MATRIX.md` — `vpnd probe-matrix` multi-protocol
     simultaneity DPI probe over a (protocol × destination-class) ×
     time matrix.
-19. `docs/TRANSPORT-REACHABILITY-MATRIX.md` — two-vantage per-profile
+20. `docs/TRANSPORT-REACHABILITY-MATRIX.md` — two-vantage per-profile
     reachability sweep, CI-driven non-filtered half + operator-driven
     filtered half.
-20. `docs/SPLIT-HOP-TOPOLOGY.md` + `docs/RUNBOOK-split-hop-pilot.md`
+21. `docs/SPLIT-HOP-TOPOLOGY.md` + `docs/RUNBOOK-split-hop-pilot.md`
     — ADR + operator runbook for the two-VPS split-hop topology that
     breaks the FOCI 2026 per-IP dual-role flow classifier.
-21. `docs/RUNBOOK-idle-cycle-measurement.md` + `docs/measurements/`
+22. `docs/RUNBOOK-idle-cycle-measurement.md` + `docs/measurements/`
     — measurement spike for the bare-HTTPS idle-cycle access-attempt
     pattern: driver + correlation tool + dated-report template.
 
