@@ -28,12 +28,19 @@ pub fn build_sub_urls(base: &str, segment: &str) -> SubUrls {
     );
     let qr_singbox = format!("{base}/sub/{segment}.json");
     let qr_uri = format!("{base}/sub/{segment}");
-    SubUrls { subscription_url, singbox_deeplink, qr_singbox, qr_uri }
+    SubUrls {
+        subscription_url,
+        singbox_deeplink,
+        qr_singbox,
+        qr_uri,
+    }
 }
 
 /// Validate that a token contains only base64url alphabet characters.
 fn validate_token(token: &str) -> Result<()> {
-    let valid = token.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    let valid = token
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
     if !valid {
         return Err(anyhow!(
             "token contains invalid characters — only base64url alphabet [A-Za-z0-9_-] is allowed"
@@ -55,19 +62,29 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
     }
 
     if ctx.explain {
-        eprintln!("{} would emit: sing-box bundle, recipient page, QR (if --qr)", "→".cyan());
+        eprintln!(
+            "{} would emit: sing-box bundle, recipient page, QR (if --qr)",
+            "→".cyan()
+        );
         return Ok(());
     }
 
     let secrets = Secrets::load(&ctx.secrets_file)?;
-    let client = secrets
-        .find_client(&args.client)
-        .ok_or_else(|| anyhow!("client '{}' not found in the decrypted secrets file", args.client))?;
+    let client = secrets.find_client(&args.client).ok_or_else(|| {
+        anyhow!(
+            "client '{}' not found in the decrypted secrets file",
+            args.client
+        )
+    })?;
 
     // Transport host — used only as a URL host fallback when no dedicated
     // subscription host is configured. The path segment itself must always be
     // an operator-issued opaque bearer token; client-name fallback is forbidden.
-    let host = secrets.xhttp_host.as_deref().or(secrets.server_name.as_deref()).unwrap_or("(unset)");
+    let host = secrets
+        .nginx_xhttp
+        .server_name
+        .as_deref()
+        .unwrap_or("(unset)");
 
     let token = args.token.as_ref().ok_or_else(|| {
         anyhow!(
@@ -85,9 +102,13 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
     let urls = build_sub_urls(&base, token);
 
     // sing-box bundle from existing script — preserves multi-host + cohort awareness.
-    let singbox = make::target_with(ctx, "emit-singbox", &[("CLIENT", &args.client)]).capture(false).await?;
+    let singbox = make::target_with(ctx, "emit-singbox", &[("CLIENT", &args.client)])
+        .capture(false)
+        .await?;
 
-    let out = args.out.unwrap_or_else(|| ctx.root.join("share").join(&args.client));
+    let out = args
+        .out
+        .unwrap_or_else(|| ctx.root.join("share").join(&args.client));
     std::fs::create_dir_all(&out)?;
 
     // sing-box JSON (always emitted)
@@ -140,18 +161,42 @@ fn per_platform_apps() -> Vec<recipient::AppCard> {
     vec![
         recipient::AppCard {
             platform: "iOS".to_string(),
-            primary: ("Streisand", "https://apps.apple.com/app/streisand/id6450534064").into(),
-            also: vec![("v2RayTun", "https://apps.apple.com/app/v2raytun/id6476628951").into()],
+            primary: (
+                "Streisand",
+                "https://apps.apple.com/app/streisand/id6450534064",
+            )
+                .into(),
+            also: vec![(
+                "v2RayTun",
+                "https://apps.apple.com/app/v2raytun/id6476628951",
+            )
+                .into()],
         },
         recipient::AppCard {
             platform: "Android".to_string(),
-            primary: ("v2rayNG", "https://github.com/2dust/v2rayNG/releases/latest").into(),
-            also: vec![("Hiddify", "https://github.com/hiddify/hiddify-app/releases/latest").into()],
+            primary: (
+                "v2rayNG",
+                "https://github.com/2dust/v2rayNG/releases/latest",
+            )
+                .into(),
+            also: vec![(
+                "Hiddify",
+                "https://github.com/hiddify/hiddify-app/releases/latest",
+            )
+                .into()],
         },
         recipient::AppCard {
             platform: "macOS / Windows / Linux".to_string(),
-            primary: ("sing-box", "https://sing-box.sagernet.org/installation/package-manager/").into(),
-            also: vec![("Hiddify", "https://github.com/hiddify/hiddify-app/releases/latest").into()],
+            primary: (
+                "sing-box",
+                "https://sing-box.sagernet.org/installation/package-manager/",
+            )
+                .into(),
+            also: vec![(
+                "Hiddify",
+                "https://github.com/hiddify/hiddify-app/releases/latest",
+            )
+                .into()],
         },
     ]
 }
