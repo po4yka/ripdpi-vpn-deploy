@@ -1,0 +1,24 @@
+---
+- name: Converge split-hop ingress rendering
+  hosts: all
+  become: true
+  vars:
+    probe_matrix_runtime_users:
+      xray_uid: 971
+      mtg_uid: 972
+    split_hop_ingress:
+      manage_service: false
+      validate_policy: false
+      wg_interface: shop0
+      listen_port: 51821
+      tunnel_subnet: 10.200.0.0/30
+      node_a_address: 10.200.0.1/30
+      node_b_address: 10.200.0.2/30
+      routing_table: 51821
+      fwmark: 51821
+    split_hop_ingress_secrets:
+      node_a_private_key: MOLECULE_STUB_PRIVATE_KEY_NOT_REAL_AAAAAAAAAAAAAAAA=
+      node_b_public_key: MOLECULE_STUB_PUBLIC_KEY_NOT_REAL_BBBBBBBBBBBBBBBBBB=
+      preshared_key: ""
+  roles:
+    - role: split-hop-ingress

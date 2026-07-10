@@ -1,0 +1,22 @@
+---
+- name: Reload probe matrix systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart probe matrix xray
+  ansible.builtin.systemd_service:
+    name: probe-matrix-xray
+    state: restarted
+  when: probe_matrix_target.manage_services | bool
+
+- name: Restart probe matrix mtg
+  ansible.builtin.systemd_service:
+    name: probe-matrix-mtg
+    state: restarted
+  when: probe_matrix_target.manage_services | bool
+
+- name: Reload nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: reloaded
+  when: probe_matrix_target.manage_services | bool

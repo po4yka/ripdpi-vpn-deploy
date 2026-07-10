@@ -9,6 +9,8 @@ from `defaults/main.yml`; they never copy the inbound config.
 **Pinned binary** — Xray version is pinned in `defaults/main.yml`; upgrades
 go through `docs/XRAY-RELEASE-LINE.md`. The release-line tracker exists
 because v26.2.6 → v26.5.3 had silent flow-mode breakage on some clients.
+Binary acquisition is delegated to `xray-runtime`; this role owns only the
+primary service user, configuration, logs, and lifecycle.
 
 **Listen 127.0.0.1 when nginx fronts** — when `vpn.enable_nginx_xhttp` is on,
 the XHTTP inbound binds to 127.0.0.1 only. The Reality inbound stays on

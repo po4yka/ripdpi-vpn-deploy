@@ -121,4 +121,26 @@
   "enabled": (vpn.enable_naive | default(false)) and not subscription_only,
   "reason": "NaiveProxy public listener"
 }) %}
+{% for probe_listener in [
+  {"name": "mtproto", "port": probe_matrix_target.ports.mtproto},
+  {"name": "xhttp-vless", "port": probe_matrix_target.ports.xhttp_vless},
+  {"name": "xhttp-trojan", "port": probe_matrix_target.ports.xhttp_trojan},
+  {"name": "tcp-trojan", "port": probe_matrix_target.ports.tcp_trojan},
+  {"name": "tls-non-443", "port": probe_matrix_target.ports.tls_non_443}
+] %}
+{% set _ = ns.listeners.append({
+  "role": "probe-matrix-" ~ probe_listener.name,
+  "protocol": "tcp",
+  "port": probe_listener.port | int,
+  "enabled": (vpn.enable_probe_matrix_target | default(false)) and not subscription_only,
+  "reason": "owned probe matrix " ~ probe_listener.name ~ " listener"
+}) %}
+{% endfor %}
+{% set _ = ns.listeners.append({
+  "role": "split-hop-ingress",
+  "protocol": "udp",
+  "port": split_hop_ingress.listen_port | int,
+  "enabled": (vpn.enable_split_hop_ingress | default(false)) and not subscription_only,
+  "reason": "split-hop responder listener"
+}) %}
 {{ ns.listeners | to_json }}

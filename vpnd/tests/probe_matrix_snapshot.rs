@@ -41,8 +41,12 @@ fn probe_matrix_destination_classes_are_technical_signatures() {
     // Enforces the repo hard rule: destination labels must describe
     // technical signature, not operator / geography / carrier.
     for forbidden in [
-        "carrier-name", "operator-name", "region-name",
-        "network-brand", "provider-brand", "geographic-label",
+        "carrier-name",
+        "operator-name",
+        "region-name",
+        "network-brand",
+        "provider-brand",
+        "geographic-label",
     ] {
         assert!(
             !json.to_lowercase().contains(forbidden),
@@ -50,10 +54,7 @@ fn probe_matrix_destination_classes_are_technical_signatures() {
         );
     }
     // And it must use the technical-signature class names.
-    for required_class in [
-        "domestic-allowlisted",
-        "foreign-non-allowlist",
-    ] {
+    for required_class in ["allowlist-pattern", "non-allowlist-pattern"] {
         assert!(
             json.contains(required_class),
             "probe-matrix JSON must use technical-signature class '{required_class}'"

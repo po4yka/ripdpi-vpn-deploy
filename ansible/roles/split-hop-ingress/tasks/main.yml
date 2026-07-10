@@ -1,0 +1,53 @@
+---
+- name: Validate split-hop ingress secrets
+  ansible.builtin.assert:
+    that:
+      - split_hop_ingress_secrets.node_a_private_key | length > 0
+      - split_hop_ingress_secrets.node_b_public_key | length > 0
+      - split_hop_ingress.listen_port | int > 0
+      - split_hop_ingress.listen_port | int <= 65535
+    fail_msg: Split-hop ingress requires both WireGuard keys and a valid listen port.
+
+- name: Install split-hop ingress packages
+  ansible.builtin.apt:
+    name: [wireguard, wireguard-tools, nftables]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure WireGuard configuration directory
+  ansible.builtin.file:
+    path: /etc/wireguard
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Render split-hop ingress routing policy
+  ansible.builtin.template:
+    src: policy.nft.j2
+    dest: /etc/wireguard/split-hop-ingress.nft
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "{{ 'nft -c -f %s' if split_hop_ingress.validate_policy | bool else omit }}"
+  notify: Restart split-hop ingress
+
+- name: Render split-hop ingress WireGuard configuration
+  ansible.builtin.template:
+    src: split-hop-ingress.conf.j2
+    dest: "/etc/wireguard/{{ split_hop_ingress.wg_interface }}.conf"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+  notify: Restart split-hop ingress
+
+- name: Enable split-hop ingress
+  ansible.builtin.systemd_service:
+    name: "wg-quick@{{ split_hop_ingress.wg_interface }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: split_hop_ingress.manage_service | bool

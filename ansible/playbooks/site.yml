@@ -160,6 +160,14 @@
       when: (vpn.enable_split_hop_egress | default(false)) and not (vpn_subscription_only | default(false))
       tags: [split-hop-egress, topology]
 
+    - role: split-hop-ingress
+      when: (vpn.enable_split_hop_ingress | default(false)) and not (vpn_subscription_only | default(false))
+      tags: [split-hop-ingress, topology, research]
+
+    - role: probe-matrix-target
+      when: (vpn.enable_probe_matrix_target | default(false)) and not (vpn_subscription_only | default(false))
+      tags: [probe-matrix-target, measurement, research]
+
     - role: monitoring
       when: vpn.enable_monitoring | default(true)
       tags: [monitoring]

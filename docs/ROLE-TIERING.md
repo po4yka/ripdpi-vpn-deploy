@@ -100,7 +100,7 @@ of the guard: keep it that way.
 | TRANSPORT-REACHABILITY-MATRIX.md | TACTICAL | Two-vantage diagnostic; used after a regression, not routinely. |
 | SPLIT-HOP-TOPOLOGY.md | RESEARCH | Pilot ADR; the adversary capability is unconfirmed at scale. |
 | RUNBOOK-split-hop-pilot.md | RESEARCH | Pilot runbook; Node A is manual, no Ansible coverage. |
-| PROBE-MATRIX.md | RESEARCH | DPI probe matrix; per-cell drivers are stubs (return "unknown"). |
+| PROBE-MATRIX.md | RESEARCH | Authenticated topology-aware DPI measurement; five public target listeners and controlled multi-vantage evidence are not family baseline features. |
 | RUNBOOK-idle-cycle-measurement.md | RESEARCH | DPI measurement workflow; its own probe traffic could become a signal. |
 
 (Docs not listed — RELEASE-PLEASE, BRANCH-PROTECTION, CI-REAL-DEPLOY,

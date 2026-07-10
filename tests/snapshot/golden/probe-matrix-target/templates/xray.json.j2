@@ -1,0 +1,9 @@
+{
+  "log": {"access": "/var/log/probe-matrix-xray/access.log", "error": "/var/log/probe-matrix-xray/error.log", "loglevel": "warning"},
+  "inbounds": [
+    {"listen": "0.0.0.0", "port": 0, "protocol": "vless", "settings": {"clients": [{"id": "REPLACE_WITH_VLESS_UUID"}], "decryption": "none"}, "streamSettings": {"network": "xhttp", "security": "tls", "tlsSettings": {"certificates": [{"certificateFile": "/etc/probe-matrix/tls.crt", "keyFile": "/etc/probe-matrix/tls.key"}]}, "xhttpSettings": {"path": ""}}},
+    {"listen": "0.0.0.0", "port": 0, "protocol": "trojan", "settings": {"clients": [{"password": "REPLACE_WITH_XHTTP_TROJAN_PASSWORD"}]}, "streamSettings": {"network": "xhttp", "security": "tls", "tlsSettings": {"certificates": [{"certificateFile": "/etc/probe-matrix/tls.crt", "keyFile": "/etc/probe-matrix/tls.key"}]}, "xhttpSettings": {"path": ""}}},
+    {"listen": "0.0.0.0", "port": 0, "protocol": "trojan", "settings": {"clients": [{"password": "REPLACE_WITH_TCP_TROJAN_PASSWORD"}]}, "streamSettings": {"network": "tcp", "security": "tls", "tlsSettings": {"certificates": [{"certificateFile": "/etc/probe-matrix/tls.crt", "keyFile": "/etc/probe-matrix/tls.key"}]}}}
+  ],
+  "outbounds": [{"protocol": "freedom", "tag": "direct"}]
+}

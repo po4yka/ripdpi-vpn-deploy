@@ -1,0 +1,185 @@
+---
+- name: Validate probe matrix target configuration
+  ansible.builtin.assert:
+    that:
+      - probe_matrix_target.topology in ['single-ip-dual-role', 'split-hop-ingress']
+      - probe_matrix_target.server_name | length > 0
+      - probe_matrix_target.ports.values() | map('int') | min > 0
+      - probe_matrix_target.ports.values() | map('int') | max <= 65535
+      - probe_matrix_target.ports.values() | list | unique | length == 5
+      - probe_matrix_target.paths.xhttp_vless is match('^/')
+      - probe_matrix_target.paths.xhttp_trojan is match('^/')
+      - probe_matrix_target_secrets.mtproto_secret | length >= 16
+      - probe_matrix_target_secrets.vless_uuid | length > 0
+      - probe_matrix_target_secrets.xhttp_trojan_password | length >= 16
+      - probe_matrix_target_secrets.tcp_trojan_password | length >= 16
+      - probe_matrix_target_secrets.cert_pem | length > 30
+      - probe_matrix_target_secrets.key_pem | length > 30
+    fail_msg: Probe matrix target ports, paths, TLS material, and per-protocol credentials are required.
+
+- name: Install shared Xray runtime
+  ansible.builtin.include_role:
+    name: xray-runtime
+
+- name: Schedule probe Xray restart after runtime change
+  ansible.builtin.debug:
+    msg: Pinned Xray runtime changed.
+  changed_when: xray_runtime_changed | bool
+  notify: Restart probe matrix xray
+
+- name: Create probe matrix runtime users
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    uid: "{{ item.uid }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ item.home }}"
+    create_home: true
+  loop:
+    - name: probe-xray
+      uid: "{{ probe_matrix_runtime_users.xray_uid }}"
+      home: /var/lib/probe-matrix-xray
+    - name: probe-mtg
+      uid: "{{ probe_matrix_runtime_users.mtg_uid }}"
+      home: /var/lib/probe-matrix-mtg
+
+- name: Install target packages
+  ansible.builtin.apt:
+    name: [nginx]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure probe matrix directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: /etc/probe-matrix
+      owner: root
+      group: root
+      mode: "0755"
+    - path: /var/log/probe-matrix-xray
+      owner: probe-xray
+      group: probe-xray
+      mode: "0750"
+    - path: /opt/probe-matrix/mtg
+      owner: root
+      group: root
+      mode: "0755"
+
+- name: Install probe matrix TLS certificate
+  ansible.builtin.copy:
+    content: "{{ item.content }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - content: "{{ probe_matrix_target_secrets.cert_pem }}"
+      dest: /etc/probe-matrix/tls.crt
+      group: probe-xray
+      mode: "0644"
+    - content: "{{ probe_matrix_target_secrets.key_pem }}"
+      dest: /etc/probe-matrix/tls.key
+      group: probe-xray
+      mode: "0640"
+  no_log: true
+  diff: false
+  notify: [Restart probe matrix xray, Reload nginx]
+
+- name: Render auxiliary Xray target configuration
+  ansible.builtin.template:
+    src: xray.json.j2
+    dest: /etc/probe-matrix/xray.json
+    owner: root
+    group: probe-xray
+    mode: "0640"
+    validate: /usr/local/bin/xray run -test -config %s
+  no_log: true
+  diff: false
+  notify: Restart probe matrix xray
+
+- name: Select mtg release asset
+  ansible.builtin.set_fact:
+    _probe_mtg_url: >-
+      {{ probe_matrix_target_secrets.mtg_linux_amd64_url
+         if ansible_architecture == 'x86_64'
+         else probe_matrix_target_secrets.mtg_linux_arm64_url }}
+    _probe_mtg_sha256: >-
+      {{ probe_matrix_target_secrets.mtg_linux_amd64_sha256
+         if ansible_architecture == 'x86_64'
+         else probe_matrix_target_secrets.mtg_linux_arm64_sha256 }}
+
+- name: Validate mtg release asset pin
+  ansible.builtin.assert:
+    that:
+      - _probe_mtg_url | length > 0
+      - _probe_mtg_sha256 is match('^[0-9a-fA-F]{64}$')
+    fail_msg: mtg v2.2.8 release URL and architecture SHA256 are required.
+
+- name: Download pinned mtg binary
+  ansible.builtin.get_url:
+    url: "{{ _probe_mtg_url }}"
+    dest: "/opt/probe-matrix/mtg/mtg-{{ probe_matrix_target_secrets.mtg_version }}"
+    checksum: "sha256:{{ _probe_mtg_sha256 }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Link pinned mtg binary
+  ansible.builtin.file:
+    src: "/opt/probe-matrix/mtg/mtg-{{ probe_matrix_target_secrets.mtg_version }}"
+    dest: /usr/local/bin/probe-matrix-mtg
+    state: link
+    force: true
+  notify: Restart probe matrix mtg
+
+- name: Render mtg configuration
+  ansible.builtin.template:
+    src: mtg.toml.j2
+    dest: /etc/probe-matrix/mtg.toml
+    owner: root
+    group: probe-mtg
+    mode: "0640"
+  no_log: true
+  diff: false
+  notify: Restart probe matrix mtg
+
+- name: Render TLS control listener
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/sites-available/probe-matrix-tls.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Enable TLS control listener
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/probe-matrix-tls.conf
+    dest: /etc/nginx/sites-enabled/probe-matrix-tls.conf
+    state: link
+  notify: Reload nginx
+
+- name: Install probe matrix services
+  ansible.builtin.template:
+    src: "{{ item }}.service.j2"
+    dest: "/etc/systemd/system/{{ item }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [probe-matrix-xray, probe-matrix-mtg]
+  notify: Reload probe matrix systemd
+
+- name: Enable probe matrix services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop: [probe-matrix-xray, probe-matrix-mtg, nginx]
+  when: probe_matrix_target.manage_services | bool

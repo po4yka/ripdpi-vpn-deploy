@@ -2,6 +2,10 @@
 # Tunables shared across every host. Secrets do NOT live here — they are
 # loaded at runtime from VPN_SECRETS_FILE in playbook vars_files.
 
+probe_matrix_runtime_users:
+  xray_uid: 971
+  mtg_uid: 972
+
 vpn:
   # Toggle transport and service surfaces. Keep host-hardening posture in
   # `security_controls` below so deploy profiles can change security policy
@@ -69,6 +73,10 @@ vpn:
                                   # per-IP dual-role flow classifier.
                                   # See docs/SPLIT-HOP-TOPOLOGY.md
                                   # and docs/RUNBOOK-split-hop-pilot.md.
+  enable_split_hop_ingress: false # opt-in RESEARCH Node A responder;
+                                  # requires allow_research_roles.
+  enable_probe_matrix_target: false # opt-in RESEARCH five-protocol target;
+                                    # never part of a family deploy.
 
   # When enable_warp_outbound is true AND this list is non-empty, the
   # xray config gains a SOCKS outbound tagged "warp-out" and routing

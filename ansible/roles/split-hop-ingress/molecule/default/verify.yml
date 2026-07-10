@@ -1,0 +1,21 @@
+---
+- name: Verify split-hop ingress rendering
+  hosts: all
+  become: true
+  tasks:
+    - name: Read responder configuration
+      ansible.builtin.slurp:
+        src: /etc/wireguard/shop0.conf
+      register: ingress_config
+    - name: Read policy configuration
+      ansible.builtin.slurp:
+        src: /etc/wireguard/split-hop-ingress.nft
+      register: ingress_policy
+    - name: Assert responder direction and conntrack policy
+      ansible.builtin.assert:
+        that:
+          - (ingress_config.content | b64decode) is not search('Endpoint')
+          - (ingress_config.content | b64decode) is not search('PersistentKeepalive')
+          - (ingress_policy.content | b64decode) is search('ct state new ct direction original')
+          - (ingress_policy.content | b64decode) is search('meta skuid')
+          - (ingress_policy.content | b64decode) is search('meta mark set ct mark')

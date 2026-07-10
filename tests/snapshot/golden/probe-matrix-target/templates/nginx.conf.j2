@@ -1,0 +1,9 @@
+server {
+    listen 0 ssl;
+    listen [::]:0 ssl;
+    server_name ;
+    ssl_certificate /etc/probe-matrix/tls.crt;
+    ssl_certificate_key /etc/probe-matrix/tls.key;
+    location = /probe { return 204; }
+    location / { return 404; }
+}

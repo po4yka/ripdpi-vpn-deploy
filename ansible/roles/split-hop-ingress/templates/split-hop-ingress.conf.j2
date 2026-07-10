@@ -1,0 +1,14 @@
+[Interface]
+PrivateKey = {{ split_hop_ingress_secrets.node_a_private_key }}
+Address = {{ split_hop_ingress.node_a_address }}
+ListenPort = {{ split_hop_ingress.listen_port }}
+Table = off
+PostUp = ip route replace default dev {{ split_hop_ingress.wg_interface }} table {{ split_hop_ingress.routing_table }}; ip rule add fwmark {{ split_hop_ingress.fwmark }} table {{ split_hop_ingress.routing_table }} 2>/dev/null || true; nft -f /etc/wireguard/split-hop-ingress.nft
+PostDown = ip rule del fwmark {{ split_hop_ingress.fwmark }} table {{ split_hop_ingress.routing_table }} 2>/dev/null || true; ip route flush table {{ split_hop_ingress.routing_table }}; nft delete table inet split_hop_ingress 2>/dev/null || true
+
+[Peer]
+PublicKey = {{ split_hop_ingress_secrets.node_b_public_key }}
+{% if split_hop_ingress_secrets.preshared_key | default('') | length > 0 %}
+PresharedKey = {{ split_hop_ingress_secrets.preshared_key }}
+{% endif %}
+AllowedIPs = 0.0.0.0/0

@@ -18,7 +18,7 @@ export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CON
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
         molecule-test smoke-test validate-target monitor-reality-target probe-sni-survival scan-targets blue-green \
-        spot-check-secrets bootstrap-secrets probe-asn emit-qr check-certs \
+        spot-check-secrets bootstrap-secrets probe-asn probe-matrix-control probe-matrix-cell probe-matrix-tools emit-probe-matrix-profile emit-qr check-certs \
         audit-permissions asn-drift check-ip-reputation issue-bootstrap \
         test-tls-policing probe-payload-throttle fleet-status drift-since-tag fleet-rotate \
         protocol-liveness install-liveness-sentinel watch-spare promote-spare probing-summary tspu-canary \
@@ -365,14 +365,23 @@ probe-asn:
 	@test -n "$${HOST:-}" || { echo "usage: make probe-asn HOST=mirror.example.com"; exit 1; }
 	./scripts/probe-asn.sh "$${HOST}"
 
-# Per-cell probe invoked by `vpnd probe-matrix`. Emits one JSON line on
-# stdout (verdict + rtt_ms). See scripts/probe-matrix-cell.sh.
+# Direct control probe invoked once per matrix tick.
+probe-matrix-control:
+	@if test -n "$(MATRIX_CONFIG)"; then python3 ./scripts/probe-matrix-driver.py control --config "$(MATRIX_CONFIG)"; else printf '%s\n' '{"verdict":"error","rtt_ms":null,"error_kind":"request-invalid"}'; fi
+
+probe-matrix-tools:
+	@mkdir -p "$(RUNTIME_DIR)/probe-matrix/bin"
+	@cd tools/probe-matrix-mtproto && CGO_ENABLED=0 go build -trimpath -o "$(RUNTIME_DIR)/probe-matrix/bin/probe-matrix-mtproto" .
+
+emit-probe-matrix-profile:
+	@test -n "$(TARGET_ID)" -a -n "$(PROFILE_OUTPUT)" -a -n "$(PROFILE_VARS)" || { echo "usage: make emit-probe-matrix-profile TARGET_ID=... PROFILE_OUTPUT=... PROFILE_VARS=/absolute/host-vars.yml"; exit 1; }
+	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run make decrypt"; exit 1; }
+	@endpoint="$$(PROVIDER="$(PROVIDER)" ENV="$(ENV)" $(TF_ENV) output -raw server_ipv4)"; \
+	python3 ./scripts/emit-probe-matrix-profile.py --target-id "$(TARGET_ID)" --endpoint "$$endpoint" --vars-file "$(PROFILE_VARS)" --secrets-file "$(SECRETS_FILE)" --output "$(PROFILE_OUTPUT)"
+
+# Per-cell probe invoked by `vpnd probe-matrix`. Emits one JSON line on stdout.
 probe-matrix-cell:
-	@test -n "$(PROTOCOL)" || { echo "usage: make probe-matrix-cell PROTOCOL=... DEST_CLASS=... DEST=ip:port VANTAGE=label"; exit 1; }
-	@test -n "$(DEST_CLASS)" || { echo "usage: make probe-matrix-cell PROTOCOL=... DEST_CLASS=... DEST=ip:port VANTAGE=label"; exit 1; }
-	@test -n "$(DEST)" || { echo "usage: make probe-matrix-cell PROTOCOL=... DEST_CLASS=... DEST=ip:port VANTAGE=label"; exit 1; }
-	@test -n "$(VANTAGE)" || { echo "usage: make probe-matrix-cell PROTOCOL=... DEST_CLASS=... DEST=ip:port VANTAGE=label"; exit 1; }
-	@PROTOCOL=$(PROTOCOL) DEST_CLASS=$(DEST_CLASS) DEST=$(DEST) VANTAGE=$(VANTAGE) ./scripts/probe-matrix-cell.sh
+	@if test -n "$(MATRIX_CONFIG)" -a -n "$(TARGET_ID)" -a -n "$(PROTOCOL)" -a -n "$(CONTROL_VERDICT)"; then MATRIX_CONFIG="$(MATRIX_CONFIG)" TARGET_ID="$(TARGET_ID)" PROTOCOL="$(PROTOCOL)" CONTROL_VERDICT="$(CONTROL_VERDICT)" ./scripts/probe-matrix-cell.sh; else printf '%s\n' '{"verdict":"error","rtt_ms":null,"error_kind":"request-invalid"}'; fi
 
 # Per-ASN ~16 KiB payload-throttling probe. Emits one JSON verdict line
 # on stdout keyed to the target ASN. Run from a filtered client path,

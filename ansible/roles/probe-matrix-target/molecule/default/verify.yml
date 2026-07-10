@@ -1,0 +1,47 @@
+---
+- name: Verify probe matrix target rendering
+  hosts: all
+  become: true
+  tasks:
+    - name: Inspect protected target files
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/probe-matrix/xray.json
+        - /etc/probe-matrix/mtg.toml
+        - /etc/probe-matrix/tls.key
+      register: protected_files
+    - name: Assert target file permissions
+      ansible.builtin.assert:
+        that:
+          - protected_files.results[0].stat.mode == '0640'
+          - protected_files.results[1].stat.mode == '0640'
+          - protected_files.results[2].stat.mode == '0640'
+    - name: Read Xray target configuration
+      ansible.builtin.slurp:
+        src: /etc/probe-matrix/xray.json
+      register: target_xray
+    - name: Assert all three Xray listeners are present
+      ansible.builtin.assert:
+        that:
+          - (target_xray.content | b64decode) is search('11443')
+          - (target_xray.content | b64decode) is search('12443')
+          - (target_xray.content | b64decode) is search('13443')
+    - name: Read mtg and TLS listener configurations
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /etc/probe-matrix/mtg.toml
+        - /etc/nginx/sites-enabled/probe-matrix-tls.conf
+        - /etc/systemd/system/probe-matrix-xray.service
+        - /etc/systemd/system/probe-matrix-mtg.service
+      register: target_runtime_files
+    - name: Assert remaining listeners and service hardening
+      ansible.builtin.assert:
+        that:
+          - (target_runtime_files.results[0].content | b64decode) is search('10443')
+          - (target_runtime_files.results[1].content | b64decode) is search('14443')
+          - (target_runtime_files.results[2].content | b64decode) is search('NoNewPrivileges=true')
+          - (target_runtime_files.results[2].content | b64decode) is search('ProtectSystem=strict')
+          - (target_runtime_files.results[3].content | b64decode) is search('NoNewPrivileges=true')
+          - (target_runtime_files.results[3].content | b64decode) is search('ProtectSystem=strict')

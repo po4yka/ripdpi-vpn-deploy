@@ -1,0 +1,8 @@
+destroy table inet split_hop_ingress
+table inet split_hop_ingress {
+  chain output {
+    type route hook output priority mangle; policy accept;
+    ct state new ct direction original meta skuid { {{ probe_matrix_runtime_users.xray_uid }}, {{ probe_matrix_runtime_users.mtg_uid }} } ct mark set {{ split_hop_ingress.fwmark }}
+    ct mark {{ split_hop_ingress.fwmark }} meta mark set ct mark
+  }
+}

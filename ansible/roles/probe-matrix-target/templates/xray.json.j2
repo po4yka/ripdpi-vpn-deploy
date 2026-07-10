@@ -1,0 +1,9 @@
+{
+  "log": {"access": "/var/log/probe-matrix-xray/access.log", "error": "/var/log/probe-matrix-xray/error.log", "loglevel": "warning"},
+  "inbounds": [
+    {"listen": "0.0.0.0", "port": {{ probe_matrix_target.ports.xhttp_vless }}, "protocol": "vless", "settings": {"clients": [{"id": "{{ probe_matrix_target_secrets.vless_uuid }}"}], "decryption": "none"}, "streamSettings": {"network": "xhttp", "security": "tls", "tlsSettings": {"certificates": [{"certificateFile": "/etc/probe-matrix/tls.crt", "keyFile": "/etc/probe-matrix/tls.key"}]}, "xhttpSettings": {"path": "{{ probe_matrix_target.paths.xhttp_vless }}"}}},
+    {"listen": "0.0.0.0", "port": {{ probe_matrix_target.ports.xhttp_trojan }}, "protocol": "trojan", "settings": {"clients": [{"password": "{{ probe_matrix_target_secrets.xhttp_trojan_password }}"}]}, "streamSettings": {"network": "xhttp", "security": "tls", "tlsSettings": {"certificates": [{"certificateFile": "/etc/probe-matrix/tls.crt", "keyFile": "/etc/probe-matrix/tls.key"}]}, "xhttpSettings": {"path": "{{ probe_matrix_target.paths.xhttp_trojan }}"}}},
+    {"listen": "0.0.0.0", "port": {{ probe_matrix_target.ports.tcp_trojan }}, "protocol": "trojan", "settings": {"clients": [{"password": "{{ probe_matrix_target_secrets.tcp_trojan_password }}"}]}, "streamSettings": {"network": "tcp", "security": "tls", "tlsSettings": {"certificates": [{"certificateFile": "/etc/probe-matrix/tls.crt", "keyFile": "/etc/probe-matrix/tls.key"}]}}}
+  ],
+  "outbounds": [{"protocol": "freedom", "tag": "direct"}]
+}

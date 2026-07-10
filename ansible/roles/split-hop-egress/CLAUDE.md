@@ -41,11 +41,10 @@ postrouting NAT for forwarded traffic.
   A's tunnel IP back through the tunnel. Setting wider AllowedIPs on
   B makes the tunnel a return-path for arbitrary traffic, which the
   topology does not need.
-- **Node A's WG config lives outside this role** — it currently has
-  no Ansible coverage. A's iface needs `AllowedIPs = 0.0.0.0/0` (so
-  all egress goes through the tunnel), no `Endpoint`, and the listen
-  port set to `split_hop_egress.peer_listen_port`. Adding A-side
-  Ansible is an out-of-scope follow-up — track via a separate task.
+- **Node A is owned by `split-hop-ingress`** — keep the two roles paired. The
+  ingress role renders `AllowedIPs = 0.0.0.0/0`, omits `Endpoint` and
+  `PersistentKeepalive`, and marks only original-direction sockets from the
+  dedicated probe runtime UIDs; do not duplicate that policy here.
 - **Sysctl IP forwarding is set globally** — the role enables
   `net.ipv4.ip_forward=1` for the whole host. On a Node B with no
   other forwarding workload this is fine; if Node B ever also runs

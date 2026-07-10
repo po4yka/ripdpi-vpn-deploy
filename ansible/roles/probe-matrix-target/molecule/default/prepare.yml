@@ -1,0 +1,24 @@
+---
+- name: Prepare probe matrix target stubs
+  hosts: all
+  become: true
+  tasks:
+    - name: Create pinned Xray stub directory
+      ansible.builtin.file:
+        path: /opt/xray/releases/vtest
+        state: directory
+        mode: "0755"
+    - name: Install Xray validation stub
+      ansible.builtin.copy:
+        dest: /opt/xray/releases/vtest/xray
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          exit 0
+    - name: Install mtg download stub
+      ansible.builtin.copy:
+        dest: /tmp/mtg-stub
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          exit 0

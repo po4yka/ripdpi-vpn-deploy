@@ -1,0 +1,27 @@
+---
+probe_matrix_target:
+  topology: single-ip-dual-role
+  manage_services: true
+  server_name: ""
+  ports:
+    mtproto: 0
+    xhttp_vless: 0
+    xhttp_trojan: 0
+    tcp_trojan: 0
+    tls_non_443: 0
+  paths:
+    xhttp_vless: ""
+    xhttp_trojan: ""
+
+probe_matrix_target_secrets:
+  mtproto_secret: ""
+  vless_uuid: ""
+  xhttp_trojan_password: ""
+  tcp_trojan_password: ""
+  cert_pem: ""
+  key_pem: ""
+  mtg_version: "v2.2.8"
+  mtg_linux_amd64_url: ""
+  mtg_linux_arm64_url: ""
+  mtg_linux_amd64_sha256: ""
+  mtg_linux_arm64_sha256: ""

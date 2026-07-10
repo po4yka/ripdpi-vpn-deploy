@@ -1,0 +1,6 @@
+---
+- name: Restart split-hop ingress
+  ansible.builtin.systemd_service:
+    name: "wg-quick@{{ split_hop_ingress.wg_interface }}"
+    state: restarted
+  when: split_hop_ingress.manage_service | bool
