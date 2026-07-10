@@ -1,0 +1,36 @@
+{
+  "log": {"level": "warn"},
+  "inbounds": [
+
+    {"type": "mixed", "tag": "snell-smoke-1", "listen": "127.0.0.1", "listen_port": 31100},
+
+    {"type": "mixed", "tag": "snell-smoke-2", "listen": "127.0.0.1", "listen_port": 31101},
+
+    {"type": "mixed", "tag": "snell-smoke-3", "listen": "127.0.0.1", "listen_port": 31102}
+
+  ],
+  "outbounds": [
+
+
+    {"type": "snell", "tag": "snell-out-1", "server": "127.0.0.1", "server_port": 2443, "version": 4, "psk": "REPLACE_WITH_LONG_RANDOM_SNELL_V4_PSK", "userkey": "REPLACE_WITH_PER_DEVICE_SNELL_V4_USERKEY", "reuse": false, "network": "tcp", "obfs_mode": "none"},
+
+
+    {"type": "snell", "tag": "snell-out-2", "server": "127.0.0.1", "server_port": 2444, "version": 6, "psk": "REPLACE_WITH_LONG_RANDOM_SNELL_V6_DEFAULT_PSK", "userkey": "REPLACE_WITH_PER_DEVICE_SNELL_V6_DEFAULT_USERKEY", "reuse": false, "network": "tcp", "mode": "default"},
+
+
+    {"type": "snell", "tag": "snell-out-3", "server": "127.0.0.1", "server_port": 2445, "version": 6, "psk": "REPLACE_WITH_LONG_RANDOM_SNELL_V6_UNSHAPED_PSK", "userkey": "REPLACE_WITH_PER_DEVICE_SNELL_V6_UNSHAPED_USERKEY", "reuse": false, "network": "tcp", "mode": "unshaped"}
+
+  ],
+  "route": {
+    "rules": [
+
+      {"inbound": ["snell-smoke-1"], "outbound": "snell-out-1"},
+
+      {"inbound": ["snell-smoke-2"], "outbound": "snell-out-2"},
+
+      {"inbound": ["snell-smoke-3"], "outbound": "snell-out-3"}
+
+    ],
+    "auto_detect_interface": true
+  }
+}

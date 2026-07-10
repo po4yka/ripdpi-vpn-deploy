@@ -1,0 +1,22 @@
+{
+  "log": {"level": "warn"},
+  "inbounds": [
+{% for variant in snell.variants %}
+    {"type": "mixed", "tag": "snell-smoke-{{ loop.index }}", "listen": "127.0.0.1", "listen_port": {{ snell.smoke_port_base + loop.index0 }}}{% if not loop.last %},{% endif %}
+{% endfor %}
+  ],
+  "outbounds": [
+{% for variant in snell.variants %}
+{% set secret = snell_secrets.variants | selectattr('id', 'equalto', variant.id) | first %}
+    {"type": "snell", "tag": "snell-out-{{ loop.index }}", "server": "127.0.0.1", "server_port": {{ variant.listen_port }}, "version": {{ variant.client_version }}, "psk": "{{ secret.psk }}", "userkey": "{{ secret.users[0].userkey }}", "reuse": false, "network": "tcp"{% if variant.client_version == 4 %}, "obfs_mode": "none"{% else %}, "mode": "{{ variant.mode }}"{% endif %}}{% if not loop.last %},{% endif %}
+{% endfor %}
+  ],
+  "route": {
+    "rules": [
+{% for variant in snell.variants %}
+      {"inbound": ["snell-smoke-{{ loop.index }}"], "outbound": "snell-out-{{ loop.index }}"}{% if not loop.last %},{% endif %}
+{% endfor %}
+    ],
+    "auto_detect_interface": true
+  }
+}

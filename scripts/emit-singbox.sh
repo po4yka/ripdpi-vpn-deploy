@@ -131,7 +131,10 @@ def load_group(name, required=False):
         return yaml.safe_load(handle) or {}
 
 
-merged = load_group("all")
+defaults_path = root / "ansible" / "roles" / "snell" / "defaults" / "main.yml"
+with defaults_path.open(encoding="utf-8") as handle:
+    merged = yaml.safe_load(handle) or {}
+deep_merge(merged, load_group("all"))
 deep_merge(merged, load_group("vpn"))
 if cohort:
     deep_merge(merged, load_group(f"vpn-{cohort}", required=True))
@@ -155,6 +158,7 @@ WORK="$(mktemp -d -t vpn-singbox.XXXXXX)"
 trap 'find "$WORK" -type f -exec shred -u {} \; 2>/dev/null; rm -rf "$WORK"' EXIT
 
 OUTBOUNDS='[]'
+SNELL_TAGS='[]'
 
 for i in "${!host_pairs[@]}"; do
   pair="${host_pairs[$i]}"
@@ -195,6 +199,7 @@ for i in "${!host_pairs[@]}"; do
   enable_reality="$(toggle_enabled "$vpn_json" enable_xray_reality true)"
   enable_xhttp="$(toggle_enabled "$vpn_json" enable_nginx_xhttp true)"
   enable_hysteria="$(toggle_enabled "$vpn_json" enable_hysteria false)"
+  enable_snell="$(toggle_enabled "$vpn_json" enable_snell false)"
   flow_mode="$(jq -r '.xray_flow_mode // "vision"' <<< "$vpn_json")"
   xray_server_port="$(jq -r '.xray_port // 443' <<< "$host_json")"
   xray_fallback_port="$(jq -r '.xray_fallback_port // 0' <<< "$host_json")"
@@ -348,6 +353,35 @@ for i in "${!host_pairs[@]}"; do
               password:$pw, tls:{enabled:true, server_name:$host}, obfs:$obfs}
              | with_entries(select(.value != null))]')"
   fi
+
+  if [[ "$enable_snell" == "true" ]]; then
+    snell_variants="$(jq -c '.snell.variants // []' <<< "$host_json")"
+    variant_count="$(jq 'length' <<< "$snell_variants")"
+    (( variant_count > 0 )) || { echo "enabled Snell profile has no snell.variants" >&2; exit 1; }
+    for variant_idx in $(seq 0 $((variant_count - 1))); do
+      variant="$(jq -c ".[$variant_idx]" <<< "$snell_variants")"
+      variant_id="$(jq -r '.id' <<< "$variant")"
+      variant_port="$(jq -r '.listen_port' <<< "$variant")"
+      client_version="$(jq -r '.client_version' <<< "$variant")"
+      secret_variant="$(jq -c --arg id "$variant_id" '.snell_secrets.variants[]? | select(.id == $id)' "$secrets_tmp")"
+      [[ -n "$secret_variant" && "$secret_variant" != "null" ]] || { echo "enabled Snell variant '$variant_id' is missing from secrets" >&2; exit 1; }
+      snell_psk="$(jq -r '.psk // empty' <<< "$secret_variant")"
+      snell_userkey="$(jq -r --arg name "$CLIENT_NAME" '.users[]? | select(.name == $name) | .userkey // empty' <<< "$secret_variant")"
+      [[ -n "$snell_psk" && -n "$snell_userkey" ]] || { echo "enabled Snell variant '$variant_id' has no client named '$CLIENT_NAME'" >&2; exit 1; }
+      for reuse in false true; do
+        reuse_label=fresh
+        [[ "$reuse" == true ]] && reuse_label=reuse
+        tag="p3-snell-${variant_id}-${reuse_label}-${tag_prefix}"
+        if [[ "$client_version" == 4 ]]; then
+          OUTBOUNDS="$(echo "$OUTBOUNDS" | jq --arg tag "$tag" --arg ip "$server_ip" --arg psk "$snell_psk" --arg userkey "$snell_userkey" --argjson port "$variant_port" --argjson reuse "$reuse" '. += [{type:"snell",tag:$tag,server:$ip,server_port:$port,version:4,psk:$psk,userkey:$userkey,reuse:$reuse,network:"tcp",obfs_mode:"none"}]')"
+        else
+          snell_mode="$(jq -r '.mode // "default"' <<< "$variant")"
+          OUTBOUNDS="$(echo "$OUTBOUNDS" | jq --arg tag "$tag" --arg ip "$server_ip" --arg psk "$snell_psk" --arg userkey "$snell_userkey" --arg mode "$snell_mode" --argjson port "$variant_port" --argjson reuse "$reuse" '. += [{type:"snell",tag:$tag,server:$ip,server_port:$port,version:6,psk:$psk,userkey:$userkey,reuse:$reuse,network:"tcp",mode:$mode}]')"
+        fi
+        SNELL_TAGS="$(jq -nc --argjson tags "$SNELL_TAGS" --arg tag "$tag" '$tags + [$tag]')"
+      done
+    done
+  fi
 done
 
 # ---------------------------------------------------------------------------
@@ -358,19 +392,13 @@ if [[ "$(jq 'length' <<< "$OUTBOUNDS")" -eq 0 ]]; then
   exit 1
 fi
 
-OUTBOUNDS="$(echo "$OUTBOUNDS" | jq '
-  . + [
-    {type:"selector", tag:"select",
-     outbounds: ([.[].tag] + ["auto"]),
-     default:"auto", interrupt_exist_connections:false},
-    {type:"urltest",  tag:"auto",
-     outbounds:[.[].tag],
-     url:"https://www.gstatic.com/generate_204",
-     interval:"5m", tolerance:50},
-    {type:"direct", tag:"direct"},
-    {type:"block",  tag:"block"},
-    {type:"dns",    tag:"dns-out"}
-  ]')"
+OUTBOUNDS="$(jq -nc --argjson obs "$OUTBOUNDS" --argjson snell "$SNELL_TAGS" '
+  ($obs | map(.tag) | map(select(. as $tag | ($snell | index($tag) | not)))) as $automatic |
+  $obs +
+  (if ($snell|length)>0 then [{type:"selector",tag:"snell-evaluation",outbounds:$snell,default:$snell[0],interrupt_exist_connections:false}] else [] end) +
+  [{type:"selector",tag:"select",outbounds:($automatic + (if ($automatic|length)>0 then ["auto"] else [] end) + (if ($snell|length)>0 then ["snell-evaluation"] else [] end)),default:(if ($automatic|length)>0 then "auto" else "snell-evaluation" end),interrupt_exist_connections:false}] +
+  (if ($automatic|length)>0 then [{type:"urltest",tag:"auto",outbounds:$automatic,url:"https://www.gstatic.com/generate_204",interval:"5m",tolerance:50}] else [] end) +
+  [{type:"direct",tag:"direct"},{type:"block",tag:"block"},{type:"dns",tag:"dns-out"}]')"
 
 # Build per-app route rules (Android only — sing-box silently ignores
 # package_name on non-Android platforms, so the same bundle works

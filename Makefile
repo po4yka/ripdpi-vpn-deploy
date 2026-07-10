@@ -21,6 +21,7 @@ export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CON
         spot-check-secrets bootstrap-secrets probe-asn probe-matrix-control probe-matrix-cell probe-matrix-tools emit-probe-matrix-profile emit-qr check-certs \
         audit-permissions asn-drift check-ip-reputation issue-bootstrap \
         test-tls-policing probe-payload-throttle fleet-status drift-since-tag fleet-rotate \
+        snell-refinement \
         protocol-liveness install-liveness-sentinel watch-spare promote-spare probing-summary tspu-canary \
         emit-sbom molecule-full-stack audit-log audit-log-append pyinfra-audit \
         setup-yubikey check-killswitch install-operator-crons \
@@ -102,6 +103,7 @@ help:
 	@echo "  tspu-canary                Daily TSPU rule-drift probes (in-cohort box)"
 	@echo "  test-tls-policing HOST=…   Probe the ~12-concurrent-TLS home-ISP rule"
 	@echo "  probe-payload-throttle HOST=… Probe per-ASN ~16 KiB payload throttling"
+	@echo "  snell-refinement BUNDLE=… CONFIG=… VANTAGE=…  Run staged Snell refinement matrix"
 	@echo "  fleet-status [HOSTS=…]     Summary table across every host:env pair"
 	@echo "  install-operator-crons     Wire all of the above into crontab as a managed block"
 	@echo "  remove-operator-crons      Strip the vpn-deploy cron block"
@@ -392,6 +394,10 @@ probe-payload-throttle:
 	  $(if $(PORT),--port $(PORT)) \
 	  $(if $(SIZES),--sizes $(SIZES)) \
 	  $(if $(ASN),--asn $(ASN))
+
+snell-refinement:
+	@test -n "$(BUNDLE)" -a -n "$(CONFIG)" -a -n "$(VANTAGE)" || { echo "usage: make snell-refinement BUNDLE=sing-box.json CONFIG=snell-refinement.yaml VANTAGE=technical-id"; exit 1; }
+	python3 ./scripts/snell-refinement.py --bundle "$(BUNDLE)" --config "$(CONFIG)" --vantage "$(VANTAGE)" --state-dir "$${XDG_STATE_HOME:-$${HOME}/.local/state}/vpn-deploy/snell-refinement"
 
 emit-qr:
 	@test -n "$(CLIENT)" || { echo "usage: make emit-qr CLIENT=phone [TYPE=singbox|uri] [OUT=phone.png]"; exit 1; }

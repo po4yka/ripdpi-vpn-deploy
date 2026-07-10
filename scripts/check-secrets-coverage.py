@@ -60,6 +60,7 @@ EXPECTED_SECRET_TOPLEVEL = {
     "backup", "watchdog_secrets", "naive_secrets",
     "dns_morph_bridge_secrets", "hysteria_realm_secrets", "split_hop_egress_secrets",
     "split_hop_ingress_secrets", "probe_matrix_target_secrets",
+    "snell_secrets",
 }
 
 # Non-greedy capture of {{ ... }} with optional whitespace

@@ -8,6 +8,7 @@ P1 HTTPS         VLESS/Trojan + XHTTP behind nginx (direct, no CDN, TCP/8443 by 
 P2 UDP/QUIC      Hysteria2 on UDP/443
 P2 Device-VPN    AmneziaWG 2.0 (userspace)
 P3 Reachability  Manual — see RUNBOOK-incident.md (relays, WebRTC, roaming)
+P3 Research      Snell v4/v6 candidate (staging only; manual selector)
 ```
 
 ## Layer ownership
@@ -31,6 +32,7 @@ or this repo. Provider credentials live in env vars only.
 | P1 XHTTP | `nginx-xhttp` + xray inbound on 127.0.0.1 | `vpn.enable_nginx_xhttp` |
 | P2 Hysteria2 | `hysteria` | `vpn.enable_hysteria` |
 | P2 AmneziaWG | `amneziawg` | `vpn.enable_amneziawg` |
+| P3 Snell candidate | `snell` | `vpn.enable_snell` |
 
 Cross-cutting roles: `baseline`, `firewall`, `monitoring`, `backup`,
 optional `subscription-host`.
@@ -55,6 +57,7 @@ Default single-host port ownership:
 | TCP/8443 | P1 nginx public HTTPS listener | `nginx_xhttp_public_port` |
 | 127.0.0.1:10085 | P1 Xray XHTTP local inbound behind nginx | `nginx_xhttp_port` |
 | UDP/443 | P2 Hysteria2 | `hysteria_port` |
+| TCP/2443–2445 | P3 Snell evaluation variants | `snell.variants[*].listen_port` |
 
 Direct-only cohorts with REALITY disabled can set `nginx_xhttp_public_port` to
 `443`; full-stack hosts must keep the nginx public listener off `xray_port`.

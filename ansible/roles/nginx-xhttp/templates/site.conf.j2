@@ -1,6 +1,9 @@
 # Managed by Ansible role `nginx-xhttp`. Direct (no CDN) baseline.
 # CDN-fronted variant lives in docs/CDN-DECISION.md as opt-in.
 {% set nginx_redirect_port = nginx_xhttp_public_port | default(8443) | int %}
+{% if (vpn.enable_snell | default(false)) and (snell | default({})).evaluation_enabled | default(false) %}
+limit_req_zone $binary_remote_addr zone=snell_evaluation:1m rate=10r/s;
+{% endif %}
 
 server {
     listen {{ nginx_xhttp_public_port | default(8443) }} ssl http2;
@@ -30,6 +33,16 @@ server {
     location = /health {
         return 200 "ok\n";
         add_header Content-Type text/plain;
+    }
+{% endif %}
+
+{% if (vpn.enable_snell | default(false)) and (snell | default({})).evaluation_enabled | default(false) %}
+    location ~ ^/{{ snell_secrets.evaluation_path_token }}/([0-9]+)\.bin$ {
+        access_log off;
+        limit_req zone=snell_evaluation burst=30 nodelay;
+        gzip off;
+        default_type application/octet-stream;
+        alias {{ snell.evaluation_root }}/$1.bin;
     }
 {% endif %}
 

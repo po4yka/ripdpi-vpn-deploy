@@ -40,6 +40,15 @@
       "depNameTemplate": "SagerNet/sing-box",
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver-coerced"
+    },
+    {
+      "description": "Snell research candidate sing-box version pin",
+      "customType": "regex",
+      "fileMatch": ["^ansible/roles/snell/defaults/main\\.yml$"],
+      "matchStrings": ["snell:\\s*\\n(?:[^\\n]*\\n)*?\\s+version:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"],
+      "depNameTemplate": "SagerNet/sing-box",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver-coerced"
     }
   ]
 }

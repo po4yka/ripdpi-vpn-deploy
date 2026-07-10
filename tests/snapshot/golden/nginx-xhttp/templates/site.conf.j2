@@ -2,6 +2,7 @@
 # CDN-fronted variant lives in docs/CDN-DECISION.md as opt-in.
 
 
+
 server {
     listen 8443 ssl http2;
     listen [::]:8443 ssl http2;
@@ -21,6 +22,8 @@ server {
     ssl_session_tickets off;
 
     add_header Strict-Transport-Security "max-age=31536000" always;
+
+
 
 
 

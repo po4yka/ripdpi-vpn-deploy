@@ -15,7 +15,11 @@ setup() {
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "${1:-}" == "--decrypt" ]]; then
-  printf '[]\n'
+  if [[ "$*" != *--extract* ]]; then
+    printf '{"snell_secrets":{"variants":%s}}\n' "${SNELL_VARIANTS:-[]}"
+  else
+    printf '[]\n'
+  fi
   exit 0
 fi
 case "${1:-}" in
@@ -68,6 +72,7 @@ _run_new_client() {
     SOPS_FILE="$SOPS_FILE" \
     SOPS_STATE="$SOPS_STATE" \
     SOPS_FAIL_ON="${1:-0}" \
+    SNELL_VARIANTS="${SNELL_VARIANTS:-}" \
     bash "$SCRIPT" phone
 }
 
@@ -95,6 +100,16 @@ _run_new_client() {
 
   [ "$status" -eq 0 ]
   [ "$(grep -c '^mutation-' "$SOPS_FILE")" -eq 3 ]
+  [ -z "$(find "$BATS_TEST_TMPDIR" -maxdepth 1 -name '*.new-client.*.yaml' -print -quit)" ]
+}
+
+@test "configured Snell variants receive distinct atomic client updates" {
+  SNELL_VARIANTS='[{"id":"v4-stream","users":[]},{"id":"v6-default","users":[]},{"id":"v6-unshaped","users":[]}]'
+
+  _run_new_client
+
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^mutation-' "$SOPS_FILE")" -eq 6 ]
   [ -z "$(find "$BATS_TEST_TMPDIR" -maxdepth 1 -name '*.new-client.*.yaml' -print -quit)" ]
 }
 

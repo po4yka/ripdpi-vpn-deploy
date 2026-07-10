@@ -90,6 +90,27 @@ if [[ "$existing_xray" == "True" || "$existing_hy" == "True" || "$existing_awg" 
   exit 1
 fi
 
+if ! snell_variants_json="$(sops --decrypt --output-type json "$SOPS_FILE" 2>/dev/null | python3 -c '
+import json, sys
+document = json.load(sys.stdin)
+json.dump((document.get("snell_secrets") or {}).get("variants") or [], sys.stdout)
+')"; then
+  echo "error: failed to inspect optional Snell client collections" >&2
+  exit 1
+fi
+snell_plan="$(printf '%s' "$snell_variants_json" | CLIENT_NAME="$NAME" python3 -c '
+import json, os, sys
+variants = json.load(sys.stdin)
+if not isinstance(variants, list):
+    raise SystemExit("snell variants collection is not an array")
+for index, variant in enumerate(variants):
+    users = variant.get("users") or []
+    variant_id = variant.get("id", index)
+    if any(isinstance(user, dict) and user.get("name") == os.environ["CLIENT_NAME"] for user in users):
+        raise SystemExit(f"client already exists in Snell variant {variant_id}")
+    print(index, len(users), variant_id, sep="\t")
+')" || { echo "error: failed to inspect Snell client collections" >&2; exit 1; }
+
 UUID="$(uuidgen)"
 SHORT_ID="$(openssl rand -hex 4)"
 HY_PASSWORD="$(openssl rand -base64 24)"
@@ -151,6 +172,13 @@ printf '{"name":"%s","password":"%s"}' "$NAME" "$HY_PASSWORD" |
 printf '{"name":"%s","public_key":"%s","preshared_key":"%s","allowed_ips":"%s"}' "$NAME" "$AWG_PUB" "$AWG_PSK" "$AWG_ALLOWED_IPS" |
   sops set --value-stdin "$SOPS_TEMP" "[\"amneziawg_secrets\"][\"peers\"][${awg_index}]"
 
+while IFS=$'\t' read -r variant_index user_index _variant_id; do
+  [[ -n "$variant_index" ]] || continue
+  SNELL_USERKEY="$(openssl rand -base64 24)"
+  printf '{"name":"%s","userkey":"%s"}' "$NAME" "$SNELL_USERKEY" |
+    sops set --value-stdin "$SOPS_TEMP" "[\"snell_secrets\"][\"variants\"][${variant_index}][\"users\"][${user_index}]"
+done <<< "$snell_plan"
+
 mv -f -- "$SOPS_TEMP" "$SOPS_FILE"
 SOPS_TEMP=""
 
@@ -161,6 +189,7 @@ created client: ${NAME}
   hysteria pass:    (stored)
   AWG public key:   ${AWG_PUB}
   AWG allowed IPs:  ${AWG_ALLOWED_IPS}
+  Snell userkeys:   $([[ -n "$snell_plan" ]] && echo "stored per variant" || echo "skipped (not configured)")
 
 The client also needs the AWG private key to configure the device:
   AWG private:      ${AWG_PRIV}

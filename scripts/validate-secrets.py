@@ -120,6 +120,21 @@ def _semantic_errors(doc: dict) -> list[tuple[str, str]]:
     for path, clients in [("hysteria.clients", (doc.get("hysteria") or {}).get("clients") or [])]:
         for value in sorted(_duplicate_values(clients, "name")):
             errors.append((path, f"duplicate name: {value}"))
+    variants = (doc.get("snell_secrets") or {}).get("variants") or []
+    for value in sorted(_duplicate_values(variants, "id")):
+        errors.append(("snell_secrets.variants", f"duplicate id: {value}"))
+    psks = [item.get("psk") for item in variants if isinstance(item, dict)]
+    if len(psks) != len(set(psks)):
+        errors.append(("snell_secrets.variants", "PSKs must be unique across variants"))
+    all_userkeys: list[str] = []
+    for index, variant in enumerate(variants):
+        users = variant.get("users") or [] if isinstance(variant, dict) else []
+        for key in ("name", "userkey"):
+            for value in sorted(_duplicate_values(users, key)):
+                errors.append((f"snell_secrets.variants.{index}.users", f"duplicate {key}: {value}"))
+        all_userkeys.extend(user.get("userkey") for user in users if isinstance(user, dict) and user.get("userkey"))
+    if len(all_userkeys) != len(set(all_userkeys)):
+        errors.append(("snell_secrets.variants.users", "userkeys must be unique across variants"))
     return errors
 
 

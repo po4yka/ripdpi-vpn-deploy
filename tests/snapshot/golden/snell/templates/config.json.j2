@@ -1,0 +1,16 @@
+{
+  "log": {"level": "warn", "output": "/var/log/snell/sing-box.log", "timestamp": true},
+  "inbounds": [
+
+
+    {"type": "snell", "tag": "snell-v4-stream-in", "listen": "::", "listen_port": 2443, "version": 5, "psk": "REPLACE_WITH_LONG_RANDOM_SNELL_V4_PSK", "users": [{"name": "phone", "userkey": "REPLACE_WITH_PER_DEVICE_SNELL_V4_USERKEY"}], "obfs_mode": "none"},
+
+
+    {"type": "snell", "tag": "snell-v6-default-in", "listen": "::", "listen_port": 2444, "version": 6, "psk": "REPLACE_WITH_LONG_RANDOM_SNELL_V6_DEFAULT_PSK", "users": [{"name": "phone", "userkey": "REPLACE_WITH_PER_DEVICE_SNELL_V6_DEFAULT_USERKEY"}], "mode": "default"},
+
+
+    {"type": "snell", "tag": "snell-v6-unshaped-in", "listen": "::", "listen_port": 2445, "version": 6, "psk": "REPLACE_WITH_LONG_RANDOM_SNELL_V6_UNSHAPED_PSK", "users": [{"name": "phone", "userkey": "REPLACE_WITH_PER_DEVICE_SNELL_V6_UNSHAPED_USERKEY"}], "mode": "unshaped"}
+
+  ],
+  "outbounds": [{"type": "direct", "tag": "direct"}]
+}

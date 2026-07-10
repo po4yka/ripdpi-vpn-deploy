@@ -15,3 +15,4 @@ def test_custom_managers_do_not_target_secret_backed_transport_pins():
 
     assert "^ansible/roles/xray/defaults/main\\.yml$" not in managed_files
     assert "^ansible/roles/amneziawg/defaults/main\\.yml$" not in managed_files
+    assert "^ansible/roles/snell/defaults/main\\.yml$" in managed_files

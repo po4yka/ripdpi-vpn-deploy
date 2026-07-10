@@ -45,6 +45,12 @@ description = "age secret key"
 regex = '''AGE-SECRET-KEY-[A-Z0-9]{58}'''
 tags = ["age", "secret"]
 
+[[rules]]
+id = "snell-credential"
+description = "Snell PSK or per-user key"
+regex = '''(?i)(snell.{0,30})?(psk|userkey)["'\s:=]+[A-Za-z0-9+/_.-]{16,}={0,2}'''
+tags = ["vpn", "secret"]
+
 [allowlist]
 description = "Narrowly scoped fixtures/placeholders that intentionally look secret-like"
 commits = ["0c241e6fa9c944445100d26d451c5e991d725ee8"]

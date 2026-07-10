@@ -1,0 +1,115 @@
+---
+- name: Verify Snell candidate
+  hosts: all
+  become: true
+  vars:
+    vpn: {enable_snell: true, enable_nginx_xhttp: true}
+    snell_secrets:
+      linux_amd64_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      linux_arm64_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      variants:
+        - {id: v4-stream, psk: MOLECULE-V4-PSK, users: [{name: probe, userkey: MOLECULE-V4-USERKEY}]}
+        - {id: v6-default, psk: MOLECULE-V6-DEFAULT-PSK, users: [{name: probe, userkey: MOLECULE-V6-DEFAULT-USERKEY}]}
+        - {id: v6-unshaped, psk: MOLECULE-V6-UNSHAPED-PSK, users: [{name: probe, userkey: MOLECULE-V6-UNSHAPED-USERKEY}]}
+  tasks:
+    - name: Read rendered configuration
+      ansible.builtin.slurp: {src: /etc/snell/config.json}
+      register: snell_config
+    - name: Decode configuration
+      ansible.builtin.set_fact: {snell_doc: "{{ snell_config.content | b64decode | from_json }}"}
+    - name: Assert three exact variants and secure service
+      ansible.builtin.assert:
+        that:
+          - snell_doc.inbounds | map(attribute='listen_port') | list == [2443, 2444, 2445]
+          - snell_doc.inbounds | map(attribute='version') | list == [5, 6, 6]
+          - snell_doc.inbounds[1].mode == 'default'
+          - snell_doc.inbounds[2].mode == 'unshaped'
+    - name: Inspect rollback and configuration paths
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - /opt/snell/current
+        - /opt/snell/releases/v1.14.0-alpha.42/sing-box
+        - /etc/snell/config.json
+      register: snell_paths
+    - name: Assert rollback layout and secure configuration permissions
+      ansible.builtin.assert:
+        that:
+          - snell_paths.results[0].stat.islnk
+          - snell_paths.results[0].stat.lnk_source == '/opt/snell/releases/v1.14.0-alpha.42'
+          - snell_paths.results[1].stat.mode == '0755'
+          - snell_paths.results[2].stat.mode == '0640'
+          - snell_paths.results[2].stat.gr_name == 'snell'
+    - name: Check service state
+      ansible.builtin.command: {cmd: systemctl is-active snell.service}
+      changed_when: false
+
+    - name: Verify prerelease production refusal
+      block:
+        - name: Attempt a production converge
+          ansible.builtin.include_role: {name: snell}
+          vars:
+            env: prod
+        - name: Fail when production converge was accepted
+          ansible.builtin.fail: {msg: "prerelease production converge unexpectedly succeeded"}
+      rescue:
+        - name: Assert production refusal was explicit
+          ansible.builtin.assert:
+            that: "'staging-only' in ansible_failed_result.msg"
+
+    - name: Create checksum-failure fixture
+      ansible.builtin.copy:
+        dest: /tmp/snell-checksum-fixture.tar.gz
+        content: not-the-pinned-archive
+        mode: "0600"
+    - name: Verify checksum failure stops convergence
+      block:
+        - name: Attempt install with a bad checksum
+          ansible.builtin.include_role: {name: snell}
+          vars:
+            env: staging
+            snell:
+              version: v1.14.0
+              download_url: file:///tmp/snell-checksum-fixture.tar.gz
+              install_root: /opt/snell-checksum-test
+              config_dir: /etc/snell
+              log_dir: /var/log/snell
+              listen_addr: "::"
+              evaluation_enabled: false
+              evaluation_root: /var/lib/snell-evaluation
+              smoke_port_base: 31100
+              evaluation_sizes: [1024]
+              variants:
+                - {id: v4-stream, listen_port: 2443, server_version: 5, client_version: 4, obfs_mode: none}
+                - {id: v6-default, listen_port: 2444, server_version: 6, client_version: 6, mode: default}
+                - {id: v6-unshaped, listen_port: 2445, server_version: 6, client_version: 6, mode: unshaped}
+        - name: Fail when checksum mismatch was accepted
+          ansible.builtin.fail: {msg: "checksum mismatch unexpectedly succeeded"}
+      rescue:
+        - name: Assert checksum verification rejected the fixture
+          ansible.builtin.assert:
+            that: "'checksum' in (ansible_failed_result.msg | lower)"
+
+    - name: Replace test binary with a rejecting config validator
+      ansible.builtin.copy:
+        dest: /opt/snell/releases/v1.14.0-alpha.42/sing-box
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          if [ "$1" = check ]; then exit 1; fi
+          exit 0
+    - name: Remove configuration to force validation
+      ansible.builtin.file: {path: /etc/snell/config.json, state: absent}
+    - name: Verify invalid configuration stops convergence
+      block:
+        - name: Attempt converge with rejecting validator
+          ansible.builtin.include_role: {name: snell}
+          vars:
+            env: staging
+        - name: Fail when invalid configuration was accepted
+          ansible.builtin.fail: {msg: "invalid configuration unexpectedly succeeded"}
+      rescue:
+        - name: Assert template validation rejected the configuration
+          ansible.builtin.assert:
+            that: "'failed to validate' in (ansible_failed_result.msg | lower)"

@@ -107,6 +107,15 @@
   "enabled": (vpn.enable_hysteria_realm | default(false)) and not subscription_only,
   "reason": "Hysteria Realm rendezvous listener"
 }) %}
+{% for variant in (snell | default({})).variants | default([]) %}
+{% set _ = ns.listeners.append({
+  "role": "snell-" ~ variant.id,
+  "protocol": "tcp",
+  "port": variant.listen_port | int,
+  "enabled": (vpn.enable_snell | default(false)) and not subscription_only,
+  "reason": "P3 Snell research variant " ~ variant.id
+}) %}
+{% endfor %}
 {% set _ = ns.listeners.append({
   "role": "cdn-front",
   "protocol": "tcp",

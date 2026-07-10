@@ -21,3 +21,4 @@ vpn:
   enable_dns_morph_bridge: false
   enable_hysteria_realm: false
   enable_split_hop_egress: false
+  enable_snell: false

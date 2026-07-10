@@ -109,6 +109,31 @@
       failed_when: hy_status.stdout != "active"
       when: vpn.enable_hysteria | default(false)
 
+    - name: Snell configuration is valid
+      ansible.builtin.command:
+        cmd: /usr/local/bin/sing-box-snell check -c /etc/snell/config.json
+      changed_when: false
+      when: vpn.enable_snell | default(false)
+
+    - name: Snell service active
+      ansible.builtin.command:
+        cmd: systemctl is-active snell.service
+      register: snell_status
+      changed_when: false
+      failed_when: snell_status.stdout != "active"
+      when: vpn.enable_snell | default(false)
+
+    - name: Snell TCP listeners active
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          ss -lnt | awk '{print $4}' | grep -q ':{{ item.listen_port }}$'
+        executable: /bin/bash
+      changed_when: false
+      loop: "{{ snell.variants | default([]) }}"
+      loop_control: {label: "{{ item.id }}"}
+      when: vpn.enable_snell | default(false)
+
     - name: UDP/443 listening
       ansible.builtin.shell:
         cmd: |
