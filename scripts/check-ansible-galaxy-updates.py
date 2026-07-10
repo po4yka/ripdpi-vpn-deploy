@@ -59,6 +59,7 @@ def run(cmd: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProce
 
 
 def resolve_latest_version(name: str, workdir: Path) -> str:
+    workdir.mkdir(parents=True, exist_ok=True)
     collection_dir = workdir / "collections"
     req = workdir / "latest.yml"
     req.write_text(
