@@ -49,7 +49,7 @@ The first safe integration surface is documentation and validation. Runtime enfo
 - No ready-to-load nftables, ipset, route, or provider firewall rules in docs.
 - No geography-, carrier-, ISP-, or operator-named variables, files, cohorts, or comments.
 - No default-on blocking behavior.
-- No dependency on external Obsidian vaults or wiki slugs.
+- No dependency on external knowledge stores or page slugs.
 
 ## Verification Requirements
 

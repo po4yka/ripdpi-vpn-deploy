@@ -1,5 +1,4 @@
-# Obsidian-style wikilinks resolve only inside the censorship-bypass vault.
-# lychee can't follow them; ignore the pattern.
+# Bracketed local-note links are not HTTP targets; lychee cannot follow them.
 \[\[[^\]]+\]\]
 
 # Anchors that lychee can't statically resolve in collapsed/expanded sections
@@ -15,6 +14,3 @@ file://
 
 # RFC link rot is upstream's problem
 ^https?://datatracker\.ietf\.org/doc/html/rfc
-
-# Internal vault paths referenced by name
-^wikis/

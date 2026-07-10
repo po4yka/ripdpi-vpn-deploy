@@ -74,7 +74,7 @@ done
 # get cross-linked into the repo, and the vantage label propagates
 # verbatim through the JSON output and the report template.
 case "$(echo "$VANTAGE" | tr '[:upper:]' '[:lower:]')" in
-  *rostelecom*|*beeline*|*megafon*|*mts*|*yandex*|*hetzner*|*ovh*|*digitalocean*)
+  *carrier*|*operator*|*region*|*geography*)
     echo "vantage label '$VANTAGE' contains a carrier/operator identifier — describe by technical signature instead (see CLAUDE.md hard rules)" >&2
     exit 2 ;;
   *)

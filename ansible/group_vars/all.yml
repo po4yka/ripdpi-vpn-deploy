@@ -94,8 +94,7 @@ vpn:
   #   mux              — drops vision-flow, enables mux on the inbound.
   #                       Use on home ISPs hitting the ~12-concurrent-TLS
   #                       rule documented in tls-policing-home-isps
-  #                       (MTS/MGTS/RTK Izhevsk/JustLan/LanInterCom; 50+
-  #                       ASNs as of 2026-05). The block lasts 60-120 s
+  #                       (observed across 50+ ASNs as of 2026-05). The block lasts 60-120 s
   #                       after the threshold is crossed; mux holds
   #                       concurrent TLS sessions below the threshold by
   #                       multiplexing application streams over fewer

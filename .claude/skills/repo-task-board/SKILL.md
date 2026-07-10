@@ -1,11 +1,11 @@
 ---
 name: repo-task-board
-description: Use when creating, updating, triaging, or completing repository tasks stored as Obsidian Tasks Markdown lines with #task, #status/*, #repo/RIPDPI-VPN-DEPLOY, and #area/* tags. Use for docs/tasks/*.md, Kanban board maintenance, backlog grooming, and agent-ready implementation planning. Mirrored from the RIPDPI client repo on 2026-05-22 by the `ripdpi-improvements` skill; lifecycle conventions and canonical schema match the RIPDPI version verbatim except for the `#repo/` tag and the `area:` enum.
+description: Use when creating, updating, triaging, or completing repository tasks stored as checkbox-task Markdown lines with #task, #status/*, #repo/RIPDPI-VPN-DEPLOY, and #area/* tags.
 ---
 
 # Repository Task Board — RIPDPI-VPN-DEPLOY
 
-This repository uses Obsidian Tasks-compatible Markdown checkboxes as the canonical task system. The infrastructure was mirrored from the RIPDPI client repo on 2026-05-22 to maintain uniform task surfaces across both repos.
+This repository uses Markdown checkboxes as the canonical task system.
 
 ## Canonical task line
 
@@ -47,7 +47,7 @@ This repository uses Obsidian Tasks-compatible Markdown checkboxes as the canoni
 - `docs/tasks/backlog.md` — query view for `#status/backlog`
 - `docs/tasks/blocked.md` — query view for `#status/blocked`
 - `docs/tasks/epics.md` — query view for `#area/epic`
-- `docs/tasks/dashboard.md` — Obsidian Tasks query hub
+- `docs/tasks/dashboard.md` — task query hub
 - `docs/tasks/board.md` — Kanban board (visual layer; source of truth is `issues/`)
 
 ## Per-task notes
@@ -75,14 +75,14 @@ Epic notes (`type: epic`) use `#area/epic` on the canonical line and include `##
 
 Tasks created by the `ripdpi-improvements` skill MAY include two extension fields not in the base schema:
 
-- `source_wiki_pages:` — list of wikilinks to the censorship-bypass vault pages that motivated the task.
+- `source_references:` — list of repository-local documents that motivated the task.
 - `linked_task:` — relative path to a sibling task file in the other repo (for cross-repo proposals where both client and server work is required).
 
 Lifecycle: create via Templater (or by the `ripdpi-improvements` skill) → update `status:` + `#status/*` tag on transition → delete file on close (git history is the audit trail). Do NOT add task lines to `docs/tasks/active.md`, `docs/tasks/backlog.md`, `docs/tasks/blocked.md`, or `docs/tasks/epics.md` — those are query-only views.
 
 ## Rules
 
-1. Preserve valid Obsidian Tasks syntax.
+1. Preserve valid checkbox-task syntax.
 2. Never create duplicate task lines for the same work.
 3. Prefer editing the existing `issues/<slug>.md` note over creating a new one.
 4. Keep task titles imperative and implementation-oriented.

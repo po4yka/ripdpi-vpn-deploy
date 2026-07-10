@@ -77,7 +77,7 @@ Tick before publishing. Treat any unchecked item as a blocker.
 
 - [ ] No carrier / ISP / regulator / geographic identifiers in any
       field, table cell, or comment.
-- [ ] No external Obsidian-vault references or wiki page slugs.
+- [ ] No external knowledge-store references or page slugs.
 - [ ] Vantage descriptor uses a technical signature.
 - [ ] Client public IP not committed in plaintext.
 - [ ] Server endpoint name does not embed an operator label.

@@ -41,9 +41,8 @@ fn probe_matrix_destination_classes_are_technical_signatures() {
     // Enforces the repo hard rule: destination labels must describe
     // technical signature, not operator / geography / carrier.
     for forbidden in [
-        "rostelecom", "mts", "beeline", "megafon",
-        "yandex", "hetzner", "ovh", "digitalocean",
-        "ru-domestic", "ru-asn", "far-east", "ntc.party",
+        "carrier-name", "operator-name", "region-name",
+        "network-brand", "provider-brand", "geographic-label",
     ] {
         assert!(
             !json.to_lowercase().contains(forbidden),

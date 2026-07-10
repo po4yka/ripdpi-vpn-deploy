@@ -53,13 +53,12 @@ The Makefile is the canonical operator surface.
 - Use CDN as the RU baseline. See `docs/CDN-DECISION.md`.
 - Commit pre-release versions to production toggles. Pre-releases go through
   staging only.
-- Reference external Obsidian vaults anywhere in this repo — vault names,
-  vault filesystem paths, wiki page slugs, or "wiki page" citations in code,
+- Reference external knowledge stores anywhere in this repo — store names,
+  filesystem paths, page slugs, or externally hosted citations in code,
   comments, docs, commit messages, or task notes. Knowledge that needs to
   live in this repo lives in this repo.
 - Name files, slugs, variables, doc table cells, or comments after carriers,
-  ISPs, geography, or operators — e.g. no `rtk-south`, `mts-mobile`,
-  "Rostelecom", "Beeline", "MegaFon", "Rostov Oblast". Describe cohorts,
+  ISPs, geography, or operators — e.g. no `carrier-region` or `mobile-network`. Describe cohorts,
   profiles, and configurations by their technical signature instead: packet
   shape, protocol parameters, threshold values, observed DPI behaviour.
 
