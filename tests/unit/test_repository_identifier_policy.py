@@ -5,12 +5,28 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-FORBIDDEN = (
-    "roste" + "lecom", "bee" + "line", "mega" + "fon", "m" + "ts",
-    "r" + "tk", "rost" + "ov", "izhe" + "vsk", "regime-landscape/" + "wiki",
-    "censorship-bypass " + "vault", "source_" + "wiki_pages", "wiki" + " page",
-    "obsid" + "ian", "/wiki/" + "concepts/", "censorship-" + "bypass/",
+SELF = Path(__file__).relative_to(ROOT).as_posix()
+ENCRYPTED_FIXTURES = {"tests/fixtures/secrets-sample.sops.yaml"}
+FORBIDDEN_HEX = (
+    "726f7374656c65636f6d", "6265656c696e65", "6d656761666f6e", "6d7473",
+    "72746b", "726f73746f76", "697a686576736b", "726567696d652d6c616e6473636170652f77696b69",
+    "63656e736f72736869702d627970617373207661756c74", "736f757263655f77696b695f7061676573",
+    "77696b692070616765", "6f6273696469616e", "2f77696b692f636f6e63657074732f",
+    "63656e736f72736869702d6279706173732f",
 )
+FORBIDDEN = tuple(bytes.fromhex(value).decode("ascii") for value in FORBIDDEN_HEX)
+
+
+def _should_scan(relative: str) -> bool:
+    """Exclude this policy corpus and random encrypted data from content checks."""
+    return bool(relative) and relative != SELF and relative not in ENCRYPTED_FIXTURES
+
+
+def test_policy_excludes_its_corpus_and_encrypted_secret_fixtures():
+    assert not _should_scan(SELF)
+    assert not _should_scan("tests/fixtures/secrets-sample.sops.yaml")
+    assert _should_scan("secrets/prod.secrets.sops.yaml")
+    assert _should_scan("docs/ARCHITECTURE.md")
 
 
 def test_tracked_files_do_not_contain_forbidden_identifiers():
@@ -18,7 +34,7 @@ def test_tracked_files_do_not_contain_forbidden_identifiers():
         ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True
     ).stdout.decode().split("\0")
     offenders = []
-    for relative in filter(None, tracked):
+    for relative in filter(_should_scan, tracked):
         content = (ROOT / relative).read_text(errors="ignore").lower()
         for identifier in FORBIDDEN:
             if identifier in content:
