@@ -12,17 +12,16 @@ naive:
   # the `--caddy=` flag.
   caddy_version: "v2.11.2"
   # Forwardproxy fork (klzgrad's naive-enhanced fork).
-  forwardproxy_module: "github.com/caddyserver/forwardproxy@caddy2=github.com/klzgrad/forwardproxy@naive"
+  forwardproxy_module: "github.com/caddyserver/forwardproxy@caddy2=github.com/klzgrad/forwardproxy@d62c80d3dd2c706b6b87579844d2397bddd18317"
   install_dir: /opt/naive
   config_dir: /etc/naive
   log_dir: /var/log/naive
   bind_port: 443        # must be 443 to look like a real HTTPS site
   decoy_root: /var/www/naive-decoy
-  # Optional post-build sha256 of the caddy-naive binary. When non-empty the
+  # Required post-build sha256 of the caddy-naive binary. When set the
   # role asserts the freshly-built binary matches this hash so a supply-chain
   # substitution in xcaddy/forwardproxy is caught at deploy time. Compute
   # after a trusted first build:
   #   sha256sum /usr/local/bin/caddy-naive
-  # Leave empty to skip the check (TOFU — acceptable only for initial builds;
-  # pin before deploying to production).
+  # Set this from a trusted reproducible build before enabling the role.
   xcaddy_sha256: ""
