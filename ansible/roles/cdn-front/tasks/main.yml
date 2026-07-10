@@ -1,7 +1,9 @@
 ---
 - name: Ensure nginx is present
   ansible.builtin.apt:
-    name: nginx
+    name:
+      - nginx
+      - util-linux
     state: present
     update_cache: true
     cache_valid_time: 3600

@@ -52,11 +52,14 @@
         executable: /bin/bash
       changed_when: false
 
-    - name: Refresh script targets both nftables CDN-front sets
+    - name: Refresh script validates inputs and replaces both nftables sets transactionally
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          grep -q 'nft flush set inet filter cdn_front_origins_v6' /etc/cron.daily/cdn-front-refresh-cf-prefixes
-          grep -q 'nft add element inet filter cdn_front_origins_v6' /etc/cron.daily/cdn-front-refresh-cf-prefixes
+          grep -q 'ipaddress.ip_network' /etc/cron.daily/cdn-front-refresh-cf-prefixes
+          grep -Fq 'nft -c -f "$WORK/nft.batch"' /etc/cron.daily/cdn-front-refresh-cf-prefixes
+          grep -Fq 'nft -f "$WORK/nft.batch"' /etc/cron.daily/cdn-front-refresh-cf-prefixes
+          grep -q 'add element inet filter cdn_front_origins_v6' /etc/cron.daily/cdn-front-refresh-cf-prefixes
+          ! grep -q '2>/dev/null || true' /etc/cron.daily/cdn-front-refresh-cf-prefixes
         executable: /bin/bash
       changed_when: false

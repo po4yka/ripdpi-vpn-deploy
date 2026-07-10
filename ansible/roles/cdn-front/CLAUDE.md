@@ -17,6 +17,7 @@ ranges, `CF-Connecting-IP`), Origin CA cert, and Authenticated Origin Pulls.
 - **Origin CA is generated locally, not pulled from CF** — avoids a
   trust-on-first-use moment.
 - **`real_ip_recursive on`** — proper handling of multi-proxy chains.
+- **Prefix refresh is transactional** — every CIDR is parsed with the expected address family, nginx candidates are syntax-checked, and both nftables sets are replaced in one checked batch before caches are published.
 
 ## Pitfalls
 

@@ -96,9 +96,13 @@
           [[ -n "${url:-}" ]] || { echo "missing URL" >&2; exit 1; }
           case "$url" in
             https://www.cloudflare.com/ips-v4)
-              printf '%s\n' '198.51.100.0/24' > "$out" ;;
+              printf '%s\n' \
+                '198.51.100.0/24' '203.0.113.0/25' '203.0.113.128/25' \
+                '192.0.2.0/25' '192.0.2.128/25' > "$out" ;;
             https://www.cloudflare.com/ips-v6)
-              printf '%s\n' '2001:db8:cf::/48' > "$out" ;;
+              printf '%s\n' \
+                '2001:db8:cf::/48' '2001:db8:100::/48' \
+                '2001:db8:200::/48' > "$out" ;;
             *)
               echo "unexpected curl URL: $url" >&2
               exit 1 ;;
