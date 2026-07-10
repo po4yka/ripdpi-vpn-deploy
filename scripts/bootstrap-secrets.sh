@@ -58,6 +58,78 @@ done
 
 [[ -n "$TARGET" && -n "$SERVER_NAME" ]] || usage
 [[ -z "$XHTTP_HOST" ]] && XHTTP_HOST="$SERVER_NAME"
+command -v python3 >/dev/null 2>&1 || { echo "missing tool: python3" >&2; exit 1; }
+
+BOOTSTRAP_ENV="$ENV" \
+BOOTSTRAP_CLIENTS="$CLIENTS" \
+BOOTSTRAP_TARGET="$TARGET" \
+BOOTSTRAP_SERVER_NAME="$SERVER_NAME" \
+BOOTSTRAP_XHTTP_HOST="$XHTTP_HOST" \
+python3 - <<'PY'
+import ipaddress
+import os
+import re
+
+environment = os.environ["BOOTSTRAP_ENV"]
+clients_raw = os.environ["BOOTSTRAP_CLIENTS"]
+target = os.environ["BOOTSTRAP_TARGET"]
+server_name = os.environ["BOOTSTRAP_SERVER_NAME"]
+xhttp_host = os.environ["BOOTSTRAP_XHTTP_HOST"]
+slug_pattern = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
+label_pattern = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+
+
+def fail(message: str) -> None:
+    raise SystemExit(message)
+
+
+def valid_dns_hostname(value: str) -> bool:
+    try:
+        ipaddress.ip_address(value)
+        return False
+    except ValueError:
+        pass
+    if re.fullmatch(r"[0-9.]+", value):
+        return False
+    return 0 < len(value) <= 253 and not value.endswith(".") and all(label_pattern.fullmatch(label) for label in value.split("."))
+
+
+if not slug_pattern.fullmatch(environment):
+    fail("invalid environment name: use 1-64 letters, digits, underscores, or dashes")
+
+clients = clients_raw.split(",")
+if not clients_raw or any(not slug_pattern.fullmatch(client) for client in clients):
+    fail("invalid client list: every name must use 1-64 letters, digits, underscores, or dashes")
+if len(clients) != len(set(clients)):
+    fail("duplicate client name in --clients")
+
+if not valid_dns_hostname(server_name):
+    fail("invalid server name: expected a DNS hostname")
+if not valid_dns_hostname(xhttp_host):
+    fail("invalid xhttp hostname: expected a DNS hostname")
+
+if target.count(":") != 1:
+    fail("invalid target: expected DNS_OR_IPV4:PORT")
+host, port_text = target.rsplit(":", 1)
+if not port_text.isdigit():
+    fail("invalid target: port must be numeric")
+try:
+    valid_host = ipaddress.ip_address(host).version == 4
+except ValueError:
+    valid_host = valid_dns_hostname(host)
+if not valid_host:
+    fail("invalid target: malformed DNS hostname or IPv4 address")
+port = int(port_text)
+if not 1 <= port <= 65535:
+    fail("invalid target: port must be between 1 and 65535")
+PY
+
+yaml_scalar() {
+  python3 -c 'import json, sys; print(json.dumps(sys.stdin.read()))'
+}
+TARGET_YAML="$(printf '%s' "$TARGET" | yaml_scalar)"
+SERVER_NAME_YAML="$(printf '%s' "$SERVER_NAME" | yaml_scalar)"
+XHTTP_HOST_YAML="$(printf '%s' "$XHTTP_HOST" | yaml_scalar)"
 
 CONFIG_DIR="${HOME}/.config/vpn-provision"
 mkdir -p "$CONFIG_DIR"
@@ -111,17 +183,17 @@ REALITY_PUB="$( echo "$REALITY_RAW" | awk -F': ' '/Public/ {print $2}' | tr -d '
 # ---------------------------------------------------------------------------
 declare -a CLIENT_BLOCKS_XRAY
 declare -a CLIENT_BLOCKS_HYS
-declare -a PEER_BLOCKS_AWG
 IFS=',' read -r -a client_list <<< "$CLIENTS"
 for name in "${client_list[@]}"; do
+  name_yaml="$(printf '%s' "$name" | yaml_scalar)"
   uuid="$(uuidgen | tr 'A-Z' 'a-z')"
   sid="$(openssl rand -hex 4)"
-  CLIENT_BLOCKS_XRAY+=("    - name: ${name}
+  CLIENT_BLOCKS_XRAY+=("    - name: ${name_yaml}
       uuid: \"${uuid}\"
       short_id: \"${sid}\"")
 
   hys_pw="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
-  CLIENT_BLOCKS_HYS+=("    - name: ${name}
+  CLIENT_BLOCKS_HYS+=("    - name: ${name_yaml}
       password: \"${hys_pw}\"")
 
 done
@@ -167,9 +239,9 @@ xray:
   reality_private_key: "${REALITY_PRIV}"
   reality_public_key: "${REALITY_PUB}"
 
-  target: "${TARGET}"
+  target: ${TARGET_YAML}
   server_names:
-    - "${SERVER_NAME}"
+    - ${SERVER_NAME_YAML}
 
   xhttp_path: "/$(openssl rand -hex 4)"
 
@@ -180,7 +252,7 @@ HEAD
   cat <<NGX
 
 nginx_xhttp:
-  server_name: "${XHTTP_HOST}"
+  server_name: ${XHTTP_HOST_YAML}
   cert_pem: |
     -----BEGIN CERTIFICATE-----
     REPLACE_WITH_FULLCHAIN
@@ -213,7 +285,7 @@ NGX
   cat <<NAIVE
 
 naive_secrets:
-  server_name: "${XHTTP_HOST}"
+  server_name: ${XHTTP_HOST_YAML}
   username: "u-$(openssl rand -hex 4)"
   password: "$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
   probe_resistance_secret: "$(openssl rand -hex 16)"
@@ -248,9 +320,8 @@ amneziawg_secrets:
   h2: ${H2}
   h3: ${H3}
   h4: ${H4}
-  peers:
+  peers: []
 NAIVE
-  for block in "${PEER_BLOCKS_AWG[@]}"; do echo "$block"; done
 
   cat <<TAIL
 
