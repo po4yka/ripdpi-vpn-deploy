@@ -40,10 +40,10 @@ def load_pins(path: Path) -> list[CollectionPin]:
         name = str(item.get("name", "")).strip()
         version = str(item.get("version", "")).strip()
         if not name or not version:
-            raise SystemExit(f"{path}: each collection entry must have name + version")
+            raise ValueError(f"{path}: each collection entry must have name + version")
         pins.append(CollectionPin(name=name, version=version))
     if not pins:
-        raise SystemExit(f"{path}: no collection pins found")
+        raise ValueError(f"{path}: no collection pins found")
     return pins
 
 
@@ -125,17 +125,21 @@ def main() -> int:
         print("missing: ansible-galaxy", file=sys.stderr)
         return 2
 
-    pins = load_pins(args.requirements)
-    findings: list[tuple[CollectionPin, str]] = []
+    try:
+        pins = load_pins(args.requirements)
+        findings: list[tuple[CollectionPin, str]] = []
 
-    with tempfile.TemporaryDirectory(prefix="galaxy-drift.") as tmp:
-        workdir = Path(tmp)
-        for pin in pins:
-            latest = resolve_latest_version(pin.name, workdir / pin.name.replace(".", "-"))
-            status = "OUTDATED" if newer(latest, pin.version) else "current"
-            print(f"{pin.name}: pinned={pin.version} latest={latest} status={status}")
-            if newer(latest, pin.version):
-                findings.append((pin, latest))
+        with tempfile.TemporaryDirectory(prefix="galaxy-drift.") as tmp:
+            workdir = Path(tmp)
+            for pin in pins:
+                latest = resolve_latest_version(pin.name, workdir / pin.name.replace(".", "-"))
+                status = "OUTDATED" if newer(latest, pin.version) else "current"
+                print(f"{pin.name}: pinned={pin.version} latest={latest} status={status}")
+                if newer(latest, pin.version):
+                    findings.append((pin, latest))
+    except (OSError, RuntimeError, ValueError, yaml.YAMLError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
 
     if findings:
         print("\nAnsible Galaxy collection updates available:")
