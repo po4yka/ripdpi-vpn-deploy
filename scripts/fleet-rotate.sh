@@ -67,10 +67,15 @@ done
 # ---------------------------------------------------------------------------
 # Parse the plan (YAML → JSON) and derive a state-file path.
 # ---------------------------------------------------------------------------
-plan_json="$(python3 -c "
-import json, yaml, sys
-print(json.dumps(yaml.safe_load(open('$PLAN').read())))
-")"
+plan_json="$(python3 - "$PLAN" <<'PY'
+import json
+import sys
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    print(json.dumps(yaml.safe_load(handle) or {}))
+PY
+)"
 plan_id="$(jq -r '.id // "unnamed"' <<< "$plan_json")"
 min_active="$(jq -r '.min_active // 1' <<< "$plan_json")"
 total="$(jq -r '.rotations | length' <<< "$plan_json")"
