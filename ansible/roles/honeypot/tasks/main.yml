@@ -1,6 +1,11 @@
 ---
 # Active-probing canary. See defaults/main.yml for rationale.
 
+- name: Ensure node_exporter textfile writer group
+  ansible.builtin.group:
+    name: "{{ honeypot.textfile_group }}"
+    system: true
+
 - name: Ensure system user
   ansible.builtin.user:
     name: honeypot
@@ -8,17 +13,25 @@
     shell: /usr/sbin/nologin
     home: "{{ honeypot.log_dir }}"
     create_home: false
+    groups: "{{ honeypot.textfile_group }}"
+    append: true
+  notify: Restart honeypot
 
-- name: Ensure log + textfile directories
+- name: Ensure honeypot log directory
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ honeypot.log_dir }}"
     state: directory
     owner: honeypot
     group: honeypot
     mode: "0750"
-  loop:
-    - "{{ honeypot.log_dir }}"
-    - "{{ honeypot.textfile_dir }}"
+
+- name: Ensure shared node_exporter textfile directory
+  ansible.builtin.file:
+    path: "{{ honeypot.textfile_dir }}"
+    state: directory
+    owner: root
+    group: "{{ honeypot.textfile_group }}"
+    mode: "3775"
 
 - name: Install honeypot listener
   ansible.builtin.template:

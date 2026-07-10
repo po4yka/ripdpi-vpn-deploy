@@ -7,5 +7,7 @@
     vpn:
       enable_xray_reality: true
       enable_nginx_xhttp: false
+      enable_honeypot: true
   roles:
+    - role: honeypot
     - role: monitoring
