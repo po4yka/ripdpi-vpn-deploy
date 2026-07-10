@@ -10,6 +10,139 @@
     group: root
     mode: "0750"
 
+- name: Initialize authenticated REALITY probe manifest
+  ansible.builtin.set_fact:
+    watchdog_reality_probes: []
+
+- name: Add configured REALITY cohorts to the probe manifest
+  ansible.builtin.set_fact:
+    watchdog_reality_probes: >-
+      {{ watchdog_reality_probes + [{
+        'name': item.name,
+        'port': item.port,
+        'flow_mode': item.flow_mode | default('vision'),
+        'finalmask': item.finalmask | default(false),
+      }] }}
+  loop: "{{ xray.cohorts | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - vpn.enable_xray_reality | default(true)
+    - not (vpn_subscription_only | default(false))
+
+- name: Add primary REALITY listener to the probe manifest
+  ansible.builtin.set_fact:
+    watchdog_reality_probes: >-
+      {{ watchdog_reality_probes + [{
+        'name': 'primary',
+        'port': xray_port | default(443),
+        'flow_mode': vpn.xray_flow_mode | default('vision'),
+        'finalmask': vpn.xray_finalmask | default(false),
+      }] }}
+  when:
+    - vpn.enable_xray_reality | default(true)
+    - not (vpn_subscription_only | default(false))
+    - (xray.cohorts | default([])) | length == 0
+
+- name: Add fallback REALITY listener to the probe manifest
+  ansible.builtin.set_fact:
+    watchdog_reality_probes: >-
+      {{ watchdog_reality_probes + [{
+        'name': 'fallback',
+        'port': xray_fallback_port,
+        'flow_mode': vpn.xray_flow_mode | default('vision'),
+        'finalmask': vpn.xray_finalmask | default(false),
+      }] }}
+  when:
+    - vpn.enable_xray_reality | default(true)
+    - not (vpn_subscription_only | default(false))
+    - (xray.cohorts | default([])) | length == 0
+    - (xray_fallback_port | default(0) | int) > 0
+    - (xray_fallback_port | int) != (xray_port | default(443) | int)
+
+- name: Validate authenticated REALITY probe contract
+  ansible.builtin.assert:
+    that:
+      - watchdog_secrets.reality_probe_url is defined
+      - watchdog_secrets.reality_probe_url is match('^https://')
+      - >-
+        xray.clients
+        | selectattr('name', 'equalto', watchdog.reality_probe_client | default('watchdog'))
+        | list | length == 1
+    fail_msg: >-
+      Watchdog REALITY probing requires an owned HTTPS canary URL and one
+      dedicated xray.clients entry named {{ watchdog.reality_probe_client | default('watchdog') }}.
+  when:
+    - vpn.enable_xray_reality | default(true)
+    - not (vpn_subscription_only | default(false))
+  no_log: true
+
+- name: Select dedicated REALITY probe client
+  ansible.builtin.set_fact:
+    watchdog_reality_probe_client_record: >-
+      {{ xray.clients
+         | selectattr('name', 'equalto', watchdog.reality_probe_client | default('watchdog'))
+         | list | first }}
+  when:
+    - vpn.enable_xray_reality | default(true)
+    - not (vpn_subscription_only | default(false))
+  no_log: true
+
+- name: Validate dedicated REALITY probe credentials are unique
+  ansible.builtin.assert:
+    that:
+      - >-
+        xray.clients
+        | selectattr('uuid', 'equalto', watchdog_reality_probe_client_record.uuid)
+        | list | length == 1
+      - >-
+        xray.clients
+        | selectattr('short_id', 'equalto', watchdog_reality_probe_client_record.short_id)
+        | list | length == 1
+    fail_msg: >-
+      The dedicated watchdog client must not reuse another device's UUID or
+      short ID.
+  when:
+    - vpn.enable_xray_reality | default(true)
+    - not (vpn_subscription_only | default(false))
+  no_log: true
+
+- name: Validate watchdog client membership in every REALITY cohort
+  ansible.builtin.assert:
+    that:
+      - (watchdog.reality_probe_client | default('watchdog')) in (item.clients | default([]))
+    fail_msg: >-
+      REALITY cohort {{ item.name }} must include the dedicated watchdog
+      client {{ watchdog.reality_probe_client | default('watchdog') }} so every listener is probed.
+  loop: "{{ xray.cohorts | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - vpn.enable_xray_reality | default(true)
+    - not (vpn_subscription_only | default(false))
+
+- name: Drop authenticated REALITY probe client config
+  ansible.builtin.template:
+    src: reality-probe.json.j2
+    dest: /etc/vpn-watchdog-reality.json
+    owner: root
+    group: root
+    mode: "0600"
+  when:
+    - vpn.enable_xray_reality | default(true)
+    - not (vpn_subscription_only | default(false))
+  no_log: true
+  diff: false
+  notify: Restart watchdog timer
+
+- name: Remove authenticated REALITY probe config when Xray is disabled
+  ansible.builtin.file:
+    path: /etc/vpn-watchdog-reality.json
+    state: absent
+  when: >-
+    not (vpn.enable_xray_reality | default(true))
+    or (vpn_subscription_only | default(false))
+
 - name: Drop watchdog probe script
   ansible.builtin.template:
     src: vpn-watchdog.sh.j2

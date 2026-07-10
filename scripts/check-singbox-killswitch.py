@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-"""Validate that an emitted sing-box client bundle has the kill-switch
-properties we expect — no clear-text leak when the tunnel is down,
-no DNS leak around it, no fall-through to a "direct" outbound that
-would silently bypass the proxy.
+"""Validate a strict full-device, dual-stack sing-box kill-switch bundle.
 
 Rules (each MUST pass, list grows over time):
 
-  K1  TUN inbound has auto_route=true AND strict_route=true
+  K1  TUN inbound has auto_route=true, strict_route=true, and unified
+      IPv4 + IPv6 interface prefixes
   K2  TUN inbound has sniff=true (so app traffic is identified)
-  K3  Route block has a "final" of "select" or "auto" — never "direct"
-  K4  DNS servers route the "remote" server via the tunnel (detour to
-      a non-direct outbound)
+  K3  Route final/rules/groups cannot reach direct egress or use bypass
+  K4  Every DNS server detours through a non-direct outbound graph
   K5  No outbound carries an explicit "domain_strategy":"ipv6_only" or
       "prefer_ipv6" — those bypass v4-only tunnels silently. (Mixed-
       stack is fine when the TUN is dual-stack; we accept ipv4_only
@@ -25,9 +22,65 @@ Usage:
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import pathlib
 import sys
+
+
+def _outbound_direct_resolver(
+    outbounds: list[dict], findings: list[str]
+):
+    """Return a resolver that fails closed on malformed outbound graphs."""
+    by_tag: dict[str, dict] = {}
+    for index, outbound in enumerate(outbounds):
+        tag = outbound.get("tag")
+        if not isinstance(tag, str) or not tag:
+            findings.append(f"K3: outbounds[{index}] has no usable tag")
+            continue
+        if tag in by_tag:
+            findings.append(f"K3: duplicate outbound tag {tag!r}")
+            continue
+        by_tag[tag] = outbound
+
+    cache: dict[str, bool] = {}
+
+    def reaches_direct(tag: object, trail: tuple[str, ...] = ()) -> bool:
+        if not isinstance(tag, str) or not tag:
+            findings.append(f"K3: invalid outbound reference {tag!r}")
+            return True
+        if tag in cache:
+            return cache[tag]
+        if tag in trail:
+            findings.append(
+                "K3: outbound graph cycle: " + " -> ".join((*trail, tag))
+            )
+            return True
+        outbound = by_tag.get(tag)
+        if outbound is None:
+            findings.append(f"K3: outbound reference {tag!r} is undefined")
+            return True
+        if outbound.get("type") == "direct":
+            cache[tag] = True
+            return True
+
+        children = outbound.get("outbounds")
+        if children is None:
+            cache[tag] = False
+            return False
+        if not isinstance(children, list) or not children:
+            findings.append(f"K3: outbound group {tag!r} has no usable children")
+            cache[tag] = True
+            return True
+
+        direct = any(reaches_direct(child, (*trail, tag)) for child in children)
+        cache[tag] = direct
+        return direct
+
+    # Validate the full graph, including groups not referenced by route.final.
+    for tag in by_tag:
+        reaches_direct(tag)
+    return reaches_direct
 
 
 def check(bundle: dict) -> list[str]:
@@ -42,8 +95,30 @@ def check(bundle: dict) -> list[str]:
         findings.append("K1: TUN inbound.auto_route is falsy")
     if not tun.get("strict_route"):
         findings.append("K1: TUN inbound.strict_route is falsy")
+    addresses = tun.get("address")
+    if not isinstance(addresses, list) or not addresses:
+        findings.append(
+            "K1: TUN inbound.address must be a non-empty unified IPv4/IPv6 list"
+        )
+    else:
+        families: set[int] = set()
+        for address in addresses:
+            try:
+                families.add(ipaddress.ip_interface(address).version)
+            except (TypeError, ValueError):
+                findings.append(f"K1: TUN inbound.address contains invalid prefix {address!r}")
+        if 4 not in families:
+            findings.append("K1: TUN inbound.address has no IPv4 prefix")
+        if 6 not in families:
+            findings.append("K1: TUN inbound.address has no IPv6 prefix")
     if not tun.get("sniff"):
         findings.append("K2: TUN inbound.sniff is falsy")
+
+    outbounds = bundle.get("outbounds") or []
+    if not isinstance(outbounds, list):
+        findings.append("K3: outbounds must be a list")
+        outbounds = []
+    reaches_direct = _outbound_direct_resolver(outbounds, findings)
 
     route = bundle.get("route") or {}
     final = route.get("final")
@@ -51,16 +126,50 @@ def check(bundle: dict) -> list[str]:
         findings.append("K3: route.final == 'direct' — tunnel-down apps egress in clear")
     elif final not in ("select", "auto"):
         findings.append(f"K3: route.final is {final!r}, expected 'select' or 'auto'")
+    elif reaches_direct(final):
+        findings.append(f"K3: route.final {final!r} can resolve to direct egress")
+
+    rules = route.get("rules") or []
+    if not isinstance(rules, list):
+        findings.append("K3: route.rules must be a list")
+    else:
+        for index, rule in enumerate(rules):
+            if not isinstance(rule, dict):
+                findings.append(f"K3: route.rules[{index}] must be an object")
+                continue
+            action = rule.get("action", "route")
+            if action == "bypass":
+                findings.append(
+                    f"K3: route.rules[{index}] uses bypass — traffic can evade the tunnel"
+                )
+                continue
+            if action == "route":
+                outbound = rule.get("outbound")
+                if outbound is None:
+                    findings.append(
+                        f"K3: route.rules[{index}] routes without an outbound"
+                    )
+                elif reaches_direct(outbound):
+                    findings.append(
+                        f"K3: route.rules[{index}] outbound {outbound!r} can resolve to direct egress"
+                    )
 
     dns = bundle.get("dns") or {}
-    for server in dns.get("servers") or []:
-        if server.get("tag") == "remote":
-            if server.get("detour") in (None, "direct"):
+    dns_servers = dns.get("servers") or []
+    if not isinstance(dns_servers, list) or not dns_servers:
+        findings.append("K4: dns.servers must contain at least one tunneled resolver")
+    else:
+        for index, server in enumerate(dns_servers):
+            if not isinstance(server, dict):
+                findings.append(f"K4: dns.servers[{index}] must be an object")
+                continue
+            detour = server.get("detour")
+            if detour is None or reaches_direct(detour):
                 findings.append(
-                    "K4: dns.servers.remote.detour is direct (DNS leaks to ISP)"
+                    f"K4: dns.servers[{index}].detour {detour!r} can bypass the tunnel"
                 )
 
-    for ob in bundle.get("outbounds") or []:
+    for ob in outbounds:
         ds = ob.get("domain_strategy")
         if ds in ("ipv6_only", "prefer_ipv6"):
             findings.append(
@@ -87,7 +196,7 @@ def main(argv: list[str]) -> int:
 
     findings = check(bundle)
     if not findings:
-        print("OK — kill-switch properties verified (K1-K5)")
+        print("OK — strict full-device dual-stack kill-switch verified (K1-K5)")
         return 0
     print(f"{len(findings)} finding(s):")
     for f in findings:

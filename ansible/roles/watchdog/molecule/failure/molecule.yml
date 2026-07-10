@@ -2,12 +2,14 @@
 # Failure-injection scenario.
 #
 # default/ proves the watchdog probes happy-path (everything green); this
-# scenario proves the alert path fires when a probe goes red:
+# scenario proves the alert path fires when process-level liveness stays green
+# but authenticated protocol completion goes red:
 #
-#   1. xray is not installed → `systemctl is-active xray` fails
-#   2. fail_threshold = 1 → first probe triggers an alert
-#   3. ntfy.sh URL is redirected to a local stub HTTP listener
-#   4. verify.yml runs vpn-watchdog.sh once and asserts the stub
+#   1. a stub xray service is active, listens on 443, and passes config test
+#   2. its probe-side SOCKS listener cannot complete a SOCKS/HTTP exchange
+#   3. fail_threshold = 1 → first failed round trip triggers an alert
+#   4. ntfy.sh URL is redirected to a local stub HTTP listener
+#   5. verify.yml runs vpn-watchdog.sh once and asserts the stub
 #      received the alert with the expected title shape
 #
 # This is the test the previous golden-path scenarios were missing.

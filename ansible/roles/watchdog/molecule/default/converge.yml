@@ -11,9 +11,18 @@
       enable_amneziawg: false
     amneziawg:
       interface: awg0
+    xray:
+      reality_public_key: "molecule-public-key"
+      server_names: ["canary.example.test"]
+      clients:
+        - name: watchdog
+          uuid: "98765432-1234-4234-8234-123456789abc"
+          short_id: "55667788"
+      cohorts: []
     xray_port: 443
     hysteria_port: 443
     watchdog_secrets:
       ntfy_topic: "molecule-stub-topic"
+      reality_probe_url: "https://canary.example.test/healthz"
   roles:
     - role: watchdog

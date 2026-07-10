@@ -18,6 +18,9 @@ name: real-vps-deploy
 #                                CI secrets file (separate from any
 #                                operator key)
 #   CI_SSH_PRIVATE_KEY           SSH key for the ephemeral VPS
+#   CI_REALITY_TARGET            owned REALITY target as host:port
+#   CI_REALITY_SERVER_NAME       TLS name accepted by that target
+#   CI_WATCHDOG_CANARY_URL       owned HTTPS endpoint returning 204
 #
 # A single concurrency group ensures only one real-VPS-deploy runs at
 # a time across the repo, so we never race two provisions against the
@@ -121,7 +124,12 @@ jobs:
       - name: Verify required secrets are present
         if: steps.gate.outputs.skip != 'true'
         run: |
-          for v in UPCLOUD_USERNAME UPCLOUD_PASSWORD CI_SOPS_AGE_KEY CI_SSH_PRIVATE_KEY MATRIX_TEMPLATE_UUID; do
+          required_vars=(
+            UPCLOUD_USERNAME UPCLOUD_PASSWORD CI_SOPS_AGE_KEY
+            CI_SSH_PRIVATE_KEY CI_REALITY_TARGET CI_REALITY_SERVER_NAME
+            CI_WATCHDOG_CANARY_URL MATRIX_TEMPLATE_UUID
+          )
+          for v in "${required_vars[@]}"; do
             if [ -z "${!v:-}" ] && [ -z "$(printenv "$v" || true)" ]; then
               echo "::error::Secret $v is unset — configure it in repo settings."
               exit 1
@@ -130,6 +138,9 @@ jobs:
         env:
           CI_SOPS_AGE_KEY: ${{ secrets.CI_SOPS_AGE_KEY }}
           CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
+          CI_REALITY_TARGET: ${{ secrets.CI_REALITY_TARGET }}
+          CI_REALITY_SERVER_NAME: ${{ secrets.CI_REALITY_SERVER_NAME }}
+          CI_WATCHDOG_CANARY_URL: ${{ secrets.CI_WATCHDOG_CANARY_URL }}
 
       - name: Set up Terraform
         if: steps.gate.outputs.skip != 'true'
@@ -184,8 +195,15 @@ jobs:
           set -euo pipefail
           export SECRETS_FILE="/tmp/vpn-${CI_ENV}.secrets.yaml"
           OUT="$SECRETS_FILE" SERVER_NAME="$CI_SERVER_NAME" CLIENT_NAME="ci-test" \
+            REALITY_TARGET="${CI_REALITY_TARGET}" \
+            REALITY_SERVER_NAME="${CI_REALITY_SERVER_NAME}" \
+            WATCHDOG_CANARY_URL="${CI_WATCHDOG_CANARY_URL}" \
             ./scripts/ci-bootstrap-secrets.sh
           echo "SECRETS_FILE=$SECRETS_FILE" >> "$GITHUB_ENV"
+        env:
+          CI_REALITY_TARGET: ${{ secrets.CI_REALITY_TARGET }}
+          CI_REALITY_SERVER_NAME: ${{ secrets.CI_REALITY_SERVER_NAME }}
+          CI_WATCHDOG_CANARY_URL: ${{ secrets.CI_WATCHDOG_CANARY_URL }}
 
       - name: Deploy
         if: steps.gate.outputs.skip != 'true'
@@ -193,6 +211,7 @@ jobs:
           set -euo pipefail
           export ENV="$CI_ENV"
           export PROVIDER=upcloud
+          export ANSIBLE_CONFIG=ansible/ansible.cfg
           export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy"
           # Self-signed cert + placeholder geodata URLs trip
           # spot-check-secrets and check-certs; CI deploys with the

@@ -38,6 +38,9 @@ never race against the UpCloud account.
 | `UPCLOUD_PASSWORD` | sub-account password — use a tightly scoped sub-account, NOT the master account |
 | `CI_SOPS_AGE_KEY` | age private key staged onto the runner so any later step needing SOPS works; CI does not commit an encrypted blob |
 | `CI_SSH_PRIVATE_KEY` | SSH key the ephemeral VPS authorises; not reused outside CI |
+| `CI_REALITY_TARGET` | Operator-owned REALITY target in `host:port` form; kept out of the repository |
+| `CI_REALITY_SERVER_NAME` | TLS server name accepted by the owned REALITY target |
+| `CI_WATCHDOG_CANARY_URL` | Operator-owned HTTPS endpoint that returns exactly `204` |
 | `CI_UPCLOUD_TEMPLATE_UUID` | **Debian 13** minimal cloud-image template UUID. List candidates via `upctl storage list --public --template`. |
 | `CI_UPCLOUD_TEMPLATE_UUID_UBUNTU24` (optional) | **Ubuntu 24.04** minimal cloud-image template UUID. When set, the deploy matrix fans out to both distros in parallel; when empty, the Ubuntu matrix entry skips with a notice and only Debian runs. |
 
@@ -64,8 +67,8 @@ complete synthetic secrets YAML to
 
   * fresh REALITY keypair (from `ghcr.io/xtls/xray-core:<version>`
     `x25519`)
-  * fresh client UUID + shortId, fresh Hysteria password, fresh
-    AmneziaWG keypair + random H1..H4
+  * fresh recipient and dedicated watchdog UUIDs + shortIds, fresh Hysteria
+    password, fresh AmneziaWG keypair + random H1..H4
   * self-signed certificate covering the CI server hostname
   * Xray + Hysteria release-asset sha256 computed live by curl +
     sha256sum from the upstream URLs
@@ -74,6 +77,12 @@ The certificate is self-signed and the geodata URLs are placeholders,
 so the `pre-deploy-check` chain would reject the secrets. CI runs
 with `SKIP_PRECHECK=1`; ansible's per-role validate-before-restart
 still gates a broken render.
+
+`verify.yml` runs the deployed watchdog immediately and requires an
+authenticated REALITY round trip through the ephemeral node to
+`CI_WATCHDOG_CANARY_URL`. This is the load-bearing successful-handshake test;
+it remains an on-node, unfiltered-vantage check and does not replace
+`make smoke-test` or the managed sentinel quorum.
 
 Disabled roles in CI (via `ANSIBLE_EXTRA_VARS`):
 

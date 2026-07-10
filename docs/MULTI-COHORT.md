@@ -31,23 +31,24 @@ xray:
     - { name: phone,   uuid: …, short_id: … }
     - { name: laptop,  uuid: …, short_id: … }
     - { name: tablet,  uuid: …, short_id: … }
+    - { name: watchdog, uuid: …, short_id: … }
 
   cohorts:
     - name: home-isp
       port: 443
       flow_mode: mux
       finalmask: true
-      clients: [phone]
+      clients: [phone, watchdog]
     - name: mobile
       port: 8444
       flow_mode: vision
       finalmask: false
-      clients: [tablet]
+      clients: [tablet, watchdog]
     - name: foreign
       port: 9443
       flow_mode: vision
       finalmask: false
-      clients: [laptop]
+      clients: [laptop, watchdog]
 ```
 
 Properties:
@@ -61,6 +62,9 @@ Properties:
 * `flow_mode` and `finalmask` per cohort override the global toggles.
 * All cohorts share `xray.target`, `xray.server_names`, and
   `xray.reality_private_key` — one REALITY identity, multiple ports.
+* The dedicated `watchdog` client must be listed in every cohort. The role
+  refuses to deploy a cohort that the on-node authenticated probe cannot
+  exercise.
 
 ## Firewall
 

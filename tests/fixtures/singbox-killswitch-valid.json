@@ -6,17 +6,15 @@
         "tag": "remote",
         "address": "https://1.1.1.1/dns-query",
         "detour": "select"
-      },
-      { "tag": "local", "address": "local", "detour": "direct" }
-    ],
-    "rules": [{ "outbound": ["any"], "server": "local" }]
+      }
+    ]
   },
   "inbounds": [
     {
       "type": "tun",
       "tag": "tun-in",
       "interface_name": "tun0",
-      "inet4_address": "172.19.0.1/30",
+      "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
       "auto_route": true,
       "strict_route": true,
       "stack": "system",
@@ -63,8 +61,7 @@
   ],
   "route": {
     "rules": [
-      { "protocol": "dns", "outbound": "dns-out" },
-      { "ip_is_private": true, "outbound": "direct" }
+      { "protocol": "dns", "action": "route", "outbound": "dns-out" }
     ],
     "final": "select",
     "auto_detect_interface": true

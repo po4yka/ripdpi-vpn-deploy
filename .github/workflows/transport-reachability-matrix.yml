@@ -18,7 +18,8 @@ name: transport-reachability-matrix
 #
 # Required secrets (same set as real-vps-deploy):
 #   UPCLOUD_USERNAME, UPCLOUD_PASSWORD, CI_SOPS_AGE_KEY,
-#   CI_SSH_PRIVATE_KEY, CI_UPCLOUD_TEMPLATE_UUID
+#   CI_SSH_PRIVATE_KEY, CI_UPCLOUD_TEMPLATE_UUID, CI_REALITY_TARGET,
+#   CI_REALITY_SERVER_NAME
 
 on:
   workflow_dispatch:
@@ -84,7 +85,12 @@ jobs:
       - name: Verify required secrets are present
         if: steps.gate.outputs.skip != 'true'
         run: |
-          for v in UPCLOUD_USERNAME UPCLOUD_PASSWORD CI_SOPS_AGE_KEY CI_SSH_PRIVATE_KEY CI_UPCLOUD_TEMPLATE_UUID; do
+          required_vars=(
+            UPCLOUD_USERNAME UPCLOUD_PASSWORD CI_SOPS_AGE_KEY
+            CI_SSH_PRIVATE_KEY CI_UPCLOUD_TEMPLATE_UUID CI_REALITY_TARGET
+            CI_REALITY_SERVER_NAME
+          )
+          for v in "${required_vars[@]}"; do
             if [ -z "${!v:-}" ] && [ -z "$(printenv "$v" || true)" ]; then
               echo "::error::Secret $v is unset — configure it in repo settings."
               exit 1
@@ -93,6 +99,8 @@ jobs:
         env:
           CI_SOPS_AGE_KEY: ${{ secrets.CI_SOPS_AGE_KEY }}
           CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
+          CI_REALITY_TARGET: ${{ secrets.CI_REALITY_TARGET }}
+          CI_REALITY_SERVER_NAME: ${{ secrets.CI_REALITY_SERVER_NAME }}
 
       - name: Set up Terraform
         if: steps.gate.outputs.skip != 'true'
@@ -144,8 +152,13 @@ jobs:
           set -euo pipefail
           export SECRETS_FILE="/tmp/vpn-${CI_ENV}.secrets.yaml"
           OUT="$SECRETS_FILE" SERVER_NAME="$CI_SERVER_NAME" CLIENT_NAME="ci-test" \
+            REALITY_TARGET="${CI_REALITY_TARGET}" \
+            REALITY_SERVER_NAME="${CI_REALITY_SERVER_NAME}" \
             ./scripts/ci-bootstrap-secrets.sh
           echo "SECRETS_FILE=$SECRETS_FILE" >> "$GITHUB_ENV"
+        env:
+          CI_REALITY_TARGET: ${{ secrets.CI_REALITY_TARGET }}
+          CI_REALITY_SERVER_NAME: ${{ secrets.CI_REALITY_SERVER_NAME }}
 
       - name: Provision VPS
         if: steps.gate.outputs.skip != 'true'
