@@ -48,24 +48,60 @@ crossing.
 
 - `echForceQuery` field is **removed**. ECH is now always forced when
   configured. Any config containing `echForceQuery` will fail to
-  parse. The `scripts/check-secrets-coverage.py` guard fails the
-  schema check if the field is present.
+  parse. The changelog-driven breaking-change guard fails if the field
+  is present.
 - ALPN `["h2","http/1.1"]` is now permitted in the **outer TLS layer**
   for WSS / HUS transports. Prior versions rejected this; the
   rejection itself was an Xray-specific fingerprint.
-- New `finalRules` egress filter (ALPN/PQE-aware routing rule type).
+- New `finalRules` egress filter. Freedom now applies built-in safety
+  fallbacks on server-side and reverse-proxy traffic; an unconstrained
+  first `allow` rule is required to preserve the earlier direct-routing
+  behaviour. The guard activates this requirement when the pin reaches
+  v26.5.3.
 - ICMP tunnel transport added.
 - **Post-Quantum Encryption (PQE)** for VLESS — pre-release, fingerprint
   considerations apply (larger `key_share` extension makes the
   ClientHello distinct from typical browser traffic until Chrome's
   ML-KEM rollout normalises in RU traffic).
 
+The fenced registry below is the machine-readable source for CI. `always`
+rules apply before an upgrade when the migration is backwards-compatible;
+`pinned-at-least` rules activate only when `xray.version` reaches the declared
+release. Selectors must match at least one object and assertions apply to every
+match.
+
+```yaml xray-ci-guards
+guards:
+  - id: ech-force-query-removed
+    applies_from: v26.5.3
+    activation: always
+    document: example-secrets
+    select:
+      path: xray
+    forbid:
+      path: echForceQuery
+    message: Remove xray.echForceQuery before upgrading Xray-core.
+  - id: freedom-final-rules-allow
+    applies_from: v26.5.3
+    activation: pinned-at-least
+    document: rendered-xray
+    select:
+      path: outbounds
+      where:
+        protocol: freedom
+    require:
+      path: settings.finalRules.0
+      equals:
+        action: allow
+    message: Add an unconstrained first allow rule to every Freedom outbound before upgrading Xray-core.
+```
+
 ## Production rollout policy
 
 1. Bump `xray.version` in the secrets schema and SOPS files only when
    the target tag is GitHub-tagged Latest, not Pre-release.
-2. Run `make validate` — it executes `check-secrets-coverage.py`,
-   which guards against the `echForceQuery` removal at PR time.
+2. Run `make ci-fast` — it executes `check-xray-breaking-changes.py`,
+   which derives version-aware config migrations from this release line.
 3. Run on a staging cohort for ≥48 hours before fleet rollout.
 4. Capture `xray test -config` output in the deploy log; refuse to
    restart xray on a host where the new config fails parse.

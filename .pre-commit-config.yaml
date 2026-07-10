@@ -65,6 +65,13 @@ repos:
         pass_filenames: false
         files: ^(ansible/.*\.j2|secrets/prod\.secrets\.example\.yaml|ansible/group_vars/.*\.yml)$
 
+      - id: xray-breaking-changes
+        name: xray-breaking-changes (release-line migrations match rendered config)
+        entry: python3 scripts/check-xray-breaking-changes.py
+        language: system
+        pass_filenames: false
+        files: ^(docs/XRAY-RELEASE-LINE\.md|secrets/prod\.secrets\.example\.yaml|ansible/group_vars/.*\.yml|ansible/roles/.*/defaults/main\.yml|ansible/roles/xray/templates/config\.json\.j2|scripts/template_render\.py)$
+
       - id: placeholder-scan
         name: placeholder-scan (no REPLACE_WITH_* outside schema/docs)
         entry: python3 scripts/pre-commit-placeholder-scan.py

@@ -21,6 +21,8 @@ flag exists for testing but is undocumented.
 
 **Destroy is provider-aware and plan-verified** — `destroy.sh` maps each supported provider to its canonical server resource and checks that the destroy plan contains a delete action for that exact address before apply. Unknown providers fail before an override file is written.
 
+**Xray migrations are changelog-driven** — `docs/XRAY-RELEASE-LINE.md` embeds the declarative guard registry consumed by `check-xray-breaking-changes.py`. Add version-aware rules there instead of hardcoding release cases in unrelated validators; render-sensitive rules use `template_render.py` so every fast check sees the same canonical Ansible context.
+
 ## What's done well
 
 - **`set -euo pipefail` everywhere** — fail-loud is the default.
