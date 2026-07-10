@@ -127,6 +127,7 @@ release-please drives versioning from Conventional Commits. Don't edit
 | Secrets schema (structure) | `secrets/schema.json` + `scripts/validate-secrets.py` | `ansible/roles/*/`, `vpnd::secrets` |
 | RIPDPI bundle contract | `contract/ripdpi-bundle.schema.json` (+ `scripts/validate-bundle.py`, `docs/RIPDPI-BUNDLE.md`) | `scripts/emit-bundle.sh`, vendored copy in the RIPDPI client repo (`core/data/src/test/resources/contract/`) |
 | AWG cohort fingerprint algo | `scripts/ripdpi_cohort_fingerprint.py` + `contract/cohort-fingerprint.golden.json` | `scripts/emit-bundle.sh`, client `AmneziaWgParameters.cohortFingerprint()` |
+| AWG arm64 S3/S4 version floor | `contract/amneziawg-arm64-version-floor.json` | role/schema guard + client vendored policy |
 | Secrets schema (coverage) | `scripts/check-secrets-coverage.py` | `secrets/prod.secrets.example.yaml`, all Jinja2 templates |
 | Protocol toggles | `ansible/group_vars/all.yml` | `ansible/roles/*/`, vpnd config templates |
 | Recipient page | `vpnd/templates/recipient.html` | `ansible/roles/subscription-host/`, `docs/demo/` |

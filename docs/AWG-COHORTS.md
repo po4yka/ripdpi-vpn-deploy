@@ -94,12 +94,13 @@ done
 **`S3 = S4 = 0` must hold for any cohort targeting arm64 Android — which is
 every family client.** S3/S4 are the junk-size parameters that feed the H4
 transport-packet header writer (junk-header insertion on data packets). Per
-`amneziawg-go#110` (amnezia-client #2582, no fix as of 2026-05-28), a non-zero
-S3/S4 triggers a byte-offset misalignment in the H4 header writer on `awg-go`
-arm64 (Android 14, awg-go v0.2.16): the handshake succeeds and the tunnel comes
-up, but transport packets are then **silently dropped** — connected interface,
-zero data flow, no error surfaced. Reproducer from upstream: `S1=47, S2=45,
-S3=38, S4=22` drops; `S3=S4=0` (keeping S1/S2) restores connectivity.
+`amneziawg-go#110` and amnezia-client #2582, a non-zero S3/S4 triggers the
+affected H4 transport-header path on arm64 Android: the handshake succeeds and
+the tunnel comes up, but transport packets are then **silently dropped** —
+connected interface, zero data flow, no error surfaced. The last confirmed
+broken combination is AmneziaVPN 4.8.15.5 with embedded awg-go v0.2.16.
+Reproducer: `S1=47, S2=45, S3=38, S4=22` drops; `S3=S4=0` (keeping S1/S2)
+restores connectivity.
 
 The role does **not** emit S3/S4 today (`awg0.conf.j2` writes only Jc/Jmin/Jmax,
 S1/S2, H1–H4), so the baseline is already safe. This is enforced forward: the
@@ -109,10 +110,17 @@ amneziawg role fails the play if any cohort file, `amneziawg_secrets`, or
 **Obfuscation tradeoff.** Holding `S3=S4=0` disables H4 junk-header insertion on
 transport packets, so obfuscation is reduced to S1/S2 handshake-junk only —
 there is no transport-packet-level junk to defeat a per-packet size/shape rule.
-That is an accepted constraint while #110 is open: reliability on arm64 Android
-beats transport obfuscation that silently breaks the tunnel. If a deployment
-genuinely needs transport-packet obfuscation against arm64 targets, route it
-over VLESS+REALITY instead of AmneziaWG until upstream fixes #110.
+That is an accepted constraint while the verified safe floor in
+`contract/amneziawg-arm64-version-floor.json` is unset: reliability on arm64
+Android beats transport obfuscation that silently breaks the tunnel. If a
+deployment genuinely needs transport-packet obfuscation against arm64 targets,
+route it over VLESS+REALITY instead of AmneziaWG.
+
+## Version-floor review
+
+`contract/amneziawg-arm64-version-floor.json` is the machine-readable source of truth shared with the RIPDPI client. A weekly workflow checks the tracked upstream issue states and Amnezia client release notes. A changed issue state or a release that claims an S3/S4/H4 arm64 correction opens a rolling review issue; it never changes the candidate floor, verified floor, role guard, secrets schema, or client guard.
+
+Before setting a verified floor, test the candidate on physical Android arm64 hardware using the same server and path for the non-zero reproducer and an `S3=S4=0` control. Complete at least three reconnects, verify bidirectional traffic, DNS, and a sustained transfer, capture the outbound H4 bytes and offsets, and record the app version, embedded core version and commit, ABI, Android version, and results. Relaxation is a coordinated deploy-and-client change and must also account for older clients still in the fleet.
 
 ## Operational notes
 

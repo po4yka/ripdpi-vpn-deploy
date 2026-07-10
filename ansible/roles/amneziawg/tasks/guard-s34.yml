@@ -1,0 +1,31 @@
+---
+- name: "Guard: AmneziaWG S3/S4 must stay zero (amneziawg-go#110 — arm64 Android silent packet drop)"
+  vars:
+    _awg_instances_raw: "{{ amneziawg_secrets.instances | default([]) }}"
+    _awg_s34: >-
+      {{ ([ (amneziawg_cohort | default({})).s3 | default(0),
+            (amneziawg_cohort | default({})).s4 | default(0),
+            (amneziawg_secrets | default({})).s3 | default(0),
+            (amneziawg_secrets | default({})).s4 | default(0) ]
+          + (_awg_instances_raw | selectattr('s3', 'defined') | map(attribute='s3') | list)
+          + (_awg_instances_raw | selectattr('s4', 'defined') | map(attribute='s4') | list)
+         ) | map('int') | list }}
+  ansible.builtin.assert:
+    that:
+      - _awg_s34 | select('ne', 0) | list | length == 0
+    quiet: true
+    fail_msg: |
+      AmneziaWG S3/S4 must be 0 — a cohort or instance set a non-zero value
+      (S3/S4 values seen: {{ _awg_s34 }}).
+
+      The verified safe floor in contract/amneziawg-arm64-version-floor.json
+      is unset. Non-zero S3/S4 cause the amneziawg-go#110 H4 transport-header
+      failure on affected arm64 Android builds: the tunnel handshake succeeds
+      but transport packets are SILENTLY dropped. Keep S3=S4=0; an issue state
+      change or release-note claim is only a prompt to run the physical-device
+      revalidation checklist, never permission to relax this guard.
+
+      Tradeoff: S3=S4=0 disables H4 transport-junk, so obfuscation degrades to
+      S1/S2 handshake-junk only. If transport-packet obfuscation is required on
+      arm64, use VLESS+REALITY instead. See docs/AWG-COHORTS.md.
+    success_msg: "AmneziaWG S3/S4 are zero — arm64 version-floor guard satisfied (amneziawg-go#110)."
