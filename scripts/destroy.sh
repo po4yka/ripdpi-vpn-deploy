@@ -4,8 +4,18 @@
 # stays clean), runs `terraform destroy`, removes the override, and clears
 # the inventory.
 #
-# Required env: PROVIDER, ENV.
+# Required env: PROVIDER, ENV. `--non-interactive` is restricted to ci-* ENV
+# values and exists only for short-lived CI nodes.
 set -euo pipefail
+
+NON_INTERACTIVE=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --non-interactive) NON_INTERACTIVE=true ;;
+    *) echo "usage: $0 [--non-interactive]" >&2; exit 2 ;;
+  esac
+  shift
+done
 
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
@@ -25,6 +35,11 @@ if [[ ! -f "$TFVARS" ]]; then
   exit 1
 fi
 
+if [[ "$NON_INTERACTIVE" == "true" && ! "$ENV" =~ ^ci-[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
+  echo "--non-interactive is restricted to validated ci-* environments" >&2
+  exit 2
+fi
+
 trap 'rm -f "$OVERRIDE"' EXIT
 
 cat <<EOF
@@ -39,17 +54,21 @@ audit trail.
 
 EOF
 
-read -r -p "Type the server hostname to confirm (Ctrl-C to abort): " typed
 expected="$(grep -E '^server_name' "$TFVARS" | head -1 | sed -E 's/.*=[[:space:]]*"([^"]+)".*/\1/')"
-if [[ "$typed" != "$expected" ]]; then
-  echo "hostname mismatch (expected: $expected) — aborting" >&2
-  exit 1
-fi
+if [[ "$NON_INTERACTIVE" == "true" ]]; then
+  echo "CI destroy authorization accepted for ${ENV} (${expected})"
+else
+  read -r -p "Type the server hostname to confirm (Ctrl-C to abort): " typed
+  if [[ "$typed" != "$expected" ]]; then
+    echo "hostname mismatch (expected: $expected) — aborting" >&2
+    exit 1
+  fi
 
-read -r -p "Type DESTROY to proceed: " word
-if [[ "$word" != "DESTROY" ]]; then
-  echo "aborted"
-  exit 1
+  read -r -p "Type DESTROY to proceed: " word
+  if [[ "$word" != "DESTROY" ]]; then
+    echo "aborted"
+    exit 1
+  fi
 fi
 
 # Drop a temporary override that disables prevent_destroy. Terraform merges
@@ -70,10 +89,12 @@ env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" plan
   -var-file="environments/${ENV}.tfvars" \
   -out="${ENV}.destroy.tfplan"
 
-read -r -p "Apply this destroy plan? [yes/NO]: " final
-if [[ "$final" != "yes" ]]; then
-  echo "aborted"
-  exit 1
+if [[ "$NON_INTERACTIVE" != "true" ]]; then
+  read -r -p "Apply this destroy plan? [yes/NO]: " final
+  if [[ "$final" != "yes" ]]; then
+    echo "aborted"
+    exit 1
+  fi
 fi
 
 env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" apply "${ENV}.destroy.tfplan"

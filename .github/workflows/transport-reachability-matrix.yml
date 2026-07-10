@@ -166,7 +166,7 @@ jobs:
             --output-dir "${GITHUB_WORKSPACE}/.transport-reachability"
 
       - name: Upload reachability matrix artifact
-        if: always() && steps.gate.outputs.skip != 'true'
+        if: always() && steps.gate.outputs.skip != 'true' && env.CI_ENV != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: transport-reachability-matrix-${{ github.run_id }}
@@ -174,15 +174,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
-      - name: Always destroy the ephemeral VPS
+      - name: Destroy ephemeral VPS and remove its tfvars
         if: always() && steps.gate.outputs.skip != 'true'
         run: |
           set -euo pipefail
           export ENV="$CI_ENV"
           export PROVIDER=upcloud
-          echo "yes" | echo "yes" | make destroy || true
-
-      - name: Cleanup CI tfvars file
-        if: always() && steps.gate.outputs.skip != 'true'
-        run: |
-          rm -f "terraform/providers/upcloud/environments/${CI_ENV}.tfvars" || true
+          make destroy DESTROY_ARGS=--non-interactive
+          rm -f "terraform/providers/upcloud/environments/${CI_ENV}.tfvars"

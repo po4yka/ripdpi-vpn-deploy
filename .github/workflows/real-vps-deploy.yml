@@ -211,17 +211,11 @@ jobs:
           VPN_SECRETS_FILE=$SECRETS_FILE \
             ansible-playbook ansible/playbooks/verify.yml --extra-vars "$ANSIBLE_EXTRA_VARS"
 
-      - name: Always destroy the ephemeral VPS
+      - name: Destroy ephemeral VPS and remove its tfvars
         if: always() && steps.gate.outputs.skip != 'true' && env.CI_ENV != ''
         run: |
           set -euo pipefail
           export ENV="$CI_ENV"
           export PROVIDER=upcloud
-          # Skip the double-confirmation prompt — CI is the explicit
-          # destroy authority for these short-lived envs.
-          echo "yes" | echo "yes" | make destroy || true
-
-      - name: Cleanup CI tfvars file
-        if: always() && steps.gate.outputs.skip != 'true' && env.CI_ENV != ''
-        run: |
-          rm -f "terraform/providers/upcloud/environments/${CI_ENV}.tfvars" || true
+          make destroy DESTROY_ARGS=--non-interactive
+          rm -f "terraform/providers/upcloud/environments/${CI_ENV}.tfvars"
