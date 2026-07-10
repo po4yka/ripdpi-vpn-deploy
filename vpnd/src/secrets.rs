@@ -9,11 +9,11 @@ use std::path::Path;
 #[derive(Deserialize)]
 pub struct Secrets {
     #[serde(default)]
-    pub clients: Vec<Client>,
+    pub xray: XraySecrets,
     #[serde(default)]
-    pub server_name: Option<String>,
+    pub nginx_xhttp: NginxXhttpSecrets,
     #[serde(default)]
-    pub xhttp_host: Option<String>,
+    pub subscription: SubscriptionSecrets,
     #[serde(flatten)]
     pub(crate) _extra: serde_yaml::Mapping,
 }
@@ -21,13 +21,40 @@ pub struct Secrets {
 impl std::fmt::Debug for Secrets {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Secrets")
-            .field("clients", &self.clients.len())
+            .field("xray_clients", &self.xray.clients.len())
             .field("extra_keys", &self._extra.len())
             .finish()
     }
 }
 
-#[allow(dead_code)] // uuid and short_id are deserialized but not yet consumed; Phase 2 share-bundle expansion will read them to construct per-client VLESS URIs
+#[derive(Deserialize, Default)]
+pub struct XraySecrets {
+    #[serde(default)]
+    pub clients: Vec<Client>,
+    #[serde(flatten)]
+    pub(crate) _extra: serde_yaml::Mapping,
+}
+
+#[derive(Deserialize, Default)]
+pub struct NginxXhttpSecrets {
+    #[serde(default)]
+    pub server_name: Option<String>,
+    #[serde(flatten)]
+    pub(crate) _extra: serde_yaml::Mapping,
+}
+
+#[derive(Deserialize, Default)]
+pub struct SubscriptionSecrets {
+    #[serde(default)]
+    pub server_name: Option<String>,
+    #[serde(default)]
+    pub port: Option<u64>,
+    #[serde(flatten)]
+    pub(crate) _extra: serde_yaml::Mapping,
+}
+
+#[allow(dead_code)]
+// uuid and short_id are deserialized but not yet consumed; Phase 2 share-bundle expansion will read them to construct per-client VLESS URIs
 #[derive(Deserialize, Clone)]
 pub struct Client {
     pub name: String,
@@ -63,7 +90,7 @@ impl Secrets {
     }
 
     pub fn find_client(&self, name: &str) -> Option<&Client> {
-        self.clients.iter().find(|c| c.name == name)
+        self.xray.clients.iter().find(|c| c.name == name)
     }
 
     /// Number of unknown top-level keys captured by the catch-all flatten field.
@@ -76,23 +103,11 @@ impl Secrets {
         self._extra.keys().filter_map(|k| k.as_str()).collect()
     }
 
-    /// Subscription server hostname from `_extra["subscription"]["server_name"]`.
-    /// Returns `None` if the key is absent or not a string.
     pub fn subscription_host(&self) -> Option<&str> {
-        self._extra
-            .get(serde_yaml::Value::String("subscription".into()))?
-            .as_mapping()?
-            .get(serde_yaml::Value::String("server_name".into()))?
-            .as_str()
+        self.subscription.server_name.as_deref()
     }
 
-    /// Subscription port from `_extra["subscription"]["port"]`.
-    /// Returns `None` if the key is absent or not an integer.
     pub fn subscription_port(&self) -> Option<u64> {
-        self._extra
-            .get(serde_yaml::Value::String("subscription".into()))?
-            .as_mapping()?
-            .get(serde_yaml::Value::String("port".into()))?
-            .as_u64()
+        self.subscription.port
     }
 }
