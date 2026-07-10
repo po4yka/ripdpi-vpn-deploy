@@ -6,13 +6,28 @@ on:
     tags:
       - 'vpnd-v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "vpnd release tag (vpnd-vX.Y.Z)"
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
+  validate-tag:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate release tag
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          [[ "$TAG" =~ ^vpnd-v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+
   build-x86_64-linux:
     name: build (x86_64-unknown-linux-gnu)
+    needs: validate-tag
     uses: ./.github/workflows/_rust.yml
     with:
       target: x86_64-unknown-linux-gnu
@@ -22,6 +37,7 @@ jobs:
 
   build-aarch64-linux:
     name: build (aarch64-unknown-linux-gnu)
+    needs: validate-tag
     uses: ./.github/workflows/_rust.yml
     with:
       target: aarch64-unknown-linux-gnu
@@ -31,6 +47,7 @@ jobs:
 
   build-x86_64-macos:
     name: build (x86_64-apple-darwin)
+    needs: validate-tag
     uses: ./.github/workflows/_rust.yml
     with:
       target: x86_64-apple-darwin
@@ -40,6 +57,7 @@ jobs:
 
   build-aarch64-macos:
     name: build (aarch64-apple-darwin)
+    needs: validate-tag
     uses: ./.github/workflows/_rust.yml
     with:
       target: aarch64-apple-darwin
