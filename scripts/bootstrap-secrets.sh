@@ -124,15 +124,11 @@ for name in "${client_list[@]}"; do
   CLIENT_BLOCKS_HYS+=("    - name: ${name}
       password: \"${hys_pw}\"")
 
-  awg_priv="$(wg genkey)"
-  awg_pub="$(echo "$awg_priv" | wg pubkey)"
-  awg_psk="$(wg genpsk)"
-  i=$(( ${#PEER_BLOCKS_AWG[@]} + 2 ))
-  PEER_BLOCKS_AWG+=("    - name: ${name}
-      public_key: \"${awg_pub}\"
-      preshared_key: \"${awg_psk}\"
-      allowed_ips: \"10.66.66.${i}/32\"")
 done
+
+# Do not create AmneziaWG peers here: their private keys must be handed to a
+# device exactly once. Use scripts/new-client.sh after bootstrap; it emits the
+# client private key through the operator-controlled secure handoff path.
 
 # ---------------------------------------------------------------------------
 # AmneziaWG server params + random H1..H4
