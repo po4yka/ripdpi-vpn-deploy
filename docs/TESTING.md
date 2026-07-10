@@ -101,6 +101,7 @@ the discipline contract and how to add a new stub.
 | PR labeled `ci-real-deploy` | **real-vps-deploy** workflow: provisions an ephemeral UpCloud VPS, runs site.yml + verify, destroys — closest approximation to production in CI. See `docs/CI-REAL-DEPLOY.md`. |
 | `make validate` (operator) | terraform fmt + validate + gitleaks + ansible-lint + ansible syntax-check |
 | `make validate-target` | live probe of REALITY target (TLS / H2 / SAN / uTLS / ASN / template OPSEC) |
+| `make monitor-reality-target VANTAGE=<technical-label>` | filtered-vantage active-target path and ASN/prefix signal; unhealthy observations on two consecutive UTC days alert |
 | `make plan` | terraform plan (catches infrastructure drift) |
 | `make dry-run` / `make deploy` / `make verify` | **pre-deploy-check** runs first: spot-check-secrets + check-certs; bypass with `SKIP_PRECHECK=1` |
 | `make deploy-canary` | same deploy path as `make deploy`, with `ENV=canary` forced by the Makefile wrapper |

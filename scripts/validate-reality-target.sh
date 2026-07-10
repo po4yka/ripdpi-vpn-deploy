@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-deploy validator for the REALITY target host. Runs a 9-step check
+# Point-in-time pre-deploy validator for the REALITY target host. Runs a 9-step check
 # (TLS 1.3 handshake, ALPN h2, certificate SAN coverage, plausible
 # public CA, real HTTP body, Chrome-uTLS compatibility, anti-template
 # heuristic, ASN plausibility, bare-vs-www SNI variant hygiene) and exits
@@ -30,6 +30,7 @@
 #   VPS_ASN         ASN integer; if set, [8/9] flags ASN mismatch as a warning
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV="${ENV:-prod}"
 SOPS_FILE="${SOPS_FILE:-${HOME}/.config/vpn-provision/${ENV}.secrets.sops.yaml}"
 
@@ -229,14 +230,12 @@ if [[ -z "$target_ip" ]]; then
   echo "  WARN: could not resolve $HOST to compare ASN"
   warns=$((warns+1))
 else
-  # Cymru's whois server returns "AS | IP | BGP Prefix | CC | Registry | Allocated | AS Name"
-  asn_line="$(whois -h whois.cymru.com " -v $target_ip" 2>/dev/null | tail -1 || true)"
-  if [[ -z "$asn_line" ]] || echo "$asn_line" | grep -qiE '^bulk|^error|<html'; then
+  if ! asn_line="$("${REPO_ROOT}/scripts/probe-asn.sh" "$target_ip" 2>/dev/null)"; then
     echo "  WARN: ASN lookup unavailable (Team Cymru whois) — skip"
     warns=$((warns+1))
   else
-    target_asn="$(echo "$asn_line" | awk -F'|' '{gsub(/^ +| +$/,"",$1); print $1}')"
-    target_org="$(echo "$asn_line" | awk -F'|' '{gsub(/^ +| +$/,"",$7); print $7}')"
+    target_asn="$(printf '%s' "$asn_line" | awk -F'\t' '{print $2}')"
+    target_org="$(printf '%s' "$asn_line" | awk -F'\t' '{print $5}')"
     echo "  target_ip=$target_ip  asn=AS${target_asn}  org=${target_org}"
 
     # Flag the "Avoid" tier ASNs outright. The set is sourced from the internal
@@ -322,5 +321,7 @@ echo "summary: ${fails} hard failure(s), ${warns} warning(s)"
 echo "note: this validator tests TLS/cert HYGIENE from the local (non-RU) vantage"
 echo "      only. It does NOT establish RU/TSPU survival of any SNI — that is"
 echo "      decided by scripts/probe-sni-survival.sh from a filtered vantage."
+echo "      This result is point-in-time; follow it with daily filtered-vantage"
+echo "      monitoring via make monitor-reality-target VANTAGE=<technical-label>."
 (( fails == 0 )) || exit 1
 exit 0

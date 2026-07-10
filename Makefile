@@ -11,13 +11,13 @@ TFVARS        := $(TF_ROOT)/environments/$(ENV).tfvars
 TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
 
 export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
-export PROVIDER ENV CLIENT PLAN HOST
+export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE
 
 .PHONY: help init validate plan apply inventory wait decrypt dry-run deploy deploy-canary verify security-verify security-audit clean \
         pre-deploy-check \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
-        molecule-test smoke-test validate-target probe-sni-survival scan-targets blue-green \
+        molecule-test smoke-test validate-target monitor-reality-target probe-sni-survival scan-targets blue-green \
         spot-check-secrets bootstrap-secrets probe-asn emit-qr check-certs \
         audit-permissions asn-drift check-ip-reputation issue-bootstrap \
         test-tls-policing probe-payload-throttle fleet-status drift-since-tag fleet-rotate \
@@ -42,6 +42,7 @@ help:
 	@echo "  setup-yubikey [REENCRYPT=1]  Hardware-backed age identity on YubiKey"
 	@echo "  scan-targets {SEEDS=…|CIDR=…|CRAWL=…}  Discover REALITY targets (RealiTLScanner)"
 	@echo "  validate-target            9-step REALITY target audit (local hygiene only)"
+	@echo "  monitor-reality-target     Daily ASN/path signal from an explicit filtered VANTAGE"
 	@echo "  probe-sni-survival         EXIT_IP=… bare/www SNI survival probe (run on RU vantage)"
 	@echo "  probe-asn HOST=…           Team Cymru ASN lookup"
 	@echo "  install-hooks              Install pre-commit hooks"
@@ -329,6 +330,11 @@ smoke-test:
 validate-target:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }
 	SOPS_FILE=$(SOPS_FILE) ENV=$(ENV) ./scripts/validate-reality-target.sh
+
+monitor-reality-target:
+	@test -n "$(VANTAGE)" || { echo "usage: make monitor-reality-target VANTAGE=<technical-filtered-label> [ACCEPT_BASELINE=1]"; exit 1; }
+	SOPS_FILE=$(SOPS_FILE) ENV=$(ENV) ./scripts/monitor-reality-target.sh \
+	  $(if $(filter 1 yes true,$(ACCEPT_BASELINE)),--accept-baseline)
 
 # Run this from the FILTERED (RU) vantage — it decides which SNI variant survives.
 # EXIT_IP=<vps-ip> make probe-sni-survival   (VANTAGE defaults to "filtered")

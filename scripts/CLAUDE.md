@@ -49,6 +49,7 @@ flag exists for testing but is undocumented.
   workstations don't all have uv/poetry. Use stdlib + the pinned deps in
   `requirements.in`. Don't import `requests` (use `urllib.request`).
 - **Never run raw Terraform from an operator script** — it silently uses the active workspace. Set `PROVIDER` and `ENV` on `terraform-env.sh` instead.
+- **Active REALITY target monitoring is filtered-vantage only.** `monitor-reality-target.sh` rejects an absent or `unfiltered` vantage, resolves the active target through the canonical secrets gate, and persists only a target fingerprint plus technical IP/ASN/prefix observations. It requires two consecutive unhealthy runs before notifying and never edits SOPS or invokes deployment actions.
 
 ## Probe scripts (`probe-*.sh`)
 

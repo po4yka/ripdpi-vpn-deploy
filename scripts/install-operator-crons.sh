@@ -22,6 +22,8 @@
 #   @daily  backup-state              encrypted local TF state backup
 #   @daily  probe-payload-throttle    per-ASN ~16 KiB payload-throttle probe
 #                                      (only when PAYLOAD_THROTTLE_HOST is set)
+#   @daily  monitor-reality-target    active target ASN/path signal
+#                                      (only when REALITY_TARGET_VANTAGE is set)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -29,6 +31,7 @@ PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 WARM_SPARE_ENV="${WARM_SPARE_ENV:-}"
 PAYLOAD_THROTTLE_HOST="${PAYLOAD_THROTTLE_HOST:-}"
+REALITY_TARGET_VANTAGE="${REALITY_TARGET_VANTAGE:-}"
 
 DRY_RUN=0
 REMOVE=0
@@ -41,11 +44,21 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ -n "$REALITY_TARGET_VANTAGE" ]]; then
+  if [[ "$REALITY_TARGET_VANTAGE" == "unfiltered" ]] || ! [[ "$REALITY_TARGET_VANTAGE" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "REALITY_TARGET_VANTAGE must be a filtered technical label using letters, digits, dot, underscore, or hyphen" >&2
+    exit 2
+  fi
+fi
+
 MARKER_BEGIN="# vpn-deploy: BEGIN — managed block, do not edit"
 MARKER_END="# vpn-deploy: END"
 
 make_block() {
-  local repo="$1"
+  local repo="$1" repo_q env_q vantage_q
+  printf -v repo_q '%q' "$repo"
+  printf -v env_q '%q' "$ENV"
+  printf -v vantage_q '%q' "$REALITY_TARGET_VANTAGE"
   cat <<EOF
 ${MARKER_BEGIN}
 # Operator-side cron jobs for ${PROVIDER}:${ENV}. Re-run
@@ -67,6 +80,13 @@ EOF
     cat <<EOF
 @daily         cd ${repo} && make probe-payload-throttle HOST=${PAYLOAD_THROTTLE_HOST} >>/tmp/vpn-payload-throttle.log 2>&1
 EOF
+  fi
+  if [[ -n "$REALITY_TARGET_VANTAGE" ]]; then
+    cat <<EOF
+@daily         cd ${repo_q} && ENV=${env_q} VANTAGE=${vantage_q} make monitor-reality-target  2>&1 | logger -t vpn-reality-target
+EOF
+  else
+    echo "REALITY target monitor skipped: set REALITY_TARGET_VANTAGE to a filtered technical label" >&2
   fi
   echo "${MARKER_END}"
 }
