@@ -78,9 +78,21 @@ impl std::fmt::Debug for Client {
 
 impl Secrets {
     pub fn load(path: &Path) -> Result<Self> {
-        if !path.is_file() {
+        use std::os::unix::fs::MetadataExt;
+        let metadata = std::fs::symlink_metadata(path)
+            .with_context(|| format!("inspect {}", path.display()))?;
+        let owner = std::process::Command::new("id")
+            .arg("-u")
+            .output()
+            .context("resolve current uid")?;
+        let uid = std::str::from_utf8(&owner.stdout)
+            .context("decode current uid")?
+            .trim()
+            .parse::<u32>()
+            .context("parse current uid")?;
+        if !metadata.file_type().is_file() || metadata.uid() != uid || metadata.mode() & 0o077 != 0 {
             return Err(anyhow!(
-                "decrypted secrets not found at {} — run `vpnd ... ` (which will call `make decrypt`)",
+                "decrypted secrets at {} is missing or has unsafe owner, type, or permissions",
                 path.display()
             ));
         }

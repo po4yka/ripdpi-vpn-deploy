@@ -87,6 +87,28 @@ fn load_fails_gracefully_for_missing_file() {
 }
 
 #[test]
+fn load_rejects_group_readable_secrets() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp.path(), FIXTURE).unwrap();
+    std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o640)).unwrap();
+    assert!(Secrets::load(tmp.path()).is_err());
+}
+
+#[test]
+fn load_rejects_symlinked_secrets() {
+    use std::os::unix::fs::symlink;
+
+    let target = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(target.path(), FIXTURE).unwrap();
+    let link_dir = tempfile::TempDir::new().unwrap();
+    let link = link_dir.path().join("secrets.yaml");
+    symlink(target.path(), &link).unwrap();
+    assert!(Secrets::load(&link).is_err());
+}
+
+#[test]
 fn fixture_exposes_nginx_xhttp_server_name() {
     let s = load_fixture();
     assert_eq!(

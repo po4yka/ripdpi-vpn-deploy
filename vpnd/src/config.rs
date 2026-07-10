@@ -46,7 +46,14 @@ impl Context {
             .ok_or_else(|| anyhow!("could not resolve user config dir"))?;
 
         let sops_file = config_dir.join(format!("{}.secrets.sops.yaml", cli.env));
-        let secrets_file = PathBuf::from(format!("/tmp/vpn-{}.secrets.yaml", cli.env));
+        let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                directories::BaseDirs::new()
+                    .map(|b| b.cache_dir().join("vpn-provision"))
+                    .unwrap_or_else(|| config_dir.join("runtime"))
+            });
+        let secrets_file = runtime_dir.join(format!("vpn-{}.secrets.yaml", cli.env));
 
         Ok(Self {
             root,

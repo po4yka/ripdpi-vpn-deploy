@@ -4,7 +4,8 @@ ENV      ?= prod
 TF_ROOT       := terraform/providers/$(PROVIDER)
 TF_ENV        := ./scripts/terraform-env.sh
 ANSIBLE_DIR   := ansible
-SECRETS_FILE  ?= /tmp/vpn-$(ENV).secrets.yaml
+RUNTIME_DIR   ?= $(if $(XDG_RUNTIME_DIR),$(XDG_RUNTIME_DIR),$(HOME)/.cache)/vpn-provision
+SECRETS_FILE  ?= $(RUNTIME_DIR)/vpn-$(ENV).secrets.yaml
 SOPS_FILE     ?= $(HOME)/.config/vpn-provision/$(ENV).secrets.sops.yaml
 TFVARS        := $(TF_ROOT)/environments/$(ENV).tfvars
 TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
@@ -142,10 +143,7 @@ validate:
 	cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check
 
 decrypt:
-	@test -f "$(SOPS_FILE)" || { echo "missing $(SOPS_FILE)"; exit 1; }
-	sops --decrypt --output $(SECRETS_FILE) $(SOPS_FILE)
-	chmod 0600 $(SECRETS_FILE)
-	@echo "decrypted to $(SECRETS_FILE)"
+	SECRETS_FILE="$(SECRETS_FILE)" SOPS_FILE="$(SOPS_FILE)" ./scripts/decrypt-secrets.sh
 
 plan:
 	@test -f "$(TFVARS)" || { echo "missing $(TFVARS) — copy from .example and fill"; exit 1; }
