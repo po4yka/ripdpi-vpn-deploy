@@ -228,6 +228,19 @@
     path: "{{ xray_etc_dir }}/config.json"
   register: _xray_config_stat
 
+- name: Detect Xray config change before preserving rollback state
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: "{{ xray_etc_dir }}/config.json"
+    owner: root
+    group: "{{ xray_runtime_group }}"
+    mode: "0640"
+    validate: "/usr/local/bin/xray run -test -config %s"
+  check_mode: true
+  register: _xray_config_change
+  no_log: true
+  diff: false
+
 - name: Backup previous Xray config if exists
   ansible.builtin.copy:
     src: "{{ xray_etc_dir }}/config.json"
@@ -236,7 +249,9 @@
     owner: root
     group: "{{ xray_runtime_group }}"
     mode: "0640"
-  when: _xray_config_stat.stat.exists
+  when:
+    - _xray_config_stat.stat.exists
+    - _xray_config_change.changed
   changed_when: false
 
 - name: Render and validate Xray config
