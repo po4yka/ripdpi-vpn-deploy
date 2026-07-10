@@ -22,6 +22,7 @@ honeypot:
   # this many events per minute. Avoids disk-filling DoS via probe
   # storm; the per-minute COUNT still updates every event.
   events_per_minute_max: 1000
+  max_concurrent_connections: 64
   # Listen address. "0.0.0.0" = every public IP on the host (the v1
   # default; the canary co-locates with REALITY and catches port
   # scans). Set `additional_public_ip = true` in the UpCloud tfvars

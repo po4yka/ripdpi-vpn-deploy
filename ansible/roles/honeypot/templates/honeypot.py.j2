@@ -34,6 +34,7 @@ LISTEN_PORT = {{ honeypot.port }}
 LOG_DIR = pathlib.Path("{{ honeypot.log_dir }}")
 TEXTFILE_DIR = pathlib.Path("{{ honeypot.textfile_dir }}")
 EVENTS_PER_MINUTE_MAX = {{ honeypot.events_per_minute_max | default(1000) }}
+MAX_CONCURRENT_CONNECTIONS = {{ honeypot.max_concurrent_connections | default(64) }}
 # Cap unique-IP and unique-SNI sets to avoid unbounded memory growth
 # under mass-scan conditions (mirrors the bounded _recent_minutes deque).
 UNIQUE_SETS_MAX = {{ honeypot.unique_sets_max | default(50000) }}
@@ -47,6 +48,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 TEXTFILE_DIR.mkdir(parents=True, exist_ok=True)
 
 _events_lock = threading.Lock()
+_workers = threading.BoundedSemaphore(MAX_CONCURRENT_CONNECTIONS)
 _recent_minutes: deque[tuple[int, int]] = deque(maxlen=60)  # (minute_epoch, count)
 _total_events = 0
 _unique_ips: set[str] = set()
@@ -187,7 +189,15 @@ def main() -> None:
     logging.info("honeypot listening on %s:%d", LISTEN_ADDR, LISTEN_PORT)
     while True:
         conn, addr = s.accept()
-        threading.Thread(target=_handle, args=(conn, addr), daemon=True).start()
+        if not _workers.acquire(blocking=False):
+            conn.close()
+            continue
+        def worker(conn: socket.socket = conn, addr: tuple[str, int] = addr) -> None:
+            try:
+                _handle(conn, addr)
+            finally:
+                _workers.release()
+        threading.Thread(target=worker, daemon=True).start()
 
 
 if __name__ == "__main__":
