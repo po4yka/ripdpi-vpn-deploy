@@ -51,7 +51,13 @@ async fn share_generates_a_bundle_for_a_canonical_xray_client() {
             qr: false,
             r#type: ShareType::Singbox,
             out: Some(out.clone()),
-            token: Some("test-token_123".into()),
+            token_stdin: false,
+            token_file: Some({
+                let token = root.path().join("token");
+                std::fs::write(&token, "test-token_123\n").unwrap();
+                std::fs::set_permissions(&token, std::fs::Permissions::from_mode(0o600)).unwrap();
+                token
+            }),
         },
     )
     .await
