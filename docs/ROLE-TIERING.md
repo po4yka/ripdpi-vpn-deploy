@@ -29,6 +29,15 @@ Tier definitions:
   condition; not default-on for a family node.
 - **RESEARCH** — experimental / unconfirmed-in-prod / measurement-only. Must
   never appear enabled in a default family deploy.
+- **EXCEPTION** — hosting-jurisdiction exception. Reserved for roles whose risk
+  is a *hosting-location / legal-compulsion* category distinct from RESEARCH's
+  technique-maturity rationale. Opt-in only via a literal (non-boolean)
+  acknowledgment, provisioned from isolated Terraform state, never in any
+  default family profile, and gated by an empirical, expiring, fail-closed
+  per-ASN attestation. Introduced for the RU-entry cascade ingress/egress role
+  pair (roles not yet implemented — Phase 2). See `RU-CASCADE-DECISION.md` and
+  `CASCADE-ASN-ATTESTATION.md`. This is the repo's first hosting-jurisdiction
+  exception; do not fold jurisdiction risk into RESEARCH.
 
 ## The three angles (argued independently, then reconciled)
 

@@ -11,6 +11,7 @@ Source: repository-local deployment measurements and operator validation.
 | Avoid | JustHost AS26383, VDSina AS216071 | Frequently flagged as VPN-tenant ranges; high churn |
 | Acceptable | UpCloud (current primary) | Not on the public RKN/TSPU watch lists as of 2026-05; verify ASN before rollout |
 | Preferred | Hostkey, nuxt.cloud (DE/NL), hostvds.com (FI) | Smaller, less-flagged ranges per community testing |
+| Jurisdiction-Exception (opt-in only, never Preferred/Acceptable) | *(no provider/ASN preselected — see note)* | RU-hosted cascade entry node for temporary whitelist-riding only. No brand/ASN is listed here on purpose: eligibility is a per-ASN empirical, expiring, fail-closed attestation, never a brand assumption (Yandex.Cloud LLC vs YANDEX LLC are distinct ASNs). First hosting-jurisdiction exception in this repo; accepts bounded RU legal/data-retention/seizure exposure for a temporary node. See `RU-CASCADE-DECISION.md` + `CASCADE-ASN-ATTESTATION.md` + the EXCEPTION tier in `ROLE-TIERING.md` |
 
 For a full deploy this primarily affects the **egress** IP, not the
 ingress: a node that ingresses on REALITY/TCP and egresses through the
