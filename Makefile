@@ -11,7 +11,7 @@ TFVARS        := $(TF_ROOT)/environments/$(ENV).tfvars
 TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
 
 export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
-export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE
+export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CONFIG
 
 .PHONY: help init validate plan apply inventory wait decrypt dry-run deploy deploy-canary verify security-verify security-audit clean \
         pre-deploy-check \
@@ -21,7 +21,7 @@ export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE
         spot-check-secrets bootstrap-secrets probe-asn emit-qr check-certs \
         audit-permissions asn-drift check-ip-reputation issue-bootstrap \
         test-tls-policing probe-payload-throttle fleet-status drift-since-tag fleet-rotate \
-        watch-spare promote-spare probing-summary tspu-canary \
+        protocol-liveness install-liveness-sentinel watch-spare promote-spare probing-summary tspu-canary \
         emit-sbom molecule-full-stack audit-log audit-log-append pyinfra-audit \
         setup-yubikey check-killswitch install-operator-crons \
         remove-operator-crons issue-sub-token sub-reads \
@@ -73,6 +73,8 @@ help:
 	@echo "  drift-since-tag            Diff fleet against last vpn-deploy-known-good-* tag"
 	@echo "  blue-green GREEN_ENV=<name>  Orchestrate single-host blue-green"
 	@echo "  fleet-rotate PLAN=…        Coordinated rotation across fleet (--dry-run / --resume)"
+	@echo "  protocol-liveness LIVENESS_CONFIG=…  Pull sentinel probes and evaluate quorum"
+	@echo "  install-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=…  Secure sentinel onboarding"
 	@echo "  watch-spare                Cron: probe blue, push OTP-gated promote alert"
 	@echo "  promote-spare OTP=…        Consume OTP and swing traffic to GREEN_ENV"
 	@echo ""
@@ -436,11 +438,20 @@ fleet-rotate:
 	  $(if $(filter 1 yes true,$(DRY_RUN)),--dry-run)
 
 watch-spare:
-	PROVIDER=$(PROVIDER) BLUE_ENV=$(ENV) ./scripts/warm-spare-watcher.sh
+	PROVIDER=$(PROVIDER) BLUE_ENV=$(ENV) LIVENESS_CONFIG="$(LIVENESS_CONFIG)" ./scripts/warm-spare-watcher.sh
 
 promote-spare:
 	@test -n "$(OTP)" || { echo "usage: make promote-spare OTP=<value>"; exit 1; }
-	PROVIDER=$(PROVIDER) BLUE_ENV=$(ENV) ./scripts/promote-spare.sh $(OTP)
+	PROVIDER=$(PROVIDER) BLUE_ENV=$(ENV) LIVENESS_CONFIG="$(LIVENESS_CONFIG)" ./scripts/promote-spare.sh $(OTP)
+
+protocol-liveness:
+	@test -n "$(LIVENESS_CONFIG)" || { echo "usage: make protocol-liveness LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml"; exit 1; }
+	python3 ./scripts/protocol-liveness.py --config "$(LIVENESS_CONFIG)"
+
+install-liveness-sentinel:
+	@test -n "$(LIVENESS_CONFIG)" -a -n "$(SENTINEL)" -a -n "$(CLIENT)" || { echo "usage: make install-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=…"; exit 1; }
+	@echo "If the sentinel policy requires AWG, paste the one-time private key for $(CLIENT), then press Enter:"
+	@./scripts/install-liveness-sentinel.sh --config "$(LIVENESS_CONFIG)" --sentinel "$(SENTINEL)" --client "$(CLIENT)" --awg-private-key-stdin
 
 probing-summary:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/probing-summary.sh
@@ -469,7 +480,7 @@ check-killswitch:
 	python3 ./scripts/check-singbox-killswitch.py $(BUNDLE)
 
 install-operator-crons:
-	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/install-operator-crons.sh \
+	PROVIDER=$(PROVIDER) ENV=$(ENV) LIVENESS_CONFIG="$(LIVENESS_CONFIG)" ./scripts/install-operator-crons.sh \
 	  $(if $(filter 1 yes true,$(DRY_RUN)),--dry-run)
 
 remove-operator-crons:

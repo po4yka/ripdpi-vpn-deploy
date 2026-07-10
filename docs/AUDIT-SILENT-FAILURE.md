@@ -64,6 +64,8 @@ Seven controls, eight findings (watchdog splits into two). All `BROKEN`. No `VER
 - Change the grep to a token Xray actually emits: `grep -c -E ' rejected | -> *block\]'` (lowercase, bracket-aware), and fix the `graylist` reference in `docs/RUNBOOK-incident.md`.
 - Correct the role `CLAUDE.md` "public surface" claim.
 
+**Resolution (2026-07-10).** The watchdog's local diagnostics and self-dial can validate node configuration but remain explicitly non-authoritative for transit reachability. `docs/PROTOCOL-LIVENESS.md` defines the separate rotation signal: managed client-path sentinels complete authenticated traffic through REALITY, XHTTP, Hysteria2, and AmneziaWG; an operator-side evaluator requires fresh direct controls, a configurable failed-vantage quorum, and three consecutive failures before issuing an environment- and policy-bound OTP. Unknown, stale, malformed, authentication, dependency, and sub-quorum results cannot trigger promotion, and the OTP is revalidated before the existing operator-confirmed blue-green flow starts.
+
 ---
 
 ## 4. `check-singbox-killswitch.py` — passes vacuously on the normal Android flow

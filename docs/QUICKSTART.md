@@ -208,6 +208,9 @@ Add to your operator's cron / launchd:
 # Every 30 min — external IP reachability probe (catches IP burns early)
 */30 * * * *  cd ~/GitRep/vpn-deploy && make burn-check >> /tmp/vpn-burn.log 2>&1
 
+# Every 2 min — authenticated protocol quorum (requires managed sentinels)
+*/2 * * * *   cd ~/GitRep/vpn-deploy && LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml GREEN_ENV=spare make watch-spare >> /tmp/vpn-spare.log 2>&1
+
 # Daily — encrypted backup of TF state to ~/.config/vpn-provision/state-backups/
 @daily       cd ~/GitRep/vpn-deploy && make backup-state >> /tmp/vpn-tfstate-backup.log 2>&1
 ```
@@ -215,6 +218,7 @@ Add to your operator's cron / launchd:
 The VPS itself runs a local watchdog every 5 minutes (the `watchdog`
 Ansible role) that pushes alerts to ntfy.sh / Pushover when probes fail.
 Set `watchdog_secrets.ntfy_topic` in your secrets file before deploy.
+The local watchdog covers process, listener, and configuration state only. Configure at least two client-path sentinels per `docs/PROTOCOL-LIVENESS.md` before treating liveness as an infrastructure-rotation signal.
 
 On a filtered probe host, install daily active-target ASN/path monitoring with `make install-operator-crons REALITY_TARGET_VANTAGE=filtered-cohort-a`. The label must describe a technical cohort, not a carrier, operator, or geography. See `docs/REALITY-TARGET-MONITORING.md` for the two-strike alert and acknowledgement flow.
 
