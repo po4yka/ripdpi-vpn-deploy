@@ -37,7 +37,9 @@
           - "'kbdinteractiveauthentication no' in (security_sshd_t.stdout | lower)"
           - "'permitrootlogin no' in (security_sshd_t.stdout | lower)"
           - "'x11forwarding no' in (security_sshd_t.stdout | lower)"
-          - "(_security_controls.ssh_allow_tcp_forwarding | default(false) | bool) or 'allowtcpforwarding no' in (security_sshd_t.stdout | lower)"
+          - >-
+            (_security_controls.ssh_allow_tcp_forwarding | default(false) | bool)
+            or 'allowtcpforwarding no' in (security_sshd_t.stdout | lower)
           - "not (_security_controls.ssh_strict | default(true) | bool) or 'allowagentforwarding no' in (security_sshd_t.stdout | lower)"
           - "not (_security_controls.ssh_strict | default(true) | bool) or 'permittunnel no' in (security_sshd_t.stdout | lower)"
           - "not (_security_controls.ssh_strict | default(true) | bool) or 'permitemptypasswords no' in (security_sshd_t.stdout | lower)"
@@ -111,9 +113,15 @@
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
-          expected_tcp=" 22 {% for listener in public_listener_contract if listener.protocol == 'tcp' and listener.port is not none %}{{ listener.port }} {% endfor %} "
-          expected_udp=" {% for listener in public_listener_contract if listener.protocol == 'udp' and listener.port is not none %}{{ listener.port }} {% endfor %} "
-          expected_udp_ranges=" {% for listener in public_listener_contract if listener.protocol == 'udp' and listener.port_range is not none %}{{ listener.port_range }} {% endfor %} "
+          expected_tcp=" 22 {% for listener in public_listener_contract
+          if listener.protocol == 'tcp' and listener.port is not none
+          %}{{ listener.port }} {% endfor %} "
+          expected_udp=" {% for listener in public_listener_contract
+          if listener.protocol == 'udp' and listener.port is not none
+          %}{{ listener.port }} {% endfor %} "
+          expected_udp_ranges=" {% for listener in public_listener_contract
+          if listener.protocol == 'udp' and listener.port_range is not none
+          %}{{ listener.port_range }} {% endfor %} "
 
           in_list() {
             case "$1" in

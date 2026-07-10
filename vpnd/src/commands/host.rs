@@ -11,8 +11,23 @@ pub async fn run(_ctx: &Context, args: HostArgs) -> Result<()> {
     match args.action {
         HostAction::List => list(&reg),
         HostAction::Show { name } => show(&reg, &name)?,
-        HostAction::Add { name, env, provider, ipv4, ipv6 } => {
-            reg.upsert(&name, Host { env, provider, ipv4, ipv6, deployed_with: None });
+        HostAction::Add {
+            name,
+            env,
+            provider,
+            ipv4,
+            ipv6,
+        } => {
+            reg.upsert(
+                &name,
+                Host {
+                    env,
+                    provider,
+                    ipv4,
+                    ipv6,
+                    deployed_with: None,
+                },
+            );
             reg.save()?;
             eprintln!("{} added '{}'", "✓".green(), name);
         }
@@ -29,12 +44,23 @@ pub async fn run(_ctx: &Context, args: HostArgs) -> Result<()> {
 
 fn list(reg: &Registry) {
     if reg.hosts.is_empty() {
-        eprintln!("{}", "(no hosts registered — run `vpnd host add <name> --env … --provider …`)".dimmed());
+        eprintln!(
+            "{}",
+            "(no hosts registered — run `vpnd host add <name> --env … --provider …`)".dimmed()
+        );
         return;
     }
     let mut t = Table::new();
-    t.load_preset(UTF8_FULL).set_content_arrangement(ContentArrangement::Dynamic);
-    t.set_header(vec!["name", "env", "provider", "ipv4", "ipv6", "deployed_with"]);
+    t.load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic);
+    t.set_header(vec![
+        "name",
+        "env",
+        "provider",
+        "ipv4",
+        "ipv6",
+        "deployed_with",
+    ]);
     for (name, h) in &reg.hosts {
         t.add_row(vec![
             name.clone(),
@@ -49,7 +75,9 @@ fn list(reg: &Registry) {
 }
 
 fn show(reg: &Registry, name: &str) -> Result<()> {
-    let h = reg.get(name).ok_or_else(|| anyhow!("no such host: {}", name))?;
+    let h = reg
+        .get(name)
+        .ok_or_else(|| anyhow!("no such host: {}", name))?;
     println!("{}", serde_json::to_string_pretty(h)?);
     Ok(())
 }

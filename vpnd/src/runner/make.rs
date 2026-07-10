@@ -26,7 +26,10 @@ pub fn target(ctx: &Context, name: &str) -> Cmd {
         .arg(format!("ENV={}", ctx.env))
         .arg(format!("PROVIDER={}", ctx.provider))
         .cwd(ctx.root.clone())
-        .describe(format!("make {} ENV={} PROVIDER={}", name, ctx.env, ctx.provider))
+        .describe(format!(
+            "make {} ENV={} PROVIDER={}",
+            name, ctx.env, ctx.provider
+        ))
 }
 
 /// Build a `make` target with additional `KEY=VALUE` args appended.
@@ -77,7 +80,10 @@ mod tests {
         let client_pos = s.find("CLIENT=phone").expect("CLIENT=phone");
         let extra_pos = s.find("EXTRA=1").expect("EXTRA=1");
         assert!(prov_pos < client_pos, "KVs come after PROVIDER=, got: {s}");
-        assert!(client_pos < extra_pos, "KV insertion order preserved, got: {s}");
+        assert!(
+            client_pos < extra_pos,
+            "KV insertion order preserved, got: {s}"
+        );
     }
 
     #[test]

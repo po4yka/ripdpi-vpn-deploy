@@ -43,7 +43,10 @@ fn redact_handles_multi_line_input() {
     let input = "line one\n/tmp/vpn-staging.secrets.yaml path here\nline three";
     let result = redact_string(input);
     assert!(result.contains("line one"), "line one must survive");
-    assert!(!result.contains("/tmp/vpn-staging"), "secret line must be masked");
+    assert!(
+        !result.contains("/tmp/vpn-staging"),
+        "secret line must be masked"
+    );
     assert!(result.contains("line three"), "line three must survive");
 }
 
@@ -56,8 +59,14 @@ fn redact_handles_empty_input() {
 fn redact_handles_multiple_secret_lines() {
     let input = "a\n/tmp/vpn-prod.secrets.yaml\n/tmp/vpn-staging.secrets.yaml\nb";
     let result = redact_string(input);
-    assert!(!result.contains("/tmp/vpn-"), "all secret lines must be masked");
-    assert!(result.contains("a") && result.contains("b"), "non-secret lines preserved");
+    assert!(
+        !result.contains("/tmp/vpn-"),
+        "all secret lines must be masked"
+    );
+    assert!(
+        result.contains("a") && result.contains("b"),
+        "non-secret lines preserved"
+    );
 }
 
 // Bundle structure test: write a bundle to tempdir and verify tarball contents
@@ -73,8 +82,12 @@ async fn bundle_path_is_gzip_tar_with_expected_files() {
     std::fs::write(repo.path().join("Makefile"), "# fake\n").unwrap();
     std::fs::create_dir_all(repo.path().join("ansible")).unwrap();
     std::fs::create_dir_all(
-        repo.path().join("terraform").join("providers").join("upcloud")
-    ).unwrap();
+        repo.path()
+            .join("terraform")
+            .join("providers")
+            .join("upcloud"),
+    )
+    .unwrap();
 
     let bundle_path = bundle_dir.path().join("diag.tar.gz");
 
@@ -86,7 +99,11 @@ async fn bundle_path_is_gzip_tar_with_expected_files() {
     let ctx = vpnd::config::Context {
         root: repo.path().to_path_buf(),
         ansible_dir: repo.path().join("ansible"),
-        tf_root: repo.path().join("terraform").join("providers").join("upcloud"),
+        tf_root: repo
+            .path()
+            .join("terraform")
+            .join("providers")
+            .join("upcloud"),
         env: "prod".into(),
         provider: "upcloud".into(),
         sops_file: config.path().join("prod.secrets.sops.yaml"),
@@ -122,9 +139,13 @@ async fn bundle_path_is_gzip_tar_with_expected_files() {
             .filter_map(|e| e.path().ok().map(|p| p.to_string_lossy().into_owned()))
             .collect();
 
-        assert!(entries.contains(&"vpnd-version.txt".to_string()),
-            "bundle must contain vpnd-version.txt, got: {entries:?}");
-        assert!(entries.contains(&"doctor-report.md".to_string()),
-            "bundle must contain doctor-report.md, got: {entries:?}");
+        assert!(
+            entries.contains(&"vpnd-version.txt".to_string()),
+            "bundle must contain vpnd-version.txt, got: {entries:?}"
+        );
+        assert!(
+            entries.contains(&"doctor-report.md".to_string()),
+            "bundle must contain doctor-report.md, got: {entries:?}"
+        );
     }
 }

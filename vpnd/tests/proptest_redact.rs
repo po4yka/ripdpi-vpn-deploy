@@ -11,8 +11,7 @@ use vpnd::commands::doctor::redact_secrets;
 
 /// Strategy: a random ASCII identifier for the env segment (letters + digits + hyphens).
 fn env_strategy() -> impl Strategy<Value = String> {
-    "[a-z][a-z0-9-]{0,15}"
-        .prop_map(|s| s)
+    "[a-z][a-z0-9-]{0,15}".prop_map(|s| s)
 }
 
 /// Strategy: a single non-empty line (no embedded newlines) with no secrets

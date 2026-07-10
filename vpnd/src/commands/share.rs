@@ -181,7 +181,10 @@ fn set_private_mode(path: &std::path::Path, mode: u32) -> Result<()> {
 fn write_private(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
     use std::io::Write;
     let temp = path.with_extension("tmp");
-    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&temp)?;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp)?;
     file.write_all(bytes)?;
     file.sync_all()?;
     set_private_mode(&temp, 0o600)?;

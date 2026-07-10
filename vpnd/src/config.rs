@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 use crate::cli::Cli;
 
 /// Resolved paths and flags for a single `vpnd` invocation.
-#[allow(dead_code)] // several fields (ansible_dir, tf_root, json) are reserved for subcommands not yet wired; removing them would break the Context contract
+#[allow(dead_code)]
+// several fields (ansible_dir, tf_root, json) are reserved for subcommands not yet wired; removing them would break the Context contract
 #[derive(Debug, Clone)]
 pub struct Context {
     pub root: PathBuf,
@@ -23,15 +24,22 @@ pub struct Context {
 impl Context {
     pub fn discover(cli: &Cli) -> Result<Self> {
         let root = match &cli.root {
-            Some(p) => p.canonicalize().with_context(|| format!("--root {} not found", p.display()))?,
-            None => find_repo_root().context("could not locate vpn-deploy repo root (set VPN_DEPLOY_ROOT or cd into it)")?,
+            Some(p) => p
+                .canonicalize()
+                .with_context(|| format!("--root {} not found", p.display()))?,
+            None => find_repo_root().context(
+                "could not locate vpn-deploy repo root (set VPN_DEPLOY_ROOT or cd into it)",
+            )?,
         };
 
         let ansible_dir = root.join("ansible");
         let tf_root = root.join("terraform").join("providers").join(&cli.provider);
 
         if !ansible_dir.is_dir() {
-            return Err(anyhow!("missing {} — not a vpn-deploy repo root", ansible_dir.display()));
+            return Err(anyhow!(
+                "missing {} — not a vpn-deploy repo root",
+                ansible_dir.display()
+            ));
         }
         if !tf_root.is_dir() {
             return Err(anyhow!(
@@ -92,7 +100,10 @@ fn find_repo_root() -> Result<PathBuf> {
             return Ok(ancestor.to_path_buf());
         }
     }
-    Err(anyhow!("no vpn-deploy repo root found at or above {}", cwd.display()))
+    Err(anyhow!(
+        "no vpn-deploy repo root found at or above {}",
+        cwd.display()
+    ))
 }
 
 fn is_repo_root(p: &Path) -> bool {

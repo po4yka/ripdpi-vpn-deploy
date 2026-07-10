@@ -13,11 +13,23 @@ pub struct Cli {
     pub explain: bool,
 
     /// Target environment.
-    #[arg(long, short = 'e', global = true, env = "VPN_ENV", default_value = "prod")]
+    #[arg(
+        long,
+        short = 'e',
+        global = true,
+        env = "VPN_ENV",
+        default_value = "prod"
+    )]
     pub env: String,
 
     /// Cloud provider Terraform root.
-    #[arg(long, short = 'p', global = true, env = "VPN_PROVIDER", default_value = "upcloud")]
+    #[arg(
+        long,
+        short = 'p',
+        global = true,
+        env = "VPN_PROVIDER",
+        default_value = "upcloud"
+    )]
     pub provider: String,
 
     /// Skip interactive confirmation prompts.
@@ -98,10 +110,19 @@ pub struct ShareArgs {
     #[arg(long)]
     pub out: Option<std::path::PathBuf>,
     /// Read the opaque subscription token from stdin.
-    #[arg(long, conflicts_with = "token_file", required_unless_present = "token_file")]
+    #[arg(
+        long,
+        conflicts_with = "token_file",
+        required_unless_present = "token_file"
+    )]
     pub token_stdin: bool,
     /// Read the opaque subscription token from a 0600 file.
-    #[arg(long, value_name = "PATH", conflicts_with = "token_stdin", required_unless_present = "token_stdin")]
+    #[arg(
+        long,
+        value_name = "PATH",
+        conflicts_with = "token_stdin",
+        required_unless_present = "token_stdin"
+    )]
     pub token_file: Option<std::path::PathBuf>,
 }
 
@@ -205,9 +226,7 @@ pub enum HostAction {
     /// List registered hosts.
     List,
     /// Show one host record.
-    Show {
-        name: String,
-    },
+    Show { name: String },
     /// Add a host record.
     Add {
         name: String,
@@ -221,9 +240,7 @@ pub enum HostAction {
         ipv6: Option<String>,
     },
     /// Remove a host record.
-    Remove {
-        name: String,
-    },
+    Remove { name: String },
 }
 
 #[derive(Args, Debug)]

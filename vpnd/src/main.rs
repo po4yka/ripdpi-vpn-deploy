@@ -47,5 +47,10 @@ fn init_tracing() {
         eprintln!("vpnd: VPND_LOG parse error ({e}); falling back to warn");
         EnvFilter::new("warn")
     });
-    fmt().with_env_filter(filter).with_target(false).without_time().with_writer(std::io::stderr).init();
+    fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .without_time()
+        .with_writer(std::io::stderr)
+        .init();
 }

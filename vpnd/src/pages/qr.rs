@@ -5,7 +5,10 @@ use std::path::Path;
 
 pub fn write_svg(payload: &str, out: &Path) -> Result<()> {
     let code = QrCode::new(payload.as_bytes())?;
-    let s = code.render::<svg::Color<'_>>().min_dimensions(256, 256).build();
+    let s = code
+        .render::<svg::Color<'_>>()
+        .min_dimensions(256, 256)
+        .build();
     std::fs::write(out, s)?;
     Ok(())
 }
@@ -25,7 +28,11 @@ pub fn write_png(payload: &str, out: &Path) -> Result<()> {
         .light_color('.')
         .build();
     let dim = pixels.lines().count();
-    let width = pixels.lines().next().map(|l| l.chars().count()).unwrap_or(dim);
+    let width = pixels
+        .lines()
+        .next()
+        .map(|l| l.chars().count())
+        .unwrap_or(dim);
     let mut ppm = format!("P1\n{width} {dim}\n");
     for line in pixels.lines() {
         for ch in line.chars() {
