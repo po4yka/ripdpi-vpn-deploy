@@ -7,7 +7,7 @@ them because a vulnerable client undoes the server's protections.
 ## AmneziaWG Android split-tunnel localhost leak (issue #2457)
 
 Status: **open, unresolved** as of 2026-05-09. Source:
-`mobile-platform-enforcement/wiki/concepts/amneziawg-android-split-tunnel-localhost-vuln`.
+the local client release notes.
 
 Apps placed on AmneziaWG 2.0 Android's per-app split-tunnel exclusion
 list can still reach `127.0.0.1` and probe the VPN tunnel interface
@@ -57,7 +57,7 @@ still work but lose the preamble cover.
 
 ## VLESS desktop client VPS-IP exposure (2026)
 
-Refs: `transport-protocols/wiki/concepts/vless-client-desktop-ip-exposure-2026`.
+Refs: local client release notes.
 
 The VPS exit IP is observable from a desktop client process by an
 attacker with code-execution rights on the device (telemetry SDKs,
@@ -67,13 +67,13 @@ network behaviour before distributing to a high-risk cohort.
 
 ## VLESS Android SOCKS5 client exposure
 
-Refs: `transport-protocols/wiki/concepts/vless-client-android-socks5-exposure`.
+Refs: `docs/CLIENT-NOTES.md` and the client release notes.
 
 Some VLESS Android clients expose a local SOCKS5 listener that
 non-VPN apps on the same device can reach. This is functional design
 for per-app routing, but it lets a detection-capable app determine
 that a proxy is running by probing the local port. Per-app routing
-should be configured via packageNameRegex (see the wiki page) rather
+should be configured via packageNameRegex rather
 than via app-side SOCKS5.
 
 ## VLESS+REALITY alt-port roll-over (xray_fallback_port)
@@ -112,7 +112,7 @@ single run). Hysteria2's QUIC TLS has no uTLS knob, so this does not apply to it
 **Honest scope — not active on the baseline.** This matters only under the
 June-2026 RKN three-condition TLS pattern
 (`june-2026-rkn-tls-three-condition-block`), whose Condition 1 requires the
-*server* to sit on a flagged Russian cloud AS (Selectel / Yandex Cloud /
+*server* to sit on a flagged cloud AS
 Cloud.ru). The baseline runs foreign VPS (UpCloud / Hetzner / Vultr), which take
 a different enforcement path (TCP port-range, not this TLS-rate rule). So this is
 a **latent** caveat for any RU-hosted relay/cascade node and general client

@@ -2,8 +2,7 @@
 
 ## ASN / hoster risk tiers (RU threat model, 2026-05)
 
-Source: `censorship-bypass/wikis/infrastructure-operations/wiki/concepts/server-anti-detection-checklist-2026`
-and the TCP-freeze observation in `tspu-dpi-internals/wiki/concepts/tcp-connection-freezing`.
+Source: repository-local deployment measurements and operator validation.
 
 | Tier | Provider / ASN | Notes |
 |---|---|---|
@@ -21,7 +20,7 @@ documented in `docs/ARCHITECTURE.md` once that role lands.
 
 ## UDP/443 edge reachability (Hysteria2 / P2)
 
-Source: `censorship-bypass/wikis/transport-protocols/wiki/concepts/cloud-firewall-udp-egress-friction`
+Source: repository-local transport validation.
 (RCQ, 2026-05-27).
 
 All three provider roots open exactly the typed `public_listeners` contract at the edge firewall, with IPv4 + IPv6 parity. The contract is checked against the runtime listener manifest before deployment:
@@ -93,11 +92,11 @@ nominal latency number.
 
 | Cohort | Recommended | Avoid | Why |
 |---|---|---|---|
-| RU mobile (MTS / MegaFon / Beeline) | `fi-hel1`, `de-fra1` | `nl-ams1`, `pl-waw1` | NL/PL ranges historically take more probing waves; FI/DE peering through KSC/Stockholm carries fewer flagged prefixes |
-| RU home ISP (Rostelecom / MTS-broadband) | `de-fra1`, `fi-hel1` | `nl-ams1` | DE-Internet-Exchange peers directly with RU upstreams; lower-jitter for XHTTP/Hysteria |
-| RU mobile under TLS-policing rule (~12-conn home-ISP block) | `de-fra1` + `xray_flow_mode: mux` | any single-zone deploy | The policing rule is independent of zone; mitigation is the cohort-level mux flag (see `docs/MULTI-COHORT.md`), not the zone |
-| EU-resident operator testing | `nl-ams1`, `pl-waw1` | n/a | Closer for development; not the same threat surface as production cohorts |
-| Mixed-cohort fleet | two zones in different countries | one zone | Splitting across `fi-hel1` + `de-fra1` (or +`nl-ams1`) gives the warm-spare (`docs/`-flow `make watch-spare` / `make promote-spare`) something to promote to without sharing a peering point |
+| Mobile-CGNAT cohort | a low-latency zone | a repeatedly probed zone | Prefer the route with lower measured interference, then retain a dissimilar warm spare |
+| Residential fixed-IP cohort | a low-jitter zone | a repeatedly probed zone | Validate the assigned prefix and measured XHTTP/Hysteria performance before adoption |
+| TLS-policing cohort (~12 connections) | any zone + `xray_flow_mode: mux` | a single untested zone | Mitigation is the cohort-level mux flag (see `docs/MULTI-COHORT.md`), not a location label |
+| Development cohort | a low-latency zone | n/a | Development is not the same threat surface as production cohorts |
+| Mixed-cohort fleet | two independently measured zones | one zone | Keep a warm spare on a route with different measured behaviour |
 
 After the zone is picked, validate the actual ASN that UpCloud assigns
 your VPS prefix:

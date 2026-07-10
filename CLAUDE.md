@@ -19,13 +19,13 @@ operator surface; `vpnd/` is a convenience CLI in front of it (see
 - Pinned versions; pre-releases through staging only.
 - Gitleaks gates CI.
 - CDN is **not** the RU baseline (see `docs/CDN-DECISION.md`).
-- **No references to external Obsidian vaults** (vault names, vault filesystem
-  paths, wiki page slugs, "wiki page" citations) anywhere in this repo — code,
+- **No references to external knowledge stores** (store names, filesystem
+  paths, page slugs, or externally hosted citations) anywhere in this repo — code,
   comments, docs, commit messages, task notes. Knowledge that needs to live in
   this repo lives in this repo.
 - **No carrier / ISP / geographic / operator-identifying labels** in file names,
-  slugs, variable names, doc table cells, or comments — e.g. no `rtk-south`,
-  `mts-mobile`, "Rostelecom", "Beeline", "MegaFon", "Rostov Oblast". Describe
+  slugs, variable names, doc table cells, or comments — e.g. no `carrier-region`
+  or `mobile-network`. Describe
   cohorts, profiles, and configurations by their technical signature instead:
   packet shape, protocol parameters, threshold values, observed DPI behaviour.
 
@@ -135,7 +135,7 @@ release-please drives versioning from Conventional Commits. Don't edit
 
 ## Task tracking
 
-Tasks live as Markdown notes (Obsidian-Tasks-compatible line format) under
+Tasks live as Markdown notes (checkbox-task line format) under
 `docs/tasks/`. The format is documented locally in
 `.claude/skills/repo-task-board/SKILL.md`; nothing outside this repo is
 load-bearing.
@@ -150,9 +150,8 @@ load-bearing.
 
 Full schema, allowed statuses, priority markers, and workflows are in
 `.claude/skills/repo-task-board/SKILL.md`. Some task notes carry optional
-extension fields (`source_wiki_pages`, `linked_task`) used by external
-authoring tools; treat them as opaque metadata — do not chase the links
-from inside this repo.
+extension fields (`source_references`, `linked_task`) used by local
+authoring tools; treat them as opaque metadata.
 
 ## When the user says "remember"
 

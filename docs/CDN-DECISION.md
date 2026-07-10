@@ -1,4 +1,4 @@
-# ADR — Cloudflare CDN is not the RU baseline
+# ADR — Cloudflare CDN is not the filtered-network baseline
 
 **Date:** 2026-05-10
 **Last reviewed:** 2026-05-11
@@ -7,13 +7,10 @@
 
 ## Evidence anchor
 
-The Cloudflare-via-RU-PoP situation is documented in the censorship-bypass
-wiki page `regime-landscape/wiki/concepts/cloudflare-russian-pop-tspu-blocking`:
-TSPU filters are applied at the Cloudflare ↔ AS1299 (Arelion/Telia) peering
-points inside Russia. Russian Cloudflare PoPs (DME / KJA / LED) carry both
-WARP and CDN traffic, enabling TSPU interception before egress. The
-observed mechanism is SNI + IP blocking with an 8–16 KB byte-threshold cut
-(`/cdn-cgi/trace` passes; full page loads do not).
+Internal measurements show that a CDN path can share the same filtering
+boundary as direct traffic. The observed mechanism is SNI + IP blocking with
+an 8–16 KB byte-threshold cut (`/cdn-cgi/trace` passes; full page loads do
+not).
 
 ## Decision
 
@@ -26,19 +23,19 @@ CDN by default.
 A Cloudflare-fronted P1 fallback used to be a sensible recipe (Full
 strict TLS, Origin CA, `CF-Connecting-IP` real-IP restoration,
 Authenticated Origin Pulls). That recipe is **technically correct** but
-**no longer the right default for the Russian threat model** as of
+**no longer the right default for the filtered-network threat model** as of
 April–May 2026:
 
-| CDN | Status into RU |
+| CDN | Filtered-network status |
 |---|---|
-| Cloudflare | Reachable, but via Russian PoPs with TSPU enabled. XHTTP passes but the 16 KB curtain is active. Not an independent path — a DPI-shaped one. |
-| VK CDN | POST/PUT/PATCH closed for non-legal-entity accounts; XHTTP packet-up and gRPC broken. A verified юрлицо account directly attributes the channel operator under the corporate-VPN registry. |
-| Yandex CDN | Whitelist mode removed; anonymous endpoints gone. |
-| Ngenix / Beeline / CDNvideo | Functional, candidates for closure within weeks. |
+| Cloudflare | Reachable through a shared filtering boundary. XHTTP passes but the 16 KB curtain is active. Not an independent path — a DPI-shaped one. |
+| Account-bound CDN | Write methods may be unavailable for anonymous accounts; XHTTP packet-up and gRPC can break. |
+| Allowlist CDN | Anonymous endpoints may be unavailable. |
+| Other regional CDNs | Functional, candidates for closure within weeks. |
 | Akamai / CDN77 / Fastly (GET-only) | Work but expensive or narrow. |
 
 Putting CDN in front of P1 in this regime gains nothing (the RU egress is
-still through TSPU) and adds a dependency that can fail or change policy
+still through the same filtering boundary) and adds a dependency that can fail or change policy
 overnight.
 
 ## What this means in code
@@ -48,16 +45,16 @@ overnight.
   proxying the XHTTP path to Xray. No `set_real_ip_from`, no
   `CF-Connecting-IP`, no Origin CA logic.
 - `ansible/roles/cdn-front` exists as a separate, opt-in tactical role
-  for Cloudflare-fronted XHTTP. It is not part of the RU baseline and
+for Cloudflare-fronted XHTTP. It is not part of the baseline and
   is gated by `vpn.enable_cdn_front: false` by default.
 
 ## When you might still want CDN
 
 CDN is a **tactical** layer, not a baseline. Reach for it when:
 
-- The direct foreign IP is being IP-blocked at the carrier (the failure
+- The direct foreign IP is being IP-blocked on a network path (the failure
   shape is "TLS handshake never completes from this network, but completes
-  from a different one"), and a non-RU CDN PoP is reachable.
+  from a different one"), and an independent CDN path is reachable.
 - You need short-term cover while rotating to a new VPS IP.
 - You explicitly want browser-shaped traffic for a small, monitored
   deployment, and you're comfortable losing it within weeks.
@@ -71,8 +68,7 @@ on `nginx-xhttp`.
 
 ## When NOT to use CDN under any circumstances
 
-- **VK CDN, Yandex CDN, RU-domestic CDN** — directly attributes the
-  operator and is closing for non-corporate accounts.
+- **Account-bound CDN** — can directly attribute the operator and close for non-corporate accounts.
 - **Cloudflare as the *only* path** — single point of policy failure.
 - **As a "whitelist bypass"** — CDN reachability is not whitelist
   reachability; that's a different layer (P3 — operator-judged, not
