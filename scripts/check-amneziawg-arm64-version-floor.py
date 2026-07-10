@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
+
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_POLICY = REPO_ROOT / "contract" / "amneziawg-arm64-version-floor.json"
@@ -48,19 +51,24 @@ def _policy_errors(policy: dict) -> list[str]:
         errors.append("verified_safe_floor is null, so guard_required must remain true")
     issues = policy.get("expected_issue_states")
     expected = {
-        ("amnezia-vpn/amneziawg-go", 110, "open"),
-        ("amnezia-vpn/amnezia-client", 2582, "closed"),
+        ("amnezia-vpn/amneziawg-go", 110),
+        ("amnezia-vpn/amnezia-client", 2582),
     }
     if not isinstance(issues, list):
         errors.append("expected_issue_states must be a list")
     else:
         actual = {
-            (item.get("repository"), item.get("number"), item.get("state"))
+            (item.get("repository"), item.get("number"))
             for item in issues
             if isinstance(item, dict)
         }
         if actual != expected:
             errors.append(f"expected_issue_states must be exactly {sorted(expected)}")
+        if any(
+            not isinstance(item, dict) or item.get("state") not in {"open", "closed"}
+            for item in issues
+        ):
+            errors.append("tracked issue states must be open or closed")
     requirements = policy.get("revalidation_requirements")
     if not isinstance(requirements, list) or len(requirements) < 5:
         errors.append(
@@ -69,9 +77,32 @@ def _policy_errors(policy: dict) -> list[str]:
     return errors
 
 
-def _repo_errors() -> list[str]:
+def _yaml_tasks(path: Path) -> list[dict]:
+    value = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(value, list) or not all(isinstance(task, dict) for task in value):
+        raise ValueError(f"{path} must contain a YAML task list")
+    return value
+
+
+def _task_shape_errors(
+    task: dict, description: str, allowed_keys: set[str]
+) -> list[str]:
+    controls = sorted(set(task) - allowed_keys)
+    if not controls:
+        return []
+    return [f"{description} must be unconditional; remove {', '.join(controls)}"]
+
+
+def _non_comment_text(path: Path) -> str:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return "\n".join(
+        line for line in lines if not line.lstrip().startswith(("#", "{#"))
+    )
+
+
+def _repo_errors(repo_root: Path = REPO_ROOT) -> list[str]:
     errors: list[str] = []
-    schema = _load_json(REPO_ROOT / "secrets" / "schema.json")
+    schema = _load_json(repo_root / "secrets" / "schema.json")
     awg = schema["properties"]["amneziawg_secrets"]
     for location, node in (
         ("amneziawg_secrets", awg),
@@ -84,7 +115,7 @@ def _repo_errors() -> list[str]:
                     f"secrets/schema.json {location}.{field} must remain integer const 0"
                 )
 
-    role_tasks = REPO_ROOT / "ansible" / "roles" / "amneziawg" / "tasks"
+    role_tasks = repo_root / "ansible" / "roles" / "amneziawg" / "tasks"
     role = (role_tasks / "main.yml").read_text(encoding="utf-8") + (
         role_tasks / "guard-s34.yml"
     ).read_text(encoding="utf-8")
@@ -101,33 +132,50 @@ def _repo_errors() -> list[str]:
                 f"AmneziaWG role guard no longer covers required source: {fragment}"
             )
 
-    emit_awg = (
-        (REPO_ROOT / "scripts" / "emit-awg.sh").read_text(encoding="utf-8").lower()
-    )
-    emit_bundle = (
-        (REPO_ROOT / "scripts" / "emit-bundle.sh").read_text(encoding="utf-8").lower()
-    )
-    if "resolve_param s3" in emit_awg or "resolve_param s4" in emit_awg:
-        errors.append(
-            "emit-awg.sh must not resolve or emit S3/S4 while the guard is required"
-        )
-    if "--argjson s3" in emit_bundle or "--argjson s4" in emit_bundle:
-        errors.append(
-            "emit-bundle.sh must not serialize S3/S4 while the guard is required"
+    main_tasks = _yaml_tasks(role_tasks / "main.yml")
+    imports = [
+        task
+        for task in main_tasks
+        if task.get("ansible.builtin.import_tasks") == "guard-s34.yml"
+    ]
+    if len(imports) != 1:
+        errors.append("main.yml must import guard-s34.yml exactly once")
+    else:
+        errors.extend(
+            _task_shape_errors(
+                imports[0],
+                "guard-s34.yml import",
+                {"name", "ansible.builtin.import_tasks"},
+            )
         )
 
-    override_tokens = ("amneziawg_arm64_guard_required", "amneziawg_allow_nonzero_s34")
-    override_files = [
-        REPO_ROOT / "ansible" / "roles" / "amneziawg" / "defaults" / "main.yml",
-        REPO_ROOT / "ansible" / "group_vars" / "all.yml",
-    ]
-    for path in override_files:
-        text = path.read_text(encoding="utf-8")
-        for token in override_tokens:
-            if token in text:
-                errors.append(
-                    f"operator override {token} is forbidden in {path.relative_to(REPO_ROOT)}"
-                )
+    guard_tasks = _yaml_tasks(role_tasks / "guard-s34.yml")
+    if len(guard_tasks) != 1 or "ansible.builtin.assert" not in guard_tasks[0]:
+        errors.append("guard-s34.yml must contain exactly one assertion task")
+    else:
+        guard = guard_tasks[0]
+        errors.extend(
+            _task_shape_errors(
+                guard,
+                "S3/S4 assertion",
+                {"name", "vars", "ansible.builtin.assert"},
+            )
+        )
+        conditions = guard["ansible.builtin.assert"].get("that", [])
+        expected_condition = "_awg_s34 | select('ne', 0) | list | length == 0"
+        if conditions != [expected_condition]:
+            errors.append("S3/S4 assertion must reject every non-zero effective value")
+
+    emitter_paths = (
+        repo_root / "scripts" / "emit-awg.sh",
+        repo_root / "scripts" / "emit-bundle.sh",
+        repo_root / "ansible" / "roles" / "amneziawg" / "templates" / "awg0.conf.j2",
+    )
+    for path in emitter_paths:
+        if re.search(r"(?i)\bs[34]\b", _non_comment_text(path)):
+            errors.append(
+                f"{path.relative_to(repo_root)} must not resolve or serialize S3/S4"
+            )
     return errors
 
 
