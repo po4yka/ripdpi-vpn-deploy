@@ -216,6 +216,8 @@ The VPS itself runs a local watchdog every 5 minutes (the `watchdog`
 Ansible role) that pushes alerts to ntfy.sh / Pushover when probes fail.
 Set `watchdog_secrets.ntfy_topic` in your secrets file before deploy.
 
+On a filtered probe host, install daily active-target ASN/path monitoring with `make install-operator-crons REALITY_TARGET_VANTAGE=filtered-cohort-a`. The label must describe a technical cohort, not a carrier, operator, or geography. See `docs/REALITY-TARGET-MONITORING.md` for the two-strike alert and acknowledgement flow.
+
 ## 10. Optional — split the age key for k-of-n recovery
 
 ```bash
