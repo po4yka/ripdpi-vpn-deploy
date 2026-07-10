@@ -22,15 +22,7 @@ from pathlib import Path
 
 from jinja2 import UndefinedError
 
-try:
-    from template_render import REPO_ROOT, ROLES_DIR, merge_render_vars, render_template
-except ModuleNotFoundError:  # Loaded by importlib from the repository root in tests.
-    from scripts.template_render import (
-        REPO_ROOT,
-        ROLES_DIR,
-        merge_render_vars,
-        render_template,
-    )
+from template_render import REPO_ROOT, ROLES_DIR, merge_render_vars, render_template
 
 
 def validate_json(text: str, label: str) -> str | None:

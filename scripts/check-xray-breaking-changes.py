@@ -10,21 +10,7 @@ from pathlib import Path
 
 import yaml
 
-try:
-    from template_render import (
-        EXAMPLE_FILE,
-        REPO_ROOT,
-        merge_render_vars,
-        render_template,
-    )
-except ModuleNotFoundError:  # Loaded by importlib from the repository root in tests.
-    from scripts.template_render import (
-        EXAMPLE_FILE,
-        REPO_ROOT,
-        merge_render_vars,
-        render_template,
-    )
-
+from template_render import EXAMPLE_FILE, REPO_ROOT, merge_render_vars, render_template
 
 GUARD_BLOCK = re.compile(
     r"^```yaml xray-ci-guards\s*$\n(?P<body>.*?)^```\s*$",
@@ -192,6 +178,23 @@ def resolve_path(document: object, path: str) -> object:
     return current
 
 
+def _exact_equal(actual: object, expected: object) -> bool:
+    """Compare YAML/JSON values without Python's bool-number coercion."""
+    if type(actual) is not type(expected):
+        return False
+    if isinstance(actual, dict):
+        return len(actual) == len(expected) and all(
+            key in actual and _exact_equal(actual[key], value)
+            for key, value in expected.items()
+        )
+    if isinstance(actual, list):
+        return len(actual) == len(expected) and all(
+            _exact_equal(actual_item, expected_item)
+            for actual_item, expected_item in zip(actual, expected)
+        )
+    return actual == expected
+
+
 def _selected_items(document: object, select: dict) -> list[object]:
     selected = resolve_path(document, select["path"])
     if selected is MISSING:
@@ -201,7 +204,10 @@ def _selected_items(document: object, select: dict) -> list[object]:
     return [
         item
         for item in items
-        if all(resolve_path(item, path) == expected for path, expected in where.items())
+        if all(
+            _exact_equal(resolve_path(item, path), expected)
+            for path, expected in where.items()
+        )
     ]
 
 
@@ -214,9 +220,11 @@ def _assertion_passes(item: object, guard: dict) -> bool:
     if actual is MISSING:
         return False
     if "equals" in requirement:
-        return actual == requirement["equals"]
+        return _exact_equal(actual, requirement["equals"])
     if "contains" in requirement:
-        return isinstance(actual, list) and requirement["contains"] in actual
+        return isinstance(actual, list) and any(
+            _exact_equal(item, requirement["contains"]) for item in actual
+        )
     return True
 
 
@@ -243,7 +251,11 @@ def evaluate_guards(
         for index, item in enumerate(selected):
             if _assertion_passes(item, guard):
                 continue
-            identity = item.get("tag") if isinstance(item, dict) else None
+            identity = (
+                item.get("tag")
+                if guard["document"] == "rendered-xray" and isinstance(item, dict)
+                else None
+            )
             target = f"tag {identity!r}" if identity else f"selection {index}"
             issues.append(
                 f"{guard['id']}: assertion failed for {target}. {guard['message']}"
