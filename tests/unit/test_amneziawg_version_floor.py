@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 import urllib.error
@@ -24,6 +25,30 @@ def _load_watcher():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _load_validator():
+    spec = importlib.util.spec_from_file_location("awg_validator", VALIDATOR)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _validator_repo(tmp_path: Path) -> Path:
+    files = (
+        "secrets/schema.json",
+        "ansible/roles/amneziawg/tasks/main.yml",
+        "ansible/roles/amneziawg/tasks/guard-s34.yml",
+        "ansible/roles/amneziawg/templates/awg0.conf.j2",
+        "scripts/emit-awg.sh",
+        "scripts/emit-bundle.sh",
+    )
+    for relative in files:
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO_ROOT / relative, destination)
+    return tmp_path
 
 
 def _issues(*, go_state: str = "open", client_state: str = "closed") -> list[dict]:
@@ -75,6 +100,59 @@ def test_policy_validator_rejects_disabled_guard_without_verified_floor(tmp_path
     )
     assert result.returncode == 1
     assert "verified_safe_floor is null" in result.stderr
+
+
+def test_policy_validator_accepts_a_deliberately_advanced_issue_state(tmp_path):
+    policy = json.loads(POLICY.read_text())
+    policy["expected_issue_states"][0]["state"] = "closed"
+    advanced_policy = tmp_path / "policy.json"
+    advanced_policy.write_text(json.dumps(policy))
+
+    result = subprocess.run(
+        [sys.executable, str(VALIDATOR), "--policy", str(advanced_policy)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["conditional_import", "run_once_import", "never_tag", "emitted_s3"],
+)
+def test_policy_validator_rejects_guard_and_emitter_bypasses(tmp_path, mutation):
+    validator = _load_validator()
+    repo = _validator_repo(tmp_path)
+    assert validator._repo_errors(repo) == []
+    if mutation == "conditional_import":
+        path = repo / "ansible/roles/amneziawg/tasks/main.yml"
+        path.write_text(
+            path.read_text().replace(
+                "  ansible.builtin.import_tasks: guard-s34.yml",
+                "  ansible.builtin.import_tasks: guard-s34.yml\n  when: allow_unsafe_s34",
+            )
+        )
+    elif mutation == "run_once_import":
+        path = repo / "ansible/roles/amneziawg/tasks/main.yml"
+        path.write_text(
+            path.read_text().replace(
+                "  ansible.builtin.import_tasks: guard-s34.yml",
+                "  ansible.builtin.import_tasks: guard-s34.yml\n  run_once: true",
+            )
+        )
+    elif mutation == "never_tag":
+        path = repo / "ansible/roles/amneziawg/tasks/guard-s34.yml"
+        path.write_text(
+            path.read_text().replace("  vars:\n", "  tags: [never]\n  vars:\n", 1)
+        )
+    else:
+        path = repo / "ansible/roles/amneziawg/templates/awg0.conf.j2"
+        path.write_text(path.read_text() + "\nS3 = 1\n")
+
+    errors = validator._repo_errors(repo)
+
+    assert errors
 
 
 @pytest.mark.parametrize(
@@ -172,14 +250,22 @@ def test_issue_state_change_requires_review(go_state, client_state, issue_number
     assert any(f"#{issue_number}" in reason for reason in result.reasons)
 
 
-def test_matching_release_claim_requires_review():
+@pytest.mark.parametrize(
+    "claim",
+    [
+        "Fixed S3 padding on Android arm64.",
+        "Corrected S4 handling.",
+        "Resolved H4 transport header alignment.",
+    ],
+)
+def test_matching_release_claim_requires_review(claim):
     watcher = _load_watcher()
     policy = json.loads(POLICY.read_text())
     releases = [
         {
             "tag_name": "4.8.20.0",
             "name": "4.8.20.0",
-            "body": "Fix arm64 S3/S4 H4 transport header alignment.",
+            "body": claim,
             "html_url": "https://example.invalid/4.8.20.0",
         },
         _reviewed_release(policy),

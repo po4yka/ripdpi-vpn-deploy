@@ -52,12 +52,16 @@ jobs:
             const label = 'automation:amneziawg-arm64-floor';
             const title = 'Revalidate claimed AmneziaWG arm64 S3/S4 fix';
             const policy = JSON.parse(fs.readFileSync('contract/amneziawg-arm64-version-floor.json', 'utf8'));
+            const trackedState = Buffer.from(JSON.stringify({
+              issueStates: policy.expected_issue_states.map(({ repository, number, state }) => ({ repository, number, state })),
+              releaseCursor: policy.release_watch.last_reviewed_release,
+            })).toString('base64url');
             const body = [
               '## Upstream fix signal',
               '',
               process.env.WATCH_OUTPUT || '(no watcher output)',
               '',
-              `Tracker cursor at signal: ${policy.release_watch.last_reviewed_release}`,
+              `Tracker state at signal: ${trackedState}`,
               '',
               'This is a review trigger only. Keep S3/S4 fail-closed until the physical arm64 checklist passes',
               'and both repositories are updated together.',
@@ -78,16 +82,20 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               labels: label,
-              state: 'open',
-              per_page: 1,
+              state: 'all',
+              sort: 'updated',
+              direction: 'desc',
+              per_page: 100,
             });
-            if (existing.data.length) {
+            const rolling = existing.data.find(issue => !issue.pull_request);
+            if (rolling) {
               await github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: existing.data[0].number,
+                issue_number: rolling.number,
                 title,
                 body,
+                state: 'open',
               });
             } else {
               await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: [label] });
@@ -101,7 +109,10 @@ jobs:
             const fs = require('fs');
             const label = 'automation:amneziawg-arm64-floor';
             const policy = JSON.parse(fs.readFileSync('contract/amneziawg-arm64-version-floor.json', 'utf8'));
-            const cursor = policy.release_watch.last_reviewed_release;
+            const trackedState = Buffer.from(JSON.stringify({
+              issueStates: policy.expected_issue_states.map(({ repository, number, state }) => ({ repository, number, state })),
+              releaseCursor: policy.release_watch.last_reviewed_release,
+            })).toString('base64url');
             const existing = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -110,14 +121,14 @@ jobs:
               per_page: 10,
             });
             for (const issue of existing.data) {
-              const signalledCursor = issue.body?.match(/^Tracker cursor at signal: (.+)$/m)?.[1];
-              if (!signalledCursor || signalledCursor === cursor) continue;
+              const signalledState = issue.body?.match(/^Tracker state at signal: (.+)$/m)?.[1];
+              if (!signalledState || signalledState === trackedState) continue;
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
                 body: [
-                  `The reviewed release cursor was deliberately advanced from ${signalledCursor} to ${cursor}.`,
+                  'The tracked issue-state/release-cursor snapshot was deliberately advanced after review.',
                   'Closing the rolling signal issue; the committed guard policy is unchanged.',
                 ].join(' '),
               });

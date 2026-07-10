@@ -18,8 +18,7 @@ API_ROOT = "https://api.github.com"
 REMEDIATION_RE = re.compile(
     r"\b(fix(?:ed|es)?|resolv(?:e|ed|es)|correct(?:ed|ion)?|align(?:ed|ment)?)\b", re.I
 )
-S34_RE = re.compile(r"\bS3\b.*\bS4\b|\bS4\b.*\bS3\b", re.I | re.S)
-H4_RE = re.compile(r"\bH4\b", re.I)
+ARM64_PARAMETER_RE = re.compile(r"\b(?:S3|S4|H4)\b", re.I)
 
 
 class WatchResult:
@@ -40,7 +39,7 @@ def _release_claims_fix(policy: dict, release: dict) -> bool:
     ]
     if any(reference in lowered for reference in direct):
         return True
-    mentions_bug = bool(S34_RE.search(text) or H4_RE.search(text))
+    mentions_bug = bool(ARM64_PARAMETER_RE.search(text))
     return mentions_bug and bool(REMEDIATION_RE.search(text))
 
 
