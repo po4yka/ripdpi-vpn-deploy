@@ -118,6 +118,18 @@
     path: "{{ hysteria_config_dir }}/config.yaml"
   register: _hysteria_config_stat
 
+- name: Detect Hysteria config change before preserving rollback state
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ hysteria_config_dir }}/config.yaml"
+    owner: root
+    group: hysteria
+    mode: "0640"
+  check_mode: true
+  register: _hysteria_config_change
+  no_log: true
+  diff: false
+
 - name: Backup previous Hysteria config if exists
   ansible.builtin.copy:
     src: "{{ hysteria_config_dir }}/config.yaml"
@@ -126,7 +138,9 @@
     owner: root
     group: hysteria
     mode: "0640"
-  when: _hysteria_config_stat.stat.exists
+  when:
+    - _hysteria_config_stat.stat.exists
+    - _hysteria_config_change.changed
   changed_when: false
 
 - name: Render Hysteria config
