@@ -10,6 +10,8 @@
     vpn:
       enable_naive: true
       enable_nginx_xhttp: false
+    naive:
+      xcaddy_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
     naive_secrets:
       server_name: "vpn.example.com"
       username: "u-test"

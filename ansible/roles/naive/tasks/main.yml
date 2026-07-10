@@ -8,6 +8,12 @@
       cannot coexist on the same host (both want 443/tcp). Set
       `vpn.enable_nginx_xhttp: false` in group_vars or host_vars.
 
+- name: Pre-flight — require caddy-naive checksum pin
+  ansible.builtin.assert:
+    that:
+      - naive.xcaddy_sha256 is match('^[0-9a-f]{64}$')
+    fail_msg: "naive.xcaddy_sha256 must be a trusted 64-character SHA256 before building"
+
 - name: Install build deps for xcaddy
   ansible.builtin.apt:
     name:
@@ -97,12 +103,11 @@
         GOFLAGS: "-mod=readonly"
       changed_when: true
 
-    - name: Verify caddy-naive binary sha256 (when pin is set)
+    - name: Verify caddy-naive binary sha256
       ansible.builtin.stat:
         path: /usr/local/bin/caddy-naive
         checksum_algorithm: sha256
       register: _caddy_naive_stat
-      when: naive.xcaddy_sha256 | default('') | length > 0
 
     - name: Assert caddy-naive matches pinned sha256
       ansible.builtin.assert:
@@ -113,7 +118,6 @@
           {{ _caddy_naive_stat.stat.checksum }} but naive.xcaddy_sha256 pins
           {{ naive.xcaddy_sha256 }}. Supply-chain substitution possible — review
           xcaddy/forwardproxy source and update the pin only when trusted.
-      when: naive.xcaddy_sha256 | default('') | length > 0
 
     - name: Set perms on caddy-naive
       ansible.builtin.file:
