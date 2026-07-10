@@ -48,6 +48,11 @@ table inet filter {
     type ipv4_addr
     flags timeout
   }
+
+  set policy_offenders6 {
+    type ipv6_addr
+    flags timeout
+  }
 {% endif %}
 
 {% if (vpn.enable_cdn_front | default(false)) and (cdn_front.origin_firewall | default(true)) %}
@@ -85,6 +90,7 @@ table inet filter {
 
     # Early drop for IPs the policy-ratelimit daemon has flagged
     ip saddr @policy_offenders drop
+    ip6 saddr @policy_offenders6 drop
 {% endif %}
 
     ip protocol icmp accept
