@@ -16,6 +16,8 @@ cloud-init owns first-boot bootstrap; Ansible owns runtime state.
 **Floating IP is optional** — `var.use_floating_ip` per provider. Cheap
 operators skip it; blue-green operators turn it on.
 
+**Typed listener contract crosses the cloud/runtime boundary** — `public_listeners` in tfvars is the provider-edge allowlist. Its resolved Terraform output is rendered into inventory, verified against Ansible's enabled listener manifest before deploy, and used by nftables and security verification.
+
 ## What's done well
 
 - **Validation blocks on every input** — region, plan, CIDR, key formats
@@ -41,3 +43,4 @@ operators skip it; blue-green operators turn it on.
   of plans, not that the cloud provider behaves correctly. Real-deploy
   validation is separate (`docs/CI-REAL-DEPLOY.md`).
 - **Raw Terraform bypasses environment selection** — operator paths must use `scripts/terraform-env.sh` (or the Makefile / `vpnd` wrappers), never direct `terraform output`, `plan`, or `apply`.
+- **A provider rule without the contract is a drift bug** — do not add static listener ports to a provider firewall or nftables template; update `public_listeners` and the runtime role configuration together.

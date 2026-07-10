@@ -48,7 +48,7 @@ run "firewall_opens_hysteria_udp_443_when_enabled" {
 
   assert {
     condition = length([
-      for r in values(vultr_firewall_rule.hysteria) :
+      for r in values(vultr_firewall_rule.tcp_public) :
       r if r.notes == "UDP/443 Hysteria2"
       && r.protocol == "udp"
       && r.port == "443"
@@ -65,7 +65,10 @@ run "firewall_drops_hysteria_udp_443_when_disabled" {
   }
 
   assert {
-    condition     = length(vultr_firewall_rule.hysteria) == 0
+    condition = length([
+      for r in values(vultr_firewall_rule.tcp_public) :
+      r if r.notes == "UDP/443 Hysteria2"
+    ]) == 0
     error_message = "enable_hysteria=false must NOT open UDP/443"
   }
 }
@@ -154,6 +157,16 @@ run "rejects_invalid_xhttp_port_zero" {
   }
 
   expect_failures = [var.nginx_xhttp_public_port]
+}
+
+run "rejects_listener_with_empty_name" {
+  command = plan
+
+  variables {
+    public_listeners = [{ name = "", protocol = "tcp", port = 4443 }]
+  }
+
+  expect_failures = [var.public_listeners]
 }
 
 # Implicit default-deny contract: no SSH rule must open an unrestricted source.

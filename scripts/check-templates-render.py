@@ -72,6 +72,13 @@ def merge_render_vars() -> dict:
     merged.setdefault("xray_sha256", "0" * 64)
     merged.setdefault("hysteria_arch", "amd64")
     merged.setdefault("hysteria_sha256", "0" * 64)
+    merged.setdefault("public_listener_contract", [
+        {"name": "xray", "protocol": "tcp", "port": 443, "port_range": None},
+        {"name": "xray-fallback", "protocol": "tcp", "port": 2053, "port_range": None},
+        {"name": "nginx-xhttp", "protocol": "tcp", "port": 8443, "port_range": None},
+        {"name": "hysteria", "protocol": "udp", "port": 443, "port_range": None},
+        {"name": "amneziawg", "protocol": "udp", "port": 51820, "port_range": None},
+    ])
     return merged
 
 

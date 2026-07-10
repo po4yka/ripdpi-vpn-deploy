@@ -169,6 +169,16 @@ run "rejects_invalid_xhttp_port_zero" {
   expect_failures = [var.nginx_xhttp_public_port]
 }
 
+run "rejects_listener_with_empty_name" {
+  command = plan
+
+  variables {
+    public_listeners = [{ name = "", protocol = "tcp", port = 4443 }]
+  }
+
+  expect_failures = [var.public_listeners]
+}
+
 # Implicit default-deny contract: SSH must never accept from world-readable CIDRs.
 # Public ports (443, xhttp, UDP/443) intentionally list 0.0.0.0/0 and ::/0 as
 # sources; SSH must always be CIDR-scoped to preserve the implicit default-deny.

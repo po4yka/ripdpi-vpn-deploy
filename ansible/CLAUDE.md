@@ -22,6 +22,8 @@ the rendered file.
 
 **Listener collisions fail before convergence** — `site.yml` renders a sanitized public listener manifest and runs `scripts/check-listener-collisions.py` in pre_tasks before any role mutates services or nftables.
 
+**Provider listener contract is fail-closed** — inventory carries Terraform's resolved `public_listeners` contract. `site.yml` rejects any mismatch with the runtime manifest before roles run; the firewall role and `security-verify.yml` use that same contract rather than maintaining port lists.
+
 **`molecule` for testing roles, full-stack for site.yml** — `molecule-test
 ROLE=<name>` runs in a Docker container per role. `molecule-full-stack`
 exercises `site.yml` end-to-end.

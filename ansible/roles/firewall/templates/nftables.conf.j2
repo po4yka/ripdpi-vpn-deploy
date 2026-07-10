@@ -17,6 +17,7 @@ flush ruleset
 {% endif %}
 {% set nginx_tcp_port = nginx_xhttp_public_port | default(8443) | int %}
 {% set nginx_collides_with_xray = (vpn.enable_xray_reality | default(true)) and (nginx_tcp_port in xray_tcp_ports) %}
+{% set _awg_inst = (amneziawg_secrets.instances | default([])) if amneziawg_secrets is defined else [] %}
 {% set egress_policy = firewall_egress_policy | default('permissive') -%}
 {% set transport_needs_open_egress = (vpn.enable_xray_reality | default(true)) or (vpn.enable_hysteria | default(false)) or (vpn.enable_naive | default(false)) -%}
 
@@ -91,73 +92,16 @@ table inet filter {
     tcp dport 22 ip6 saddr { {{ ssh_v6_cidrs | join(", ") }} } accept
 {% endif %}
 
-{% if vpn.enable_xray_reality | default(true) %}
-    # P0 — REALITY over TCP{% if _xray_cohorts | length > 0 %} ({{ _xray_cohorts | length }} cohorts){% endif %}
-{% for p in xray_tcp_ports %}
-    tcp dport {{ p }} accept{% if _xray_cohorts | length > 0 %}  # cohort: {{ (_xray_cohorts | selectattr('port','equalto', p) | map(attribute='name') | first) }}{% endif %}
-
-{% endfor %}
-{% endif %}
-
-{% if (vpn.enable_nginx_xhttp | default(true)) and not nginx_collides_with_xray %}
-    # P1 — nginx-xhttp public HTTPS listener
-    tcp dport {{ nginx_tcp_port }} accept
-{% endif %}
-{% set _nginx_xhttp_fallback = (nginx_xhttp.fallback_enabled | default(false)) if nginx_xhttp is defined else false %}
-{% if (vpn.enable_nginx_xhttp | default(true)) and _nginx_xhttp_fallback %}
-    # P1 — nginx-xhttp direct (non-CDN) fallback HTTPS listener. Plain TCP
-    # accept; the CF origin-firewall machinery does NOT apply to this path.
-    tcp dport {{ nginx_xhttp_fallback_port | default(2083) }} accept
-{% endif %}
-
-{% if vpn.enable_hysteria | default(false) %}
-    # P2 — Hysteria2 UDP
-    udp dport {{ hysteria_port | default(443) }} accept
-{% if hysteria_port_range | default('') %}
-    # P2 — Hysteria2 port-hopping range
-    udp dport {{ hysteria_port_range }} accept
-{% endif %}
-{% endif %}
-
-{% if vpn.enable_amneziawg | default(false) %}
-{% set _awg_inst = (amneziawg_secrets.instances | default([])) if amneziawg_secrets is defined else [] %}
-{% if _awg_inst | length > 0 %}
-    # P2 — AmneziaWG ({{ _awg_inst | length }} instances)
-{% for inst in _awg_inst %}
-    udp dport {{ inst.listen_port }} accept  # awg instance: {{ inst.name }}
-{% endfor %}
+{% for listener in public_listener_contract | default([]) %}
+{% set listener_target = listener.port if listener.port is not none else listener.port_range %}
+    # Public listener contract: {{ listener.name }} ({{ listener.protocol }}/{{ listener_target }})
+{% if listener.name == 'cdn-front' and (cdn_front.origin_firewall | default(true)) %}
+    tcp dport {{ listener_target }} ip saddr @cdn_front_origins accept
+    tcp dport {{ listener_target }} ip6 saddr @cdn_front_origins_v6 accept
 {% else %}
-    # P2 — AmneziaWG (default UDP/51820; override via group_vars if needed)
-    udp dport {{ amneziawg.listen_port | default(51820) }} accept
+    {{ listener.protocol }} dport {{ listener_target }} accept
 {% endif %}
-{% endif %}
-
-{% if vpn.enable_honeypot | default(false) %}
-    # Active-probing canary (logs probes; no real service behind it)
-    tcp dport {{ honeypot.port | default(4443) }} accept
-{% endif %}
-{% if vpn.enable_dns_morph_bridge | default(false) %}
-
-    # P4 — DNS-Morph bootstrap-channel listener on UDP/53
-    udp dport {{ dns_morph_bridge.listen_port | default(53) }} accept
-{% endif %}
-{% if vpn.enable_hysteria_realm | default(false) %}
-
-    # P5 — Hysteria Realm rendezvous (TLS-wrapped sing-box realm-service)
-    tcp dport {{ hysteria_realm.listen_port | default(8444) }} accept
-{% endif %}
-
-{% if vpn.enable_cdn_front | default(false) %}
-    # Tactical CDN-fronted XHTTP listener — when origin_firewall is on,
-    # only Cloudflare prefixes may connect; the set is populated by
-    # /etc/cron.daily/cdn-front-refresh-cf-prefixes
-{% if cdn_front.origin_firewall | default(true) %}
-    tcp dport {{ cdn_front.port | default(8443) }} ip saddr @cdn_front_origins accept
-    tcp dport {{ cdn_front.port | default(8443) }} ip6 saddr @cdn_front_origins_v6 accept
-{% else %}
-    tcp dport {{ cdn_front.port | default(8443) }} accept
-{% endif %}
-{% endif %}
+{% endfor %}
 
     counter drop
   }

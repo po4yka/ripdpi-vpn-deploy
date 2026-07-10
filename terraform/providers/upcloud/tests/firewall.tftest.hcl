@@ -186,3 +186,13 @@ run "rejects_invalid_xhttp_port_zero" {
 
   expect_failures = [var.nginx_xhttp_public_port]
 }
+
+run "rejects_listener_with_empty_name" {
+  command = plan
+
+  variables {
+    public_listeners = [{ name = "", protocol = "tcp", port = 4443 }]
+  }
+
+  expect_failures = [var.public_listeners]
+}

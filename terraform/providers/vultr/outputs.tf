@@ -25,3 +25,8 @@ output "zone" {
   value       = vultr_instance.vpn.region
   description = "Provider-specific zone/region/location identifier."
 }
+
+output "public_listeners" {
+  value       = local.effective_public_listeners
+  description = "Canonical public listener contract enforced by the provider firewall."
+}
