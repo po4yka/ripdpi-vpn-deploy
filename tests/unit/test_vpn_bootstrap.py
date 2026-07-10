@@ -112,6 +112,7 @@ def service(tmp_path):
         sub_dir = None
         reads_log = None
         revoked_file = None
+        module = None
 
         def place(self, route: str, token: str, payload: bytes, *, expires=None):
             h = hashlib.sha256(token.encode()).hexdigest()
@@ -151,6 +152,7 @@ def service(tmp_path):
     h.sub_dir = sub_dir
     h.reads_log = reads_log
     h.revoked_file = revoked_file
+    h.module = module
     yield h
 
     srv = server_holder.get("srv")
@@ -253,17 +255,16 @@ def test_expired_iso_with_timezone_offset(service):
     assert service.reads()[-1]["outcome"] == "expired"
 
 
-def test_unparseable_expires_falls_back_to_serving(service):
-    """Garbled .meta must not deny service. The operator hitting a typo
-    in expires shouldn't take the endpoint down for everyone."""
+def test_unparseable_expires_fails_closed(service):
+    """Corrupt expiry state must never turn an expired token into access."""
     token = "garb1000garb1000"
     service.place("sub", token, b"served")
     h = hashlib.sha256(token.encode()).hexdigest()
     (service.sub_dir / "sub" / f"{h}.meta").write_text('{"expires": "not-a-date"}')
 
     resp = service.get(f"/sub/{token}")
-    assert resp.status == 200
-    assert resp.read() == b"served"
+    assert resp.status == 503
+    assert service.reads()[-1]["outcome"] == "expiry-unavailable"
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +301,26 @@ def test_revoked_file_with_comments_and_blanks(service):
         f"# rotated on 2026-05-01\n\n{h}\n# trailing comment\n"
     )
     assert service.get(f"/sub/{token}").status == 410
+
+
+def test_invalid_expiry_metadata_fails_closed_and_is_audited(service):
+    token = "A" * 32
+    service.place("sub", token, b"payload")
+    h = service.module._hash(token)
+    (service.sub_dir / "sub" / f"{h}.meta").write_text("not-json")
+
+    assert service.get(f"/sub/{token}").status == 503
+    assert service.reads()[-1]["outcome"] == "expiry-unavailable"
+
+
+def test_unreadable_revocation_state_fails_closed_and_is_audited(service, monkeypatch):
+    token = "B" * 32
+    service.place("sub", token, b"payload")
+    original = service.module.REVOKED_FILE
+    monkeypatch.setattr(service.module, "REVOKED_FILE", original / "missing" / "revoked")
+
+    assert service.get(f"/sub/{token}").status == 503
+    assert service.reads()[-1]["outcome"] == "revocation-unavailable"
 
 
 # ---------------------------------------------------------------------------

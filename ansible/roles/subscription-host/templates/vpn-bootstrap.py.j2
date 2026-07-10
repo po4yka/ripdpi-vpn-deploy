@@ -60,7 +60,7 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode("ascii")).hexdigest()
 
 
-def _is_revoked(token_hash: str) -> bool:
+def _is_revoked(token_hash: str) -> bool | None:
     try:
         # Re-read every call — the revoked list is small (line count grows
         # with operator-side rotation cadence, not with client count) and
@@ -72,10 +72,12 @@ def _is_revoked(token_hash: str) -> bool:
                     continue
                 if line == token_hash:
                     return True
-    except FileNotFoundError:
-        return False
-    except OSError:
-        return False
+    except FileNotFoundError as exc:
+        logging.error("revocation state is missing: %s", exc)
+        return None
+    except OSError as exc:
+        logging.error("revocation read failed: %s", exc)
+        return None
     return False
 
 
@@ -97,25 +99,33 @@ def _audit(route: str, token_hash: str, outcome: str, src_ip: str, n_bytes: int)
         logging.warning("audit append failed: %s", exc)
 
 
-def _expired(meta_path: pathlib.Path) -> bool:
+def _expired(meta_path: pathlib.Path) -> bool | None:
     if not meta_path.is_file():
         return False
     try:
         meta = json.loads(meta_path.read_text())
-    except (OSError, ValueError):
-        return False
+        if not isinstance(meta, dict):
+            raise ValueError("expiry metadata must be an object")
+    except (OSError, ValueError) as exc:
+        logging.error("expiry metadata read failed: %s", exc)
+        return None
     expires = meta.get("expires")
     if expires is None:
         return False
     now = _dt.datetime.now(tz=_dt.timezone.utc)
     if isinstance(expires, (int, float)):
-        exp_dt = _dt.datetime.fromtimestamp(float(expires), tz=_dt.timezone.utc)
+        try:
+            exp_dt = _dt.datetime.fromtimestamp(float(expires), tz=_dt.timezone.utc)
+        except (OSError, OverflowError, ValueError) as exc:
+            logging.error("expiry timestamp is invalid: %s", exc)
+            return None
     else:
         try:
             exp_dt = _dt.datetime.fromisoformat(str(expires)).replace(
                 tzinfo=_dt.timezone.utc)
-        except ValueError:
-            return False
+        except ValueError as exc:
+            logging.error("expiry metadata is invalid: %s", exc)
+            return None
     return exp_dt < now
 
 
@@ -140,7 +150,12 @@ class Handler(BaseHTTPRequestHandler):
         single_use = (route == "bootstrap")
 
         with _lock:
-            if _is_revoked(token_hash):
+            revoked = _is_revoked(token_hash)
+            if revoked is None:
+                _audit(route, token_hash, "revocation-unavailable", src_ip, 0)
+                self.send_error(503, "Service Unavailable")
+                return
+            if revoked:
                 _audit(route, token_hash, "revoked", src_ip, 0)
                 self.send_error(410, "Gone")
                 return
@@ -150,7 +165,12 @@ class Handler(BaseHTTPRequestHandler):
                 _audit(route, token_hash, "unknown", src_ip, 0)
                 self.send_error(410, "Gone")
                 return
-            if _expired(meta_path):
+            expired = _expired(meta_path)
+            if expired is None:
+                _audit(route, token_hash, "expiry-unavailable", src_ip, 0)
+                self.send_error(503, "Service Unavailable")
+                return
+            if expired:
                 _audit(route, token_hash, "expired", src_ip, 0)
                 # On /bootstrap/, purge the payload so the next read for
                 # the same token also returns 410 fast. On /sub/, leave
