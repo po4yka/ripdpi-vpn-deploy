@@ -33,9 +33,7 @@ secrets — to truly differ you need a second secrets file or a per-host
 override). For a hot spare in the same provider, sharing REALITY material
 is acceptable for a short period.
 
-To switch traffic: change DNS / subscription URLs to point at the spare,
-and decommission the original (`make ENV=prod terraform … destroy` after
-removing `prevent_destroy`).
+To switch traffic: change DNS / subscription URLs to point at the spare, and decommission the original (`make ENV=prod destroy` after removing `prevent_destroy`).
 
 ## Pattern 2 — different provider / ASN
 

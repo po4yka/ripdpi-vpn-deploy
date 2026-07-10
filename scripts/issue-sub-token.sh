@@ -43,12 +43,11 @@ done
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
-TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 SUBSCRIPTION_DIR="${SUBSCRIPTION_DIR:-/var/lib/vpn-subscription}"
 
-server_ip="$(terraform -chdir="$TF_DIR" output -raw server_ipv4)"
-admin_user="$(terraform -chdir="$TF_DIR" output -raw admin_user 2>/dev/null || echo admin)"
-server_hostname="$(terraform -chdir="$TF_DIR" output -raw server_hostname 2>/dev/null || echo "$server_ip")"
+server_ip="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
+admin_user="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user 2>/dev/null || echo admin)"
+server_hostname="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_hostname 2>/dev/null || echo "$server_ip")"
 
 if [[ -n "$REFRESH_TOKEN" ]]; then
   token="$REFRESH_TOKEN"

@@ -104,8 +104,7 @@ server_pubkey="$(cat "$server_pubkey_file")"
 # ---------------------------------------------------------------------------
 # Resolve server endpoint: server_ip:listen_port from terraform + secrets
 # ---------------------------------------------------------------------------
-tf_dir="${REPO_ROOT}/terraform/providers/${PROVIDER}"
-server_ip="$(terraform -chdir="$tf_dir" output -raw server_ipv4)"
+server_ip="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
 
 listen_port="$(jq -r '.amneziawg_secrets.listen_port // empty' "$SECRETS_TMP")"
 if [[ -z "$listen_port" ]]; then

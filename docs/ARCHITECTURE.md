@@ -66,7 +66,7 @@ hand-repair a snowflake server — recreate from `git + secrets +
 Terraform plan`. The state lives in two places:
 
 1. The encrypted secrets file at `~/.config/vpn-provision/`.
-2. The Terraform state file (local; back it up out-of-band).
+2. The Terraform state file (local and provider/`ENV` scoped; back it up out-of-band). `prod` uses the legacy `default` workspace, while other environments live in same-named Terraform workspaces.
 
 Lose the secrets file → you must rotate every credential.
 Lose the Terraform state → you can re-import the VPS, but blue-green

@@ -45,10 +45,14 @@ terraform -chdir=terraform/providers/vultr test
 
 ## State
 
-State is local by default (`*.tfstate` next to the root module, in
-`.gitignore`). Back it up out-of-band; without state Terraform cannot
-follow blue-green or rotate the floating IP. See
-`docs/RUNBOOK-incident.md` § "State loss".
+State is local by default and isolated by provider plus `ENV`. The legacy `ENV=prod` deployment remains in Terraform's `default` workspace so existing state keeps working; every other environment uses a workspace with the same name, stored under `terraform.tfstate.d/<ENV>/`. Before using a new environment, run its initialization explicitly:
+
+```bash
+make PROVIDER=upcloud ENV=green init
+make PROVIDER=upcloud ENV=green plan apply
+```
+
+Operator scripts and `vpnd` use `scripts/terraform-env.sh`; do not invoke raw `terraform output`, `plan`, or `apply`, because it can select the wrong workspace. Back up state out-of-band; without it Terraform cannot follow blue-green or rotate the floating IP. See `docs/RUNBOOK-incident.md` § "State loss".
 
 ## Providers
 

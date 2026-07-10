@@ -15,10 +15,9 @@ set -euo pipefail
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 
-ip="$(terraform -chdir="$TF_DIR" output -raw server_ipv4 2>/dev/null || true)"
-admin="$(terraform -chdir="$TF_DIR" output -raw admin_user 2>/dev/null || echo admin)"
+ip="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4 2>/dev/null || true)"
+admin="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user 2>/dev/null || echo admin)"
 if ! [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "no IP available for ${PROVIDER}:${ENV}" >&2
   exit 2

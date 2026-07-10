@@ -5,15 +5,14 @@ set -euo pipefail
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 
 if [[ -z "${ANSIBLE_SSH_PRIVATE_KEY_FILE:-}" ]]; then
   echo "ANSIBLE_SSH_PRIVATE_KEY_FILE is not set" >&2
   exit 1
 fi
 
-IP="$(terraform -chdir="$TF_DIR" output -raw server_ipv4)"
-USER="$(terraform -chdir="$TF_DIR" output -raw admin_user)"
+IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
+USER="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user)"
 
 echo "waiting for SSH on ${USER}@${IP}…"
 for _ in $(seq 1 30); do

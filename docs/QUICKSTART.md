@@ -192,7 +192,7 @@ port `nginx_xhttp_port`.
 ```bash
 SNI_TARGET=www.cloudflare.com ./scripts/healthcheck.sh
 
-IP=$(terraform -chdir=terraform/providers/upcloud output -raw server_ipv4)
+IP=$(PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh output -raw server_ipv4)
 curl -fsS --resolve "vpn.example.com:8443:${IP}" \
   "https://vpn.example.com:8443/health"
 ```

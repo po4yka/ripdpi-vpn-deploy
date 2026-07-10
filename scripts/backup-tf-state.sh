@@ -14,7 +14,24 @@ PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
-STATE_FILE="${TF_DIR}/terraform.tfstate"
+
+case "$PROVIDER" in
+  upcloud|hetzner|vultr) ;;
+  *) echo "unsupported PROVIDER: $PROVIDER" >&2; exit 2 ;;
+esac
+
+if [[ ! "$ENV" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
+  echo "ENV must contain only letters, numbers, and hyphens: $ENV" >&2
+  exit 2
+fi
+
+if [[ "$ENV" == "prod" ]]; then
+  # Legacy production deployments intentionally remain in Terraform's default
+  # workspace so adopting environment workspaces does not require a state move.
+  STATE_FILE="${TF_DIR}/terraform.tfstate"
+else
+  STATE_FILE="${TF_DIR}/terraform.tfstate.d/${ENV}/terraform.tfstate"
+fi
 
 BACKUP_DEST="${BACKUP_DEST:-${HOME}/.config/vpn-provision/state-backups}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"

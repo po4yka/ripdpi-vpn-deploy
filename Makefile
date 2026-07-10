@@ -2,6 +2,7 @@ PROVIDER ?= upcloud
 ENV      ?= prod
 
 TF_ROOT       := terraform/providers/$(PROVIDER)
+TF_ENV        := ./scripts/terraform-env.sh
 ANSIBLE_DIR   := ansible
 SECRETS_FILE  ?= /tmp/vpn-$(ENV).secrets.yaml
 SOPS_FILE     ?= $(HOME)/.config/vpn-provision/$(ENV).secrets.sops.yaml
@@ -130,7 +131,7 @@ check-prereqs:
 	@echo "all prereqs present"
 
 init:
-	terraform -chdir=$(TF_ROOT) init
+	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) init
 
 validate:
 	terraform -chdir=$(TF_ROOT) fmt -check -recursive
@@ -147,12 +148,12 @@ decrypt:
 
 plan:
 	@test -f "$(TFVARS)" || { echo "missing $(TFVARS) — copy from .example and fill"; exit 1; }
-	terraform -chdir=$(TF_ROOT) plan \
+	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) plan \
 	  -var-file=environments/$(ENV).tfvars \
 	  -out=$(ENV).tfplan
 
 apply:
-	terraform -chdir=$(TF_ROOT) apply $(ENV).tfplan
+	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) apply $(ENV).tfplan
 
 inventory:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/render-inventory.sh

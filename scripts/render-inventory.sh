@@ -46,13 +46,14 @@ declare -a vpn_lines=()
 declare -A cohort_groups=()
 
 terraform_json_var() {
-  local tf_dir="$1"
-  local tfvars_rel="$2"
-  local expr="$3"
+  local provider="$1"
+  local env="$2"
+  local tfvars_rel="$3"
+  local expr="$4"
   local raw
   local decoded
 
-  raw="$(terraform -chdir="$tf_dir" console -no-color -var-file="$tfvars_rel" <<< "jsonencode(${expr})")"
+  raw="$(PROVIDER="$provider" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" console -no-color -var-file="$tfvars_rel" <<< "jsonencode(${expr})")"
   decoded="$(jq -r . <<< "$raw")"
   jq -c . <<< "$decoded"
 }
@@ -73,16 +74,16 @@ for i in "${!host_pairs[@]}"; do
     exit 1
   fi
 
-  ip="$(terraform -chdir="$tf_dir" output -raw server_ipv4)"
-  ipv6="$(terraform -chdir="$tf_dir" output -raw server_ipv6 2>/dev/null || true)"
-  user="$(terraform -chdir="$tf_dir" output -raw admin_user)"
-  hostname="$(terraform -chdir="$tf_dir" output -raw server_hostname)"
-  allowed_ssh_cidrs="$(terraform_json_var "$tf_dir" "$tfvars_rel" "var.allowed_ssh_cidrs")"
+  ip="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
+  ipv6="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv6 2>/dev/null || true)"
+  user="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user)"
+  hostname="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_hostname)"
+  allowed_ssh_cidrs="$(terraform_json_var "$prov" "$env" "$tfvars_rel" "var.allowed_ssh_cidrs")"
   # Optional secondary public IP for the honeypot role. Surfaces as a
   # host var so the role binds the canary listener to a dedicated
   # address rather than 0.0.0.0. Null when additional_public_ip is
   # false in the terraform vars.
-  honey_ip="$(terraform -chdir="$tf_dir" output -raw honeypot_ipv4 2>/dev/null || true)"
+  honey_ip="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw honeypot_ipv4 2>/dev/null || true)"
 
   vpn_line="${hostname} ansible_host=${ip} ansible_user=${user} provider=${prov} env=${env}"
   vpn_line+=" allowed_ssh_cidrs=${allowed_ssh_cidrs}"

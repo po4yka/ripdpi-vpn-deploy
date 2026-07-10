@@ -4,6 +4,10 @@ set -eu
 STUB_LOG="${STUB_LOG:-/dev/null}"
 printf 'STUB: terraform %s\n' "$*" >> "${STUB_LOG}"
 
+while [ "${1#-chdir=}" != "$1" ]; do
+  shift
+done
+
 case "${1:-}" in
   output)
     shift
