@@ -45,6 +45,14 @@ resource "upcloud_server" "vpn" {
     type = "public"
   }
 
+  dynamic "network_interface" {
+    for_each = var.enable_ipv6 ? [1] : []
+    content {
+      type              = "public"
+      ip_address_family = "IPv6"
+    }
+  }
+
   # Optional secondary public interface for honeypot / per-IP isolation.
   # Enable via `additional_public_ip = true` in the env tfvars; the
   # honeypot role binds to this address via group_vars when populated.
