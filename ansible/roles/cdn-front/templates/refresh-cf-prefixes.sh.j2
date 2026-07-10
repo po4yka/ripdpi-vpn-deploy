@@ -3,29 +3,116 @@
 # and nftables (origin firewall, when enabled). Runs daily from
 # /etc/cron.daily/.
 #
-# On failure (CF endpoint unreachable, parse error, etc.) the cache
-# files stay untouched — nginx and nftables keep the previous good
-# values until the next successful refresh.
-set -euo pipefail
+# Downloads, validation, and firewall preflight complete before cache files are published, so malformed input or an nftables error keeps the previous good state.
+set -Eeuo pipefail
 
 PREFIX_DIR="{{ cdn_front.cf_prefix_dir }}"
 mkdir -p "$PREFIX_DIR"
+command -v flock >/dev/null 2>&1 || { echo "refresh-cf-prefixes: missing flock" >&2; exit 1; }
+exec 9> "$PREFIX_DIR/.refresh.lock"
+flock -n 9 || { echo "refresh-cf-prefixes: another refresh is active" >&2; exit 1; }
 
-WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+WORK="$(mktemp -d -t cdn-prefixes.XXXXXX)"
+STAGED_V4="$PREFIX_DIR/.cloudflare.v4.new.$$"
+STAGED_V6="$PREFIX_DIR/.cloudflare.v6.new.$$"
+STAGED_REAL_IP="$PREFIX_DIR/.cloudflare.real_ip.new.$$"
+NFT_APPLIED=0
+CACHE_MUTATED=0
+INTEGRATED_PROBE=0
+cleanup() {
+  local rc=$?
+  local cache_restore_ok=1
+  local reload_needed=0
+  trap - ERR EXIT
+  set +e
+  if [[ "$CACHE_MUTATED" == "1" || "$INTEGRATED_PROBE" == "1" ]]; then
+    reload_needed=1
+    if ! restore_caches; then
+      cache_restore_ok=0
+      echo "refresh-cf-prefixes: cache rollback failed" >&2
+    fi
+  fi
+  if [[ "$NFT_APPLIED" == "1" ]]; then
+    nft -f "$WORK/nft.rollback.batch" || echo "refresh-cf-prefixes: nftables rollback failed" >&2
+    NFT_APPLIED=0
+  fi
+  if [[ "$reload_needed" == "1" && "$cache_restore_ok" == "1" ]]; then
+    nginx -t -q && reload_nginx || echo "refresh-cf-prefixes: nginx rollback reload failed" >&2
+  fi
+  rm -rf "$WORK"
+  rm -f "$STAGED_V4" "$STAGED_V6" "$STAGED_REAL_IP" "$PREFIX_DIR"/.cloudflare.*.rollback."$$"
+  exit "$rc"
+}
+trap cleanup EXIT
+
+reload_nginx() {
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl reload nginx
+  else
+    nginx -s reload
+  fi
+}
+
+restore_cache_file() {
+  local name="$1"
+  local live="$PREFIX_DIR/$name"
+  local backup="$WORK/old.$name"
+  local rollback="$PREFIX_DIR/.$name.rollback.$$"
+  if [[ -f "$WORK/had.$name" ]]; then
+    install -m 0644 "$backup" "$rollback"
+    mv -f "$rollback" "$live"
+  else
+    rm -f "$live"
+  fi
+}
+
+restore_caches() {
+  local restore_failed=0
+  restore_cache_file cloudflare.v4 || restore_failed=1
+  restore_cache_file cloudflare.v6 || restore_failed=1
+  restore_cache_file cloudflare.real_ip || restore_failed=1
+  if [[ "$restore_failed" == "1" ]]; then
+    return 1
+  fi
+  CACHE_MUTATED=0
+  INTEGRATED_PROBE=0
+}
 
 curl -fsSL -o "$WORK/v4" https://www.cloudflare.com/ips-v4
 curl -fsSL -o "$WORK/v6" https://www.cloudflare.com/ips-v6
 
-# Sanity: each list must be non-empty and CIDR-shaped.
-if [[ ! -s "$WORK/v4" ]] || ! grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$' "$WORK/v4"; then
-  echo "refresh-cf-prefixes: v4 list looks malformed; keeping previous" >&2
-  exit 1
-fi
-if [[ ! -s "$WORK/v6" ]] || ! grep -Eq '^[0-9A-Fa-f:]+/[0-9]+$' "$WORK/v6"; then
-  echo "refresh-cf-prefixes: v6 list looks malformed; keeping previous" >&2
-  exit 1
-fi
+validate_prefix_file() {
+  python3 - "$1" "$2" "$3" <<'PY'
+import ipaddress
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+expected_version = int(sys.argv[2])
+minimum_count = int(sys.argv[3])
+lines = path.read_text(encoding="ascii").splitlines()
+if len(lines) < minimum_count:
+    raise SystemExit(f"{path}: expected at least {minimum_count} prefixes, got {len(lines)}")
+if len(lines) > 4096:
+    raise SystemExit(f"{path}: implausible prefix count: {len(lines)}")
+seen = set()
+for line_number, line in enumerate(lines, start=1):
+    if not line or line != line.strip():
+        raise SystemExit(f"{path}:{line_number}: blank or whitespace-padded prefix")
+    try:
+        network = ipaddress.ip_network(line, strict=True)
+    except ValueError as error:
+        raise SystemExit(f"{path}:{line_number}: invalid CIDR: {error}") from error
+    if network.version != expected_version:
+        raise SystemExit(f"{path}:{line_number}: expected IPv{expected_version}, got IPv{network.version}")
+    if network in seen:
+        raise SystemExit(f"{path}:{line_number}: duplicate prefix: {network}")
+    seen.add(network)
+PY
+}
+
+validate_prefix_file "$WORK/v4" 4 5
+validate_prefix_file "$WORK/v6" 6 3
 
 # nginx real_ip_header form:
 #   set_real_ip_from <CIDR>;
@@ -37,27 +124,78 @@ fi
   echo 'real_ip_recursive on;'
 } > "$WORK/cloudflare.real_ip.new"
 
-install -m 0644 "$WORK/cloudflare.real_ip.new" "$PREFIX_DIR/cloudflare.real_ip"
+cat > "$WORK/nginx-candidate.conf" <<EOF
+pid $WORK/nginx.pid;
+error_log stderr;
+events {}
+http {
+  include $WORK/cloudflare.real_ip.new;
+}
+EOF
+nginx -t -q -c "$WORK/nginx-candidate.conf"
 
-# nftables set form: one line per CIDR, no commas.
-install -m 0644 "$WORK/v4" "$PREFIX_DIR/cloudflare.v4"
-install -m 0644 "$WORK/v6" "$PREFIX_DIR/cloudflare.v6"
+# Back up current cache files and stage every replacement before any live mutation.
+for name in cloudflare.v4 cloudflare.v6 cloudflare.real_ip; do
+  if [[ -f "$PREFIX_DIR/$name" ]]; then
+    cp -p "$PREFIX_DIR/$name" "$WORK/old.$name"
+    : > "$WORK/had.$name"
+  else
+    : > "$WORK/old.$name"
+  fi
+done
+install -m 0644 "$WORK/v4" "$STAGED_V4"
+install -m 0644 "$WORK/v6" "$STAGED_V6"
+install -m 0644 "$WORK/cloudflare.real_ip.new" "$STAGED_REAL_IP"
 
-# Reload nginx if the file changed (best-effort).
-if command -v systemctl >/dev/null 2>&1; then
-  systemctl reload nginx 2>/dev/null || true
+# Validate the candidate inside the deployed nginx configuration, then restore the previous include before touching live firewall state.
+INTEGRATED_PROBE=1
+mv -f "$STAGED_REAL_IP" "$PREFIX_DIR/cloudflare.real_ip"
+if nginx -t -q; then
+  probe_rc=0
+else
+  probe_rc=$?
+fi
+restore_cache_file cloudflare.real_ip
+INTEGRATED_PROBE=0
+install -m 0644 "$WORK/cloudflare.real_ip.new" "$STAGED_REAL_IP"
+if [[ "$probe_rc" != "0" ]]; then
+  exit "$probe_rc"
 fi
 
-# Origin firewall: rebuild the nftables sets from cloudflare.v4/v6.
-if [[ "{{ cdn_front.origin_firewall | string | lower }}" == "true" ]]; then
-  nft flush set inet filter cdn_front_origins 2>/dev/null || true
-  nft flush set inet filter cdn_front_origins_v6 2>/dev/null || true
-  while IFS= read -r cidr; do
-    [[ -n "$cidr" ]] || continue
-    nft add element inet filter cdn_front_origins { "$cidr" } 2>/dev/null || true
-  done < "$PREFIX_DIR/cloudflare.v4"
-  while IFS= read -r cidr; do
-    [[ -n "$cidr" ]] || continue
-    nft add element inet filter cdn_front_origins_v6 { "$cidr" } 2>/dev/null || true
-  done < "$PREFIX_DIR/cloudflare.v6"
+write_nft_batch() {
+  local v4_file="$1"
+  local v6_file="$2"
+  local output="$3"
+  {
+    echo 'flush set inet filter cdn_front_origins'
+    if [[ -s "$v4_file" ]]; then
+      awk 'BEGIN { printf "add element inet filter cdn_front_origins { " } { if (NR > 1) printf ", "; printf "%s", $0 } END { print " }" }' "$v4_file"
+    fi
+    echo 'flush set inet filter cdn_front_origins_v6'
+    if [[ -s "$v6_file" ]]; then
+      awk 'BEGIN { printf "add element inet filter cdn_front_origins_v6 { " } { if (NR > 1) printf ", "; printf "%s", $0 } END { print " }" }' "$v6_file"
+    fi
+  } > "$output"
+}
+
+# Origin firewall: validate both forward and rollback batches before applying one atomic replacement transaction.
+ORIGIN_FIREWALL="{{ cdn_front.origin_firewall | string | lower }}"
+if [[ "$ORIGIN_FIREWALL" == "true" ]]; then
+  write_nft_batch "$WORK/v4" "$WORK/v6" "$WORK/nft.batch"
+  write_nft_batch "$WORK/old.cloudflare.v4" "$WORK/old.cloudflare.v6" "$WORK/nft.rollback.batch"
+  nft -c -f "$WORK/nft.batch"
+  nft -c -f "$WORK/nft.rollback.batch"
+  NFT_APPLIED=1
+  nft -f "$WORK/nft.batch"
 fi
+
+# Publish the staged caches. Any rename, validation, or reload failure triggers cache and nftables rollback.
+CACHE_MUTATED=1
+mv -f "$STAGED_V4" "$PREFIX_DIR/cloudflare.v4"
+mv -f "$STAGED_V6" "$PREFIX_DIR/cloudflare.v6"
+mv -f "$STAGED_REAL_IP" "$PREFIX_DIR/cloudflare.real_ip"
+
+nginx -t -q
+reload_nginx
+CACHE_MUTATED=0
+NFT_APPLIED=0
