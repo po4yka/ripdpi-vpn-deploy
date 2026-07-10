@@ -329,6 +329,17 @@ jobs:
       - run: cargo +1.88.0 check --locked
         working-directory: vpnd
 
+  vpnd-deny:
+    name: vpnd dependency policy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe  # v2.0.20
+        with:
+          manifest-path: vpnd/Cargo.toml
+          command-arguments: "--config vpnd/deny.toml"
+          rust-version: "1.88.0"
+
   molecule-failure-scenarios:
     # Non-default Molecule scenarios that exercise red-path / failure
     # injection. Today: watchdog/failure (stub ntfy listener captures
@@ -367,7 +378,7 @@ jobs:
   required:
     name: required checks
     if: always()
-    needs: [gitleaks, actionlint, terraform, cloud-init, ansible, molecule, shellcheck, secrets-coverage, templates-render, yaml, unit-tests, bats-test, snapshot, validate-schema, tf-test, vpnd-test, vpnd-clippy, vpnd-msrv, molecule-failure-scenarios]
+    needs: [gitleaks, actionlint, terraform, cloud-init, ansible, molecule, shellcheck, secrets-coverage, templates-render, yaml, unit-tests, bats-test, snapshot, validate-schema, tf-test, vpnd-test, vpnd-clippy, vpnd-msrv, vpnd-deny, molecule-failure-scenarios]
     runs-on: ubuntu-24.04
     steps:
       - env:
