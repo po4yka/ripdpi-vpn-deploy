@@ -29,21 +29,61 @@ ENV="${ENV:-prod}"
 PROVIDER="${PROVIDER:-upcloud}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SOPS_FILE="${SOPS_FILE:-${HOME}/.config/vpn-provision/${ENV}.secrets.sops.yaml}"
+SOPS_FILE="$(SOPS_FILE="$SOPS_FILE" python3 -c 'import os; print(os.path.realpath(os.environ["SOPS_FILE"]))')"
 
 if [[ ! -f "$SOPS_FILE" ]]; then
   echo "missing $SOPS_FILE" >&2
   exit 1
 fi
 
-# Fail fast if a client with this name already exists in any profile.
-has_client() {
+umask 077
+SOPS_TEMP=""
+SOPS_LOCK="${SOPS_FILE}.new-client.lock"
+cleanup_new_client() {
+  if [[ -n "$SOPS_TEMP" ]]; then
+    rm -f -- "$SOPS_TEMP"
+  fi
+}
+trap cleanup_new_client EXIT
+exec 9> "$SOPS_LOCK"
+if command -v flock >/dev/null 2>&1; then
+  lock_command=(flock -n 9)
+elif command -v lockf >/dev/null 2>&1; then
+  lock_command=(lockf -s -t 0 9)
+else
+  echo "error: new-client requires flock (Linux) or lockf (macOS)" >&2
+  exit 1
+fi
+if ! "${lock_command[@]}"; then
+  echo "error: another new-client transaction is active for $SOPS_FILE" >&2
+  exit 1
+fi
+
+# Fail fast if a client with this name already exists in any profile and return the current array length as the insertion index for the staged transaction.
+client_state() {
   local extract="$1"
   sops --decrypt --extract "$extract" --output-type json "$SOPS_FILE" 2>/dev/null |
-    CLIENT_NAME="$NAME" python3 -c 'import json, os, sys; peers = json.load(sys.stdin); print(any(p.get("name") == os.environ["CLIENT_NAME"] for p in (peers or [])))' 2>/dev/null || echo False
+    CLIENT_NAME="$NAME" python3 -c '
+import json
+import os
+import sys
+
+clients = json.load(sys.stdin)
+if not isinstance(clients, list):
+    raise SystemExit("client collection is not an array")
+exists = any(isinstance(client, dict) and client.get("name") == os.environ["CLIENT_NAME"] for client in clients)
+print(exists, len(clients))
+' 2>/dev/null
 }
-existing_xray="$(has_client '["xray"]["clients"]')"
-existing_hy="$(has_client '["hysteria"]["clients"]')"
-existing_awg="$(has_client '["amneziawg_secrets"]["peers"]')"
+if ! xray_state="$(client_state '["xray"]["clients"]')" ||
+   ! hy_state="$(client_state '["hysteria"]["clients"]')" ||
+   ! awg_state="$(client_state '["amneziawg_secrets"]["peers"]')"; then
+  echo "error: failed to read client collections from $SOPS_FILE" >&2
+  exit 1
+fi
+read -r existing_xray xray_index <<< "$xray_state"
+read -r existing_hy hy_index <<< "$hy_state"
+read -r existing_awg awg_index <<< "$awg_state"
 if [[ "$existing_xray" == "True" || "$existing_hy" == "True" || "$existing_awg" == "True" ]]; then
   echo "error: client '${NAME}' already exists in secrets (xray=${existing_xray} hysteria=${existing_hy} awg=${existing_awg})" >&2
   echo "To replace a client, remove the existing entries first, then re-run." >&2
@@ -57,18 +97,15 @@ AWG_PRIV="$(awg genkey 2>/dev/null || wg genkey)"
 AWG_PUB="$(echo "$AWG_PRIV" | awg pubkey 2>/dev/null || echo "$AWG_PRIV" | wg pubkey)"
 AWG_PSK="$(awg genpsk 2>/dev/null || wg genpsk)"
 AWG_ALLOWED_IPS="$(
-  { sops --decrypt --extract '["amneziawg_secrets"]["peers"]' --output-type json "$SOPS_FILE" 2>/dev/null || printf '[]'; } \
+  sops --decrypt --extract '["amneziawg_secrets"]["peers"]' --output-type json "$SOPS_FILE" 2>/dev/null \
     | python3 -c '
 import json
 import re
 import sys
 
-try:
-    peers = json.load(sys.stdin)
-except json.JSONDecodeError:
-    peers = []
+peers = json.load(sys.stdin)
 if not isinstance(peers, list):
-    peers = []
+    raise SystemExit("AmneziaWG peers collection is not an array")
 
 used = {1}
 for index, peer in enumerate(peers, start=1):
@@ -90,16 +127,32 @@ else:
 '
 )"
 
-# Edit secrets in place. SOPS preserves encryption boundaries when called via
-# `sops set` (yaml mode).
-sops set "$SOPS_FILE" \
-  "[\"xray\"][\"clients\"][?(@.name == '${NAME}')]" \
-  "{\"name\":\"${NAME}\",\"uuid\":\"${UUID}\",\"short_id\":\"${SHORT_ID}\"}" 2>/dev/null \
-  || sops --set "[\"xray\"][\"clients\"] += [{\"name\":\"${NAME}\",\"uuid\":\"${UUID}\",\"short_id\":\"${SHORT_ID}\"}]" "$SOPS_FILE"
+# Apply every profile update to an encrypted sibling copy; the final rename is atomic because the staging file lives on the same filesystem as SOPS_FILE.
+SOPS_TEMP="$(SOPS_FILE="$SOPS_FILE" python3 -c '
+import os
+import pathlib
+import tempfile
 
-sops --set "[\"hysteria\"][\"clients\"] += [{\"name\":\"${NAME}\",\"password\":\"${HY_PASSWORD}\"}]" "$SOPS_FILE"
+path = os.path.abspath(os.environ["SOPS_FILE"])
+suffix = pathlib.Path(path).suffix or ".yaml"
+fd, temporary = tempfile.mkstemp(prefix=f".{os.path.basename(path)}.new-client.", suffix=suffix, dir=os.path.dirname(path))
+os.close(fd)
+print(temporary)
+')"
+cp "$SOPS_FILE" "$SOPS_TEMP"
+chmod 0600 "$SOPS_TEMP"
 
-sops --set "[\"amneziawg_secrets\"][\"peers\"] += [{\"name\":\"${NAME}\",\"public_key\":\"${AWG_PUB}\",\"preshared_key\":\"${AWG_PSK}\",\"allowed_ips\":\"${AWG_ALLOWED_IPS}\"}]" "$SOPS_FILE"
+printf '{"name":"%s","uuid":"%s","short_id":"%s"}' "$NAME" "$UUID" "$SHORT_ID" |
+  sops set --value-stdin "$SOPS_TEMP" "[\"xray\"][\"clients\"][${xray_index}]"
+
+printf '{"name":"%s","password":"%s"}' "$NAME" "$HY_PASSWORD" |
+  sops set --value-stdin "$SOPS_TEMP" "[\"hysteria\"][\"clients\"][${hy_index}]"
+
+printf '{"name":"%s","public_key":"%s","preshared_key":"%s","allowed_ips":"%s"}' "$NAME" "$AWG_PUB" "$AWG_PSK" "$AWG_ALLOWED_IPS" |
+  sops set --value-stdin "$SOPS_TEMP" "[\"amneziawg_secrets\"][\"peers\"][${awg_index}]"
+
+mv -f -- "$SOPS_TEMP" "$SOPS_FILE"
+SOPS_TEMP=""
 
 cat <<EOF
 created client: ${NAME}
