@@ -1,0 +1,146 @@
+---
+name: ansible-galaxy-drift
+
+on:
+  schedule:
+    # Monthly, separate from Dependabot's weekly Monday batch.
+    - cron: '0 7 1 * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: ansible galaxy collection drift
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned Python tooling
+        run: pip install --require-hashes --no-deps -r requirements.txt
+
+      - name: Check collection drift
+        id: galaxy
+        run: |
+          set +e
+          output="$(python3 scripts/check-ansible-galaxy-updates.py 2>&1)"
+          exit_code=$?
+          set -e
+          printf '%s\n' "$output"
+          {
+            echo "exit_code=${exit_code}"
+            echo "output<<GALAXY_EOF"
+            echo "$output"
+            echo "GALAXY_EOF"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -eq 2 ]; then
+            exit 2
+          fi
+
+      - name: Open or update collection drift issue
+        if: steps.galaxy.outputs.exit_code == '1'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        env:
+          GALAXY_OUTPUT: ${{ steps.galaxy.outputs.output }}
+        with:
+          script: |
+            const label = 'automation:ansible-galaxy-drift';
+            const title = 'Ansible Galaxy collection updates available';
+            const body = [
+              '## Ansible Galaxy drift',
+              '',
+              'A scheduled check found newer collection versions than the pins in `requirements.yml`.',
+              '',
+              '```',
+              process.env.GALAXY_OUTPUT || '(no output)',
+              '```',
+              '',
+              'Update `requirements.yml` deliberately, then run the full Ansible CI matrix before merging.',
+            ].join('\n');
+
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: label,
+              });
+            } catch (e) {
+              if (e.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label,
+                  color: 'd4c5f9',
+                  description: 'Automated Ansible Galaxy collection drift result',
+                });
+              } else {
+                throw e;
+              }
+            }
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: label,
+              state: 'open',
+              per_page: 1,
+            });
+
+            if (existing.data.length > 0) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                title,
+                body,
+              });
+              core.notice(`Updated existing Galaxy drift issue #${existing.data[0].number}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: [label],
+              });
+              core.notice(`Opened Galaxy drift issue #${created.data.number}`);
+            }
+
+      - name: Close resolved collection drift issues
+        if: steps.galaxy.outputs.exit_code == '0'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            const label = 'automation:ansible-galaxy-drift';
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: label,
+              state: 'open',
+              per_page: 10,
+            });
+            for (const issue of existing.data) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: 'Ansible Galaxy collection pins are current again. Closing automatically.',
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+              });
+              core.notice(`Closed resolved Galaxy drift issue #${issue.number}`);
+            }
