@@ -15,6 +15,8 @@ setgid and sticky for `node_exporter_textfile`; the honeypot service receives
 group write access while monitoring can manage the directory without revoking
 it or letting one producer replace another producer's metrics.
 
+**Connection logs are actively size-bounded** — a dedicated systemd timer checks the honeypot logrotate policy every five minutes. The listener reopens `connections.log` for every event, so rename + `create 0640 honeypot honeypot` is safe and avoids `copytruncate` data-loss races.
+
 ## What's done well
 
 - **Banner-free** — every honeypot port closes silently after TCP accept.
@@ -28,6 +30,5 @@ it or letting one producer replace another producer's metrics.
   the effective SSH port.
 - **Honeypot ports must be in the firewall allow-list** — otherwise nftables
   drops before the honeypot sees the hit, and you record nothing.
-- **Rate-limit log writes** — a Shodan-style scan can fill the disk
-  otherwise. logrotate + size limit, both configured.
+- **Rate-limit log writes** — a broad scan can fill the disk otherwise. Keep the in-process event cap, the 10M logrotate threshold, the five-minute timer, and bounded archive retention together.
 - **Canary shares the relay IP — observability, not guaranteed early warning** — because the honeypot listeners and the REALITY/VLESS port live on the same IP, a probe that targets the honeypot port and a probe that targets the VPN port are identical from a routing perspective. Under netflow-seeded or infrastructure-enumeration targeting, the adversary may probe both ports simultaneously or probe the VPN port directly without ever hitting the canary. The canary therefore provides a useful probing signal when it fires, but the absence of a canary hit does NOT mean the VPN port was not probed. A separate-IP canary (different VPS, same operator) is the path to real early-warning with meaningful lead time.

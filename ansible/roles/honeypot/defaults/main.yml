@@ -24,6 +24,12 @@ honeypot:
   # storm; the per-minute COUNT still updates every event.
   events_per_minute_max: 1000
   max_concurrent_connections: 64
+  # A dedicated timer checks this size every five minutes. At the default
+  # event cap this bounds the active log much more tightly than daily
+  # system logrotate alone.
+  logrotate_size: 10M
+  logrotate_rotate: 7
+  logrotate_interval: 5m
   # Listen address. "0.0.0.0" = every public IP on the host (the v1
   # default; the canary co-locates with REALITY and catches port
   # scans). Set `additional_public_ip = true` in the UpCloud tfvars

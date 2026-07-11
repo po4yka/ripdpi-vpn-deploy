@@ -1,0 +1,15 @@
+[Unit]
+Description=Rotate the VPN honeypot connection log
+Documentation=man:logrotate(8)
+ConditionPathExists=/etc/honeypot-logrotate.conf
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/logrotate --state /var/lib/honeypot/logrotate.status /etc/honeypot-logrotate.conf
+StateDirectory=honeypot
+StateDirectoryMode=0750
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths={{ honeypot.log_dir }}

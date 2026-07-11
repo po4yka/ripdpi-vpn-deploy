@@ -23,3 +23,49 @@
         path: /usr/local/bin/honeypot.py
       register: script
       failed_when: not script.stat.exists or not script.stat.executable
+
+    - name: Logrotate timer is enabled
+      ansible.builtin.command:
+        cmd: systemctl is-enabled --quiet honeypot-logrotate.timer
+      register: logrotate_timer_enabled
+      changed_when: false
+      failed_when: logrotate_timer_enabled.rc != 0
+
+    - name: Logrotate timer is active
+      ansible.builtin.command:
+        cmd: systemctl is-active --quiet honeypot-logrotate.timer
+      register: logrotate_timer_active
+      changed_when: false
+      failed_when: logrotate_timer_active.rc != 0
+
+    - name: Seed the connection log for a forced rotation
+      ansible.builtin.copy:
+        dest: /var/log/honeypot/connections.log
+        content: '{"event":"molecule-logrotate-check"}\n'
+        owner: honeypot
+        group: honeypot
+        mode: "0640"
+
+    - name: Exercise the installed logrotate policy
+      ansible.builtin.command:
+        cmd: logrotate --force --state /tmp/honeypot-logrotate.state /etc/honeypot-logrotate.conf
+      changed_when: false
+
+    - name: Inspect the recreated connection log
+      ansible.builtin.stat:
+        path: /var/log/honeypot/connections.log
+      register: rotated_log
+
+    - name: Inspect the rotated connection log
+      ansible.builtin.stat:
+        path: /var/log/honeypot/connections.log.1
+      register: archived_log
+
+    - name: Rotation preserves a writable bounded log
+      ansible.builtin.assert:
+        that:
+          - rotated_log.stat.exists
+          - rotated_log.stat.pw_name == 'honeypot'
+          - rotated_log.stat.gr_name == 'honeypot'
+          - rotated_log.stat.mode == '0640'
+          - archived_log.stat.exists

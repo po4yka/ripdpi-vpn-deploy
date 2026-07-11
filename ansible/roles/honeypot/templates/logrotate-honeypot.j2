@@ -1,0 +1,10 @@
+{{ honeypot.log_dir }}/connections.log {
+    size {{ honeypot.logrotate_size }}
+    rotate {{ honeypot.logrotate_rotate }}
+    compress
+    delaycompress
+    missingok
+    notifempty
+    su honeypot honeypot
+    create 0640 honeypot honeypot
+}

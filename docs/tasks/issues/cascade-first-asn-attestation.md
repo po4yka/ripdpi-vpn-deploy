@@ -1,6 +1,6 @@
 # Cascade: produce the first per-ASN allowlist attestation (confirm-or-kill gate)
 
-- [ ] #task Produce the first real dated per-ASN attestation before any cascade Phase 1+ work; gate is currently closed #repo/RIPDPI-VPN-DEPLOY #area/security #status/backlog ⏫
+- [x] #task Execute the first per-ASN confirm-or-kill gate before any cascade Phase 1+ work; no-go recorded because no qualifying RU-side measurement was available #repo/RIPDPI-VPN-DEPLOY #area/security #status/done ⏫
 
 ## Goal
 
@@ -24,10 +24,10 @@ RU-jurisdiction hosting for a temporary whitelist-riding entry node is signed of
 
 ## Ship definition
 
-- [ ] A schema-valid attestation record exists for at least one candidate ASN, or a written decision to kill the cascade effort is recorded.
-- [ ] The record is per-ASN, dated, `verified-not-brand-inferred: true`, and carries an expiry/next-recheck date.
-- [ ] If no ASN passes, `docs/RU-CASCADE-DECISION.md` is updated to record the no-go and Phase 1+ is not started.
-- [ ] The latent-risk tradeoff was explicitly weighed and recorded as part of the decision.
+- [x] A schema-valid attestation record exists for at least one candidate ASN, or a written decision to kill the cascade effort is recorded.
+- [x] No passing record was created because no result qualified as per-ASN, RU-side, current, and non-brand-inferred.
+- [x] `docs/RU-CASCADE-DECISION.md` records the no-go and prohibits Phase 1+ work from starting.
+- [x] The latent-risk tradeoff was explicitly weighed and recorded as part of the decision.
 
 ## Links
 

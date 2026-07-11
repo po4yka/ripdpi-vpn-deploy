@@ -1,7 +1,7 @@
 # ADR — RU-entry AmneziaWG GeoIP-split cascade
 
 **Date:** 2026-07-10
-**Status:** Accepted — governance / Phase 0 decision. No code has landed against this ADR; nothing described below is wired into any role, playbook, Terraform root, or family profile yet.
+**Status:** No-go — the 2026-07-11 confirm-or-kill gate did not produce a qualifying RU-side per-ASN attestation. The governance structure below remains the record of what was approved conditionally, but Phases 1–6 must not start.
 **Scope:** new cascade ingress/egress role pair (not yet implemented), a dedicated RU-hosting jurisdiction EXCEPTION tier, a fail-closed classifier invariant, and an empirical per-ASN attestation gate.
 **Source anchor:** Habr 1056220 (community report), read against this repo's existing `PROVIDER-NOTES.md` ASN risk tiers and `ROLE-TIERING.md` tier guard.
 
@@ -16,6 +16,14 @@ This is the repo's first hosting-jurisdiction exception. The org sign-off record
 `SPLIT-HOP-TOPOLOGY.md` already establishes a two-node pattern in this repo, so the natural first question is whether the cascade is a variant of split-hop. It is not, and Decision 1 below records why.
 
 ## Decision
+
+### 0. Confirm-or-kill outcome: no-go
+
+On 2026-07-11 the first-attestation gate was executed against the operator-accessible measurement paths. No candidate ASN produced evidence from a genuine RU-side vantage demonstrating a current reachability advantage over the foreign-VPS baseline. The accessible vantage was not RU-side and therefore could not qualify; no brand, corporate relationship, historical report, or non-RU observation was substituted for the missing per-ASN measurement. Consequently no record can truthfully set `verified-not-brand-inferred: true`, no passing attestation artifact exists, and the gate remains closed.
+
+The latent tradeoff makes the absence of a measured benefit dispositive. An RU-AS entry could escape the foreign-datacenter TCP-freeze bucket, but it would also enter the anticipated RKN TLS-fingerprint and rate-enforcement path on a flagged RU AS while adding the legal, retention, compulsion, and seizure exposure already accepted only conditionally in this ADR. With no demonstrated reachability advantage to offset those costs, provisioning the entry node is not justified.
+
+This is the kill outcome required by the gate, not a request to proceed with implementation while evidence is collected later. The cascade effort stops at Phase 0: no isolated Terraform root, role pair, classifier, attestation wiring, tests, reconciliation, or promotion work may begin under this decision. Reconsideration requires a new governance decision backed first by a fresh, traceable, dated RU-side measurement for a specific candidate ASN; the present no-go must not be reinterpreted as a stale or implicit pass.
 
 ### 1. Separate role pair, not a split-hop extension
 
