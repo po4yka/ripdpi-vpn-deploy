@@ -21,7 +21,8 @@ BACKEND="{{ subscription.mirror.backend | default('rsync') }}"
 SOURCE="{{ subscription.mirror.source | default('') }}"
 # Credential is kept outside DEST so the `--delete` below never erases it.
 SSH_KEY="{{ subscription.mirror.ssh_key_path | default('/etc/vpn-subscription/mirror_ssh_key') }}"
-SSH_OPTS="{{ subscription.mirror.ssh_opts | default('-o StrictHostKeyChecking=accept-new -o BatchMode=yes') }}"
+SSH_KNOWN_HOSTS="{{ subscription.mirror.known_hosts_path | default('/etc/vpn-subscription/mirror_known_hosts') }}"
+SSH_OPTS="{{ subscription.mirror.ssh_opts | default('') }}"
 
 if [ -z "$SOURCE" ]; then
   echo "vpn-sub-mirror: rsync backend selected but mirror.source is empty" >&2
@@ -29,7 +30,7 @@ if [ -z "$SOURCE" ]; then
 fi
 
 rsync {{ subscription.mirror.rsync_opts | default('-az --delete') }} \
-  -e "ssh -i ${SSH_KEY} ${SSH_OPTS}" \
+  -e "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${SSH_KNOWN_HOSTS} -o GlobalKnownHostsFile=/dev/null -o BatchMode=yes ${SSH_OPTS}" \
   "$SOURCE" "${DEST}/"
 {% else %}
 # ---------------------------------------------------------------------------

@@ -21,7 +21,8 @@ BACKEND="rsync"
 SOURCE=""
 # Credential is kept outside DEST so the `--delete` below never erases it.
 SSH_KEY="/etc/vpn-subscription/mirror_ssh_key"
-SSH_OPTS="-o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+SSH_KNOWN_HOSTS="/etc/vpn-subscription/mirror_known_hosts"
+SSH_OPTS=""
 
 if [ -z "$SOURCE" ]; then
   echo "vpn-sub-mirror: rsync backend selected but mirror.source is empty" >&2
@@ -29,7 +30,7 @@ if [ -z "$SOURCE" ]; then
 fi
 
 rsync -az --delete \
-  -e "ssh -i ${SSH_KEY} ${SSH_OPTS}" \
+  -e "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${SSH_KNOWN_HOSTS} -o GlobalKnownHostsFile=/dev/null -o BatchMode=yes ${SSH_OPTS}" \
   "$SOURCE" "${DEST}/"
 
 

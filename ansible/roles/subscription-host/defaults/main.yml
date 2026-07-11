@@ -64,8 +64,13 @@ subscription:
     # deleted on the first pull. /etc/vpn-subscription is owned by
     # vpn-bootstrap and is never an rsync/restic target.
     ssh_key_path: "/etc/vpn-subscription/mirror_ssh_key"
-    # Extra ssh options passed via rsync -e (StrictHostKeyChecking etc.).
-    ssh_opts: "-o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+    # Complete OpenSSH known-hosts lines obtained through a trusted channel.
+    # Mandatory when the rsync backend is enabled; never populate with ssh-keyscan.
+    known_hosts: ""
+    known_hosts_path: "/etc/vpn-subscription/mirror_known_hosts"
+    # Additive ssh options passed via rsync -e. Host-identity controls are fixed
+    # by the managed mirror script and must not be supplied here.
+    ssh_opts: ""
     # restic backend: repository URL/path and the snapshot subtree to
     # restore. The repo password is supplied via secrets (rendered to
     # restic_password_file). Leave empty for the rsync backend.

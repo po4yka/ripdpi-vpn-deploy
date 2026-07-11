@@ -11,6 +11,17 @@
 #
 # Gated by the caller with `when: subscription.mirror.enabled`.
 
+- name: Validate mirror configuration before making host changes
+  ansible.builtin.assert:
+    that:
+      - (subscription.mirror.backend | default('rsync')) in ['rsync', 'restic']
+      - (subscription.mirror.backend | default('rsync')) != 'rsync' or subscription.mirror.source | default('') | length > 0
+      - (subscription.mirror.backend | default('rsync')) != 'rsync' or subscription.mirror.known_hosts | default('') | length > 0
+      - (subscription.mirror.backend | default('rsync')) != 'restic' or subscription.mirror.restic_repo | default('') | length > 0
+    fail_msg: >-
+      Invalid subscription mirror configuration: choose rsync or restic;
+      rsync requires source and a trusted known_hosts pin, while restic requires restic_repo.
+
 - name: Install mirror client (rsync)
   ansible.builtin.apt:
     name:
@@ -50,6 +61,17 @@
   when:
     - (subscription.mirror.backend | default('rsync')) == 'rsync'
     - subscription.mirror.ssh_key | default('') | length > 0
+
+- name: Drop rsync known-hosts pin
+  ansible.builtin.copy:
+    content: "{{ subscription.mirror.known_hosts }}"
+    dest: "{{ subscription.mirror.known_hosts_path | default('/etc/vpn-subscription/mirror_known_hosts') }}"
+    owner: vpn-bootstrap
+    group: vpn-bootstrap
+    mode: "0600"
+  no_log: true
+  diff: false
+  when: (subscription.mirror.backend | default('rsync')) == 'rsync'
 
 - name: Drop restic password file
   ansible.builtin.copy:

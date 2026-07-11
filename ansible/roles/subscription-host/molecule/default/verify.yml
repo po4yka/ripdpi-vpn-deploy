@@ -134,6 +134,63 @@
         not mirror_ssh_key.stat.exists
         or mirror_ssh_key.stat.mode != "0600"
 
+    - name: Mirror known-hosts pin is private and outside the payload tree
+      ansible.builtin.stat:
+        path: /etc/vpn-subscription/mirror_known_hosts
+      register: mirror_known_hosts
+      failed_when: >-
+        not mirror_known_hosts.stat.exists
+        or not mirror_known_hosts.stat.isreg
+        or mirror_known_hosts.stat.mode != "0600"
+        or mirror_known_hosts.stat.pw_name != "vpn-bootstrap"
+        or mirror_known_hosts.stat.gr_name != "vpn-bootstrap"
+
+    - name: Mirror script enforces the managed host identity
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep -q -- '-o StrictHostKeyChecking=yes' /usr/local/bin/vpn-sub-mirror.sh
+          grep -q -- '-o UserKnownHostsFile=${SSH_KNOWN_HOSTS}' /usr/local/bin/vpn-sub-mirror.sh
+          grep -q -- '-o GlobalKnownHostsFile=/dev/null' /usr/local/bin/vpn-sub-mirror.sh
+          grep -q -- '-o BatchMode=yes' /usr/local/bin/vpn-sub-mirror.sh
+          ! grep -q -- 'accept-new' /usr/local/bin/vpn-sub-mirror.sh
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Initialize missing host pin rejection result
+      ansible.builtin.set_fact:
+        mirror_missing_pin_rejected: false
+
+    - name: Exercise missing mirror host pin rejection
+      block:
+        - name: Re-run mirror tasks without a trusted host pin
+          ansible.builtin.include_role:
+            name: subscription-host
+            tasks_from: mirror
+          vars:
+            subscription:
+              mirror:
+                enabled: true
+                backend: rsync
+                source: "/var/lib/vpn-subscription-mirror-src/"
+                known_hosts: ""
+        - name: Fail when missing mirror host pin was accepted
+          ansible.builtin.fail:
+            msg: missing mirror host pin unexpectedly succeeded
+      rescue:
+        - name: Record missing mirror host pin rejection
+          ansible.builtin.set_fact:
+            mirror_missing_pin_rejected: true
+            mirror_missing_pin_failed_task: "{{ ansible_failed_task.name }}"
+            mirror_missing_pin_failure_message: "{{ ansible_failed_result.msg }}"
+
+    - name: Missing host pin fails at preflight before side effects
+      ansible.builtin.assert:
+        that:
+          - mirror_missing_pin_rejected
+          - mirror_missing_pin_failed_task == 'Validate mirror configuration before making host changes'
+          - "'trusted known_hosts pin' in mirror_missing_pin_failure_message"
+
     - name: vpn-sub-mirror.service journal has no fatal entries
       ansible.builtin.shell:
         cmd: |

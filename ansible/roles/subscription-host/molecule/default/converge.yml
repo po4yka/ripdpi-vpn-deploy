@@ -25,6 +25,9 @@
         # regression guard in verify.yml can prove the key survives a
         # `--delete` pull (it lives outside subscription_dir by design).
         ssh_key: "STUB-NOT-A-REAL-KEY\n"
+        # Deliberately fake, non-secret fixture. Production pins must be complete
+        # known-hosts lines obtained through a trusted out-of-band channel.
+        known_hosts: "worker.example.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoleculeFixtureNotARealHostKey0000000000\n"
   pre_tasks:
     - name: Seed a fake mirror source payload tree
       ansible.builtin.file:
