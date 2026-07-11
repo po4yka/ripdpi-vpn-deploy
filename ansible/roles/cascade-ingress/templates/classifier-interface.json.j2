@@ -2,9 +2,19 @@
   "schema_version": 1,
   "activation_state": "implementation-only",
   "invocation": {
-    "executable": "{{ cascade_ingress.classifier_path }}",
+    "transport": "socks5-connect",
+    "endpoint": {
+      "host": "{{ cascade_ingress.classifier_proxy_host }}",
+      "port": {{ cascade_ingress.classifier_proxy_port }}
+    },
+    "xray_outbound_tag": "cascade-classifier",
+    "executable": "{{ cascade_ingress.classifier_proxy_path }}",
+    "authentication": {
+      "username": "cascade-xray",
+      "password_source": "{{ cascade_ingress.classifier_proxy_password_path }}"
+    },
     "dataset_argument": "{{ cascade_ingress.geodata_path }}",
-    "destination_argument": "per-connection-ip"
+    "destination_argument": "socks5-connect-destination"
   },
   "outcomes": {
     "ru": "direct",

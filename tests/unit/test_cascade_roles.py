@@ -35,6 +35,33 @@ def test_ingress_preflights_dataset_before_serving_configuration() -> None:
     assert "systemd_service" not in tasks
 
 
+def test_ingress_installs_concrete_proxy_but_unit_is_repository_disabled() -> None:
+    role = ANSIBLE / "roles/cascade-ingress"
+    tasks = (role / "tasks/main.yml").read_text()
+    unit = (role / "templates/cascade-classifier-proxy.service.j2").read_text()
+
+    assert "cascade-classifier-proxy.py" in tasks
+    assert "cascade_classifier_lib.py" in tasks
+    assert "classifier_proxy_password" in tasks
+    assert "ExecCondition=/usr/bin/false" in unit
+    assert "cascade-classifier-proxy.py" in unit
+    assert "systemd_service" not in tasks
+
+
+def test_ingress_installs_probe_machinery_but_cannot_schedule_it() -> None:
+    role = ANSIBLE / "roles/cascade-ingress"
+    tasks = (role / "tasks/main.yml").read_text()
+    service = (role / "templates/cascade-leg-probe.service.j2").read_text()
+    timer = (role / "templates/cascade-leg-probe.timer.j2").read_text()
+
+    assert "cascade-leg-probe.py" in tasks
+    assert "cascade-leg-probe-config.schema.json" in tasks
+    assert "python3-jsonschema" in tasks
+    assert "ExecCondition=/usr/bin/false" in service
+    assert "OnUnitActiveSec=5min" in timer
+    assert "systemd_service" not in tasks
+
+
 def test_neither_role_has_an_operator_service_activation_switch() -> None:
     for role in ("cascade-ingress", "cascade-egress"):
         root = ANSIBLE / "roles" / role
@@ -106,5 +133,8 @@ def test_site_has_attestation_and_colocation_guards_before_roles() -> None:
     assert "lookup('file', playbook_dir ~ '/../role-tiers.yml')" in site
     assert ".cascade_governance_status == 'live-authorized'" in site
     assert site.index("mutually exclusive") < first_role
+    assert site.index("classifier owns every egress decision") < first_role
+    assert "enable_cascade_ingress" in site[site.index("classifier owns every egress decision") : site.index("verify cascade ASN attestation")]
+    assert "enable_warp_outbound" in site[site.index("classifier owns every egress decision") : site.index("verify cascade ASN attestation")]
     assert site.index("role: cascade-ingress") > first_role
     assert site.index("role: cascade-egress") > first_role

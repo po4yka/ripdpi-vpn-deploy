@@ -19,17 +19,28 @@
 - name: Validate cascade ingress contract
   ansible.builtin.assert:
     that:
+      - cascade_ingress.direct_interface | length > 0
+      - cascade_ingress.direct_interface != cascade_ingress.wg_interface
       - cascade_ingress.egress_endpoint | length > 0
       - cascade_ingress.egress_port | int > 0
       - cascade_ingress.egress_port | int <= 65535
       - cascade_secrets.ingress_private_key | length > 0
       - cascade_secrets.egress_public_key | length > 0
+      - cascade_secrets.classifier_proxy_password | length >= 43
     fail_msg: Cascade ingress requires an egress endpoint plus its own private key and the egress public key.
   no_log: true
 
+- name: Assert cascade classifier is the only optional egress selector
+  ansible.builtin.assert:
+    that:
+      - not (vpn.enable_warp_outbound | default(false) | bool)
+    fail_msg: Cascade ingress cannot coexist with WARP routing because every client connection must pass through the classifier.
+  tags:
+    - always
+
 - name: Install cascade ingress packages
   ansible.builtin.apt:
-    name: [wireguard, wireguard-tools, nftables, python3]
+    name: [wireguard, wireguard-tools, nftables, python3, python3-jsonschema]
     state: present
     update_cache: true
     cache_valid_time: 3600
@@ -43,8 +54,11 @@
     mode: "{{ item.mode }}"
   loop:
     - {path: /usr/local/libexec, mode: "0755"}
+    - {path: /usr/local/share/cascade, mode: "0755"}
     - {path: /etc/wireguard, mode: "0700"}
     - {path: /etc/cascade, mode: "0755"}
+    - {path: /var/lib/cascade, mode: "0700"}
+    - {path: /var/lib/cascade/evidence, mode: "0700"}
 
 - name: Install canonical cascade classifier module
   ansible.builtin.copy:
@@ -53,6 +67,38 @@
     owner: root
     group: root
     mode: "0755"
+
+- name: Install cascade classifier library
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../scripts/cascade_classifier_lib.py"
+    dest: "{{ cascade_ingress.classifier_library_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install per-connection cascade classifier proxy
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../scripts/cascade-classifier-proxy.py"
+    dest: "{{ cascade_ingress.classifier_proxy_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install cascade authenticated leg probe
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../scripts/cascade-leg-probe.py"
+    dest: "{{ cascade_ingress.leg_probe_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install cascade leg probe configuration schema
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../contract/cascade-leg-probe-config.schema.json"
+    dest: "{{ cascade_ingress.leg_probe_schema_path }}"
+    owner: root
+    group: root
+    mode: "0644"
 
 - name: Preflight classifier dataset before serving configuration
   ansible.builtin.command:
@@ -64,6 +110,16 @@
   changed_when: false
   failed_when: cascade_classifier_preflight.rc != 0
 
+- name: Install classifier proxy authentication secret
+  ansible.builtin.copy:
+    content: "{{ cascade_secrets.classifier_proxy_password }}\n"
+    dest: "{{ cascade_ingress.classifier_proxy_password_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+
 - name: Render disabled classifier integration contract
   ansible.builtin.template:
     src: classifier-interface.json.j2
@@ -71,6 +127,25 @@
     owner: root
     group: root
     mode: "0644"
+
+- name: Render repository-disabled classifier proxy unit
+  ansible.builtin.template:
+    src: cascade-classifier-proxy.service.j2
+    dest: "{{ cascade_ingress.classifier_proxy_unit_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Render repository-disabled cascade leg probe units
+  ansible.builtin.template:
+    src: "{{ item.source }}"
+    dest: "{{ item.destination }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - {source: cascade-leg-probe.service.j2, destination: /etc/systemd/system/cascade-leg-probe.service}
+    - {source: cascade-leg-probe.timer.j2, destination: /etc/systemd/system/cascade-leg-probe.timer}
 
 - name: Render cascade ingress scoped policy
   ansible.builtin.template:

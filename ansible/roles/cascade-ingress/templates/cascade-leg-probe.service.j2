@@ -1,0 +1,18 @@
+[Unit]
+Description=Repository-disabled authenticated cascade leg probe
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecCondition=/usr/bin/false
+Environment=CASCADE_LEG_PROBE_SCHEMA={{ cascade_ingress.leg_probe_schema_path }}
+ExecStart=/usr/bin/python3 {{ cascade_ingress.leg_probe_path }} --config {{ cascade_ingress.leg_probe_config_path }} --token-file {{ cascade_ingress.leg_probe_token_path }} --state-file {{ cascade_ingress.leg_probe_state_path }} --health-record {{ cascade_ingress.leg_probe_health_path }} --evidence-dir {{ cascade_ingress.leg_probe_evidence_dir }}
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths={{ cascade_ingress.leg_probe_config_path }} {{ cascade_ingress.leg_probe_token_path }} {{ cascade_ingress.leg_probe_schema_path }}
+ReadWritePaths=/var/lib/cascade

@@ -1,0 +1,11 @@
+[Unit]
+Description=Repository-disabled cascade leg probe schedule
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=cascade-leg-probe.service
+
+[Install]
+WantedBy=timers.target

@@ -41,11 +41,16 @@
   },
   "dns": {
     "servers": [
+      {%- if vpn.enable_cascade_ingress | default(false) %}
+      "tcp://1.1.1.1:53",
+      "tcp://8.8.8.8:53"
+      {%- else %}
       "1.1.1.1",
       "8.8.8.8",
       "https+local://dns.cloudflare.com/dns-query"
+      {%- endif %}
     ],
-    "queryStrategy": "UseIP",
+    "queryStrategy": "{% if vpn.enable_cascade_ingress | default(false) %}UseIPv4{% else %}UseIP{% endif %}",
     "tag": "dns-inbound"
   },
   "inbounds": [
@@ -159,7 +164,31 @@
     {
       "tag": "dns-out",
       "protocol": "dns"
-    }{% if (vpn.enable_warp_outbound | default(false)) and ((vpn.warp_outbound_routes | default([])) | length > 0) %},
+    }{% if vpn.enable_cascade_ingress | default(false) %},
+    {
+      "tag": "cascade-classifier",
+      "protocol": "socks",
+      "targetStrategy": "ForceIPv4",
+      "settings": {
+        "servers": [
+          {
+            "address": "{{ cascade_ingress.classifier_proxy_host | default('127.0.0.1') }}",
+            "port": {{ cascade_ingress.classifier_proxy_port | default(10808) }},
+            "users": [
+              {
+                "user": "cascade-xray",
+                "pass": {{ cascade_secrets.classifier_proxy_password | to_json }}
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "sockopt": {
+          "domainStrategy": "ForceIPv4"
+        }
+      }
+    }{% endif %}{% if not (vpn.enable_cascade_ingress | default(false)) and (vpn.enable_warp_outbound | default(false)) and ((vpn.warp_outbound_routes | default([])) | length > 0) %},
     {
       "tag": "warp-out",
       "protocol": "socks",
@@ -176,6 +205,15 @@
   "routing": {
     "domainStrategy": "IPIfNonMatch",
     "rules": [
+      {%- if vpn.enable_cascade_ingress | default(false) %}
+      {
+        "type": "field",
+        "comment": "Route built-in TCP DNS resolution through the classifier before Xray sends resolved IPs",
+        "inboundTag": ["dns-inbound"],
+        "outboundTag": "cascade-classifier"
+      },
+      {%- endif %}
+      {%- if not (vpn.enable_cascade_ingress | default(false)) %}
       {
         "type": "field",
         "comment": "DNS hijack — keep client DNS lookups visible to xray and resolvable",
@@ -188,6 +226,7 @@
         "port": "53",
         "outboundTag": "dns-out"
       },
+      {%- endif %}
       {
         "type": "field",
         "comment": "Probe-defense: block BitTorrent on the exit (graylist correlates BT)",
@@ -213,7 +252,7 @@
         ],
         "outboundTag": "block"
       },
-      {% if (vpn.enable_warp_outbound | default(false)) and ((vpn.warp_outbound_routes | default([])) | length > 0) %}
+      {% if not (vpn.enable_cascade_ingress | default(false)) and (vpn.enable_warp_outbound | default(false)) and ((vpn.warp_outbound_routes | default([])) | length > 0) %}
       {%- for r in vpn.warp_outbound_routes %}
       {
         "type": "field",
@@ -225,11 +264,19 @@
       },
       {%- endfor %}
       {% endif %}
+      {%- if vpn.enable_cascade_ingress | default(false) %}
       {
         "type": "field",
-        "comment": "Default — direct freedom outbound with UseIP strategy",
-        "network": "tcp,udp",
-        "outboundTag": "direct"
+        "comment": "Cascade adapter is TCP-only; UDP is fail-closed until equivalent per-destination classification exists",
+        "network": "udp",
+        "outboundTag": "block"
+      },
+      {% endif -%}
+      {
+        "type": "field",
+        "comment": "{% if vpn.enable_cascade_ingress | default(false) %}Default TCP traffic enters the loopback classifier adapter{% else %}Default — direct freedom outbound with UseIP strategy{% endif %}",
+        "network": "{% if vpn.enable_cascade_ingress | default(false) %}tcp{% else %}tcp,udp{% endif %}",
+        "outboundTag": "{% if vpn.enable_cascade_ingress | default(false) %}cascade-classifier{% else %}direct{% endif %}"
       }
     ]
   },

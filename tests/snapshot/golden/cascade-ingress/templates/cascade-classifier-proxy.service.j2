@@ -1,0 +1,21 @@
+[Unit]
+Description=Repository-disabled cascade per-connection classifier proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Executable contract: cascade-classifier-proxy.py
+ExecCondition=/usr/bin/false
+ExecStart=/usr/bin/python3 /usr/local/libexec/cascade-classifier-proxy.py --dataset /usr/local/share/xray/geoip.dat --listen-host 127.0.0.1 --listen-port 10808 --direct-interface  --foreign-interface csi0 --password-file /etc/cascade/classifier-proxy.password
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/usr/local/share/xray/geoip.dat /etc/cascade/classifier-proxy.password
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

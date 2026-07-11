@@ -102,6 +102,15 @@
           {{ _cascade_conflicts }} with split-hop roles {{ _split_hop_conflicts }}.
       tags: [always]
 
+    - name: Guard — cascade classifier owns every egress decision
+      ansible.builtin.assert:
+        that:
+          - not ((vpn.enable_cascade_ingress | default(false) | bool) and (vpn.enable_warp_outbound | default(false) | bool))
+        fail_msg: >-
+          Host {{ inventory_hostname }} may not enable cascade-ingress with
+          warp-outbound because WARP rules would bypass uniform classification.
+      tags: [always]
+
     - name: Guard — verify cascade ASN attestation before converge
       ansible.builtin.command:
         cmd: >-
