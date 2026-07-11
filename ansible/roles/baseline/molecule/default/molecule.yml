@@ -9,7 +9,7 @@ driver:
 
 platforms:
   - name: vpn-baseline-debian13
-    image: geerlingguy/docker-debian13-ansible:latest
+    image: geerlingguy/docker-debian13-ansible@sha256:a54f094cf5f4e0ea968561745434ab906c9c9604b19c367e405fdaab5f9a4a6c
     pre_build_image: true
     privileged: true
     command: /lib/systemd/systemd
@@ -18,7 +18,7 @@ platforms:
     cgroupns_mode: host
 
   - name: vpn-baseline-ubuntu2404
-    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    image: geerlingguy/docker-ubuntu2404-ansible@sha256:eac5576411b04b7e0120990b67f6d687ea2d0174dd1f77d1cd891aedee71c096
     pre_build_image: true
     privileged: true
     command: /lib/systemd/systemd

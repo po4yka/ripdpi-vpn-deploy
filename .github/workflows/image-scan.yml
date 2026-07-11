@@ -18,22 +18,11 @@ jobs:
       matrix: ${{ steps.images.outputs.matrix }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          fetch-depth: 0
 
       - name: Collect base images from molecule scenarios
         id: images
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [ -n "${BASE_SHA}" ]; then
-            git fetch --no-tags --depth=1 origin "${BASE_SHA}"
-            mapfile -t files < <(git diff --name-only "${BASE_SHA}" "${GITHUB_SHA}" -- \
-              'ansible/roles/*/molecule/*/molecule.yml' \
-              'ansible/molecule/*/molecule.yml')
-          else
-            mapfile -t files < <(find ansible/roles ansible/molecule -path '*/molecule.yml' -type f)
-          fi
+          mapfile -t files < <(find ansible/roles ansible/molecule -path '*/molecule.yml' -type f)
 
           if [ "${#files[@]}" -eq 0 ]; then
             images='["__none__"]'
@@ -62,9 +51,9 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
-      - name: No base image changes
+      - name: No Molecule base images configured
         if: matrix.image == '__none__'
-        run: echo "No molecule base image changes to scan."
+        run: echo "No Molecule base images are configured."
 
       - name: Run Trivy vulnerability scanner
         if: matrix.image != '__none__'
