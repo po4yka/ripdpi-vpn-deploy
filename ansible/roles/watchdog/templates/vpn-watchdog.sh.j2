@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Probes each enabled transport. After FAIL_THRESHOLD consecutive failures,
-# pushes an alert via ntfy.sh / Pushover, then continues. State (consecutive
-# failures + alert times) is kept in $STATE_FILE.
+# restarts failed transport units and pushes an alert via ntfy.sh / Pushover.
+# Recovery and notification rate limits are kept in $STATE_FILE.
 set -euo pipefail
 
 # Loaded by systemd EnvironmentFile=
 : "${FAIL_THRESHOLD:=3}"
 : "${STATE_FILE:=/var/lib/vpn-watchdog/state}"
 : "${ALERTS_PER_HOUR_MAX:=4}"
+: "${KICKS_PER_HOUR_MAX:=3}"
 : "${XRAY_BIN:=/usr/local/bin/xray}"
 : "${XRAY_REALITY_CONFIG:=/etc/vpn-watchdog-reality.json}"
 : "${XRAY_REALITY_PROBES:=}"
@@ -22,6 +23,8 @@ mkdir -p "$(dirname "$STATE_FILE")"
 #   last_alert_epoch=<unix>
 #   alerts_this_hour=<n>
 #   alerts_hour_started=<unix>
+#   kicks_this_hour=<n>
+#   kicks_hour_started=<unix>
 declare -A STATE
 if [[ -f "$STATE_FILE" ]]; then
   while IFS='=' read -r k v; do
@@ -32,10 +35,13 @@ STATE[consecutive_fails]="${STATE[consecutive_fails]:-0}"
 STATE[last_alert_epoch]="${STATE[last_alert_epoch]:-0}"
 STATE[alerts_this_hour]="${STATE[alerts_this_hour]:-0}"
 STATE[alerts_hour_started]="${STATE[alerts_hour_started]:-$(date +%s)}"
+STATE[kicks_this_hour]="${STATE[kicks_this_hour]:-0}"
+STATE[kicks_hour_started]="${STATE[kicks_hour_started]:-$(date +%s)}"
 
 probe_results=()
 probe_failures=()
 probe_failure_count=0
+declare -A failed_units=()
 
 probe() {
   local name="$1"; shift
@@ -45,6 +51,15 @@ probe() {
     probe_results+=("FAIL  $name")
     probe_failures+=("$name")
     probe_failure_count=$(( probe_failure_count + 1 ))
+  fi
+}
+
+probe_unit() {
+  local unit="$1"; shift
+  local failures_before=$probe_failure_count
+  probe "$@"
+  if (( probe_failure_count > failures_before )); then
+    failed_units["$unit"]=1
   fi
 }
 
@@ -81,7 +96,7 @@ probe_reality_listeners() {
   IFS=',' read -r -a probe_specs <<< "$XRAY_REALITY_PROBES"
 
   if [[ -z "$XRAY_REALITY_PROBE_URL" || ! -r "$XRAY_REALITY_CONFIG" || -z "$XRAY_REALITY_PROBES" ]]; then
-    probe "xray REALITY round-trip configured" false
+    probe_unit "xray.service" "xray REALITY round-trip configured" false
     return
   fi
 
@@ -109,10 +124,10 @@ probe_reality_listeners() {
     server_port="${spec%%:*}"
     socks_port="${spec#*:}"
     if (( all_ready == 1 )) && kill -0 "$xray_probe_pid" 2>/dev/null; then
-      probe "xray REALITY TCP/${server_port} round-trip" \
+      probe_unit "xray.service" "xray REALITY TCP/${server_port} round-trip" \
         reality_canary_round_trip "$socks_port"
     else
-      probe "xray REALITY TCP/${server_port} round-trip" false
+      probe_unit "xray.service" "xray REALITY TCP/${server_port} round-trip" false
     fi
   done
 
@@ -121,27 +136,27 @@ probe_reality_listeners() {
 }
 
 if [[ "${ENABLE_XRAY:-true}" == "true" ]]; then
-  probe "xray.service active"      systemctl is-active --quiet xray
-  probe "xray TCP/${XRAY_PORT:-443} listening" \
+  probe_unit "xray.service" "xray.service active" systemctl is-active --quiet xray
+  probe_unit "xray.service" "xray TCP/${XRAY_PORT:-443} listening" \
     bash -c "ss -lnt | awk '{print \$4}' | grep -q ':${XRAY_PORT:-443}\$'"
-  probe "xray config valid" \
+  probe_unit "xray.service" "xray config valid" \
     "$XRAY_BIN" run -test -config /etc/xray/config.json
   probe_reality_listeners
 fi
 
 if [[ "${ENABLE_NGINX_XHTTP:-true}" == "true" ]]; then
-  probe "nginx.service active"     systemctl is-active --quiet nginx
-  probe "nginx -t"                 nginx -t
+  probe_unit "nginx.service" "nginx.service active" systemctl is-active --quiet nginx
+  probe_unit "nginx.service" "nginx -t" nginx -t
 fi
 
 if [[ "${ENABLE_HYSTERIA:-false}" == "true" ]]; then
-  probe "hysteria-server active"   systemctl is-active --quiet hysteria-server
-  probe "hysteria UDP/${HYSTERIA_PORT:-443} listening" \
+  probe_unit "hysteria-server.service" "hysteria-server active" systemctl is-active --quiet hysteria-server
+  probe_unit "hysteria-server.service" "hysteria UDP/${HYSTERIA_PORT:-443} listening" \
     bash -c "ss -lnu | awk '{print \$4}' | grep -q ':${HYSTERIA_PORT:-443}\$'"
 fi
 
 if [[ "${ENABLE_AMNEZIAWG:-false}" == "true" ]]; then
-  probe "AWG iface ${AWG_INTERFACE:-awg0} up" \
+  probe_unit "awg-quick@${AWG_INTERFACE:-awg0}.service" "AWG iface ${AWG_INTERFACE:-awg0} up" \
     awg show "${AWG_INTERFACE:-awg0}"
 fi
 
@@ -194,6 +209,26 @@ fi
 if (( now - STATE[alerts_hour_started] >= 3600 )); then
   STATE[alerts_hour_started]=$now
   STATE[alerts_this_hour]=0
+fi
+
+if (( now - STATE[kicks_hour_started] >= 3600 )); then
+  STATE[kicks_hour_started]=$now
+  STATE[kicks_this_hour]=0
+fi
+
+kick_results=()
+if (( STATE[consecutive_fails] >= FAIL_THRESHOLD )); then
+  for unit in "${!failed_units[@]}"; do
+    if (( STATE[kicks_this_hour] >= KICKS_PER_HOUR_MAX )); then
+      break
+    fi
+    if systemctl restart "$unit"; then
+      kick_results+=("RESTARTED  $unit")
+    else
+      kick_results+=("RESTART FAILED  $unit")
+    fi
+    STATE[kicks_this_hour]=$(( STATE[kicks_this_hour] + 1 ))
+  done
 fi
 
 should_alert=0
@@ -263,19 +298,22 @@ fi
 
 # Persist state
 {
-  for k in consecutive_fails last_alert_epoch alerts_this_hour alerts_hour_started; do
+  for k in consecutive_fails last_alert_epoch alerts_this_hour alerts_hour_started kicks_this_hour kicks_hour_started; do
     echo "${k}=${STATE[$k]}"
   done
 } > "$STATE_FILE"
 chmod 0640 "$STATE_FILE"
 
 # Always log to journal so `journalctl -u vpn-watchdog.service` shows status
-echo "watchdog: consecutive_fails=${STATE[consecutive_fails]} alerts_this_hour=${STATE[alerts_this_hour]} classes=${class_summary:-none}"
+echo "watchdog: consecutive_fails=${STATE[consecutive_fails]} alerts_this_hour=${STATE[alerts_this_hour]} kicks_this_hour=${STATE[kicks_this_hour]} classes=${class_summary:-none}"
 printf '%s\n' "${probe_results[@]}"
+if [[ -n "${kick_results[*]}" ]]; then
+  printf '%s\n' "${kick_results[@]}"
+fi
 if [[ -n "${!classes[*]}" ]]; then
   printf '%s' "$class_lines"
 fi
 
-# Exit 0 even on probe failures — the systemd timer runs us regardless and we
-# don't want failed status to mask the alert flow.
-exit 0
+# Preserve the failed result for systemd and external health checks. The timer
+# remains scheduled independently of the oneshot service's exit status.
+(( probe_failure_count == 0 ))

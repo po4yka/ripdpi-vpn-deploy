@@ -26,6 +26,7 @@
       fail_threshold: 1            # first failed probe → alert
       state_file: /var/lib/vpn-watchdog/state
       alerts_per_hour_max: 4
+      kicks_per_hour_max: 3
       provider: ntfy
       ntfy_url: "http://127.0.0.1:18080"   # local stub listener
       reality_probe_client: watchdog

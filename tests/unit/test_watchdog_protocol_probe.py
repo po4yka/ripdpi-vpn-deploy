@@ -24,13 +24,17 @@ def _run_watchdog(
     xray_client_exits: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
+    bin_dir.mkdir(exist_ok=True)
     state_file = tmp_path / "state"
     config_file = tmp_path / "reality.json"
     config_file.write_text("{}")
     term_marker = tmp_path / "xray-terminated"
 
-    _executable(bin_dir / "systemctl", "exit 0\n")
+    _executable(
+        bin_dir / "systemctl",
+        "printf '%s\\n' \"$*\" >> \"${SYSTEMCTL_LOG}\"\n"
+        "exit 0\n",
+    )
     _executable(bin_dir / "timeout", "exit 0\n")
     _executable(
         bin_dir / "ss",
@@ -77,6 +81,8 @@ def _run_watchdog(
             "XRAY_TERM_MARKER": str(term_marker),
             "STATE_FILE": str(state_file),
             "FAIL_THRESHOLD": "1",
+            "KICKS_PER_HOUR_MAX": "1",
+            "SYSTEMCTL_LOG": str(tmp_path / "systemctl.log"),
             "WATCHDOG_PROVIDER": "ntfy",
             "NTFY_URL": "https://notify.example.test",
             "NTFY_TOPIC": "test-topic",
@@ -103,16 +109,28 @@ def test_authenticated_reality_round_trip_reports_success_and_cleans_up(tmp_path
 def test_wrong_canary_status_is_a_probe_failure_and_cleans_up(tmp_path):
     result = _run_watchdog(tmp_path, canary_status="200")
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode != 0, result.stderr
     assert "FAIL  xray REALITY TCP/443 round-trip" in result.stdout
     assert (tmp_path / "xray-terminated").exists()
     assert "consecutive_fails=1" in (tmp_path / "state").read_text()
+    assert "restart xray.service" in (tmp_path / "systemctl.log").read_text()
+
+
+def test_recovery_kicks_are_bounded_per_hour(tmp_path):
+    first = _run_watchdog(tmp_path, canary_status="200")
+    second = _run_watchdog(tmp_path, canary_status="200")
+
+    assert first.returncode != 0, first.stderr
+    assert second.returncode != 0, second.stderr
+    calls = (tmp_path / "systemctl.log").read_text().splitlines()
+    assert calls.count("restart xray.service") == 1
+    assert "kicks_this_hour=1" in (tmp_path / "state").read_text()
 
 
 def test_socks_startup_timeout_is_a_probe_failure_and_cleans_up(tmp_path):
     result = _run_watchdog(tmp_path, socks_ready=False)
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode != 0, result.stderr
     assert "FAIL  xray REALITY TCP/443 round-trip" in result.stdout
     assert (tmp_path / "xray-terminated").exists()
     assert "consecutive_fails=1" in (tmp_path / "state").read_text()
@@ -121,6 +139,6 @@ def test_socks_startup_timeout_is_a_probe_failure_and_cleans_up(tmp_path):
 def test_xray_client_early_exit_is_a_probe_failure(tmp_path):
     result = _run_watchdog(tmp_path, xray_client_exits=True)
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode != 0, result.stderr
     assert "FAIL  xray REALITY TCP/443 round-trip" in result.stdout
     assert "consecutive_fails=1" in (tmp_path / "state").read_text()
