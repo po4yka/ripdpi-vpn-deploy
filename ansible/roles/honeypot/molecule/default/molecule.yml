@@ -25,6 +25,7 @@ provisioner:
     host_vars:
       vpn-honeypot-debian13:
         ansible_user: root
+        server_ipv6: "2001:db8::10"
   config_options:
     defaults:
       callback_result_format: yaml
