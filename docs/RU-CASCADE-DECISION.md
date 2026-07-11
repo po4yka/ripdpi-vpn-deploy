@@ -59,13 +59,23 @@ The live measurement itself has not been run as part of this ADR and cannot be p
 
 The evidence motivating a *recurring* rather than one-time gate: a single anecdotal report of an ASN split within one provider (two legally distinct entities operating under related branding, observed to sit on different ASNs with different allowlist treatment) stands in tension with a separate, larger-sample measurement showing continued allowlist presence for the same provider family. The two data points do not resolve to a stable answer, which is itself the argument for re-verification on a cadence rather than a single sign-off.
 
+### 5. Cascade and split-hop role families are mutually exclusive per host
+
+No host may enable either cascade role alongside either split-hop role. This is host-level mutual exclusion across all four pairings: proposed `cascade-ingress` or `cascade-egress` with existing `split-hop-ingress` or `split-hop-egress`. It does not prohibit separate hosts in one inventory from carrying the two different topologies, but no VM, physical node, inventory host, or public IP identity may serve both role families.
+
+The reason is architectural rather than an anticipated nftables collision. Split-hop's `initiator-must-be-B` and `no-listen-on-B` invariants preserve a single-role flow appearance: Node A accepts inbound without initiating the protected outbound leg, and Node B initiates without exposing a listener. Cascade ingress is intentionally client-facing and must originate direct RU-destination traffic or the foreign-egress tunnel, which would recreate the dual-role signal on a split-hop Node A. Cascade egress must receive the cascade tunnel and initiate destination traffic, which would add a listener/accepted flow to a split-hop Node B. A flow observer sees the combined behavior of the host and IP, not the Ansible role, interface, routing table, or nftables-table boundary, so independently scoped firewall state cannot restore either split-hop invariant.
+
+Passing the jurisdiction-exception and research-tier gates would authorize two risky features independently but would not make their directional contracts compatible. Co-location therefore has no override and is not conditionally enabled by satisfying both gates.
+
+The proposed structural guard is an `always`-tagged shared pre-task named **Assert cascade and split-hop role families are not co-located**, evaluated before either family runs. It derives `cascade_family_enabled` from proposed `vpn.enable_cascade_ingress` OR `vpn.enable_cascade_egress`, derives `split_hop_family_enabled` from existing `vpn.enable_split_hop_ingress` OR `vpn.enable_split_hop_egress`, treats undefined toggles as `false`, and asserts `not (cascade_family_enabled and split_hop_family_enabled)`. Failure must name the host and the conflicting enabled roles, then stop before package, service, interface, route, or firewall changes. The same shared assertion must be the first imported task of each role so direct role execution cannot bypass the play-level pre-task; no `allow_colocation` variable or warn-only mode is permitted. Proposal-level tests must cover all four cross-family pairings plus each family alone.
+
 ## Phased plan
 
 - **Phase 0 — governance / ADR (this document).** Decision recorded; no code, no Terraform, no role scaffolding.
 - **Phase 1 — isolated Terraform root.** State isolation from Decision 2 stood up; not wired to any provisioning path yet.
 - **Phase 2 — role pair and classifier, default-off.** cascade-ingress / cascade-egress roles and the tri-state classifier land, absent from every family profile (`all.yml`, `vpn-p0-minimal.yml`, `vpn-family-standard.yml`, `vpn-device-full.yml`), consistent with how `ROLE-TIERING.md`'s guard keeps unproven mechanisms out of the default fleet.
 - **Phase 3 — attestation-gate wiring.** The checker described in `docs/CASCADE-ASN-ATTESTATION.md` is wired to block provisioning on anything other than a current, passing, per-ASN attestation.
-- **Phase 4 — fail-closed and role-compatibility tests.** Full test-dimension coverage for the tri-state classifier, including the required forced-empty scenario from Decision 3, plus tests asserting the cascade role pair does not silently interact with split-hop's directional invariants when both are present in an inventory.
+- **Phase 4 — fail-closed and role-compatibility tests.** Full test-dimension coverage for the tri-state classifier, including the required forced-empty scenario from Decision 3, plus tests asserting that the Decision 5 guard rejects all four cascade/split-hop pairings on one host before either role family changes the host.
 - **Phase 5 — cross-repo documentation reconciliation.** `ROLE-TIERING.md`, `PROVIDER-NOTES.md`, and the android-side client-transparency ADR are reconciled against whatever Phase 2–4 actually ships, closing any drift between this governance document and the amended docs it currently only proposes edits to.
 - **Phase 6 — promotion criteria.** Promotion out of EXCEPTION-only, lab-only status requires, at minimum: a passing current attestation (Decision 4), full Phase 4 test coverage including the forced-empty scenario, and resolution of the inherited split-hop per-leg watchdog gap — `SPLIT-HOP-TOPOLOGY.md`'s open item that a downed egress leg is currently silent to the ingress side's health checks — as a hard blocker if the cascade role pair is ever deployed alongside a split-hop egress on the same fleet. This gap is not created by the cascade; it is inherited exposure that promotion must not paper over.
 
@@ -88,7 +98,6 @@ This map exists to keep Phase 2 implementation honest: it reuses the *shape* of 
 ## Open decisions
 
 - **EXCEPTION tier versus a RESEARCH sub-flag.** Whether jurisdiction risk deserves its own orthogonal tier (as decided above) or could instead have been modeled as a specially-flagged research role is not fully closed; the orthogonal-tier choice is recorded as the working decision but may be revisited once Phase 1 Terraform isolation is built and its operational cost is known.
-- **Co-location with split-hop.** Whether a cascade-ingress host may ever share a fleet, or a host, with a split-hop deployment is unresolved. The two mechanisms currently look mutually exclusive by default topology (split-hop's Node A is not client-facing in the same way), but this has not been proven incompatible or compatible; Phase 4's role-compatibility tests are meant to settle it empirically rather than by inspection.
 
 ## Caveats
 
@@ -103,6 +112,6 @@ This map exists to keep Phase 2 implementation honest: it reuses the *shape* of 
 - `docs/ROLE-TIERING.md` — being amended separately to record the EXCEPTION tier alongside the existing CORE/TACTICAL/RESEARCH guard.
 - `docs/PROVIDER-NOTES.md` — being amended separately to add the RU-jurisdiction risk row referenced in Decision 2.
 - `docs/CASCADE-ASN-ATTESTATION.md` — companion document specifying the attestation schema, weekly cadence, authorized signer role, dated-report evidence form, and checker referenced in Decision 4 and Phase 3.
-- `docs/SPLIT-HOP-TOPOLOGY.md` — prior two-node ADR in this repo; Decision 1 above explains why the cascade does not extend it, and Phase 6 inherits its open per-leg watchdog gap as a promotion blocker for any co-located deployment.
+- `docs/SPLIT-HOP-TOPOLOGY.md` — prior two-node ADR in this repo; Decisions 1 and 5 explain why the cascade does not extend it and why the two role families may not share a host, while Phase 6 inherits its open per-leg watchdog gap for separate-host deployments in the same fleet.
 - `docs/CDN-DECISION.md` — sibling flat-file ADR this document's structure follows.
 - android repo `docs/adr/0009-cascade-client-transparency.md` — the client-side counterpart recording that the cascade requires no client schema or code change; this ADR's context section assumes that transparency guarantee holds.
