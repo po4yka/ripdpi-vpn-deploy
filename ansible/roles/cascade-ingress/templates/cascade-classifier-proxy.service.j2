@@ -1,0 +1,21 @@
+[Unit]
+Description=Repository-disabled cascade per-connection classifier proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Executable contract: cascade-classifier-proxy.py
+ExecCondition=/usr/bin/false
+ExecStart=/usr/bin/python3 {{ cascade_ingress.classifier_proxy_path }} --dataset {{ cascade_ingress.geodata_path }} --listen-host {{ cascade_ingress.classifier_proxy_host }} --listen-port {{ cascade_ingress.classifier_proxy_port }} --direct-interface {{ cascade_ingress.direct_interface }} --foreign-interface {{ cascade_ingress.wg_interface }} --password-file {{ cascade_ingress.classifier_proxy_password_path }}
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths={{ cascade_ingress.geodata_path }} {{ cascade_ingress.classifier_proxy_password_path }}
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

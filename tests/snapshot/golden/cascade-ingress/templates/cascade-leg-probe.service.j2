@@ -1,0 +1,18 @@
+[Unit]
+Description=Repository-disabled authenticated cascade leg probe
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecCondition=/usr/bin/false
+Environment=CASCADE_LEG_PROBE_SCHEMA=/usr/local/share/cascade/cascade-leg-probe-config.schema.json
+ExecStart=/usr/bin/python3 /usr/local/libexec/cascade-leg-probe.py --config /etc/cascade/leg-probe.json --token-file /etc/cascade/leg-probe.token --state-file /var/lib/cascade/leg-probe-state.json --health-record /var/lib/cascade/leg-health.json --evidence-dir /var/lib/cascade/evidence
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/etc/cascade/leg-probe.json /etc/cascade/leg-probe.token /usr/local/share/cascade/cascade-leg-probe-config.schema.json
+ReadWritePaths=/var/lib/cascade

@@ -84,4 +84,5 @@ def test_cascade_secret_block_exists_with_empty_defaults() -> None:
         "egress_private_key": "",
         "egress_public_key": "",
         "preshared_key": "",
+        "classifier_proxy_password": "",
     }

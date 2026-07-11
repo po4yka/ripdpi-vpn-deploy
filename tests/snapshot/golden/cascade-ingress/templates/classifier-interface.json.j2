@@ -2,9 +2,19 @@
   "schema_version": 1,
   "activation_state": "implementation-only",
   "invocation": {
-    "executable": "/usr/local/libexec/cascade-classifier.py",
+    "transport": "socks5-connect",
+    "endpoint": {
+      "host": "127.0.0.1",
+      "port": 10808
+    },
+    "xray_outbound_tag": "cascade-classifier",
+    "executable": "/usr/local/libexec/cascade-classifier-proxy.py",
+    "authentication": {
+      "username": "cascade-xray",
+      "password_source": "/etc/cascade/classifier-proxy.password"
+    },
     "dataset_argument": "/usr/local/share/xray/geoip.dat",
-    "destination_argument": "per-connection-ip"
+    "destination_argument": "socks5-connect-destination"
   },
   "outcomes": {
     "ru": "direct",

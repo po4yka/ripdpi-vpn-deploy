@@ -21,6 +21,24 @@
       ansible.builtin.slurp:
         src: /etc/cascade/classifier-interface.json
       register: classifier_interface
+    - name: Read repository-disabled classifier unit
+      ansible.builtin.slurp:
+        src: /etc/systemd/system/cascade-classifier-proxy.service
+      register: classifier_unit
+    - name: Inspect classifier proxy password permissions
+      ansible.builtin.stat:
+        path: /etc/cascade/classifier-proxy.password
+      register: classifier_proxy_password
+    - name: Read repository-disabled leg probe unit
+      ansible.builtin.slurp:
+        src: /etc/systemd/system/cascade-leg-probe.service
+      register: leg_probe_unit
+    - name: Inspect leg probe timer enablement
+      ansible.builtin.command:
+        cmd: systemctl is-enabled cascade-leg-probe.timer
+      register: leg_probe_timer
+      changed_when: false
+      failed_when: false
     - name: Assert classifier and directional scaffold
       ansible.builtin.assert:
         that:
@@ -33,3 +51,8 @@
           - ((classifier_interface.content | b64decode | from_json).outcomes['dataset-unavailable']) == 'block-serving'
           - (classifier_interface.content | b64decode | from_json).fallback == none
           - (classifier_interface.content | b64decode | from_json).activation_state == 'implementation-only'
+          - ((classifier_interface.content | b64decode | from_json).invocation.transport) == 'socks5-connect'
+          - (classifier_unit.content | b64decode) is search('ExecCondition=/usr/bin/false')
+          - classifier_proxy_password.stat.mode == '0600'
+          - (leg_probe_unit.content | b64decode) is search('ExecCondition=/usr/bin/false')
+          - leg_probe_timer.stdout == 'disabled'

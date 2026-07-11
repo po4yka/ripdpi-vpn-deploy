@@ -15,9 +15,19 @@
       ansible.builtin.stat:
         path: /etc/cascade/classifier-interface.json
       register: classifier_interface
+    - name: Inspect classifier proxy unit
+      ansible.builtin.stat:
+        path: /etc/systemd/system/cascade-classifier-proxy.service
+      register: classifier_proxy_unit
+    - name: Inspect classifier proxy password
+      ansible.builtin.stat:
+        path: /etc/cascade/classifier-proxy.password
+      register: classifier_proxy_password
     - name: Forced-empty outcome is blocked not foreign
       ansible.builtin.assert:
         that:
           - blocked_marker.stat.exists
           - not serving_config.stat.exists
           - not classifier_interface.stat.exists
+          - not classifier_proxy_unit.stat.exists
+          - not classifier_proxy_password.stat.exists

@@ -211,6 +211,13 @@ def test_bad_uuid_rejected(filled):
     assert errs
 
 
+def test_cascade_proxy_password_rejects_json_significant_characters(example_doc):
+    example_doc["cascade_secrets"]["classifier_proxy_password"] = 'unsafe"password' + "x" * 40
+    errors = list(_validator().iter_errors(example_doc))
+
+    assert errors
+
+
 def test_bad_version_rejected(filled):
     v = _validator()
     filled["xray"]["version"] = "latest"

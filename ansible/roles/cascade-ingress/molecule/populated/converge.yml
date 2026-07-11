@@ -5,6 +5,7 @@
   vars:
     cascade_ingress:
       validate_policy: false
+      direct_interface: eth0
       wg_interface: csi0
       tunnel_address: 10.203.0.1/30
       egress_endpoint: 192.0.2.20
@@ -13,7 +14,20 @@
       keepalive_seconds: 25
       geodata_path: /usr/local/share/xray/geoip.dat
       classifier_path: /usr/local/libexec/cascade-classifier.py
+      classifier_library_path: /usr/local/libexec/cascade_classifier_lib.py
+      classifier_proxy_path: /usr/local/libexec/cascade-classifier-proxy.py
+      classifier_proxy_host: 127.0.0.1
+      classifier_proxy_port: 10808
+      classifier_proxy_unit_path: /etc/systemd/system/cascade-classifier-proxy.service
+      classifier_proxy_password_path: /etc/cascade/classifier-proxy.password
       classifier_interface_path: /etc/cascade/classifier-interface.json
+      leg_probe_path: /usr/local/libexec/cascade-leg-probe.py
+      leg_probe_schema_path: /usr/local/share/cascade/cascade-leg-probe-config.schema.json
+      leg_probe_config_path: /etc/cascade/leg-probe.json
+      leg_probe_token_path: /etc/cascade/leg-probe.token
+      leg_probe_state_path: /var/lib/cascade/leg-probe-state.json
+      leg_probe_health_path: /var/lib/cascade/leg-health.json
+      leg_probe_evidence_dir: /var/lib/cascade/evidence
       policy_path: /etc/wireguard/cascade-ingress.nft
     cascade_secrets:
       ingress_private_key: MOLECULE_STUB_INGRESS_PRIVATE_KEY_NOT_REAL_AAAAA=
@@ -21,5 +35,6 @@
       egress_private_key: ""
       egress_public_key: MOLECULE_STUB_EGRESS_PUBLIC_KEY_NOT_REAL_BBBBBBBB=
       preshared_key: ""
+      classifier_proxy_password: MOLECULE_STUB_PROXY_PASSWORD_NOT_REAL_1234567890
   roles:
     - role: cascade-ingress
