@@ -42,7 +42,8 @@ resource "upcloud_server" "vpn" {
   }
 
   network_interface {
-    type = "public"
+    type              = "public"
+    ip_address_family = "IPv4"
   }
 
   dynamic "network_interface" {
@@ -59,7 +60,8 @@ resource "upcloud_server" "vpn" {
   dynamic "network_interface" {
     for_each = var.additional_public_ip ? [1] : []
     content {
-      type = "public"
+      type              = "public"
+      ip_address_family = "IPv4"
     }
   }
 
