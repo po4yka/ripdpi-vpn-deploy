@@ -37,6 +37,11 @@ Pass a token from stdin or a `0600` file through `--token-stdin` or
 `--token-file` to use an opaque subscription URL; the token is validated
 against `^[A-Za-z0-9_-]+$` before use.
 
+**Fleet JSON stays on the canonical shell surface** — global `--json` on
+`vpnd fleet status` forwards `JSON=1` to the Make target and fleet script.
+Structured stdout contains data only and preserves partial declared/observed
+states rather than inventing a host-health verdict.
+
 ## What's done well
 
 - **`--explain` is honest** — env vars and cwd are encoded in the shell-quoted

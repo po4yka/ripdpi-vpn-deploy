@@ -105,7 +105,7 @@ help:
 	@echo "  test-tls-policing HOST=…   Probe the ~12-concurrent-TLS home-ISP rule"
 	@echo "  probe-payload-throttle HOST=… Probe per-ASN ~16 KiB payload throttling"
 	@echo "  snell-refinement BUNDLE=… CONFIG=… VANTAGE=…  Run staged Snell refinement matrix"
-	@echo "  fleet-status [HOSTS=…]     Summary table across every host:env pair"
+	@echo "  fleet-status [HOSTS=…] [JSON=1]  Declared manifest + live status for every host:env pair"
 	@echo "  install-operator-crons     Wire all of the above into crontab as a managed block"
 	@echo "  remove-operator-crons      Strip the vpn-deploy cron block"
 	@echo ""
@@ -486,7 +486,7 @@ test-tls-policing:
 	  $(if $(STEPS),--steps $(STEPS))
 
 fleet-status:
-	./scripts/fleet-status.sh
+	@./scripts/fleet-status.sh $(if $(filter 1 true,$(JSON)),--json)
 
 drift-since-tag:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) VPN_SECRETS_FILE=$(SECRETS_FILE) \
