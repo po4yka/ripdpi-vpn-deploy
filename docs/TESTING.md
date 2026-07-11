@@ -102,7 +102,7 @@ the discipline contract and how to add a new stub.
 | Operator step | Tests that protect it |
 |---|---|
 | `git commit` (local) | pre-commit hooks: gitleaks, terraform fmt, ansible-lint, yamllint, **shellcheck**, **secrets-coverage**, **templates-render**, **Xray release/PQ-REALITY guards**, **placeholder-scan** |
-| `git push` (PR) | CI matrix: terraform fmt+validate (3 providers), terraform test (3 providers), cloud-init schema, ansible-lint + syntax, required molecule scenarios for baseline/firewall/xray/hysteria/nginx-xhttp/watchdog/monitoring/backup/subscription-host plus watchdog failure, shellcheck, secrets-coverage, templates-render, yamllint, gitleaks, unit tests (157 pytest + 123 Rust + 29 bats), Conftest TF policy (3 providers), Trivy image scan, snapshot diff, secrets schema; reproducible-build covers xray + hysteria + RealiTLScanner sha256. |
+| `git push` (PR) | CI matrix: terraform fmt+validate and terraform test for 3 providers, cloud-init schema, ansible-lint + syntax, default Molecule scenarios for `baseline`, `firewall`, `xray`, `hysteria`, `nginx-xhttp`, `watchdog`, `monitoring`, `backup`, `subscription-host`, `amneziawg`, and `geodata`; non-default scenario `watchdog/failure`; shellcheck, secrets-coverage, templates-render, yamllint, gitleaks, `pytest tests/unit/` (live collection count recorded above), 123 Rust tests, 46 bats tests, Conftest TF policy, Trivy image scan, snapshot diff, and secrets schema. |
 | PR labeled `ci-real-deploy` | **real-vps-deploy** workflow: provisions an ephemeral UpCloud VPS, runs site.yml + verify, destroys — closest approximation to production in CI. See `docs/CI-REAL-DEPLOY.md`. |
 | `make validate` (operator) | terraform fmt + validate + gitleaks + ansible-lint + ansible syntax-check |
 | `make validate-target` | live probe of REALITY target (TLS / H2 / SAN / uTLS / ASN / template OPSEC) |
@@ -118,15 +118,16 @@ the discipline contract and how to add a new stub.
 | scheduled Monday 08:00 UTC | **cargo-mutants** (`.github/workflows/mutants.yml`) — validates vpnd test suite is doing its job; non-blocking |
 | scheduled Monday 12:00 UTC | **drift-since-tag --repo-only** (`.github/workflows/drift.yml`) — repository-level drift detection; opens/updates a rolling issue |
 | scheduled Monday 10:23 UTC | **AmneziaWG arm64 floor watch** (`.github/workflows/amneziawg-arm64-floor.yml`) — flags issue-state or release-note fix claims for physical revalidation; never relaxes guards |
-| weekly weekend | **Renovate** opens grouped dependency-update PRs (Terraform providers, Rust crates, GitHub Actions digest pins, Xray/Realm/AmneziaWG version pins via regex managers) |
+| weekly weekend | **Renovate** opens dependency-update PRs for supported managers, including grouped Terraform providers and Rust crates, GitHub Actions digest pins, and Hysteria Realm / Snell sing-box pins via regex managers. |
 | `make smoke-test` | end-to-end real-traffic dial through every enabled profile |
 | `make check-killswitch BUNDLE=…` | per-client validation of emitted sing-box bundle (5 rules: auto_route, strict_route, sniff, final ≠ direct, DNS detour ≠ direct, no IPv6-only outbound) |
 
 ## Dependency updates
 
-Pinned versions are not maintained by hand — Renovate opens weekly PRs
-for the ecosystems it supports, and each PR runs through the full CI
-matrix above before a human merges.
+Renovate opens weekly PRs for the ecosystems it supports, and each PR runs
+through the full CI matrix above before a human merges. Xray and AmneziaWG
+remain manual, policy-gated updates because their pins cannot be updated safely
+and completely by the current regex managers.
 
 Renovate config lives at `renovate.json` at the repo root. Key behaviors:
 
@@ -134,10 +135,9 @@ Renovate config lives at `renovate.json` at the repo root. Key behaviors:
   Renovate auto-updates digests with the matching version comment preserved.
 - Terraform providers grouped into a single weekly PR; Rust crates grouped
   the same way (lowers merge overhead).
-- Custom regex managers for `xray_version`, `realm_version`, and
-  `amneziawg_version` in `ansible/roles/*/defaults/main.yml` — each pointed
-  at upstream GitHub Releases. `docs/XRAY-RELEASE-LINE.md` remains the
-  policy SOT; the Renovate PR is the *trigger* for operator review.
+- Custom regex managers cover only the Hysteria Realm and Snell sing-box
+  version pins. Xray follows `docs/XRAY-RELEASE-LINE.md`; AmneziaWG follows
+  the arm64 floor-watch workflow and both require manual updates.
 - `vulnerabilityAlerts.enabled: true`. Schedule: weekly on weekends.
 
 | Ecosystem | Renovate covers? | Where pinned | Refresh cadence |
@@ -146,7 +146,8 @@ Renovate config lives at `renovate.json` at the repo root. Key behaviors:
 | Terraform providers | yes | `terraform/providers/*/versions.tf` + `.terraform.lock.hcl` | weekly, grouped |
 | Rust crates | yes | `vpnd/Cargo.toml` + `vpnd/Cargo.lock` | weekly, grouped |
 | Python tooling | yes | `requirements.txt` | weekly, grouped |
-| Xray / Realm / AmneziaWG binaries | yes (via regex managers) | `ansible/roles/*/defaults/main.yml` | per upstream release; operator merges against `docs/XRAY-RELEASE-LINE.md` policy |
+| Hysteria Realm / Snell sing-box binaries | yes (via regex managers) | role defaults | per upstream release; human review required |
+| Xray / AmneziaWG binaries | **no** | secrets/example pin and role defaults | manual, after release-policy and platform validation |
 | Ansible Galaxy collections | **no** (Renovate gap) | exact versions in `requirements.yml` | manual quarterly review (see below) |
 | geodata (geosite/geoip) | n/a | concrete URLs + sha256 values in the deployed vars file | daily systemd timer on the VPS via `geodata` role |
 
