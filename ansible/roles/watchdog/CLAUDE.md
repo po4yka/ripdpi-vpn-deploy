@@ -12,9 +12,10 @@ entry in `xray.clients`. Never reuse a recipient device credential.
 Multi-cohort deployments authorize that identity in every cohort so a green
 result covers every REALITY listener.
 
-**Bounded alerts** — failures must cross `fail_threshold`, and notifications
-remain capped by `alerts_per_hour_max`. The watchdog reports failures; systemd
-owns service restart policy.
+**Bounded recovery** — failures must cross `fail_threshold` before the watchdog
+restarts only the transport units whose probes failed. Restart attempts remain
+capped by `kicks_per_hour_max`, notifications by `alerts_per_hour_max`, and a
+red probe run exits non-zero so systemd and external checks retain the signal.
 
 ## What's done well
 

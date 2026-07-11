@@ -13,6 +13,8 @@
           /usr/local/sbin/vpn-watchdog.sh
         executable: /bin/bash
       changed_when: false
+      register: watchdog_run
+      failed_when: watchdog_run.rc != 1
 
     # Give the stub listener a moment to finish writing.
     - name: Wait for the stub to flush the captured alert
