@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import yaml
@@ -11,12 +12,23 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = REPO_ROOT / "terraform" / "shared" / "cloud-init.yaml.tftpl"
+RENDERER = REPO_ROOT / "scripts" / "render-cloud-init-ci.py"
 MARKER = "/var/lib/cloud-init-vpn-bootstrap.done"
 
 
 def test_bootstrap_marker_depends_on_validated_successful_ssh_reload(
     tmp_path: Path,
 ) -> None:
+    rendered = subprocess.run(
+        [sys.executable, str(RENDERER)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    rendered_config = yaml.safe_load(rendered)
+    assert rendered_config["users"][1]["name"] == "deploy"
+    assert "${" not in rendered
+
     cloud_config = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
     commands = cloud_config["runcmd"]
 

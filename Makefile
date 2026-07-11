@@ -27,7 +27,8 @@ export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CON
         setup-yubikey check-killswitch install-operator-crons \
         remove-operator-crons issue-sub-token sub-reads \
         test-unit snapshot-check snapshot-update validate-secrets \
-        tf-test ci-fast bats-test vpnd-test vpnd-clippy vpnd-mutants tf-policy \
+        actionlint-check cloud-init-schema tf-test yamllint-check shellcheck \
+        ci-fast bats-test vpnd-test vpnd-clippy vpnd-deny vpnd-msrv vpnd-mutants tf-policy \
         check
 
 help:
@@ -121,11 +122,17 @@ help:
 	@echo "  snapshot-update            Refresh the goldens (run after intentional change)"
 	@echo "  validate-secrets           jsonschema check (strict if SECRETS_FILE is set)"
 	@echo "  validate-bundle            jsonschema + fingerprint check of a ripdpi bundle (BUNDLE=… or example)"
-	@echo "  tf-test                    terraform test (mock_provider; needs TF 1.6+)"
-	@echo "  ci-fast                    Cheap pre-PR bundle: unit + snapshot + schema + render + syntax + vpnd"
+	@echo "  actionlint-check           Validate every GitHub Actions workflow"
+	@echo "  cloud-init-schema          Render shared cloud-init and run cloud-init schema"
+	@echo "  tf-test                    terraform test for all provider roots"
+	@echo "  yamllint-check             Lint repository YAML with the CI configuration"
+	@echo "  shellcheck                 Lint every operator shell script"
+	@echo "  ci-fast                    Portable CI-parity bundle (excludes Molecule and validate)"
 	@echo "  bats-test                  Run bats shell tests (tests/bats/)"
 	@echo "  vpnd-test                  cargo test --release --locked inside vpnd/"
 	@echo "  vpnd-clippy                cargo clippy --release --locked (deny warnings) inside vpnd/"
+	@echo "  vpnd-deny                  cargo-deny policy against the committed lockfile"
+	@echo "  vpnd-msrv                  cargo check --locked with Rust 1.88.0"
 	@echo "  tf-policy                  terraform test + conftest OPA policy check for all providers"
 	@echo "  molecule-test ROLE=<name>  Run one role's molecule scenario"
 	@echo "  molecule-full-stack        site.yml end-to-end inside a Docker container"
@@ -288,16 +295,53 @@ validate-secrets:
 validate-bundle:
 	python3 scripts/validate-bundle.py $(BUNDLE)
 
-tf-test:
-	@cd $(TF_ROOT) && terraform init -backend=false >/dev/null && terraform test
+actionlint-check:
+	@command -v actionlint >/dev/null 2>&1 || { echo "missing: actionlint" >&2; exit 1; }
+	actionlint
 
-# Cheap-to-run bundle for operators to run before pushing a PR. Mirrors
-# the equivalent jobs on .github/workflows/ci.yml so a passing local
-# run means a passing remote ci-fast (modulo molecule which is too slow
-# for this gate — run `make molecule-test ROLE=<name>` for that). The
-# Missing local tooling is a failure, matching CI rather than producing a
-# misleading green gate.
+cloud-init-schema:
+	@command -v cloud-init >/dev/null 2>&1 || { echo "missing: cloud-init" >&2; exit 1; }
+	@rendered="$$(mktemp -t cloud-init.rendered.XXXXXX)"; \
+	  trap 'rm -f "$$rendered"' 0; \
+	  python3 scripts/render-cloud-init-ci.py > "$$rendered"; \
+	  cloud-init schema --config-file "$$rendered"
+
+tf-test:
+	@command -v terraform >/dev/null 2>&1 || { echo "missing: terraform" >&2; exit 1; }
+	@for provider in upcloud hetzner vultr; do \
+	  echo "== terraform test: $$provider =="; \
+	  terraform -chdir=terraform/providers/$$provider init -backend=false >/dev/null && \
+	  terraform -chdir=terraform/providers/$$provider test || exit 1; \
+	done
+
+yamllint-check:
+	@command -v yamllint >/dev/null 2>&1 || { echo "missing: yamllint" >&2; exit 1; }
+	yamllint -c .yamllint.yml .
+
+shellcheck:
+	@command -v shellcheck >/dev/null 2>&1 || { echo "missing: shellcheck" >&2; exit 1; }
+	shellcheck -s bash -S warning scripts/*.sh
+
+vpnd-deny:
+	@command -v cargo-deny >/dev/null 2>&1 || { echo "missing: cargo-deny" >&2; exit 1; }
+	cd vpnd && cargo deny --locked check --config deny.toml
+
+vpnd-msrv:
+	@command -v cargo >/dev/null 2>&1 || { echo "missing: cargo" >&2; exit 1; }
+	cd vpnd && cargo +1.88.0 check --locked
+
+# Portable pre-PR bundle for operators. Mirrors required CI jobs that can run
+# without provider credentials, GitHub services, or Molecule containers.
+# `make check` adds validate (fmt, gitleaks, ansible-lint). Missing local
+# tooling is a failure rather than a misleading green gate.
 ci-fast:
+	@$(MAKE) actionlint-check
+	@$(MAKE) cloud-init-schema
+	@$(MAKE) tf-test
+	@$(MAKE) yamllint-check
+	@$(MAKE) shellcheck
+	@$(MAKE) vpnd-deny
+	@$(MAKE) vpnd-msrv
 	@echo "== render check =="; python3 scripts/check-templates-render.py
 	@echo "== AmneziaWG arm64 version floor =="; python3 scripts/check-amneziawg-arm64-version-floor.py
 	@echo "== Xray breaking-change guard =="; python3 scripts/check-xray-breaking-changes.py

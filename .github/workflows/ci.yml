@@ -81,22 +81,7 @@ jobs:
           sudo apt-get install -y cloud-init
 
       - name: Render cloud-init template
-        # The template only uses Terraform's `${var}` interpolation (no
-        # %{ if } / for-each), so a 6-line Python render is enough — and
-        # it avoids `terraform console` which has hung indefinitely on
-        # heredoc stdin in this CI image.
-        run: |
-          python3 - <<'PY' > /tmp/cloud-init.rendered.yaml
-          import re, pathlib
-          tpl = pathlib.Path("terraform/shared/cloud-init.yaml.tftpl").read_text()
-          vars = {
-              "admin_user": "deploy",
-              "admin_ssh_public_key":
-                  "ssh-ed25519 AAAA_REPLACE_WITH_PUBLIC_KEY operator@laptop",
-              "build_env": "ci",
-          }
-          print(re.sub(r"\$\{(\w+)\}", lambda m: vars[m.group(1)], tpl), end="")
-          PY
+        run: python3 scripts/render-cloud-init-ci.py > /tmp/cloud-init.rendered.yaml
 
       - name: Validate with cloud-init schema
         run: cloud-init schema --config-file /tmp/cloud-init.rendered.yaml
