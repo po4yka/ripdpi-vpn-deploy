@@ -50,6 +50,20 @@ def test_governance_counts_match_live_repository():
     ):
         assert stale_claim not in role_tiering
 
+    contributing = (ROOT / "CONTRIBUTING.md").read_text()
+    local_guidance = contributing.split("## Local pre-flight", 1)[1].split(
+        "## Adding a new role / template / script", 1
+    )[0]
+    assert "make check" in local_guidance
+    assert ".github/workflows/ci.yml" in local_guidance
+    assert "docs/TESTING.md" in local_guidance
+    assert "required checks" in local_guidance
+    assert "check: validate ci-fast" in (ROOT / "Makefile").read_text()
+    assert re.search(r"\b\d+\+? jobs\b", local_guidance, re.IGNORECASE) is None
+    assert re.search(r"matrix:\s*\d+\s+roles", local_guidance, re.IGNORECASE) is None
+    assert "Renovate PRs" in contributing
+    assert re.search(r"Ansible\s+plus\s+systemd\s+own\s+runtime\s+state", contributing)
+
     ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
     push_row = next(line for line in testing.splitlines() if line.startswith("| `git push` (PR) |"))
     default_roles = ci["jobs"]["molecule"]["strategy"]["matrix"]["role"]

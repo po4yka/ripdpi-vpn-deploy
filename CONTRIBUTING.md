@@ -23,46 +23,44 @@ and tag releases.
 
 ## First-time setup
 
-After cloning, run this once to wire up the local pre-commit hooks:
+After cloning, run this once to wire up the commit-time and commit-message
+hooks:
 
 ```bash
 make install-hooks
 ```
 
-This installs the hooks for shellcheck, secrets-coverage, templates-render,
-placeholder-scan, gitleaks, terraform fmt, and ansible-lint. Without this step
-the pre-commit checks that gate `git push` will not run locally.
+This installs the commit-time checks for shellcheck, secrets-coverage,
+templates-render, placeholder-scan, gitleaks, terraform fmt, and ansible-lint,
+plus the Conventional Commit message check. It does not install a push hook.
 
 ## Local pre-flight
 
-Before `git push`:
+Before opening a PR, run the canonical local gate:
 
 ```bash
-make validate            # gitleaks, terraform fmt + validate, ansible-lint, syntax-check
-make install-hooks       # one-time — wires up shellcheck, secrets-coverage, templates-render
-pre-commit run --all-files
+make check
 ```
+
+`make check` combines `validate` and the credential-free, portable `ci-fast`
+bundle. Missing local tools fail closed. It intentionally excludes Molecule
+containers, GitHub-native security services, and credentialed deploy jobs;
+`docs/TESTING.md` records those local and remote boundaries. When an Ansible
+role changes, also run its targeted scenario with
+`make molecule-test ROLE=<name>`.
 
 ## CI gates
 
-Every PR runs the matrix in `.github/workflows/ci.yml` (12+ jobs):
+`.github/workflows/ci.yml` owns the required PR workflow. Its `required checks`
+aggregator fails unless every required job succeeds.
 
-- gitleaks
-- terraform fmt + validate (matrix: upcloud / hetzner / vultr)
-- cloud-init schema
-- ansible-lint + syntax-check
-- molecule (matrix: 9 roles)
-- shellcheck, secrets-coverage, templates-render
-- yamllint
-- codeql (Python + Actions)
+`docs/TESTING.md` owns the human-readable coverage matrix, including default
+Molecule scenarios, non-default scenarios, CI-only services, and
+local-versus-remote boundaries. When CI coverage changes, update the workflow
+and its canonical testing row together; `tests/unit/test_governance_counts.py`
+checks that relationship.
 
-Plus informational (non-blocking):
-
-- markdown-link-check (when `*.md` changed)
-- scorecard (weekly)
-
-See `docs/TESTING.md` for the full coverage matrix and which roles have
-justified molecule skips.
+See `docs/TESTING.md` for the complete matrix and per-role test coverage.
 
 ## Adding a new role / template / script
 
