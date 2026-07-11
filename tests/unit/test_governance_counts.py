@@ -23,6 +23,33 @@ def test_governance_counts_match_live_repository():
     assert f"({test_count} collected)" in testing
     assert "molecule / per-role tests. v2." not in (ROOT / "docs/ARCHITECTURE.md").read_text()
 
+    audit = (ROOT / "docs/AUDIT-SILENT-FAILURE.md").read_text()
+    current = audit.split("## Current disposition", 1)[1].split("\n## ", 1)[0]
+    rows = [line for line in current.splitlines() if re.match(r"\| [1-8] \|", line)]
+    assert len(rows) == 8
+    assert [int(row.split("|")[1].strip()) for row in rows] == list(range(1, 9))
+    statuses = [
+        next(status for status in ("RESOLVED", "PARTIAL", "OPEN") if f"**{status}**" in row)
+        for row in rows
+    ]
+    assert all(
+        sum(f"**{status}**" in row for status in ("RESOLVED", "PARTIAL", "OPEN")) == 1
+        for row in rows
+    )
+    assert statuses.count("RESOLVED") == 6
+    assert statuses.count("PARTIAL") == 1
+    assert statuses.count("OPEN") == 1
+
+    role_tiering = (ROOT / "docs/ROLE-TIERING.md").read_text()
+    for stale_claim in (
+        "8 silently-broken controls",
+        "all four alert-chain links broken",
+        "Integrity check is missing",
+        "alert pipeline is broken",
+        "must have their AUDIT-SILENT-FAILURE remediations landed",
+    ):
+        assert stale_claim not in role_tiering
+
     ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
     push_row = next(line for line in testing.splitlines() if line.startswith("| `git push` (PR) |"))
     default_roles = ci["jobs"]["molecule"]["strategy"]["matrix"]["role"]

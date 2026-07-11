@@ -1,7 +1,10 @@
 # Audit: silent-failure on an unverified or unstable external contract
 
-Status: complete — 2026-06-11
+Audit status: complete — 2026-06-11
+Current dispositions reviewed: 2026-07-11
 Method: multi-agent audit, one analyst per control plus an independent adversarial verifier per verdict. Upstream behaviour (Xray-core, sing-box, restic, rclone, openssl, check-host.net, node_exporter) verified against source/docs, not assumed.
+
+The `BROKEN` verdicts and remediation language below record the repository as audited on 2026-06-11. They remain intact as historical evidence; use **Current disposition** for the maintained status of each finding.
 
 ## Failure class
 
@@ -9,7 +12,7 @@ A control is in scope if its effectiveness depends on something it does **not it
 
 Every control examined under this lens failed. The shared root cause is a coupling to an external contract that was assumed rather than asserted, with no canary that fires when the coupling is wrong. A counter pinned at zero, an `exit 0`, or a never-written textfile all read as "healthy / nothing to report" instead of "detector is dead."
 
-## Verdict summary
+## Historical verdict summary (2026-06-11)
 
 | # | Control | Contract it silently depends on | Verdict | Conf. | Cross-check |
 |---|---------|--------------------------------|---------|-------|-------------|
@@ -23,6 +26,21 @@ Every control examined under this lens failed. The shared root cause is a coupli
 | 8 | `burn-check.sh` metrics freshness | An early `exit 2` still leaves a fresh/alertable textfile signal | **BROKEN** | high | agreed |
 
 Seven controls, eight findings (watchdog splits into two). All `BROKEN`. No `VERIFIED`, no `UNVERIFIABLE-WITHOUT-LIVE-NODE` — every verdict was statically decidable from repo + upstream source. The seed hypothesis is **confirmed and generalizes**: the `REJECT|graylist` log-token coupling is dead in two places, and the same "trust an unverified external contract, fail silent" pattern recurs across detection, verification, and backup controls.
+
+## Current disposition
+
+Read this table as repository-state disposition, not proof of a live rollout. `RESOLVED` means the checked-in implementation and focused tests close or explicitly re-scope the audited contract, `PARTIAL` means the repository-owned portion is repaired but an acknowledged operator-owned boundary remains, and `OPEN` means the silent-failure mode remains in the checked-in implementation.
+
+| # | Status | Current repository evidence |
+|---|---|---|
+| 1 | **RESOLVED** | `policy-ratelimit` is explicitly scoped to authenticated traffic routed to `block`, matches the live access-log shape, and exports a dead-contract gauge; see `ansible/roles/policy-ratelimit/README.md` and `tests/unit/test_policy_ratelimit.py`. |
+| 2 | **RESOLVED** | The watchdog performs an authenticated node-local REALITY round trip while `docs/PROTOCOL-LIVENESS.md` owns authoritative client-path quorum and OTP promotion; see `ansible/roles/watchdog/templates/vpn-watchdog.sh.j2` and `tests/unit/test_watchdog_protocol_probe.py`. |
+| 3 | **RESOLVED** | The watchdog classifier recognizes bracketed `block` routes and lowercase `rejected` records under `policy_reject_spike`; see `ansible/roles/watchdog/templates/vpn-watchdog.sh.j2` and `tests/snapshot/golden/watchdog/templates/vpn-watchdog.sh.j2`. |
+| 4 | **RESOLVED** | The killswitch validator traverses the route graph, rejects direct bypasses, and requires unified dual-stack TUN coverage; see `scripts/check-singbox-killswitch.py` and `tests/unit/test_check_killswitch.py`. |
+| 5 | **PARTIAL** | Textfile collection and probing summaries are repository-owned and repaired, but threshold paging remains explicitly operator-owned; see `ansible/roles/monitoring/tasks/main.yml`, `scripts/probing-summary-remote.py`, and `ansible/roles/monitoring/CLAUDE.md`. |
+| 6 | **RESOLVED** | Backup now checks repository integrity, snapshot recency, remote availability, and a monthly isolated restore drill; see `ansible/roles/backup/CLAUDE.md`, `tests/unit/test_backup_integrity_contract.py`, and `tests/unit/test_backup_restore_drill_contract.py`. |
+| 7 | **RESOLVED** | Certificate matching compares generic public-key DER digests for all supported key types; see `scripts/check-certs.sh` and `tests/unit/test_check_certs_key_match.py`. |
+| 8 | **OPEN** | `scripts/burn-check.sh` can still exit on early API failures before its sole metrics write and exports no `vpn_burn_api_error` gauge; the freshness failure remains silent. |
 
 ---
 
@@ -41,7 +59,9 @@ Seven controls, eight findings (watchdog splits into two). All `BROKEN`. No `VER
 
 **Silent failure mode.** Daemon runs, counters stay at `vpn_policy_ratelimit_events_total 0` / `bans_total 0`, `policy_offenders` is never populated. An operator reads the zero as "no probing," not "detector dead." The role's `CLAUDE.md` ("per-IP rate limit on failed handshakes") describes a capability that does not exist.
 
-**Remediation.**
+**Current status — RESOLVED.** The live role is deliberately limited to policy-violating traffic from authenticated clients routed to `block`, matches that route shape, and exports `vpn_policy_ratelimit_dead_contract`; `ansible/roles/policy-ratelimit/README.md` and `tests/unit/test_policy_ratelimit.py` pin the narrower contract. It does not claim to detect unauthenticated REALITY probes.
+
+**Historical remediation.**
 - *Recommended (covers real probers):* move rate-limiting to nftables on the REALITY port, independent of any app log — e.g. `tcp dport 443 ct state new meter probe_meter { ip saddr timeout 60s limit rate over 20/minute } add @policy_offenders { ip saddr timeout 300s }`. This fires before REALITY runs, so it sees actual probers.
 - *Partial (authenticated blackhole traffic only):* change `EVENT_RE` to match the real token, e.g. `re.compile(r"\[.*?->\s*block\]")`. Does **not** cover probers (no log line exists for them).
 - Add a meta-alert: `vpn_policy_ratelimit_events_total == 0` for a long window should page "detector may be broken," not be read as quiet.
@@ -59,12 +79,16 @@ Seven controls, eight findings (watchdog splits into two). All `BROKEN`. No `VER
 
 **Silent failure mode.** Watchdog reports all-OK and never pages while real clients cannot connect; active-probing waves pass undetected. Two independent silent failures in one script.
 
-**Remediation.**
+**Current status #2 — RESOLVED.** `ansible/roles/watchdog/templates/vpn-watchdog.sh.j2` now completes an authenticated node-local REALITY round trip, with behavior covered by `tests/unit/test_watchdog_protocol_probe.py`. This remains non-authoritative for transit reachability; `docs/PROTOCOL-LIVENESS.md` owns the separate client-path quorum and OTP promotion contract.
+
+**Current status #3 — RESOLVED.** The same watchdog now recognizes bracketed `block` routes and lowercase `rejected` records and reports them as `policy_reject_spike`; the rendered watchdog golden snapshot pins the classifier contract.
+
+**Historical remediation.**
 - Add a real handshake probe against the public IP:443, minimum `openssl s_client -connect <ip>:443 -servername <server_names[0]> -brief` (proves TLS terminates); ideally a VLESS+REALITY check (candidate `vpnd probe` subcommand).
 - Change the grep to a token Xray actually emits: `grep -c -E ' rejected | -> *block\]'` (lowercase, bracket-aware), and fix the `graylist` reference in `docs/RUNBOOK-incident.md`.
 - Correct the role `CLAUDE.md` "public surface" claim.
 
-**Resolution (2026-07-10).** The watchdog's local diagnostics and self-dial can validate node configuration but remain explicitly non-authoritative for transit reachability. `docs/PROTOCOL-LIVENESS.md` defines the separate rotation signal: managed client-path sentinels complete authenticated traffic through REALITY, XHTTP, Hysteria2, and AmneziaWG; an operator-side evaluator requires fresh direct controls, a configurable failed-vantage quorum, and three consecutive failures before issuing an environment- and policy-bound OTP. Unknown, stale, malformed, authentication, dependency, and sub-quorum results cannot trigger promotion, and the OTP is revalidated before the existing operator-confirmed blue-green flow starts.
+The 2026-07-10 resolution established the current client-path authority described above: managed sentinels complete authenticated traffic through REALITY, XHTTP, Hysteria2, and AmneziaWG; an operator-side evaluator requires fresh direct controls, a configurable failed-vantage quorum, and three consecutive failures before issuing an environment- and policy-bound OTP. Unknown, stale, malformed, authentication, dependency, and sub-quorum results cannot trigger promotion, and the OTP is revalidated before the existing operator-confirmed blue-green flow starts.
 
 ---
 
@@ -78,7 +102,9 @@ Seven controls, eight findings (watchdog splits into two). All `BROKEN`. No `VER
 
 The verifier's rebuttals (LAN exemption by design; Android-only; possibly-IPv4-only intent) all fail: the checker has no mechanism to assert any of those invariants, so it cannot distinguish a deliberate exemption from an accidental leak — both return OK. (Evidence gap noted: sing-box rule-ordering/TUN-family contracts are inferred from the `emit-singbox.sh` comments and routing-engine convention rather than a cited sing-box source commit; the *code-level* facts — checker never reads `route.rules[]` or `inet6_address` — are certain regardless.)
 
-**Remediation.**
+**Current status — RESOLVED.** `scripts/check-singbox-killswitch.py` now validates direct-capable route rules and the outbound graph and requires unified IPv4/IPv6 TUN coverage; `tests/unit/test_check_killswitch.py` covers bypass and address-family failures.
+
+**Historical remediation.**
 - Add K3b: iterate `route.get("rules", [])`; flag any rule whose `outbound` resolves to a direct-type egress (build the set of `type=="direct"` tags from `outbounds` and check rule outbounds against it). Add a negative test with an injected per-app-bypass rule.
 - Add K1c: flag a TUN inbound with no `inet6_address`; give the fixture a real `inet6_address` so the baseline is non-leaky.
 
@@ -96,7 +122,9 @@ The verifier's rebuttals (LAN exemption by design; Android-only; possibly-IPv4-o
 
 **Silent failure mode.** Honeypot accepts connections, increments counters, writes its textfile — `systemctl status honeypot` is green — while no metric reaches a scraper and no human is ever paged. Detection produces a report someone must remember to open.
 
-**Remediation.** Close all four: add `--collector.textfile.directory=/var/lib/node_exporter/textfile` to the node_exporter ARGS; add a threshold + ntfy/Pushover call (reuse the watchdog's path) in `probing-summary-remote.py`; gate the cron on a threshold exit code; ideally ship a Prometheus rule (`vpn_honeypot_events_60min > threshold`) so the alert path is infrastructure, not operator discipline.
+**Current status — PARTIAL.** `ansible/roles/monitoring/tasks/main.yml` enables the textfile collector and shared writer access, and `scripts/probing-summary-remote.py` produces repository-owned reports and metrics. `ansible/roles/monitoring/CLAUDE.md` deliberately leaves alert routing to the operator, and no checked-in threshold pager closes that boundary.
+
+**Historical remediation.** Close all four: add `--collector.textfile.directory=/var/lib/node_exporter/textfile` to the node_exporter ARGS; add a threshold + ntfy/Pushover call (reuse the watchdog's path) in `probing-summary-remote.py`; gate the cron on a threshold exit code; ideally ship a Prometheus rule (`vpn_honeypot_events_60min > threshold`) so the alert path is infrastructure, not operator discipline.
 
 ---
 
@@ -113,7 +141,9 @@ The verifier's rebuttals (LAN exemption by design; Android-only; possibly-IPv4-o
 
 **Silent failure mode.** `vpn-backup.timer` shows green daily; the repo may be silently corrupt or the remote silently stale; discovered only at restore time, after a node has burned.
 
-**Remediation.** Add `restic check` after `forget --prune` (fails the unit on corruption); add weekly `restic check --read-data-subset=10%` on a separate timer; replace the `rclone size` block with a recency assertion — `restic -r rclone:<remote> snapshots --last 1 --json | jq -e '.[0].time > (now - 86400)'`; automate a `restore latest --dry-run` verification on a weekly timer.
+**Current status — RESOLVED.** The backup role now enforces repository integrity, latest-snapshot recency, remote availability, and a default monthly restore into an isolated target; `tests/unit/test_backup_integrity_contract.py`, `tests/unit/test_backup_restore_drill_contract.py`, and the role's Molecule scenario cover the controls without targeting live paths.
+
+**Historical remediation.** Add `restic check` after `forget --prune` (fails the unit on corruption); add weekly `restic check --read-data-subset=10%` on a separate timer; replace the `rclone size` block with a recency assertion — `restic -r rclone:<remote> snapshots --last 1 --json | jq -e '.[0].time > (now - 86400)'`; automate a `restore latest --dry-run` verification on a weekly timer.
 
 ---
 
@@ -129,7 +159,9 @@ The verifier's rebuttals (LAN exemption by design; Android-only; possibly-IPv4-o
 
 **Silent failure mode.** `check-certs.sh` and `make verify` pass; nginx then fails every TLS handshake at runtime (process up, port open, all sessions broken).
 
-**Remediation.** Replace the RSA-only modulus check with a key-type-agnostic public-key comparison:
+**Current status — RESOLVED.** `scripts/check-certs.sh` now compares SHA-256 digests of the certificate and private key public-key DER, which is key-type agnostic; `tests/unit/test_check_certs_key_match.py` pins the command shape and mismatch behavior.
+
+**Historical remediation.** Replace the RSA-only modulus check with a key-type-agnostic public-key comparison:
 ```sh
 cm="$(printf '%s\n' "$cert" | openssl x509 -noout -pubkey 2>/dev/null | openssl pkey -pubin -noout -text 2>/dev/null | sha256sum || true)"
 km="$(printf '%s\n' "$key"  | openssl pkey -noout -pubout 2>/dev/null | openssl pkey -pubin -noout -text 2>/dev/null | sha256sum || true)"
@@ -150,11 +182,15 @@ Works for RSA, P-256/P-384, and X25519. Update the line-97 comment.
 
 **Silent failure mode.** check-host.net rate-limits the cron; every subsequent run exits 2; the dashboard shows the IP reachable indefinitely while it may be burned.
 
-**Remediation.** Add a `trap '_write_error_metrics' ERR EXIT` that always advances `vpn_burn_last_run_unixtime` and writes a `vpn_burn_api_error 1` gauge on abnormal exit (set `0` in the success path). Pair with a Prometheus rule `vpn_burn_api_error == 1 for: 35m` (just over the cron interval). This converts a silent freeze into an explicit, alertable error.
+**Current status — OPEN.** `scripts/burn-check.sh` still uses `set -e`, reaches its sole metrics write only late in the success path, and can exit on a missing request identifier before refreshing metrics. It has no error trap or `vpn_burn_api_error` gauge, so the audited freshness failure remains.
+
+**Historical remediation.** Add a `trap '_write_error_metrics' ERR EXIT` that always advances `vpn_burn_last_run_unixtime` and writes a `vpn_burn_api_error 1` gauge on abnormal exit (set `0` in the success path). Pair with a Prometheus rule `vpn_burn_api_error == 1 for: 35m` (just over the cron interval). This converts a silent freeze into an explicit, alertable error.
 
 ---
 
 ## Generalization & systemic recommendations
+
+The lessons in this section are historical recommendations from the 2026-06-11 audit and remain useful even where the current disposition is now resolved or deliberately re-scoped.
 
 The eight findings share one shape: **a control trusts an external contract it never asserts, and its failure is indistinguishable from "all quiet."** Fixing the eight individually is necessary but not sufficient; the class will regrow without structural guards.
 
