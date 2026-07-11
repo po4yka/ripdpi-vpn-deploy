@@ -82,12 +82,12 @@ Final tier with each angle's vote. "Contested" = the three did not agree.
 | hysteria | CORE | CORE | CORE | **CORE** | P2 UDP/QUIC; orthogonal transport when TCP is throttled. Reuses nginx cert. |
 | amneziawg | TACTICAL | CORE | CORE | **CORE** *(contested)* | (b)/(c) win: default-on in `all.yml`, declared P2 device-VPN baseline, a 4th transport shape. (a)'s build-tax point is *valid and real* (see burden table — it builds amneziawg-go from source at deploy) but doesn't outweigh baseline status. |
 | geodata | TACTICAL | CORE | CORE | **CORE** *(contested)* | (b)/(c) win: default-on; the firewall geo-block set depends on its feed — disabling it silently half-breaks the allowlist. License-tier death risk is real but has named fallbacks. |
-| monitoring | TACTICAL | CORE | CORE | **CORE** *(contested)* | (b)/(c) win: default-on; the *collection* layer (node_exporter on loopback, log rotation) is sound. AUDIT-SILENT-FAILURE targets the *alert* layer above it, not collection. A single operator must not fly blind. |
+| monitoring | TACTICAL | CORE | CORE | **CORE** *(contested)* | (b)/(c) win: default-on; the collection layer (node_exporter on loopback, textfile metrics, log rotation) is sound. Threshold paging remains an explicit operator-owned boundary. A single operator must not fly blind. |
 | watchdog | CORE | CORE | CORE | **CORE** | Two-level local supervision prevents permanent process death. Authenticated public-path liveness and rotation are intentionally separate and use the quorum/OTP flow in `PROTOCOL-LIVENESS.md`. |
-| backup | CORE | CORE | CORE | **CORE** | restic+age is the only recovery path on burn. Integrity check is missing (AUDIT remediation) but that's a fix, not a demotion. |
+| backup | CORE | CORE | CORE | **CORE** | restic+age is the only recovery path on burn. Repository integrity, snapshot recency, remote availability, and a monthly isolated restore drill are now checked. |
 | subscription-host | TACTICAL | CORE | CORE | **TACTICAL** *(contested)* | (a) wins: `enable_subscription_host: false` (default-off); ARCHITECTURE lists it "optional"; v1 delivery is `emit-singbox.sh` + scp. (b)/(c)'s "zero-intervention reconfig" is a later hardening aspiration, not the current baseline. |
-| policy-ratelimit | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; recently re-scoped to a routing-blackhole abuse limiter that cannot see external probes by design (AUDIT-SILENT-FAILURE + role README). Enable after the nftables-meter remediation. |
-| honeypot | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; AUDIT-SILENT-FAILURE found all four alert-chain links broken. Adds listeners (2222/9000/9100) with zero actionable signal until repaired. |
+| policy-ratelimit | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; accurately re-scoped and tested as a routing-blackhole abuse limiter for authenticated clients, with a dead-contract gauge. It cannot see external probes by design (`AUDIT-SILENT-FAILURE.md` + role README). |
+| honeypot | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; textfile collection and probing summaries are repaired, but threshold paging is incomplete and explicitly operator-owned. Adds listeners (2222/9000/9100), so enable only with an operator alert route. |
 | cdn-front | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; `CDN-DECISION.md` ADR rules CDN out as the RU baseline. Short-term IP-rotation cover only. |
 | naive | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; xcaddy from-source build + v147 preamble breakage. Enable only when HTTP/2+Chromium fingerprint is specifically the threat. |
 | warp-outbound | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; changes egress ASN (breaks burn-check/ASN-drift). Enable only when the upstream ASN path is burned. |
@@ -116,7 +116,7 @@ of the guard: keep it that way.
 | SECRETS.md | CORE | SOPS+age discipline; governs the no-secrets-in-git hard rule. |
 | AGE-RECOVERY.md | CORE | Shamir age-key recovery — "the whole game"; lose shares = locked out. |
 | CDN-DECISION.md | CORE | ADR keeping CDN off the critical path; prevents an accidental fragile default. |
-| AUDIT-SILENT-FAILURE.md | CORE | The 8 silently-broken controls; required reading before trusting any signal. |
+| AUDIT-SILENT-FAILURE.md | CORE | Historical eight-finding audit with a maintained current-disposition table; required reading before trusting any signal. |
 | XRAY-RELEASE-LINE.md | CORE | Per-release breaking changes; required before any xray pin bump. |
 | CLIENT-NOTES.md | CORE | Client version pins / breakage classes; family devices can't self-diagnose. |
 | AWG-COHORTS.md | CORE | AWG obfuscation cohorts; wrong H1..H4 is a trainable fingerprint. Elevated because amneziawg is CORE. |
@@ -173,11 +173,12 @@ tracker.
    without it. **Resolved CORE** because it is default-on and load-bearing for
    the perimeter; the license risk is a watch-item, not a demotion.
 
-3. **monitoring — CORE vs TACTICAL.** (a) points at AUDIT-SILENT-FAILURE (the
-   alert pipeline is broken). (b)/(c) separate the *collection* layer (sound,
-   local-only) from the *alert* layer (broken). **Resolved CORE** — flying
-   blind is worse than imperfect alerting; the broken alert path is a fix, not
-   a reason to drop log collection.
+3. **monitoring — CORE vs TACTICAL.** (a) points at the historical alert-chain
+   failures in `AUDIT-SILENT-FAILURE.md`. (b)/(c) separate the collection layer
+   (sound, local-only, and now textfile-enabled) from the operator-owned alert
+   boundary, which still lacks a checked-in threshold pager. **Resolved CORE**
+   — flying blind is worse than incomplete paging, and the remaining boundary
+   is not a reason to drop log collection.
 
 4. **subscription-host — CORE vs TACTICAL.** (b)/(c) value zero-intervention
    config delivery to non-technical users; (a) notes v1 ships scp/QR and the
@@ -195,15 +196,8 @@ earns promotion with evidence.
 
 ## Ranked recommendation
 
-1. **Fix the CORE before adding anything.** The 10 CORE roles are the family's
-   lifeline, and `docs/AUDIT-SILENT-FAILURE.md` found several of them silently
-   degraded (watchdog transport-liveness, backup integrity, check-certs EC
-   modulus, burn-check freeze). A baseline with no real self-healing signal and
-   no certifiable backup is the top priority — ahead of any new capability.
-2. **Keep TACTICAL roles default-off and fix-before-enable.** policy-ratelimit
-   and honeypot must have their AUDIT-SILENT-FAILURE remediations landed before
-   they are turned on anywhere; the rest (cdn-front, naive, warp-outbound,
-   subscription-host) enable only on their specific trigger condition.
+1. **Keep the CORE verified before adding anything.** The 10 CORE roles are the family's lifeline. The historical audit findings for watchdog transport-liveness, backup integrity, and certificate key matching are resolved in the checked-in repository; burn-check metrics freshness remains open and is the current CORE priority ahead of new capability.
+2. **Keep TACTICAL roles default-off and respect their current boundaries.** `policy-ratelimit` is accurately scoped and tested for authenticated routing abuse. Honeypot collection is repaired, but paging remains incomplete and operator-owned, so enable it only with an explicit alert route; the other TACTICAL roles (cdn-front, naive, warp-outbound, subscription-host) enable only on their specific trigger condition.
 3. **Quarantine RESEARCH.** split-hop-egress, hysteria-realm, dns-morph-bridge, and snell
    stay out of every family profile (now enforced — see Guard). Promote only
    after: confirmed pilot data (split-hop), an upstream *stable* line
