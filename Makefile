@@ -183,7 +183,7 @@ dry-run: pre-deploy-check
 
 deploy: pre-deploy-check
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
-	ansible-playbook $(ANSIBLE_DIR)/playbooks/site.yml
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/site.yml $(if $(strip $(ANSIBLE_TAGS)),--tags "$(ANSIBLE_TAGS)")
 	@ENV=$(ENV) PROVIDER=$(PROVIDER) ./scripts/audit-log.sh append-best-effort \
 	  --action site-deploy \
 	  --note "playbook=site.yml warp_outbound_role=conditional"
