@@ -25,6 +25,14 @@
     group: honeypot
     mode: "0750"
 
+- name: Install logrotate
+  ansible.builtin.apt:
+    name:
+      - logrotate
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
 - name: Ensure shared node_exporter textfile directory
   ansible.builtin.file:
     path: "{{ honeypot.textfile_dir }}"
@@ -50,6 +58,37 @@
     group: root
     mode: "0644"
   notify: Restart honeypot
+
+- name: Install honeypot logrotate policy
+  ansible.builtin.template:
+    src: logrotate-honeypot.j2
+    dest: /etc/honeypot-logrotate.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install honeypot logrotate service
+  ansible.builtin.template:
+    src: honeypot-logrotate.service.j2
+    dest: /etc/systemd/system/honeypot-logrotate.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install honeypot logrotate timer
+  ansible.builtin.template:
+    src: honeypot-logrotate.timer.j2
+    dest: /etc/systemd/system/honeypot-logrotate.timer
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable + start honeypot logrotate timer
+  ansible.builtin.systemd_service:
+    name: honeypot-logrotate.timer
+    enabled: true
+    state: started
+    daemon_reload: true
 
 - name: Enable + start honeypot
   ansible.builtin.systemd_service:

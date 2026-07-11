@@ -1,0 +1,11 @@
+[Unit]
+Description=Check the VPN honeypot connection log size
+
+[Timer]
+OnBootSec={{ honeypot.logrotate_interval }}
+OnUnitActiveSec={{ honeypot.logrotate_interval }}
+AccuracySec=1m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,10 @@
+/var/log/honeypot/connections.log {
+    size 10M
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    su honeypot honeypot
+    create 0640 honeypot honeypot
+}

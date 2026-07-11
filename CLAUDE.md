@@ -84,6 +84,10 @@ cd vpnd && cargo test   # snapshot tests for the recipient page
 release-please drives versioning from Conventional Commits. Don't edit
 `CHANGELOG.md` by hand. One bump per session by intent.
 
+After every completed task, run the required validation and commit all current
+worktree changes with a Conventional Commit. Do not leave completed task work
+uncommitted unless the user explicitly asks for that.
+
 ## Change recipes
 
 ### New Ansible role
