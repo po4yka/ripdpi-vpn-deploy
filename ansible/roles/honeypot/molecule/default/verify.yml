@@ -10,13 +10,21 @@
       changed_when: false
       failed_when: svc.stdout != "active"
 
-    - name: Listener bound on configured port
+    - name: IPv4 listener bound on configured port
       ansible.builtin.shell:
-        cmd: "set -o pipefail && ss -lnt | awk '{print $4}' | grep -E ':4443$'"
+        cmd: "set -o pipefail && ss -H -lnt4 | awk '{print $4}' | grep -E ':4443$'"
         executable: /bin/bash
-      register: bound
+      register: bound_ipv4
       changed_when: false
-      failed_when: bound.rc != 0
+      failed_when: bound_ipv4.rc != 0
+
+    - name: IPv6 listener bound on configured port
+      ansible.builtin.shell:
+        cmd: "set -o pipefail && ss -H -lnt6 | awk '{print $4}' | grep -E ':4443$'"
+        executable: /bin/bash
+      register: bound_ipv6
+      changed_when: false
+      failed_when: bound_ipv6.rc != 0
 
     - name: Listener script present
       ansible.builtin.stat:

@@ -31,6 +31,7 @@ from collections import deque
 
 LISTEN_ADDR = "{{ honeypot.listen_addr | default('0.0.0.0') }}"
 LISTEN_PORT = {{ honeypot.port }}
+LISTEN_IPV6 = {{ 'True' if (server_ipv6 | default('')) else 'False' }}
 LOG_DIR = pathlib.Path("{{ honeypot.log_dir }}")
 TEXTFILE_DIR = pathlib.Path("{{ honeypot.textfile_dir }}")
 EVENTS_PER_MINUTE_MAX = {{ honeypot.events_per_minute_max | default(1000) }}
@@ -159,7 +160,7 @@ def _flush_loop() -> None:
             logging.warning("textfile flush failed: %s", exc)
 
 
-def _handle(conn: socket.socket, addr: tuple[str, int]) -> None:
+def _handle(conn: socket.socket, addr: tuple) -> None:
     src_ip, src_port = addr[0], addr[1]
     conn.settimeout(3.0)
     buf = b""
@@ -192,27 +193,50 @@ def _handle(conn: socket.socket, addr: tuple[str, int]) -> None:
         fh.write(json.dumps(event) + "\n")
 
 
-def main() -> None:
-    threading.Thread(target=_flush_loop, daemon=True).start()
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    # Bind to the configured listen address (default 0.0.0.0). With a
-    # dedicated secondary IP this isolates honeypot probes from real
-    # transport traffic at the IP-reputation level.
-    s.bind((LISTEN_ADDR, LISTEN_PORT))
-    s.listen(128)
-    logging.info("honeypot listening on %s:%d", LISTEN_ADDR, LISTEN_PORT)
+def _create_listener_sockets() -> list[socket.socket]:
+    """Bind every enabled address family before reporting startup success."""
+    specs = [(socket.AF_INET, LISTEN_ADDR)]
+    if LISTEN_IPV6:
+        specs.append((socket.AF_INET6, "::"))
+    listeners: list[socket.socket] = []
+    try:
+        for family, address in specs:
+            listener = socket.socket(family, socket.SOCK_STREAM)
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if family == socket.AF_INET6:
+                listener.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+            listener.bind((address, LISTEN_PORT))
+            listener.listen(128)
+            listeners.append(listener)
+    except Exception:
+        for listener in listeners:
+            listener.close()
+        raise
+    return listeners
+
+
+def _accept_loop(listener: socket.socket) -> None:
+    address = listener.getsockname()[0]
+    logging.info("honeypot listening on %s:%d", address, LISTEN_PORT)
     while True:
-        conn, addr = s.accept()
+        conn, addr = listener.accept()
         if not _workers.acquire(blocking=False):
             conn.close()
             continue
-        def worker(conn: socket.socket = conn, addr: tuple[str, int] = addr) -> None:
+        def worker(conn: socket.socket = conn, addr: tuple = addr) -> None:
             try:
                 _handle(conn, addr)
             finally:
                 _workers.release()
         threading.Thread(target=worker, daemon=True).start()
+
+
+def main() -> None:
+    threading.Thread(target=_flush_loop, daemon=True).start()
+    listeners = _create_listener_sockets()
+    for listener in listeners[1:]:
+        threading.Thread(target=_accept_loop, args=(listener,), daemon=True).start()
+    _accept_loop(listeners[0])
 
 
 if __name__ == "__main__":

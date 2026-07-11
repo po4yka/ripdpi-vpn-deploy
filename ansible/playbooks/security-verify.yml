@@ -173,6 +173,30 @@
       changed_when: false
       failed_when: security_unexpected_public_listeners.stdout | length > 0
 
+    - name: Honeypot IPv4 listener is active
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail && ss -H -lnt4 | awk '{print $4}' |
+          grep -E ':{{ honeypot.port | default(4443) }}$'
+        executable: /bin/bash
+      register: security_honeypot_ipv4_listener
+      changed_when: false
+      failed_when: security_honeypot_ipv4_listener.rc != 0
+      when: vpn.enable_honeypot | default(false)
+
+    - name: Honeypot IPv6 listener is active
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail && ss -H -lnt6 | awk '{print $4}' |
+          grep -E ':{{ honeypot.port | default(4443) }}$'
+        executable: /bin/bash
+      register: security_honeypot_ipv6_listener
+      changed_when: false
+      failed_when: security_honeypot_ipv6_listener.rc != 0
+      when:
+        - vpn.enable_honeypot | default(false)
+        - (server_ipv6 | default('') | length) > 0
+
     - name: unattended-upgrades timers are enabled
       ansible.builtin.command:
         cmd: "systemctl is-enabled {{ item }}"
