@@ -22,9 +22,18 @@ ENV="${ENV:-prod}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 case "$PROVIDER" in
-  upcloud) DESTROY_RESOURCE="upcloud_server.vpn" ;;
-  hetzner) DESTROY_RESOURCE="hcloud_server.vpn" ;;
-  vultr) DESTROY_RESOURCE="vultr_instance.vpn" ;;
+  upcloud)
+    DESTROY_RESOURCE="upcloud_server.vpn"
+    IDENTITY_FIELD="hostname"
+    ;;
+  hetzner)
+    DESTROY_RESOURCE="hcloud_server.vpn"
+    IDENTITY_FIELD="name"
+    ;;
+  vultr)
+    DESTROY_RESOURCE="vultr_instance.vpn"
+    IDENTITY_FIELD="hostname"
+    ;;
   *) echo "unsupported PROVIDER for destroy: $PROVIDER" >&2; exit 2 ;;
 esac
 
@@ -32,6 +41,7 @@ TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 INV="${REPO_ROOT}/ansible/inventory/generated.ini"
 OVERRIDE="${TF_DIR}/_destroy_override.tf"
 TFVARS="${TF_DIR}/environments/${ENV}.tfvars"
+PLAN_JSON=""
 
 if [[ ! -d "$TF_DIR" ]]; then
   echo "no terraform root: $TF_DIR" >&2
@@ -48,7 +58,13 @@ if [[ "$NON_INTERACTIVE" == "true" && ! "$ENV" =~ ^ci-[A-Za-z0-9][A-Za-z0-9-]*$ 
   exit 2
 fi
 
-trap 'rm -f "$OVERRIDE"' EXIT
+cleanup() {
+  rm -f "$OVERRIDE"
+  if [[ -n "$PLAN_JSON" ]]; then
+    rm -f "$PLAN_JSON"
+  fi
+}
+trap cleanup EXIT
 
 cat <<EOF
 
@@ -62,21 +78,10 @@ audit trail.
 
 EOF
 
-expected="$(grep -E '^server_name' "$TFVARS" | head -1 | sed -E 's/.*=[[:space:]]*"([^"]+)".*/\1/')"
-if [[ "$NON_INTERACTIVE" == "true" ]]; then
-  echo "CI destroy authorization accepted for ${ENV} (${expected})"
-else
-  read -r -p "Type the server hostname to confirm (Ctrl-C to abort): " typed
-  if [[ "$typed" != "$expected" ]]; then
-    echo "hostname mismatch (expected: $expected) — aborting" >&2
-    exit 1
-  fi
-
-  read -r -p "Type DESTROY to proceed: " word
-  if [[ "$word" != "DESTROY" ]]; then
-    echo "aborted"
-    exit 1
-  fi
+desired_hostname="$(sed -nE 's/^[[:space:]]*server_name[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$TFVARS" | head -1)"
+if [[ -z "$desired_hostname" ]]; then
+  echo "tfvars must define a non-empty server_name: $TFVARS" >&2
+  exit 1
 fi
 
 # Drop a temporary override that disables prevent_destroy. Terraform merges
@@ -92,17 +97,116 @@ resource "${DESTROY_RESOURCE%%.*}" "${DESTROY_RESOURCE#*.}" {
 }
 EOF
 
-# Plan destroy first so the operator sees the diff
+# Plan destroy before prompting so authorization can be bound to the exact
+# state-backed resource identity that Terraform will delete.
 env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" plan -destroy \
   -var-file="environments/${ENV}.tfvars" \
   -out="${ENV}.destroy.tfplan"
 
-if ! env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" show -json "${ENV}.destroy.tfplan" \
-  | jq -e --arg resource "$DESTROY_RESOURCE" '
-      any(.resource_changes[]?; .address == $resource and (.change.actions | index("delete")))
-    ' >/dev/null; then
+PLAN_JSON="$(mktemp -t destroy-plan.XXXXXX)"
+chmod 0600 "$PLAN_JSON"
+if ! env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" show -json "${ENV}.destroy.tfplan" > "$PLAN_JSON"; then
+  echo "failed to render destroy plan as JSON; refusing apply" >&2
+  exit 1
+fi
+
+if ! jq -e '
+  (.resource_changes | type == "array")
+  and all(.resource_changes[]; type == "object" and (.address | type == "string") and (.change | type == "object") and (.change.actions | type == "array"))
+' "$PLAN_JSON" >/dev/null 2>&1; then
+  echo "destroy plan JSON is malformed; refusing apply" >&2
+  exit 1
+fi
+
+server_change_count="$(jq -r --arg resource "$DESTROY_RESOURCE" '[.resource_changes[] | select(.address == $resource)] | length' "$PLAN_JSON")"
+if [[ "$server_change_count" != "1" ]]; then
+  echo "destroy plan must contain exactly one change for ${DESTROY_RESOURCE}; found ${server_change_count}; refusing apply" >&2
+  exit 1
+fi
+
+if ! jq -e --arg resource "$DESTROY_RESOURCE" '
+  .resource_changes[]
+  | select(.address == $resource)
+  | (.change.actions | type == "array") and (.change.actions | index("delete") != null)
+' "$PLAN_JSON" >/dev/null 2>&1; then
   echo "destroy plan does not delete expected resource ${DESTROY_RESOURCE}; refusing apply" >&2
   exit 1
+fi
+
+if ! planned_identity="$(jq -er --arg resource "$DESTROY_RESOURCE" --arg field "$IDENTITY_FIELD" '
+  .resource_changes[]
+  | select(.address == $resource)
+  | .change.before
+  | select(type == "object")
+  | .[$field]
+  | select(type == "string" and length > 0 and . != "(known after apply)")
+' "$PLAN_JSON")"; then
+  echo "destroy plan has no usable state identity field ${IDENTITY_FIELD} for ${DESTROY_RESOURCE}; refusing apply" >&2
+  exit 1
+fi
+
+if ! planned_id="$(jq -er --arg resource "$DESTROY_RESOURCE" '
+  .resource_changes[]
+  | select(.address == $resource)
+  | .change.before
+  | select(type == "object")
+  | .id
+  | select(. != null and type != "object" and type != "array")
+  | tostring
+  | select(length > 0 and . != "(known after apply)")
+' "$PLAN_JSON")"; then
+  echo "destroy plan has no usable immutable id for ${DESTROY_RESOURCE}; refusing apply" >&2
+  exit 1
+fi
+
+while IFS= read -r address; do
+  allowed=false
+  case "$PROVIDER:$address" in
+    upcloud:upcloud_server.vpn|upcloud:upcloud_firewall_rules.vpn) allowed=true ;;
+    hetzner:hcloud_server.vpn|hetzner:hcloud_ssh_key.admin|hetzner:hcloud_firewall.vpn|hetzner:hcloud_firewall_attachment.vpn|hetzner:hcloud_floating_ip.honeypot_ipv4\[0\]) allowed=true ;;
+    vultr:vultr_instance.vpn|vultr:vultr_ssh_key.admin|vultr:vultr_firewall_group.vpn|vultr:vultr_instance_ipv4.honeypot\[0\]) allowed=true ;;
+    vultr:*)
+      if [[ "$address" =~ ^vultr_firewall_rule\.(icmp|ssh|tcp_public)\[\"[^\"]+\"\]$ ]]; then
+        allowed=true
+      fi
+      ;;
+  esac
+  if [[ "$allowed" != "true" ]]; then
+    echo "destroy plan contains unexpected delete address ${address}; refusing apply" >&2
+    exit 1
+  fi
+done < <(jq -r '.resource_changes[] | select(.change.actions | index("delete") != null) | .address' "$PLAN_JSON")
+
+printf 'Validated destroy target:\n  provider=%s\n  env=%s\n  address=%s\n  planned_identity=%s\n  id=%s\n  desired_hostname=%s\n' \
+  "$PROVIDER" "$ENV" "$DESTROY_RESOURCE" "$planned_identity" "$planned_id" "$desired_hostname"
+
+if [[ "$NON_INTERACTIVE" == "true" ]]; then
+  if [[ "$desired_hostname" != "$planned_identity" ]]; then
+    echo "desired hostname does not match planned state identity; refusing non-interactive apply" >&2
+    exit 1
+  fi
+  echo "CI destroy authorization accepted for ${ENV}: ${DESTROY_RESOURCE} ${planned_identity}#${planned_id}"
+else
+  if [[ "$desired_hostname" != "$planned_identity" ]]; then
+    printf 'WARNING: desired hostname (%s) differs from planned state identity (%s).\n' "$desired_hostname" "$planned_identity" >&2
+    read -r -p "Type STATE-MISMATCH to acknowledge: " mismatch
+    if [[ "$mismatch" != "STATE-MISMATCH" ]]; then
+      echo "state mismatch not acknowledged; aborting" >&2
+      exit 1
+    fi
+  fi
+
+  read -r -p "Type ${planned_identity}#${planned_id} to confirm the planned resource (Ctrl-C to abort): " typed
+  if [[ "$typed" != "${planned_identity}#${planned_id}" ]]; then
+    echo "planned resource identity mismatch — aborting" >&2
+    exit 1
+  fi
+
+  read -r -p "Type DESTROY to proceed: " word
+  if [[ "$word" != "DESTROY" ]]; then
+    echo "aborted"
+    exit 1
+  fi
 fi
 
 if [[ "$NON_INTERACTIVE" != "true" ]]; then

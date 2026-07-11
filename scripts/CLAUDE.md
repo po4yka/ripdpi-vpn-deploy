@@ -21,7 +21,7 @@ flag exists for testing but is undocumented.
 
 **Vultr secondary IPv4 inventory is live-gated** — Terraform output proves allocation only. `render-inventory.sh` polls the primary SSH endpoint and publishes `honeypot_listen_addr` only after the exact IPv4 appears on a guest interface.
 
-**Destroy is provider-aware and plan-verified** — `destroy.sh` maps each supported provider to its canonical server resource and checks that the destroy plan contains a delete action for that exact address before apply. Unknown providers fail before an override file is written.
+**Destroy authorization is bound to planned state** — `destroy.sh` treats the canonical server change's state-backed identity and immutable ID as authoritative, rejects every delete outside the provider-specific allowlist, fails CI when desired and planned hostnames differ, and requires an explicit mismatch acknowledgement plus the planned identity token interactively. Unknown providers fail before an override file is written.
 
 **Xray migrations are changelog-driven** — `docs/XRAY-RELEASE-LINE.md` embeds the declarative guard registry consumed by `check-xray-breaking-changes.py`. Add version-aware rules there instead of hardcoding release cases in unrelated validators; render-sensitive rules use `template_render.py` so every fast check sees the same canonical Ansible context.
 
