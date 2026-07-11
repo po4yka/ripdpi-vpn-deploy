@@ -17,6 +17,8 @@ it or letting one producer replace another producer's metrics.
 
 **Connection logs are actively size-bounded** — a dedicated systemd timer checks the honeypot logrotate policy every five minutes. The listener reopens `connections.log` for every event, so rename + `create 0640 honeypot honeypot` is safe and avoids `copytruncate` data-loss races.
 
+**Rolling metrics use calendar windows** — every textfile flush evicts minute buckets outside `[now-59, now]`, including after a completely idle period. The current-minute gauge is zero unless the newest bucket belongs to the current wall-clock minute.
+
 ## What's done well
 
 - **Banner-free** — every honeypot port closes silently after TCP accept.

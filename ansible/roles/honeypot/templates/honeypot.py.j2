@@ -55,6 +55,16 @@ _unique_ips: set[str] = set()
 _unique_snis: set[str] = set()
 
 
+def _prune_recent_minutes(now_min: int) -> None:
+    """Keep only calendar minutes in [now-59, now]. Caller holds _events_lock."""
+    oldest_min = now_min - 59
+    while _recent_minutes and _recent_minutes[0][0] < oldest_min:
+        _recent_minutes.popleft()
+    # A backward wall-clock adjustment must not leave future buckets visible.
+    while _recent_minutes and _recent_minutes[-1][0] > now_min:
+        _recent_minutes.pop()
+
+
 def _extract_sni(buf: bytes) -> str | None:
     """Quick-and-dirty SNI parse. Returns None on anything malformed."""
     try:
@@ -86,20 +96,24 @@ def _extract_sni(buf: bytes) -> str | None:
 
 def _flush_textfile() -> None:
     """Write a fresh prom textfile reflecting the rolling counters."""
+    now_min = int(time.time()) // 60
     with _events_lock:
+        _prune_recent_minutes(now_min)
         per_min = list(_recent_minutes)
         total = _total_events
         unique_ips = len(_unique_ips)
         unique_snis = len(_unique_snis)
     out = TEXTFILE_DIR / "vpn_honeypot.prom"
     tmp = out.with_suffix(".prom.tmp")
-    last_minute_count = per_min[-1][1] if per_min else 0
+    last_minute_count = (
+        per_min[-1][1] if per_min and per_min[-1][0] == now_min else 0
+    )
     sixty_minute_count = sum(c for _, c in per_min)
     lines = [
         "# HELP vpn_honeypot_events_total Total probe events seen since service start",
         "# TYPE vpn_honeypot_events_total counter",
         f"vpn_honeypot_events_total {total}",
-        "# HELP vpn_honeypot_events_last_minute Events in the most recent observed minute",
+        "# HELP vpn_honeypot_events_last_minute Events in the current calendar minute",
         "# TYPE vpn_honeypot_events_last_minute gauge",
         f"vpn_honeypot_events_last_minute {last_minute_count}",
         "# HELP vpn_honeypot_events_60min Events in the most recent 60 minutes",
@@ -121,6 +135,7 @@ def _bump(source_ip: str, sni: str | None) -> bool:
     global _total_events
     now_min = int(time.time()) // 60
     with _events_lock:
+        _prune_recent_minutes(now_min)
         if not _recent_minutes or _recent_minutes[-1][0] != now_min:
             _recent_minutes.append((now_min, 0))
         cur_min_count = _recent_minutes[-1][1]
