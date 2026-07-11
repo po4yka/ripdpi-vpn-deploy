@@ -50,6 +50,7 @@ resource "vultr_instance_ipv4" "honeypot" {
   count = var.additional_public_ip ? 1 : 0
 
   instance_id = vultr_instance.vpn.id
-  # Do not hard-reboot on IP attachment; interface config is handled by Ansible.
-  reboot = false
+  # Vultr requires a reboot to converge the added address into the guest
+  # network configuration. Inventory verifies the address before publishing it.
+  reboot = true
 }

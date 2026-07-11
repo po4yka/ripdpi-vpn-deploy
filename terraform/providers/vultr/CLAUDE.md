@@ -7,6 +7,8 @@
 **Plan + region constraints** — `vc2-1c-1gb` / `vhf-1c-1gb` only; restricted
 to AMS / FRA / LHR for low-latency RU paths.
 
+**Secondary IPv4 convergence is provider reboot plus guest proof** — `vultr_instance_ipv4.honeypot` keeps `reboot = true`, then `render-inventory.sh` polls the primary SSH address until the secondary IPv4 is present on a guest interface. Inventory must not publish `honeypot_listen_addr` from API state alone.
+
 ## What's done well
 
 - **`backups_enabled = false`** — Vultr's built-in backups can store unencrypted
@@ -29,3 +31,4 @@ to AMS / FRA / LHR for low-latency RU paths.
   verify externally with `make burn-check` (QUIC probe); on-host `nft`/`ss`
   ACCEPT is not evidence. See `docs/PROVIDER-NOTES.md` → "UDP/443 edge
   reachability".
+- **Secondary IPv4 needs live-provider evidence** — mock-provider tests prove the reboot flag and inventory gate, not Vultr's control-plane/guest timing. A real deploy completes this check when inventory rendering observes the address inside the guest; failure is blocking.
