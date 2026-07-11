@@ -39,6 +39,15 @@ Tier definitions:
   `CASCADE-ASN-ATTESTATION.md`. This is the repo's first hosting-jurisdiction
   exception; do not fold jurisdiction risk into RESEARCH.
 
+## EXCEPTION registration and promotion criteria
+
+### Cascade per-leg watchdog
+
+- **Registration blocker:** `cascade-ingress` / `cascade-egress` may not be registered for the EXCEPTION tier until every configured ingress-to-egress leg has a watchdog producing a fresh healthy end-to-end result. This is a prerequisite to registration, not a capability deferred until promotion.
+- **Promotion blocker:** any later promotion remains blocked while the per-leg watchdog is absent, stale, or unhealthy. A previously healthy result does not waive the current signal requirement.
+- **Signal class:** the watchdog must complete an authenticated protocol exchange from ingress through the selected egress to a controlled target on the forwarded path, validate the semantic response, and observe its return through that leg. Process/socket/interface presence and local self-dial are non-authoritative. One miss is degraded/transient; three consecutive misses across distinct intervals with a healthy ingress-local control classify the far leg as down, while any success resets the streak.
+- **Treatment relative to split-hop:** this intentionally diverges from split-hop's current RESEARCH treatment, where the identical far-leg gap is documented but unenforced. Cascade registration pays an additional jurisdiction and policy cost, so the weaker pilot precedent is not sufficient for EXCEPTION admission.
+
 ## The three angles (argued independently, then reconciled)
 
 | Angle | Optimizes | Core count | Headline |
