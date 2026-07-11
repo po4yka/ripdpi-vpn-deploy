@@ -46,12 +46,28 @@ variable "admin_user" {
   type        = string
   default     = "deploy"
   description = "Non-root user created by cloud-init for SSH and Ansible access."
+
+  validation {
+    condition     = can(regex("^[a-z_][a-z0-9_-]{0,31}$", var.admin_user))
+    error_message = "admin_user must be 1-32 characters, start with a lowercase ASCII letter or underscore, and contain only lowercase ASCII letters, digits, underscores, or hyphens."
+  }
 }
 
 variable "admin_ssh_public_key" {
   type        = string
   sensitive   = true
   description = "Public SSH key only. The matching private key stays outside this repo."
+
+  validation {
+    condition = (
+      var.admin_ssh_public_key != ""
+      && var.admin_ssh_public_key == trimspace(var.admin_ssh_public_key)
+      && !strcontains(var.admin_ssh_public_key, "\r")
+      && !strcontains(var.admin_ssh_public_key, "\n")
+      && can(regex("^[^[:space:]]+[[:space:]]+[^[:space:]]+([[:space:]]+.*)?$", var.admin_ssh_public_key))
+    )
+    error_message = "admin_ssh_public_key must be one trimmed, single-line OpenSSH public key with a key type, encoded body, and optional comment."
+  }
 }
 
 variable "allowed_ssh_cidrs" {
@@ -104,7 +120,12 @@ variable "public_listeners" {
 variable "build_env" {
   type        = string
   default     = "prod"
-  description = "Free-form label baked into /etc/vpn-build-id by cloud-init."
+  description = "Technical environment label baked into /etc/vpn-build-id by cloud-init."
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$", var.build_env))
+    error_message = "build_env must be 1-64 ASCII letters, digits, underscores, or hyphens and start with an ASCII letter or digit."
+  }
 }
 
 variable "labels" {

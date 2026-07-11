@@ -1,8 +1,8 @@
 locals {
   user_data = templatefile("${path.module}/../../shared/cloud-init.yaml.tftpl", {
-    admin_user           = var.admin_user
-    admin_ssh_public_key = var.admin_ssh_public_key
-    build_env            = var.build_env
+    admin_user_yaml           = yamlencode(var.admin_user)
+    admin_ssh_public_key_yaml = yamlencode(var.admin_ssh_public_key)
+    build_id_content_yaml     = indent(4, yamlencode(format("provisioned_by=cloud-init\nnext_stage=ansible\nbuild_env=%s\n", var.build_env)))
   })
 
   # Labels are intentionally minimal to limit provider-side fingerprinting.

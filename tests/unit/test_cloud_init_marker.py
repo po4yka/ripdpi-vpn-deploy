@@ -14,6 +14,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = REPO_ROOT / "terraform" / "shared" / "cloud-init.yaml.tftpl"
 RENDERER = REPO_ROOT / "scripts" / "render-cloud-init-ci.py"
 MARKER = "/var/lib/cloud-init-vpn-bootstrap.done"
+SSH_KEY = "ssh-ed25519 AAAA_REPLACE_WITH_PUBLIC_KEY operator: ci # fixture"
+BUILD_ID = "provisioned_by=cloud-init\nnext_stage=ansible\nbuild_env=ci\n"
 
 
 def test_bootstrap_marker_depends_on_validated_successful_ssh_reload(
@@ -27,6 +29,9 @@ def test_bootstrap_marker_depends_on_validated_successful_ssh_reload(
     ).stdout
     rendered_config = yaml.safe_load(rendered)
     assert rendered_config["users"][1]["name"] == "deploy"
+    assert rendered_config["users"][1]["ssh_authorized_keys"] == [SSH_KEY]
+    build_id = next(entry for entry in rendered_config["write_files"] if entry["path"] == "/etc/vpn-build-id")
+    assert build_id["content"] == BUILD_ID
     assert "${" not in rendered
 
     cloud_config = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))

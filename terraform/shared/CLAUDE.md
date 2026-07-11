@@ -6,6 +6,8 @@
 provider root with identical inputs. Behavior is consistent across providers
 by construction.
 
+**Dynamic YAML values are structurally encoded** — the shared template accepts only pre-encoded YAML scalar fragments whose names end in `_yaml`; every provider root must use `yamlencode()` and enforce the same input validation contract before rendering.
+
 **No secrets in here** — cloud-init creates the admin user, hardens sshd,
 installs `python3`, drops a marker file at `/var/lib/cloud-init-vpn-bootstrap.done`,
 and exits. The Ansible run handles the rest. Anything secret stays in SOPS.
@@ -29,3 +31,4 @@ and exits. The Ansible run handles the rest. Anything secret stays in SOPS.
   (`python3`, `sudo`); everything else is Ansible's job.
 - **SSH host key regeneration is one-shot** — done by cloud-init on first
   boot. Don't re-run, or recipients pinning host keys will see a "MITM" warning.
+- **New dynamic values require a cross-provider contract** — structurally encode each value, add identical validation in every provider root, and assert the decoded resource user data; never hand-write YAML escaping.

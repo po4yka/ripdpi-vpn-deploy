@@ -6,14 +6,14 @@ package_reboot_if_required: false
 
 users:
   - default
-  - name: ${admin_user}
+  - name: ${admin_user_yaml}
     gecos: VPN Deploy User
     groups: [sudo]
     shell: /bin/bash
     lock_passwd: true
     sudo: "ALL=(ALL) NOPASSWD:ALL"
     ssh_authorized_keys:
-      - ${admin_ssh_public_key}
+      - ${admin_ssh_public_key_yaml}
 
 ssh_pwauth: false
 disable_root: true
@@ -40,10 +40,7 @@ write_files:
   - path: /etc/vpn-build-id
     owner: root:root
     permissions: "0644"
-    content: |
-      provisioned_by=cloud-init
-      next_stage=ansible
-      build_env=${build_env}
+    content: ${build_id_content_yaml}
 
 runcmd:
   # Validate and reload sshd only on first boot so subsequent reboots do not

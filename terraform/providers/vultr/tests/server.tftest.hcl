@@ -8,7 +8,7 @@ variables {
   region               = "ams"
   plan                 = "vc2-1c-1gb"
   os_id                = 2136
-  admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness"
+  admin_ssh_public_key = "ecdsa-sha2-nistp256 AAAATESTKEY operator: ci # fixture"
   allowed_ssh_cidrs    = ["203.0.113.42/32"]
   build_env            = "test"
 }
@@ -18,11 +18,14 @@ run "server_cloud_init_user_data_is_wired" {
 
   assert {
     condition = (
-      strcontains(vultr_instance.vpn.user_data, "provisioned_by=cloud-init")
-      && strcontains(vultr_instance.vpn.user_data, "build_env=test")
-      && strcontains(vultr_instance.vpn.user_data, "ssh-ed25519 AAAATESTKEY test@harness")
+      yamldecode(vultr_instance.vpn.user_data).users[1].name == "deploy"
+      && yamldecode(vultr_instance.vpn.user_data).users[1].ssh_authorized_keys[0] == "ecdsa-sha2-nistp256 AAAATESTKEY operator: ci # fixture"
+      && one([
+        for file in yamldecode(vultr_instance.vpn.user_data).write_files :
+        file if file.path == "/etc/vpn-build-id"
+      ]).content == "provisioned_by=cloud-init\nnext_stage=ansible\nbuild_env=test\n"
     )
-    error_message = "vultr_instance.user_data must carry the rendered cloud-init bootstrap"
+    error_message = "vultr_instance.user_data must preserve decoded cloud-init inputs exactly"
   }
 }
 
@@ -90,4 +93,34 @@ run "server_secondary_public_ip_when_honeypot_enabled" {
     )
     error_message = "additional_public_ip=true must allocate the honeypot IPv4 and reboot for guest convergence"
   }
+}
+
+run "rejects_invalid_admin_user" {
+  command = plan
+
+  variables {
+    admin_user = "Deploy:root"
+  }
+
+  expect_failures = [var.admin_user]
+}
+
+run "rejects_multiline_admin_ssh_public_key" {
+  command = plan
+
+  variables {
+    admin_ssh_public_key = "ecdsa-sha2-nistp256 AAAATESTKEY\noperator"
+  }
+
+  expect_failures = [var.admin_ssh_public_key]
+}
+
+run "rejects_newline_bearing_build_env" {
+  command = plan
+
+  variables {
+    build_env = "test\nprod"
+  }
+
+  expect_failures = [var.build_env]
 }

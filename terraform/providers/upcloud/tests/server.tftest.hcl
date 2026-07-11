@@ -7,8 +7,9 @@ variables {
   zone                 = "fi-hel1"
   plan                 = "1xCPU-2GB"
   storage_template     = "01000000-0000-4000-8000-000020030200"
-  admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness"
+  admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY operator: ci # fixture"
   allowed_ssh_cidrs    = ["203.0.113.42/32"]
+  build_env            = "test"
 }
 
 # Cloud-init carries the build label downward into the VM. A refactor
@@ -21,6 +22,22 @@ run "server_metadata_is_enabled" {
   assert {
     condition     = upcloud_server.vpn.metadata == true
     error_message = "upcloud_server.metadata must remain true; cloud-init depends on it"
+  }
+}
+
+run "server_cloud_init_user_data_preserves_structured_values" {
+  command = plan
+
+  assert {
+    condition = (
+      yamldecode(upcloud_server.vpn.user_data).users[1].name == "deploy"
+      && yamldecode(upcloud_server.vpn.user_data).users[1].ssh_authorized_keys[0] == "ssh-ed25519 AAAATESTKEY operator: ci # fixture"
+      && one([
+        for file in yamldecode(upcloud_server.vpn.user_data).write_files :
+        file if file.path == "/etc/vpn-build-id"
+      ]).content == "provisioned_by=cloud-init\nnext_stage=ansible\nbuild_env=test\n"
+    )
+    error_message = "upcloud_server.user_data must preserve decoded cloud-init inputs exactly"
   }
 }
 
@@ -86,4 +103,34 @@ run "rejects_unfilled_template_placeholder" {
   }
 
   expect_failures = [var.storage_template]
+}
+
+run "rejects_invalid_admin_user" {
+  command = plan
+
+  variables {
+    admin_user = "Deploy:root"
+  }
+
+  expect_failures = [var.admin_user]
+}
+
+run "rejects_multiline_admin_ssh_public_key" {
+  command = plan
+
+  variables {
+    admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY\noperator"
+  }
+
+  expect_failures = [var.admin_ssh_public_key]
+}
+
+run "rejects_newline_bearing_build_env" {
+  command = plan
+
+  variables {
+    build_env = "test\nprod"
+  }
+
+  expect_failures = [var.build_env]
 }
