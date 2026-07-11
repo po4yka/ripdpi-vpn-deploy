@@ -14,9 +14,11 @@
 
 ## Design decisions
 
-**`ci-fast` is the pre-PR gate** — runs unit + snapshot + schema + render +
-syntax + pytest. Mirrors a job on `.github/workflows/ci.yml`. If `ci-fast`
-passes locally, CI's `ci-fast` will pass too.
+**`ci-fast` is the portable pre-PR gate** — runs the credential-free required
+CI checks, including workflow/YAML/shell lint, cloud-init schema, all Terraform
+tests, pytest/bats, cargo-deny, MSRV, clippy, and Rust tests. `make check` adds
+Terraform fmt/validate, gitleaks, and ansible-lint. Molecule, GitHub-native
+security services, and credentialed deploy jobs remain CI-only or explicit.
 
 **Snapshots, not mocks, for templates** — `tests/snapshot/golden/` holds
 the expected output of every Jinja render against fixtures. Drift is
