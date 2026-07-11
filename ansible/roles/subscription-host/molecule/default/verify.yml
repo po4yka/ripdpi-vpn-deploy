@@ -126,6 +126,20 @@
           mode={{ mirrored_payload.stat.mode }}
           owner={{ mirrored_payload.stat.pw_name }}:{{ mirrored_payload.stat.gr_name }}
 
+    - name: Malicious source symlink did not land in the payload tree
+      ansible.builtin.stat:
+        path: /var/lib/vpn-subscription/sub/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      register: malicious_mirrored_payload
+      failed_when: malicious_mirrored_payload.stat.exists
+
+    - name: Revocation state survives the --delete pull
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep -q 'deadbeefdeadbeefdeadbeef' /var/lib/vpn-subscription/revoked
+        executable: /bin/bash
+      changed_when: false
+
     - name: Mirror ssh credential survives the --delete pull (lives outside DEST)
       ansible.builtin.stat:
         path: /etc/vpn-subscription/mirror_ssh_key
@@ -153,6 +167,7 @@
           grep -q -- '-o UserKnownHostsFile=${SSH_KNOWN_HOSTS}' /usr/local/bin/vpn-sub-mirror.sh
           grep -q -- '-o GlobalKnownHostsFile=/dev/null' /usr/local/bin/vpn-sub-mirror.sh
           grep -q -- '-o BatchMode=yes' /usr/local/bin/vpn-sub-mirror.sh
+          grep -q -- '--no-links --no-devices --no-specials --exclude=/revoked' /usr/local/bin/vpn-sub-mirror.sh
           ! grep -q -- 'accept-new' /usr/local/bin/vpn-sub-mirror.sh
         executable: /bin/bash
       changed_when: false

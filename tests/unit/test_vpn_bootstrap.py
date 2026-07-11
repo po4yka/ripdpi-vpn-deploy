@@ -19,6 +19,7 @@ import datetime as dt
 import hashlib
 import importlib.util
 import json
+import os
 import socket
 import threading
 import time
@@ -287,6 +288,45 @@ def test_unparseable_expires_fails_closed(service):
     assert service.reads()[-1]["outcome"] == "expiry-unavailable"
 
 
+def test_payload_symlink_fails_closed_without_leaking_target(service, tmp_path):
+    token = "link1000link1000"
+    sentinel = tmp_path / "sentinel"
+    sentinel.write_text("private-sentinel-value")
+    h = hashlib.sha256(token.encode()).hexdigest()
+    (service.sub_dir / "sub" / h).symlink_to(sentinel)
+
+    resp = service.get(f"/sub/{token}")
+    body = resp.read()
+    assert resp.status == 503
+    assert b"private-sentinel-value" not in body
+    records = service.reads()
+    assert records[-1]["outcome"] == "payload-unavailable"
+    assert "private-sentinel-value" not in json.dumps(records)
+
+
+def test_metadata_symlink_fails_closed(service, tmp_path):
+    token = "meta1000meta1000"
+    service.place("sub", token, b"payload")
+    h = hashlib.sha256(token.encode()).hexdigest()
+    sentinel = tmp_path / "meta-sentinel"
+    sentinel.write_text('{"expires": "2099-01-01"}')
+    (service.sub_dir / "sub" / f"{h}.meta").symlink_to(sentinel)
+
+    assert service.get(f"/sub/{token}").status == 503
+    assert service.reads()[-1]["outcome"] == "expiry-unavailable"
+
+
+def test_payload_fifo_fails_closed_without_blocking(service):
+    token = "fifo1000fifo1000"
+    h = hashlib.sha256(token.encode()).hexdigest()
+    os.mkfifo(service.sub_dir / "sub" / h)
+
+    started = time.monotonic()
+    assert service.get(f"/sub/{token}").status == 503
+    assert time.monotonic() - started < 1
+    assert service.reads()[-1]["outcome"] == "payload-unavailable"
+
+
 # ---------------------------------------------------------------------------
 # Revocation
 # ---------------------------------------------------------------------------
@@ -338,6 +378,18 @@ def test_unreadable_revocation_state_fails_closed_and_is_audited(service, monkey
     service.place("sub", token, b"payload")
     original = service.module.REVOKED_FILE
     monkeypatch.setattr(service.module, "REVOKED_FILE", original / "missing" / "revoked")
+
+    assert service.get(f"/sub/{token}").status == 503
+    assert service.reads()[-1]["outcome"] == "revocation-unavailable"
+
+
+def test_symlinked_revocation_state_fails_closed_and_is_audited(service, tmp_path):
+    token = "revlink0revlink0"
+    service.place("sub", token, b"payload")
+    sentinel = tmp_path / "revoked-sentinel"
+    sentinel.write_text("")
+    service.revoked_file.unlink()
+    service.revoked_file.symlink_to(sentinel)
 
     assert service.get(f"/sub/{token}").status == 503
     assert service.reads()[-1]["outcome"] == "revocation-unavailable"

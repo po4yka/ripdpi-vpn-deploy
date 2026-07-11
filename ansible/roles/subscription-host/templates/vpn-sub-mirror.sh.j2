@@ -10,7 +10,6 @@
 set -euo pipefail
 
 DEST="{{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}"
-BACKEND="{{ subscription.mirror.backend | default('rsync') }}"
 
 {% if (subscription.mirror.backend | default('rsync')) == 'rsync' %}
 # ---------------------------------------------------------------------------
@@ -30,6 +29,7 @@ if [ -z "$SOURCE" ]; then
 fi
 
 rsync {{ subscription.mirror.rsync_opts | default('-az --delete') }} \
+  --no-links --no-devices --no-specials --exclude=/revoked \
   -e "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${SSH_KNOWN_HOSTS} -o GlobalKnownHostsFile=/dev/null -o BatchMode=yes ${SSH_OPTS}" \
   "$SOURCE" "${DEST}/"
 {% else %}
@@ -53,6 +53,26 @@ else
   restic -r "$REPO" restore latest --target "$DEST"
 fi
 {% endif %}
+
+unsafe_payload_entry() {
+  echo "vpn-sub-mirror: unsafe payload entry" >&2
+  exit 1
+}
+
+validate_payload_dir() {
+  local route_dir="$1"
+  local entry name
+
+  [ -d "$route_dir" ] && [ ! -L "$route_dir" ] || unsafe_payload_entry
+  while IFS= read -r -d '' entry; do
+    [ -f "$entry" ] && [ ! -L "$entry" ] || unsafe_payload_entry
+    name="${entry##*/}"
+    [[ "$name" =~ ^[0-9a-f]{64}(\.meta)?$ ]] || unsafe_payload_entry
+  done < <(find "$route_dir" -mindepth 1 -maxdepth 1 -print0)
+}
+
+validate_payload_dir "${DEST}/sub"
+validate_payload_dir "${DEST}/bootstrap"
 
 # ---------------------------------------------------------------------------
 # Permission fix-up. The loopback Python service runs as vpn-bootstrap and

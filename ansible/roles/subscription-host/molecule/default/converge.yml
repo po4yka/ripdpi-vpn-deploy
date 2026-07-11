@@ -49,6 +49,12 @@
           content: "{}\n"
       loop_control:
         label: "{{ item.name }}"
+    - name: Seed a malicious hash-shaped payload symlink
+      ansible.builtin.file:
+        src: /etc/vpn-subscription/mirror_ssh_key
+        dest: /var/lib/vpn-subscription-mirror-src/sub/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        state: link
+        force: true
     - name: Install nginx + openssl
       ansible.builtin.apt:
         name: [nginx, openssl]

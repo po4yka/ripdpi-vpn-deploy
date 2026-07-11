@@ -19,6 +19,7 @@ Decryptable only with the audit-log key. See `scripts/sub-reads.sh`.
   are one-shot (consumed on read); subscription tokens persist with optional
   TTL.
 - **Tokens are hashed-at-rest** — SHA-256 hex digest. The inbound URL token is a high-entropy opaque random value (128–384 bit); a plain hash is adequate and avoids KDF overhead on the hot path.
+- **Mirrored payload state is untrusted** — only hash-shaped regular files are accepted directly beneath `sub/` and `bootstrap/`; the service independently uses descriptor-level no-follow reads as the final boundary against replacement races.
 - **Share-bundle ingest is zero-trust on nginx** — `tasks/share-bundles.yml`
   rsync's operator-built bundles to `/var/www/subscription-host/share/<token>/`
   with `access_log off` on the location; the raw token never appears in any

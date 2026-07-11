@@ -10,7 +10,6 @@
 set -euo pipefail
 
 DEST="/var/lib/vpn-subscription"
-BACKEND="rsync"
 
 
 # ---------------------------------------------------------------------------
@@ -30,9 +29,30 @@ if [ -z "$SOURCE" ]; then
 fi
 
 rsync -az --delete \
+  --no-links --no-devices --no-specials --exclude=/revoked \
   -e "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${SSH_KNOWN_HOSTS} -o GlobalKnownHostsFile=/dev/null -o BatchMode=yes ${SSH_OPTS}" \
   "$SOURCE" "${DEST}/"
 
+
+unsafe_payload_entry() {
+  echo "vpn-sub-mirror: unsafe payload entry" >&2
+  exit 1
+}
+
+validate_payload_dir() {
+  local route_dir="$1"
+  local entry name
+
+  [ -d "$route_dir" ] && [ ! -L "$route_dir" ] || unsafe_payload_entry
+  while IFS= read -r -d '' entry; do
+    [ -f "$entry" ] && [ ! -L "$entry" ] || unsafe_payload_entry
+    name="${entry##*/}"
+    [[ "$name" =~ ^[0-9a-f]{64}(\.meta)?$ ]] || unsafe_payload_entry
+  done < <(find "$route_dir" -mindepth 1 -maxdepth 1 -print0)
+}
+
+validate_payload_dir "${DEST}/sub"
+validate_payload_dir "${DEST}/bootstrap"
 
 # ---------------------------------------------------------------------------
 # Permission fix-up. The loopback Python service runs as vpn-bootstrap and

@@ -55,6 +55,25 @@ def test_rsync_template_pins_host_identity_before_additive_options():
     assert "ssh-keyscan" not in lowered
 
 
+def test_rsync_rejects_unsafe_types_before_permission_repair():
+    rendered = _render_rsync()
+    rsync = rendered.index("rsync -az --delete")
+    shell = rendered.index('-e "ssh ')
+
+    for option in ("--no-links", "--no-devices", "--no-specials"):
+        assert option in rendered[rsync:shell]
+        assert rendered.index(option) > rendered.index("-az --delete")
+    assert "--exclude=/revoked" in rendered[rsync:shell]
+    assert "find \"$route_dir\" -mindepth 1 -maxdepth 1 -print0" in rendered
+    assert "read -r -d '' entry" in rendered
+    assert "^[0-9a-f]{64}(\\.meta)?$" in rendered
+    assert 'validate_payload_dir "${DEST}/sub"' in rendered
+    assert 'validate_payload_dir "${DEST}/bootstrap"' in rendered
+    validation = rendered.index('validate_payload_dir "${DEST}/sub"')
+    assert validation < rendered.index("chown -R")
+    assert validation < rendered.index('find "$DEST" -type d -exec chmod')
+
+
 def test_defaults_leave_pin_and_additive_options_empty():
     defaults = yaml.safe_load(DEFAULTS.read_text())
     mirror = defaults["subscription"]["mirror"]

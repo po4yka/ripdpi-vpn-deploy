@@ -35,6 +35,7 @@ import os
 import pathlib
 import re
 import socket
+import stat
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -48,6 +49,8 @@ REVOKED_FILE     = pathlib.Path("{{ subscription.revoked_file | default('/var/li
 PATH_RE = re.compile(r"^/(bootstrap|sub)/([A-Za-z0-9_-]{16,64})$")
 
 _lock = threading.Lock()
+_MISSING = object()
+_UNAVAILABLE = object()
 
 logging.basicConfig(
     format="vpn-bootstrap[%(process)d]: %(levelname)s %(message)s",
@@ -60,24 +63,53 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode("ascii")).hexdigest()
 
 
-def _is_revoked(token_hash: str) -> bool | None:
+def _read_regular(path: pathlib.Path) -> bytes | object:
+    """Read one regular file without following its final path component."""
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+    flags |= getattr(os, "O_CLOEXEC", 0)
     try:
-        # Re-read every call — the revoked list is small (line count grows
-        # with operator-side rotation cadence, not with client count) and
-        # the read is amortised by the per-IP nginx rate limit.
-        with REVOKED_FILE.open("r", encoding="ascii") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if line == token_hash:
-                    return True
-    except FileNotFoundError as exc:
-        logging.error("revocation state is missing: %s", exc)
-        return None
+        fd = os.open(path, flags)
+    except FileNotFoundError:
+        return _MISSING
     except OSError as exc:
-        logging.error("revocation read failed: %s", exc)
+        logging.error("state file open failed: %s", exc)
+        return _UNAVAILABLE
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            logging.error("state file is not regular")
+            return _UNAVAILABLE
+        with os.fdopen(fd, "rb") as fh:
+            fd = -1
+            return fh.read()
+    except OSError as exc:
+        logging.error("state file read failed: %s", exc)
+        return _UNAVAILABLE
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
+def _is_revoked(token_hash: str) -> bool | None:
+    # Re-read every call — the revoked list is small (line count grows
+    # with operator-side rotation cadence, not with client count) and
+    # the read is amortised by the per-IP nginx rate limit.
+    raw = _read_regular(REVOKED_FILE)
+    if raw is _MISSING:
+        logging.error("revocation state is missing")
         return None
+    if raw is _UNAVAILABLE:
+        return None
+    try:
+        lines = raw.decode("ascii").splitlines()
+    except UnicodeDecodeError as exc:
+        logging.error("revocation state is invalid: %s", exc)
+        return None
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line == token_hash:
+            return True
     return False
 
 
@@ -104,10 +136,13 @@ def _now_utc() -> _dt.datetime:
 
 
 def _expired(meta_path: pathlib.Path) -> bool | None:
-    if not meta_path.is_file():
+    raw = _read_regular(meta_path)
+    if raw is _MISSING:
         return False
+    if raw is _UNAVAILABLE:
+        return None
     try:
-        meta = json.loads(meta_path.read_text())
+        meta = json.loads(raw)
         if not isinstance(meta, dict):
             raise ValueError("expiry metadata must be an object")
     except (OSError, ValueError) as exc:
@@ -166,11 +201,14 @@ class Handler(BaseHTTPRequestHandler):
                 _audit(route, token_hash, "revoked", src_ip, 0)
                 self.send_error(410, "Gone")
                 return
-            try:
-                data = path.read_bytes()
-            except FileNotFoundError:
+            data = _read_regular(path)
+            if data is _MISSING:
                 _audit(route, token_hash, "unknown", src_ip, 0)
                 self.send_error(410, "Gone")
+                return
+            if data is _UNAVAILABLE:
+                _audit(route, token_hash, "payload-unavailable", src_ip, 0)
+                self.send_error(503, "Service Unavailable")
                 return
             expired = _expired(meta_path)
             if expired is None:
@@ -193,9 +231,8 @@ class Handler(BaseHTTPRequestHandler):
                 # Atomic consume — payload first, then meta best-effort.
                 try: path.unlink()
                 except FileNotFoundError: pass
-                if meta_path.is_file():
-                    try: meta_path.unlink()
-                    except FileNotFoundError: pass
+                try: meta_path.unlink()
+                except FileNotFoundError: pass
 
         _audit(route, token_hash, "consumed", src_ip, len(data))
         self.send_response(200)
