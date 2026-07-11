@@ -42,7 +42,6 @@ run_timeout() {
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STATE_DIR="${REPO_ROOT}/.omc/state"
-mkdir -p "$STATE_DIR"
 
 PLAN=""
 RESUME=0
@@ -65,27 +64,115 @@ for tool in python3 jq make; do
 done
 
 # ---------------------------------------------------------------------------
-# Parse the plan (YAML → JSON) and derive a state-file path.
+# Parse and validate the complete plan (YAML → normalized JSON) before any
+# state or provider side effects.
 # ---------------------------------------------------------------------------
 plan_json="$(python3 - "$PLAN" <<'PY'
 import json
+import re
 import sys
 import yaml
 
-with open(sys.argv[1], encoding="utf-8") as handle:
-    print(json.dumps(yaml.safe_load(handle) or {}))
+SLUG = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,63}")
+PROVIDERS = {"upcloud", "hetzner", "vultr"}
+
+
+def fail(message):
+    raise SystemExit(f"invalid fleet plan: {message}")
+
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        plan = yaml.safe_load(handle)
+except Exception as error:
+    fail(f"could not parse YAML: {error}")
+
+if not isinstance(plan, dict):
+    fail("top level must be a mapping")
+required = {"id", "min_active", "rotations"}
+missing = required - plan.keys()
+unknown = plan.keys() - required
+if missing:
+    fail(f"missing key: {sorted(missing)[0]}")
+if unknown:
+    fail(f"unknown key: {next(iter(unknown))!r}")
+
+plan_id = plan["id"]
+if not isinstance(plan_id, str) or not SLUG.fullmatch(plan_id):
+    fail("id must be 1-64 letters, digits, or dashes and start with a letter or digit")
+
+rotations = plan["rotations"]
+if not isinstance(rotations, list) or not rotations:
+    fail("rotations must be a non-empty list")
+
+min_active = plan["min_active"]
+if isinstance(min_active, bool) or not isinstance(min_active, int):
+    fail("min_active must be an integer")
+if not 1 <= min_active <= len(rotations):
+    fail("min_active must be between 1 and the number of rotations")
+
+seen_current = set()
+for index, rotation in enumerate(rotations, start=1):
+    label = f"rotation {index}"
+    if not isinstance(rotation, dict):
+        fail(f"{label} must be a mapping")
+    allowed = {"current", "new_env", "new_zone"}
+    required_rotation = {"current", "new_env"}
+    missing = required_rotation - rotation.keys()
+    unknown = rotation.keys() - allowed
+    if missing:
+        fail(f"{label} missing key: {sorted(missing)[0]}")
+    if unknown:
+        fail(f"{label} unknown key: {next(iter(unknown))!r}")
+
+    current = rotation["current"]
+    if not isinstance(current, str) or current.count(":") != 1:
+        fail(f"{label} current must be PROVIDER:ENV")
+    provider, current_env = current.split(":")
+    if provider not in PROVIDERS:
+        fail(f"{label} uses unsupported provider")
+    if not SLUG.fullmatch(current_env):
+        fail(f"{label} current environment is invalid")
+    if current in seen_current:
+        fail(f"duplicate current: {current}")
+    seen_current.add(current)
+
+    new_env = rotation["new_env"]
+    if not isinstance(new_env, str) or not SLUG.fullmatch(new_env):
+        fail(f"{label} new_env is invalid")
+    if new_env == current_env:
+        fail(f"{label} new_env must differ from current environment")
+
+    if "new_zone" in rotation:
+        new_zone = rotation["new_zone"]
+        if not isinstance(new_zone, str) or not SLUG.fullmatch(new_zone):
+            fail(f"{label} new_zone is invalid")
+
+print(json.dumps(plan))
 PY
 )"
 plan_id="$(jq -r '.id // "unnamed"' <<< "$plan_json")"
 min_active="$(jq -r '.min_active // 1' <<< "$plan_json")"
 total="$(jq -r '.rotations | length' <<< "$plan_json")"
-STATE="${STATE_DIR}/fleet-rotate-${plan_id}.json"
 
 if (( DRY_RUN )); then
   echo "plan id=${plan_id}  rotations=${total}  min_active=${min_active}"
   jq -r '.rotations | to_entries[] | "  \(.key+1)/'"$total"' \(.value.current) → ENV=\(.value.new_env) zone=\(.value.new_zone // "(same)")"' \
     <<< "$plan_json"
   exit 0
+fi
+
+STATE="${STATE_DIR}/fleet-rotate-${plan_id}.json"
+mkdir -p "$STATE_DIR"
+state_dir_resolved="$(cd "$STATE_DIR" && pwd -P)"
+state_parent_resolved="$(cd "$(dirname "$STATE")" && pwd -P)"
+if [[ "$state_parent_resolved" != "$state_dir_resolved" ]]; then
+  echo "refuse: fleet rotation state path escapes state directory" >&2
+  exit 1
+fi
+if [[ -L "$STATE" ]]; then
+  echo "refuse: fleet rotation state file is a symlink: $STATE" >&2
+  exit 1
 fi
 
 if (( RESUME )) && [[ -f "$STATE" ]]; then

@@ -19,6 +19,10 @@ setup() {
   STUB_LOG="$(mktemp -t stub_log.XXXXXX)"
   export PATH="${STUB_BIN}:${PATH}"
   export STUB_LOG
+  TEST_REPO="${BATS_TEST_TMPDIR}/repo"
+  mkdir -p "${TEST_REPO}/scripts"
+  cp "${SCRIPT}" "${TEST_REPO}/scripts/fleet-rotate.sh"
+  ISOLATED_SCRIPT="${TEST_REPO}/scripts/fleet-rotate.sh"
 }
 
 teardown() {
@@ -27,6 +31,17 @@ teardown() {
 
 _run_dry() {
   run bash "${SCRIPT}" --plan "${PLAN}" --dry-run
+}
+
+_assert_invalid_plan() {
+  local contents="$1"
+  local invalid_plan="${BATS_TEST_TMPDIR}/invalid-plan.yaml"
+  printf '%s\n' "$contents" > "$invalid_plan"
+  run bash "${ISOLATED_SCRIPT}" --plan "$invalid_plan" --dry-run
+  assert_failure
+  assert_output --partial "invalid fleet plan:"
+  refute_output --partial "Traceback"
+  [ ! -e "${TEST_REPO}/.omc" ]
 }
 
 @test "dry-run exits 0" {
@@ -79,4 +94,70 @@ _run_dry() {
     run grep -F "audit-log" "${STUB_LOG}"
     assert_failure
   fi
+}
+
+@test "valid dry-run does not create a state directory" {
+  run bash "${ISOLATED_SCRIPT}" --plan "${PLAN}" --dry-run
+  assert_success
+  [ ! -e "${TEST_REPO}/.omc" ]
+}
+
+@test "rejects malformed YAML and invalid top-level plan shapes" {
+  _assert_invalid_plan $'id: [unterminated'
+  _assert_invalid_plan $'- not\n- a\n- mapping'
+  _assert_invalid_plan $'id: safe\nmin_active: 1'
+  _assert_invalid_plan $'id: safe\nmin_active: 1\nrotations: []\nextra: value'
+}
+
+@test "rejects unsafe plan ids before creating state" {
+  _assert_invalid_plan $'id: ../escape\nmin_active: 1\nrotations:\n  - current: upcloud:prod\n    new_env: next'
+  [ ! -e "${TEST_REPO}/escape.json" ]
+}
+
+@test "rejects invalid min_active values" {
+  local rotations=$'rotations:\n  - current: upcloud:prod\n    new_env: next'
+  _assert_invalid_plan $'id: safe\nmin_active: "1"\n'"$rotations"
+  _assert_invalid_plan $'id: safe\nmin_active: true\n'"$rotations"
+  _assert_invalid_plan $'id: safe\nmin_active: 0\n'"$rotations"
+  _assert_invalid_plan $'id: safe\nmin_active: 2\n'"$rotations"
+}
+
+@test "rejects missing empty and non-list rotations" {
+  _assert_invalid_plan $'id: safe\nmin_active: 1'
+  _assert_invalid_plan $'id: safe\nmin_active: 1\nrotations: []'
+  _assert_invalid_plan $'id: safe\nmin_active: 1\nrotations: {}'
+}
+
+@test "rejects malformed rotation entries" {
+  _assert_invalid_plan $'id: safe\nmin_active: 1\nrotations:\n  - nope'
+  _assert_invalid_plan $'id: safe\nmin_active: 1\nrotations:\n  - current: upcloud:prod'
+  _assert_invalid_plan $'id: safe\nmin_active: 1\nrotations:\n  - current: upcloud:prod\n    new_env: next\n    extra: value'
+}
+
+@test "rejects invalid provider current and environment values" {
+  _assert_invalid_plan $'id: safe\nmin_active: 1\nrotations:\n  - current: unknown:prod\n    new_env: next'
+  _assert_invalid_plan $'id: safe\nmin_active: 1\nrotations:\n  - current: upcloud:prod:extra\n    new_env: next'
+  _assert_invalid_plan $'id: safe\nmin_active: 1\nrotations:\n  - current: upcloud:prod_bad\n    new_env: next'
+  _assert_invalid_plan $'id: safe\nmin_active: 1\nrotations:\n  - current: upcloud:prod\n    new_env: ../next'
+  _assert_invalid_plan $'id: safe\nmin_active: 1\nrotations:\n  - current: upcloud:prod\n    new_env: next\n    new_zone: ""'
+  _assert_invalid_plan $'id: safe\nmin_active: 1\nrotations:\n  - current: upcloud:prod\n    new_env: prod'
+}
+
+@test "rejects duplicate current entries" {
+  _assert_invalid_plan $'id: safe\nmin_active: 1\nrotations:\n  - current: upcloud:prod\n    new_env: next-a\n  - current: upcloud:prod\n    new_env: next-b'
+}
+
+@test "refuses a symlink at the state-file path" {
+  local state_dir="${TEST_REPO}/.omc/state"
+  local target="${BATS_TEST_TMPDIR}/state-target.json"
+  mkdir -p "$state_dir"
+  printf '%s\n' 'unchanged' > "$target"
+  ln -s "$target" "${state_dir}/fleet-rotate-2026-05-test-rotation.json"
+
+  run bash "${ISOLATED_SCRIPT}" --plan "${PLAN}"
+
+  assert_failure
+  assert_output --partial "state file is a symlink"
+  [ "$(cat "$target")" = "unchanged" ]
+  [ ! -s "$STUB_LOG" ]
 }
