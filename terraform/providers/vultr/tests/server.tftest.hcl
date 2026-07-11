@@ -84,7 +84,10 @@ run "server_secondary_public_ip_when_honeypot_enabled" {
   }
 
   assert {
-    condition     = length(vultr_instance_ipv4.honeypot) == 1
-    error_message = "additional_public_ip=true must allocate the honeypot IPv4"
+    condition = (
+      length(vultr_instance_ipv4.honeypot) == 1
+      && vultr_instance_ipv4.honeypot[0].reboot == true
+    )
+    error_message = "additional_public_ip=true must allocate the honeypot IPv4 and reboot for guest convergence"
   }
 }

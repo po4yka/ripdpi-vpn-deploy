@@ -9,6 +9,7 @@ stdout.  We capture stdout for the comparison.
 """
 from __future__ import annotations
 
+import json
 import os
 import stat
 import subprocess
@@ -186,3 +187,84 @@ def test_render_inventory_matches_fixture(tmp_path):
         f"--- expected ---\n{expected}\n"
         f"--- got ---\n{inventory_out}"
     )
+
+
+def test_vultr_inventory_waits_for_secondary_ipv4_guest_convergence(tmp_path):
+    """Never publish the Vultr honeypot address before the guest owns it."""
+    import shutil as _shutil
+
+    if not _shutil.which("jq"):
+        pytest.skip("jq not found on PATH")
+
+    fixture_data = json.loads((FIXTURES / "tf-output-sample.json").read_text())
+    fixture_data["honeypot_ipv4"]["value"] = "198.51.100.20"
+    fixture = tmp_path / "vultr-output.json"
+    fixture.write_text(json.dumps(fixture_data), encoding="utf-8")
+
+    stub_bin = tmp_path / "bin"
+    stub_bin.mkdir()
+    _build_terraform_stub(stub_bin, fixture)
+    _make_stub(
+        stub_bin,
+        "ssh",
+        'printf "STUB: ssh %s\\n" "$*" >> "${STUB_LOG}"\n'
+        'exit "${SSH_GUEST_HAS_IP:-1}"',
+    )
+
+    tfvars_path = REPO_ROOT / "terraform" / "providers" / "vultr" / "environments" / "prod.tfvars"
+    tfvars_existed = tfvars_path.exists()
+    tfvars_original = tfvars_path.read_bytes() if tfvars_existed else None
+    if not tfvars_existed:
+        tfvars_path.write_text("# test fixture placeholder\n")
+
+    generated_ini = REPO_ROOT / "ansible" / "inventory" / "generated.ini"
+    had_generated = generated_ini.exists()
+    original_content = generated_ini.read_bytes() if had_generated else None
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": f"{stub_bin}:{env['PATH']}",
+            "ANSIBLE_SSH_PRIVATE_KEY_FILE": "/tmp/test-ssh-key",
+            "PROVIDER": "vultr",
+            "ENV": "prod",
+            "STUB_LOG": str(tmp_path / "stub.log"),
+            "VULTR_GUEST_IPV4_ATTEMPTS": "1",
+            "VULTR_GUEST_IPV4_DELAY_SECONDS": "0",
+            "SSH_GUEST_HAS_IP": "1",
+        }
+    )
+    env.pop("HOSTS", None)
+    env.pop("COHORTS", None)
+
+    try:
+        not_converged = subprocess.run(
+            ["bash", str(SCRIPT)],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=str(REPO_ROOT),
+        )
+        assert not_converged.returncode != 0
+        assert "secondary IPv4 is not configured in the guest" in not_converged.stderr
+
+        env["SSH_GUEST_HAS_IP"] = "0"
+        converged = subprocess.run(
+            ["bash", str(SCRIPT)],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=str(REPO_ROOT),
+        )
+        assert converged.returncode == 0, converged.stderr
+        assert "honeypot_listen_addr=198.51.100.20" in converged.stdout
+        assert "198.51.100.20" in (tmp_path / "stub.log").read_text()
+    finally:
+        if had_generated and original_content is not None:
+            generated_ini.write_bytes(original_content)
+        elif not had_generated and generated_ini.exists():
+            generated_ini.unlink()
+        if not tfvars_existed and tfvars_path.exists():
+            tfvars_path.unlink()
+        elif tfvars_existed and tfvars_original is not None:
+            tfvars_path.write_bytes(tfvars_original)

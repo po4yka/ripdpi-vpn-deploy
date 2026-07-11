@@ -169,6 +169,7 @@ Uses:
 - The provider schema requires an API key in provider config. This root maps
   sensitive variable `vultr_api_key`; export `TF_VAR_vultr_api_key` instead
   of writing tokens into tfvars.
+- Optional secondary IPv4 allocation uses the provider's reboot path. After apply, `render-inventory.sh` blocks until the address appears on a guest interface over the primary SSH endpoint; API allocation alone is not sufficient evidence for publishing `honeypot_listen_addr`.
 
 ## P4 fallback transport tier
 

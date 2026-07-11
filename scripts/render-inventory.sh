@@ -24,7 +24,7 @@ if [[ -z "${ANSIBLE_SSH_PRIVATE_KEY_FILE:-}" ]]; then
   exit 1
 fi
 
-for tool in terraform jq; do
+for tool in terraform jq ssh; do
   command -v "$tool" >/dev/null 2>&1 || { echo "missing: $tool" >&2; exit 1; }
 done
 
@@ -56,6 +56,42 @@ terraform_json_var() {
   raw="$(PROVIDER="$provider" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" console -no-color -var-file="$tfvars_rel" <<< "jsonencode(${expr})")"
   decoded="$(jq -r . <<< "$raw")"
   jq -c . <<< "$decoded"
+}
+
+confirm_vultr_guest_ipv4() {
+  local primary_ip="$1"
+  local admin_user="$2"
+  local secondary_ip="$3"
+  local attempts="${VULTR_GUEST_IPV4_ATTEMPTS:-30}"
+  local delay_seconds="${VULTR_GUEST_IPV4_DELAY_SECONDS:-5}"
+  local attempt
+
+  [[ "$attempts" =~ ^[1-9][0-9]*$ ]] || {
+    echo "VULTR_GUEST_IPV4_ATTEMPTS must be a positive integer" >&2
+    return 2
+  }
+  [[ "$delay_seconds" =~ ^[0-9]+$ ]] || {
+    echo "VULTR_GUEST_IPV4_DELAY_SECONDS must be a non-negative integer" >&2
+    return 2
+  }
+
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    if ssh -o BatchMode=yes \
+           -o StrictHostKeyChecking=accept-new \
+           -o ConnectTimeout=5 \
+           -i "$ANSIBLE_SSH_PRIVATE_KEY_FILE" \
+           "${admin_user}@${primary_ip}" \
+           "ip -4 -o address show | grep -Fq -- ' ${secondary_ip}/'" \
+           2>/dev/null; then
+      return 0
+    fi
+    if ((attempt < attempts)); then
+      sleep "$delay_seconds"
+    fi
+  done
+
+  echo "Vultr secondary IPv4 is not configured in the guest after ${attempts} attempts: ${secondary_ip}" >&2
+  return 1
 }
 
 for i in "${!host_pairs[@]}"; do
@@ -96,6 +132,9 @@ for i in "${!host_pairs[@]}"; do
   fi
   if [[ -n "$honey_ip" && "$honey_ip" != "null" ]] \
      && [[ "$honey_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    if [[ "$prov" == "vultr" ]]; then
+      confirm_vultr_guest_ipv4 "$ip" "$user" "$honey_ip"
+    fi
     vpn_line+=" honeypot_listen_addr=${honey_ip}"
   fi
   vpn_lines+=("$vpn_line")
