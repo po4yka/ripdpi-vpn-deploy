@@ -88,9 +88,7 @@ This map exists to keep Phase 2 implementation honest: it reuses the *shape* of 
 ## Open decisions
 
 - **EXCEPTION tier versus a RESEARCH sub-flag.** Whether jurisdiction risk deserves its own orthogonal tier (as decided above) or could instead have been modeled as a specially-flagged research role is not fully closed; the orthogonal-tier choice is recorded as the working decision but may be revisited once Phase 1 Terraform isolation is built and its operational cost is known.
-- **Re-verification cadence for the attestation gate.** Decision 4 establishes that attestation must be recurring and can expire; the specific interval is not set here and is deferred to `docs/CASCADE-ASN-ATTESTATION.md`.
 - **Co-location with split-hop.** Whether a cascade-ingress host may ever share a fleet, or a host, with a split-hop deployment is unresolved. The two mechanisms currently look mutually exclusive by default topology (split-hop's Node A is not client-facing in the same way), but this has not been proven incompatible or compatible; Phase 4's role-compatibility tests are meant to settle it empirically rather than by inspection.
-- **Who signs the attestation.** Decision 4 requires a dated, real per-ASN attestation before provisioning; who is authorized to produce or approve that attestation (operator only, or a defined second reviewer) is not yet decided.
 
 ## Caveats
 
@@ -104,7 +102,7 @@ This map exists to keep Phase 2 implementation honest: it reuses the *shape* of 
 
 - `docs/ROLE-TIERING.md` — being amended separately to record the EXCEPTION tier alongside the existing CORE/TACTICAL/RESEARCH guard.
 - `docs/PROVIDER-NOTES.md` — being amended separately to add the RU-jurisdiction risk row referenced in Decision 2.
-- `docs/CASCADE-ASN-ATTESTATION.md` — companion document specifying the attestation schema and checker referenced in Decision 4 and Phase 3 (tracked separately; not yet landed).
+- `docs/CASCADE-ASN-ATTESTATION.md` — companion document specifying the attestation schema, weekly cadence, authorized signer role, dated-report evidence form, and checker referenced in Decision 4 and Phase 3.
 - `docs/SPLIT-HOP-TOPOLOGY.md` — prior two-node ADR in this repo; Decision 1 above explains why the cascade does not extend it, and Phase 6 inherits its open per-leg watchdog gap as a promotion blocker for any co-located deployment.
 - `docs/CDN-DECISION.md` — sibling flat-file ADR this document's structure follows.
 - android repo `docs/adr/0009-cascade-client-transparency.md` — the client-side counterpart recording that the cascade requires no client schema or code change; this ADR's context section assumes that transparency guarantee holds.
