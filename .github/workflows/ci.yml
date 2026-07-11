@@ -216,6 +216,15 @@ jobs:
           pip install --require-hashes --no-deps -r requirements.txt
           sudo apt-get update
           sudo apt-get install -y nginx-light
+      - name: Install pinned Xray semantic validator
+        run: |
+          XRAY_VERSION="$(python3 -c 'import yaml; print(yaml.safe_load(open("secrets/prod.secrets.example.yaml"))["xray"]["version"])')"
+          XRAY_DIR="${RUNNER_TEMP}/xray"
+          mkdir -p "${XRAY_DIR}"
+          curl -fsSL -o "${XRAY_DIR}/xray.zip" "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-64.zip"
+          unzip -q "${XRAY_DIR}/xray.zip" -d "${XRAY_DIR}"
+          "${XRAY_DIR}/xray" version
+          echo "${XRAY_DIR}" >> "${GITHUB_PATH}"
       - name: check-templates-render
         run: python3 scripts/check-templates-render.py
       - name: check-xray-breaking-changes
