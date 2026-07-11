@@ -31,7 +31,7 @@ jobs:
     uses: ./.github/workflows/_rust.yml
     with:
       target: x86_64-unknown-linux-gnu
-      cargo-command: build --release
+      cargo-command: build --release --locked
       cross: false
       upload-binary: true
 
@@ -41,7 +41,7 @@ jobs:
     uses: ./.github/workflows/_rust.yml
     with:
       target: aarch64-unknown-linux-gnu
-      cargo-command: build --release
+      cargo-command: build --release --locked
       cross: true
       upload-binary: true
 
@@ -51,7 +51,7 @@ jobs:
     uses: ./.github/workflows/_rust.yml
     with:
       target: x86_64-apple-darwin
-      cargo-command: build --release
+      cargo-command: build --release --locked
       cross: false
       upload-binary: true
 
@@ -61,7 +61,7 @@ jobs:
     uses: ./.github/workflows/_rust.yml
     with:
       target: aarch64-apple-darwin
-      cargo-command: build --release
+      cargo-command: build --release --locked
       cross: false
       upload-binary: true
 

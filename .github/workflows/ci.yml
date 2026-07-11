@@ -320,14 +320,14 @@ jobs:
     uses: ./.github/workflows/_rust.yml
     with:
       target: x86_64-unknown-linux-gnu
-      cargo-command: test --release
+      cargo-command: test --release --locked
 
   vpnd-clippy:
     name: vpnd cargo clippy
     uses: ./.github/workflows/_rust.yml
     with:
       target: x86_64-unknown-linux-gnu
-      cargo-command: clippy --release --all-targets -- -D warnings
+      cargo-command: clippy --release --all-targets --locked -- -D warnings
 
   vpnd-msrv:
     name: vpnd MSRV check
