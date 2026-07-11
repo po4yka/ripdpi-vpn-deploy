@@ -47,6 +47,33 @@ you used DNS or floating IP).
 If clients used bare IP, reissue URIs with `scripts/new-client.sh
 --emit-uri <name>` against each client name.
 
+### Ephemeral Path A execution spike
+
+The orchestrator can execute the deterministic Path A sequence only for an
+explicitly confirmed `ci-*` throwaway environment:
+
+```bash
+scripts/restore.sh --env ci-<technical-id> --provider <provider> --path-a --execute-ephemeral --confirm-env ci-<technical-id>
+```
+
+Before running it, prepare the matching environment tfvars, restore the
+operator age key and encrypted SOPS file, export the selected provider's
+credentials, and install the repository's required tools. The spike decrypts
+and runs the pre-deploy checks before it initializes, plans, or applies
+infrastructure; it then renders inventory, waits, dry-runs, deploys, verifies,
+and cleans local plaintext in separate fail-fast steps.
+
+The guard refuses production-shaped environments and Path B. It never destroys
+infrastructure automatically: a failure after `apply` preserves the ephemeral
+node and prints the exact manual destroy command for inspection and cleanup.
+Current coverage proves only safety and ordering through a temporary `make`
+stub. It is not a credentialed live-infrastructure test, an RTO measurement, or
+evidence that production recovery succeeded.
+
+Promotion beyond this spike requires an explicit recovery-spike input in the
+existing label/manual ephemeral workflow and a successful
+provision/deploy/verify/destroy cycle across the supported operator OS matrix.
+
 ## Path B — restore from restic snapshot
 
 Use only when (a) you have a recent restic backup, (b) you trust the

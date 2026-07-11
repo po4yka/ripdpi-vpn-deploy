@@ -250,11 +250,11 @@ Generated `terraform/providers/<name>/README.md` files are committed; the
 - **RealiTLScanner full-scan integration.** Binary required at runtime;
   coupling CI to upstream build would introduce flakiness. Shellcheck covers
   the wrapper script shape.
-- **`scripts/restore.sh` real mode.** The `--dry-run` mode is covered by
-  `tests/unit/test_restore_dryrun.py`. The live restore path (decrypts
-  SOPS secrets, re-provisions real infrastructure) is only safe to exercise
-  against a throwaway VPS; a maintainer TODO covers adding it to the
-  `ci-real-deploy` label workflow.
+- **`scripts/restore.sh` recovery paths.** `tests/bats/restore_dryrun.bats`
+  covers nonmutating dry-runs plus the ephemeral Path A safety gates, exact
+  sequencing, and failure preservation through a temporary `make` stub. There
+  is no credentialed live-infrastructure CI coverage; production recovery and
+  Path B execution remain manual runbook procedures.
 - **End-to-end traffic against geographic locations** (RU, EU, US). Would
   require live infrastructure with the right BGP. This is what
   `make burn-check` (operator-side cron) covers post-deploy — including the

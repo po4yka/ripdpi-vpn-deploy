@@ -1,27 +1,22 @@
 #!/bin/sh
 # Disaster-recovery restore orchestrator. Mirrors RUNBOOK-restore.md.
-# Note: intentional POSIX /bin/sh shebang — pipefail is a bash extension
-# and is not available in POSIX sh. set -eu provides the necessary fail-fast
-# behaviour within plain sh; pipelines in this script do not need pipefail
-# because none of them discard failure through a pipe.
+# Intentional POSIX /bin/sh: set -eu is the fail-fast contract, and no pipeline
+# in this script discards a command failure.
 #
 # Usage:
-#   scripts/restore.sh --env <name> --provider <name> --path-a [--dry-run]
-#   scripts/restore.sh --env <name> --provider <name> --path-b [--dry-run]
+#   scripts/restore.sh --env <name> --provider <name> --path-a --dry-run
+#   scripts/restore.sh --env <ci-name> --provider <name> --path-a \
+#     --execute-ephemeral --confirm-env <ci-name>
+#   scripts/restore.sh --env <name> --provider <name> --path-b --dry-run
 #
 # Options:
-#   --env <name>       Target environment name (e.g. prod)
-#   --provider <name>  Cloud provider (default: upcloud)
-#   --path-a           Full rebuild from scratch (recommended)
-#   --path-b           Restore from restic snapshot
-#   --dry-run          Print the procedural steps without touching state
-#
-# In real mode the individual make / ansible-playbook / ssh invocations are
-# performed interactively. See RUNBOOK-restore.md for the canonical procedure.
-#
-# TODO(maintainer): real-mode automation beyond dry-run is deferred to a
-# future iteration — the runbook remains the source of truth for live
-# recovery. Only dry-run is fully automated and tested.
+#   --env <name>             Technical environment slug
+#   --provider <name>        upcloud, hetzner, or vultr (default: upcloud)
+#   --path-a                 Full rebuild from scratch (recommended)
+#   --path-b                 Document the manual restic restore path
+#   --dry-run                Print procedural steps without touching state
+#   --execute-ephemeral      Execute Path A for a ci-* throwaway environment
+#   --confirm-env <name>     Exact environment confirmation for execution
 set -eu
 
 ENV=""
@@ -29,64 +24,94 @@ PROVIDER="upcloud"
 PATH_A=0
 PATH_B=0
 DRY_RUN=0
+EXECUTE_EPHEMERAL=0
+CONFIRM_ENV=""
+REPO_ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
+
+die() {
+  printf 'error: %s\n' "$1" >&2
+  exit 2
+}
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --env)
-      [ $# -ge 2 ] || { printf 'error: --env requires a value\n' >&2; exit 1; }
+      [ $# -ge 2 ] || die "--env requires a value"
       ENV="$2"; shift 2 ;;
     --provider)
-      [ $# -ge 2 ] || { printf 'error: --provider requires a value\n' >&2; exit 1; }
+      [ $# -ge 2 ] || die "--provider requires a value"
       PROVIDER="$2"; shift 2 ;;
     --path-a) PATH_A=1; shift ;;
     --path-b) PATH_B=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --execute-ephemeral) EXECUTE_EPHEMERAL=1; shift ;;
+    --confirm-env)
+      [ $# -ge 2 ] || die "--confirm-env requires a value"
+      CONFIRM_ENV="$2"; shift 2 ;;
     -h|--help)
       sed -n '2,/^set -eu/p' "$0" | sed '$d' >&2
       exit 0 ;;
-    *)
-      printf 'error: unknown argument: %s\n' "$1" >&2; exit 1 ;;
+    *) die "unknown argument: $1" ;;
   esac
 done
 
-[ -n "$ENV" ] || { printf 'error: --env <name> is required\n' >&2; exit 1; }
+[ -n "$ENV" ] || die "--env <name> is required"
+
+case "$PROVIDER" in
+  upcloud|hetzner|vultr) ;;
+  *) die "unsupported provider" ;;
+esac
+
+printf '%s\n' "$ENV" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9-]*$' ||
+  die "--env must be a technical slug"
 
 if [ "$PATH_A" -eq 0 ] && [ "$PATH_B" -eq 0 ]; then
-  printf 'error: specify --path-a or --path-b\n' >&2
-  exit 1
+  die "specify --path-a or --path-b"
 fi
-
 if [ "$PATH_A" -eq 1 ] && [ "$PATH_B" -eq 1 ]; then
-  printf 'error: --path-a and --path-b are mutually exclusive\n' >&2
-  exit 1
+  die "--path-a and --path-b are mutually exclusive"
+fi
+if [ "$DRY_RUN" -eq 1 ] && [ "$EXECUTE_EPHEMERAL" -eq 1 ]; then
+  die "--dry-run and --execute-ephemeral are mutually exclusive"
+fi
+if [ "$DRY_RUN" -eq 0 ] && [ "$EXECUTE_EPHEMERAL" -eq 0 ]; then
+  die "choose --dry-run or the guarded --execute-ephemeral Path A spike"
 fi
 
-# ---------------------------------------------------------------------------
-# Path A — full rebuild from scratch (RUNBOOK-restore.md § Path A)
-# ---------------------------------------------------------------------------
+if [ "$EXECUTE_EPHEMERAL" -eq 1 ]; then
+  [ "$PATH_A" -eq 1 ] || die "--execute-ephemeral supports Path A only"
+  printf '%s\n' "$ENV" | grep -Eq '^ci-[A-Za-z0-9][A-Za-z0-9-]*$' ||
+    die "--execute-ephemeral requires a ci-* environment"
+  [ -n "$CONFIRM_ENV" ] || die "--confirm-env is required for execution"
+  [ "$CONFIRM_ENV" = "$ENV" ] || die "--confirm-env must exactly match --env"
+elif [ -n "$CONFIRM_ENV" ]; then
+  die "--confirm-env is valid only with --execute-ephemeral"
+fi
+
+environment_class() {
+  case "$ENV" in
+    ci-*) printf 'ephemeral' ;;
+    *) printf 'production-shaped' ;;
+  esac
+}
+
 print_path_a() {
-  printf '[restore dry-run] Path A — full rebuild from scratch\n'
+  printf '[restore dry-run] Path A — full rebuild from scratch (%s)\n' "$(environment_class)"
   printf '  ENV=%s  PROVIDER=%s\n\n' "$ENV" "$PROVIDER"
   printf '  Step 1: git clone <repo> and cd into it\n'
-  printf '  Step 2: restore age key + SOPS file to ~/.config/vpn-provision/\n'
-  printf '          cp <backup>/%s.secrets.sops.yaml ~/.config/vpn-provision/\n' "$ENV"
-  printf '          cp <backup>/age.key ~/.config/vpn-provision/\n'
-  printf '  Step 3: provision fresh VPS\n'
-  printf '          make init plan apply inventory wait  (PROVIDER=%s ENV=%s)\n' "$PROVIDER" "$ENV"
-  printf '  Step 4: deploy from secrets\n'
+  printf '  Step 2: restore age key + SOPS file to the operator config directory\n'
+  printf '  Step 3: decrypt and run the pre-deploy secret checks\n'
   printf '          make decrypt\n'
-  printf '          make dry-run\n'
-  printf '          make deploy\n'
-  printf '          make verify\n'
-  printf '          make clean\n'
+  printf '          make pre-deploy-check\n'
+  printf '  Step 4: provision the fresh VPS\n'
+  printf '          make init plan apply inventory wait  (PROVIDER=%s ENV=%s)\n' "$PROVIDER" "$ENV"
+  printf '  Step 5: dry-run, deploy, verify, and clean local plaintext\n'
+  printf '          make dry-run deploy verify clean\n'
   printf '\n[restore dry-run] Path A complete — no state modified\n'
 }
 
-# ---------------------------------------------------------------------------
-# Path B — restore from restic snapshot (RUNBOOK-restore.md § Path B)
-# ---------------------------------------------------------------------------
 print_path_b() {
-  printf '[restore dry-run] Path B — restore from restic snapshot\n'
+  printf '[restore dry-run] Path B — manual restic restore (%s)\n' "$(environment_class)"
   printf '  ENV=%s  PROVIDER=%s\n\n' "$ENV" "$PROVIDER"
   printf '  Step 1: provision fresh VPS\n'
   printf '          make init plan apply inventory wait  (PROVIDER=%s ENV=%s)\n' "$PROVIDER" "$ENV"
@@ -94,21 +119,14 @@ print_path_b() {
   printf '          make decrypt\n'
   printf '  Step 3: deploy baseline + firewall + backup role\n'
   printf '          ANSIBLE_TAGS="baseline,firewall,backup" make deploy\n'
-  printf '  Step 4: point new VPS at restic repository (remote target or SCP)\n'
-  printf '  Step 5: restore configs on new VPS\n'
-  printf '          ssh deploy@<new-vps>\n'
-  printf '          sudo restic -r /var/backups/vpn-restic \\\n'
-  printf '            --password-file /etc/restic/password restore latest --target /\n'
-  printf '  Step 6: reconcile with Ansible\n'
-  printf '          make dry-run\n'
-  printf '  Step 7: (if drift acceptable) overwrite with template-rendered configs\n'
-  printf '          make deploy && make verify && make clean\n'
+  printf '  Step 4: point the new VPS at the restic repository\n'
+  printf '  Step 5: restore configs manually on the new VPS\n'
+  printf '          sudo restic -r <repository> --password-file <file> restore latest --target /\n'
+  printf '  Step 6: reconcile with Ansible using make dry-run\n'
+  printf '  Step 7: after reviewing drift, deploy, verify, and clean\n'
   printf '\n[restore dry-run] Path B complete — no state modified\n'
 }
 
-# ---------------------------------------------------------------------------
-# Dry-run: print steps and exit.
-# ---------------------------------------------------------------------------
 if [ "$DRY_RUN" -eq 1 ]; then
   if [ "$PATH_A" -eq 1 ]; then
     print_path_a
@@ -118,15 +136,53 @@ if [ "$DRY_RUN" -eq 1 ]; then
   exit 0
 fi
 
-# ---------------------------------------------------------------------------
-# Real mode: interactive guided execution.
-# TODO(maintainer): Automate real-mode steps. The runbook is the SOT for now.
-# ---------------------------------------------------------------------------
-printf 'restore.sh real mode is not yet automated.\n'
-printf 'Follow RUNBOOK-restore.md manually for ENV=%s PROVIDER=%s\n' "$ENV" "$PROVIDER"
-if [ "$PATH_A" -eq 1 ]; then
-  printf 'Use Path A (full rebuild from scratch).\n'
-else
-  printf 'Use Path B (restore from restic snapshot).\n'
+# Test-only command seam. Production execution uses make; tests pass an
+# absolute temporary stub. This is intentionally not exposed as a CLI flag.
+RECOVERY_MAKE="${RECOVERY_MAKE:-make}"
+APPLY_COMPLETED=0
+STEP_NUMBER=0
+
+preserve_ephemeral_on_failure() {
+  status=$?
+  trap - 0
+  if [ "$status" -ne 0 ] && [ "$APPLY_COMPLETED" -eq 1 ]; then
+    printf 'warning: recovery failed after apply; the ephemeral node may remain\n' >&2
+    printf 'manual cleanup: PROVIDER=%s ENV=%s make destroy\n' "$PROVIDER" "$ENV" >&2
+  fi
+  exit "$status"
+}
+trap preserve_ephemeral_on_failure 0
+
+run_make_step() {
+  STEP_NUMBER=$((STEP_NUMBER + 1))
+  target="$1"
+  label="$2"
+  printf '[recovery %s/11] %s\n' "$STEP_NUMBER" "$label"
+  PROVIDER="$PROVIDER" ENV="$ENV" "$RECOVERY_MAKE" "$target"
+  if [ "$target" = "apply" ]; then
+    APPLY_COMPLETED=1
+  fi
+}
+
+cd "$REPO_ROOT"
+run_make_step decrypt "decrypt recovery secrets"
+run_make_step pre-deploy-check "validate secret and certificate inputs"
+run_make_step init "initialize the provider workspace"
+run_make_step plan "plan ephemeral infrastructure"
+run_make_step apply "apply ephemeral infrastructure"
+run_make_step inventory "render inventory"
+run_make_step wait "wait for the ephemeral node"
+run_make_step dry-run "check the deployment"
+run_make_step deploy "deploy Path A services"
+run_make_step verify "verify the ephemeral node"
+
+if ! "$REPO_ROOT/scripts/audit-log.sh" append-best-effort \
+  --action recovery-path-a-spike \
+  --env "$ENV" \
+  --provider "$PROVIDER" \
+  --note "ephemeral Path A execution spike completed verification"; then
+  printf 'warning: recovery audit logging failed; continuing\n' >&2
 fi
-exit 1
+
+run_make_step clean "remove local plaintext"
+printf '[recovery complete] ephemeral Path A execution spike verified; this is not production recovery proof\n'

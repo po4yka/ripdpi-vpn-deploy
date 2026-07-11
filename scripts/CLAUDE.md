@@ -17,6 +17,11 @@ Never re-implement decryption.
 `audit-log.sh append-best-effort` after a successful run. The `--no-audit`
 flag exists for testing but is undocumented.
 
+**Recovery execution is ephemeral Path A only** — `restore.sh` executes only
+for an exact-confirmed `ci-*` environment and keeps production and restic Path
+B as manual runbook procedures. The sequence uses the Makefile wrappers so
+secret preflight and workspace routing remain canonical.
+
 **Terraform is workspace-routed centrally** — scripts call `scripts/terraform-env.sh`, which maps `PROVIDER` + `ENV` to the correct local state workspace. `prod` intentionally selects Terraform's legacy `default` workspace; new environments must be initialized through `make ... init`.
 
 **Vultr secondary IPv4 inventory is live-gated** — Terraform output proves allocation only. `render-inventory.sh` polls the primary SSH endpoint and publishes `honeypot_listen_addr` only after the exact IPv4 appears on a guest interface.
@@ -49,6 +54,9 @@ flag exists for testing but is undocumented.
   scripts pick correctly via `${SOPS_AGE_KEY_FILE:-…}`; don't hard-code.
 - **`audit-log.sh` failures must not break the parent script** — use
   `append-best-effort` (logs the error, exits 0) rather than `append`.
+- **Post-apply recovery failures preserve the ephemeral node** — print the
+  exact manual destroy command for inspection; never auto-destroy or continue
+  after the failed step.
 - **Python scripts must run under the venv-less system python3** — operator
   workstations don't all have uv/poetry. Use stdlib + the pinned deps in
   `requirements.in`. Don't import `requests` (use `urllib.request`).
