@@ -27,6 +27,8 @@ flag exists for testing but is undocumented.
 
 **Probe-matrix drivers keep secrets file-bound** — `probe-matrix-driver.py` reads an owner-controlled `0600` target profile, writes Xray configs only inside `0700` temporary directories, and sends MTProxy requests to the pinned Go helper on stdin. Keep credentials out of argv, environment variables, diagnostics, and reports; only same-tick failures with a healthy direct control can become `blocked`.
 
+**Managed cron values cross two parsers** — validate operator inputs first, serialize every dynamic executable value through the central Bash quoting helper, escape cron's special `%`, and declare the block's shell explicitly. Never interpolate a new raw value into an executable crontab line.
+
 ## What's done well
 
 - **`set -euo pipefail` everywhere** — fail-loud is the default.
