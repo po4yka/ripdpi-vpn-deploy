@@ -38,6 +38,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ -n "$EXPIRES" ]]; then
+  EXPIRES="$(python3 "${REPO_ROOT}/scripts/normalize-subscription-expiry.py" "$EXPIRES")"
+fi
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 SUBSCRIPTION_DIR="${SUBSCRIPTION_DIR:-/var/lib/vpn-subscription}"
@@ -79,7 +82,7 @@ printf '%s' "$payload" | ssh "${admin_user}@${server_ip}" \
 
 # Optional sidecar meta file with expiry.
 if [[ -n "$EXPIRES" ]]; then
-  meta="{\"expires\":\"${EXPIRES}\"}"
+  meta="$(jq -nc --arg expires "$EXPIRES" --arg client "$CLIENT" '{expires: $expires, client: $client}')"
   printf '%s' "$meta" | ssh "${admin_user}@${server_ip}" \
     "sudo install -o vpn-bootstrap -g vpn-bootstrap -m 0600 /dev/stdin '${remote_path}.meta'"
 fi

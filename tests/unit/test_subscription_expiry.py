@@ -12,6 +12,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 NORMALIZER = REPO_ROOT / "scripts" / "normalize-subscription-expiry.py"
 ISSUER = REPO_ROOT / "scripts" / "issue-sub-token.sh"
+BOOTSTRAP_ISSUER = REPO_ROOT / "scripts" / "issue-bootstrap.sh"
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "secrets-sample.yml"
 STUBS_BIN = REPO_ROOT / "tests" / "stubs" / "bin"
 
@@ -123,7 +124,34 @@ def test_issue_subscription_formats_share_canonical_expiry(tmp_path: Path, forma
         assert "ripdpi" not in payload
 
 
-def test_invalid_expiry_fails_before_remote_or_terraform(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("raw", "canonical"),
+    [
+        ("2027-01-01T03:59:59+04:00", "2026-12-31T23:59:59Z"),
+        ("2027-01-01", "2027-01-01T00:00:00Z"),
+    ],
+)
+def test_issue_bootstrap_uses_canonical_expiry(tmp_path: Path, raw: str, canonical: str) -> None:
+    env, payload_file, meta_file = _issuer_env(tmp_path)
+    result = subprocess.run(
+        ["bash", str(BOOTSTRAP_ISSUER), "phone", "--expires", raw],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=REPO_ROOT,
+    )
+    assert result.returncode == 0, result.stderr
+    json.loads(payload_file.read_text())
+    meta = json.loads(meta_file.read_text())
+    assert meta == {"expires": canonical, "client": "phone"}
+    assert canonical in result.stdout
+    if "+04:00" in raw:
+        assert raw not in result.stdout
+
+
+@pytest.mark.parametrize("issuer", [ISSUER, BOOTSTRAP_ISSUER])
+@pytest.mark.parametrize("raw", ["invalid", '2027-01-01\"}'])
+def test_invalid_expiry_fails_before_remote_or_terraform(tmp_path: Path, issuer: Path, raw: str) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     marker = tmp_path / "called"
@@ -132,7 +160,7 @@ def test_invalid_expiry_fails_before_remote_or_terraform(tmp_path: Path) -> None
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
     result = subprocess.run(
-        ["bash", str(ISSUER), "phone", "--expires", "invalid"],
+        ["bash", str(issuer), "phone", "--expires", raw],
         capture_output=True,
         text=True,
         env=env,
