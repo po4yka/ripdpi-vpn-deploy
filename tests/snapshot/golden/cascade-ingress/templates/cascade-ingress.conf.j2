@@ -1,0 +1,12 @@
+[Interface]
+PrivateKey = 
+Address = 10.203.0.1/30
+PostUp = nft -f /etc/wireguard/cascade-ingress.nft
+PostDown = nft delete table inet cascade_ingress 2>/dev/null || true
+
+[Peer]
+PublicKey = 
+
+Endpoint = :51831
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25

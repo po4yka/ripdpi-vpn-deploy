@@ -1,0 +1,51 @@
+---
+- name: Prove forced-empty dataset blocks serving state
+  hosts: all
+  become: true
+  vars:
+    cascade_ingress:
+      validate_policy: false
+      wg_interface: csi0
+      tunnel_address: 10.203.0.1/30
+      egress_endpoint: 192.0.2.20
+      egress_port: 51831
+      egress_allowed_ips: 0.0.0.0/0
+      keepalive_seconds: 25
+      geodata_path: /usr/local/share/xray/geoip.dat
+      classifier_path: /usr/local/libexec/cascade-classifier.py
+      classifier_interface_path: /etc/cascade/classifier-interface.json
+      policy_path: /etc/wireguard/cascade-ingress.nft
+    cascade_secrets:
+      ingress_private_key: MOLECULE_STUB_INGRESS_PRIVATE_KEY_NOT_REAL_AAAAA=
+      ingress_public_key: ""
+      egress_private_key: ""
+      egress_public_key: MOLECULE_STUB_EGRESS_PUBLIC_KEY_NOT_REAL_BBBBBBBB=
+      preshared_key: ""
+  tasks:
+    - name: Attempt cascade ingress converge with empty data
+      block:
+        - name: Include cascade ingress role
+          ansible.builtin.include_role:
+            name: cascade-ingress
+        - name: Fail if empty data reached serving configuration
+          ansible.builtin.fail:
+            msg: Forced-empty classifier data unexpectedly reached serving configuration.
+      rescue:
+        - name: Inspect serving tunnel configuration
+          ansible.builtin.stat:
+            path: /etc/wireguard/csi0.conf
+          register: serving_config
+        - name: Inspect classifier integration contract
+          ansible.builtin.stat:
+            path: /etc/cascade/classifier-interface.json
+          register: classifier_interface
+        - name: Assert classifier failure happened before serving state
+          ansible.builtin.assert:
+            that:
+              - not serving_config.stat.exists
+              - not classifier_interface.stat.exists
+        - name: Record expected hard-block outcome
+          ansible.builtin.copy:
+            dest: /tmp/cascade-forced-empty-blocked
+            mode: "0600"
+            content: "dataset-unavailable hard-blocked before serving\n"

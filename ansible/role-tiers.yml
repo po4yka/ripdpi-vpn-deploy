@@ -62,6 +62,10 @@ tiers:
   split-hop-ingress: research # Node A responder for topology comparison
   snell: research              # staged random-stream transport evaluation
 
+  # EXCEPTION — implemented but inert; requires per-host allowlist and fresh attestation
+  cascade-ingress: exception   # client termination integration + tri-state classifier
+  cascade-egress: exception    # private tunnel termination + forwarding only
+
 # Maps each transport/service enable toggle under `vpn:` to its role. Roles
 # gated by `security_controls.*` are classified above but intentionally absent
 # here so host-hardening policy cannot participate in transport tiering.
@@ -86,6 +90,8 @@ toggle_role_map:
   enable_probe_matrix_target: probe-matrix-target
   enable_split_hop_ingress: split-hop-ingress
   enable_snell: snell
+  enable_cascade_ingress: cascade-ingress
+  enable_cascade_egress: cascade-egress
 
 # Profiles that constitute a "family" deploy. The lint forbids any research
 # role from being enabled (directly or by inheriting all.yml) in these, and
@@ -99,3 +105,9 @@ family_profiles:
   - group_vars/vpn-p0.yml
   - group_vars/vpn-p1p2.yml
   - group_vars/vpn-fullstack.yml
+
+# Repository-owned lifecycle state for the jurisdiction exception. Inventory
+# cannot override this manifest value because site.yml reloads it immediately
+# before the guard. A future governance decision must change this literal in a
+# reviewed commit before either cascade role can converge.
+cascade_governance_status: implementation-only

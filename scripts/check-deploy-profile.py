@@ -1,22 +1,12 @@
 #!/usr/bin/env python3
 """Deploy-profile tier guard.
 
-Fails if a role tagged `research` in ansible/role-tiers.yml is enabled in a
-family deploy profile — the static (CI / pre-commit) half of the guard that
-keeps experimental machinery out of the default P0+P1+P2 family deploy. The
-deploy-time half is a pre_task assert in ansible/playbooks/site.yml.
+Fails if a role tagged `research` or `exception` in ansible/role-tiers.yml is enabled without its explicit matching allowlist, and forbids both tiers from every family deploy profile. EXCEPTION authorization is accepted only from host_vars. The deploy-time half is in site.yml pre_tasks.
 
 Checks performed:
-  1. Manifest integrity — every role under ansible/roles/ has a tier; every
-     tier is one of {core,tactical,research}; every toggle in toggle_role_map
-     resolves to a known role; no manifest role is unknown.
-  2. Family profiles — for each file in `family_profiles`, the EFFECTIVE
-     vpn.enable_* values (all.yml merged with the profile, profile wins) must
-     not enable any research role, and the file must not carry an
-     allow_research_roles override.
-  3. All other group_vars/ and host_vars/ files — a research role may be
-     enabled only if the same file lists that role in `allow_research_roles`
-     (an explicit, git-visible opt-in). Unknown enable_* toggles fail closed.
+  1. Manifest integrity — every role under ansible/roles/ has a tier; every tier is one of {core,tactical,research,exception}; every toggle in toggle_role_map resolves to a known role; no manifest role is unknown.
+  2. Family profiles — for each file in `family_profiles`, the EFFECTIVE vpn.enable_* values (all.yml merged with the profile, profile wins) must not enable any research or exception role, and the file must not carry an allowlist override for either tier.
+  3. Other files — RESEARCH requires a matching same-file allowlist, while EXCEPTION additionally requires the enable and allowlist to live in host_vars. Unknown enable_* toggles fail closed.
 
 Exit 0 clean, 1 on findings, 2 on usage/IO error.
 
@@ -32,7 +22,7 @@ from pathlib import Path
 
 import yaml
 
-VALID_TIERS = {"core", "tactical", "research"}
+VALID_TIERS = {"core", "tactical", "research", "exception"}
 
 
 def _load_yaml(path: Path) -> dict:
@@ -47,8 +37,8 @@ def _vpn_enables(data: dict) -> dict:
     return {k: v for k, v in vpn.items() if k.startswith("enable_")}
 
 
-def _allow_list(data: dict) -> list[str]:
-    val = data.get("allow_research_roles")
+def _allow_list(data: dict, key: str) -> list[str]:
+    val = data.get(key)
     if val is None:
         return []
     if isinstance(val, str):
@@ -86,6 +76,7 @@ def check(root: Path) -> list[str]:
             findings.append(f"manifest: toggle '{toggle}' maps to unknown role '{role}'")
 
     research_roles = {r for r, t in tiers.items() if t == "research"}
+    exception_roles = {r for r, t in tiers.items() if t == "exception"}
     role_by_toggle = dict(toggle_map)
     known_toggles = set(toggle_map)
 
@@ -99,6 +90,9 @@ def check(root: Path) -> list[str]:
             if on is True and role_by_toggle.get(toggle) in research_roles:
                 out.append(role_by_toggle[toggle])
         return sorted(set(out))
+
+    def enabled_exception(effective: dict) -> list[str]:
+        return sorted({role_by_toggle[toggle] for toggle, on in effective.items() if on is True and role_by_toggle.get(toggle) in exception_roles})
 
     def unknown_toggles(enables: dict) -> list[str]:
         return sorted(t for t in enables if t not in known_toggles)
@@ -118,10 +112,14 @@ def check(root: Path) -> list[str]:
                 f"{rel}: RESEARCH role '{role}' is enabled in a family profile "
                 f"(effective enable true) — research roles must never ship in the "
                 f"default P0/P1/P2 deploy")
-        if _allow_list(data):
+        for role in enabled_exception(effective):
+            findings.append(f"{rel}: EXCEPTION role '{role}' is enabled in a family profile — jurisdiction exceptions never ship in family profiles")
+        if "allow_research_roles" in data:
             findings.append(
                 f"{rel}: family profile must not set allow_research_roles — the "
                 f"override is for lab/pilot hosts only")
+        if "allow_exception_roles" in data:
+            findings.append(f"{rel}: family profile must not set allow_exception_roles — the override is per-host only")
         for t in unknown_toggles(_vpn_enables(data)):
             findings.append(f"{rel}: unknown enable toggle '{t}' not in toggle_role_map")
 
@@ -139,13 +137,21 @@ def check(root: Path) -> list[str]:
             continue  # handled above
         data = _load_yaml(path)
         enables = _vpn_enables(data)
-        allowed = set(_allow_list(data))
+        allowed = set(_allow_list(data, "allow_research_roles"))
+        allowed_exception = set(_allow_list(data, "allow_exception_roles"))
+        if "allow_exception_roles" in data and not rel.startswith("host_vars/"):
+            findings.append(f"{rel}: allow_exception_roles is valid only in host_vars; group-scoped jurisdiction authorization is forbidden")
         for role in enabled_research(enables):
             if role not in allowed:
                 findings.append(
                     f"{rel}: RESEARCH role '{role}' is enabled but not listed in "
                     f"allow_research_roles — add it explicitly to opt this host "
                     f"into the research role, or disable it")
+        for role in enabled_exception(enables):
+            if not rel.startswith("host_vars/"):
+                findings.append(f"{rel}: EXCEPTION role '{role}' may be enabled only in host_vars with an exact per-host allowlist")
+            elif role not in allowed_exception:
+                findings.append(f"{rel}: EXCEPTION role '{role}' is enabled but not listed in allow_exception_roles")
         for t in unknown_toggles(enables):
             findings.append(f"{rel}: unknown enable toggle '{t}' not in toggle_role_map")
 
@@ -165,7 +171,7 @@ def main(argv: list[str]) -> int:
 
     findings = check(root)
     if not findings:
-        print("OK — no research-tier role enabled in any family profile.")
+        print("OK — no gated role is enabled without its exact allowlist, and family profiles contain no RESEARCH or EXCEPTION roles.")
         return 0
     print(f"deploy-profile tier guard: {len(findings)} finding(s):")
     for f in findings:

@@ -87,12 +87,14 @@ MANIFEST = {
         "honeypot": "tactical",
         "split-hop-egress": "research",
         "hysteria-realm": "research",
+        "cascade-ingress": "exception",
     },
     "toggle_role_map": {
         "enable_xray_reality": "xray",
         "enable_honeypot": "honeypot",
         "enable_split_hop_egress": "split-hop-egress",
         "enable_hysteria_realm": "hysteria-realm",
+        "enable_cascade_ingress": "cascade-ingress",
     },
     "family_profiles": [
         "group_vars/all.yml",
@@ -108,6 +110,7 @@ ALL_OFF = {
     "enable_honeypot": False,
     "enable_split_hop_egress": False,
     "enable_hysteria_realm": False,
+    "enable_cascade_ingress": False,
 }
 
 
@@ -181,6 +184,67 @@ def test_research_in_lab_profile_with_allowlist_passes(tmp_path):
         },
     })
     assert guard.check(root) == []
+
+
+def test_exception_enabled_without_per_host_allowlist_fails(tmp_path):
+    root = _make_repo(tmp_path, extra={
+        "host_vars/candidate-a.yml": {"vpn": {"enable_cascade_ingress": True}},
+    })
+
+    findings = guard.check(root)
+
+    assert any("cascade-ingress" in finding and "allow_exception_roles" in finding for finding in findings)
+
+
+def test_exception_enabled_with_exact_per_host_allowlist_passes(tmp_path):
+    root = _make_repo(tmp_path, extra={
+        "host_vars/candidate-a.yml": {
+            "vpn": {"enable_cascade_ingress": True},
+            "allow_exception_roles": ["cascade-ingress"],
+        },
+    })
+
+    assert guard.check(root) == []
+
+
+def test_exception_group_allowlist_cannot_replace_per_host_authorization(tmp_path):
+    root = _make_repo(tmp_path, extra={
+        "group_vars/vpn-lab.yml": {
+            "vpn": {**ALL_OFF, "enable_cascade_ingress": True},
+            "allow_exception_roles": ["cascade-ingress"],
+        },
+    })
+
+    findings = guard.check(root)
+
+    assert any("only in host_vars" in finding for finding in findings)
+
+
+def test_bare_exception_group_allowlist_is_forbidden(tmp_path):
+    root = _make_repo(tmp_path, extra={
+        "group_vars/vpn-lab.yml": {
+            "vpn": ALL_OFF,
+            "allow_exception_roles": ["cascade-ingress"],
+        },
+    })
+
+    findings = guard.check(root)
+
+    assert any("group-scoped jurisdiction authorization is forbidden" in finding for finding in findings)
+
+
+def test_exception_role_and_allowlist_are_forbidden_in_family_profile(tmp_path):
+    root = _make_repo(tmp_path, extra={
+        "group_vars/vpn-fullstack.yml": {
+            "vpn": {**ALL_OFF, "enable_cascade_ingress": True},
+            "allow_exception_roles": ["cascade-ingress"],
+        },
+    })
+
+    findings = guard.check(root)
+
+    assert any("EXCEPTION role 'cascade-ingress'" in finding and "family profile" in finding for finding in findings)
+    assert any("must not set allow_exception_roles" in finding for finding in findings)
 
 
 def test_allowlist_does_not_cover_a_second_research_role(tmp_path):

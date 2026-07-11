@@ -320,7 +320,7 @@ yamllint-check:
 
 shellcheck:
 	@command -v shellcheck >/dev/null 2>&1 || { echo "missing: shellcheck" >&2; exit 1; }
-	shellcheck -s bash -S warning scripts/*.sh
+	shellcheck -s bash -S warning scripts/*.sh terraform/exception/*/*.sh
 
 vpnd-deny:
 	@command -v cargo-deny >/dev/null 2>&1 || { echo "missing: cargo-deny" >&2; exit 1; }

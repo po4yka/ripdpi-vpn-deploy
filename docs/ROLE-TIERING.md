@@ -8,7 +8,7 @@ two-layer guard. Deprecation/removal of any role is a **recommendation only**.
 ## Context and problem
 
 The stated purpose is keeping a few non-technical family devices in RU online
-with minimal remote intervention. The repo has grown to **24 Ansible roles**
+with minimal remote intervention. The repo has grown to **29 Ansible roles**
 plus research-grade machinery (split-hop dual-role defense, probe-matrix,
 idle-cycle measurement, multi-operator). On a single operator the
 maintenance and silent-failure surface now scales super-linearly — against a
@@ -35,7 +35,7 @@ Tier definitions:
   acknowledgment, provisioned from isolated Terraform state, never in any
   default family profile, and gated by an empirical, expiring, fail-closed
   per-ASN attestation. Introduced for the RU-entry cascade ingress/egress role
-  pair (roles not yet implemented — Phase 2). See `RU-CASCADE-DECISION.md` and
+  pair (implemented as inert, default-off scaffolds). See `RU-CASCADE-DECISION.md` and
   `CASCADE-ASN-ATTESTATION.md`. This is the repo's first hosting-jurisdiction
   exception; do not fold jurisdiction risk into RESEARCH.
 
@@ -45,8 +45,15 @@ Tier definitions:
 
 - **Registration blocker:** `cascade-ingress` / `cascade-egress` may not be registered for the EXCEPTION tier until every configured ingress-to-egress leg has a watchdog producing a fresh healthy end-to-end result. This is a prerequisite to registration, not a capability deferred until promotion.
 - **Promotion blocker:** any later promotion remains blocked while the per-leg watchdog is absent, stale, or unhealthy. A previously healthy result does not waive the current signal requirement.
-- **Signal class:** the watchdog must complete an authenticated protocol exchange from ingress through the selected egress to a controlled target on the forwarded path, validate the semantic response, and observe its return through that leg. Process/socket/interface presence and local self-dial are non-authoritative. One miss is degraded/transient; three consecutive misses across distinct intervals with a healthy ingress-local control classify the far leg as down, while any success resets the streak.
+- **Signal class:** the watchdog must complete an authenticated protocol exchange from ingress through the selected egress to a controlled target on the forwarded path, validate the semantic response, and observe its return through that leg. Process/socket/interface presence and local self-dial are non-authoritative. Checks occur every five minutes; one miss is degraded/transient, three consecutive misses across distinct intervals with a healthy ingress-local control classify the far leg as down, and any success resets the streak. Registration accepts only a healthy record no more than ten minutes old; `scripts/check-cascade-leg-health.py` enforces that state and freshness without implementing the probe.
 - **Treatment relative to split-hop:** this intentionally diverges from split-hop's current RESEARCH treatment, where the identical far-leg gap is documented but unenforced. Cascade registration pays an additional jurisdiction and policy cost, so the weaker pilot precedent is not sufficient for EXCEPTION admission.
+
+### Cascade attestation operations
+
+- **Cadence:** candidate-ASN evidence is valid for seven UTC calendar days. The next-recheck date must equal the attestation date plus seven days, and the checker blocks on or after that date without a grace period.
+- **Owner and evidence:** only the Cascade Attestation Operator role may sign or re-sign. Each record points to a dated measurement report by opaque identifier and SHA-256; raw probe output, endpoints, provider identity, and ASN/CIDR inventories stay outside the repo.
+- **Method unavailable:** loss of the RU-side comparison method, candidate access, report path, or authorized signer is a permanent fail-closed block while unavailable. This residual availability risk is accepted and does not create an override.
+- **Family exclusion:** EXCEPTION roles are absent from every `family_profiles` effective-enable set indefinitely. A future promotion or default-profile inclusion requires a separate governance decision; neither a passing attestation nor an exact host allowlist changes family profiles automatically.
 
 ## The three angles (argued independently, then reconciled)
 
@@ -208,19 +215,12 @@ earns promotion with evidence.
 
 ## Guard (implemented this change)
 
-A RESEARCH role can never silently reach a family deploy, enforced in two
+A RESEARCH or EXCEPTION role can never silently reach a family deploy, enforced in two
 layers over one source of truth.
 
-- **Source of truth:** `ansible/role-tiers.yml` — `tiers` (every role → core /
-  tactical / research), `toggle_role_map` (each `enable_*` → role),
-  `family_profiles` (the profiles that must stay research-free).
-- **Static layer (CI / pre-commit):** `scripts/check-deploy-profile.py` fails
-  if any research role is enabled in a family profile, or anywhere it is not
-  explicitly allowlisted. Wired into `make ci-fast` and `.pre-commit-config.yaml`;
-  covered by `tests/unit/test_deploy_profile_guard.py`.
-- **Deploy-time layer:** a `pre_task` assert in `ansible/playbooks/site.yml`
-  blocks converge if an enabled role is research-tier and not approved via
-  `allow_research_roles`.
+- **Source of truth:** `ansible/role-tiers.yml` — `tiers` (every role → core / tactical / research / exception), `toggle_role_map` (each `enable_*` → role), `family_profiles` (the profiles that must stay free of both gated tiers), and the repository-owned cascade lifecycle status.
+- **Static layer (CI / pre-commit):** `scripts/check-deploy-profile.py` fails if any RESEARCH or EXCEPTION role is enabled in a family profile, or anywhere it lacks its exact matching allowlist entry. Wired into `make ci-fast` and `.pre-commit-config.yaml`; covered by `tests/unit/test_deploy_profile_guard.py`.
+- **Deploy-time layer:** pre-task assertions in `ansible/playbooks/site.yml` enforce the matching exact-name allowlist. Cascade additionally requires a fresh attestation and a repository-owned `live-authorized` governance state; inventory cannot supply or override that state.
 
 Current family profile files are `all.yml`, `vpn-p0-minimal.yml`, `vpn-family-standard.yml`, `vpn-device-full.yml`, and the legacy aliases `vpn-p0.yml`, `vpn-p1p2.yml`, `vpn-fullstack.yml`. `vpn-lab.yml` is intentionally outside `family_profiles`; it may opt into research only by listing exact role names in `allow_research_roles`.
 
