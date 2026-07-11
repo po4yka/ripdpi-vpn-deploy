@@ -32,3 +32,23 @@ def test_governance_counts_match_live_repository():
     for scenario in failure_scenarios:
         assert f"`{scenario['role']}/{scenario['scenario']}`" in push_row
     assert "`pytest tests/unit/`" in push_row
+
+    molecule_files = subprocess.run(
+        ["git", "ls-files", "ansible/**/molecule.yml"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    images = [
+        platform["image"]
+        for molecule_file in molecule_files
+        for platform in yaml.safe_load((ROOT / molecule_file).read_text())["platforms"]
+    ]
+    assert images
+    assert all(re.fullmatch(r"[^:@]+(?:/[^:@]+)+@sha256:[0-9a-f]{64}", image) for image in images)
+
+    image_scan = (ROOT / ".github/workflows/image-scan.yml").read_text()
+    assert "git diff --name-only" not in image_scan
+    assert "BASE_SHA" not in image_scan
+    assert "find ansible/roles ansible/molecule -path '*/molecule.yml' -type f" in image_scan
