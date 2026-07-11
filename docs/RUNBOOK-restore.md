@@ -60,12 +60,13 @@ file.
 $EDITOR terraform/providers/upcloud/environments/prod.tfvars
 make init plan apply inventory wait
 
-# 2. Push baseline + firewall + backup role only (gets restic installed)
-ANSIBLE_TAGS="baseline,firewall,backup" \
-ansible-playbook ansible/playbooks/site.yml --tags "baseline,firewall,backup"
-
-# 3. Push the restic password (already in your secrets file)
+# 2. Decrypt secrets before the first playbook; the backup role needs the
+#    restic password and site.yml rejects a missing VPN_SECRETS_FILE.
 make decrypt
+
+# 3. Push baseline + firewall + backup role only. The make target passes its
+#    runtime secrets path as VPN_SECRETS_FILE and writes /etc/restic/password.
+ANSIBLE_TAGS="baseline,firewall,backup" make deploy
 
 # 4. Copy restic repo from old backup target — this depends on where you sync
 #    restic. Local-only repo means SCP from a forensic snapshot of the old

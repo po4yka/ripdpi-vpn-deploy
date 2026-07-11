@@ -90,11 +90,10 @@ print_path_b() {
   printf '  ENV=%s  PROVIDER=%s\n\n' "$ENV" "$PROVIDER"
   printf '  Step 1: provision fresh VPS\n'
   printf '          make init plan apply inventory wait  (PROVIDER=%s ENV=%s)\n' "$PROVIDER" "$ENV"
-  printf '  Step 2: deploy baseline + firewall + backup role\n'
-  printf '          ANSIBLE_TAGS="baseline,firewall,backup" \\\n'
-  printf '            ansible-playbook ansible/playbooks/site.yml --tags "baseline,firewall,backup"\n'
-  printf '  Step 3: decrypt secrets (restic password)\n'
+  printf '  Step 2: decrypt secrets before the first playbook\n'
   printf '          make decrypt\n'
+  printf '  Step 3: deploy baseline + firewall + backup role\n'
+  printf '          ANSIBLE_TAGS="baseline,firewall,backup" make deploy\n'
   printf '  Step 4: point new VPS at restic repository (remote target or SCP)\n'
   printf '  Step 5: restore configs on new VPS\n'
   printf '          ssh deploy@<new-vps>\n'
