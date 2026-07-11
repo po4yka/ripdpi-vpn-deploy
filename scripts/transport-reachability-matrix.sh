@@ -77,9 +77,9 @@ echo "exit-ip: $EXIT_IP"
 
 # ---------------------------------------------------------------------------
 # SNI-variant survival baseline. For each REALITY server_name, probe both the
-# bare and the www.-prefixed SNI against the exit IP and record which survives
-# (KB: sni-exact-match-vs-suffix-classification-2026). This runner is the
-# *unfiltered* vantage, so every variant is expected to survive here — that is
+# bare and the www.-prefixed SNI against the exit IP and record which survives.
+# This runner is the *unfiltered* vantage, so every variant is expected to
+# survive here — that is
 # the hygiene baseline. The decision-grade measurement is the operator's
 # filtered (RU) vantage: `EXIT_IP=$EXIT_IP VANTAGE=filtered make probe-sni-survival`.
 # The exit IP / Reality identity are constant across profiles, so this is

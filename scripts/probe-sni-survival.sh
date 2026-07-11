@@ -3,8 +3,8 @@
 #
 # For each REALITY server_name, probes BOTH the bare and the `www.`-prefixed
 # SNI variant against the exit IP with a TLS ClientHello and records which
-# variant survives. Per the censorship-bypass KB concept
-# `sni-exact-match-vs-suffix-classification-2026`, TSPU on several non-CF
+# variant survives. Repository-local filtered-vantage measurements show that
+# TSPU on several non-CF
 # paths matches the SNI by EXACT dot-component string, not by suffix: the bare
 # `foo.com` and `www.foo.com` forms of the same name can have very different
 # survival, in either direction. The "topologically equivalent" variants are
