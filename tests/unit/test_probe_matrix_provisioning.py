@@ -38,6 +38,20 @@ def test_ingress_marks_only_new_original_direction_runtime_connections() -> None
     config = (ROOT / "ansible/roles/split-hop-ingress/templates/split-hop-ingress.conf.j2").read_text()
     assert "Endpoint" not in config
     assert "PersistentKeepalive" not in config
+    runbook = (ROOT / "docs/RUNBOOK-split-hop-pilot.md").read_text()
+    for contract in (
+        "split_hop_ingress_secrets",
+        "enable_split_hop_ingress",
+        "allow_research_roles",
+        "split-hop-ingress",
+    ):
+        assert contract in runbook
+    for stale_instruction in (
+        "does not yet have full Ansible coverage",
+        "iptables",
+        "netfilter-persistent",
+    ):
+        assert stale_instruction not in runbook
 
 
 def test_split_hop_egress_forwarding_is_allowed_by_firewall() -> None:

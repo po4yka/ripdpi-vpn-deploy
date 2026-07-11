@@ -118,13 +118,18 @@ At a high level:
 
 1. Provision two VPSes via existing Terraform roots — typically in
    different zones of the same provider, or different providers.
-2. Generate two WireGuard keypairs; load into SOPS as
-   `split_hop_egress_secrets.wg_*`.
-3. Run `site.yml` against Node A (ingress) with the standard cohort.
-4. Run `site.yml` against Node B (egress) with the
-   `split-hop-egress` role enabled.
-5. Verify Node A egress routes through the WG tunnel via
-   `ip route show table all` and a manual `curl --interface awg0` test.
+2. Generate two WireGuard keypairs and an optional PSK; load the paired
+   `split_hop_ingress_secrets` block on Node A and
+   `split_hop_egress_secrets` block on Node B.
+3. Enable `vpn.enable_split_hop_ingress` on Node A with
+   `allow_research_roles: [split-hop-ingress]`, then run `site.yml` against
+   Node A's environment.
+4. Enable `vpn.enable_split_hop_egress` on Node B with client-facing
+   transports disabled, then run `site.yml` separately against Node B's
+   environment. Node B remains the tunnel initiator.
+5. Verify `shop0` tunnel health on both nodes, then separately exercise a
+   transport runtime UID's marked policy route; an interface-bound diagnostic
+   proves only tunnel/NAT reachability.
 6. Collect 24–72 h of flow data from an upstream vantage (provider's
    flow logs, or a separate observation host). Validate the per-node
    dual-role score against the threshold the FOCI paper uses.
