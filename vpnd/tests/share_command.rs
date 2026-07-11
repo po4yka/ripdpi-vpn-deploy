@@ -54,7 +54,7 @@ async fn share_generates_a_bundle_for_a_canonical_xray_client() {
             token_stdin: false,
             token_file: Some({
                 let token = root.path().join("token");
-                std::fs::write(&token, "test-token_123\n").unwrap();
+                std::fs::write(&token, "test-token_12345\n").unwrap();
                 std::fs::set_permissions(&token, std::fs::Permissions::from_mode(0o600)).unwrap();
                 token
             }),
@@ -69,7 +69,18 @@ async fn share_generates_a_bundle_for_a_canonical_xray_client() {
     );
     let page = std::fs::read_to_string(out.join("index.html")).unwrap();
     assert!(page.contains("phone"));
-    assert!(page.contains("https://sub.example.com:8444/sub/test-token_123"));
+    let subscription_url = "https://sub.example.com:8444/sub/test-token_12345";
+    let singbox_target = format!(
+        "sing-box://import-remote-profile?url={}",
+        share::urlencode(subscription_url)
+    );
+    assert!(page.contains(subscription_url));
+    assert!(page.contains(&singbox_target));
+    let obsolete_singbox_target = format!(
+        "sing-box://import-remote-profile?url={}",
+        share::urlencode(&format!("{subscription_url}.json"))
+    );
+    assert!(!page.contains(&obsolete_singbox_target));
     assert_eq!(out.metadata().unwrap().permissions().mode() & 0o777, 0o700);
     assert_eq!(
         out.join("config.singbox.json")

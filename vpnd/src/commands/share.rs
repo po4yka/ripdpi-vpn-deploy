@@ -8,6 +8,9 @@ use crate::runner::make;
 use crate::secrets::Secrets;
 use crate::wizard::section;
 
+const MIN_TOKEN_LENGTH: usize = 16;
+const MAX_TOKEN_LENGTH: usize = 64;
+
 /// Computed subscription URLs for a share bundle.
 pub struct SubUrls {
     pub subscription_url: String,
@@ -24,10 +27,10 @@ pub fn build_sub_urls(base: &str, segment: &str) -> SubUrls {
     let subscription_url = format!("{base}/sub/{segment}");
     let singbox_deeplink = format!(
         "sing-box://import-remote-profile?url={}",
-        urlencode(&format!("{base}/sub/{segment}.json"))
+        urlencode(&subscription_url)
     );
-    let qr_singbox = format!("{base}/sub/{segment}.json");
-    let qr_uri = format!("{base}/sub/{segment}");
+    let qr_singbox = subscription_url.clone();
+    let qr_uri = subscription_url.clone();
     SubUrls {
         subscription_url,
         singbox_deeplink,
@@ -36,14 +39,15 @@ pub fn build_sub_urls(base: &str, segment: &str) -> SubUrls {
     }
 }
 
-/// Validate that a token contains only base64url alphabet characters.
+/// Validate that a token has the server-supported length and base64url alphabet.
 fn validate_token(token: &str) -> Result<()> {
-    let valid = token
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    let valid = (MIN_TOKEN_LENGTH..=MAX_TOKEN_LENGTH).contains(&token.len())
+        && token
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
     if !valid {
         return Err(anyhow!(
-            "token contains invalid characters — only base64url alphabet [A-Za-z0-9_-] is allowed"
+            "token must be {MIN_TOKEN_LENGTH}–{MAX_TOKEN_LENGTH} characters using only the base64url alphabet [A-Za-z0-9_-]"
         ));
     }
     Ok(())
@@ -239,4 +243,39 @@ fn per_platform_apps() -> Vec<recipient::AppCard> {
 pub fn urlencode(s: &str) -> String {
     use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
     utf8_percent_encode(s, NON_ALPHANUMERIC).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_token;
+
+    #[test]
+    fn rejects_token_below_minimum_length() {
+        assert!(validate_token(&"a".repeat(15)).is_err());
+    }
+
+    #[test]
+    fn accepts_token_at_minimum_length() {
+        assert!(validate_token(&"a".repeat(16)).is_ok());
+    }
+
+    #[test]
+    fn accepts_token_at_maximum_length() {
+        assert!(validate_token(&"a".repeat(64)).is_ok());
+    }
+
+    #[test]
+    fn rejects_token_above_maximum_length() {
+        assert!(validate_token(&"a".repeat(65)).is_err());
+    }
+
+    #[test]
+    fn rejects_empty_token() {
+        assert!(validate_token("").is_err());
+    }
+
+    #[test]
+    fn rejects_forbidden_character_at_valid_length() {
+        assert!(validate_token("valid_token_123!").is_err());
+    }
 }

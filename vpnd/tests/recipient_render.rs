@@ -13,10 +13,11 @@ fn recipient_page_renders_with_expected_sections() {
         host: "vpn.example.com",
         env: "prod",
         provider: "upcloud",
-        subscription_url: "https://vpn.example.com/sub/phone",
+        subscription_url: "https://vpn.example.com/sub/recipient_token_123",
         singbox_deeplink:
-            "sing-box://import-remote-profile?url=https%3A%2F%2Fvpn.example.com%2Fsub%2Fphone.json",
-        ripdpi_deeplink: "ripdpi://import?sub=https%3A%2F%2Fvpn.example.com%2Fsub%2Fphone",
+            "sing-box://import-remote-profile?url=https%3A%2F%2Fvpn.example.com%2Fsub%2Frecipient_token_123",
+        ripdpi_deeplink:
+            "ripdpi://import?sub=https%3A%2F%2Fvpn.example.com%2Fsub%2Frecipient_token_123",
         apps: vec![
             AppCard {
                 platform: "iOS".to_string(),
@@ -46,7 +47,7 @@ fn recipient_page_renders_with_expected_sections() {
 
     assert!(out.contains("Connect to vpn.example.com"));
     assert!(out.contains("For <strong>phone</strong>"));
-    assert!(out.contains("https://vpn.example.com/sub/phone"));
+    assert!(out.contains("https://vpn.example.com/sub/recipient_token_123"));
     assert!(out.contains("sing-box://import-remote-profile"));
     assert!(out.contains("ripdpi://import?sub="));
     assert!(out.contains("Streisand"));
