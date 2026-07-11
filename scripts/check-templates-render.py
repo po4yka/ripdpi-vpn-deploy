@@ -13,16 +13,21 @@ Doesn't substitute for molecule; it's a fast pre-flight.
 
 from __future__ import annotations
 
+import base64
 import json
 import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 
 from jinja2 import UndefinedError
 
 from template_render import REPO_ROOT, ROLES_DIR, merge_render_vars, render_template
+
+
+XRAY_IMAGE = "ghcr.io/xtls/xray-core:latest"
 
 
 def validate_json(text: str, label: str) -> str | None:
@@ -41,25 +46,32 @@ def validate_xray(text: str, label: str) -> str | None:
        effective fields" and the role crashes mid-converge.
      - reality `serverNames`/`shortIds` shape errors.
      - inbound port collisions across cohorts.
-    Skipped (no failure) if neither the `xray` binary nor the pinned docker
-    image is available locally — keeps the script useful in stripped CI envs.
+    Fails closed if neither the `xray` binary nor the cached Docker image is
+    available. CI installs the production-pinned Xray binary before running
+    this check; local runs never pull an image implicitly.
     """
     xray_bin = shutil.which("xray")
     docker_bin = shutil.which("docker") if not xray_bin else None
-    image = "ghcr.io/xtls/xray-core:latest"
+    image = XRAY_IMAGE
 
     if not xray_bin and docker_bin:
-        # Use docker only if the image is cached; pulling 50MB inside a
-        # template lint step is hostile to local-dev iteration.
+        # Local runs use Docker only when the image is already cached; this
+        # lint step never performs an implicit network pull.
         inspect = subprocess.run(
             [docker_bin, "image", "inspect", image],
             capture_output=True,
         )
         if inspect.returncode != 0:
-            return None  # skip silently
+            return (
+                f"{label}: xray semantic validation unavailable — "
+                f"install xray or cache {image}"
+            )
 
     if not xray_bin and not docker_bin:
-        return None  # skip silently
+        return (
+            f"{label}: xray semantic validation unavailable — "
+            f"install xray or cache {image}"
+        )
 
     with tempfile.NamedTemporaryFile(
         "w", suffix=".json", delete=False, dir="/tmp"
@@ -172,6 +184,25 @@ def validate_nginx(text: str, label: str) -> str | None:
 
 def main() -> int:
     vars_ = merge_render_vars()
+    xray_log_dir = tempfile.mkdtemp(prefix="vpn-xray-render-")
+    # The committed example intentionally contains placeholders. Supply valid,
+    # deterministic synthetic values so Xray tests template semantics without
+    # embedding reusable credentials or depending on operator secrets.
+    vars_["xray"] = dict(vars_["xray"])
+    vars_["xray"]["reality_private_key"] = base64.urlsafe_b64encode(
+        bytes(range(32))
+    ).decode().rstrip("=")
+    vars_["xray"]["target"] = "example.com:443"
+    vars_["xray"]["server_names"] = ["example.com"]
+    vars_["xray_log_path"] = xray_log_dir
+    vars_["xray"]["clients"] = [
+        {
+            **client,
+            "uuid": str(uuid.UUID(int=index + 1)),
+            "short_id": f"{index + 1:08x}",
+        }
+        for index, client in enumerate(vars_["xray"]["clients"])
+    ]
     rendered = 0
     failures: list[str] = []
 
@@ -211,9 +242,11 @@ def main() -> int:
         print("Template render check FAILED:")
         for f in failures:
             print(f"  {f}")
+        shutil.rmtree(xray_log_dir, ignore_errors=True)
         return 1
 
     print(f"OK — {rendered} templates rendered cleanly.")
+    shutil.rmtree(xray_log_dir, ignore_errors=True)
     return 0
 
 
