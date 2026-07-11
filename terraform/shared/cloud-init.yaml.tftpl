@@ -46,11 +46,9 @@ write_files:
       build_env=${build_env}
 
 runcmd:
-  # Reload sshd only on first boot so subsequent reboots do not drop active
-  # tunnels. The marker is written after the reload, so the ordering is:
-  #   first boot  → reload ssh → touch marker
-  #   later boots → marker exists → skip reload
-  - [sh, -c, "test -f /var/lib/cloud-init-vpn-bootstrap.done || systemctl reload ssh"]
-  - [sh, -c, "touch /var/lib/cloud-init-vpn-bootstrap.done"]
+  # Validate and reload sshd only on first boot so subsequent reboots do not
+  # drop active tunnels. Keep the marker in the same success chain: external
+  # waiters must never observe completion after a failed validation or reload.
+  - [sh, -c, "test -f /var/lib/cloud-init-vpn-bootstrap.done || { /usr/sbin/sshd -t && systemctl reload ssh && touch /var/lib/cloud-init-vpn-bootstrap.done; }"]
 
 final_message: "VPN VPS bootstrap complete after $UPTIME seconds"
