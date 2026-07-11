@@ -14,7 +14,7 @@ and tag releases.
 | `test:` | Molecule scenarios, validators, smoke tests. |
 | `refactor:` | Code restructure with no behaviour change. |
 | `perf:` | Performance-only change. |
-| `chore:` | Tooling, dependencies (Dependabot uses this automatically). |
+| `chore:` | Tooling and dependency updates, including Renovate PRs. |
 | `ci:` | CI workflow changes (`.github/workflows/*`). |
 | `build:` | Build-time change (rarely applicable here). |
 | `revert:` | Reverts a prior commit. |

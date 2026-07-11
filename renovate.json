@@ -8,6 +8,13 @@
     "enabled": true
   },
   "schedule": ["on weekend"],
+  "enabledManagers": [
+    "cargo",
+    "custom.regex",
+    "github-actions",
+    "pip_requirements",
+    "terraform"
+  ],
   "packageRules": [
     {
       "description": "Group all Terraform provider updates into one weekly PR",
