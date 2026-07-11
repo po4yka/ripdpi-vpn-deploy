@@ -116,7 +116,8 @@ new provider, new vpnd subcommand, new AWG cohort) are in the root
 - A web admin panel (Marzban / Remnawave / 3x-ui) — architectural
   invariant.
 - Calendar-based credential auto-rotation — rotation must be event-driven.
-- Docker / K8s on the data plane — see brain-note rationale.
+- Docker / K8s on the data plane — nodes are disposable and Ansible plus
+  systemd own runtime state; no container orchestrator is part of the data plane.
 - Auto-deploy from `main` — operator-driven by design.
 
 PRs in these directions will be closed with a pointer to the rationale.

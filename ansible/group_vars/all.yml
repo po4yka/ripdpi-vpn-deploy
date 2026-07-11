@@ -101,8 +101,8 @@ vpn:
   #   vision (default) — `xtls-rprx-vision` flow, no mux. Best on
   #                       networks not policing per-IP TLS concurrency.
   #   mux              — drops vision-flow, enables mux on the inbound.
-  #                       Use on home ISPs hitting the ~12-concurrent-TLS
-  #                       rule documented in tls-policing-home-isps
+  #                       Use on home ISPs hitting the measured ~12-concurrent-TLS
+  #                       rule
   #                       (observed across 50+ ASNs as of 2026-05). The block lasts 60-120 s
   #                       after the threshold is crossed; mux holds
   #                       concurrent TLS sessions below the threshold by

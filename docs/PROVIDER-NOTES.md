@@ -32,8 +32,8 @@ All three provider roots open exactly the typed `public_listeners` contract at t
 | Hetzner | `hcloud_firewall.vpn` dynamic `rule` (`source_ips = 0.0.0.0/0, ::/0`) | yes |
 | Vultr | `vultr_firewall_rule.tcp_public` over `public_networks` (`v4`,`v6`) | yes |
 
-**The gap is not a missing rule — it is silent edge drop.** On ≥2 of 4 cloud
-providers the KB source tested, inbound UDP/443 is dropped by the
+**The gap is not a missing rule — it is silent edge drop.** Repository-local
+external-probe measurements observed inbound UDP/443 drops at the
 **provider-edge** firewall even when the rule is applied, the instance's own
 `nftables` shows ACCEPT, and the listener is bound. The instance kernel cannot
 see this layer, so on-host checks (`nft list`, `ss -ulnp`, `iptables -L`) all
