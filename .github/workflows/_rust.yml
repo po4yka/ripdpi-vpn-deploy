@@ -39,9 +39,9 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88  # stable
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88  # 1.96.0
         with:
-          toolchain: stable
+          toolchain: "1.96.0"
           targets: ${{ inputs.target }}
 
       - name: Cache Rust build artifacts
