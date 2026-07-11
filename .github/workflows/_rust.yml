@@ -9,9 +9,9 @@ on:
         type: string
         required: true
       cargo-command:
-        description: "Cargo subcommand + args to run (e.g. 'test --release')"
+        description: "Cargo subcommand + args to run; must include --locked (e.g. 'test --release --locked')"
         type: string
-        default: "test --release"
+        default: "test --release --locked"
       cache-key-suffix:
         description: "Optional suffix appended to the rust-cache key"
         type: string
@@ -54,6 +54,17 @@ jobs:
         if: ${{ inputs.cross }}
         working-directory: vpnd
         run: cargo install cross --locked
+
+      - name: Require the committed dependency graph
+        shell: bash
+        run: |
+          case " ${{ inputs.cargo-command }} " in
+            *" --locked "*) ;;
+            *)
+              echo "cargo-command must include --locked" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Run cargo ${{ inputs.cargo-command }} (native)
         if: ${{ !inputs.cross }}

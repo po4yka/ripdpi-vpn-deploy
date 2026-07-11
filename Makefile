@@ -124,8 +124,8 @@ help:
 	@echo "  tf-test                    terraform test (mock_provider; needs TF 1.6+)"
 	@echo "  ci-fast                    Cheap pre-PR bundle: unit + snapshot + schema + render + syntax + vpnd"
 	@echo "  bats-test                  Run bats shell tests (tests/bats/)"
-	@echo "  vpnd-test                  cargo test --release inside vpnd/"
-	@echo "  vpnd-clippy                cargo clippy --release (deny warnings) inside vpnd/"
+	@echo "  vpnd-test                  cargo test --release --locked inside vpnd/"
+	@echo "  vpnd-clippy                cargo clippy --release --locked (deny warnings) inside vpnd/"
 	@echo "  tf-policy                  terraform test + conftest OPA policy check for all providers"
 	@echo "  molecule-test ROLE=<name>  Run one role's molecule scenario"
 	@echo "  molecule-full-stack        site.yml end-to-end inside a Docker container"
@@ -311,8 +311,8 @@ ci-fast:
 	@echo "== unit tests =="; python3 -m pytest tests/unit/ -q
 	@echo "== bats shell tests =="; bats tests/bats/
 	@command -v cargo >/dev/null 2>&1 || { echo "missing: cargo" >&2; exit 1; }
-	@echo "== vpnd clippy =="; cd vpnd && cargo clippy --release --all-targets -- -D warnings
-	@echo "== vpnd tests =="; cd vpnd && cargo test --release
+	@echo "== vpnd clippy =="; cd vpnd && cargo clippy --release --all-targets --locked -- -D warnings
+	@echo "== vpnd tests =="; cd vpnd && cargo test --release --locked
 	@echo "ci-fast: OK"
 
 # Union gate: everything in validate + everything in ci-fast.
@@ -527,10 +527,10 @@ bats-test:
 	bats tests/bats/
 
 vpnd-test:
-	cd vpnd && cargo test --release
+	cd vpnd && cargo test --release --locked
 
 vpnd-clippy:
-	cd vpnd && cargo clippy --release --all-targets -- -D warnings
+	cd vpnd && cargo clippy --release --all-targets --locked -- -D warnings
 
 vpnd-mutants:
 	cd vpnd && cargo mutants --no-shuffle
