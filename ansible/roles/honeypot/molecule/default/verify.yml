@@ -38,7 +38,7 @@
       changed_when: false
       failed_when: logrotate_timer_active.rc != 0
 
-    - name: Seed the connection log for a forced rotation
+    - name: Seed the connection log for a threshold rotation
       ansible.builtin.copy:
         dest: /var/log/honeypot/connections.log
         content: '{"event":"molecule-logrotate-check"}\n'
@@ -46,9 +46,14 @@
         group: honeypot
         mode: "0640"
 
-    - name: Exercise the installed logrotate policy
+    - name: Grow the connection log beyond the rotation threshold
       ansible.builtin.command:
-        cmd: logrotate --force --state /tmp/honeypot-logrotate.state /etc/honeypot-logrotate.conf
+        cmd: truncate --size 11M /var/log/honeypot/connections.log
+      changed_when: true
+
+    - name: Exercise the installed logrotate service
+      ansible.builtin.command:
+        cmd: systemctl start honeypot-logrotate.service
       changed_when: false
 
     - name: Inspect the recreated connection log
