@@ -96,8 +96,9 @@ on `nginx-xhttp`.
 
 Re-evaluate this decision if:
 
-- Cloudflare reverses the RU-PoP-via-TSPU situation (re-check the wiki
-  page cited under "Evidence anchor" before flipping this decision).
+- Cloudflare reverses the RU-PoP-via-TSPU situation, confirmed by rerunning
+  and recording repository-local filtered-vantage measurements before flipping
+  this decision.
 - A non-RU CDN provides documented, stable, non-TSPU paths into RU.
 - The threat model changes (e.g., the operator is no longer targeting RU,
   or the operator wants browser camouflage as the dominant property).

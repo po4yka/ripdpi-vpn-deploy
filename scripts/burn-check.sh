@@ -6,8 +6,8 @@
 # more nodes fail. Intended to run from cron on the operator workstation.
 #
 # Also runs an external UDP/443 (Hysteria2/QUIC) edge-reachability probe. This
-# closes the silent-failure gap documented in the censorship-bypass KB concept
-# `cloud-firewall-udp-egress-friction`: on several cloud providers, inbound
+# closes a silent-failure gap observed in repository-local provider-edge
+# measurements: on several cloud providers, inbound
 # UDP/443 is silently dropped at the provider-edge firewall even when the
 # instance's own nftables shows ACCEPT and the listener is bound. On-host
 # checks (`nft list`, `ss -ulnp`) cannot see this; only an external probe can.
@@ -15,7 +15,7 @@
 # treats any reply as proof the datagram reached the server. It is always
 # NON-FATAL (WARN only) — a no-response is ambiguous (edge drop vs. Hysteria2
 # silently ignoring an unauthenticated probe) and is disambiguated server-side
-# with `tcpdump -i any udp port 443` per the KB verification chain.
+# with `tcpdump -i any udp port 443` per the repository verification chain.
 #
 # Usage:
 #   scripts/burn-check.sh                      # uses defaults
@@ -156,7 +156,7 @@ PY
       ;;
     3)
       UDP_OK=0
-      echo "WARN: ${IP}:${HYSTERIA_PORT}/udp  →  no QUIC reply. Per cloud-firewall-udp-egress-friction this is AMBIGUOUS: provider-edge UDP drop OR Hysteria2 silently ignoring an unauthenticated probe. Disambiguate on the server — run 'tcpdump -i any udp port 443' while re-running this probe: zero inbound packets means the provider edge is dropping UDP (open UDP/443 in the provider UI / security group); packets present means the gap is server-side, not the edge." >&2
+      echo "WARN: ${IP}:${HYSTERIA_PORT}/udp  →  no QUIC reply. This is AMBIGUOUS: provider-edge UDP drop OR Hysteria2 silently ignoring an unauthenticated probe. Disambiguate on the server — run 'tcpdump -i any udp port 443' while re-running this probe: zero inbound packets means the provider edge is dropping UDP (open UDP/443 in the provider UI / security group); packets present means the gap is server-side, not the edge." >&2
       ;;
     *)
       echo "WARN: UDP/443 probe error (rc=${UDP_RC}) — not measured" >&2

@@ -90,9 +90,9 @@ manual procedure:
 ## SNI-variant survival (REALITY server_names selection)
 
 The matrix also measures **which SNI variant of each REALITY `server_name`
-survives**. Per the censorship-bypass concept
-`sni-exact-match-vs-suffix-classification-2026`, TSPU on several non-CF paths
-matches the SNI by **exact dot-component string, not by suffix**: the bare
+survives**. Repository-local filtered-vantage measurements show that several
+non-CF paths filter the SNI by **exact dot-component string, not by suffix**:
+the bare
 `foo.com` and `www.foo.com` form of the *same* name can survive very
 differently, in either direction. The topologically "canonical" form is not
 privileged — you must pick `xray.server_names` by the variant that actually

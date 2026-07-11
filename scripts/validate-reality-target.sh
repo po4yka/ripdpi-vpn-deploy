@@ -222,7 +222,8 @@ done
 # 8. ASN plausibility (warn) — target IP should live on an ASN that looks
 #    plausible alongside the VPS. Hyperscaler/global-brand SNI on a small
 #    VPS-hosting IP creates an ASN/SNI mismatch that TSPU's IP-reputation
-#    pipeline can score against. See reality-target-selection-2026.
+#    pipeline can score against. Keep this heuristic in sync with
+#    docs/PROVIDER-NOTES.md.
 # ---------------------------------------------------------------------------
 echo "[8/9] Target ASN plausibility"
 target_ip="$(resolve_ipv4 "$HOST")"
@@ -238,8 +239,8 @@ else
     target_org="$(printf '%s' "$asn_line" | awk -F'\t' '{print $5}')"
     echo "  target_ip=$target_ip  asn=AS${target_asn}  org=${target_org}"
 
-    # Flag the "Avoid" tier ASNs outright. The set is sourced from the internal
-    # heuristic list in docs/PROVIDER-NOTES.md — it is NOT an enumerated external
+    # Flag the "Avoid" tier ASNs outright. This repository-owned heuristic is
+    # kept in sync with docs/PROVIDER-NOTES.md — it is NOT an enumerated external
     # standard or authoritative blacklist. It represents current operator judgment
     # that these prefixes are bucketed as foreign-datacenter by TSPU path scoring
     # and trigger TCP freeze on measured paths. Revisit as ASN reputation shifts:
@@ -273,8 +274,7 @@ fi
 #    and CANNOT tell you which variant survives RU TSPU. For the survival
 #    decision run `scripts/probe-sni-survival.sh` from the filtered vantage and
 #    choose `server_names` by the variant that survived — see
-#    docs/TRANSPORT-REACHABILITY-MATRIX.md. (KB:
-#    sni-exact-match-vs-suffix-classification-2026.)
+#    docs/TRANSPORT-REACHABILITY-MATRIX.md.
 # ---------------------------------------------------------------------------
 echo "[9/9] SNI variant hygiene (bare vs www.) — local TLS/cert only, NOT RU survival"
 seen_variants=""

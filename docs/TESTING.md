@@ -207,9 +207,9 @@ missing — set `VPND_SKIP_ATTESTATION=1` to opt out explicitly.
 | **TCP/443 (REALITY)** | `make burn-check` via check-host.net nodes | RU + EU third-party | Exits non-zero when ≥`FAIL_THRESHOLD` vantages can't connect — the IP-burn signal. |
 | **UDP/443 (Hysteria2/QUIC)** | `make burn-check` QUIC Version-Negotiation probe | operator workstation | **Always non-fatal (WARN).** Sends an unauthenticated QUIC long-header packet with a `0x?a?a?a?a` force-VN version, padded to QUIC's 1200-byte minimum; any reply proves UDP/443 was delivered end-to-end. Skips (WARN) when `ENABLE_HYSTERIA=false` or `HYSTERIA_SALAMANDER=true` (obfs makes external blackbox probing impossible). Exports `vpn_burn_udp_reachable`. |
 
-**Why on-host UDP checks are insufficient.** Per the censorship-bypass KB
-concept `cloud-firewall-udp-egress-friction`, several cloud providers silently
-drop inbound UDP/443 at the **provider-edge** firewall even when the instance's
+**Why on-host UDP checks are insufficient.** Repository-local provider-edge
+measurements show that some cloud paths silently drop inbound UDP/443 at the
+**provider-edge** firewall even when the instance's
 own `nftables` shows ACCEPT and the listener is bound (`ss -ulnp` correct). The
 instance kernel cannot see that layer, so a server-side or molecule check can
 never detect the gap — it must be probed from outside the data center. Diagnostic
