@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -20,3 +22,13 @@ def test_governance_counts_match_live_repository():
     assert f"({templates} templates)" in testing
     assert f"({test_count} collected)" in testing
     assert "molecule / per-role tests. v2." not in (ROOT / "docs/ARCHITECTURE.md").read_text()
+
+    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    push_row = next(line for line in testing.splitlines() if line.startswith("| `git push` (PR) |"))
+    default_roles = ci["jobs"]["molecule"]["strategy"]["matrix"]["role"]
+    failure_scenarios = ci["jobs"]["molecule-failure-scenarios"]["strategy"]["matrix"]["include"]
+    for role in default_roles:
+        assert f"`{role}`" in push_row
+    for scenario in failure_scenarios:
+        assert f"`{scenario['role']}/{scenario['scenario']}`" in push_row
+    assert "`pytest tests/unit/`" in push_row
