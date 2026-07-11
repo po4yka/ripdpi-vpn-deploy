@@ -1,6 +1,6 @@
 # Cascade: produce the first per-ASN allowlist attestation (confirm-or-kill gate)
 
-- [x] #task Execute the first per-ASN confirm-or-kill gate before any cascade Phase 1+ work; no-go recorded because no qualifying RU-side measurement was available #repo/RIPDPI-VPN-DEPLOY #area/security #status/done ⏫
+- [x] #task Execute the first per-ASN confirm-or-kill gate; no-go recorded because the RU-side baseline had no candidate endpoint/ASN comparison #repo/RIPDPI-VPN-DEPLOY #area/security #status/done ⏫
 
 ## Goal
 
@@ -19,14 +19,14 @@ RU-jurisdiction hosting for a temporary whitelist-riding entry node is signed of
 ## Out of scope
 
 - No probe commands, tool invocations, CIDR/ASN inventories, or provider names committed to the repo — the record is a dated claim with a pointer to evidence, never the raw feed.
-- No provisioning, roles, or Terraform until this attestation passes.
+- No live provisioning, role converge, or hosting account until this attestation passes. A later governance decision permits inert, default-off implementation before hosting; it does not reverse the live no-go.
 - No brand-based or assumed pass (Yandex.Cloud LLC vs YANDEX LLC are distinct ASNs).
 
 ## Ship definition
 
 - [x] A schema-valid attestation record exists for at least one candidate ASN, or a written decision to kill the cascade effort is recorded.
 - [x] No passing record was created because no result qualified as per-ASN, RU-side, current, and non-brand-inferred.
-- [x] `docs/RU-CASCADE-DECISION.md` records the no-go and prohibits Phase 1+ work from starting.
+- [x] `docs/RU-CASCADE-DECISION.md` records the live no-go and the later implementation-only authorization; all activation paths remain blocked.
 - [x] The latent-risk tradeoff was explicitly weighed and recorded as part of the decision.
 
 ## Links

@@ -1,0 +1,19 @@
+---
+- name: Prepare populated synthetic classifier dataset
+  hosts: all
+  become: true
+  tasks:
+    - name: Ensure geodata fixture directory
+      ansible.builtin.file:
+        path: /usr/local/share/xray
+        state: directory
+        mode: "0755"
+    - name: Stage synthetic protobuf fixture
+      ansible.builtin.copy:
+        dest: /tmp/cascade-geoip.b64
+        mode: "0600"
+        content: "Cg4KAlJVEggKBMAAAgAQGA=="
+    - name: Decode synthetic populated geoip.dat
+      ansible.builtin.shell:
+        cmd: base64 --decode /tmp/cascade-geoip.b64 > /usr/local/share/xray/geoip.dat
+        creates: /usr/local/share/xray/geoip.dat

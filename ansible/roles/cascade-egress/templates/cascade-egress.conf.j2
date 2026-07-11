@@ -1,0 +1,13 @@
+[Interface]
+PrivateKey = {{ cascade_secrets.egress_private_key }}
+Address = {{ cascade_egress.tunnel_address }}
+ListenPort = {{ cascade_egress.listen_port }}
+PostUp = nft -f {{ cascade_egress.policy_path }}
+PostDown = nft delete table inet cascade_egress 2>/dev/null || true
+
+[Peer]
+PublicKey = {{ cascade_secrets.ingress_public_key }}
+{% if cascade_secrets.preshared_key | default('') | length > 0 %}
+PresharedKey = {{ cascade_secrets.preshared_key }}
+{% endif %}
+AllowedIPs = {{ cascade_egress.ingress_allowed_ips }}

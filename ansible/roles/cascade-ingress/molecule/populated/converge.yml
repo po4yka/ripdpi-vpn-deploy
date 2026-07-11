@@ -1,0 +1,25 @@
+---
+- name: Converge cascade ingress with populated classifier dataset
+  hosts: all
+  become: true
+  vars:
+    cascade_ingress:
+      validate_policy: false
+      wg_interface: csi0
+      tunnel_address: 10.203.0.1/30
+      egress_endpoint: 192.0.2.20
+      egress_port: 51831
+      egress_allowed_ips: 0.0.0.0/0
+      keepalive_seconds: 25
+      geodata_path: /usr/local/share/xray/geoip.dat
+      classifier_path: /usr/local/libexec/cascade-classifier.py
+      classifier_interface_path: /etc/cascade/classifier-interface.json
+      policy_path: /etc/wireguard/cascade-ingress.nft
+    cascade_secrets:
+      ingress_private_key: MOLECULE_STUB_INGRESS_PRIVATE_KEY_NOT_REAL_AAAAA=
+      ingress_public_key: ""
+      egress_private_key: ""
+      egress_public_key: MOLECULE_STUB_EGRESS_PUBLIC_KEY_NOT_REAL_BBBBBBBB=
+      preshared_key: ""
+  roles:
+    - role: cascade-ingress

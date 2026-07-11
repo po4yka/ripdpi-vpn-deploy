@@ -1,0 +1,92 @@
+---
+- name: Assert cascade and split-hop role families are not co-located
+  vars:
+    split_hop_role_family_enabled: >-
+      {{ (vpn.enable_split_hop_ingress | default(false) | bool) or
+         (vpn.enable_split_hop_egress | default(false) | bool) }}
+    split_hop_conflicting_roles: >-
+      {{ (['split-hop-ingress'] if vpn.enable_split_hop_ingress | default(false) | bool else []) +
+         (['split-hop-egress'] if vpn.enable_split_hop_egress | default(false) | bool else []) }}
+  ansible.builtin.assert:
+    that:
+      - not split_hop_role_family_enabled
+    fail_msg: >-
+      Host {{ inventory_hostname }} may not apply cascade-ingress while
+      split-hop roles {{ split_hop_conflicting_roles }} are enabled.
+  tags:
+    - always
+
+- name: Validate cascade ingress contract
+  ansible.builtin.assert:
+    that:
+      - cascade_ingress.egress_endpoint | length > 0
+      - cascade_ingress.egress_port | int > 0
+      - cascade_ingress.egress_port | int <= 65535
+      - cascade_secrets.ingress_private_key | length > 0
+      - cascade_secrets.egress_public_key | length > 0
+    fail_msg: Cascade ingress requires an egress endpoint plus its own private key and the egress public key.
+  no_log: true
+
+- name: Install cascade ingress packages
+  ansible.builtin.apt:
+    name: [wireguard, wireguard-tools, nftables, python3]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure cascade runtime directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /usr/local/libexec, mode: "0755"}
+    - {path: /etc/wireguard, mode: "0700"}
+    - {path: /etc/cascade, mode: "0755"}
+
+- name: Install canonical cascade classifier module
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../scripts/cascade-classifier.py"
+    dest: "{{ cascade_ingress.classifier_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Preflight classifier dataset before serving configuration
+  ansible.builtin.command:
+    cmd: >-
+      python3 {{ cascade_ingress.classifier_path | quote }}
+      --dataset {{ cascade_ingress.geodata_path | quote }}
+      --check-dataset
+  register: cascade_classifier_preflight
+  changed_when: false
+  failed_when: cascade_classifier_preflight.rc != 0
+
+- name: Render disabled classifier integration contract
+  ansible.builtin.template:
+    src: classifier-interface.json.j2
+    dest: "{{ cascade_ingress.classifier_interface_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Render cascade ingress scoped policy
+  ansible.builtin.template:
+    src: cascade-ingress.nft.j2
+    dest: "{{ cascade_ingress.policy_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "{{ 'nft -c -f %s' if cascade_ingress.validate_policy | bool else omit }}"
+
+- name: Render cascade ingress tunnel configuration
+  ansible.builtin.template:
+    src: cascade-ingress.conf.j2
+    dest: "/etc/wireguard/{{ cascade_ingress.wg_interface }}.conf"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false

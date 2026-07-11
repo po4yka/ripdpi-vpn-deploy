@@ -1,0 +1,23 @@
+---
+- name: Verify forced-empty hard block
+  hosts: all
+  become: true
+  tasks:
+    - name: Inspect expected block marker
+      ansible.builtin.stat:
+        path: /tmp/cascade-forced-empty-blocked
+      register: blocked_marker
+    - name: Inspect serving configuration
+      ansible.builtin.stat:
+        path: /etc/wireguard/csi0.conf
+      register: serving_config
+    - name: Inspect classifier integration contract
+      ansible.builtin.stat:
+        path: /etc/cascade/classifier-interface.json
+      register: classifier_interface
+    - name: Forced-empty outcome is blocked not foreign
+      ansible.builtin.assert:
+        that:
+          - blocked_marker.stat.exists
+          - not serving_config.stat.exists
+          - not classifier_interface.stat.exists

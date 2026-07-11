@@ -1,0 +1,20 @@
+---
+- name: Verify cascade egress scaffold
+  hosts: all
+  become: true
+  tasks:
+    - name: Read egress tunnel configuration
+      ansible.builtin.slurp:
+        src: /etc/wireguard/cse0.conf
+      register: egress_config
+    - name: Read egress scoped policy
+      ansible.builtin.slurp:
+        src: /etc/wireguard/cascade-egress.nft
+      register: egress_policy
+    - name: Assert egress-only contract
+      ansible.builtin.assert:
+        that:
+          - (egress_config.content | b64decode) is search('ListenPort = 51831')
+          - (egress_config.content | b64decode) is not search('classifier')
+          - (egress_config.content | b64decode) is not search('PersistentKeepalive')
+          - (egress_policy.content | b64decode) is search('table inet cascade_egress')

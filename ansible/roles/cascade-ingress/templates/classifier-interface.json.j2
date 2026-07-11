@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "activation_state": "implementation-only",
+  "invocation": {
+    "executable": "{{ cascade_ingress.classifier_path }}",
+    "dataset_argument": "{{ cascade_ingress.geodata_path }}",
+    "destination_argument": "per-connection-ip"
+  },
+  "outcomes": {
+    "ru": "direct",
+    "foreign": "cascade-egress",
+    "dataset-unavailable": "block-serving"
+  },
+  "fallback": null
+}

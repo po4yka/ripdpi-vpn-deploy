@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "activation_state": "implementation-only",
+  "invocation": {
+    "executable": "/usr/local/libexec/cascade-classifier.py",
+    "dataset_argument": "/usr/local/share/xray/geoip.dat",
+    "destination_argument": "per-connection-ip"
+  },
+  "outcomes": {
+    "ru": "direct",
+    "foreign": "cascade-egress",
+    "dataset-unavailable": "block-serving"
+  },
+  "fallback": null
+}

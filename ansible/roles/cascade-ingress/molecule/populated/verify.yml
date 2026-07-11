@@ -1,0 +1,35 @@
+---
+- name: Verify populated cascade ingress scaffold
+  hosts: all
+  become: true
+  tasks:
+    - name: Re-run classifier dataset preflight
+      ansible.builtin.command:
+        cmd: python3 /usr/local/libexec/cascade-classifier.py --dataset /usr/local/share/xray/geoip.dat --check-dataset
+      register: classifier_ready
+      changed_when: false
+      failed_when: classifier_ready.rc != 0
+    - name: Read ingress tunnel configuration
+      ansible.builtin.slurp:
+        src: /etc/wireguard/csi0.conf
+      register: ingress_config
+    - name: Read ingress scoped policy
+      ansible.builtin.slurp:
+        src: /etc/wireguard/cascade-ingress.nft
+      register: ingress_policy
+    - name: Read classifier integration contract
+      ansible.builtin.slurp:
+        src: /etc/cascade/classifier-interface.json
+      register: classifier_interface
+    - name: Assert classifier and directional scaffold
+      ansible.builtin.assert:
+        that:
+          - (classifier_ready.stdout | from_json).state == 'ready'
+          - (ingress_config.content | b64decode) is search('Endpoint =')
+          - (ingress_config.content | b64decode) is not search('ListenPort')
+          - (ingress_policy.content | b64decode) is search('table inet cascade_ingress')
+          - ((classifier_interface.content | b64decode | from_json).outcomes.ru) == 'direct'
+          - ((classifier_interface.content | b64decode | from_json).outcomes.foreign) == 'cascade-egress'
+          - ((classifier_interface.content | b64decode | from_json).outcomes['dataset-unavailable']) == 'block-serving'
+          - (classifier_interface.content | b64decode | from_json).fallback == none
+          - (classifier_interface.content | b64decode | from_json).activation_state == 'implementation-only'

@@ -1,0 +1,20 @@
+---
+cascade_ingress:
+  validate_policy: true
+  wg_interface: csi0
+  tunnel_address: 10.203.0.1/30
+  egress_endpoint: ""
+  egress_port: 51831
+  egress_allowed_ips: 0.0.0.0/0
+  keepalive_seconds: 25
+  geodata_path: /usr/local/share/xray/geoip.dat
+  classifier_path: /usr/local/libexec/cascade-classifier.py
+  classifier_interface_path: /etc/cascade/classifier-interface.json
+  policy_path: /etc/wireguard/cascade-ingress.nft
+
+cascade_secrets:
+  ingress_private_key: ""
+  ingress_public_key: ""
+  egress_private_key: ""
+  egress_public_key: ""
+  preshared_key: ""

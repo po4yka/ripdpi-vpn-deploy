@@ -88,7 +88,7 @@ Both checks read the same attestation artifact and apply the same pass/fail logi
 
 ## Current status: PENDING / UNVERIFIED
 
-No verified attestation exists for any candidate ASN as of this document's date. The live measurement described under Methodology is an operator step that requires a genuine RU vantage point and a real candidate host, and it **has not been run**.
+No verified attestation exists for any candidate ASN as of this document's date. On 2026-07-11 an out-of-band genuine RU-side baseline measurement completed, but no candidate endpoint existed to measure without first creating a hosting account or server. Because a baseline-only result cannot prove a candidate ASN's advantage, it does not qualify for `verified-not-brand-inferred: true`. The operator-held baseline evidence is dated report `cascade-baseline-2026-07-11-a`, SHA-256 `82cc54ccdb1432147c1ac81cf5f9df8b99247919cc44088942efa18f2377c606`; the raw feed and its location are not committed.
 
 Because no attestation record satisfies the schema and gate requirements above, **the gate is closed**: provisioning of the RU cascade entry node must not proceed. This is the correct, intentional default — a fail-closed system with no attestation on file is supposed to block, not a bug to be worked around.
 

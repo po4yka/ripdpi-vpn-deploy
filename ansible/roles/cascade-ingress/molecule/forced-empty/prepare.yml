@@ -1,0 +1,15 @@
+---
+- name: Prepare forced-empty classifier dataset
+  hosts: all
+  become: true
+  tasks:
+    - name: Ensure geodata fixture directory
+      ansible.builtin.file:
+        path: /usr/local/share/xray
+        state: directory
+        mode: "0755"
+    - name: Create intentionally empty geoip.dat
+      ansible.builtin.copy:
+        dest: /usr/local/share/xray/geoip.dat
+        mode: "0644"
+        content: ""

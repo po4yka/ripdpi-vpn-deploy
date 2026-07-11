@@ -1,0 +1,15 @@
+---
+cascade_egress:
+  validate_policy: true
+  wg_interface: cse0
+  tunnel_address: 10.203.0.2/30
+  listen_port: 51831
+  ingress_allowed_ips: 10.203.0.1/32
+  policy_path: /etc/wireguard/cascade-egress.nft
+
+cascade_secrets:
+  ingress_private_key: ""
+  ingress_public_key: ""
+  egress_private_key: ""
+  egress_public_key: ""
+  preshared_key: ""
