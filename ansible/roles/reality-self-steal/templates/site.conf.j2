@@ -1,0 +1,29 @@
+# Managed by Ansible role `reality-self-steal`.
+server {
+    listen {{ reality_self_steal_listen_address }}:{{ reality_self_steal_port }} ssl http2;
+    server_name {{ reality_self_steal.server_name }};
+
+    server_tokens off;
+    root {{ reality_self_steal_site_root | default('/var/www/reality-self-steal') }};
+    index index.html;
+
+    ssl_certificate {{ reality_self_steal_tls_dir | default('/etc/nginx/reality-self-steal') }}/current/fullchain.pem;
+    ssl_certificate_key {{ reality_self_steal_tls_dir | default('/etc/nginx/reality-self-steal') }}/current/privkey.pem;
+    ssl_protocols TLSv1.3;
+    ssl_session_cache shared:reality_self_steal:1m;
+    ssl_session_timeout 1h;
+    ssl_session_tickets off;
+
+    error_page 404 /404.html;
+
+    location = /404.html {
+        internal;
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    access_log /var/log/nginx/reality-self-steal.access.log;
+    error_log /var/log/nginx/reality-self-steal.error.log warn;
+}

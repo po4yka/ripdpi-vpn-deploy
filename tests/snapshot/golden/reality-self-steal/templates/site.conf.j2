@@ -1,0 +1,29 @@
+# Managed by Ansible role `reality-self-steal`.
+server {
+    listen 127.0.0.1:8443 ssl http2;
+    server_name edge.vpn.example.com;
+
+    server_tokens off;
+    root /var/www/reality-self-steal;
+    index index.html;
+
+    ssl_certificate /etc/nginx/reality-self-steal/current/fullchain.pem;
+    ssl_certificate_key /etc/nginx/reality-self-steal/current/privkey.pem;
+    ssl_protocols TLSv1.3;
+    ssl_session_cache shared:reality_self_steal:1m;
+    ssl_session_timeout 1h;
+    ssl_session_tickets off;
+
+    error_page 404 /404.html;
+
+    location = /404.html {
+        internal;
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    access_log /var/log/nginx/reality-self-steal.access.log;
+    error_log /var/log/nginx/reality-self-steal.error.log warn;
+}

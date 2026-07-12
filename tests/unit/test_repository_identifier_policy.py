@@ -22,11 +22,25 @@ def _should_scan(relative: str) -> bool:
     return bool(relative) and relative != SELF and relative not in ENCRYPTED_FIXTURES
 
 
+def _read_tracked_content(path: Path) -> str:
+    """Read the tracked blob shape without following repository symlinks."""
+    if path.is_symlink():
+        return path.readlink().as_posix().lower()
+    return path.read_text(errors="ignore").lower()
+
+
 def test_policy_excludes_its_corpus_and_encrypted_secret_fixtures():
     assert not _should_scan(SELF)
     assert not _should_scan("tests/fixtures/secrets-sample.sops.yaml")
     assert _should_scan("secrets/prod.secrets.sops.yaml")
     assert _should_scan("docs/ARCHITECTURE.md")
+
+
+def test_policy_reads_a_tracked_directory_symlink_without_following_it():
+    group_vars_link = ROOT / "ansible" / "playbooks" / "group_vars"
+
+    assert group_vars_link.is_symlink()
+    assert _read_tracked_content(group_vars_link) == "../group_vars"
 
 
 def test_tracked_files_do_not_contain_forbidden_identifiers():
@@ -35,7 +49,7 @@ def test_tracked_files_do_not_contain_forbidden_identifiers():
     ).stdout.decode().split("\0")
     offenders = []
     for relative in filter(_should_scan, tracked):
-        content = (ROOT / relative).read_text(errors="ignore").lower()
+        content = _read_tracked_content(ROOT / relative)
         for identifier in FORBIDDEN:
             if identifier in content:
                 offenders.append(f"{relative}: {identifier}")

@@ -1,0 +1,49 @@
+---
+- name: Remove self-steal nginx site files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/nginx/sites-enabled/reality-self-steal.conf
+    - /etc/nginx/sites-available/reality-self-steal.conf
+  register: reality_self_steal_removed_site_files
+
+- name: Remove self-steal TLS and site data
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ reality_self_steal_tls_dir }}"
+    - "{{ reality_self_steal_site_root }}"
+    - "{{ reality_self_steal_staging_dir }}"
+  register: reality_self_steal_removed_data
+
+- name: Detect a stale in-memory self-steal nginx listener
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      ss -lntpH 'sport = :{{ reality_self_steal_port | int }}' |
+        grep -E '127\.0\.0\.1:{{ reality_self_steal_port | int }}.*nginx'
+    executable: /bin/bash
+  register: reality_self_steal_stale_listener
+  changed_when: false
+  failed_when: false
+
+- name: Detect whether nginx can be reloaded
+  ansible.builtin.command:
+    cmd: systemctl is-active --quiet nginx
+  register: reality_self_steal_nginx_active
+  changed_when: false
+  failed_when: false
+
+- name: Reload nginx even after an interrupted earlier cleanup
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: reloaded
+  when:
+    - not ansible_check_mode
+    - reality_self_steal_nginx_active.rc == 0
+    - >-
+      reality_self_steal_removed_site_files.changed or
+      reality_self_steal_removed_data.changed or
+      reality_self_steal_stale_listener.rc == 0

@@ -91,13 +91,14 @@ Final tier with each angle's vote. "Contested" = the three did not agree.
 | cdn-front | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; `CDN-DECISION.md` ADR rules CDN out as the RU baseline. Short-term IP-rotation cover only. |
 | naive | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; xcaddy from-source build + v147 preamble breakage. Enable only when HTTP/2+Chromium fingerprint is specifically the threat. |
 | warp-outbound | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; changes egress ASN (breaks burn-check/ASN-drift). Enable only when the upstream ASN path is burned. |
+| reality-self-steal | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; replaces a borrowed cross-ASN REALITY target with an operator-owned loopback TLS/H2 site without adding a public listener. Promotion still requires DNS, certificate, client SNI, and filtered-vantage evidence. |
 | split-hop-egress | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | Pilot/unconfirmed; Node A has no Ansible coverage (manual iptables); doubles the fleet; watchdog has no per-leg probe so B going down is silent. FOCI-2026 classifier is published but unconfirmed as deployed. |
 | hysteria-realm | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | sing-box **alpha** pin ("treat every minor bump as breaking"); P5 fallback; hole-punch failure is silent server-side. No family NAT-traversal need justifies alpha-upstream risk. |
 | dns-morph-bridge | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | No upstream release artifact (self-built binary); P4 fallback; opens public UDP/53 (reflection surface); only works if the client uses the bridge IP as resolver — not true for RU carrier-DNS family devices. |
 | snell | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | sing-box 1.14 prerelease, no independent field evidence, and a measurement matrix that must remain outside automatic selection and rotation. |
 
-**Tally:** CORE 10 · TACTICAL 6 · RESEARCH 4. This matches exactly what the
-repo already ships (all 10 CORE roles are default-on/always-on; all 6 TACTICAL
+**Tally:** CORE 10 · TACTICAL 7 · RESEARCH 4. This matches exactly what the
+repo already ships (all 10 CORE roles are default-on/always-on; all 7 TACTICAL
 and all 4 RESEARCH are default-off). The tiering therefore *ratifies and
 locks* the current default rather than changing behaviour — which is the point
 of the guard: keep it that way.

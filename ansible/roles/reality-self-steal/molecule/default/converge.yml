@@ -1,0 +1,116 @@
+---
+- name: Converge REALITY self-steal role
+  hosts: all
+  become: true
+  vars:
+    vpn:
+      enable_xray_reality: true
+      enable_reality_self_steal: true
+    xray:
+      target: 127.0.0.1:8443
+      server_names: [edge.example.test]
+    reality_self_steal:
+      server_name: edge.example.test
+      cert_pem: placeholder
+      key_pem: placeholder
+  pre_tasks:
+    - name: Generate a self-signed certificate with the target SAN
+      ansible.builtin.command:
+        cmd: >-
+          openssl req -x509 -newkey rsa:2048 -nodes
+          -keyout /tmp/reality-self-steal.key
+          -out /tmp/reality-self-steal.crt
+          -subj /CN=edge.example.test
+          -addext subjectAltName=DNS:edge.example.test
+          -days 30
+        creates: /tmp/reality-self-steal.crt
+
+    - name: Read the generated certificate
+      ansible.builtin.slurp:
+        src: /tmp/reality-self-steal.crt
+      register: self_steal_cert
+
+    - name: Read the generated key
+      ansible.builtin.slurp:
+        src: /tmp/reality-self-steal.key
+      register: self_steal_key
+
+    - name: Publish generated TLS material to the role
+      ansible.builtin.set_fact:
+        reality_self_steal:
+          server_name: edge.example.test
+          cert_pem: "{{ self_steal_cert.content | b64decode }}"
+          key_pem: "{{ self_steal_key.content | b64decode }}"
+
+    - name: Generate a certificate for the wrong SAN
+      ansible.builtin.command:
+        cmd: >-
+          openssl req -x509 -newkey rsa:2048 -nodes
+          -keyout /tmp/reality-self-steal-wrong.key
+          -out /tmp/reality-self-steal-wrong.crt
+          -subj /CN=wrong.example.test
+          -addext subjectAltName=DNS:wrong.example.test
+          -days 30
+        creates: /tmp/reality-self-steal-wrong.crt
+
+    - name: Read the wrong-SAN certificate
+      ansible.builtin.slurp:
+        src: /tmp/reality-self-steal-wrong.crt
+      register: self_steal_wrong_cert
+
+    - name: Read the non-matching private key
+      ansible.builtin.slurp:
+        src: /tmp/reality-self-steal-wrong.key
+      register: self_steal_wrong_key
+
+  roles:
+    - role: reality-self-steal
+
+  tasks:
+    - name: Prove a wrong-SAN rotation is rejected before publication
+      block:
+        - name: Attempt a wrong-SAN rotation
+          ansible.builtin.include_role:
+            name: reality-self-steal
+          vars:
+            reality_self_steal:
+              server_name: edge.example.test
+              cert_pem: "{{ self_steal_wrong_cert.content | b64decode }}"
+              key_pem: "{{ self_steal_wrong_key.content | b64decode }}"
+
+        - name: Fail if the wrong-SAN rotation was accepted
+          ansible.builtin.fail:
+            msg: wrong-SAN certificate was accepted
+      rescue:
+        - name: Record wrong-SAN rejection
+          ansible.builtin.set_fact:
+            self_steal_wrong_san_rejected: true
+          changed_when: false
+
+    - name: Assert wrong-SAN rejection occurred
+      ansible.builtin.assert:
+        that: self_steal_wrong_san_rejected | default(false) | bool
+
+    - name: Prove a mismatched-key rotation is rejected before publication
+      block:
+        - name: Attempt a mismatched-key rotation
+          ansible.builtin.include_role:
+            name: reality-self-steal
+          vars:
+            reality_self_steal:
+              server_name: edge.example.test
+              cert_pem: "{{ self_steal_cert.content | b64decode }}"
+              key_pem: "{{ self_steal_wrong_key.content | b64decode }}"
+
+        - name: Fail if the mismatched-key rotation was accepted
+          ansible.builtin.fail:
+            msg: mismatched certificate key was accepted
+      rescue:
+        - name: Record mismatched-key rejection
+          ansible.builtin.set_fact:
+            self_steal_mismatched_key_rejected: true
+          changed_when: false
+
+    - name: Assert mismatched-key rejection occurred
+      ansible.builtin.assert:
+        that: self_steal_mismatched_key_rejected | default(false) | bool

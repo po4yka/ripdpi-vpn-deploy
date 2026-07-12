@@ -19,6 +19,8 @@ surfaces and fails if any RESEARCH-tier role becomes enabled.
 | `vpn-device-full.yml` | family-standard + AmneziaWG | default family controls | full device-VPN family node |
 | `vpn-prod-hardened.yml` | device-full | unattended security updates, Fail2Ban, tighter SSH limits, egress observation counters | production node when the operator accepts extra host controls |
 
+`vpn-p0-minimal.yml` intentionally leaves `vpn.enable_reality_self_steal` off. Operators may enable this tactical mode only after adding the owned certificate secret contract and changing `xray.target` plus `xray.server_names` together; the role adds a private loopback TLS target without widening the profile's public listener surface.
+
 ## Hardened production profile
 
 `vpn-prod-hardened.yml` intentionally keeps the same transport contract as

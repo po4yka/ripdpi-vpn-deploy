@@ -1,0 +1,6 @@
+---
+- name: Reload self-steal nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: reloaded
+  when: not ansible_check_mode

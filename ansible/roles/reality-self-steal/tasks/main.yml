@@ -1,0 +1,52 @@
+---
+- name: Validate the enabled self-steal secret contract
+  ansible.builtin.assert:
+    that:
+      - reality_self_steal is defined
+      - reality_self_steal is mapping
+      - reality_self_steal.server_name | default('') | length > 0
+      - >-
+        reality_self_steal.server_name is match(
+          '^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$'
+        )
+      - reality_self_steal.cert_pem | default('') | length > 0
+      - reality_self_steal.key_pem | default('') | length > 0
+    fail_msg: >-
+      REALITY self-steal requires reality_self_steal.server_name, cert_pem, and key_pem
+      in the decrypted SOPS secrets file.
+  when: vpn.enable_reality_self_steal | default(false) | bool
+
+- name: Validate the enabled self-steal transport contract
+  ansible.builtin.assert:
+    that:
+      - vpn.enable_xray_reality | default(false) | bool
+      - reality_self_steal_listen_address == '127.0.0.1'
+      - >-
+        xray.target ==
+        (reality_self_steal_listen_address ~ ':' ~ (reality_self_steal_port | string))
+      - xray.server_names == [reality_self_steal.server_name]
+    fail_msg: >-
+      REALITY self-steal requires REALITY to be enabled and xray.target must equal
+      the loopback TLS endpoint {{ reality_self_steal_listen_address }}:{{ reality_self_steal_port }};
+      xray.server_names must contain only the owned certificate hostname
+      {{ reality_self_steal.server_name }}.
+  when: vpn.enable_reality_self_steal | default(false) | bool
+
+- name: Derive the immutable TLS release path
+  ansible.builtin.set_fact:
+    reality_self_steal_tls_release_dir: >-
+      {{ reality_self_steal_tls_dir }}/releases/{{
+        ((reality_self_steal.cert_pem | hash('sha256')) ~
+         (reality_self_steal.key_pem | hash('sha256'))) | hash('sha256')
+      }}
+  changed_when: false
+  no_log: true
+  when: vpn.enable_reality_self_steal | default(false) | bool
+
+- name: Configure the owned self-steal target
+  ansible.builtin.include_tasks: configure.yml
+  when: vpn.enable_reality_self_steal | default(false) | bool
+
+- name: Remove the owned self-steal target when disabled
+  ansible.builtin.include_tasks: cleanup.yml
+  when: not (vpn.enable_reality_self_steal | default(false) | bool)

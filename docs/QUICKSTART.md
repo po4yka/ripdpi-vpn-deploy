@@ -126,6 +126,8 @@ tag+commit pins (`amneziawg_go_version` + `amneziawg_go_commit`,
 `amneziawg_tools_version` + `amneziawg_tools_commit`), AmneziaWG H1–H4
 obfuscation params, restic password.
 
+For a P0 host with an owned domain, the optional tactical self-steal mode replaces the external REALITY target with a loopback-only nginx TLS site. Set `vpn.enable_reality_self_steal: true`, set `xray.target` to `127.0.0.1:8443`, set the only `xray.server_names` value and `reality_self_steal.server_name` to the same certificate hostname, and provide its public certificate chain and private key in `reality_self_steal.cert_pem` and `reality_self_steal.key_pem`. The role validates SAN, remaining lifetime, key match, listener collisions, and nginx syntax; disabling it removes its files and private listener. It never opens TCP/80 and does not change the public listener contract. DNS publication, production certificate issuance, and the live P0 switch remain explicit operator steps; use [the verified target research](REALITY-TARGET-RESEARCH-2026-07-12.md) as the promotion checklist.
+
 Add your first device:
 
 ```bash
