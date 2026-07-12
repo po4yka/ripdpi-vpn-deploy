@@ -34,7 +34,7 @@ masquerade:
   type: {{ hysteria.masquerade_type | default('proxy') }}
 {% if (hysteria.masquerade_type | default('proxy')) == 'proxy' %}
   proxy:
-    url: {{ hysteria.masquerade_url | default('https://www.bing.com') }}
+    url: {{ hysteria.masquerade_url }}
     rewriteHost: true
 {% endif %}
 

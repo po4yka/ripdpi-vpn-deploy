@@ -71,6 +71,12 @@ def merge_render_vars() -> dict:
                 "port_range": None,
             },
             {
+                "name": "public-site-http",
+                "protocol": "tcp",
+                "port": 80,
+                "port_range": None,
+            },
+            {
                 "name": "nginx-xhttp",
                 "protocol": "tcp",
                 "port": 8443,

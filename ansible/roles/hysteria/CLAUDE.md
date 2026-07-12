@@ -12,6 +12,8 @@ once in `config.yaml`; per-client tuning is in the client config emitted by
 **Pinned binary** — Hysteria version pinned in `defaults/main.yml`; checksum
 verified.
 
+**Masquerade follows an owned site** — `hysteria.masquerade_url` is required in production secrets and must be an HTTPS origin controlled by the operator. This keeps QUIC probes on the same public identity without coupling the UDP-only role to nginx state.
+
 ## What's done well
 
 - **TLS uses the same cert as P1** — saves a renewal path. The `nginx-xhttp`
@@ -31,3 +33,4 @@ verified.
   flows. Set to `65536` in the unit file template.
 - **No JSON API surface** — Hysteria's optional traffic API would be a
   fingerprint vector if exposed; it's disabled.
+- **Do not point masquerade at an unrelated public site** — override `hysteria.masquerade_url` only with another operator-owned HTTPS origin.

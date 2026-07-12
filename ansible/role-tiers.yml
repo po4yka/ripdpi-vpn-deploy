@@ -101,6 +101,8 @@ family_profiles:
   - group_vars/vpn-p0-minimal.yml
   - group_vars/vpn-family-standard.yml
   - group_vars/vpn-device-full.yml
+  - group_vars/vpn-p1-web.yml
+  - group_vars/vpn-p2-udp.yml
   - group_vars/vpn-prod-hardened.yml
   - group_vars/vpn-p0.yml
   - group_vars/vpn-p1p2.yml

@@ -39,7 +39,8 @@
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          grep -q 'listen 8443 ssl http2;' /etc/nginx/sites-available/vpn-xhttp.conf
+          grep -q 'listen 8443 ssl;' /etc/nginx/sites-available/vpn-xhttp.conf
+          grep -q 'http2 on;' /etc/nginx/sites-available/vpn-xhttp.conf
           grep -q 'proxy_pass http://127.0.0.1:10085;' /etc/nginx/sites-available/vpn-xhttp.conf
         executable: /bin/bash
       changed_when: false
@@ -49,7 +50,7 @@
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          grep -q 'listen 2083 ssl http2;' /etc/nginx/sites-available/vpn-xhttp.conf
+          grep -q 'listen 2083 ssl;' /etc/nginx/sites-available/vpn-xhttp.conf
         executable: /bin/bash
       changed_when: false
 
@@ -62,10 +63,11 @@
         executable: /bin/bash
       changed_when: false
 
-    - name: Fallback frontend uses 404 (never 444) for unmatched paths
+    - name: Fallback frontend serves the public site and never silently closes
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
+          test "$(grep -c 'root /var/www/public-site;' /etc/nginx/sites-available/vpn-xhttp.conf)" -eq 2
           ! grep -q 'return 444' /etc/nginx/sites-available/vpn-xhttp.conf
         executable: /bin/bash
       changed_when: false

@@ -75,6 +75,7 @@ def filled():
             "key_pem": pem,
             "bandwidth_up": "100 mbps",
             "bandwidth_down": "200 mbps",
+            "masquerade_url": "https://vpn.example.com",
             "salamander_enabled": False,
             "salamander_password": "",
             "clients": [{"name": "phone", "password": "verystrongpasswordhere"}],
@@ -133,6 +134,16 @@ def test_filled_validates_strict_via_cli(filled, tmp_path):
         capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
+
+
+def test_hysteria_masquerade_requires_https(filled, tmp_path):
+    doc = deepcopy(filled)
+    doc["hysteria"]["masquerade_url"] = "http://vpn.example.com"
+
+    proc = _validate_cli(doc, tmp_path)
+
+    assert proc.returncode == 1
+    assert "hysteria.masquerade_url" in proc.stderr
 
 
 def test_example_fails_strict_via_cli():

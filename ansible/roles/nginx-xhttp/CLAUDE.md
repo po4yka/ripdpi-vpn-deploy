@@ -8,6 +8,8 @@ listening on `nginx_xhttp_public_port` (default 8443), reverse-proxying the
 XHTTP path to Xray on `127.0.0.1:10085`. No `set_real_ip_from`, no
 `CF-Connecting-IP`, no Origin CA. Rationale: `docs/CDN-DECISION.md`.
 
+**Ordinary paths are a real static site** — the role publishes repository-owned content to `/var/www/public-site`, serves it on the primary and alternate HTTPS vhosts, and redirects TCP/80 to the configured HTTPS port. The secret XHTTP path remains a separate exact transport seam. Keep admin, metrics, status, and health endpoints off the public vhost.
+
 **Optional direct (non-CDN) fallback frontend** — opt-in via
 `nginx_xhttp.fallback_enabled` (off by default). When on, the role renders a
 SECOND `server {}` block in the same `vpn-xhttp.conf` listening on
@@ -17,7 +19,7 @@ upstream. Purpose: XHTTP delivery survives a Cloudflare / `cdn-front` outage
 without touching the primary listener. This is the RU-baseline DIRECT path
 — it is publicly reachable, so it carries NO Cloudflare directives
 (`set_real_ip_from`, `CF-Connecting-IP`, `real_ip_header`, Origin CA) and
-returns 404 (never 444) on unmatched paths, exactly like the primary block.
+serves the same public site and ordinary 404 page as the primary block.
 It is explicitly NOT the `cdn-front` CF path; do not mix the two on one
 vhost. The fallback reuses the primary `server_name` cert by default; set
 `nginx_xhttp.fallback_server_name` + `fallback_cert_pem` + `fallback_key_pem`
@@ -39,13 +41,12 @@ defaults. Don't mix these — XHTTP needs long-lived streams.
 
 ## What's done well
 
-- **Self-contained on-disk cert** — `acme_sh` issues from Let's Encrypt with
-  HTTP-01; the role re-renews idempotently. `check-certs.sh` verifies SAN +
-  expiry + modulus match.
+- **SOPS-delivered public certificate** — the role writes `nginx_xhttp.cert_pem` and `key_pem` to the nginx TLS directory with restricted key permissions. Certificate issuance and renewal remain operator-owned; `check-certs.sh` verifies SAN, expiry, and key match before deploy.
 - **No public admin path** — there is no admin/status/management endpoint on
   this vhost. The only non-XHTTP public path is the opt-in, secret-token Snell
   evaluation fixture location; it disables access logging and compression and
   remains rate-limited.
+- **Coherent HTTP identity** — root, discovery files, favicon, and error pages are static and versioned; TCP/80 is part of the same Terraform-to-Ansible listener contract as HTTPS.
 - **Profile-aware port choice** — REALITY-disabled cohorts can set
   `nginx_xhttp_public_port: 443`. Full-stack hosts must keep it off 443
   (Xray's REALITY inbound owns 443).

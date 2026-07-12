@@ -12,4 +12,5 @@ hysteria:
   # making the server look like a reverse proxy rather than a VPN endpoint.
   # '404' is the upstream Hysteria2 default but is a well-known fingerprint.
   masquerade_type: "proxy"
-  masquerade_url: "https://www.bing.com"
+  # Override with an operator-owned HTTPS site; production secrets require it.
+  masquerade_url: "https://vpn.example.com"

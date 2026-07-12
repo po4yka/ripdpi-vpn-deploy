@@ -36,3 +36,22 @@ def test_cloud_init_schema_has_a_pinned_container_fallback():
     assert 'command -v docker' in target
     assert 'cloud-init schema --config-file /dev/stdin' in target
     assert 'missing: cloud-init (or docker fallback)' in target
+
+
+def test_inventory_uses_the_local_fleet_profile_when_present():
+    root = Path(__file__).resolve().parents[2]
+    makefile = (root / "Makefile").read_text()
+    target = makefile.split("inventory:", 1)[1].split("\n\nwait:", 1)[0]
+
+    assert "-include .fleet.mk" in makefile
+    assert 'HOSTS="$(HOSTS)"' in target
+    assert 'COHORTS="$(COHORTS)"' in target
+
+
+def test_check_prereqs_rejects_terraform_older_than_project_floor():
+    root = Path(__file__).resolve().parents[2]
+    makefile = (root / "Makefile").read_text()
+    target = makefile.split("check-prereqs:", 1)[1].split("\n\ninit:", 1)[0]
+
+    assert "terraform version -json" in target
+    assert "Terraform >= 1.15 required" in target

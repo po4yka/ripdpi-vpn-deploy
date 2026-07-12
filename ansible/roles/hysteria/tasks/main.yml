@@ -11,6 +11,13 @@
       linux_amd64_sha256 / linux_arm64_sha256) in your secrets file or
       group_vars before running this role.
 
+- name: Pre-flight — masquerade must use an owned HTTPS origin
+  ansible.builtin.assert:
+    that:
+      - hysteria.masquerade_url | default('') is match('^https://[^/]+(?:/.*)?$')
+      - hysteria.masquerade_url == public_site_canonical_url
+    fail_msg: Set hysteria.masquerade_url to public_site_canonical_url so probes see the owned public site.
+
 - name: Create hysteria system user
   ansible.builtin.user:
     name: hysteria

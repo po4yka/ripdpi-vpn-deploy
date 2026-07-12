@@ -1,7 +1,11 @@
 {%- set _client_by_name = {} %}
 {%- for _c in xray.clients %}{%- set _ = _client_by_name.update({_c.name: _c}) %}{%- endfor %}
 {%- set _fallback_port = (xray_fallback_port | default(0) | int) %}
-{%- if (xray.cohorts | default([])) | length > 0 %}
+{%- set _reality_enabled = vpn.enable_xray_reality | default(true) %}
+{%- if not _reality_enabled %}
+  {%- set _cohorts = [] %}
+  {%- set _multi = false %}
+{%- elif (xray.cohorts | default([])) | length > 0 %}
   {%- set _cohorts = xray.cohorts %}
   {%- set _multi = true %}
 {%- elif _fallback_port > 0 and _fallback_port != (xray_port | default(443) | int) %}
@@ -102,7 +106,7 @@
       }
     }{% if not loop.last %},{% endif %}
     {%- endfor %}
-    {%- if vpn.enable_nginx_xhttp | default(false) %},
+    {%- if vpn.enable_nginx_xhttp | default(false) %}{% if _reality_enabled %},{% endif %}
     {
       "tag": "vless-xhttp-localhost",
       "listen": "127.0.0.1",
@@ -221,7 +225,7 @@
           {%- for _coh in _cohorts -%}
           "{% if _multi %}vless-reality-{{ _coh.name }}{% else %}vless-reality{% endif %}"{% if not loop.last %},{% endif %}
           {%- endfor -%}
-          {% if vpn.enable_nginx_xhttp | default(false) %},"vless-xhttp-localhost"{% endif %}
+          {% if vpn.enable_nginx_xhttp | default(false) %}{% if _reality_enabled %},{% endif %}"vless-xhttp-localhost"{% endif %}
         ],
         "port": "53",
         "outboundTag": "dns-out"

@@ -57,6 +57,12 @@ table inet filter {
 
 
 
+    # Public listener contract: public-site-http (tcp/80)
+
+    tcp dport 80 accept
+
+
+
     # Public listener contract: nginx-xhttp (tcp/8443)
 
     tcp dport 8443 accept

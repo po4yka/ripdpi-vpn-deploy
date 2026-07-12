@@ -5,6 +5,7 @@
   vars:
     nginx_xhttp_public_port: 8443
     nginx_xhttp_port: 10085
+    public_site_canonical_url: "https://vpn.example.test"
     # group_vars/all.yml is NOT auto-loaded by molecule — mirror the port here.
     nginx_xhttp_fallback_port: 2083
     xray:

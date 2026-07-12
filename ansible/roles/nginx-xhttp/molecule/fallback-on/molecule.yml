@@ -2,7 +2,7 @@
 # fallback-on scenario — exercises the optional second, DIRECT (non-CDN)
 # HTTPS XHTTP frontend with nginx_xhttp.fallback_enabled: true.
 # This variant asserts:
-#   * a second `listen 2083 ssl http2;` server block is present
+#   * a second `listen 2083 ssl;` server block is present with HTTP/2 enabled
 #   * it reuses the shared Xray localhost upstream (127.0.0.1:10085)
 #   * it carries NO Cloudflare real_ip directives (RU baseline holds)
 #   * nginx binds the fallback port at runtime

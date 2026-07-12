@@ -41,6 +41,8 @@ def test_live_family_profile_list_includes_explicit_profiles():
         "group_vars/vpn-p0-minimal.yml",
         "group_vars/vpn-family-standard.yml",
         "group_vars/vpn-device-full.yml",
+        "group_vars/vpn-p1-web.yml",
+        "group_vars/vpn-p2-udp.yml",
         "group_vars/vpn-p0.yml",
         "group_vars/vpn-p1p2.yml",
         "group_vars/vpn-fullstack.yml",
@@ -53,6 +55,9 @@ def test_live_explicit_profile_surfaces_are_locked():
     minimal = yaml.safe_load((group_vars / "vpn-p0-minimal.yml").read_text())["vpn"]
     standard = yaml.safe_load((group_vars / "vpn-family-standard.yml").read_text())["vpn"]
     device_full = yaml.safe_load((group_vars / "vpn-device-full.yml").read_text())["vpn"]
+    p1_web_data = yaml.safe_load((group_vars / "vpn-p1-web.yml").read_text())
+    p1_web = p1_web_data["vpn"]
+    p2_udp = yaml.safe_load((group_vars / "vpn-p2-udp.yml").read_text())["vpn"]
     lab = yaml.safe_load((group_vars / "vpn-lab.yml").read_text())
 
     assert minimal["enable_xray_reality"] is True
@@ -69,6 +74,17 @@ def test_live_explicit_profile_surfaces_are_locked():
     assert device_full["enable_nginx_xhttp"] is True
     assert device_full["enable_hysteria"] is True
     assert device_full["enable_amneziawg"] is True
+
+    assert p1_web["enable_xray_reality"] is False
+    assert p1_web["enable_nginx_xhttp"] is True
+    assert p1_web["enable_hysteria"] is False
+    assert p1_web["enable_amneziawg"] is False
+    assert p1_web_data["nginx_xhttp_public_port"] == 443
+
+    assert p2_udp["enable_xray_reality"] is False
+    assert p2_udp["enable_nginx_xhttp"] is False
+    assert p2_udp["enable_hysteria"] is True
+    assert p2_udp["enable_amneziawg"] is True
 
     assert lab["allow_research_roles"] == []
     assert lab["vpn"]["enable_split_hop_egress"] is False

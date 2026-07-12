@@ -134,6 +134,8 @@ Assign a host to a cohort with `COHORTS=` on `render-inventory.sh`:
 HOSTS="upcloud:prod" COHORTS="family-standard" ./scripts/render-inventory.sh
 ```
 
+For a persistent local multi-provider mapping, copy `.fleet.mk.example` to the git-ignored `.fleet.mk`; `make inventory` forwards its `HOSTS` and `COHORTS` values to the renderer.
+
 Or skip the inventory rebuild and tag-scope the play:
 `ansible-playbook site.yml --tags p0` runs baseline + firewall + the P0
 role only. Multi-VPS layouts: `docs/RUNBOOK-add-fallback.md`.

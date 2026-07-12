@@ -1,6 +1,11 @@
 PROVIDER ?= upcloud
 ENV      ?= prod
 
+-include .fleet.mk
+
+HOSTS   ?=
+COHORTS ?=
+
 TF_ROOT       := terraform/providers/$(PROVIDER)
 TF_ENV        := ./scripts/terraform-env.sh
 ANSIBLE_DIR   := ansible
@@ -142,6 +147,7 @@ check-prereqs:
 	@for tool in terraform ansible ansible-playbook ansible-lint sops age gitleaks jq ssh python3; do \
 	  command -v $$tool >/dev/null 2>&1 || { echo "missing: $$tool"; exit 1; }; \
 	done
+	@terraform version -json | python3 -c 'import json, sys; version = tuple(int(part) for part in json.load(sys.stdin)["terraform_version"].split(".")[:2]); sys.exit(0 if version >= (1, 15) else 1)' || { echo "Terraform >= 1.15 required (run: mise exec -- make check-prereqs)"; exit 1; }
 	@python3 -c 'import yaml' >/dev/null 2>&1 || { echo "missing: Python module PyYAML"; exit 1; }
 	@echo "all prereqs present"
 
@@ -170,7 +176,7 @@ apply:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) apply $(ENV).tfplan
 
 inventory:
-	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/render-inventory.sh
+	PROVIDER=$(PROVIDER) ENV=$(ENV) HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" ./scripts/render-inventory.sh
 
 wait:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/wait-cloud-init.sh

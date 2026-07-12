@@ -38,8 +38,66 @@
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          grep -q 'listen 8443 ssl http2;' /etc/nginx/sites-available/vpn-xhttp.conf
+          grep -q 'listen 8443 ssl;' /etc/nginx/sites-available/vpn-xhttp.conf
+          grep -q 'http2 on;' /etc/nginx/sites-available/vpn-xhttp.conf
           grep -q 'proxy_pass http://127.0.0.1:10085;' /etc/nginx/sites-available/vpn-xhttp.conf
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Public site content is installed
+      ansible.builtin.stat:
+        path: /var/www/public-site/index.html
+      register: public_site
+      failed_when: not public_site.stat.exists or not public_site.stat.isreg
+
+    - name: HTTP redirects to the configured HTTPS listener
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' --header 'Host: vpn.example.test' http://127.0.0.1/)" = 301
+          test "$(curl --silent --output /dev/null --write-out '%{redirect_url}' \
+            --header 'Host: vpn.example.test' http://127.0.0.1/)" = https://vpn.example.test:8443/
+        executable: /bin/bash
+      changed_when: false
+
+    - name: HTTPS GET and HEAD return the public site
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          curl --silent --show-error --fail --insecure \
+            --resolve vpn.example.test:8443:127.0.0.1 \
+            https://vpn.example.test:8443/ | grep -q 'LLM Model Notes'
+          test "$(curl --silent --insecure --head --output /dev/null --write-out '%{http_code}' \
+            --resolve vpn.example.test:8443:127.0.0.1 \
+            https://vpn.example.test:8443/about.html)" = 200
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Missing and forbidden paths return the normal site 404
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          test "$(curl --silent --insecure --output /tmp/site-404.html --write-out '%{http_code}' \
+            --resolve vpn.example.test:8443:127.0.0.1 \
+            https://vpn.example.test:8443/not-present)" = 404
+          grep -q 'Page not found' /tmp/site-404.html
+          for path in health status metrics admin; do
+            test "$(curl --silent --insecure --output /dev/null --write-out '%{http_code}' \
+              --resolve vpn.example.test:8443:127.0.0.1 \
+              "https://vpn.example.test:8443/${path}")" = 404
+          done
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Discovery files are publicly readable
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          for path in robots.txt sitemap.xml .well-known/security.txt favicon.svg; do
+            test "$(curl --silent --insecure --output /dev/null --write-out '%{http_code}' \
+              --resolve vpn.example.test:8443:127.0.0.1 \
+              "https://vpn.example.test:8443/${path}")" = 200
+          done
         executable: /bin/bash
       changed_when: false
 
