@@ -253,7 +253,12 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
       - name: Install SOPS and age
-        run: sudo apt-get update && sudo apt-get install -y age sops
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y age
+          curl -fsSL "https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64" -o /tmp/sops
+          echo "0d65660fbe785647ff4f1764d7f69edf598f79d6d79ebbef4a501909b6ff6b82  /tmp/sops" | sha256sum -c -
+          sudo install -m 0755 /tmp/sops /usr/local/bin/sops
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.12"

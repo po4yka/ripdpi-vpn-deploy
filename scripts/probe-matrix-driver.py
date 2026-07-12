@@ -138,6 +138,7 @@ def curl_probe(matrix: dict[str, Any], proxy_port: int | None = None) -> dict[st
             status_code = int(parts[0])
             rtt_ms = round(float(parts[1]) * 1000)
         except ValueError:
+            # Malformed curl write-out remains an unexpected response below.
             pass
     if result.returncode == 0 and status_code == expected and rtt_ms is not None:
         return verdict("throttled" if rtt_ms > degraded else "ok", rtt_ms=rtt_ms)
@@ -196,6 +197,35 @@ def filtering_verdict(control_verdict: str, rtt_ms: int | None = None) -> dict[s
     return verdict("blocked" if control_verdict == "ok" else "unknown", rtt_ms=rtt_ms)
 
 
+def stop_runtime(runtime: subprocess.Popen[str] | None) -> bool:
+    if runtime is None or runtime.poll() is not None:
+        return True
+    try:
+        runtime.terminate()
+        runtime.wait(timeout=2)
+        return True
+    except (OSError, subprocess.TimeoutExpired):
+        try:
+            runtime.kill()
+            runtime.wait(timeout=2)
+            return True
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+
+
+def wait_for_runtime(runtime: subprocess.Popen[str], port: int) -> bool:
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        if runtime.poll() is not None:
+            return False
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                return True
+        except OSError:
+            time.sleep(0.025)
+    return False
+
+
 def xray_probe(matrix: dict[str, Any], profile: dict[str, Any], protocol: str, control_verdict: str) -> dict[str, Any]:
     binary = shutil.which("xray")
     if binary is None:
@@ -218,7 +248,7 @@ def xray_probe(matrix: dict[str, Any], profile: dict[str, Any], protocol: str, c
     except DriverError as exc:
         return verdict("error", error_kind=exc.kind)
     runtime: subprocess.Popen[str] | None = None
-    cleanup_failed = False
+    result = verdict("error", error_kind="runtime-start")
     try:
         with tempfile.TemporaryDirectory(prefix="probe-matrix-") as directory:
             os.chmod(directory, 0o700)
@@ -244,47 +274,33 @@ def xray_probe(matrix: dict[str, Any], profile: dict[str, Any], protocol: str, c
                 check=False,
             )
             if validated.returncode != 0:
-                return verdict("error", error_kind="runtime-config")
-            runtime = subprocess.Popen(
-                [binary, "run", "-config", str(config_path)],
-                text=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            deadline = time.monotonic() + 2
-            while time.monotonic() < deadline:
-                if runtime.poll() is not None:
-                    return verdict("error", error_kind="runtime-start")
-                try:
-                    with socket.create_connection(("127.0.0.1", port), timeout=0.1):
-                        break
-                except OSError:
-                    time.sleep(0.025)
+                result = verdict("error", error_kind="runtime-config")
             else:
-                return verdict("error", error_kind="runtime-start")
-            result = curl_probe(matrix, proxy_port=port)
-            if result.get("error_kind") == "network" and error_log.exists():
-                diagnostic = error_log.read_text(encoding="utf-8", errors="replace").lower()
-                if any(marker in diagnostic for marker in ("authentication", "invalid account", "invalid user", "invalid password", "rejected")):
-                    return verdict("error", rtt_ms=result.get("rtt_ms"), error_kind="authentication")
-                if any(marker in diagnostic for marker in ("connection refused", "no route to host", "network is unreachable")):
-                    return verdict("error", rtt_ms=result.get("rtt_ms"), error_kind="target-unavailable")
-            return map_network_result(result, control_verdict)
+                runtime = subprocess.Popen(
+                    [binary, "run", "-config", str(config_path)],
+                    text=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                if wait_for_runtime(runtime, port):
+                    result = curl_probe(matrix, proxy_port=port)
+                    if result.get("error_kind") == "network" and error_log.exists():
+                        diagnostic = error_log.read_text(encoding="utf-8", errors="replace").lower()
+                        if any(marker in diagnostic for marker in ("authentication", "invalid account", "invalid user", "invalid password", "rejected")):
+                            result = verdict("error", rtt_ms=result.get("rtt_ms"), error_kind="authentication")
+                        elif any(marker in diagnostic for marker in ("connection refused", "no route to host", "network is unreachable")):
+                            result = verdict("error", rtt_ms=result.get("rtt_ms"), error_kind="target-unavailable")
+                        else:
+                            result = map_network_result(result, control_verdict)
+                    else:
+                        result = map_network_result(result, control_verdict)
     except (OSError, subprocess.TimeoutExpired):
-        return verdict("error", error_kind="runtime-start")
+        result = verdict("error", error_kind="runtime-start")
     finally:
-        if runtime is not None and runtime.poll() is None:
-            try:
-                runtime.terminate()
-                runtime.wait(timeout=2)
-            except (OSError, subprocess.TimeoutExpired):
-                try:
-                    runtime.kill()
-                    runtime.wait(timeout=2)
-                except (OSError, subprocess.TimeoutExpired):
-                    cleanup_failed = True
-        if cleanup_failed:
-            return verdict("error", error_kind="cleanup-failed")
+        cleanup_succeeded = stop_runtime(runtime)
+    if not cleanup_succeeded:
+        return verdict("error", error_kind="cleanup-failed")
+    return result
 
 
 def mtproto_probe(matrix: dict[str, Any], profile: dict[str, Any], control_verdict: str) -> dict[str, Any]:
