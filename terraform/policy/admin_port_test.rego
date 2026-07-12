@@ -70,6 +70,22 @@ test_deny_vultr_ssh_world_open {
   count(result) == 1
 }
 
+test_deny_scaleway_ssh_world_open {
+  result := deny with input as {
+    "resource_changes": [{
+      "address": "scaleway_instance_security_group.vpn",
+      "type": "scaleway_instance_security_group",
+      "change": {"after": {"inbound_rule": [{
+        "action": "accept",
+        "protocol": "TCP",
+        "port": 22,
+        "ip_range": "0.0.0.0/0",
+      }]}},
+    }]
+  }
+  count(result) == 1
+}
+
 # -- good input: SSH restricted to specific CIDR should pass --
 
 test_allow_upcloud_ssh_restricted_cidr {
@@ -117,6 +133,22 @@ test_allow_vultr_tcp_443_world_open {
         "subnet": "0.0.0.0",
         "subnet_size": 0,
       }},
+    }]
+  }
+  count(result) == 0
+}
+
+test_allow_scaleway_ssh_restricted_cidr {
+  result := deny with input as {
+    "resource_changes": [{
+      "address": "scaleway_instance_security_group.vpn",
+      "type": "scaleway_instance_security_group",
+      "change": {"after": {"inbound_rule": [{
+        "action": "accept",
+        "protocol": "TCP",
+        "port": 22,
+        "ip_range": "203.0.113.42/32",
+      }]}},
     }]
   }
   count(result) == 0

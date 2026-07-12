@@ -48,3 +48,14 @@ test_allow_vultr_no_metadata_attribute {
   }
   count(result) == 0
 }
+
+test_allow_scaleway_no_metadata_attribute {
+  result := deny with input as {
+    "resource_changes": [{
+      "address": "scaleway_instance_server.vpn",
+      "type": "scaleway_instance_server",
+      "change": {"after": {"name": "vpn-test"}},
+    }]
+  }
+  count(result) == 0
+}

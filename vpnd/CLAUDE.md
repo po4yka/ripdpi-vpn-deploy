@@ -20,6 +20,8 @@ state-changing op. Never raw Y/n prompts.
 **Host registry** — local TOML at `~/.config/vpn-provision/hosts.toml`. Mirrors
 Meridian's server registry; resolves `--host <name>` to env/provider/IPs.
 
+**Provider discovery follows Terraform roots** — `Context::discover` resolves `terraform/providers/<provider>` and accepts a provider only when that directory exists. The diagnostic list documents the shipped roots (UpCloud, Hetzner, Vultr, Scaleway), while the directory check remains authoritative.
+
 **Long-running orchestrators (`probe-matrix`)** — when a subcommand needs to
 loop over many shell invocations on a fixed schedule and aggregate their
 output into a single report, vpnd owns the loop, the JSON shape, and the

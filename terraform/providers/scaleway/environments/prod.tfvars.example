@@ -1,0 +1,29 @@
+# Copy to prod.tfvars and fill. Do NOT commit prod.tfvars.
+# Export SCW_ACCESS_KEY, SCW_SECRET_KEY, and SCW_DEFAULT_PROJECT_ID.
+
+server_name = "vpn-prod-waw1"
+zone        = "pl-waw-1"
+server_type = "DEV1-S"
+image       = "ubuntu_noble"
+
+admin_user           = "deploy"
+admin_ssh_public_key = "ssh-ed25519 AAAA_PROD_PUBLIC_KEY operator@laptop"
+
+allowed_ssh_cidrs = [
+  # Replace with your management IP. Never leave 0.0.0.0/0 for SSH.
+  "203.0.113.42/32",
+]
+
+enable_hysteria = true
+public_listeners = [
+  { name = "xray", protocol = "tcp", port = 443 },
+  { name = "xray-fallback", protocol = "tcp", port = 2053 },
+  { name = "nginx-xhttp", protocol = "tcp", port = 8443 },
+  { name = "hysteria", protocol = "udp", port = 443 },
+  { name = "amneziawg", protocol = "udp", port = 51820 },
+]
+build_env = "prod"
+
+labels = {
+  project = "vpn-deploy"
+}

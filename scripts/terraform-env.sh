@@ -16,7 +16,7 @@ ENV="${ENV:-prod}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 case "$PROVIDER" in
-  upcloud|hetzner|vultr) ;;
+  upcloud|hetzner|vultr|scaleway) ;;
   *) echo "unsupported PROVIDER: $PROVIDER" >&2; exit 2 ;;
 esac
 

@@ -10,6 +10,7 @@ Source: repository-local deployment measurements and operator validation.
 | Avoid | OVH AS16276, Hetzner AS24940, DigitalOcean AS14061 | "Foreign datacenter" ASN bucket triggers TCP freeze (~14–25 KB on mobile RU) |
 | Avoid | JustHost AS26383, VDSina AS216071 | Frequently flagged as VPN-tenant ranges; high churn |
 | Acceptable | UpCloud (current primary) | Not on the public RKN/TSPU watch lists as of 2026-05; verify ASN before rollout |
+| Unmeasured | Scaleway | Independent provider root is implemented, but no repository-local filtered-path baseline exists yet; verify the assigned IP and ASN before rollout |
 | Preferred | Hostkey, nuxt.cloud (DE/NL), hostvds.com (FI) | Smaller, less-flagged ranges per community testing |
 | Jurisdiction-Exception (opt-in only, never Preferred/Acceptable) | *(no provider/ASN preselected — see note)* | RU-hosted cascade entry node for temporary whitelist-riding only. No brand/ASN is listed here on purpose: eligibility is a per-ASN empirical, expiring, fail-closed attestation, never a brand assumption (Yandex.Cloud LLC vs YANDEX LLC are distinct ASNs). First hosting-jurisdiction exception in this repo; accepts bounded RU legal/data-retention/seizure exposure for a temporary node. See `RU-CASCADE-DECISION.md` + `CASCADE-ASN-ATTESTATION.md` + the EXCEPTION tier in `ROLE-TIERING.md` |
 
@@ -24,13 +25,14 @@ documented in `docs/ARCHITECTURE.md` once that role lands.
 Source: repository-local transport validation.
 (RCQ, 2026-05-27).
 
-All three provider roots open exactly the typed `public_listeners` contract at the edge firewall, with IPv4 + IPv6 parity. The contract is checked against the runtime listener manifest before deployment:
+All four provider roots open exactly the typed `public_listeners` contract at the edge firewall, with IPv4 + IPv6 parity. The contract is checked against the runtime listener manifest before deployment:
 
 | Provider | Resource enforcing `public_listeners` | Parity |
 |---|---|---|
 | UpCloud | `upcloud_firewall_rules.vpn` dynamic `firewall_rule` (`v4`,`v6`) | yes |
 | Hetzner | `hcloud_firewall.vpn` dynamic `rule` (`source_ips = 0.0.0.0/0, ::/0`) | yes |
 | Vultr | `vultr_firewall_rule.tcp_public` over `public_networks` (`v4`,`v6`) | yes |
+| Scaleway | `scaleway_instance_security_group.vpn` dynamic `inbound_rule` (`0.0.0.0/0`,`::/0`) | yes |
 
 **The gap is not a missing rule — it is silent edge drop.** On ≥2 of 4 cloud
 providers the KB source tested, inbound UDP/443 is dropped by the
@@ -51,7 +53,7 @@ showing ACCEPT.** Verification chain after a deploy:
    disambiguates: **zero inbound packets ⇒ the provider edge is dropping UDP.**
 
 **Deploy-time manual step when the edge drops UDP despite the rule.** None of
-the three providers above require a UI action to *declare* the UDP/443 rule —
+the provider roots require a UI action to *declare* the UDP/443 rule —
 all accept it through Terraform. But if the burn-check UDP probe fails while
 TCP/443 succeeds, the provider network is dropping UDP at a layer Terraform
 cannot reach. The fix is provider-side and manual: open/confirm UDP/443 in the
@@ -171,6 +173,16 @@ Uses:
   of writing tokens into tfvars.
 - Optional secondary IPv4 allocation uses the provider's reboot path. After apply, `render-inventory.sh` blocks until the address appears on a guest interface over the primary SSH endpoint; API allocation alone is not sufficient evidence for publishing `honeypot_listen_addr`.
 
+## Scaleway (v1.2)
+
+Uses:
+
+- `scaleway_instance_server`, explicit routed `scaleway_instance_ip` resources, and one stateful `scaleway_instance_security_group` generated from `public_listeners`.
+- European zones are allowlisted in `variables.tf`; the examples use `pl-waw-1`, but the assigned route must be measured before client rollout.
+- Credentials and project selection come from `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, and `SCW_DEFAULT_PROJECT_ID`.
+- The root is operationally supported but censorship-path status remains unmeasured until the filtered-vantage reachability matrix is recorded.
+- Provider-managed snapshots are not configured by this root; backups remain owned by the encrypted restic+age path.
+
 ## P4 fallback transport tier
 
 The Ansible role `dns-morph-bridge` adds a bootstrap-channel listener
@@ -178,7 +190,7 @@ on UDP/53 — a fallback tier beyond P0–P2 used when transport-layer
 discovery is itself being interfered with. Operational profile:
 
 - **Port:** UDP/53, public listener (must be allowed inbound on the
-  provider's hypervisor firewall — UpCloud/Hetzner/Vultr all default
+  provider's hypervisor firewall — UpCloud/Hetzner/Vultr/Scaleway all default
   to closed; add an explicit allow rule in the provider's tfvars).
 - **Co-residency:** non-colliding with P0 (TCP/443), P1 (TCP/8443),
   P2 (UDP/443, UDP/cohort). Safe to enable alongside the full stack
@@ -230,7 +242,7 @@ rendezvous handshake. Operational profile:
   symlinks the P2 hysteria role's cert/key into this role's config dir;
   one renewal path covers both tiers.
 - **Provider compatibility:** any provider that allows arbitrary TCP
-  inbound rules. UpCloud/Hetzner/Vultr all accept TCP/8444 in their
+  inbound rules. UpCloud/Hetzner/Vultr/Scaleway all accept TCP/8444 in their
   hypervisor firewall once the Terraform provider opens it.
 
 The role's `MemoryDenyWriteExecute=true` lockdown depends on sing-box

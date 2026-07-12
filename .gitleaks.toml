@@ -53,7 +53,10 @@ tags = ["vpn", "secret"]
 
 [allowlist]
 description = "Narrowly scoped fixtures/placeholders that intentionally look secret-like"
-commits = ["0c241e6fa9c944445100d26d451c5e991d725ee8"]
+commits = [
+    "0c241e6fa9c944445100d26d451c5e991d725ee8",
+    "0311b9d4f5d97e8b14c3135a5f429820711e5dbe",
+]
 paths = [
     '''secrets/prod\.secrets\.example\.yaml''',
     '''.*\.example\..*''',

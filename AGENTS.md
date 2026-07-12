@@ -129,7 +129,7 @@ When working inside a subtree, the nearest `AGENTS.md` wins.
 ### New Terraform provider
 
 1. Create `terraform/providers/<name>/` with identical output schema to existing providers (`server_ipv4`, `server_ipv6`, `admin_user`, `server_hostname`).
-2. Add a branch to `scripts/render-inventory.sh` for the new provider's output keys.
+2. Keep the canonical output keys so `scripts/render-inventory.sh` uses its generic path; add a provider branch only for incompatible output keys or a provider-specific guest-convergence check.
 3. Add a row to `docs/PROVIDER-NOTES.md` (status, version, known limits).
 4. Create `terraform/providers/<name>/CLAUDE.md`.
 

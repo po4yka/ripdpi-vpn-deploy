@@ -17,7 +17,7 @@ def _test_repo(tmp_path: Path) -> Path:
     scripts.mkdir(parents=True)
     for name in ("destroy.sh", "terraform-env.sh"):
         shutil.copy2(REPO_ROOT / "scripts" / name, scripts / name)
-    for provider in ("upcloud", "hetzner", "vultr"):
+    for provider in ("upcloud", "hetzner", "vultr", "scaleway"):
         (root / f"terraform/providers/{provider}/environments").mkdir(parents=True)
     return root
 
@@ -50,6 +50,7 @@ def _run(
         "upcloud": "upcloud_server.vpn",
         "hetzner": "hcloud_server.vpn",
         "vultr": "vultr_instance.vpn",
+        "scaleway": "scaleway_instance_server.vpn",
     }[provider]
     env = os.environ | {
         "PATH": f"{stub_dir}:{os.environ['PATH']}",
@@ -121,6 +122,7 @@ def test_destroy_uses_the_provider_specific_server_resource(tmp_path: Path) -> N
         "upcloud": "upcloud_server.vpn",
         "hetzner": "hcloud_server.vpn",
         "vultr": "vultr_instance.vpn",
+        "scaleway": "scaleway_instance_server.vpn",
     }.items():
         root = _test_repo(tmp_path / provider)
         env_name = f"ci-123-{provider}"

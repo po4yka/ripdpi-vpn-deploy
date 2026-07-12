@@ -36,12 +36,19 @@ esac
     return stub
 
 
-def _run(tmp_path: Path, *, env_name: str, args: list[str], existing: str = "default") -> subprocess.CompletedProcess[str]:
+def _run(
+    tmp_path: Path,
+    *,
+    env_name: str,
+    args: list[str],
+    existing: str = "default",
+    provider: str = "upcloud",
+) -> subprocess.CompletedProcess[str]:
     stub_dir = _terraform_stub(tmp_path).parent
     env = os.environ | {
         "PATH": f"{stub_dir}:{os.environ['PATH']}",
         "STUB_LOG": str(tmp_path / "terraform.log"),
-        "PROVIDER": "upcloud",
+        "PROVIDER": provider,
         "ENV": env_name,
         "EXISTING_WORKSPACE": existing,
     }
@@ -76,6 +83,21 @@ def test_non_init_refuses_to_create_missing_workspace(tmp_path: Path) -> None:
     assert "run 'make PROVIDER=upcloud ENV=green-2026 init' first" in result.stderr
     assert (tmp_path / "terraform.log").read_text().splitlines() == [
         f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/upcloud/.terraform-env/green-2026'} -chdir={REPO_ROOT / 'terraform/providers/upcloud'} workspace select green-2026",
+    ]
+
+
+def test_scaleway_provider_root_is_accepted(tmp_path: Path) -> None:
+    result = _run(
+        tmp_path,
+        env_name="prod",
+        args=["output", "-raw", "server_ipv4"],
+        provider="scaleway",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "terraform.log").read_text().splitlines() == [
+        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/scaleway/.terraform-env/default'} -chdir={REPO_ROOT / 'terraform/providers/scaleway'} workspace select default",
+        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/scaleway/.terraform-env/default'} -chdir={REPO_ROOT / 'terraform/providers/scaleway'} output -raw server_ipv4",
     ]
 
 
