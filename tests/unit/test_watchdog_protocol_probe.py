@@ -9,6 +9,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "ansible" / "roles" / "watchdog" / "templates" / "vpn-watchdog.sh.j2"
+ENV_TEMPLATE = REPO_ROOT / "ansible" / "roles" / "watchdog" / "templates" / "vpn-watchdog.env.j2"
 
 
 def _executable(path: Path, body: str) -> None:
@@ -20,6 +21,7 @@ def _run_watchdog(
     tmp_path: Path,
     *,
     canary_status: str = "204",
+    expected_status: str = "204",
     socks_ready: bool = True,
     xray_client_exits: bool = False,
 ) -> subprocess.CompletedProcess[str]:
@@ -76,6 +78,7 @@ def _run_watchdog(
             "XRAY_REALITY_CONFIG": str(config_file),
             "XRAY_REALITY_PROBES": "443:31082",
             "XRAY_REALITY_PROBE_URL": "https://canary.example.test/healthz",
+            "XRAY_REALITY_PROBE_EXPECTED_STATUS": expected_status,
             "XRAY_REALITY_PROBE_TIMEOUT": "1",
             "CANARY_STATUS": canary_status,
             "XRAY_TERM_MARKER": str(term_marker),
@@ -106,6 +109,20 @@ def test_authenticated_reality_round_trip_reports_success_and_cleans_up(tmp_path
     assert "consecutive_fails=0" in (tmp_path / "state").read_text()
 
 
+def test_listener_readiness_does_not_use_grep_q_under_pipefail():
+    script = SCRIPT.read_text()
+    readiness = script[script.index("socks_listener_ready()") : script.index("reality_canary_round_trip()")]
+    assert "grep -q" not in readiness
+    assert "END { exit !found }" in readiness
+
+
+def test_probe_list_and_nginx_port_have_an_explicit_line_boundary():
+    template = ENV_TEMPLATE.read_text()
+    probe_line = next(line for line in template.splitlines() if line.startswith("XRAY_REALITY_PROBES="))
+    assert probe_line.endswith("{{ '\\n' }}")
+    assert "NGINX_PORT" not in probe_line
+
+
 def test_wrong_canary_status_is_a_probe_failure_and_cleans_up(tmp_path):
     result = _run_watchdog(tmp_path, canary_status="200")
 
@@ -114,6 +131,13 @@ def test_wrong_canary_status_is_a_probe_failure_and_cleans_up(tmp_path):
     assert (tmp_path / "xray-terminated").exists()
     assert "consecutive_fails=1" in (tmp_path / "state").read_text()
     assert "restart xray.service" in (tmp_path / "systemctl.log").read_text()
+
+
+def test_owned_site_root_can_require_exact_200_status(tmp_path):
+    result = _run_watchdog(tmp_path, canary_status="200", expected_status="200")
+
+    assert result.returncode == 0, result.stderr
+    assert "OK    xray REALITY TCP/443 round-trip" in result.stdout
 
 
 def test_recovery_kicks_are_bounded_per_hour(tmp_path):

@@ -8,6 +8,8 @@
 
 **Local JSON validation** — the template task uses `python3 -m json.tool` as a write-time validator and the verify playbooks assert the deployed file parses as JSON.
 
+**Per-host fleet labels** — multi-provider inventories carry `provider` and `env` host variables. The role prefers those values and only falls back to the operator process environment for legacy single-host inventories.
+
 ## What's done well
 
 - No UUIDs, private keys, client names, cert material, tokens, subscription URLs, or IP reputation data belong in the manifest.
@@ -19,3 +21,4 @@
 - Do not add `reason` fields from the listener preflight manifest; some roles may derive those from inventory labels.
 - Do not add secrets-derived peer or client details for AmneziaWG, Xray, subscription-host, or watchdog providers.
 - Keep the schema additive and deterministic so fleet tooling can consume it without brittle host-specific parsing.
+- Never derive every host's labels from the controller's `PROVIDER` and `ENV` variables during a multi-provider play.

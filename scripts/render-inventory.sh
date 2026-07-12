@@ -124,7 +124,10 @@ for i in "${!host_pairs[@]}"; do
   honey_ip="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw honeypot_ipv4 2>/dev/null || true)"
 
   vpn_line="${hostname} ansible_host=${ip} ansible_user=${user} provider=${prov} env=${env}"
-  vpn_line+=" allowed_ssh_cidrs=${allowed_ssh_cidrs}"
+  # The INI inventory plugin tokenizes host vars with shlex before applying
+  # Python literal parsing. Quote the complete JSON value so the inner string
+  # quotes survive and Ansible receives a list instead of a malformed string.
+  vpn_line+=" allowed_ssh_cidrs='${allowed_ssh_cidrs}'"
   vpn_line+=" terraform_public_listeners_b64=${public_listeners_b64}"
   # Append the required server_ipv6 output when the provider allocates one.
   if [[ -n "$ipv6" && "$ipv6" != "null" ]]; then

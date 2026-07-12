@@ -87,6 +87,7 @@ teardown() {
   assert_output --partial 'ANSIBLE_TAGS="baseline,firewall,backup" make deploy'
 
   run make -n -C "$REPO_ROOT" deploy ENV=prod RUNTIME_DIR=/tmp/restore-test \
+    SECRETS_FILE=/tmp/restore-test/vpn-prod.secrets.yaml \
     ANSIBLE_TAGS=baseline,firewall,backup
   assert_success
   assert_output --partial 'VPN_SECRETS_FILE=/tmp/restore-test/vpn-prod.secrets.yaml'

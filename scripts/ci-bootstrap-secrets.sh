@@ -241,6 +241,7 @@ backup:
 watchdog_secrets:
   ntfy_topic: "${ntfy_topic}"
   reality_probe_url: "${WATCHDOG_CANARY_URL}"
+  reality_probe_expected_status: 204
 YAML
 chmod 0600 "$OUT"
 echo "ci-bootstrap: wrote ${OUT} (xray=${xray_version} hysteria=${hys_version})"

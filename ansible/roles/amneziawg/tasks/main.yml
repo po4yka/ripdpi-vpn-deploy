@@ -48,6 +48,7 @@
     cmd: git rev-parse HEAD
     chdir: /opt/src/amneziawg-go
   register: _awg_go_head
+  check_mode: false
   changed_when: false
 
 - name: Verify amneziawg-go resolved to the pinned commit
@@ -87,6 +88,7 @@
     cmd: git rev-parse HEAD
     chdir: /opt/src/amneziawg-tools
   register: _awg_tools_head
+  check_mode: false
   changed_when: false
 
 - name: Verify amneziawg-tools resolved to the pinned commit

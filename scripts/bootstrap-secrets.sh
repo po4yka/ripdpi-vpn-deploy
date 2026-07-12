@@ -344,6 +344,8 @@ backup:
 
 watchdog_secrets:
   ntfy_topic: "${NTFY_TOPIC}"
+  reality_probe_url: "https://${XHTTP_HOST}/"
+  reality_probe_expected_status: 200
 TAIL
 } > "$PLAINTEXT"
 chmod 0600 "$PLAINTEXT"

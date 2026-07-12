@@ -28,7 +28,7 @@ rejects a fallback-port collision with REALITY (`xray_port`),
 `xray_fallback_port`, `nginx_xhttp_public_port`, or `cdn_front.port`. The
 `firewall` role opens the port as a plain direct TCP accept gated by the same
 flag (no CF origin-firewall set). Pitfalls below apply unchanged to this
-block: `http2 on` is required, the port must stay off 443 when REALITY owns
+block: HTTP/2 must be enabled on each TLS listener, the port must stay off 443 when REALITY owns
 443, and `return 444` is forbidden.
 
 **No `add_header` in child locations** — nginx suppresses parent headers when
@@ -42,6 +42,7 @@ defaults. Don't mix these — XHTTP needs long-lived streams.
 ## What's done well
 
 - **SOPS-delivered public certificate** — the role writes `nginx_xhttp.cert_pem` and `key_pem` to the nginx TLS directory with restricted key permissions. Certificate issuance and renewal remain operator-owned; `check-certs.sh` verifies SAN, expiry, and key match before deploy.
+- **Validate before activation** — the role enables the rendered site, runs `nginx -t`, then flushes its reload handler immediately so a recovery converge cannot leave nginx serving the previous listener set until the end of a long full-stack play.
 - **No public admin path** — there is no admin/status/management endpoint on
   this vhost. The only non-XHTTP public path is the opt-in, secret-token Snell
   evaluation fixture location; it disables access logging and compression and
@@ -53,8 +54,7 @@ defaults. Don't mix these — XHTTP needs long-lived streams.
 
 ## Pitfalls
 
-- **`http2 on;` is required, not implied** — nginx 1.25+ split it from
-  `listen … http2`. Without it ALPN downgrades to HTTP/1.1, a fingerprint.
+- **Use `listen … ssl http2` while Ubuntu 24.04 ships nginx 1.24** — the standalone `http2 on;` directive only exists in nginx 1.25.1+, so it breaks the supported distro package. The listener form remains valid on newer nginx (with a deprecation warning) and preserves ALPN h2 across the supported fleet.
   The value of HTTP/2 here is an authentic web-server TLS fingerprint (real
   nginx stack, not Go uTLS). It is NOT the June-2026 Condition-3
   multiplexing-protection pattern, which applies only to Russian-cloud-AS

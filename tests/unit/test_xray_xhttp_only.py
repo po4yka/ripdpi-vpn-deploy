@@ -35,3 +35,10 @@ def test_site_playbook_runs_xray_for_reality_or_xhttp() -> None:
     assert "enable_xray_reality" in xray_role
     assert "enable_nginx_xhttp" in xray_role
     assert ") or\n" in xray_role
+
+
+def test_xray_restart_chain_is_inert_in_check_mode() -> None:
+    handlers = yaml.safe_load((REPO_ROOT / "ansible" / "roles" / "xray" / "handlers" / "main.yml").read_text())
+    restart_chain = [task for task in handlers if task.get("listen") == "Restart xray"]
+    assert len(restart_chain) == 3
+    assert all(task.get("when") == "not ansible_check_mode" for task in restart_chain)

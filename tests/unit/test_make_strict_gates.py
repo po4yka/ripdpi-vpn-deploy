@@ -48,6 +48,14 @@ def test_inventory_uses_the_local_fleet_profile_when_present():
     assert 'COHORTS="$(COHORTS)"' in target
 
 
+def test_yamllint_excludes_git_ignored_local_state():
+    root = Path(__file__).resolve().parents[2]
+    config = (root / ".yamllint.yml").read_text()
+
+    assert "  secrets/local/\n" in config
+    assert "  state-backups/\n" in config
+
+
 def test_check_prereqs_rejects_terraform_older_than_project_floor():
     root = Path(__file__).resolve().parents[2]
     makefile = (root / "Makefile").read_text()

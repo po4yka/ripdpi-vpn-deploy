@@ -176,6 +176,9 @@
     cmd: nginx -t
   changed_when: false
 
+- name: Activate the validated nginx site before later roles run
+  ansible.builtin.meta: flush_handlers
+
 - name: Ensure nginx is enabled and started
   ansible.builtin.systemd_service:
     name: nginx

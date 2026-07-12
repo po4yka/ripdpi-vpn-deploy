@@ -16,6 +16,8 @@ but operator posture knobs live under `security_controls.ssh_*`, not `vpn.*`.
 
 ## What's done well
 
+- **Sysctl convergence self-heals after interrupted plays** — the role reapplies `/etc/sysctl.d` on every converge, so a play that failed after writing a file but before handlers ran cannot leave runtime values stale indefinitely.
+
 - **Single source for sysctl** — `templates/sysctl-vpn.conf.j2` consolidates
   kernel tunables (`net.ipv4.tcp_fastopen`, `tcp_bbr`, UDP buffer sizes, etc).
   Loaded at priority 90 so cloud-init defaults can't override.

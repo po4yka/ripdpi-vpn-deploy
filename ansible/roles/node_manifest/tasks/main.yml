@@ -9,8 +9,8 @@
 
 - name: Capture operator environment labels for manifest
   ansible.builtin.set_fact:
-    node_manifest_environment: "{{ lookup('env', 'ENV') | default('', true) }}"
-    node_manifest_provider: "{{ lookup('env', 'PROVIDER') | default('', true) }}"
+    node_manifest_environment: "{{ env | default(lookup('env', 'ENV'), true) }}"
+    node_manifest_provider: "{{ provider | default(lookup('env', 'PROVIDER'), true) }}"
 
 - name: Build public listener manifest when role runs directly
   ansible.builtin.set_fact:

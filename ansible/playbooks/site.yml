@@ -155,10 +155,12 @@
     - name: Build effective public listener manifest
       ansible.builtin.set_fact:
         public_listener_manifest: "{{ lookup('template', playbook_dir ~ '/../templates/listener-manifest.json.j2') | from_json }}"
+      tags: [always]
 
     - name: Decode provider listener contract from rendered inventory
       ansible.builtin.set_fact:
         public_listener_contract: "{{ terraform_public_listeners_b64 | b64decode | from_json }}"
+      tags: [always]
 
     - name: Guard — provider edge and runtime listener contracts agree
       ansible.builtin.command:
@@ -167,6 +169,7 @@
       delegate_to: localhost
       become: false
       changed_when: false
+      tags: [always]
 
     - name: Guard — block public listener collisions before convergence
       ansible.builtin.command:
@@ -175,6 +178,7 @@
       delegate_to: localhost
       become: false
       changed_when: false
+      tags: [always]
 
   # Hosts in the `vpn-subscription-only` inventory group skip every
   # transport-class role and run only baseline + firewall + the
