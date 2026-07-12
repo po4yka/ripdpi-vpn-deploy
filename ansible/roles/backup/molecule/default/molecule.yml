@@ -34,6 +34,7 @@ provisioner:
       vpn-backup-local-debian13:
         ansible_user: root
         restic_repo_dir: /var/backups/vpn-restic
+        backup_restore_drill_enabled: true
         backup:
           restic_password: molecule-stub-password
           remote:
