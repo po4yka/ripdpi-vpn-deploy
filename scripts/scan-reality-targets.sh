@@ -107,7 +107,7 @@ install_reali() {
       exit 1
     fi
     echo "building RealiTLScanner ${REALI_VERSION} via go install (macOS)" >&2
-    GOBIN="$TOOL_CACHE" go install "github.com/XTLS/RealiTLScanner@${REALI_VERSION}"
+    GOBIN="$TOOL_CACHE" go install "github.com/xtls/RealiTLScanner@${REALI_VERSION}"
     mv "${TOOL_CACHE}/RealiTLScanner" "$REALI_BIN"
   else
     echo "unsupported OS: $uname_s" >&2

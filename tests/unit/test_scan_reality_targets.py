@@ -93,6 +93,13 @@ def test_cidr_flag_reaches_install_phase(tmp_path):
     )
 
 
+def test_macos_installer_uses_the_declared_lowercase_go_module_path():
+    script = SCRIPT.read_text()
+
+    assert 'go install "github.com/xtls/RealiTLScanner@${REALI_VERSION}"' in script
+    assert 'github.com/XTLS/RealiTLScanner@${REALI_VERSION}' not in script
+
+
 @pytest.mark.skip(
     reason=(
         "Full scan requires RealiTLScanner binary and network access. "

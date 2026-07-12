@@ -53,6 +53,7 @@ tiers:
   subscription-host: tactical # self-service config pull; v1 default is scp
   intrusion_prevention: tactical # opt-in Fail2Ban sshd jail, nftables-native
   security_audit: tactical  # operator-run non-blocking host audit reports
+  reality-self-steal: tactical # owned loopback TLS/H2 target for P0 REALITY
 
   # RESEARCH — experimental / unconfirmed; never in a family deploy
   split-hop-egress: research  # two-VPS dual-role defense; pilot, unconfirmed
@@ -71,6 +72,7 @@ tiers:
 # here so host-hardening policy cannot participate in transport tiering.
 toggle_role_map:
   enable_xray_reality: xray
+  enable_reality_self_steal: reality-self-steal
   enable_nginx_xhttp: nginx-xhttp
   enable_naive: naive
   enable_hysteria: hysteria

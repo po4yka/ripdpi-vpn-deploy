@@ -117,6 +117,14 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 30 \
 cert_pem="$(awk '{printf "    %s\n",$0}' "$tmpdir/cert.pem")"
 key_pem="$( awk '{printf "    %s\n",$0}' "$tmpdir/key.pem")"
 
+openssl req -x509 -newkey rsa:2048 -nodes -days 30 \
+  -keyout "$tmpdir/self-steal-key.pem" -out "$tmpdir/self-steal-cert.pem" \
+  -subj "/CN=${REALITY_SERVER_NAME}" \
+  -addext "subjectAltName=DNS:${REALITY_SERVER_NAME}" \
+  >/dev/null 2>&1
+self_steal_cert_pem="$(awk '{printf "    %s\n",$0}' "$tmpdir/self-steal-cert.pem")"
+self_steal_key_pem="$( awk '{printf "    %s\n",$0}' "$tmpdir/self-steal-key.pem")"
+
 # ---------------------------------------------------------------------------
 # Per-client creds + AWG materials.
 # ---------------------------------------------------------------------------
@@ -170,6 +178,13 @@ nginx_xhttp:
 $(echo "$cert_pem")
   key_pem: |
 $(echo "$key_pem")
+
+reality_self_steal:
+  server_name: "${REALITY_SERVER_NAME}"
+  cert_pem: |
+$(echo "$self_steal_cert_pem")
+  key_pem: |
+$(echo "$self_steal_key_pem")
 
 hysteria:
   version: "${hys_version}"

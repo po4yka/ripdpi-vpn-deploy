@@ -266,6 +266,17 @@ nginx_xhttp:
     REPLACE_WITH_PRIVATE_KEY
     -----END PRIVATE KEY-----
 
+reality_self_steal:
+  server_name: ${SERVER_NAME_YAML}
+  cert_pem: |
+    -----BEGIN CERTIFICATE-----
+    REPLACE_WITH_SELF_STEAL_FULLCHAIN
+    -----END CERTIFICATE-----
+  key_pem: |
+    -----BEGIN PRIVATE KEY-----
+    REPLACE_WITH_SELF_STEAL_PRIVATE_KEY
+    -----END PRIVATE KEY-----
+
 hysteria:
   version: "v2.9.0"
   linux_amd64_sha256: "REPLACE_WITH_RELEASE_SHA256"

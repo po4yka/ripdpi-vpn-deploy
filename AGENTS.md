@@ -87,10 +87,10 @@ AGENTS.md / CLAUDE.md                                — this file (root)
 ansible/                                             — playbook order, group_vars contract
 ansible/roles/{amneziawg,backup,baseline,cdn-front,
               cascade-egress,cascade-ingress,dns-morph-bridge,firewall,geodata,honeypot,
-              hysteria,hysteria-realm,monitoring,naive,
+              hysteria,hysteria-realm,monitoring,naive,reality-self-steal,
               nginx-xhttp,policy-ratelimit,split-hop-egress,
               split-hop-ingress,probe-matrix-target,snell,subscription-host,
-              warp-outbound,watchdog,xray,xray-runtime}/  — 29 roles
+              warp-outbound,watchdog,xray,xray-runtime}/  — 30 roles
 terraform/                                           — provider-root strategy
 terraform/providers/{hetzner,upcloud,vultr}/         — per-provider quirks
 terraform/shared/                                    — cloud-init contract

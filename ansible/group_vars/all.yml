@@ -11,6 +11,7 @@ vpn:
   # `security_controls` below so deploy profiles can change security policy
   # without overloading the VPN transport namespace.
   enable_xray_reality: true
+  enable_reality_self_steal: false # P0 loopback TLS target for owned REALITY camouflage
   enable_nginx_xhttp: true        # P1 — direct, no CDN baseline
   enable_naive: false             # P1 alternative; do not share a public port with nginx-xhttp
   enable_hysteria: true           # P2 — UDP/443

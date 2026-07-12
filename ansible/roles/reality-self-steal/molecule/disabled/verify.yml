@@ -1,0 +1,36 @@
+---
+- name: Verify disabled REALITY self-steal role
+  hosts: all
+  become: true
+  tasks:
+    - name: Default-off steady state is a no-op
+      ansible.builtin.include_role:
+        name: reality-self-steal
+      vars:
+        vpn:
+          enable_xray_reality: true
+          enable_reality_self_steal: false
+
+    - name: Managed files must be absent
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/nginx/sites-enabled/reality-self-steal.conf
+        - /etc/nginx/sites-available/reality-self-steal.conf
+        - /etc/nginx/reality-self-steal
+        - /var/www/reality-self-steal
+      register: self_steal_path
+      failed_when: self_steal_path.stat.exists
+
+    - name: Private listener must be absent
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          ! ss -lnt | grep -q '127.0.0.1:8443'
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Remaining nginx configuration is valid
+      ansible.builtin.command:
+        cmd: nginx -t
+      changed_when: false

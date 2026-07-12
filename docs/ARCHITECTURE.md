@@ -29,6 +29,7 @@ or this repo. Provider credentials live in env vars only.
 | Profile | Role | Toggle in `group_vars/all.yml` |
 |---|---|---|
 | P0 REALITY | `xray` | `vpn.enable_xray_reality` |
+| P0 owned REALITY target (optional) | `reality-self-steal` | `vpn.enable_reality_self_steal` |
 | P1 XHTTP | `nginx-xhttp` + xray inbound on 127.0.0.1 | `vpn.enable_nginx_xhttp` |
 | P2 Hysteria2 | `hysteria` | `vpn.enable_hysteria` |
 | P2 AmneziaWG | `amneziawg` | `vpn.enable_amneziawg` |
@@ -56,6 +57,7 @@ Default single-host port ownership:
 | Port | Owner | Variable |
 |---|---|---|
 | TCP/443 | P0 REALITY Xray inbound | `xray_port` |
+| 127.0.0.1:8443 | Optional P0 owned TLS target, never a public listener | `reality_self_steal_port` |
 | TCP/80 | nginx redirect to the public HTTPS site | fixed listener contract entry |
 | TCP/8443 | P1 nginx public HTTPS listener | `nginx_xhttp_public_port` |
 | 127.0.0.1:10085 | P1 Xray XHTTP local inbound behind nginx | `nginx_xhttp_port` |
@@ -64,6 +66,8 @@ Default single-host port ownership:
 
 Direct-only cohorts with REALITY disabled can set `nginx_xhttp_public_port` to
 `443`; full-stack hosts must keep the nginx public listener off `xray_port`.
+
+The tactical P0 self-steal mode makes the REALITY destination an nginx TLS site on loopback. Enabling it requires `xray.target` to equal `127.0.0.1:<reality_self_steal_port>`, requires the single `xray.server_names` entry to match the SAN of the owned certificate, and does not add TCP/80 or any other public listener. The Xray inbound remains the sole owner of public TCP/443.
 
 ## Disposable nodes
 

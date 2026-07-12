@@ -1,0 +1,73 @@
+---
+- name: Enable and then disable REALITY self-steal role
+  hosts: all
+  become: true
+  vars:
+    xray:
+      target: 127.0.0.1:8443
+      server_names: [edge.example.test]
+    reality_self_steal:
+      server_name: edge.example.test
+      cert_pem: placeholder
+      key_pem: placeholder
+  pre_tasks:
+    - name: Generate a self-signed certificate with the target SAN
+      ansible.builtin.command:
+        cmd: >-
+          openssl req -x509 -newkey rsa:2048 -nodes
+          -keyout /tmp/reality-self-steal.key
+          -out /tmp/reality-self-steal.crt
+          -subj /CN=edge.example.test
+          -addext subjectAltName=DNS:edge.example.test
+          -days 30
+        creates: /tmp/reality-self-steal.crt
+
+    - name: Read the generated certificate
+      ansible.builtin.slurp:
+        src: /tmp/reality-self-steal.crt
+      register: self_steal_cert
+
+    - name: Read the generated key
+      ansible.builtin.slurp:
+        src: /tmp/reality-self-steal.key
+      register: self_steal_key
+
+    - name: Publish generated TLS material to the role
+      ansible.builtin.set_fact:
+        reality_self_steal:
+          server_name: edge.example.test
+          cert_pem: "{{ self_steal_cert.content | b64decode }}"
+          key_pem: "{{ self_steal_key.content | b64decode }}"
+
+  tasks:
+    - name: Enable self-steal once
+      ansible.builtin.include_role:
+        name: reality-self-steal
+      vars:
+        vpn:
+          enable_xray_reality: true
+          enable_reality_self_steal: true
+
+    - name: Simulate interrupted cleanup by deleting config without reload
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/nginx/sites-enabled/reality-self-steal.conf
+        - /etc/nginx/sites-available/reality-self-steal.conf
+
+    - name: Confirm nginx still holds the stale in-memory listener
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          ss -lnt | grep -q '127.0.0.1:8443'
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Disable self-steal and remove its state
+      ansible.builtin.include_role:
+        name: reality-self-steal
+      vars:
+        vpn:
+          enable_xray_reality: true
+          enable_reality_self_steal: false

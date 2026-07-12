@@ -1,0 +1,6 @@
+---
+reality_self_steal_listen_address: 127.0.0.1
+reality_self_steal_port: 8443
+reality_self_steal_site_root: /var/www/reality-self-steal
+reality_self_steal_tls_dir: /etc/nginx/reality-self-steal
+reality_self_steal_staging_dir: /run/reality-self-steal

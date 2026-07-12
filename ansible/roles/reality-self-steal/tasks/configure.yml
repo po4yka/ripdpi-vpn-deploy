@@ -1,0 +1,226 @@
+---
+- name: Reject collisions with Xray and local transport listeners
+  vars:
+    reality_self_steal_public_tcp_ports: >-
+      {{ public_listener_manifest | default([])
+         | selectattr('enabled', 'equalto', true)
+         | selectattr('protocol', 'equalto', 'tcp')
+         | map(attribute='port')
+         | map('int')
+         | list }}
+  ansible.builtin.assert:
+    that:
+      - reality_self_steal_port | int >= 1
+      - reality_self_steal_port | int <= 65535
+      - >-
+        (reality_self_steal_port | int) not in
+        [
+          xray_port | default(443) | int,
+          xray_fallback_port | default(0) | int,
+          nginx_xhttp_port | default(10085) | int
+        ]
+      - (reality_self_steal_port | int) not in reality_self_steal_public_tcp_ports
+    fail_msg: reality_self_steal_port must be a private, non-conflicting TCP port.
+
+- name: Install the self-steal TLS runtime
+  ansible.builtin.apt:
+    name:
+      - curl
+      - nginx
+      - openssl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure self-steal directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ reality_self_steal_tls_dir }}"
+      mode: "0750"
+    - path: "{{ reality_self_steal_tls_dir }}/releases"
+      mode: "0750"
+    - path: "{{ reality_self_steal_site_root }}"
+      mode: "0755"
+
+- name: Validate staged TLS material before publishing it
+  block:
+    - name: Create the private TLS staging directory
+      ansible.builtin.file:
+        path: "{{ reality_self_steal_staging_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      changed_when: false
+
+    - name: Stage the self-steal certificate chain
+      ansible.builtin.copy:
+        content: "{{ reality_self_steal.cert_pem }}"
+        dest: "{{ reality_self_steal_staging_dir }}/fullchain.pem"
+        owner: root
+        group: root
+        mode: "0600"
+      changed_when: false
+      no_log: true
+      diff: false
+
+    - name: Stage the self-steal private key
+      ansible.builtin.copy:
+        content: "{{ reality_self_steal.key_pem }}"
+        dest: "{{ reality_self_steal_staging_dir }}/privkey.pem"
+        owner: root
+        group: root
+        mode: "0600"
+      changed_when: false
+      no_log: true
+      diff: false
+
+    - name: Validate staged certificate lifetime
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - x509
+          - -in
+          - "{{ reality_self_steal_staging_dir }}/fullchain.pem"
+          - -noout
+          - -checkend
+          - "604800"
+      changed_when: false
+
+    - name: Validate staged certificate SAN
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - x509
+          - -in
+          - "{{ reality_self_steal_staging_dir }}/fullchain.pem"
+          - -noout
+          - -checkhost
+          - "{{ reality_self_steal.server_name }}"
+      changed_when: false
+
+    - name: Validate staged certificate and private key match
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          cert_hash="$(openssl x509 \
+            -in {{ reality_self_steal_staging_dir | quote }}/fullchain.pem \
+            -pubkey -noout | openssl pkey -pubin -outform DER 2>/dev/null | sha256sum | cut -d' ' -f1)"
+          key_hash="$(openssl pkey \
+            -in {{ reality_self_steal_staging_dir | quote }}/privkey.pem \
+            -pubout -outform DER 2>/dev/null | sha256sum | cut -d' ' -f1)"
+          test "$cert_hash" = "$key_hash"
+        executable: /bin/bash
+      changed_when: false
+      no_log: true
+
+    - name: Create the immutable validated TLS release
+      ansible.builtin.file:
+        path: "{{ reality_self_steal_tls_release_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Publish the validated self-steal certificate chain
+      ansible.builtin.copy:
+        content: "{{ reality_self_steal.cert_pem }}"
+        dest: "{{ reality_self_steal_tls_release_dir }}/fullchain.pem"
+        owner: root
+        group: root
+        mode: "0644"
+      no_log: true
+      diff: false
+
+    - name: Publish the validated self-steal private key
+      ansible.builtin.copy:
+        content: "{{ reality_self_steal.key_pem }}"
+        dest: "{{ reality_self_steal_tls_release_dir }}/privkey.pem"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      diff: false
+
+    - name: Atomically activate the validated TLS pair
+      ansible.builtin.file:
+        src: "{{ reality_self_steal_tls_release_dir }}"
+        dest: "{{ reality_self_steal_tls_dir }}/current"
+        state: link
+        force: true
+      notify: Reload self-steal nginx
+  always:
+    - name: Remove staged self-steal TLS material
+      ansible.builtin.file:
+        path: "{{ reality_self_steal_staging_dir }}"
+        state: absent
+      changed_when: false
+      no_log: true
+
+- name: Find superseded self-steal TLS releases
+  ansible.builtin.find:
+    paths: "{{ reality_self_steal_tls_dir }}/releases"
+    file_type: directory
+    recurse: false
+  register: reality_self_steal_tls_releases
+
+- name: Remove superseded self-steal TLS releases
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ reality_self_steal_tls_releases.files }}"
+  when: item.path != reality_self_steal_tls_release_dir
+  no_log: true
+
+- name: Disable the packaged default nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload self-steal nginx
+
+- name: Publish the self-steal landing site
+  ansible.builtin.copy:
+    src: public-site/
+    dest: "{{ reality_self_steal_site_root }}/"
+    owner: root
+    group: root
+    mode: "u=rwX,go=rX"
+  notify: Reload self-steal nginx
+
+- name: Render the loopback-only self-steal TLS site
+  ansible.builtin.template:
+    src: site.conf.j2
+    dest: /etc/nginx/sites-available/reality-self-steal.conf
+    owner: root
+    group: root
+    mode: "0640"
+  no_log: true
+  diff: false
+  notify: Reload self-steal nginx
+
+- name: Enable the self-steal TLS site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/reality-self-steal.conf
+    dest: /etc/nginx/sites-enabled/reality-self-steal.conf
+    state: link
+    force: true
+  notify: Reload self-steal nginx
+
+- name: Validate the complete nginx configuration
+  ansible.builtin.command:
+    cmd: nginx -t
+  changed_when: false
+
+- name: Ensure nginx is enabled and started
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+    state: started
+
+- name: Activate the validated self-steal site before Xray restart handlers
+  ansible.builtin.meta: flush_handlers

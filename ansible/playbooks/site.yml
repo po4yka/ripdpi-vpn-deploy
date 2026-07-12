@@ -215,6 +215,10 @@
         not (vpn_subscription_only | default(false))
       tags: [xray, p0, p1, transport]
 
+    - role: reality-self-steal
+      when: not (vpn_subscription_only | default(false))
+      tags: [reality-self-steal, p0, transport]
+
     - role: nginx-xhttp
       when: (vpn.enable_nginx_xhttp | default(true)) and not (vpn_subscription_only | default(false))
       tags: [nginx, xhttp, p1, transport]
