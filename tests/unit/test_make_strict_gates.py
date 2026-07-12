@@ -24,3 +24,15 @@ def test_validate_checks_every_provider_and_ci_fast_has_no_tool_skips():
     ):
         assert f"$(MAKE) {target}" in ci_fast
     assert "python3 scripts/render-cloud-init-ci.py" in ci
+
+
+def test_cloud_init_schema_has_a_pinned_container_fallback():
+    root = Path(__file__).resolve().parents[2]
+    makefile = (root / "Makefile").read_text()
+    target = makefile.split("cloud-init-schema:", 1)[1].split("\n\ntf-test:", 1)[0]
+
+    assert "CLOUD_INIT_IMAGE ?= ubuntu:24.04@sha256:" in makefile
+    assert 'command -v cloud-init' in target
+    assert 'command -v docker' in target
+    assert 'cloud-init schema --config-file /dev/stdin' in target
+    assert 'missing: cloud-init (or docker fallback)' in target

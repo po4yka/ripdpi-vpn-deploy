@@ -5,6 +5,7 @@ TF_ROOT       := terraform/providers/$(PROVIDER)
 TF_ENV        := ./scripts/terraform-env.sh
 ANSIBLE_DIR   := ansible
 RUNTIME_DIR   ?= $(if $(XDG_RUNTIME_DIR),$(XDG_RUNTIME_DIR),$(HOME)/.cache)/vpn-provision
+CLOUD_INIT_IMAGE ?= ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
 SECRETS_FILE  ?= $(RUNTIME_DIR)/vpn-$(ENV).secrets.yaml
 SOPS_FILE     ?= $(HOME)/.config/vpn-provision/$(ENV).secrets.sops.yaml
 TFVARS        := $(TF_ROOT)/environments/$(ENV).tfvars
@@ -300,11 +301,19 @@ actionlint-check:
 	actionlint
 
 cloud-init-schema:
-	@command -v cloud-init >/dev/null 2>&1 || { echo "missing: cloud-init" >&2; exit 1; }
 	@rendered="$$(mktemp -t cloud-init.rendered.XXXXXX)"; \
 	  trap 'rm -f "$$rendered"' 0; \
 	  python3 scripts/render-cloud-init-ci.py > "$$rendered"; \
-	  cloud-init schema --config-file "$$rendered"
+	  if command -v cloud-init >/dev/null 2>&1; then \
+	    cloud-init schema --config-file "$$rendered"; \
+	  elif command -v docker >/dev/null 2>&1; then \
+	    docker run --rm -i "$(CLOUD_INIT_IMAGE)" sh -eu -c \
+	      'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq cloud-init >/dev/null && cloud-init schema --config-file /dev/stdin' \
+	      < "$$rendered"; \
+	  else \
+	    echo "missing: cloud-init (or docker fallback)" >&2; \
+	    exit 1; \
+	  fi
 
 tf-test:
 	@command -v terraform >/dev/null 2>&1 || { echo "missing: terraform" >&2; exit 1; }
