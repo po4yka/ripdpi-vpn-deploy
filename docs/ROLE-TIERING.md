@@ -223,7 +223,7 @@ layers over one source of truth.
 - **Static layer (CI / pre-commit):** `scripts/check-deploy-profile.py` fails if any RESEARCH or EXCEPTION role is enabled in a family profile, or anywhere it lacks its exact matching allowlist entry. Wired into `make ci-fast` and `.pre-commit-config.yaml`; covered by `tests/unit/test_deploy_profile_guard.py`.
 - **Deploy-time layer:** pre-task assertions in `ansible/playbooks/site.yml` enforce the matching exact-name allowlist. Cascade additionally requires a fresh attestation and a repository-owned `live-authorized` governance state; inventory cannot supply or override that state.
 
-Current family profile files are `all.yml`, `vpn-p0-minimal.yml`, `vpn-family-standard.yml`, `vpn-device-full.yml`, and the legacy aliases `vpn-p0.yml`, `vpn-p1p2.yml`, `vpn-fullstack.yml`. `vpn-lab.yml` is intentionally outside `family_profiles`; it may opt into research only by listing exact role names in `allow_research_roles`.
+Current family profile files include `all.yml`, `vpn-p0-minimal.yml`, `vpn-p0-self-steal.yml`, `vpn-family-standard.yml`, `vpn-device-full.yml`, the explicit P1/P2 profiles, and the legacy aliases `vpn-p0.yml`, `vpn-p1p2.yml`, `vpn-fullstack.yml`. `vpn-lab.yml` is intentionally outside `family_profiles`; it may opt into research only by listing exact role names in `allow_research_roles`.
 
 Override semantics (deliberate): `allow_research_roles` is a **list of role
 names**, not a boolean — allowlisting one research role does not implicitly

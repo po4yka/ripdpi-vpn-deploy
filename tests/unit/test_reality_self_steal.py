@@ -77,7 +77,7 @@ def test_xray_public_reality_inbound_targets_the_owned_loopback_site() -> None:
         **variables["xray"],
         "target": "127.0.0.1:8443",
         "server_names": ["edge.example.test"],
-        "reality_private_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "reality_private_key": "TEST_PLACEHOLDER",
         "clients": [
             {
                 "name": "test-device",
@@ -280,6 +280,22 @@ def test_collision_guard_ignores_disabled_public_manifest_entries() -> None:
 
     assert "selectattr('enabled', 'equalto', true)" in configure
     assert "public_listener_manifest | default([])" in configure
+
+
+def test_first_install_check_mode_skips_the_absent_nginx_service() -> None:
+    tasks = yaml.safe_load(
+        (
+            ANSIBLE / "roles" / "reality-self-steal" / "tasks" / "configure.yml"
+        ).read_text()
+    )
+    ensure_nginx = next(
+        task for task in tasks if task["name"] == "Ensure nginx is enabled and started"
+    )
+    condition = " ".join(ensure_nginx["when"])
+
+    assert "not ansible_check_mode" in condition
+    assert "'nginx.service' in" in condition
+    assert "ansible_facts.services | default({})" in condition
 
 
 def test_enabled_role_rejects_an_unsafe_server_name(tmp_path: Path) -> None:

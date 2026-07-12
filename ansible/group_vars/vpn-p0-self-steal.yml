@@ -1,0 +1,24 @@
+---
+# Profile: P0 REALITY with an operator-owned loopback TLS target.
+# Public listeners remain identical to vpn-p0-minimal: Xray TCP only, plus SSH from allowed CIDRs.
+
+vpn:
+  enable_xray_reality: true
+  enable_reality_self_steal: true
+  enable_nginx_xhttp: false
+  enable_naive: false
+  enable_hysteria: false
+  enable_amneziawg: false
+  enable_geodata: true
+  enable_monitoring: true
+  enable_watchdog: true
+  enable_backup: true
+  enable_subscription_host: false
+  enable_policy_ratelimit: false
+  enable_cdn_front: false
+  enable_honeypot: false
+  enable_warp_outbound: false
+  enable_dns_morph_bridge: false
+  enable_hysteria_realm: false
+  enable_split_hop_egress: false
+  enable_snell: false

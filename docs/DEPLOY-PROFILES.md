@@ -13,13 +13,14 @@ surfaces and fails if any RESEARCH-tier role becomes enabled.
 | Profile | Transport surface | Hardening posture | Use case |
 |---|---|---|---|
 | `vpn-p0-minimal.yml` | Xray REALITY only | default family controls | smallest P0 endpoint |
+| `vpn-p0-self-steal.yml` | Xray REALITY + owned loopback TLS/H2 target | default family controls; no additional public listener | P0 endpoint after DNS and certificate promotion gates pass |
 | `vpn-p1-web.yml` | public HTTP/HTTPS site + nginx-xhttp on TCP/443 | default family controls | domain-facing P1 endpoint |
 | `vpn-p2-udp.yml` | Hysteria2 + AmneziaWG | default family controls | UDP-only fallback endpoint |
 | `vpn-family-standard.yml` | Xray REALITY + nginx-xhttp + Hysteria2 | default family controls | normal family node without AmneziaWG |
 | `vpn-device-full.yml` | family-standard + AmneziaWG | default family controls | full device-VPN family node |
 | `vpn-prod-hardened.yml` | device-full | unattended security updates, Fail2Ban, tighter SSH limits, egress observation counters | production node when the operator accepts extra host controls |
 
-`vpn-p0-minimal.yml` intentionally leaves `vpn.enable_reality_self_steal` off. Operators may enable this tactical mode only after adding the owned certificate secret contract and changing `xray.target` plus `xray.server_names` together; the role adds a private loopback TLS target without widening the profile's public listener surface.
+`vpn-p0-minimal.yml` intentionally leaves `vpn.enable_reality_self_steal` off. Use `vpn-p0-self-steal.yml` only after adding the owned certificate secret contract and changing `xray.target` plus `xray.server_names` together; the role adds a private loopback TLS target without widening the profile's public listener surface.
 
 ## Hardened production profile
 
