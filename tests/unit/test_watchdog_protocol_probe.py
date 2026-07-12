@@ -13,8 +13,10 @@ ENV_TEMPLATE = REPO_ROOT / "ansible" / "roles" / "watchdog" / "templates" / "vpn
 
 
 def _executable(path: Path, body: str) -> None:
-    path.write_text("#!/usr/bin/env bash\nset -eu\n" + body)
-    path.chmod(0o755)
+    replacement = path.with_suffix(".new")
+    replacement.write_text("#!/usr/bin/env bash\nset -eu\n" + body)
+    replacement.chmod(0o755)
+    replacement.replace(path)
 
 
 def _run_watchdog(
