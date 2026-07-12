@@ -50,6 +50,7 @@ def classify_curl(result: subprocess.CompletedProcess[str], config: dict) -> dic
             status = int(parts[0])
             duration_ms = round(float(parts[1]) * 1000)
         except ValueError:
+            # Malformed curl write-out stays an unexpected response below.
             pass
     if result.returncode == 0 and status == config["expected_status"] and duration_ms is not None:
         verdict = "throttled" if duration_ms > config["degraded_after_ms"] else "ok"
@@ -93,11 +94,13 @@ def stop_process(process: subprocess.Popen[str] | None) -> None:
         process.wait(timeout=2)
         return
     except (OSError, subprocess.TimeoutExpired):
+        # Escalate to SIGKILL when graceful termination cannot be confirmed.
         pass
     try:
         process.kill()
         process.wait(timeout=2)
     except (OSError, subprocess.TimeoutExpired):
+        # Cleanup is best-effort; the probe process is already unusable here.
         pass
 
 
@@ -140,6 +143,7 @@ def probe_sing_box_profiles(sing_box: dict, config: dict, control_alive: bool) -
                         for item in results
                     ]
             except OSError:
+                # Diagnostic loss must not turn a network result into an auth claim.
                 pass
         return results
     except OSError as exc:
@@ -152,6 +156,7 @@ def probe_sing_box_profiles(sing_box: dict, config: dict, control_alive: bool) -
         try:
             log_path.unlink()
         except OSError:
+            # Failure to remove this private temporary diagnostic is non-fatal.
             pass
 
 

@@ -329,15 +329,7 @@ def main() -> int:
             print(f"  {issue}", file=sys.stderr)
         return 1
 
-    active = sum(
-        guard["activation"] == "always"
-        or parse_version(pin_version) >= parse_version(guard["applies_from"])
-        for guard in guards
-    )
-    print(
-        "OK — Xray breaking-change guards satisfied: "
-        f"{active}/{len(guards)} active at {pin_version}."
-    )
+    print("OK — Xray breaking-change guards satisfied.")
     return 0
 
 

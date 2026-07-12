@@ -23,10 +23,7 @@ def atomic_json(path: pathlib.Path, payload: dict[str, Any]) -> None:
         os.chmod(tmp_name, 0o600)
         os.replace(tmp_name, path)
     finally:
-        try:
-            os.unlink(tmp_name)
-        except FileNotFoundError:
-            pass
+        pathlib.Path(tmp_name).unlink(missing_ok=True)
 
 
 def read_json(path: pathlib.Path) -> dict[str, Any]:
@@ -76,6 +73,7 @@ def next_strike(previous_day: str | None, current_day: str, previous_count: int)
             if current == previous + dt.timedelta(days=1):
                 return previous_count + 1, True
         except ValueError:
+            # Invalid persisted dates intentionally restart the strike sequence.
             pass
     return 1, True
 

@@ -63,25 +63,25 @@ def _semantic_errors(doc: dict) -> list[tuple[str, str]]:
     xray_clients = xray.get("clients") or []
     client_names = {client.get("name") for client in xray_clients if isinstance(client, dict)}
     for key in ("name", "uuid", "short_id"):
-        for value in sorted(_duplicate_values(xray_clients, key)):
-            errors.append(("xray.clients", f"duplicate {key}: {value}"))
+        if _duplicate_values(xray_clients, key):
+            errors.append(("xray.clients", f"duplicate {key}"))
     cohorts = xray.get("cohorts") or []
-    for value in sorted(_duplicate_values(cohorts, "name")):
-        errors.append(("xray.cohorts", f"duplicate name: {value}"))
-    for cohort in cohorts:
+    if _duplicate_values(cohorts, "name"):
+        errors.append(("xray.cohorts", "duplicate name"))
+    for cohort_index, cohort in enumerate(cohorts):
         if not isinstance(cohort, dict):
             continue
         refs = cohort.get("clients") or []
         if len(refs) != len(set(refs)):
-            errors.append((f"xray.cohorts.{cohort.get('name', '?')}.clients", "duplicate client reference"))
+            errors.append((f"xray.cohorts.{cohort_index}.clients", "duplicate client reference"))
         for name in refs:
             if name not in client_names:
-                errors.append((f"xray.cohorts.{cohort.get('name', '?')}.clients", f"unknown xray client: {name}"))
+                errors.append((f"xray.cohorts.{cohort_index}.clients", "unknown xray client reference"))
 
     for path, peers in [("amneziawg_secrets.peers", (doc.get("amneziawg_secrets") or {}).get("peers") or [])]:
         for key in ("name", "public_key"):
-            for value in sorted(_duplicate_values(peers, key)):
-                errors.append((path, f"duplicate {key}: {value}"))
+            if _duplicate_values(peers, key):
+                errors.append((path, f"duplicate {key}"))
         for index, peer in enumerate(peers):
             if not isinstance(peer, dict):
                 continue
@@ -91,10 +91,10 @@ def _semantic_errors(doc: dict) -> list[tuple[str, str]]:
                 errors.append((f"{path}.{index}.allowed_ips", "must be a valid IPv4 or IPv6 CIDR"))
 
     instances = (doc.get("amneziawg_secrets") or {}).get("instances") or []
-    for value in sorted(_duplicate_values(instances, "name")):
-        errors.append(("amneziawg_secrets.instances", f"duplicate name: {value}"))
-    for value in sorted(_duplicate_values(instances, "listen_port")):
-        errors.append(("amneziawg_secrets.instances", f"duplicate listen_port: {value}"))
+    if _duplicate_values(instances, "name"):
+        errors.append(("amneziawg_secrets.instances", "duplicate name"))
+    if _duplicate_values(instances, "listen_port"):
+        errors.append(("amneziawg_secrets.instances", "duplicate listen_port"))
     for index, instance in enumerate(instances):
         if not isinstance(instance, dict):
             continue
@@ -107,8 +107,8 @@ def _semantic_errors(doc: dict) -> list[tuple[str, str]]:
                 errors.append((f"amneziawg_secrets.instances.{index}.{field}", "must be a valid IPv4 or IPv6 CIDR"))
         peers = instance.get("peers") or []
         for key in ("name", "public_key"):
-            for value in sorted(_duplicate_values(peers, key)):
-                errors.append((f"amneziawg_secrets.instances.{index}.peers", f"duplicate {key}: {value}"))
+            if _duplicate_values(peers, key):
+                errors.append((f"amneziawg_secrets.instances.{index}.peers", f"duplicate {key}"))
         for peer_index, peer in enumerate(peers):
             if not isinstance(peer, dict):
                 continue
@@ -118,11 +118,11 @@ def _semantic_errors(doc: dict) -> list[tuple[str, str]]:
                 errors.append((f"amneziawg_secrets.instances.{index}.peers.{peer_index}.allowed_ips", "must be a valid IPv4 or IPv6 CIDR"))
 
     for path, clients in [("hysteria.clients", (doc.get("hysteria") or {}).get("clients") or [])]:
-        for value in sorted(_duplicate_values(clients, "name")):
-            errors.append((path, f"duplicate name: {value}"))
+        if _duplicate_values(clients, "name"):
+            errors.append((path, "duplicate name"))
     variants = (doc.get("snell_secrets") or {}).get("variants") or []
-    for value in sorted(_duplicate_values(variants, "id")):
-        errors.append(("snell_secrets.variants", f"duplicate id: {value}"))
+    if _duplicate_values(variants, "id"):
+        errors.append(("snell_secrets.variants", "duplicate id"))
     psks = [item.get("psk") for item in variants if isinstance(item, dict)]
     if len(psks) != len(set(psks)):
         errors.append(("snell_secrets.variants", "PSKs must be unique across variants"))
@@ -130,8 +130,8 @@ def _semantic_errors(doc: dict) -> list[tuple[str, str]]:
     for index, variant in enumerate(variants):
         users = variant.get("users") or [] if isinstance(variant, dict) else []
         for key in ("name", "userkey"):
-            for value in sorted(_duplicate_values(users, key)):
-                errors.append((f"snell_secrets.variants.{index}.users", f"duplicate {key}: {value}"))
+            if _duplicate_values(users, key):
+                errors.append((f"snell_secrets.variants.{index}.users", f"duplicate {key}"))
         all_userkeys.extend(user.get("userkey") for user in users if isinstance(user, dict) and user.get("userkey"))
     if len(all_userkeys) != len(set(all_userkeys)):
         errors.append(("snell_secrets.variants.users", "userkeys must be unique across variants"))
@@ -186,7 +186,7 @@ def main() -> int:
               file=sys.stderr)
         for e in errors:
             loc = ".".join(str(p) for p in e.absolute_path) or "<root>"
-            print(f"  {loc}: {e.message}", file=sys.stderr)
+            print(f"  {loc}: failed {e.validator} constraint", file=sys.stderr)
         return 1
 
     semantic_errors = _semantic_errors(doc)
@@ -207,9 +207,8 @@ def main() -> int:
                 f"unfilled REPLACE_WITH_* placeholder(s) in {target}:",
                 file=sys.stderr,
             )
-            for path, value in offenders[:20]:
-                short = value if len(value) < 60 else value[:57] + "..."
-                print(f"  {path}: {short}", file=sys.stderr)
+            for path, _value in offenders[:20]:
+                print(f"  {path}", file=sys.stderr)
             if len(offenders) > 20:
                 print(f"  ... and {len(offenders) - 20} more", file=sys.stderr)
             return 1

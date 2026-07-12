@@ -235,10 +235,12 @@ def main() -> int:
         try:
             config_bytes = args.config.read_bytes()
         except OSError:
+            # Preserve an empty hash input when the invalid config is unreadable.
             pass
         try:
             bundle = json.loads(args.bundle.read_text())
         except (OSError, ValueError, json.JSONDecodeError):
+            # A malformed bundle cannot provide profile identifiers for the error report.
             pass
         emit_report(args, report_payload(args.vantage, config_bytes, "error", error_profiles(bundle)))
         return 1

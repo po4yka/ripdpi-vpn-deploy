@@ -152,6 +152,7 @@ class ClassifierProxyHandler(socketserver.BaseRequestHandler):
             try:
                 connection.sendall(SOCKS_GENERAL_FAILURE)
             except OSError:
+                # The peer may already be gone; there is no further response channel.
                 pass
 
 

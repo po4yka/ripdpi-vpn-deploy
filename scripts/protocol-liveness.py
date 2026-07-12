@@ -219,6 +219,7 @@ def record_state(payload: dict, config: dict, config_path: Path, state_dir: Path
     try:
         previous = json.loads(state_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
+        # Missing or malformed advisory state is equivalent to no prior evidence.
         pass
     config_hash = hashlib.sha256(config_path.read_bytes()).hexdigest()
     same_candidate = (
