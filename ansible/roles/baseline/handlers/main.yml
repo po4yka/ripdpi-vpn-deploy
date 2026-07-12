@@ -4,15 +4,6 @@
     name: ssh
     state: reloaded
 
-- name: Apply sysctl
-  ansible.builtin.command:
-    cmd: sysctl -e --system
-  register: baseline_sysctl_apply
-  changed_when: true
-  failed_when: >-
-    baseline_sysctl_apply.rc != 0 and
-    'net.ipv4.tcp_congestion_control' not in baseline_sysctl_apply.stderr
-
 - name: Restart systemd-resolved
   ansible.builtin.systemd_service:
     name: systemd-resolved

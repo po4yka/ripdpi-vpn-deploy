@@ -100,3 +100,16 @@ def test_p2_udp_listener_surface_has_no_public_tcp_service() -> None:
     actual = _profile_manifest("vpn-p2-udp.yml")
     expected = [_expected("hysteria", "udp", 443), _expected("amneziawg", "udp", 51820)]
     assert contract.check({"expected": expected, "actual": actual}) == []
+
+
+def test_listener_contract_pre_tasks_run_during_tagged_deploys() -> None:
+    play = yaml.safe_load((REPO_ROOT / "ansible" / "playbooks" / "site.yml").read_text())[0]
+    required = {
+        "Build effective public listener manifest",
+        "Decode provider listener contract from rendered inventory",
+        "Guard — provider edge and runtime listener contracts agree",
+        "Guard — block public listener collisions before convergence",
+    }
+    tasks = {task["name"]: task for task in play["pre_tasks"] if task["name"] in required}
+    assert set(tasks) == required
+    assert all("always" in task.get("tags", []) for task in tasks.values())

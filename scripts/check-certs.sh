@@ -70,9 +70,9 @@ check_block() {
     san_lines="$(printf '%s\n' "$cert" \
       | openssl x509 -noout -ext subjectAltName 2>/dev/null \
       | grep DNS: || true)"
-    if ! grep -qiE "(^|, )DNS:${host//./\\.}(,|$)" <<< "$san_lines"; then
+    if ! grep -qiE "(^|[[:space:]],?[[:space:]]*)DNS:${host//./\\.}(,|$)" <<< "$san_lines"; then
       # also tolerate single wildcard one-level above
-      local parent_re="(^|, )DNS:\\*\\.${host#*.}(,|$)"
+      local parent_re="(^|[[:space:]],?[[:space:]]*)DNS:\\*\\.${host#*.}(,|$)"
       if ! grep -qiE "$parent_re" <<< "$san_lines"; then
         report "SAN does not cover ${host}"
       fi

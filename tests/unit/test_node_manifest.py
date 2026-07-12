@@ -10,6 +10,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CTR = REPO_ROOT / "scripts" / "check-templates-render.py"
 LISTENER_TEMPLATE = REPO_ROOT / "ansible" / "templates" / "listener-manifest.json.j2"
 NODE_TEMPLATE = REPO_ROOT / "ansible" / "roles" / "node_manifest" / "templates" / "manifest.json.j2"
+NODE_TASKS = REPO_ROOT / "ansible" / "roles" / "node_manifest" / "tasks" / "main.yml"
+
+
+def test_node_manifest_prefers_per_host_fleet_labels() -> None:
+    tasks = NODE_TASKS.read_text()
+
+    assert 'node_manifest_environment: "{{ env | default(lookup(\'env\', \'ENV\'), true) }}"' in tasks
+    assert 'node_manifest_provider: "{{ provider | default(lookup(\'env\', \'PROVIDER\'), true) }}"' in tasks
 
 _ctr_spec = importlib.util.spec_from_file_location("check_templates_render", CTR)
 ctr = importlib.util.module_from_spec(_ctr_spec)

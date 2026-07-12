@@ -104,6 +104,14 @@ def test_operator_healthcheck_probes_the_site_root_not_a_health_endpoint() -> No
     assert "/health" not in script
 
 
+def test_nginx_role_activates_validated_site_immediately() -> None:
+    tasks = (REPO_ROOT / "ansible" / "roles" / "nginx-xhttp" / "tasks" / "main.yml").read_text()
+    validate_at = tasks.index("cmd: nginx -t")
+    flush_at = tasks.index("ansible.builtin.meta: flush_handlers")
+    ensure_at = tasks.index("name: Ensure nginx is enabled and started")
+    assert validate_at < flush_at < ensure_at
+
+
 def test_transport_profiles_share_one_canonical_site_identity() -> None:
     group_vars = REPO_ROOT / "ansible" / "group_vars"
     p1 = yaml.safe_load((group_vars / "vpn-p1-web.yml").read_text())

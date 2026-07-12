@@ -40,7 +40,7 @@
         cmd: |
           set -o pipefail
           grep -q 'listen 8443 ssl;' /etc/nginx/sites-available/vpn-xhttp.conf
-          grep -q 'http2 on;' /etc/nginx/sites-available/vpn-xhttp.conf
+          grep -q 'ssl http2;' /etc/nginx/sites-available/vpn-xhttp.conf
           grep -q 'proxy_pass http://127.0.0.1:10085;' /etc/nginx/sites-available/vpn-xhttp.conf
         executable: /bin/bash
       changed_when: false

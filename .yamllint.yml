@@ -21,5 +21,7 @@ ignore: |
   .terraform/
   .venv/
   ansible/inventory/generated.ini
+  secrets/local/
+  state-backups/
   tests/fixtures/*.sops.yaml
   tests/bats/test_helper/

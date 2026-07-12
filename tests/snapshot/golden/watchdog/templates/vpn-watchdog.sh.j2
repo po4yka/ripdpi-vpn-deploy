@@ -13,6 +13,7 @@ set -euo pipefail
 : "${XRAY_REALITY_CONFIG:=/etc/vpn-watchdog-reality.json}"
 : "${XRAY_REALITY_PROBES:=}"
 : "${XRAY_REALITY_PROBE_URL:=}"
+: "${XRAY_REALITY_PROBE_EXPECTED_STATUS:=204}"
 : "${XRAY_REALITY_PROBE_TIMEOUT:=15}"
 HOSTNAME="${HOSTNAME:-$(hostname -f 2>/dev/null || hostname)}"
 
@@ -83,7 +84,7 @@ cleanup_reality_client() {
 
 socks_listener_ready() {
   local port="$1"
-  ss -lnt | awk '{print $4}' | grep -q ":${port}$"
+  ss -lnt | awk -v suffix=":${port}" '$4 ~ (suffix "$") { found=1 } END { exit !found }'
 }
 
 reality_canary_round_trip() {
@@ -95,7 +96,7 @@ reality_canary_round_trip() {
     --proxy "socks5h://127.0.0.1:${socks_port}" \
     "$XRAY_REALITY_PROBE_URL")" || return 1
   kill -0 "$xray_probe_pid" 2>/dev/null || return 1
-  [[ "$status" == "204" ]]
+  [[ "$status" == "$XRAY_REALITY_PROBE_EXPECTED_STATUS" ]]
 }
 
 probe_reality_listeners() {

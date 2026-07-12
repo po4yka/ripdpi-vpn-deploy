@@ -5,7 +5,7 @@
 **Two-level supervision** — systemd is layer 1 (Restart=on-failure). The
 watchdog role adds layer 2: a timer that records unit, listener, and
 configuration diagnostics and performs an authenticated VLESS+REALITY request
-through every configured listener to an operator-owned HTTPS 204 canary.
+through every configured listener to an operator-owned HTTPS endpoint with an exact expected status.
 
 **Dedicated probe identity** — `watchdog.reality_probe_client` names a unique
 entry in `xray.clients`. Never reuse a recipient device credential.
@@ -23,7 +23,7 @@ oneshot open indefinitely.
 
 ## What's done well
 
-- **Protocol completion is load-bearing** — a `204` returned through the temporary
+- **Protocol completion is load-bearing** — the configured exact HTTP status returned through the temporary
   SOCKS client proves the configured UUID, short ID, REALITY key/SNI, listener,
   and outbound request path completed.
 - **Probe secrets stay root-only** — the generated Xray client config is `0600`;
@@ -35,8 +35,7 @@ oneshot open indefinitely.
 
 ## Pitfalls
 
-- **The canary is part of the contract** — it must be operator-owned, have valid
-  public TLS, and return exactly `204`. Canary failure correctly makes the
+- **The canary is part of the contract** — it must be operator-owned, have valid public TLS, and return `watchdog_secrets.reality_probe_expected_status` (default `204`). A normal public site root can use `200` without exposing a dedicated health endpoint. Canary failure correctly makes the
   protocol signal red.
 - **On-node is not outside-in** — self-dialing the public listener validates
   protocol configuration but cannot detect transit filtering that affects other
