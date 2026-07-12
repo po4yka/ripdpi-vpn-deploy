@@ -221,6 +221,36 @@ def test_emit_singbox_json_structure(tmp_path):
     assert proto_obs, "no protocol outbounds (p0/p1/p2) found"
 
 
+def test_emit_singbox_hysteria_uses_server_userpass_contract(tmp_path):
+    _require_tool("jq")
+
+    result = _run_script("laptop", tmp_path)
+    assert result.returncode == 0, result.stderr
+    bundle = json.loads(result.stdout)
+    hysteria = next(
+        outbound
+        for outbound in bundle["outbounds"]
+        if outbound.get("type") == "hysteria2"
+    )
+
+    assert hysteria["password"] == (
+        "laptop:fixture-hysteria-password-laptop-001"
+    )
+
+
+def test_smoke_hysteria_uses_server_userpass_contract():
+    smoke = (REPO_ROOT / "ansible" / "playbooks" / "smoke-test.yml").read_text()
+
+    assert (
+        'auth: "{{ hysteria.clients[0].name }}:'
+        '{{ hysteria.clients[0].password }}"'
+    ) in smoke
+
+
+def test_emit_awg_make_target_script_is_executable():
+    assert os.access(REPO_ROOT / "scripts" / "emit-awg.sh", os.X_OK)
+
+
 def test_emit_singbox_snell_matrix_is_manual_only(tmp_path):
     _require_tool("jq")
     result = _run_snell_only_script(tmp_path)
