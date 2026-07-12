@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-shot bootstrap of a fresh secrets blob for a new environment.
 # Generates every piece of crypto the deploy needs and writes it into
-# ~/.config/vpn-provision/<env>.secrets.yaml, then SOPS-encrypts to
+# ${VPN_PROVISION_CONFIG_DIR:-~/.config/vpn-provision}/<env>.secrets.yaml, then SOPS-encrypts to
 # <env>.secrets.sops.yaml. Refuses to clobber existing files unless
 # --force is given.
 #
@@ -135,7 +135,7 @@ TARGET_YAML="$(printf '%s' "$TARGET" | yaml_scalar)"
 SERVER_NAME_YAML="$(printf '%s' "$SERVER_NAME" | yaml_scalar)"
 XHTTP_HOST_YAML="$(printf '%s' "$XHTTP_HOST" | yaml_scalar)"
 
-CONFIG_DIR="${HOME}/.config/vpn-provision"
+CONFIG_DIR="${VPN_PROVISION_CONFIG_DIR:-${HOME}/.config/vpn-provision}"
 mkdir -p "$CONFIG_DIR"
 chmod 0700 "$CONFIG_DIR"
 

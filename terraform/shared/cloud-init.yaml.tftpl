@@ -49,6 +49,6 @@ runcmd:
   # Validate and reload sshd only on first boot so subsequent reboots do not
   # drop active tunnels. Keep the marker in the same success chain: external
   # waiters must never observe completion after a failed validation or reload.
-  - [sh, -c, "test -f /var/lib/cloud-init-vpn-bootstrap.done || { /usr/sbin/sshd -t && systemctl reload ssh && touch /var/lib/cloud-init-vpn-bootstrap.done; }"]
+  - [sh, -c, "test -f /var/lib/cloud-init-vpn-bootstrap.done || { install -d -m 0755 /run/sshd && /usr/sbin/sshd -t && systemctl reload ssh && touch /var/lib/cloud-init-vpn-bootstrap.done; }"]
 
 final_message: "VPN VPS bootstrap complete after $UPTIME seconds"

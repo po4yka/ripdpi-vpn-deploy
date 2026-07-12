@@ -10,11 +10,11 @@ by construction.
 installs `python3`, drops a marker file at `/var/lib/cloud-init-vpn-bootstrap.done`,
 and exits. The Ansible run handles the rest. Anything secret stays in SOPS.
 
-**Bootstrap completion is fail-closed** — the first-boot command validates the effective SSH configuration, reloads `ssh.service`, and creates the completion marker in one `&&` chain. A failed validation or reload must leave the marker absent so external waiters cannot advance to Ansible.
+**Bootstrap completion is fail-closed** — the first-boot command creates the runtime directory required by minimal images, validates the effective SSH configuration, reloads `ssh.service`, and creates the completion marker in one `&&` chain. A failed validation or reload must leave the marker absent so external waiters cannot advance to Ansible.
 
 ## What's done well
 
-- **Marker-based wait** — `scripts/wait-cloud-init.sh` polls for the marker file, not an arbitrary sleep. The marker is published only after SSH validation and reload succeed.
+- **Marker-based wait** — `scripts/wait-cloud-init.sh` treats the marker file as authoritative after cloud-init reaches a terminal state. This tolerates provider-image recoverable warnings while still failing when SSH validation or reload did not publish the marker.
 - **Admin user is non-root** — root SSH is disabled by cloud-init in the
   same boot; the Ansible inventory connects as the admin user with sudo.
 
