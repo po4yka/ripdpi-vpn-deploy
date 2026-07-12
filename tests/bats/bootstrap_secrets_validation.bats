@@ -149,3 +149,20 @@ EOF
   [ "$(grep -Fc 'server_name: "vpn.example.com"' "$encrypted")" -eq 2 ]
   [ "$(grep -Fc '  peers: []' "$encrypted")" -eq 1 ]
 }
+
+@test "bootstrap honors a repo-local provisioning directory" {
+  _install_bootstrap_stubs
+  local config_dir="${BATS_TEST_TMPDIR}/repo/state-backups/vpn-provision"
+
+  run env PATH="${FAKE_BIN}:${PATH}" UUID_STATE="$UUID_STATE" OPENSSL_STATE="$OPENSSL_STATE" HOME="$BATS_TEST_TMPDIR" VPN_PROVISION_CONFIG_DIR="$config_dir" bash "$SCRIPT" \
+    --env local-env \
+    --clients phone \
+    --target mirror.example.com:443 \
+    --server-name mirror.example.com \
+    --xhttp-host vpn.example.com
+
+  [ "$status" -eq 0 ]
+  [ -f "${config_dir}/age.key" ]
+  [ -f "${config_dir}/local-env.secrets.sops.yaml" ]
+  [ ! -e "${BATS_TEST_TMPDIR}/.config/vpn-provision/local-env.secrets.sops.yaml" ]
+}

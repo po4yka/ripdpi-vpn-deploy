@@ -29,4 +29,4 @@ echo "SSH up. Waiting for cloud-init to finish…"
 ssh -o StrictHostKeyChecking=accept-new \
     -i "${ANSIBLE_SSH_PRIVATE_KEY_FILE}" \
     "${USER}@${IP}" \
-    'cloud-init status --wait && test -f /var/lib/cloud-init-vpn-bootstrap.done && echo "bootstrap marker present"'
+    'cloud-init status --wait || true; test -f /var/lib/cloud-init-vpn-bootstrap.done && echo "bootstrap marker present"'

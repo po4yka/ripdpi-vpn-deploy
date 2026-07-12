@@ -35,6 +35,7 @@ def test_bootstrap_marker_depends_on_validated_successful_ssh_reload(
     assert len(commands) == 1
     assert commands[0][:2] == ["sh", "-c"]
     command = commands[0][2]
+    assert command.index("install -d -m 0755 /run/sshd") < command.index("sshd -t")
     assert command.index("sshd -t") < command.index("systemctl reload ssh")
     assert command.index("systemctl reload ssh") < command.index(f"touch {MARKER}")
 
@@ -46,7 +47,8 @@ def test_bootstrap_marker_depends_on_validated_successful_ssh_reload(
     systemctl.chmod(0o755)
     marker = tmp_path / "bootstrap.done"
     executable = (
-        command.replace("/usr/sbin/sshd", str(sshd))
+        command.replace("install -d -m 0755 /run/sshd && ", "")
+        .replace("/usr/sbin/sshd", str(sshd))
         .replace("systemctl", str(systemctl))
         .replace(MARKER, str(marker))
     )
