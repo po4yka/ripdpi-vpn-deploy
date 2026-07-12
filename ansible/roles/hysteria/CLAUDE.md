@@ -3,7 +3,8 @@
 ## Design decisions
 
 **One port, one identity** — Hysteria2 listens on `hysteria_port` (default
-UDP/443). Per-client auth is `auth.password` from secrets; no userpass DB.
+UDP/443). The server renders a per-client userpass map from `hysteria.clients`;
+sing-box carries each credential as `name:password` in its password field.
 
 **Bandwidth limits per protocol, not per client** — server-side cap is set
 once in `config.yaml`; per-client tuning is in the client config emitted by
