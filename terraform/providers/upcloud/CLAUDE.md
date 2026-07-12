@@ -14,6 +14,10 @@ even though we keep them out of TF. State is age-encrypted via
 **Floating IP optional** — `var.use_floating_ip` toggles allocation. Useful
 for blue-green; pointless if the operator only runs one VPS.
 
+**Explicit address families** — every public interface declares IPv4 or IPv6.
+The provider schema may otherwise leave the family unknown during planning,
+which makes interface-count policy and IPv6-disable tests ambiguous.
+
 ## What's done well
 
 - **Inputs are typed** — every variable has a `type` and `validation` block

@@ -66,8 +66,16 @@ probe_unit() {
 xray_probe_pid=""
 
 cleanup_reality_client() {
+  local deadline
   if [[ -n "$xray_probe_pid" ]] && kill -0 "$xray_probe_pid" 2>/dev/null; then
     kill "$xray_probe_pid" 2>/dev/null || true
+    deadline=$(( SECONDS + 2 ))
+    while kill -0 "$xray_probe_pid" 2>/dev/null && (( SECONDS < deadline )); do
+      sleep 0.1
+    done
+    if kill -0 "$xray_probe_pid" 2>/dev/null; then
+      kill -KILL "$xray_probe_pid" 2>/dev/null || true
+    fi
     wait "$xray_probe_pid" 2>/dev/null || true
   fi
   xray_probe_pid=""

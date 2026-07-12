@@ -17,6 +17,10 @@ restarts only the transport units whose probes failed. Restart attempts remain
 capped by `kicks_per_hour_max`, notifications by `alerts_per_hour_max`, and a
 red probe run exits non-zero so systemd and external checks retain the signal.
 
+**Bounded probe cleanup** — the temporary Xray client receives TERM first, then
+KILL after a short deadline. A wedged probe process must never hold the systemd
+oneshot open indefinitely.
+
 ## What's done well
 
 - **Protocol completion is load-bearing** — a `204` returned through the temporary
@@ -26,7 +30,8 @@ red probe run exits non-zero so systemd and external checks retain the signal.
   credentials never enter the environment file, command line, journal, or alert
   body.
 - **Cleanup is unconditional** — the temporary Xray client is terminated after
-  success, failure, startup timeout, or signal.
+  success, failure, startup timeout, or signal, with a bounded TERM-to-KILL
+  escalation.
 
 ## Pitfalls
 

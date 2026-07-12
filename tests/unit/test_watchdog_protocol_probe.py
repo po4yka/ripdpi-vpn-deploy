@@ -60,7 +60,7 @@ def _run_watchdog(
         "if printf '%s\\n' \"$@\" | grep -q -- '-test'; then exit 0; fi\n"
         + ("exit 23\n" if xray_client_exits else "")
         + "trap 'touch \"${XRAY_TERM_MARKER}\"; exit 0' TERM INT\n"
-        "while :; do sleep 1; done\n",
+        "while :; do read -r -t 1 _ || true; done\n",
     )
 
     env = os.environ.copy()
