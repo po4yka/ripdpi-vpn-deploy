@@ -221,6 +221,10 @@
     name: nginx
     enabled: true
     state: started
+  when:
+    - >-
+      not ansible_check_mode or
+      ('nginx.service' in (ansible_facts.services | default({})))
 
 - name: Activate the validated self-steal site before Xray restart handlers
   ansible.builtin.meta: flush_handlers

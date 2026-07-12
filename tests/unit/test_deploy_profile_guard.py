@@ -39,6 +39,7 @@ def test_live_family_profile_list_includes_explicit_profiles():
     family_profiles = set(manifest["family_profiles"])
     assert {
         "group_vars/vpn-p0-minimal.yml",
+        "group_vars/vpn-p0-self-steal.yml",
         "group_vars/vpn-family-standard.yml",
         "group_vars/vpn-device-full.yml",
         "group_vars/vpn-p1-web.yml",
@@ -53,6 +54,7 @@ def test_live_family_profile_list_includes_explicit_profiles():
 def test_live_explicit_profile_surfaces_are_locked():
     group_vars = REPO_ROOT / "ansible" / "group_vars"
     minimal = yaml.safe_load((group_vars / "vpn-p0-minimal.yml").read_text())["vpn"]
+    self_steal = yaml.safe_load((group_vars / "vpn-p0-self-steal.yml").read_text())["vpn"]
     standard = yaml.safe_load((group_vars / "vpn-family-standard.yml").read_text())["vpn"]
     device_full = yaml.safe_load((group_vars / "vpn-device-full.yml").read_text())["vpn"]
     p1_web_data = yaml.safe_load((group_vars / "vpn-p1-web.yml").read_text())
@@ -64,6 +66,12 @@ def test_live_explicit_profile_surfaces_are_locked():
     assert minimal["enable_nginx_xhttp"] is False
     assert minimal["enable_hysteria"] is False
     assert minimal["enable_amneziawg"] is False
+
+    assert self_steal["enable_xray_reality"] is True
+    assert self_steal["enable_reality_self_steal"] is True
+    assert self_steal["enable_nginx_xhttp"] is False
+    assert self_steal["enable_hysteria"] is False
+    assert self_steal["enable_amneziawg"] is False
 
     assert standard["enable_xray_reality"] is True
     assert standard["enable_nginx_xhttp"] is True

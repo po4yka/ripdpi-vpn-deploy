@@ -90,6 +90,12 @@ def test_p0_minimal_listener_surface_is_reality_only() -> None:
     assert contract.check({"expected": expected, "actual": actual}) == []
 
 
+def test_p0_self_steal_keeps_the_same_public_listener_surface() -> None:
+    actual = _profile_manifest("vpn-p0-self-steal.yml")
+    expected = [_expected("xray", "tcp", 443), _expected("xray-fallback", "tcp", 2053)]
+    assert contract.check({"expected": expected, "actual": actual}) == []
+
+
 def test_p1_web_listener_surface_is_normal_http_and_https() -> None:
     actual = _profile_manifest("vpn-p1-web.yml")
     expected = [_expected("public-site-http", "tcp", 80), _expected("nginx-xhttp", "tcp", 443)]

@@ -43,6 +43,7 @@ Deployment profile files make public listener surfaces explicit:
 | Profile file | Public transport surface |
 |---|---|
 | `vpn-p0-minimal.yml` | P0 REALITY only |
+| `vpn-p0-self-steal.yml` | P0 REALITY with an owned loopback TLS/H2 target; same public listener surface |
 | `vpn-p1-web.yml` | public site + P1 XHTTP on TCP/80 and TCP/443 |
 | `vpn-p2-udp.yml` | P2 Hysteria2 + AmneziaWG only |
 | `vpn-family-standard.yml` | P0 REALITY + P1 XHTTP + P2 Hysteria2 |
