@@ -9,7 +9,7 @@ driver:
 
 platforms:
   - name: vpn-prl-debian13
-    image: geerlingguy/docker-debian13-ansible@sha256:a54f094cf5f4e0ea968561745434ab906c9c9604b19c367e405fdaab5f9a4a6c
+    image: geerlingguy/docker-debian13-ansible@sha256:9b433580e02f960ea57525e0bcfe13d7cb32188f9ebc1952f21b9dfa19d8bd47
     pre_build_image: true
     privileged: true
     command: /lib/systemd/systemd
