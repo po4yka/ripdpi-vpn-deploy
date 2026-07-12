@@ -6,6 +6,8 @@ target VPS by hand for routine setup.
 
 ## 0. Prerequisites
 
+Install [mise](https://mise.jdx.dev/) first; it owns the portable developer-tool pins. Cloud-init schema validation additionally requires the Ubuntu `cloud-init` package. On macOS, run that full schema gate in an Ubuntu VM/environment or CI—never skip it or claim native parity without it.
+
 ```
 terraform >= 1.15
 ansible-core >= 2.19
@@ -18,8 +20,9 @@ A public certificate for that domain (Let's Encrypt is fine; not bundled)
 Verify in one shot:
 
 ```bash
-make check-prereqs
-make install-hooks      # one-time, installs pre-commit hooks for this repo
+make bootstrap-dev                    # pinned tools, hashed Python packages, hooks, and Rust MSRV
+mise exec -- make check-prereqs CI_PARITY=1
+mise exec -- make ci-fast             # proof of portable local CI parity
 ```
 
 ## 1. Provider credentials

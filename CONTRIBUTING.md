@@ -23,15 +23,13 @@ and tag releases.
 
 ## First-time setup
 
-After cloning, run this once to wire up the local pre-commit hooks:
+After cloning, install cloud-init first (`cloud-init` package on Ubuntu; use an Ubuntu VM/environment on macOS), then run the repository bootstrap:
 
 ```bash
-make install-hooks
+make bootstrap-dev
 ```
 
-This installs the hooks for shellcheck, secrets-coverage, templates-render,
-placeholder-scan, gitleaks, terraform fmt, and ansible-lint. Without this step
-the pre-commit checks that gate `git push` will not run locally.
+This installs the portable mise-pinned tools serially, hashed Python requirements, pre-commit hooks, and the Rust 1.88.0 MSRV toolchain, then runs the exhaustive CI-parity preflight. Cloud-init remains a manual system dependency and must be available before bootstrap; do not skip its schema gate.
 
 ## Local pre-flight
 
@@ -39,7 +37,8 @@ Before `git push`:
 
 ```bash
 make validate            # gitleaks, terraform fmt + validate, ansible-lint, syntax-check
-make install-hooks       # one-time — wires up shellcheck, secrets-coverage, templates-render
+mise exec -- make check-prereqs CI_PARITY=1
+mise exec -- make ci-fast
 pre-commit run --all-files
 ```
 

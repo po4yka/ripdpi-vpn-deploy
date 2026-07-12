@@ -72,12 +72,16 @@ docs/CDN-DECISION.md                     — ADR: CDN is not the RU baseline
 ## Development
 
 ```bash
+make bootstrap-dev       # first-time pinned tools, hooks, MSRV, parity preflight
+mise exec -- make check-prereqs CI_PARITY=1
 make ci-fast            # render + secrets coverage + snapshot + schema + syntax + pytest
 make molecule-test ROLE=<name>
 make tf-test            # terraform mock_provider tests
 cd vpnd && cargo check  # convenience CLI typecheck
 cd vpnd && cargo test   # snapshot tests for the recipient page
 ```
+
+`mise.toml` owns portable developer-tool pins; hashed `requirements.txt` owns Python packages, bootstrap owns the Rust 1.88.0 MSRV installation, and cloud-init remains a manual Ubuntu dependency (use an Ubuntu VM/environment or CI on macOS; never skip the schema gate).
 
 ## Versioning
 

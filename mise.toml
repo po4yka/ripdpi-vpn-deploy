@@ -1,7 +1,9 @@
 # mise.toml — toolchain pins for vpn-deploy
 #
-# Run `mise install` once after cloning to provision the exact versions that
-# CI uses. Update versions here whenever CI pins change; keep them in sync.
+# Portable developer tools are pinned here for reproducible local CI parity.
+# Python packages come from the hashed requirements file, the Rust MSRV is
+# installed by bootstrap-dev through rustup, and cloud-init requires a manual
+# Ubuntu package installation or an Ubuntu environment on macOS.
 #
 # Scope: language runtimes and standalone binaries only. Python packages
 # (ansible-core, ansible-lint, yamllint, etc.) are NOT mise tools — they are
@@ -15,6 +17,12 @@
 #                      .pre-commit-config.yaml (gitleaks rev)
 
 [tools]
+actionlint = "1.7.12"
+age = "1.3.1"
+bats = "1.13.0"
+jq = "1.8.2"
+shellcheck = "0.11.0"
+sops = "3.13.2"
 # hashicorp/setup-terraform@v4 with terraform_version: "1.15.2" in ci.yml
 terraform = "1.15.2"
 
@@ -27,6 +35,8 @@ python = "3.12"
 # declared crate MSRV floor, but the current lockfile includes dependencies
 # whose manifests require modern Cargo support for Rust 2024 metadata.
 rust = "1.96.0"
+
+"cargo:cargo-deny" = { version = "0.19.0", locked = true }
 
 # gitleaks rev: v8.30.1 in .pre-commit-config.yaml
 gitleaks = "8.30.1"

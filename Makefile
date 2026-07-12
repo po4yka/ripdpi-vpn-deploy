@@ -15,7 +15,7 @@ export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CON
 
 .PHONY: help init validate plan apply inventory wait decrypt dry-run deploy deploy-canary verify security-verify security-audit clean \
         pre-deploy-check \
-        rollback-xray rollback-config rotate-credentials check-prereqs \
+        rollback-xray rollback-config rotate-credentials check-prereqs bootstrap-dev \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
         molecule-test smoke-test validate-target monitor-reality-target probe-sni-survival scan-targets blue-green \
         spot-check-secrets bootstrap-secrets probe-asn probe-matrix-control probe-matrix-cell probe-matrix-tools emit-probe-matrix-profile emit-qr check-certs \
@@ -39,6 +39,7 @@ help:
 	@echo "  ENV       current: $(ENV)       (prod | staging)"
 	@echo ""
 	@echo "── DAY-1 ──────────────────────────────────────────────────────────────"
+	@echo "  bootstrap-dev              Install pinned dev tools, hooks, MSRV, then parity-check"
 	@echo "  check-prereqs              Verify required CLI tools are installed"
 	@echo "  bootstrap-secrets …        Generate full crypto + SOPS-encrypt"
 	@echo "  setup-yubikey [REENCRYPT=1]  Hardware-backed age identity on YubiKey"
@@ -137,12 +138,34 @@ help:
 	@echo "  molecule-test ROLE=<name>  Run one role's molecule scenario"
 	@echo "  molecule-full-stack        site.yml end-to-end inside a Docker container"
 
+bootstrap-dev:
+	mise install --jobs=1
+	mise exec -- $(MAKE) install-hooks
+	mise exec -- rustup toolchain install 1.88.0 --profile minimal
+	mise exec -- $(MAKE) check-prereqs CI_PARITY=1
+
 check-prereqs:
-	@for tool in terraform ansible ansible-playbook ansible-lint sops age gitleaks jq ssh python3; do \
-	  command -v $$tool >/dev/null 2>&1 || { echo "missing: $$tool"; exit 1; }; \
-	done
-	@python3 -c 'import yaml' >/dev/null 2>&1 || { echo "missing: Python module PyYAML"; exit 1; }
-	@echo "all prereqs present"
+	@missing=0; \
+	for tool in terraform ansible ansible-playbook ansible-lint sops age gitleaks jq openssl ssh python3; do \
+	  if ! command -v $$tool >/dev/null 2>&1; then echo "missing: $$tool"; missing=1; fi; \
+	done; \
+	if ! python3 -c 'import yaml' >/dev/null 2>&1; then echo "missing: Python module PyYAML"; missing=1; fi; \
+	if [ "$(CI_PARITY)" = "1" ]; then \
+	  for tool in actionlint cloud-init shellcheck bats cargo-deny cargo yamllint; do \
+	    if ! command -v $$tool >/dev/null 2>&1; then \
+	      echo "missing: $$tool"; missing=1; \
+	      if [ "$$tool" = "cloud-init" ]; then \
+	        echo "  Ubuntu: install the cloud-init package; macOS: run the full schema gate in an Ubuntu VM/environment or CI (never skip it)."; \
+	      fi; \
+	    fi; \
+	  done; \
+	  for module in jinja2 jsonschema pytest; do \
+	    if ! python3 -c "import $$module" >/dev/null 2>&1; then echo "missing: Python module $$module"; missing=1; fi; \
+	  done; \
+	  if command -v cargo >/dev/null 2>&1 && ! cargo +1.88.0 --version >/dev/null 2>&1; then echo "missing: Rust 1.88.0 toolchain (cargo +1.88.0)"; missing=1; fi; \
+	fi; \
+	if [ $$missing -ne 0 ]; then exit 1; fi; \
+	if [ "$(CI_PARITY)" = "1" ]; then echo "all CI parity prereqs present"; else echo "all base prereqs present"; fi
 
 init:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) init
