@@ -324,6 +324,7 @@ for i in "${!host_pairs[@]}"; do
       echo "enabled Hysteria2 profile has no client named '$CLIENT_NAME' in ${sops_file} → hysteria.clients" >&2
       exit 1
     fi
+    hy_auth="${CLIENT_NAME}:${hy_pw}"
     if [[ -z "$hy_host" ]]; then
       echo "enabled Hysteria2 profile is missing hysteria.server_name or nginx_xhttp.server_name in ${sops_file}" >&2
       exit 1
@@ -343,7 +344,7 @@ for i in "${!host_pairs[@]}"; do
     fi
     OUTBOUNDS="$(echo "$OUTBOUNDS" | jq \
       --arg tag "p2-hysteria2-${tag_prefix}" \
-      --arg ip "$server_ip" --arg host "$hy_host" --arg pw "$hy_pw" \
+      --arg ip "$server_ip" --arg host "$hy_host" --arg pw "$hy_auth" \
       --argjson obfs "$obfs_arg" \
       --argjson port "$hysteria_server_port" \
       --argjson hop_ports "$hop_ports_arg" \

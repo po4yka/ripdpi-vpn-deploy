@@ -157,7 +157,7 @@
         mode: "0600"
         content: |
           server: 127.0.0.1:{{ hysteria_port | default(443) }}
-          auth: "{{ hysteria.clients[0].password }}"
+          auth: "{{ hysteria.clients[0].name }}:{{ hysteria.clients[0].password }}"
           tls:
             sni: "{{ nginx_xhttp.server_name | default(xray.server_names[0]) }}"
             insecure: true
