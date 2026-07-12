@@ -82,7 +82,12 @@ fi
 # Ensure binary
 # ---------------------------------------------------------------------------
 install_reali() {
-  if [[ -x "$REALI_BIN" ]]; then return; fi
+  if [[ -x "$REALI_BIN" ]] && "$REALI_BIN" -h >/dev/null 2>&1; then
+    return
+  fi
+  if [[ -e "$REALI_BIN" ]]; then
+    echo "cached RealiTLScanner is not launchable; reinstalling ${REALI_VERSION}" >&2
+  fi
 
   local uname_s
   uname_s="$(uname -s)"
@@ -107,10 +112,29 @@ install_reali() {
       exit 1
     fi
     echo "building RealiTLScanner ${REALI_VERSION} via go install (macOS)" >&2
-    GOBIN="$TOOL_CACHE" go install "github.com/xtls/RealiTLScanner@${REALI_VERSION}"
-    mv "${TOOL_CACHE}/RealiTLScanner" "$REALI_BIN"
+    local build_dir install_tmp
+    build_dir="$(mktemp -d -t vpn-reali-install.XXXXXX)"
+    install_tmp="${REALI_BIN}.tmp.$$"
+    if ! GOBIN="$build_dir" go install "github.com/xtls/RealiTLScanner@${REALI_VERSION}"; then
+      rm -rf "$build_dir" "$install_tmp"
+      echo "failed to build RealiTLScanner ${REALI_VERSION}" >&2
+      exit 1
+    fi
+    if ! "${build_dir}/RealiTLScanner" -h >/dev/null 2>&1; then
+      rm -rf "$build_dir" "$install_tmp"
+      echo "built RealiTLScanner ${REALI_VERSION} is not launchable" >&2
+      exit 1
+    fi
+    mv "${build_dir}/RealiTLScanner" "$install_tmp"
+    chmod 0755 "$install_tmp"
+    mv "$install_tmp" "$REALI_BIN"
+    rm -rf "$build_dir"
   else
     echo "unsupported OS: $uname_s" >&2
+    exit 1
+  fi
+  if ! "$REALI_BIN" -h >/dev/null 2>&1; then
+    echo "installed RealiTLScanner ${REALI_VERSION} is not launchable" >&2
     exit 1
   fi
   echo "installed: $REALI_BIN" >&2

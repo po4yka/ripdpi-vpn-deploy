@@ -21,10 +21,17 @@ SCRIPT = REPO_ROOT / "scripts" / "scan-reality-targets.sh"
 
 def _run(args: list[str], tmp_path: Path | None = None, **kwargs) -> subprocess.CompletedProcess:
     env = os.environ.copy()
-    env["PATH"] = f"{STUBS_BIN}:{env['PATH']}"
+    path_prefix = str(STUBS_BIN)
     if tmp_path is not None:
         # Redirect TOOL_CACHE so the script never writes to the real cache.
         env["TOOL_CACHE"] = str(tmp_path / "tool-cache")
+        test_bin = tmp_path / "test-bin"
+        test_bin.mkdir()
+        uname = test_bin / "uname"
+        uname.write_text("#!/bin/sh\nprintf '%s\\n' TestOS\n")
+        uname.chmod(0o755)
+        path_prefix = f"{test_bin}:{path_prefix}"
+    env["PATH"] = f"{path_prefix}:{env['PATH']}"
     return subprocess.run(
         ["bash", str(SCRIPT)] + args,
         capture_output=True,
@@ -98,6 +105,65 @@ def test_macos_installer_uses_the_declared_lowercase_go_module_path():
 
     assert 'go install "github.com/xtls/RealiTLScanner@${REALI_VERSION}"' in script
     assert 'github.com/XTLS/RealiTLScanner@${REALI_VERSION}' not in script
+
+
+def test_macos_installer_replaces_an_unlaunchable_cached_binary(tmp_path):
+    tool_cache = tmp_path / "tool-cache"
+    tool_cache.mkdir()
+    cached = tool_cache / "RealiTLScanner-v0.2.1"
+    cached.write_text("not a Mach-O executable\n")
+    cached.chmod(0o755)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    scanner_source = tmp_path / "scanner"
+    scanner_source.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -eu\n"
+        "if [[ ${1:-} == -h ]]; then exit 0; fi\n"
+        "out=''\n"
+        "while [[ $# -gt 0 ]]; do\n"
+        "  if [[ $1 == -out ]]; then out=$2; shift 2; else shift; fi\n"
+        "done\n"
+        "printf '%s\\n' 'IP,ORIGIN,CERT_DOMAIN,CERT_ISSUER,GEO_CODE' > \"$out\"\n"
+    )
+    scanner_source.chmod(0o755)
+
+    uname = fake_bin / "uname"
+    uname.write_text("#!/usr/bin/env bash\nprintf '%s\\n' Darwin\n")
+    uname.chmod(0o755)
+    go = fake_bin / "go"
+    go.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -eu\n"
+        "printf '%s\\n' \"$*\" > \"$GO_LOG\"\n"
+        "cp \"$FAKE_SCANNER_SOURCE\" \"$GOBIN/RealiTLScanner\"\n"
+        "chmod 0755 \"$GOBIN/RealiTLScanner\"\n"
+    )
+    go.chmod(0o755)
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": f"{fake_bin}:{STUBS_BIN}:{env['PATH']}",
+            "TOOL_CACHE": str(tool_cache),
+            "FAKE_SCANNER_SOURCE": str(scanner_source),
+            "GO_LOG": str(tmp_path / "go.log"),
+        }
+    )
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "--cidr", "127.0.0.1/32"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(REPO_ROOT),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "go.log").read_text().strip() == (
+        "install github.com/xtls/RealiTLScanner@v0.2.1"
+    )
+    assert cached.read_bytes() == scanner_source.read_bytes()
 
 
 @pytest.mark.skip(

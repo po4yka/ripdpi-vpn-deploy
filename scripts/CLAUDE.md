@@ -38,6 +38,10 @@ flag exists for testing but is undocumented.
   `audit-permissions` can run repeatedly with no side effects.
 - **One script = one job** — no flag-driven multi-mode scripts. `new-client.sh`
   and `new-cohort.sh` are separate even though they share boilerplate.
+- **RealiTLScanner cache is launch-validated** — macOS builds use an isolated
+  `GOBIN`, verify `-h`, and atomically replace the pinned cache only after a
+  successful build. An executable bit alone does not prove the cached binary
+  matches the host architecture or is complete.
 
 ## Pitfalls
 
