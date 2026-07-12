@@ -31,6 +31,13 @@
 {% endif %}
 {% set _nginx_xhttp_fallback = (nginx_xhttp.fallback_enabled | default(false)) if nginx_xhttp is defined else false %}
 {% set _ = ns.listeners.append({
+  "role": "public-site-http",
+  "protocol": "tcp",
+  "port": 80,
+  "enabled": (vpn.enable_nginx_xhttp | default(true)) and not subscription_only,
+  "reason": "HTTP redirect for the public HTTPS site"
+}) %}
+{% set _ = ns.listeners.append({
   "role": "nginx-xhttp-fallback",
   "protocol": "tcp",
   "port": nginx_xhttp_fallback_port | default(2083) | int,

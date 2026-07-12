@@ -7,8 +7,7 @@
     hysteria_config_dir: /etc/hysteria
     hysteria_log_dir: /var/log/hysteria
     hysteria_port: 443
-    nginx_xhttp:
-      server_name: vpn.example.test
+    public_site_canonical_url: "https://vpn.example.test"
     hysteria:
       version: "v2.8.2"
       linux_amd64_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
@@ -22,6 +21,7 @@
         -----END PRIVATE KEY-----
       bandwidth_up: "100 mbps"
       bandwidth_down: "200 mbps"
+      masquerade_url: "https://vpn.example.test"
       salamander_enabled: false
       clients:
         - name: alice

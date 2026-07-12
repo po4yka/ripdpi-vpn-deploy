@@ -1,0 +1,4 @@
+# Copy to .fleet.mk and keep the local file untracked.
+# Values align provider environments with explicit Ansible deploy profiles.
+HOSTS = upcloud:p0-upcloud,vultr:p2-vultr,scaleway:p1-scaleway
+COHORTS = p0-minimal,p2-udp,p1-web

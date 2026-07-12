@@ -6,6 +6,8 @@ import json
 import sys
 from pathlib import Path
 
+import yaml
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "check-listener-contract.py"
@@ -67,8 +69,34 @@ def test_default_runtime_manifest_matches_default_provider_contract() -> None:
     expected = [
         _expected("xray", "tcp", 443),
         _expected("xray-fallback", "tcp", 2053),
+        _expected("public-site-http", "tcp", 80),
         _expected("nginx-xhttp", "tcp", 8443),
         _expected("hysteria", "udp", 443),
         _expected("amneziawg", "udp", 51820),
     ]
+    assert contract.check({"expected": expected, "actual": actual}) == []
+
+
+def _profile_manifest(name: str) -> list[dict]:
+    variables = renderer.merge_render_vars()
+    profile = yaml.safe_load((REPO_ROOT / "ansible" / "group_vars" / name).read_text())
+    variables.update(profile)
+    return json.loads(renderer.render_template(MANIFEST_TEMPLATE, variables))
+
+
+def test_p0_minimal_listener_surface_is_reality_only() -> None:
+    actual = _profile_manifest("vpn-p0-minimal.yml")
+    expected = [_expected("xray", "tcp", 443), _expected("xray-fallback", "tcp", 2053)]
+    assert contract.check({"expected": expected, "actual": actual}) == []
+
+
+def test_p1_web_listener_surface_is_normal_http_and_https() -> None:
+    actual = _profile_manifest("vpn-p1-web.yml")
+    expected = [_expected("public-site-http", "tcp", 80), _expected("nginx-xhttp", "tcp", 443)]
+    assert contract.check({"expected": expected, "actual": actual}) == []
+
+
+def test_p2_udp_listener_surface_has_no_public_tcp_service() -> None:
+    actual = _profile_manifest("vpn-p2-udp.yml")
+    expected = [_expected("hysteria", "udp", 443), _expected("amneziawg", "udp", 51820)]
     assert contract.check({"expected": expected, "actual": actual}) == []

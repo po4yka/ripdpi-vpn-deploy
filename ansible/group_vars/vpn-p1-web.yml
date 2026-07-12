@@ -1,0 +1,26 @@
+---
+# Profile: public web and direct XHTTP node.
+# Public listeners: HTTP redirect and nginx HTTPS/XHTTP only.
+
+vpn:
+  enable_xray_reality: false
+  enable_nginx_xhttp: true
+  enable_naive: false
+  enable_hysteria: false
+  enable_amneziawg: false
+  enable_geodata: false
+  enable_monitoring: true
+  enable_watchdog: true
+  enable_backup: true
+  enable_subscription_host: false
+  enable_policy_ratelimit: false
+  enable_cdn_front: false
+  enable_honeypot: false
+  enable_warp_outbound: false
+  enable_dns_morph_bridge: false
+  enable_hysteria_realm: false
+  enable_split_hop_egress: false
+  enable_snell: false
+
+nginx_xhttp_public_port: 443
+public_site_canonical_url: "https://chinallmodel.com"

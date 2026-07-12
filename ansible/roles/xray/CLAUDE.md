@@ -12,9 +12,7 @@ because v26.2.6 → v26.5.3 had silent flow-mode breakage on some clients.
 Binary acquisition is delegated to `xray-runtime`; this role owns only the
 primary service user, configuration, logs, and lifecycle.
 
-**Listen 127.0.0.1 when nginx fronts** — when `vpn.enable_nginx_xhttp` is on,
-the XHTTP inbound binds to 127.0.0.1 only. The Reality inbound stays on
-`0.0.0.0:443`.
+**XHTTP can run without REALITY** — the role runs when either transport is enabled. The XHTTP inbound binds only to `127.0.0.1`; when `vpn.enable_xray_reality` is false, no public REALITY inbound or REALITY target validation is emitted.
 
 ## What's done well
 

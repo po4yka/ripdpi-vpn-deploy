@@ -31,6 +31,7 @@
       Validate the target with scripts/validate-reality-target.sh and
       probe SNI survivability from a filtered vantage with
       scripts/probe-sni-survival.sh before converging a new target.
+  when: vpn.enable_xray_reality | default(true) | bool
 
 - name: Create xray system user
   ansible.builtin.user:

@@ -42,6 +42,8 @@ Deployment profile files make public listener surfaces explicit:
 | Profile file | Public transport surface |
 |---|---|
 | `vpn-p0-minimal.yml` | P0 REALITY only |
+| `vpn-p1-web.yml` | public site + P1 XHTTP on TCP/80 and TCP/443 |
+| `vpn-p2-udp.yml` | P2 Hysteria2 + AmneziaWG only |
 | `vpn-family-standard.yml` | P0 REALITY + P1 XHTTP + P2 Hysteria2 |
 | `vpn-device-full.yml` | family-standard + P2 AmneziaWG |
 | `vpn-lab.yml` | lab/pilot surface; research roles require `allow_research_roles` |
@@ -54,6 +56,7 @@ Default single-host port ownership:
 | Port | Owner | Variable |
 |---|---|---|
 | TCP/443 | P0 REALITY Xray inbound | `xray_port` |
+| TCP/80 | nginx redirect to the public HTTPS site | fixed listener contract entry |
 | TCP/8443 | P1 nginx public HTTPS listener | `nginx_xhttp_public_port` |
 | 127.0.0.1:10085 | P1 Xray XHTTP local inbound behind nginx | `nginx_xhttp_port` |
 | UDP/443 | P2 Hysteria2 | `hysteria_port` |

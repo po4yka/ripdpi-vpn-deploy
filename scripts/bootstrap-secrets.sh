@@ -280,6 +280,7 @@ hysteria:
     -----END PRIVATE KEY-----
   bandwidth_up: "100 mbps"
   bandwidth_down: "200 mbps"
+  masquerade_url: "https://${XHTTP_HOST}"
   salamander_enabled: false
   salamander_password: ""
   clients:

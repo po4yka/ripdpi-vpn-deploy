@@ -4,7 +4,7 @@
 # Checks:
 #   1. TCP/443 handshake to the server
 #   2. UDP/443 reachability (best-effort) when Hysteria is enabled
-#   3. Optional HTTPS GET /health if nginx-xhttp is enabled
+#   3. Optional HTTPS HEAD / against the public site if nginx-xhttp is enabled
 set -euo pipefail
 
 PROVIDER="${PROVIDER:-upcloud}"
@@ -35,11 +35,12 @@ if [[ "${ENABLE_HYSTERIA:-1}" == "1" ]]; then
 fi
 
 if [[ -n "${HTTP_HOST:-}" ]]; then
-  echo "== HTTPS GET https://${HTTP_HOST}/health =="
-  if curl -fsS --connect-timeout 5 --resolve "${HTTP_HOST}:443:${IP}" "https://${HTTP_HOST}/health" >/dev/null; then
+  HTTP_PORT="${HTTP_PORT:-443}"
+  echo "== HTTPS HEAD https://${HTTP_HOST}:${HTTP_PORT}/ =="
+  if curl -fsS --head --connect-timeout 5 --resolve "${HTTP_HOST}:${HTTP_PORT}:${IP}" "https://${HTTP_HOST}:${HTTP_PORT}/" >/dev/null; then
     echo "OK"
   else
-    echo "FAIL: /health did not return 200"
+    echo "FAIL: public site root did not return 200"
     exit 1
   fi
 fi

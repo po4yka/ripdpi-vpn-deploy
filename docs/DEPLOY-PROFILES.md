@@ -13,6 +13,8 @@ surfaces and fails if any RESEARCH-tier role becomes enabled.
 | Profile | Transport surface | Hardening posture | Use case |
 |---|---|---|---|
 | `vpn-p0-minimal.yml` | Xray REALITY only | default family controls | smallest P0 endpoint |
+| `vpn-p1-web.yml` | public HTTP/HTTPS site + nginx-xhttp on TCP/443 | default family controls | domain-facing P1 endpoint |
+| `vpn-p2-udp.yml` | Hysteria2 + AmneziaWG | default family controls | UDP-only fallback endpoint |
 | `vpn-family-standard.yml` | Xray REALITY + nginx-xhttp + Hysteria2 | default family controls | normal family node without AmneziaWG |
 | `vpn-device-full.yml` | family-standard + AmneziaWG | default family controls | full device-VPN family node |
 | `vpn-prod-hardened.yml` | device-full | unattended security updates, Fail2Ban, tighter SSH limits, egress observation counters | production node when the operator accepts extra host controls |
@@ -38,6 +40,8 @@ It deliberately keeps RESEARCH-tier roles disabled:
 - `split-hop-egress`
 
 ## How to use
+
+For a three-provider split, copy `.fleet.mk.example` to the ignored `.fleet.mk`. The committed example maps the P0, P2 UDP, and P1 web provider environments to their explicit cohorts, and `make inventory` loads it automatically.
 
 Render inventory with the hardened cohort:
 

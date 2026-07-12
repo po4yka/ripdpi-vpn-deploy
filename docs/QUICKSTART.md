@@ -195,7 +195,7 @@ SNI_TARGET=www.cloudflare.com ./scripts/healthcheck.sh
 
 IP=$(PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh output -raw server_ipv4)
 curl -fsS --resolve "vpn.example.com:8443:${IP}" \
-  "https://vpn.example.com:8443/health"
+  "https://vpn.example.com:8443/"
 ```
 
 Then connect with the real client and run a real-life traffic test (curl

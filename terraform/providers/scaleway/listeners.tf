@@ -2,6 +2,7 @@ locals {
   legacy_public_listeners = concat([
     { name = "xray", protocol = "tcp", port = 443, port_range = null },
     { name = "xray-fallback", protocol = "tcp", port = 2053, port_range = null },
+    { name = "public-site-http", protocol = "tcp", port = 80, port_range = null },
     { name = "nginx-xhttp", protocol = "tcp", port = var.nginx_xhttp_public_port, port_range = null },
     { name = "amneziawg", protocol = "udp", port = 51820, port_range = null },
     ], var.enable_hysteria ? [

@@ -6,12 +6,15 @@ limit_req_zone $binary_remote_addr zone=snell_evaluation:1m rate=10r/s;
 {% endif %}
 
 server {
-    listen {{ nginx_xhttp_public_port | default(8443) }} ssl http2;
-    listen [::]:{{ nginx_xhttp_public_port | default(8443) }} ssl http2;
+    listen {{ nginx_xhttp_public_port | default(8443) }} ssl;
+    listen [::]:{{ nginx_xhttp_public_port | default(8443) }} ssl;
+    http2 on;
 
     server_name {{ nginx_xhttp.server_name }};
 
     server_tokens off;
+    root /var/www/public-site;
+    index index.html;
 
     ssl_certificate     /etc/nginx/tls/{{ nginx_xhttp.server_name }}.fullchain.pem;
     ssl_certificate_key /etc/nginx/tls/{{ nginx_xhttp.server_name }}.key;
@@ -24,17 +27,6 @@ server {
     ssl_session_tickets off;
 
     add_header Strict-Transport-Security "max-age=31536000" always;
-
-{% if nginx_xhttp.health_endpoint_enabled | default(false) %}
-    # Optional healthcheck endpoint — disabled by default (DPI fingerprint risk).
-    # Enable only for internal monitoring that cannot use a separate probe path.
-    # Set nginx_xhttp.health_endpoint_enabled: true to activate.
-    # Consumers: scripts/healthcheck.sh
-    location = /health {
-        return 200 "ok\n";
-        add_header Content-Type text/plain;
-    }
-{% endif %}
 
 {% if (vpn.enable_snell | default(false)) and (snell | default({})).evaluation_enabled | default(false) %}
     location ~ ^/{{ snell_secrets.evaluation_path_token }}/([0-9]+)\.bin$ {
@@ -64,9 +56,15 @@ server {
         proxy_pass http://127.0.0.1:{{ nginx_xhttp_port | default(10085) }};
     }
 
-    # Plausible default site for unmatched paths
+    error_page 404 /404.html;
+
+    location = /404.html {
+        internal;
+    }
+
+    # Public site for ordinary browser and scanner requests.
     location / {
-        return 404;
+        try_files $uri $uri/ =404;
     }
 
     access_log /var/log/nginx/vpn-xhttp.access.log;
@@ -79,15 +77,18 @@ server {
 # XHTTP delivery survives a Cloudflare outage without touching the primary
 # listener. Shares the same Xray localhost upstream. Carries NO Cloudflare
 # real-IP-restoration / Origin-CA directives — this is the RU-baseline direct
-# path, reachable by anyone, so it must look like a benign website
-# (return 404, never 444).
+# path, reachable by anyone, so it serves the same public site and never uses
+# a silent-close response.
 server {
-    listen {{ nginx_xhttp_fallback_port | default(2083) }} ssl http2;
-    listen [::]:{{ nginx_xhttp_fallback_port | default(2083) }} ssl http2;
+    listen {{ nginx_xhttp_fallback_port | default(2083) }} ssl;
+    listen [::]:{{ nginx_xhttp_fallback_port | default(2083) }} ssl;
+    http2 on;
 
     server_name {{ nginx_fallback_name }};
 
     server_tokens off;
+    root /var/www/public-site;
+    index index.html;
 
     ssl_certificate     /etc/nginx/tls/{{ nginx_fallback_name }}.fullchain.pem;
     ssl_certificate_key /etc/nginx/tls/{{ nginx_fallback_name }}.key;
@@ -100,12 +101,6 @@ server {
     ssl_session_tickets off;
 
     add_header Strict-Transport-Security "max-age=31536000" always;
-
-    # Realistic-looking healthcheck endpoint
-    location = /health {
-        return 200 "ok\n";
-        add_header Content-Type text/plain;
-    }
 
     # XHTTP path → Xray localhost inbound (shared with the primary frontend)
     location {{ xray.xhttp_path | default('/app-sync') }}/ {
@@ -123,9 +118,15 @@ server {
         proxy_pass http://127.0.0.1:{{ nginx_xhttp_port | default(10085) }};
     }
 
-    # Plausible default site for unmatched paths
+    error_page 404 /404.html;
+
+    location = /404.html {
+        internal;
+    }
+
+    # Serve the same public identity on the alternate HTTPS listener.
     location / {
-        return 404;
+        try_files $uri $uri/ =404;
     }
 
     access_log /var/log/nginx/vpn-xhttp-fallback.access.log;

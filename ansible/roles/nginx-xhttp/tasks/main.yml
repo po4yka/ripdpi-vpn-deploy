@@ -17,6 +17,12 @@
       on TCP/443 for full-stack hosts and move nginx-xhttp to another public port,
       or disable REALITY for a direct-only cohort before using 443.
 
+- name: Pre-flight — public site hostname matches the canonical URL
+  ansible.builtin.assert:
+    that:
+      - public_site_canonical_url == 'https://' ~ nginx_xhttp.server_name
+    fail_msg: public_site_canonical_url must equal the HTTPS URL for nginx_xhttp.server_name.
+
 - name: Pre-flight — fallback frontend port must not collide with other listeners
   ansible.builtin.assert:
     that:
@@ -107,6 +113,39 @@
   ansible.builtin.file:
     path: /etc/nginx/sites-enabled/default
     state: absent
+  notify: Reload nginx
+
+- name: Publish static site content
+  ansible.builtin.copy:
+    src: public-site/
+    dest: /var/www/public-site/
+    owner: root
+    group: root
+    mode: "u=rwX,go=rX"
+  notify: Reload nginx
+
+- name: Ensure the well-known discovery directory exists
+  ansible.builtin.file:
+    path: /var/www/public-site/.well-known
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Render hostname-bound site discovery files
+  ansible.builtin.template:
+    src: "public-site/{{ item.src }}"
+    dest: "/var/www/public-site/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - src: robots.txt.j2
+      dest: robots.txt
+    - src: sitemap.xml.j2
+      dest: sitemap.xml
+    - src: security.txt.j2
+      dest: .well-known/security.txt
   notify: Reload nginx
 
 - name: Render nginx site
