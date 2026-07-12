@@ -286,7 +286,8 @@ def test_cohort_client_reference_must_exist(filled, tmp_path):
     proc = _validate_cli(doc, tmp_path)
 
     assert proc.returncode == 1
-    assert "unknown xray client: missing" in proc.stderr
+    assert "unknown xray client reference" in proc.stderr
+    assert "missing" not in proc.stderr
 
 
 def test_invalid_numeric_cidr_is_rejected_semantically(filled, tmp_path):
@@ -310,6 +311,7 @@ def test_awg_peer_public_keys_must_be_unique(filled, tmp_path):
 
     assert proc.returncode == 1
     assert "duplicate public_key" in proc.stderr
+    assert peer["public_key"] not in proc.stderr
 
 
 def test_awg_instance_cidr_is_validated_semantically(filled, tmp_path):

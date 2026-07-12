@@ -116,10 +116,7 @@ def _atomic_json(path: Path, value: dict[str, Any]) -> bytes:
             os.fsync(stream.fileno())
         os.replace(temporary, path)
     except BaseException:
-        try:
-            os.unlink(temporary)
-        except FileNotFoundError:
-            pass
+        Path(temporary).unlink(missing_ok=True)
         raise
     return payload
 
