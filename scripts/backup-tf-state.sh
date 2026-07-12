@@ -16,7 +16,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 
 case "$PROVIDER" in
-  upcloud|hetzner|vultr) ;;
+  upcloud|hetzner|vultr|scaleway) ;;
   *) echo "unsupported PROVIDER: $PROVIDER" >&2; exit 2 ;;
 esac
 

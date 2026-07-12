@@ -15,6 +15,9 @@ package terraform.policy.admin_port
 #
 #   vultr_firewall_rule — top-level resource:
 #     protocol, port, subnet/subnet_size (0 = any)
+#
+#   scaleway_instance_security_group — nested inbound_rule blocks:
+#     protocol, port, ip_range, action
 
 admin_ports := {"22", "3389"}
 
@@ -54,6 +57,23 @@ deny[msg] {
   )
 }
 
+# scaleway_instance_security_group — deny world-open TCP/22 or TCP/3389
+deny[msg] {
+  rc := input.resource_changes[_]
+  rc.type == "scaleway_instance_security_group"
+  rule := rc.change.after.inbound_rule[_]
+  rule.action == "accept"
+  rule.protocol == "TCP"
+  world_cidrs[rule.ip_range]
+  port := sprintf("%v", [rule.port])
+  admin_ports[port]
+
+  msg := sprintf(
+    "resource %q: Scaleway security-group rule allows TCP/%s from world; SSH must be restricted to allowed_ssh_cidrs",
+    [rc.address, port],
+  )
+}
+
 # hcloud_firewall — deny world-open TCP/22 or TCP/3389
 deny[msg] {
   rc := input.resource_changes[_]
@@ -88,4 +108,3 @@ deny[msg] {
     [rc.address, rc.change.after.port],
   )
 }
-

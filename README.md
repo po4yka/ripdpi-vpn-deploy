@@ -83,6 +83,7 @@ flowchart LR
 | UpCloud | primary (v1) |
 | Hetzner | implemented (v1.1) |
 | Vultr | implemented (v1.1) |
+| Scaleway | implemented (v1.2) |
 
 Switch via `make PROVIDER=upcloud …`.
 

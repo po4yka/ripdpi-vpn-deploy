@@ -43,7 +43,7 @@ impl Context {
         }
         if !tf_root.is_dir() {
             return Err(anyhow!(
-                "missing {} — unknown provider '{}' (expected upcloud | hetzner | vultr)",
+                "missing {} — unknown provider '{}' (expected upcloud | hetzner | vultr | scaleway)",
                 tf_root.display(),
                 cli.provider
             ));

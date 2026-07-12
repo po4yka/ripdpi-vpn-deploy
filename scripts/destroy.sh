@@ -25,6 +25,7 @@ case "$PROVIDER" in
   upcloud) DESTROY_RESOURCE="upcloud_server.vpn" ;;
   hetzner) DESTROY_RESOURCE="hcloud_server.vpn" ;;
   vultr) DESTROY_RESOURCE="vultr_instance.vpn" ;;
+  scaleway) DESTROY_RESOURCE="scaleway_instance_server.vpn" ;;
   *) echo "unsupported PROVIDER for destroy: $PROVIDER" >&2; exit 2 ;;
 esac
 

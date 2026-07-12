@@ -1,0 +1,26 @@
+# Copy to staging.tfvars and fill. Use a different REALITY keypair, target, and admin SSH key from prod. Do NOT commit staging.tfvars.
+# Export SCW_ACCESS_KEY, SCW_SECRET_KEY, and SCW_DEFAULT_PROJECT_ID.
+
+server_name = "vpn-staging-waw1"
+zone        = "pl-waw-1"
+server_type = "DEV1-S"
+image       = "ubuntu_noble"
+
+admin_user           = "deploy"
+admin_ssh_public_key = "ssh-ed25519 AAAA_STAGING_PUBLIC_KEY operator@laptop"
+allowed_ssh_cidrs    = ["203.0.113.42/32"]
+
+enable_hysteria = true
+public_listeners = [
+  { name = "xray", protocol = "tcp", port = 443 },
+  { name = "xray-fallback", protocol = "tcp", port = 2053 },
+  { name = "nginx-xhttp", protocol = "tcp", port = 8443 },
+  { name = "hysteria", protocol = "udp", port = 443 },
+  { name = "amneziawg", protocol = "udp", port = 51820 },
+]
+build_env = "staging"
+
+labels = {
+  project = "vpn-deploy"
+  env     = "staging"
+}

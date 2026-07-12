@@ -12,7 +12,7 @@ builds.
 Terraform requires every `module "x" { source = "…" }` to use a static
 path; you cannot pick a provider through a variable. Per-provider roots
 give you a clean drop-in: the operator runs `make PROVIDER=upcloud …` (or
-`hetzner`, `vultr`), and the Makefile `cd`s into the right directory.
+`hetzner`, `vultr`, `scaleway`), and the Makefile `cd`s into the right directory.
 
 ## Switching providers
 
@@ -20,6 +20,7 @@ give you a clean drop-in: the operator runs `make PROVIDER=upcloud …` (or
 make PROVIDER=upcloud   init plan apply
 make PROVIDER=hetzner   init plan apply
 make PROVIDER=vultr     init plan apply
+make PROVIDER=scaleway  init plan apply
 ```
 
 The Ansible layer is provider-neutral — only the inventory render script
@@ -41,6 +42,9 @@ terraform -chdir=terraform/providers/hetzner test
 
 terraform -chdir=terraform/providers/vultr init -backend=false
 terraform -chdir=terraform/providers/vultr test
+
+terraform -chdir=terraform/providers/scaleway init -backend=false
+terraform -chdir=terraform/providers/scaleway test
 ```
 
 ## State
@@ -67,3 +71,4 @@ Each provider/environment contract is tied to the Ansible cohort deployed for th
 | `upcloud` | primary (v1) | Uses `UpCloudLtd/upcloud`. Region `fi-hel1` recommended for EU baseline. |
 | `hetzner` | implemented (v1.1) | Uses `hetznercloud/hcloud`. Export `HCLOUD_TOKEN` before planning. |
 | `vultr`   | implemented (v1.1) | Uses `vultr/vultr`. Export `TF_VAR_vultr_api_key` before planning. |
+| `scaleway` | implemented (v1.2) | Uses `scaleway/scaleway`. Export `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, and `SCW_DEFAULT_PROJECT_ID` before planning. |

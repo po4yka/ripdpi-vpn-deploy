@@ -15,6 +15,9 @@ package terraform.policy.ssh_cidrs
 #
 #   vultr_firewall_rule (resource "vultr_firewall_rule" "ssh") — subnet
 #     must match one of the allowed_ssh_cidrs entries.
+#
+#   scaleway_instance_security_group — nested TCP/22 inbound_rule blocks use
+#     ip_range directly.
 
 allowed_cidrs := {cidr | cidr := input.variables.allowed_ssh_cidrs.value[_]}
 
@@ -44,6 +47,22 @@ deny[msg] {
   msg := sprintf(
     "resource %q: SSH allow rule for CIDR %q is not in var.allowed_ssh_cidrs",
     [rc.address, cidr],
+  )
+}
+
+# scaleway: each SSH inbound rule must use a documented CIDR.
+deny[msg] {
+  rc := input.resource_changes[_]
+  rc.type == "scaleway_instance_security_group"
+  rule := rc.change.after.inbound_rule[_]
+  rule.action == "accept"
+  rule.protocol == "TCP"
+  rule.port == 22
+  not allowed_cidrs[rule.ip_range]
+
+  msg := sprintf(
+    "resource %q: Scaleway SSH rule source CIDR %q is not in var.allowed_ssh_cidrs",
+    [rc.address, rule.ip_range],
   )
 }
 

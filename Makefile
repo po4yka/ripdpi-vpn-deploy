@@ -35,7 +35,7 @@ help:
 	@echo "vpn-deploy Makefile"
 	@echo ""
 	@echo "Variables (override on command line):"
-	@echo "  PROVIDER  current: $(PROVIDER)  (upcloud | hetzner | vultr)"
+	@echo "  PROVIDER  current: $(PROVIDER)  (upcloud | hetzner | vultr | scaleway)"
 	@echo "  ENV       current: $(ENV)       (prod | staging)"
 	@echo ""
 	@echo "── DAY-1 ──────────────────────────────────────────────────────────────"
@@ -148,7 +148,7 @@ init:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) init
 
 validate:
-	@for provider in upcloud hetzner vultr; do \
+	@for provider in upcloud hetzner vultr scaleway; do \
 	  terraform -chdir=terraform/providers/$$provider fmt -check -recursive; \
 	  terraform -chdir=terraform/providers/$$provider validate; \
 	done
@@ -308,7 +308,7 @@ cloud-init-schema:
 
 tf-test:
 	@command -v terraform >/dev/null 2>&1 || { echo "missing: terraform" >&2; exit 1; }
-	@for provider in upcloud hetzner vultr; do \
+	@for provider in upcloud hetzner vultr scaleway; do \
 	  echo "== terraform test: $$provider =="; \
 	  terraform -chdir=terraform/providers/$$provider init -backend=false >/dev/null && \
 	  terraform -chdir=terraform/providers/$$provider test || exit 1; \
@@ -580,7 +580,7 @@ vpnd-mutants:
 	cd vpnd && cargo mutants --no-shuffle
 
 tf-policy:
-	@for p in upcloud hetzner vultr; do \
+	@for p in upcloud hetzner vultr scaleway; do \
 	  echo "== $$p =="; \
 	  terraform -chdir=terraform/providers/$$p init -backend=false >/dev/null && \
 	  terraform -chdir=terraform/providers/$$p test; \

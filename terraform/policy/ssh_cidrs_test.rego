@@ -56,6 +56,23 @@ test_deny_upcloud_ssh_unlisted_cidr {
   count(result) == 1
 }
 
+test_deny_scaleway_ssh_unlisted_cidr {
+  result := deny with input as {
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}},
+    "resource_changes": [{
+      "address": "scaleway_instance_security_group.vpn",
+      "type": "scaleway_instance_security_group",
+      "change": {"after": {"inbound_rule": [{
+        "action": "accept",
+        "protocol": "TCP",
+        "port": 22,
+        "ip_range": "198.51.100.99/32",
+      }]}},
+    }],
+  }
+  count(result) == 1
+}
+
 # -- good input: SSH rule matching allowed CIDR should pass --
 
 test_allow_hcloud_ssh_listed_cidr {
@@ -106,6 +123,23 @@ test_allow_upcloud_ssh_listed_cidr {
         "comment": "SSH allow 203.0.113.42/32",
         "source_address_start": "203.0.113.42",
         "source_address_end": "203.0.113.42",
+      }]}},
+    }],
+  }
+  count(result) == 0
+}
+
+test_allow_scaleway_ssh_listed_cidr {
+  result := deny with input as {
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}},
+    "resource_changes": [{
+      "address": "scaleway_instance_security_group.vpn",
+      "type": "scaleway_instance_security_group",
+      "change": {"after": {"inbound_rule": [{
+        "action": "accept",
+        "protocol": "TCP",
+        "port": 22,
+        "ip_range": "203.0.113.42/32",
       }]}},
     }],
   }

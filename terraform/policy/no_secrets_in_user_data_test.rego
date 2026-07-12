@@ -35,6 +35,17 @@ test_deny_on_plaintext_api_key {
   count(result) == 1
 }
 
+test_deny_scaleway_cloud_init_map_with_plaintext_secret {
+  result := deny with input as {
+    "resource_changes": [{
+      "address": "scaleway_instance_server.vpn",
+      "type": "scaleway_instance_server",
+      "change": {"after": {"user_data": {"cloud-init": "#cloud-config\nsecret=plaintextvalue\n"}}},
+    }]
+  }
+  count(result) == 1
+}
+
 test_deny_on_plaintext_secret {
   result := deny with input as {
     "resource_changes": [{

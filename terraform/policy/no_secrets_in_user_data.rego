@@ -15,12 +15,13 @@ package terraform.policy.no_secrets_in_user_data
 # templatefile() are acceptable; only literal non-whitespace values of 6+
 # characters trigger the rule.
 #
-# Applies to: upcloud_server, hcloud_server, vultr_instance
+# Applies to: upcloud_server, hcloud_server, vultr_instance, scaleway_instance_server
 
 server_resource_types := {
   "upcloud_server",
   "hcloud_server",
   "vultr_instance",
+  "scaleway_instance_server",
 }
 
 # Regex matches literal secret assignments in plaintext.
@@ -38,6 +39,7 @@ deny[msg] {
   rc := input.resource_changes[_]
   server_resource_types[rc.type]
   user_data := rc.change.after.user_data
+  is_string(user_data)
 
   # user_data present and non-null
   user_data != null
@@ -48,5 +50,21 @@ deny[msg] {
   msg := sprintf(
     "resource %q (%s): user_data appears to contain a plaintext secret (matched pattern %q); use templatefile() placeholders or SOPS-encrypted values passed via Ansible",
     [rc.address, rc.type, secret_pattern],
+  )
+}
+
+deny[msg] {
+  rc := input.resource_changes[_]
+  server_resource_types[rc.type]
+  user_data_map := rc.change.after.user_data
+  is_object(user_data_map)
+  some key
+  user_data := user_data_map[key]
+  is_string(user_data)
+  regex.match(secret_pattern, user_data)
+
+  msg := sprintf(
+    "resource %q (%s): user_data[%q] appears to contain a plaintext secret (matched pattern %q); use templatefile() placeholders or SOPS-encrypted values passed via Ansible",
+    [rc.address, rc.type, key, secret_pattern],
   )
 }
