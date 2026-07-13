@@ -507,9 +507,9 @@ molecule==26.6.0 \
     # via
     #   -r requirements.in
     #   molecule-plugins
-molecule-plugins[docker]==25.8.12 \
-    --hash=sha256:75f32763e90275bfc24bcc0d27b9bb22ac973658bf902b2e3e8af8e2a1c32083 \
-    --hash=sha256:c5b8ceb209a5ff87326631d60408f8d08b9431b2e339dad4c620130b50279ce0
+molecule-plugins[docker]==26.7.8 \
+    --hash=sha256:57ba766f960856c6c10f63a9477fc14df78b6d0693c97c5ab1fc0bcdbf67d0a7 \
+    --hash=sha256:e805e45a4aaad2539256553ccc243568520fd130a30056cd46c8c64267279691
     # via -r requirements.in
 mypy-extensions==1.1.0 \
     --hash=sha256:1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505 \
