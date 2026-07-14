@@ -247,7 +247,10 @@ for i in "${!host_pairs[@]}"; do
   # ------------------------------------------------------------------
   # AWG block — build if AWG is enabled for this host and not yet built
   # ------------------------------------------------------------------
-  if [[ "$AWG_BLOCK" == '[]' ]]; then
+  enable_amneziawg="$(jq -r \
+    'if has("enable_amneziawg") then .enable_amneziawg else false end | tostring | ascii_downcase' \
+    <<< "$vpn_json")"
+  if [[ "$AWG_BLOCK" == '[]' && "$enable_amneziawg" == "true" ]]; then
     # Check if AWG secrets exist for this client
     peer_json="$(jq --arg name "$CLIENT_NAME" \
       '.amneziawg_secrets.peers[]? | select(.name == $name)' "$secrets_tmp")"

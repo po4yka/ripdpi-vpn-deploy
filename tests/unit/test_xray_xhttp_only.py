@@ -12,6 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 RENDERER = REPO_ROOT / "scripts" / "check-templates-render.py"
 TEMPLATE = REPO_ROOT / "ansible" / "roles" / "xray" / "templates" / "config.json.j2"
 SITE_PLAYBOOK = REPO_ROOT / "ansible" / "playbooks" / "site.yml"
+ROTATION_PLAYBOOK = REPO_ROOT / "ansible" / "playbooks" / "rotate-credentials.yml"
 
 spec = importlib.util.spec_from_file_location("xhttp_only_renderer", RENDERER)
 renderer = importlib.util.module_from_spec(spec)
@@ -35,6 +36,18 @@ def test_site_playbook_runs_xray_for_reality_or_xhttp() -> None:
     assert "enable_xray_reality" in xray_role
     assert "enable_nginx_xhttp" in xray_role
     assert ") or\n" in xray_role
+
+
+def test_rotation_playbook_updates_xhttp_only_xray() -> None:
+    playbook = ROTATION_PLAYBOOK.read_text()
+    xray_task = playbook.split("- name: Re-render Xray config", 1)[1].split(
+        "- name: Re-render Hysteria config",
+        1,
+    )[0]
+
+    assert "enable_xray_reality" in xray_task
+    assert "enable_nginx_xhttp" in xray_task
+    assert "xray_log_path: /var/log/xray" in playbook
 
 
 def test_xray_restart_chain_is_inert_in_check_mode() -> None:
