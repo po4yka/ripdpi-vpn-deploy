@@ -9,6 +9,29 @@
       - firewall_egress_policy | default('permissive') in ['permissive', 'logged', 'strict']
     fail_msg: "firewall_egress_policy must be one of: permissive, logged, strict."
 
+- name: Check whether UFW is installed
+  ansible.builtin.stat:
+    path: /usr/sbin/ufw
+  register: _firewall_ufw_binary
+
+- name: Check whether UFW is active
+  ansible.builtin.command: ufw status
+  register: _firewall_ufw_status
+  changed_when: false
+  when: _firewall_ufw_binary.stat.exists
+
+# Provider images can enable UFW before Ansible's first converge. Its
+# iptables-nft INPUT hook runs at the same priority as this role's native
+# nftables table and can therefore drop an otherwise allowed transport.
+# `ufw disable` both stops the service and removes its live rules before the
+# managed nftables ruleset is loaded.
+- name: Disable provider-image UFW firewall
+  ansible.builtin.command: ufw --force disable
+  when:
+    - _firewall_ufw_binary.stat.exists
+    - "'Status: active' in _firewall_ufw_status.stdout"
+  changed_when: true
+
 - name: Render nftables config
   ansible.builtin.template:
     src: nftables.conf.j2
