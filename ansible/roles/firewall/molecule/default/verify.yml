@@ -3,6 +3,12 @@
   hosts: all
   become: true
   tasks:
+    - name: Provider-image UFW is inactive after converge
+      ansible.builtin.command: ufw status
+      register: _firewall_verify_ufw
+      changed_when: false
+      failed_when: "'Status: inactive' not in _firewall_verify_ufw.stdout"
+
     - name: nftables.conf parses
       ansible.builtin.command:
         cmd: nft -c -f /etc/nftables.conf

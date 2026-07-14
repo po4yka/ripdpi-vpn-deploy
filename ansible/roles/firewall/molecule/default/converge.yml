@@ -20,10 +20,29 @@
       - {name: hysteria, protocol: udp, port: 443, port_range: null}
       - {name: amneziawg, protocol: udp, port: 51820, port_range: null}
   pre_tasks:
-    - name: Install nftables (baseline normally does this)
+    - name: Install nftables and provider-image UFW fixture
       ansible.builtin.apt:
-        name: nftables
+        name:
+          - nftables
+          - ufw
         state: present
         update_cache: true
+
+    - name: Check whether the provider-image UFW fixture was initialized
+      ansible.builtin.stat:
+        path: /etc/molecule-ufw-fixture-initialized
+      register: _firewall_molecule_ufw_fixture
+
+    - name: Simulate a provider image with UFW enabled on first converge
+      ansible.builtin.command: ufw --force enable
+      when: not _firewall_molecule_ufw_fixture.stat.exists
+      changed_when: true
+
+    - name: Record provider-image UFW fixture initialization
+      ansible.builtin.file:
+        path: /etc/molecule-ufw-fixture-initialized
+        state: touch
+        mode: "0600"
+      when: not _firewall_molecule_ufw_fixture.stat.exists
   roles:
     - role: firewall
