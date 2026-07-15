@@ -15,10 +15,6 @@ H2 = REPLACE_WITH_H2_INT
 H3 = REPLACE_WITH_H3_INT
 H4 = REPLACE_WITH_H4_INT
 
-# Outbound NAT for connected clients.
-PostUp   = nft add rule inet nat postrouting iifname "%i" oifname != "%i" masquerade
-PostDown = nft delete rule inet nat postrouting iifname "%i" oifname != "%i" masquerade
-
 
 [Peer]
 # phone
