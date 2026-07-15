@@ -6,6 +6,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = REPO_ROOT / "ansible" / "roles" / "firewall" / "templates" / "nftables.conf.j2"
+AWG_TEMPLATE = REPO_ROOT / "ansible" / "roles" / "amneziawg" / "templates" / "awg0.conf.j2"
 CTR = REPO_ROOT / "scripts" / "check-templates-render.py"
 
 _spec = importlib.util.spec_from_file_location("check_templates_render", CTR)
@@ -114,3 +115,14 @@ def test_awg_forwarding_is_default_drop_with_only_uplink_egress():
     assert "policy accept;" not in forward
     assert 'iifname "awg0" accept' not in forward
     assert 'oifname "awg0" accept' not in forward
+
+
+def test_firewall_exclusively_owns_awg_masquerade_rule():
+    vars_ = ctr.merge_render_vars()
+    vars_["vpn"] = {**vars_["vpn"], "enable_amneziawg": True}
+    rendered = ctr.render_template(TEMPLATE, vars_)
+
+    assert 'iifname "awg0" oifname != "awg0" masquerade' in rendered
+    awg_config = AWG_TEMPLATE.read_text()
+    assert "PostUp" not in awg_config
+    assert "PostDown" not in awg_config

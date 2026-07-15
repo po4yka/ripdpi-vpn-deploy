@@ -25,10 +25,6 @@ H2 = {{ _inst.h2 }}
 H3 = {{ _inst.h3 }}
 H4 = {{ _inst.h4 }}
 
-# Outbound NAT for connected clients.
-PostUp   = nft add rule inet nat postrouting iifname "%i" oifname != "%i" masquerade
-PostDown = nft delete rule inet nat postrouting iifname "%i" oifname != "%i" masquerade
-
 {% for peer in _inst.peers %}
 [Peer]
 # {{ peer.name }}
