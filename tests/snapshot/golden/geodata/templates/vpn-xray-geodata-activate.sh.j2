@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Activate freshly installed Xray geodata without terminating old Xray builds.
+set -euo pipefail
+
+XRAY_BIN="${XRAY_BIN:-/usr/local/bin/xray}"
+
+supports_geodata_hot_reload() {
+  local version="$1" major minor
+  IFS=. read -r major minor _ <<< "$version"
+  [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]] || return 1
+  ((major > 26 || (major == 26 && minor >= 4)))
+}
+
+if ! systemctl is-active --quiet xray.service; then
+  exit 0
+fi
+
+xray_version="$({ "$XRAY_BIN" version 2>/dev/null || true; } | awk 'NR == 1 { print $2 }')"
+xray_version="${xray_version#v}"
+
+if supports_geodata_hot_reload "$xray_version"; then
+  systemctl kill --signal=HUP xray.service
+else
+  # Xray before 26.4 treats SIGHUP as termination. An unknown version also
+  # takes the fail-safe restart path so geodata activation cannot leave it dead.
+  systemctl restart xray.service
+fi
+
+systemctl is-active --quiet xray.service

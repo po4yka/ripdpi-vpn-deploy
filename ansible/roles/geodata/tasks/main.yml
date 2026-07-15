@@ -1,7 +1,6 @@
 ---
 # Pinned geodata refresher. Hot-reloads Xray via SIGHUP on Xray v26.4.x+;
-# older versions silently no-op the reload (operators on older Xray
-# should disable this role).
+# older or unknown versions use a fail-safe service restart.
 
 - name: Pre-flight - geodata sources are pinned
   ansible.builtin.assert:
@@ -25,6 +24,14 @@
     owner: root
     group: root
     mode: "0755"
+
+- name: Drop version-aware Xray geodata activation helper
+  ansible.builtin.template:
+    src: vpn-xray-geodata-activate.sh.j2
+    dest: /usr/local/sbin/vpn-xray-geodata-activate.sh
+    owner: root
+    group: root
+    mode: "0750"
 
 - name: Download geosite.dat
   ansible.builtin.get_url:
