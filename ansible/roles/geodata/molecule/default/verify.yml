@@ -78,6 +78,18 @@
           - refresh_script.stat.executable
         fail_msg: "vpn-geodata-refresh.sh is not executable"
 
+    - name: Version-aware activation helper is present
+      ansible.builtin.stat:
+        path: /usr/local/sbin/vpn-xray-geodata-activate.sh
+      register: activation_helper
+      failed_when: not activation_helper.stat.exists
+
+    - name: Version-aware activation helper is executable
+      ansible.builtin.assert:
+        that:
+          - activation_helper.stat.executable
+        fail_msg: "vpn-xray-geodata-activate.sh is not executable"
+
     - name: Refresh systemd timer unit is installed
       ansible.builtin.stat:
         path: /etc/systemd/system/vpn-geodata-refresh.timer
