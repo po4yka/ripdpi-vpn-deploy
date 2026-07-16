@@ -1,7 +1,7 @@
 {% import "_site.html.j2" as site with context %}
 <!doctype html>
 <html lang="en">
-{{ site.head("Latency, throughput, and context · LLM Model Notes", "A practical method for measuring language-model serving latency, generation throughput, capacity, and long-context behavior.", "/notes/latency-throughput-context.html", "article") }}
+{{ site.head("Latency, throughput, and context · LLM Model Notes", "A practical method for measuring language-model serving latency, generation throughput, capacity, and long-context behavior.", "/notes/latency-throughput-context.html", "article", schema_type="Article", headline="Latency, throughput, and context", date_published="2026-07-16", date_modified="2026-07-16") }}
 <body>
   {{ site.header() }}
   <main class="article-shell">
@@ -9,7 +9,7 @@
       <p class="eyebrow">Inference</p>
       <h1>Latency, throughput, and context</h1>
       <p class="dek">A serving benchmark is a workload description plus a distribution of observations. One requests-per-second number is not enough.</p>
-      <p class="byline"><time datetime="2026-07-16">16 July 2026</time> · 9 minute read</p>
+      <p class="byline">By <a rel="author" href="/about.html">LLM Model Notes</a> · <time datetime="2026-07-16">16 July 2026</time> · 9 minute read</p>
 
       <p>Interactive language-model serving has at least two visibly different phases. The server first processes the prompt, then generates new tokens one step at a time. Hardware, batching, cache pressure, and request shape affect those phases differently. Useful measurements keep them separate and record the workload that produced them.</p>
 

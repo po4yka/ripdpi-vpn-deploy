@@ -8,7 +8,9 @@ listening on `nginx_xhttp_public_port` (default 8443), reverse-proxying the
 XHTTP path to Xray on `127.0.0.1:10085`. No `set_real_ip_from`, no
 `CF-Connecting-IP`, no Origin CA. Rationale: `docs/CDN-DECISION.md`.
 
-**Ordinary paths are a real static site** — the role publishes repository-owned content to `/var/www/public-site`, serves it on the primary and alternate HTTPS vhosts, and redirects TCP/80 to the configured HTTPS port. Identity pages are rendered from `templates/public-site/` so canonical metadata follows `public_site_canonical_url`; reusable CSS, favicon, and the host-neutral 404 remain static files. The secret XHTTP path remains a separate exact transport seam. Keep admin, metrics, status, and health endpoints off the public vhost.
+**Ordinary paths are a real static site** — the role publishes repository-owned content to `/var/www/public-site`, serves it on the primary and alternate HTTPS vhosts, and redirects TCP/80 to the configured HTTPS port. Identity pages are rendered from `templates/public-site/` so canonical metadata follows `public_site_canonical_url`; reusable CSS, favicon, search logo, and the host-neutral 404 remain static files. The secret XHTTP path remains a separate exact transport seam. Keep admin, metrics, status, and health endpoints off the public vhost.
+
+**One search identity graph** — `LLM Model Notes` is the sole public name. The home page emits `WebSite` + `Organization`; supporting pages emit `WebPage`; articles emit `Article` with the same visible author/publisher and dated metadata. Stable entity IDs, logo URLs, canonicals, Open Graph URLs, and the lowercase domain fallback all derive from `public_site_canonical_url`. Do not invent addresses, profiles, or contact details merely to fill structured-data fields.
 
 **Optional direct (non-CDN) fallback frontend** — opt-in via
 `nginx_xhttp.fallback_enabled` (off by default). When on, the role renders a

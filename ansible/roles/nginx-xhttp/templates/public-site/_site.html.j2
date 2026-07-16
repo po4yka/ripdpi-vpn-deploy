@@ -1,4 +1,72 @@
-{% macro head(title, description, path, page_type="website") -%}
+{% macro head(title, description, path, page_type="website", schema_type=none, headline=none, date_published=none, date_modified=none) -%}
+{%- set site_host = public_site_canonical_url | replace("https://", "") | replace("http://", "") | trim("/") -%}
+{%- set organization = {
+  "@type": "Organization",
+  "@id": public_site_canonical_url ~ "/#organization",
+  "name": "LLM Model Notes",
+  "alternateName": [site_host],
+  "url": public_site_canonical_url ~ "/",
+  "description": "Independent notes on practical language-model evaluation and inference behavior.",
+  "logo": {
+    "@type": "ImageObject",
+    "url": public_site_canonical_url ~ "/logo.svg",
+    "width": 512,
+    "height": 512
+  }
+} -%}
+{%- if schema_type == "WebSite" -%}
+{%- set structured_data = {
+  "@context": "https://schema.org",
+  "@graph": [
+    organization,
+    {
+      "@type": "WebSite",
+      "@id": public_site_canonical_url ~ "/#website",
+      "url": public_site_canonical_url ~ "/",
+      "name": "LLM Model Notes",
+      "alternateName": [site_host],
+      "description": "Independent notes on practical language-model evaluation and inference behavior.",
+      "inLanguage": "en",
+      "publisher": {"@id": public_site_canonical_url ~ "/#organization"}
+    }
+  ]
+} -%}
+{%- elif schema_type == "Article" -%}
+{%- set structured_data = {
+  "@context": "https://schema.org",
+  "@graph": [
+    organization,
+    {
+      "@type": "Article",
+      "@id": public_site_canonical_url ~ path ~ "#article",
+      "url": public_site_canonical_url ~ path,
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": public_site_canonical_url ~ path
+      },
+      "headline": headline,
+      "description": description,
+      "datePublished": date_published,
+      "dateModified": date_modified,
+      "inLanguage": "en",
+      "author": {"@id": public_site_canonical_url ~ "/#organization"},
+      "publisher": {"@id": public_site_canonical_url ~ "/#organization"},
+      "isPartOf": {"@id": public_site_canonical_url ~ "/#website"}
+    }
+  ]
+} -%}
+{%- else -%}
+{%- set structured_data = {
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "@id": public_site_canonical_url ~ path,
+  "url": public_site_canonical_url ~ path,
+  "name": title,
+  "description": description,
+  "inLanguage": "en",
+  "isPartOf": {"@id": public_site_canonical_url ~ "/#website"}
+} -%}
+{%- endif -%}
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,12 +75,19 @@
   <title>{{ title }}</title>
   <link rel="canonical" href="{{ public_site_canonical_url }}{{ path }}">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+{% if schema_type == "Article" %}
+  <link rel="author" href="/about.html">
+  <meta name="author" content="LLM Model Notes">
+  <meta property="article:published_time" content="{{ date_published }}">
+  <meta property="article:modified_time" content="{{ date_modified }}">
+{% endif %}
   <link rel="stylesheet" href="/assets/site.css">
   <meta property="og:site_name" content="LLM Model Notes">
   <meta property="og:title" content="{{ title }}">
   <meta property="og:description" content="{{ description }}">
   <meta property="og:type" content="{{ page_type }}">
   <meta property="og:url" content="{{ public_site_canonical_url }}{{ path }}">
+  <script type="application/ld+json">{{ structured_data | to_json }}</script>
 </head>
 {%- endmacro -%}
 

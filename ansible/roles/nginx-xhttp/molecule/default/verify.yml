@@ -82,6 +82,12 @@
           curl --silent --show-error --fail --insecure \
             --resolve vpn.example.test:8443:127.0.0.1 \
             https://vpn.example.test:8443/ | grep -q '/notes/reading-benchmark-results.html'
+          curl --silent --show-error --fail --insecure \
+            --resolve vpn.example.test:8443:127.0.0.1 \
+            https://vpn.example.test:8443/ | grep -q 'application/ld+json'
+          curl --silent --show-error --fail --insecure \
+            --resolve vpn.example.test:8443:127.0.0.1 \
+            https://vpn.example.test:8443/notes/reading-benchmark-results.html | grep -q 'article:published_time'
         executable: /bin/bash
       changed_when: false
 
@@ -119,7 +125,7 @@
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          for path in robots.txt sitemap.xml favicon.svg; do
+          for path in robots.txt sitemap.xml favicon.svg logo.svg; do
             test "$(curl --silent --insecure --output /dev/null --write-out '%{http_code}' \
               --resolve vpn.example.test:8443:127.0.0.1 \
               "https://vpn.example.test:8443/${path}")" = 200
