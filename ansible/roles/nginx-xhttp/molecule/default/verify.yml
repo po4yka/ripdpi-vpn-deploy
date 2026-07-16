@@ -125,11 +125,25 @@
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          for path in robots.txt sitemap.xml favicon.svg logo.svg; do
+          for path in feed.xml robots.txt sitemap.xml favicon.svg logo.svg; do
             test "$(curl --silent --insecure --output /dev/null --write-out '%{http_code}' \
               --resolve vpn.example.test:8443:127.0.0.1 \
               "https://vpn.example.test:8443/${path}")" = 200
           done
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Atom feed carries the declared media type and publication identity
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          headers="$(curl --silent --insecure --head \
+            --resolve vpn.example.test:8443:127.0.0.1 \
+            https://vpn.example.test:8443/feed.xml)"
+          grep -qi '^Content-Type: application/atom+xml' <<<"$headers"
+          curl --silent --show-error --fail --insecure \
+            --resolve vpn.example.test:8443:127.0.0.1 \
+            https://vpn.example.test:8443/feed.xml | grep -q '<title>LLM Model Notes updates</title>'
         executable: /bin/bash
       changed_when: false
 

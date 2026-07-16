@@ -169,6 +169,8 @@
     group: root
     mode: "0644"
   loop:
+    - src: feed.xml.j2
+      dest: feed.xml
     - src: robots.txt.j2
       dest: robots.txt
     - src: sitemap.xml.j2
