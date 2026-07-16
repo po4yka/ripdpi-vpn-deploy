@@ -227,10 +227,13 @@ direct one rather than mis-modelling a dual-role flow.
 }
 ```
 
-Sourced from `vpn.split_hop_egress` / `vpn.hysteria_realm` in `group_vars`;
-both default to the direct-deployment values (`false` / `null`). Pure egress
-roles (e.g. `warp-outbound`) are server-side only and intentionally absent —
-the client has no half to play there.
+`split_hop_egress` is sourced from `vpn.enable_split_hop_ingress`: that role
+runs on the client-facing Node A whose upstream path exits through Node B.
+`hysteria_realm` remains explicit `vpn.hysteria_realm` metadata because the
+enable toggle alone does not define a stable realm identifier. Both default to
+the direct-deployment values (`false` / `null`). Pure egress roles (e.g.
+`warp-outbound`) are server-side only and intentionally absent — the client has
+no half to play there.
 
 ## `ripdpi.expires`
 
@@ -273,6 +276,9 @@ HOSTS="upcloud:prod,hetzner:prod" make emit-bundle CLIENT=laptop
 # With explicit cohort and AWG cohort slug
 HOSTS="upcloud:p0,upcloud:p1p2" COHORTS="p0,p1p2" AWG_COHORT=narrow-junk-sequential \
   make emit-bundle CLIENT=phone
+
+# Per-app routing flags are forwarded to the canonical sing-box emitter
+scripts/emit-bundle.sh phone --per-app-via-tun com.example.private
 ```
 
 The output is written to stdout so the caller can redirect it, pipe it through a

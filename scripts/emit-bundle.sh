@@ -40,9 +40,11 @@ set -euo pipefail
 
 CLIENT_NAME="${1:-}"
 if [[ -z "$CLIENT_NAME" ]]; then
-  echo "usage: $0 <client_name>" >&2
+  echo "usage: $0 <client_name> [--per-app-bypass pkg1,pkg2…] [--per-app-via-tun pkg1,pkg2…]" >&2
   exit 1
 fi
+shift
+SINGBOX_CLI_ARGS=("$@")
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -96,7 +98,7 @@ SINGBOX_ARGS=()
 base_json_file="${WORK}/base.json"
 env "${SINGBOX_ARGS[@]}" \
   PROVIDER="${PROVIDER:-upcloud}" ENV="${ENV:-prod}" \
-  "${REPO_ROOT}/scripts/emit-singbox.sh" "$CLIENT_NAME" \
+  "${REPO_ROOT}/scripts/emit-singbox.sh" "$CLIENT_NAME" "${SINGBOX_CLI_ARGS[@]}" \
   > "$base_json_file"
 
 # ---------------------------------------------------------------------------
@@ -239,7 +241,7 @@ for i in "${!host_pairs[@]}"; do
   # ------------------------------------------------------------------
   if [[ -z "$TOPOLOGY_JSON" ]]; then
     TOPOLOGY_JSON="$(jq -c '{
-      split_hop_egress: (.split_hop_egress // false),
+      split_hop_egress: (.enable_split_hop_ingress // false),
       hysteria_realm:   (.hysteria_realm // null)
     }' <<< "$vpn_json")"
   fi

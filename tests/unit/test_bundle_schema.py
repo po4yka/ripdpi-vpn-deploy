@@ -6,12 +6,16 @@ of the same schema and the same cohort-fingerprint golden. Together they make
 the bundle contract machine-checkable on both sides instead of prose that can
 drift silently between the two repos.
 
-Threats caught:
-  1. emit-bundle.sh gains/loses a field without the schema being updated.
+Threats caught here:
+  1. The committed schema examples and negative fixtures drift from the schema.
   2. The cohort-fingerprint algorithm drifts between the emit side (bash +
      ripdpi_cohort_fingerprint.py) and the parse side (Kotlin): the paired
      golden pins the exact hash both must produce.
   3. The schema's contract version drifts from the version the client supports.
+
+The executable emitter guarantee lives in test_emit_singbox_roundtrip.py: it
+runs emit-bundle.sh through emit-singbox.sh, then validates the emitted result
+with validate-bundle.py and asserts the optional extension semantics.
 """
 from __future__ import annotations
 
