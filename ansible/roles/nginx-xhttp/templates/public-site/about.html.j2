@@ -1,0 +1,25 @@
+{% import "_site.html.j2" as site with context %}
+<!doctype html>
+<html lang="en">
+{{ site.head("About · LLM Model Notes", "About the scope, evidence standards, and maintenance policy of LLM Model Notes.", "/about.html") }}
+<body>
+  {{ site.header("about") }}
+  <main class="prose">
+    <p class="eyebrow">About</p>
+    <h1>A small independent reference</h1>
+    <p>LLM Model Notes publishes practical explanations of language-model evaluation and inference behavior. The aim is to make a modest experiment easier to inspect, repeat, and discuss without turning one result into a universal ranking.</p>
+
+    <h2>What this site covers</h2>
+    <p>The notes focus on the decisions around an evaluation: how a task is defined, which inputs and revisions are fixed, how uncertainty is reported, and which serving constraints affect the result. Examples favor methods that can be run with ordinary tools and described without access to a private benchmark platform.</p>
+    <p>The site does not attempt to catalogue every model release. It also does not treat a benchmark score, a judge-model preference, or a tokens-per-second figure as meaningful without its surrounding setup. Each guide separates observations from interpretation and names the limits of the evidence it recommends collecting.</p>
+
+    <h2>How notes are maintained</h2>
+    <p>Articles carry a publication date and are updated when their method or references change materially. Primary papers, project documentation, and versioned tools are preferred over summaries. Links are provided so readers can check the source and decide whether it applies to their own workload.</p>
+    <p>Examples are deliberately model-neutral unless a specific implementation is necessary to explain a measurement. This keeps a method useful after individual product names or hosted defaults change. The <a href="/updates.html">project log</a> records new pages and significant revisions rather than routine copy edits.</p>
+
+    <h2>Reading the notes</h2>
+    <p>Start with the question closest to the decision you need to make. The evaluation guide explains how to audit benchmark claims, the inference guide separates user-visible latency from server capacity, and the comparison guide turns a small test into an inspectable result bundle. The <a href="/methodology.html">methodology page</a> summarizes the common evidence standard used across all three.</p>
+  </main>
+  {{ site.footer() }}
+</body>
+</html>

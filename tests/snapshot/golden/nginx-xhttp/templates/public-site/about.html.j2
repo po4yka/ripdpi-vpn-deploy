@@ -1,0 +1,49 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="About the scope, evidence standards, and maintenance policy of LLM Model Notes.">
+  <meta name="color-scheme" content="light dark">
+  <title>About · LLM Model Notes</title>
+  <link rel="canonical" href="https://vpn.example.com/about.html">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/site.css">
+  <meta property="og:site_name" content="LLM Model Notes">
+  <meta property="og:title" content="About · LLM Model Notes">
+  <meta property="og:description" content="About the scope, evidence standards, and maintenance policy of LLM Model Notes.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://vpn.example.com/about.html">
+</head>
+<body>
+  <header>
+  <a class="brand" href="/">LLM Model Notes</a>
+  <nav aria-label="Primary">
+    <a aria-current="page" href="/about.html">About</a>
+    <a href="/methodology.html">Methodology</a>
+    <a href="/updates.html">Updates</a>
+  </nav>
+</header>
+  <main class="prose">
+    <p class="eyebrow">About</p>
+    <h1>A small independent reference</h1>
+    <p>LLM Model Notes publishes practical explanations of language-model evaluation and inference behavior. The aim is to make a modest experiment easier to inspect, repeat, and discuss without turning one result into a universal ranking.</p>
+
+    <h2>What this site covers</h2>
+    <p>The notes focus on the decisions around an evaluation: how a task is defined, which inputs and revisions are fixed, how uncertainty is reported, and which serving constraints affect the result. Examples favor methods that can be run with ordinary tools and described without access to a private benchmark platform.</p>
+    <p>The site does not attempt to catalogue every model release. It also does not treat a benchmark score, a judge-model preference, or a tokens-per-second figure as meaningful without its surrounding setup. Each guide separates observations from interpretation and names the limits of the evidence it recommends collecting.</p>
+
+    <h2>How notes are maintained</h2>
+    <p>Articles carry a publication date and are updated when their method or references change materially. Primary papers, project documentation, and versioned tools are preferred over summaries. Links are provided so readers can check the source and decide whether it applies to their own workload.</p>
+    <p>Examples are deliberately model-neutral unless a specific implementation is necessary to explain a measurement. This keeps a method useful after individual product names or hosted defaults change. The <a href="/updates.html">project log</a> records new pages and significant revisions rather than routine copy edits.</p>
+
+    <h2>Reading the notes</h2>
+    <p>Start with the question closest to the decision you need to make. The evaluation guide explains how to audit benchmark claims, the inference guide separates user-visible latency from server capacity, and the comparison guide turns a small test into an inspectable result bundle. The <a href="/methodology.html">methodology page</a> summarizes the common evidence standard used across all three.</p>
+  </main>
+  <footer>
+  <span>LLM Model Notes</span>
+  <span>Independent notes on practical evaluation</span>
+</footer>
+</body>
+</html>

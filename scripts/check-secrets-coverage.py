@@ -67,28 +67,58 @@ EXPECTED_SECRET_TOPLEVEL = {
 JINJA_VAR = re.compile(r"\{\{\s*([^}]+?)\s*\}\}")
 JINJA_FOR = re.compile(r"\{%-?\s*for\s+(\w+)(?:\s*,\s*(\w+))?\s+in\s+", re.MULTILINE)
 JINJA_SET = re.compile(r"\{%-?\s*set\s+(\w+)\s*=", re.MULTILINE)
+JINJA_MACRO_BLOCK = re.compile(
+    r"\{%-?\s*macro\s+\w+\s*\((.*?)\)\s*-?%\}(.*?)"
+    r"\{%-?\s*endmacro\s*-?%\}",
+    re.DOTALL,
+)
+JINJA_IMPORT = re.compile(
+    r"\{%-?\s*import\s+.+?\s+as\s+(\w+)(?:\s+with(?:out)?\s+context)?\s*-?%\}",
+    re.DOTALL,
+)
 
 
-def extract_toplevel_vars(template_text: str) -> set[str]:
-    """Return the set of top-level identifiers referenced in {{ }} expressions,
-    minus any names introduced by `{% for X in ... %}` or `{% set X = ... %}`.
-    Always-available Jinja2 builtins (loop, none, true/false) are also excluded.
-    """
+def _extract_output_vars(scope_text: str, extra_locals: set[str]) -> set[str]:
     locals_ = {"loop", "none", "true", "false", "True", "False", "None"}
-    for m in JINJA_FOR.finditer(template_text):
-        locals_.add(m.group(1))
-        if m.group(2):
-            locals_.add(m.group(2))
-    for m in JINJA_SET.finditer(template_text):
-        locals_.add(m.group(1))
+    locals_.update(extra_locals)
+    for match in JINJA_FOR.finditer(scope_text):
+        locals_.add(match.group(1))
+        if match.group(2):
+            locals_.add(match.group(2))
+    for match in JINJA_SET.finditer(scope_text):
+        locals_.add(match.group(1))
+    for match in JINJA_IMPORT.finditer(scope_text):
+        locals_.add(match.group(1))
 
     found = set()
-    for match in JINJA_VAR.finditer(template_text):
+    for match in JINJA_VAR.finditer(scope_text):
         expr = match.group(1)
         token = re.split(r"[\s.\[|]", expr, maxsplit=1)[0].strip()
         if token and token.replace("_", "").isalnum():
             found.add(token)
     return found - locals_
+
+
+def extract_toplevel_vars(template_text: str) -> set[str]:
+    """Return context-supplied identifiers referenced in output expressions.
+
+    Macro arguments are local only inside that macro's body. Imports remain
+    template-local and are also visible to macros declared in the same file.
+    """
+    imported = {match.group(1) for match in JINJA_IMPORT.finditer(template_text)}
+    macro_blocks = list(JINJA_MACRO_BLOCK.finditer(template_text))
+    without_macros = JINJA_MACRO_BLOCK.sub("", template_text)
+    found = _extract_output_vars(without_macros, imported)
+
+    for macro in macro_blocks:
+        arguments = {
+            argument.split("=", maxsplit=1)[0].strip()
+            for argument in macro.group(1).split(",")
+            if argument.strip()
+        }
+        found.update(_extract_output_vars(macro.group(2), imported | arguments))
+
+    return found
 
 
 def main() -> int:

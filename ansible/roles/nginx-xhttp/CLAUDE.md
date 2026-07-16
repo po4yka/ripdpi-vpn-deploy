@@ -8,7 +8,7 @@ listening on `nginx_xhttp_public_port` (default 8443), reverse-proxying the
 XHTTP path to Xray on `127.0.0.1:10085`. No `set_real_ip_from`, no
 `CF-Connecting-IP`, no Origin CA. Rationale: `docs/CDN-DECISION.md`.
 
-**Ordinary paths are a real static site** — the role publishes repository-owned content to `/var/www/public-site`, serves it on the primary and alternate HTTPS vhosts, and redirects TCP/80 to the configured HTTPS port. The secret XHTTP path remains a separate exact transport seam. Keep admin, metrics, status, and health endpoints off the public vhost.
+**Ordinary paths are a real static site** — the role publishes repository-owned content to `/var/www/public-site`, serves it on the primary and alternate HTTPS vhosts, and redirects TCP/80 to the configured HTTPS port. Identity pages are rendered from `templates/public-site/` so canonical metadata follows `public_site_canonical_url`; reusable CSS, favicon, and the host-neutral 404 remain static files. The secret XHTTP path remains a separate exact transport seam. Keep admin, metrics, status, and health endpoints off the public vhost.
 
 **Optional direct (non-CDN) fallback frontend** — opt-in via
 `nginx_xhttp.fallback_enabled` (off by default). When on, the role renders a
@@ -31,9 +31,9 @@ flag (no CF origin-firewall set). Pitfalls below apply unchanged to this
 block: HTTP/2 must be enabled on each TLS listener, the port must stay off 443 when REALITY owns
 443, and `return 444` is forbidden.
 
-**No `add_header` in child locations** — nginx suppresses parent headers when
-any child block has `add_header`. We declare HSTS/CSP/etc. via a `map`
-directive at the http{} level.
+**No `add_header` in child locations** — nginx suppresses inherited headers
+when a child block declares any `add_header`. Keep the complete HSTS/CSP/
+Permissions/Referrer/nosniff set at server scope in both public vhosts.
 
 **Server-side timing isolation** — XHTTP location has a separate
 `proxy_read_timeout` and `proxy_send_timeout`; the public root vhost uses
@@ -47,7 +47,7 @@ defaults. Don't mix these — XHTTP needs long-lived streams.
   this vhost. The only non-XHTTP public path is the opt-in, secret-token Snell
   evaluation fixture location; it disables access logging and compression and
   remains rate-limited.
-- **Coherent HTTP identity** — root, discovery files, favicon, and error pages are static and versioned; TCP/80 is part of the same Terraform-to-Ansible listener contract as HTTPS.
+- **Coherent HTTP identity** — canonical pages, discovery files, favicon, and error behavior are repository-owned and versioned; TCP/80 is part of the same Terraform-to-Ansible listener contract as HTTPS.
 - **Profile-aware port choice** — REALITY-disabled cohorts can set
   `nginx_xhttp_public_port: 443`. Full-stack hosts must keep it off 443
   (Xray's REALITY inbound owns 443).
@@ -67,7 +67,8 @@ defaults. Don't mix these — XHTTP needs long-lived streams.
 - **SNI ALPN ordering matters for camouflage** — keep `ssl_protocols TLSv1.3`
   + `ssl_ecdh_curve X25519`; weakening these makes the profile fingerprintable.
 - **Don't add a `return 444`** — silent close after handshake is rated 9/10
-  suspicious by RU active-probing assessments. Use 403/404 with nginx's
-  default body (custom bodies are content-hashable).
+  suspicious by RU active-probing assessments. Return an ordinary branded
+  404 for this one site identity; never reuse its exact assets and 404 body
+  across unrelated domains because content hashes make a fleet clusterable.
 - **The CDN-front role is not a default** — if you find yourself touching
   `cdn-front`, re-read the ADR; the RU baseline is direct.

@@ -1,0 +1,71 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="The shared evidence standard used by LLM Model Notes for repeatable model evaluation and inference measurements.">
+  <meta name="color-scheme" content="light dark">
+  <title>Methodology · LLM Model Notes</title>
+  <link rel="canonical" href="https://vpn.example.com/methodology.html">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/site.css">
+  <meta property="og:site_name" content="LLM Model Notes">
+  <meta property="og:title" content="Methodology · LLM Model Notes">
+  <meta property="og:description" content="The shared evidence standard used by LLM Model Notes for repeatable model evaluation and inference measurements.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://vpn.example.com/methodology.html">
+</head>
+<body>
+  <header>
+  <a class="brand" href="/">LLM Model Notes</a>
+  <nav aria-label="Primary">
+    <a href="/about.html">About</a>
+    <a aria-current="page" href="/methodology.html">Methodology</a>
+    <a href="/updates.html">Updates</a>
+  </nav>
+</header>
+  <main class="prose">
+    <p class="eyebrow">Methodology</p>
+    <h1>Prefer repeatable observations</h1>
+    <p>Every note begins with a defined question, fixed inputs, recorded model and runtime settings, and evidence another person can inspect. Results distinguish measured behavior from interpretation and state the conditions under which the conclusion may stop applying.</p>
+
+    <h2>Define the question</h2>
+    <p>A measurement should support a specific decision. Before choosing tasks or metrics, write down the intended use, the important failure modes, and the acceptance criteria. This prevents a convenient benchmark from replacing the capability that actually matters.</p>
+    <p>Task coverage is selected from the target workload rather than from a desire to produce one broad rank. A small representative set with documented gaps is preferred to a larger collection whose relationship to the decision is unclear.</p>
+
+    <h2>Record every moving part</h2>
+    <p>The run record includes model and runtime revisions, prompt messages, chat template, few-shot examples, generation parameters, context and output limits, tool definitions, dataset revision, scorer revision, hardware, and numerical precision. Hosted services are dated when an immutable revision is unavailable.</p>
+    <p>Inputs receive stable identifiers. Randomness is controlled with a declared seed policy, and repeated generations are retained rather than selecting a convenient run. Cache state, warm-up, concurrency, and request-length distributions are part of inference measurements.</p>
+
+    <h2>Use direct measurements</h2>
+    <p>Quality is recorded per case before it is summarized. Latency is separated into first-token, inter-token, and end-to-end observations. Server capacity is measured under a stated service objective, with failed and cancelled requests included in the accounting.</p>
+    <p>When a human or model judge is needed, the rubric is published and candidate identity is hidden where practical. Disagreement and unscorable cases remain visible. A precise-looking number is not substituted for uncertain evidence.</p>
+
+    <h2>Retain raw observations</h2>
+    <p>Raw responses, parsed outputs, scores, timestamps, and environment metadata are saved before aggregation. Reports are generated from those artifacts so a corrected parser or summary can be applied without rerunning inference.</p>
+    <p>Each result bundle is immutable and identifies its inputs. A later run creates a new bundle and states what changed. Public notes link to primary papers or versioned project documentation so claims can be checked against their source.</p>
+
+    <h2>Report uncertainty and trade-offs</h2>
+    <p>Counts, sample sizes, per-task outcomes, and an uncertainty estimate accompany aggregate scores. Comparisons use paired cases where possible. Quality, latency, cost, memory, and operational constraints are reported together when a decision trades one for another.</p>
+    <p>Conclusions use language no broader than the experiment. “Higher on this task under this setup” is preferred to a universal claim about model quality.</p>
+
+    <h2>State limits</h2>
+    <p>Every note identifies known omissions: unavailable revisions, possible training overlap, synthetic workloads, untested languages, judge limitations, or hardware-specific behavior. Missing evidence is not converted into a positive result.</p>
+    <p>These rules do not guarantee that an experiment is correct. They make its assumptions visible enough for another reader to reproduce the run, recompute the summary, or explain why the evidence does not transfer to a different use.</p>
+
+    <h2>Minimum run record</h2>
+    <ul class="checklist">
+      <li>Decision, intended use, failure modes, and acceptance criteria.</li>
+      <li>Immutable input, model, runtime, prompt, and scorer revisions.</li>
+      <li>Per-case observations plus failures, exclusions, and uncertainty.</li>
+      <li>Hardware, numerical precision, cache state, and load shape.</li>
+      <li>Generated summary, primary references, and explicit limitations.</li>
+    </ul>
+  </main>
+  <footer>
+  <span>LLM Model Notes</span>
+  <span>Independent notes on practical evaluation</span>
+</footer>
+</body>
+</html>

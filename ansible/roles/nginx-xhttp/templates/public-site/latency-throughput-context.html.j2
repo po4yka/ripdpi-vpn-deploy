@@ -1,0 +1,73 @@
+{% import "_site.html.j2" as site with context %}
+<!doctype html>
+<html lang="en">
+{{ site.head("Latency, throughput, and context · LLM Model Notes", "A practical method for measuring language-model serving latency, generation throughput, capacity, and long-context behavior.", "/notes/latency-throughput-context.html", "article") }}
+<body>
+  {{ site.header() }}
+  <main class="article-shell">
+    <article class="note">
+      <p class="eyebrow">Inference</p>
+      <h1>Latency, throughput, and context</h1>
+      <p class="dek">A serving benchmark is a workload description plus a distribution of observations. One requests-per-second number is not enough.</p>
+      <p class="byline"><time datetime="2026-07-16">16 July 2026</time> · 9 minute read</p>
+
+      <p>Interactive language-model serving has at least two visibly different phases. The server first processes the prompt, then generates new tokens one step at a time. Hardware, batching, cache pressure, and request shape affect those phases differently. Useful measurements keep them separate and record the workload that produced them.</p>
+
+      <h2>Separate latency from throughput</h2>
+      <p><strong>Time to first token</strong> measures the delay from sending a complete request until the first generated token arrives. It includes queueing, prompt processing, and the first decoding step. <strong>Inter-token latency</strong> measures the spacing between later tokens. Its inverse is often reported as output tokens per second for one request.</p>
+      <p><strong>End-to-end latency</strong> covers the complete response. It depends strongly on output length, so it should never be compared without a length distribution. <strong>Throughput</strong> measures completed requests or processed tokens across the whole server. A system can increase aggregate throughput through batching while making individual requests wait longer. Neither metric replaces the other.</p>
+
+      <table>
+        <caption>Four measurements answer four different questions</caption>
+        <thead><tr><th scope="col">Measurement</th><th scope="col">Question</th><th scope="col">Report</th></tr></thead>
+        <tbody>
+          <tr><td>Time to first token</td><td>How long before the response begins?</td><td>Median, p95, and p99 milliseconds</td></tr>
+          <tr><td>Inter-token latency</td><td>How smooth is generation after it starts?</td><td>Median and tail milliseconds per token</td></tr>
+          <tr><td>End-to-end latency</td><td>When is the requested output complete?</td><td>Distribution grouped by output length</td></tr>
+          <tr><td>Server throughput</td><td>How much useful work fits in the capacity envelope?</td><td>Input and output tokens per second</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Record the workload envelope</h2>
+      <p>A result is meaningful only inside its workload envelope. Record the prompt-length and output-length distributions, arrival pattern, concurrency, model revision, numerical precision, parallelism strategy, runtime revision, accelerator type, memory capacity, and power limits. State whether prefixes repeat and whether prefix caching is enabled.</p>
+      <p>Use request traces that resemble the intended application. A fixed 128-token prompt says little about document analysis with 20,000-token inputs. Uniform arrivals can hide queue behavior that appears under bursts. If production data cannot be shared, publish a synthetic generator and its seed so the shape remains reproducible.</p>
+      <aside class="callout"><strong>Important:</strong> maximum context length is a compatibility limit, not a performance result. Measure representative points across the range and record quality separately.</aside>
+
+      <h2>Control warm-up and cache state</h2>
+      <p>Cold model loading, kernel compilation, memory allocation, and cache population can dominate the first requests. Decide whether the benchmark represents cold start or steady service and label it accordingly. For a steady-state run, warm the server using the same request shape, then begin measurement only after resource use and latency stabilize.</p>
+      <p>Cache policy can create large differences. Reused prefixes reduce prompt work; response caches can avoid generation entirely. Both may be legitimate product features, but a comparison must give every system the same opportunity and disclose hit rates. Flush caches only when the workload contract calls for cold behavior.</p>
+
+      <h2>Measure a steady run</h2>
+      <p>Begin below saturation and increase offered load in steps. At each step, hold the workload long enough to observe queue growth, cache turnover, and thermal behavior. Capture completed requests, rejected requests, queue delay, input tokens, output tokens, latency percentiles, memory use, and accelerator utilization.</p>
+      <p>The useful capacity boundary is usually the highest load that still meets an explicit service objective, such as a p95 first-token limit and a minimum generation rate. Reporting only the highest throughput can reward a configuration whose queue has already made interaction unusable.</p>
+      <p>Keep failed and cancelled requests in the accounting. Removing them makes an overloaded server appear faster. If clients abandon slow responses, report both server completion latency and user-observed cancellation.</p>
+
+      <h2>Treat long context as a separate experiment</h2>
+      <p>Longer prompts increase prompt-processing work and key-value cache memory. They can reduce available batch size and move the server into a different capacity regime. Test several fixed prompt-length bands rather than mixing them into one average, and report whether requests were truncated or shifted to another backend.</p>
+      <p>Performance is not the only concern. A model may accept a long sequence while failing to use information located in the middle. Pair serving measurements with a task that checks retrieval or reasoning across the same context lengths. Otherwise a fast number may describe tokens the model does not use reliably.</p>
+
+      <h2>Report quality and cost together</h2>
+      <p>Quantization, speculative decoding, reduced precision, and smaller models can change both speed and output behavior. Validate quality under the exact serving configuration, not only with an unoptimized checkpoint. State acceptance criteria before tuning so speed work does not silently trade away the capability being served.</p>
+      <p>For cost, report the denominator: per completed request, per one million input tokens, per one million output tokens, or per hour at the declared service objective. Include idle capacity if the deployment must reserve it. This turns a benchmark into a decision record instead of a hardware demonstration.</p>
+
+      <h2>A compact run record</h2>
+      <ol class="checklist">
+        <li>Pin model, runtime, numerical precision, hardware, and parallelism revisions.</li>
+        <li>Publish prompt lengths, output lengths, arrival pattern, and concurrency.</li>
+        <li>Separate first-token, inter-token, end-to-end, and aggregate measurements.</li>
+        <li>Label warm-up, cache policy, prefix reuse, failures, and cancellations.</li>
+        <li>Find capacity under a declared latency objective rather than at any cost.</li>
+        <li>Recheck task quality using the exact optimized serving configuration.</li>
+      </ol>
+
+      <h2>Primary references</h2>
+      <ul class="references">
+        <li><a href="https://arxiv.org/abs/2309.06180">Efficient Memory Management for Large Language Model Serving with PagedAttention</a> — memory layout and serving throughput trade-offs.</li>
+        <li><a href="https://github.com/mlcommons/inference">MLPerf Inference</a> — load-generation scenarios, latency constraints, and reproducible result rules.</li>
+        <li><a href="https://github.com/vllm-project/vllm">vLLM</a> — an open serving runtime whose versioned configuration can be captured with a benchmark.</li>
+      </ul>
+    </article>
+  </main>
+  {{ site.footer() }}
+</body>
+</html>

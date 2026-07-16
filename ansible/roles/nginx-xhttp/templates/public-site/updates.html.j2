@@ -1,0 +1,27 @@
+{% import "_site.html.j2" as site with context %}
+<!doctype html>
+<html lang="en">
+{{ site.head("Updates · LLM Model Notes", "A dated log of new and materially revised pages on LLM Model Notes.", "/updates.html") }}
+<body>
+  {{ site.header("updates") }}
+  <main class="prose">
+    <p class="eyebrow">Updates</p>
+    <h1>Project log</h1>
+    <p>New pages and substantive revisions are recorded here. Minor copy and styling corrections are not listed.</p>
+
+    <div class="update-list">
+      <article>
+        <p class="meta"><time datetime="2026-07-16">16 July 2026</time></p>
+        <h2>Practical evaluation guides</h2>
+        <p>Added three connected guides: <a href="/notes/reading-benchmark-results.html">reading benchmark results carefully</a>, <a href="/notes/latency-throughput-context.html">measuring latency, throughput, and context</a>, and <a href="/notes/repeatable-model-comparisons.html">building repeatable model comparisons</a>. Expanded the site scope and shared methodology.</p>
+      </article>
+      <article>
+        <p class="meta"><time datetime="2026-07-12">12 July 2026</time></p>
+        <h2>Initial reference pages</h2>
+        <p>Published the project overview, comparison methodology, and introductory notes on benchmark interpretation and inference trade-offs.</p>
+      </article>
+    </div>
+  </main>
+  {{ site.footer() }}
+</body>
+</html>

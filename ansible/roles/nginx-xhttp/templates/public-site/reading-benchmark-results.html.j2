@@ -1,0 +1,69 @@
+{% import "_site.html.j2" as site with context %}
+<!doctype html>
+<html lang="en">
+{{ site.head("Reading benchmark results carefully · LLM Model Notes", "A practical method for reviewing language-model benchmark results without over-reading a single aggregate score.", "/notes/reading-benchmark-results.html", "article") }}
+<body>
+  {{ site.header() }}
+  <main class="article-shell">
+    <article class="note">
+      <p class="eyebrow">Evaluation</p>
+      <h1>Reading benchmark results carefully</h1>
+      <p class="dek">A benchmark score is the output of a complete evaluation setup, not a permanent property of a model. Review the setup before comparing the number.</p>
+      <p class="byline"><time datetime="2026-07-16">16 July 2026</time> · 9 minute read</p>
+
+      <p>Model comparisons often compress thousands of prompts into one number. That number can be useful, but it hides the decisions that produced it: which revision was loaded, how prompts were formatted, whether examples were sampled, how answers were extracted, and which failures were excluded. A careful review reconstructs those decisions before it asks which model is ahead.</p>
+
+      <h2>Start with the evaluation contract</h2>
+      <p>Write the comparison as a small contract. Name the task and dataset revision, the exact model and runtime revision, the prompt template, generation settings, scoring rule, and execution environment. If one of those fields is missing, the result may still be interesting, but it is not yet reproducible.</p>
+      <p>The contract should also state what the test is intended to measure. Multiple-choice accuracy can test selection among supplied options; it does not automatically measure whether a model can produce a correct answer unaided. A judge-model score may capture preferences expressed in its rubric; it does not become an objective measure merely because it is numeric.</p>
+
+      <table>
+        <caption>Minimum record for a reviewable run</caption>
+        <thead><tr><th scope="col">Field</th><th scope="col">Why it changes the result</th></tr></thead>
+        <tbody>
+          <tr><td>Model revision</td><td>Weights and chat templates can change behind a stable product name.</td></tr>
+          <tr><td>Prompt format</td><td>System text, separators, and answer instructions affect task interpretation.</td></tr>
+          <tr><td>Decoding</td><td>Temperature, sampling, and token limits alter both accuracy and variance.</td></tr>
+          <tr><td>Scoring</td><td>Normalization and answer extraction decide which outputs count as correct.</td></tr>
+          <tr><td>Runtime</td><td>Quantization and backend versions can change numerics and supported context.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Read the score as a distribution</h2>
+      <p>An aggregate score is an estimate from a finite collection of examples. Small differences can reverse when the sample, prompt wording, or random seed changes. Prefer reports that include per-task results, the number of evaluated items, and uncertainty such as a confidence interval or bootstrap distribution.</p>
+      <p>For a quick review, compare the reported gap with ordinary run-to-run variation. If two models differ by less than that variation, describe them as unresolved under this setup. Do not turn a narrow numeric lead into a general ranking. When practical, repeat stochastic generations and record the median together with a spread measure rather than selecting the best run.</p>
+      <aside class="callout"><strong>Useful wording:</strong> “Model A scored higher on this task under this prompt and runtime.” This is more accurate than “Model A is better.”</aside>
+
+      <h2>Inspect the aggregate before trusting it</h2>
+      <p>A mean can hide opposing changes. One model may improve on short factual questions while regressing on multi-step instructions. Break the result down by task family, language, answer length, and any slice that matters to the intended use. Also inspect failure examples: a score cannot reveal whether errors are harmless formatting misses, systematic misconceptions, or unsafe behavior.</p>
+      <p>Weighting deserves attention. A macro average gives each task equal influence; a micro average gives larger tasks more influence. Neither is universally correct. The report should say which was used and retain the component scores so another reader can recompute an alternative summary.</p>
+
+      <h2>Check contamination and prompt sensitivity</h2>
+      <p>Public benchmarks may appear in training data, documentation, or derived datasets. Exact overlap is not the only concern: memorized solutions and benchmark-specific prompting can also inflate results. Look for overlap checks, held-out or newly written items, and a clear statement of what could not be ruled out.</p>
+      <p>Prompt sensitivity is easier to test directly. Run a small set of defensible prompt variants: for example, change answer-label order, remove incidental prose, or compare zero-shot and few-shot formats. The goal is not to search for the highest score. It is to learn whether the conclusion survives reasonable presentation changes.</p>
+
+      <h2>Compare like with like</h2>
+      <p>Keep tool access, retrieval, reasoning traces, context limits, and sampling budgets aligned. If one system uses retrieval or several sampled answers, report that as a system comparison rather than attributing the outcome only to the underlying model. Cost and latency belong beside quality when the systems consume different resources.</p>
+      <p>Version every input that can drift. Dataset aliases, hosted model names, and API defaults are convenient but insufficient records. Save immutable revisions where possible and record the date for services that cannot be pinned.</p>
+
+      <h2>A compact review checklist</h2>
+      <ol class="checklist">
+        <li>Can another person identify the exact model, dataset, prompt, runtime, and scoring rule?</li>
+        <li>Does the task actually represent the capability claimed in the conclusion?</li>
+        <li>Are sample size, per-task results, and uncertainty visible?</li>
+        <li>Were contamination and reasonable prompt variants considered?</li>
+        <li>Were tools, retrieval, token budgets, and generation settings comparable?</li>
+        <li>Do inspected failures support the interpretation of the aggregate score?</li>
+      </ol>
+
+      <h2>Primary references</h2>
+      <ul class="references">
+        <li><a href="https://arxiv.org/abs/2211.09110">Holistic Evaluation of Language Models (HELM)</a> — scenarios, metrics, and transparent reporting.</li>
+        <li><a href="https://arxiv.org/abs/2206.04615">Beyond the Imitation Game (BIG-bench)</a> — diverse tasks and limits of aggregate capability claims.</li>
+        <li><a href="https://github.com/EleutherAI/lm-evaluation-harness/">Language Model Evaluation Harness</a> — versioned task configurations and reproducible execution tooling.</li>
+      </ul>
+    </article>
+  </main>
+  {{ site.footer() }}
+</body>
+</html>
