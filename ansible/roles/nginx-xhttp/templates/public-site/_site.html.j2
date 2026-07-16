@@ -1,0 +1,35 @@
+{% macro head(title, description, path, page_type="website") -%}
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{{ description }}">
+  <meta name="color-scheme" content="light dark">
+  <title>{{ title }}</title>
+  <link rel="canonical" href="{{ public_site_canonical_url }}{{ path }}">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/site.css">
+  <meta property="og:site_name" content="LLM Model Notes">
+  <meta property="og:title" content="{{ title }}">
+  <meta property="og:description" content="{{ description }}">
+  <meta property="og:type" content="{{ page_type }}">
+  <meta property="og:url" content="{{ public_site_canonical_url }}{{ path }}">
+</head>
+{%- endmacro -%}
+
+{% macro header(current="") -%}
+<header>
+  <a class="brand" href="/">LLM Model Notes</a>
+  <nav aria-label="Primary">
+    <a{% if current == "about" %} aria-current="page"{% endif %} href="/about.html">About</a>
+    <a{% if current == "methodology" %} aria-current="page"{% endif %} href="/methodology.html">Methodology</a>
+    <a{% if current == "updates" %} aria-current="page"{% endif %} href="/updates.html">Updates</a>
+  </nav>
+</header>
+{%- endmacro -%}
+
+{% macro footer() -%}
+<footer>
+  <span>LLM Model Notes</span>
+  <span>Independent notes on practical evaluation</span>
+</footer>
+{%- endmacro -%}

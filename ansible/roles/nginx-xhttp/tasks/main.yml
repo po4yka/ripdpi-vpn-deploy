@@ -124,13 +124,42 @@
     mode: "u=rwX,go=rX"
   notify: Reload nginx
 
-- name: Ensure the well-known discovery directory exists
+- name: Ensure the public notes directory exists
   ansible.builtin.file:
-    path: /var/www/public-site/.well-known
+    path: /var/www/public-site/notes
     state: directory
     owner: root
     group: root
     mode: "0755"
+
+- name: Render public site pages
+  ansible.builtin.template:
+    src: "public-site/{{ item.src }}"
+    dest: "/var/www/public-site/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - src: index.html.j2
+      dest: index.html
+    - src: about.html.j2
+      dest: about.html
+    - src: methodology.html.j2
+      dest: methodology.html
+    - src: updates.html.j2
+      dest: updates.html
+    - src: reading-benchmark-results.html.j2
+      dest: notes/reading-benchmark-results.html
+    - src: latency-throughput-context.html.j2
+      dest: notes/latency-throughput-context.html
+    - src: repeatable-model-comparisons.html.j2
+      dest: notes/repeatable-model-comparisons.html
+  notify: Reload nginx
+
+- name: Remove the retired security contact file
+  ansible.builtin.file:
+    path: /var/www/public-site/.well-known/security.txt
+    state: absent
 
 - name: Render hostname-bound site discovery files
   ansible.builtin.template:
@@ -144,8 +173,6 @@
       dest: robots.txt
     - src: sitemap.xml.j2
       dest: sitemap.xml
-    - src: security.txt.j2
-      dest: .well-known/security.txt
   notify: Reload nginx
 
 - name: Render nginx site

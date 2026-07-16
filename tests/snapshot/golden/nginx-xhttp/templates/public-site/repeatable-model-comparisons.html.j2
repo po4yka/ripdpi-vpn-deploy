@@ -1,0 +1,98 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A small, reproducible workflow for comparing language models with fixed inputs, paired runs, explicit uncertainty, and inspectable artifacts.">
+  <meta name="color-scheme" content="light dark">
+  <title>Repeatable model comparisons · LLM Model Notes</title>
+  <link rel="canonical" href="https://vpn.example.com/notes/repeatable-model-comparisons.html">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/site.css">
+  <meta property="og:site_name" content="LLM Model Notes">
+  <meta property="og:title" content="Repeatable model comparisons · LLM Model Notes">
+  <meta property="og:description" content="A small, reproducible workflow for comparing language models with fixed inputs, paired runs, explicit uncertainty, and inspectable artifacts.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://vpn.example.com/notes/repeatable-model-comparisons.html">
+</head>
+<body>
+  <header>
+  <a class="brand" href="/">LLM Model Notes</a>
+  <nav aria-label="Primary">
+    <a href="/about.html">About</a>
+    <a href="/methodology.html">Methodology</a>
+    <a href="/updates.html">Updates</a>
+  </nav>
+</header>
+  <main class="article-shell">
+    <article class="note">
+      <p class="eyebrow">Methods</p>
+      <h1>Repeatable model comparisons</h1>
+      <p class="dek">A useful comparison starts with a decision, freezes its moving parts, and leaves behind enough evidence to rerun or challenge the conclusion.</p>
+      <p class="byline"><time datetime="2026-07-16">16 July 2026</time> · 10 minute read</p>
+
+      <p>Small evaluations are valuable when they are designed as decision tools rather than miniature leaderboards. A few dozen representative inputs can reveal whether a model follows the required format, handles a difficult language mix, or meets a latency budget. The same experiment becomes misleading when its question, inputs, and acceptance criteria change after results arrive.</p>
+
+      <h2>Write the decision before the test</h2>
+      <p>Begin with a sentence that names the decision and the evidence it needs. For example: “Choose a model for extracting five fields from short invoices while keeping field-level error below two percent and p95 latency below three seconds.” This is narrower and more testable than “find the best model.”</p>
+      <p>Define acceptance criteria before running candidates. Include quality, latency, cost, failure handling, and any operational constraint such as local execution or a fixed context limit. Decide which criterion is a hard gate and which can be traded. Precommitting does not remove judgment; it makes later judgment visible.</p>
+
+      <h2>Build representative cases</h2>
+      <p>Sample the situations the system must handle, including ordinary cases, rare but costly cases, malformed inputs, and explicit non-goals. Keep a development subset for prompt iteration and a held-out subset for the final comparison. If the same cases guide prompt changes and certify the result, the estimate becomes optimistic.</p>
+      <p>Assign stable case identifiers and record why each case exists. Store source data only when permission allows; otherwise publish a generator or a redacted equivalent. A useful case set is not necessarily large, but it should make omissions obvious.</p>
+
+      <h2>Freeze the comparison manifest</h2>
+      <p>Put every input that can alter behavior into one versioned manifest. At minimum, record the immutable model revision where available, runtime and adapter versions, system and user prompt templates, few-shot examples, tool definitions, generation settings, maximum input and output lengths, stop sequences, seeds, and scoring code revision.</p>
+      <p>Hosted services may not expose immutable weights. In that case, record the provider model identifier, request date, API version, region when behavior can vary, and the complete request parameters. The result is then reproducible as an observation of a dated service, not a permanent checkpoint.</p>
+
+      <pre><code>experiment: invoice-fields-v1
+cases: cases-v3.jsonl
+model: provider/model-revision
+prompt: prompts/extract-v2.txt
+temperature: 0
+max_output_tokens: 300
+scorer: exact-fields-v2
+runs_per_case: 3</code></pre>
+
+      <h2>Use paired observations</h2>
+      <p>Run every candidate on the same cases and score each case separately. Pairing makes the comparison depend on differences for the same input rather than on two unrelated averages. It also exposes where candidates disagree, which is usually more useful than the headline mean.</p>
+      <p>Randomize candidate order when shared services, caches, or time-of-day effects might matter. For stochastic generation, repeat each case using a declared seed policy. Never discard a run because its output looks unrepresentative unless the rejection rule was written in advance and applied to every candidate.</p>
+      <p>Save raw responses before parsing. A parser may convert a formatting failure into an empty answer or silently accept extra text. Keeping the original response makes scoring errors auditable and allows a corrected scorer to run without paying for inference again.</p>
+
+      <h2>Score behavior, not presentation accidents</h2>
+      <p>Separate semantic correctness from format validity, refusals, truncation, and transport errors. A strict production parser may correctly reject malformed JSON, but the report should still show whether the underlying values were present. This distinction tells you whether to change the model, prompt, parser, or retry policy.</p>
+      <p>If humans or another model judge open-ended answers, publish the rubric and blind the judge to candidate identity. Calibrate with a small set of examples that have agreed ratings. Report disagreement instead of forcing uncertain cases into a precise-looking score.</p>
+
+      <h2>Estimate uncertainty at the case level</h2>
+      <p>Report counts and per-case outcomes alongside aggregates. For paired candidates, bootstrap over cases or inspect the distribution of paired differences. A narrow lead concentrated in two unusual examples deserves a different conclusion from a broad improvement across the set.</p>
+      <p>Choose wording that matches the evidence. “Candidate B passed 47 of 50 held-out cases versus 44 for A” is observable. “B is generally more reliable” requires broader cases, repeated runs, and evidence that the tested distribution represents future use.</p>
+
+      <h2>Publish a result bundle</h2>
+      <p>A compact result bundle should contain the decision statement, manifest, case identifiers, raw or redacted responses, parsed outputs, per-case scores, environment metadata, summary tables, and a short limitations note. Generate the report from those artifacts instead of copying numbers by hand.</p>
+      <p>Give the bundle a content hash or release tag. A later rerun should create a new bundle rather than mutate the old one. When a service or dataset changes, readers can then distinguish a changed system from a changed interpretation.</p>
+
+      <h2>A minimal comparison sequence</h2>
+      <ol class="checklist">
+        <li>State the decision, hard gates, and trade-offs before evaluating.</li>
+        <li>Split representative cases into development and held-out sets.</li>
+        <li>Freeze model, prompt, runtime, generation, and scoring revisions.</li>
+        <li>Run candidates on paired cases and retain every raw response.</li>
+        <li>Report per-case outcomes, uncertainty, cost, latency, and failures.</li>
+        <li>Publish an immutable bundle with limitations and a rerun command.</li>
+      </ol>
+
+      <h2>Primary references</h2>
+      <ul class="references">
+        <li><a href="https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/task_guide.md">Language Model Evaluation Harness task guide</a> — shareable task configuration and versioned evaluation setup.</li>
+        <li><a href="https://arxiv.org/abs/1810.03993">Model Cards for Model Reporting</a> — intended use, evaluation context, and transparent limitations.</li>
+        <li><a href="https://arxiv.org/abs/1803.09010">Datasheets for Datasets</a> — documenting dataset motivation, composition, collection, and maintenance.</li>
+      </ul>
+    </article>
+  </main>
+  <footer>
+  <span>LLM Model Notes</span>
+  <span>Independent notes on practical evaluation</span>
+</footer>
+</body>
+</html>
