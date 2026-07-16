@@ -147,7 +147,10 @@
             return 1
           }
 
-          ss -H -lntu | awk '{ print $1 " " $5 }' | while read -r proto addr; do
+          declare -a public_tcp_ports_seen=()
+          declare -a public_udp_ports_seen=()
+
+          while read -r proto addr; do
             case "$addr" in
               127.*|localhost:*|"[::1]:"*|"::1:"*) continue ;;
             esac
@@ -155,18 +158,41 @@
             port="${port%]}"
             [[ "$port" =~ ^[0-9]+$ ]] || continue
             case "$proto" in
-              tcp*) in_list "$expected_tcp" "$port" || echo "$proto $addr" ;;
-              udp*) in_list "$expected_udp" "$port" || in_ranges "$port" || echo "$proto $addr" ;;
+              tcp*)
+                public_tcp_ports_seen[port]=1
+                in_list "$expected_tcp" "$port" || echo "$proto $addr"
+                ;;
+              udp*)
+                public_udp_ports_seen[port]=1
+                in_list "$expected_udp" "$port" || in_ranges "$port" || echo "$proto $addr"
+                ;;
             esac
-          done
+          done < <(ss -H -lntu | awk '{ print $1 " " $5 }')
 
-          listeners="$(ss -H -lntu | awk '{ print $1 " " $5 }')"
           for port in $expected_tcp; do
             [[ "$port" == 22 ]] && continue
-            grep -Eq "^tcp.*(:|\])${port}$" <<< "$listeners" || echo "missing tcp ${port}"
+            [[ -n "${public_tcp_ports_seen[port]:-}" ]] || echo "missing tcp ${port}"
           done
           for port in $expected_udp; do
-            grep -Eq "^udp.*(:|\])${port}$" <<< "$listeners" || echo "missing udp ${port}"
+            [[ -n "${public_udp_ports_seen[port]:-}" ]] || echo "missing udp ${port}"
+          done
+          for range in $expected_udp_ranges; do
+            if [[ ! "$range" =~ ^([1-9][0-9]*)-([1-9][0-9]*)$ ]]; then
+              echo "invalid udp range ${range}"
+              continue
+            fi
+            start="${BASH_REMATCH[1]}"
+            end="${BASH_REMATCH[2]}"
+            if ((start > end || end > 65535)); then
+              echo "invalid udp range ${range}"
+              continue
+            fi
+            for ((port = start; port <= end; port++)); do
+              if [[ -z "${public_udp_ports_seen[port]:-}" ]]; then
+                echo "missing udp ${port} (required by range ${range})"
+                break
+              fi
+            done
           done
         executable: /bin/bash
       register: security_unexpected_public_listeners
