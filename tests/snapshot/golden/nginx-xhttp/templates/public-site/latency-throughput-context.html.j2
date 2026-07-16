@@ -9,12 +9,19 @@
   <title>Latency, throughput, and context · LLM Model Notes</title>
   <link rel="canonical" href="https://vpn.example.com/notes/latency-throughput-context.html">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+
+  <link rel="author" href="/about.html">
+  <meta name="author" content="LLM Model Notes">
+  <meta property="article:published_time" content="2026-07-16">
+  <meta property="article:modified_time" content="2026-07-16">
+
   <link rel="stylesheet" href="/assets/site.css">
   <meta property="og:site_name" content="LLM Model Notes">
   <meta property="og:title" content="Latency, throughput, and context · LLM Model Notes">
   <meta property="og:description" content="A practical method for measuring language-model serving latency, generation throughput, capacity, and long-context behavior.">
   <meta property="og:type" content="article">
   <meta property="og:url" content="https://vpn.example.com/notes/latency-throughput-context.html">
+  <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://vpn.example.com/#organization", "name": "LLM Model Notes", "alternateName": ["vpn.example.com"], "url": "https://vpn.example.com/", "description": "Independent notes on practical language-model evaluation and inference behavior.", "logo": {"@type": "ImageObject", "url": "https://vpn.example.com/logo.svg", "width": 512, "height": 512}}, {"@type": "Article", "@id": "https://vpn.example.com/notes/latency-throughput-context.html#article", "url": "https://vpn.example.com/notes/latency-throughput-context.html", "mainEntityOfPage": {"@type": "WebPage", "@id": "https://vpn.example.com/notes/latency-throughput-context.html"}, "headline": "Latency, throughput, and context", "description": "A practical method for measuring language-model serving latency, generation throughput, capacity, and long-context behavior.", "datePublished": "2026-07-16", "dateModified": "2026-07-16", "inLanguage": "en", "author": {"@id": "https://vpn.example.com/#organization"}, "publisher": {"@id": "https://vpn.example.com/#organization"}, "isPartOf": {"@id": "https://vpn.example.com/#website"}}]}</script>
 </head>
 <body>
   <header>
@@ -30,7 +37,7 @@
       <p class="eyebrow">Inference</p>
       <h1>Latency, throughput, and context</h1>
       <p class="dek">A serving benchmark is a workload description plus a distribution of observations. One requests-per-second number is not enough.</p>
-      <p class="byline"><time datetime="2026-07-16">16 July 2026</time> · 9 minute read</p>
+      <p class="byline">By <a rel="author" href="/about.html">LLM Model Notes</a> · <time datetime="2026-07-16">16 July 2026</time> · 9 minute read</p>
 
       <p>Interactive language-model serving has at least two visibly different phases. The server first processes the prompt, then generates new tokens one step at a time. Hardware, batching, cache pressure, and request shape affect those phases differently. Useful measurements keep them separate and record the workload that produced them.</p>
 

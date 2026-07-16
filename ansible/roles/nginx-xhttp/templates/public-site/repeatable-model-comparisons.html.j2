@@ -1,7 +1,7 @@
 {% import "_site.html.j2" as site with context %}
 <!doctype html>
 <html lang="en">
-{{ site.head("Repeatable model comparisons · LLM Model Notes", "A small, reproducible workflow for comparing language models with fixed inputs, paired runs, explicit uncertainty, and inspectable artifacts.", "/notes/repeatable-model-comparisons.html", "article") }}
+{{ site.head("Repeatable model comparisons · LLM Model Notes", "A small, reproducible workflow for comparing language models with fixed inputs, paired runs, explicit uncertainty, and inspectable artifacts.", "/notes/repeatable-model-comparisons.html", "article", schema_type="Article", headline="Repeatable model comparisons", date_published="2026-07-16", date_modified="2026-07-16") }}
 <body>
   {{ site.header() }}
   <main class="article-shell">
@@ -9,7 +9,7 @@
       <p class="eyebrow">Methods</p>
       <h1>Repeatable model comparisons</h1>
       <p class="dek">A useful comparison starts with a decision, freezes its moving parts, and leaves behind enough evidence to rerun or challenge the conclusion.</p>
-      <p class="byline"><time datetime="2026-07-16">16 July 2026</time> · 10 minute read</p>
+      <p class="byline">By <a rel="author" href="/about.html">LLM Model Notes</a> · <time datetime="2026-07-16">16 July 2026</time> · 10 minute read</p>
 
       <p>Small evaluations are valuable when they are designed as decision tools rather than miniature leaderboards. A few dozen representative inputs can reveal whether a model follows the required format, handles a difficult language mix, or meets a latency budget. The same experiment becomes misleading when its question, inputs, and acceptance criteria change after results arrive.</p>
 

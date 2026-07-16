@@ -9,12 +9,19 @@
   <title>Repeatable model comparisons · LLM Model Notes</title>
   <link rel="canonical" href="https://vpn.example.com/notes/repeatable-model-comparisons.html">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+
+  <link rel="author" href="/about.html">
+  <meta name="author" content="LLM Model Notes">
+  <meta property="article:published_time" content="2026-07-16">
+  <meta property="article:modified_time" content="2026-07-16">
+
   <link rel="stylesheet" href="/assets/site.css">
   <meta property="og:site_name" content="LLM Model Notes">
   <meta property="og:title" content="Repeatable model comparisons · LLM Model Notes">
   <meta property="og:description" content="A small, reproducible workflow for comparing language models with fixed inputs, paired runs, explicit uncertainty, and inspectable artifacts.">
   <meta property="og:type" content="article">
   <meta property="og:url" content="https://vpn.example.com/notes/repeatable-model-comparisons.html">
+  <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://vpn.example.com/#organization", "name": "LLM Model Notes", "alternateName": ["vpn.example.com"], "url": "https://vpn.example.com/", "description": "Independent notes on practical language-model evaluation and inference behavior.", "logo": {"@type": "ImageObject", "url": "https://vpn.example.com/logo.svg", "width": 512, "height": 512}}, {"@type": "Article", "@id": "https://vpn.example.com/notes/repeatable-model-comparisons.html#article", "url": "https://vpn.example.com/notes/repeatable-model-comparisons.html", "mainEntityOfPage": {"@type": "WebPage", "@id": "https://vpn.example.com/notes/repeatable-model-comparisons.html"}, "headline": "Repeatable model comparisons", "description": "A small, reproducible workflow for comparing language models with fixed inputs, paired runs, explicit uncertainty, and inspectable artifacts.", "datePublished": "2026-07-16", "dateModified": "2026-07-16", "inLanguage": "en", "author": {"@id": "https://vpn.example.com/#organization"}, "publisher": {"@id": "https://vpn.example.com/#organization"}, "isPartOf": {"@id": "https://vpn.example.com/#website"}}]}</script>
 </head>
 <body>
   <header>
@@ -30,7 +37,7 @@
       <p class="eyebrow">Methods</p>
       <h1>Repeatable model comparisons</h1>
       <p class="dek">A useful comparison starts with a decision, freezes its moving parts, and leaves behind enough evidence to rerun or challenge the conclusion.</p>
-      <p class="byline"><time datetime="2026-07-16">16 July 2026</time> · 10 minute read</p>
+      <p class="byline">By <a rel="author" href="/about.html">LLM Model Notes</a> · <time datetime="2026-07-16">16 July 2026</time> · 10 minute read</p>
 
       <p>Small evaluations are valuable when they are designed as decision tools rather than miniature leaderboards. A few dozen representative inputs can reveal whether a model follows the required format, handles a difficult language mix, or meets a latency budget. The same experiment becomes misleading when its question, inputs, and acceptance criteria change after results arrive.</p>
 

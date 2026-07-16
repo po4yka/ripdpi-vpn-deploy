@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 from pathlib import Path
 
@@ -33,6 +34,16 @@ def _render_site_page(name: str) -> str:
     variables = renderer.merge_render_vars()
     variables["public_site_canonical_url"] = "https://notes.example.test"
     return renderer.render_template(SITE_TEMPLATES / name, variables)
+
+
+def _json_ld(page: str) -> dict:
+    match = re.search(
+        r'<script type="application/ld\+json">\s*(.*?)\s*</script>',
+        page,
+        flags=re.DOTALL,
+    )
+    assert match, "page must expose one JSON-LD identity graph"
+    return json.loads(match.group(1))
 
 
 def test_primary_vhost_serves_static_site_and_keeps_xhttp_path_separate() -> None:
@@ -67,6 +78,7 @@ def test_site_contains_normal_discovery_and_identity_files() -> None:
     expected_static = {
         "404.html",
         "favicon.svg",
+        "logo.svg",
         "assets/site.css",
     }
     actual = {
@@ -87,6 +99,133 @@ def test_site_contains_normal_discovery_and_identity_files() -> None:
         "sitemap.xml.j2",
         "updates.html.j2",
     }
+
+
+def test_homepage_declares_one_consistent_search_identity() -> None:
+    homepage = _render_site_page("index.html.j2")
+    graph = _json_ld(homepage)["@graph"]
+    by_type = {node["@type"]: node for node in graph}
+
+    website = by_type["WebSite"]
+    assert website == {
+        "@type": "WebSite",
+        "@id": "https://notes.example.test/#website",
+        "url": "https://notes.example.test/",
+        "name": "LLM Model Notes",
+        "alternateName": ["notes.example.test"],
+        "description": (
+            "Independent notes on practical language-model evaluation "
+            "and inference behavior."
+        ),
+        "inLanguage": "en",
+        "publisher": {"@id": "https://notes.example.test/#organization"},
+    }
+
+    organization = by_type["Organization"]
+    assert organization["name"] == website["name"]
+    assert organization["alternateName"] == website["alternateName"]
+    assert organization["url"] == website["url"]
+    assert organization["logo"] == {
+        "@type": "ImageObject",
+        "url": "https://notes.example.test/logo.svg",
+        "width": 512,
+        "height": 512,
+    }
+    assert (
+        '<meta name="description" content="Independent notes on practical '
+        'language-model evaluation and inference behavior.">'
+        in homepage
+    )
+    assert (
+        '<meta property="og:description" content="Independent notes on practical '
+        'language-model evaluation and inference behavior.">'
+        in homepage
+    )
+    assert (SITE_FILES / "logo.svg").is_file()
+    favicon = (SITE_FILES / "favicon.svg").read_text()
+    assert 'width="64" height="64" viewBox="0 0 64 64"' in favicon
+    assert '<link rel="icon" href="/favicon.svg" type="image/svg+xml">' in homepage
+    assert "<h1>LLM Model Notes</h1>" in homepage
+
+
+def test_articles_identify_the_editorial_project_and_publication_dates() -> None:
+    articles = {
+        "reading-benchmark-results.html.j2": (
+            "/notes/reading-benchmark-results.html",
+            "Reading benchmark results carefully",
+        ),
+        "latency-throughput-context.html.j2": (
+            "/notes/latency-throughput-context.html",
+            "Latency, throughput, and context",
+        ),
+        "repeatable-model-comparisons.html.j2": (
+            "/notes/repeatable-model-comparisons.html",
+            "Repeatable model comparisons",
+        ),
+    }
+
+    for template, (path, headline) in articles.items():
+        page = _render_site_page(template)
+        graph = _json_ld(page)["@graph"]
+        by_type = {node["@type"]: node for node in graph}
+        article = by_type["Article"]
+        canonical = f"https://notes.example.test{path}"
+
+        assert article["@id"] == f"{canonical}#article"
+        assert article["url"] == canonical
+        assert article["mainEntityOfPage"] == {
+            "@type": "WebPage",
+            "@id": canonical,
+        }
+        assert article["headline"] == headline
+        assert article["datePublished"] == "2026-07-16"
+        assert article["dateModified"] == "2026-07-16"
+        assert article["inLanguage"] == "en"
+        assert article["author"] == {
+            "@id": "https://notes.example.test/#organization"
+        }
+        assert article["publisher"] == article["author"]
+        assert article["isPartOf"] == {
+            "@id": "https://notes.example.test/#website"
+        }
+
+        organization = by_type["Organization"]
+        assert organization["@id"] == article["author"]["@id"]
+        assert organization["name"] == "LLM Model Notes"
+        assert '<link rel="author" href="/about.html">' in page
+        assert '<a rel="author" href="/about.html">LLM Model Notes</a>' in page
+        assert '<meta name="author" content="LLM Model Notes">' in page
+        assert '<meta property="article:published_time" content="2026-07-16">' in page
+        assert '<meta property="article:modified_time" content="2026-07-16">' in page
+
+
+def test_supporting_pages_connect_metadata_to_the_website_identity() -> None:
+    pages = {
+        "about.html.j2": ("/about.html", "About · LLM Model Notes"),
+        "methodology.html.j2": (
+            "/methodology.html",
+            "Methodology · LLM Model Notes",
+        ),
+        "updates.html.j2": ("/updates.html", "Updates · LLM Model Notes"),
+    }
+
+    for template, (path, title) in pages.items():
+        page = _render_site_page(template)
+        schema = _json_ld(page)
+        canonical = f"https://notes.example.test{path}"
+
+        assert schema["@context"] == "https://schema.org"
+        assert schema["@type"] == "WebPage"
+        assert schema["@id"] == canonical
+        assert schema["url"] == canonical
+        assert schema["name"] == title
+        assert schema["inLanguage"] == "en"
+        assert schema["isPartOf"] == {
+            "@id": "https://notes.example.test/#website"
+        }
+        assert f'<link rel="canonical" href="{canonical}">' in page
+        assert f'<meta property="og:url" content="{canonical}">' in page
+        assert '<meta property="og:site_name" content="LLM Model Notes">' in page
 
 
 def test_homepage_links_to_substantive_benchmark_guide() -> None:
@@ -245,11 +384,14 @@ def test_molecule_exercises_live_http_semantics() -> None:
         "Page not found",
         "robots.txt",
         "sitemap.xml",
+        "logo.svg",
         ".well-known/security.txt",
         "reading-benchmark-results.html",
         "latency-throughput-context.html",
         "repeatable-model-comparisons.html",
         "Content-Security-Policy",
+        "application/ld+json",
+        "article:published_time",
         "TLSv1.3",
     ):
         assert behavior in verify

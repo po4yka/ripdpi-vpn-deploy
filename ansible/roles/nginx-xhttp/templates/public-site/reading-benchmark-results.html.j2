@@ -1,7 +1,7 @@
 {% import "_site.html.j2" as site with context %}
 <!doctype html>
 <html lang="en">
-{{ site.head("Reading benchmark results carefully · LLM Model Notes", "A practical method for reviewing language-model benchmark results without over-reading a single aggregate score.", "/notes/reading-benchmark-results.html", "article") }}
+{{ site.head("Reading benchmark results carefully · LLM Model Notes", "A practical method for reviewing language-model benchmark results without over-reading a single aggregate score.", "/notes/reading-benchmark-results.html", "article", schema_type="Article", headline="Reading benchmark results carefully", date_published="2026-07-16", date_modified="2026-07-16") }}
 <body>
   {{ site.header() }}
   <main class="article-shell">
@@ -9,7 +9,7 @@
       <p class="eyebrow">Evaluation</p>
       <h1>Reading benchmark results carefully</h1>
       <p class="dek">A benchmark score is the output of a complete evaluation setup, not a permanent property of a model. Review the setup before comparing the number.</p>
-      <p class="byline"><time datetime="2026-07-16">16 July 2026</time> · 9 minute read</p>
+      <p class="byline">By <a rel="author" href="/about.html">LLM Model Notes</a> · <time datetime="2026-07-16">16 July 2026</time> · 9 minute read</p>
 
       <p>Model comparisons often compress thousands of prompts into one number. That number can be useful, but it hides the decisions that produced it: which revision was loaded, how prompts were formatted, whether examples were sampled, how answers were extracted, and which failures were excluded. A careful review reconstructs those decisions before it asks which model is ahead.</p>
 
