@@ -19,6 +19,8 @@ enabled transport data-plane needs.
 
 **AWG forwarding is uplink-scoped** — the forward chain is always default-drop. New packets may only move from an AWG interface to `firewall_awg_uplink_interface` (or the fact-derived default route interface); reply packets use `established,related`. Never restore a broad forward `policy accept`.
 
+**AWG NAT is evidence-addressable** — each masquerade rule owns a stable `awg-nat-<interface>` comment and counter. Recurring real-VPS tests consume only that counter; preserve the comment when changing rule shape.
+
 **Geo blocking is optional** — `vpn.geo_block` toggles the geo set; default
 is on. Geo set is sourced from MaxMind via the `geodata` role.
 

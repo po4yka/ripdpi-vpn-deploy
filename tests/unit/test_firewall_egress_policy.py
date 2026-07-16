@@ -122,7 +122,10 @@ def test_firewall_exclusively_owns_awg_masquerade_rule():
     vars_["vpn"] = {**vars_["vpn"], "enable_amneziawg": True}
     rendered = ctr.render_template(TEMPLATE, vars_)
 
-    assert 'iifname "awg0" oifname != "awg0" masquerade' in rendered
+    assert (
+        'iifname "awg0" oifname != "awg0" counter comment "awg-nat-awg0" masquerade'
+        in rendered
+    )
     awg_config = AWG_TEMPLATE.read_text()
     assert "PostUp" not in awg_config
     assert "PostDown" not in awg_config

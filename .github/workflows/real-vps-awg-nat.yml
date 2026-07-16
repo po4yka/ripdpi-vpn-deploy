@@ -1,0 +1,72 @@
+---
+name: real-vps-awg-nat
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 5 * * 2"
+
+permissions:
+  contents: read
+
+jobs:
+  awg-nat:
+    runs-on: [self-hosted, linux, ripdpi-awg-vps]
+    timeout-minutes: 30
+    concurrency:
+      group: real-vps-awg-nat
+      cancel-in-progress: false
+    env:
+      RUNNER_CONFIG: /etc/ripdpi/real-vps-awg-nat.json
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Require default-branch evidence code
+        run: test "$GITHUB_REF" = "refs/heads/main"
+
+      - name: Install immutable lane runner
+        run: |
+          install -d -m 0700 "$RUNNER_TEMP/real-vps-awg-nat"
+          git archive --format=tar "$GITHUB_SHA" \
+            > "$RUNNER_TEMP/real-vps-awg-nat/source.tar"
+          echo "SOURCE_ARCHIVE_SHA256=$(sha256sum "$RUNNER_TEMP/real-vps-awg-nat/source.tar" | cut -d ' ' -f 1)" \
+            >> "$GITHUB_ENV"
+          sudo -n install -o root -g root -m 0755 \
+            scripts/real-vps-awg-nat.py \
+            /usr/local/libexec/ripdpi-real-vps-awg-nat
+
+      - name: Exercise real AWG restart, rotated reload, TCP, UDP, and NAT
+        run: |
+          sudo -n /usr/local/libexec/ripdpi-real-vps-awg-nat run \
+            --config "$RUNNER_CONFIG" \
+            --output "$RUNNER_TEMP/real-vps-awg-nat/manifest.json" \
+            --source-sha "$GITHUB_SHA" \
+            --source-archive "$RUNNER_TEMP/real-vps-awg-nat/source.tar" \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            --workflow-run-attempt "$GITHUB_RUN_ATTEMPT"
+
+      - name: Remove private source archive
+        if: always()
+        run: rm -f "$RUNNER_TEMP/real-vps-awg-nat/source.tar"
+
+      - name: Validate redacted AWG/NAT evidence
+        if: always()
+        run: |
+          python3 scripts/real-vps-awg-nat.py validate \
+            --manifest "$RUNNER_TEMP/real-vps-awg-nat/manifest.json" \
+            --expected-source-sha "$GITHUB_SHA" \
+            --expected-source-archive-sha256 "$SOURCE_ARCHIVE_SHA256" \
+            --expected-run-id "$GITHUB_RUN_ID" \
+            --expected-run-attempt "$GITHUB_RUN_ATTEMPT"
+
+      - name: Publish redacted AWG/NAT evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: real-vps-awg-nat-evidence
+          path: ${{ runner.temp }}/real-vps-awg-nat/manifest.json
+          if-no-files-found: error
+          retention-days: 30
