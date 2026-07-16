@@ -184,10 +184,10 @@ table inet nat {
     type nat hook postrouting priority 100;
 {% if _awg_inst | length > 0 %}
 {% for inst in _awg_inst %}
-    iifname "{{ inst.name }}" oifname != "{{ inst.name }}" masquerade
+    iifname "{{ inst.name }}" oifname != "{{ inst.name }}" counter comment "awg-nat-{{ inst.name }}" masquerade
 {% endfor %}
 {% else %}
-    iifname "awg0" oifname != "awg0" masquerade
+    iifname "awg0" oifname != "awg0" counter comment "awg-nat-awg0" masquerade
 {% endif %}
   }
 }

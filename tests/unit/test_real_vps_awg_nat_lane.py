@@ -1,0 +1,568 @@
+"""Contract tests for the recurring real-VPS AWG/NAT lane."""
+
+from __future__ import annotations
+
+import copy
+import importlib.util
+import json
+import os
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = REPO_ROOT / "scripts" / "real-vps-awg-nat.py"
+
+
+def load_module():
+    spec = importlib.util.spec_from_file_location("real_vps_awg_nat", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+lane = load_module()
+
+
+class FakeExecutor:
+    def __init__(self, *, direct_ok: bool = True, fail_phase: str | None = None):
+        self.direct_ok = direct_ok
+        self.fail_phase = fail_phase
+        self.calls: list[str] = []
+        self.service_generation = "6" * 64
+        self.config_generation = "7" * 64
+        self.next_generation = "8" * 64
+        self.current_peer = "9" * 64
+        self.next_peer = "a" * 64
+        self.current_client = {
+            "clientConfigSha256": "b" * 64,
+            "peerConfigSha256": self.current_peer,
+        }
+        self.rotated_client = {
+            "clientConfigSha256": "c" * 64,
+            "peerConfigSha256": self.next_peer,
+        }
+        self.active_peer: str | None = None
+        self.latest_handshake = 1_999_999_900
+        self.peer_rx = 0
+        self.peer_tx = 0
+        self.nat_packets = 0
+        self.nat_bytes = 0
+        self.reload_target = "next"
+        self.capture_index = 0
+
+    def _status(self) -> dict:
+        return {
+            "serviceActive": True,
+            "interfaceUp": True,
+            "deployedSourceSha": "1" * 40,
+            "deployedArchiveSha256": "2" * 64,
+            "serviceInvocationSha256": self.service_generation,
+            "configGenerationSha256": self.config_generation,
+            "peerConfigSha256": self.current_peer,
+            "latestHandshakeEpoch": self.latest_handshake,
+            "peerRxBytes": self.peer_rx,
+            "peerTxBytes": self.peer_tx,
+            "natPackets": self.nat_packets,
+            "natBytes": self.nat_bytes,
+        }
+
+    @staticmethod
+    def _probe(ok: bool = True) -> dict:
+        return {
+            "tcp": {"ok": ok, "durationMs": 8 if ok else None},
+            "udp": {"ok": ok, "durationMs": 6 if ok else None},
+        }
+
+    def direct_probe(self) -> dict:
+        self.calls.append("direct_probe")
+        return self._probe(self.direct_ok)
+
+    def deploy_source(self, source_sha: str, archive_sha256: str) -> dict:
+        self.calls.append("deploy_source")
+        return {
+            "deployedSourceSha": source_sha,
+            "deployedArchiveSha256": archive_sha256,
+        }
+
+    def client_evidence(self, *, rotated: bool) -> dict:
+        self.calls.append(f"client_evidence:{str(rotated).lower()}")
+        return dict(self.rotated_client if rotated else self.current_client)
+
+    def server_status(self) -> dict:
+        self.calls.append("server_status")
+        return self._status()
+
+    def start_client(self, *, rotated: bool) -> None:
+        self.calls.append(f"start_client:{str(rotated).lower()}")
+        self.active_peer = (self.rotated_client if rotated else self.current_client)[
+            "peerConfigSha256"
+        ]
+
+    def probe(self, phase: str) -> dict:
+        self.calls.append(f"probe:{phase}")
+        ok = phase != self.fail_phase and self.active_peer == self.current_peer
+        if ok:
+            self.latest_handshake += 1
+            self.peer_rx += 10
+            self.peer_tx += 11
+            self.nat_packets += 2
+            self.nat_bytes += 200
+        return self._probe(ok)
+
+    def probe_once(self, phase: str) -> dict:
+        self.calls.append(f"probe_once:{phase}")
+        return self.probe(phase)
+
+    def server_action(self, action: str) -> None:
+        self.calls.append(f"server_action:{action}")
+        if action == "restart":
+            self.service_generation = "d" * 64
+        elif self.reload_target == "next":
+            self.config_generation = self.next_generation
+            self.current_peer = self.next_peer
+        else:
+            self.config_generation = "7" * 64
+            self.current_peer = "9" * 64
+
+    def stage_rotation(self) -> dict:
+        self.calls.append("stage_rotation")
+        return {
+            "previousConfigGenerationSha256": "7" * 64,
+            "nextConfigGenerationSha256": self.next_generation,
+            "previousPeerConfigSha256": "9" * 64,
+            "nextPeerConfigSha256": self.next_peer,
+            "rotatedClientConfigSha256": self.rotated_client["clientConfigSha256"],
+        }
+
+    def finalize_rotation(self, action: str) -> dict:
+        self.calls.append(f"finalize_rotation:{action}")
+        if action == "commit":
+            self.current_client = dict(self.rotated_client)
+            return {
+                "action": action,
+                "configGenerationSha256": self.next_generation,
+                "peerConfigSha256": self.next_peer,
+                "currentClientConfigSha256": self.current_client["clientConfigSha256"],
+            }
+        self.reload_target = "previous"
+        return {
+            "action": action,
+            "configGenerationSha256": "7" * 64,
+            "peerConfigSha256": "9" * 64,
+            "currentClientConfigSha256": self.current_client["clientConfigSha256"],
+        }
+
+    def stop_client(self) -> str:
+        self.calls.append("stop_client")
+        self.active_peer = None
+        self.capture_index += 1
+        return format(self.capture_index, "x") * 64
+
+    def close(self) -> None:
+        self.calls.append("close")
+
+
+def metadata() -> dict:
+    return {
+        "sourceSha": "1" * 40,
+        "sourceArchiveSha256": "2" * 64,
+        "workflowRunId": 42,
+        "workflowRunAttempt": 1,
+    }
+
+
+def config() -> dict:
+    return {
+        "runnerIdSha256": "2" * 64,
+        "serverControlHookSha256": "5" * 64,
+        "serverDeployHookSha256": "6" * 64,
+        "rotationHookSha256": "3" * 64,
+        "producerSha256": "4" * 64,
+    }
+
+
+def test_pass_requires_tcp_udp_restart_reload_and_nat_deltas() -> None:
+    executor = FakeExecutor()
+    manifest = lane.run_lane(config(), executor, metadata(), now=lambda: 2_000_000_000)
+
+    assert manifest["classification"] == "PASS"
+    assert manifest["reasonCode"] == "NONE"
+    assert [phase["id"] for phase in manifest["phases"]] == [
+        "direct_control",
+        "initial_connect",
+        "restart_recovery",
+        "old_key_rejection",
+        "reload_rotation_recovery",
+    ]
+    assert manifest["captureDigests"] == ["1" * 64, "2" * 64, "3" * 64]
+    assert all(manifest["cleanup"].values())
+    assert manifest["rotation"] == {
+        "prepared": True,
+        "oldKeyRejected": True,
+        "newKeyMatched": True,
+        "committed": True,
+        "rolledBack": False,
+    }
+    assert "server_action:restart" in executor.calls
+    assert "probe_once:old_key_rejection" in executor.calls
+    assert "finalize_rotation:commit" in executor.calls
+    assert executor.calls[-1] == "close"
+    lane.validate_manifest(manifest, expected_source_sha="1" * 40, now=2_000_000_000)
+
+
+def test_direct_control_failure_is_infrastructure_unavailable() -> None:
+    executor = FakeExecutor(direct_ok=False)
+    manifest = lane.run_lane(config(), executor, metadata(), now=lambda: 2_000_000_000)
+
+    assert manifest["classification"] == "INFRA_UNAVAILABLE"
+    assert manifest["reasonCode"] == "ECHO_CONTROL_UNAVAILABLE"
+    assert executor.calls == [
+        "deploy_source",
+        "client_evidence:false",
+        "direct_probe",
+        "close",
+    ]
+
+
+def test_awg_roundtrip_failure_is_product_failure_and_cleans_up() -> None:
+    executor = FakeExecutor(fail_phase="restart_recovery")
+    manifest = lane.run_lane(config(), executor, metadata(), now=lambda: 2_000_000_000)
+
+    assert manifest["classification"] == "PRODUCT_FAILURE"
+    assert manifest["reasonCode"] == "AWG_ROUNDTRIP_FAILED"
+    assert executor.calls[-1] == "close"
+    assert manifest["captureDigests"] == ["1" * 64]
+
+
+def test_pass_cannot_omit_a_phase_or_capture() -> None:
+    manifest = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    partial = copy.deepcopy(manifest)
+    partial["phases"].pop()
+    partial["captureDigests"].pop()
+
+    try:
+        lane.validate_manifest(partial, expected_source_sha="1" * 40, now=2_000_000_000)
+    except ValueError as exc:
+        assert "complete phase sequence" in str(exc)
+    else:
+        raise AssertionError("partial PASS manifest was accepted")
+
+
+def test_stale_manifest_is_rejected() -> None:
+    manifest = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    try:
+        lane.validate_manifest(
+            manifest,
+            expected_source_sha="1" * 40,
+            now=2_000_010_000,
+            max_age_seconds=300,
+        )
+    except ValueError as exc:
+        assert "stale" in str(exc)
+    else:
+        raise AssertionError("stale manifest was accepted")
+
+
+def test_workflow_is_recurring_fail_closed_and_uploads_evidence() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/real-vps-awg-nat.yml").read_text()
+    assert "schedule:" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "self-hosted" in workflow and "ripdpi-awg-vps" in workflow
+    assert "skip" not in workflow.lower()
+    assert "if: always()" in workflow
+    assert "real-vps-awg-nat.py" in workflow
+    assert "git archive --format=tar" in workflow
+    assert "--source-archive" in workflow
+    assert "--expected-source-archive-sha256" in workflow
+    assert "Remove private source archive" in workflow
+
+
+def test_firewall_nat_rule_has_stable_counter_comment() -> None:
+    template = (
+        REPO_ROOT / "ansible/roles/firewall/templates/nftables.conf.j2"
+    ).read_text()
+    assert 'counter comment "awg-nat-{{ inst.name }}" masquerade' in template
+    assert 'counter comment "awg-nat-awg0" masquerade' in template
+
+
+def test_manifest_serialization_is_deterministic() -> None:
+    manifest = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    first = lane.canonical_json_bytes(manifest)
+    second = lane.canonical_json_bytes(json.loads(first))
+    assert first == second
+
+
+def test_private_config_is_strict_and_hashes_runner_owned_producers(
+    tmp_path: Path,
+) -> None:
+    current = tmp_path / "current.conf"
+    rotated = tmp_path / "rotated.conf"
+    control = tmp_path / "control"
+    deploy = tmp_path / "deploy"
+    rotation = tmp_path / "rotation"
+    for path, mode in (
+        (current, 0o600),
+        (rotated, 0o600),
+        (control, 0o700),
+        (deploy, 0o700),
+        (rotation, 0o700),
+    ):
+        path.write_text("private\n")
+        path.chmod(mode)
+    config_path = tmp_path / "runner.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "version": lane.CONFIG_VERSION,
+                "runnerId": "a" * 64,
+                "clientConfigPath": str(current),
+                "rotatedClientConfigPath": str(rotated),
+                "clientAddress": "10.66.66.2/32",
+                "tcpEchoAddress": "93.184.216.34",
+                "tcpEchoPort": 10001,
+                "udpEchoAddress": "151.101.1.69",
+                "udpEchoPort": 10002,
+                "serverControlHook": str(control),
+                "serverDeployHook": str(deploy),
+                "rotationHook": str(rotation),
+                "probeTimeoutSeconds": 5,
+                "recoveryTimeoutSeconds": 30,
+                "deployTimeoutSeconds": 600,
+            }
+        )
+    )
+    config_path.chmod(0o600)
+
+    loaded = lane.load_config(config_path)
+
+    assert loaded["runnerIdSha256"] != "a" * 64
+    assert loaded["serverControlHookSha256"] == lane.sha256_bytes(b"private\n")
+    assert loaded["serverDeployHookSha256"] == lane.sha256_bytes(b"private\n")
+    assert loaded["rotationHookSha256"] == lane.sha256_bytes(b"private\n")
+    assert os.path.isabs(loaded["clientConfigPath"])
+
+
+def test_nonpass_manifest_still_validates_but_cannot_be_green() -> None:
+    manifest = lane.failure_manifest(metadata(), "4" * 64, "PREREQUISITE_MISSING")
+    lane.validate_manifest(manifest, expected_source_sha="1" * 40)
+    assert manifest["classification"] == "INFRA_UNAVAILABLE"
+
+
+def test_restart_noop_cannot_pass() -> None:
+    class NoRestartExecutor(FakeExecutor):
+        def server_action(self, action: str) -> None:
+            self.calls.append(f"server_action:{action}")
+            if action == "reload":
+                super().server_action(action)
+
+    manifest = lane.run_lane(
+        config(), NoRestartExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+
+    assert manifest["classification"] == "PRODUCT_FAILURE"
+    assert manifest["reasonCode"] == "RESTART_NOT_OBSERVED"
+
+
+def test_reload_noop_cannot_pass_and_rolls_back() -> None:
+    class NoReloadExecutor(FakeExecutor):
+        def server_action(self, action: str) -> None:
+            self.calls.append(f"server_action:{action}")
+            if action == "restart":
+                self.service_generation = "d" * 64
+
+    executor = NoReloadExecutor()
+    manifest = lane.run_lane(config(), executor, metadata(), now=lambda: 2_000_000_000)
+
+    assert manifest["classification"] == "PRODUCT_FAILURE"
+    assert manifest["reasonCode"] == "RELOAD_NOT_OBSERVED"
+    assert manifest["rotation"]["rolledBack"] is True
+    assert "finalize_rotation:rollback" in executor.calls
+
+
+def test_old_key_negative_control_cannot_be_noop() -> None:
+    class OldKeyAcceptedExecutor(FakeExecutor):
+        def probe_once(self, phase: str) -> dict:
+            self.calls.append(f"probe_once:{phase}")
+            self.latest_handshake += 1
+            self.peer_rx += 10
+            self.peer_tx += 11
+            self.nat_packets += 2
+            self.nat_bytes += 200
+            return self._probe(True)
+
+    manifest = lane.run_lane(
+        config(), OldKeyAcceptedExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+
+    assert manifest["classification"] == "PRODUCT_FAILURE"
+    assert manifest["reasonCode"] == "OLD_KEY_STILL_ACCEPTED"
+    assert manifest["rotation"]["rolledBack"] is True
+
+
+def test_failure_after_reload_restores_previous_server_and_client() -> None:
+    executor = FakeExecutor(fail_phase="reload_rotation_recovery")
+    manifest = lane.run_lane(config(), executor, metadata(), now=lambda: 2_000_000_000)
+
+    assert manifest["classification"] == "PRODUCT_FAILURE"
+    assert manifest["reasonCode"] == "AWG_ROUNDTRIP_FAILED"
+    assert manifest["rotation"]["rolledBack"] is True
+    assert executor.current_peer == "9" * 64
+    assert executor.current_client["peerConfigSha256"] == "9" * 64
+    assert all(manifest["cleanup"].values())
+
+
+def test_close_failure_is_visible_in_manifest() -> None:
+    class CloseFailureExecutor(FakeExecutor):
+        def close(self) -> None:
+            self.calls.append("close")
+            raise RuntimeError("scratch remains")
+
+    manifest = lane.run_lane(
+        config(), CloseFailureExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+
+    assert manifest["classification"] == "INFRA_UNAVAILABLE"
+    assert manifest["reasonCode"] == "CLEANUP_FAILED"
+    assert manifest["cleanup"]["scratchRemoved"] is False
+
+
+def test_pass_phase_outcomes_are_fixed_by_phase_id() -> None:
+    manifest = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    tampered = copy.deepcopy(manifest)
+    tampered["phases"][0]["expected"] = "failure"
+    tampered["phases"][0]["tcp"] = {"ok": False, "durationMs": None}
+    tampered["phases"][0]["udp"] = {"ok": False, "durationMs": None}
+
+    try:
+        lane.validate_manifest(
+            tampered, expected_source_sha="1" * 40, now=2_000_000_000
+        )
+    except ValueError as exc:
+        assert "phase outcome contract" in str(exc)
+    else:
+        raise AssertionError("failed direct control was accepted as PASS")
+
+
+def test_manifest_archive_digest_is_bound_to_workflow_value() -> None:
+    manifest = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+
+    try:
+        lane.validate_manifest(
+            manifest,
+            expected_source_sha="1" * 40,
+            expected_source_archive_sha256="f" * 64,
+            now=2_000_000_000,
+        )
+    except ValueError as exc:
+        assert "source archive SHA mismatch" in str(exc)
+    else:
+        raise AssertionError("mismatched source archive digest was accepted")
+
+
+def test_cleanup_retains_handles_until_orphan_verification_succeeds(
+    tmp_path: Path, monkeypatch
+) -> None:
+    executor = object.__new__(lane.SystemExecutor)
+    executor.scratch = tmp_path / "scratch"
+    executor.scratch.mkdir()
+    executor.namespace = "awgleak"
+    executor.interface = "awgleak0"
+    executor.go_process = None
+    executor.capture_process = None
+    executor.capture_path = executor.scratch / "capture.pcap"
+    executor.capture_path.write_bytes(b"x" * 25)
+    leaked = True
+
+    def fake_run(command, **_kwargs):
+        nonlocal leaked
+        stdout = "awgleak\n" if command == ["ip", "netns", "list"] and leaked else ""
+        returncode = 1 if command[:4] == ["ip", "link", "show", "awgleak0"] else 0
+        return lane.subprocess.CompletedProcess(command, returncode, stdout=stdout)
+
+    monkeypatch.setattr(lane.subprocess, "run", fake_run)
+
+    try:
+        executor._cleanup_client(require_capture=True)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("leaked namespace was accepted as cleaned")
+    assert executor.namespace == "awgleak"
+    assert executor.interface == "awgleak0"
+
+    leaked = False
+    executor.close()
+
+    assert executor.namespace is None
+    assert executor.interface is None
+    assert not executor.scratch.exists()
+
+
+def test_deploy_outage_and_product_failure_are_distinct() -> None:
+    class DeployOutage(FakeExecutor):
+        def deploy_source(self, source_sha: str, archive_sha256: str) -> dict:
+            raise lane.InfrastructureUnavailable("ssh unavailable")
+
+    class DeployFailure(FakeExecutor):
+        def deploy_source(self, source_sha: str, archive_sha256: str) -> dict:
+            raise RuntimeError("ansible rejected current source")
+
+    outage = lane.run_lane(
+        config(), DeployOutage(), metadata(), now=lambda: 2_000_000_000
+    )
+    failure = lane.run_lane(
+        config(), DeployFailure(), metadata(), now=lambda: 2_000_000_000
+    )
+
+    assert (outage["classification"], outage["reasonCode"]) == (
+        "INFRA_UNAVAILABLE",
+        "DEPLOY_UNAVAILABLE",
+    )
+    assert (failure["classification"], failure["reasonCode"]) == (
+        "PRODUCT_FAILURE",
+        "DEPLOY_FAILED",
+    )
+
+
+def test_malformed_prepare_receipt_still_rolls_back_trusted_baseline() -> None:
+    class MalformedPrepare(FakeExecutor):
+        def stage_rotation(self) -> dict:
+            receipt = super().stage_rotation()
+            receipt["rotatedClientConfigSha256"] = "f" * 64
+            return receipt
+
+    executor = MalformedPrepare()
+    manifest = lane.run_lane(config(), executor, metadata(), now=lambda: 2_000_000_000)
+
+    assert manifest["classification"] == "PRODUCT_FAILURE"
+    assert manifest["reasonCode"] == "ROTATION_RECEIPT_INVALID"
+    assert manifest["rotation"]["prepared"] is True
+    assert manifest["rotation"]["rolledBack"] is True
+    assert manifest["cleanup"]["serverTransactionFinalized"] is True
+    assert "finalize_rotation:rollback" in executor.calls
+
+
+def test_prepare_exception_uses_idempotent_rollback() -> None:
+    class PrepareFailure(FakeExecutor):
+        def stage_rotation(self) -> dict:
+            self.calls.append("stage_rotation")
+            raise RuntimeError("prepare failed after staging")
+
+    executor = PrepareFailure()
+    manifest = lane.run_lane(config(), executor, metadata(), now=lambda: 2_000_000_000)
+
+    assert manifest["classification"] == "PRODUCT_FAILURE"
+    assert manifest["reasonCode"] == "ROTATION_FAILED"
+    assert manifest["rotation"]["prepared"] is True
+    assert manifest["rotation"]["rolledBack"] is True
+    assert "finalize_rotation:rollback" in executor.calls
