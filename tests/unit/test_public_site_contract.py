@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import yaml
@@ -69,6 +70,12 @@ def test_primary_and_fallback_vhosts_share_the_hardened_tls_http_identity() -> N
         assert rendered.count(header) == 2
 
 
+def test_primary_and_fallback_vhosts_serve_the_atom_media_type() -> None:
+    rendered = _render(fallback=True)
+    assert rendered.count("location = /feed.xml {") == 2
+    assert rendered.count("default_type application/atom+xml;") == 2
+
+
 def test_no_public_health_endpoint_on_primary_or_fallback_vhost() -> None:
     rendered = _render(fallback=True)
     assert "location = /health" not in rendered
@@ -90,6 +97,7 @@ def test_site_contains_normal_discovery_and_identity_files() -> None:
     assert {path.name for path in SITE_TEMPLATES.glob("*.j2")} == {
         "_site.html.j2",
         "about.html.j2",
+        "feed.xml.j2",
         "index.html.j2",
         "latency-throughput-context.html.j2",
         "methodology.html.j2",
@@ -226,6 +234,94 @@ def test_supporting_pages_connect_metadata_to_the_website_identity() -> None:
         assert f'<link rel="canonical" href="{canonical}">' in page
         assert f'<meta property="og:url" content="{canonical}">' in page
         assert '<meta property="og:site_name" content="LLM Model Notes">' in page
+
+
+def test_pages_advertise_updates_feed_and_homepage_shows_recent_activity() -> None:
+    pages = (
+        "index.html.j2",
+        "about.html.j2",
+        "methodology.html.j2",
+        "updates.html.j2",
+        "reading-benchmark-results.html.j2",
+        "latency-throughput-context.html.j2",
+        "repeatable-model-comparisons.html.j2",
+    )
+    feed_link = (
+        '<link rel="alternate" type="application/atom+xml" '
+        'title="LLM Model Notes updates" '
+        'href="https://notes.example.test/feed.xml">'
+    )
+
+    for template in pages:
+        assert feed_link in _render_site_page(template)
+
+    homepage = _render_site_page("index.html.j2")
+    assert '<time datetime="2026-07-16">16 July 2026</time>' in homepage
+    assert '<a href="/updates.html">See the project log</a>' in homepage
+
+
+def test_atom_feed_publishes_the_real_articles_under_the_canonical_identity() -> None:
+    variables = renderer.merge_render_vars()
+    variables["public_site_canonical_url"] = "https://notes.example.test"
+    rendered = renderer.render_template(SITE_TEMPLATES / "feed.xml.j2", variables)
+    atom = "{http://www.w3.org/2005/Atom}"
+    feed = ET.fromstring(rendered)
+
+    assert feed.tag == f"{atom}feed"
+    assert feed.findtext(f"{atom}id") == "https://notes.example.test/"
+    assert feed.findtext(f"{atom}title") == "LLM Model Notes updates"
+    assert feed.findtext(f"{atom}updated") == "2026-07-16T11:52:04Z"
+    assert feed.findtext(f"{atom}author/{atom}name") == "LLM Model Notes"
+
+    links = {link.attrib["rel"]: link.attrib for link in feed.findall(f"{atom}link")}
+    assert links == {
+        "alternate": {
+            "rel": "alternate",
+            "type": "text/html",
+            "href": "https://notes.example.test/",
+        },
+        "self": {
+            "rel": "self",
+            "type": "application/atom+xml",
+            "href": "https://notes.example.test/feed.xml",
+        },
+    }
+
+    expected_articles = {
+        "Reading benchmark results carefully": (
+            "/notes/reading-benchmark-results.html",
+            "Review the evaluation contract, uncertainty, contamination, and prompt sensitivity before comparing a benchmark score.",
+        ),
+        "Latency, throughput, and context": (
+            "/notes/latency-throughput-context.html",
+            "Measure first-token delay, generation cadence, and capacity inside a reproducible workload envelope.",
+        ),
+        "Repeatable model comparisons": (
+            "/notes/repeatable-model-comparisons.html",
+            "Build a pinned comparison manifest, collect paired observations, and publish a compact result bundle.",
+        ),
+    }
+    entries = feed.findall(f"{atom}entry")
+    assert len(entries) == len(expected_articles)
+
+    for entry in entries:
+        title = entry.findtext(f"{atom}title")
+        path, summary = expected_articles[title]
+        canonical = f"https://notes.example.test{path}"
+        assert entry.findtext(f"{atom}id") == canonical
+        assert entry.find(f"{atom}link").attrib == {
+            "rel": "alternate",
+            "type": "text/html",
+            "href": canonical,
+        }
+        assert entry.findtext(f"{atom}published") == "2026-07-16T11:52:04Z"
+        assert entry.findtext(f"{atom}updated") == "2026-07-16T11:52:04Z"
+        assert entry.findtext(f"{atom}summary") == summary
+
+
+def test_updates_page_exposes_a_human_visible_feed_link() -> None:
+    updates = _render_site_page("updates.html.j2")
+    assert '<a href="/feed.xml">Follow updates via Atom</a>' in updates
 
 
 def test_homepage_links_to_substantive_benchmark_guide() -> None:
@@ -384,6 +480,7 @@ def test_molecule_exercises_live_http_semantics() -> None:
         "Page not found",
         "robots.txt",
         "sitemap.xml",
+        "feed.xml",
         "logo.svg",
         ".well-known/security.txt",
         "reading-benchmark-results.html",
@@ -391,6 +488,8 @@ def test_molecule_exercises_live_http_semantics() -> None:
         "repeatable-model-comparisons.html",
         "Content-Security-Policy",
         "application/ld+json",
+        "application/atom+xml",
+        "LLM Model Notes updates",
         "article:published_time",
         "TLSv1.3",
     ):

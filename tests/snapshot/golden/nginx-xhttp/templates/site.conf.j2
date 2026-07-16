@@ -56,6 +56,12 @@ server {
         internal;
     }
 
+    location = /feed.xml {
+        types { }
+        default_type application/atom+xml;
+        try_files $uri =404;
+    }
+
     # Public site for ordinary browser and scanner requests.
     location / {
         try_files $uri $uri/ =404;

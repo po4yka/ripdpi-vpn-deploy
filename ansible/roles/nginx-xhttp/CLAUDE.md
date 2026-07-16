@@ -12,6 +12,8 @@ XHTTP path to Xray on `127.0.0.1:10085`. No `set_real_ip_from`, no
 
 **One search identity graph** — `LLM Model Notes` is the sole public name. The home page emits `WebSite` + `Organization`; supporting pages emit `WebPage`; articles emit `Article` with the same visible author/publisher and dated metadata. Stable entity IDs, logo URLs, canonicals, Open Graph URLs, and the lowercase domain fallback all derive from `public_site_canonical_url`. Do not invent addresses, profiles, or contact details merely to fill structured-data fields.
 
+**Maintenance signals come from real content** — the home page's visible update date, the project log, article metadata, and `feed.xml` must describe the same material publications. Every HTML page advertises the Atom feed; feed and entry URLs derive from `public_site_canonical_url`, and both HTTPS vhosts serve it as `application/atom+xml`. Advance dates only for substantive content changes; do not manufacture activity with fake contacts, counters, status endpoints, or empty log entries.
+
 **Optional direct (non-CDN) fallback frontend** — opt-in via
 `nginx_xhttp.fallback_enabled` (off by default). When on, the role renders a
 SECOND `server {}` block in the same `vpn-xhttp.conf` listening on

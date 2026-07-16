@@ -109,6 +109,11 @@ main {
   font-size: 1.15rem;
 }
 
+.hero p.activity {
+  margin-top: 1.25rem;
+  font-size: 0.9rem;
+}
+
 .eyebrow,
 .meta {
   color: var(--accent);
