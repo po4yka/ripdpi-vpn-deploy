@@ -14,6 +14,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 STUBS_BIN = REPO_ROOT / "tests" / "stubs" / "bin"
 SCRIPT = REPO_ROOT / "scripts" / "emit-singbox.sh"
+BUNDLE_SCRIPT = REPO_ROOT / "scripts" / "emit-bundle.sh"
+BUNDLE_VALIDATOR = REPO_ROOT / "scripts" / "validate-bundle.py"
 KILLSWITCH_SCRIPT = REPO_ROOT / "scripts" / "check-singbox-killswitch.py"
 
 
@@ -113,6 +116,35 @@ def _run_script(
         env.update(extra_env)
     return subprocess.run(
         ["bash", str(SCRIPT), client, *(extra_args or [])],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(REPO_ROOT),
+    )
+
+
+def _run_bundle(
+    client: str,
+    tmp_path: Path,
+    extra_env: dict[str, str] | None = None,
+    extra_args: list[str] | None = None,
+) -> subprocess.CompletedProcess:
+    secrets_json = _secrets_as_json(tmp_path)
+    secrets = json.loads(secrets_json.read_text())
+    secrets["hysteria"]["salamander_enabled"] = True
+    secrets_json.write_text(json.dumps(secrets))
+
+    env = _build_env(tmp_path, secrets_json)
+    bin_dir = tmp_path / "bin"
+    for tool in ("awg", "wg"):
+        stub = bin_dir / tool
+        stub.write_text("#!/bin/sh\nprintf 'server-public-fixture'\n")
+        stub.chmod(0o700)
+    if extra_env:
+        env.update(extra_env)
+
+    return subprocess.run(
+        ["bash", str(BUNDLE_SCRIPT), client, *(extra_args or [])],
         capture_output=True,
         text=True,
         env=env,
@@ -343,6 +375,77 @@ def test_emit_singbox_per_app_bypass_fails_strict_killswitch(tmp_path):
     )
     assert check.returncode == 1
     assert "route.rules[0]" in check.stdout
+
+
+def test_emit_bundle_roundtrip_preserves_singbox_args_and_extension(tmp_path):
+    _require_tool("jq")
+
+    result = _run_bundle(
+        "phone",
+        tmp_path,
+        extra_env={"BUNDLE_EXPIRES": "2026-12-31T23:59:59Z"},
+        extra_args=[
+            "--per-app-bypass",
+            "example.bypass",
+            "--per-app-via-tun",
+            "example.tunnel",
+        ],
+    )
+    assert result.returncode == 0, result.stderr
+
+    bundle_file = tmp_path / "emitted-bundle.json"
+    bundle_file.write_text(result.stdout)
+    validation = subprocess.run(
+        [sys.executable, str(BUNDLE_VALIDATOR), str(bundle_file)],
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+    )
+    assert validation.returncode == 0, validation.stderr
+
+    bundle = json.loads(result.stdout)
+    package_routes = {
+        tuple(rule["package_name"]): rule["outbound"]
+        for rule in bundle["route"]["rules"]
+        if "package_name" in rule
+    }
+    assert package_routes == {
+        ("example.bypass",): "direct",
+        ("example.tunnel",): "select",
+    }
+
+    ripdpi = bundle["ripdpi"]
+    assert ripdpi["schema_version"] == 1
+    assert len(ripdpi["amneziawg"]) == 1
+    assert ripdpi["amneziawg"][0]["cohort_fingerprint"].startswith("sha256:")
+    assert ripdpi["hysteria_extras"] == {
+        "p2-hysteria2-upcloud-prod": {
+            "insecure": False,
+            "obfs": {
+                "type": "salamander",
+                "password": "fixture-salamander-password-not-real",
+            },
+            "salamander_upstream_tag": "v2.9.0",
+        }
+    }
+    assert ripdpi["topology"] == {
+        "split_hop_egress": False,
+        "hysteria_realm": None,
+    }
+    assert ripdpi["expires"] == "2026-12-31T23:59:59Z"
+
+
+def test_emit_bundle_rejects_unknown_singbox_arg(tmp_path):
+    _require_tool("jq")
+
+    result = _run_bundle(
+        "phone",
+        tmp_path,
+        extra_args=["--not-a-singbox-option"],
+    )
+
+    assert result.returncode != 0
+    assert "unknown arg: --not-a-singbox-option" in result.stderr
 
 
 def test_emit_singbox_no_placeholder_leaks(tmp_path):

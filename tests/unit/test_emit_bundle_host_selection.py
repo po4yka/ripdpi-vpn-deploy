@@ -15,7 +15,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_awg_uses_the_host_where_amneziawg_is_enabled(tmp_path: Path) -> None:
+def test_bundle_uses_feature_host_and_emits_ingress_topology(tmp_path: Path) -> None:
     for tool in ("jq", "python3"):
         if not shutil.which(tool):
             pytest.skip(f"required binary not found on PATH: {tool}")
@@ -49,7 +49,14 @@ def test_awg_uses_the_host_where_amneziawg_is_enabled(tmp_path: Path) -> None:
     (group_vars / "all.yml").write_text(yaml.safe_dump({"vpn": {}}))
     (group_vars / "vpn.yml").write_text(yaml.safe_dump({}))
     (group_vars / "vpn-p0.yml").write_text(
-        yaml.safe_dump({"vpn": {"enable_amneziawg": False}})
+        yaml.safe_dump(
+            {
+                "vpn": {
+                    "enable_amneziawg": False,
+                    "enable_split_hop_ingress": True,
+                }
+            }
+        )
     )
     (group_vars / "vpn-p2.yml").write_text(
         yaml.safe_dump({"vpn": {"enable_amneziawg": True}})
@@ -114,3 +121,7 @@ def test_awg_uses_the_host_where_amneziawg_is_enabled(tmp_path: Path) -> None:
     assert bundle["ripdpi"]["amneziawg"][0]["peer"]["endpoint"] == (
         "198.51.100.20:51820"
     )
+    assert bundle["ripdpi"]["topology"] == {
+        "split_hop_egress": True,
+        "hysteria_realm": None,
+    }
