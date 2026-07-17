@@ -184,6 +184,92 @@ def config() -> dict:
     }
 
 
+def write_private_runner_config(
+    tmp_path: Path,
+    *,
+    current_contents: str | None = None,
+    rotated_contents: str | None = None,
+    omit_current: bool = False,
+    omit_rotated: bool = False,
+) -> tuple[Path, Path]:
+    current = tmp_path / "current.conf"
+    rotated = tmp_path / "rotated.conf"
+    control = tmp_path / "control"
+    deploy = tmp_path / "deploy"
+    rotation = tmp_path / "rotation"
+    valid_client = "\n".join(
+        (
+            "[Interface]",
+            f"PrivateKey = {'A' * 43}=",
+            "[Peer]",
+            f"PresharedKey = {'B' * 43}=",
+            "",
+        )
+    )
+    for path, contents, mode, omitted in (
+        (current, current_contents, 0o600, omit_current),
+        (rotated, rotated_contents, 0o600, omit_rotated),
+        (control, "private\n", 0o700, False),
+        (deploy, "private\n", 0o700, False),
+        (rotation, "private\n", 0o700, False),
+    ):
+        if not omitted:
+            path.write_text(valid_client if contents is None else contents)
+            path.chmod(mode)
+    config_path = tmp_path / "runner.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "version": lane.CONFIG_VERSION,
+                "runnerId": "a" * 64,
+                "clientConfigPath": str(current),
+                "rotatedClientConfigPath": str(rotated),
+                "clientAddress": "10.66.66.2/32",
+                "tcpEchoAddress": "93.184.216.34",
+                "tcpEchoPort": 10001,
+                "udpEchoAddress": "151.101.1.69",
+                "udpEchoPort": 10002,
+                "serverControlHook": str(control),
+                "serverDeployHook": str(deploy),
+                "rotationHook": str(rotation),
+                "probeTimeoutSeconds": 5,
+                "recoveryTimeoutSeconds": 30,
+                "deployTimeoutSeconds": 600,
+            }
+        )
+    )
+    config_path.chmod(0o600)
+    source_archive = tmp_path / "source.tar"
+    source_archive.write_bytes(b"source")
+    return config_path, source_archive
+
+
+def run_with_private_config(
+    config_path: Path, source_archive: Path, output: Path
+) -> dict:
+    assert (
+        lane.main(
+            [
+                "run",
+                "--config",
+                str(config_path),
+                "--output",
+                str(output),
+                "--source-sha",
+                "1" * 40,
+                "--workflow-run-id",
+                "42",
+                "--workflow-run-attempt",
+                "1",
+                "--source-archive",
+                str(source_archive),
+            ]
+        )
+        == 1
+    )
+    return json.loads(output.read_text())
+
+
 def test_pass_requires_tcp_udp_restart_reload_and_nat_deltas() -> None:
     executor = FakeExecutor()
     manifest = lane.run_lane(config(), executor, metadata(), now=lambda: 2_000_000_000)
@@ -315,43 +401,7 @@ def test_manifest_serialization_is_deterministic() -> None:
 def test_private_config_is_strict_and_hashes_runner_owned_producers(
     tmp_path: Path,
 ) -> None:
-    current = tmp_path / "current.conf"
-    rotated = tmp_path / "rotated.conf"
-    control = tmp_path / "control"
-    deploy = tmp_path / "deploy"
-    rotation = tmp_path / "rotation"
-    for path, mode in (
-        (current, 0o600),
-        (rotated, 0o600),
-        (control, 0o700),
-        (deploy, 0o700),
-        (rotation, 0o700),
-    ):
-        path.write_text("private\n")
-        path.chmod(mode)
-    config_path = tmp_path / "runner.json"
-    config_path.write_text(
-        json.dumps(
-            {
-                "version": lane.CONFIG_VERSION,
-                "runnerId": "a" * 64,
-                "clientConfigPath": str(current),
-                "rotatedClientConfigPath": str(rotated),
-                "clientAddress": "10.66.66.2/32",
-                "tcpEchoAddress": "93.184.216.34",
-                "tcpEchoPort": 10001,
-                "udpEchoAddress": "151.101.1.69",
-                "udpEchoPort": 10002,
-                "serverControlHook": str(control),
-                "serverDeployHook": str(deploy),
-                "rotationHook": str(rotation),
-                "probeTimeoutSeconds": 5,
-                "recoveryTimeoutSeconds": 30,
-                "deployTimeoutSeconds": 600,
-            }
-        )
-    )
-    config_path.chmod(0o600)
+    config_path, _source_archive = write_private_runner_config(tmp_path)
 
     loaded = lane.load_config(config_path)
 
@@ -360,6 +410,191 @@ def test_private_config_is_strict_and_hashes_runner_owned_producers(
     assert loaded["serverDeployHookSha256"] == lane.sha256_bytes(b"private\n")
     assert loaded["rotationHookSha256"] == lane.sha256_bytes(b"private\n")
     assert os.path.isabs(loaded["clientConfigPath"])
+
+
+def test_missing_client_configs_are_missing_credentials(tmp_path: Path) -> None:
+    for label, omitted in (("current", "current"), ("rotated", "rotated")):
+        case_path = tmp_path / label
+        case_path.mkdir()
+        config_path, source_archive = write_private_runner_config(
+            case_path,
+            omit_current=omitted == "current",
+            omit_rotated=omitted == "rotated",
+        )
+
+        manifest = run_with_private_config(
+            config_path, source_archive, case_path / "manifest.json"
+        )
+
+        assert (manifest["classification"], manifest["reasonCode"]) == (
+            "INFRA_UNAVAILABLE",
+            "MISSING_CREDENTIALS",
+        )
+
+
+def test_incomplete_or_duplicate_client_keys_are_missing_credentials(
+    tmp_path: Path,
+) -> None:
+    incomplete = "\n".join(("[Interface]", f"PrivateKey = {'A' * 43}=", "[Peer]", ""))
+    duplicate = "\n".join(
+        (
+            "[Interface]",
+            f"PrivateKey = {'A' * 43}=",
+            "PrivateKey = malformed",
+            "[Peer]",
+            f"PresharedKey = {'B' * 43}=",
+            "",
+        )
+    )
+    duplicate_psk = "\n".join(
+        (
+            "[Interface]",
+            f"PrivateKey = {'A' * 43}=",
+            "[Peer]",
+            f"PresharedKey = {'B' * 43}=",
+            "PresharedKey = malformed",
+            "",
+        )
+    )
+    for label, contents in (
+        ("incomplete", incomplete),
+        ("duplicate-private", duplicate),
+        ("duplicate-psk", duplicate_psk),
+    ):
+        case_path = tmp_path / label
+        case_path.mkdir()
+        config_path, source_archive = write_private_runner_config(
+            case_path, rotated_contents=contents
+        )
+
+        manifest = run_with_private_config(
+            config_path, source_archive, case_path / "manifest.json"
+        )
+
+        assert (manifest["classification"], manifest["reasonCode"]) == (
+            "INFRA_UNAVAILABLE",
+            "MISSING_CREDENTIALS",
+        )
+
+
+def test_dangling_client_symlink_remains_config_invalid(tmp_path: Path) -> None:
+    config_path, source_archive = write_private_runner_config(tmp_path)
+    contract = json.loads(config_path.read_text())
+    current = Path(contract["clientConfigPath"])
+    current.unlink()
+    current.symlink_to(tmp_path / "missing-target.conf")
+
+    manifest = run_with_private_config(
+        config_path, source_archive, tmp_path / "manifest.json"
+    )
+
+    assert (manifest["classification"], manifest["reasonCode"]) == (
+        "INFRA_UNAVAILABLE",
+        "CONFIG_INVALID",
+    )
+
+
+def test_malformed_runner_json_remains_config_invalid(tmp_path: Path) -> None:
+    config_path = tmp_path / "runner.json"
+    config_path.write_text("{not-json")
+    config_path.chmod(0o600)
+    source_archive = tmp_path / "source.tar"
+    source_archive.write_bytes(b"source")
+
+    manifest = run_with_private_config(
+        config_path, source_archive, tmp_path / "manifest.json"
+    )
+
+    assert (manifest["classification"], manifest["reasonCode"]) == (
+        "INFRA_UNAVAILABLE",
+        "CONFIG_INVALID",
+    )
+
+
+def test_missing_hooks_remain_config_invalid(tmp_path: Path) -> None:
+    for field in ("serverControlHook", "serverDeployHook", "rotationHook"):
+        case_path = tmp_path / field
+        case_path.mkdir()
+        config_path, source_archive = write_private_runner_config(case_path)
+        contract = json.loads(config_path.read_text())
+        Path(contract[field]).unlink()
+
+        manifest = run_with_private_config(
+            config_path, source_archive, case_path / "manifest.json"
+        )
+
+        assert (manifest["classification"], manifest["reasonCode"]) == (
+            "INFRA_UNAVAILABLE",
+            "CONFIG_INVALID",
+        )
+
+
+def test_runtime_missing_credentials_keep_distinct_classification() -> None:
+    class MissingCurrent(FakeExecutor):
+        def client_evidence(self, *, rotated: bool) -> dict:
+            if not rotated:
+                raise lane.MissingCredentials("current config disappeared")
+            return super().client_evidence(rotated=rotated)
+
+    class MissingRotated(FakeExecutor):
+        def client_evidence(self, *, rotated: bool) -> dict:
+            if rotated:
+                raise lane.MissingCredentials("rotation produced no credentials")
+            return super().client_evidence(rotated=rotated)
+
+    current = lane.run_lane(
+        config(), MissingCurrent(), metadata(), now=lambda: 2_000_000_000
+    )
+    rotated = lane.run_lane(
+        config(), MissingRotated(), metadata(), now=lambda: 2_000_000_000
+    )
+
+    assert (current["classification"], current["reasonCode"]) == (
+        "INFRA_UNAVAILABLE",
+        "MISSING_CREDENTIALS",
+    )
+    assert (rotated["classification"], rotated["reasonCode"]) == (
+        "INFRA_UNAVAILABLE",
+        "MISSING_CREDENTIALS",
+    )
+    assert rotated["rotation"]["rolledBack"] is True
+
+
+def test_post_commit_missing_credentials_roll_back_with_distinct_reason() -> None:
+    class MissingAfterCommit(FakeExecutor):
+        def __init__(self):
+            super().__init__()
+            self.current_evidence_reads = 0
+
+        def client_evidence(self, *, rotated: bool) -> dict:
+            if not rotated:
+                self.current_evidence_reads += 1
+                if self.current_evidence_reads == 2:
+                    raise lane.MissingCredentials("promoted config disappeared")
+            return super().client_evidence(rotated=rotated)
+
+        def finalize_rotation(self, action: str) -> dict:
+            if action == "commit":
+                self.calls.append("finalize_rotation:commit")
+                return {
+                    "action": action,
+                    "configGenerationSha256": self.next_generation,
+                    "peerConfigSha256": self.next_peer,
+                    "currentClientConfigSha256": self.rotated_client[
+                        "clientConfigSha256"
+                    ],
+                }
+            return super().finalize_rotation(action)
+
+    manifest = lane.run_lane(
+        config(), MissingAfterCommit(), metadata(), now=lambda: 2_000_000_000
+    )
+
+    assert (manifest["classification"], manifest["reasonCode"]) == (
+        "INFRA_UNAVAILABLE",
+        "MISSING_CREDENTIALS",
+    )
+    assert manifest["rotation"]["rolledBack"] is True
 
 
 def test_nonpass_manifest_still_validates_but_cannot_be_green() -> None:

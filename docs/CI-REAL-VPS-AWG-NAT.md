@@ -66,11 +66,12 @@ exact shape:
 ```
 
 Generate `runnerId` with `openssl rand -hex 32`. The two client configs must be
-absolute, root-owned mode-0600 files; all three hooks must be absolute, root-owned
-mode-0700 executables. Both echo addresses must be globally routable numeric
-IPs for owner-controlled echo services; they cannot be private/documentation
-addresses or services local to the VPS. No endpoint, key, PSK, client address,
-SSH alias, or raw hook output is published.
+absolute, root-owned mode-0600 files, and each must contain exactly one
+`PrivateKey` and one `PresharedKey`. All three hooks must be absolute,
+root-owned mode-0700 executables. Both echo addresses must be globally routable
+numeric IPs for owner-controlled echo services; they cannot be
+private/documentation addresses or services local to the VPS. No endpoint,
+key, PSK, client address, SSH alias, or raw hook output is published.
 
 `serverDeployHook deploy SOURCE_TAR SOURCE_SHA ARCHIVE_SHA256` must verify the
 archive digest, deploy that exact source through Ansible/SOPS, and emit only:
@@ -132,7 +133,11 @@ The uploaded artifact contains only canonical `manifest.json`:
   NAT, or TCP/UDP recovery failed.
 - `INFRA_UNAVAILABLE` means the private contract, privilege, tools, server
   deploy/control transport (hook exit 75), or direct echo controls were
-  unavailable.
+  unavailable. Its fail-closed reason taxonomy distinguishes
+  `MISSING_CREDENTIALS` (a current or rotated client config is absent or does
+  not contain exactly one `PrivateKey` and `PresharedKey`) from
+  `CONFIG_INVALID` (malformed runner JSON, unsafe paths, or missing hooks) and
+  `PREREQUISITE_MISSING` (runner privilege, binaries, or source archive).
 
 Both non-PASS classifications fail the workflow. Raw PCAPs, hook logs, config
 paths, targets, and secrets stay on the runner and are deleted during cleanup.

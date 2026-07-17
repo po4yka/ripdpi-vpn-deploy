@@ -44,6 +44,7 @@ CLASSIFICATIONS = {"PASS", "PRODUCT_FAILURE", "INFRA_UNAVAILABLE"}
 REASON_CODES = {
     "NONE",
     "CONFIG_INVALID",
+    "MISSING_CREDENTIALS",
     "PREREQUISITE_MISSING",
     "ECHO_CONTROL_UNAVAILABLE",
     "SERVER_CONTROL_UNAVAILABLE",
@@ -209,6 +210,10 @@ class LaneFailure(RuntimeError):
 
 class InfrastructureUnavailable(RuntimeError):
     """Private hook reported an environmental outage (sysexits EX_TEMPFAIL)."""
+
+
+class MissingCredentials(RuntimeError):
+    """Required AWG client credential material is absent or incomplete."""
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -381,6 +386,12 @@ def run_lane(
             classification = "INFRA_UNAVAILABLE"
             reason_code = "CLEANUP_FAILED"
 
+    def read_client_evidence(*, rotated: bool) -> dict[str, str]:
+        try:
+            return executor.client_evidence(rotated=rotated)
+        except MissingCredentials as exc:
+            raise LaneFailure("INFRA_UNAVAILABLE", "MISSING_CREDENTIALS") from exc
+
     def run_awg_phase(
         phase_id: str,
         before: dict[str, Any],
@@ -437,7 +448,7 @@ def run_lane(
             raise LaneFailure("PRODUCT_FAILURE", "DEPLOYMENT_MISMATCH")
         log_event("source_deployed", receiptSha256=deployment["receiptSha256"])
 
-        current_client = executor.client_evidence(rotated=False)
+        current_client = read_client_evidence(rotated=False)
         direct = executor.direct_probe()
         phases.append(_phase("direct_control", direct))
         if not _probe_ok(direct):
@@ -512,7 +523,7 @@ def run_lane(
             )
             for key, value in rotation_receipt.items():
                 require_sha(value, SHA256_RE, f"rotation receipt {key}")
-            rotated_client = executor.client_evidence(rotated=True)
+            rotated_client = read_client_evidence(rotated=True)
             if (
                 rotation_receipt["previousConfigGenerationSha256"]
                 != status["configGenerationSha256"]
@@ -533,9 +544,9 @@ def run_lane(
             raise LaneFailure(
                 "INFRA_UNAVAILABLE", "SERVER_CONTROL_UNAVAILABLE"
             ) from exc
+        except LaneFailure:
+            raise
         except Exception as exc:
-            if isinstance(exc, LaneFailure):
-                raise
             raise LaneFailure("PRODUCT_FAILURE", "ROTATION_FAILED") from exc
         try:
             executor.server_action("reload")
@@ -618,7 +629,7 @@ def run_lane(
         try:
             commit_receipt = executor.finalize_rotation("commit")
             require_fields(commit_receipt, FINALIZE_RECEIPT_FIELDS, "commit receipt")
-            current_after_commit = executor.client_evidence(rotated=False)
+            current_after_commit = read_client_evidence(rotated=False)
             if (
                 commit_receipt["action"] != "commit"
                 or commit_receipt["configGenerationSha256"]
@@ -633,6 +644,8 @@ def run_lane(
             rotation_committed = True
             server_transaction_finalized = True
             log_event("rotation_committed")
+        except LaneFailure:
+            raise
         except Exception as exc:
             raise LaneFailure("INFRA_UNAVAILABLE", "COMMIT_FAILED") from exc
     except LaneFailure as exc:
@@ -946,19 +959,41 @@ def _secure_path(path_value: Any, *, executable: bool) -> Path:
 
 
 def client_config_evidence(path_value: str) -> dict[str, str]:
-    path = _secure_path(path_value, executable=False)
-    raw = path.read_bytes()
-    psk_values = re.findall(
-        rb"(?mi)^\s*PresharedKey\s*=\s*([A-Za-z0-9+/]{43}=)\s*$", raw
-    )
-    if len(psk_values) != 1:
-        raise ValueError("client config must contain exactly one preshared key")
+    _path, raw, psk_value = _client_config_credentials(path_value)
     return {
         "clientConfigSha256": sha256_bytes(raw),
-        "peerConfigSha256": sha256_bytes(
-            b"ripdpi:awg-evidence-peer:v1:" + psk_values[0]
-        ),
+        "peerConfigSha256": sha256_bytes(b"ripdpi:awg-evidence-peer:v1:" + psk_value),
     }
+
+
+def _client_config_credentials(path_value: Any) -> tuple[Path, bytes, bytes]:
+    if not isinstance(path_value, str):
+        raise ValueError("private path must be a string")
+    candidate = Path(path_value)
+    if (
+        candidate.is_absolute()
+        and not candidate.is_symlink()
+        and not candidate.exists()
+    ):
+        raise MissingCredentials("AWG client config is missing")
+    path = _secure_path(path_value, executable=False)
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError as exc:
+        raise MissingCredentials("AWG client config is missing") from exc
+    private_key_values = re.findall(rb"(?mi)^\s*PrivateKey\s*=\s*(.*?)\s*$", raw)
+    psk_values = re.findall(rb"(?mi)^\s*PresharedKey\s*=\s*(.*?)\s*$", raw)
+    key_pattern = re.compile(rb"[A-Za-z0-9+/]{43}=")
+    if (
+        len(private_key_values) != 1
+        or len(psk_values) != 1
+        or key_pattern.fullmatch(private_key_values[0]) is None
+        or key_pattern.fullmatch(psk_values[0]) is None
+    ):
+        raise MissingCredentials(
+            "AWG client config must contain exactly one private key and preshared key"
+        )
+    return path, raw, psk_values[0]
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -970,8 +1005,12 @@ def load_config(path: Path) -> dict[str, Any]:
     if value["version"] != CONFIG_VERSION:
         raise ValueError("unsupported runner config version")
     runner_id = require_sha(value["runnerId"], SHA256_RE, "runnerId")
-    client = _secure_path(value["clientConfigPath"], executable=False)
-    rotated = _secure_path(value["rotatedClientConfigPath"], executable=False)
+    client, _client_raw, _client_psk = _client_config_credentials(
+        value["clientConfigPath"]
+    )
+    rotated, _rotated_raw, _rotated_psk = _client_config_credentials(
+        value["rotatedClientConfigPath"]
+    )
     if client.samefile(rotated):
         raise ValueError("rotated client config must be a distinct file")
     control_hook = _secure_path(value["serverControlHook"], executable=True)
@@ -1534,6 +1573,10 @@ def main(argv: list[str] | None = None) -> int:
     producer_sha = sha256_bytes(Path(__file__).read_bytes())
     try:
         config = load_config(args.config)
+    except MissingCredentials:
+        manifest = failure_manifest(
+            metadata, producer_sha, reason_code="MISSING_CREDENTIALS"
+        )
     except (OSError, ValueError, json.JSONDecodeError):
         manifest = failure_manifest(metadata, producer_sha)
     else:
