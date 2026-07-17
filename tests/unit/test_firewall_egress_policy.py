@@ -123,9 +123,10 @@ def test_firewall_exclusively_owns_awg_masquerade_rule():
     rendered = ctr.render_template(TEMPLATE, vars_)
 
     assert (
-        'iifname "awg0" oifname != "awg0" counter comment "awg-nat-awg0" masquerade'
+        'iifname "awg0" oifname != "awg0" counter masquerade comment "awg-nat-awg0"'
         in rendered
     )
+    assert 'counter comment "awg-nat-awg0" masquerade' not in rendered
     awg_config = AWG_TEMPLATE.read_text()
     assert "PostUp" not in awg_config
     assert "PostDown" not in awg_config

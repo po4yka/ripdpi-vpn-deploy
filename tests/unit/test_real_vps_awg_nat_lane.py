@@ -8,8 +8,11 @@ import json
 import os
 from pathlib import Path
 
+from scripts.template_render import merge_render_vars, render_template
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "real-vps-awg-nat.py"
+FIREWALL_TEMPLATE = REPO_ROOT / "ansible/roles/firewall/templates/nftables.conf.j2"
 
 
 def load_module():
@@ -282,11 +285,22 @@ def test_workflow_is_recurring_fail_closed_and_uploads_evidence() -> None:
 
 
 def test_firewall_nat_rule_has_stable_counter_comment() -> None:
-    template = (
-        REPO_ROOT / "ansible/roles/firewall/templates/nftables.conf.j2"
-    ).read_text()
-    assert 'counter comment "awg-nat-{{ inst.name }}" masquerade' in template
-    assert 'counter comment "awg-nat-awg0" masquerade' in template
+    vars_ = merge_render_vars()
+    vars_["vpn"] = {**vars_["vpn"], "enable_amneziawg": True}
+    vars_["amneziawg_secrets"] = {
+        "instances": [{"name": "awg-primary"}, {"name": "awg-backup"}]
+    }
+
+    rendered = render_template(FIREWALL_TEMPLATE, vars_)
+
+    for interface in ("awg-primary", "awg-backup"):
+        rule = (
+            f'iifname "{interface}" oifname != "{interface}" '
+            f'counter masquerade comment "awg-nat-{interface}"'
+        )
+        assert rendered.count(rule) == 1
+    assert 'comment "awg-nat-awg0"' not in rendered
+    assert 'counter comment "awg-nat-' not in rendered
 
 
 def test_manifest_serialization_is_deterministic() -> None:
