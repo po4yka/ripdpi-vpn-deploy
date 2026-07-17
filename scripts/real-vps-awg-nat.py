@@ -1005,12 +1005,8 @@ def load_config(path: Path) -> dict[str, Any]:
     if value["version"] != CONFIG_VERSION:
         raise ValueError("unsupported runner config version")
     runner_id = require_sha(value["runnerId"], SHA256_RE, "runnerId")
-    client, _client_raw, _client_psk = _client_config_credentials(
-        value["clientConfigPath"]
-    )
-    rotated, _rotated_raw, _rotated_psk = _client_config_credentials(
-        value["rotatedClientConfigPath"]
-    )
+    client, _, _ = _client_config_credentials(value["clientConfigPath"])
+    rotated, _, _ = _client_config_credentials(value["rotatedClientConfigPath"])
     if client.samefile(rotated):
         raise ValueError("rotated client config must be a distinct file")
     control_hook = _secure_path(value["serverControlHook"], executable=True)
