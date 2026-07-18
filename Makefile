@@ -159,7 +159,8 @@ validate:
 	  terraform -chdir=terraform/providers/$$provider fmt -check -recursive; \
 	  terraform -chdir=terraform/providers/$$provider validate; \
 	done
-	gitleaks detect --source . --redact --no-banner
+	gitleaks git --redact --no-banner .
+	gitleaks git --staged --redact --no-banner .
 	cd $(ANSIBLE_DIR) && ansible-lint
 	cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check
 
