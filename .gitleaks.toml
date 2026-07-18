@@ -48,7 +48,7 @@ tags = ["age", "secret"]
 [[rules]]
 id = "snell-credential"
 description = "Snell PSK or per-user key"
-regex = '''(?i)(snell.{0,30})?(psk|userkey)["'\s:=]+[A-Za-z0-9+/_.-]{16,}={0,2}'''
+regex = '''(?i)(?:snell[_ .-]{0,30}(?:psk|userkey)|\b(?:psk|userkey)\b)["'\s:=]+[A-Za-z0-9+/_.-]{16,}={0,2}'''
 tags = ["vpn", "secret"]
 
 [allowlist]
@@ -64,6 +64,7 @@ paths = [
     '''ansible/molecule/.*''',
     '''tests/bats/age_recovery_roundtrip\.bats''',
     '''tests/unit/test_age_recovery_roundtrip\.py''',
+    '''tests/unit/test_gitleaks_rules\.py''',
     '''tests/fixtures/age-test\.key''',
     '''tests/fixtures/secrets-sample\.yml''',
     '''tests/fixtures/age-recovery-shares/.*''',
