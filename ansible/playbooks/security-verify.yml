@@ -110,94 +110,13 @@
         public_listener_contract: "{{ terraform_public_listeners_b64 | b64decode | from_json }}"
 
     - name: Public listeners match enabled profile manifest
-      ansible.builtin.shell:
-        cmd: |
-          set -euo pipefail
-          expected_tcp=" 22 {% for listener in public_listener_contract
-          if listener.protocol == 'tcp' and listener.port is not none
-          %}{{ listener.port }} {% endfor %} "
-          expected_udp=" {% for listener in public_listener_contract
-          if listener.protocol == 'udp' and listener.port is not none
-          %}{{ listener.port }} {% endfor %} "
-          expected_udp_ranges=" {% for listener in public_listener_contract
-          if listener.protocol == 'udp' and listener.port_range is not none
-          %}{{ listener.port_range }} {% endfor %} "
-
-          in_list() {
-            case "$1" in
-              *" $2 "*) return 0 ;;
-              *) return 1 ;;
-            esac
-          }
-
-          in_ranges() {
-            local port="$1"
-            local range start end
-            for range in $expected_udp_ranges; do
-              case "$range" in
-                *-*)
-                  start="${range%-*}"
-                  end="${range#*-}"
-                  if [[ "$start" =~ ^[0-9]+$ && "$end" =~ ^[0-9]+$ && "$port" -ge "$start" && "$port" -le "$end" ]]; then
-                    return 0
-                  fi
-                  ;;
-              esac
-            done
-            return 1
-          }
-
-          declare -a public_tcp_ports_seen=()
-          declare -a public_udp_ports_seen=()
-
-          while read -r proto addr; do
-            case "$addr" in
-              127.*|localhost:*|"[::1]:"*|"::1:"*) continue ;;
-            esac
-            port="${addr##*:}"
-            port="${port%]}"
-            [[ "$port" =~ ^[0-9]+$ ]] || continue
-            case "$proto" in
-              tcp*)
-                public_tcp_ports_seen[port]=1
-                in_list "$expected_tcp" "$port" || echo "$proto $addr"
-                ;;
-              udp*)
-                public_udp_ports_seen[port]=1
-                in_list "$expected_udp" "$port" || in_ranges "$port" || echo "$proto $addr"
-                ;;
-            esac
-          done < <(ss -H -lntu | awk '{ print $1 " " $5 }')
-
-          for port in $expected_tcp; do
-            [[ "$port" == 22 ]] && continue
-            [[ -n "${public_tcp_ports_seen[port]:-}" ]] || echo "missing tcp ${port}"
-          done
-          for port in $expected_udp; do
-            [[ -n "${public_udp_ports_seen[port]:-}" ]] || echo "missing udp ${port}"
-          done
-          for range in $expected_udp_ranges; do
-            if [[ ! "$range" =~ ^([1-9][0-9]*)-([1-9][0-9]*)$ ]]; then
-              echo "invalid udp range ${range}"
-              continue
-            fi
-            start="${BASH_REMATCH[1]}"
-            end="${BASH_REMATCH[2]}"
-            if ((start > end || end > 65535)); then
-              echo "invalid udp range ${range}"
-              continue
-            fi
-            for ((port = start; port <= end; port++)); do
-              if [[ -z "${public_udp_ports_seen[port]:-}" ]]; then
-                echo "missing udp ${port} (required by range ${range})"
-                break
-              fi
-            done
-          done
-        executable: /bin/bash
+      ansible.builtin.script:
+        cmd: >-
+          {{ playbook_dir }}/../../scripts/verify-public-listeners.py
+          --contract-b64 {{ terraform_public_listeners_b64 }}
       register: security_unexpected_public_listeners
       changed_when: false
-      failed_when: security_unexpected_public_listeners.stdout | length > 0
+      failed_when: security_unexpected_public_listeners.rc != 0
 
     - name: Honeypot IPv4 listener is active
       ansible.builtin.shell:
