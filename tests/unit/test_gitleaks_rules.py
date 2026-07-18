@@ -8,6 +8,8 @@ import subprocess
 import tomllib
 from pathlib import Path
 
+import yaml
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -15,6 +17,24 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 def _custom_rule(rule_id: str) -> dict:
     config = tomllib.loads((REPO_ROOT / ".gitleaks.toml").read_text())
     return next(rule for rule in config["rules"] if rule["id"] == rule_id)
+
+
+def test_unit_test_job_installs_pinned_gitleaks() -> None:
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    )
+    steps = workflow["jobs"]["unit-tests"]["steps"]
+    install_index = next(
+        index for index, step in enumerate(steps) if step.get("name") == "Install gitleaks"
+    )
+    pytest_index = next(
+        index for index, step in enumerate(steps) if step.get("name") == "pytest tests/unit/"
+    )
+    install_command = steps[install_index]["run"]
+
+    assert install_index < pytest_index
+    assert "go install github.com/gitleaks/gitleaks/v8@v8.30.1" in install_command
+    assert 'echo "$(go env GOPATH)/bin" >> "${GITHUB_PATH}"' in install_command
 
 
 def test_snell_credential_rule_ignores_python_psk_identifiers() -> None:
