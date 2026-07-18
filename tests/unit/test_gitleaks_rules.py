@@ -33,7 +33,7 @@ def test_unit_test_job_installs_pinned_gitleaks() -> None:
     install_command = steps[install_index]["run"]
 
     assert install_index < pytest_index
-    assert "go install github.com/gitleaks/gitleaks/v8@v8.30.1" in install_command
+    assert "go install github.com/zricethezav/gitleaks/v8@v8.30.1" in install_command
     assert 'echo "$(go env GOPATH)/bin" >> "${GITHUB_PATH}"' in install_command
 
 
