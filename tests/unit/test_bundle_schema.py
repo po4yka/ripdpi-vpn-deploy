@@ -19,6 +19,7 @@ with validate-bundle.py and asserts the optional extension semantics.
 """
 from __future__ import annotations
 
+import base64
 import copy
 import json
 import subprocess
@@ -209,6 +210,132 @@ def test_golden_full_validates_via_cli():
         capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
+
+
+# ---------------------------------------------------------------------------
+# Local runtime materialization. The canonical schema remains redacted; the
+# explicit CLI mode validates and removes a local AWG key in memory first.
+# ---------------------------------------------------------------------------
+def _materialized_bundle(example):
+    doc = copy.deepcopy(example)
+    entry = doc["amneziawg"][0]
+    del entry["private_key_placeholder"]
+    entry["private_key"] = base64.b64encode(bytes(range(32))).decode("ascii")
+    return doc
+
+
+def _run_validator(path, *args):
+    return subprocess.run(
+        [sys.executable, str(VALIDATOR), *args, str(path)],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_materialized_runtime_key_is_rejected_without_explicit_mode(tmp_path, example):
+    path = tmp_path / "runtime.json"
+    path.write_text(json.dumps(_materialized_bundle(example)))
+
+    proc = _run_validator(path)
+
+    assert proc.returncode == 1
+
+
+@pytest.mark.parametrize("full_bundle", [False, True])
+def test_runtime_mode_accepts_valid_materialized_key(tmp_path, example, full_bundle):
+    ripdpi = _materialized_bundle(example)
+    doc = {"ripdpi": ripdpi, "outbounds": []} if full_bundle else ripdpi
+    path = tmp_path / "runtime.json"
+    path.write_text(json.dumps(doc))
+
+    proc = _run_validator(path, "--runtime-materialized")
+
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_runtime_mode_rejects_key_and_placeholder_without_printing_key(tmp_path, example):
+    doc = _materialized_bundle(example)
+    key = doc["amneziawg"][0]["private_key"]
+    doc["amneziawg"][0]["private_key_placeholder"] = True
+    path = tmp_path / "runtime.json"
+    path.write_text(json.dumps(doc))
+
+    proc = _run_validator(path, "--runtime-materialized")
+
+    assert proc.returncode == 1
+    assert "requires private_key" in proc.stderr
+    assert key not in proc.stdout + proc.stderr
+
+
+def test_runtime_mode_rejects_missing_key_state(tmp_path, example):
+    doc = copy.deepcopy(example)
+    del doc["amneziawg"][0]["private_key_placeholder"]
+    path = tmp_path / "runtime.json"
+    path.write_text(json.dumps(doc))
+
+    proc = _run_validator(path, "--runtime-materialized")
+
+    assert proc.returncode == 1
+    assert "requires private_key" in proc.stderr
+
+
+def test_runtime_mode_rejects_redacted_placeholder_only_bundle(tmp_path, example):
+    path = tmp_path / "redacted.json"
+    path.write_text(json.dumps(example))
+
+    proc = _run_validator(path, "--runtime-materialized")
+
+    assert proc.returncode == 1
+    assert "requires private_key" in proc.stderr
+
+
+def test_runtime_mode_rejects_mixed_materialization_state(tmp_path, example):
+    doc = _materialized_bundle(example)
+    redacted_entry = copy.deepcopy(example["amneziawg"][0])
+    redacted_entry["tag"] = "second-awg"
+    doc["amneziawg"].append(redacted_entry)
+    path = tmp_path / "mixed.json"
+    path.write_text(json.dumps(doc))
+
+    proc = _run_validator(path, "--runtime-materialized")
+
+    assert proc.returncode == 1
+    assert "amneziawg[1]" in proc.stderr
+
+
+@pytest.mark.parametrize(
+    "private_key",
+    [
+        None,
+        "not-base64",
+        base64.b64encode(bytes(31)).decode("ascii"),
+        base64.b64encode(bytes(range(32))).decode("ascii")[:-2] + "9=",
+    ],
+)
+def test_runtime_mode_rejects_malformed_private_key(tmp_path, example, private_key):
+    doc = _materialized_bundle(example)
+    doc["amneziawg"][0]["private_key"] = private_key
+    path = tmp_path / "runtime.json"
+    path.write_text(json.dumps(doc))
+
+    proc = _run_validator(path, "--runtime-materialized")
+
+    assert proc.returncode == 1
+    assert "private_key" in proc.stderr
+    if isinstance(private_key, str):
+        assert private_key not in proc.stdout + proc.stderr
+
+
+def test_runtime_mode_still_rejects_fingerprint_mismatch(tmp_path, example):
+    doc = _materialized_bundle(example)
+    doc["amneziawg"][0]["cohort_fingerprint"] = "sha256:" + "0" * 64
+    path = tmp_path / "runtime.json"
+    path.write_text(json.dumps(doc))
+
+    proc = _run_validator(path, "--runtime-materialized")
+
+    assert proc.returncode == 1
+    assert "cohort_fingerprint" in proc.stderr
 
 
 # ---------------------------------------------------------------------------

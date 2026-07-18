@@ -136,6 +136,18 @@ never appears in the bundle.  `private_key_placeholder: true` signals to the
 RIPDPI client that it must load the key from its own secure local storage rather
 than parsing it from the subscription JSON.
 
+An operator may validate a locally materialized Android artifact without
+relaxing the distribution contract:
+
+```bash
+python3 scripts/validate-bundle.py --runtime-materialized /path/to/embedded-relay-bundle.json
+```
+
+This explicit mode validates each inline AmneziaWG private key, removes it only
+from an in-memory copy, and then applies the unchanged redacted schema. It does
+not print the key, rewrite the artifact, or make the materialized file suitable
+for distribution.
+
 ### Private-key recovery flow
 
 `private_key_placeholder: true` means the bundle carries **no usable private
