@@ -16,7 +16,7 @@ def test_ci_runs_cargo_deny_with_vpnd_config():
     assert "copyleft =" not in config
     assert "EmbarkStudios/cargo-deny-action@" in ci
     assert "manifest-path: vpnd/Cargo.toml" in ci
-    assert 'command-arguments: "--config vpnd/deny.toml"' in ci
+    assert 'arguments: "--all-features --config vpnd/deny.toml"' in ci
     assert 'rust-version: "1.88.0"' in ci
     assert "cargo-command: test --release --locked" in ci
     assert "cargo-command: clippy --release --all-targets --locked -- -D warnings" in ci
