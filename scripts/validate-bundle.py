@@ -20,6 +20,9 @@ Input may be a full sing-box bundle (the `ripdpi` key is extracted) or a bare
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
+import copy
 import json
 import sys
 from pathlib import Path
@@ -55,6 +58,47 @@ def _fingerprint_errors(ripdpi: dict) -> list[str]:
     return errors
 
 
+def _normalize_runtime_materialized(ripdpi: dict) -> tuple[dict, list[str]]:
+    """Return a redacted in-memory copy of a locally materialized bundle."""
+    normalized = copy.deepcopy(ripdpi)
+    errors: list[str] = []
+    entries = normalized.get("amneziawg")
+    if not isinstance(entries, list):
+        return normalized, errors
+
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            continue
+        has_key = "private_key" in entry
+        has_placeholder = "private_key_placeholder" in entry
+        if not has_key or has_placeholder:
+            errors.append(
+                f"amneziawg[{i}]: runtime materialization requires private_key "
+                "and forbids private_key_placeholder"
+            )
+            entry.pop("private_key", None)
+            continue
+
+        private_key = entry.pop("private_key")
+        if not isinstance(private_key, str):
+            errors.append(f"amneziawg[{i}].private_key: must be canonical base64")
+            continue
+        try:
+            decoded = base64.b64decode(private_key, validate=True)
+        except (binascii.Error, ValueError):
+            errors.append(f"amneziawg[{i}].private_key: must be canonical base64")
+            continue
+        if len(decoded) != 32 or base64.b64encode(decoded).decode("ascii") != private_key:
+            errors.append(
+                f"amneziawg[{i}].private_key: must encode exactly 32 bytes "
+                "using canonical base64"
+            )
+            continue
+        entry["private_key_placeholder"] = True
+
+    return normalized, errors
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -62,6 +106,13 @@ def main() -> int:
         nargs="?",
         help="A RIPDPI bundle JSON (or bare ripdpi object). "
         "Defaults to contract/ripdpi-bundle.example.json.",
+    )
+    ap.add_argument(
+        "--runtime-materialized",
+        action="store_true",
+        help="Validate a local runtime bundle containing inline AmneziaWG "
+        "private keys after redacting them in memory. The default remains the "
+        "strict distribution contract.",
     )
     args = ap.parse_args()
 
@@ -87,20 +138,27 @@ def main() -> int:
         return 1
 
     ripdpi = _extract_ripdpi(doc)
+    runtime_errors: list[str] = []
+    if args.runtime_materialized:
+        ripdpi, runtime_errors = _normalize_runtime_materialized(ripdpi)
     validator = jsonschema.Draft202012Validator(schema)
     errors = sorted(validator.iter_errors(ripdpi), key=lambda e: list(e.absolute_path))
 
     fp_errors = _fingerprint_errors(ripdpi)
 
-    if errors or fp_errors:
+    if errors or fp_errors or runtime_errors:
         print(
-            f"validate-bundle: {len(errors) + len(fp_errors)} violation(s) in {target}:",
+            "validate-bundle: "
+            f"{len(errors) + len(fp_errors) + len(runtime_errors)} violation(s) "
+            f"in {target}:",
             file=sys.stderr,
         )
         for e in errors:
             loc = ".".join(str(p) for p in e.absolute_path) or "<root>"
             print(f"  {loc}: {e.message}", file=sys.stderr)
         for msg in fp_errors:
+            print(f"  {msg}", file=sys.stderr)
+        for msg in runtime_errors:
             print(f"  {msg}", file=sys.stderr)
         return 1
 
