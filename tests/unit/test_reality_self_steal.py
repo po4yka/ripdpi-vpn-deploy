@@ -334,17 +334,31 @@ def test_enabled_role_rejects_an_unsafe_server_name(tmp_path: Path) -> None:
 
 
 def test_molecule_verifies_live_tls_site_and_private_binding() -> None:
-    verify = (
+    verify_path = (
         ANSIBLE
         / "roles"
         / "reality-self-steal"
         / "molecule"
         / "default"
         / "verify.yml"
-    ).read_text()
+    )
+    verify = verify_path.read_text()
+    tasks = yaml.safe_load(verify)[0]["tasks"]
+    root_probe = next(
+        task
+        for task in tasks
+        if task["name"] == "HTTPS root returns the ordinary landing site"
+    )
+    root_probe_lines = {
+        line.strip()
+        for line in root_probe["ansible.builtin.shell"]["cmd"].splitlines()
+    }
 
     assert "nginx -t" in verify
-    assert "https://edge.example.test:8443/" in verify
+    assert (
+        "https://edge.example.test:8443/ | grep -q 'LLM Model Notes'"
+        in root_probe_lines
+    )
     assert "LLM Model Notes" in verify
     assert "ALPN protocol: h2" in verify
     assert "/current/privkey.pem" in verify

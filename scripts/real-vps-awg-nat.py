@@ -176,29 +176,41 @@ FINALIZE_RECEIPT_FIELDS = {
 
 
 class Executor(Protocol):
-    def deploy_source(self, source_sha: str, archive_sha256: str) -> dict[str, Any]: ...
+    def deploy_source(self, source_sha: str, archive_sha256: str) -> dict[str, Any]:
+        raise NotImplementedError
 
-    def direct_probe(self) -> dict[str, Any]: ...
+    def direct_probe(self) -> dict[str, Any]:
+        raise NotImplementedError
 
-    def server_status(self) -> dict[str, Any]: ...
+    def server_status(self) -> dict[str, Any]:
+        raise NotImplementedError
 
-    def start_client(self, *, rotated: bool) -> None: ...
+    def start_client(self, *, rotated: bool) -> None:
+        raise NotImplementedError
 
-    def probe(self, phase: str) -> dict[str, Any]: ...
+    def probe(self, phase: str) -> dict[str, Any]:
+        raise NotImplementedError
 
-    def probe_once(self, phase: str) -> dict[str, Any]: ...
+    def probe_once(self, phase: str) -> dict[str, Any]:
+        raise NotImplementedError
 
-    def server_action(self, action: str) -> None: ...
+    def server_action(self, action: str) -> None:
+        raise NotImplementedError
 
-    def stage_rotation(self) -> dict[str, Any]: ...
+    def stage_rotation(self) -> dict[str, Any]:
+        raise NotImplementedError
 
-    def finalize_rotation(self, action: str) -> dict[str, Any]: ...
+    def finalize_rotation(self, action: str) -> dict[str, Any]:
+        raise NotImplementedError
 
-    def client_evidence(self, *, rotated: bool) -> dict[str, str]: ...
+    def client_evidence(self, *, rotated: bool) -> dict[str, str]:
+        raise NotImplementedError
 
-    def stop_client(self) -> str: ...
+    def stop_client(self) -> str:
+        raise NotImplementedError
 
-    def close(self) -> None: ...
+    def close(self) -> None:
+        raise NotImplementedError
 
 
 class LaneFailure(RuntimeError):
@@ -615,7 +627,7 @@ def run_lane(
             client_active = True
         except Exception as exc:
             raise LaneFailure("PRODUCT_FAILURE", "AWG_START_FAILED") from exc
-        status = run_awg_phase(
+        run_awg_phase(
             "reload_rotation_recovery",
             after_negative,
             rotation_receipt["nextPeerConfigSha256"],
