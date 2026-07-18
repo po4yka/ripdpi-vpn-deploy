@@ -261,7 +261,7 @@ jobs:
           sudo install -m 0755 /tmp/sops /usr/local/bin/sops
       - name: Install gitleaks
         run: |
-          go install github.com/gitleaks/gitleaks/v8@v8.30.1
+          go install github.com/zricethezav/gitleaks/v8@v8.30.1
           echo "$(go env GOPATH)/bin" >> "${GITHUB_PATH}"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
