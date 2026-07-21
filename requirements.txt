@@ -6,9 +6,9 @@ ansible-compat==26.3.0 \
     # via
     #   ansible-lint
     #   molecule
-ansible-core==2.21.1 \
-    --hash=sha256:1403ff56bb69484ef90788126d06c65b4e28e8d2dcdcfb7f027d4c1495052d7e \
-    --hash=sha256:a5536ece95be84de15212b3644cdbbe9cbd9efd62e4e8a544cd6b0b27a083039
+ansible-core==2.21.2 \
+    --hash=sha256:c6139e662eda1bfb5af16029f12afa5edfc7f95f8cd44281b1bdb434a6d9dc70 \
+    --hash=sha256:c7d696c717da03109a32a569a5fe57925812a86734344eab775cba169bf57cf8
     # via
     #   -r requirements.in
     #   ansible-compat
@@ -507,9 +507,9 @@ molecule==26.6.0 \
     # via
     #   -r requirements.in
     #   molecule-plugins
-molecule-plugins[docker]==26.7.8 \
-    --hash=sha256:57ba766f960856c6c10f63a9477fc14df78b6d0693c97c5ab1fc0bcdbf67d0a7 \
-    --hash=sha256:e805e45a4aaad2539256553ccc243568520fd130a30056cd46c8c64267279691
+molecule-plugins[docker]==26.7.15 \
+    --hash=sha256:191dfa7fd965c637e3b61d0929f2fb741f0df1181a250df62eca3657b1182794 \
+    --hash=sha256:df4cab8d9e13ed448fc33d72af1fbae54883e9255a42c021ae7e875dfd3374c1
     # via -r requirements.in
 mypy-extensions==1.1.0 \
     --hash=sha256:1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505 \
