@@ -22,10 +22,16 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 CONFIG_VERSION = "real_vps_awg_nat_runner_v1"
-MANIFEST_VERSION = "real_vps_awg_nat_evidence_v1"
+MANIFEST_VERSION = "real_vps_awg_nat_evidence_v2"
 WORKFLOW_PATH = ".github/workflows/real-vps-awg-nat.yml"
+LOCAL_ENTRYPOINT_PATH = "scripts/run-real-vps-awg-nat-local.sh"
+EXECUTOR_ENTRYPOINTS = {
+    "github_actions": WORKFLOW_PATH,
+    "local_systemd": LOCAL_ENTRYPOINT_PATH,
+}
 SHA1_RE = re.compile(r"[0-9a-f]{40}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
+INVOCATION_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 EXPECTED_PHASES = [
     "direct_control",
     "initial_connect",
@@ -105,9 +111,10 @@ MANIFEST_FIELDS = {
     "cleanup",
 }
 PROVENANCE_FIELDS = {
-    "workflowPath",
-    "workflowRunId",
-    "workflowRunAttempt",
+    "executor",
+    "entrypointPath",
+    "invocationId",
+    "invocationAttempt",
     "sourceArchiveSha256",
 }
 PRODUCER_FIELDS = {
@@ -257,6 +264,22 @@ def require_sha(value: Any, pattern: re.Pattern[str], context: str) -> str:
     if not isinstance(value, str) or pattern.fullmatch(value) is None:
         raise ValueError(f"{context} has invalid digest format")
     return value
+
+
+def require_invocation_id(value: Any, context: str = "invocation id") -> str:
+    if not isinstance(value, str) or INVOCATION_ID_RE.fullmatch(value) is None:
+        raise ValueError(f"{context} has invalid format")
+    return value
+
+
+def provenance_from_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "executor": metadata["executor"],
+        "entrypointPath": metadata["entrypointPath"],
+        "invocationId": metadata["invocationId"],
+        "invocationAttempt": metadata["invocationAttempt"],
+        "sourceArchiveSha256": metadata["sourceArchiveSha256"],
+    }
 
 
 def require_int(value: Any, context: str, minimum: int = 0) -> int:
@@ -739,12 +762,7 @@ def run_lane(
         "startedAtEpoch": started,
         "finishedAtEpoch": finished,
         "generatedAtEpoch": finished,
-        "provenance": {
-            "workflowPath": WORKFLOW_PATH,
-            "workflowRunId": metadata["workflowRunId"],
-            "workflowRunAttempt": metadata["workflowRunAttempt"],
-            "sourceArchiveSha256": metadata["sourceArchiveSha256"],
-        },
+        "provenance": provenance_from_metadata(metadata),
         "runnerIdSha256": config["runnerIdSha256"],
         "producerDigests": {
             "runnerSha256": config["producerSha256"],
@@ -793,8 +811,9 @@ def validate_manifest(
     expected_source_sha: str,
     now: int | None = None,
     max_age_seconds: int = 604800,
-    expected_run_id: int | None = None,
-    expected_run_attempt: int | None = None,
+    expected_executor: str | None = None,
+    expected_invocation_id: str | None = None,
+    expected_invocation_attempt: int | None = None,
     expected_source_archive_sha256: str | None = None,
 ) -> None:
     if not isinstance(manifest, dict):
@@ -819,8 +838,13 @@ def validate_manifest(
     if not isinstance(provenance, dict):
         raise ValueError("provenance must be an object")
     require_fields(provenance, PROVENANCE_FIELDS, "provenance")
-    if provenance["workflowPath"] != WORKFLOW_PATH:
-        raise ValueError("workflow provenance mismatch")
+    executor = provenance["executor"]
+    if executor not in EXECUTOR_ENTRYPOINTS:
+        raise ValueError("provenance executor is invalid")
+    if provenance["entrypointPath"] != EXECUTOR_ENTRYPOINTS[executor]:
+        raise ValueError("provenance entrypoint mismatch")
+    if expected_executor is not None and executor != expected_executor:
+        raise ValueError("manifest executor mismatch")
     require_sha(
         provenance["sourceArchiveSha256"],
         SHA256_RE,
@@ -834,12 +858,19 @@ def validate_manifest(
         )
         if provenance["sourceArchiveSha256"] != expected_source_archive_sha256:
             raise ValueError("manifest source archive SHA mismatch")
-    run_id = require_int(provenance["workflowRunId"], "workflowRunId", 1)
-    run_attempt = require_int(provenance["workflowRunAttempt"], "workflowRunAttempt", 1)
-    if expected_run_id is not None and run_id != expected_run_id:
-        raise ValueError("workflow run id mismatch")
-    if expected_run_attempt is not None and run_attempt != expected_run_attempt:
-        raise ValueError("workflow run attempt mismatch")
+    invocation_id = require_invocation_id(provenance["invocationId"])
+    invocation_attempt = require_int(
+        provenance["invocationAttempt"], "invocationAttempt", 1
+    )
+    if expected_invocation_id is not None and invocation_id != require_invocation_id(
+        expected_invocation_id
+    ):
+        raise ValueError("invocation id mismatch")
+    if (
+        expected_invocation_attempt is not None
+        and invocation_attempt != expected_invocation_attempt
+    ):
+        raise ValueError("invocation attempt mismatch")
     require_sha(manifest["runnerIdSha256"], SHA256_RE, "runner id")
     producers = manifest["producerDigests"]
     if not isinstance(producers, dict):
@@ -959,9 +990,24 @@ def validate_manifest(
 def _secure_path(path_value: Any, *, executable: bool) -> Path:
     if not isinstance(path_value, str):
         raise ValueError("private path must be a string")
-    path = Path(path_value)
-    if not path.is_absolute() or path.is_symlink() or not path.is_file():
+    candidate = Path(path_value)
+    if not candidate.is_absolute() or candidate.is_symlink():
         raise ValueError("private path must be an absolute regular file")
+    try:
+        path = candidate.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("private path must be an absolute regular file") from exc
+    if not path.is_file():
+        raise ValueError("private path must be an absolute regular file")
+    allowed_owners = {0, os.geteuid()}
+    for parent in path.parents:
+        info = parent.stat()
+        mode = stat.S_IMODE(info.st_mode)
+        sticky_root_directory = bool(mode & stat.S_ISVTX) and info.st_uid == 0
+        if info.st_uid not in allowed_owners or (
+            mode & 0o022 and not sticky_root_directory
+        ):
+            raise ValueError("private path parent has unsafe owner or mode")
     info = path.stat()
     if stat.S_IMODE(info.st_mode) & 0o077 or info.st_uid not in {0, os.geteuid()}:
         raise ValueError("private path has unsafe owner or mode")
@@ -1073,6 +1119,8 @@ class SystemExecutor:
         os.chmod(self.scratch, 0o700)
         self.namespace: str | None = None
         self.interface: str | None = None
+        self.namespace_created = False
+        self.interface_created = False
         self.go_process: subprocess.Popen[bytes] | None = None
         self.capture_process: subprocess.Popen[bytes] | None = None
         self.capture_path: Path | None = None
@@ -1226,26 +1274,35 @@ class SystemExecutor:
             "rotatedClientConfigPath" if rotated else "clientConfigPath"
         ]
         self._run(["ip", "netns", "add", self.namespace], capture_output=True)
+        self.namespace_created = True
         stripped = self._run(
             ["awg-quick", "strip", config_path],
             text=True,
             capture_output=True,
         )
+        if (
+            subprocess.run(
+                ["ip", "link", "show", self.interface], capture_output=True
+            ).returncode
+            == 0
+        ):
+            raise RuntimeError("client interface name is already in use")
         self.go_process = subprocess.Popen(
             ["amneziawg-go", self.interface],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         for _ in range(50):
-            if self.go_process.poll() is not None:
-                raise RuntimeError("amneziawg-go exited during startup")
             if (
                 subprocess.run(
                     ["ip", "link", "show", self.interface], capture_output=True
                 ).returncode
                 == 0
             ):
+                self.interface_created = True
                 break
+            if self.go_process.poll() is not None:
+                raise RuntimeError("amneziawg-go exited during startup")
             time.sleep(0.1)
         else:
             raise RuntimeError("amneziawg-go interface did not appear")
@@ -1293,6 +1350,8 @@ class SystemExecutor:
                 "exec",
                 self.namespace,
                 "tcpdump",
+                "-Z",
+                "root",
                 "-i",
                 self.interface,
                 "-U",
@@ -1347,20 +1406,22 @@ class SystemExecutor:
     def _cleanup_client(self, *, require_capture: bool) -> str | None:
         namespace = self.namespace
         interface = self.interface
+        namespace_created = self.namespace_created
+        interface_created = self.interface_created
         capture_path = self.capture_path
         cleanup_errors = False
         self._stop_process(self.capture_process)
-        if namespace and interface:
+        if namespace_created and interface_created and namespace and interface:
             subprocess.run(
                 ["ip", "-n", namespace, "link", "delete", interface],
                 capture_output=True,
             )
-        if interface:
+        if interface_created and interface:
             subprocess.run(["ip", "link", "delete", interface], capture_output=True)
-        if namespace:
+        if namespace_created and namespace:
             subprocess.run(["ip", "netns", "delete", namespace], capture_output=True)
         self._stop_process(self.go_process)
-        if namespace:
+        if namespace_created and namespace:
             namespaces = subprocess.run(
                 ["ip", "netns", "list"], text=True, capture_output=True
             )
@@ -1369,7 +1430,7 @@ class SystemExecutor:
                 for line in namespaces.stdout.splitlines()
                 if line.strip()
             )
-        if interface:
+        if interface_created and interface:
             cleanup_errors |= (
                 subprocess.run(
                     ["ip", "link", "show", interface], capture_output=True
@@ -1395,6 +1456,8 @@ class SystemExecutor:
         self.go_process = None
         self.namespace = None
         self.interface = None
+        self.namespace_created = False
+        self.interface_created = False
         self.capture_path = None
         return digest
 
@@ -1484,12 +1547,7 @@ def failure_manifest(
         "startedAtEpoch": now,
         "finishedAtEpoch": now,
         "generatedAtEpoch": now,
-        "provenance": {
-            "workflowPath": WORKFLOW_PATH,
-            "workflowRunId": metadata["workflowRunId"],
-            "workflowRunAttempt": metadata["workflowRunAttempt"],
-            "sourceArchiveSha256": metadata["sourceArchiveSha256"],
-        },
+        "provenance": provenance_from_metadata(metadata),
         "runnerIdSha256": "0" * 64,
         "producerDigests": {
             "runnerSha256": producer_sha,
@@ -1530,21 +1588,38 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--config", type=Path, required=True)
     run.add_argument("--output", type=Path, required=True)
     run.add_argument("--source-sha", required=True)
-    run.add_argument("--workflow-run-id", type=int, required=True)
-    run.add_argument("--workflow-run-attempt", type=int, required=True)
+    run.add_argument("--executor", choices=sorted(EXECUTOR_ENTRYPOINTS))
+    run.add_argument("--entrypoint-path")
+    run.add_argument("--invocation-id")
+    run.add_argument("--invocation-attempt", type=int)
+    run.add_argument("--workflow-run-id", type=int)
+    run.add_argument("--workflow-run-attempt", type=int)
     run.add_argument("--source-archive", type=Path, required=True)
     validate = subparsers.add_parser("validate")
     validate.add_argument("--manifest", type=Path, required=True)
     validate.add_argument("--expected-source-sha", required=True)
+    validate.add_argument("--expected-executor", choices=sorted(EXECUTOR_ENTRYPOINTS))
+    validate.add_argument("--expected-invocation-id")
+    validate.add_argument("--expected-invocation-attempt", type=int)
     validate.add_argument("--expected-run-id", type=int)
     validate.add_argument("--expected-run-attempt", type=int)
     validate.add_argument("--expected-source-archive-sha256", required=True)
+    validate.add_argument("--allow-non-pass", action="store_true")
     subparsers.add_parser("probe-child")
     args = parser.parse_args(argv)
     if args.command == "probe-child":
         return probe_child()
     if args.command == "validate":
         try:
+            expected_invocation_id = args.expected_invocation_id
+            if expected_invocation_id is None and args.expected_run_id is not None:
+                expected_invocation_id = str(args.expected_run_id)
+            expected_invocation_attempt = args.expected_invocation_attempt
+            if (
+                expected_invocation_attempt is None
+                and args.expected_run_attempt is not None
+            ):
+                expected_invocation_attempt = args.expected_run_attempt
             raw = args.manifest.read_bytes()
             manifest = json.loads(raw)
             if raw != canonical_json_bytes(manifest):
@@ -1552,11 +1627,14 @@ def main(argv: list[str] | None = None) -> int:
             validate_manifest(
                 manifest,
                 expected_source_sha=args.expected_source_sha,
-                expected_run_id=args.expected_run_id,
-                expected_run_attempt=args.expected_run_attempt,
+                expected_executor=args.expected_executor,
+                expected_invocation_id=expected_invocation_id,
+                expected_invocation_attempt=expected_invocation_attempt,
                 expected_source_archive_sha256=args.expected_source_archive_sha256,
             )
-            return 0 if manifest["classification"] == "PASS" else 1
+            return (
+                0 if args.allow_non_pass or manifest["classification"] == "PASS" else 1
+            )
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             print(f"real-VPS AWG/NAT evidence invalid: {exc}", file=sys.stderr)
             return 1
@@ -1569,13 +1647,25 @@ def main(argv: list[str] | None = None) -> int:
     except OSError:
         source_archive = args.source_archive
         source_archive_sha256 = "0" * 64
+    executor = args.executor or "github_actions"
+    entrypoint_path = args.entrypoint_path or EXECUTOR_ENTRYPOINTS[executor]
+    if entrypoint_path != EXECUTOR_ENTRYPOINTS[executor]:
+        raise ValueError("entrypoint path does not match executor")
+    invocation_id = args.invocation_id
+    if invocation_id is None and args.workflow_run_id is not None:
+        invocation_id = str(args.workflow_run_id)
+    invocation_attempt = args.invocation_attempt
+    if invocation_attempt is None:
+        invocation_attempt = args.workflow_run_attempt
+    if invocation_id is None or invocation_attempt is None:
+        raise ValueError("invocation id and attempt are required")
     metadata = {
         "sourceSha": require_sha(args.source_sha, SHA1_RE, "source SHA"),
         "sourceArchiveSha256": source_archive_sha256,
-        "workflowRunId": require_int(args.workflow_run_id, "workflow run id", 1),
-        "workflowRunAttempt": require_int(
-            args.workflow_run_attempt, "workflow run attempt", 1
-        ),
+        "executor": executor,
+        "entrypointPath": entrypoint_path,
+        "invocationId": require_invocation_id(invocation_id),
+        "invocationAttempt": require_int(invocation_attempt, "invocation attempt", 1),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     producer_sha = sha256_bytes(Path(__file__).read_bytes())

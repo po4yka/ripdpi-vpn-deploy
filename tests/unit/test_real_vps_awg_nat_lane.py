@@ -169,8 +169,10 @@ def metadata() -> dict:
     return {
         "sourceSha": "1" * 40,
         "sourceArchiveSha256": "2" * 64,
-        "workflowRunId": 42,
-        "workflowRunAttempt": 1,
+        "executor": "github_actions",
+        "entrypointPath": lane.WORKFLOW_PATH,
+        "invocationId": "42",
+        "invocationAttempt": 1,
     }
 
 
@@ -367,7 +369,206 @@ def test_workflow_is_recurring_fail_closed_and_uploads_evidence() -> None:
     assert "git archive --format=tar" in workflow
     assert "--source-archive" in workflow
     assert "--expected-source-archive-sha256" in workflow
+    assert "--executor github_actions" in workflow
+    assert "--expected-executor github_actions" in workflow
     assert "Remove private source archive" in workflow
+
+
+def test_provenance_is_executor_neutral_and_binds_entrypoint() -> None:
+    local_metadata = {
+        **metadata(),
+        "executor": "local_systemd",
+        "entrypointPath": lane.LOCAL_ENTRYPOINT_PATH,
+        "invocationId": "0123456789abcdef",
+    }
+    manifest = lane.run_lane(
+        config(), FakeExecutor(), local_metadata, now=lambda: 2_000_000_000
+    )
+
+    lane.validate_manifest(
+        manifest,
+        expected_source_sha="1" * 40,
+        expected_executor="local_systemd",
+        expected_invocation_id="0123456789abcdef",
+        expected_invocation_attempt=1,
+        now=2_000_000_000,
+    )
+    assert manifest["provenance"] == {
+        "executor": "local_systemd",
+        "entrypointPath": lane.LOCAL_ENTRYPOINT_PATH,
+        "invocationId": "0123456789abcdef",
+        "invocationAttempt": 1,
+        "sourceArchiveSha256": "2" * 64,
+    }
+
+
+def test_provenance_rejects_executor_entrypoint_substitution() -> None:
+    manifest = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    manifest["provenance"]["entrypointPath"] = lane.LOCAL_ENTRYPOINT_PATH
+
+    try:
+        lane.validate_manifest(
+            manifest, expected_source_sha="1" * 40, now=2_000_000_000
+        )
+    except ValueError as exc:
+        assert "entrypoint mismatch" in str(exc)
+    else:
+        raise AssertionError("executor entrypoint substitution was accepted")
+
+
+def test_legacy_workflow_flags_map_to_github_executor(tmp_path: Path) -> None:
+    archive = tmp_path / "source.tar"
+    archive.write_bytes(b"exact source archive")
+    manifest_path = tmp_path / "manifest.json"
+
+    status = lane.main(
+        [
+            "run",
+            "--config",
+            str(tmp_path / "missing-runner.json"),
+            "--output",
+            str(manifest_path),
+            "--source-sha",
+            "1" * 40,
+            "--source-archive",
+            str(archive),
+            "--workflow-run-id",
+            "42",
+            "--workflow-run-attempt",
+            "3",
+        ]
+    )
+
+    assert status == 1
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["provenance"]["executor"] == "github_actions"
+    assert manifest["provenance"]["entrypointPath"] == lane.WORKFLOW_PATH
+    assert manifest["provenance"]["invocationId"] == "42"
+    assert manifest["provenance"]["invocationAttempt"] == 3
+    common_validate = [
+        "validate",
+        "--manifest",
+        str(manifest_path),
+        "--expected-source-sha",
+        "1" * 40,
+        "--expected-source-archive-sha256",
+        lane.sha256_bytes(archive.read_bytes()),
+    ]
+    assert lane.main(common_validate) == 1
+    assert lane.main([*common_validate, "--allow-non-pass"]) == 0
+
+
+def test_local_launcher_archives_exact_sha_and_validates_before_publish() -> None:
+    launcher = (REPO_ROOT / "scripts" / "run-real-vps-awg-nat-local.sh").read_text()
+
+    assert 'git -C "$REPO_ROOT" archive --format=tar "$source_sha"' in launcher
+    assert 'git -C "$REPO_ROOT" diff-index --quiet HEAD' in launcher
+    assert "--executor local_systemd" in launcher
+    assert "--expected-executor local_systemd" in launcher
+    assert 'CONFIG="/etc/ripdpi/real-vps-awg-nat-local.json"' in launcher
+    assert "accepts no arguments" in launcher
+    assert 'cmp -s "$RUNNER"' in launcher
+    for installed_path in (
+        "/etc/systemd/system/ripdpi-real-vps-awg-nat.service",
+        "/etc/systemd/system/ripdpi-real-vps-awg-nat.timer",
+        "/usr/lib/tmpfiles.d/ripdpi-real-vps-awg-nat.conf",
+    ):
+        assert f"cmp -s {installed_path}" in launcher
+    assert "latest.json" in launcher
+    assert launcher.index('rm -f -- "$evidence_dir/latest.json"') < launcher.index(
+        '"$RUNNER" run'
+    )
+    assert "--allow-non-pass" in launcher
+    assert 'quarantine="$quarantine_dir/invalid-' in launcher
+    assert "run_status == 0 && validate_status == 0" in launcher
+    assert "GITHUB_" not in launcher
+
+
+def test_local_installer_pins_root_owned_source_and_fixed_units() -> None:
+    installer = (
+        REPO_ROOT / "scripts" / "install-real-vps-awg-nat-local.sh"
+    ).read_text()
+    service = (
+        REPO_ROOT / "scripts/systemd/ripdpi-real-vps-awg-nat.service"
+    ).read_text()
+    timer = (REPO_ROOT / "scripts/systemd/ripdpi-real-vps-awg-nat.timer").read_text()
+    tmpfiles = (
+        REPO_ROOT / "scripts/tmpfiles.d/ripdpi-real-vps-awg-nat.conf"
+    ).read_text()
+
+    assert "git clone --quiet --no-hardlinks --no-checkout" in installer
+    assert 'checkout --quiet --detach "$source_sha"' in installer
+    assert "remote remove origin" in installer
+    assert "root-owned mode 0600" in installer
+    assert 'LOCK_DIR="/run/lock/ripdpi-real-vps-awg-nat"' in installer
+    assert "flock -n 9" in installer
+    assert "/var/lib/ripdpi-real-vps-awg-nat/evidence/latest.json" in installer
+    assert "validate_root_hook" in installer
+    assert "/usr/local/libexec/ripdpi-real-vps-awg-nat-hooks" in installer
+    assert 'value["serverControlHook"] = control' in installer
+    assert "/etc/ripdpi/real-vps-awg-nat-local.json" in installer
+    assert "systemd-analyze verify" in installer
+    assert "systemctl enable --now ripdpi-real-vps-awg-nat.timer" in installer
+    assert "systemd-tmpfiles --create ripdpi-real-vps-awg-nat.conf" in installer
+    assert "ExecStart=/usr/local/libexec/ripdpi-real-vps-awg-nat-local" in service
+    assert "ExecStart=" in service and " %" not in service
+    for directive in (
+        "RuntimeDirectoryMode=0700",
+        "StateDirectoryMode=0700",
+        "UMask=0077",
+        "PrivateTmp=true",
+        "NoNewPrivileges=true",
+        "CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_ADMIN",
+        "ProtectSystem=strict",
+        "DeviceAllow=/dev/net/tun rw",
+        "/run/netns",
+        "/run/wireguard",
+    ):
+        assert directive in service
+    assert "d /run/netns 0755 root root -" in tmpfiles
+    assert "d /run/wireguard 0755 root root -" in tmpfiles
+    assert "d /run/lock/ripdpi-real-vps-awg-nat 0700 root root -" in tmpfiles
+    assert "OnCalendar=Tue *-*-* 05:23:00 UTC" in timer
+    assert "Persistent=true" in timer
+
+
+def test_private_path_rejects_writable_parent_chain(tmp_path: Path) -> None:
+    unsafe_parent = tmp_path / "unsafe"
+    unsafe_parent.mkdir(mode=0o777)
+    unsafe_parent.chmod(0o777)
+    hook = unsafe_parent / "hook"
+    hook.write_text("#!/bin/sh\n")
+    hook.chmod(0o700)
+
+    try:
+        lane._secure_path(str(hook), executable=True)
+    except ValueError as exc:
+        assert "parent has unsafe owner or mode" in str(exc)
+    else:
+        raise AssertionError("private hook below writable parent was accepted")
+
+
+def test_private_path_executes_resolved_target_not_mutable_parent_symlink(
+    tmp_path: Path,
+) -> None:
+    secure_parent = tmp_path / "secure"
+    secure_parent.mkdir(mode=0o700)
+    hook = secure_parent / "hook"
+    hook.write_text("#!/bin/sh\n")
+    hook.chmod(0o700)
+    alias = tmp_path / "alias"
+    alias.symlink_to(secure_parent, target_is_directory=True)
+
+    resolved = lane._secure_path(str(alias / "hook"), executable=True)
+
+    assert resolved == hook.resolve()
+
+
+def test_capture_stays_within_bounded_root_capability_set() -> None:
+    source = SCRIPT.read_text()
+    assert '"tcpdump",\n                "-Z",\n                "root",' in source
 
 
 def test_firewall_nat_rule_has_stable_counter_comment() -> None:
@@ -726,6 +927,8 @@ def test_cleanup_retains_handles_until_orphan_verification_succeeds(
     executor.scratch.mkdir()
     executor.namespace = "awgleak"
     executor.interface = "awgleak0"
+    executor.namespace_created = True
+    executor.interface_created = True
     executor.go_process = None
     executor.capture_process = None
     executor.capture_path = executor.scratch / "capture.pcap"
@@ -755,6 +958,34 @@ def test_cleanup_retains_handles_until_orphan_verification_succeeds(
     assert executor.namespace is None
     assert executor.interface is None
     assert not executor.scratch.exists()
+
+
+def test_cleanup_never_deletes_unowned_namespace_or_interface(
+    tmp_path: Path, monkeypatch
+) -> None:
+    executor = object.__new__(lane.SystemExecutor)
+    executor.scratch = tmp_path / "scratch"
+    executor.scratch.mkdir()
+    executor.namespace = "preexisting"
+    executor.interface = "preexisting0"
+    executor.namespace_created = False
+    executor.interface_created = False
+    executor.go_process = None
+    executor.capture_process = None
+    executor.capture_path = None
+    commands: list[list[str]] = []
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        return lane.subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(lane.subprocess, "run", fake_run)
+
+    executor._cleanup_client(require_capture=False)
+
+    assert not any("delete" in command for command in commands)
+    assert executor.namespace is None
+    assert executor.interface is None
 
 
 def test_deploy_outage_and_product_failure_are_distinct() -> None:

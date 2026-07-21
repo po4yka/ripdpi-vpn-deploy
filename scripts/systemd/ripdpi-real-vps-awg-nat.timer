@@ -1,0 +1,11 @@
+[Unit]
+Description=Run RIPDPI real-VPS AWG/NAT evidence weekly
+
+[Timer]
+OnCalendar=Tue *-*-* 05:23:00 UTC
+RandomizedDelaySec=30m
+Persistent=true
+Unit=ripdpi-real-vps-awg-nat.service
+
+[Install]
+WantedBy=timers.target

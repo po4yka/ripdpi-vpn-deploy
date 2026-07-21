@@ -45,8 +45,10 @@ jobs:
             --output "$RUNNER_TEMP/real-vps-awg-nat/manifest.json" \
             --source-sha "$GITHUB_SHA" \
             --source-archive "$RUNNER_TEMP/real-vps-awg-nat/source.tar" \
-            --workflow-run-id "$GITHUB_RUN_ID" \
-            --workflow-run-attempt "$GITHUB_RUN_ATTEMPT"
+            --executor github_actions \
+            --entrypoint-path .github/workflows/real-vps-awg-nat.yml \
+            --invocation-id "$GITHUB_RUN_ID" \
+            --invocation-attempt "$GITHUB_RUN_ATTEMPT"
 
       - name: Remove private source archive
         if: always()
@@ -59,8 +61,9 @@ jobs:
             --manifest "$RUNNER_TEMP/real-vps-awg-nat/manifest.json" \
             --expected-source-sha "$GITHUB_SHA" \
             --expected-source-archive-sha256 "$SOURCE_ARCHIVE_SHA256" \
-            --expected-run-id "$GITHUB_RUN_ID" \
-            --expected-run-attempt "$GITHUB_RUN_ATTEMPT"
+            --expected-executor github_actions \
+            --expected-invocation-id "$GITHUB_RUN_ID" \
+            --expected-invocation-attempt "$GITHUB_RUN_ATTEMPT"
 
       - name: Publish redacted AWG/NAT evidence
         if: always()

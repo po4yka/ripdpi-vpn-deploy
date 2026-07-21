@@ -1,16 +1,71 @@
 # Recurring real-VPS AWG/NAT evidence lane
 
-`.github/workflows/real-vps-awg-nat.yml` is a scheduled and manually
-dispatchable data-plane gate. It runs on a dedicated Linux self-hosted
+The primary executor is the local systemd timer installed by
+`scripts/install-real-vps-awg-nat-local.sh`. It runs on a dedicated Linux
 sentinel, connects to an owner-controlled real VPS, and fails when its private
 runner contract is absent. Missing credentials or tools never become a green
-skip.
+skip. `.github/workflows/real-vps-awg-nat.yml` remains a compatible optional
+executor, but recurring evidence does not depend on GitHub Actions.
 
-The sentinel packages the exact checked-out commit with `git archive`. A
-root-owned deploy hook must apply that archive to the persistent evidence VPS
+The installer creates a root-owned, detached local clone of the exact selected
+commit without retaining a remote. Every run packages that checkout with
+`git archive` and requires the installed launcher and runner to byte-match it.
+A root-owned deploy hook must apply that archive to the persistent evidence VPS
 through the repository's Ansible/SOPS path and return a strict receipt. The
 lane rejects a server whose reported source SHA or archive digest differs from
-the workflow run. The lane does not create or destroy VPS instances.
+the invocation. The lane does not create or destroy VPS instances.
+
+## Install the local recurring executor
+
+Prepare the private runner contract below, including the dedicated AWG client
+pair and fixed-command server hooks. Then install the currently checked-out
+commit on the Linux sentinel:
+
+```bash
+sudo scripts/install-real-vps-awg-nat-local.sh --repo "$PWD"
+systemctl list-timers ripdpi-real-vps-awg-nat.timer
+```
+
+The installer rejects tracked changes, snapshots exact `HEAD` under
+`/opt/ripdpi-real-vps-awg-nat/sources/SHA`, removes its Git remote, installs
+root-owned fixed-command executables, and enables the weekly persistent timer.
+It does not provision or change a VPS. Re-run the installer after checking out
+a new locally verified commit.
+
+The installer validates the full root-owned path chain for every private hook,
+copies each hook to mode-0700 fixed paths below
+`/usr/local/libexec/ripdpi-real-vps-awg-nat-hooks`, and writes a mode-0600
+runtime config at `/etc/ripdpi/real-vps-awg-nat-local.json` that points only to
+those immutable copies. The service, timer, tmpfiles policy, launcher, and
+runner must byte-match the pinned checkout on every run. Installation and
+execution share the root-only lock below
+`/run/lock/ripdpi-real-vps-awg-nat`, so an update cannot replace producers
+during an active run. Private hooks must therefore use absolute paths for any
+helpers or data they need; they cannot rely on files adjacent to their original
+location.
+
+The service accepts no arguments. It removes `evidence/latest.json` as soon as
+it owns the shared lock. A new `latest.json` is published atomically only after
+the runner returns success and strict validation proves a `PASS`. Structurally
+valid non-PASS manifests remain versioned under `evidence/`; malformed output
+is isolated under the mode-0700 `quarantine/` directory and can never preserve
+a stale PASS. Inspect a run with:
+
+```bash
+sudo systemctl start ripdpi-real-vps-awg-nat.service
+systemctl status ripdpi-real-vps-awg-nat.service
+sudo journalctl -u ripdpi-real-vps-awg-nat.service
+```
+
+The unit bounds root to `CAP_NET_ADMIN`, `CAP_NET_RAW`, and `CAP_SYS_ADMIN`:
+the first two cover the AWG/TUN interface and capture, while `ip netns add`
+requires the mount-namespace capability. The installer runs this Linux-only
+verification before enabling the timer; operators can repeat it with:
+
+```bash
+systemd-analyze verify /etc/systemd/system/ripdpi-real-vps-awg-nat.service \
+  /etc/systemd/system/ripdpi-real-vps-awg-nat.timer
+```
 
 ## What a PASS proves
 
@@ -122,7 +177,7 @@ domain-separated hashes.
 
 ## Result classification and artifacts
 
-The uploaded artifact contains only canonical `manifest.json`:
+Each executor publishes only canonical `manifest.json`:
 
 - `PASS` means exact deployed-source provenance, all five phases, three PCAP
   digests, observed restart/reload generations, old-key rejection,
@@ -139,7 +194,7 @@ The uploaded artifact contains only canonical `manifest.json`:
   `CONFIG_INVALID` (malformed runner JSON, unsafe paths, or missing hooks) and
   `PREREQUISITE_MISSING` (runner privilege, binaries, or source archive).
 
-Both non-PASS classifications fail the workflow. Raw PCAPs, hook logs, config
+Both non-PASS classifications fail the executor. Raw PCAPs, hook logs, config
 paths, targets, and secrets stay on the runner and are deleted during cleanup.
 
 ## Local contract checks

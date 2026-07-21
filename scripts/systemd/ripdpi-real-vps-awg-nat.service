@@ -1,0 +1,32 @@
+[Unit]
+Description=RIPDPI real-VPS AWG/NAT evidence lane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/ripdpi-real-vps-awg-nat-local
+RuntimeDirectory=ripdpi-real-vps-awg-nat
+RuntimeDirectoryMode=0700
+StateDirectory=ripdpi-real-vps-awg-nat
+StateDirectoryMode=0700
+UMask=0077
+TimeoutStartSec=30min
+PrivateTmp=true
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_ADMIN
+ProtectSystem=strict
+ProtectHome=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+DevicePolicy=closed
+DeviceAllow=/dev/net/tun rw
+ReadOnlyPaths=/opt/ripdpi-real-vps-awg-nat /etc/ripdpi/real-vps-awg-nat-local.json /usr/local/libexec/ripdpi-real-vps-awg-nat-hooks
+ReadWritePaths=/var/lib/ripdpi-real-vps-awg-nat /run/ripdpi-real-vps-awg-nat /run/lock/ripdpi-real-vps-awg-nat /run/netns /run/wireguard
+
+[Install]
+WantedBy=multi-user.target
