@@ -932,6 +932,55 @@ def test_old_key_negative_control_cannot_be_noop() -> None:
     assert manifest["rotation"]["rolledBack"] is True
 
 
+@pytest.mark.parametrize(("tcp_ok", "udp_ok"), [(True, False), (False, True)])
+def test_old_key_partial_acceptance_is_product_failure(
+    tcp_ok: bool, udp_ok: bool
+) -> None:
+    class PartiallyAcceptedOldKeyExecutor(FakeExecutor):
+        def probe_once(self, phase: str) -> dict:
+            self.calls.append(f"probe_once:{phase}")
+            return {
+                "tcp": {"ok": tcp_ok, "durationMs": 8 if tcp_ok else None},
+                "udp": {"ok": udp_ok, "durationMs": 6 if udp_ok else None},
+            }
+
+    manifest = lane.run_lane(
+        config(),
+        PartiallyAcceptedOldKeyExecutor(),
+        metadata(),
+        now=lambda: 2_000_000_000,
+    )
+
+    assert manifest["classification"] == "PRODUCT_FAILURE"
+    assert manifest["reasonCode"] == "OLD_KEY_STILL_ACCEPTED"
+    assert manifest["rotation"]["rolledBack"] is True
+
+
+@pytest.mark.parametrize(("tcp_ok", "udp_ok"), [(True, False), (False, True)])
+def test_pass_manifest_rejects_partial_old_key_acceptance(
+    tcp_ok: bool, udp_ok: bool
+) -> None:
+    manifest = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    old_key_phase = next(
+        phase for phase in manifest["phases"] if phase["id"] == "old_key_rejection"
+    )
+    old_key_phase["tcp"] = {
+        "ok": tcp_ok,
+        "durationMs": 8 if tcp_ok else None,
+    }
+    old_key_phase["udp"] = {
+        "ok": udp_ok,
+        "durationMs": 6 if udp_ok else None,
+    }
+
+    with pytest.raises(ValueError, match="accepted the old key"):
+        lane.validate_manifest(
+            manifest, expected_source_sha="1" * 40, now=2_000_000_000
+        )
+
+
 def test_failure_after_reload_restores_previous_server_and_client() -> None:
     executor = FakeExecutor(fail_phase="reload_rotation_recovery")
     manifest = lane.run_lane(config(), executor, metadata(), now=lambda: 2_000_000_000)

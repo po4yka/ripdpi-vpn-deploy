@@ -296,6 +296,10 @@ def _probe_ok(probe: dict[str, Any]) -> bool:
     return all(probe.get(kind, {}).get("ok") is True for kind in ("tcp", "udp"))
 
 
+def _probe_any_ok(probe: dict[str, Any]) -> bool:
+    return any(probe.get(kind, {}).get("ok") is True for kind in ("tcp", "udp"))
+
+
 def _phase(
     phase_id: str,
     probe: dict[str, Any],
@@ -361,7 +365,7 @@ def _server_phase_failure(phase: dict[str, Any]) -> str | None:
     )
     if phase["expected"] == "failure":
         if (
-            _probe_ok(phase)
+            _probe_any_ok(phase)
             or server["handshakeFresh"]
             or any(value != 0 for value in deltas)
         ):
@@ -971,7 +975,7 @@ def validate_manifest(
         for phase in phases:
             if phase["expected"] == "success" and not _probe_ok(phase):
                 raise ValueError("PASS manifest contains a failed roundtrip")
-            if phase["expected"] == "failure" and _probe_ok(phase):
+            if phase["expected"] == "failure" and _probe_any_ok(phase):
                 raise ValueError("PASS manifest accepted the old key")
             if phase["id"] != "direct_control":
                 if _server_phase_failure(phase):
