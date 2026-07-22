@@ -3,8 +3,8 @@
   ansible.builtin.assert:
     that:
       - real_vps_awg_nat_mode in ['echo', 'server', 'sentinel']
-      - ansible_system == 'Linux'
-      - ansible_service_mgr == 'systemd'
+      - ansible_facts['system'] == 'Linux'
+      - ansible_facts['service_mgr'] == 'systemd'
     fail_msg: >-
       real_vps_awg_nat requires Linux with systemd and mode echo, server, or
       sentinel

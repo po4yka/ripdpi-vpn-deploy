@@ -89,8 +89,10 @@ def test_role_fails_closed_and_never_embeds_private_material() -> None:
 
     assert "real_vps_awg_nat_mode: fail_closed" in defaults
     assert "requires Linux with systemd and mode echo, server, or" in tasks
-    assert "ansible_system == 'Linux'" in tasks
-    assert "ansible_service_mgr == 'systemd'" in tasks
+    assert "ansible_facts['system'] == 'Linux'" in tasks
+    assert "ansible_facts['service_mgr'] == 'systemd'" in tasks
+    assert "ansible_system == 'Linux'" not in tasks
+    assert "ansible_service_mgr == 'systemd'" not in tasks
     assert "assert:" in server_tasks and "no_log: true" in server_tasks
     assert "assert:" in sentinel_tasks and "no_log: true" in sentinel_tasks
     for secret_name in (
@@ -170,8 +172,9 @@ def test_protected_placement_rejects_wrong_inventory_before_mutation(
   gather_facts: false
   become: false
   vars:
-    ansible_system: Linux
-    ansible_service_mgr: systemd
+    ansible_facts:
+      system: Linux
+      service_mgr: systemd
     real_vps_awg_nat_mode: echo
     real_vps_awg_nat_expected_placement:
       echo:
@@ -223,8 +226,9 @@ def test_protected_placement_accepts_exact_provider_state_address(
   gather_facts: false
   become: false
   vars:
-    ansible_system: Linux
-    ansible_service_mgr: systemd
+    ansible_facts:
+      system: Linux
+      service_mgr: systemd
     real_vps_awg_nat_mode: echo
     real_vps_awg_nat_expected_placement:
       echo:
