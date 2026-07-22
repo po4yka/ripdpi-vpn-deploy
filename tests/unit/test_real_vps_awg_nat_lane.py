@@ -8,6 +8,8 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 from scripts.template_render import merge_render_vars, render_template
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -199,12 +201,23 @@ def write_private_runner_config(
     control = tmp_path / "control"
     deploy = tmp_path / "deploy"
     rotation = tmp_path / "rotation"
-    valid_client = "\n".join(
+    valid_current = "\n".join(
         (
             "[Interface]",
             f"PrivateKey = {'A' * 43}=",
             "[Peer]",
+            f"PublicKey = {'B' * 43}=",
             f"PresharedKey = {'B' * 43}=",
+            "",
+        )
+    )
+    valid_rotated = "\n".join(
+        (
+            "[Interface]",
+            f"PrivateKey = {'C' * 43}=",
+            "[Peer]",
+            f"PublicKey = {'B' * 43}=",
+            f"PresharedKey = {'E' * 43}=",
             "",
         )
     )
@@ -216,7 +229,8 @@ def write_private_runner_config(
         (rotation, "private\n", 0o700, False),
     ):
         if not omitted:
-            path.write_text(valid_client if contents is None else contents)
+            default_contents = valid_rotated if path == rotated else valid_current
+            path.write_text(default_contents if contents is None else contents)
             path.chmod(mode)
     config_path = tmp_path / "runner.json"
     config_path.write_text(
@@ -599,7 +613,7 @@ def test_manifest_serialization_is_deterministic() -> None:
     assert first == second
 
 
-def test_private_config_is_strict_and_hashes_runner_owned_producers(
+def test_private_config_accepts_same_server_peer_and_hashes_owned_producers(
     tmp_path: Path,
 ) -> None:
     config_path, _source_archive = write_private_runner_config(tmp_path)
@@ -643,6 +657,7 @@ def test_incomplete_or_duplicate_client_keys_are_missing_credentials(
             f"PrivateKey = {'A' * 43}=",
             "PrivateKey = malformed",
             "[Peer]",
+            f"PublicKey = {'D' * 43}=",
             f"PresharedKey = {'B' * 43}=",
             "",
         )
@@ -652,6 +667,7 @@ def test_incomplete_or_duplicate_client_keys_are_missing_credentials(
             "[Interface]",
             f"PrivateKey = {'A' * 43}=",
             "[Peer]",
+            f"PublicKey = {'D' * 43}=",
             f"PresharedKey = {'B' * 43}=",
             "PresharedKey = malformed",
             "",
@@ -676,6 +692,67 @@ def test_incomplete_or_duplicate_client_keys_are_missing_credentials(
             "INFRA_UNAVAILABLE",
             "MISSING_CREDENTIALS",
         )
+
+
+@pytest.mark.parametrize(
+    ("label", "rotated_contents"),
+    (
+        (
+            "reused-private",
+            "\n".join(
+                (
+                    "[Interface]",
+                    f"PrivateKey = {'A' * 43}=",
+                    "[Peer]",
+                    f"PublicKey = {'B' * 43}=",
+                    f"PresharedKey = {'E' * 43}=",
+                    "",
+                )
+            ),
+        ),
+        (
+            "changed-server-peer",
+            "\n".join(
+                (
+                    "[Interface]",
+                    f"PrivateKey = {'C' * 43}=",
+                    "[Peer]",
+                    f"PublicKey = {'D' * 43}=",
+                    f"PresharedKey = {'E' * 43}=",
+                    "",
+                )
+            ),
+        ),
+        (
+            "reused-psk",
+            "\n".join(
+                (
+                    "[Interface]",
+                    f"PrivateKey = {'C' * 43}=",
+                    "[Peer]",
+                    f"PublicKey = {'B' * 43}=",
+                    f"PresharedKey = {'B' * 43}=",
+                    "",
+                )
+            ),
+        ),
+    ),
+)
+def test_rotated_client_rejects_invalid_rotation_key_relationships(
+    tmp_path: Path, label: str, rotated_contents: str
+) -> None:
+    config_path, source_archive = write_private_runner_config(
+        tmp_path, rotated_contents=rotated_contents
+    )
+
+    manifest = run_with_private_config(
+        config_path, source_archive, tmp_path / f"{label}.json"
+    )
+
+    assert (manifest["classification"], manifest["reasonCode"]) == (
+        "INFRA_UNAVAILABLE",
+        "CONFIG_INVALID",
+    )
 
 
 def test_dangling_client_symlink_remains_config_invalid(tmp_path: Path) -> None:
@@ -1011,6 +1088,212 @@ def test_deploy_outage_and_product_failure_are_distinct() -> None:
     assert (failure["classification"], failure["reasonCode"]) == (
         "PRODUCT_FAILURE",
         "DEPLOY_FAILED",
+    )
+
+
+def test_hook_exit_taxonomy_distinguishes_product_from_infrastructure(
+    monkeypatch,
+) -> None:
+    def fail_with(returncode: int) -> None:
+        def fake_run(_command, **_kwargs):
+            raise lane.subprocess.CalledProcessError(returncode, ["hook"])
+
+        monkeypatch.setattr(lane.SystemExecutor, "_run", staticmethod(fake_run))
+
+    fail_with(70)
+    try:
+        lane.SystemExecutor._run_hook(["hook"])
+    except lane.HookProductFailure:
+        pass
+    else:
+        raise AssertionError("hook exit 70 was not classified as a product failure")
+
+    fail_with(75)
+    try:
+        lane.SystemExecutor._run_hook(["hook"])
+    except lane.InfrastructureUnavailable:
+        pass
+    else:
+        raise AssertionError("hook exit 75 was not classified as infrastructure")
+
+
+def test_malformed_status_is_product_failure() -> None:
+    class MalformedStatus(FakeExecutor):
+        def server_status(self) -> dict:
+            raise ValueError("malformed status")
+
+    manifest = lane.run_lane(
+        config(), MalformedStatus(), metadata(), now=lambda: 2_000_000_000
+    )
+
+    assert (manifest["classification"], manifest["reasonCode"]) == (
+        "PRODUCT_FAILURE",
+        "SERVER_CONTROL_UNAVAILABLE",
+    )
+
+
+def test_status_outage_remains_infrastructure_unavailable() -> None:
+    class StatusOutage(FakeExecutor):
+        def server_status(self) -> dict:
+            raise lane.InfrastructureUnavailable("status transport unavailable")
+
+    manifest = lane.run_lane(
+        config(), StatusOutage(), metadata(), now=lambda: 2_000_000_000
+    )
+
+    assert (manifest["classification"], manifest["reasonCode"]) == (
+        "INFRA_UNAVAILABLE",
+        "SERVER_CONTROL_UNAVAILABLE",
+    )
+
+
+def test_server_action_preserves_hook_failure_taxonomy() -> None:
+    class ActionFailure(FakeExecutor):
+        def __init__(self, error: Exception):
+            super().__init__()
+            self.error = error
+
+        def server_action(self, action: str) -> None:
+            if action == "restart":
+                self.calls.append("server_action:restart")
+                raise self.error
+            super().server_action(action)
+
+    product = lane.run_lane(
+        config(),
+        ActionFailure(lane.HookProductFailure("restart rejected")),
+        metadata(),
+        now=lambda: 2_000_000_000,
+    )
+    infrastructure = lane.run_lane(
+        config(),
+        ActionFailure(lane.InfrastructureUnavailable("restart unavailable")),
+        metadata(),
+        now=lambda: 2_000_000_000,
+    )
+
+    assert (product["classification"], product["reasonCode"]) == (
+        "PRODUCT_FAILURE",
+        "RESTART_FAILED",
+    )
+    assert (infrastructure["classification"], infrastructure["reasonCode"]) == (
+        "INFRA_UNAVAILABLE",
+        "SERVER_CONTROL_UNAVAILABLE",
+    )
+
+
+def test_rotation_prepare_preserves_hook_failure_taxonomy() -> None:
+    class PrepareFailure(FakeExecutor):
+        def __init__(self, error: Exception):
+            super().__init__()
+            self.error = error
+
+        def stage_rotation(self) -> dict:
+            self.calls.append("stage_rotation")
+            raise self.error
+
+    product = lane.run_lane(
+        config(),
+        PrepareFailure(lane.HookProductFailure("prepare rejected")),
+        metadata(),
+        now=lambda: 2_000_000_000,
+    )
+    infrastructure = lane.run_lane(
+        config(),
+        PrepareFailure(lane.InfrastructureUnavailable("prepare unavailable")),
+        metadata(),
+        now=lambda: 2_000_000_000,
+    )
+
+    assert (product["classification"], product["reasonCode"]) == (
+        "PRODUCT_FAILURE",
+        "ROTATION_FAILED",
+    )
+    assert (infrastructure["classification"], infrastructure["reasonCode"]) == (
+        "INFRA_UNAVAILABLE",
+        "SERVER_CONTROL_UNAVAILABLE",
+    )
+    assert product["rotation"]["rolledBack"] is True
+    assert infrastructure["rotation"]["rolledBack"] is True
+
+
+def test_malformed_commit_receipt_is_product_failure_and_rolls_back() -> None:
+    class MalformedCommit(FakeExecutor):
+        def finalize_rotation(self, action: str) -> dict:
+            if action == "commit":
+                self.calls.append("finalize_rotation:commit")
+                return {
+                    "action": "rollback",
+                    "configGenerationSha256": self.next_generation,
+                    "peerConfigSha256": self.next_peer,
+                    "currentClientConfigSha256": self.rotated_client[
+                        "clientConfigSha256"
+                    ],
+                }
+            return super().finalize_rotation(action)
+
+    manifest = lane.run_lane(
+        config(), MalformedCommit(), metadata(), now=lambda: 2_000_000_000
+    )
+
+    assert (manifest["classification"], manifest["reasonCode"]) == (
+        "PRODUCT_FAILURE",
+        "COMMIT_FAILED",
+    )
+    assert manifest["rotation"]["rolledBack"] is True
+
+
+def test_commit_outage_remains_infrastructure_unavailable_and_rolls_back() -> None:
+    class CommitOutage(FakeExecutor):
+        def finalize_rotation(self, action: str) -> dict:
+            if action == "commit":
+                self.calls.append("finalize_rotation:commit")
+                raise lane.InfrastructureUnavailable("commit transport unavailable")
+            return super().finalize_rotation(action)
+
+    manifest = lane.run_lane(
+        config(), CommitOutage(), metadata(), now=lambda: 2_000_000_000
+    )
+
+    assert (manifest["classification"], manifest["reasonCode"]) == (
+        "INFRA_UNAVAILABLE",
+        "COMMIT_FAILED",
+    )
+    assert manifest["rotation"]["rolledBack"] is True
+
+
+def test_rollback_failure_preserves_hook_failure_taxonomy() -> None:
+    class RollbackFailure(FakeExecutor):
+        def __init__(self, error: Exception):
+            super().__init__(fail_phase="reload_rotation_recovery")
+            self.error = error
+
+        def finalize_rotation(self, action: str) -> dict:
+            if action == "rollback":
+                self.calls.append("finalize_rotation:rollback")
+                raise self.error
+            return super().finalize_rotation(action)
+
+    product = lane.run_lane(
+        config(),
+        RollbackFailure(lane.HookProductFailure("rollback rejected")),
+        metadata(),
+        now=lambda: 2_000_000_000,
+    )
+    infrastructure = lane.run_lane(
+        config(),
+        RollbackFailure(lane.InfrastructureUnavailable("rollback unavailable")),
+        metadata(),
+        now=lambda: 2_000_000_000,
+    )
+
+    assert (product["classification"], product["reasonCode"]) == (
+        "PRODUCT_FAILURE",
+        "ROLLBACK_FAILED",
+    )
+    assert (infrastructure["classification"], infrastructure["reasonCode"]) == (
+        "INFRA_UNAVAILABLE",
+        "ROLLBACK_FAILED",
     )
 
 

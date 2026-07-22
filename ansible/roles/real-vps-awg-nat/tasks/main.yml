@@ -1,0 +1,93 @@
+---
+- name: Validate AWG evidence provisioning mode
+  ansible.builtin.assert:
+    that:
+      - real_vps_awg_nat_mode in ['echo', 'server', 'sentinel']
+      - ansible_system == 'Linux'
+      - ansible_service_mgr == 'systemd'
+    fail_msg: >-
+      real_vps_awg_nat requires Linux with systemd and mode echo, server, or
+      sentinel
+  tags: [always]
+
+- name: Validate protected fleet placement before provisioning
+  ansible.builtin.assert:
+    that:
+      - real_vps_awg_nat_expected_placement is mapping
+      - real_vps_awg_nat_mode in real_vps_awg_nat_expected_placement
+      - real_vps_awg_nat_expected_placement[real_vps_awg_nat_mode] is mapping
+      - >-
+        real_vps_awg_nat_expected_placement[real_vps_awg_nat_mode].inventory_hostname
+        is match('^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$')
+      - >-
+        real_vps_awg_nat_expected_placement[real_vps_awg_nat_mode].ansible_host
+        is string
+      - >-
+        real_vps_awg_nat_expected_placement[real_vps_awg_nat_mode].ansible_host |
+        length > 0
+      - >-
+        real_vps_awg_nat_expected_placement[real_vps_awg_nat_mode].provider
+        is match('^[a-z][a-z0-9_-]{0,31}$')
+      - >-
+        real_vps_awg_nat_expected_placement[real_vps_awg_nat_mode].cohort_group
+        is match('^vpn-[a-z0-9][a-z0-9-]{0,62}$')
+      - >-
+        inventory_hostname ==
+        real_vps_awg_nat_expected_placement[real_vps_awg_nat_mode].inventory_hostname
+      - >-
+        (provider | default('')) ==
+        real_vps_awg_nat_expected_placement[real_vps_awg_nat_mode].provider
+      - >-
+        real_vps_awg_nat_expected_placement[real_vps_awg_nat_mode].cohort_group
+        in group_names
+    fail_msg: >-
+      Refusing AWG evidence credentials: inventory hostname, provider, or
+      cohort group does not match the protected placement contract.
+  when: real_vps_awg_nat_mode in ['echo', 'server']
+  tags: [always]
+
+- name: Validate protected and rendered placement addresses
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - >-
+        import ipaddress,sys;
+        [ipaddress.ip_address(value) for value in sys.argv[1:]]
+      - "{{ real_vps_awg_nat_expected_placement[real_vps_awg_nat_mode].ansible_host }}"
+      - "{{ hostvars[inventory_hostname].ansible_host | default('') }}"
+  delegate_to: localhost
+  become: false
+  register: _real_vps_awg_nat_placement_addresses
+  changed_when: false
+  failed_when: false
+  when: real_vps_awg_nat_mode in ['echo', 'server']
+  tags: [always]
+
+- name: Bind placement to the provider-state address
+  ansible.builtin.assert:
+    that:
+      - _real_vps_awg_nat_placement_addresses.rc == 0
+      - >-
+        hostvars[inventory_hostname].ansible_host ==
+        real_vps_awg_nat_expected_placement[real_vps_awg_nat_mode].ansible_host
+    fail_msg: >-
+      Refusing AWG evidence credentials: ansible_host is not the protected
+      numeric provider-state address.
+  when: real_vps_awg_nat_mode in ['echo', 'server']
+  tags: [always]
+
+- name: Create persistent firewall policy directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /etc/nftables.d
+    - /etc/systemd/system/nftables.service.d
+  when: real_vps_awg_nat_mode in ['echo', 'server']
+
+- name: Load mode-specific provisioning
+  ansible.builtin.include_tasks: "{{ real_vps_awg_nat_mode }}.yml"

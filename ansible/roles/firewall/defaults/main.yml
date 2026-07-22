@@ -1,0 +1,4 @@
+---
+# Extra routed interfaces must opt into both ingress and egress explicitly.
+# The canonical forward chain remains default-drop when this list is empty.
+firewall_forward_interface_contract: []

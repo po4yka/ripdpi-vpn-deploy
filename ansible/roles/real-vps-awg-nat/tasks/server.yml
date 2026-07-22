@@ -1,0 +1,260 @@
+---
+- name: Validate private AWG server material
+  ansible.builtin.assert:
+    that:
+      - real_vps_awg_nat_interface == 'awg-evidence0'
+      - real_vps_awg_nat_expected_source_sha is match('^[0-9a-f]{40}$')
+      - real_vps_awg_nat_expected_source_archive_sha256 is match('^[0-9a-f]{64}$')
+      - real_vps_awg_nat_secrets.server_private_key | length == 44
+      - real_vps_awg_nat_secrets.current_client_public_key | length == 44
+      - real_vps_awg_nat_secrets.current_preshared_key | length == 44
+      - real_vps_awg_nat_secrets.sentinel_ssh_public_key is match('^ssh-ed25519 [A-Za-z0-9+/=]+$')
+      - real_vps_awg_nat_server_uplink_interface is match('^[A-Za-z0-9_.-]{1,15}$')
+  no_log: true
+
+- name: Inspect existing P2 AWG server toolchain
+  ansible.builtin.command:
+    argv: [/usr/bin/test, -x, "{{ item }}"]
+  loop:
+    - /usr/bin/awg
+    - /usr/bin/awg-quick
+  register: _real_vps_awg_nat_server_tools
+  changed_when: false
+  failed_when: false
+
+- name: Inspect existing P2 IPv4 forwarding
+  ansible.builtin.command:
+    argv: [/usr/sbin/sysctl, -n, net.ipv4.ip_forward]
+  register: _real_vps_awg_nat_ipv4_forwarding
+  changed_when: false
+  failed_when: false
+
+- name: Require converged P2 AWG and forwarding prerequisites
+  ansible.builtin.assert:
+    that:
+      - _real_vps_awg_nat_server_tools.results | map(attribute='rc') | list == [0, 0]
+      - _real_vps_awg_nat_ipv4_forwarding.rc == 0
+      - _real_vps_awg_nat_ipv4_forwarding.stdout | trim == '1'
+    fail_msg: >-
+      Server mode requires an already-converged P2 host with /usr/bin/awg,
+      /usr/bin/awg-quick, and net.ipv4.ip_forward=1.
+
+- name: Select the canonical public listener for the evidence server
+  ansible.builtin.set_fact:
+    _real_vps_awg_nat_public_listener_matches: >-
+      {{ public_listener_contract | default([]) |
+         selectattr('protocol', 'equalto', 'udp') |
+         selectattr('port', 'defined') |
+         selectattr('port', 'equalto', real_vps_awg_nat_listen_port | int) |
+         list }}
+    _real_vps_awg_nat_forward_contract_matches: >-
+      {{ firewall_forward_interface_contract | default([]) |
+         selectattr('input_interface', 'equalto', real_vps_awg_nat_interface) |
+         selectattr('output_interface', 'equalto', real_vps_awg_nat_server_uplink_interface) |
+         list }}
+
+- name: Require canonical input and forwarding source contracts
+  ansible.builtin.assert:
+    that:
+      - _real_vps_awg_nat_public_listener_matches | length == 1
+      - _real_vps_awg_nat_forward_contract_matches | length == 1
+    fail_msg: >-
+      The dedicated AWG evidence listener and interface route must appear
+      exactly once in public_listener_contract and
+      firewall_forward_interface_contract before server provisioning.
+
+- name: Install exact-source server apply prerequisites
+  ansible.builtin.apt:
+    name:
+      - ansible-core
+      - nftables
+      - python3
+      - sudo
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: real_vps_awg_nat_apply_prerequisites | bool
+
+- name: Inspect live canonical input policy
+  ansible.builtin.command:
+    argv: [nft, list, chain, inet, filter, input]
+  register: _real_vps_awg_nat_live_input
+  changed_when: false
+  failed_when: false
+
+- name: Inspect live canonical forwarding policy
+  ansible.builtin.command:
+    argv: [nft, list, chain, inet, filter, forward]
+  register: _real_vps_awg_nat_live_forward
+  changed_when: false
+  failed_when: false
+
+- name: Require live canonical input and forwarding rules
+  ansible.builtin.assert:
+    that:
+      - _real_vps_awg_nat_live_input.rc == 0
+      - _real_vps_awg_nat_live_forward.rc == 0
+      - >-
+        _real_vps_awg_nat_live_input.stdout is search(
+          '(?m)^\\s*udp dport ' ~ (real_vps_awg_nat_listen_port | string) ~
+          ' accept\\s*$')
+      - >-
+        _real_vps_awg_nat_live_forward.stdout is search(
+          '(?m)^\\s*ct state new iifname "' ~ real_vps_awg_nat_interface ~
+          '" oifname "' ~ real_vps_awg_nat_server_uplink_interface ~
+          '" accept\\s*$')
+    fail_msg: >-
+      Refusing to enable the AWG evidence interface until the standard
+      firewall deployment has loaded its canonical listener and forward rules.
+
+- name: Create fixed-command account
+  ansible.builtin.user:
+    name: "{{ real_vps_awg_nat_server_ssh_user }}"
+    system: true
+    create_home: true
+    shell: /bin/sh
+
+- name: Create root-only server state
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - /var/lib/ripdpi-real-vps-awg-nat-server
+    - /opt/ripdpi-real-vps-awg-nat-server
+    - /etc/amneziawg
+    - /etc/ripdpi
+
+- name: Install server bootstrap command
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../scripts/real-vps-awg-nat-server.py"
+    dest: /usr/local/libexec/ripdpi-real-vps-awg-nat-server
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install private exact-source apply variables
+  ansible.builtin.template:
+    src: server-private-vars.yml.j2
+    dest: /etc/ripdpi/real-vps-awg-nat-server.yml
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+
+- name: Install operator-approved source policy
+  ansible.builtin.template:
+    src: server-source-policy.json.j2
+    dest: /etc/ripdpi/real-vps-awg-nat-source-policy.json
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Seed dedicated evidence interface config once
+  ansible.builtin.template:
+    src: server-awg.conf.j2
+    dest: "/etc/amneziawg/{{ real_vps_awg_nat_interface }}.conf"
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+  no_log: true
+  diff: false
+
+- name: Install evidence interface unit
+  ansible.builtin.template:
+    src: server-awg.service.j2
+    dest: "/etc/systemd/system/awg-quick@{{ real_vps_awg_nat_interface }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd for AWG evidence
+
+- name: Install dedicated AWG and NAT firewall policy
+  ansible.builtin.template:
+    src: server.nft.j2
+    dest: /etc/nftables.d/ripdpi-real-vps-awg-nat-server.nft
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart AWG evidence server firewall
+
+- name: Install server firewall loader
+  ansible.builtin.template:
+    src: firewall-loader.j2
+    dest: /usr/local/libexec/ripdpi-real-vps-awg-nat-server-firewall
+    owner: root
+    group: root
+    mode: "0755"
+  vars:
+    _evidence_firewall_table: ripdpi_awg_evidence
+    _evidence_firewall_policy: /etc/nftables.d/ripdpi-real-vps-awg-nat-server.nft
+  notify: Restart AWG evidence server firewall
+
+- name: Install persistent server firewall service
+  ansible.builtin.template:
+    src: firewall.service.j2
+    dest: /etc/systemd/system/ripdpi-real-vps-awg-nat-server-firewall.service
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    _evidence_firewall_description: RIPDPI AWG evidence server firewall
+    _evidence_firewall_loader: /usr/local/libexec/ripdpi-real-vps-awg-nat-server-firewall
+  notify:
+    - Reload systemd for AWG evidence
+    - Restart AWG evidence server firewall
+
+- name: Install nftables server reload propagation
+  ansible.builtin.template:
+    src: nftables-dropin.conf.j2
+    dest: /etc/systemd/system/nftables.service.d/ripdpi-real-vps-awg-nat-server.conf
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    _evidence_firewall_service: ripdpi-real-vps-awg-nat-server-firewall.service
+  notify: Reload systemd for AWG evidence
+
+- name: Enable persistent server firewall
+  ansible.builtin.systemd_service:
+    name: ripdpi-real-vps-awg-nat-server-firewall.service
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Create fixed-command SSH directory
+  ansible.builtin.file:
+    path: "/home/{{ real_vps_awg_nat_server_ssh_user }}/.ssh"
+    state: directory
+    owner: "{{ real_vps_awg_nat_server_ssh_user }}"
+    group: "{{ real_vps_awg_nat_server_ssh_user }}"
+    mode: "0700"
+
+- name: Install forced-command authorization
+  ansible.builtin.template:
+    src: server-authorized-key.j2
+    dest: "/home/{{ real_vps_awg_nat_server_ssh_user }}/.ssh/authorized_keys"
+    owner: "{{ real_vps_awg_nat_server_ssh_user }}"
+    group: "{{ real_vps_awg_nat_server_ssh_user }}"
+    mode: "0600"
+  no_log: true
+
+- name: Install fixed sudo authorization
+  ansible.builtin.template:
+    src: server-sudoers.j2
+    dest: /etc/sudoers.d/ripdpi-real-vps-awg-nat
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+
+- name: Enable dedicated evidence interface
+  ansible.builtin.systemd_service:
+    name: "awg-quick@{{ real_vps_awg_nat_interface }}.service"
+    enabled: true
+    state: started
+    daemon_reload: true

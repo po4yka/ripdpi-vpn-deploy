@@ -15,7 +15,7 @@ Reproducible IaC for a four-tier multi-profile VPN stack:
 - **P3** — manual reachability fallbacks
 
 Layers: Terraform → cloud-init → Ansible → SOPS+age secrets → optional `vpnd`
-Rust CLI. Threat model: RU-internet / TSPU-aware. **Nodes are disposable**:
+Rust CLI. Threat model: active L7 fingerprinting and aggressive QoS. **Nodes are disposable**:
 when an IP burns, recreate from git + secrets, do not repair.
 
 ## Build & test
@@ -87,10 +87,10 @@ AGENTS.md / CLAUDE.md                                — this file (root)
 ansible/                                             — playbook order, group_vars contract
 ansible/roles/{amneziawg,backup,baseline,cdn-front,
               cascade-egress,cascade-ingress,dns-morph-bridge,firewall,geodata,honeypot,
-              hysteria,hysteria-realm,monitoring,naive,reality-self-steal,
+              hysteria,hysteria-realm,monitoring,naive,real-vps-awg-nat,reality-self-steal,
               nginx-xhttp,policy-ratelimit,split-hop-egress,
               split-hop-ingress,probe-matrix-target,snell,subscription-host,
-              warp-outbound,watchdog,xray,xray-runtime}/  — 30 roles
+              warp-outbound,watchdog,xray,xray-runtime}/  — 31 roles
 terraform/                                           — provider-root strategy
 terraform/providers/{hetzner,upcloud,vultr}/         — per-provider quirks
 terraform/shared/                                    — cloud-init contract

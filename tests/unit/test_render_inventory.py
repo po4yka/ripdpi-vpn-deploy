@@ -144,6 +144,7 @@ def test_render_inventory_matches_fixture(tmp_path):
     env["ENV"] = "prod"
     env.pop("HOSTS", None)
     env.pop("COHORTS", None)
+    env.pop("AWG_EVIDENCE_MODES", None)
     env["STUB_LOG"] = str(tmp_path / "stub.log")
 
     try:
@@ -236,6 +237,7 @@ def test_vultr_inventory_waits_for_secondary_ipv4_guest_convergence(tmp_path):
     )
     env.pop("HOSTS", None)
     env.pop("COHORTS", None)
+    env.pop("AWG_EVIDENCE_MODES", None)
 
     try:
         not_converged = subprocess.run(

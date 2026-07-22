@@ -1,0 +1,21 @@
+---
+- name: Reload systemd for AWG evidence
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart AWG evidence echo
+  ansible.builtin.systemd_service:
+    name: ripdpi-real-vps-awg-nat-echo.service
+    state: restarted
+
+- name: Restart AWG evidence echo firewall
+  ansible.builtin.systemd_service:
+    name: ripdpi-real-vps-awg-nat-echo-firewall.service
+    state: restarted
+    daemon_reload: true
+
+- name: Restart AWG evidence server firewall
+  ansible.builtin.systemd_service:
+    name: ripdpi-real-vps-awg-nat-server-firewall.service
+    state: restarted
+    daemon_reload: true

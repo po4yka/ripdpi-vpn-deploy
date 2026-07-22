@@ -86,6 +86,28 @@
   "reason": "P2 AmneziaWG listener"
 }) %}
 {% endif %}
+{% set _awg_evidence_mode = real_vps_awg_nat_mode | default('fail_closed') %}
+{% set _ = ns.listeners.append({
+  "role": "awg-evidence",
+  "protocol": "udp",
+  "port": real_vps_awg_nat_listen_port | default(51920) | int,
+  "enabled": _awg_evidence_mode == "server",
+  "reason": "recurring real-VPS AWG evidence listener"
+}) %}
+{% set _ = ns.listeners.append({
+  "role": "awg-evidence-echo-tcp",
+  "protocol": "tcp",
+  "port": real_vps_awg_nat_tcp_echo_port | default(10001) | int,
+  "enabled": _awg_evidence_mode == "echo",
+  "reason": "owner-controlled AWG evidence TCP echo"
+}) %}
+{% set _ = ns.listeners.append({
+  "role": "awg-evidence-echo-udp",
+  "protocol": "udp",
+  "port": real_vps_awg_nat_udp_echo_port | default(10002) | int,
+  "enabled": _awg_evidence_mode == "echo",
+  "reason": "owner-controlled AWG evidence UDP echo"
+}) %}
 {% set _ = ns.listeners.append({
   "role": "subscription-host",
   "protocol": "tcp",

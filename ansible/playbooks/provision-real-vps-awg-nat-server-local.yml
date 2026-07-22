@@ -1,0 +1,9 @@
+---
+- name: Apply exact-source AWG evidence server state
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+  roles:
+    - role: real-vps-awg-nat
+      real_vps_awg_nat_mode: "server"

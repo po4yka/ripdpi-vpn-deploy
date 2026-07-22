@@ -1,0 +1,35 @@
+---
+- name: Provision independent dual-protocol evidence echo
+  hosts: awg_evidence_echo
+  become: true
+  gather_facts: true
+  serial: 1
+  pre_tasks:
+    - name: Decode provider listener contract for evidence echo
+      ansible.builtin.set_fact:
+        public_listener_contract: "{{ terraform_public_listeners_b64 | b64decode | from_json }}"
+  roles:
+    - role: real-vps-awg-nat
+      real_vps_awg_nat_mode: "echo"
+
+- name: Provision dedicated AWG evidence peer and fixed remote command
+  hosts: awg_evidence_server
+  become: true
+  gather_facts: true
+  serial: 1
+  pre_tasks:
+    - name: Decode provider listener contract for evidence server
+      ansible.builtin.set_fact:
+        public_listener_contract: "{{ terraform_public_listeners_b64 | b64decode | from_json }}"
+  roles:
+    - role: real-vps-awg-nat
+      real_vps_awg_nat_mode: "server"
+
+- name: Provision offline exact-source recurring sentinel
+  hosts: awg_evidence_sentinel
+  become: true
+  gather_facts: true
+  serial: 1
+  roles:
+    - role: real-vps-awg-nat
+      real_vps_awg_nat_mode: "sentinel"

@@ -1,0 +1,153 @@
+---
+- name: Validate owner-controlled echo contract
+  ansible.builtin.assert:
+    that:
+      - real_vps_awg_nat_tcp_echo_port | int > 0
+      - real_vps_awg_nat_tcp_echo_port | int < 65536
+      - real_vps_awg_nat_udp_echo_port | int > 0
+      - real_vps_awg_nat_udp_echo_port | int < 65536
+
+- name: Validate public echo source addresses without external Python packages
+  ansible.builtin.script:
+    cmd: >-
+      {{ role_path }}/files/validate-public-addresses.py
+      {{ {
+           'required_ipv4': [
+             real_vps_awg_nat_sentinel_public_ipv4,
+             real_vps_awg_nat_server_egress_ipv4
+           ],
+           'optional_ipv6': [
+             real_vps_awg_nat_sentinel_public_ipv6,
+             real_vps_awg_nat_server_egress_ipv6
+           ]
+         } | to_json | b64encode }}
+    executable: python3
+  changed_when: false
+
+- name: Select canonical public listeners for the echo service
+  ansible.builtin.set_fact:
+    _real_vps_awg_nat_tcp_echo_listener_matches: >-
+      {{ public_listener_contract | default([]) |
+         selectattr('protocol', 'equalto', 'tcp') |
+         selectattr('port', 'defined') |
+         selectattr('port', 'equalto', real_vps_awg_nat_tcp_echo_port | int) |
+         list }}
+    _real_vps_awg_nat_udp_echo_listener_matches: >-
+      {{ public_listener_contract | default([]) |
+         selectattr('protocol', 'equalto', 'udp') |
+         selectattr('port', 'defined') |
+         selectattr('port', 'equalto', real_vps_awg_nat_udp_echo_port | int) |
+         list }}
+
+- name: Require canonical TCP and UDP echo listener contracts
+  ansible.builtin.assert:
+    that:
+      - _real_vps_awg_nat_tcp_echo_listener_matches | length == 1
+      - _real_vps_awg_nat_udp_echo_listener_matches | length == 1
+    fail_msg: >-
+      The echo host must declare exactly one canonical TCP listener and one
+      canonical UDP listener for its configured evidence ports before
+      provisioning can continue.
+
+- name: Inspect live canonical echo input policy
+  ansible.builtin.command:
+    argv: [nft, list, chain, inet, filter, input]
+  register: _real_vps_awg_nat_live_echo_input
+  changed_when: false
+  failed_when: false
+
+- name: Require live canonical TCP and UDP echo accept rules
+  ansible.builtin.assert:
+    that:
+      - _real_vps_awg_nat_live_echo_input.rc == 0
+      - >-
+        _real_vps_awg_nat_live_echo_input.stdout is search(
+          '(?m)^\\s*tcp dport ' ~ (real_vps_awg_nat_tcp_echo_port | string) ~
+          ' accept\\s*$')
+      - >-
+        _real_vps_awg_nat_live_echo_input.stdout is search(
+          '(?m)^\\s*udp dport ' ~ (real_vps_awg_nat_udp_echo_port | string) ~
+          ' accept\\s*$')
+    fail_msg: >-
+      Refusing to start the evidence echo until the standard firewall
+      deployment has loaded both canonical listener rules.
+
+- name: Install dual-protocol echo producer
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../scripts/real-vps-awg-nat-echo.py"
+    dest: /usr/local/libexec/ripdpi-real-vps-awg-nat-echo
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart AWG evidence echo
+
+- name: Install dual-protocol echo service
+  ansible.builtin.template:
+    src: echo.service.j2
+    dest: /etc/systemd/system/ripdpi-real-vps-awg-nat-echo.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd for AWG evidence
+    - Restart AWG evidence echo
+
+- name: Install scoped echo firewall policy
+  ansible.builtin.template:
+    src: echo.nft.j2
+    dest: /etc/nftables.d/ripdpi-real-vps-awg-nat-echo.nft
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart AWG evidence echo firewall
+
+- name: Install echo firewall loader
+  ansible.builtin.template:
+    src: firewall-loader.j2
+    dest: /usr/local/libexec/ripdpi-real-vps-awg-nat-echo-firewall
+    owner: root
+    group: root
+    mode: "0755"
+  vars:
+    _evidence_firewall_table: ripdpi_awg_evidence_echo
+    _evidence_firewall_policy: /etc/nftables.d/ripdpi-real-vps-awg-nat-echo.nft
+  notify: Restart AWG evidence echo firewall
+
+- name: Install persistent echo firewall service
+  ansible.builtin.template:
+    src: firewall.service.j2
+    dest: /etc/systemd/system/ripdpi-real-vps-awg-nat-echo-firewall.service
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    _evidence_firewall_description: RIPDPI AWG evidence echo firewall
+    _evidence_firewall_loader: /usr/local/libexec/ripdpi-real-vps-awg-nat-echo-firewall
+  notify:
+    - Reload systemd for AWG evidence
+    - Restart AWG evidence echo firewall
+
+- name: Install nftables echo reload propagation
+  ansible.builtin.template:
+    src: nftables-dropin.conf.j2
+    dest: /etc/systemd/system/nftables.service.d/ripdpi-real-vps-awg-nat-echo.conf
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    _evidence_firewall_service: ripdpi-real-vps-awg-nat-echo-firewall.service
+  notify: Reload systemd for AWG evidence
+
+- name: Enable persistent echo firewall
+  ansible.builtin.systemd_service:
+    name: ripdpi-real-vps-awg-nat-echo-firewall.service
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Enable dual-protocol echo
+  ansible.builtin.systemd_service:
+    name: ripdpi-real-vps-awg-nat-echo.service
+    enabled: true
+    state: started
+    daemon_reload: true

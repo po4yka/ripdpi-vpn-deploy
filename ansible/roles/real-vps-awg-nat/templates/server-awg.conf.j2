@@ -1,0 +1,20 @@
+[Interface]
+PrivateKey = {{ real_vps_awg_nat_secrets.server_private_key }}
+Address = {{ real_vps_awg_nat_server_address }}
+ListenPort = {{ real_vps_awg_nat_listen_port }}
+Jc = {{ real_vps_awg_nat_obfuscation.jc }}
+Jmin = {{ real_vps_awg_nat_obfuscation.jmin }}
+Jmax = {{ real_vps_awg_nat_obfuscation.jmax }}
+S1 = {{ real_vps_awg_nat_obfuscation.s1 }}
+S2 = {{ real_vps_awg_nat_obfuscation.s2 }}
+H1 = {{ real_vps_awg_nat_obfuscation.h1 }}
+H2 = {{ real_vps_awg_nat_obfuscation.h2 }}
+H3 = {{ real_vps_awg_nat_obfuscation.h3 }}
+H4 = {{ real_vps_awg_nat_obfuscation.h4 }}
+
+# BEGIN RIPDPI AWG EVIDENCE PEER
+[Peer]
+PublicKey = {{ real_vps_awg_nat_secrets.current_client_public_key }}
+PresharedKey = {{ real_vps_awg_nat_secrets.current_preshared_key }}
+AllowedIPs = {{ real_vps_awg_nat_client_address }}
+# END RIPDPI AWG EVIDENCE PEER

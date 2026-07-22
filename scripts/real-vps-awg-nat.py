@@ -231,6 +231,10 @@ class InfrastructureUnavailable(RuntimeError):
     """Private hook reported an environmental outage (sysexits EX_TEMPFAIL)."""
 
 
+class HookProductFailure(RuntimeError):
+    """Private hook reported a product defect (sysexits EX_SOFTWARE)."""
+
+
 class MissingCredentials(RuntimeError):
     """Required AWG client credential material is absent or incomplete."""
 
@@ -427,6 +431,16 @@ def run_lane(
         except MissingCredentials as exc:
             raise LaneFailure("INFRA_UNAVAILABLE", "MISSING_CREDENTIALS") from exc
 
+    def read_server_status() -> dict[str, Any]:
+        try:
+            return executor.server_status()
+        except InfrastructureUnavailable as exc:
+            raise LaneFailure(
+                "INFRA_UNAVAILABLE", "SERVER_CONTROL_UNAVAILABLE"
+            ) from exc
+        except Exception as exc:
+            raise LaneFailure("PRODUCT_FAILURE", "SERVER_CONTROL_UNAVAILABLE") from exc
+
     def run_awg_phase(
         phase_id: str,
         before: dict[str, Any],
@@ -439,12 +453,7 @@ def run_lane(
         if not _probe_ok(probe):
             phases.append(_phase(phase_id, probe))
             raise LaneFailure("PRODUCT_FAILURE", "AWG_ROUNDTRIP_FAILED")
-        try:
-            after = executor.server_status()
-        except Exception as exc:
-            raise LaneFailure(
-                "INFRA_UNAVAILABLE", "SERVER_CONTROL_UNAVAILABLE"
-            ) from exc
+        after = read_server_status()
         phase = _phase(
             phase_id,
             probe,
@@ -488,12 +497,7 @@ def run_lane(
         phases.append(_phase("direct_control", direct))
         if not _probe_ok(direct):
             raise LaneFailure("INFRA_UNAVAILABLE", "ECHO_CONTROL_UNAVAILABLE")
-        try:
-            status = executor.server_status()
-        except Exception as exc:
-            raise LaneFailure(
-                "INFRA_UNAVAILABLE", "SERVER_CONTROL_UNAVAILABLE"
-            ) from exc
+        status = read_server_status()
         if not status["serviceActive"] or not status["interfaceUp"]:
             raise LaneFailure("PRODUCT_FAILURE", "SERVER_SERVICE_UNHEALTHY")
         if (
@@ -522,12 +526,7 @@ def run_lane(
         except Exception as exc:
             raise LaneFailure("PRODUCT_FAILURE", "RESTART_FAILED") from exc
         before_restart = status
-        try:
-            status = executor.server_status()
-        except Exception as exc:
-            raise LaneFailure(
-                "INFRA_UNAVAILABLE", "SERVER_CONTROL_UNAVAILABLE"
-            ) from exc
+        status = read_server_status()
         restart_observed = (
             before_restart["serviceInvocationSha256"]
             != status["serviceInvocationSha256"]
@@ -592,12 +591,7 @@ def run_lane(
         except Exception as exc:
             raise LaneFailure("PRODUCT_FAILURE", "RELOAD_FAILED") from exc
         before_reload = status
-        try:
-            status = executor.server_status()
-        except Exception as exc:
-            raise LaneFailure(
-                "INFRA_UNAVAILABLE", "SERVER_CONTROL_UNAVAILABLE"
-            ) from exc
+        status = read_server_status()
         reload_observed = (
             status["configGenerationSha256"]
             == rotation_receipt["nextConfigGenerationSha256"]
@@ -613,12 +607,7 @@ def run_lane(
         except Exception as exc:
             raise LaneFailure("PRODUCT_FAILURE", "AWG_START_FAILED") from exc
         negative_probe = executor.probe_once("old_key_rejection")
-        try:
-            after_negative = executor.server_status()
-        except Exception as exc:
-            raise LaneFailure(
-                "INFRA_UNAVAILABLE", "SERVER_CONTROL_UNAVAILABLE"
-            ) from exc
+        after_negative = read_server_status()
         negative_phase = _phase(
             "old_key_rejection",
             negative_probe,
@@ -681,8 +670,10 @@ def run_lane(
             log_event("rotation_committed")
         except LaneFailure:
             raise
-        except Exception as exc:
+        except InfrastructureUnavailable as exc:
             raise LaneFailure("INFRA_UNAVAILABLE", "COMMIT_FAILED") from exc
+        except Exception as exc:
+            raise LaneFailure("PRODUCT_FAILURE", "COMMIT_FAILED") from exc
     except LaneFailure as exc:
         classification = exc.classification
         reason_code = exc.reason_code
@@ -727,8 +718,14 @@ def run_lane(
                 rotation_rolled_back = True
                 server_transaction_finalized = True
                 log_event("rotation_rolled_back")
-            except Exception:
+            except InfrastructureUnavailable:
                 classification = "INFRA_UNAVAILABLE"
+                reason_code = "ROLLBACK_FAILED"
+                server_transaction_finalized = False
+                cleanup_ok = False
+                stop_active_client()
+            except Exception:
+                classification = "PRODUCT_FAILURE"
                 reason_code = "ROLLBACK_FAILED"
                 server_transaction_finalized = False
                 cleanup_ok = False
@@ -1017,14 +1014,18 @@ def _secure_path(path_value: Any, *, executable: bool) -> Path:
 
 
 def client_config_evidence(path_value: str) -> dict[str, str]:
-    _path, raw, psk_value = _client_config_credentials(path_value)
+    _path, raw, _private_key, _public_key, psk_value = _client_config_credentials(
+        path_value
+    )
     return {
         "clientConfigSha256": sha256_bytes(raw),
         "peerConfigSha256": sha256_bytes(b"ripdpi:awg-evidence-peer:v1:" + psk_value),
     }
 
 
-def _client_config_credentials(path_value: Any) -> tuple[Path, bytes, bytes]:
+def _client_config_credentials(
+    path_value: Any,
+) -> tuple[Path, bytes, bytes, bytes, bytes]:
     if not isinstance(path_value, str):
         raise ValueError("private path must be a string")
     candidate = Path(path_value)
@@ -1040,18 +1041,21 @@ def _client_config_credentials(path_value: Any) -> tuple[Path, bytes, bytes]:
     except FileNotFoundError as exc:
         raise MissingCredentials("AWG client config is missing") from exc
     private_key_values = re.findall(rb"(?mi)^\s*PrivateKey\s*=\s*(.*?)\s*$", raw)
+    public_key_values = re.findall(rb"(?mi)^\s*PublicKey\s*=\s*(.*?)\s*$", raw)
     psk_values = re.findall(rb"(?mi)^\s*PresharedKey\s*=\s*(.*?)\s*$", raw)
     key_pattern = re.compile(rb"[A-Za-z0-9+/]{43}=")
     if (
         len(private_key_values) != 1
+        or len(public_key_values) != 1
         or len(psk_values) != 1
         or key_pattern.fullmatch(private_key_values[0]) is None
+        or key_pattern.fullmatch(public_key_values[0]) is None
         or key_pattern.fullmatch(psk_values[0]) is None
     ):
         raise MissingCredentials(
-            "AWG client config must contain exactly one private key and preshared key"
+            "AWG client config must contain exactly one private, public, and preshared key"
         )
-    return path, raw, psk_values[0]
+    return path, raw, private_key_values[0], public_key_values[0], psk_values[0]
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -1063,10 +1067,20 @@ def load_config(path: Path) -> dict[str, Any]:
     if value["version"] != CONFIG_VERSION:
         raise ValueError("unsupported runner config version")
     runner_id = require_sha(value["runnerId"], SHA256_RE, "runnerId")
-    client, _, _ = _client_config_credentials(value["clientConfigPath"])
-    rotated, _, _ = _client_config_credentials(value["rotatedClientConfigPath"])
+    client, _, client_private, client_public, client_psk = _client_config_credentials(
+        value["clientConfigPath"]
+    )
+    rotated, _, rotated_private, rotated_public, rotated_psk = (
+        _client_config_credentials(value["rotatedClientConfigPath"])
+    )
     if client.samefile(rotated):
         raise ValueError("rotated client config must be a distinct file")
+    if client_private == rotated_private:
+        raise ValueError("rotated client config must use a distinct private key")
+    if client_public != rotated_public:
+        raise ValueError("rotated client config must retain the server peer public key")
+    if client_psk == rotated_psk:
+        raise ValueError("rotated client config must use a distinct preshared key")
     control_hook = _secure_path(value["serverControlHook"], executable=True)
     deploy_hook = _secure_path(value["serverDeployHook"], executable=True)
     rotation_hook = _secure_path(value["rotationHook"], executable=True)
@@ -1137,9 +1151,13 @@ class SystemExecutor:
         try:
             return cls._run(command, **kwargs)
         except subprocess.CalledProcessError as exc:
+            if exc.returncode == 70:
+                raise HookProductFailure("private hook product failure") from exc
             if exc.returncode == 75:
                 raise InfrastructureUnavailable("private hook unavailable") from exc
             raise
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise InfrastructureUnavailable("private hook unavailable") from exc
 
     def _probe(self, prefix: list[str]) -> dict[str, Any]:
         request = {

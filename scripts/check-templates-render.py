@@ -29,6 +29,37 @@ from template_render import REPO_ROOT, ROLES_DIR, merge_render_vars, render_temp
 
 XRAY_IMAGE = "ghcr.io/xtls/xray-core:latest"
 
+# These templates are rendered by Ansible tasks with loop/task-local variables,
+# so role defaults cannot provide their standalone pre-flight context. Keep the
+# fixture values deterministic and non-secret so every template still receives
+# a strict synthetic render here.
+TEMPLATE_RENDER_VARS = {
+    Path("ansible/roles/real-vps-awg-nat/templates/firewall-loader.j2"): {
+        "_evidence_firewall_table": "ripdpi_awg_evidence_synthetic",
+        "_evidence_firewall_policy": "/etc/nftables.d/ripdpi-awg-evidence.nft",
+    },
+    Path("ansible/roles/real-vps-awg-nat/templates/firewall.service.j2"): {
+        "_evidence_firewall_description": "RIPDPI AWG evidence firewall",
+        "_evidence_firewall_loader": "/usr/local/libexec/ripdpi-awg-evidence-firewall",
+    },
+    Path("ansible/roles/real-vps-awg-nat/templates/nftables-dropin.conf.j2"): {
+        "_evidence_firewall_service": "ripdpi-awg-evidence-firewall.service",
+    },
+    Path("ansible/roles/real-vps-awg-nat/templates/sentinel-hook.j2"): {
+        "_evidence_awg_toolchain_manifest": {
+            "toolchainId": "1" * 64,
+            "binaries": {
+                "amneziawg-go": "2" * 64,
+                "awg": "3" * 64,
+                "awg-quick": "4" * 64,
+            },
+        },
+        "item": "server-control",
+        "real_vps_awg_nat_server_ssh_host": "192.0.2.10",
+        "real_vps_awg_nat_server_ssh_user": "ripdpi-awg-evidence",
+    },
+}
+
 
 def validate_json(text: str, label: str) -> str | None:
     try:
@@ -208,8 +239,10 @@ def main() -> int:
 
     for tpl in ROLES_DIR.rglob("*.j2"):
         rel = tpl.relative_to(REPO_ROOT)
+        render_vars = dict(vars_)
+        render_vars.update(TEMPLATE_RENDER_VARS.get(rel, {}))
         try:
-            output = render_template(tpl, vars_)
+            output = render_template(tpl, render_vars)
         except UndefinedError as exc:
             failures.append(f"{rel}: undefined — {exc}")
             continue

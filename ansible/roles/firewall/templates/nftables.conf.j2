@@ -135,6 +135,10 @@ table inet filter {
     # Node B forwards decapsulated traffic from the B-initiated split-hop flow.
     ct state new iifname "{{ split_hop_egress.wg_interface }}" oifname "{{ split_hop_egress.forward_iface }}" accept
 {% endif %}
+{% for forwarding in firewall_forward_interface_contract | default([]) %}
+    # Additive forwarding contract: {{ forwarding.name }}.
+    ct state new iifname "{{ forwarding.input_interface }}" oifname "{{ forwarding.output_interface }}" accept
+{% endfor %}
   }
 
   chain output {

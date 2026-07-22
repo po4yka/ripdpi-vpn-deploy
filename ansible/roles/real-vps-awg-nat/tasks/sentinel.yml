@@ -1,0 +1,326 @@
+---
+- name: Validate private sentinel material and exact source contract
+  ansible.builtin.assert:
+    that:
+      - real_vps_awg_nat_repo_path == '/opt/ripdpi-real-vps-awg-nat/repository'
+      - real_vps_awg_nat_secrets.sentinel_ssh_private_key | length > 64
+      - real_vps_awg_nat_secrets.current_client_config is search('(?m)^PrivateKey = ')
+      - real_vps_awg_nat_secrets.current_client_config is search('(?m)^PublicKey = ')
+      - real_vps_awg_nat_secrets.current_client_config is search('(?m)^PresharedKey = ')
+      - real_vps_awg_nat_secrets.rotated_client_config is search('(?m)^PrivateKey = ')
+      - real_vps_awg_nat_secrets.rotated_client_config is search('(?m)^PublicKey = ')
+      - real_vps_awg_nat_secrets.rotated_client_config is search('(?m)^PresharedKey = ')
+      - >-
+        (real_vps_awg_nat_secrets.current_client_config |
+        regex_findall('(?mi)^\\s*PrivateKey\\s*=\\s*(\\S+)\\s*$')) !=
+        (real_vps_awg_nat_secrets.rotated_client_config |
+        regex_findall('(?mi)^\\s*PrivateKey\\s*=\\s*(\\S+)\\s*$'))
+      - >-
+        (real_vps_awg_nat_secrets.current_client_config |
+        regex_findall('(?mi)^\\s*PublicKey\\s*=\\s*(\\S+)\\s*$')) ==
+        (real_vps_awg_nat_secrets.rotated_client_config |
+        regex_findall('(?mi)^\\s*PublicKey\\s*=\\s*(\\S+)\\s*$'))
+      - >-
+        (real_vps_awg_nat_secrets.current_client_config |
+        regex_findall('(?mi)^\\s*PresharedKey\\s*=\\s*(\\S+)\\s*$')) !=
+        (real_vps_awg_nat_secrets.rotated_client_config |
+        regex_findall('(?mi)^\\s*PresharedKey\\s*=\\s*(\\S+)\\s*$'))
+      - real_vps_awg_nat_server_ssh_host | length > 0
+      - real_vps_awg_nat_server_ssh_user is match('^[a-z_][a-z0-9_-]{0,31}$')
+      - >-
+        (real_vps_awg_nat_server_ssh_host is match(
+        '^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$'
+        )) or (real_vps_awg_nat_server_ssh_host is match('^[0-9A-Fa-f]*:[0-9A-Fa-f:]+$'))
+      - real_vps_awg_nat_server_known_host | length > 0
+      - real_vps_awg_nat_runner_id is match('^[0-9a-f]{64}$')
+      - real_vps_awg_nat_expected_source_sha is match('^[0-9a-f]{40}$')
+      - real_vps_awg_nat_expected_source_archive_sha256 is match('^[0-9a-f]{64}$')
+      - real_vps_awg_nat_source_bundle | length > 0
+      - real_vps_awg_nat_source_bundle_sha256 is match('^[0-9a-f]{64}$')
+      - real_vps_awg_nat_awg_go_source_bundle | length > 0
+      - real_vps_awg_nat_awg_go_source_bundle_sha256 is match('^[0-9a-f]{64}$')
+      - real_vps_awg_nat_awg_go_commit is match('^[0-9a-f]{40}$')
+      - real_vps_awg_nat_awg_tools_source_bundle | length > 0
+      - real_vps_awg_nat_awg_tools_source_bundle_sha256 is match('^[0-9a-f]{64}$')
+      - real_vps_awg_nat_awg_tools_commit is match('^[0-9a-f]{40}$')
+      - real_vps_awg_nat_awg_go_vendor_archive | length > 0
+      - real_vps_awg_nat_awg_go_vendor_archive_sha256 is match('^[0-9a-f]{64}$')
+  no_log: true
+
+- name: Inspect fixed sentinel source path ancestors
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - /opt
+    - /opt/ripdpi-real-vps-awg-nat
+    - /opt/ripdpi-real-vps-awg-nat/repository
+  register: _evidence_source_path_ancestors
+
+- name: Reject symlinked sentinel source path ancestors
+  ansible.builtin.assert:
+    that:
+      - not (item.stat.islnk | default(false))
+    fail_msg: "refusing symlinked source path component: {{ item.item }}"
+  loop: "{{ _evidence_source_path_ancestors.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Install sentinel build and runtime prerequisites
+  ansible.builtin.apt:
+    name:
+      - build-essential
+      - git
+      - golang
+      - iproute2
+      - iptables
+      - libmnl-dev
+      - make
+      - nftables
+      - openssh-client
+      - pkg-config
+      - python3
+      - resolvconf
+      - tcpdump
+      - util-linux
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Copy offline AWG source bundles
+  ansible.builtin.copy:
+    src: "{{ item.source }}"
+    dest: "{{ item.destination }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop:
+    - source: "{{ real_vps_awg_nat_awg_go_source_bundle }}"
+      destination: /var/tmp/amneziawg-go.bundle
+    - source: "{{ real_vps_awg_nat_awg_tools_source_bundle }}"
+      destination: /var/tmp/amneziawg-tools.bundle
+    - source: "{{ real_vps_awg_nat_awg_go_vendor_archive }}"
+      destination: /var/tmp/amneziawg-go-vendor.tar
+  loop_control:
+    label: "{{ item.destination }}"
+
+- name: Install immutable offline AWG toolchain builder
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../scripts/install-real-vps-awg-client-tools.py"
+    dest: /usr/local/libexec/install-real-vps-awg-client-tools
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create shared AWG evidence lane lock directory
+  ansible.builtin.file:
+    path: /run/lock/ripdpi-real-vps-awg-nat
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Remove legacy mutable AWG source trees
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /opt/src/amneziawg-go
+    - /opt/src/amneziawg-tools
+
+- name: Build and install immutable offline AWG toolchain
+  ansible.builtin.command:
+    argv:
+      - /usr/local/libexec/install-real-vps-awg-client-tools
+      - --go-bundle
+      - /var/tmp/amneziawg-go.bundle
+      - --go-bundle-sha256
+      - "{{ real_vps_awg_nat_awg_go_source_bundle_sha256 }}"
+      - --go-commit
+      - "{{ real_vps_awg_nat_awg_go_commit }}"
+      - --tools-bundle
+      - /var/tmp/amneziawg-tools.bundle
+      - --tools-bundle-sha256
+      - "{{ real_vps_awg_nat_awg_tools_source_bundle_sha256 }}"
+      - --tools-commit
+      - "{{ real_vps_awg_nat_awg_tools_commit }}"
+      - --vendor-archive
+      - /var/tmp/amneziawg-go-vendor.tar
+      - --vendor-sha256
+      - "{{ real_vps_awg_nat_awg_go_vendor_archive_sha256 }}"
+  register: _evidence_awg_toolchain
+  changed_when: (_evidence_awg_toolchain.stdout | from_json).changed | bool
+
+- name: Parse installed AWG binary provenance
+  ansible.builtin.set_fact:
+    _evidence_awg_toolchain_manifest: "{{ _evidence_awg_toolchain.stdout | from_json }}"
+
+- name: Validate installed AWG binary provenance
+  ansible.builtin.assert:
+    that:
+      - _evidence_awg_toolchain_manifest.toolchainId is match('^[0-9a-f]{64}$')
+      - _evidence_awg_toolchain_manifest.binaries['amneziawg-go'] is match('^[0-9a-f]{64}$')
+      - _evidence_awg_toolchain_manifest.binaries.awg is match('^[0-9a-f]{64}$')
+      - _evidence_awg_toolchain_manifest.binaries['awg-quick'] is match('^[0-9a-f]{64}$')
+      - _evidence_awg_toolchain_manifest.changed is boolean
+
+- name: Create sentinel private directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - /etc/ripdpi
+    - /etc/ripdpi/awg-evidence
+    - /etc/ripdpi/awg-evidence/hooks
+    - /etc/ripdpi/awg-evidence/ssh
+    - "{{ real_vps_awg_nat_repo_path | dirname }}"
+
+- name: Install dedicated SSH private key
+  ansible.builtin.copy:
+    content: "{{ real_vps_awg_nat_secrets.sentinel_ssh_private_key | trim }}\n"
+    dest: /etc/ripdpi/awg-evidence/ssh/id_ed25519
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+
+- name: Install pinned server host key
+  ansible.builtin.copy:
+    content: "{{ real_vps_awg_nat_server_known_host | trim }}\n"
+    dest: /etc/ripdpi/awg-evidence/ssh/known_hosts
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Seed current and rotated client configs once
+  ansible.builtin.copy:
+    content: "{{ item.content | trim }}\n"
+    dest: "{{ item.path }}"
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+  no_log: true
+  diff: false
+  loop:
+    - path: /etc/ripdpi/awg-evidence/current.conf
+      content: "{{ real_vps_awg_nat_secrets.current_client_config }}"
+    - path: /etc/ripdpi/awg-evidence/rotated.conf
+      content: "{{ real_vps_awg_nat_secrets.rotated_client_config }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Install fixed local hooks
+  ansible.builtin.template:
+    src: sentinel-hook.j2
+    dest: "/etc/ripdpi/awg-evidence/hooks/{{ item }}"
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - server-control
+    - server-deploy
+    - rotation
+
+- name: Install private runner config
+  ansible.builtin.template:
+    src: sentinel-runner.json.j2
+    dest: /etc/ripdpi/real-vps-awg-nat.json
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+
+- name: Copy exact source bundle to sentinel
+  ansible.builtin.copy:
+    src: "{{ real_vps_awg_nat_source_bundle }}"
+    dest: /var/tmp/ripdpi-real-vps-awg-nat.bundle
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Verify exact source bundle digest
+  ansible.builtin.command:
+    cmd: sha256sum /var/tmp/ripdpi-real-vps-awg-nat.bundle
+  register: _evidence_source_bundle_digest
+  changed_when: false
+  failed_when: >-
+    not (_evidence_source_bundle_digest.stdout | default('')).startswith(
+    real_vps_awg_nat_source_bundle_sha256 + '  ')
+
+- name: Inspect existing sentinel source checkout
+  ansible.builtin.command:
+    cmd: git rev-parse --verify HEAD^{commit}
+    chdir: "{{ real_vps_awg_nat_repo_path }}"
+  register: _evidence_existing_source_sha
+  changed_when: false
+  failed_when: false
+
+- name: Replace stale sentinel source checkout
+  ansible.builtin.file:
+    path: "{{ real_vps_awg_nat_repo_path }}"
+    state: absent
+  when: _evidence_existing_source_sha.stdout | default('') != real_vps_awg_nat_expected_source_sha
+
+- name: Clone offline exact source bundle
+  ansible.builtin.command:
+    cmd: >-
+      git clone /var/tmp/ripdpi-real-vps-awg-nat.bundle
+      {{ real_vps_awg_nat_repo_path }}
+    creates: "{{ real_vps_awg_nat_repo_path }}/.git"
+
+- name: Resolve sentinel exact source
+  ansible.builtin.command:
+    cmd: git rev-parse --verify HEAD^{commit}
+    chdir: "{{ real_vps_awg_nat_repo_path }}"
+  register: _evidence_source_sha
+  changed_when: false
+
+- name: Enforce requested sentinel source SHA
+  ansible.builtin.assert:
+    that: _evidence_source_sha.stdout | trim == real_vps_awg_nat_expected_source_sha
+    fail_msg: refusing a source SHA mismatch on the sentinel
+
+- name: Compute sentinel source archive digest
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail && git archive --format=tar HEAD |
+      sha256sum | awk '{print $1}'
+    chdir: "{{ real_vps_awg_nat_repo_path }}"
+    executable: /bin/bash
+  register: _evidence_source_archive_digest
+  changed_when: false
+
+- name: Enforce requested source archive digest
+  ansible.builtin.assert:
+    that: >-
+      _evidence_source_archive_digest.stdout | trim ==
+      real_vps_awg_nat_expected_source_archive_sha256
+    fail_msg: refusing a source archive digest mismatch on the sentinel
+
+- name: Install exact-source local runner and timer
+  ansible.builtin.command:
+    cmd: >-
+      {{ real_vps_awg_nat_repo_path }}/scripts/install-real-vps-awg-nat-local.sh --repo
+      {{ real_vps_awg_nat_repo_path }}
+  register: _evidence_install
+  changed_when: "'installed recurring AWG/NAT lane' in _evidence_install.stdout"
+
+- name: Remove transferred source bundle
+  ansible.builtin.file:
+    path: /var/tmp/ripdpi-real-vps-awg-nat.bundle
+    state: absent
+
+- name: Remove transferred AWG source bundles
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /var/tmp/amneziawg-go.bundle
+    - /var/tmp/amneziawg-tools.bundle
+    - /var/tmp/amneziawg-go-vendor.tar

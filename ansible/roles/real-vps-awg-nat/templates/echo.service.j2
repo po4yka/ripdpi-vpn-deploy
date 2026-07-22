@@ -1,0 +1,24 @@
+[Unit]
+Description=RIPDPI AWG evidence TCP/UDP echo
+After=network-online.target ripdpi-real-vps-awg-nat-echo-firewall.service
+Wants=network-online.target ripdpi-real-vps-awg-nat-echo-firewall.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/ripdpi-real-vps-awg-nat-echo --address {{ real_vps_awg_nat_echo_bind_address }} --tcp-port {{ real_vps_awg_nat_tcp_echo_port }} --udp-port {{ real_vps_awg_nat_udp_echo_port }} --allow-address {{ real_vps_awg_nat_sentinel_public_ipv4 }} --allow-address {{ real_vps_awg_nat_server_egress_ipv4 }}{% if real_vps_awg_nat_sentinel_public_ipv6 | length > 0 %} --allow-address {{ real_vps_awg_nat_sentinel_public_ipv6 }}{% endif %}{% if real_vps_awg_nat_server_egress_ipv6 | length > 0 %} --allow-address {{ real_vps_awg_nat_server_egress_ipv6 }}{% endif %}
+Restart=on-failure
+DynamicUser=true
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+LockPersonality=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

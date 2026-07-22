@@ -12,6 +12,10 @@
 # Cohort assignment: optional COHORTS env, comma-separated, one per host. The
 # host gets added to a [vpn-<cohort>] group, which maps to group_vars/vpn-<cohort>.yml.
 #   HOSTS="upcloud:prod,hetzner:prod" COHORTS="p0-minimal,device-full" ./scripts/render-inventory.sh
+# Recurring AWG evidence: optional AWG_EVIDENCE_MODES, one per host. Values are
+# fail_closed, echo, or server and are emitted as host vars beside the exact
+# Terraform listener contract.
+#   HOSTS="scaleway:prod,vultr:prod" AWG_EVIDENCE_MODES="echo,server" ./scripts/render-inventory.sh
 #
 # Required env: ANSIBLE_SSH_PRIVATE_KEY_FILE.
 set -euo pipefail
@@ -36,9 +40,15 @@ fi
 
 IFS=',' read -r -a host_pairs <<< "$HOST_LIST"
 IFS=',' read -r -a cohort_list <<< "${COHORTS:-}"
+IFS=',' read -r -a awg_evidence_mode_list <<< "${AWG_EVIDENCE_MODES:-}"
 
 if [[ -n "${COHORTS:-}" && ${#cohort_list[@]} -ne ${#host_pairs[@]} ]]; then
   echo "COHORTS count (${#cohort_list[@]}) must equal HOSTS count (${#host_pairs[@]})" >&2
+  exit 1
+fi
+
+if [[ -n "${AWG_EVIDENCE_MODES:-}" && ${#awg_evidence_mode_list[@]} -ne ${#host_pairs[@]} ]]; then
+  echo "AWG_EVIDENCE_MODES count (${#awg_evidence_mode_list[@]}) must equal HOSTS count (${#host_pairs[@]})" >&2
   exit 1
 fi
 
@@ -129,6 +139,17 @@ for i in "${!host_pairs[@]}"; do
   # quotes survive and Ansible receives a list instead of a malformed string.
   vpn_line+=" allowed_ssh_cidrs='${allowed_ssh_cidrs}'"
   vpn_line+=" terraform_public_listeners_b64=${public_listeners_b64}"
+  if [[ -n "${AWG_EVIDENCE_MODES:-}" ]]; then
+    awg_evidence_mode="${awg_evidence_mode_list[$i]}"
+    case "$awg_evidence_mode" in
+      fail_closed|echo|server) ;;
+      *)
+        echo "AWG_EVIDENCE_MODES entries must be fail_closed, echo, or server" >&2
+        exit 1
+        ;;
+    esac
+    vpn_line+=" real_vps_awg_nat_mode=${awg_evidence_mode}"
+  fi
   # Append the required server_ipv6 output when the provider allocates one.
   if [[ -n "$ipv6" && "$ipv6" != "null" ]]; then
     vpn_line+=" server_ipv6=${ipv6}"

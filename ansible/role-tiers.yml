@@ -62,6 +62,7 @@ tiers:
   probe-matrix-target: research # five-listener owned measurement target
   split-hop-ingress: research # Node A responder for topology comparison
   snell: research              # staged random-stream transport evaluation
+  real-vps-awg-nat: research   # three-host physical evidence lane; never a family role
 
   # EXCEPTION — implemented but inert; requires per-host allowlist and fresh attestation
   cascade-ingress: exception   # client termination integration + tri-state classifier

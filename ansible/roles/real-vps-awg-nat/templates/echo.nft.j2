@@ -1,0 +1,19 @@
+table inet ripdpi_awg_evidence_echo {
+  chain input {
+    type filter hook input priority -20; policy accept;
+    ip saddr {{ real_vps_awg_nat_sentinel_public_ipv4 }} tcp dport {{ real_vps_awg_nat_tcp_echo_port }} limit rate 50/second burst 20 packets accept
+    ip saddr {{ real_vps_awg_nat_sentinel_public_ipv4 }} udp dport {{ real_vps_awg_nat_udp_echo_port }} limit rate 50/second burst 20 packets accept
+    ip saddr {{ real_vps_awg_nat_server_egress_ipv4 }} tcp dport {{ real_vps_awg_nat_tcp_echo_port }} limit rate 50/second burst 20 packets accept
+    ip saddr {{ real_vps_awg_nat_server_egress_ipv4 }} udp dport {{ real_vps_awg_nat_udp_echo_port }} limit rate 50/second burst 20 packets accept
+{% if real_vps_awg_nat_sentinel_public_ipv6 | length > 0 %}
+    ip6 saddr {{ real_vps_awg_nat_sentinel_public_ipv6 }} tcp dport {{ real_vps_awg_nat_tcp_echo_port }} limit rate 50/second burst 20 packets accept
+    ip6 saddr {{ real_vps_awg_nat_sentinel_public_ipv6 }} udp dport {{ real_vps_awg_nat_udp_echo_port }} limit rate 50/second burst 20 packets accept
+{% endif %}
+{% if real_vps_awg_nat_server_egress_ipv6 | length > 0 %}
+    ip6 saddr {{ real_vps_awg_nat_server_egress_ipv6 }} tcp dport {{ real_vps_awg_nat_tcp_echo_port }} limit rate 50/second burst 20 packets accept
+    ip6 saddr {{ real_vps_awg_nat_server_egress_ipv6 }} udp dport {{ real_vps_awg_nat_udp_echo_port }} limit rate 50/second burst 20 packets accept
+{% endif %}
+    tcp dport {{ real_vps_awg_nat_tcp_echo_port }} drop
+    udp dport {{ real_vps_awg_nat_udp_echo_port }} drop
+  }
+}

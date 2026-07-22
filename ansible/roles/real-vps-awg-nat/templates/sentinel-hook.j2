@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# awg-toolchain={{ _evidence_awg_toolchain_manifest.toolchainId }}
+# amneziawg-go-sha256={{ _evidence_awg_toolchain_manifest.binaries['amneziawg-go'] }}
+# awg-sha256={{ _evidence_awg_toolchain_manifest.binaries.awg }}
+# awg-quick-sha256={{ _evidence_awg_toolchain_manifest.binaries['awg-quick'] }}
+
+ssh_command=(
+  /usr/bin/ssh
+  -i /etc/ripdpi/awg-evidence/ssh/id_ed25519
+  -o BatchMode=yes
+  -o IdentitiesOnly=yes
+  -o StrictHostKeyChecking=yes
+  -o UserKnownHostsFile=/etc/ripdpi/awg-evidence/ssh/known_hosts
+  -o ConnectTimeout=15
+  {{ (real_vps_awg_nat_server_ssh_user ~ '@' ~ real_vps_awg_nat_server_ssh_host) | quote }}
+)
+{% if item == 'server-control' %}
+[[ $# -eq 1 && "$1" =~ ^(status|restart|reload)$ ]] || exit 64
+exec "${ssh_command[@]}" "$1"
+{% elif item == 'server-deploy' %}
+[[ $# -eq 4 && "$1" == deploy && "$3" =~ ^[0-9a-f]{40}$ && "$4" =~ ^[0-9a-f]{64}$ ]] || exit 64
+archive="$2"
+[[ -f "$archive" && ! -L "$archive" ]] || exit 75
+[[ "$(sha256sum "$archive" | awk '{print $1}')" == "$4" ]] || exit 75
+exec "${ssh_command[@]}" "deploy $3 $4" <"$archive"
+{% else %}
+[[ $# -eq 1 && "$1" =~ ^(prepare|commit|rollback)$ ]] || exit 64
+exec /opt/ripdpi-real-vps-awg-nat/current/scripts/real-vps-awg-nat-rotation.py "$1" \
+  --current /etc/ripdpi/awg-evidence/current.conf \
+  --rotated /etc/ripdpi/awg-evidence/rotated.conf \
+  --ssh "${ssh_command[@]}"
+{% endif %}

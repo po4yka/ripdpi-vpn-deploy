@@ -1,0 +1,18 @@
+---
+real_vps_awg_nat_interface: {{ real_vps_awg_nat_interface | to_json }}
+real_vps_awg_nat_server_address: {{ real_vps_awg_nat_server_address | to_json }}
+real_vps_awg_nat_client_address: {{ real_vps_awg_nat_client_address | to_json }}
+real_vps_awg_nat_listen_port: {{ real_vps_awg_nat_listen_port | int }}
+real_vps_awg_nat_server_uplink_interface: {{ real_vps_awg_nat_server_uplink_interface | to_json }}
+real_vps_awg_nat_server_ssh_user: {{ real_vps_awg_nat_server_ssh_user | to_json }}
+public_listener_contract: {{ public_listener_contract | to_json }}
+firewall_forward_interface_contract: {{ firewall_forward_interface_contract | to_json }}
+real_vps_awg_nat_apply_prerequisites: false
+real_vps_awg_nat_expected_source_sha: {{ real_vps_awg_nat_expected_source_sha | to_json }}
+real_vps_awg_nat_expected_source_archive_sha256: {{ real_vps_awg_nat_expected_source_archive_sha256 | to_json }}
+real_vps_awg_nat_obfuscation: {{ real_vps_awg_nat_obfuscation | to_json }}
+real_vps_awg_nat_secrets:
+  server_private_key: {{ real_vps_awg_nat_secrets.server_private_key | to_json }}
+  current_client_public_key: {{ real_vps_awg_nat_secrets.current_client_public_key | to_json }}
+  current_preshared_key: {{ real_vps_awg_nat_secrets.current_preshared_key | to_json }}
+  sentinel_ssh_public_key: {{ real_vps_awg_nat_secrets.sentinel_ssh_public_key | to_json }}

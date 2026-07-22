@@ -1,0 +1,17 @@
+{
+  "version": "real_vps_awg_nat_runner_v1",
+  "runnerId": "{{ real_vps_awg_nat_runner_id }}",
+  "clientConfigPath": "/etc/ripdpi/awg-evidence/current.conf",
+  "rotatedClientConfigPath": "/etc/ripdpi/awg-evidence/rotated.conf",
+  "clientAddress": "{{ real_vps_awg_nat_client_address }}",
+  "tcpEchoAddress": "{{ real_vps_awg_nat_tcp_echo_address }}",
+  "tcpEchoPort": {{ real_vps_awg_nat_tcp_echo_port }},
+  "udpEchoAddress": "{{ real_vps_awg_nat_udp_echo_address }}",
+  "udpEchoPort": {{ real_vps_awg_nat_udp_echo_port }},
+  "serverControlHook": "/etc/ripdpi/awg-evidence/hooks/server-control",
+  "serverDeployHook": "/etc/ripdpi/awg-evidence/hooks/server-deploy",
+  "rotationHook": "/etc/ripdpi/awg-evidence/hooks/rotation",
+  "probeTimeoutSeconds": 10,
+  "recoveryTimeoutSeconds": 90,
+  "deployTimeoutSeconds": 900
+}

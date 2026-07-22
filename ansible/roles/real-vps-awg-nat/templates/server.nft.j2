@@ -1,0 +1,6 @@
+table inet ripdpi_awg_evidence {
+  chain postrouting {
+    type nat hook postrouting priority srcnat; policy accept;
+    iifname "{{ real_vps_awg_nat_interface }}" oifname "{{ real_vps_awg_nat_server_uplink_interface }}" counter masquerade comment "awg-nat-{{ real_vps_awg_nat_interface }}"
+  }
+}

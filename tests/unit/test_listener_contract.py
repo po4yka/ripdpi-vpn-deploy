@@ -77,6 +77,42 @@ def test_default_runtime_manifest_matches_default_provider_contract() -> None:
     assert contract.check({"expected": expected, "actual": actual}) == []
 
 
+def test_awg_evidence_server_listener_is_explicit_and_additive() -> None:
+    variables = renderer.merge_render_vars()
+    variables["real_vps_awg_nat_mode"] = "server"
+    variables["real_vps_awg_nat_listen_port"] = 51920
+    actual = json.loads(renderer.render_template(MANIFEST_TEMPLATE, variables))
+    expected = [
+        _expected("xray", "tcp", 443),
+        _expected("xray-fallback", "tcp", 2053),
+        _expected("public-site-http", "tcp", 80),
+        _expected("nginx-xhttp", "tcp", 8443),
+        _expected("hysteria", "udp", 443),
+        _expected("amneziawg", "udp", 51820),
+        _expected("awg-evidence", "udp", 51920),
+    ]
+    assert contract.check({"expected": expected, "actual": actual}) == []
+
+
+def test_awg_evidence_echo_listeners_are_explicit_and_additive() -> None:
+    variables = renderer.merge_render_vars()
+    variables["real_vps_awg_nat_mode"] = "echo"
+    variables["real_vps_awg_nat_tcp_echo_port"] = 10001
+    variables["real_vps_awg_nat_udp_echo_port"] = 10002
+    actual = json.loads(renderer.render_template(MANIFEST_TEMPLATE, variables))
+    expected = [
+        _expected("xray", "tcp", 443),
+        _expected("xray-fallback", "tcp", 2053),
+        _expected("public-site-http", "tcp", 80),
+        _expected("nginx-xhttp", "tcp", 8443),
+        _expected("hysteria", "udp", 443),
+        _expected("amneziawg", "udp", 51820),
+        _expected("awg-evidence-echo-tcp", "tcp", 10001),
+        _expected("awg-evidence-echo-udp", "udp", 10002),
+    ]
+    assert contract.check({"expected": expected, "actual": actual}) == []
+
+
 def _profile_manifest(name: str) -> list[dict]:
     variables = renderer.merge_render_vars()
     profile = yaml.safe_load((REPO_ROOT / "ansible" / "group_vars" / name).read_text())

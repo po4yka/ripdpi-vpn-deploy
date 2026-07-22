@@ -1,0 +1,19 @@
+[Unit]
+Description={{ _evidence_firewall_description }}
+After=nftables.service
+PartOf=nftables.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart={{ _evidence_firewall_loader }}
+ExecReload={{ _evidence_firewall_loader }}
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN
+
+[Install]
+WantedBy=multi-user.target

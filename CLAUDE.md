@@ -4,7 +4,8 @@
 
 Reproducible, layered IaC for a four-tier multi-profile VPN stack
 (P0 VLESS+REALITY+Vision, P1 nginx+XHTTP direct, P2 Hysteria2 + AmneziaWG,
-P3 manual reachability). Threat model is RU-internet / TSPU-aware.
+P3 manual reachability). Threat model is active L7 fingerprinting and
+aggressive QoS.
 
 Nodes are disposable. Secrets are SOPS+age. The Makefile is the canonical
 operator surface; `vpnd/` is a convenience CLI in front of it (see
@@ -58,7 +59,7 @@ Current coverage:
 ```
 CLAUDE.md                                — this file
 ansible/CLAUDE.md                        — playbook order, group_vars contract
-ansible/roles/<name>/CLAUDE.md           — 30 roles, all backfilled
+ansible/roles/<name>/CLAUDE.md           — 31 roles, all backfilled
 terraform/CLAUDE.md                      — provider-root strategy
 terraform/providers/<name>/CLAUDE.md     — upcloud (primary), hetzner, vultr
 terraform/shared/CLAUDE.md               — cloud-init contract

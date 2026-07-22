@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+batch="$(mktemp)"
+trap 'rm -f "$batch"' EXIT
+
+{
+  printf '%s\n' 'destroy table inet {{ _evidence_firewall_table }}'
+  cat {{ _evidence_firewall_policy | quote }}
+} >"$batch"
+
+# Check the exact replacement batch, then commit it as one nft transaction.
+nft -c -f "$batch"
+nft -f "$batch"
