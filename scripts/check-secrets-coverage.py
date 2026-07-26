@@ -51,6 +51,11 @@ NON_SECRET_TOPLEVEL = {
     # Role-internal compute (set_fact)
     "xray_arch", "xray_sha256", "hysteria_arch", "hysteria_sha256",
     "node_manifest_environment", "node_manifest_provider",
+    # real-vps-awg-nat template context assembled by role tasks/pre_tasks
+    "_evidence_awg_toolchain_manifest", "_evidence_firewall_description",
+    "_evidence_firewall_loader", "_evidence_firewall_policy",
+    "_evidence_firewall_service", "_evidence_firewall_table",
+    "public_listener_contract",
 }
 
 # Top-level keys that are real secrets and must exist in the example file
@@ -60,7 +65,7 @@ EXPECTED_SECRET_TOPLEVEL = {
     "backup", "watchdog_secrets", "naive_secrets",
     "dns_morph_bridge_secrets", "hysteria_realm_secrets", "split_hop_egress_secrets",
     "split_hop_ingress_secrets", "probe_matrix_target_secrets",
-    "snell_secrets",
+    "snell_secrets", "real_vps_awg_nat_secrets",
 }
 
 # Non-greedy capture of {{ ... }} with optional whitespace

@@ -126,6 +126,19 @@ def test_example_validates_lenient(example_doc):
     assert errors == [], "example schema must validate against itself in lenient mode"
 
 
+def test_awg_evidence_example_covers_every_schema_secret(example_doc, schema):
+    contract = schema["properties"]["real_vps_awg_nat_secrets"]
+
+    assert set(example_doc["real_vps_awg_nat_secrets"]) == set(contract["required"])
+
+
+def test_awg_evidence_secret_block_rejects_missing_value(example_doc):
+    doc = deepcopy(example_doc)
+    del doc["real_vps_awg_nat_secrets"]["sentinel_ssh_private_key"]
+
+    assert list(_validator().iter_errors(doc))
+
+
 def test_filled_validates_strict_via_cli(filled, tmp_path):
     p = tmp_path / "filled.yaml"
     p.write_text(yaml.safe_dump(filled))

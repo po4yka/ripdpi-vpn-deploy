@@ -64,6 +64,9 @@ def test_playbook_provisions_three_separate_trust_boundaries() -> None:
     assert "hosts: awg_evidence_sentinel" in source
     assert source.count("serial: 1") == 3
     assert source.count("role: real-vps-awg-nat") == 3
+    assert source.count("vars_files:") == 3
+    assert source.count('- "{{ vpn_secrets_file }}"') == 3
+    assert source.count("lookup('env', 'VPN_SECRETS_FILE') | length > 0") == 3
     assert source.count("terraform_public_listeners_b64 | b64decode | from_json") == 2
     for mode in ("echo", "server", "sentinel"):
         assert f'real_vps_awg_nat_mode: "{mode}"' in source

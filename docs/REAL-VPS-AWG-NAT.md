@@ -15,9 +15,11 @@ tables remain separate trust boundaries.
 
 ## Private input contract
 
-Keep the following variables in a root-readable SOPS file or a temporary
-mode-`0600` Ansible vars file. No private value belongs in inventory, Git,
-command-line arguments, logs, or evidence artifacts.
+Keep the following variables only in the root-readable file produced by
+`make decrypt` from the repository's SOPS document. The provisioning playbook
+requires that file through `VPN_SECRETS_FILE`.
+No private value belongs in inventory. Private input also must not appear in a
+separate vars file, Git, command-line arguments, logs, or evidence artifacts.
 
 - `real_vps_awg_nat_secrets.server_private_key`
 - `real_vps_awg_nat_secrets.current_client_public_key`
@@ -26,10 +28,9 @@ command-line arguments, logs, or evidence artifacts.
 - `real_vps_awg_nat_secrets.sentinel_ssh_private_key`
 - `real_vps_awg_nat_secrets.current_client_config`
 - `real_vps_awg_nat_secrets.rotated_client_config`
-- `real_vps_awg_nat_expected_placement`
 
-Bind credentials to the current fleet placement in the same protected vars
-file. These values are non-secret but security-sensitive:
+Bind credentials to the current fleet placement in a separate root-readable,
+mode-`0600` vars file. These values are non-secret but security-sensitive:
 
 ```yaml
 real_vps_awg_nat_expected_placement:
@@ -145,14 +146,19 @@ scripts/build-real-vps-awg-nat-source-bundle.sh \
   --output /secure/tmp/ripdpi-vpn-deploy.bundle
 ```
 
-Then apply the private vars file without putting values in argv:
+Decrypt the SOPS document, then apply the separate non-secret placement vars
+file without putting private values in argv:
 
 ```bash
+make decrypt
 cd ansible
-ansible-playbook playbooks/provision-real-vps-awg-nat.yml \
+VPN_SECRETS_FILE="${XDG_RUNTIME_DIR:-${HOME}/.cache}/vpn-provision/vpn-prod.secrets.yaml" \
+  ansible-playbook playbooks/provision-real-vps-awg-nat.yml \
   -i inventory/generated.ini \
   -i /secure/inventory.yml \
-  --extra-vars @/secure/real-vps-awg-nat.yml
+  --extra-vars @/secure/real-vps-awg-nat.vars.yml
+cd ..
+make clean
 ```
 
 Running from `ansible/` loads the repository's `ansible/ansible.cfg`, including
@@ -182,4 +188,5 @@ only their SHA-256 digests.
 
 After a successful run, confirm that the server contains exactly one rule with
 comment `awg-nat-awg-evidence0` and that the sentinel timer is enabled. Remove
-the temporary source bundle and private operator vars file after provisioning.
+the temporary source bundle and non-secret operator vars file after
+provisioning; `make clean` removes the decrypted SOPS material.

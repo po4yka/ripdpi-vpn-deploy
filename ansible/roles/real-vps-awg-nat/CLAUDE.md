@@ -13,7 +13,9 @@ off-fleet physical sentinel plus two separately inventoried evidence hosts;
 putting it in the family deploy would collapse trust boundaries and distribute
 sentinel-only keys to production inventory. Its only entrypoint is
 `provision-real-vps-awg-nat.yml`, and `ansible/role-tiers.yml` classifies it as
-research.
+research. That playbook loads private input only from the root-readable SOPS
+material named by `VPN_SECRETS_FILE`; placement metadata remains in a separate
+mode-`0600` non-secret vars file.
 
 **A dedicated evidence interface** — `awg-evidence0` avoids mutating or
 rotating production peers. The operator must reserve its public UDP listener
@@ -38,5 +40,7 @@ root-only variables file, and only then publishes source SHA/digest state.
   credentials is an explicit maintenance operation, not convergence.
 - The offline bundle must be built from a clean committed HEAD and supplied as
   a private Ansible variable; a moving branch or remote checkout is rejected.
+- Never bypass `VPN_SECRETS_FILE` with a plaintext extra-vars secrets file;
+  `make clean` must remove decrypted SOPS material after provisioning.
 - Exit 75 means an unavailable prerequisite/control path. A failed exact-source
   apply, restart, reload, or malformed transaction exits as product failure.
