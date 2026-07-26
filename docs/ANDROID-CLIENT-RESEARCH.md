@@ -25,7 +25,7 @@ The deployed fleet exposes four client paths and one repository-native aggregate
 
 **RIPDPI is the best Android client for this configuration by architecture and feature fit.** It is the only evaluated client that understands the repository's `ripdpi-bundle` contract, preserves selector/url-test failover, imports the AWG metadata while keeping the per-device private key separate, and exposes one Android `VpnService` for all paths. Its current source also declares Always-on VPN support and implements Android per-app allow/deny routing.
 
-**Do not make the public v0.1.3 APK the production default yet.** The official v0.1.3 release already includes standalone AmneziaWG, REALITY/Vision, XHTTP, Hysteria2, selector/url-test subscriptions, protected sockets, encrypted secrets, checksums, SBOMs, and provenance. However, the local RIPDPI `main` inspected on the research date is 194 commits ahead of v0.1.3 and contains later Android lifecycle, fail-closed, root-helper, privacy, REALITY, and UDP-startup fixes. The standalone AWG task also still lacks its final physical-device or real-endpoint interoperability smoke test. The correct production target is therefore a new signed RIPDPI release cut from the hardened current line after physical Android acceptance testing.
+**Do not make the public v0.1.3 APK the production default yet.** The official v0.1.3 release already includes standalone AmneziaWG, REALITY/Vision, XHTTP, Hysteria2, selector/url-test subscriptions, protected sockets, encrypted secrets, checksums, SBOMs, and provenance. However, the local RIPDPI `main` inspected on the research date is 194 commits ahead of v0.1.3 and contains later Android lifecycle, fail-closed, root-helper, privacy, REALITY, and UDP-startup fixes. A physical non-rooted Pixel 7 has since passed standalone AWG interoperability, full-tunnel TCP, UDP DNS, STUN, MapDNS, and live Hysteria2-to-AWG failover. The remaining release gates are a signed candidate plus network-path diversity, cellular handover, long-duration soak, and IPv6 differential leak testing on an underlying path with a working IPv6 default route.
 
 **For installation today without building an unreleased client, use two applications:** import the standard sing-box portion into **sing-box for Android (SFA)** or **Hiddify**, and import the separately generated AWG profile into the official **AmneziaWG** client. SFA is the closest representation of the emitted standard JSON; Hiddify has the friendlier mass-market UI and automatic profile management. Neither understands the `ripdpi` extension, so both lose the one-bundle AWG lifecycle and need a second app.
 
@@ -35,7 +35,7 @@ Hiddify requires a specific P1 acceptance test before it can be the preferred ge
 
 | Rank | Client | Best use here | Main limitation |
 |---:|---|---|---|
-| 1 | RIPDPI, next hardened release | One-app production target with exact bundle semantics, AWG, automatic failover, per-app routing, Always-on, and lockdown | Current public v0.1.3 predates 194 later commits; physical AWG acceptance remains required |
+| 1 | RIPDPI, next hardened release | One-app production target with exact bundle semantics, AWG, automatic failover, per-app routing, Always-on, and lockdown | Current public v0.1.3 predates 194 later commits; signed release and remaining handover, soak, and IPv6 differential gates are required |
 | 2 | SFA + official AmneziaWG | Most literal ready-now consumption of standard sing-box JSON plus a dedicated AWG tunnel | SFA describes itself as experimental; no `ripdpi` extension or unified AWG lifecycle |
 | 3 | Hiddify + official AmneziaWG | Best ready-now usability and subscription management | Known XHTTP `auto` regression requires P1 data-plane testing; no `ripdpi` extension |
 | 4 | Happ + official AmneziaWG | Strong Xray-oriented UI and explicit REALITY/XHTTP/Hysteria2 support | No native AWG or repository-bundle support; less faithful to sing-box selector semantics |
@@ -49,7 +49,7 @@ Hiddify requires a specific P1 acceptance test before it can be the preferred ge
 
 The official RIPDPI v0.1.3 release documents standalone AmneziaWG, REALITY/Vision, XHTTP, Hysteria2, selector/url-test subscription failover, per-socket `VpnService.protect()`, encrypted secrets, and signed release artifacts with checksums, SBOMs, and provenance. The official repository contains the parser and deployment integration used for the sibling bundle contract.
 
-The locally inspected source declares `android.net.VpnService.SUPPORTS_ALWAYS_ON=true`, implements per-app routing through `VpnService.Builder.addAllowedApplication` and `addDisallowedApplication`, parses the `ripdpi` extension, and contains the native standalone AWG runtime. The remaining AWG interop criterion and the post-v0.1.3 commit distance are local release-readiness evidence, not claims about third-party products.
+The locally inspected source declares `android.net.VpnService.SUPPORTS_ALWAYS_ON=true`, implements per-app routing through `VpnService.Builder.addAllowedApplication` and `addDisallowedApplication`, parses the `ripdpi` extension, and contains the native standalone AWG runtime. The repository-owned [Pixel 7 live-client matrix](measurements/pixel7-live-client-matrix-2026-07-15.md) records physical AWG and failover PASS. Its bounded IPv6 differential, network-handover, and soak gaps, together with the post-v0.1.3 commit distance, remain release-readiness evidence rather than claims about third-party products.
 
 ### Android platform behavior
 
@@ -83,9 +83,11 @@ The official NekoBox repository warns that the Google Play version has been cont
 
 ## Production acceptance gate for RIPDPI
 
+The physical transport, AWG, routing, leak, and failover baseline is complete in the [Pixel 7 live-client matrix](measurements/pixel7-live-client-matrix-2026-07-15.md). The remaining release gates are:
+
 1. Cut a signed candidate from the hardened current RIPDPI line; do not relabel v0.1.3 as equivalent to current `main`.
 2. Build the release artifacts through the existing reproducible pipeline and verify signature, checksum, SBOM, and provenance before sideloading.
 3. Import a freshly emitted per-device bundle through the subscription or deep-link path and supply the AWG private key only through the device-local prompt.
-4. Exercise P0 on both TCP ports, P1 with sustained upload and download, P2 Hysteria2 on a UDP-capable and UDP-constrained network, and standalone AWG against the real endpoint.
-5. Verify selector/url-test failover, subscription refresh and expiry, boot reconnect, network handover, Always-on VPN, lockdown, DNS/IPv6 leak posture, and per-app policy on a physical arm64 Android device.
+4. Repeat the physical matrix across distinct network paths, including cellular handover and a long-duration soak; keep sustained P1 upload/download and both UDP-capable and UDP-constrained behavior in scope.
+5. Repeat IPv6 differential leak testing on an underlying path with a working IPv6 default route, and verify subscription refresh and expiry, boot reconnect, Always-on VPN, lockdown, and per-app policy with the signed candidate.
 6. After those checks pass, publish the candidate as the supported Android client and keep SFA or Hiddify plus official AmneziaWG as the documented recovery path.

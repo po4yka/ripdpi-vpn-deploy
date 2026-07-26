@@ -95,3 +95,16 @@ def test_client_research_is_repository_owned_and_technically_named():
         "Russian",
     )
     assert not any(label in split_routing for label in forbidden_labels)
+
+
+def test_android_research_tracks_physical_awg_acceptance_and_open_gaps():
+    content = (ROOT / "docs" / "ANDROID-CLIENT-RESEARCH.md").read_text()
+
+    assert "Pixel 7 live-client matrix" in content
+    assert "physical AWG acceptance remains required" not in content
+    for remaining_gate in (
+        "cellular handover",
+        "long-duration soak",
+        "IPv6 differential",
+    ):
+        assert remaining_gate in content
