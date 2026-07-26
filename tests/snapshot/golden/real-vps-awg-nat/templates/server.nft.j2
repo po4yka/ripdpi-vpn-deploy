@@ -1,0 +1,6 @@
+table inet ripdpi_awg_evidence {
+  chain postrouting {
+    type nat hook postrouting priority srcnat; policy accept;
+    iifname "awg-evidence0" oifname "eth0" counter masquerade comment "awg-nat-awg-evidence0"
+  }
+}

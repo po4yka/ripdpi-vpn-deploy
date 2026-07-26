@@ -1,0 +1,17 @@
+{
+  "version": "real_vps_awg_nat_runner_v1",
+  "runnerId": "snapshot-runner",
+  "clientConfigPath": "/etc/ripdpi/awg-evidence/current.conf",
+  "rotatedClientConfigPath": "/etc/ripdpi/awg-evidence/rotated.conf",
+  "clientAddress": "10.66.77.2/32",
+  "tcpEchoAddress": "192.0.2.10",
+  "tcpEchoPort": 10001,
+  "udpEchoAddress": "192.0.2.10",
+  "udpEchoPort": 10002,
+  "serverControlHook": "/etc/ripdpi/awg-evidence/hooks/server-control",
+  "serverDeployHook": "/etc/ripdpi/awg-evidence/hooks/server-deploy",
+  "rotationHook": "/etc/ripdpi/awg-evidence/hooks/rotation",
+  "probeTimeoutSeconds": 10,
+  "recoveryTimeoutSeconds": 90,
+  "deployTimeoutSeconds": 900
+}

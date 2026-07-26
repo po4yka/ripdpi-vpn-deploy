@@ -1,0 +1,18 @@
+---
+real_vps_awg_nat_interface: "awg-evidence0"
+real_vps_awg_nat_server_address: "10.66.77.1/24"
+real_vps_awg_nat_client_address: "10.66.77.2/32"
+real_vps_awg_nat_listen_port: 51920
+real_vps_awg_nat_server_uplink_interface: "eth0"
+real_vps_awg_nat_server_ssh_user: "ripdpi-awg-evidence"
+public_listener_contract: [{"name": "xray", "protocol": "tcp", "port": 443, "port_range": null}, {"name": "xray-fallback", "protocol": "tcp", "port": 2053, "port_range": null}, {"name": "public-site-http", "protocol": "tcp", "port": 80, "port_range": null}, {"name": "nginx-xhttp", "protocol": "tcp", "port": 8443, "port_range": null}, {"name": "hysteria", "protocol": "udp", "port": 443, "port_range": null}, {"name": "amneziawg", "protocol": "udp", "port": 51820, "port_range": null}]
+firewall_forward_interface_contract: []
+real_vps_awg_nat_apply_prerequisites: false
+real_vps_awg_nat_expected_source_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+real_vps_awg_nat_expected_source_archive_sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+real_vps_awg_nat_obfuscation: {"jc": 4, "jmin": 40, "jmax": 70, "s1": 50, "s2": 100, "h1": 1, "h2": 2, "h3": 3, "h4": 4}
+real_vps_awg_nat_secrets:
+  server_private_key: "REPLACE_WITH_AWG_EVIDENCE_SERVER_PRIVATE_KEY"
+  current_client_public_key: "REPLACE_WITH_AWG_EVIDENCE_CURRENT_CLIENT_PUBLIC_KEY"
+  current_preshared_key: "REPLACE_WITH_AWG_EVIDENCE_CURRENT_PRESHARED_KEY"
+  sentinel_ssh_public_key: "REPLACE_WITH_AWG_EVIDENCE_SENTINEL_SSH_PUBLIC_KEY"

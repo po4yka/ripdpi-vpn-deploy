@@ -186,6 +186,8 @@ Then:
 22. `docs/RUNBOOK-idle-cycle-measurement.md` + `docs/measurements/`
     — measurement spike for the bare-HTTPS idle-cycle access-attempt
     pattern: driver + correlation tool + dated-report template.
+23. `docs/REAL-VPS-AWG-NAT.md` — standalone three-host AWG/NAT evidence lane;
+    provision through `make awg-evidence-provision` after decrypting SOPS.
 
 Operational runbooks: `docs/RUNBOOK-{rotate,rollback,incident,restore,add-fallback}.md`.
 

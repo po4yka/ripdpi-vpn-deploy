@@ -1,0 +1,19 @@
+table inet ripdpi_awg_evidence_echo {
+  chain input {
+    type filter hook input priority -20; policy accept;
+    ip saddr 192.0.2.20 tcp dport 10001 limit rate 50/second burst 20 packets accept
+    ip saddr 192.0.2.20 udp dport 10002 limit rate 50/second burst 20 packets accept
+    ip saddr 192.0.2.30 tcp dport 10001 limit rate 50/second burst 20 packets accept
+    ip saddr 192.0.2.30 udp dport 10002 limit rate 50/second burst 20 packets accept
+
+    ip6 saddr 2001:db8::20 tcp dport 10001 limit rate 50/second burst 20 packets accept
+    ip6 saddr 2001:db8::20 udp dport 10002 limit rate 50/second burst 20 packets accept
+
+
+    ip6 saddr 2001:db8::30 tcp dport 10001 limit rate 50/second burst 20 packets accept
+    ip6 saddr 2001:db8::30 udp dport 10002 limit rate 50/second burst 20 packets accept
+
+    tcp dport 10001 drop
+    udp dport 10002 drop
+  }
+}

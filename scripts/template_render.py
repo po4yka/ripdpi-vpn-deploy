@@ -96,6 +96,51 @@ def merge_render_vars() -> dict:
             },
         ],
     )
+    merged.setdefault("_evidence_firewall_table", "ripdpi_awg_evidence")
+    merged.setdefault(
+        "_evidence_firewall_policy",
+        "/etc/ripdpi/real-vps-awg-nat-firewall.nft",
+    )
+    merged.setdefault(
+        "_evidence_firewall_description",
+        "RIPDPI AWG evidence firewall",
+    )
+    merged.setdefault(
+        "_evidence_firewall_loader",
+        "/usr/local/libexec/ripdpi-real-vps-awg-nat-firewall",
+    )
+    merged.setdefault(
+        "_evidence_firewall_service",
+        "ripdpi-real-vps-awg-nat-firewall.service",
+    )
+    merged.setdefault(
+        "_evidence_awg_toolchain_manifest",
+        {
+            "toolchainId": "1" * 64,
+            "binaries": {
+                "amneziawg-go": "2" * 64,
+                "awg": "3" * 64,
+                "awg-quick": "4" * 64,
+            },
+        },
+    )
+    merged.setdefault("item", "server-control")
+    merged.update(
+        {
+            "real_vps_awg_nat_sentinel_public_ipv4": "192.0.2.20",
+            "real_vps_awg_nat_sentinel_public_ipv6": "2001:db8::20",
+            "real_vps_awg_nat_server_egress_ipv4": "192.0.2.30",
+            "real_vps_awg_nat_server_egress_ipv6": "2001:db8::30",
+            "real_vps_awg_nat_tcp_echo_address": "192.0.2.10",
+            "real_vps_awg_nat_udp_echo_address": "192.0.2.10",
+            "real_vps_awg_nat_server_ssh_host": "192.0.2.30",
+            "real_vps_awg_nat_server_uplink_interface": "eth0",
+            "real_vps_awg_nat_runner_id": "snapshot-runner",
+            "real_vps_awg_nat_expected_source_sha": "a" * 40,
+            "real_vps_awg_nat_expected_source_archive_sha256": "b" * 64,
+            "real_vps_awg_nat_apply_prerequisites": True,
+        }
+    )
     return merged
 
 

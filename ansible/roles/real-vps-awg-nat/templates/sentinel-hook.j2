@@ -18,16 +18,16 @@ ssh_command=(
 {% if item == 'server-control' %}
 [[ $# -eq 1 && "$1" =~ ^(status|restart|reload)$ ]] || exit 64
 exec "${ssh_command[@]}" "$1"
-{% elif item == 'server-deploy' %}
+{%- elif item == 'server-deploy' %}
 [[ $# -eq 4 && "$1" == deploy && "$3" =~ ^[0-9a-f]{40}$ && "$4" =~ ^[0-9a-f]{64}$ ]] || exit 64
 archive="$2"
 [[ -f "$archive" && ! -L "$archive" ]] || exit 75
 [[ "$(sha256sum "$archive" | awk '{print $1}')" == "$4" ]] || exit 75
 exec "${ssh_command[@]}" "deploy $3 $4" <"$archive"
-{% else %}
+{%- else %}
 [[ $# -eq 1 && "$1" =~ ^(prepare|commit|rollback)$ ]] || exit 64
 exec /opt/ripdpi-real-vps-awg-nat/current/scripts/real-vps-awg-nat-rotation.py "$1" \
   --current /etc/ripdpi/awg-evidence/current.conf \
   --rotated /etc/ripdpi/awg-evidence/rotated.conf \
   --ssh "${ssh_command[@]}"
-{% endif %}
+{%- endif %}

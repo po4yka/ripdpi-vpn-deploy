@@ -1,0 +1,24 @@
+[Unit]
+Description=RIPDPI AWG evidence TCP/UDP echo
+After=network-online.target ripdpi-real-vps-awg-nat-echo-firewall.service
+Wants=network-online.target ripdpi-real-vps-awg-nat-echo-firewall.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/ripdpi-real-vps-awg-nat-echo --address 0.0.0.0 --tcp-port 10001 --udp-port 10002 --allow-address 192.0.2.20 --allow-address 192.0.2.30 --allow-address 2001:db8::20 --allow-address 2001:db8::30
+Restart=on-failure
+DynamicUser=true
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+LockPersonality=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

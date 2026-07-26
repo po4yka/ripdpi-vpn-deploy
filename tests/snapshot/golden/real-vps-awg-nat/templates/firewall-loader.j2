@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+batch="$(mktemp)"
+trap 'rm -f "$batch"' EXIT
+
+{
+  printf '%s\n' 'destroy table inet ripdpi_awg_evidence'
+  cat '/etc/ripdpi/real-vps-awg-nat-firewall.nft'
+} >"$batch"
+
+# Check the exact replacement batch, then commit it as one nft transaction.
+nft -c -f "$batch"
+nft -f "$batch"

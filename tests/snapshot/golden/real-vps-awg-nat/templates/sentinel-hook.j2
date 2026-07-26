@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# awg-toolchain=1111111111111111111111111111111111111111111111111111111111111111
+# amneziawg-go-sha256=2222222222222222222222222222222222222222222222222222222222222222
+# awg-sha256=3333333333333333333333333333333333333333333333333333333333333333
+# awg-quick-sha256=4444444444444444444444444444444444444444444444444444444444444444
+
+ssh_command=(
+  /usr/bin/ssh
+  -i /etc/ripdpi/awg-evidence/ssh/id_ed25519
+  -o BatchMode=yes
+  -o IdentitiesOnly=yes
+  -o StrictHostKeyChecking=yes
+  -o UserKnownHostsFile=/etc/ripdpi/awg-evidence/ssh/known_hosts
+  -o ConnectTimeout=15
+  'ripdpi-awg-evidence@192.0.2.30'
+)
+
+[[ $# -eq 1 && "$1" =~ ^(status|restart|reload)$ ]] || exit 64
+exec "${ssh_command[@]}" "$1"

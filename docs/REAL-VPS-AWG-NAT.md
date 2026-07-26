@@ -146,23 +146,20 @@ scripts/build-real-vps-awg-nat-source-bundle.sh \
   --output /secure/tmp/ripdpi-vpn-deploy.bundle
 ```
 
-Decrypt the SOPS document, then apply the separate non-secret placement vars
-file without putting private values in argv:
+Decrypt the SOPS document, then use the canonical Make target with the separate
+non-secret placement vars file:
 
 ```bash
 make decrypt
-cd ansible
-VPN_SECRETS_FILE="${XDG_RUNTIME_DIR:-${HOME}/.cache}/vpn-provision/vpn-prod.secrets.yaml" \
-  ansible-playbook playbooks/provision-real-vps-awg-nat.yml \
-  -i inventory/generated.ini \
-  -i /secure/inventory.yml \
-  --extra-vars @/secure/real-vps-awg-nat.vars.yml
-cd ..
+make awg-evidence-provision \
+  AWG_EVIDENCE_INVENTORY=/secure/inventory.yml \
+  AWG_EVIDENCE_VARS=/secure/real-vps-awg-nat.vars.yml
 make clean
 ```
 
-Running from `ansible/` loads the repository's `ansible/ansible.cfg`, including
-its role and collection paths.
+The target requires the rendered family inventory plus the three standalone
+evidence groups, runs the normal strict secret preflight, and loads private
+values only from `VPN_SECRETS_FILE`.
 
 The sentinel receives the bundle through Ansible, verifies its exact commit,
 and invokes `install-real-vps-awg-nat-local.sh`. Each scheduled run streams a

@@ -1766,9 +1766,23 @@ def test_operator_runbook_names_only_private_actions_not_values() -> None:
     runbook = (ROOT / "docs/REAL-VPS-AWG-NAT.md").read_text()
 
     assert "cd ansible" in runbook
-    assert "ansible-playbook playbooks/provision-real-vps-awg-nat.yml" in runbook
+    assert "make awg-evidence-provision" in runbook
     assert "current_client_config" in runbook
     assert "rotated_client_config" in runbook
     assert "sentinel_ssh_private_key" in runbook
     assert "No private value belongs in inventory" in runbook
     assert "PASS" in runbook and "INFRA_UNAVAILABLE" in runbook
+
+
+def test_makefile_exposes_sops_gated_awg_evidence_entrypoint() -> None:
+    makefile = (ROOT / "Makefile").read_text()
+    target = makefile.split("awg-evidence-provision: pre-deploy-check", 1)[1].split(
+        "\n\n", 1
+    )[0]
+
+    assert "VPN_SECRETS_FILE=\"$(SECRETS_FILE)\"" in target
+    assert "playbooks/provision-real-vps-awg-nat.yml" in target
+    assert "AWG_EVIDENCE_INVENTORY=<file> required" in target
+    assert "AWG_EVIDENCE_VARS=<mode-0600-file> required" in target
+    assert "stat.S_IMODE(s.st_mode) == 0o600" in target
+    assert "real_vps_awg_nat_secrets" not in target

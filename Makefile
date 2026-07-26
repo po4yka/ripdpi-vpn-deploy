@@ -5,6 +5,8 @@ ENV      ?= prod
 
 HOSTS   ?=
 COHORTS ?=
+AWG_EVIDENCE_INVENTORY ?=
+AWG_EVIDENCE_VARS ?=
 
 TF_ROOT       := terraform/providers/$(PROVIDER)
 TF_ENV        := ./scripts/terraform-env.sh
@@ -32,6 +34,7 @@ export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CON
         emit-sbom molecule-full-stack audit-log audit-log-append pyinfra-audit \
         setup-yubikey check-killswitch install-operator-crons \
         remove-operator-crons issue-sub-token sub-reads \
+        awg-evidence-provision \
         test-unit snapshot-check snapshot-update validate-secrets \
         actionlint-check cloud-init-schema tf-test yamllint-check shellcheck \
         ci-fast bats-test vpnd-test vpnd-clippy vpnd-deny vpnd-msrv vpnd-mutants tf-policy \
@@ -69,6 +72,7 @@ help:
 	@echo "  deploy-canary              Deploy ENV=canary through the normal deploy flow"
 	@echo "  verify [TAG_ON_SUCCESS=1]  ansible-playbook verify.yml (+ optional known-good git tag)"
 	@echo "  security-verify            Host hardening checks (SSH/sysctl/firewall/services)"
+	@echo "  awg-evidence-provision     Provision the three-host AWG evidence lane (after decrypt)"
 	@echo "  smoke-test                 End-to-end traffic test through every enabled profile"
 	@echo "  clean                      shred $(SECRETS_FILE)"
 	@echo ""
@@ -220,6 +224,19 @@ security-verify: pre-deploy-check
 
 security-audit:
 	VPN_SECRETS_FILE=$(SECRETS_FILE) ansible-playbook $(ANSIBLE_DIR)/playbooks/security-audit.yml
+
+awg-evidence-provision: pre-deploy-check
+	@test -f "$(ANSIBLE_DIR)/inventory/generated.ini" || { echo "missing generated inventory — run 'make inventory'"; exit 1; }
+	@test -n "$(AWG_EVIDENCE_INVENTORY)" || { echo "AWG_EVIDENCE_INVENTORY=<file> required"; exit 1; }
+	@test -f "$(AWG_EVIDENCE_INVENTORY)" || { echo "missing $(AWG_EVIDENCE_INVENTORY)"; exit 1; }
+	@test -n "$(AWG_EVIDENCE_VARS)" || { echo "AWG_EVIDENCE_VARS=<mode-0600-file> required"; exit 1; }
+	@test -f "$(AWG_EVIDENCE_VARS)" || { echo "missing $(AWG_EVIDENCE_VARS)"; exit 1; }
+	@AWG_EVIDENCE_VARS="$(AWG_EVIDENCE_VARS)" python3 -c 'import os, stat; p = os.environ["AWG_EVIDENCE_VARS"]; s = os.stat(p, follow_symlinks=False); ok = stat.S_ISREG(s.st_mode) and not os.path.islink(p) and s.st_uid == os.geteuid() and stat.S_IMODE(s.st_mode) == 0o600; raise SystemExit(0 if ok else 1)' || { echo "AWG_EVIDENCE_VARS must be a same-owner regular non-symlink file with mode 0600"; exit 1; }
+	VPN_SECRETS_FILE="$(SECRETS_FILE)" \
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/provision-real-vps-awg-nat.yml \
+	  -i "$(ANSIBLE_DIR)/inventory/generated.ini" \
+	  -i "$(AWG_EVIDENCE_INVENTORY)" \
+	  --extra-vars "@$(AWG_EVIDENCE_VARS)"
 
 pyinfra-audit:
 	@test -n "$(PYINFRA_HOSTS)" || { echo "PYINFRA_HOSTS=host[,host...] required"; exit 1; }

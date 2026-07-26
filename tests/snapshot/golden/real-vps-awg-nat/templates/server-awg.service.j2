@@ -1,0 +1,22 @@
+[Unit]
+Description=Dedicated RIPDPI AWG evidence interface %I
+After=network-online.target nftables.service ripdpi-real-vps-awg-nat-server-firewall.service
+Wants=network-online.target ripdpi-real-vps-awg-nat-server-firewall.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=WG_ENDPOINT_RESOLUTION_RETRIES=infinity
+ExecStart=/usr/bin/awg-quick up %i
+ExecStop=/usr/bin/awg-quick down %i
+ExecReload=/bin/bash -c '/usr/bin/awg syncconf %i <(/usr/bin/awg-quick strip %i)'
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN
+ReadWritePaths=/run
+
+[Install]
+WantedBy=multi-user.target

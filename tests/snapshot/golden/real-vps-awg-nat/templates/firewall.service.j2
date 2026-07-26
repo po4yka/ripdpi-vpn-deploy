@@ -1,0 +1,19 @@
+[Unit]
+Description=RIPDPI AWG evidence firewall
+After=nftables.service
+PartOf=nftables.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/ripdpi-real-vps-awg-nat-firewall
+ExecReload=/usr/local/libexec/ripdpi-real-vps-awg-nat-firewall
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN
+
+[Install]
+WantedBy=multi-user.target
