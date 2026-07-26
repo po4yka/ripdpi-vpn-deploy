@@ -134,6 +134,12 @@ export UPCLOUD_PASSWORD='…'
 Use a sub-account with only the rights this stack needs. Never bake
 credentials into `*.tfvars` — the provider reads them from env.
 
+Keep provider credentials in an ignored, local environment file or the
+operator's secret store, readable only by the current operator (`0600` for a
+local file). After creating or replacing a credential, first run the relevant
+scoped Terraform plan and confirm it can refresh provider state. Do not put a
+token in a command line, a `tfvars` file, state, output, or log.
+
 ### Limits to be aware of
 
 - Hypervisor firewall has a per-server rule cap. The base 5–7 rules from
@@ -171,6 +177,10 @@ Uses:
 - The provider schema requires an API key in provider config. This root maps
   sensitive variable `vultr_api_key`; export `TF_VAR_vultr_api_key` instead
   of writing tokens into tfvars.
+- If an API access allowlist is enabled, admit the operator's current egress
+  address before the first plan. Validate a replacement key with a scoped
+  plan before revoking its predecessor; a failed plan is not provider-state
+  evidence.
 - Optional secondary IPv4 allocation uses the provider's reboot path. After apply, `render-inventory.sh` blocks until the address appears on a guest interface over the primary SSH endpoint; API allocation alone is not sufficient evidence for publishing `honeypot_listen_addr`.
 
 ## Scaleway (v1.2)

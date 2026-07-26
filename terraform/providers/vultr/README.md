@@ -7,6 +7,13 @@ The Vultr provider requires `api_key` in the Terraform provider config. This
 root wires it through the sensitive `vultr_api_key` variable; prefer exporting
 `TF_VAR_vultr_api_key` instead of writing tokens into tfvars.
 
+Keep that variable in an ignored local environment file or the operator's
+secret store, with local-file mode `0600`. When API access is restricted by an
+allowlist, add the current operator egress address before planning. After a
+key replacement, run a scoped `make PROVIDER=vultr ENV=<environment> plan`
+before revoking the prior key. Never pass a key on the command line or commit
+it to this repository.
+
 The root exports the same inventory-facing outputs as `providers/upcloud/`:
 
 - `server_ipv4`
