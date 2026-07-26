@@ -2,7 +2,11 @@
 
 **Research date:** 2026-07-13
 
-**Scope:** first-party sources only: Android documentation, Google Play listings, and official source repositories, releases, issue trackers, and local sibling-project implementation. No client secrets, UUIDs, REALITY keys, short IDs, Hysteria credentials, AmneziaWG keys, or private subscription URLs are recorded here.
+**Evidence basis:** conclusions retained from the dated first-party review and
+local sibling-project inspection. External citations are intentionally omitted;
+unstable product facts must be revalidated before changing the supported-client
+policy. No client secrets, UUIDs, REALITY keys, short IDs, Hysteria credentials,
+AmneziaWG keys, or private subscription URLs are recorded here.
 
 ## Local client contract
 
@@ -39,43 +43,43 @@ Hiddify requires a specific P1 acceptance test before it can be the preferred ge
 | 6 | v2rayNG + official AmneziaWG | Focused Xray client for individual VLESS links | Does not preserve the aggregate sing-box selector/url-test and `ripdpi` metadata |
 | 7 | NekoBox | No recommended role | Official project warns against the Google Play build and documents that routing rules in sing-box configs are ignored |
 
-## Primary-source evidence
+## Repository evidence record
 
 ### RIPDPI
 
-The [official RIPDPI v0.1.3 release](https://github.com/po4yka/RIPDPI/releases/tag/v0.1.3) documents standalone AmneziaWG, REALITY/Vision, XHTTP, Hysteria2, selector/url-test subscription failover, per-socket `VpnService.protect()`, encrypted secrets, and signed release artifacts with checksums, SBOMs, and provenance. The [official repository](https://github.com/po4yka/RIPDPI) contains the parser and deployment integration used for the sibling bundle contract.
+The official RIPDPI v0.1.3 release documents standalone AmneziaWG, REALITY/Vision, XHTTP, Hysteria2, selector/url-test subscription failover, per-socket `VpnService.protect()`, encrypted secrets, and signed release artifacts with checksums, SBOMs, and provenance. The official repository contains the parser and deployment integration used for the sibling bundle contract.
 
 The locally inspected source declares `android.net.VpnService.SUPPORTS_ALWAYS_ON=true`, implements per-app routing through `VpnService.Builder.addAllowedApplication` and `addDisallowedApplication`, parses the `ripdpi` extension, and contains the native standalone AWG runtime. The remaining AWG interop criterion and the post-v0.1.3 commit distance are local release-readiness evidence, not claims about third-party products.
 
 ### Android platform behavior
 
-The official [Android VPN guide](https://developer.android.com/develop/connectivity/vpn) states that Android 7.0 and later can keep a VPN always on, Android can block connections outside the VPN, and VPN applications must preserve configuration when the system starts them. The official [`VpnService.Builder` reference](https://developer.android.com/reference/android/net/VpnService.Builder) confirms that an app can use either an allowed-application set or a disallowed-application set, but not both simultaneously. These OS controls make RIPDPI's single-`VpnService` design materially better than switching between two VPN apps: Android permits only one active VPN service at a time.
+The official Android VPN guide states that Android 7.0 and later can keep a VPN always on, Android can block connections outside the VPN, and VPN applications must preserve configuration when the system starts them. The official `VpnService.Builder` reference confirms that an app can use either an allowed-application set or a disallowed-application set, but not both simultaneously. These OS controls make RIPDPI's single-`VpnService` design materially better than switching between two VPN apps: Android permits only one active VPN service at a time.
 
 Enable **Always-on VPN** and **Block connections without VPN** only after verifying boot reconnect, network changes, and every required profile on the physical device. Per-app exclusions intentionally bypass the VPN and therefore conflict with a strict no-leak posture.
 
 ### sing-box for Android
 
-The official [sing-box for Android repository](https://github.com/SagerNet/sing-box-for-android) describes SFA as an experimental Android client for sing-box. Its principal advantage here is format fidelity: the deploy repository already emits a valid sing-box configuration with selector and URL-test groups. It does not implement the project-specific `ripdpi` object or its separate-key AWG workflow, so it remains a two-app solution.
+The official sing-box for Android repository describes SFA as an experimental Android client for sing-box. Its principal advantage here is format fidelity: the deploy repository already emits a valid sing-box configuration with selector and URL-test groups. It does not implement the project-specific `ripdpi` object or its separate-key AWG workflow, so it remains a two-app solution.
 
 ### Hiddify
 
-The [official Hiddify repository](https://github.com/hiddify/hiddify-app) describes an open-source sing-box-based client with Android support, TUN mode, automatic node selection, remote profiles, automatic subscription updates, and Sing-box, V2ray, and Clash imports. The [Google Play listing](https://play.google.com/store/apps/details?id=app.hiddify.com) confirms current Android distribution and support for VLESS/Reality/Vision and Hysteria2.
+The official Hiddify repository describes an open-source sing-box-based client with Android support, TUN mode, automatic node selection, remote profiles, automatic subscription updates, and Sing-box, V2ray, and Clash imports. The Google Play listing confirms current Android distribution and support for VLESS/Reality/Vision and Hysteria2.
 
-The official [XHTTP `auto` regression report](https://github.com/hiddify/hiddify-app/issues/2082) documents bidirectional upload failures on Hiddify v4.1.1 when the sing-box backend falls through to `packet-up`; the recorded workaround is to use VLESS TCP REALITY or Hysteria2. Because this fleet emits XHTTP without an explicit mode, validate P1 with an upload and download test rather than a TCP handshake alone.
+The official XHTTP `auto` regression report documents bidirectional upload failures on Hiddify v4.1.1 when the sing-box backend falls through to `packet-up`; the recorded workaround is to use VLESS TCP REALITY or Hysteria2. Because this fleet emits XHTTP without an explicit mode, validate P1 with an upload and download test rather than a TCP handshake alone.
 
 ### AmneziaWG
 
-The official [AmneziaWG Google Play listing](https://play.google.com/store/apps/details?id=org.amnezia.awg) provides the dedicated Android client and reports no data collection or sharing in its Play data-safety disclosure. It is the correct ready-now companion for the repository's generated AWG configuration, but it cannot be active simultaneously with another Android VPN client; switching to AWG replaces the active proxy VPN session.
+The official AmneziaWG Google Play listing provides the dedicated Android client and reports no data collection or sharing in its Play data-safety disclosure. It is the correct ready-now companion for the repository's generated AWG configuration, but it cannot be active simultaneously with another Android VPN client; switching to AWG replaces the active proxy VPN session.
 
 The repository's existing client notes record a loopback/tunnel-fingerprint concern around AmneziaWG per-app exclusions. Treat per-app exclusion as a compatibility feature, not as a privacy boundary; use a separate Android Work Profile or router-level deployment where an application must never observe the VPN interface.
 
 ### Happ, Karing, v2rayNG, and NekoBox
 
-Happ's [official link and parameter documentation](https://www.happ.su/main/dev-docs/examples-of-links-and-parameters) and [application-management documentation](https://www.happ.su/main/ru/dev-docs/app-management) cover VLESS/REALITY/Vision, XHTTP, Hysteria2, subscriptions, QR, and TUN controls. It remains a good manual Xray-family client, but it does not consume the repository extension or provide a verified native AWG path.
+Happ's official link and parameter documentation and application-management documentation cover VLESS/REALITY/Vision, XHTTP, Hysteria2, subscriptions, QR, and TUN controls. It remains a good manual Xray-family client, but it does not consume the repository extension or provide a verified native AWG path.
 
-The [official Karing repository](https://github.com/KaringX/karing) provides an open-source sing-box/Clash client and current XHTTP work, while the maintainer closed the official [AmneziaWG request](https://github.com/KaringX/karing/issues/1136) with no implementation plan. The [official v2rayNG repository](https://github.com/2dust/v2rayNG) is a maintained Xray-based Android client, but its link-oriented model is not the canonical representation of this repository's aggregate sing-box bundle.
+The official Karing repository provides an open-source sing-box/Clash client and current XHTTP work, while the maintainer closed the official AmneziaWG request with no implementation plan. The official v2rayNG repository is a maintained Xray-based Android client, but its link-oriented model is not the canonical representation of this repository's aggregate sing-box bundle.
 
-The [official NekoBox repository](https://github.com/MatsuriDayo/NekoBoxForAndroid) warns that the Google Play version has been controlled by a third party since May 2024 and is not open source. The same README says sing-box routing and diversion rules are ignored during import. Those two constraints disqualify it for this fleet.
+The official NekoBox repository warns that the Google Play version has been controlled by a third party since May 2024 and is not open source. The same README says sing-box routing and diversion rules are ignored during import. Those two constraints disqualify it for this fleet.
 
 ## Production acceptance gate for RIPDPI
 

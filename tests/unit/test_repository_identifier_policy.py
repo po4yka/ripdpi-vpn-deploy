@@ -17,6 +17,11 @@ FORBIDDEN_HEX = (
     "63656e736f72736869702d6279706173732f",
 )
 FORBIDDEN = tuple(bytes.fromhex(value).decode("ascii") for value in FORBIDDEN_HEX)
+RESEARCH_DOCS = (
+    "docs/ANDROID-CLIENT-RESEARCH.md",
+    "docs/IOS-CLIENT-RESEARCH.md",
+    "docs/IOS-SPLIT-ROUTING-RESEARCH.md",
+)
 
 
 def _should_scan(relative: str) -> bool:
@@ -74,3 +79,19 @@ def test_physical_acceptance_evidence_contains_no_public_ip_literals():
 
     assert "<redacted-address>" in evidence
     assert not public_addresses, "public addresses in tracked evidence"
+
+
+def test_client_research_is_repository_owned_and_technically_named():
+    for relative in RESEARCH_DOCS:
+        content = (ROOT / relative).read_text()
+        assert "http://" not in content and "https://" not in content, relative
+
+    split_routing = (ROOT / RESEARCH_DOCS[-1]).read_text()
+    forbidden_labels = (
+        "RU-direct",
+        "category-ru",
+        "geoip:ru",
+        "GEOIP,RU",
+        "Russian",
+    )
+    assert not any(label in split_routing for label in forbidden_labels)
