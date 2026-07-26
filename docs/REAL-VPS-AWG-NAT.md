@@ -36,12 +36,12 @@ mode-`0600` vars file. These values are non-secret but security-sensitive:
 real_vps_awg_nat_expected_placement:
   echo:
     inventory_hostname: vpn-p1-scaleway-pl-waw-1
-    ansible_host: REPLACE_WITH_CURRENT_SCALEWAY_PROVIDER_IPV4
+    ansible_host: CURRENT_SCALEWAY_PROVIDER_IPV4
     provider: scaleway
     cohort_group: vpn-p1-web
   server:
     inventory_hostname: vpn-p2-vultr-ams
-    ansible_host: REPLACE_WITH_CURRENT_VULTR_PROVIDER_IPV4
+    ansible_host: CURRENT_VULTR_PROVIDER_IPV4
     provider: vultr
     cohort_group: vpn-p2-udp
 ```
@@ -93,11 +93,16 @@ AWG_EVIDENCE_MODES="echo,server" \
 ANSIBLE_SSH_PRIVATE_KEY_FILE=/secure/operator-key \
 scripts/render-inventory.sh
 
-cd ansible
-ansible-playbook playbooks/site.yml --limit vpn-p1-web
-ansible-playbook playbooks/site.yml --limit vpn-p2-udp \
-  --extra-vars @/secure/real-vps-awg-nat-forward.yml
+make deploy ANSIBLE_LIMIT=vpn-p1-web
+make deploy ANSIBLE_LIMIT=vpn-p2-udp \
+  ANSIBLE_EXTRA_VARS_FILE=/secure/real-vps-awg-nat-forward.yml
 ```
+
+Both commands use the canonical SOPS-gated deploy path. Any extra-vars file
+must be a same-owner, non-symlink regular file with mode `0600`; private values
+still belong only in SOPS and must not be copied into this file. The root
+Makefile exports `ANSIBLE_CONFIG=ansible/ansible.cfg`, so these commands retain
+the repository inventory, role path, SSH, and privilege-escalation settings.
 
 Apply each provider change locally, then rerender the inventory before these
 ordinary site converges; `terraform_public_listeners_b64` must contain the

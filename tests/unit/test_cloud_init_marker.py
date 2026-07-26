@@ -27,6 +27,12 @@ def test_bootstrap_marker_depends_on_validated_successful_ssh_reload(
     ).stdout
     rendered_config = yaml.safe_load(rendered)
     assert rendered_config["users"][1]["name"] == "deploy"
+    hardening = next(
+        item
+        for item in rendered_config["write_files"]
+        if item["path"].endswith("10-cloud-init-hardening.conf")
+    )
+    assert "Port 22" in hardening["content"]
     assert "${" not in rendered
 
     cloud_config = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))

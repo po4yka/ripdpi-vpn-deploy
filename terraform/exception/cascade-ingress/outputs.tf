@@ -17,6 +17,11 @@ output "admin_user" {
   value = var.admin_user
 }
 
+output "ssh_port" {
+  value       = 22
+  description = "Provider-neutral SSH port placeholder for the inert inventory contract."
+}
+
 output "server_hostname" {
   value = var.server_name
 }

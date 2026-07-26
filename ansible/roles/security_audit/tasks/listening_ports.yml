@@ -8,7 +8,9 @@
 
 - name: Write listening port report
   ansible.builtin.copy:
-    dest: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}/listening-ports.txt"
+    dest: >-
+      {{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit')
+      }}/{{ security_audit_run_id }}/listening-ports.txt
     owner: root
     group: root
     mode: "0640"

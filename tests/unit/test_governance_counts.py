@@ -46,9 +46,9 @@ def test_governance_counts_match_live_repository():
         for row in rows
     ]
     assert [int(row.split("|")[1].strip()) for row in rows] == list(range(1, 9))
-    assert statuses.count("RESOLVED") == 6
+    assert statuses.count("RESOLVED") == 7
     assert statuses.count("PARTIAL") == 1
-    assert statuses.count("OPEN") == 1
+    assert statuses.count("OPEN") == 0
 
     role_tiering = (ROOT / "docs/ROLE-TIERING.md").read_text()
     for stale_claim in (

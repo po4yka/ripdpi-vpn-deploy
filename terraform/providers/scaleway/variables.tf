@@ -53,7 +53,18 @@ variable "admin_ssh_public_key" {
 
 variable "allowed_ssh_cidrs" {
   type        = list(string)
-  description = "Source CIDRs allowed to reach 22/tcp."
+  description = "Source CIDRs allowed to reach ssh_port/tcp."
+}
+
+variable "ssh_port" {
+  type        = number
+  default     = 22
+  description = "Effective SSH listener port configured by cloud-init and opened at the provider edge."
+
+  validation {
+    condition     = var.ssh_port >= 1 && var.ssh_port <= 65535
+    error_message = "ssh_port must be a valid TCP port."
+  }
 }
 
 variable "enable_hysteria" {

@@ -20,6 +20,11 @@ resource "terraform_data" "inert_contract" {
 
   lifecycle {
     precondition {
+      condition     = var.exception_confirmation == "I_ACKNOWLEDGE_RU_CASCADE_JURISDICTION_EXCEPTION"
+      error_message = "The exact jurisdiction-exception acknowledgement is required."
+    }
+
+    precondition {
       condition     = var.activation_mode == "INERT_UNATTESTED"
       error_message = "The cascade exception root is not authorized for live activation."
     }

@@ -8,7 +8,10 @@
 
 **Credentials stay in the environment** — `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, and `SCW_DEFAULT_PROJECT_ID` are consumed by the provider and never enter tfvars, state inputs, outputs, or cloud-init.
 
-**Inventory stays provider-neutral** — Scaleway exports the canonical output names, so `render-inventory.sh` needs no provider branch; only a provider with different output keys or a live guest-convergence requirement may add one.
+**Inventory stays provider-neutral** — Scaleway exports the canonical output
+names, including `ssh_port`, so `render-inventory.sh` needs no provider branch;
+only a provider with different output keys or a live guest-convergence
+requirement may add one.
 
 ## What's done well
 

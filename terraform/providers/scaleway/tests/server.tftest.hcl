@@ -15,11 +15,16 @@ variables {
 run "server_cloud_init_user_data_is_wired" {
   command = plan
 
+  variables {
+    ssh_port = 2222
+  }
+
   assert {
     condition = (
       strcontains(scaleway_instance_server.vpn.user_data["cloud-init"], "provisioned_by=cloud-init")
       && strcontains(scaleway_instance_server.vpn.user_data["cloud-init"], "build_env=test")
       && strcontains(scaleway_instance_server.vpn.user_data["cloud-init"], "ssh-ed25519 AAAATESTKEY test@harness")
+      && strcontains(scaleway_instance_server.vpn.user_data["cloud-init"], "Port 2222")
     )
     error_message = "scaleway_instance_server user_data must carry the rendered cloud-init bootstrap"
   }
@@ -45,6 +50,7 @@ run "outputs_preserve_inventory_contract" {
   assert {
     condition = (
       output.admin_user == "deploy"
+      && output.ssh_port == 22
       && output.server_hostname == "vpn-test"
       && output.zone == "pl-waw-1"
       && output.honeypot_ipv4 == null

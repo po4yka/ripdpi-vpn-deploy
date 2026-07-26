@@ -24,6 +24,32 @@ run "server_metadata_is_enabled" {
   }
 }
 
+run "server_cloud_init_uses_configured_ssh_port" {
+  command = plan
+
+  variables {
+    ssh_port = 2222
+  }
+
+  assert {
+    condition     = strcontains(upcloud_server.vpn.user_data, "Port 2222")
+    error_message = "cloud-init must configure the same SSH port as the provider firewall"
+  }
+}
+
+run "outputs_preserve_inventory_contract" {
+  command = plan
+
+  variables {
+    ssh_port = 2222
+  }
+
+  assert {
+    condition     = output.admin_user == "deploy" && output.server_hostname == "vpn-test" && output.ssh_port == 2222
+    error_message = "Inventory-facing outputs must expose the effective SSH port"
+  }
+}
+
 # Honeypot toggle controls whether a second public IPv4 is allocated.
 # Default-off: catches accidental cost regression.
 run "server_no_secondary_public_ip_by_default" {
@@ -76,13 +102,13 @@ run "server_ipv6_is_allocated_by_default" {
   }
 }
 
-# Server template must always be a UUID-shaped string. Catches the
-# REPLACE_WITH_TEMPLATE_UUID placeholder leaking past PR review.
-run "rejects_unfilled_template_placeholder" {
+# Server template must always be a UUID-shaped string. Catches an
+# unfilled operator marker leaking past review.
+run "rejects_unfilled_template_marker" {
   command = plan
 
   variables {
-    storage_template = "REPLACE_WITH_TEMPLATE_UUID"
+    storage_template = "UPCLOUD_TEMPLATE_UUID"
   }
 
   expect_failures = [var.storage_template]

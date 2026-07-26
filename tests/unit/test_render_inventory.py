@@ -21,6 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 STUBS_BIN = REPO_ROOT / "tests" / "stubs" / "bin"
 SCRIPT = REPO_ROOT / "scripts" / "render-inventory.sh"
+WAIT_SCRIPT = REPO_ROOT / "scripts" / "wait-cloud-init.sh"
 EXPECTED_INVENTORY = FIXTURES / "inventory-sample.ini"
 
 
@@ -260,7 +261,9 @@ def test_vultr_inventory_waits_for_secondary_ipv4_guest_convergence(tmp_path):
         )
         assert converged.returncode == 0, converged.stderr
         assert "honeypot_listen_addr=198.51.100.20" in converged.stdout
-        assert "198.51.100.20" in (tmp_path / "stub.log").read_text()
+        ssh_log = (tmp_path / "stub.log").read_text()
+        assert "198.51.100.20" in ssh_log
+        assert "-p 2222" in ssh_log
     finally:
         if had_generated and original_content is not None:
             generated_ini.write_bytes(original_content)
@@ -270,3 +273,10 @@ def test_vultr_inventory_waits_for_secondary_ipv4_guest_convergence(tmp_path):
             tfvars_path.unlink()
         elif tfvars_existed and tfvars_original is not None:
             tfvars_path.write_bytes(tfvars_original)
+
+
+def test_wait_cloud_init_uses_terraform_ssh_port() -> None:
+    source = WAIT_SCRIPT.read_text()
+
+    assert "output -raw ssh_port" in source
+    assert source.count('-p "$SSH_PORT"') == 2

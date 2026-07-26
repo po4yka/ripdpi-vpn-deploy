@@ -2,9 +2,15 @@
 extends: default
 
 rules:
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
   line-length:
     max: 140
     level: warning
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
   truthy:
     allowed-values: ['true', 'false', 'yes', 'no']
     check-keys: false

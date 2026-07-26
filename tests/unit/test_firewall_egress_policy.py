@@ -25,13 +25,36 @@ ctr = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ctr)
 
 
-def _render(policy: str | None = None, *, vpn: dict | None = None) -> str:
+def _render(
+    policy: str | None = None,
+    *,
+    vpn: dict | None = None,
+    ssh_port: int = 22,
+) -> str:
     vars_ = ctr.merge_render_vars()
+    vars_["firewall_effective_ssh_ports"] = [ssh_port]
     if policy is not None:
         vars_["firewall_egress_policy"] = policy
     if vpn is not None:
         vars_["vpn"] = {**vars_["vpn"], **vpn}
     return ctr.render_template(TEMPLATE, vars_)
+
+
+def test_firewall_uses_effective_custom_ssh_port() -> None:
+    rendered = _render(ssh_port=2222)
+
+    assert "tcp dport 2222 ip saddr" in rendered
+    assert "tcp dport 22 ip saddr" not in rendered
+
+
+def test_firewall_discovers_ssh_port_before_rendering() -> None:
+    tasks = (REPO_ROOT / "ansible" / "roles" / "firewall" / "tasks" / "main.yml").read_text()
+
+    assert "cmd: sshd -T" in tasks
+    assert "firewall_effective_ssh_ports" in tasks
+    assert tasks.index("Read effective sshd configuration") < tasks.index(
+        "Render nftables config"
+    )
 
 
 def _output_chain(rendered: str) -> str:

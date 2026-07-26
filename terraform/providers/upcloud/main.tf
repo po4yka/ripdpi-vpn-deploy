@@ -2,6 +2,7 @@ locals {
   user_data = templatefile("${path.module}/../../shared/cloud-init.yaml.tftpl", {
     admin_user           = var.admin_user
     admin_ssh_public_key = var.admin_ssh_public_key
+    ssh_port             = var.ssh_port
     build_env            = var.build_env
   })
 
@@ -13,6 +14,10 @@ locals {
     managed_by = "terraform"
     env        = var.build_env
   })
+}
+
+resource "terraform_data" "ssh_port" {
+  input = var.ssh_port
 }
 
 resource "upcloud_server" "vpn" {
@@ -79,6 +84,9 @@ resource "upcloud_server" "vpn" {
 
   lifecycle {
     prevent_destroy = true
+    replace_triggered_by = [
+      terraform_data.ssh_port,
+    ]
     ignore_changes = [
       user_data,
       template[0].title,

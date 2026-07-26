@@ -27,8 +27,8 @@ resource "upcloud_firewall_rules" "vpn" {
       direction              = "in"
       family                 = strcontains(firewall_rule.value, ":") ? "IPv6" : "IPv4"
       protocol               = "tcp"
-      destination_port_start = "22"
-      destination_port_end   = "22"
+      destination_port_start = tostring(var.ssh_port)
+      destination_port_end   = tostring(var.ssh_port)
       source_address_start   = cidrhost(firewall_rule.value, 0)
       source_address_end     = cidrhost(firewall_rule.value, -1)
       comment                = "SSH allow ${firewall_rule.value}"

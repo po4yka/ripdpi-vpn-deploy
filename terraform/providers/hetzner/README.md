@@ -29,7 +29,7 @@ See `terraform/providers/hetzner/CLAUDE.md` for design decisions and pitfalls.
 
 | Name | Version |
 | ---- | ------- |
-| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.15 |
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.15, < 2.0 |
 | <a name="requirement_hcloud"></a> [hcloud](#requirement\_hcloud) | ~> 1.62 |
 
 ## Modules
@@ -45,6 +45,7 @@ No modules.
 | [hcloud_floating_ip.honeypot_ipv4](https://registry.terraform.io/providers/hetznercloud/hcloud/latest/docs/resources/floating_ip) | resource |
 | [hcloud_server.vpn](https://registry.terraform.io/providers/hetznercloud/hcloud/latest/docs/resources/server) | resource |
 | [hcloud_ssh_key.admin](https://registry.terraform.io/providers/hetznercloud/hcloud/latest/docs/resources/ssh_key) | resource |
+| [terraform_data.ssh_port](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 
 ## Inputs
 
@@ -52,18 +53,20 @@ No modules.
 | ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_additional_public_ip"></a> [additional\_public\_ip](#input\_additional\_public\_ip) | Allocate a second public IPv4 to this server. Used by the honeypot<br/>role (vpn.enable\_honeypot) so the canary listener can bind to an IP<br/>that has no other service on it, separating its probe traffic from<br/>the real REALITY listener at the IP-reputation level. Off by default. | `bool` | `false` | no |
 | <a name="input_admin_ssh_public_key"></a> [admin\_ssh\_public\_key](#input\_admin\_ssh\_public\_key) | Public SSH key only. The matching private key stays outside this repo. | `string` | n/a | yes |
-| <a name="input_admin_user"></a> [admin\_user](#input\_admin\_user) | n/a | `string` | `"deploy"` | no |
-| <a name="input_allowed_ssh_cidrs"></a> [allowed\_ssh\_cidrs](#input\_allowed\_ssh\_cidrs) | Source CIDRs allowed to reach 22/tcp. | `list(string)` | n/a | yes |
+| <a name="input_admin_user"></a> [admin\_user](#input\_admin\_user) | Non-root user created by cloud-init for SSH and Ansible access. | `string` | `"deploy"` | no |
+| <a name="input_allowed_ssh_cidrs"></a> [allowed\_ssh\_cidrs](#input\_allowed\_ssh\_cidrs) | Source CIDRs allowed to reach ssh\_port/tcp. | `list(string)` | n/a | yes |
 | <a name="input_build_env"></a> [build\_env](#input\_build\_env) | Free-form label baked into /etc/vpn-build-id by cloud-init. | `string` | `"prod"` | no |
 | <a name="input_enable_backups"></a> [enable\_backups](#input\_enable\_backups) | Enable provider-side server backups. | `bool` | `true` | no |
 | <a name="input_enable_hysteria"></a> [enable\_hysteria](#input\_enable\_hysteria) | n/a | `bool` | `true` | no |
 | <a name="input_enable_ipv6"></a> [enable\_ipv6](#input\_enable\_ipv6) | Allocate and expose a public IPv6 address. | `bool` | `true` | no |
-| <a name="input_image"></a> [image](#input\_image) | Hetzner image slug, e.g. debian-12 or ubuntu-24.04. | `string` | n/a | yes |
-| <a name="input_labels"></a> [labels](#input\_labels) | n/a | `map(string)` | `{}` | no |
-| <a name="input_location"></a> [location](#input\_location) | Hetzner Cloud location, e.g. hel1, nbg1, fsn1. | `string` | n/a | yes |
+| <a name="input_image"></a> [image](#input\_image) | Hetzner image slug. Allowed: debian-12, ubuntu-24.04. | `string` | `"debian-12"` | no |
+| <a name="input_labels"></a> [labels](#input\_labels) | Provider-specific resource tags/labels. | `map(string)` | `{}` | no |
+| <a name="input_location"></a> [location](#input\_location) | Hetzner Cloud location. Allowed: nbg1 (Nuremberg), fsn1 (Falkenstein), hel1 (Helsinki). | `string` | n/a | yes |
 | <a name="input_nginx_xhttp_public_port"></a> [nginx\_xhttp\_public\_port](#input\_nginx\_xhttp\_public\_port) | Public TCP port for nginx-xhttp. Keep this in sync with Ansible nginx\_xhttp\_public\_port. | `number` | `8443` | no |
+| <a name="input_public_listeners"></a> [public\_listeners](#input\_public\_listeners) | Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port\_range for each entry. | <pre>list(object({<br/>    name       = string<br/>    protocol   = string<br/>    port       = optional(number)<br/>    port_range = optional(string)<br/>  }))</pre> | `[]` | no |
 | <a name="input_server_name"></a> [server\_name](#input\_server\_name) | Hostname / Terraform name of the VPS. | `string` | n/a | yes |
-| <a name="input_server_type"></a> [server\_type](#input\_server\_type) | Hetzner server type, e.g. cpx11, cpx21, cx22. | `string` | n/a | yes |
+| <a name="input_server_type"></a> [server\_type](#input\_server\_type) | Hetzner server type, e.g. cpx21, cpx31, cx22, cx32. | `string` | n/a | yes |
+| <a name="input_ssh_port"></a> [ssh\_port](#input\_ssh\_port) | Effective SSH listener port configured by cloud-init and opened at the provider edge. | `number` | `22` | no |
 
 ## Outputs
 
@@ -71,8 +74,10 @@ No modules.
 | ---- | ----------- |
 | <a name="output_admin_user"></a> [admin\_user](#output\_admin\_user) | n/a |
 | <a name="output_honeypot_ipv4"></a> [honeypot\_ipv4](#output\_honeypot\_ipv4) | Secondary public IPv4 used by the honeypot when additional\_public\_ip = true. Null when not allocated. |
+| <a name="output_public_listeners"></a> [public\_listeners](#output\_public\_listeners) | Canonical public listener contract enforced by the provider firewall. |
 | <a name="output_server_hostname"></a> [server\_hostname](#output\_server\_hostname) | n/a |
 | <a name="output_server_ipv4"></a> [server\_ipv4](#output\_server\_ipv4) | Public IPv4 address (primary). |
 | <a name="output_server_ipv6"></a> [server\_ipv6](#output\_server\_ipv6) | Public IPv6 address (may be null if disabled). |
-| <a name="output_zone"></a> [zone](#output\_zone) | Provider location for compatibility with the UpCloud output name. |
+| <a name="output_ssh_port"></a> [ssh\_port](#output\_ssh\_port) | Effective SSH listener port. |
+| <a name="output_zone"></a> [zone](#output\_zone) | Provider-specific zone/region/location identifier. |
 <!-- END_TF_DOCS -->

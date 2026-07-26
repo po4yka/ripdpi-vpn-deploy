@@ -8,10 +8,10 @@ Method: multi-agent audit, one analyst per control plus an independent adversari
 > explicitly scoped away from REALITY probe defence; authenticated protocol
 > liveness is a separate sentinel contract; kill-switch route/direct and
 > address-family leaks are tested; the monitoring textfile collector is wired;
-> backup has recency checks and an isolated restore drill; and certificate
-> matching compares DER public keys. The early-error metrics path in
-> `burn-check.sh` remains an open limitation. Preserve the original findings
-> below as the rationale for those controls.
+> backup has recency checks and an isolated restore drill; certificate
+> matching compares DER public keys; and `burn-check.sh` replaces stale
+> reachability metrics with explicit error gauges on every exit. Preserve the
+> original findings below as the rationale for those controls.
 
 ## Failure class
 
@@ -49,7 +49,7 @@ live production effectiveness.
 | 5 | honeypot alert pipeline | **PARTIAL** | Monitoring now scrapes the shared textfile directory and reports/metrics exist, but threshold paging and alert routing remain operator-owned outside this repository. |
 | 6 | backup integrity | **RESOLVED** | Backup runs integrity/recency/remote checks and a scheduled isolated restore drill; focused backup contract tests and Molecule exercise them. |
 | 7 | certificate key match | **RESOLVED** | `check-certs.sh` compares key-type-independent DER public-key digests; `test_check_certs_key_match.py` prevents RSA-only regression. |
-| 8 | burn-check metric freshness | **OPEN** | Early API failures can still occur before the sole textfile write; no explicit API-error gauge or error-path write exists. |
+| 8 | burn-check metric freshness | **RESOLVED** | An EXIT trap atomically rewrites the textfile on every path; API and incomplete-run gauges distinguish an indeterminate check from a healthy result. |
 
 ---
 
@@ -183,8 +183,13 @@ Works for RSA, P-256/P-384, and X25519. Update the line-97 comment.
 
 ## 8. `burn-check.sh` — early `exit 2` freezes the metrics at the last healthy state
 
-**Current status: OPEN.** The early API-error path still precedes the only
-metrics write and has no dedicated error gauge.
+**Current status: RESOLVED.** Every exit path now atomically refreshes the
+textfile. `vpn_burn_api_error` reports check-host API failures,
+`vpn_burn_run_error` reports a run that ended before classification, and
+per-node/summary reachability series are omitted when no valid result exists.
+Regression tests cover an API failure, a healthy result, and a completed
+reachability failure so a burned-path verdict is not mislabeled as a probe
+execution error.
 
 **Contract.** On `exit 2` (check-host.net rejects the request / returns no `request_id`), the script terminates at line 43 — **before** the Prometheus textfile write block at line 74. Effectiveness depends on a downstream staleness alert on `vpn_burn_last_run_unixtime` to notice the freeze.
 

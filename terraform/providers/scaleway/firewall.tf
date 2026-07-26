@@ -30,7 +30,7 @@ resource "scaleway_instance_security_group" "vpn" {
     content {
       action   = "accept"
       protocol = "TCP"
-      port     = 22
+      port     = var.ssh_port
       ip_range = inbound_rule.value
     }
   }

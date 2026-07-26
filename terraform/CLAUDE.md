@@ -5,8 +5,16 @@
 **Per-provider root, identical outputs** — Terraform module sources can't
 be variable-driven, so each provider gets its own root under
 `providers/<name>/`. Output schema is fixed: `server_ipv4`, `server_ipv6`,
-`admin_user`, `server_hostname`. `scripts/render-inventory.sh` is therefore
-provider-neutral.
+`admin_user`, `ssh_port`, `server_hostname`. `scripts/render-inventory.sh` is
+therefore provider-neutral.
+
+**SSH port is one cross-layer input** — `var.ssh_port` configures cloud-init,
+the provider edge allowlist, the canonical Terraform output, inventory's
+`ansible_port`, cloud-init waiting, and the on-host nftables rule. Default 22
+preserves existing deployments. Because server resources intentionally ignore
+later `user_data` drift, changing this creation-time input triggers node
+replacement and is held by `prevent_destroy`; use the normal disposable-node
+blue-green path rather than changing a live node in place.
 
 **Local state per provider and environment** — we don't trust remote state with VPN infrastructure. `ENV=prod` deliberately remains Terraform's legacy `default` workspace; every other `ENV` maps to its own same-named workspace. Initialize a new environment with `make PROVIDER=<provider> ENV=<env> init` before any plan, apply, or output. State is backed up via `make backup-state` (age-encrypted). Lose state → re-import (`docs/RUNBOOK-incident.md`).
 

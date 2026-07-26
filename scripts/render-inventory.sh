@@ -72,6 +72,7 @@ confirm_vultr_guest_ipv4() {
   local primary_ip="$1"
   local admin_user="$2"
   local secondary_ip="$3"
+  local ssh_port="$4"
   local attempts="${VULTR_GUEST_IPV4_ATTEMPTS:-30}"
   local delay_seconds="${VULTR_GUEST_IPV4_DELAY_SECONDS:-5}"
   local attempt
@@ -89,6 +90,7 @@ confirm_vultr_guest_ipv4() {
     if ssh -o BatchMode=yes \
            -o StrictHostKeyChecking=accept-new \
            -o ConnectTimeout=5 \
+           -p "$ssh_port" \
            -i "$ANSIBLE_SSH_PRIVATE_KEY_FILE" \
            "${admin_user}@${primary_ip}" \
            "ip -4 -o address show | grep -Fq -- ' ${secondary_ip}/'" \
@@ -123,6 +125,7 @@ for i in "${!host_pairs[@]}"; do
   ip="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
   ipv6="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv6 2>/dev/null || true)"
   user="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user)"
+  ssh_port="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw ssh_port)"
   hostname="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_hostname)"
   public_listeners="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -json public_listeners | jq -c .)"
   public_listeners_b64="$(printf '%s' "$public_listeners" | base64 | tr -d '\n')"
@@ -133,7 +136,11 @@ for i in "${!host_pairs[@]}"; do
   # false in the terraform vars.
   honey_ip="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw honeypot_ipv4 2>/dev/null || true)"
 
-  vpn_line="${hostname} ansible_host=${ip} ansible_user=${user} provider=${prov} env=${env}"
+  if ! [[ "$ssh_port" =~ ^[1-9][0-9]*$ ]] || (( ssh_port > 65535 )); then
+    echo "invalid ssh_port output for ${prov}:${env}: ${ssh_port}" >&2
+    exit 1
+  fi
+  vpn_line="${hostname} ansible_host=${ip} ansible_user=${user} ansible_port=${ssh_port} provider=${prov} env=${env}"
   # The INI inventory plugin tokenizes host vars with shlex before applying
   # Python literal parsing. Quote the complete JSON value so the inner string
   # quotes survive and Ansible receives a list instead of a malformed string.
@@ -157,7 +164,7 @@ for i in "${!host_pairs[@]}"; do
   if [[ -n "$honey_ip" && "$honey_ip" != "null" ]] \
      && [[ "$honey_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     if [[ "$prov" == "vultr" ]]; then
-      confirm_vultr_guest_ipv4 "$ip" "$user" "$honey_ip"
+      confirm_vultr_guest_ipv4 "$ip" "$user" "$honey_ip" "$ssh_port"
     fi
     vpn_line+=" honeypot_listen_addr=${honey_ip}"
   fi

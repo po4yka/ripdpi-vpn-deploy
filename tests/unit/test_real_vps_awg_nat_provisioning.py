@@ -1765,7 +1765,9 @@ def test_bundle_builder_emits_exact_clean_head_and_rejects_dirty_tree(
 def test_operator_runbook_names_only_private_actions_not_values() -> None:
     runbook = (ROOT / "docs/REAL-VPS-AWG-NAT.md").read_text()
 
-    assert "cd ansible" in runbook
+    assert "cd ansible" not in runbook
+    assert "make deploy ANSIBLE_LIMIT=vpn-p1-web" in runbook
+    assert "ANSIBLE_EXTRA_VARS_FILE=/secure/real-vps-awg-nat-forward.yml" in runbook
     assert "make awg-evidence-provision" in runbook
     assert "current_client_config" in runbook
     assert "rotated_client_config" in runbook
@@ -1778,9 +1780,9 @@ def test_operator_runbook_converges_the_protected_echo_cohort() -> None:
     runbook = (ROOT / "docs/REAL-VPS-AWG-NAT.md").read_text()
 
     assert 'COHORTS="p1-web,p2-udp"' in runbook
-    assert "--limit vpn-p1-web" in runbook
+    assert "ANSIBLE_LIMIT=vpn-p1-web" in runbook
     assert 'COHORTS="p3-ts,p2-udp"' not in runbook
-    assert "--limit vpn-p3-ts" not in runbook
+    assert "ANSIBLE_LIMIT=vpn-p3-ts" not in runbook
 
 
 def test_makefile_exposes_sops_gated_awg_evidence_entrypoint() -> None:
@@ -1795,3 +1797,14 @@ def test_makefile_exposes_sops_gated_awg_evidence_entrypoint() -> None:
     assert "AWG_EVIDENCE_VARS=<mode-0600-file> required" in target
     assert "stat.S_IMODE(s.st_mode) == 0o600" in target
     assert "real_vps_awg_nat_secrets" not in target
+
+
+def test_makefile_deploy_supports_safe_limit_and_extra_vars() -> None:
+    makefile = (ROOT / "Makefile").read_text()
+    target = makefile.split("deploy: pre-deploy-check", 1)[1].split("\n\n", 1)[0]
+
+    assert 'VPN_SECRETS_FILE=$(SECRETS_FILE)' in target
+    assert '--limit "$(ANSIBLE_LIMIT)"' in target
+    assert '--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)"' in target
+    assert "stat.S_IMODE(s.st_mode) == 0o600" in target
+    assert "not os.path.islink(p)" in target

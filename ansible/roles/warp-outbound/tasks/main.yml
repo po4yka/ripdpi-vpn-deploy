@@ -51,8 +51,9 @@
     owner: root
     group: root
     mode: "0644"
-    content: |
-      deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ {{ ansible_distribution_release }} main
+    content: >-
+      deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg]
+      https://pkg.cloudflareclient.com/ {{ ansible_distribution_release }} main
   when: warp_outbound.install_warp_cli | default(true)
 
 - name: Install cloudflare-warp package
@@ -99,7 +100,11 @@
     - "'Connected' not in warp_connect.stdout"
 
 - name: Verify WARP exit IP is reachable
-  ansible.builtin.command: "curl -fsS --max-time 10 --socks5-hostname 127.0.0.1:{{ warp_outbound.socks_port }} https://www.cloudflare.com/cdn-cgi/trace"
+  ansible.builtin.command:
+    cmd: >-
+      curl -fsS --max-time 10
+      --socks5-hostname 127.0.0.1:{{ warp_outbound.socks_port }}
+      https://www.cloudflare.com/cdn-cgi/trace
   register: warp_trace
   changed_when: false
   failed_when:

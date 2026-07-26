@@ -92,6 +92,22 @@ run "firewall_ssh_count_matches_allowed_cidrs" {
   }
 }
 
+run "firewall_ssh_uses_configured_port" {
+  command = plan
+
+  variables {
+    ssh_port = 2222
+  }
+
+  assert {
+    condition = alltrue([
+      for rule in scaleway_instance_security_group.vpn.inbound_rule : rule.port == 2222
+      if rule.protocol == "TCP" && contains(var.allowed_ssh_cidrs, rule.ip_range)
+    ])
+    error_message = "SSH rules must use ssh_port instead of hard-coded TCP/22"
+  }
+}
+
 run "firewall_ssh_never_world_readable" {
   command = plan
 

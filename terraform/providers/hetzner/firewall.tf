@@ -21,7 +21,7 @@ resource "hcloud_firewall" "vpn" {
     content {
       direction   = "in"
       protocol    = "tcp"
-      port        = "22"
+      port        = tostring(var.ssh_port)
       source_ips  = [rule.value]
       description = "SSH allow ${rule.value}"
     }

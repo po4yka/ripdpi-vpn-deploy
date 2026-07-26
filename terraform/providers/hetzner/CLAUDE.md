@@ -3,7 +3,7 @@
 ## Design decisions
 
 **Mirrors UpCloud's output schema** — `server_ipv4`, `server_ipv6`,
-`admin_user`, `server_hostname`. So `render-inventory.sh` stays
+`admin_user`, `ssh_port`, `server_hostname`. So `render-inventory.sh` stays
 provider-neutral.
 
 **Cloud-init via `user_data`** — Hetzner accepts cloud-init natively. Same

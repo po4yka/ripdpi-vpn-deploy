@@ -11,7 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "terraform" / "shared" / "cloud-init.yaml.tftpl"
 VALUES = {
     "admin_user": "deploy",
-    "admin_ssh_public_key": "ssh-ed25519 AAAA_REPLACE_WITH_PUBLIC_KEY operator@laptop",
+    "admin_ssh_public_key": "ssh-ed25519 AAAATESTKEY ci@fixture",
+    "ssh_port": "22",
     "build_env": "ci",
 }
 

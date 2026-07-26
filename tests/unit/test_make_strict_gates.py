@@ -36,6 +36,7 @@ def test_cloud_init_schema_has_a_pinned_container_fallback():
     assert 'command -v docker' in target
     assert 'cloud-init schema --config-file /dev/stdin' in target
     assert 'missing: cloud-init (or docker fallback)' in target
+    assert "set -eu" in target
 
 
 def test_inventory_uses_the_local_fleet_profile_when_present():

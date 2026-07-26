@@ -2,6 +2,7 @@ locals {
   user_data = templatefile("${path.module}/../../shared/cloud-init.yaml.tftpl", {
     admin_user           = var.admin_user
     admin_ssh_public_key = var.admin_ssh_public_key
+    ssh_port             = var.ssh_port
     build_env            = var.build_env
   })
 
@@ -13,6 +14,10 @@ locals {
     ["terraform", var.build_env],
     [for key, value in var.labels : "${key}:${value}"],
   ))
+}
+
+resource "terraform_data" "ssh_port" {
+  input = var.ssh_port
 }
 
 resource "vultr_ssh_key" "admin" {
@@ -40,6 +45,9 @@ resource "vultr_instance" "vpn" {
 
   lifecycle {
     prevent_destroy = true
+    replace_triggered_by = [
+      terraform_data.ssh_port,
+    ]
     ignore_changes = [
       user_data,
     ]

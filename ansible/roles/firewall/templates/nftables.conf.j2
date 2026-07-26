@@ -9,6 +9,7 @@ destroy table inet nat
 {% set ssh_cidrs = [allowed_ssh_cidrs] if allowed_ssh_cidrs is string else (allowed_ssh_cidrs | default([])) %}
 {% set ssh_v4_cidrs = ssh_cidrs | select('match', '^(?!.*:).*') | list %}
 {% set ssh_v6_cidrs = ssh_cidrs | select('match', '.*:.*') | list %}
+{% set ssh_port = firewall_effective_ssh_ports | first | int %}
 {% set _xray_cohorts = (xray.cohorts | default([])) if xray is defined else [] %}
 {% set _xray_fallback_port = xray_fallback_port | default(0) | int %}
 {% if _xray_cohorts | length > 0 %}
@@ -97,10 +98,10 @@ table inet filter {
     ip6 nexthdr ipv6-icmp accept
 
 {% if ssh_v4_cidrs %}
-    tcp dport 22 ip saddr { {{ ssh_v4_cidrs | join(", ") }} } accept
+    tcp dport {{ ssh_port }} ip saddr { {{ ssh_v4_cidrs | join(", ") }} } accept
 {% endif %}
 {% if ssh_v6_cidrs %}
-    tcp dport 22 ip6 saddr { {{ ssh_v6_cidrs | join(", ") }} } accept
+    tcp dport {{ ssh_port }} ip6 saddr { {{ ssh_v6_cidrs | join(", ") }} } accept
 {% endif %}
 
 {% for listener in public_listener_contract | default([]) %}
@@ -195,4 +196,4 @@ table inet nat {
 {% endif %}
   }
 }
-{% endif %}
+{% endif -%}

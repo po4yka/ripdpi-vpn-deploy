@@ -49,6 +49,76 @@ HYSTERIA_SALAMANDER="${HYSTERIA_SALAMANDER:-false}"
 HYSTERIA_PORT="${HYSTERIA_PORT:-443}"
 UDP_PROBE_TIMEOUT="${UDP_PROBE_TIMEOUT:-5}"
 
+TOTAL=0
+FAILS=0
+RESULT="{}"
+RESULT_VALID=0
+CHECK_COMPLETED=0
+API_ERROR=0
+UDP_OK=""
+
+write_metrics() {
+  [[ -n "${NODE_EXPORTER_TEXTFILE_DIR:-}" ]] || return 0
+
+  local out tmp provider_label env_label
+  out="${NODE_EXPORTER_TEXTFILE_DIR%/}/vpn_burn.prom"
+  tmp="${out}.tmp.$$"
+  provider_label="${PROVIDER//\\/\\\\}"
+  provider_label="${provider_label//\"/\\\"}"
+  env_label="${ENV//\\/\\\\}"
+  env_label="${env_label//\"/\\\"}"
+  mkdir -p "${NODE_EXPORTER_TEXTFILE_DIR}"
+
+  {
+    echo "# HELP vpn_burn_api_error Whether the external reachability API failed during the latest run"
+    echo "# TYPE vpn_burn_api_error gauge"
+    echo "vpn_burn_api_error{provider=\"${provider_label}\",env=\"${env_label}\"} ${API_ERROR}"
+    echo "# HELP vpn_burn_run_error Whether the latest run ended before reachability could be classified"
+    echo "# TYPE vpn_burn_run_error gauge"
+    echo "vpn_burn_run_error{provider=\"${provider_label}\",env=\"${env_label}\"} $((1 - CHECK_COMPLETED))"
+    if (( CHECK_COMPLETED )); then
+      echo "# HELP vpn_burn_total_nodes Number of vantage points probed"
+      echo "# TYPE vpn_burn_total_nodes gauge"
+      echo "vpn_burn_total_nodes{provider=\"${provider_label}\",env=\"${env_label}\"} ${TOTAL}"
+      echo "# HELP vpn_burn_failed_nodes Number of probes that did not connect"
+      echo "# TYPE vpn_burn_failed_nodes gauge"
+      echo "vpn_burn_failed_nodes{provider=\"${provider_label}\",env=\"${env_label}\"} ${FAILS}"
+      echo "# HELP vpn_burn_reachable Whether the VPS public port appears reachable per node (1 OK / 0 failed)"
+      echo "# TYPE vpn_burn_reachable gauge"
+      if (( RESULT_VALID )); then
+        echo "$RESULT" | jq -r --arg p "$PROVIDER" --arg e "$ENV" '
+          to_entries[]
+          | .key as $node
+          | (.value // [[]])[0] // []
+          | (.[0] // {})
+          | (if (.address // null) != null and (.error // null) == null then 1 else 0 end) as $ok
+          | "vpn_burn_reachable{provider=\"\($p)\",env=\"\($e)\",node=\"\($node)\"} \($ok)"
+        '
+      fi
+    fi
+    if [[ -n "$UDP_OK" ]]; then
+      echo "# HELP vpn_burn_udp_reachable UDP reachability from the operator vantage (1 reachable / 0 no-reply)"
+      echo "# TYPE vpn_burn_udp_reachable gauge"
+      echo "vpn_burn_udp_reachable{provider=\"${provider_label}\",env=\"${env_label}\"} ${UDP_OK}"
+    fi
+    echo "# HELP vpn_burn_last_run_unixtime Last time burn-check ran"
+    echo "# TYPE vpn_burn_last_run_unixtime gauge"
+    echo "vpn_burn_last_run_unixtime{provider=\"${provider_label}\",env=\"${env_label}\"} $(date +%s)"
+  } > "$tmp"
+  chmod 0644 "$tmp"
+  mv "$tmp" "$out"
+}
+
+finish() {
+  local rc=$?
+  trap - EXIT
+  if ! write_metrics; then
+    echo "burn-check: failed to update textfile metrics" >&2
+  fi
+  exit "$rc"
+}
+trap finish EXIT
+
 for tool in curl jq terraform; do
   command -v "$tool" >/dev/null 2>&1 || { echo "missing: $tool" >&2; exit 1; }
 done
@@ -58,11 +128,14 @@ IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" ou
 # check-host.net rest API: GET /check-tcp?host=<ip>:<port>&node=<n1>&node=<n2>…
 # returns a request_id; results are polled at /check-result/<request_id>.
 NODE_PARAMS="$(echo "$NODES" | tr ',' '\n' | sed 's/^/\&node=/' | tr -d '\n')"
-REQ="$(curl -fsS -H 'Accept: application/json' \
-  "https://check-host.net/check-tcp?host=${IP}:443${NODE_PARAMS}")"
-REQUEST_ID="$(echo "$REQ" | jq -r .request_id)"
-
-if [[ -z "$REQUEST_ID" || "$REQUEST_ID" == "null" ]]; then
+if ! REQ="$(curl -fsS -H 'Accept: application/json' \
+  "https://check-host.net/check-tcp?host=${IP}:443${NODE_PARAMS}")"; then
+  API_ERROR=1
+  echo "check-host.net request failed" >&2
+  exit 2
+fi
+if ! REQUEST_ID="$(echo "$REQ" | jq -er '.request_id | select(type == "string" and length > 0)')"; then
+  API_ERROR=1
   echo "check-host.net rejected the request:" >&2
   echo "$REQ" >&2
   exit 2
@@ -71,8 +144,17 @@ fi
 # Poll up to 30s for results
 for _ in $(seq 1 15); do
   sleep 2
-  RESULT="$(curl -fsS -H 'Accept: application/json' \
-    "https://check-host.net/check-result/${REQUEST_ID}")"
+  if ! RESULT="$(curl -fsS -H 'Accept: application/json' \
+    "https://check-host.net/check-result/${REQUEST_ID}")"; then
+    API_ERROR=1
+    echo "check-host.net result request failed" >&2
+    exit 2
+  fi
+  if ! echo "$RESULT" | jq -e 'type == "object"' >/dev/null; then
+    API_ERROR=1
+    echo "check-host.net returned an invalid result payload" >&2
+    exit 2
+  fi
   # Result is a map of node→[[result_object]] or null while pending. If every
   # node has a non-null array we're done.
   PENDING="$(echo "$RESULT" | jq '[to_entries[] | select(.value == null)] | length')"
@@ -82,13 +164,23 @@ done
 # Count nodes whose first result didn't include an "address" field success.
 # A successful check-tcp result looks like: {"address":"…","time":0.123}.
 # Failures look like {"error":"Connection refused"} or {"error":"Connection timed out"}.
-TOTAL="$(echo "$RESULT" | jq 'length')"
-FAILS="$(echo "$RESULT" | jq '[to_entries[]
+if ! TOTAL="$(echo "$RESULT" | jq -er 'length')"; then
+  API_ERROR=1
+  echo "check-host.net result count is invalid" >&2
+  exit 2
+fi
+if ! FAILS="$(echo "$RESULT" | jq -er '[to_entries[]
   | .key as $node
   | (.value // [[]])[0] // []
   | (.[0] // {})
   | select(.error != null or (.address // null) == null)
-  ] | length')"
+  ] | length')"; then
+  API_ERROR=1
+  echo "check-host.net failure count is invalid" >&2
+  exit 2
+fi
+RESULT_VALID=1
+CHECK_COMPLETED=1
 
 echo "burn-check: ${PROVIDER}/${ENV} ${IP}:443  →  ${TOTAL} nodes probed, ${FAILS} failed"
 echo "$RESULT" | jq -r 'to_entries[] | "  \(.key): \(.value // "pending")"'
@@ -97,7 +189,6 @@ echo "$RESULT" | jq -r 'to_entries[] | "  \(.key): \(.value // "pending")"'
 # External UDP/443 (Hysteria2/QUIC) edge-reachability probe. Always non-fatal:
 # UDP_OK is "" (not measured / skipped), 0 (no response), or 1 (reachable).
 # ---------------------------------------------------------------------------
-UDP_OK=""
 if [[ "$ENABLE_HYSTERIA" != "true" ]]; then
   echo "WARN: hysteria disabled (ENABLE_HYSTERIA=${ENABLE_HYSTERIA}) — skipping UDP/443 edge probe" >&2
 elif [[ "$HYSTERIA_SALAMANDER" == "true" ]]; then
@@ -162,42 +253,6 @@ PY
       echo "WARN: UDP/443 probe error (rc=${UDP_RC}) — not measured" >&2
       ;;
   esac
-fi
-
-# Optional Prometheus textfile export. When NODE_EXPORTER_TEXTFILE_DIR is
-# set, write {dir}/vpn_burn.prom with one gauge per node and a summary.
-# Atomic write: tmp + mv per the textfile-collector contract.
-if [[ -n "${NODE_EXPORTER_TEXTFILE_DIR:-}" ]]; then
-  out="${NODE_EXPORTER_TEXTFILE_DIR%/}/vpn_burn.prom"
-  tmp="${out}.tmp.$$"
-  {
-    echo "# HELP vpn_burn_total_nodes Number of vantage points probed"
-    echo "# TYPE vpn_burn_total_nodes gauge"
-    echo "vpn_burn_total_nodes{provider=\"${PROVIDER}\",env=\"${ENV}\"} ${TOTAL}"
-    echo "# HELP vpn_burn_failed_nodes Number of probes that did not connect"
-    echo "# TYPE vpn_burn_failed_nodes gauge"
-    echo "vpn_burn_failed_nodes{provider=\"${PROVIDER}\",env=\"${ENV}\"} ${FAILS}"
-    echo "# HELP vpn_burn_reachable Whether the VPS public port appears reachable per node (1 OK / 0 failed)"
-    echo "# TYPE vpn_burn_reachable gauge"
-    echo "$RESULT" | jq -r --arg p "$PROVIDER" --arg e "$ENV" '
-      to_entries[]
-      | .key as $node
-      | (.value // [[]])[0] // []
-      | (.[0] // {})
-      | (if (.address // null) != null and (.error // null) == null then 1 else 0 end) as $ok
-      | "vpn_burn_reachable{provider=\"\($p)\",env=\"\($e)\",node=\"\($node)\"} \($ok)"
-    '
-    if [[ -n "$UDP_OK" ]]; then
-      echo "# HELP vpn_burn_udp_reachable UDP/443 (Hysteria2/QUIC) reachable from the operator vantage (1 reachable / 0 no-reply). Absent when the probe was skipped."
-      echo "# TYPE vpn_burn_udp_reachable gauge"
-      echo "vpn_burn_udp_reachable{provider=\"${PROVIDER}\",env=\"${ENV}\"} ${UDP_OK}"
-    fi
-    echo "# HELP vpn_burn_last_run_unixtime Last time burn-check ran"
-    echo "# TYPE vpn_burn_last_run_unixtime gauge"
-    echo "vpn_burn_last_run_unixtime{provider=\"${PROVIDER}\",env=\"${ENV}\"} $(date +%s)"
-  } > "$tmp"
-  mv "$tmp" "$out"
-  chmod 0644 "$out"
 fi
 
 if (( FAILS >= FAIL_THRESHOLD )); then

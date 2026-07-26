@@ -9,6 +9,31 @@
       - firewall_egress_policy | default('permissive') in ['permissive', 'logged', 'strict']
     fail_msg: "firewall_egress_policy must be one of: permissive, logged, strict."
 
+- name: Read effective sshd configuration
+  ansible.builtin.command:
+    cmd: sshd -T
+  register: _firewall_sshd_config
+  changed_when: false
+
+- name: Select effective SSH listener port
+  ansible.builtin.set_fact:
+    firewall_effective_ssh_ports: >-
+      {{
+        _firewall_sshd_config.stdout_lines
+        | select('match', '^port [0-9]+$')
+        | map('regex_replace', '^port ', '')
+        | map('int')
+        | list
+      }}
+
+- name: Require one effective SSH listener port
+  ansible.builtin.assert:
+    that:
+      - firewall_effective_ssh_ports | length == 1
+      - firewall_effective_ssh_ports[0] | int >= 1
+      - firewall_effective_ssh_ports[0] | int <= 65535
+    fail_msg: "sshd -T must expose exactly one valid listener port before firewall convergence."
+
 - name: Check whether UFW is installed
   ansible.builtin.stat:
     path: /usr/sbin/ufw

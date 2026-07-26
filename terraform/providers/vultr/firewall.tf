@@ -49,7 +49,7 @@ resource "vultr_firewall_rule" "ssh" {
   ip_type           = each.value.ip_type
   subnet            = each.value.subnet
   subnet_size       = each.value.subnet_size
-  port              = "22"
+  port              = tostring(var.ssh_port)
   notes             = "SSH allow ${each.key}"
 }
 

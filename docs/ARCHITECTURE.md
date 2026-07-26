@@ -98,7 +98,9 @@ Terraform module sources cannot be variable-driven, so a clean drop-in is
 a separate root per provider with identical outputs. The Ansible layer is
 provider-neutral; only `scripts/render-inventory.sh` reads
 provider-specific outputs (`server_ipv4`, `server_ipv6`, `admin_user`,
-`server_hostname`).
+`ssh_port`, `server_hostname`). The SSH port is a single Terraform input that
+also configures cloud-init, provider-edge rules, rendered `ansible_port`, and
+the effective nftables allowlist.
 
 ## What is intentionally NOT here
 

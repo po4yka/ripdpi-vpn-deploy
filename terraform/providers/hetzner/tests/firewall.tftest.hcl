@@ -95,6 +95,22 @@ run "firewall_ssh_count_matches_allowed_cidrs" {
   }
 }
 
+run "firewall_ssh_uses_configured_port" {
+  command = plan
+
+  variables {
+    ssh_port = 2222
+  }
+
+  assert {
+    condition = alltrue([
+      for r in hcloud_firewall.vpn.rule : r.port == "2222"
+      if startswith(r.description, "SSH allow ")
+    ])
+    error_message = "SSH rules must use ssh_port instead of hard-coded TCP/22"
+  }
+}
+
 run "firewall_ssh_never_world_readable" {
   command = plan
 

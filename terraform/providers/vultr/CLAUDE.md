@@ -2,7 +2,9 @@
 
 ## Design decisions
 
-**Same output schema as upcloud + hetzner** — provider-neutral inventory.
+**Same output schema as UpCloud + Hetzner** — including `ssh_port`, so
+inventory and cloud-init waiting use the provider-declared listener rather
+than assuming TCP/22.
 
 **Plan + region constraints** — `vc2-1c-1gb` / `vhf-1c-1gb` only; restricted
 to AMS / FRA / LHR for low-latency RU paths.

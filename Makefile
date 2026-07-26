@@ -7,6 +7,8 @@ HOSTS   ?=
 COHORTS ?=
 AWG_EVIDENCE_INVENTORY ?=
 AWG_EVIDENCE_VARS ?=
+ANSIBLE_LIMIT ?=
+ANSIBLE_EXTRA_VARS_FILE ?=
 
 TF_ROOT       := terraform/providers/$(PROVIDER)
 TF_ENV        := ./scripts/terraform-env.sh
@@ -68,7 +70,7 @@ help:
 	@echo "  wait                       Wait for cloud-init to finish"
 	@echo "  pre-deploy-check           spot-check-secrets + check-certs (auto for deploy/verify; SKIP_PRECHECK=1 to bypass)"
 	@echo "  dry-run                    ansible-playbook --check --diff"
-	@echo "  deploy                     ansible-playbook site.yml"
+	@echo "  deploy                     ansible-playbook site.yml (optional ANSIBLE_LIMIT / ANSIBLE_EXTRA_VARS_FILE)"
 	@echo "  deploy-canary              Deploy ENV=canary through the normal deploy flow"
 	@echo "  verify [TAG_ON_SUCCESS=1]  ansible-playbook verify.yml (+ optional known-good git tag)"
 	@echo "  security-verify            Host hardening checks (SSH/sysctl/firewall/services)"
@@ -165,7 +167,7 @@ validate:
 	done
 	gitleaks git --redact --no-banner .
 	gitleaks git --staged --redact --no-banner .
-	cd $(ANSIBLE_DIR) && ansible-lint
+	ANSIBLE_CONFIG=$(ANSIBLE_DIR)/ansible.cfg ansible-lint $(ANSIBLE_DIR)
 	cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check
 
 decrypt:
@@ -201,8 +203,15 @@ dry-run: pre-deploy-check
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/site.yml --check --diff
 
 deploy: pre-deploy-check
+	@if [ -n "$(ANSIBLE_EXTRA_VARS_FILE)" ]; then \
+	  test -f "$(ANSIBLE_EXTRA_VARS_FILE)" || { echo "missing $(ANSIBLE_EXTRA_VARS_FILE)"; exit 1; }; \
+	  ANSIBLE_EXTRA_VARS_FILE="$(ANSIBLE_EXTRA_VARS_FILE)" python3 -c 'import os, stat; p = os.environ["ANSIBLE_EXTRA_VARS_FILE"]; s = os.stat(p, follow_symlinks=False); ok = stat.S_ISREG(s.st_mode) and not os.path.islink(p) and s.st_uid == os.geteuid() and stat.S_IMODE(s.st_mode) == 0o600; raise SystemExit(0 if ok else 1)' || { echo "ANSIBLE_EXTRA_VARS_FILE must be a same-owner regular non-symlink file with mode 0600"; exit 1; }; \
+	fi
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
-	ansible-playbook $(ANSIBLE_DIR)/playbooks/site.yml $(if $(strip $(ANSIBLE_TAGS)),--tags "$(ANSIBLE_TAGS)")
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/site.yml \
+	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
+	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)") \
+	  $(if $(strip $(ANSIBLE_TAGS)),--tags "$(ANSIBLE_TAGS)")
 	@ENV=$(ENV) PROVIDER=$(PROVIDER) ./scripts/audit-log.sh append-best-effort \
 	  --action site-deploy \
 	  --note "playbook=site.yml warp_outbound_role=conditional"
@@ -325,7 +334,8 @@ actionlint-check:
 	actionlint
 
 cloud-init-schema:
-	@rendered="$$(mktemp -t cloud-init.rendered.XXXXXX)"; \
+	@set -eu; \
+	  rendered="$$(mktemp -t cloud-init.rendered.XXXXXX)"; \
 	  trap 'rm -f "$$rendered"' 0; \
 	  python3 scripts/render-cloud-init-ci.py > "$$rendered"; \
 	  if command -v cloud-init >/dev/null 2>&1; then \

@@ -7,6 +7,7 @@ image       = "debian-12"
 
 admin_user           = "deploy"
 admin_ssh_public_key = "ssh-ed25519 AAAA_PROD_PUBLIC_KEY operator@laptop"
+ssh_port             = 22
 
 allowed_ssh_cidrs = [
   # Replace with your management IP. Never leave 0.0.0.0/0 for SSH.

@@ -71,6 +71,11 @@ must fail closed.
   `requirements.in`. Don't import `requests` (use `urllib.request`).
 - **Never run raw Terraform from an operator script** — it silently uses the active workspace. Set `PROVIDER` and `ENV` on `terraform-env.sh` instead.
 - **Active REALITY target monitoring is filtered-vantage only.** `monitor-reality-target.sh` rejects an absent or `unfiltered` vantage, resolves the active target through the canonical secrets gate, and persists only a target fingerprint plus technical IP/ASN/prefix observations. It requires two consecutive unhealthy runs before notifying and never edits SOPS or invokes deployment actions.
+- **Burn-check textfile state is fail-loud** — `burn-check.sh` rewrites its
+  Prometheus textfile from an EXIT trap. An external API failure removes stale
+  reachability series and raises API-error plus incomplete-run gauges; a
+  completed reachability failure keeps those gauges clear because it is a
+  valid burn verdict, not a probe execution error.
 
 ## Probe scripts (`probe-*.sh`)
 

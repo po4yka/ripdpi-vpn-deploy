@@ -30,7 +30,9 @@
 
 - name: Write systemd failed-unit report
   ansible.builtin.copy:
-    dest: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}/systemd-failed.txt"
+    dest: >-
+      {{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit')
+      }}/{{ security_audit_run_id }}/systemd-failed.txt
     owner: root
     group: root
     mode: "0640"
@@ -46,7 +48,9 @@
 
 - name: Write nftables ruleset report
   ansible.builtin.copy:
-    dest: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}/nftables-ruleset.txt"
+    dest: >-
+      {{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit')
+      }}/{{ security_audit_run_id }}/nftables-ruleset.txt
     owner: root
     group: root
     mode: "0640"
@@ -62,7 +66,9 @@
 
 - name: Write sshd effective config report
   ansible.builtin.copy:
-    dest: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}/sshd-effective.txt"
+    dest: >-
+      {{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit')
+      }}/{{ security_audit_run_id }}/sshd-effective.txt
     owner: root
     group: root
     mode: "0640"

@@ -6,12 +6,13 @@ plan        = "1xCPU-2GB"
 
 # Pin a specific storage template UUID. Find with:
 #   upctl storage list --public --template | grep -E 'Debian 13|Ubuntu 24.04'
-storage_template = "REPLACE_WITH_TEMPLATE_UUID"
+storage_template = "UPCLOUD_TEMPLATE_UUID"
 
 storage_size_gb = 25
 
 admin_user           = "deploy"
-admin_ssh_public_key = "ssh-ed25519 AAAA_REPLACE_WITH_PUBLIC_KEY operator@laptop"
+admin_ssh_public_key = "ssh-ed25519 AAAA_PROD_PUBLIC_KEY operator@laptop"
+ssh_port             = 22
 
 allowed_ssh_cidrs = [
   # Replace with your management IP. Never leave 0.0.0.0/0 for SSH.

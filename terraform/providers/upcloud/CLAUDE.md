@@ -4,7 +4,7 @@
 
 **Per-provider root, identical outputs** — Terraform module sources cannot be
 variable-driven, so each provider gets its own root. The output schema
-(`server_ipv4`, `server_ipv6`, `admin_user`, `server_hostname`) is fixed
+(`server_ipv4`, `server_ipv6`, `admin_user`, `ssh_port`, `server_hostname`) is fixed
 across providers so `scripts/render-inventory.sh` is provider-neutral.
 
 **Local TF state by default** — we don't trust remote state with VPN secrets

@@ -16,11 +16,16 @@ variables {
 run "server_cloud_init_user_data_is_wired" {
   command = plan
 
+  variables {
+    ssh_port = 2222
+  }
+
   assert {
     condition = (
       strcontains(vultr_instance.vpn.user_data, "provisioned_by=cloud-init")
       && strcontains(vultr_instance.vpn.user_data, "build_env=test")
       && strcontains(vultr_instance.vpn.user_data, "ssh-ed25519 AAAATESTKEY test@harness")
+      && strcontains(vultr_instance.vpn.user_data, "Port 2222")
     )
     error_message = "vultr_instance.user_data must carry the rendered cloud-init bootstrap"
   }
@@ -46,6 +51,7 @@ run "outputs_preserve_inventory_contract" {
   assert {
     condition = (
       output.admin_user == "deploy"
+      && output.ssh_port == 22
       && output.server_hostname == "vpn-test"
       && output.zone == "ams"
       && output.honeypot_ipv4 == null

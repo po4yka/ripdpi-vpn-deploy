@@ -19,6 +19,11 @@ output "admin_user" {
   value = var.admin_user
 }
 
+output "ssh_port" {
+  value       = var.ssh_port
+  description = "Effective SSH listener port."
+}
+
 output "server_hostname" {
   value = scaleway_instance_server.vpn.name
 }

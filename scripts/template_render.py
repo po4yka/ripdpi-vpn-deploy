@@ -23,6 +23,7 @@ SYNTHETIC_FACTS = {
     "ansible_distribution": "Debian",
     "ansible_distribution_release": "trixie",
     "allowed_ssh_cidrs": ["198.51.100.42/32"],
+    "firewall_effective_ssh_ports": [22],
 }
 
 

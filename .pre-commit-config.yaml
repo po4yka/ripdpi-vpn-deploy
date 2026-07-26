@@ -24,7 +24,7 @@ repos:
     rev: v26.4.0
     hooks:
       - id: ansible-lint
-        entry: bash -c 'cd ansible && exec ansible-lint'
+        entry: env ANSIBLE_CONFIG=ansible/ansible.cfg ansible-lint ansible
         pass_filenames: false
         files: \.(yaml|yml)$
 

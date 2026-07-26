@@ -67,7 +67,11 @@ $EDITOR terraform/providers/upcloud/environments/prod.tfvars
 
 Required: `zone`, `plan`, `storage_template`, `admin_ssh_public_key`
 (paste content of `~/.ssh/vpn_deploy.pub`), `allowed_ssh_cidrs` (your
-operator IP, **never** `0.0.0.0/0`).
+operator IP, **never** `0.0.0.0/0`). `ssh_port` defaults to `22`; changing it
+updates cloud-init, the provider firewall, rendered `ansible_port`, wait logic,
+and the on-host nftables allowlist together. It is a creation-time setting:
+changing it on an existing node requests replacement and `prevent_destroy`
+blocks an accidental in-place migration. Use blue-green recreation.
 
 The default full-stack port layout is:
 

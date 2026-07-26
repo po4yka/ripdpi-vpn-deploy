@@ -8,6 +8,7 @@ image       = "ubuntu_noble"
 
 admin_user           = "deploy"
 admin_ssh_public_key = "ssh-ed25519 AAAA_STAGING_PUBLIC_KEY operator@laptop"
+ssh_port             = 22
 allowed_ssh_cidrs    = ["203.0.113.42/32"]
 
 enable_hysteria = true

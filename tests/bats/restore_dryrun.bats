@@ -91,7 +91,8 @@ teardown() {
     ANSIBLE_TAGS=baseline,firewall,backup
   assert_success
   assert_output --partial 'VPN_SECRETS_FILE=/tmp/restore-test/vpn-prod.secrets.yaml'
-  assert_output --partial 'ansible-playbook ansible/playbooks/site.yml --tags "baseline,firewall,backup"'
+  assert_output --partial 'ansible-playbook ansible/playbooks/site.yml'
+  assert_output --partial '--tags "baseline,firewall,backup"'
 }
 
 @test "path-b: STUB_LOG is empty (no destructive stub calls)" {

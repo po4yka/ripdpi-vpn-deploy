@@ -38,7 +38,9 @@
     security_audit_clamav_status: >-
       {{ security_audit_clamav_requested if (security_audit.clamav | default(false)) else 'disabled by default' }}
   ansible.builtin.copy:
-    dest: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}/deferred-controls.txt"
+    dest: >-
+      {{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit')
+      }}/{{ security_audit_run_id }}/deferred-controls.txt
     owner: root
     group: root
     mode: "0640"
@@ -59,4 +61,7 @@
 
 - name: Report security audit output path
   ansible.builtin.debug:
-    msg: "security audit reports written to {{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}"
+    msg: >-
+      security audit reports written to
+      {{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit')
+      }}/{{ security_audit_run_id }}

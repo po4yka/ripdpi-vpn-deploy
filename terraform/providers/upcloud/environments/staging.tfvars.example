@@ -5,11 +5,12 @@ server_name = "vpn-staging-fi1"
 zone        = "fi-hel1"
 plan        = "1xCPU-1GB"
 
-storage_template = "REPLACE_WITH_TEMPLATE_UUID"
+storage_template = "UPCLOUD_TEMPLATE_UUID"
 storage_size_gb  = 20
 
 admin_user           = "deploy"
-admin_ssh_public_key = "ssh-ed25519 AAAA_REPLACE_WITH_STAGING_KEY operator@laptop"
+admin_ssh_public_key = "ssh-ed25519 AAAA_STAGING_PUBLIC_KEY operator@laptop"
+ssh_port             = 22
 
 allowed_ssh_cidrs = ["203.0.113.42/32"]
 

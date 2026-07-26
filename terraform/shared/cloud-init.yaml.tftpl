@@ -31,6 +31,7 @@ write_files:
     owner: root:root
     permissions: "0644"
     content: |
+      Port ${ssh_port}
       PasswordAuthentication no
       KbdInteractiveAuthentication no
       PermitRootLogin no
