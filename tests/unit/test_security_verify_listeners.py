@@ -103,6 +103,7 @@ def _verify_listeners(
     ss_output: str,
     *,
     nft_output: str | None = None,
+    ssh_port: int = 22,
 ) -> subprocess.CompletedProcess[str]:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir(exist_ok=True)
@@ -118,7 +119,13 @@ def _verify_listeners(
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
     }
     return subprocess.run(
-        [str(VERIFIER), "--contract-b64", encoded_contract],
+        [
+            str(VERIFIER),
+            "--contract-b64",
+            encoded_contract,
+            "--ssh-port",
+            str(ssh_port),
+        ],
         capture_output=True,
         env=env,
         text=True,
@@ -137,6 +144,9 @@ def test_playbook_runs_repository_listener_verifier() -> None:
 
     assert "ansible.builtin.script" in task
     assert "scripts/verify-public-listeners.py" in task["ansible.builtin.script"]["cmd"]
+    assert "--ssh-port {{ security_effective_ssh_ports[0] }}" in task[
+        "ansible.builtin.script"
+    ]["cmd"]
     assert task["failed_when"] == "security_unexpected_public_listeners.rc != 0"
 
 
@@ -331,6 +341,44 @@ def test_source_scoped_ssh_rule_is_allowed(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_custom_source_scoped_ssh_port_is_allowed(tmp_path: Path) -> None:
+    result = _verify_listeners(
+        tmp_path,
+        [],
+        "",
+        nft_output=_nft_document(_nft_rule("tcp", 2222, source_restricted=True)),
+        ssh_port=2222,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_custom_unrestricted_ssh_port_is_rejected(tmp_path: Path) -> None:
+    result = _verify_listeners(
+        tmp_path,
+        [],
+        "",
+        nft_output=_nft_document(_nft_rule("tcp", 2222)),
+        ssh_port=2222,
+    )
+
+    assert result.returncode == 1
+    assert result.stdout == "unexpected unrestricted firewall tcp 2222\n"
+
+
+def test_default_port_is_not_exempt_when_sshd_uses_custom_port(tmp_path: Path) -> None:
+    result = _verify_listeners(
+        tmp_path,
+        [],
+        "",
+        nft_output=_nft_document(_nft_rule("tcp", 22, source_restricted=True)),
+        ssh_port=2222,
+    )
+
+    assert result.returncode == 1
+    assert result.stdout == "unexpected firewall tcp 22\n"
 
 
 def test_baseline_loopback_conntrack_and_icmp_accepts_are_allowed(tmp_path: Path) -> None:

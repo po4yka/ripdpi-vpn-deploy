@@ -24,6 +24,11 @@ the rendered file.
 
 **Provider listener contract is fail-closed** — inventory carries Terraform's resolved `public_listeners` contract. `site.yml` rejects any mismatch with the runtime manifest before roles run; the firewall role and `security-verify.yml` use that same contract rather than maintaining port lists.
 
+**SSH listener verification uses effective state** — `security-verify.yml`
+derives the single active port from `sshd -T` and passes it to the live
+firewall verifier. Port 22 has no special-case exemption when sshd uses a
+custom listener.
+
 **`molecule` for testing roles, full-stack for site.yml** — `molecule-test
 ROLE=<name>` runs in a Docker container per role. `molecule-full-stack`
 exercises `site.yml` end-to-end.

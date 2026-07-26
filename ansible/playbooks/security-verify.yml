@@ -44,6 +44,24 @@
           - "not (_security_controls.ssh_strict | default(true) | bool) or 'permittunnel no' in (security_sshd_t.stdout | lower)"
           - "not (_security_controls.ssh_strict | default(true) | bool) or 'permitemptypasswords no' in (security_sshd_t.stdout | lower)"
 
+    - name: Select effective SSH listener port
+      ansible.builtin.set_fact:
+        security_effective_ssh_ports: >-
+          {{
+            security_sshd_t.stdout_lines
+            | select('match', '^port [0-9]+$')
+            | map('regex_replace', '^port ', '')
+            | map('int')
+            | list
+          }}
+
+    - name: Effective SSH listener port is unambiguous
+      ansible.builtin.assert:
+        that:
+          - security_effective_ssh_ports | length == 1
+          - security_effective_ssh_ports[0] | int >= 1
+          - security_effective_ssh_ports[0] | int <= 65535
+
     - name: Sysctl hardening values are applied
       ansible.builtin.command:
         cmd: "sysctl -n {{ item.key }}"
@@ -114,6 +132,7 @@
         cmd: >-
           {{ playbook_dir }}/../../scripts/verify-public-listeners.py
           --contract-b64 {{ terraform_public_listeners_b64 }}
+          --ssh-port {{ security_effective_ssh_ports[0] }}
       register: security_unexpected_public_listeners
       changed_when: false
       failed_when: security_unexpected_public_listeners.rc != 0

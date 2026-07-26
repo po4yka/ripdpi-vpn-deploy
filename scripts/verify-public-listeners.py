@@ -56,6 +56,16 @@ def _selector(protocol: object, port: object, port_range: object) -> PortSelecto
     return PortSelector(protocol, start, end)
 
 
+def _port(value: str) -> int:
+    try:
+        port = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("port must be an integer") from exc
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("port must be between 1 and 65535")
+    return port
+
+
 def _decode_contract(encoded: str) -> dict[PortSelector, str]:
     try:
         raw = base64.b64decode(encoded, validate=True)
@@ -245,10 +255,11 @@ def _violations(
     expected: dict[PortSelector, str],
     firewall: list[FirewallAcceptRule],
     sockets: set[tuple[str, int]],
+    ssh_port: int,
 ) -> list[str]:
     violations: list[str] = []
     conforming: dict[PortSelector, int] = {selector: 0 for selector in expected}
-    ssh = PortSelector("tcp", 22, 22)
+    ssh = PortSelector("tcp", ssh_port, ssh_port)
     for rule in firewall:
         selector = rule.selector
         if selector is None:
@@ -264,7 +275,7 @@ def _violations(
                 or rule.input_restricted
                 or rule.unknown_predicate
             ):
-                violations.append("unexpected unrestricted firewall tcp 22")
+                violations.append(f"unexpected unrestricted firewall {ssh.label}")
             continue
         if selector not in expected:
             violations.append(f"unexpected firewall {selector.label}")
@@ -304,6 +315,7 @@ def _violations(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--contract-b64", required=True)
+    parser.add_argument("--ssh-port", required=True, type=_port)
     args = parser.parse_args()
     try:
         expected = _decode_contract(args.contract_b64)
@@ -315,7 +327,7 @@ def main() -> int:
         print(f"verify-public-listeners: {exc}", file=sys.stderr)
         return 2
 
-    violations = _violations(expected, firewall, sockets)
+    violations = _violations(expected, firewall, sockets, args.ssh_port)
     if violations:
         print("\n".join(violations))
         return 1
