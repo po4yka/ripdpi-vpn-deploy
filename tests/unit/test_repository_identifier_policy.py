@@ -1,5 +1,7 @@
-"""Keep carrier/geography and external knowledge-store identifiers out of git."""
+"""Keep sensitive operator identifiers and forbidden labels out of git."""
 
+import ipaddress
+import re
 import subprocess
 from pathlib import Path
 
@@ -54,3 +56,21 @@ def test_tracked_files_do_not_contain_forbidden_identifiers():
             if identifier in content:
                 offenders.append(f"{relative}: {identifier}")
     assert not offenders, "forbidden repository identifiers:\n" + "\n".join(offenders)
+
+
+def test_physical_acceptance_evidence_contains_no_public_ip_literals():
+    research = (ROOT / "docs" / "IOS-SPLIT-ROUTING-RESEARCH.md").read_text()
+    evidence = research.split("## Physical acceptance matrix", 1)[1].split(
+        "## Recommended repository work", 1
+    )[0]
+    public_addresses = []
+    for candidate in re.findall(r"`([^`]+)`", evidence):
+        try:
+            address = ipaddress.ip_address(candidate)
+        except ValueError:
+            continue
+        if address.is_global:
+            public_addresses.append(candidate)
+
+    assert "<redacted-address>" in evidence
+    assert not public_addresses, "public addresses in tracked evidence"
