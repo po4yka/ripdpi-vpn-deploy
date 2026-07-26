@@ -48,10 +48,7 @@ def atomic(path: Path, raw: bytes) -> None:
         os.replace(name, path)
         sync_parent(path)
     finally:
-        try:
-            os.unlink(name)
-        except FileNotFoundError:
-            pass
+        Path(name).unlink(missing_ok=True)
 
 
 def sync_parent(path: Path) -> None:

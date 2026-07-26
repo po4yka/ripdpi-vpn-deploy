@@ -159,7 +159,7 @@ def extract_vendor(archive: tarfile.TarFile, destination: Path) -> None:
                 shutil.copyfileobj(source, output, length=1024 * 1024)
         finally:
             source.close()
-        os.chmod(target, 0o555 if member.mode & 0o111 else 0o444)
+        os.chmod(target, 0o500 if member.mode & 0o111 else 0o400)
 
 
 def git(*args: str, cwd: Path | None = None) -> str:
@@ -214,21 +214,23 @@ def freeze_tree(root: Path) -> None:
         if stat.S_ISREG(info.st_mode) and info.st_nlink != 1:
             raise ValueError("toolchain tree contains a hard-linked file")
         mode = (
-            0o555
+            0o500
             if stat.S_ISDIR(info.st_mode)
-            else (0o555 if info.st_mode & 0o111 else 0o444)
+            else (0o500 if info.st_mode & 0o111 else 0o400)
         )
         os.chown(path, ROOT_UID, ROOT_GID, follow_symlinks=False)
         os.chmod(path, mode)
 
 
-def validate_tree_metadata(root: Path) -> None:
+def validate_tree_metadata(root: Path, *, owner_only: bool = True) -> None:
+    directory_mode = 0o500 if owner_only else 0o555
+    file_modes = {0o400, 0o500} if owner_only else {0o444, 0o555}
     root_info = root.lstat()
     if (
         not stat.S_ISDIR(root_info.st_mode)
         or root_info.st_uid != ROOT_UID
         or root_info.st_gid != ROOT_GID
-        or stat.S_IMODE(root_info.st_mode) != 0o555
+        or stat.S_IMODE(root_info.st_mode) != directory_mode
     ):
         raise ValueError("existing toolchain root metadata is invalid")
     for path in sorted(root.rglob("*"), key=lambda value: value.as_posix()):
@@ -239,9 +241,9 @@ def validate_tree_metadata(root: Path) -> None:
             raise ValueError("toolchain tree contains an unsupported entry")
         mode = stat.S_IMODE(info.st_mode)
         mode_is_valid = (
-            mode == 0o555
+            mode == directory_mode
             if stat.S_ISDIR(info.st_mode)
-            else mode in {0o444, 0o555} and info.st_nlink == 1
+            else mode in file_modes and info.st_nlink == 1
         )
         if info.st_uid != ROOT_UID or info.st_gid != ROOT_GID or not mode_is_valid:
             raise ValueError("existing toolchain entry metadata is invalid")
@@ -268,8 +270,10 @@ def tree_digest(root: Path) -> str:
     return state.hexdigest()
 
 
-def validate_existing(target: Path, inputs: dict[str, str]) -> dict[str, str]:
-    validate_tree_metadata(target)
+def validate_existing(
+    target: Path, inputs: dict[str, str], *, owner_only: bool = True
+) -> dict[str, str]:
+    validate_tree_metadata(target, owner_only=owner_only)
     manifest_path = target / "manifest.json"
     if manifest_path.is_symlink() or not manifest_path.is_file():
         raise ValueError("existing toolchain lacks a manifest")
@@ -293,6 +297,20 @@ def validate_existing(target: Path, inputs: dict[str, str]) -> dict[str, str]:
     for name, expected in binaries.items():
         if not SHA256.fullmatch(expected) or digest(target / "bin" / name) != expected:
             raise ValueError("existing toolchain binary digest mismatch")
+    return binaries
+
+
+def harden_legacy_tree(target: Path, inputs: dict[str, str]) -> dict[str, str]:
+    binaries = validate_existing(target, inputs, owner_only=False)
+    manifest_path = target / "manifest.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    freeze_tree(target)
+    manifest["treeSha256"] = tree_digest(target)
+    os.chmod(manifest_path, 0o600)
+    manifest_path.write_bytes(canonical(manifest))
+    os.chmod(manifest_path, 0o400)
+    if validate_existing(target, inputs) != binaries:
+        raise ValueError("hardened toolchain binary manifest changed")
     return binaries
 
 
@@ -351,7 +369,7 @@ def active_toolchain_is_valid(target: Path, binaries: dict[str, str]) -> bool:
         ):
             return False
         for name, expected in binaries.items():
-            verify_binary(ACTIVE_LINK / name, expected, 0o555)
+            verify_binary(ACTIVE_LINK / name, expected, 0o500)
         return all(valid_command_link(name) for name in BINARY_NAMES)
     except (OSError, ValueError):
         return False
@@ -406,7 +424,11 @@ def build_locked(args: argparse.Namespace) -> dict[str, object]:
     if os.path.lexists(target):
         if target.is_symlink() or not target.is_dir():
             raise ValueError("existing toolchain target is unsafe")
-        binaries = validate_existing(target, inputs)
+        try:
+            binaries = validate_existing(target, inputs)
+        except ValueError:
+            binaries = harden_legacy_tree(target, inputs)
+            changed = True
     else:
         staging = Path(tempfile.mkdtemp(prefix=".build-", dir=BASE))
         try:
@@ -433,7 +455,7 @@ def build_locked(args: argparse.Namespace) -> dict[str, object]:
                 binary_dir / "awg-quick",
             )
             for path in binary_dir.iterdir():
-                os.chmod(path, 0o755)
+                os.chmod(path, 0o700)
             binaries = {name: digest(binary_dir / name) for name in BINARY_NAMES}
             manifest = {
                 "schemaVersion": MANIFEST_SCHEMA,
@@ -443,10 +465,10 @@ def build_locked(args: argparse.Namespace) -> dict[str, object]:
             (staging / "manifest.json").write_bytes(b"{}\n")
             freeze_tree(staging)
             manifest["treeSha256"] = tree_digest(staging)
-            os.chmod(staging / "manifest.json", 0o644)
+            os.chmod(staging / "manifest.json", 0o600)
             (staging / "manifest.json").write_bytes(canonical(manifest))
             os.chown(staging / "manifest.json", ROOT_UID, ROOT_GID)
-            os.chmod(staging / "manifest.json", 0o444)
+            os.chmod(staging / "manifest.json", 0o400)
             os.replace(staging, target)
             changed = True
         finally:

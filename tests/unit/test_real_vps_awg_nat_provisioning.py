@@ -392,30 +392,76 @@ def test_existing_toolchain_reuse_rejects_content_and_mode_tampering(
         "binaries": binaries,
         "treeSha256": module.tree_digest(target),
     }
-    (target / "manifest.json").chmod(0o644)
+    (target / "manifest.json").chmod(0o600)
     (target / "manifest.json").write_bytes(module.canonical(manifest))
-    (target / "manifest.json").chmod(0o444)
+    (target / "manifest.json").chmod(0o400)
     assert module.validate_existing(target, inputs) == binaries
 
     original_manifest = (target / "manifest.json").read_bytes()
     manifest["treeSha256"] = "f" * 64
+    (target / "manifest.json").chmod(0o600)
+    (target / "manifest.json").write_bytes(module.canonical(manifest))
+    (target / "manifest.json").chmod(0o400)
+    with pytest.raises(ValueError, match="modified"):
+        module.validate_existing(target, inputs)
+    (target / "manifest.json").chmod(0o600)
+    (target / "manifest.json").write_bytes(original_manifest)
+    (target / "manifest.json").chmod(0o400)
+
+    (target / "bin/awg").chmod(0o600)
+    with pytest.raises(ValueError, match="metadata"):
+        module.validate_existing(target, inputs)
+    (target / "bin/awg").chmod(0o700)
+    (target / "bin/awg").write_bytes(b"tampered")
+    (target / "bin/awg").chmod(0o500)
+    with pytest.raises(ValueError, match="modified"):
+        module.validate_existing(target, inputs)
+
+
+def test_existing_legacy_toolchain_permissions_are_hardened(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_toolchain()
+    monkeypatch.setattr(module, "ROOT_UID", os.geteuid())
+    monkeypatch.setattr(module, "ROOT_GID", os.getegid())
+    target = tmp_path / "toolchain"
+    (target / "bin").mkdir(parents=True)
+    for name in module.BINARY_NAMES:
+        binary = target / "bin" / name
+        binary.write_bytes(name.encode())
+        binary.chmod(0o755)
+    (target / "source").write_bytes(b"source")
+    (target / "manifest.json").write_bytes(b"{}\n")
+    for path in [*target.rglob("*"), target]:
+        mode = 0o555 if path.is_dir() or path.stat().st_mode & 0o111 else 0o444
+        path.chmod(mode)
+    inputs = {
+        "goBundleSha256": "a" * 64,
+        "goCommit": "b" * 40,
+        "toolsBundleSha256": "c" * 64,
+        "toolsCommit": "d" * 40,
+        "vendorSha256": "e" * 64,
+    }
+    binaries = {
+        name: module.digest(target / "bin" / name) for name in module.BINARY_NAMES
+    }
+    manifest = {
+        "schemaVersion": module.MANIFEST_SCHEMA,
+        "inputs": inputs,
+        "binaries": binaries,
+        "treeSha256": module.tree_digest(target),
+    }
     (target / "manifest.json").chmod(0o644)
     (target / "manifest.json").write_bytes(module.canonical(manifest))
     (target / "manifest.json").chmod(0o444)
-    with pytest.raises(ValueError, match="modified"):
-        module.validate_existing(target, inputs)
-    (target / "manifest.json").chmod(0o644)
-    (target / "manifest.json").write_bytes(original_manifest)
-    (target / "manifest.json").chmod(0o444)
 
-    (target / "bin/awg").chmod(0o644)
-    with pytest.raises(ValueError, match="metadata"):
-        module.validate_existing(target, inputs)
-    (target / "bin/awg").chmod(0o755)
-    (target / "bin/awg").write_bytes(b"tampered")
-    (target / "bin/awg").chmod(0o555)
-    with pytest.raises(ValueError, match="modified"):
-        module.validate_existing(target, inputs)
+    assert module.harden_legacy_tree(target, inputs) == binaries
+    assert stat.S_IMODE(target.stat().st_mode) == 0o500
+    assert stat.S_IMODE((target / "bin").stat().st_mode) == 0o500
+    assert stat.S_IMODE((target / "source").stat().st_mode) == 0o400
+    assert stat.S_IMODE((target / "manifest.json").stat().st_mode) == 0o400
+    for name in module.BINARY_NAMES:
+        assert stat.S_IMODE((target / "bin" / name).stat().st_mode) == 0o500
 
 
 def test_digest_keyed_build_activates_complete_clean_host_command_set(
@@ -498,7 +544,7 @@ def test_digest_keyed_build_activates_complete_clean_host_command_set(
     assert first["changed"] is True
     target = module.BASE / first["toolchainId"]
     assert target.is_dir()
-    assert stat.S_IMODE(target.stat().st_mode) == 0o555
+    assert stat.S_IMODE(target.stat().st_mode) == 0o500
     assert set(first["binaries"]) == set(module.BINARY_NAMES)
     assert module.ACTIVE_LINK.is_symlink()
     for name in module.BINARY_NAMES:
@@ -533,7 +579,7 @@ def test_activation_failure_preserves_previous_complete_toolchain(
         for name in module.BINARY_NAMES:
             path = target / "bin" / name
             path.write_bytes(marker + name.encode())
-            path.chmod(0o555)
+            path.chmod(0o500)
             if target == target_one:
                 binaries[name] = module.digest(path)
     module.activate_toolchain(target_one, binaries)

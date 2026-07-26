@@ -123,9 +123,11 @@ pinned `amneziawg-go` checkout and its SHA-256 through
 `real_vps_awg_nat_awg_go_vendor_archive*`. Generate the vendor tree on an
 operator-controlled machine at the pinned commit. The sentinel verifies all
 three archives, builds inside a network namespace with no network interface,
-and stores the result under a digest-keyed read-only toolchain directory. An
-existing toolchain is reused only after its manifest, ownership, modes, tree
-digest, and command digests all validate. `amneziawg-go`, `awg`, and
+and stores the result under a digest-keyed root-only, read-only toolchain
+directory. An existing toolchain is reused only after its manifest, ownership,
+modes, tree digest, and command digests all validate. Legacy read-only
+toolchains are integrity-checked before their permissions are hardened in
+place. `amneziawg-go`, `awg`, and
 `awg-quick` are activated together through one versioned `active-bin` symlink
 while holding the recurring lane's lock, so a timer cannot observe a mixed
 toolchain.

@@ -8,6 +8,7 @@ import ipaddress
 import selectors
 import socket
 import time
+from contextlib import suppress
 from threading import Event
 
 MAX_MESSAGE = 4096
@@ -48,10 +49,8 @@ def close_connection(
     selector: selectors.BaseSelector,
     connection: socket.socket,
 ) -> None:
-    try:
+    with suppress(KeyError):
         selector.unregister(connection)
-    except KeyError:
-        pass
     connection.close()
 
 
