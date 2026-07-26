@@ -1091,6 +1091,63 @@ def test_rollback_without_transaction_is_idempotent(
     assert receipt["peerConfigSha256"] == module.peer_digest(b"B" * 43 + b"=")
 
 
+@pytest.mark.parametrize("completed_writes", (1, 2))
+def test_prepare_recovers_crash_before_transaction_receipt(
+    completed_writes: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_server()
+    module.STATE = tmp_path / "state"
+    module.STATE.mkdir()
+    module.CONFIG = tmp_path / "awg.conf"
+    module.CONFIG.write_bytes(
+        b"[Interface]\n# BEGIN RIPDPI AWG EVIDENCE PEER\n[Peer]\n"
+        + b"PublicKey = "
+        + b"A" * 43
+        + b"=\nPresharedKey = "
+        + b"B" * 43
+        + b"=\nAllowedIPs = 10.66.77.2/32\n"
+        + b"# END RIPDPI AWG EVIDENCE PEER\n"
+    )
+    monkeypatch.setattr(
+        module,
+        "source_policy",
+        lambda: {"clientAllowedIps": "10.66.77.2/32"},
+    )
+    payload = module.canonical(
+        {
+            "clientPublicKey": "C" * 43 + "=",
+            "presharedKey": "D" * 43 + "=",
+            "allowedIps": "10.66.77.2/32",
+            "rotatedClientConfigSha256": "e" * 64,
+        }
+    )
+    real_atomic_write = module.atomic_write
+    writes = 0
+
+    def crash_after_write(path: Path, raw: bytes, mode: int = 0o600) -> None:
+        nonlocal writes
+        real_atomic_write(path, raw, mode)
+        writes += 1
+        if writes == completed_writes:
+            raise OSError("simulated prepare crash")
+
+    monkeypatch.setattr(module, "atomic_write", crash_after_write)
+    with pytest.raises(OSError, match="simulated prepare crash"):
+        module.rotation("prepare", payload)
+
+    monkeypatch.setattr(module, "atomic_write", real_atomic_write)
+    assert not (module.STATE / "transaction.json").exists()
+    assert module.rotation("reconcile", b"") == {"state": "idle"}
+    assert not (module.STATE / "previous.conf").exists()
+    assert not (module.STATE / "pending.conf").exists()
+
+    receipt = module.rotation("prepare", payload)
+    assert receipt["rotatedClientConfigSha256"] == "e" * 64
+    assert (module.STATE / "previous.conf").is_file()
+    assert (module.STATE / "pending.conf").is_file()
+    assert (module.STATE / "transaction.json").is_file()
+
+
 def test_server_reconcile_observes_commit_before_ack_cleanup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -38,6 +38,8 @@ root-only variables file, and only then publishes source SHA/digest state.
 
 - Re-running the role does not overwrite rotated client/server state. Resetting
   credentials is an explicit maintenance operation, not convergence.
+- A prepare crash before its durable receipt leaves no transaction: reconcile
+  and the next prepare discard those uncommitted staging files before acting.
 - The offline bundle must be built from a clean committed HEAD and supplied as
   a private Ansible variable; a moving branch or remote checkout is rejected.
 - Never bypass `VPN_SECRETS_FILE` with a plaintext extra-vars secrets file;

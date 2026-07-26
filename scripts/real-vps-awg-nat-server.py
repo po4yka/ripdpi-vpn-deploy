@@ -227,6 +227,21 @@ def remove_rotation_files(*paths: Path) -> None:
         sync_parent(paths[0])
 
 
+def recover_orphaned_prepare(
+    pending: Path,
+    previous: Path,
+    transaction: Path,
+    rollback_intent: Path,
+) -> bool:
+    """Discard staging files that cannot belong to a durable transaction."""
+    if transaction.exists() or rollback_intent.exists():
+        return False
+    if not pending.exists() and not previous.exists():
+        return False
+    remove_rotation_files(pending, previous)
+    return True
+
+
 def finish_server_rollback(
     *,
     receipt: dict[str, str],
@@ -530,6 +545,7 @@ def rotation(action: str, stdin: bytes) -> dict[str, str]:
     transaction = STATE / "transaction.json"
     rollback_intent = STATE / "rollback-intent.json"
     outcome = STATE / "rotation-outcome.json"
+    recover_orphaned_prepare(pending, previous, transaction, rollback_intent)
     if action == "prepare":
         if pending.exists() or transaction.exists() or rollback_intent.exists():
             raise ValueError("rotation transaction already exists")
