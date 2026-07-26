@@ -36,10 +36,15 @@ def _clean_repo(tmp_path: Path) -> Path:
     return repo
 
 
-def test_synthetic_render_covers_task_local_awg_nat_template_vars() -> None:
+def test_synthetic_render_covers_task_local_awg_nat_template_vars(tmp_path: Path) -> None:
+    xray = tmp_path / "xray"
+    xray.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    xray.chmod(0o700)
+
     completed = subprocess.run(
         ["python3", str(RENDER_CHECK)],
         cwd=ROOT,
+        env={**os.environ, "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}"},
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
