@@ -72,7 +72,15 @@ repos:
         entry: python3 scripts/check-xray-breaking-changes.py
         language: system
         pass_filenames: false
-        files: ^(docs/XRAY-RELEASE-LINE\.md|secrets/prod\.secrets\.example\.yaml|ansible/group_vars/.*\.yml|ansible/roles/.*/defaults/main\.yml|ansible/roles/xray/templates/config\.json\.j2|scripts/template_render\.py)$
+        files: >-
+          (?x)^(
+            docs/XRAY-RELEASE-LINE\.md |
+            secrets/prod\.secrets\.example\.yaml |
+            ansible/group_vars/.*\.yml |
+            ansible/roles/.*/defaults/main\.yml |
+            ansible/roles/xray/templates/config\.json\.j2 |
+            scripts/template_render\.py
+          )$
 
       - id: placeholder-scan
         name: placeholder-scan (no REPLACE_WITH_* outside schema/docs)
@@ -85,7 +93,14 @@ repos:
         entry: python3 scripts/render-snapshots.py
         language: system
         pass_filenames: false
-        files: ^(ansible/.*\.j2|ansible/group_vars/.*\.yml|ansible/roles/.*/defaults/main\.yml|secrets/prod\.secrets\.example\.yaml|tests/snapshot/golden/.*)$
+        files: >-
+          (?x)^(
+            ansible/.*\.j2 |
+            ansible/group_vars/.*\.yml |
+            ansible/roles/.*/defaults/main\.yml |
+            secrets/prod\.secrets\.example\.yaml |
+            tests/snapshot/golden/.*
+          )$
 
       - id: validate-secrets-schema
         name: validate-secrets (example schema conforms to secrets/schema.json)
