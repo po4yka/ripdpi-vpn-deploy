@@ -63,7 +63,7 @@ cause. (Note Hysteria2 also supports a non-443 UDP port via `hysteria_port`;
 moving to e.g. UDP/8443 sidesteps both edge friction and RU QUIC-throttling on
 UDP/443.)
 
-## UpCloud (primary, v1)
+## UpCloud
 
 UpCloud is the primary provider in v1. Resource shape:
 
@@ -148,7 +148,7 @@ token in a command line, a `tfvars` file, state, output, or log.
 - Object storage / "Managed Database" features are out of scope here.
 - API rate limit: low, but Terraform's default backoff handles it.
 
-## Hetzner (v1.1)
+## Hetzner
 
 Uses:
 
@@ -164,7 +164,7 @@ Uses:
   `tfvars` only for regions or plans where you explicitly do not want it.
 - Credentials come from `HCLOUD_TOKEN`.
 
-## Vultr (v1.1)
+## Vultr
 
 Uses:
 
@@ -183,7 +183,7 @@ Uses:
   evidence.
 - Optional secondary IPv4 allocation uses the provider's reboot path. After apply, `render-inventory.sh` blocks until the address appears on a guest interface over the primary SSH endpoint; API allocation alone is not sufficient evidence for publishing `honeypot_listen_addr`.
 
-## Scaleway (v1.2)
+## Scaleway
 
 Uses:
 

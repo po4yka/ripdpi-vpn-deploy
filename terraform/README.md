@@ -66,9 +66,12 @@ Each provider/environment contract is tied to the Ansible cohort deployed for th
 
 ## Providers
 
-| Provider | Status | Notes |
+| Provider | Lock version | Notes |
 |---|---|---|
-| `upcloud` | primary (v1) | Uses `UpCloudLtd/upcloud`. Region `fi-hel1` recommended for EU baseline. |
-| `hetzner` | implemented (v1.1) | Uses `hetznercloud/hcloud`. Export `HCLOUD_TOKEN` before planning. |
-| `vultr`   | implemented (v1.1) | Uses `vultr/vultr`. Export `TF_VAR_vultr_api_key` before planning. |
-| `scaleway` | implemented (v1.2) | Uses `scaleway/scaleway`. Export `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, and `SCW_DEFAULT_PROJECT_ID` before planning. |
+| `upcloud` | 5.41.0 | Uses `UpCloudLtd/upcloud`. |
+| `hetzner` | 1.66.1 | Uses `hetznercloud/hcloud`. Export `HCLOUD_TOKEN` before planning. |
+| `vultr` | 2.32.0 | Uses `vultr/vultr`. Export `TF_VAR_vultr_api_key` before planning. |
+| `scaleway` | 2.78.0 | Uses `scaleway/scaleway`. Export `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, and `SCW_DEFAULT_PROJECT_ID` before planning. |
+
+The committed `.terraform.lock.hcl` files are authoritative; this summary is
+updated when those locks change.

@@ -19,7 +19,7 @@ crossing.
   dynamic Chrome UA by default, replacing the static `Go-http-client`
   string. No config change required.
 
-## v26.3.27 — ~2026-03-27 (current Latest as of 2026-07-10)
+## v26.3.27 — 2026-03-27 (current Latest as of 2026-07-26)
 
 - **REALITY auto-probe defence** improvements.
 - **ECH full mode** — `echForceQuery` default changed to `"full"`.
@@ -81,6 +81,15 @@ crossing.
 - Production remains pinned to the GitHub-tagged Latest release. See
   `PQ-REALITY-ADOPTION.md` for the separate STAGING and PRODUCTION
   eligibility gates.
+
+## v26.7.11 — Pre-release as of 2026-07-26
+
+- The tag remains marked Pre-release and its release entry carries no
+  repository-adopted migration guidance.
+- It does not satisfy the stable-release or supported-client gates for VLESS
+  Encryption over REALITY.
+- Production therefore remains pinned to v26.3.27. Any evaluation belongs to
+  an isolated staging cohort and still passes the guards below.
 
 The fenced registry below is the machine-readable source for CI. `always`
 rules apply before an upgrade when the migration is backwards-compatible;

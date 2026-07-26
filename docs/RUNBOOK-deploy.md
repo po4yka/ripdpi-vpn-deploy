@@ -10,7 +10,7 @@ want to push the change to an existing VPS:
 
 ```bash
 export ANSIBLE_SSH_PRIVATE_KEY_FILE=~/.ssh/vpn_deploy
-make decrypt           # /tmp/vpn-prod.secrets.yaml
+make decrypt           # writes the configured $(SECRETS_FILE), mode 0600
 make validate          # gitleaks + lint must pass
 make dry-run           # ansible --check --diff — read every changed line
 make deploy

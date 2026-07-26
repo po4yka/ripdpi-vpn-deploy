@@ -18,7 +18,7 @@ P3 Research      Snell v4/v6 candidate (staging only; manual selector)
 | Terraform | VPS, firewall, SSH key, optional DNS/floating IP | `terraform/providers/<name>/*.tf` |
 | cloud-init | Admin user, SSH hardening, python3, marker file | `terraform/shared/cloud-init.yaml.tftpl` |
 | Ansible | All runtime state — packages, nftables, xray, nginx, hysteria, awg, monitoring, backup | `ansible/roles/*/` |
-| SOPS+age | Secrets at rest | `~/.config/vpn-provision/*.sops.yaml` (outside this repo) |
+| SOPS+age | Secrets at rest | external `~/.config/vpn-provision/` (default) or git-ignored `secrets/local/` |
 
 The boundary is strict: secrets never appear in Terraform state, Terraform
 variables, Terraform outputs, cloud-init `user_data`, ansible debug output,
@@ -76,7 +76,9 @@ Every node is replaceable. When an IP burns or a config drifts, do not
 hand-repair a snowflake server — recreate from `git + secrets +
 Terraform plan`. The state lives in two places:
 
-1. The encrypted secrets file at `~/.config/vpn-provision/`.
+1. The encrypted secrets file outside Git tracking: normally under
+   `~/.config/vpn-provision/`, or in the repository's git-ignored
+   `secrets/local/config/` operator layout.
 2. The Terraform state file (local and provider/`ENV` scoped; back it up out-of-band). `prod` uses the legacy `default` workspace, while other environments live in same-named Terraform workspaces.
 
 Lose the secrets file → you must rotate every credential.

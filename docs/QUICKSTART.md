@@ -59,7 +59,7 @@ public key for client URIs.
 ## 3. Fill out the Terraform vars
 
 ```bash
-cd ~/GitRep/vpn-deploy
+cd ~/GitRep/ripdpi-vpn-deploy
 cp terraform/providers/upcloud/environments/prod.tfvars.example \
    terraform/providers/upcloud/environments/prod.tfvars
 $EDITOR terraform/providers/upcloud/environments/prod.tfvars
@@ -105,7 +105,7 @@ search:
 make scan-targets CIDR=107.172.103.0/24
 make scan-targets CRAWL=https://launchpad.net/ubuntu/+archivemirrors
 
-# Re-validate any candidate end-to-end (8 steps including ASN cross-check).
+# Re-validate any candidate end-to-end (9 steps including ASN cross-check).
 TARGET=mirror.example.com:443 SERVER_NAMES=mirror.example.com \
   ./scripts/validate-reality-target.sh
 ```
@@ -128,13 +128,6 @@ obfuscation params, restic password.
 
 For a P0 host with an owned domain, the optional tactical self-steal mode replaces the external REALITY target with a loopback-only nginx TLS site. Assign the host to the `p0-self-steal` cohort, set `xray.target` to `127.0.0.1:8443`, set the only `xray.server_names` value and `reality_self_steal.server_name` to the same certificate hostname, and provide its public certificate chain and private key in `reality_self_steal.cert_pem` and `reality_self_steal.key_pem`. The role validates SAN, remaining lifetime, key match, listener collisions, and nginx syntax; disabling it removes its files and private listener. It never opens TCP/80 and does not change the public listener contract. DNS publication, production certificate issuance, and the live P0 switch remain explicit operator steps; use [the verified target research](REALITY-TARGET-RESEARCH-2026-07-12.md) as the promotion checklist.
 
-Add your first device:
-
-```bash
-SOPS_FILE=~/.config/vpn-provision/prod.secrets.yaml \
-./scripts/new-client.sh phone
-```
-
 ## 5. Encrypt the secrets file
 
 ```bash
@@ -147,12 +140,27 @@ shred -u ~/.config/vpn-provision/prod.secrets.yaml
 
 From now on edit only the encrypted file: `sops ~/.config/vpn-provision/prod.secrets.sops.yaml`.
 
+Add the first device only after encryption; `new-client.sh` edits a SOPS file
+and generates a distinct UUID, shortId, and peer key for that device:
+
+```bash
+SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml \
+./scripts/new-client.sh phone
+```
+
+The external directory above is the default. Operators who deliberately keep
+all deployment material next to the checkout may instead use the ignored
+`secrets/local/config/`, `secrets/local/runtime/`, and
+`secrets/local/clients/` directories and point `SOPS_FILE` and
+`SECRETS_FILE` at them from the ignored `.fleet.mk`. Git must never track
+anything below `secrets/local/`.
+
 ## 6. Deploy
 
 ```bash
 make init
 make validate          # must pass before continuing
-make decrypt           # writes /tmp/vpn-prod.secrets.yaml
+make decrypt           # writes the configured SECRETS_FILE, mode 0600
 make validate-target   # pre-deploy probe of REALITY target
 make plan
 make apply
@@ -162,7 +170,7 @@ make dry-run           # ansible --check --diff; review what will change
 make deploy            # real run
 make verify            # post-deploy gates
 make smoke-test        # end-to-end real-traffic test through each profile
-make clean             # shred /tmp/vpn-prod.secrets.yaml
+make clean             # shred the configured plaintext SECRETS_FILE
 ```
 
 If `dry-run` shows changes you didn't expect, stop and investigate. Don't
@@ -171,7 +179,7 @@ proceed to `deploy`.
 ## 7. Generate a client config
 
 For a full sing-box JSON with selector + urltest covering every enabled
-profile (recommended for sing-box / NekoBox / husi):
+profile (recommended for RIPDPI or a current sing-box-compatible client):
 
 ```bash
 make emit-singbox CLIENT=laptop > laptop.singbox.json
@@ -209,13 +217,13 @@ Add to your operator's cron / launchd:
 
 ```bash
 # Every 30 min — external IP reachability probe (catches IP burns early)
-*/30 * * * *  cd ~/GitRep/vpn-deploy && make burn-check >> /tmp/vpn-burn.log 2>&1
+*/30 * * * *  cd ~/GitRep/ripdpi-vpn-deploy && make burn-check >> /tmp/vpn-burn.log 2>&1
 
 # Every 2 min — authenticated protocol quorum (requires managed sentinels)
-*/2 * * * *   cd ~/GitRep/vpn-deploy && LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml GREEN_ENV=spare make watch-spare >> /tmp/vpn-spare.log 2>&1
+*/2 * * * *   cd ~/GitRep/ripdpi-vpn-deploy && LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml GREEN_ENV=spare make watch-spare >> /tmp/vpn-spare.log 2>&1
 
 # Daily — encrypted backup of TF state to ~/.config/vpn-provision/state-backups/
-@daily       cd ~/GitRep/vpn-deploy && make backup-state >> /tmp/vpn-tfstate-backup.log 2>&1
+@daily       cd ~/GitRep/ripdpi-vpn-deploy && make backup-state >> /tmp/vpn-tfstate-backup.log 2>&1
 ```
 
 The VPS itself runs a local watchdog every 5 minutes (the `watchdog`

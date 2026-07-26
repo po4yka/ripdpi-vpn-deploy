@@ -1,5 +1,11 @@
 # KB-drift audit
 
+> Historical audit snapshot. Line references and current-state verbs below
+> describe the audited revision, not necessarily the 2026-07-26 tree. Current
+> behavior is governed by role `CLAUDE.md` files, `docs/TESTING.md`, executable
+> guards, and their tests; use this document for provenance of past findings,
+> not as a live defect list.
+
 This audits every defensive and transport control in the repo (all `ansible/roles/*`, the DPI/transport validator & probe `scripts/*`, the `emit-*` client generators, and the Terraform edge firewall) against the governing concepts in the censorship-bypass knowledge base (KB). One auditor per control located the governing concept(s) and classified the control; **both the MATCHES-KB and the CONTRADICTS-KB verdicts were then adversarially cross-checked** against what the repo actually does, before standing. This is a **report-only** run — no code was changed. It generalizes two confirmed seed findings: the former probe-ratelimit grepping for a `rejected`/`graylist` token REALITY never emits (`vless-graylist-active-probing-defense`), and validate-reality-target ignoring the exact-match SNI asymmetry (`sni-exact-match-vs-suffix-classification-2026`).
 
 ## Summary

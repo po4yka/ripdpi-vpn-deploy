@@ -9,7 +9,8 @@ Reproducible VPN deployment automation for the multi-profile access stack
 (`P0` VLESS+REALITY+Vision → `P1` nginx+XHTTP direct → `P2` Hysteria2 +
 AmneziaWG). Layered architecture: Terraform owns cloud resources,
 cloud-init does first-boot bootstrap, Ansible owns runtime state, and
-secrets live outside the repo (SOPS + age).
+secrets stay outside Git tracking (SOPS + age), either in the external
+operator directory or under the repository's git-ignored `secrets/local/`.
 
 ## Layers
 
@@ -18,7 +19,7 @@ flowchart LR
     TF["Terraform<br/><sub>VPS · firewall · SSH key · DNS</sub>"]
     CI["cloud-init<br/><sub>admin user · SSH hardening · python3</sub>"]
     AN["Ansible<br/><sub>nftables · xray · nginx · hysteria · AWG · monitoring · backup</sub>"]
-    SC[("SOPS + age<br/><sub>secrets at rest, outside the repo</sub>")]
+    SC[("SOPS + age<br/><sub>secrets at rest, outside Git tracking</sub>")]
     VD["vpnd CLI<br/><sub>Rust convenience over Make / TF / Ansible / SOPS</sub>"]
 
     TF --> CI --> AN
@@ -42,7 +43,7 @@ a burned IP is replaced, not repaired.
 flowchart LR
     subgraph CL[client]
         direction TB
-        SB["sing-box / NekoBox<br/>selector + urltest"]
+        SB["RIPDPI / sing-box<br/>selector + urltest"]
         AC["AmneziaWG client"]
     end
     subgraph TSPU["RU internet · TSPU"]
@@ -78,12 +79,12 @@ flowchart LR
 
 ## Provider support
 
-| Provider | Status |
-|---|---|
-| UpCloud | primary (v1) |
-| Hetzner | implemented (v1.1) |
-| Vultr | implemented (v1.1) |
-| Scaleway | implemented (v1.2) |
+| Provider | Terraform root | Locked provider version |
+|---|---|---|
+| UpCloud | supported; P0 in `.fleet.mk.example` | 5.41.0 |
+| Hetzner | supported | 1.66.1 |
+| Vultr | supported; P2 in `.fleet.mk.example` | 2.32.0 |
+| Scaleway | supported; P1 in `.fleet.mk.example` | 2.78.0 |
 
 Switch via `make PROVIDER=upcloud …`.
 
@@ -159,7 +160,7 @@ Then:
    sing-box NaiveProxy padding leak, NaiveProxy v147 preamble).
 10. `docs/SUBSCRIPTION-PLANE.md` — subscription-delivery contract matrix.
 11. `docs/XRAY-RELEASE-LINE.md` — Xray-core 2026 release-line tracker
-    (v26.2.6 → v26.6.27) with breaking-change notes for upgrades.
+    (v26.2.6 → v26.7.11) with breaking-change notes for upgrades.
 12. `docs/PQ-REALITY-ADOPTION.md` — enforced HOLD/STAGING/PRODUCTION policy
     for VLESS Encryption (PQE) over REALITY.
 13. `docs/AWG-COHORTS.md` — AmneziaWG cohort obfuscation profiles by
@@ -207,7 +208,7 @@ Critical issues (active probing, IP burn, key leak) → private channel per
 # Core lifecycle
 make init        # terraform init for the chosen PROVIDER
 make validate    # fmt, validate, gitleaks, ansible-lint
-make decrypt     # sops --decrypt → /tmp/vpn-<env>.secrets.yaml
+make decrypt     # sops --decrypt → $(SECRETS_FILE), mode 0600
 make plan        # terraform plan -out=<env>.tfplan
 make apply       # terraform apply <env>.tfplan
 make inventory   # render Ansible inventory from terraform outputs
@@ -236,7 +237,7 @@ make install-hooks                        # one-time pre-commit setup
 # vpnd subcommands (run from repo root or set VPN_DEPLOY_ROOT)
 vpnd ai-docs [--out DIR]                  # emit repo docs as structured markdown for AI context
 make molecule-test ROLE=<name>            # role-level idempotence test
-make validate-target                      # pre-deploy REALITY target probe (8-step audit)
+make validate-target                      # pre-deploy REALITY target probe (9-step audit)
 make scan-targets CIDR=<range>            # discover REALITY targets via RealiTLScanner
 make security-audit                       # non-blocking host audit report
 PYINFRA_HOSTS=host make pyinfra-audit      # experimental read-only pyinfra audit
@@ -244,6 +245,10 @@ make smoke-test                           # end-to-end traffic test (real proxy 
 make snell-refinement BUNDLE=<json> CONFIG=<yaml> VANTAGE=<technical-id> # staging-only Snell payload/refinement matrix
 make blue-green GREEN_ENV=<name>          # orchestrate blue-green replacement
 ```
+
+`make help` is the canonical target inventory. `SOPS_FILE`, `SECRETS_FILE`,
+`HOSTS`, and `COHORTS` may be set in the git-ignored `.fleet.mk`; the default
+plaintext runtime path is `${XDG_RUNTIME_DIR:-$HOME/.cache}/vpn-provision/`.
 
 ## Hard rules
 

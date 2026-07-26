@@ -8,7 +8,7 @@ two-layer guard. Deprecation/removal of any role is a **recommendation only**.
 ## Context and problem
 
 The stated purpose is keeping a few non-technical family devices in RU online
-with minimal remote intervention. The repo has grown to **29 Ansible roles**
+with minimal remote intervention. The repo has grown to **31 Ansible roles**
 plus research-grade machinery (split-hop dual-role defense, probe-matrix,
 idle-cycle measurement, multi-operator). On a single operator the
 maintenance and silent-failure surface now scales super-linearly — against a
@@ -76,32 +76,41 @@ Final tier with each angle's vote. "Contested" = the three did not agree.
 | Role | (a) | (b) | (c) | **Final** | Deciding rationale |
 |---|---|---|---|---|---|
 | baseline | CORE | CORE | CORE | **CORE** | Always-on by contract; sysctl/SSH/time-sync (REALITY breaks on >90 s drift)/forwarding. Without it nothing converges and SSH recovery breaks. |
+| package_updates | CORE | CORE | CORE | **CORE** | Host-hardening control with an explicit no-auto-reboot policy; part of the maintained baseline surface. |
 | firewall | CORE | CORE | CORE | **CORE** | Always-on; nftables default-drop is the sole perimeter. No toggle. |
 | xray | CORE | CORE | CORE | **CORE** | P0 VLESS+REALITY+Vision (TCP/443), primary tunnel in every profile. Churn managed by `XRAY-RELEASE-LINE.md` pin+rollback. |
 | nginx-xhttp | CORE | CORE | CORE | **CORE** | P1 XHTTP direct (TCP/8443); first fallback when 443 is fingerprinted. No external dependency (CDN-DECISION ADR). |
 | hysteria | CORE | CORE | CORE | **CORE** | P2 UDP/QUIC; orthogonal transport when TCP is throttled. Reuses nginx cert. |
 | amneziawg | TACTICAL | CORE | CORE | **CORE** *(contested)* | (b)/(c) win: default-on in `all.yml`, declared P2 device-VPN baseline, a 4th transport shape. (a)'s build-tax point is *valid and real* (see burden table — it builds amneziawg-go from source at deploy) but doesn't outweigh baseline status. |
 | geodata | TACTICAL | CORE | CORE | **CORE** *(contested)* | (b)/(c) win: default-on; the firewall geo-block set depends on its feed — disabling it silently half-breaks the allowlist. License-tier death risk is real but has named fallbacks. |
-| monitoring | TACTICAL | CORE | CORE | **CORE** *(contested)* | (b)/(c) win: default-on; the *collection* layer (node_exporter on loopback, log rotation) is sound. AUDIT-SILENT-FAILURE targets the *alert* layer above it, not collection. A single operator must not fly blind. |
+| monitoring | TACTICAL | CORE | CORE | **CORE** *(contested)* | (b)/(c) win: default-on; local collection and textfile ingestion are sound. Threshold paging remains an explicit operator-owned boundary. A single operator must not fly blind. |
 | watchdog | CORE | CORE | CORE | **CORE** | Two-level local supervision prevents permanent process death. Authenticated public-path liveness and rotation are intentionally separate and use the quorum/OTP flow in `PROTOCOL-LIVENESS.md`. |
-| backup | CORE | CORE | CORE | **CORE** | restic+age is the only recovery path on burn. Integrity check is missing (AUDIT remediation) but that's a fix, not a demotion. |
+| backup | CORE | CORE | CORE | **CORE** | restic+age is the recovery path on burn; Molecule now exercises snapshots, isolated restores, cleanup, and remote-failure behavior. |
+| node_manifest | CORE | CORE | CORE | **CORE** | Records enabled listeners, security controls, and recovery metadata for verification and drift tooling. |
+| xray-runtime | CORE | CORE | CORE | **CORE** | Shared pinned Xray installation boundary; owns no listener itself. |
 | subscription-host | TACTICAL | CORE | CORE | **TACTICAL** *(contested)* | (a) wins: `enable_subscription_host: false` (default-off); ARCHITECTURE lists it "optional"; v1 delivery is `emit-singbox.sh` + scp. (b)/(c)'s "zero-intervention reconfig" is a later hardening aspiration, not the current baseline. |
-| policy-ratelimit | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; recently re-scoped to a routing-blackhole abuse limiter that cannot see external probes by design (AUDIT-SILENT-FAILURE + role README). Enable after the nftables-meter remediation. |
-| honeypot | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; AUDIT-SILENT-FAILURE found all four alert-chain links broken. Adds listeners (2222/9000/9100) with zero actionable signal until repaired. |
+| policy-ratelimit | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; re-scoped to a routing-blackhole abuse limiter that cannot see external REALITY probes by design. |
+| honeypot | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; bounded retention and alert-pipeline behavior are tested, but the extra public listeners remain situational. |
 | cdn-front | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; `CDN-DECISION.md` ADR rules CDN out as the RU baseline. Short-term IP-rotation cover only. |
 | naive | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; xcaddy from-source build + v147 preamble breakage. Enable only when HTTP/2+Chromium fingerprint is specifically the threat. |
 | warp-outbound | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; changes egress ASN (breaks burn-check/ASN-drift). Enable only when the upstream ASN path is burned. |
 | reality-self-steal | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; replaces a borrowed cross-ASN REALITY target with an operator-owned loopback TLS/H2 site without adding a public listener. Promotion still requires DNS, certificate, client SNI, and filtered-vantage evidence. |
-| split-hop-egress | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | Pilot/unconfirmed; Node A has no Ansible coverage (manual iptables); doubles the fleet; watchdog has no per-leg probe so B going down is silent. FOCI-2026 classifier is published but unconfirmed as deployed. |
+| intrusion_prevention | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Opt-in Fail2Ban SSH jail, enabled only by the host-hardening policy. |
+| security_audit | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Operator-run non-blocking report collection; it does not mutate or gate the data plane. |
+| split-hop-egress | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | Pilot/unconfirmed; paired ingress coverage now exists, but routing is scoped to probe users and no family production proof exists. |
 | hysteria-realm | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | sing-box **alpha** pin ("treat every minor bump as breaking"); P5 fallback; hole-punch failure is silent server-side. No family NAT-traversal need justifies alpha-upstream risk. |
 | dns-morph-bridge | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | No upstream release artifact (self-built binary); P4 fallback; opens public UDP/53 (reflection surface); only works if the client uses the bridge IP as resolver — not true for RU carrier-DNS family devices. |
+| probe-matrix-target | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | Five-listener owner-controlled measurement target, intentionally outside the family data plane. |
+| split-hop-ingress | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | Node A responder and nftables policy-routing half of the split-hop measurement topology. |
 | snell | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | sing-box 1.14 prerelease, no independent field evidence, and a measurement matrix that must remain outside automatic selection and rotation. |
+| real-vps-awg-nat | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | Three-host physical evidence lane for AWG/NAT behavior; never a family deployment role. |
+| cascade-ingress | EXCEPTION | EXCEPTION | EXCEPTION | **EXCEPTION** | Jurisdiction-scoped client termination scaffold; inert without governance, exact allowlist, and fresh attestation. |
+| cascade-egress | EXCEPTION | EXCEPTION | EXCEPTION | **EXCEPTION** | Private tunnel termination and forwarding half of the isolated exception topology. |
 
-**Tally:** CORE 10 · TACTICAL 7 · RESEARCH 4. This matches exactly what the
-repo already ships (all 10 CORE roles are default-on/always-on; all 7 TACTICAL
-and all 4 RESEARCH are default-off). The tiering therefore *ratifies and
-locks* the current default rather than changing behaviour — which is the point
-of the guard: keep it that way.
+**Tally:** CORE 13 · TACTICAL 9 · RESEARCH 7 · EXCEPTION 2. The canonical
+machine-readable source is `ansible/role-tiers.yml`; this table explains that
+manifest and must change with it. Gated roles remain absent from family
+profiles, while host-hardening CORE roles may retain their own opt-in policy.
 
 ## Per-doc classification (major docs)
 
@@ -117,7 +126,7 @@ of the guard: keep it that way.
 | SECRETS.md | CORE | SOPS+age discipline; governs the no-secrets-in-git hard rule. |
 | AGE-RECOVERY.md | CORE | Shamir age-key recovery — "the whole game"; lose shares = locked out. |
 | CDN-DECISION.md | CORE | ADR keeping CDN off the critical path; prevents an accidental fragile default. |
-| AUDIT-SILENT-FAILURE.md | CORE | The 8 silently-broken controls; required reading before trusting any signal. |
+| AUDIT-SILENT-FAILURE.md | CORE | Historical eight-finding audit with a maintained current-disposition table; required reading before trusting any signal. |
 | XRAY-RELEASE-LINE.md | CORE | Per-release breaking changes; required before any xray pin bump. |
 | CLIENT-NOTES.md | CORE | Client version pins / breakage classes; family devices can't self-diagnose. |
 | AWG-COHORTS.md | CORE | AWG obfuscation cohorts; wrong H1..H4 is a trainable fingerprint. Elevated because amneziawg is CORE. |
@@ -126,7 +135,7 @@ of the guard: keep it that way.
 | SUBSCRIPTION-HOST-SEPARATION.md | TACTICAL | Blast-radius isolation; v1 default is co-location. |
 | TRANSPORT-REACHABILITY-MATRIX.md | TACTICAL | Two-vantage diagnostic; used after a regression, not routinely. |
 | SPLIT-HOP-TOPOLOGY.md | RESEARCH | Pilot ADR; the adversary capability is unconfirmed at scale. |
-| RUNBOOK-split-hop-pilot.md | RESEARCH | Pilot runbook; Node A is manual, no Ansible coverage. |
+| RUNBOOK-split-hop-pilot.md | RESEARCH | Pilot runbook for paired ingress/egress roles; no family production evidence. |
 | PROBE-MATRIX.md | RESEARCH | Authenticated topology-aware DPI measurement; five public target listeners and controlled multi-vantage evidence are not family baseline features. |
 | RUNBOOK-idle-cycle-measurement.md | RESEARCH | DPI measurement workflow; its own probe traffic could become a signal. |
 
@@ -142,7 +151,7 @@ the recurring operator tax; silent-failure column is what bites unattended.
 
 | Role | Tier | Upstream | Churn | Burden / silent-failure risk |
 |---|---|---|---|---|
-| xray | CORE | XTLS/Xray-core (pinned v26.3.27; v26.5.3 pre-release) | **high** | Breaking schema changes between minors (echForceQuery removed; flow-mode silent break). Mandatory staging + secrets-schema migration per bump; ~monthly. Unavoidable — it is the baseline. |
+| xray | CORE | XTLS/Xray-core (production pin v26.3.27; v26.7.11 pre-release observed 2026-07-26) | **high** | Breaking schema changes between minors (echForceQuery removed; flow-mode silent break). Mandatory staging + secrets-schema migration per bump; ~monthly. Unavoidable — it is the baseline. |
 | hysteria-realm | RESEARCH | SagerNet/sing-box **alpha** | **high** | Pinned to an alpha; every minor bump is potentially breaking. Hole-punch failure silent server-side. Research-grade upstream with no stable line. |
 | snell | RESEARCH | SagerNet/sing-box **alpha** | **high** | Three staged wire/shape variants plus per-device credentials; promotion requires a stable release and repeated filtered-vantage evidence. |
 | dns-morph-bridge | RESEARCH | self-built binary (no release artifact) | **high** | Operator must build+host the binary and hand-update `binary_url`/sha256; plus a second daemon (unbound). Stale URL fails closed but the P4 path vanishes with no alert. |
@@ -152,7 +161,7 @@ the recurring operator tax; silent-failure column is what bites unattended.
 | warp-outbound | TACTICAL | Cloudflare WARP CLI (apt) | **medium** | apt-key rotation history; `warp-cli register` may need manual first-boot fix; IPv6 conflicts on some kernels. |
 | cdn-front | TACTICAL | Cloudflare IP ranges (daily) | **medium** | Origin-firewall sets rebuilt daily; CDN policy/PoP-TSPU change triggers a CDN-DECISION re-evaluation. |
 | hysteria | CORE | apernet/hysteria2 | **medium** | Pinned+sha256 (xray discipline). Main risk: cert renewal shared with nginx — one failure silently breaks P1 and P2. |
-| split-hop-egress | RESEARCH | plain WireGuard kernel (stable) | **low** | Upstream is stable; the burden is *operational*: Node A manual (no Ansible), no per-leg health probe (B down = silent on A), doubles VPS+secrets surface. |
+| split-hop ingress/egress | RESEARCH | plain WireGuard kernel (stable) | **low** | Both nodes are Ansible-managed; the burden is operational: two provider states and secret scopes, probe-user-only policy routing, and no general family-path per-leg health proof. |
 
 Reading: three of the four **high**-churn roles are RESEARCH or research-grade
 upstreams (hysteria-realm, dns-morph-bridge) — the guard keeps exactly these
@@ -174,11 +183,10 @@ tracker.
    without it. **Resolved CORE** because it is default-on and load-bearing for
    the perimeter; the license risk is a watch-item, not a demotion.
 
-3. **monitoring — CORE vs TACTICAL.** (a) points at AUDIT-SILENT-FAILURE (the
-   alert pipeline is broken). (b)/(c) separate the *collection* layer (sound,
-   local-only) from the *alert* layer (broken). **Resolved CORE** — flying
-   blind is worse than imperfect alerting; the broken alert path is a fix, not
-   a reason to drop log collection.
+3. **monitoring — CORE vs TACTICAL.** (a) points at the historical audit and
+   the remaining operator-owned paging boundary. (b)/(c) separate the sound,
+   local collection layer from external alert routing. **Resolved CORE** —
+   flying blind is worse than requiring explicit operator alert integration.
 
 4. **subscription-host — CORE vs TACTICAL.** (b)/(c) value zero-intervention
    config delivery to non-technical users; (a) notes v1 ships scp/QR and the
@@ -196,16 +204,15 @@ earns promotion with evidence.
 
 ## Ranked recommendation
 
-1. **Fix the CORE before adding anything.** The 10 CORE roles are the family's
-   lifeline, and `docs/AUDIT-SILENT-FAILURE.md` found several of them silently
-   degraded (watchdog transport-liveness, backup integrity, check-certs EC
-   modulus, burn-check freeze). A baseline with no real self-healing signal and
-   no certifiable backup is the top priority — ahead of any new capability.
-2. **Keep TACTICAL roles default-off and fix-before-enable.** policy-ratelimit
-   and honeypot must have their AUDIT-SILENT-FAILURE remediations landed before
-   they are turned on anywhere; the rest (cdn-front, naive, warp-outbound,
-   subscription-host) enable only on their specific trigger condition.
-3. **Quarantine RESEARCH.** split-hop-egress, hysteria-realm, dns-morph-bridge, and snell
+1. **Keep the CORE verified before adding anything.** The 13 CORE roles are
+   the family's lifeline. The historical silent-failure audit drove dedicated
+   transport liveness, real restore checks, certificate public-key matching,
+   and bounded reachability reporting; preserve those gates and their live
+   operator evidence before expanding the baseline.
+2. **Keep TACTICAL roles default-off and evidence-before-enable.** Enable each
+   only for its documented trigger, then verify its specific signal and
+   rollback path; tactical availability is not family-baseline proof.
+3. **Quarantine RESEARCH.** All seven RESEARCH roles
    stay out of every family profile (now enforced — see Guard). Promote only
    after: confirmed pilot data (split-hop), an upstream *stable* line
    (hysteria-realm), a published+pinned artifact (dns-morph-bridge), and a stable release plus repeated filtered-vantage evidence (snell).

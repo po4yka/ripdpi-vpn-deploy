@@ -1,15 +1,15 @@
 # ADR: Split-hop relay topology against flow-level dual-role detection
 
-Status: **Pilot** (2026-05). Implementation scaffold landed; flow-data
-verification still operator-driven, pending two-VPS pilot stand.
+Status: **Pilot** (reviewed 2026-07-26). Paired Ansible ingress and egress
+roles are implemented; authenticated flow-data verification and family-path
+promotion evidence remain operator-driven.
 
 ## Motivation
 
 A flow-level classifier observing per-IP behaviour over a window can
 score whether an IP both **accepts inbound client connections** and
 **initiates outbound upstream connections** within the same window.
-The original FOCI 2026 publication (Almutairi, Harfoush, Viniotis,
-NC State, 2026-02; <https://www.petsymposium.org/foci/2026/foci-2026-0008.pdf>)
+The repository-owned research summary of the 2026 flow-classification work
 reports 23% relay detection at 0.18% FPR against legitimate traffic
 when using a per-IP **Relay Suspicion Score**: the fraction of flows
 where the IP simultaneously acts in both roles.
@@ -98,10 +98,12 @@ swapping the cohort file under `split-hop-egress`.
 - **Latency:** an extra hop between A and B. For an EU-hosted pair
   (e.g. fi-hel1 ↔ de-fra1) the added RTT is ~10–25 ms; for cross-
   continent pairs it can exceed 100 ms.
-- **Failure mode:** when B goes down, A's clients silently lose
-  upstream reachability — A still answers TLS handshakes. The
-  existing `watchdog` role needs a per-leg health check (TBD as a
-  follow-up task).
+- **Failure mode:** when B goes down, A can still answer its local listeners
+  while forwarded traffic fails. Cascade has a separate authenticated
+  per-leg health contract, but split-hop has no equivalent family-path gate.
+- **Current routing scope:** `split-hop-ingress` marks only the dedicated
+  probe-matrix Xray and MTProto runtime UIDs. It does not claim to route every
+  family transport through B.
 
 ## When to recommend
 
@@ -118,23 +120,25 @@ At a high level:
 
 1. Provision two VPSes via existing Terraform roots — typically in
    different zones of the same provider, or different providers.
-2. Generate two WireGuard keypairs; load into SOPS as
-   `split_hop_egress_secrets.wg_*`.
-3. Run `site.yml` against Node A (ingress) with the standard cohort.
-4. Run `site.yml` against Node B (egress) with the
-   `split-hop-egress` role enabled.
-5. Verify Node A egress routes through the WG tunnel via
-   `ip route show table all` and a manual `curl --interface awg0` test.
+2. Generate two WireGuard keypairs; load the node-specific halves into
+   `split_hop_ingress_secrets` and `split_hop_egress_secrets` SOPS files.
+3. Run `site.yml` against Node A with `split-hop-ingress` explicitly
+   allowlisted and enabled.
+4. Run `site.yml` against Node B with `split-hop-egress` explicitly
+   allowlisted and enabled.
+5. Verify WireGuard initiator direction, nftables marks, policy rules, and an
+   authenticated probe-matrix cell through the split-hop target.
 6. Collect 24–72 h of flow data from an upstream vantage (provider's
    flow logs, or a separate observation host). Validate the per-node
    dual-role score against the threshold the FOCI paper uses.
 
 ## Out-of-scope follow-ups
 
-- `watchdog` per-leg health check.
+- Authenticated split-hop per-leg health with the same fail-closed semantics
+  required by the cascade exception.
 - AmneziaWG-shaped tunnel variant.
 - Per-cohort split-hop selector in the subscription generator
   (clients today carry a single A IP; the egress identity is
   invisible to them, which is correct).
-- An `ansible-playbook` orchestrator that runs both nodes from a
-  single `make split-hop-deploy` command.
+- A paired multi-host orchestrator; today each provider/environment is
+  deployed independently through the standard Make lifecycle.

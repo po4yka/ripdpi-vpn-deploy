@@ -24,6 +24,8 @@ repos:
     rev: v26.4.0
     hooks:
       - id: ansible-lint
+        entry: bash -c 'cd ansible && exec ansible-lint'
+        pass_filenames: false
         files: \.(yaml|yml)$
 
   - repo: https://github.com/adrienverge/yamllint

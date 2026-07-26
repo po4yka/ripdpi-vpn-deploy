@@ -1,206 +1,156 @@
 # Runbook: stand up a split-hop pilot
 
-Operator-side procedure for piloting the two-VPS split-hop topology
-described in `docs/SPLIT-HOP-TOPOLOGY.md`. Pilot only — the Node A
-side does not yet have full Ansible coverage; this runbook documents
-the manual steps until that lands.
+Operator procedure for the two-node research topology in
+`docs/SPLIT-HOP-TOPOLOGY.md`. Both halves are Ansible-managed. The current
+ingress role policy-routes only dedicated probe-matrix runtime users, so this
+runbook proves the research topology, not a family production migration.
 
-## Pre-requisites
+## Preconditions
 
-- Two VPSes already provisioned via Terraform (any combination of
-  upcloud / hetzner / vultr; typically two different zones so the
-  cross-leg RTT stays in the same continent).
-- The egress VPS (Node B) is the one that will run
-  `enable_split_hop_egress: true`. The ingress VPS (Node A) runs the
-  standard transport stack.
-- WireGuard installed on the operator's workstation (`apt install
-  wireguard-tools` or equivalent) — needed for keygen only.
-- SOPS + age keys configured per `docs/SECRETS.md`.
+- Two disposable VPS environments provisioned through any supported Terraform
+  roots, with separate provider state and SOPS scopes.
+- Node A's typed `public_listeners` contract admits the configured
+  `split_hop_ingress.listen_port` over UDP.
+- SOPS + age and the operator SSH identity are configured as in
+  `docs/SECRETS.md`.
+- WireGuard tools are available only for local key generation; Ansible installs
+  them on both nodes.
 
-## Step 1 — generate the WG keypairs
+## 1. Generate node-specific keys
 
-Run on the operator workstation. Never on the VPSes.
+Run on the operator workstation in a mode-0700 directory:
 
 ```bash
-mkdir -p ~/secrets-split-hop/ && cd ~/secrets-split-hop/
-wg genkey | tee node_b.key | wg pubkey > node_b.key.pub
-wg genkey | tee node_a.key | wg pubkey > node_a.key.pub
-# optional preshared key
+umask 077
+mkdir -p "$HOME/.config/vpn-provision/split-hop"
+cd "$HOME/.config/vpn-provision/split-hop"
+wg genkey | tee node-a.key | wg pubkey > node-a.pub
+wg genkey | tee node-b.key | wg pubkey > node-b.pub
 wg genpsk > shared.psk
 ```
 
-The four files become:
+Never share a private key between nodes. Load the values into the encrypted
+SOPS file for each node:
 
-| File | Lives on | Loaded as |
-|------|----------|-----------|
-| `node_b.key`     | Node B SOPS | `split_hop_egress_secrets.node_b_private_key` |
-| `node_a.key.pub` | Node B SOPS | `split_hop_egress_secrets.node_a_public_key` |
-| `node_a.key`     | Node A side (no SOPS yet — keep on disk in `/etc/wireguard/shop0.conf` directly) | `[Interface] PrivateKey =` |
-| `node_b.key.pub` | Node A side | `[Peer] PublicKey =` on A |
-| `shared.psk`     | Both sides  | `split_hop_egress_secrets.preshared_key` on B; `[Peer] PresharedKey =` on A |
+```yaml
+# Node A only
+split_hop_ingress_secrets:
+  node_a_private_key: "<node-a.key>"
+  node_b_public_key: "<node-b.pub>"
+  preshared_key: "<shared.psk, or empty>"
+```
 
-Wipe the workstation copies after they are loaded:
+```yaml
+# Node B only
+split_hop_egress_secrets:
+  node_b_private_key: "<node-b.key>"
+  node_a_public_key: "<node-a.pub>"
+  node_a_public_ip: "<Node A public IPv4>"
+  preshared_key: "<same shared.psk, or empty>"
+```
+
+Validate each encrypted file through its normal environment:
 
 ```bash
-shred -u ~/secrets-split-hop/*.key
+PROVIDER=<provider-a> ENV=<env-a> make decrypt validate-secrets clean
+PROVIDER=<provider-b> ENV=<env-b> make decrypt validate-secrets clean
 ```
 
-## Step 2 — load Node B's secrets into SOPS
+Delete the temporary key files after both encrypted files have been verified.
 
-Edit the egress VPS's SOPS file and add the
-`split_hop_egress_secrets` block:
+## 2. Configure Node B (egress)
 
-```yaml
-split_hop_egress_secrets:
-  node_b_private_key: "<contents of node_b.key>"
-  node_a_public_key:  "<contents of node_a.key.pub>"
-  node_a_public_ip:   "<Node A's public IPv4>"
-  preshared_key:      "<contents of shared.psk, or empty string>"
-```
-
-Validate the schema with `make validate-secrets`.
-
-## Step 3 — flip the toggle on Node B
-
-In Node B's group_vars (typically a host-specific
-`ansible/inventory/<env>.host_vars/<node-b-hostname>.yml`):
+In Node B host vars or its lab cohort:
 
 ```yaml
+allow_research_roles: [split-hop-egress]
 vpn:
   enable_split_hop_egress: true
-  # The standard transport toggles stay off on Node B — Node B
-  # carries no client-facing inbound. Disable explicitly:
+  enable_split_hop_ingress: false
   enable_xray_reality: false
   enable_nginx_xhttp: false
   enable_hysteria: false
   enable_amneziawg: false
 ```
 
-Run the standard deploy:
+Review and deploy through the ordinary provider/environment boundary:
 
 ```bash
-PROVIDER=<provider-of-node-b> ENV=<env> make deploy
+PROVIDER=<provider-b> ENV=<env-b> make dry-run
+PROVIDER=<provider-b> ENV=<env-b> make deploy
 ```
 
-The deploy applies the `split-hop-egress` role; the role asserts the
-secrets are populated before writing anything to disk.
+Node B must have no client-facing transport listener. Its `shop0` peer has
+Node A as `Endpoint` and `PersistentKeepalive`, which makes B the initiator.
 
-## Step 4 — configure Node A by hand (until Ansible coverage lands)
+## 3. Configure Node A (ingress)
 
-SSH into Node A and create `/etc/wireguard/shop0.conf`:
+In Node A host vars or its lab cohort:
 
-```ini
-[Interface]
-PrivateKey = <contents of node_a.key>
-Address = 10.200.0.1/30
-ListenPort = 51821
-# A is the WG responder. No PersistentKeepalive on A — that property
-# enforces the initiator direction documented in
-# docs/SPLIT-HOP-TOPOLOGY.md.
-PostUp = ip route add default dev shop0 table 200; ip rule add fwmark 0x1 table 200
-PostDown = ip rule del fwmark 0x1 table 200 2>/dev/null; ip route flush table 200
-
-[Peer]
-PublicKey = <contents of node_b.key.pub>
-PresharedKey = <contents of shared.psk>     # omit when no PSK
-AllowedIPs = 0.0.0.0/0
-# Do NOT set Endpoint here — Node A waits for B to handshake.
+```yaml
+allow_research_roles: [split-hop-ingress, probe-matrix-target]
+vpn:
+  enable_split_hop_ingress: true
+  enable_split_hop_egress: false
+  enable_probe_matrix_target: true
 ```
+
+If an existing owned probe target is used instead, omit
+`probe-matrix-target` from both the allowlist and toggles. Then deploy:
 
 ```bash
-sudo install -o root -g root -m 0600 /dev/stdin /etc/wireguard/shop0.conf <<< "<the file above>"
-sudo systemctl enable --now wg-quick@shop0.service
+PROVIDER=<provider-a> ENV=<env-a> make dry-run
+PROVIDER=<provider-a> ENV=<env-a> make deploy
 ```
 
-Direct Node A's egress through the tunnel via policy routing:
+Node A's peer deliberately has no `Endpoint` and no keepalive. The role owns
+`/etc/wireguard/shop0.conf`, routing table 200, the fwmark rule, and nftables
+table `inet split_hop_ingress`; hand edits will be overwritten.
+
+## 4. Verify the topology
+
+On Node B, `wg show shop0` must report a recent handshake, increasing RX/TX,
+and persistent keepalive. On Node A, the same command must show the learned B
+endpoint without a configured keepalive.
+
+On Node A, verify the managed policy:
 
 ```bash
-sudo iptables -t mangle -A OUTPUT -m owner --uid-owner xray  -j MARK --set-mark 0x1
-sudo iptables -t mangle -A OUTPUT -m owner --uid-owner hysteria -j MARK --set-mark 0x1
-sudo iptables -t mangle -A OUTPUT -m owner --uid-owner nginx -j MARK --set-mark 0x1
-sudo netfilter-persistent save
+sudo nft list table inet split_hop_ingress
+ip rule show
+ip route show table 200
 ```
 
-(These rules will move into a future Ansible role; for the pilot we
-write them by hand to keep the scope tight.)
+The nftables rule must mark only new original-direction sockets owned by the
+dedicated probe runtime UIDs. Do not broaden it to all Xray, nginx, or Hysteria
+traffic as part of this pilot.
 
-## Step 5 — verify the tunnel
+Generate permission-checked target profiles and run the authenticated matrix
+as described in `docs/PROBE-MATRIX.md`. A public-IP lookup alone is not
+sufficient evidence: preserve the redacted matrix verdict, handshake age,
+per-node flow classification, and direct-control result.
 
-On Node B:
+## 5. Observation and acceptance
 
-```bash
-sudo wg show shop0
-# Look for: latest handshake within the last minute, RX/TX counters
-# rising, persistent-keepalive: 25 seconds.
-```
+Collect 24–72 hours of flow data from an independent observation point. The
+pilot passes only when:
 
-On Node A:
+1. B remains the WireGuard initiator throughout the window.
+2. Authenticated split-hop cells pass while the direct control is healthy.
+3. The per-node dual-role score stays below the selected research threshold.
+4. Added latency and loss remain within the pilot's stated budget.
+5. Removing B produces an explicit red result; local listener health is not
+   misreported as end-to-end success.
 
-```bash
-sudo wg show shop0
-# A should show: B's pubkey, no "endpoint" until the handshake
-# completes (B's IP is whatever NAT it came from), persistent
-# keepalive absent.
-```
-
-Test that A's xray egress now exits via B's public IP:
-
-```bash
-ssh root@<node-a-public-ip>
-curl --interface shop0 -sS https://ifconfig.me
-# Must return Node B's public IP, not Node A's.
-```
-
-## Step 6 — collect 24–72 h of flow data
-
-The ADR's threat-model test (acceptance criterion #3) requires that
-each node appears single-role in a flow record from an upstream
-observer. Capture with the provider's flow logs if available
-(UpCloud private interfaces support NetFlow; Hetzner does not), or
-with `tcpdump` on a separate observation host bridged onto the
-upstream side.
-
-The classifier metric to compute:
-
-```
-RSS(IP) = (count of flows where IP is both inbound-receiver and
-           outbound-initiator within a 5-min window)
-          /
-          (total flows involving IP in that window)
-```
-
-The FOCI 2026 threshold for relay-suspicion classification is RSS
-> 0.5. After deploy, both Node A and Node B should sit RSS ≈ 0 — A
-because it has no outbound flows the observer can see, B because it
-has no client-inbound flows.
-
-## Step 7 — publish the pilot results
-
-Write up the flow-data results as
-`docs/SPLIT-HOP-PILOT-<YYYY-MM-DD>.md` with:
-
-- Per-node RSS over the observation window
-- Latency added per hop (Node A → Node B → upstream)
-- Operational cost (USD/mo for the two-VPS pair vs single-VPS)
-- Recommendation on whether to promote split-hop from pilot to
-  default-on for high-risk operators
-
-Per the repo hard rules, do not name the operator, carrier, or
-geography in the pilot writeup; describe by technical signature only.
+Store only redacted evidence. Do not commit endpoints, provider account data,
+keys, client identifiers, raw flow logs, or labels tied to a carrier,
+operator, or geography.
 
 ## Tear-down
 
-```bash
-# Stop the tunnel
-sudo systemctl disable --now wg-quick@shop0.service
-
-# Re-disable on B
-# (edit group_vars: vpn.enable_split_hop_egress: false; redeploy)
-
-# On A, remove mangle rules
-sudo iptables -t mangle -F OUTPUT
-sudo netfilter-persistent save
-```
-
-The ephemeral VPSes can then be destroyed via `make destroy` per
-their respective provider envs.
+Set both enable toggles false in their respective host variables and remove the
+exact allowlist entries. The current roles are skipped when disabled and do not
+remove already-created files or services, so a toggle-only redeploy is not a
+complete cleanup. End the pilot by destroying its disposable provider
+environments; do not repurpose those nodes or invent broad firewall cleanup
+commands in this runbook.

@@ -2,9 +2,24 @@
 
 ## Decision
 
-The best production target for the P0 UpCloud node is an operator-owned self-steal endpoint named `edge.chinallmodel.com`: publish an A record to the P0 address, keep Xray on public TCP/443, terminate a real TLS 1.3 + HTTP/2 site on a private local listener such as `127.0.0.1:8443`, set `xray.target` to that local listener, and use only `edge.chinallmodel.com` in `xray.server_names`. Do not publish AAAA until the IPv6 listener and provider/host firewall path have been tested.
+The best production target for the P0 node is an operator-owned self-steal endpoint named `edge.chinallmodel.com`: publish an A record to the P0 address, keep Xray on public TCP/443, terminate a real TLS 1.3 + HTTP/2 site on `127.0.0.1:8443`, set `xray.target` to that local listener, and use only `edge.chinallmodel.com` in `xray.server_names`. Do not publish AAAA until the IPv6 listener and provider/host firewall path have been tested.
 
-This is a recommendation, not an already-deployed fact. The current `chinallmodel.com:443` target on Scaleway remains active and healthy. Promotion of `edge.chinallmodel.com` requires its DNS record, certificate, local TLS listener, Xray config change, unfiltered validation, authenticated REALITY round trip, and filtered-vantage SNI survival result.
+## Current status — 2026-07-26
+
+The self-steal implementation and P0 configuration switch are complete:
+
+- `xray.target` is `127.0.0.1:8443` and the sole server name is
+  `edge.chinallmodel.com`.
+- the encrypted SOPS configuration contains the matching certificate/key
+  material without placing plaintext or values in Git;
+- public DNS returns one A record and no AAAA record;
+- an ordinary public HTTPS request returned 200, negotiated ALPN `h2`, and
+  completed certificate verification successfully during this refresh.
+
+These checks prove the public scanner-facing fallback and current repository
+configuration. They do not replace a fresh authenticated REALITY client round
+trip or filtered-vantage SNI-survival observation; those remain distinct live
+evidence gates.
 
 ## Why this is the strongest design
 
@@ -14,7 +29,7 @@ The captured configuration contract permits a target in VLESS fallback `dest` fo
 
 The known local-target CCS report captured during research is specifically an XHTTP+REALITY case. This project's P0 is RAW/TCP + Vision, while XHTTP remains a separate P1 listener, so that report does not invalidate the proposed P0 self-steal design. It is still a regression case to test before promotion.
 
-## Current target verification
+## Historical target verification — 2026-07-12
 
 `chinallmodel.com:443` passed the repository's complete nine-step validator on 2026-07-12 with zero hard failures and zero warnings: TLS 1.3, `TLS_AES_256_GCM_SHA384`, ALPN `h2`, valid public Let's Encrypt chain, SAN coverage for both apex and `www`, HTTPS 200, Chrome-like client compatibility, and healthy bare/`www` SNI variants. The certificate is valid from 2026-07-12 through 2026-10-10. `xray tls ping` from P0 also passed with and without SNI; the chain is 3417 bytes and currently negotiates classical X25519 rather than X25519MLKEM768.
 
@@ -22,12 +37,12 @@ Direct P0-to-target measurements were stable across three requests: TCP connect 
 
 The current target is therefore an acceptable temporary production target and is materially better than switching immediately to an unowned popular domain. It is not the optimum final target.
 
-## Candidate comparison
+## Historical candidate comparison
 
 | Candidate | Repository validator | P0 observation | Decision |
 |---|---:|---|---|
-| `edge.chinallmodel.com` self-steal | Not yet deployable/testable | Same P0 IP and AS202053 by design | Best final target after implementation and two-vantage validation |
-| Current `chinallmodel.com` on Scaleway | 0 failures, 0 warnings | HTTP 200; TLS 41–42 ms; AS12876 target | Keep until self-steal promotion |
+| `edge.chinallmodel.com` self-steal | Not yet deployable/testable at research time | Same P0 IP and AS202053 by design | Selected; implementation status is recorded above |
+| Then-current `chinallmodel.com` target | 0 failures, 0 warnings | HTTP 200; TLS 41–42 ms; AS12876 target | Superseded by self-steal |
 | `dl.google.com` | 0 failures, 0 warnings | TLS 25–27 ms; HTTP 302; AS15169; X25519MLKEM768 | Best external emergency fallback, not primary: popular third-party lifecycle and ASN mismatch |
 | `www.nvidia.com` | 0 failures, 1 warning | HTTP 307; AS20940 | Reject: bare-name SAN hygiene warning and third-party CDN |
 | `www.kernel.org` | 0 failures, 1 warning | HTTP 200; AS54113 | Reject: bare-name SAN hygiene warning and third-party CDN |
@@ -49,6 +64,10 @@ The scan also exposed a local wrapper defect: the macOS install path requests `g
 
 ## Promotion gates for `edge.chinallmodel.com`
 
+Items 1–4 and the ordinary public fallback portion of item 5 are complete.
+Authenticated client proof, filtered-vantage survival, and its monitoring
+baseline remain evidence that must be refreshed independently.
+
 1. Replace the current wildcard-derived `edge.chinallmodel.com CNAME chinallmodel.com` behavior with an explicit A record to the P0 UpCloud IPv4 address. Leave AAAA absent until equivalent IPv6 behavior is proven.
 2. Issue a public certificate whose SAN includes exactly `edge.chinallmodel.com`; store it under the existing local SOPS boundary.
 3. Run an nginx or equivalent TLS listener only on a private loopback port, with TLS 1.3, ALPN h2, the real static landing content, bounded request handling, and no admin or health surface.
@@ -59,4 +78,7 @@ The scan also exposed a local wrapper defect: the macOS install path requests `g
 
 ## Confidence and limitation
 
-Confidence is high that the self-steal design is the best target architecture for this fleet and that the current Scaleway target is technically correct as a temporary target. Confidence is intentionally not assigned to Russian-path survival for either hostname: that property is path-specific, no OONI data exists for the owned domain, and this research did not have a filtered Russian vantage. Production promotion must remain blocked on the filtered-vantage SNI test rather than treating TLS hygiene or web research as a substitute.
+Confidence is high that self-steal is the best target architecture for this
+fleet. Confidence is intentionally not assigned to filtered-path survival from
+the public checks above: that property is path-specific, and TLS hygiene is not
+a substitute for an authenticated client and filtered-vantage observation.

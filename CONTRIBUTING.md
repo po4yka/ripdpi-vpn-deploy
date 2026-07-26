@@ -14,7 +14,7 @@ and tag releases.
 | `test:` | Molecule scenarios, validators, smoke tests. |
 | `refactor:` | Code restructure with no behaviour change. |
 | `perf:` | Performance-only change. |
-| `chore:` | Tooling, dependencies (Dependabot uses this automatically). |
+| `chore:` | Tooling and dependencies (including Renovate PRs). |
 | `ci:` | CI workflow changes (`.github/workflows/*`). |
 | `build:` | Build-time change (rarely applicable here). |
 | `revert:` | Reverts a prior commit. |
@@ -29,40 +29,33 @@ After cloning, run this once to wire up the local pre-commit hooks:
 make install-hooks
 ```
 
-This installs the hooks for shellcheck, secrets-coverage, templates-render,
-placeholder-scan, gitleaks, terraform fmt, and ansible-lint. Without this step
-the pre-commit checks that gate `git push` will not run locally.
+This installs commit-time and commit-message hooks for the repository's
+quality and Conventional Commit policies.
 
 ## Local pre-flight
 
-Before `git push`:
+Before opening or updating a PR:
 
 ```bash
-make validate            # gitleaks, terraform fmt + validate, ansible-lint, syntax-check
-make install-hooks       # one-time — wires up shellcheck, secrets-coverage, templates-render
-pre-commit run --all-files
+make check
 ```
+
+`make check` is the fail-closed union of `make validate` and `make ci-fast`.
+It is the canonical local parity gate; `docs/TESTING.md` records the Molecule,
+GitHub-native security, and credentialed deploy checks that remain separate or
+CI-only. When changing a role, also run its focused
+`make molecule-test ROLE=<name>` scenario when the required container runtime
+is available.
 
 ## CI gates
 
-Every PR runs the matrix in `.github/workflows/ci.yml` (12+ jobs):
+`.github/workflows/ci.yml` owns the required PR workflow. Its `required checks`
+aggregator fails unless every current required dependency succeeds.
 
-- gitleaks
-- terraform fmt + validate (matrix: upcloud / hetzner / vultr)
-- cloud-init schema
-- ansible-lint + syntax-check
-- molecule (matrix: 9 roles)
-- shellcheck, secrets-coverage, templates-render
-- yamllint
-- codeql (Python + Actions)
-
-Plus informational (non-blocking):
-
-- markdown-link-check (when `*.md` changed)
-- scorecard (weekly)
-
-See `docs/TESTING.md` for the full coverage matrix and which roles have
-justified molecule skips.
+`docs/TESTING.md` is the canonical human-readable coverage matrix, including
+default Molecule roles, non-default failure scenarios, CI-only services, and
+the local-versus-remote boundary. When required coverage changes, update the
+workflow and that matrix together; governance tests verify their relationship.
 
 ## Adding a new role / template / script
 
@@ -116,7 +109,8 @@ new provider, new vpnd subcommand, new AWG cohort) are in the root
 - A web admin panel (Marzban / Remnawave / 3x-ui) — architectural
   invariant.
 - Calendar-based credential auto-rotation — rotation must be event-driven.
-- Docker / K8s on the data plane — see brain-note rationale.
+- Docker / K8s on the data plane — Ansible plus systemd own runtime state;
+  see `docs/ARCHITECTURE.md`.
 - Auto-deploy from `main` — operator-driven by design.
 
 PRs in these directions will be closed with a pointer to the rationale.

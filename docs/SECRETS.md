@@ -11,11 +11,19 @@
 
 vpn-deploy/secrets/
   prod.secrets.example.yaml              # placeholder schema only
+
+vpn-deploy/secrets/local/                # optional, git-ignored operator layout
+  config/age.key                         # private age key, mode 0600
+  config/prod.secrets.sops.yaml           # encrypted durable copy
+  runtime/vpn-prod.secrets.yaml           # plaintext only while needed, mode 0600
+  clients/                                # generated client artifacts, mode 0600
 ```
 
-The only thing in this repo's `secrets/` directory is the example schema
-and a README. Real secrets never enter the repo, Terraform state,
-Terraform outputs, cloud-init user_data, or any debug log.
+The external directory is the default. The `secrets/local/` layout is an
+explicitly supported convenience for this checkout and is excluded by
+`.gitignore`; it is still sensitive local state, not repository content.
+Real secrets never enter Git, Terraform state, Terraform outputs, cloud-init
+`user_data`, or any debug log.
 
 ## age recipients
 
@@ -74,12 +82,25 @@ decrypt.
 | Edit existing secrets | `sops ~/.config/vpn-provision/prod.secrets.sops.yaml` |
 | Add a new client | `SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml ./scripts/new-client.sh laptop` |
 | Re-encrypt under a new recipient | `sops updatekeys ~/.config/vpn-provision/prod.secrets.sops.yaml` |
-| Decrypt for deploy | `make decrypt` (writes `/tmp/vpn-prod.secrets.yaml` mode 0600) |
+| Decrypt for deploy | `make decrypt` (writes configured `SECRETS_FILE`, mode 0600) |
 | Wipe plaintext | `make clean` (shred or rm) |
 
 `sops <file>` opens your `$EDITOR` against a temp plaintext file in `/tmp`
 with mode 0600, re-encrypts on save, and deletes the plaintext. It never
 writes plaintext to a path you can `cat` later.
+
+Without a `.fleet.mk` override, `SECRETS_FILE` resolves below
+`${XDG_RUNTIME_DIR:-$HOME/.cache}/vpn-provision/`. A repo-local operator can
+set the following in the ignored `.fleet.mk`:
+
+```make
+SOPS_FILE = $(CURDIR)/secrets/local/config/prod.secrets.sops.yaml
+SECRETS_FILE = $(CURDIR)/secrets/local/runtime/vpn-prod.secrets.yaml
+```
+
+Export `SOPS_AGE_KEY_FILE` separately or from a protected shell environment;
+keep directories mode 0700 and files mode 0600. Run `make clean` immediately
+after the operation that needs plaintext.
 
 ## What's in the secrets file
 

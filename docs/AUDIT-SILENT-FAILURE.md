@@ -1,7 +1,17 @@
 # Audit: silent-failure on an unverified or unstable external contract
 
-Status: complete — 2026-06-11
+Status: audit completed 2026-06-11; current dispositions reviewed 2026-07-26
 Method: multi-agent audit, one analyst per control plus an independent adversarial verifier per verdict. Upstream behaviour (Xray-core, sing-box, restic, rclone, openssl, check-host.net, node_exporter) verified against source/docs, not assumed.
+
+> Historical audit snapshot. The verdicts below describe the 2026-06-11 code,
+> not the current implementation. As of 2026-07-26, policy-ratelimit is
+> explicitly scoped away from REALITY probe defence; authenticated protocol
+> liveness is a separate sentinel contract; kill-switch route/direct and
+> address-family leaks are tested; the monitoring textfile collector is wired;
+> backup has recency checks and an isolated restore drill; and certificate
+> matching compares DER public keys. The early-error metrics path in
+> `burn-check.sh` remains an open limitation. Preserve the original findings
+> below as the rationale for those controls.
 
 ## Failure class
 
@@ -9,7 +19,7 @@ A control is in scope if its effectiveness depends on something it does **not it
 
 Every control examined under this lens failed. The shared root cause is a coupling to an external contract that was assumed rather than asserted, with no canary that fires when the coupling is wrong. A counter pinned at zero, an `exit 0`, or a never-written textfile all read as "healthy / nothing to report" instead of "detector is dead."
 
-## Verdict summary
+## Audit-date verdict summary
 
 | # | Control | Contract it silently depends on | Verdict | Conf. | Cross-check |
 |---|---------|--------------------------------|---------|-------|-------------|
@@ -24,9 +34,28 @@ Every control examined under this lens failed. The shared root cause is a coupli
 
 Seven controls, eight findings (watchdog splits into two). All `BROKEN`. No `VERIFIED`, no `UNVERIFIABLE-WITHOUT-LIVE-NODE` — every verdict was statically decidable from repo + upstream source. The seed hypothesis is **confirmed and generalizes**: the `REJECT|graylist` log-token coupling is dead in two places, and the same "trust an unverified external contract, fail silent" pattern recurs across detection, verification, and backup controls.
 
+## Current disposition
+
+`BROKEN` elsewhere in this document is the audit-date verdict. This table is
+the maintained current layer; code tests establish repository contracts, not
+live production effectiveness.
+
+| # | Control | Current status | Repository evidence |
+|---|---|---|---|
+| 1 | policy-ratelimit scope | **RESOLVED** | `policy-ratelimit.py.j2` now matches real blackhole/VLESS-reject signals, disclaims REALITY probe defence, and exposes a dead-contract gauge; `test_policy_ratelimit.py` pins the contract. |
+| 2 | watchdog transport liveness | **RESOLVED** | Node-local authenticated completion is separated from the client-path quorum/OTP authority in `PROTOCOL-LIVENESS.md`; `test_watchdog_protocol_probe.py` covers the local probe. |
+| 3 | watchdog log classifier | **RESOLVED** | Real block/rejected tokens and `policy_reject_spike` semantics replaced the false active-probing class; watchdog render tests pin it. |
+| 4 | sing-box kill switch | **RESOLVED** | `check-singbox-killswitch.py` traverses route rules/groups, rejects direct/bypass resolution, and requires unified TUN address-family coverage; `test_check_killswitch.py` covers failures. |
+| 5 | honeypot alert pipeline | **PARTIAL** | Monitoring now scrapes the shared textfile directory and reports/metrics exist, but threshold paging and alert routing remain operator-owned outside this repository. |
+| 6 | backup integrity | **RESOLVED** | Backup runs integrity/recency/remote checks and a scheduled isolated restore drill; focused backup contract tests and Molecule exercise them. |
+| 7 | certificate key match | **RESOLVED** | `check-certs.sh` compares key-type-independent DER public-key digests; `test_check_certs_key_match.py` prevents RSA-only regression. |
+| 8 | burn-check metric freshness | **OPEN** | Early API failures can still occur before the sole textfile write; no explicit API-error gauge or error-path write exists. |
+
 ---
 
 ## 1. `policy-ratelimit` — log-token coupling is dead
+
+**Current status: RESOLVED by scope correction and executable contract tests.**
 
 **Contract.** The daemon tails `/var/log/xray/access.log` and bans IPs whose lines match `EVENT_RE = (REJECT|rejected|graylist)`. Effectiveness depends on Xray-core emitting one of those substrings for (a) external probers whose REALITY handshake fails, or (b) authenticated clients routed to the `block` blackhole.
 
@@ -51,6 +80,10 @@ Seven controls, eight findings (watchdog splits into two). All `BROKEN`. No `VER
 
 ## 2 & 3. `watchdog` — process-liveness masquerading as transport-liveness, plus the same dead grep
 
+**Current status: both findings RESOLVED.** Node-local authenticated checks and
+client-path rotation authority are separate; the classifier uses real policy
+rejection signals rather than claiming external probe visibility.
+
 **Finding 2 — transport-liveness. Contract.** The probes (`systemctl is-active xray`, `ss -lnt | grep :PORT`, `xray run -test -config`, `</dev/tcp/127.0.0.1/PORT`) are assumed to prove the public REALITY transport works. The role `CLAUDE.md` claims "probes hit the public surface, not internals" — false.
 
 **Why it is BROKEN.** None of the four probes performs a TLS/REALITY handshake. All four pass green when: the node's IP is blocked at transit; a rotated `privateKey`/`shortId` is in SOPS but not yet applied (old config still listening); or `realitySettings.target` is unreachable (probe-forwarding silently fails). `</dev/tcp/127.0.0.1/PORT` proves only that a socket accepts a TCP connection on loopback — it never sends a ClientHello. The verifier's strongest rescue (a crashed misconfig would not be listening) covers only process death, which `is-active` already covers redundantly; it does not cover the degraded-but-running modes that are the actual threat.
@@ -70,6 +103,8 @@ Seven controls, eight findings (watchdog splits into two). All `BROKEN`. No `VER
 
 ## 4. `check-singbox-killswitch.py` — passes vacuously on the normal Android flow
 
+**Current status: RESOLVED by fail-closed route-graph and address-family checks.**
+
 **Contract.** The K1-K5 rules assume the only path to direct/cleartext egress is `route.final`, and that TUN address-family coverage need not be checked. Effectiveness depends on sing-box's documented behaviour: `route.rules[]` are evaluated before `route.final`, and `auto_route` only captures families with a configured TUN prefix.
 
 **Why it is BROKEN (two leaks, both reproduced):**
@@ -85,6 +120,9 @@ The verifier's rebuttals (LAN exemption by design; Android-only; possibly-IPv4-o
 ---
 
 ## 5. `honeypot` — listens, counts, and notifies no one
+
+**Current status: PARTIAL.** Textfile collection and writer access are repaired;
+threshold paging and alert routing remain an explicit operator-owned boundary.
 
 **Contract.** Four stacked contracts must all hold for a probe spike to reach a human: (1) node_exporter scrapes `/var/lib/node_exporter/textfile`; (2) a Prometheus server + alert rule fires on `vpn_honeypot_*`; (3) `probing-summary-remote.py` notifies on a threshold; (4) the operator cron produces an active alert, not a passive log line.
 
@@ -102,6 +140,8 @@ The verifier's rebuttals (LAN exemption by design; Android-only; possibly-IPv4-o
 
 ## 6. `backup` — fire-and-forget; no integrity check, no recency check
 
+**Current status: RESOLVED by integrity, recency, remote, and isolated restore-drill contracts.**
+
 **Contract.** `restic backup` exit 0 ⇒ a consistent, restorable repository; `rclone size <remote> >/dev/null` exit 0 ⇒ today's snapshot was transferred.
 
 **Contract owner.** restic and rclone — neither version-pinned (`apt: state: present`).
@@ -118,6 +158,8 @@ The verifier's rebuttals (LAN exemption by design; Android-only; possibly-IPv4-o
 ---
 
 ## 7. `check-certs.sh` — EC cert/key mismatch is structurally undetectable
+
+**Current status: RESOLVED by key-type-independent public-key digest comparison.**
 
 **Contract.** The modulus guard `if [[ -n "$cm" && -n "$km" && "$cm" != "$km" ]]` (line 101) depends on `openssl rsa -noout -modulus` (line 100) producing a comparable value for the served key.
 
@@ -140,6 +182,9 @@ Works for RSA, P-256/P-384, and X25519. Update the line-97 comment.
 ---
 
 ## 8. `burn-check.sh` — early `exit 2` freezes the metrics at the last healthy state
+
+**Current status: OPEN.** The early API-error path still precedes the only
+metrics write and has no dedicated error gauge.
 
 **Contract.** On `exit 2` (check-host.net rejects the request / returns no `request_id`), the script terminates at line 43 — **before** the Prometheus textfile write block at line 74. Effectiveness depends on a downstream staleness alert on `vpn_burn_last_run_unixtime` to notice the freeze.
 

@@ -36,7 +36,7 @@ operator surface; `vpnd/` is a convenience CLI in front of it (see
 Terraform     → VPS, firewall, SSH key, DNS, floating IP
 cloud-init    → admin user, SSH hardening, python3, marker file
 Ansible       → all runtime state (packages, nftables, xray, nginx, …)
-SOPS+age      → secrets at rest, outside the repo
+SOPS+age      → secrets at rest, outside Git tracking
 vpnd (Rust)   → convenience CLI in front of Make/Terraform/Ansible/SOPS
 ```
 
@@ -61,7 +61,7 @@ CLAUDE.md                                — this file
 ansible/CLAUDE.md                        — playbook order, group_vars contract
 ansible/roles/<name>/CLAUDE.md           — 31 roles, all backfilled
 terraform/CLAUDE.md                      — provider-root strategy
-terraform/providers/<name>/CLAUDE.md     — upcloud (primary), hetzner, vultr
+terraform/providers/<name>/CLAUDE.md     — upcloud, hetzner, vultr, scaleway
 terraform/shared/CLAUDE.md               — cloud-init contract
 scripts/CLAUDE.md                        — shell/python conventions
 tests/CLAUDE.md                          — unit + snapshot + molecule + tf-test layers
@@ -73,7 +73,7 @@ docs/CDN-DECISION.md                     — ADR: CDN is not the RU baseline
 ## Development
 
 ```bash
-make ci-fast            # render + secrets coverage + snapshot + schema + syntax + pytest
+make ci-fast            # portable credential-free CI parity bundle; see docs/TESTING.md
 make molecule-test ROLE=<name>
 make tf-test            # terraform mock_provider tests
 cd vpnd && cargo check  # convenience CLI typecheck

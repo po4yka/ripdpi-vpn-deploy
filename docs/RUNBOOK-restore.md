@@ -19,8 +19,8 @@ rebuild them deterministically from secrets and templates.
 
 ```bash
 # 1. Clone the repo on a clean operator workstation
-git clone <repo> ~/GitRep/vpn-deploy
-cd ~/GitRep/vpn-deploy
+git clone <repo> ~/GitRep/ripdpi-vpn-deploy
+cd ~/GitRep/ripdpi-vpn-deploy
 
 # 2. Restore your age key + SOPS file
 mkdir -p ~/.config/vpn-provision

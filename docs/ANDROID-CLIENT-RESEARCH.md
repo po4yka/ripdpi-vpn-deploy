@@ -2,6 +2,8 @@
 
 **Research date:** 2026-07-13
 
+**Last refreshed:** 2026-07-26
+
 **Evidence basis:** conclusions retained from the dated first-party review and
 local sibling-project inspection. External citations are intentionally omitted;
 unstable product facts must be revalidated before changing the supported-client
@@ -25,7 +27,7 @@ The deployed fleet exposes four client paths and one repository-native aggregate
 
 **RIPDPI is the best Android client for this configuration by architecture and feature fit.** It is the only evaluated client that understands the repository's `ripdpi-bundle` contract, preserves selector/url-test failover, imports the AWG metadata while keeping the per-device private key separate, and exposes one Android `VpnService` for all paths. Its current source also declares Always-on VPN support and implements Android per-app allow/deny routing.
 
-**Do not make the public v0.1.3 APK the production default yet.** The official v0.1.3 release already includes standalone AmneziaWG, REALITY/Vision, XHTTP, Hysteria2, selector/url-test subscriptions, protected sockets, encrypted secrets, checksums, SBOMs, and provenance. However, the local RIPDPI `main` inspected on the research date is 194 commits ahead of v0.1.3 and contains later Android lifecycle, fail-closed, root-helper, privacy, REALITY, and UDP-startup fixes. A physical non-rooted Pixel 7 has since passed standalone AWG interoperability, full-tunnel TCP, UDP DNS, STUN, MapDNS, and live Hysteria2-to-AWG failover. The remaining release gates are a signed candidate plus network-path diversity, cellular handover, long-duration soak, and IPv6 differential leak testing on an underlying path with a working IPv6 default route.
+**Do not make the public v0.1.3 APK the production default yet.** The official v0.1.3 release already includes standalone AmneziaWG, REALITY/Vision, XHTTP, Hysteria2, selector/url-test subscriptions, protected sockets, encrypted secrets, checksums, SBOMs, and provenance. However, the hardened RIPDPI `main` line is now hundreds of commits ahead of v0.1.3 and contains later Android lifecycle, fail-closed, root-helper, privacy, REALITY, and UDP-startup fixes. A physical non-rooted Pixel 7 has since passed standalone AWG interoperability, full-tunnel TCP, UDP DNS, STUN, MapDNS, and live Hysteria2-to-AWG failover. The remaining release gates are a signed candidate plus network-path diversity, cellular handover, long-duration soak, and IPv6 differential leak testing on an underlying path with a working IPv6 default route.
 
 **For installation today without building an unreleased client, use two applications:** import the standard sing-box portion into **sing-box for Android (SFA)** or **Hiddify**, and import the separately generated AWG profile into the official **AmneziaWG** client. SFA is the closest representation of the emitted standard JSON; Hiddify has the friendlier mass-market UI and automatic profile management. Neither understands the `ripdpi` extension, so both lose the one-bundle AWG lifecycle and need a second app.
 
@@ -35,7 +37,7 @@ Hiddify requires a specific P1 acceptance test before it can be the preferred ge
 
 | Rank | Client | Best use here | Main limitation |
 |---:|---|---|---|
-| 1 | RIPDPI, next hardened release | One-app production target with exact bundle semantics, AWG, automatic failover, per-app routing, Always-on, and lockdown | Current public v0.1.3 predates 194 later commits; signed release and remaining handover, soak, and IPv6 differential gates are required |
+| 1 | RIPDPI, next hardened release | One-app production target with exact bundle semantics, AWG, automatic failover, per-app routing, Always-on, and lockdown | Current public v0.1.3 substantially predates the hardened main line; signed release and remaining handover, soak, and IPv6 differential gates are required |
 | 2 | SFA + official AmneziaWG | Most literal ready-now consumption of standard sing-box JSON plus a dedicated AWG tunnel | SFA describes itself as experimental; no `ripdpi` extension or unified AWG lifecycle |
 | 3 | Hiddify + official AmneziaWG | Best ready-now usability and subscription management | Known XHTTP `auto` regression requires P1 data-plane testing; no `ripdpi` extension |
 | 4 | Happ + official AmneziaWG | Strong Xray-oriented UI and explicit REALITY/XHTTP/Hysteria2 support | No native AWG or repository-bundle support; less faithful to sing-box selector semantics |

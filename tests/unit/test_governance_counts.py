@@ -38,6 +38,39 @@ def test_governance_counts_match_live_repository():
         assert f"`{scenario['role']}/{scenario['scenario']}`" in push_row
     assert "`pytest tests/unit/`" in push_row
 
+    audit = (ROOT / "docs/AUDIT-SILENT-FAILURE.md").read_text()
+    current = audit.split("## Current disposition", 1)[1].split("\n## ", 1)[0]
+    rows = [line for line in current.splitlines() if re.match(r"\| [1-8] \|", line)]
+    statuses = [
+        next(status for status in ("RESOLVED", "PARTIAL", "OPEN") if f"**{status}**" in row)
+        for row in rows
+    ]
+    assert [int(row.split("|")[1].strip()) for row in rows] == list(range(1, 9))
+    assert statuses.count("RESOLVED") == 6
+    assert statuses.count("PARTIAL") == 1
+    assert statuses.count("OPEN") == 1
+
+    role_tiering = (ROOT / "docs/ROLE-TIERING.md").read_text()
+    for stale_claim in (
+        "8 silently-broken controls",
+        "all four alert-chain links broken",
+        "Integrity check is missing",
+        "alert pipeline is broken",
+        "must have their AUDIT-SILENT-FAILURE remediations landed",
+    ):
+        assert stale_claim not in role_tiering
+
+    contributing = (ROOT / "CONTRIBUTING.md").read_text()
+    contributor_guidance = contributing.split("## Local pre-flight", 1)[1].split(
+        "## Adding a new role / template / script", 1
+    )[0]
+    for pointer in ("make check", ".github/workflows/ci.yml", "docs/TESTING.md", "required checks"):
+        assert pointer in contributor_guidance
+    assert "check: validate ci-fast" in (ROOT / "Makefile").read_text()
+    assert not re.search(r"\b\d+\+? jobs\b|matrix:\s*\d+\s+roles", contributor_guidance, re.IGNORECASE)
+    assert "Renovate PRs" in contributing
+    assert "Ansible plus systemd own runtime state" in contributing
+
     molecule_files = subprocess.run(
         ["git", "ls-files", "ansible/**/molecule.yml"],
         cwd=ROOT,

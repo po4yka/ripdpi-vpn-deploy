@@ -10,8 +10,8 @@ data shaping are Python and use only stdlib + `PyYAML` / `Jinja2`.
 `fleet-rotate.sh`. The Makefile wraps these with `make <target>` shorthand.
 
 **SOPS gate everywhere** — anything that reads decrypted secrets refuses
-without `VPN_SECRETS_FILE` env or a freshly decrypted `/tmp/vpn-<env>.secrets.yaml`.
-Never re-implement decryption.
+without `VPN_SECRETS_FILE` or the Make-resolved `SECRETS_FILE` produced by
+`make decrypt`. Never assume `/tmp`, and never re-implement decryption.
 
 **Runtime bundle validation is a narrow SOPS exception** — a client-side
 materialized bundle is not an Ansible secrets document. The explicit

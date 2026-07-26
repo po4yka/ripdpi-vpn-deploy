@@ -1,6 +1,6 @@
 # PQ-REALITY adoption policy
 
-Status: **HOLD** as of 2026-07-10.
+Status: **HOLD**; last reviewed 2026-07-26.
 
 The canonical capability name is **VLESS Encryption (PQE) over REALITY**. This document uses **PQ-REALITY** only as an operator shorthand. VLESS PQE is an encryption layer inside VLESS; it is not the `X25519MLKEM768` key share used by browser-shaped uTLS profiles.
 
@@ -8,7 +8,12 @@ The canonical capability name is **VLESS Encryption (PQE) over REALITY**. This d
 
 PQ-REALITY is not an operator-configurable feature in this repository. Every VLESS inbound whose `streamSettings.security` is `reality` must retain `settings.decryption: "none"`, and the changelog-driven guard in `XRAY-RELEASE-LINE.md` enforces that invariant through pre-commit, CI, and `make ci-fast`.
 
-The HOLD decision has two independent causes. Xray tags that include VLESS PQE through `v26.6.27` remain Pre-release, while `v26.3.27` remains the GitHub-tagged Latest release. The supported client delivery path in this repository emits sing-box JSON and classical VLESS URIs, and sing-box does not support Xray's VLESS Encryption setting. Enabling only the server side would make the supported client artifacts incompatible.
+The HOLD decision has two independent causes. Xray tags that include VLESS PQE
+through `v26.7.11` remain Pre-release, while `v26.3.27` remains the
+GitHub-tagged Latest release. The supported client delivery path in this
+repository emits sing-box JSON and classical VLESS URIs, and that client
+contract does not express Xray's VLESS Encryption setting. Enabling only the
+server side would make supported client artifacts incompatible.
 
 HOLD means there is no PQE secret, schema field, Ansible variable, environment override, Make target, client field, or generated bundle field. Pre-release Xray builds may still be evaluated under the repository's general staging-only policy, but PQ-REALITY remains disabled in every environment until this policy moves to STAGING.
 
@@ -52,4 +57,8 @@ If a staging or production trial fails, restore the prior Xray binary and classi
 
 ## Review evidence
 
-Refresh the decision from primary upstream sources on every Xray release that mentions VLESS Encryption and every release of the supported client engine. The 2026-07-10 HOLD decision was checked against the [Xray release list](https://github.com/XTLS/Xray-core/releases), [Xray PR #5067](https://github.com/XTLS/Xray-core/pull/5067), and [sing-box issue #3599](https://github.com/SagerNet/sing-box/issues/3599).
+Refresh the decision from primary upstream sources on every Xray release that
+mentions VLESS Encryption and every release of the supported client engine.
+Record the distilled result in `XRAY-RELEASE-LINE.md` and keep the executable
+guard in `scripts/check-xray-breaking-changes.py`; external pages are research
+inputs, not load-bearing repository documentation.

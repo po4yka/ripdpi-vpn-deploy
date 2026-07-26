@@ -55,14 +55,16 @@ against `^[A-Za-z0-9_-]+$` before use.
 - **Don't add a shell-via-string surface** — every `Cmd` is argv-shaped. If you
   ever need a pipe or redirect, add a dedicated method to `Cmd`, don't smuggle
   `bash -c "…"` through.
-- **`secrets_file` is operator-trusted** — it's at `/tmp/vpn-<env>.secrets.yaml`
-  with `0600`. Never log it. Never copy it across the network.
+- **`secrets_file` is operator-trusted** — it is the configured runtime path
+  produced by `make decrypt`, with `0600`. Never log it. Never copy it across
+  the network.
 - **clap global flags need `global = true`** — adding a new flag without it
   causes "argument not allowed here" on subcommands.
 - **askama escapes by default** — `escape = "html"` in the template attribute.
   Don't disable per-block; pass already-safe URLs as plain strings.
-- **`make decrypt` is not idempotent** — it overwrites `/tmp/vpn-<env>.secrets.yaml`
-  every time. Subcommands check `secrets_file.is_file()` before triggering it.
+- **`make decrypt` is not idempotent** — it overwrites the configured
+  `SECRETS_FILE` every time. Subcommands check `secrets_file.is_file()` before
+  triggering it.
 - **Make targets carry state via env** — `ENV` and `PROVIDER` must be passed on
   every invocation; `make::target()` does this. Don't bypass it.
 - **Terraform must use the workspace wrapper** — runner builders call `scripts/terraform-env.sh` with `PROVIDER` and `ENV`; do not construct raw Terraform commands, or non-production environments can select the wrong local state.

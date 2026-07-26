@@ -120,7 +120,7 @@ Legacy aliases stay supported for existing inventories:
   hand-edit URIs. When there are two+, you need a real subscription
   endpoint that can hand each device the right cohort.
 - **Health checks and failover** become explicit: clients need
-  selector/urltest logic in sing-box / NekoBox to actually use the
+  selector/urltest logic in RIPDPI or a current sing-box client to actually use the
   fallback VPS without a manual switch. `make emit-singbox CLIENT=<name>`
   produces a JSON with a selector + urltest group covering every
   configured host.

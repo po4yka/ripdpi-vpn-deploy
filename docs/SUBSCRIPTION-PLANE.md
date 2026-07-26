@@ -23,7 +23,7 @@ Control plane (Terraform + Ansible + secrets)
 Key principle: a subscription URL is a **bearer secret** (RFC 6750),
 so it must be issued, scoped, expirable, and revocable. Human-readable
 or enumerable path segments are forbidden: `vpnd share` must receive an
-opaque token from `make issue-sub-token CLIENT=… --print-token-only`,
+opaque token from `./scripts/issue-sub-token.sh <client> --print-token-only`,
 not derive a URL from `clients[*].name`.
 
 ## Gap matrix
@@ -54,8 +54,8 @@ is operational rather than architectural:
 1. **Periodic rotation of `/sub/` tokens** — even with expiry,
    long-lived /sub/ URLs accumulate trust over time. A scheduled
    re-issue cadence (e.g. quarterly) trims the leak window. Not
-   currently automated; `make issue-sub-token CLIENT=… --refresh-
-   token <existing-token>` does the manual operation.
+   currently automated; `./scripts/issue-sub-token.sh <client>
+   --refresh-token <existing-token>` performs the manual operation.
 2. **`make sub-reads` aggregation** — the read-audit log is JSONL
    and grep-friendly today; a small summary script (top-pulling
    tokens, geographic clustering of src_ip, rate spikes) would help
