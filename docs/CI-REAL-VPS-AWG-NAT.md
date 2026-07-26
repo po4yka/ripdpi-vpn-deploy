@@ -5,7 +5,10 @@ The primary executor is the local systemd timer installed by
 sentinel, connects to an owner-controlled real VPS, and fails when its private
 runner contract is absent. Missing credentials or tools never become a green
 skip. `.github/workflows/real-vps-awg-nat.yml` remains a compatible optional
-executor, but recurring evidence does not depend on GitHub Actions.
+manual executor, but recurring evidence does not depend on GitHub Actions. It
+is intentionally `workflow_dispatch`-only: scheduling a job that requires an
+optional private runner leaves the job queued until GitHub cancels it when the
+runner is offline. The local timer owns the weekly schedule instead.
 
 The installer creates a root-owned, detached local clone of the exact selected
 commit without retaining a remote. Every run packages that checkout with

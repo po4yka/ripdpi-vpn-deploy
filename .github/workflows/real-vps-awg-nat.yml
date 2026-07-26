@@ -3,8 +3,6 @@ name: real-vps-awg-nat
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "23 5 * * 2"
 
 permissions:
   contents: read

@@ -372,10 +372,10 @@ def test_stale_manifest_is_rejected() -> None:
         raise AssertionError("stale manifest was accepted")
 
 
-def test_workflow_is_recurring_fail_closed_and_uploads_evidence() -> None:
+def test_optional_workflow_is_manual_fail_closed_and_uploads_evidence() -> None:
     workflow = (REPO_ROOT / ".github/workflows/real-vps-awg-nat.yml").read_text()
-    assert "schedule:" in workflow
     assert "workflow_dispatch:" in workflow
+    assert "schedule:" not in workflow
     assert "self-hosted" in workflow and "ripdpi-awg-vps" in workflow
     assert "skip" not in workflow.lower()
     assert "if: always()" in workflow
