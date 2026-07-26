@@ -88,13 +88,13 @@ evidence provisioning:
 
 ```bash
 HOSTS="scaleway:prod,vultr:prod" \
-COHORTS="p3-ts,p2-udp" \
+COHORTS="p1-web,p2-udp" \
 AWG_EVIDENCE_MODES="echo,server" \
 ANSIBLE_SSH_PRIVATE_KEY_FILE=/secure/operator-key \
 scripts/render-inventory.sh
 
 cd ansible
-ansible-playbook playbooks/site.yml --limit vpn-p3-ts
+ansible-playbook playbooks/site.yml --limit vpn-p1-web
 ansible-playbook playbooks/site.yml --limit vpn-p2-udp \
   --extra-vars @/secure/real-vps-awg-nat-forward.yml
 ```

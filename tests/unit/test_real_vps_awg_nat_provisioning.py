@@ -1774,6 +1774,15 @@ def test_operator_runbook_names_only_private_actions_not_values() -> None:
     assert "PASS" in runbook and "INFRA_UNAVAILABLE" in runbook
 
 
+def test_operator_runbook_converges_the_protected_echo_cohort() -> None:
+    runbook = (ROOT / "docs/REAL-VPS-AWG-NAT.md").read_text()
+
+    assert 'COHORTS="p1-web,p2-udp"' in runbook
+    assert "--limit vpn-p1-web" in runbook
+    assert 'COHORTS="p3-ts,p2-udp"' not in runbook
+    assert "--limit vpn-p3-ts" not in runbook
+
+
 def test_makefile_exposes_sops_gated_awg_evidence_entrypoint() -> None:
     makefile = (ROOT / "Makefile").read_text()
     target = makefile.split("awg-evidence-provision: pre-deploy-check", 1)[1].split(
