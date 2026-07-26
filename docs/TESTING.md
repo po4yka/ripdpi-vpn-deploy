@@ -123,6 +123,13 @@ the discipline contract and how to add a new stub.
 | `make security-audit` | operator-run, non-blocking audit report collection; intentionally not part of deploy or verify gates by default |
 | `make drift-since-tag` | weekly: diff fleet against the last known-good tag (terraform plan + ansible --check). The CI scheduled variant uses `--repo-only` and runs without SOPS access — see `.github/workflows/drift.yml`. |
 | scheduled Monday 08:00 UTC | **cargo-mutants** (`.github/workflows/mutants.yml`) — validates vpnd test suite is doing its job; non-blocking |
+
+The repository-safe record of the last observed production deployment is
+[DEPLOYMENT-STATUS.md](DEPLOYMENT-STATUS.md). It distinguishes provider-live
+Terraform refresh, configuration-to-state comparison, Ansible convergence,
+host verification, and outside-in client-path evidence. At `infra-v1.0.0`,
+`make dry-run` also has a documented check-mode-only firewall discovery
+failure; a live deploy does not turn that false failure into a passing test.
 | scheduled Monday 12:00 UTC | **drift-since-tag --repo-only** (`.github/workflows/drift.yml`) — repository-level drift detection; opens/updates a rolling issue |
 | scheduled Monday 10:23 UTC | **AmneziaWG arm64 floor watch** (`.github/workflows/amneziawg-arm64-floor.yml`) — flags issue-state or release-note fix claims for physical revalidation; never relaxes guards |
 | weekly weekend | **Renovate** opens dependency-update PRs for supported managers, including grouped Terraform providers and Rust crates, GitHub Actions digest pins, and Hysteria Realm / Snell sing-box pins via regex managers. |

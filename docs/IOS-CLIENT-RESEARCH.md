@@ -10,7 +10,10 @@ AmneziaWG keys, or private subscription URLs are recorded here.
 
 ## Local client contract
 
-The deployed fleet exposes four independent client paths:
+The deployed fleet exposes four independent client paths. Its current release
+and verification boundary are recorded in
+[DEPLOYMENT-STATUS.md](DEPLOYMENT-STATUS.md); this client comparison does not
+by itself prove path reachability.
 
 | Profile | Public client surface | Required client capability |
 |---|---|---|

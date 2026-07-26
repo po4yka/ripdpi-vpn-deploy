@@ -161,6 +161,11 @@ anything below `secrets/local/`.
 
 ## 6. Deploy
 
+Before changing an existing fleet, read [DEPLOYMENT-STATUS.md](DEPLOYMENT-STATUS.md).
+It records the deployed release, named environments, management-path
+invariant, live validation boundary, and known operator limitations without
+publishing endpoints or secrets.
+
 ```bash
 make init
 make validate          # must pass before continuing
@@ -179,6 +184,11 @@ make clean             # shred the configured plaintext SECRETS_FILE
 
 If `dry-run` shows changes you didn't expect, stop and investigate. Don't
 proceed to `deploy`.
+
+At `infra-v1.0.0`, check mode has a documented false failure in firewall SSH
+port discovery. Do not bypass it or commit a diagnostic workaround; see
+[the current deployment status](DEPLOYMENT-STATUS.md#current-operator-limitations)
+for the exact boundary and the observed live gates.
 
 ## 7. Generate a client config
 

@@ -3,6 +3,10 @@
 Two flows: **first-time deploy** (handled by `QUICKSTART.md`) and
 **re-deploy after editing configs** (this runbook).
 
+For the currently deployed release, provider-to-role mapping, observed gate
+results, and unresolved operator limitations, start with
+[DEPLOYMENT-STATUS.md](DEPLOYMENT-STATUS.md).
+
 ## Re-deploy after a config or secrets edit
 
 When you've edited a role template, group_vars, or the secrets file, and
@@ -23,6 +27,11 @@ Don't push. The most common cause is a forgotten edit on a different
 branch, or a role that's accidentally redownloading the binary because
 the version pin moved.
 
+`infra-v1.0.0` also has a known check-mode-only failure in firewall SSH-port
+discovery. Do not weaken or skip the gate. Confirm the failure matches the
+record in [DEPLOYMENT-STATUS.md](DEPLOYMENT-STATUS.md#current-operator-limitations)
+and fix the source before treating `make dry-run` as green.
+
 ## Re-deploy after a Terraform change (instance type, zone, firewall)
 
 ```bash
@@ -32,6 +41,8 @@ make plan              # READ THE PLAN
 # § "blue-green replacement".
 make apply             # only if the plan was non-destructive
 make inventory
+# Restore and verify the local Tailscale SSH HostName override described in
+# DEPLOYMENT-STATUS.md before the next Ansible command.
 make wait
 make deploy
 make verify

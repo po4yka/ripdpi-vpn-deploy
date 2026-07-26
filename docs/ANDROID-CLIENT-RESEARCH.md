@@ -12,7 +12,10 @@ AmneziaWG keys, or private subscription URLs are recorded here.
 
 ## Local client contract
 
-The deployed fleet exposes four client paths and one repository-native aggregate profile:
+The deployed fleet exposes four client paths and one repository-native
+aggregate profile. Its current release and verification boundary are recorded
+in [DEPLOYMENT-STATUS.md](DEPLOYMENT-STATUS.md); this client comparison does
+not by itself prove path reachability.
 
 | Profile | Public client surface | Required Android capability |
 |---|---|---|

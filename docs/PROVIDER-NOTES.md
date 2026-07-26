@@ -1,5 +1,11 @@
 # Provider notes
 
+The sanitized mapping and last observed convergence state of the active
+three-provider fleet are recorded in
+[DEPLOYMENT-STATUS.md](DEPLOYMENT-STATUS.md). Provider support in this file is
+a capability statement; only a refreshed plan against the named environment
+is evidence of current provider state.
+
 ## ASN / hoster risk tiers (RU threat model, 2026-05)
 
 Source: repository-local deployment measurements and operator validation.

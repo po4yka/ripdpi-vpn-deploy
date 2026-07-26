@@ -147,47 +147,49 @@ Agents and contributors: `AGENTS.md` and `CLAUDE.md` at the repo root carry
 the working rules (per-folder variants apply when working inside a subtree).
 Then:
 
-1. `docs/QUICKSTART.md` — zero-to-working in ~30 minutes.
-2. `docs/ARCHITECTURE.md` — how this repo maps to the P0–P3 stack.
-3. `docs/CDN-DECISION.md` — explicit ADR: Cloudflare CDN is **not** the RU
+1. `docs/DEPLOYMENT-STATUS.md` — sanitized current release, fleet mapping,
+   observed live gates, and remaining verification boundaries.
+2. `docs/QUICKSTART.md` — zero-to-working in ~30 minutes.
+3. `docs/ARCHITECTURE.md` — how this repo maps to the P0–P3 stack.
+4. `docs/CDN-DECISION.md` — explicit ADR: Cloudflare CDN is **not** the RU
    baseline; nginx-xhttp role is direct-only by default.
-4. `docs/SECRETS.md` — SOPS+age model, age-key recovery, rotation.
-5. `docs/AGE-RECOVERY.md` — Shamir-split the age key for k-of-n recovery.
-6. `docs/TESTING.md` — coverage matrix and what's intentionally not tested.
-7. `docs/BRANCH-PROTECTION.md` — apply required-status-check rules via GH API.
-8. `docs/RUNBOOK-deploy.md` — full deploy procedure.
-9. `docs/CLIENT-NOTES.md` — client-side bugs and version pins (AWG #2457,
+5. `docs/SECRETS.md` — SOPS+age model, age-key recovery, rotation.
+6. `docs/AGE-RECOVERY.md` — Shamir-split the age key for k-of-n recovery.
+7. `docs/TESTING.md` — coverage matrix and what's intentionally not tested.
+8. `docs/BRANCH-PROTECTION.md` — apply required-status-check rules via GH API.
+9. `docs/RUNBOOK-deploy.md` — full deploy procedure.
+10. `docs/CLIENT-NOTES.md` — client-side bugs and version pins (AWG #2457,
    sing-box NaiveProxy padding leak, NaiveProxy v147 preamble).
-10. `docs/SUBSCRIPTION-PLANE.md` — subscription-delivery contract matrix.
-11. `docs/XRAY-RELEASE-LINE.md` — Xray-core 2026 release-line tracker
+11. `docs/SUBSCRIPTION-PLANE.md` — subscription-delivery contract matrix.
+12. `docs/XRAY-RELEASE-LINE.md` — Xray-core 2026 release-line tracker
     (v26.2.6 → v26.7.11) with breaking-change notes for upgrades.
-12. `docs/PQ-REALITY-ADOPTION.md` — enforced HOLD/STAGING/PRODUCTION policy
+13. `docs/PQ-REALITY-ADOPTION.md` — enforced HOLD/STAGING/PRODUCTION policy
     for VLESS Encryption (PQE) over REALITY.
-13. `docs/AWG-COHORTS.md` — AmneziaWG cohort obfuscation profiles by
+14. `docs/AWG-COHORTS.md` — AmneziaWG cohort obfuscation profiles by
     packet-shape signature (e.g. `narrow-junk-sequential`).
-14. `docs/MULTI-COHORT.md` — multiple VLESS+REALITY inbounds per host,
+15. `docs/MULTI-COHORT.md` — multiple VLESS+REALITY inbounds per host,
     each with its own port/flow_mode/finalmask/clients.
-15. `docs/MULTI-OPERATOR.md` — per-scope SOPS rules, role-scoped secrets
+16. `docs/MULTI-OPERATOR.md` — per-scope SOPS rules, role-scoped secrets
     files, audit-log boundaries.
-16. `docs/SUBSCRIPTION-HOST-SEPARATION.md` — run the subscription
+17. `docs/SUBSCRIPTION-HOST-SEPARATION.md` — run the subscription
     delivery role on a dedicated VPS via `vpn_subscription_only`.
-17. `docs/CI-REAL-DEPLOY.md` — workflow_dispatch ephemeral-UpCloud
+18. `docs/CI-REAL-DEPLOY.md` — workflow_dispatch ephemeral-UpCloud
     deploy gate for PRs labelled `ci-real-deploy`.
-18. `docs/REGRESSION-BASELINE.md` — `rkn-block-checker` four-layer
+19. `docs/REGRESSION-BASELINE.md` — `rkn-block-checker` four-layer
     verdict harness for before/after deploy measurement.
-19. `docs/PROBE-MATRIX.md` — topology-aware authenticated probe matrix with
+20. `docs/PROBE-MATRIX.md` — topology-aware authenticated probe matrix with
     paired single-IP and split-hop targets, permission-checked profiles, and
     conservative protocol/class/topology observations.
-20. `docs/TRANSPORT-REACHABILITY-MATRIX.md` — two-vantage per-profile
+21. `docs/TRANSPORT-REACHABILITY-MATRIX.md` — two-vantage per-profile
     reachability sweep, CI-driven non-filtered half + operator-driven
     filtered half.
-21. `docs/SPLIT-HOP-TOPOLOGY.md` + `docs/RUNBOOK-split-hop-pilot.md`
+22. `docs/SPLIT-HOP-TOPOLOGY.md` + `docs/RUNBOOK-split-hop-pilot.md`
     — ADR + operator runbook for the two-VPS split-hop topology that
     breaks the FOCI 2026 per-IP dual-role flow classifier.
-22. `docs/RUNBOOK-idle-cycle-measurement.md` + `docs/measurements/`
+23. `docs/RUNBOOK-idle-cycle-measurement.md` + `docs/measurements/`
     — measurement spike for the bare-HTTPS idle-cycle access-attempt
     pattern: driver + correlation tool + dated-report template.
-23. `docs/REAL-VPS-AWG-NAT.md` — standalone three-host AWG/NAT evidence lane;
+24. `docs/REAL-VPS-AWG-NAT.md` — standalone three-host AWG/NAT evidence lane;
     provision through `make awg-evidence-provision` after decrypting SOPS.
 
 Operational runbooks: `docs/RUNBOOK-{rotate,rollback,incident,restore,add-fallback}.md`.
