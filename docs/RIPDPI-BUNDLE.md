@@ -146,7 +146,10 @@ python3 scripts/validate-bundle.py --runtime-materialized /path/to/embedded-rela
 This explicit mode validates each inline AmneziaWG private key, removes it only
 from an in-memory copy, and then applies the unchanged redacted schema. It does
 not print the key, rewrite the artifact, or make the materialized file suitable
-for distribution.
+for distribution. The file must be an owner-controlled regular file with mode
+`0600`, and every component of its path must be free of symlinks and unsafe
+writable directories. This local, transient artifact is the narrow exception
+to the SOPS input gate; remove it immediately after validation.
 
 ### Private-key recovery flow
 

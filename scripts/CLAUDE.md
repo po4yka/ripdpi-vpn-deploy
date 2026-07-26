@@ -13,6 +13,12 @@ data shaping are Python and use only stdlib + `PyYAML` / `Jinja2`.
 without `VPN_SECRETS_FILE` env or a freshly decrypted `/tmp/vpn-<env>.secrets.yaml`.
 Never re-implement decryption.
 
+**Runtime bundle validation is a narrow SOPS exception** — a client-side
+materialized bundle is not an Ansible secrets document. The explicit
+`validate-bundle.py --runtime-materialized` mode may read it only as a
+same-owner `0600` regular file through a symlink-free, owner-controlled path,
+redacts the key in memory, and never rewrites or logs the artifact.
+
 **Audit-log is opt-out, not opt-in** — destructive scripts append to
 `audit-log.sh append-best-effort` after a successful run. The `--no-audit`
 flag exists for testing but is undocumented.

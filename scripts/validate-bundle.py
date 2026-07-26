@@ -24,6 +24,8 @@ import base64
 import binascii
 import copy
 import json
+import os
+import stat
 import sys
 from pathlib import Path
 
@@ -33,6 +35,39 @@ from ripdpi_cohort_fingerprint import ORDER, cohort_fingerprint  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = REPO_ROOT / "contract" / "ripdpi-bundle.schema.json"
 DEFAULT_TARGET = REPO_ROOT / "contract" / "ripdpi-bundle.example.json"
+
+
+def _read_runtime_materialized(path: Path) -> str:
+    """Read a private bundle only through an owner-controlled path."""
+    target = path.absolute()
+    owner = os.geteuid()
+    for parent in reversed(target.parents):
+        info = parent.lstat()
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+            raise ValueError("runtime bundle path contains a symlink")
+        writable = info.st_mode & 0o022
+        sticky_root = info.st_uid == 0 and info.st_mode & stat.S_ISVTX
+        if info.st_uid not in {0, owner} or (writable and not sticky_root):
+            raise ValueError("runtime bundle path ancestry is not owner-controlled")
+
+    before = target.lstat()
+    if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+        raise ValueError("runtime bundle must be a regular non-symlink file")
+    if before.st_uid != owner or stat.S_IMODE(before.st_mode) != 0o600:
+        raise ValueError("runtime bundle must be owned by the current user with mode 0600")
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(target, flags)
+    try:
+        opened = os.fstat(descriptor)
+        if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+            raise ValueError("runtime bundle changed while it was being opened")
+        with os.fdopen(descriptor, encoding="utf-8") as stream:
+            descriptor = -1
+            return stream.read()
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
 
 
 def _extract_ripdpi(doc: dict) -> dict:
@@ -130,9 +165,19 @@ def main() -> int:
         )
         return 2
 
+    try:
+        source = (
+            _read_runtime_materialized(target)
+            if args.runtime_materialized
+            else target.read_text()
+        )
+    except (OSError, ValueError) as exc:
+        print(f"validate-bundle: unsafe runtime input: {exc}", file=sys.stderr)
+        return 2
+
     schema = json.loads(SCHEMA.read_text())
     try:
-        doc = json.loads(target.read_text())
+        doc = json.loads(source)
     except json.JSONDecodeError as exc:
         print(f"validate-bundle: JSON parse error: {exc}", file=sys.stderr)
         return 1

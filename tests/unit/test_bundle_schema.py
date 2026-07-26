@@ -232,6 +232,11 @@ def _run_validator(path, *args):
     )
 
 
+def _write_runtime(path, doc):
+    path.write_text(json.dumps(doc))
+    path.chmod(0o600)
+
+
 def test_materialized_runtime_key_is_rejected_without_explicit_mode(tmp_path, example):
     path = tmp_path / "runtime.json"
     path.write_text(json.dumps(_materialized_bundle(example)))
@@ -246,7 +251,7 @@ def test_runtime_mode_accepts_valid_materialized_key(tmp_path, example, full_bun
     ripdpi = _materialized_bundle(example)
     doc = {"ripdpi": ripdpi, "outbounds": []} if full_bundle else ripdpi
     path = tmp_path / "runtime.json"
-    path.write_text(json.dumps(doc))
+    _write_runtime(path, doc)
 
     proc = _run_validator(path, "--runtime-materialized")
 
@@ -258,7 +263,7 @@ def test_runtime_mode_rejects_key_and_placeholder_without_printing_key(tmp_path,
     key = doc["amneziawg"][0]["private_key"]
     doc["amneziawg"][0]["private_key_placeholder"] = True
     path = tmp_path / "runtime.json"
-    path.write_text(json.dumps(doc))
+    _write_runtime(path, doc)
 
     proc = _run_validator(path, "--runtime-materialized")
 
@@ -271,7 +276,7 @@ def test_runtime_mode_rejects_missing_key_state(tmp_path, example):
     doc = copy.deepcopy(example)
     del doc["amneziawg"][0]["private_key_placeholder"]
     path = tmp_path / "runtime.json"
-    path.write_text(json.dumps(doc))
+    _write_runtime(path, doc)
 
     proc = _run_validator(path, "--runtime-materialized")
 
@@ -281,7 +286,7 @@ def test_runtime_mode_rejects_missing_key_state(tmp_path, example):
 
 def test_runtime_mode_rejects_redacted_placeholder_only_bundle(tmp_path, example):
     path = tmp_path / "redacted.json"
-    path.write_text(json.dumps(example))
+    _write_runtime(path, example)
 
     proc = _run_validator(path, "--runtime-materialized")
 
@@ -295,7 +300,7 @@ def test_runtime_mode_rejects_mixed_materialization_state(tmp_path, example):
     redacted_entry["tag"] = "second-awg"
     doc["amneziawg"].append(redacted_entry)
     path = tmp_path / "mixed.json"
-    path.write_text(json.dumps(doc))
+    _write_runtime(path, doc)
 
     proc = _run_validator(path, "--runtime-materialized")
 
@@ -316,7 +321,7 @@ def test_runtime_mode_rejects_malformed_private_key(tmp_path, example, private_k
     doc = _materialized_bundle(example)
     doc["amneziawg"][0]["private_key"] = private_key
     path = tmp_path / "runtime.json"
-    path.write_text(json.dumps(doc))
+    _write_runtime(path, doc)
 
     proc = _run_validator(path, "--runtime-materialized")
 
@@ -330,12 +335,62 @@ def test_runtime_mode_still_rejects_fingerprint_mismatch(tmp_path, example):
     doc = _materialized_bundle(example)
     doc["amneziawg"][0]["cohort_fingerprint"] = "sha256:" + "0" * 64
     path = tmp_path / "runtime.json"
-    path.write_text(json.dumps(doc))
+    _write_runtime(path, doc)
 
     proc = _run_validator(path, "--runtime-materialized")
 
     assert proc.returncode == 1
     assert "cohort_fingerprint" in proc.stderr
+
+
+def test_runtime_mode_rejects_group_readable_file(tmp_path, example):
+    path = tmp_path / "runtime.json"
+    _write_runtime(path, _materialized_bundle(example))
+    path.chmod(0o640)
+
+    proc = _run_validator(path, "--runtime-materialized")
+
+    assert proc.returncode == 2
+    assert "mode 0600" in proc.stderr
+
+
+def test_runtime_mode_rejects_symlinked_file(tmp_path, example):
+    private = tmp_path / "private.json"
+    _write_runtime(private, _materialized_bundle(example))
+    path = tmp_path / "runtime.json"
+    path.symlink_to(private)
+
+    proc = _run_validator(path, "--runtime-materialized")
+
+    assert proc.returncode == 2
+    assert "symlink" in proc.stderr
+
+
+def test_runtime_mode_rejects_symlinked_parent(tmp_path, example):
+    private_dir = tmp_path / "private"
+    private_dir.mkdir(mode=0o700)
+    private = private_dir / "runtime.json"
+    _write_runtime(private, _materialized_bundle(example))
+    linked_dir = tmp_path / "linked"
+    linked_dir.symlink_to(private_dir, target_is_directory=True)
+
+    proc = _run_validator(linked_dir / "runtime.json", "--runtime-materialized")
+
+    assert proc.returncode == 2
+    assert "symlink" in proc.stderr
+
+
+def test_runtime_mode_rejects_writable_parent(tmp_path, example):
+    writable_dir = tmp_path / "writable"
+    writable_dir.mkdir()
+    writable_dir.chmod(0o777)
+    path = writable_dir / "runtime.json"
+    _write_runtime(path, _materialized_bundle(example))
+
+    proc = _run_validator(path, "--runtime-materialized")
+
+    assert proc.returncode == 2
+    assert "ancestry is not owner-controlled" in proc.stderr
 
 
 # ---------------------------------------------------------------------------
