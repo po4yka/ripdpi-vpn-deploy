@@ -15,7 +15,16 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_bundle_uses_feature_host_and_emits_ingress_topology(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("hosts", "cohorts"),
+    (
+        ("upcloud:p0,vultr:p2", "p0,p2"),
+        ("vultr:p2,upcloud:p0", "p2,p0"),
+    ),
+)
+def test_bundle_uses_feature_host_and_emits_ingress_topology(
+    tmp_path: Path, hosts: str, cohorts: str
+) -> None:
     for tool in ("jq", "python3"):
         if not shutil.which(tool):
             pytest.skip(f"required binary not found on PATH: {tool}")
@@ -104,8 +113,8 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(tmp_path: Path) -> 
         {
             "PATH": f"{fake_bin}:{env['PATH']}",
             "SOPS_FILE": str(secrets),
-            "HOSTS": "upcloud:p0,vultr:p2",
-            "COHORTS": "p0,p2",
+            "HOSTS": hosts,
+            "COHORTS": cohorts,
         }
     )
     result = subprocess.run(

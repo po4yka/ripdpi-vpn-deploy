@@ -248,7 +248,10 @@ runs on the client-facing Node A whose upstream path exits through Node B.
 enable toggle alone does not define a stable realm identifier. Both default to
 the direct-deployment values (`false` / `null`). Pure egress roles (e.g.
 `warp-outbound`) are server-side only and intentionally absent — the client has
-no half to play there.
+no half to play there. Multi-host emission aggregates every entry rather than
+trusting `HOSTS` order: any ingress host makes `split_hop_egress=true`, the
+first non-null realm identifier is retained, and conflicting non-null realm
+identifiers fail closed.
 
 ## `ripdpi.expires`
 

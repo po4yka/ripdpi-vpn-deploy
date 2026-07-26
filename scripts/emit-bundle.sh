@@ -234,16 +234,31 @@ for i in "${!host_pairs[@]}"; do
   tag_prefix="${prov}-${env_name}"
 
   # ------------------------------------------------------------------
-  # Topology — declared from the first host's group_vars so the client
-  # can tell a split-hop / realm-relayed endpoint from a direct one
-  # instead of mis-modelling a dual-role flow. Defaults: not split-hop,
-  # no realm (a plain single-VPS deployment).
+  # Topology — aggregate every host so HOSTS ordering cannot hide the
+  # client-facing split-hop ingress. A realm identifier may appear on any
+  # participating host, but two different non-null identifiers are ambiguous
+  # and therefore fail closed.
   # ------------------------------------------------------------------
+  host_topology_json="$(jq -c '{
+    split_hop_egress: (.enable_split_hop_ingress // false),
+    hysteria_realm:   (.hysteria_realm // null)
+  }' <<< "$vpn_json")"
   if [[ -z "$TOPOLOGY_JSON" ]]; then
-    TOPOLOGY_JSON="$(jq -c '{
-      split_hop_egress: (.enable_split_hop_ingress // false),
-      hysteria_realm:   (.hysteria_realm // null)
-    }' <<< "$vpn_json")"
+    TOPOLOGY_JSON="$host_topology_json"
+  else
+    current_realm="$(jq -c '.hysteria_realm' <<< "$TOPOLOGY_JSON")"
+    host_realm="$(jq -c '.hysteria_realm' <<< "$host_topology_json")"
+    if [[ "$current_realm" != "null" && "$host_realm" != "null" && "$current_realm" != "$host_realm" ]]; then
+      echo "conflicting vpn.hysteria_realm values across HOSTS" >&2
+      exit 1
+    fi
+    TOPOLOGY_JSON="$(jq -cn \
+      --argjson current "$TOPOLOGY_JSON" \
+      --argjson host "$host_topology_json" \
+      '{
+        split_hop_egress: ($current.split_hop_egress or $host.split_hop_egress),
+        hysteria_realm: ($current.hysteria_realm // $host.hysteria_realm)
+      }')"
   fi
 
   # ------------------------------------------------------------------

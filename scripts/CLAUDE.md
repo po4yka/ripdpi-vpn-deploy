@@ -27,6 +27,11 @@ flag exists for testing but is undocumented.
 
 **Provider roots share one inventory schema** — UpCloud, Hetzner, Vultr, and Scaleway export the same canonical outputs, so `render-inventory.sh` stays provider-neutral. Add provider-specific inventory code only when a control-plane address needs extra guest convergence proof, as Vultr's secondary IPv4 does.
 
+**Bundle topology is host-order independent** — `emit-bundle.sh` aggregates
+split-hop ingress and realm metadata across every `HOSTS` entry. Never infer
+client-facing topology from the first host; conflicting non-null realm IDs
+must fail closed.
+
 **Vultr secondary IPv4 inventory is live-gated** — Terraform output proves allocation only. `render-inventory.sh` polls the primary SSH endpoint and publishes `honeypot_listen_addr` only after the exact IPv4 appears on a guest interface.
 
 **Destroy is provider-aware and plan-verified** — `destroy.sh` maps each supported provider to its canonical server resource and checks that the destroy plan contains a delete action for that exact address before apply. Unknown providers fail before an override file is written.
