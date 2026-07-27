@@ -113,7 +113,7 @@
   ansible.builtin.file:
     path: /etc/nginx/sites-enabled/default
     state: absent
-  notify: Reload nginx
+  notify: Reload nginx-xhttp
 
 - name: Publish static site content
   ansible.builtin.copy:
@@ -122,7 +122,7 @@
     owner: root
     group: root
     mode: "u=rwX,go=rX"
-  notify: Reload nginx
+  notify: Reload nginx-xhttp
 
 - name: Ensure the public notes directory exists
   ansible.builtin.file:
@@ -154,7 +154,7 @@
       dest: notes/latency-throughput-context.html
     - src: repeatable-model-comparisons.html.j2
       dest: notes/repeatable-model-comparisons.html
-  notify: Reload nginx
+  notify: Reload nginx-xhttp
 
 - name: Remove the retired security contact file
   ansible.builtin.file:
@@ -175,7 +175,7 @@
       dest: robots.txt
     - src: sitemap.xml.j2
       dest: sitemap.xml
-  notify: Reload nginx
+  notify: Reload nginx-xhttp
 
 - name: Render nginx site
   # `template.validate` requires the validate command to contain `%s`
@@ -190,7 +190,7 @@
     mode: "0640"
   no_log: true
   diff: false
-  notify: Reload nginx
+  notify: Reload nginx-xhttp
 
 - name: Enable nginx site
   ansible.builtin.file:
@@ -198,7 +198,7 @@
     dest: /etc/nginx/sites-enabled/vpn-xhttp.conf
     state: link
     force: true
-  notify: Reload nginx
+  notify: Reload nginx-xhttp
 
 - name: Validate the full nginx config now the new site is enabled
   ansible.builtin.command:

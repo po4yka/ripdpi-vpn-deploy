@@ -32,6 +32,8 @@ EXAMPLE_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 # Templates under test
 NGINX_XHTTP_TEMPLATE = ROLES_DIR / "nginx-xhttp" / "templates" / "site.conf.j2"
 CDN_FRONT_TEMPLATE = ROLES_DIR / "cdn-front" / "templates" / "cdn-front.conf.j2"
+NGINX_XHTTP_HANDLERS = ROLES_DIR / "nginx-xhttp" / "handlers" / "main.yml"
+NGINX_XHTTP_TASKS = ROLES_DIR / "nginx-xhttp" / "tasks" / "main.yml"
 
 
 def _load_role_defaults() -> dict:
@@ -155,6 +157,13 @@ class TestCdnOff:
             },
         )
         assert rendered.count("client_max_body_size 0;") == 2
+
+    def test_xhttp_reload_handler_is_not_shadowed_by_other_nginx_roles(self):
+        handlers = NGINX_XHTTP_HANDLERS.read_text()
+        tasks = NGINX_XHTTP_TASKS.read_text()
+        assert "name: Reload nginx-xhttp" in handlers
+        assert "notify: Reload nginx-xhttp" in tasks
+        assert "notify: Reload nginx\n" not in tasks
 
 
 # ---------------------------------------------------------------------------
