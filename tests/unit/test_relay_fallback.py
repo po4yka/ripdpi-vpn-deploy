@@ -143,6 +143,19 @@ class TestCdnOff:
         rendered = self._rendered()
         assert "proxy_pass http://127.0.0.1:" in rendered
 
+    def test_xhttp_locations_accept_unbounded_stream_uploads(self):
+        """Long-lived stream-up requests must not inherit nginx's 1 MiB body limit."""
+        rendered = _render(
+            NGINX_XHTTP_TEMPLATE,
+            {
+                "nginx_xhttp": {
+                    **_base_vars()["nginx_xhttp"],
+                    "fallback_enabled": True,
+                }
+            },
+        )
+        assert rendered.count("client_max_body_size 0;") == 2
+
 
 # ---------------------------------------------------------------------------
 # CDN ON — cdn-front vhost
