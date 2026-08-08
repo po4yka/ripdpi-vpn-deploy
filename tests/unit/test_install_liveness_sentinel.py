@@ -166,7 +166,7 @@ def test_installer_supports_policy_without_amneziawg_key(tmp_path: Path) -> None
     emit_singbox = tmp_path / "emit-singbox"
     _exe(
         emit_singbox,
-        "#!/usr/bin/env bash\nprintf '{\"outbounds\":[{\"type\":\"vless\",\"tag\":\"p0-reality-upcloud-prod\"}]}\n'\n",
+        "#!/usr/bin/env bash\nprintf '{\"outbounds\":[{\"type\":\"vless\",\"tag\":\"p0-reality-upcloud-primary\"},{\"type\":\"vless\",\"tag\":\"p0-reality-upcloud-fallback\"}]}\n'\n",
     )
     emit_awg = tmp_path / "emit-awg"
     _exe(emit_awg, "#!/usr/bin/env bash\nexit 99\n")
@@ -183,7 +183,16 @@ if [[ "$*" == *'/usr/local/sbin/vpn-protocol-liveness' ]]; then
 fi
 """,
     )
-    _exe(bin_dir / "scp", "#!/usr/bin/env bash\nexit 0\n")
+    _exe(
+        bin_dir / "scp",
+        """#!/usr/bin/env bash
+for arg in "$@"; do
+  if [[ -f "$arg" ]]; then tar -xzf "$arg" -C "$SCP_CAPTURE"; fi
+done
+""",
+    )
+    scp_capture = tmp_path / "scp-capture"
+    scp_capture.mkdir()
     env = os.environ.copy()
     env.update(
         {
@@ -192,6 +201,7 @@ fi
             "EMIT_AWG": str(emit_awg),
             "LIVENESS_SENTINEL_REGISTRY": str(tmp_path / "registry.json"),
             "AUDIT_LOG": str(audit_log),
+            "SCP_CAPTURE": str(scp_capture),
         }
     )
 
@@ -205,3 +215,8 @@ fi
 
     assert result.returncode == 0, result.stderr
     assert json.loads((tmp_path / "registry.json").read_text())["sentinels"]["stream-a"]["client"] == "stream-a"
+    installed = json.loads((scp_capture / "config.json").read_text())
+    assert installed["sing_box"]["profiles"]["p0-reality"] == [18081, 18082]
+    sing_box = json.loads((scp_capture / "sing-box.json").read_text())
+    assert [item["type"] for item in sing_box["outbounds"]] == ["vless", "vless"]
+    assert len(sing_box["inbounds"]) == 2

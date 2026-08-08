@@ -104,6 +104,38 @@ def stop_process(process: subprocess.Popen[str] | None) -> None:
         pass
 
 
+def wait_for_ports(process: subprocess.Popen[str], ports: list[int], timeout: float = 3.0) -> bool:
+    deadline = time.monotonic() + timeout
+    pending = set(ports)
+    while pending and time.monotonic() < deadline:
+        if process.poll() is not None:
+            return False
+        for port in list(pending):
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                    pending.remove(port)
+            except OSError:
+                pass
+        if pending:
+            time.sleep(0.05)
+    return not pending
+
+
+def aggregate_variants(profile: str, variants: list[dict]) -> dict:
+    for verdict in ("ok", "throttled"):
+        matching = [item for item in variants if item["verdict"] == verdict]
+        if matching:
+            best = min(matching, key=lambda item: item.get("duration_ms") or sys.maxsize)
+            return process_result(profile, best)
+    if variants and all(item["verdict"] == "blocked" for item in variants):
+        return process_result(profile, min(variants, key=lambda item: item.get("duration_ms") or sys.maxsize))
+    for verdict in ("error", "unknown", "blocked"):
+        matching = [item for item in variants if item["verdict"] == verdict]
+        if matching:
+            return process_result(profile, matching[0])
+    return process_result(profile, {"verdict": "error", "duration_ms": None, "error_kind": "no_variants"})
+
+
 def probe_sing_box_profiles(sing_box: dict, config: dict, control_alive: bool) -> list[dict]:
     profile_ports = sing_box["profiles"]
     log_path = Path(f"/tmp/vpn-liveness-{os.getpid()}-sing-box.log")
@@ -116,18 +148,21 @@ def probe_sing_box_profiles(sing_box: dict, config: dict, control_alive: bool) -
                 stderr=log_handle,
                 text=True,
             )
-        time.sleep(0.15)
-        if process.poll() is not None:
+        all_ports = [port for ports in profile_ports.values() for port in ports]
+        if not wait_for_ports(process, all_ports):
             return [
                 process_result(profile, {"verdict": "error", "duration_ms": None, "error_kind": "runtime_start"})
                 for profile in sorted(profile_ports)
             ]
         results: list[dict] = []
-        for profile, port in sorted(profile_ports.items()):
-            result = curl_probe(config, ["--socks5-hostname", f"127.0.0.1:{port}"])
-            if not control_alive and result["verdict"] == "blocked":
-                result = {"verdict": "unknown", "duration_ms": result.get("duration_ms"), "error_kind": "control_unavailable"}
-            results.append(process_result(profile, result))
+        for profile, ports in sorted(profile_ports.items()):
+            variants = []
+            for port in ports:
+                result = curl_probe(config, ["--socks5-hostname", f"127.0.0.1:{port}"])
+                if not control_alive and result["verdict"] == "blocked":
+                    result = {"verdict": "unknown", "duration_ms": result.get("duration_ms"), "error_kind": "control_unavailable"}
+                variants.append(result)
+            results.append(aggregate_variants(profile, variants))
         stop_process(process)
         if any(item["verdict"] == "blocked" for item in results):
             try:

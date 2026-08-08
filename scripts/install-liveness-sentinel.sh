@@ -123,7 +123,7 @@ prefixes = {
     "p1-xhttp": "p1-xhttp-",
     "p2-hysteria2": "p2-hysteria2-",
 }
-ports = {"p0-reality": 18081, "p1-xhttp": 18082, "p2-hysteria2": 18083}
+port_bases = {"p0-reality": 18080, "p1-xhttp": 18180, "p2-hysteria2": 18280}
 required = required_csv.split(",")
 profiles = {}
 rendered_outbounds = []
@@ -135,16 +135,15 @@ for profile in required:
     selected = [item for item in outbounds if str(item.get("tag", "")).startswith(prefixes[profile])]
     if not selected:
         raise SystemExit(f"required profile {profile} is not present in emitted sing-box config")
-    final = selected[0]["tag"]
-    profile_outbounds = list(selected)
-    if len(selected) > 1:
-        final = f"liveness-{profile}"
-        profile_outbounds.append({"type": "urltest", "tag": final, "outbounds": [item["tag"] for item in selected], "url": url, "interval": "10m", "tolerance": 50})
-    inbound_tag = f"probe-{profile}"
-    rendered_outbounds.extend(profile_outbounds)
-    rendered_inbounds.append({"type": "mixed", "tag": inbound_tag, "listen": "127.0.0.1", "listen_port": ports[profile]})
-    rendered_rules.append({"inbound": [inbound_tag], "outbound": final})
-    profiles[profile] = ports[profile]
+    profile_ports = []
+    rendered_outbounds.extend(selected)
+    for index, outbound in enumerate(selected, start=1):
+        port = port_bases[profile] + index
+        inbound_tag = f"probe-{profile}-{index}"
+        rendered_inbounds.append({"type": "mixed", "tag": inbound_tag, "listen": "127.0.0.1", "listen_port": port})
+        rendered_rules.append({"inbound": [inbound_tag], "outbound": outbound["tag"]})
+        profile_ports.append(port)
+    profiles[profile] = profile_ports
 if profiles:
     rendered = {
         "log": {"level": "warn", "timestamp": True},
@@ -177,7 +176,7 @@ SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
 REMOTE_USER="$(ssh "${SSH_OPTS[@]}" "$SSH_TARGET" id -un)"
 [[ "$REMOTE_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]] || { echo "unsafe remote username" >&2; exit 1; }
 REMOTE_DIR="/tmp/vpn-liveness-${SENTINEL}"
-tar -C "$WORK/install" -czf "$WORK/install.tar.gz" .
+COPYFILE_DISABLE=1 tar -C "$WORK/install" -czf "$WORK/install.tar.gz" .
 scp "${SSH_OPTS[@]}" "$WORK/install.tar.gz" "${SSH_TARGET}:${REMOTE_DIR}.tar.gz"
 ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "set -eu; rm -rf '${REMOTE_DIR}'; mkdir -m 0700 '${REMOTE_DIR}'; tar -xzf '${REMOTE_DIR}.tar.gz' -C '${REMOTE_DIR}'; sudo install -d -m 0700 /etc/vpn-liveness; sudo install -m 0755 '${REMOTE_DIR}/vpn-protocol-liveness' /usr/local/sbin/vpn-protocol-liveness; sudo find '${REMOTE_DIR}' -maxdepth 1 -type f ! -name vpn-protocol-liveness -exec install -m 0600 {} /etc/vpn-liveness/ \;; printf '%s ALL=(root) NOPASSWD: /usr/local/sbin/vpn-protocol-liveness\n' '${REMOTE_USER}' | sudo tee /etc/sudoers.d/vpn-protocol-liveness >/dev/null; sudo chmod 0440 /etc/sudoers.d/vpn-protocol-liveness; sudo visudo -cf /etc/sudoers.d/vpn-protocol-liveness >/dev/null; rm -rf '${REMOTE_DIR}' '${REMOTE_DIR}.tar.gz'"
 

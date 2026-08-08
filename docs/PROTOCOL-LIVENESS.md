@@ -17,7 +17,7 @@ evaluation_interval_seconds: 120
 failure_threshold: 3
 otp_ttl_seconds: 3600
 expected_runtime:
-  sing_box: 1.14.0
+  sing_box: 1.13.12
   awg: 1.0.0
 policies:
   - id: fullstack
@@ -46,11 +46,13 @@ The AWG adapter creates the userspace interface in the host namespace, moves onl
 
 Run `make protocol-liveness LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml` to inspect one redacted evaluation. `ok` and `throttled` prove the profile completed authenticated data-plane traffic; `blocked` contributes to rotation only when the direct control succeeds; `unknown` and `error` inhibit rotation.
 
+For monitoring without a warm spare, run `make monitor-protocol-liveness LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml`. It stores the latest redacted evidence beneath `${XDG_STATE_HOME:-~/.local/state}/vpn-deploy/protocol-liveness`, sends ntfy alerts on unhealthy transitions and recovery using `watchdog_secrets`, retries failed delivery, and emits at most one reminder per day while the state is unchanged.
+
 A sentinel fails its policy only when every required logical profile is blocked. A logical profile with multiple endpoint variants remains alive when any variant succeeds. A policy becomes `rotation_candidate` only when `min_failed_vantages` sentinels fail. Three consecutive two-minute candidate evaluations issue the existing OTP; no command promotes automatically.
 
 `make promote-spare OTP=… LIVENESS_CONFIG=…` reruns the probes before consuming the OTP. Promotion is refused if liveness recovered, evidence became indeterminate, the candidate policy changed, the configuration hash changed, or provider/environment binding changed. Blue-green verification and the existing operator traffic-pivot confirmation remain mandatory.
 
-Configure the managed cron block with `WARM_SPARE_ENV=spare LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml make install-operator-crons`. Omitting `LIVENESS_CONFIG` preserves the legacy TCP-only watcher and prints a warning; that compatibility mode cannot detect targeted protocol blocking.
+Configure the managed cron block with `LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml make install-operator-crons`. Without `WARM_SPARE_ENV`, it runs the standalone monitor every two minutes. With `WARM_SPARE_ENV=spare`, the warm-spare watcher owns the same probe cycle and retains the OTP-gated promotion flow. Omitting `LIVENESS_CONFIG` preserves the legacy TCP-only watcher and prints a warning; that compatibility mode cannot detect targeted protocol blocking.
 
 ## Staging acceptance
 

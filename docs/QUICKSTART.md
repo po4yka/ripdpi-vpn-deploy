@@ -248,7 +248,7 @@ Add to your operator's cron / launchd:
 */2 * * * *   cd ~/GitRep/ripdpi-vpn-deploy && LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml GREEN_ENV=spare make watch-spare >> /tmp/vpn-spare.log 2>&1
 
 # Daily — encrypted backup of TF state to ~/.config/vpn-provision/state-backups/
-@daily       cd ~/GitRep/ripdpi-vpn-deploy && make backup-state >> /tmp/vpn-tfstate-backup.log 2>&1
+47 3 * * *   cd ~/GitRep/ripdpi-vpn-deploy && make backup-state >> /tmp/vpn-tfstate-backup.log 2>&1
 ```
 
 The VPS itself runs a local watchdog every 5 minutes (the `watchdog`

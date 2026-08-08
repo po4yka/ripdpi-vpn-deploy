@@ -87,7 +87,7 @@ make probe-payload-throttle HOST=1.2.3.4 PORT=443 \
 make probe-payload-throttle HOST=endpoint ASN=AS64500   # skip ASN lookup
 ```
 
-A `@daily` operator cron is wired by `scripts/install-operator-crons.sh`
+A portable daily operator cron is wired by `scripts/install-operator-crons.sh`
 when `PAYLOAD_THROTTLE_HOST` is exported. A daily cadence is deliberate:
 the probe issues real traffic, so a tight poll interval would itself
 become a DPI signature (see `PROBE-MATRIX.md` on the 300 s default).

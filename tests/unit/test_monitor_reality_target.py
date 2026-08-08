@@ -446,6 +446,6 @@ def test_cron_installer_wires_monitor_only_with_vantage(tmp_path):
         text=True,
     )
     assert enabled.returncode == 0
-    assert "@daily" in enabled.stdout
+    assert "17 4 * * *" in enabled.stdout
     assert "make monitor-reality-target" in enabled.stdout
     assert "VANTAGE=filtered-cohort-a" in enabled.stdout

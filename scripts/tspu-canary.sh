@@ -5,7 +5,7 @@
 #
 # Designed to run from an in-cohort RU test box on a daily cron:
 #
-#   @daily  cd ~/GitRep/vpn-deploy && make tspu-canary
+#   27 3 * * *  cd ~/GitRep/vpn-deploy && make tspu-canary
 #
 # The verdicts are interesting only from inside the cohort whose
 # behaviour you care about (RU mobile / RU home ISP / specific

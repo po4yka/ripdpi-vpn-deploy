@@ -60,13 +60,20 @@ print("204 0.040000", end="")
     _write_executable(
         bin_dir / "sing-box",
         """#!/usr/bin/env python3
-import os, pathlib, signal, sys
+import os, pathlib, signal, socket, sys
 with pathlib.Path(os.environ["CALL_LOG"]).open("a") as log:
     log.write("sing-box " + " ".join(sys.argv[1:]) + "\\n")
 if sys.argv[1:2] == ["version"]:
     print("sing-box version 1.14.0")
     raise SystemExit(0)
 pathlib.Path(os.environ["SING_PID_FILE"]).write_text(str(os.getpid()))
+listeners = []
+for port in (18081, 18082, 18083, 18084):
+    listener = socket.socket()
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(("127.0.0.1", port))
+    listener.listen()
+    listeners.append(listener)
 signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
 signal.pause()
@@ -125,7 +132,7 @@ signal.pause()
     profile_config = tmp_path / "sing-box.json"
     profile_config.write_text("{}")
     for index, profile in enumerate(("p0-reality", "p1-xhttp", "p2-hysteria2"), start=1):
-        sing_profiles[profile] = 18080 + index
+        sing_profiles[profile] = [18080 + index]
     config.write_text(
         json.dumps(
             {
@@ -198,6 +205,22 @@ def test_transport_timeout_is_blocked_only_when_direct_control_succeeds(tmp_path
     verdicts = {item["profile"]: item["verdict"] for item in payload["profiles"]}
     assert payload["control"]["verdict"] == "ok"
     assert verdicts["p0-reality"] == "blocked"
+
+
+def test_profile_stays_alive_when_one_endpoint_variant_succeeds(tmp_path: Path) -> None:
+    config, env = _setup(tmp_path, blocked_port=18081)
+    document = json.loads(config.read_text())
+    document["sing_box"]["profiles"]["p0-reality"] = [18081, 18084]
+    config.write_text(json.dumps(document))
+
+    result = _run(config, env)
+
+    payload = json.loads(result.stdout)
+    p0 = next(item for item in payload["profiles"] if item["profile"] == "p0-reality")
+    assert p0["verdict"] == "ok"
+    calls = (tmp_path / "calls.log").read_text()
+    assert "127.0.0.1:18081" in calls
+    assert "127.0.0.1:18084" in calls
 
 
 def test_awg_namespace_is_removed_after_probe_failure(tmp_path: Path) -> None:

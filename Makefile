@@ -33,7 +33,7 @@ export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CON
         audit-permissions asn-drift check-ip-reputation issue-bootstrap \
         test-tls-policing probe-payload-throttle fleet-status drift-since-tag fleet-rotate \
         snell-refinement \
-        protocol-liveness install-liveness-sentinel watch-spare promote-spare probing-summary tspu-canary \
+        protocol-liveness monitor-protocol-liveness install-liveness-sentinel watch-spare promote-spare probing-summary tspu-canary \
         emit-sbom molecule-full-stack audit-log audit-log-append pyinfra-audit \
         setup-yubikey check-killswitch install-operator-crons \
         remove-operator-crons issue-sub-token sub-reads \
@@ -89,6 +89,7 @@ help:
 	@echo "  blue-green GREEN_ENV=<name>  Orchestrate single-host blue-green"
 	@echo "  fleet-rotate PLAN=…        Coordinated rotation across fleet (--dry-run / --resume)"
 	@echo "  protocol-liveness LIVENESS_CONFIG=…  Pull sentinel probes and evaluate quorum"
+	@echo "  monitor-protocol-liveness LIVENESS_CONFIG=…  Persist and alert on protocol-liveness transitions"
 	@echo "  install-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=…  Secure sentinel onboarding"
 	@echo "  watch-spare                Cron: probe blue, push OTP-gated promote alert"
 	@echo "  promote-spare OTP=…        Consume OTP and swing traffic to GREEN_ENV"
@@ -558,6 +559,10 @@ protocol-liveness:
 	@test -n "$(LIVENESS_CONFIG)" || { echo "usage: make protocol-liveness LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml"; exit 1; }
 	python3 ./scripts/protocol-liveness.py --config "$(LIVENESS_CONFIG)"
 
+monitor-protocol-liveness:
+	@test -n "$(LIVENESS_CONFIG)" || { echo "usage: make monitor-protocol-liveness LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml"; exit 1; }
+	SOPS_FILE="$(SOPS_FILE)" python3 ./scripts/monitor-protocol-liveness.py --config "$(LIVENESS_CONFIG)"
+
 install-liveness-sentinel:
 	@test -n "$(LIVENESS_CONFIG)" -a -n "$(SENTINEL)" -a -n "$(CLIENT)" || { echo "usage: make install-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=…"; exit 1; }
 	@echo "If the sentinel policy requires AWG, paste the one-time private key for $(CLIENT), then press Enter:"
@@ -591,7 +596,8 @@ check-killswitch:
 	python3 ./scripts/check-singbox-killswitch.py $(BUNDLE)
 
 install-operator-crons:
-	PROVIDER=$(PROVIDER) ENV=$(ENV) LIVENESS_CONFIG="$(LIVENESS_CONFIG)" ./scripts/install-operator-crons.sh \
+	PROVIDER=$(PROVIDER) ENV=$(ENV) LIVENESS_CONFIG="$(LIVENESS_CONFIG)" SOPS_FILE="$(SOPS_FILE)" \
+	  SOPS_AGE_KEY_FILE="$${SOPS_AGE_KEY_FILE:-}" ./scripts/install-operator-crons.sh \
 	  $(if $(filter 1 yes true,$(DRY_RUN)),--dry-run)
 
 remove-operator-crons:
