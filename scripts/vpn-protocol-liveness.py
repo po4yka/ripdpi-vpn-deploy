@@ -300,8 +300,9 @@ def probe_awg(config: dict, control_alive: bool) -> dict:
             stderr=subprocess.DEVNULL,
             text=True,
         )
-        time.sleep(0.05)
-        for _ in range(20):
+        startup_timeout = max(5.0, min(float(config["timeout_seconds"]), 10.0))
+        startup_deadline = time.monotonic() + startup_timeout
+        while time.monotonic() < startup_deadline:
             if go_process.poll() is not None:
                 raise RuntimeError("amneziawg-go stopped during startup")
             link = subprocess.run(["ip", "link", "show", interface], timeout=2, check=False, capture_output=True)

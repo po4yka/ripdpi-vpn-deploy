@@ -29,6 +29,7 @@ def _setup(
     sing_curl_sleeps: bool = False,
     sing_auth_fails: bool = False,
     sing_log_auth: bool = False,
+    awg_start_delay_seconds: float = 0,
 ) -> tuple[Path, dict[str, str]]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -115,9 +116,11 @@ exit 0
     )
     _write_executable(
         bin_dir / "amneziawg-go",
-        """#!/usr/bin/env python3
+        f"""#!/usr/bin/env python3
 import os, pathlib, signal, sys
+import time
 log_path = pathlib.Path(os.environ["CALL_LOG"])
+time.sleep({awg_start_delay_seconds!r})
 with log_path.open("a") as log:
     log.write("amneziawg-go " + " ".join(sys.argv[1:]) + "\\n")
 pathlib.Path(os.environ["AWG_PID_FILE"]).write_text(str(os.getpid()))
@@ -205,6 +208,21 @@ def test_sentinel_reports_authenticated_data_plane_success_without_secrets(
     assert "netns delete vpn-live-" in calls
     awg_pid = (tmp_path / "awg.pid").read_text().strip()
     assert subprocess.run(["ps", "-p", awg_pid], capture_output=True).returncode != 0
+
+
+def test_awg_startup_tolerates_slow_userspace_interface_creation(
+    tmp_path: Path,
+) -> None:
+    config, env = _setup(tmp_path, awg_start_delay_seconds=2.2)
+
+    result = _run(config, env)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    awg = next(
+        item for item in payload["profiles"] if item["profile"] == "p2-amneziawg"
+    )
+    assert awg["verdict"] == "ok"
 
 
 def test_transport_timeout_is_blocked_only_when_direct_control_succeeds(
