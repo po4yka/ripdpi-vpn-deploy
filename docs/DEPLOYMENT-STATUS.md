@@ -9,12 +9,13 @@ and decrypted SOPS values. Those remain in git-ignored operator files.
 
 | Field | Value |
 |---|---|
-| Last verified deployment | 2026-07-26 |
+| Last verified deployment | 2026-08-08 |
 | Git release | [`infra-v1.0.0`](https://github.com/po4yka/ripdpi-vpn-deploy/releases/tag/infra-v1.0.0) |
-| Source commit | `93128afc8bcd3449a739edaa17861e844a99a4c4` |
-| Release state | published, latest, not a pre-release |
+| Deployed source commit | `bb29e38b7079776b4613575c102ce9452ea84f8a` |
+| Source validation | [GitHub CI run 31269498581](https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/31269498581), CodeQL, and Scorecard passed |
+| Release state | published `infra-v1.0.0` baseline plus verified post-release `main` updates |
 
-The release source was applied to the existing fleet. No server was replaced
+The deployed source was applied to the existing fleet. No server was replaced
 or recreated during this update.
 
 ## Active fleet
@@ -25,13 +26,10 @@ or recreated during this update.
 | Scaleway | `p1-scaleway` | `p1-web` | P1 nginx landing site + direct XHTTP |
 | Vultr | `p2-vultr` | `p2-udp` | P2 Hysteria2 + AmneziaWG |
 
-Tailscale is the management plane only. Public provider addresses remain the
-data-plane identity used by rendered service and verification templates. The
-git-ignored generated inventory keeps that public `ansible_host` value and
-uses a per-host SSH `HostName` override to route administrative SSH through
-Tailscale MagicDNS. Re-running `make inventory` overwrites the generated file,
-so the local override must be restored before the next Ansible operation until
-the renderer owns this split explicitly.
+Tailscale is the management plane only. The generated inventory preserves the
+Terraform-owned public endpoint as `vpn_service_address`; local extra vars may
+override only `ansible_host` for Tailscale administration. Watchdog and other
+data-plane probes therefore continue to target the public service address.
 
 ## Observed convergence
 
@@ -53,13 +51,21 @@ unreachable or failed host:
 
 | Gate | P0 | P1 | P2 |
 |---|---:|---:|---:|
-| `make deploy` | `ok=127 changed=3 failed=0` | `ok=109 changed=1 failed=0` | `ok=104 changed=2 failed=0` |
-| `make verify` | `ok=14 failed=0` | `ok=12 failed=0` | `ok=13 failed=0` |
+| `make deploy` | `ok=140 changed=5 failed=0` | `ok=125 changed=14 failed=0` | `ok=115 changed=12 failed=0` |
+| `make verify` | `ok=16 failed=0` | `ok=16 failed=0` | `ok=13 failed=0` |
 | `make security-verify` | `ok=15 failed=0` | `ok=15 failed=0` | `ok=15 failed=0` |
 
 The P0 verification included both authenticated REALITY round trips. Direct
 SSH-path inspection confirmed that all three Ansible sessions traversed
 Tailscale.
+
+On 2026-08-08, P0 and P1 converged loopback-only Xray StatsService and a
+60-second redacting textfile collector without server replacement. Redacted
+`xray-diagnostics` completed on both nodes with `ok=3 failed=0`. The outside-in
+ARM64 VLESS sentinel returned `healthy`: its direct control and both REALITY
+endpoint variants were `ok`, with no monitoring errors or rotation candidate.
+The collector exports only aggregate inbound/outbound counters and freshness;
+it does not expose client identifiers.
 
 Secret schema validation, placeholder checks, certificate checks, and private
 key/certificate matching passed before deployment. The decrypted SOPS file was
@@ -80,22 +86,11 @@ identifies source code; it is not a substitute for future live drift evidence.
 
 - A live Vultr refresh requires admitting the operator's current egress
   address in the provider API allowlist, then re-running `make plan`.
-- At `infra-v1.0.0`, `make dry-run` can stop in the firewall role because the
-  read-only `sshd -T` discovery task is skipped by Ansible check mode, leaving
-  `firewall_effective_ssh_ports` empty. Do not bypass the failure or treat the
-  diagnostic-only workaround as committed source. The production deploy and
-  verification gates above ran without that patch.
-- The Tailscale SSH `HostName` override is local post-processing of the
-  git-ignored inventory and is not yet reproduced by `make inventory`.
-- On macOS, a full `pip install --require-hashes -r requirements.txt` can fail
-  because the resolved `ruamel-yaml-clib` dependency is not pinned with a
-  hash. The rollout used a git-ignored local virtual environment for the
-  required Python validators; this does not make the lock defect resolved.
 
 ## Refresh procedure
 
-1. Confirm the checkout is at the intended signed or published release and the
-   working tree is clean.
+1. Confirm the checkout is at the intended reviewed commit, its required CI is
+   green, and the working tree is clean.
 2. Decrypt only into the configured git-ignored `SECRETS_FILE`.
 3. Run a provider-refreshed plan for every named environment. Stop on any
    replacement or unexplained drift.
