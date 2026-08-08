@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 XRAY_TEMPLATE = REPO_ROOT / "ansible/roles/xray/templates/config.json.j2"
 EXPORTER = REPO_ROOT / "ansible/roles/monitoring/files/xray-stats-exporter.py"
 MONITORING_TASKS = REPO_ROOT / "ansible/roles/monitoring/tasks/main.yml"
+MONITORING_HANDLERS = REPO_ROOT / "ansible/roles/monitoring/handlers/main.yml"
 
 spec = importlib.util.spec_from_file_location("xray_stats_exporter", EXPORTER)
 exporter = importlib.util.module_from_spec(spec)
@@ -126,3 +127,12 @@ def test_disabling_xray_removes_exporter_units_and_stale_metrics() -> None:
     ]["loop"]
     assert "/usr/local/sbin/xray-stats-exporter" in removed_runtime
     assert any("vpn_xray.prom" in path for path in removed_runtime)
+
+
+def test_new_timer_handler_is_safe_during_check_mode() -> None:
+    handlers = yaml.safe_load(MONITORING_HANDLERS.read_text())
+    handler = next(
+        item for item in handlers if item["name"] == "Restart Xray stats exporter timer"
+    )
+
+    assert handler["when"] == "not ansible_check_mode"
