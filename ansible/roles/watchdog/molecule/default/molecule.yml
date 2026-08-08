@@ -25,6 +25,7 @@ provisioner:
     host_vars:
       vpn-watchdog-debian13:
         ansible_user: root
+        ansible_python_interpreter: /usr/bin/python3
 
 verifier:
   name: ansible

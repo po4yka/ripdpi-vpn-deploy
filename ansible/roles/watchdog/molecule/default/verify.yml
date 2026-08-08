@@ -68,6 +68,8 @@
           ansible.builtin.include_role:
             name: watchdog
           vars:
+            vpn_service_address: 127.0.0.1
+            xray_api_listen: 127.0.0.1:10086
             vpn:
               enable_xray_reality: true
             xray:

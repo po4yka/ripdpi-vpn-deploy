@@ -4,6 +4,8 @@
   become: true
   vars:
     xray_log_dir: /var/log/xray
+    xray_api_listen: 127.0.0.1:10086
+    vpn_service_address: 127.0.0.1
     vpn:
       enable_xray_reality: true
       enable_nginx_xhttp: true
