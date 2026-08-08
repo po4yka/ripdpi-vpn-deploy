@@ -250,6 +250,9 @@ jobs:
   unit-tests:
     name: pytest unit tests
     runs-on: ubuntu-24.04
+    env:
+      SING_BOX_CLIENT_VERSION: "1.13.16"
+      SING_BOX_CLIENT_LINUX_AMD64_SHA256: "e37c312859dfa84cba148f41072ff6369f08361ae91d622dc1fd3aab49611a8d"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Install SOPS and age
@@ -270,12 +273,14 @@ jobs:
         run: pip install --require-hashes --no-deps -r requirements.txt
       - name: Install pinned sing-box client parser
         run: |
-          version=1.13.16
+          version="${SING_BOX_CLIENT_VERSION}"
           archive="sing-box-${version}-linux-amd64.tar.gz"
           curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${version}/${archive}" -o "/tmp/${archive}"
-          echo "e37c312859dfa84cba148f41072ff6369f08361ae91d622dc1fd3aab49611a8d  /tmp/${archive}" | sha256sum -c -
+          echo "${SING_BOX_CLIENT_LINUX_AMD64_SHA256}  /tmp/${archive}" | sha256sum -c -
           tar -xzf "/tmp/${archive}" -C /tmp
           sudo install -m 0755 "/tmp/sing-box-${version}-linux-amd64/sing-box" /usr/local/bin/sing-box
+      - name: Run real pinned sing-box check
+        run: python3 scripts/check-singbox-client-compatibility.py --expected-version "${SING_BOX_CLIENT_VERSION}"
       - name: pytest tests/unit/
         run: python3 -m pytest tests/unit/ -v
 
