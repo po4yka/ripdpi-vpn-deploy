@@ -3,8 +3,9 @@
   "dns": {
     "servers": [
       {
+        "type": "https",
         "tag": "remote",
-        "address": "https://1.1.1.1/dns-query",
+        "server": "1.1.1.1",
         "detour": "select"
       }
     ]
@@ -17,8 +18,7 @@
       "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
       "auto_route": true,
       "strict_route": true,
-      "stack": "system",
-      "sniff": true
+      "stack": "system"
     }
   ],
   "outbounds": [
@@ -56,12 +56,12 @@
       "tolerance": 50
     },
     { "type": "direct", "tag": "direct" },
-    { "type": "block", "tag": "block" },
-    { "type": "dns", "tag": "dns-out" }
+    { "type": "block", "tag": "block" }
   ],
   "route": {
     "rules": [
-      { "protocol": "dns", "action": "route", "outbound": "dns-out" }
+      { "action": "sniff" },
+      { "protocol": "dns", "action": "hijack-dns" }
     ],
     "final": "select",
     "auto_detect_interface": true

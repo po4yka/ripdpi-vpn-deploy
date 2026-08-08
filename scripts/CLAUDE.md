@@ -32,6 +32,11 @@ split-hop ingress and realm metadata across every `HOSTS` entry. Never infer
 client-facing topology from the first host; conflicting non-null realm IDs
 must fail closed.
 
+**Client formats are capability-separated** — `emit-singbox.sh` defaults to
+official sing-box P0/P2 syntax and must pass the pinned upstream parser. Only
+`emit-bundle.sh` selects the RIPDPI format that carries P1 XHTTP; never leak an
+XHTTP outbound into the standard subscription.
+
 **Vultr secondary IPv4 inventory is live-gated** — Terraform output proves allocation only. `render-inventory.sh` polls the primary SSH endpoint and publishes `honeypot_listen_addr` only after the exact IPv4 appears on a guest interface.
 
 **Destroy is provider-aware and plan-verified** — `destroy.sh` maps each supported provider to its canonical server resource and checks that the destroy plan contains a delete action for that exact address before apply. Unknown providers fail before an override file is written.

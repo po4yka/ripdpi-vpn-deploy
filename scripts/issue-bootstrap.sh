@@ -66,12 +66,11 @@ remote_path="${SUBSCRIPTION_DIR}/bootstrap/${token_hash}"
 # could parse the host config, but the defaults are stable and the test
 # only fails if you've changed them, in which case the operator already
 # knows.
-sub_host="$(SOPS_FILE="${HOME}/.config/vpn-provision/${ENV}.secrets.sops.yaml" \
-  sops --decrypt --output-type json "${HOME}/.config/vpn-provision/${ENV}.secrets.sops.yaml" \
+sops_file="${SOPS_FILE:-${HOME}/.config/vpn-provision/${ENV}.secrets.sops.yaml}"
+sub_host="$(sops --decrypt --output-type json "$sops_file" \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('subscription') or {}).get('server_name') or (d.get('nginx_xhttp') or {}).get('server_name') or '')")"
 [[ -n "$sub_host" ]] || sub_host="$server_hostname"
-sub_port="$(SOPS_FILE="${HOME}/.config/vpn-provision/${ENV}.secrets.sops.yaml" \
-  sops --decrypt --output-type json "${HOME}/.config/vpn-provision/${ENV}.secrets.sops.yaml" \
+sub_port="$(sops --decrypt --output-type json "$sops_file" \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('subscription') or {}).get('port') or 8444)")"
 
 printf '%s' "$payload" | ssh "${admin_user}@${server_ip}" \

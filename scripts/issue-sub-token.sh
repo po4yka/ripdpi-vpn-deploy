@@ -91,7 +91,7 @@ fi
 
 # Pull subscription host name + port from secrets so the URL goes to
 # the subscription endpoint, not the transport one.
-sops_file="${HOME}/.config/vpn-provision/${ENV}.secrets.sops.yaml"
+sops_file="${SOPS_FILE:-${HOME}/.config/vpn-provision/${ENV}.secrets.sops.yaml}"
 sub_host="$(sops --decrypt --output-type json "$sops_file" | \
   python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('subscription') or {}).get('server_name') or (d.get('nginx_xhttp') or {}).get('server_name') or '')")"
 [[ -n "$sub_host" ]] || sub_host="$server_hostname"

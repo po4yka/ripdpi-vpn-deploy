@@ -118,10 +118,12 @@ def test_k1_malformed_tun_address_fails(tmp_path):
 # K2 — sniff
 # ---------------------------------------------------------------------------
 
-def test_k2_sniff_false_fails(tmp_path):
+def test_k2_missing_sniff_action_fails(tmp_path):
     bundle = _load_valid()
-    tun = next(i for i in bundle["inbounds"] if i["type"] == "tun")
-    tun["sniff"] = False
+    bundle["route"]["rules"] = [
+        rule for rule in bundle["route"]["rules"]
+        if rule.get("action") != "sniff"
+    ]
     result = _run_dict(bundle, tmp_path)
     assert result.returncode == 1
     assert "K2" in result.stdout

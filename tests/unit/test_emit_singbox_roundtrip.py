@@ -41,6 +41,11 @@ def _require_tool(name: str) -> None:
 def _secrets_as_json(tmp_path: Path) -> Path:
     """Return path to a JSON copy of secrets-sample.yml, with laptop in all client lists."""
     raw = yaml.safe_load(FIXTURES.joinpath("secrets-sample.yml").read_text())
+    # A syntactically valid X25519 public key lets the official sing-box
+    # parser exercise the complete generated document.
+    raw["xray"]["reality_public_key"] = (
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    )
 
     # The fixture already has "laptop" in xray.clients.
     # Ensure "laptop" also appears in hysteria.clients so emit-singbox.sh
@@ -246,11 +251,36 @@ def test_emit_singbox_json_structure(tmp_path):
     assert "auto" in tags, "'auto' (urltest) outbound missing"
     assert "direct" in tags, "'direct' outbound missing"
     assert "block" in tags, "'block' outbound missing"
-    assert "dns-out" in tags, "'dns-out' outbound missing"
 
-    # At least one protocol outbound (p0-reality or p1-xhttp)
+    # Standard sing-box has no XHTTP transport. P1 remains available only in
+    # the explicit RIPDPI extended bundle.
+    assert not any(
+        outbound.get("transport", {}).get("type") == "xhttp"
+        for outbound in outbounds
+    )
+
+    # At least one supported protocol outbound (P0 or P2).
     proto_obs = [ob for ob in outbounds if ob.get("tag", "").startswith(("p0-", "p1-", "p2-"))]
     assert proto_obs, "no protocol outbounds (p0/p1/p2) found"
+
+
+def test_emit_singbox_is_accepted_by_official_parser(tmp_path):
+    """The standard profile must pass the pinned official sing-box parser."""
+    _require_tool("jq")
+    _require_tool("sing-box")
+
+    result = _run_script("laptop", tmp_path)
+    assert result.returncode == 0, result.stderr
+
+    config = tmp_path / "client.sing-box.json"
+    config.write_text(result.stdout)
+    check = subprocess.run(
+        ["sing-box", "check", "-c", str(config)],
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+    )
+    assert check.returncode == 0, check.stderr
 
 
 def test_emit_singbox_hysteria_uses_server_userpass_contract(tmp_path):
@@ -326,6 +356,9 @@ def test_emit_singbox_dns_non_empty_and_detour(tmp_path):
 
     remote = next((s for s in servers if s.get("tag") == "remote"), None)
     assert remote is not None, "dns.servers has no 'remote' entry"
+    assert remote["type"] == "https"
+    assert remote["server"] == "1.1.1.1"
+    assert "address" not in remote
     detour = remote.get("detour", "")
     assert detour not in ("", "direct"), (
         f"remote DNS detour is {detour!r} — leaks DNS traffic to ISP"
@@ -344,6 +377,12 @@ def test_emit_singbox_default_is_strict_dual_stack_killswitch(tmp_path):
     assert tun["address"] == ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]
     assert "inet4_address" not in tun
     assert "inet6_address" not in tun
+    assert "sniff" not in tun
+    assert any(rule.get("action") == "sniff" for rule in bundle["route"]["rules"])
+    assert any(
+        rule.get("action") == "hijack-dns"
+        for rule in bundle["route"]["rules"]
+    )
 
     check = subprocess.run(
         ["python3", str(KILLSWITCH_SCRIPT), "-"],
@@ -404,6 +443,10 @@ def test_emit_bundle_roundtrip_preserves_singbox_args_and_extension(tmp_path):
     assert validation.returncode == 0, validation.stderr
 
     bundle = json.loads(result.stdout)
+    assert any(
+        outbound.get("transport", {}).get("type") == "xhttp"
+        for outbound in bundle["outbounds"]
+    )
     package_routes = {
         tuple(rule["package_name"]): rule["outbound"]
         for rule in bundle["route"]["rules"]

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Emit a full sing-box client JSON for one client name. Embeds every enabled
-# transport profile (REALITY, XHTTP, Hysteria2, AmneziaWG) across one or
-# more VPS hosts as outbounds, wired into a `selector` + `urltest` group.
+# Emit a standard sing-box client JSON for one client name. Embeds every
+# enabled transport supported by official sing-box across one or more VPS
+# hosts as outbounds, wired into a `selector` + `urltest` group. P1 XHTTP is
+# emitted only for the explicit RIPDPI profile format because official
+# sing-box does not implement the XHTTP V2Ray transport.
 #
 # Single host (backwards-compatible):
 #   PROVIDER=upcloud ENV=prod  scripts/emit-singbox.sh laptop
@@ -25,7 +27,7 @@ set -euo pipefail
 
 CLIENT_NAME="${1:-}"
 if [[ -z "$CLIENT_NAME" ]]; then
-  echo "usage: $0 <client_name> [--per-app-bypass pkg1,pkg2…] [--per-app-via-tun pkg1,pkg2…]" >&2
+  echo "usage: $0 <client_name> [--profile-format sing-box|ripdpi] [--per-app-bypass pkg1,pkg2…] [--per-app-via-tun pkg1,pkg2…]" >&2
   exit 1
 fi
 shift
@@ -36,8 +38,17 @@ shift
 # can't fall through to "direct" even if a later rule says otherwise.
 PER_APP_BYPASS=""
 PER_APP_VIA_TUN=""
+PROFILE_FORMAT="sing-box"
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --profile-format)
+      PROFILE_FORMAT="${2:-}"
+      case "$PROFILE_FORMAT" in
+        sing-box|ripdpi) ;;
+        *) echo "profile format must be sing-box or ripdpi" >&2; exit 1 ;;
+      esac
+      shift 2
+      ;;
     --per-app-bypass)  PER_APP_BYPASS="$2"; shift 2 ;;
     --per-app-via-tun) PER_APP_VIA_TUN="$2"; shift 2 ;;
     *) echo "unknown arg: $1" >&2; exit 1 ;;
@@ -213,7 +224,12 @@ for i in "${!host_pairs[@]}"; do
   utls_fp="${UTLS_FINGERPRINT:-$(jq -r '.xray_utls_fingerprint // "chrome"' <<< "$host_json")}"
   [[ -z "$utls_fp" || "$utls_fp" == "null" ]] && utls_fp="chrome"
 
-  if [[ "$enable_reality" == "true" || "$enable_xhttp" == "true" ]]; then
+  emit_xhttp=false
+  if [[ "$enable_xhttp" == "true" && "$PROFILE_FORMAT" == "ripdpi" ]]; then
+    emit_xhttp=true
+  fi
+
+  if [[ "$enable_reality" == "true" || "$emit_xhttp" == "true" ]]; then
     client_json="$(jq --arg name "$CLIENT_NAME" '.xray.clients[]? | select(.name==$name)' "$secrets_tmp")"
     if [[ -z "$client_json" || "$client_json" == "null" ]]; then
       echo "enabled Xray profile has no client named '$CLIENT_NAME' in ${sops_file} → xray.clients" >&2
@@ -295,7 +311,7 @@ for i in "${!host_pairs[@]}"; do
   fi
 
   # P1 XHTTP via nginx.
-  if [[ "$enable_xhttp" == "true" ]]; then
+  if [[ "$emit_xhttp" == "true" ]]; then
     nginx_host="$(jq -r '.nginx_xhttp.server_name // empty' "$secrets_tmp")"
     xhttp_path="$(jq -r '.xray.xhttp_path // "/app-sync"' "$secrets_tmp")"
     if [[ -z "$nginx_host" ]]; then
@@ -389,7 +405,7 @@ done
 # Add selector + urltest + boilerplate
 # ---------------------------------------------------------------------------
 if [[ "$(jq 'length' <<< "$OUTBOUNDS")" -eq 0 ]]; then
-  echo "no enabled sing-box outbounds resolved from Ansible profile toggles" >&2
+  echo "no enabled ${PROFILE_FORMAT} outbounds resolved from Ansible profile toggles" >&2
   exit 1
 fi
 
@@ -399,7 +415,7 @@ OUTBOUNDS="$(jq -nc --argjson obs "$OUTBOUNDS" --argjson snell "$SNELL_TAGS" '
   (if ($snell|length)>0 then [{type:"selector",tag:"snell-evaluation",outbounds:$snell,default:$snell[0],interrupt_exist_connections:false}] else [] end) +
   [{type:"selector",tag:"select",outbounds:($automatic + (if ($automatic|length)>0 then ["auto"] else ["direct"] end) + (if ($snell|length)>0 then ["snell-evaluation"] else [] end)),default:(if ($automatic|length)>0 then "auto" else "direct" end),interrupt_exist_connections:false}] +
   (if ($automatic|length)>0 then [{type:"urltest",tag:"auto",outbounds:$automatic,url:"https://www.gstatic.com/generate_204",interval:"5m",tolerance:50}] else [] end) +
-  [{type:"direct",tag:"direct"},{type:"block",tag:"block"},{type:"dns",tag:"dns-out"}]')"
+  [{type:"direct",tag:"direct"},{type:"block",tag:"block"}]')"
 
 # Build per-app route rules (Android only — sing-box silently ignores
 # package_name on non-Android platforms, so the same bundle works
@@ -432,7 +448,7 @@ jq -n \
     "log": {"level":"warn", "timestamp":true},
     "dns": {
       "servers": [
-        {"tag":"remote", "address":"https://1.1.1.1/dns-query", "detour":"select"}
+        {"type":"https", "tag":"remote", "server":"1.1.1.1", "detour":"select"}
       ]
     },
     "inbounds": [{
@@ -440,14 +456,15 @@ jq -n \
       "interface_name":"tun0",
       "address":["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
       "auto_route":true, "strict_route":true,
-      "stack":"system", "sniff":true
+      "stack":"system"
     }],
     "outbounds": $outbounds,
     "route": {
       "rules":
         ($per_app +
         [
-          {"protocol":"dns", "action":"route", "outbound":"dns-out"}
+          {"action":"sniff"},
+          {"protocol":"dns", "action":"hijack-dns"}
         ]),
       "final":"select",
       "auto_detect_interface":true

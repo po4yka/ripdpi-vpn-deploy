@@ -14,10 +14,13 @@ Do not pair these artifacts with a PQE-enabled server inbound. Server-only enabl
 
 `make emit-singbox` now emits the supported unified IPv4/IPv6 TUN
 `address` list and removes the default cleartext local-DNS and
-private-network routes. Regenerate and redistribute existing sing-box
-profiles after upgrading. `--per-app-bypass` still emits an intentional
-non-lockdown profile, but `make check-killswitch BUNDLE=…` rejects that
-profile by design.
+private-network routes. It also uses typed DNS servers and route-level
+`sniff`/`hijack-dns` actions required by sing-box 1.13. The standard artifact
+contains P0 REALITY and P2 Hysteria2 only; P1 XHTTP is exclusive to
+`emit-bundle` because official sing-box does not implement that transport.
+Regenerate and redistribute existing profiles after upgrading.
+`--per-app-bypass` still emits an intentional non-lockdown profile, but
+`make check-killswitch BUNDLE=…` rejects that profile by design.
 
 ## AmneziaWG Android split-tunnel localhost leak (issue #2457)
 
@@ -155,11 +158,11 @@ Under that RU-AS pattern:
   below Condition 3's burst trigger (>3 parallel TLS to the same SNI within
   ~350–400 ms).
 
-## v2rayN-class clients: prefer the sing-box bundle
+## sing-box clients: use the standard artifact
 
 When `make emit-singbox CLIENT=name` is available, prefer the sing-box
-JSON output over manual VLESS URI strings. The bundle wires every
-enabled transport into a single selector + urltest group, which
-matters for the home-ISP TLS policing failure mode (commits in this
-repo add a `xray_flow_mode: mux` toggle; selectors let the client
-gracefully roll over to the working profile).
+JSON output over manual VLESS URI strings. It wires every supported P0/P2
+transport into a single selector + urltest group, which matters for the
+home-ISP TLS policing failure mode. P1 XHTTP requires an Xray-family profile
+or the RIPDPI-specific bundle; never copy that unsupported outbound into the
+standard document.

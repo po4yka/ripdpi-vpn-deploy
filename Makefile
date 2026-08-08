@@ -5,6 +5,7 @@ ENV      ?= prod
 
 HOSTS   ?=
 COHORTS ?=
+SOPS_FILES ?=
 AWG_EVIDENCE_INVENTORY ?=
 AWG_EVIDENCE_VARS ?=
 ANSIBLE_LIMIT ?=
@@ -93,9 +94,9 @@ help:
 	@echo "  promote-spare OTP=…        Consume OTP and swing traffic to GREEN_ENV"
 	@echo ""
 	@echo "── CLIENT / DELIVERY ──────────────────────────────────────────────────"
-	@echo "  emit-singbox CLIENT=…      Full sing-box client JSON (multi-host + cohort aware)"
+	@echo "  emit-singbox CLIENT=…      Official sing-box P0/P2 JSON (multi-host + cohort aware)"
 	@echo "  emit-awg CLIENT=…          AmneziaWG wg-quick .conf for a named peer"
-	@echo "  emit-bundle CLIENT=…       RIPDPI-extended sing-box JSON (singbox + ripdpi object)"
+	@echo "  emit-bundle CLIENT=…       RIPDPI P0/P1/P2 JSON with ripdpi extension"
 	@echo "  emit-qr CLIENT=…           PNG QR for the client (TYPE=singbox|uri, OUT=path)"
 	@echo "  issue-bootstrap CLIENT=…   Issue a one-time /bootstrap/<token> URL"
 	@echo "  issue-sub-token CLIENT=…   Issue a long-lived /sub/<token> URL (FORMAT=singbox|ripdpi EXPIRES=… QR=1)"
@@ -292,15 +293,17 @@ diff-secrets:
 
 emit-singbox:
 	@test -n "$${CLIENT:-}" || { echo "CLIENT=<name> required"; exit 1; }
-	./scripts/emit-singbox.sh "$${CLIENT}"
+	@HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
+	  ./scripts/emit-singbox.sh "$${CLIENT}"
 
 emit-awg:
 	@test -n "$${CLIENT:-}" || { echo "CLIENT=<name> required"; exit 1; }
-	./scripts/emit-awg.sh "$${CLIENT}"
+	@SOPS_FILE="$(SOPS_FILE)" ./scripts/emit-awg.sh "$${CLIENT}"
 
 emit-bundle:
 	@test -n "$${CLIENT:-}" || { echo "CLIENT=<name> required"; exit 1; }
-	./scripts/emit-bundle.sh "$${CLIENT}"
+	@HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
+	  ./scripts/emit-bundle.sh "$${CLIENT}"
 
 install-hooks:
 	python3 -m pip install --require-hashes --no-deps -r requirements.txt
@@ -488,6 +491,7 @@ snell-refinement:
 
 emit-qr:
 	@test -n "$(CLIENT)" || { echo "usage: make emit-qr CLIENT=phone [TYPE=singbox|uri] [OUT=phone.png]"; exit 1; }
+	HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
 	./scripts/emit-qr.sh $(CLIENT) \
 	  $(if $(TYPE),--type $(TYPE)) \
 	  $(if $(OUT),--out $(OUT))
@@ -507,10 +511,12 @@ check-ip-reputation:
 
 issue-bootstrap:
 	@test -n "$${CLIENT:-}" || { echo "usage: make issue-bootstrap CLIENT=phone"; exit 1; }
+	HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
 	./scripts/issue-bootstrap.sh "$${CLIENT}"
 
 issue-sub-token:
 	@test -n "$${CLIENT:-}" || { echo "usage: make issue-sub-token CLIENT=phone [FORMAT=singbox|ripdpi] [EXPIRES=YYYY-MM-DD] [QR=1]"; exit 1; }
+	HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
 	./scripts/issue-sub-token.sh "$${CLIENT}" \
 	  $(if $(FORMAT),--format $(FORMAT)) \
 	  $(if $(EXPIRES),--expires $(EXPIRES)) \
@@ -555,7 +561,8 @@ protocol-liveness:
 install-liveness-sentinel:
 	@test -n "$(LIVENESS_CONFIG)" -a -n "$(SENTINEL)" -a -n "$(CLIENT)" || { echo "usage: make install-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=…"; exit 1; }
 	@echo "If the sentinel policy requires AWG, paste the one-time private key for $(CLIENT), then press Enter:"
-	@./scripts/install-liveness-sentinel.sh --config "$(LIVENESS_CONFIG)" --sentinel "$(SENTINEL)" --client "$(CLIENT)" --awg-private-key-stdin
+	@HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
+	  ./scripts/install-liveness-sentinel.sh --config "$(LIVENESS_CONFIG)" --sentinel "$(SENTINEL)" --client "$(CLIENT)" --awg-private-key-stdin
 
 probing-summary:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/probing-summary.sh

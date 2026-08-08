@@ -5,7 +5,7 @@ Rules (each MUST pass, list grows over time):
 
   K1  TUN inbound has auto_route=true, strict_route=true, and unified
       IPv4 + IPv6 interface prefixes
-  K2  TUN inbound has sniff=true (so app traffic is identified)
+  K2  Route rules include a sniff action (so app traffic is identified)
   K3  Route final/rules/groups cannot reach direct egress or use bypass
   K4  Every DNS server detours through a non-direct outbound graph
   K5  No outbound carries an explicit "domain_strategy":"ipv6_only" or
@@ -111,9 +111,6 @@ def check(bundle: dict) -> list[str]:
             findings.append("K1: TUN inbound.address has no IPv4 prefix")
         if 6 not in families:
             findings.append("K1: TUN inbound.address has no IPv6 prefix")
-    if not tun.get("sniff"):
-        findings.append("K2: TUN inbound.sniff is falsy")
-
     outbounds = bundle.get("outbounds") or []
     if not isinstance(outbounds, list):
         findings.append("K3: outbounds must be a list")
@@ -133,6 +130,11 @@ def check(bundle: dict) -> list[str]:
     if not isinstance(rules, list):
         findings.append("K3: route.rules must be a list")
     else:
+        if not any(
+            isinstance(rule, dict) and rule.get("action") == "sniff"
+            for rule in rules
+        ):
+            findings.append("K2: route.rules has no sniff action")
         for index, rule in enumerate(rules):
             if not isinstance(rule, dict):
                 findings.append(f"K3: route.rules[{index}] must be an object")

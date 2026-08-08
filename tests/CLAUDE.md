@@ -24,6 +24,10 @@ security services, and credentialed deploy jobs remain CI-only or explicit.
 the expected output of every Jinja render against fixtures. Drift is
 visible in PR diffs.
 
+**Client configs need an upstream parser gate** — CI installs a sha256-pinned
+official sing-box binary and checks the complete standard emitter output.
+Shape-only assertions supplement this gate; they do not replace it.
+
 **Molecule per role > monolithic test** — role-level scenarios catch
 config drift inside a role. Full-stack catches order/handler interactions.
 

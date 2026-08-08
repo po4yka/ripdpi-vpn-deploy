@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Emit a RIPDPI-extended sing-box JSON for one client name.
 #
-# Output is the full sing-box document produced by emit-singbox.sh, merged
-# with a top-level "ripdpi" object carrying:
+# Output is the RIPDPI profile-format document produced by emit-singbox.sh,
+# merged with a top-level "ripdpi" object carrying:
 #   - amneziawg: AmneziaWG device-VPN parameters (private_key_placeholder: true
 #                because the client key is never stored server-side)
 #   - hysteria_extras: salamander obfs + port-hopping metadata for the P2
 #                      Hysteria2 outbound (keys match the tag emit-singbox emits)
 #
 # The RIPDPI Android client parses this single file as its subscription
-# artifact.  Standard sing-box clients should use the plain /sub endpoint
-# instead — the "ripdpi" key is a non-standard extension they will ignore.
+# artifact. Standard sing-box clients must use the plain /sub endpoint:
+# official sing-box does not implement the included XHTTP transport.
 #
 # Usage (mirrors emit-singbox.sh):
 #   PROVIDER=upcloud ENV=prod  scripts/emit-bundle.sh laptop
@@ -98,7 +98,8 @@ SINGBOX_ARGS=()
 base_json_file="${WORK}/base.json"
 env "${SINGBOX_ARGS[@]}" \
   PROVIDER="${PROVIDER:-upcloud}" ENV="${ENV:-prod}" \
-  "${REPO_ROOT}/scripts/emit-singbox.sh" "$CLIENT_NAME" "${SINGBOX_CLI_ARGS[@]}" \
+  "${REPO_ROOT}/scripts/emit-singbox.sh" "$CLIENT_NAME" \
+  "${SINGBOX_CLI_ARGS[@]}" --profile-format ripdpi \
   > "$base_json_file"
 
 # ---------------------------------------------------------------------------

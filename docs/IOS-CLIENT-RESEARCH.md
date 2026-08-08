@@ -23,14 +23,14 @@ by itself prove path reachability.
 | P2 QUIC | Hysteria2 over UDP/443 | Hysteria2, including the emitted TLS/obfuscation settings |
 | P2 device VPN | AmneziaWG on its separate UDP listener | Native AmneziaWG parameters and a separately delivered per-device private key |
 
-The repository-native `make emit-singbox CLIENT=<name>` path produces a sing-box JSON profile with `selector` and `urltest` outbounds covering the enabled proxy transports. P0 TCP/443 and TCP/2053 are peers in those groups, so the client can move away from a policed port without changing the REALITY identity. AmneziaWG remains a separate device-VPN artifact because its private key and obfuscation parameters do not belong in the generic proxy subscription. See [QUICKSTART.md](QUICKSTART.md) and [CLIENT-NOTES.md](CLIENT-NOTES.md) for the local generator contract.
+The repository-native `make emit-singbox CLIENT=<name>` path produces an official sing-box profile with `selector` and `urltest` outbounds for P0 REALITY and P2 Hysteria2. P0 TCP/443 and TCP/2053 are peers in those groups, so the client can move away from a policed port without changing the REALITY identity. P1 XHTTP is excluded because official sing-box has no XHTTP transport; it needs a client-specific Xray conversion. AmneziaWG remains a separate device-VPN artifact because its private key and obfuscation parameters do not belong in the generic proxy subscription. See [QUICKSTART.md](QUICKSTART.md) and [CLIENT-NOTES.md](CLIENT-NOTES.md) for the local generator contract.
 
 ## Decision
 
 There are two valid recommendations, depending on whether one application or zero-conversion import is more important.
 
 1. **Shadowrocket is the best single-app client by protocol coverage.** Its reviewed release history covers VLESS Vision, REALITY, XHTTP, Hysteria2, and AmneziaWG. The repository does not currently emit a Shadowrocket-native profile, however, so adopting it as the supported single-app path requires a new repo-native exporter with tests and snapshots. Manual conversion of secret-bearing profiles is not an acceptable durable operator workflow.
-2. **Hiddify is the best drop-in client for the current repository output.** Hiddify officially accepts Sing-box profiles, subscription links, and V2ray/Xray profiles, uses a system VPN tunnel on iOS, and supports REALITY/Vision, XHTTP, and Hysteria2. It can therefore consume the current selector-plus-urltest sing-box JSON without introducing a second profile format. Use the official Amnezia client separately for AmneziaWG. This two-app mode preserves the repository's existing exporter and the separate AWG key-handling boundary.
+2. **Hiddify is the best drop-in client for the standard repository output.** Hiddify accepts sing-box profiles and can consume the P0/P2 selector-plus-urltest JSON directly. P1 still needs a separate, tested Xray-family conversion; importing the RIPDPI bundle is not supported. Use the official Amnezia client separately for AmneziaWG.
 
 For immediate deployment, prefer **Hiddify + the official Amnezia client**. Treat **Shadowrocket** as the target single-app experience after a repository-owned exporter exists and its output is exercised against all four live paths.
 
@@ -41,7 +41,7 @@ Legend: **yes** means explicitly supported in a first-party source; **partial** 
 | Client | REALITY + Vision | XHTTP | Hysteria2 | AmneziaWG | Import and automation | Source transparency | Fit for this fleet |
 |---|---:|---:|---:|---:|---|---|---|
 | Shadowrocket | yes | yes | yes | yes | Own configurations and subscriptions; system tunnel; VPN on-demand appears in reviewed version history | Closed implementation; no official source repository identified | Best protocol-complete single app, but needs a repo-native exporter |
-| Hiddify Proxy & VPN | yes | yes | yes | partial | Sing-box, V2ray/Xray, Clash, deep-link subscriptions; TUN mode and automatic subscription updates | Open source | Best drop-in for the existing sing-box JSON; pair with official Amnezia for AWG |
+| Hiddify Proxy & VPN | yes | yes | yes | partial | Sing-box, V2ray/Xray, Clash, deep-link subscriptions; TUN mode and automatic subscription updates | Open source | Direct import for standard P0/P2 JSON; P1 needs conversion; pair with official Amnezia for AWG |
 | Happ - Proxy Utility | yes | yes | yes | no | URI, QR, standard/encrypted subscriptions, raw Xray JSON, and TUN settings | Public repository exposes a README but not the iOS implementation | Strong Xray/Hysteria alternative, but not a single-app AWG solution |
 | Karing | yes | yes | yes | no | Clash, V2ray, Sing-box, Stash and other subscriptions; TUN and automatic reconnect | Open source | Viable open-source proxy client; AWG requires another app |
 | Stash | yes for TCP-REALITY | no first-party XHTTP support found | yes | no first-party support found | Scheduled configuration updates, StashTun, and VPN On Demand | Closed implementation | Excellent rule engine, but not complete for the local transport set |

@@ -49,6 +49,28 @@ def test_inventory_uses_the_local_fleet_profile_when_present():
     assert 'COHORTS="$(COHORTS)"' in target
 
 
+def test_client_emitters_receive_the_local_fleet_profile():
+    root = Path(__file__).resolve().parents[2]
+    makefile = (root / "Makefile").read_text()
+
+    for target in ("emit-singbox", "emit-bundle"):
+        body = makefile.split(f"{target}:", 1)[1].split("\n\n", 1)[0]
+        for variable in ("HOSTS", "COHORTS", "SOPS_FILE", "SOPS_FILES"):
+            assert f'{variable}="$({variable})"' in body
+        assert "\n\t@HOSTS=" in body
+
+    awg = makefile.split("emit-awg:", 1)[1].split("\n\n", 1)[0]
+    assert 'SOPS_FILE="$(SOPS_FILE)"' in awg
+    assert "\n\t@SOPS_FILE=" in awg
+
+
+def test_subscription_issuers_honor_the_explicit_sops_file():
+    root = Path(__file__).resolve().parents[2]
+    for script in ("issue-bootstrap.sh", "issue-sub-token.sh"):
+        source = (root / "scripts" / script).read_text()
+        assert 'sops_file="${SOPS_FILE:-' in source
+
+
 def test_yamllint_excludes_git_ignored_local_state():
     root = Path(__file__).resolve().parents[2]
     config = (root / ".yamllint.yml").read_text()

@@ -192,12 +192,23 @@ for the exact boundary and the observed live gates.
 
 ## 7. Generate a client config
 
-For a full sing-box JSON with selector + urltest covering every enabled
-profile (recommended for RIPDPI or a current sing-box-compatible client):
+For an official sing-box JSON with selector + urltest covering the supported
+P0 REALITY and P2 Hysteria2 profiles:
 
 ```bash
 make emit-singbox CLIENT=laptop > laptop.singbox.json
 ```
+
+The standard artifact intentionally excludes P1 XHTTP because official
+sing-box does not implement that transport. Use the RIPDPI-specific artifact
+when one client must receive P0, P1, and P2 together:
+
+```bash
+make emit-bundle CLIENT=laptop > laptop.ripdpi.json
+```
+
+Do not import the RIPDPI artifact into a plain sing-box client: it contains
+both the non-standard `ripdpi` object and an XHTTP outbound.
 
 For just URI strings (v2rayN and simpler clients):
 

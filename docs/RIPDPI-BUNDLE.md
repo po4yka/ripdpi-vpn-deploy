@@ -6,25 +6,24 @@
 
 `emit-bundle.sh` (and `make emit-bundle CLIENT=<name>`) produces a single JSON
 file that is the canonical subscription artifact for the RIPDPI Android client.
-It is the standard sing-box document that `emit-singbox.sh` produces, extended
+It uses the explicit RIPDPI profile format from `emit-singbox.sh`, extended
 with a top-level `ripdpi` object carrying device-VPN and transport-obfuscation
-metadata that the RIPDPI client needs but that a plain sing-box config cannot
-express.
+metadata. Unlike the standard emitter output, this format includes P1 XHTTP,
+which the RIPDPI client implements but official sing-box does not.
 
-Standard sing-box clients that do not understand the `ripdpi` key treat it as an
-unknown top-level field and ignore it safely.  Operators who want a
-subscription artifact for those clients should use the `/sub` plain endpoint
-instead of the bundle endpoint.
+Do not send this artifact to standard sing-box clients. They may reject the
+unknown top-level `ripdpi` field, and official sing-box rejects the XHTTP
+transport. Operators serving those clients must use the `/sub` plain endpoint.
 
 ## Top-level structure
 
 ```jsonc
 {
-  // --- Everything emit-singbox.sh produces, unchanged ---
+  // --- RIPDPI profile format from emit-singbox.sh ---
   "log":       { ... },
   "dns":       { ... },
   "inbounds":  [ ... ],
-  "outbounds": [ ... ],   // includes all P0/P1/P2 outbounds + selector/urltest
+  "outbounds": [ ... ],   // includes P0/P1/P2 + selector/urltest
   "route":     { ... },
 
   // --- RIPDPI extension ---
@@ -272,7 +271,7 @@ make issue-sub-token CLIENT=phone FORMAT=ripdpi EXPIRES=2026-12-31
 
 ## Merge guarantee
 
-The `ripdpi` key is appended to the sing-box document via:
+The `ripdpi` key is appended to the RIPDPI profile document via:
 
 ```bash
 jq --argjson r "$ripdpi_json" '. + {ripdpi: $r}' base.json
@@ -280,7 +279,7 @@ jq --argjson r "$ripdpi_json" '. + {ripdpi: $r}' base.json
 
 All existing keys (`log`, `dns`, `inbounds`, `outbounds`, `route`) are
 preserved verbatim.  The merge does not modify, reorder, or re-encode any
-sing-box field.
+profile field.
 
 ## Usage
 
@@ -295,7 +294,7 @@ HOSTS="upcloud:prod,hetzner:prod" make emit-bundle CLIENT=laptop
 HOSTS="upcloud:p0,upcloud:p1p2" COHORTS="p0,p1p2" AWG_COHORT=narrow-junk-sequential \
   make emit-bundle CLIENT=phone
 
-# Per-app routing flags are forwarded to the canonical sing-box emitter
+# Per-app routing flags are forwarded to the profile emitter
 scripts/emit-bundle.sh phone --per-app-via-tun com.example.private
 ```
 

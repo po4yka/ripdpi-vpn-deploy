@@ -232,9 +232,9 @@ make destroy                              # safe, double-confirmation destroy
 make backup-state                         # age-encrypt local TF state
 make burn-check                           # external IP reachability probe
 make diff-secrets                         # drift detection
-make emit-singbox CLIENT=<name>           # full sing-box client JSON
+make emit-singbox CLIENT=<name>           # official sing-box P0/P2 client JSON
 make emit-awg CLIENT=<name>              # AmneziaWG wg-quick .conf for a named peer
-make emit-bundle CLIENT=<name>           # RIPDPI-extended sing-box JSON (singbox + ripdpi object)
+make emit-bundle CLIENT=<name>           # RIPDPI P0/P1/P2 JSON with ripdpi extension
 make install-hooks                        # one-time pre-commit setup
 # vpnd subcommands (run from repo root or set VPN_DEPLOY_ROOT)
 vpnd ai-docs [--out DIR]                  # emit repo docs as structured markdown for AI context

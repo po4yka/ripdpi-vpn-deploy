@@ -14,7 +14,7 @@ Two checks:
      cohort_fingerprint must match the fingerprint recomputed from its own
      resolved params (catches an emit-side hash bug the schema cannot see).
 
-Input may be a full sing-box bundle (the `ripdpi` key is extracted) or a bare
+Input may be a full RIPDPI profile (the `ripdpi` key is extracted) or a bare
 `ripdpi` object. Default target: contract/ripdpi-bundle.example.json.
 """
 from __future__ import annotations
