@@ -7,6 +7,11 @@ xray_install_dir: "{{ xray_install_root | default('/opt/xray') }}"
 xray_etc_dir: "{{ xray_config_dir | default('/etc/xray') }}"
 xray_log_path: "{{ xray_log_dir | default('/var/log/xray') }}"
 
+# Local-only gRPC endpoint for StatsService. The monitoring collector and
+# watchdog query it on-host; it must never be exposed on a public address.
+# 10085 is reserved for the localhost XHTTP inbound.
+xray_api_listen: "127.0.0.1:10086"
+
 # Blackhole outbound QUIC (UDP/443) at the routing layer. ON by default —
 # preserves the existing anti-fingerprint behaviour: proxied clients never
 # emit UDP/443, so the exit cannot be distinguished by a QUIC-leak signature.

@@ -62,11 +62,16 @@ Default single-host port ownership:
 | TCP/80 | nginx redirect to the public HTTPS site | fixed listener contract entry |
 | TCP/8443 | P1 nginx public HTTPS listener | `nginx_xhttp_public_port` |
 | 127.0.0.1:10085 | P1 Xray XHTTP local inbound behind nginx | `nginx_xhttp_port` |
+| 127.0.0.1:10086 | Xray StatsService, local diagnostics only | `xray_api_listen` |
+| 127.0.0.1:9100 | node_exporter including redacted Xray textfile metrics | `monitoring.node_exporter_listen` |
 | UDP/443 | P2 Hysteria2 | `hysteria_port` |
 | TCP/2443–2445 | P3 Snell evaluation variants | `snell.variants[*].listen_port` |
 
 Direct-only cohorts with REALITY disabled can set `nginx_xhttp_public_port` to
 `443`; full-stack hosts must keep the nginx public listener off `xray_port`.
+
+The diagnostic listeners are loopback-only and never enter the public-listener
+contract. See `docs/XRAY-OBSERVABILITY.md` for privacy and failure semantics.
 
 The tactical P0 self-steal mode makes the REALITY destination an nginx TLS site on loopback. Enabling it requires `xray.target` to equal `127.0.0.1:<reality_self_steal_port>`, requires the single `xray.server_names` entry to match the SAN of the owned certificate, and does not add TCP/80 or any other public listener. The Xray inbound remains the sole owner of public TCP/443.
 

@@ -3,6 +3,9 @@
 # and a small set of journald log rules. Remote scrape and alert routing are
 # operator's choice and are not configured here.
 
+- name: Apply pending transport handlers before observing runtime
+  ansible.builtin.meta: flush_handlers
+
 - name: Install node_exporter from distro packages
   ansible.builtin.apt:
     name:
@@ -17,12 +20,11 @@
     owner: root
     group: root
     mode: "0644"
-    content: |
-      ARGS="--web.listen-address={{ monitoring.node_exporter_listen | default('127.0.0.1:9100') }} \
-            --collector.systemd \
-            --collector.processes \
-            --collector.textfile.directory={{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }} \
-            --no-collector.wifi"
+    content: >
+      ARGS="--web.listen-address={{ monitoring.node_exporter_listen | default('127.0.0.1:9100') }}
+      --collector.systemd --collector.processes
+      --collector.textfile.directory={{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}
+      --no-collector.wifi"
   notify: Restart node_exporter
 
 - name: Ensure node_exporter textfile writer group
@@ -61,6 +63,136 @@
     owner: root
     group: "{{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}"
     mode: "3775"
+
+- name: Resolve whether Xray diagnostics are enabled
+  ansible.builtin.set_fact:
+    _monitoring_xray_stats_enabled: >-
+      {{
+        not (vpn_subscription_only | default(false) | bool)
+        and
+        (
+          (vpn.enable_xray_reality | default(true) | bool)
+          or
+          (vpn.enable_nginx_xhttp | default(true) | bool)
+        )
+      }}
+
+- name: Inspect existing Xray stats exporter timer unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/xray-stats-exporter.timer
+  register: _xray_stats_timer_unit
+  when: not (_monitoring_xray_stats_enabled | bool)
+
+- name: Inspect existing Xray stats exporter service unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/xray-stats-exporter.service
+  register: _xray_stats_service_unit
+  when: not (_monitoring_xray_stats_enabled | bool)
+
+- name: Disable stale Xray stats exporter timer
+  ansible.builtin.systemd_service:
+    name: xray-stats-exporter.timer
+    enabled: false
+    state: stopped
+  when:
+    - not (_monitoring_xray_stats_enabled | bool)
+    - _xray_stats_timer_unit.stat.exists | default(false)
+
+- name: Stop stale Xray stats exporter service
+  ansible.builtin.systemd_service:
+    name: xray-stats-exporter.service
+    state: stopped
+  when:
+    - not (_monitoring_xray_stats_enabled | bool)
+    - _xray_stats_service_unit.stat.exists | default(false)
+
+- name: Remove stale Xray stats exporter units
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/xray-stats-exporter.service
+    - /etc/systemd/system/xray-stats-exporter.timer
+  notify: Reload systemd
+  when: not (_monitoring_xray_stats_enabled | bool)
+
+- name: Remove stale Xray stats exporter runtime artifacts
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /usr/local/sbin/xray-stats-exporter
+    - "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_xray.prom"
+  when: not (_monitoring_xray_stats_enabled | bool)
+
+- name: Install Xray stats exporter
+  ansible.builtin.copy:
+    src: xray-stats-exporter.py
+    dest: /usr/local/sbin/xray-stats-exporter
+    owner: root
+    group: root
+    mode: "0755"
+  when: _monitoring_xray_stats_enabled | bool
+
+- name: Install Xray stats exporter service
+  ansible.builtin.template:
+    src: xray-stats-exporter.service.j2
+    dest: /etc/systemd/system/xray-stats-exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart Xray stats exporter timer
+  when: _monitoring_xray_stats_enabled | bool
+
+- name: Install Xray stats exporter timer
+  ansible.builtin.template:
+    src: xray-stats-exporter.timer.j2
+    dest: /etc/systemd/system/xray-stats-exporter.timer
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart Xray stats exporter timer
+  when: _monitoring_xray_stats_enabled | bool
+
+- name: Inspect existing Xray diagnostic textfile
+  ansible.builtin.stat:
+    path: "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_xray.prom"
+  register: _xray_stats_textfile
+  when: _monitoring_xray_stats_enabled | bool
+
+- name: Transfer existing Xray diagnostic textfile to the exporter account
+  ansible.builtin.file:
+    path: "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_xray.prom"
+    state: file
+    owner: "{{ xray_runtime_user | default('xray') }}"
+    group: "{{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}"
+    mode: "0644"
+  when:
+    - _xray_stats_textfile.stat.exists | default(false)
+
+- name: Collect initial redacted Xray diagnostics through the hardened unit
+  ansible.builtin.systemd_service:
+    name: xray-stats-exporter.service
+    state: started
+    daemon_reload: true
+  changed_when: false
+  when:
+    - not ansible_check_mode
+    - _monitoring_xray_stats_enabled | bool
+
+- name: Enable Xray stats exporter timer
+  ansible.builtin.systemd_service:
+    name: xray-stats-exporter.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when:
+    - not ansible_check_mode
+    - _monitoring_xray_stats_enabled | bool
 
 - name: Ensure node_exporter enabled
   ansible.builtin.systemd_service:

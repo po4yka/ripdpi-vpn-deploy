@@ -6,8 +6,10 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
-from scripts.template_render import merge_render_vars, render_template
+import pytest
+from jinja2 import UndefinedError
 
+from scripts.template_render import merge_render_vars, render_template
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATES = REPO_ROOT / "ansible" / "roles" / "watchdog" / "templates"
@@ -15,6 +17,7 @@ TEMPLATES = REPO_ROOT / "ansible" / "roles" / "watchdog" / "templates"
 
 def _multi_cohort_vars() -> dict:
     vars_ = deepcopy(merge_render_vars())
+    vars_["vpn_service_address"] = "192.0.2.50"
     vars_["watchdog_reality_probes"] = [
         {
             "name": "primary",
@@ -41,10 +44,15 @@ def test_probe_config_maps_every_cohort_to_a_distinct_socks_inbound():
 
     assert [inbound["port"] for inbound in config["inbounds"]] == [31082, 31083]
     assert [
-        outbound["settings"]["vnext"][0]["port"]
-        for outbound in config["outbounds"]
+        outbound["settings"]["vnext"][0]["address"] for outbound in config["outbounds"]
+    ] == ["192.0.2.50", "192.0.2.50"]
+    assert [
+        outbound["settings"]["vnext"][0]["port"] for outbound in config["outbounds"]
     ] == [443, 8443]
-    assert config["outbounds"][0]["settings"]["vnext"][0]["users"][0]["flow"] == "xtls-rprx-vision"
+    assert (
+        config["outbounds"][0]["settings"]["vnext"][0]["users"][0]["flow"]
+        == "xtls-rprx-vision"
+    )
     assert "flow" not in config["outbounds"][1]["settings"]["vnext"][0]["users"][0]
     assert config["outbounds"][1]["mux"]["enabled"] is True
     assert config["outbounds"][1]["streamSettings"]["sockopt"]["finalmask"] == "Sudoku"
@@ -60,3 +68,19 @@ def test_environment_lists_every_probe_without_client_credentials():
     assert "XRAY_REALITY_PROBES=443:31082,8443:31083" in rendered
     assert watchdog_client["uuid"] not in rendered
     assert watchdog_client["short_id"] not in rendered
+    assert "XRAY_API_SERVER=127.0.0.1:10086" in rendered
+
+
+def test_watchdog_fails_when_stats_service_is_not_queryable():
+    rendered = render_template(TEMPLATES / "vpn-watchdog.sh.j2", _multi_cohort_vars())
+
+    assert '"xray StatsService query"' in rendered
+    assert 'api statsquery "--server=${XRAY_API_SERVER}"' in rendered
+
+
+def test_reality_probe_requires_the_explicit_service_address() -> None:
+    variables = _multi_cohort_vars()
+    variables.pop("vpn_service_address")
+
+    with pytest.raises(UndefinedError, match="vpn_service_address"):
+        render_template(TEMPLATES / "reality-probe.json.j2", variables)

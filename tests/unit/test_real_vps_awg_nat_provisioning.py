@@ -168,8 +168,7 @@ def test_protected_placement_rejects_wrong_inventory_before_mutation(
     inventory_path = tmp_path / f"{case}.ini"
     inventory_path.write_text(inventory)
     playbook = tmp_path / f"{case}.yml"
-    playbook.write_text(
-        """---
+    playbook.write_text("""---
 - name: Exercise placement preflight
   hosts: awg_evidence_echo
   gather_facts: false
@@ -187,8 +186,7 @@ def test_protected_placement_rejects_wrong_inventory_before_mutation(
         cohort_group: vpn-p1-web
   roles:
     - role: real-vps-awg-nat
-"""
-    )
+""")
 
     result = subprocess.run(
         [
@@ -222,8 +220,7 @@ def test_protected_placement_accepts_exact_provider_state_address(
         "vpn-p1-scaleway-pl-waw-1\n"
     )
     playbook = tmp_path / "valid-placement.yml"
-    playbook.write_text(
-        """---
+    playbook.write_text("""---
 - name: Exercise valid placement preflight
   hosts: awg_evidence_echo
   gather_facts: false
@@ -241,8 +238,7 @@ def test_protected_placement_accepts_exact_provider_state_address(
         cohort_group: vpn-p1-web
   roles:
     - role: real-vps-awg-nat
-"""
-    )
+""")
 
     result = subprocess.run(
         [
@@ -1791,7 +1787,7 @@ def test_makefile_exposes_sops_gated_awg_evidence_entrypoint() -> None:
         "\n\n", 1
     )[0]
 
-    assert "VPN_SECRETS_FILE=\"$(SECRETS_FILE)\"" in target
+    assert 'VPN_SECRETS_FILE="$(SECRETS_FILE)"' in target
     assert "playbooks/provision-real-vps-awg-nat.yml" in target
     assert "AWG_EVIDENCE_INVENTORY=<file> required" in target
     assert "AWG_EVIDENCE_VARS=<mode-0600-file> required" in target
@@ -1801,10 +1797,17 @@ def test_makefile_exposes_sops_gated_awg_evidence_entrypoint() -> None:
 
 def test_makefile_deploy_supports_safe_limit_and_extra_vars() -> None:
     makefile = (ROOT / "Makefile").read_text()
-    target = makefile.split("deploy: pre-deploy-check", 1)[1].split("\n\n", 1)[0]
+    target = makefile.split(
+        "deploy: require-inventory validate-ansible-extra-vars pre-deploy-check", 1
+    )[1].split("\n\n", 1)[0]
+    extra_vars_preflight = makefile.split("validate-ansible-extra-vars:", 1)[1].split(
+        "\n\n", 1
+    )[0]
 
-    assert 'VPN_SECRETS_FILE=$(SECRETS_FILE)' in target
+    assert "VPN_SECRETS_FILE=$(SECRETS_FILE)" in target
     assert '--limit "$(ANSIBLE_LIMIT)"' in target
     assert '--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)"' in target
-    assert "stat.S_IMODE(s.st_mode) == 0o600" in target
-    assert "not os.path.islink(p)" in target
+    assert "stat.S_IMODE(s.st_mode) == 0o600" in extra_vars_preflight
+    assert "not os.path.islink(p)" in extra_vars_preflight
+    assert "ANSIBLE_EXTRA_VARS_FILE requires ANSIBLE_LIMIT" in extra_vars_preflight
+    assert "validate-ansible-extra-vars.py" in extra_vars_preflight

@@ -9,6 +9,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = (
     REPO_ROOT / "ansible" / "roles" / "firewall" / "templates" / "nftables.conf.j2"
@@ -48,13 +50,28 @@ def test_firewall_uses_effective_custom_ssh_port() -> None:
 
 
 def test_firewall_discovers_ssh_port_before_rendering() -> None:
-    tasks = (REPO_ROOT / "ansible" / "roles" / "firewall" / "tasks" / "main.yml").read_text()
+    tasks = (
+        REPO_ROOT / "ansible" / "roles" / "firewall" / "tasks" / "main.yml"
+    ).read_text()
 
     assert "cmd: sshd -T" in tasks
     assert "firewall_effective_ssh_ports" in tasks
     assert tasks.index("Read effective sshd configuration") < tasks.index(
         "Render nftables config"
     )
+
+
+def test_firewall_discovers_ssh_port_in_check_mode() -> None:
+    tasks = yaml.safe_load(
+        (
+            REPO_ROOT / "ansible" / "roles" / "firewall" / "tasks" / "main.yml"
+        ).read_text()
+    )
+
+    sshd_task = next(
+        task for task in tasks if task["name"] == "Read effective sshd configuration"
+    )
+    assert sshd_task["check_mode"] is False
 
 
 def _output_chain(rendered: str) -> str:

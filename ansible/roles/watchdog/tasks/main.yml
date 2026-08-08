@@ -60,6 +60,19 @@
     - (xray_fallback_port | default(0) | int) > 0
     - (xray_fallback_port | int) != (xray_port | default(443) | int)
 
+- name: Validate watchdog data-plane service address
+  ansible.builtin.assert:
+    that:
+      - vpn_service_address is defined
+      - vpn_service_address is string
+      - vpn_service_address | length > 0
+    fail_msg: >-
+      vpn_service_address must identify the public data-plane endpoint;
+      ansible_host is reserved for the administrative SSH path.
+  when:
+    - vpn.enable_xray_reality | default(true)
+    - not (vpn_subscription_only | default(false))
+
 - name: Validate authenticated REALITY probe contract
   ansible.builtin.assert:
     that:

@@ -8,6 +8,28 @@
       enable_xray_reality: true
       enable_nginx_xhttp: false
       enable_honeypot: true
+  pre_tasks:
+    - name: Create synthetic Xray runtime account
+      ansible.builtin.user:
+        name: xray
+        system: true
+        shell: /usr/sbin/nologin
+        home: /var/lib/xray
+        create_home: true
+
+    - name: Install synthetic Xray StatsService client
+      ansible.builtin.copy:
+        dest: /usr/local/bin/xray
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          if [ "$1" = "api" ] && [ "$2" = "statsquery" ]; then
+            printf '%s\n' '{"stat":[{"name":"inbound>>>vless-reality>>>traffic>>>uplink","value":"1024"}]}'
+            exit 0
+          fi
+          exit 2
   roles:
     - role: honeypot
     - role: monitoring

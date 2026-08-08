@@ -12,6 +12,11 @@ entry in `xray.clients`. Never reuse a recipient device credential.
 Multi-cohort deployments authorize that identity in every cohort so a green
 result covers every REALITY listener.
 
+**Service endpoint is not the SSH endpoint** — the rendered client targets
+`vpn_service_address`, which inventory derives from Terraform's public IPv4.
+Overriding `ansible_host` for Tailscale administration must never redirect a
+data-plane probe onto the management path.
+
 **Bounded recovery** — failures must cross `fail_threshold` before the watchdog
 restarts only the transport units whose probes failed. Restart attempts remain
 capped by `kicks_per_hour_max`, notifications by `alerts_per_hour_max`, and a
@@ -43,3 +48,6 @@ oneshot open indefinitely.
 - **A partial listener outage is a failure** — primary, fallback, and every
   cohort listener are all probed; one red listener increments the common
   consecutive-failure counter.
+- **Inventory must preserve both addresses** — `make inventory` emits
+  `vpn_service_address` beside `ansible_host`. Local SSH overrides may replace
+  only the latter.

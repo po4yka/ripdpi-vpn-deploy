@@ -11,6 +11,19 @@
       linux_amd64_sha256 / linux_arm64_sha256) in your secrets file or
       group_vars before running this role.
 
+- name: Pre-flight — Xray StatsService must remain loopback-only
+  ansible.builtin.assert:
+    that:
+      - xray_api_listen is match('^127\\.0\\.0\\.1:[0-9]+$')
+      - (xray_api_listen | split(':') | last | int) > 0
+      - (xray_api_listen | split(':') | last | int) < 65536
+      - >-
+        not (vpn.enable_nginx_xhttp | default(false) | bool) or
+        (xray_api_listen | split(':') | last | int) != (nginx_xhttp_port | default(10085) | int)
+    fail_msg: >-
+      xray_api_listen must be a valid 127.0.0.1 TCP endpoint and must not
+      collide with the localhost XHTTP inbound.
+
 - name: Install shared pinned Xray runtime
   ansible.builtin.include_role:
     name: xray-runtime

@@ -1,0 +1,13 @@
+[Unit]
+Description=Collect Xray diagnostic counters every 60s
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=10s
+RandomizedDelaySec=10s
+Persistent=true
+Unit=xray-stats-exporter.service
+
+[Install]
+WantedBy=timers.target

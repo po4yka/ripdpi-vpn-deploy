@@ -49,7 +49,10 @@
       ansible.builtin.command:
         cmd: /usr/local/bin/xray run -test -config /etc/xray/config.json
       changed_when: false
-      when: vpn.enable_xray_reality | default(true)
+      when: >-
+        not (vpn_subscription_only | default(false)) and
+        ((vpn.enable_xray_reality | default(true)) or
+         (vpn.enable_nginx_xhttp | default(true)))
 
     - name: Xray service active
       ansible.builtin.command:
@@ -57,7 +60,47 @@
       register: xray_status
       changed_when: false
       failed_when: xray_status.stdout != "active"
-      when: vpn.enable_xray_reality | default(true)
+      when: >-
+        not (vpn_subscription_only | default(false)) and
+        ((vpn.enable_xray_reality | default(true)) or
+         (vpn.enable_nginx_xhttp | default(true)))
+
+    - name: Xray StatsService query succeeds
+      ansible.builtin.command:
+        cmd: >-
+          /usr/local/bin/xray api statsquery
+          --server={{ xray_api_listen }}
+      changed_when: false
+      no_log: true
+      when: >-
+        not (vpn_subscription_only | default(false)) and
+        ((vpn.enable_xray_reality | default(true)) or
+         (vpn.enable_nginx_xhttp | default(true)))
+
+    - name: Xray redacted diagnostic metrics are fresh
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          metrics="$(curl --fail --silent --show-error --max-time 5 \
+            http://{{ monitoring.node_exporter_listen | default('127.0.0.1:9100') }}/metrics \
+            | awk '/^vpn_xray_/')"
+          grep -q '^vpn_xray_stats_collection_success 1$' <<<"$metrics"
+          age="$(awk -v now="$(date +%s)" '
+            $1 == "vpn_xray_stats_collected_timestamp_seconds" {
+              printf "%.0f", now - $2
+              found=1
+            }
+            END { if (!found) exit 1 }
+          ' <<<"$metrics")"
+          test "$age" -ge 0
+          test "$age" -le 180
+        executable: /bin/bash
+      changed_when: false
+      when: >-
+        (vpn.enable_monitoring | default(true)) and
+        not (vpn_subscription_only | default(false)) and
+        ((vpn.enable_xray_reality | default(true)) or
+         (vpn.enable_nginx_xhttp | default(true)))
 
     - name: Xray TCP listener active
       ansible.builtin.shell:

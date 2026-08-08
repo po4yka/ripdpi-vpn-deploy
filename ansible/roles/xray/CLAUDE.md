@@ -14,6 +14,11 @@ primary service user, configuration, logs, and lifecycle.
 
 **XHTTP can run without REALITY** — the role runs when either transport is enabled. The XHTTP inbound binds only to `127.0.0.1`; when `vpn.enable_xray_reality` is false, no public REALITY inbound or REALITY target validation is emitted.
 
+**StatsService is local-only** — traffic and online-user counters are enabled
+for redacted diagnostics, but the gRPC API binds only to
+`xray_api_listen=127.0.0.1:10086`. The monitoring role owns export and
+retention; this role owns only the Xray-side counter contract.
+
 ## What's done well
 
 - **Idempotent inbound rebuild** — handler `restart xray` only fires when the
@@ -30,6 +35,9 @@ primary service user, configuration, logs, and lifecycle.
   same idea explicitly. Set the port to 0 to disable.
 - **Backup-before-write** — the previous config is copied to `.prev` so
   `rollback-config.yml` has a target.
+- **No client identifiers in exported metrics** — Xray necessarily keys user
+  counters by email, but the monitoring exporter aggregates those records
+  before they leave the local StatsService boundary.
 
 ## Pitfalls
 
@@ -46,3 +54,5 @@ primary service user, configuration, logs, and lifecycle.
   is identical.
 - **Binary-pin drift on apt-update** — never `apt upgrade xray` blindly;
   the binary is hash-pinned via the release-line tracker.
+- **10085 belongs to XHTTP** — keep StatsService on 10086 or another validated
+  loopback port; the pre-flight guard rejects public binds and collisions.

@@ -100,9 +100,13 @@ make deploy ANSIBLE_LIMIT=vpn-p2-udp \
 
 Both commands use the canonical SOPS-gated deploy path. Any extra-vars file
 must be a same-owner, non-symlink regular file with mode `0600`; private values
-still belong only in SOPS and must not be copied into this file. The root
-Makefile exports `ANSIBLE_CONFIG=ansible/ansible.cfg`, so these commands retain
-the repository inventory, role path, SSH, and privilege-escalation settings.
+still belong only in SOPS and must not be copied into this file. The file is
+accepted only with `ANSIBLE_LIMIT` and may contain only management-path fields
+or `firewall_forward_interface_contract`; data-plane and protocol variables
+are rejected. A forwarding override must contain exactly one named entry with
+safe Linux interface names. The root Makefile exports
+`ANSIBLE_CONFIG=ansible/ansible.cfg`, so these commands retain the repository
+inventory, role path, SSH, and privilege-escalation settings.
 
 Apply each provider change locally, then rerender the inventory before these
 ordinary site converges; `terraform_public_listeners_b64` must contain the

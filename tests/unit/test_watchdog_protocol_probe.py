@@ -6,10 +6,13 @@ import os
 import subprocess
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = REPO_ROOT / "ansible" / "roles" / "watchdog" / "templates" / "vpn-watchdog.sh.j2"
-ENV_TEMPLATE = REPO_ROOT / "ansible" / "roles" / "watchdog" / "templates" / "vpn-watchdog.env.j2"
+SCRIPT = (
+    REPO_ROOT / "ansible" / "roles" / "watchdog" / "templates" / "vpn-watchdog.sh.j2"
+)
+ENV_TEMPLATE = (
+    REPO_ROOT / "ansible" / "roles" / "watchdog" / "templates" / "vpn-watchdog.env.j2"
+)
 
 
 def _executable(path: Path, body: str) -> None:
@@ -26,6 +29,7 @@ def _run_watchdog(
     expected_status: str = "204",
     socks_ready: bool = True,
     xray_client_exits: bool = False,
+    stats_service_ready: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -36,8 +40,7 @@ def _run_watchdog(
 
     _executable(
         bin_dir / "systemctl",
-        "printf '%s\\n' \"$*\" >> \"${SYSTEMCTL_LOG}\"\n"
-        "exit 0\n",
+        'printf \'%s\\n\' "$*" >> "${SYSTEMCTL_LOG}"\n' "exit 0\n",
     )
     _executable(bin_dir / "timeout", "exit 0\n")
     _executable(
@@ -62,6 +65,13 @@ def _run_watchdog(
     _executable(
         bin_dir / "xray",
         "if printf '%s\\n' \"$@\" | grep -q -- '-test'; then exit 0; fi\n"
+        "if printf '%s\\n' \"$@\" | grep -q -- 'statsquery'; then\n"
+        + (
+            "  printf '%s\\n' '{\"stat\":[]}'\n  exit 0\n"
+            if stats_service_ready
+            else "  exit 24\n"
+        )
+        + "fi\n"
         + ("exit 23\n" if xray_client_exits else "")
         + "trap 'touch \"${XRAY_TERM_MARKER}\"; exit 0' TERM INT\n"
         "while :; do read -r -t 1 _ || true; done\n",
@@ -113,14 +123,22 @@ def test_authenticated_reality_round_trip_reports_success_and_cleans_up(tmp_path
 
 def test_listener_readiness_does_not_use_grep_q_under_pipefail():
     script = SCRIPT.read_text()
-    readiness = script[script.index("socks_listener_ready()") : script.index("reality_canary_round_trip()")]
+    readiness = script[
+        script.index("socks_listener_ready()") : script.index(
+            "reality_canary_round_trip()"
+        )
+    ]
     assert "grep -q" not in readiness
     assert "END { exit !found }" in readiness
 
 
 def test_probe_list_and_nginx_port_have_an_explicit_line_boundary():
     template = ENV_TEMPLATE.read_text()
-    probe_line = next(line for line in template.splitlines() if line.startswith("XRAY_REALITY_PROBES="))
+    probe_line = next(
+        line
+        for line in template.splitlines()
+        if line.startswith("XRAY_REALITY_PROBES=")
+    )
     assert probe_line.endswith("{{ '\\n' }}")
     assert "NGINX_PORT" not in probe_line
 
@@ -167,4 +185,13 @@ def test_xray_client_early_exit_is_a_probe_failure(tmp_path):
 
     assert result.returncode != 0, result.stderr
     assert "FAIL  xray REALITY TCP/443 round-trip" in result.stdout
+    assert "consecutive_fails=1" in (tmp_path / "state").read_text()
+
+
+def test_stats_service_failure_is_a_probe_failure_and_restarts_xray(tmp_path):
+    result = _run_watchdog(tmp_path, stats_service_ready=False)
+
+    assert result.returncode != 0, result.stderr
+    assert "FAIL  xray StatsService query" in result.stdout
+    assert "restart xray.service" in (tmp_path / "systemctl.log").read_text()
     assert "consecutive_fails=1" in (tmp_path / "state").read_text()

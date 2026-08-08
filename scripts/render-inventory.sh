@@ -140,7 +140,10 @@ for i in "${!host_pairs[@]}"; do
     echo "invalid ssh_port output for ${prov}:${env}: ${ssh_port}" >&2
     exit 1
   fi
-  vpn_line="${hostname} ansible_host=${ip} ansible_user=${user} ansible_port=${ssh_port} provider=${prov} env=${env}"
+  # Keep the public service endpoint independent from ansible_host. Operators
+  # may override ansible_host with a Tailscale address for administration;
+  # data-plane probes must continue to target the Terraform-owned public IP.
+  vpn_line="${hostname} ansible_host=${ip} vpn_service_address=${ip} ansible_user=${user} ansible_port=${ssh_port} provider=${prov} env=${env}"
   # The INI inventory plugin tokenizes host vars with shlex before applying
   # Python literal parsing. Quote the complete JSON value so the inner string
   # quotes survive and Ansible receives a list instead of a malformed string.

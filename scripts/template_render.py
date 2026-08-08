@@ -18,6 +18,7 @@ EXAMPLE_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 SYNTHETIC_FACTS = {
     "ansible_user": "deploy",
     "ansible_host": "198.51.100.10",
+    "vpn_service_address": "198.51.100.10",
     "ansible_architecture": "x86_64",
     "ansible_os_family": "Debian",
     "ansible_distribution": "Debian",
@@ -58,7 +59,12 @@ def merge_render_vars() -> dict:
         "watchdog_reality_probes",
         [
             {"name": "primary", "port": 443, "flow_mode": "vision", "finalmask": False},
-            {"name": "fallback", "port": 2053, "flow_mode": "vision", "finalmask": False},
+            {
+                "name": "fallback",
+                "port": 2053,
+                "flow_mode": "vision",
+                "finalmask": False,
+            },
         ],
     )
     merged.setdefault(

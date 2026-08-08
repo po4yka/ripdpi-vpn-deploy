@@ -43,6 +43,12 @@
     "access": "{{ xray_log_path }}/access.log",
     "error": "{{ xray_log_path }}/error.log"
   },
+  "api": {
+    "tag": "api",
+    "listen": "{{ xray_api_listen }}",
+    "services": ["StatsService"]
+  },
+  "stats": {},
   "dns": {
     "servers": [
       {%- if vpn.enable_cascade_ingress | default(false) %}
@@ -295,8 +301,10 @@
       }
     },
     "system": {
-      "statsInboundUplink": false,
-      "statsInboundDownlink": false
+      "statsInboundUplink": true,
+      "statsInboundDownlink": true,
+      "statsOutboundUplink": true,
+      "statsOutboundDownlink": true
     }
   }
 }

@@ -47,6 +47,26 @@
           ' /etc/xray/config.json
       changed_when: false
 
+    - name: StatsService is loopback-only with traffic counters enabled
+      ansible.builtin.command:
+        cmd: >-
+          jq -e '
+            .api == {
+              "tag": "api",
+              "listen": "127.0.0.1:10086",
+              "services": ["StatsService"]
+            } and
+            .stats == {} and
+            (.policy.levels["0"] | has("statsUserUplink") | not) and
+            (.policy.levels["0"] | has("statsUserDownlink") | not) and
+            (.policy.levels["0"] | has("statsUserOnline") | not) and
+            .policy.system.statsInboundUplink == true and
+            .policy.system.statsInboundDownlink == true and
+            .policy.system.statsOutboundUplink == true and
+            .policy.system.statsOutboundDownlink == true
+          ' /etc/xray/config.json
+      changed_when: false
+
     - name: systemd unit installed
       ansible.builtin.stat:
         path: /etc/systemd/system/xray.service

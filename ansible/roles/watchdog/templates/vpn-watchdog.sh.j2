@@ -10,6 +10,7 @@ set -euo pipefail
 : "${ALERTS_PER_HOUR_MAX:=4}"
 : "${KICKS_PER_HOUR_MAX:=3}"
 : "${XRAY_BIN:=/usr/local/bin/xray}"
+: "${XRAY_API_SERVER:=127.0.0.1:10086}"
 : "${XRAY_REALITY_CONFIG:=/etc/vpn-watchdog-reality.json}"
 : "${XRAY_REALITY_PROBES:=}"
 : "${XRAY_REALITY_PROBE_URL:=}"
@@ -150,6 +151,8 @@ if [[ "${ENABLE_XRAY:-true}" == "true" ]]; then
     bash -c "ss -lnt | awk '{print \$4}' | grep -q ':${XRAY_PORT:-443}\$'"
   probe_unit "xray.service" "xray config valid" \
     "$XRAY_BIN" run -test -config /etc/xray/config.json
+  probe_unit "xray.service" "xray StatsService query" \
+    "$XRAY_BIN" api statsquery "--server=${XRAY_API_SERVER}"
   probe_reality_listeners
 fi
 

@@ -19,7 +19,7 @@
       "protocol": "vless",
       "settings": {
         "vnext": [{
-          "address": "{{ ansible_host }}",
+          "address": "{{ vpn_service_address }}",
           "port": {{ probe.port }},
           "users": [{
             "id": "{{ _client.uuid }}",

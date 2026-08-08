@@ -187,6 +187,7 @@ xray_port: 443
 xray_fallback_port: 2053
 nginx_xhttp_public_port: 8443 # public nginx listener; direct-only cohorts may override to 443
 nginx_xhttp_port: 10085       # localhost-only Xray XHTTP inbound behind nginx
+xray_api_listen: "127.0.0.1:10086"  # localhost-only Xray StatsService
 # Public port for the optional SECOND, direct (non-CDN) HTTPS XHTTP frontend.
 # Opt-in via nginx_xhttp.fallback_enabled (off by default); when on, nginx
 # renders an extra server block that shares the same Xray localhost upstream

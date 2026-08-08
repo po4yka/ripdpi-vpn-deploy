@@ -10,7 +10,6 @@ import subprocess
 import time
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "vpn-protocol-liveness.py"
 
@@ -44,6 +43,8 @@ import os, pathlib, sys, time
 args = " ".join(sys.argv[1:])
 with pathlib.Path(os.environ["CALL_LOG"]).open("a") as log:
     log.write(f"curl {{args}}\\n")
+    if "--socks5-hostname" in args:
+        log.write(f"curl-start {{time.monotonic_ns()}} {{args}}\\n")
 blocked = {tuple(f"--socks5-hostname 127.0.0.1:{port}" for port in blocked_ports)!r}
 if any(marker in args for marker in blocked):
     time.sleep({blocked_delay_seconds!r})
@@ -137,7 +138,9 @@ signal.pause()
     sing_profiles = {}
     profile_config = tmp_path / "sing-box.json"
     profile_config.write_text("{}")
-    for index, profile in enumerate(("p0-reality", "p1-xhttp", "p2-hysteria2"), start=1):
+    for index, profile in enumerate(
+        ("p0-reality", "p1-xhttp", "p2-hysteria2"), start=1
+    ):
         sing_profiles[profile] = [18080 + index]
     config.write_text(
         json.dumps(
@@ -180,7 +183,9 @@ def _run(config: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_sentinel_reports_authenticated_data_plane_success_without_secrets(tmp_path: Path) -> None:
+def test_sentinel_reports_authenticated_data_plane_success_without_secrets(
+    tmp_path: Path,
+) -> None:
     config, env = _setup(tmp_path)
 
     result = _run(config, env)
@@ -202,7 +207,9 @@ def test_sentinel_reports_authenticated_data_plane_success_without_secrets(tmp_p
     assert subprocess.run(["ps", "-p", awg_pid], capture_output=True).returncode != 0
 
 
-def test_transport_timeout_is_blocked_only_when_direct_control_succeeds(tmp_path: Path) -> None:
+def test_transport_timeout_is_blocked_only_when_direct_control_succeeds(
+    tmp_path: Path,
+) -> None:
     config, env = _setup(
         tmp_path,
         blocked_ports=(18081, 18084),
@@ -213,9 +220,7 @@ def test_transport_timeout_is_blocked_only_when_direct_control_succeeds(tmp_path
     document["sing_box"]["profiles"]["p0-reality"] = [18081, 18084]
     config.write_text(json.dumps(document))
 
-    started = time.monotonic()
     result = _run(config, env)
-    elapsed = time.monotonic() - started
 
     payload = json.loads(result.stdout)
     profiles = {item["profile"]: item for item in payload["profiles"]}
@@ -225,7 +230,16 @@ def test_transport_timeout_is_blocked_only_when_direct_control_succeeds(tmp_path
         "blocked",
         "blocked",
     ]
-    assert elapsed < 6.5
+    starts = {}
+    for line in (tmp_path / "calls.log").read_text().splitlines():
+        if not line.startswith("curl-start "):
+            continue
+        _, timestamp, arguments = line.split(" ", 2)
+        for port in (18081, 18084):
+            if f"127.0.0.1:{port}" in arguments:
+                starts[port] = int(timestamp)
+    assert set(starts) == {18081, 18084}
+    assert abs(starts[18081] - starts[18084]) < 2_000_000_000
 
 
 def test_profile_stays_alive_when_one_endpoint_variant_succeeds(tmp_path: Path) -> None:
@@ -251,7 +265,9 @@ def test_awg_namespace_is_removed_after_probe_failure(tmp_path: Path) -> None:
     result = _run(config, env)
 
     payload = json.loads(result.stdout)
-    awg = next(item for item in payload["profiles"] if item["profile"] == "p2-amneziawg")
+    awg = next(
+        item for item in payload["profiles"] if item["profile"] == "p2-amneziawg"
+    )
     calls = (tmp_path / "calls.log").read_text()
     assert awg["verdict"] == "blocked"
     assert "netns delete vpn-live-" in calls
@@ -268,7 +284,9 @@ def test_awg_namespace_is_removed_after_probe_timeout(tmp_path: Path) -> None:
     result = _run(config, env)
 
     payload = json.loads(result.stdout)
-    awg = next(item for item in payload["profiles"] if item["profile"] == "p2-amneziawg")
+    awg = next(
+        item for item in payload["profiles"] if item["profile"] == "p2-amneziawg"
+    )
     calls = (tmp_path / "calls.log").read_text()
     assert awg["verdict"] == "error"
     assert "netns delete vpn-live-" in calls
@@ -297,7 +315,11 @@ def test_authentication_failure_is_error_not_blocked(tmp_path: Path) -> None:
     result = _run(config, env)
 
     payload = json.loads(result.stdout)
-    sing_verdicts = [item["verdict"] for item in payload["profiles"] if item["profile"] != "p2-amneziawg"]
+    sing_verdicts = [
+        item["verdict"]
+        for item in payload["profiles"]
+        if item["profile"] != "p2-amneziawg"
+    ]
     assert sing_verdicts == ["error", "error", "error"]
 
     logged = tmp_path / "logged"
@@ -314,14 +336,18 @@ def test_authentication_failure_is_error_not_blocked(tmp_path: Path) -> None:
     assert p0["variants"][0]["error_kind"] == "authentication"
 
 
-def test_awg_cleanup_failure_is_error_and_still_stops_userspace_process(tmp_path: Path) -> None:
+def test_awg_cleanup_failure_is_error_and_still_stops_userspace_process(
+    tmp_path: Path,
+) -> None:
     config, env = _setup(tmp_path)
     env["FAIL_NETNS_DELETE"] = "1"
 
     result = _run(config, env)
 
     payload = json.loads(result.stdout)
-    awg = next(item for item in payload["profiles"] if item["profile"] == "p2-amneziawg")
+    awg = next(
+        item for item in payload["profiles"] if item["profile"] == "p2-amneziawg"
+    )
     calls = (tmp_path / "calls.log").read_text()
     assert awg["verdict"] == "error"
     assert "-n vpn-live-" in calls and "link delete awglive" in calls
@@ -346,7 +372,9 @@ def test_awg_namespace_and_process_are_removed_on_signal(tmp_path: Path) -> None
     else:
         process.kill()
         stdout, stderr = process.communicate()
-        raise AssertionError(f"AWG probe did not start: stdout={stdout!r}, stderr={stderr!r}")
+        raise AssertionError(
+            f"AWG probe did not start: stdout={stdout!r}, stderr={stderr!r}"
+        )
 
     process.send_signal(signal.SIGTERM)
     process.communicate(timeout=8)
@@ -369,13 +397,18 @@ def test_sing_box_process_is_removed_on_signal(tmp_path: Path) -> None:
     )
     pid_file = tmp_path / "sing.pid"
     for _ in range(200):
-        if pid_file.exists() and "--socks5-hostname" in (tmp_path / "calls.log").read_text():
+        if (
+            pid_file.exists()
+            and "--socks5-hostname" in (tmp_path / "calls.log").read_text()
+        ):
             break
         time.sleep(0.05)
     else:
         process.kill()
         stdout, stderr = process.communicate()
-        raise AssertionError(f"sing-box probe did not start: stdout={stdout!r}, stderr={stderr!r}")
+        raise AssertionError(
+            f"sing-box probe did not start: stdout={stdout!r}, stderr={stderr!r}"
+        )
 
     process.send_signal(signal.SIGTERM)
     process.communicate(timeout=8)

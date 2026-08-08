@@ -24,7 +24,7 @@ TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
 export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
 export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CONFIG
 
-.PHONY: help init validate plan apply inventory wait decrypt dry-run deploy deploy-canary verify security-verify security-audit clean \
+.PHONY: help init validate plan apply inventory wait decrypt require-inventory validate-ansible-extra-vars dry-run deploy deploy-canary verify security-verify security-audit clean \
         pre-deploy-check \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
@@ -33,7 +33,7 @@ export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CON
         audit-permissions asn-drift check-ip-reputation issue-bootstrap \
         test-tls-policing probe-payload-throttle fleet-status drift-since-tag fleet-rotate \
         snell-refinement \
-        protocol-liveness monitor-protocol-liveness install-liveness-sentinel watch-spare promote-spare probing-summary tspu-canary \
+        protocol-liveness monitor-protocol-liveness install-liveness-sentinel watch-spare promote-spare probing-summary xray-diagnostics tspu-canary \
         emit-sbom molecule-full-stack audit-log audit-log-append pyinfra-audit \
         setup-yubikey check-killswitch install-operator-crons \
         remove-operator-crons issue-sub-token sub-reads \
@@ -49,6 +49,8 @@ help:
 	@echo "Variables (override on command line):"
 	@echo "  PROVIDER  current: $(PROVIDER)  (upcloud | hetzner | vultr | scaleway)"
 	@echo "  ENV       current: $(ENV)       (prod | staging)"
+	@echo "  ANSIBLE_LIMIT             Optional host/group limit for live Ansible targets"
+	@echo "  ANSIBLE_EXTRA_VARS_FILE   Optional limited same-owner mode-0600 YAML; requires ANSIBLE_LIMIT"
 	@echo ""
 	@echo "── DAY-1 ──────────────────────────────────────────────────────────────"
 	@echo "  check-prereqs              Verify required CLI tools are installed"
@@ -115,6 +117,7 @@ help:
 	@echo "  asn-drift                  Alert on VPS ASN reassignment"
 	@echo "  check-ip-reputation        Spamhaus / optional FireHOL file / AbuseIPDB"
 	@echo "  probing-summary            7-day Xray/nginx/honeypot rollup"
+	@echo "  xray-diagnostics           Fresh redacted Xray counters via local StatsService"
 	@echo "  tspu-canary                Daily TSPU rule-drift probes (in-cohort box)"
 	@echo "  test-tls-policing HOST=…   Probe the ~12-concurrent-TLS home-ISP rule"
 	@echo "  probe-payload-throttle HOST=… Probe per-ASN ~16 KiB payload throttling"
@@ -190,6 +193,18 @@ inventory:
 wait:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/wait-cloud-init.sh
 
+require-inventory:
+	@test -s "$(ANSIBLE_DIR)/inventory/generated.ini" || { echo "missing generated inventory — run 'make inventory'"; exit 1; }
+	@ansible-inventory --list | python3 -c 'import json, sys; document = json.load(sys.stdin); hosts = document.get("vpn", {}).get("hosts", []); raise SystemExit(0 if hosts else 1)' || { echo "generated inventory has no vpn hosts — run 'make inventory'"; exit 1; }
+
+validate-ansible-extra-vars:
+	@if [ -n "$(ANSIBLE_EXTRA_VARS_FILE)" ]; then \
+	  test -n "$(ANSIBLE_LIMIT)" || { echo "ANSIBLE_EXTRA_VARS_FILE requires ANSIBLE_LIMIT"; exit 1; }; \
+	  test -f "$(ANSIBLE_EXTRA_VARS_FILE)" || { echo "missing $(ANSIBLE_EXTRA_VARS_FILE)"; exit 1; }; \
+	  ANSIBLE_EXTRA_VARS_FILE="$(ANSIBLE_EXTRA_VARS_FILE)" python3 -c 'import os, stat; p = os.environ["ANSIBLE_EXTRA_VARS_FILE"]; s = os.stat(p, follow_symlinks=False); ok = stat.S_ISREG(s.st_mode) and not os.path.islink(p) and s.st_uid == os.geteuid() and stat.S_IMODE(s.st_mode) == 0o600; raise SystemExit(0 if ok else 1)' || { echo "ANSIBLE_EXTRA_VARS_FILE must be a same-owner regular non-symlink file with mode 0600"; exit 1; }; \
+	  python3 ./scripts/validate-ansible-extra-vars.py "$(ANSIBLE_EXTRA_VARS_FILE)" || exit 1; \
+	fi
+
 pre-deploy-check:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }
 	@if [ "$(SKIP_PRECHECK)" = "1" ]; then \
@@ -200,15 +215,13 @@ pre-deploy-check:
 	  VPN_SECRETS_FILE=$(SECRETS_FILE) ./scripts/check-certs.sh; \
 	fi
 
-dry-run: pre-deploy-check
+dry-run: require-inventory validate-ansible-extra-vars pre-deploy-check
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
-	ansible-playbook $(ANSIBLE_DIR)/playbooks/site.yml --check --diff
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/site.yml --check --diff \
+	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
+	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
 
-deploy: pre-deploy-check
-	@if [ -n "$(ANSIBLE_EXTRA_VARS_FILE)" ]; then \
-	  test -f "$(ANSIBLE_EXTRA_VARS_FILE)" || { echo "missing $(ANSIBLE_EXTRA_VARS_FILE)"; exit 1; }; \
-	  ANSIBLE_EXTRA_VARS_FILE="$(ANSIBLE_EXTRA_VARS_FILE)" python3 -c 'import os, stat; p = os.environ["ANSIBLE_EXTRA_VARS_FILE"]; s = os.stat(p, follow_symlinks=False); ok = stat.S_ISREG(s.st_mode) and not os.path.islink(p) and s.st_uid == os.geteuid() and stat.S_IMODE(s.st_mode) == 0o600; raise SystemExit(0 if ok else 1)' || { echo "ANSIBLE_EXTRA_VARS_FILE must be a same-owner regular non-symlink file with mode 0600"; exit 1; }; \
-	fi
+deploy: require-inventory validate-ansible-extra-vars pre-deploy-check
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/site.yml \
 	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
@@ -221,20 +234,33 @@ deploy: pre-deploy-check
 deploy-canary:
 	$(MAKE) ENV=canary deploy
 
-verify: pre-deploy-check
+verify: require-inventory validate-ansible-extra-vars pre-deploy-check
+	@if [ "$(TAG_ON_SUCCESS)" = "1" ] && [ -n "$(ANSIBLE_LIMIT)" ]; then \
+	  echo "TAG_ON_SUCCESS=1 requires an unbounded fleet verification"; \
+	  exit 1; \
+	fi
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
-	ansible-playbook $(ANSIBLE_DIR)/playbooks/verify.yml
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/verify.yml \
+	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
+	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
 	@if [ "$(TAG_ON_SUCCESS)" = "1" ]; then \
 	  tag="vpn-deploy-known-good-$$(date +%Y-%m-%d-%H%M)"; \
 	  git tag "$$tag" && echo "tagged: $$tag"; \
 	fi
 
-security-verify: pre-deploy-check
+security-verify: require-inventory validate-ansible-extra-vars pre-deploy-check
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
-	ansible-playbook $(ANSIBLE_DIR)/playbooks/security-verify.yml
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/security-verify.yml \
+	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
+	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
 
 security-audit:
 	VPN_SECRETS_FILE=$(SECRETS_FILE) ansible-playbook $(ANSIBLE_DIR)/playbooks/security-audit.yml
+
+xray-diagnostics: require-inventory validate-ansible-extra-vars
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/xray-diagnostics.yml \
+	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
+	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
 
 awg-evidence-provision: pre-deploy-check
 	@test -f "$(ANSIBLE_DIR)/inventory/generated.ini" || { echo "missing generated inventory — run 'make inventory'"; exit 1; }

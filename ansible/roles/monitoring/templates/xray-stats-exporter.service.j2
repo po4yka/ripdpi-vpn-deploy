@@ -1,0 +1,27 @@
+[Unit]
+Description=Export redacted Xray StatsService counters
+After=xray.service
+Requires=xray.service
+
+[Service]
+Type=oneshot
+User={{ xray_runtime_user | default('xray') }}
+Group={{ xray_runtime_group | default('xray') }}
+SupplementaryGroups={{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}
+ExecStart=/usr/local/sbin/xray-stats-exporter --server {{ xray_api_listen }} --output {{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_xray.prom
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+ReadWritePaths={{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}

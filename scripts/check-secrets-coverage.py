@@ -28,7 +28,8 @@ EXAMPLE_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 # roles' defaults. They legitimately appear in templates without being in the
 # secrets file.
 NON_SECRET_TOPLEVEL = {
-    "ansible_user", "ansible_host", "ansible_facts", "ansible_architecture",
+    "ansible_user", "ansible_host", "vpn_service_address", "ansible_facts",
+    "ansible_architecture",
     "ansible_os_family", "ansible_distribution", "ansible_distribution_release",
     "ansible_python_interpreter", "ansible_hostname",
     "vpn", "security_controls", "allowed_ssh_cidrs",

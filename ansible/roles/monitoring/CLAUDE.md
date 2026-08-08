@@ -15,6 +15,10 @@ root-owned setgid and sticky directory, while unprivileged producers such as
 honeypot join `node_exporter_textfile`. This keeps collector reads available
 without granting those producers ownership or cross-producer replacement.
 
+**Xray diagnostics exclude user identity at the source** — per-user counters
+stay disabled. A hardened one-shot queries loopback StatsService every 60
+seconds and exports only repository-owned technical inbound/outbound tags.
+
 ## What's done well
 
 - **Logrotate with retention** — xray and nginx-vpn logs rotated daily with
@@ -22,6 +26,12 @@ without granting those producers ownership or cross-producer replacement.
 - **Prometheus textfile collector enabled** — `--collector.systemd` and
   `--collector.processes` ship systemd unit states and process stats without
   any extra configuration.
+- **Failure is itself observable** — collector errors atomically replace stale
+  counters with `vpn_xray_stats_collection_success 0`; the failed oneshot is
+  also visible through the systemd collector.
+- **Disable is convergent** — removing the last Xray transport stops and removes
+  the exporter timer, unit, binary, and textfile instead of exposing stale
+  counters from an earlier profile.
 
 ## Pitfalls
 
@@ -33,3 +43,5 @@ without granting those producers ownership or cross-producer replacement.
   matches your deployment.
 - **No alerting included** — by design. Alerting is operator-side, via
   `install-operator-crons` on a workstation, not on the server.
+- **Counters reset with Xray** — graph rates or increases. They are diagnostic
+  evidence, not a durable usage or billing ledger.

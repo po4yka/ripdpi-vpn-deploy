@@ -32,10 +32,10 @@ def test_cloud_init_schema_has_a_pinned_container_fallback():
     target = makefile.split("cloud-init-schema:", 1)[1].split("\n\ntf-test:", 1)[0]
 
     assert "CLOUD_INIT_IMAGE ?= ubuntu:24.04@sha256:" in makefile
-    assert 'command -v cloud-init' in target
-    assert 'command -v docker' in target
-    assert 'cloud-init schema --config-file /dev/stdin' in target
-    assert 'missing: cloud-init (or docker fallback)' in target
+    assert "command -v cloud-init" in target
+    assert "command -v docker" in target
+    assert "cloud-init schema --config-file /dev/stdin" in target
+    assert "missing: cloud-init (or docker fallback)" in target
     assert "set -eu" in target
 
 
@@ -86,3 +86,75 @@ def test_check_prereqs_rejects_terraform_older_than_project_floor():
 
     assert "terraform version -json" in target
     assert "Terraform >= 1.15 required" in target
+
+
+def test_live_ansible_targets_require_a_nonempty_generated_inventory():
+    root = Path(__file__).resolve().parents[2]
+    makefile = (root / "Makefile").read_text()
+    guard = makefile.split("require-inventory:", 1)[1].split(
+        "\n\npre-deploy-check:", 1
+    )[0]
+
+    assert 'test -s "$(ANSIBLE_DIR)/inventory/generated.ini"' in guard
+    assert 'document.get("vpn", {}).get("hosts", [])' in guard
+    for target in (
+        "dry-run",
+        "deploy",
+        "verify",
+        "security-verify",
+        "xray-diagnostics",
+    ):
+        declaration = next(
+            line for line in makefile.splitlines() if line.startswith(f"{target}:")
+        )
+        assert "require-inventory" in declaration
+
+
+def test_xray_diagnostics_rejects_unsafe_extra_vars_files():
+    root = Path(__file__).resolve().parents[2]
+    makefile = (root / "Makefile").read_text()
+    target = makefile.split("validate-ansible-extra-vars:", 1)[1].split(
+        "\n\npre-deploy-check", 1
+    )[0]
+
+    assert "follow_symlinks=False" in target
+    assert "s.st_uid == os.geteuid()" in target
+    assert "stat.S_IMODE(s.st_mode) == 0o600" in target
+
+    for live_target in (
+        "dry-run",
+        "deploy",
+        "verify",
+        "security-verify",
+        "xray-diagnostics",
+    ):
+        declaration = next(
+            line for line in makefile.splitlines() if line.startswith(f"{live_target}:")
+        )
+        assert "validate-ansible-extra-vars" in declaration
+
+
+def test_live_ansible_targets_forward_limit_and_extra_vars():
+    root = Path(__file__).resolve().parents[2]
+    makefile = (root / "Makefile").read_text()
+
+    for target_name, following in (
+        ("dry-run", "deploy:"),
+        ("deploy", "deploy-canary:"),
+        ("verify", "security-verify:"),
+        ("security-verify", "security-audit:"),
+        ("xray-diagnostics", "awg-evidence-provision:"),
+    ):
+        target = makefile.split(f"{target_name}:", 1)[1].split(f"\n\n{following}", 1)[0]
+        assert "ANSIBLE_LIMIT" in target
+        assert "ANSIBLE_EXTRA_VARS_FILE" in target
+
+
+def test_partial_verify_cannot_create_a_fleet_known_good_tag():
+    root = Path(__file__).resolve().parents[2]
+    makefile = (root / "Makefile").read_text()
+    target = makefile.split("verify:", 1)[1].split("\n\nsecurity-verify:", 1)[0]
+
+    assert '"$(TAG_ON_SUCCESS)" = "1"' in target
+    assert '"$(ANSIBLE_LIMIT)"' in target
+    assert "requires an unbounded fleet verification" in target

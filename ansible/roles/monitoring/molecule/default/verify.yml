@@ -18,6 +18,16 @@
         executable: /bin/bash
       changed_when: false
 
+    - name: node_exporter runs with systemd and textfile collectors enabled
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          pid="$(systemctl show prometheus-node-exporter -p MainPID --value)"
+          tr '\0' '\n' < "/proc/${pid}/cmdline" | grep -q -- '--collector.systemd'
+          tr '\0' '\n' < "/proc/${pid}/cmdline" | grep -q -- '--collector.textfile.directory=/var/lib/node_exporter/textfile'
+        executable: /bin/bash
+      changed_when: false
+
     - name: Textfile directory preserves honeypot write access
       ansible.builtin.stat:
         path: /var/lib/node_exporter/textfile
@@ -26,6 +36,44 @@
         textfile_dir.stat.pw_name != 'root' or
         textfile_dir.stat.gr_name != 'node_exporter_textfile' or
         textfile_dir.stat.mode != '3775'
+
+    - name: Xray stats exporter timer is enabled and active
+      ansible.builtin.command:
+        cmd: systemctl is-enabled --quiet xray-stats-exporter.timer
+      changed_when: false
+
+    - name: Xray stats exporter timer is running
+      ansible.builtin.command:
+        cmd: systemctl is-active --quiet xray-stats-exporter.timer
+      changed_when: false
+
+    - name: Xray stats exporter emits redacted counters
+      ansible.builtin.command:
+        cmd: >-
+          grep -q
+          'vpn_xray_inbound_traffic_bytes_total{inbound="vless-reality",direction="uplink"} 1024'
+          /var/lib/node_exporter/textfile/vpn_xray.prom
+      changed_when: false
+
+    - name: Inspect Xray diagnostic textfile permissions
+      ansible.builtin.stat:
+        path: /var/lib/node_exporter/textfile/vpn_xray.prom
+      register: xray_stats_textfile
+      failed_when: >-
+        not xray_stats_textfile.stat.exists or
+        xray_stats_textfile.stat.pw_name != 'xray' or
+        xray_stats_textfile.stat.gr_name != 'node_exporter_textfile' or
+        xray_stats_textfile.stat.mode != '0644'
+
+    - name: Xray collector API and output stay local and redacted
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep -q -- '--server 127.0.0.1:10086' /etc/systemd/system/xray-stats-exporter.service
+          grep -q 'vpn_xray_stats_collection_success 1' /var/lib/node_exporter/textfile/vpn_xray.prom
+          ! grep -q 'user>>>' /var/lib/node_exporter/textfile/vpn_xray.prom
+        executable: /bin/bash
+      changed_when: false
 
     - name: Honeypot user can create and remove its textfile metric
       ansible.builtin.command:

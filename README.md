@@ -191,6 +191,8 @@ Then:
     pattern: driver + correlation tool + dated-report template.
 24. `docs/REAL-VPS-AWG-NAT.md` — standalone three-host AWG/NAT evidence lane;
     provision through `make awg-evidence-provision` after decrypting SOPS.
+25. `docs/XRAY-OBSERVABILITY.md` — loopback-only StatsService, redacted
+    node_exporter counters, freshness checks, and failure interpretation.
 
 Operational runbooks: `docs/RUNBOOK-{rotate,rollback,incident,restore,add-fallback}.md`.
 
@@ -244,6 +246,7 @@ make scan-targets CIDR=<range>            # discover REALITY targets via RealiTL
 make security-audit                       # non-blocking host audit report
 PYINFRA_HOSTS=host make pyinfra-audit      # experimental read-only pyinfra audit
 make smoke-test                           # end-to-end traffic test (real proxy dial)
+make xray-diagnostics                     # fresh redacted Xray counters over SSH
 make snell-refinement BUNDLE=<json> CONFIG=<yaml> VANTAGE=<technical-id> # staging-only Snell payload/refinement matrix
 make blue-green GREEN_ENV=<name>          # orchestrate blue-green replacement
 ```

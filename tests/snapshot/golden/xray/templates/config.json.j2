@@ -5,6 +5,12 @@
     "access": "{{ xray_log_dir | default('/var/log/xray') }}/access.log",
     "error": "{{ xray_log_dir | default('/var/log/xray') }}/error.log"
   },
+  "api": {
+    "tag": "api",
+    "listen": "127.0.0.1:10086",
+    "services": ["StatsService"]
+  },
+  "stats": {},
   "dns": {
     "servers": [
       "1.1.1.1",
@@ -217,8 +223,10 @@
       }
     },
     "system": {
-      "statsInboundUplink": false,
-      "statsInboundDownlink": false
+      "statsInboundUplink": true,
+      "statsInboundDownlink": true,
+      "statsOutboundUplink": true,
+      "statsOutboundDownlink": true
     }
   }
 }

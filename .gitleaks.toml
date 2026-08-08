@@ -55,7 +55,6 @@ tags = ["vpn", "secret"]
 description = "Narrowly scoped fixtures/placeholders that intentionally look secret-like"
 commits = [
     "0c241e6fa9c944445100d26d451c5e991d725ee8",
-    "0311b9d4f5d97e8b14c3135a5f429820711e5dbe",
 ]
 paths = [
     '''secrets/prod\.secrets\.example\.yaml''',
@@ -65,6 +64,8 @@ paths = [
     '''tests/bats/age_recovery_roundtrip\.bats''',
     '''tests/unit/test_age_recovery_roundtrip\.py''',
     '''tests/unit/test_gitleaks_rules\.py''',
+    '''tests/unit/test_reality_self_steal\.py''',
+    '''tests/unit/test_emit_singbox_roundtrip\.py''',
     '''tests/fixtures/age-test\.key''',
     '''tests/fixtures/secrets-sample\.yml''',
     '''tests/fixtures/age-recovery-shares/.*''',
