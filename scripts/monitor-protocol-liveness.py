@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -19,11 +20,15 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import yaml
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_EVALUATOR = REPO_ROOT / "scripts" / "protocol-liveness.py"
+DECRYPT_SECRETS = REPO_ROOT / "scripts" / "decrypt-secrets.sh"
 DECISIONS = {"healthy", "degraded", "unknown", "rotation_candidate"}
 REMINDER_SECONDS = 24 * 60 * 60
+EVALUATOR_TIMEOUT_SECONDS = 360
 
 
 class MonitorError(RuntimeError):
@@ -60,7 +65,7 @@ def evaluate(config: Path, state_dir: Path) -> dict:
             [str(evaluator), "--config", str(config), "--state-dir", str(state_dir)],
             text=True,
             capture_output=True,
-            timeout=90,
+            timeout=EVALUATOR_TIMEOUT_SECONDS,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -76,41 +81,61 @@ def evaluate(config: Path, state_dir: Path) -> dict:
     return report
 
 
+def credentials_from_file(path: Path) -> tuple[str, str]:
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        with os.fdopen(descriptor, encoding="utf-8") as handle:
+            metadata = os.fstat(handle.fileno())
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_uid != os.getuid()
+                or metadata.st_mode & 0o077
+            ):
+                return "", ""
+            value = yaml.safe_load(handle) or {}
+    except (OSError, yaml.YAMLError):
+        return "", ""
+    if not isinstance(value, dict) or not isinstance(value.get("watchdog_secrets"), dict):
+        return "", ""
+    watchdog = value["watchdog_secrets"]
+    return str(watchdog.get("ntfy_topic") or ""), str(watchdog.get("ntfy_token") or "")
+
+
 def notification_credentials() -> tuple[str, str]:
     topic = os.environ.get("NTFY_TOPIC", "")
     token = os.environ.get("NTFY_TOKEN", "")
     if topic:
         return topic, token
+    materialized = os.environ.get("VPN_SECRETS_FILE", "")
+    if materialized:
+        return credentials_from_file(Path(materialized))
     sops_file = os.environ.get("SOPS_FILE", "")
     if not sops_file or not Path(sops_file).is_file():
         return "", ""
-    try:
-        result = subprocess.run(
-            [
-                "sops",
-                "--decrypt",
-                "--extract",
-                '["watchdog_secrets"]',
-                "--output-type",
-                "json",
-                sops_file,
-            ],
-            text=True,
-            capture_output=True,
-            timeout=15,
-            check=False,
+    with tempfile.TemporaryDirectory(prefix="vpn-liveness-secrets-") as directory:
+        secrets_file = Path(directory) / "secrets.yaml"
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "VPN_RUNTIME_DIR": directory,
+                "SECRETS_FILE": str(secrets_file),
+                "SOPS_FILE": sops_file,
+            }
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return "", ""
-    if result.returncode != 0:
-        return "", ""
-    try:
-        value = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return "", ""
-    if not isinstance(value, dict):
-        return "", ""
-    return str(value.get("ntfy_topic") or ""), str(value.get("ntfy_token") or "")
+        try:
+            result = subprocess.run(
+                [str(DECRYPT_SECRETS)],
+                text=True,
+                capture_output=True,
+                timeout=15,
+                check=False,
+                env=environment,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return "", ""
+        if result.returncode != 0:
+            return "", ""
+        return credentials_from_file(secrets_file)
 
 
 def evidence_summary(report: dict) -> str:
@@ -182,17 +207,26 @@ def main() -> int:
             str(Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "vpn-deploy/protocol-liveness"),
         )
     )
+    now = int(time.time())
     try:
         report = evaluate(args.config, state_dir)
     except MonitorError as exc:
-        print(f"monitor-protocol-liveness: {exc}", file=sys.stderr)
-        return 2
-
-    now = int(time.time())
+        report = {
+            "schema_version": 1,
+            "evaluated_at": now,
+            "decision": "unknown",
+            "candidate_policies": [],
+            "failed_vantages": {},
+            "monitoring_errors": [f"evaluator: {exc}"],
+            "evidence": [],
+        }
     state_path = state_dir / "monitor-state.json"
     previous = read_json(state_path)
     event = choose_event(report, previous, now)
     delivery = send_notification(event, report) if event != "none" else "not_requested"
+    last_delivery = previous.get("alert_delivery", "not_requested")
+    if event != "none":
+        last_delivery = delivery
     last_notified_at = previous.get("last_notified_at")
     if delivery == "sent":
         last_notified_at = now
@@ -203,7 +237,7 @@ def main() -> int:
         "schema_version": 1,
         "decision": report["decision"],
         "alert_active": alert_active,
-        "alert_delivery": delivery,
+        "alert_delivery": last_delivery,
         "last_evaluated_at": now,
         "last_notified_at": last_notified_at,
     }

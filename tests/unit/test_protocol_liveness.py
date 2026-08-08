@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import runpy
 import stat
 import subprocess
 import time
@@ -26,7 +27,16 @@ def _report(sentinel: str, verdicts: dict[str, str], *, control: str = "ok", age
         "observed_at": int(time.time()) - age,
         "control": {"verdict": control, "duration_ms": 20},
         "profiles": [
-            {"profile": profile, "verdict": verdict, "duration_ms": 40}
+            {
+                "profile": profile,
+                "verdict": verdict,
+                "duration_ms": 40,
+                **(
+                    {"variants": [{"variant": 1, "verdict": verdict, "duration_ms": 40}]}
+                    if profile != "p2-amneziawg"
+                    else {}
+                ),
+            }
             for profile, verdict in verdicts.items()
         ],
         "runtime": {"sing_box": "1.14.0", "awg": "1.0.0"},
@@ -73,10 +83,13 @@ def _fake_ssh(tmp_path: Path, reports: dict[str, dict | str]) -> Path:
     ssh = bin_dir / "ssh"
     ssh.write_text(
         """#!/usr/bin/env python3
-import json, os, sys
+import json, os, sys, time
 reports = json.load(open(os.environ['FAKE_REPORTS'], encoding='utf-8'))
 target = next((arg for arg in sys.argv[1:] if arg in reports), '')
 value = reports.get(target)
+if isinstance(value, dict) and 'payload' in value:
+    time.sleep(value.get('delay_seconds', 0))
+    value = value['payload']
 if isinstance(value, str):
     print(value)
     raise SystemExit(0)
@@ -122,6 +135,8 @@ def test_schema_accepts_the_documented_configuration(tmp_path: Path) -> None:
     schema = json.loads(SCHEMA.read_text())
     config = yaml.safe_load(_config(tmp_path).read_text())
     jsonschema.Draft202012Validator(schema).validate(config)
+    module = runpy.run_path(str(SCRIPT))
+    assert module["remote_probe_deadline"](config, config["sentinels"][0]) == 95
 
 
 @pytest.mark.parametrize(
@@ -175,13 +190,20 @@ def test_evaluator_returns_the_expected_decision(
     assert json.loads(result.stdout)["decision"] == decision
 
 
-def test_throttled_profile_is_alive_but_degraded(tmp_path: Path) -> None:
+def test_collector_budget_covers_probe_stages_and_preserves_degraded(tmp_path: Path) -> None:
+    config = yaml.safe_load(_config(tmp_path).read_text())
+    config["probe_timeout_seconds"] = 1
+    config_path = tmp_path / "short-timeout.yaml"
+    config_path.write_text(yaml.safe_dump(config))
     reports = {
-        "sentinel-a": _report("tls-freeze-a", {**_all("ok"), "p0-reality": "throttled"}),
-        "sentinel-b": _report("udp-filtered-b", _all("ok")),
+        "sentinel-a": {
+            "delay_seconds": 7,
+            "payload": _report("tls-freeze-a", {**_all("ok"), "p0-reality": "throttled"}),
+        },
+        "sentinel-b": {"delay_seconds": 7, "payload": _report("udp-filtered-b", _all("ok"))},
     }
 
-    result = _run(tmp_path, _config(tmp_path), reports)
+    result = _run(tmp_path, config_path, reports)
 
     assert result.returncode == 0
     assert json.loads(result.stdout)["decision"] == "degraded"

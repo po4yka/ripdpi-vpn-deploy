@@ -85,7 +85,16 @@ def semantic_errors(config: dict) -> list[str]:
     return messages
 
 
-def pull_report(sentinel: dict, timeout: int) -> tuple[str, str, str]:
+def remote_probe_deadline(config: dict, sentinel: dict) -> int:
+    policy = next(policy for policy in config["policies"] if policy["id"] == sentinel["policy"])
+    required = set(policy["required_profiles"])
+    stages = 1
+    stages += len(required - {"p2-amneziawg"})
+    stages += "p2-amneziawg" in required
+    return config.get("probe_timeout_seconds", 15) * stages + 20
+
+
+def pull_report(sentinel: dict, connect_timeout: int, command_timeout: int) -> tuple[str, str, str]:
     command = [
         "ssh",
         "-o",
@@ -93,7 +102,7 @@ def pull_report(sentinel: dict, timeout: int) -> tuple[str, str, str]:
         "-o",
         "StrictHostKeyChecking=yes",
         "-o",
-        f"ConnectTimeout={min(timeout, 10)}",
+        f"ConnectTimeout={min(connect_timeout, 10)}",
         sentinel["ssh_target"],
         *REMOTE_COMMAND,
     ]
@@ -102,7 +111,7 @@ def pull_report(sentinel: dict, timeout: int) -> tuple[str, str, str]:
             command,
             text=True,
             capture_output=True,
-            timeout=timeout + 5,
+            timeout=command_timeout,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -137,6 +146,25 @@ def validate_report(raw: str, sentinel: dict, config: dict, now: int) -> tuple[d
         verdict = profile.get("verdict")
         if name not in PROFILES or verdict not in VERDICTS or name in seen:
             return None, f"{sentinel['id']}: invalid profile result"
+        variants = profile.get("variants")
+        if name != "p2-amneziawg" and verdict != "error" and not variants:
+            return None, f"{sentinel['id']}: missing endpoint variant evidence"
+        if variants is not None:
+            if not isinstance(variants, list) or not variants:
+                return None, f"{sentinel['id']}: invalid endpoint variant evidence"
+            variant_ids: set[int] = set()
+            for variant in variants:
+                if not isinstance(variant, dict):
+                    return None, f"{sentinel['id']}: invalid endpoint variant evidence"
+                variant_id = variant.get("variant")
+                if (
+                    not isinstance(variant_id, int)
+                    or variant_id < 1
+                    or variant_id in variant_ids
+                    or variant.get("verdict") not in VERDICTS
+                ):
+                    return None, f"{sentinel['id']}: invalid endpoint variant evidence"
+                variant_ids.add(variant_id)
         seen.add(name)
     policy = next(policy for policy in config["policies"] if policy["id"] == sentinel["policy"])
     missing = sorted(set(policy["required_profiles"]) - seen)
@@ -155,7 +183,8 @@ def aggregate(config: dict, reports: dict[str, dict], errors: list[str]) -> dict
     for sentinel_id, report in sorted(reports.items()):
         sentinel = sentinels[sentinel_id]
         policy = policy_map[sentinel["policy"]]
-        profiles = {item["profile"]: item["verdict"] for item in report["profiles"]}
+        profile_results = {item["profile"]: item for item in report["profiles"]}
+        profiles = {name: item["verdict"] for name, item in profile_results.items()}
         required = policy["required_profiles"]
         control_alive = report["control"]["verdict"] in ALIVE
         profile_verdicts = [profiles[name] for name in required]
@@ -166,14 +195,23 @@ def aggregate(config: dict, reports: dict[str, dict], errors: list[str]) -> dict
             degraded = True
         if not control_alive or any(verdict in {"unknown", "error"} for verdict in profile_verdicts):
             errors.append(f"{sentinel_id}: indeterminate protocol evidence")
-        evidence.append(
-            {
-                "sentinel": sentinel_id,
-                "policy": policy["id"],
-                "control": report["control"]["verdict"],
-                "profiles": {name: profiles[name] for name in required},
-            }
-        )
+        endpoint_variants = {
+            name: [
+                {"variant": variant["variant"], "verdict": variant["verdict"]}
+                for variant in profile_results[name].get("variants") or []
+            ]
+            for name in required
+            if profile_results[name].get("variants")
+        }
+        item = {
+            "sentinel": sentinel_id,
+            "policy": policy["id"],
+            "control": report["control"]["verdict"],
+            "profiles": {name: profiles[name] for name in required},
+        }
+        if endpoint_variants:
+            item["endpoint_variants"] = endpoint_variants
+        evidence.append(item)
 
     candidates = sorted(
         policy_id
@@ -277,7 +315,10 @@ def main() -> int:
     raw_reports: dict[str, str] = {}
     errors: list[str] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(config["sentinels"])) as pool:
-        futures = [pool.submit(pull_report, sentinel, timeout) for sentinel in config["sentinels"]]
+        futures = [
+            pool.submit(pull_report, sentinel, timeout, remote_probe_deadline(config, sentinel))
+            for sentinel in config["sentinels"]
+        ]
         for future in concurrent.futures.as_completed(futures):
             sentinel_id, raw, error = future.result()
             if error:

@@ -15,7 +15,6 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MONITOR = REPO_ROOT / "scripts" / "monitor-protocol-liveness.py"
-CRON_INSTALLER = REPO_ROOT / "scripts" / "install-operator-crons.sh"
 
 
 def _executable(path: Path, body: str) -> None:
@@ -139,16 +138,22 @@ def test_unknown_probe_alerts_once_without_exposing_notification_secret(monitor_
 
     first = _run(env, config, state)
     second = _run(env, config, state)
+    third = _run(env, config, state)
 
     assert first.returncode == 0, first.stderr
     assert second.returncode == 0, second.stderr
+    assert third.returncode == 0, third.stderr
     assert json.loads(first.stdout)["monitor_event"] == "alert"
     assert json.loads(second.stdout)["monitor_event"] == "none"
+    assert json.loads(third.stdout)["monitor_event"] == "none"
     assert len(requests) == 1
+    assert json.loads((state / "monitor-state.json").read_text())["alert_delivery"] == "sent"
     assert requests[0]["path"] == "/private-monitor-topic"
     assert requests[0]["authorization"] == "Bearer private-monitor-token"
     assert "arm64-wifi-a" in requests[0]["body"]
-    assert "private-monitor-token" not in first.stdout + first.stderr + second.stdout + second.stderr
+    assert "private-monitor-token" not in (
+        first.stdout + first.stderr + second.stdout + second.stderr + third.stdout + third.stderr
+    )
 
 
 def test_recovery_sends_one_recovery_notification(monitor_env) -> None:
@@ -181,32 +186,28 @@ def test_failed_alert_is_retried_on_next_evaluation(monitor_env) -> None:
     assert json.loads(second.stdout)["monitor_event"] == "alert"
 
 
-def test_cron_installs_standalone_protocol_monitor_without_warm_spare(tmp_path: Path) -> None:
-    config = tmp_path / "liveness.yaml"
-    config.write_text("schema_version: 1\n")
-    env = os.environ.copy()
-    env.update(
-        {
-            "LIVENESS_CONFIG": str(config),
-            "SOPS_FILE": str(tmp_path / "prod.secrets.sops.yaml"),
-            "SOPS_AGE_KEY_FILE": str(tmp_path / "age.key"),
-            "OPERATOR_PATH": "/custom/bin:/usr/bin:/bin",
-        }
+def test_evaluator_failure_alerts_and_persists_redacted_unknown(monitor_env) -> None:
+    env, config, _decision_path, state, requests = monitor_env
+    env.pop("NTFY_TOPIC")
+    env.pop("NTFY_TOKEN")
+    env["PROTOCOL_LIVENESS"] = str(state / "missing-evaluator")
+    secrets = state.parent / "materialized-secrets.yaml"
+    secrets.write_text(
+        "watchdog_secrets:\n"
+        "  ntfy_topic: private-monitor-topic\n"
+        "  ntfy_token: private-monitor-token\n"
     )
+    secrets.chmod(0o600)
+    env["VPN_SECRETS_FILE"] = str(secrets)
 
-    result = subprocess.run(
-        ["bash", str(CRON_INSTALLER), "--dry-run"],
-        cwd=REPO_ROOT,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    result = _run(env, config, state)
 
     assert result.returncode == 0, result.stderr
-    assert "make monitor-protocol-liveness" in result.stdout
-    assert "make watch-spare" not in result.stdout
-    assert str(config) in result.stdout
-    assert str(tmp_path / "prod.secrets.sops.yaml") in result.stdout
-    assert str(tmp_path / "age.key") in result.stdout
-    assert 'PATH="/custom/bin:/usr/bin:/bin"' in result.stdout
+    report = json.loads(result.stdout)
+    assert report["decision"] == "unknown"
+    assert report["monitor_event"] == "alert"
+    assert report["alert_delivery"] == "sent"
+    assert report["monitoring_errors"] == ["evaluator: evaluator unavailable: FileNotFoundError"]
+    assert len(requests) == 1
+    assert "private-monitor-token" not in result.stdout + result.stderr
+    assert json.loads((state / "last-evidence.json").read_text())["decision"] == "unknown"

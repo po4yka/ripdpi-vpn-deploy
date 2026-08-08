@@ -23,11 +23,13 @@ def _write_executable(path: Path, content: str) -> None:
 def _setup(
     tmp_path: Path,
     *,
-    blocked_port: int | None = None,
+    blocked_ports: tuple[int, ...] = (),
+    blocked_delay_seconds: float = 0,
     awg_curl_fails: bool = False,
     awg_curl_sleeps: bool = False,
     sing_curl_sleeps: bool = False,
     sing_auth_fails: bool = False,
+    sing_log_auth: bool = False,
 ) -> tuple[Path, dict[str, str]]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -42,7 +44,9 @@ import os, pathlib, sys, time
 args = " ".join(sys.argv[1:])
 with pathlib.Path(os.environ["CALL_LOG"]).open("a") as log:
     log.write(f"curl {{args}}\\n")
-if "--socks5-hostname 127.0.0.1:{blocked_port}" in args:
+blocked = {tuple(f"--socks5-hostname 127.0.0.1:{port}" for port in blocked_ports)!r}
+if any(marker in args for marker in blocked):
+    time.sleep({blocked_delay_seconds!r})
     raise SystemExit(28)
 if "--socks5-hostname" in args and {sing_curl_sleeps!r}:
     time.sleep(30)
@@ -59,13 +63,15 @@ print("204 0.040000", end="")
     )
     _write_executable(
         bin_dir / "sing-box",
-        """#!/usr/bin/env python3
+        f"""#!/usr/bin/env python3
 import os, pathlib, signal, socket, sys
 with pathlib.Path(os.environ["CALL_LOG"]).open("a") as log:
     log.write("sing-box " + " ".join(sys.argv[1:]) + "\\n")
 if sys.argv[1:2] == ["version"]:
     print("sing-box version 1.14.0")
     raise SystemExit(0)
+if {sing_log_auth!r}:
+    print("authentication rejected", file=sys.stderr)
 pathlib.Path(os.environ["SING_PID_FILE"]).write_text(str(os.getpid()))
 listeners = []
 for port in (18081, 18082, 18083, 18084):
@@ -197,18 +203,33 @@ def test_sentinel_reports_authenticated_data_plane_success_without_secrets(tmp_p
 
 
 def test_transport_timeout_is_blocked_only_when_direct_control_succeeds(tmp_path: Path) -> None:
-    config, env = _setup(tmp_path, blocked_port=18081)
+    config, env = _setup(
+        tmp_path,
+        blocked_ports=(18081, 18084),
+        blocked_delay_seconds=3,
+    )
+    document = json.loads(config.read_text())
+    document["timeout_seconds"] = 3
+    document["sing_box"]["profiles"]["p0-reality"] = [18081, 18084]
+    config.write_text(json.dumps(document))
 
+    started = time.monotonic()
     result = _run(config, env)
+    elapsed = time.monotonic() - started
 
     payload = json.loads(result.stdout)
-    verdicts = {item["profile"]: item["verdict"] for item in payload["profiles"]}
+    profiles = {item["profile"]: item for item in payload["profiles"]}
     assert payload["control"]["verdict"] == "ok"
-    assert verdicts["p0-reality"] == "blocked"
+    assert profiles["p0-reality"]["verdict"] == "blocked"
+    assert [item["verdict"] for item in profiles["p0-reality"]["variants"]] == [
+        "blocked",
+        "blocked",
+    ]
+    assert elapsed < 6.5
 
 
 def test_profile_stays_alive_when_one_endpoint_variant_succeeds(tmp_path: Path) -> None:
-    config, env = _setup(tmp_path, blocked_port=18081)
+    config, env = _setup(tmp_path, blocked_ports=(18081,))
     document = json.loads(config.read_text())
     document["sing_box"]["profiles"]["p0-reality"] = [18081, 18084]
     config.write_text(json.dumps(document))
@@ -218,6 +239,7 @@ def test_profile_stays_alive_when_one_endpoint_variant_succeeds(tmp_path: Path) 
     payload = json.loads(result.stdout)
     p0 = next(item for item in payload["profiles"] if item["profile"] == "p0-reality")
     assert p0["verdict"] == "ok"
+    assert [item["verdict"] for item in p0["variants"]] == ["blocked", "ok"]
     calls = (tmp_path / "calls.log").read_text()
     assert "127.0.0.1:18081" in calls
     assert "127.0.0.1:18084" in calls
@@ -268,13 +290,28 @@ def test_runtime_mismatch_is_error_not_blocked(tmp_path: Path) -> None:
 
 
 def test_authentication_failure_is_error_not_blocked(tmp_path: Path) -> None:
-    config, env = _setup(tmp_path, sing_auth_fails=True)
+    direct = tmp_path / "direct"
+    direct.mkdir()
+    config, env = _setup(direct, sing_auth_fails=True)
 
     result = _run(config, env)
 
     payload = json.loads(result.stdout)
     sing_verdicts = [item["verdict"] for item in payload["profiles"] if item["profile"] != "p2-amneziawg"]
     assert sing_verdicts == ["error", "error", "error"]
+
+    logged = tmp_path / "logged"
+    logged.mkdir()
+    config, env = _setup(logged, blocked_ports=(18081,), sing_log_auth=True)
+
+    result = _run(config, env)
+
+    payload = json.loads(result.stdout)
+    p0 = next(item for item in payload["profiles"] if item["profile"] == "p0-reality")
+    assert p0["verdict"] == "error"
+    assert p0["error_kind"] == "authentication"
+    assert [item["verdict"] for item in p0["variants"]] == ["error"]
+    assert p0["variants"][0]["error_kind"] == "authentication"
 
 
 def test_awg_cleanup_failure_is_error_and_still_stops_userspace_process(tmp_path: Path) -> None:

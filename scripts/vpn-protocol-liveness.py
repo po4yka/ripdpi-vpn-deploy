@@ -62,7 +62,7 @@ def classify_curl(result: subprocess.CompletedProcess[str], config: dict) -> dic
     return {"verdict": "error", "duration_ms": duration_ms, "error_kind": "unexpected_response"}
 
 
-def curl_probe(config: dict, extra: list[str] | None = None, prefix: list[str] | None = None) -> dict:
+def curl_command(config: dict, extra: list[str] | None = None, prefix: list[str] | None = None) -> list[str]:
     command = list(prefix or []) + [
         "curl",
         "-sS",
@@ -75,11 +75,67 @@ def curl_probe(config: dict, extra: list[str] | None = None, prefix: list[str] |
     ]
     command.extend(extra or [])
     command.append(config["probe_url"])
+    return command
+
+
+def curl_probe(config: dict, extra: list[str] | None = None, prefix: list[str] | None = None) -> dict:
+    command = curl_command(config, extra, prefix)
     try:
         result = subprocess.run(command, text=True, capture_output=True, timeout=config["timeout_seconds"] + 2, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"verdict": "error", "duration_ms": None, "error_kind": type(exc).__name__.lower()}
     return classify_curl(result, config)
+
+
+def parallel_curl_probes(config: dict, extras: list[list[str]]) -> list[dict]:
+    processes: list[subprocess.Popen[str] | None] = []
+    results: list[dict | None] = []
+    deadline = time.monotonic() + config["timeout_seconds"] + 2
+    try:
+        for extra in extras:
+            try:
+                process = subprocess.Popen(
+                    curl_command(config, extra),
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+            except OSError as exc:
+                processes.append(None)
+                results.append(
+                    {"verdict": "error", "duration_ms": None, "error_kind": type(exc).__name__.lower()}
+                )
+            else:
+                processes.append(process)
+                results.append(None)
+        for index, process in enumerate(processes):
+            if process is None:
+                continue
+            try:
+                stdout, stderr = process.communicate(timeout=max(0.01, deadline - time.monotonic()))
+                completed = subprocess.CompletedProcess(
+                    process.args,
+                    process.returncode,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+                results[index] = classify_curl(completed, config)
+            except subprocess.TimeoutExpired:
+                stop_process(process)
+                results[index] = {
+                    "verdict": "error",
+                    "duration_ms": None,
+                    "error_kind": "timeoutexpired",
+                }
+    finally:
+        for process in processes:
+            stop_process(process)
+    return [
+        result
+        if result is not None
+        else {"verdict": "error", "duration_ms": None, "error_kind": "missing_result"}
+        for result in results
+    ]
 
 
 def process_result(profile: str, result: dict) -> dict:
@@ -122,18 +178,31 @@ def wait_for_ports(process: subprocess.Popen[str], ports: list[int], timeout: fl
 
 
 def aggregate_variants(profile: str, variants: list[dict]) -> dict:
+    evidence = [
+        {
+            "variant": index,
+            "verdict": item["verdict"],
+            "duration_ms": item.get("duration_ms"),
+            **({"error_kind": item["error_kind"]} if item.get("error_kind") else {}),
+        }
+        for index, item in enumerate(variants, start=1)
+    ]
     for verdict in ("ok", "throttled"):
         matching = [item for item in variants if item["verdict"] == verdict]
         if matching:
             best = min(matching, key=lambda item: item.get("duration_ms") or sys.maxsize)
-            return process_result(profile, best)
+            return {**process_result(profile, best), "variants": evidence}
     if variants and all(item["verdict"] == "blocked" for item in variants):
-        return process_result(profile, min(variants, key=lambda item: item.get("duration_ms") or sys.maxsize))
+        best = min(variants, key=lambda item: item.get("duration_ms") or sys.maxsize)
+        return {**process_result(profile, best), "variants": evidence}
     for verdict in ("error", "unknown", "blocked"):
         matching = [item for item in variants if item["verdict"] == verdict]
         if matching:
-            return process_result(profile, matching[0])
-    return process_result(profile, {"verdict": "error", "duration_ms": None, "error_kind": "no_variants"})
+            return {**process_result(profile, matching[0]), "variants": evidence}
+    return {
+        **process_result(profile, {"verdict": "error", "duration_ms": None, "error_kind": "no_variants"}),
+        "variants": evidence,
+    }
 
 
 def probe_sing_box_profiles(sing_box: dict, config: dict, control_alive: bool) -> list[dict]:
@@ -156,12 +225,17 @@ def probe_sing_box_profiles(sing_box: dict, config: dict, control_alive: bool) -
             ]
         results: list[dict] = []
         for profile, ports in sorted(profile_ports.items()):
-            variants = []
-            for port in ports:
-                result = curl_probe(config, ["--socks5-hostname", f"127.0.0.1:{port}"])
+            variants = parallel_curl_probes(
+                config,
+                [["--socks5-hostname", f"127.0.0.1:{port}"] for port in ports],
+            )
+            for index, result in enumerate(variants):
                 if not control_alive and result["verdict"] == "blocked":
-                    result = {"verdict": "unknown", "duration_ms": result.get("duration_ms"), "error_kind": "control_unavailable"}
-                variants.append(result)
+                    variants[index] = {
+                        "verdict": "unknown",
+                        "duration_ms": result.get("duration_ms"),
+                        "error_kind": "control_unavailable",
+                    }
             results.append(aggregate_variants(profile, variants))
         stop_process(process)
         if any(item["verdict"] == "blocked" for item in results):
@@ -172,6 +246,16 @@ def probe_sing_box_profiles(sing_box: dict, config: dict, control_alive: bool) -
                             **item,
                             "verdict": "error",
                             "error_kind": "authentication",
+                            "variants": [
+                                {
+                                    **variant,
+                                    "verdict": "error",
+                                    "error_kind": "authentication",
+                                }
+                                if variant["verdict"] == "blocked"
+                                else variant
+                                for variant in item.get("variants") or []
+                            ],
                         }
                         if item["verdict"] == "blocked"
                         else item

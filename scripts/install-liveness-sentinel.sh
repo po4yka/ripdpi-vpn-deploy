@@ -176,7 +176,7 @@ SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
 REMOTE_USER="$(ssh "${SSH_OPTS[@]}" "$SSH_TARGET" id -un)"
 [[ "$REMOTE_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]] || { echo "unsafe remote username" >&2; exit 1; }
 REMOTE_DIR="/tmp/vpn-liveness-${SENTINEL}"
-COPYFILE_DISABLE=1 tar -C "$WORK/install" -czf "$WORK/install.tar.gz" .
+COPYFILE_DISABLE=1 tar --no-xattrs -C "$WORK/install" -czf "$WORK/install.tar.gz" .
 scp "${SSH_OPTS[@]}" "$WORK/install.tar.gz" "${SSH_TARGET}:${REMOTE_DIR}.tar.gz"
 ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "set -eu; rm -rf '${REMOTE_DIR}'; mkdir -m 0700 '${REMOTE_DIR}'; tar -xzf '${REMOTE_DIR}.tar.gz' -C '${REMOTE_DIR}'; sudo install -d -m 0700 /etc/vpn-liveness; sudo install -m 0755 '${REMOTE_DIR}/vpn-protocol-liveness' /usr/local/sbin/vpn-protocol-liveness; sudo find '${REMOTE_DIR}' -maxdepth 1 -type f ! -name vpn-protocol-liveness -exec install -m 0600 {} /etc/vpn-liveness/ \;; printf '%s ALL=(root) NOPASSWD: /usr/local/sbin/vpn-protocol-liveness\n' '${REMOTE_USER}' | sudo tee /etc/sudoers.d/vpn-protocol-liveness >/dev/null; sudo chmod 0440 /etc/sudoers.d/vpn-protocol-liveness; sudo visudo -cf /etc/sudoers.d/vpn-protocol-liveness >/dev/null; rm -rf '${REMOTE_DIR}' '${REMOTE_DIR}.tar.gz'"
 

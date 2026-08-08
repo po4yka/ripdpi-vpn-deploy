@@ -21,3 +21,23 @@
   [ "$status" -ne 0 ]
   [ ! -e "$marker" ]
 }
+
+@test "operator cron installs standalone protocol monitor without warm spare" {
+  config="$BATS_TEST_TMPDIR/liveness.yaml"
+  printf '%s\n' 'schema_version: 1' > "$config"
+
+  run env \
+    LIVENESS_CONFIG="$config" \
+    SOPS_FILE="$BATS_TEST_TMPDIR/prod.secrets.sops.yaml" \
+    SOPS_AGE_KEY_FILE="$BATS_TEST_TMPDIR/age.key" \
+    OPERATOR_PATH=/custom/bin:/usr/bin:/bin \
+    ./scripts/install-operator-crons.sh --dry-run
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"make monitor-protocol-liveness"* ]]
+  [[ "$output" != *"make watch-spare"* ]]
+  [[ "$output" == *"$config"* ]]
+  [[ "$output" == *"$BATS_TEST_TMPDIR/prod.secrets.sops.yaml"* ]]
+  [[ "$output" == *"$BATS_TEST_TMPDIR/age.key"* ]]
+  [[ "$output" == *'PATH="/custom/bin:/usr/bin:/bin"'* ]]
+}

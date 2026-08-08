@@ -220,3 +220,4 @@ done
     sing_box = json.loads((scp_capture / "sing-box.json").read_text())
     assert [item["type"] for item in sing_box["outbounds"]] == ["vless", "vless"]
     assert len(sing_box["inbounds"]) == 2
+    assert "tar --no-xattrs" in SCRIPT.read_text()
