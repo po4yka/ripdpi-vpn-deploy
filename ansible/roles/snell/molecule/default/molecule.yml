@@ -1,7 +1,7 @@
 ---
 dependency:
   name: galaxy
-  options: {requirements-file: ../../../../requirements.yml}
+  options: {requirements-file: ../../../requirements.yml, role-file: ../../../requirements.yml}
 driver: {name: docker}
 platforms:
   - name: vpn-snell-debian13
