@@ -43,6 +43,7 @@ export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CON
         test-unit snapshot-check snapshot-update validate-secrets \
         actionlint-check cloud-init-schema tf-test yamllint-check shellcheck \
         ci-fast bats-test vpnd-test vpnd-clippy vpnd-deny vpnd-msrv vpnd-mutants tf-policy \
+        task-tools task-check task-list task-ready task-graph task-federation \
         check
 
 help:
@@ -64,6 +65,12 @@ help:
 	@echo "  probe-sni-survival         EXIT_IP=… bare/www SNI survival probe (run on RU vantage)"
 	@echo "  probe-asn HOST=…           Team Cymru ASN lookup"
 	@echo "  install-hooks              Install pre-commit hooks"
+	@echo "  task-tools                 Install pinned mdtask and OpenSpec tools"
+	@echo "  task-check                 Validate task, mdtask, OpenSpec, board, and history contracts"
+	@echo "  task-list                  List portfolio tasks"
+	@echo "  task-ready                 Show the unblocked execution frontier"
+	@echo "  task-graph                 Render the local task dependency graph"
+	@echo "  task-federation PEER_ROOT=…  Validate the combined RIPDPI backlog graph"
 	@echo ""
 	@echo "── DEPLOY LIFECYCLE ───────────────────────────────────────────────────"
 	@echo "  init                       terraform init in $(TF_ROOT)"
@@ -428,6 +435,25 @@ vpnd-msrv:
 	@command -v cargo >/dev/null 2>&1 || { echo "missing: cargo" >&2; exit 1; }
 	cd vpnd && cargo +1.88.0 check --locked
 
+task-tools:
+	npm ci --prefix tools/tasking --ignore-scripts
+
+task-check:
+	OPENSPEC_TELEMETRY=0 ./taskctl validate
+
+task-list:
+	OPENSPEC_TELEMETRY=0 ./taskctl list
+
+task-ready:
+	OPENSPEC_TELEMETRY=0 ./taskctl ready
+
+task-graph:
+	OPENSPEC_TELEMETRY=0 ./taskctl graph
+
+task-federation:
+	@test -n "$(PEER_ROOT)" || { echo "PEER_ROOT=<RIPDPI checkout> required" >&2; exit 1; }
+	OPENSPEC_TELEMETRY=0 ./taskctl federation validate --peer-root "$(PEER_ROOT)"
+
 # Portable pre-PR bundle for operators. Mirrors required CI jobs that can run
 # without provider credentials, GitHub services, or Molecule containers.
 # `make check` adds validate (fmt, gitleaks, ansible-lint). Missing local
@@ -460,7 +486,7 @@ ci-fast:
 # Union gate: everything in validate + everything in ci-fast.
 # Run this before any commit touching Ansible, Terraform, or Python to get
 # the same signal that CI produces without waiting for a remote run.
-check: validate ci-fast  ## Full local gate: validate + ci-fast (superset of both)
+check: task-check validate ci-fast  ## Full local gate: task contract + validate + ci-fast
 
 molecule-test:
 	@test -n "$(ROLE)" || { echo "ROLE=<role-name> required (e.g. baseline, firewall, xray)"; exit 1; }

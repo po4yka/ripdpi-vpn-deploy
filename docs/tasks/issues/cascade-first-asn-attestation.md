@@ -1,35 +1,37 @@
-# Cascade: produce the first per-ASN allowlist attestation (confirm-or-kill gate)
+---
+id: SEC-1786277767052999
+title: Record the cascade attestation no-go decision
+kind: research
+status: done
+area: security
+priority: critical
+risk: standard
+owner: Infrastructure security role
+parent: null
+blocked_by: []
+related_tasks: []
+spec_mode: not-required
+openspec_change: null
+created: 2026-07-10
+updated: 2026-07-11
+spec_reason: research-only
+closed_at: 2026-07-11T11:01:38+04:00
+closed_reason: No qualifying current per-ASN comparison existed, so the fail-closed gate recorded a no-go decision.
+evidence_summary: Commits 7832f2a98add1a0ea773cdf324548e6436f9ebcf and cccb73fc17f7e3261340193c81785d485c0d31b2 record the decision and retain all activation paths as blocked.
+---
 
-- [x] #task Execute the first per-ASN confirm-or-kill gate; no-go recorded because the RU-side baseline had no candidate endpoint/ASN comparison #repo/RIPDPI-VPN-DEPLOY #area/security #status/done ⏫
+# Record the cascade attestation no-go decision
 
 ## Goal
 
-Run the confirm-or-kill gate defined in `docs/CASCADE-ASN-ATTESTATION.md`: obtain a real, dated, per-ASN empirical attestation for at least one candidate RU-hosted entry ASN before any Terraform/Ansible cascade work begins. If no candidate ASN can produce a passing, non-stale, non-brand-inferred attestation, kill the cascade effort rather than build it.
+Preserve the completed confirm-or-stop research decision in the strict terminal-state lifecycle before removing it from the active portfolio.
 
-## Why now
+## Result
 
-RU-jurisdiction hosting for a temporary whitelist-riding entry node is signed off, and the structure (EXCEPTION tier, fail-closed classifier, separate role pair) is approved — but the whitelist-ride economics are unverified. The attestation record ships PENDING/UNVERIFIED, so the gate is fail-closed and provisioning is blocked. The downside (RU legal/data-retention/seizure exposure, first hosting-jurisdiction exception) is paid the moment a node is placed; the upside is conditional on this attestation. This is the single decision that gates the whole investment.
+No qualifying, current, per-ASN comparison was available. The gate therefore failed closed, recorded the no-go decision, and left activation paths blocked. No live provisioning was authorized by this task.
 
-## Scope
+## Evidence
 
-- Establish a genuine RU-side vantage measurement (operational step, owned by an operator — not in this repo's docs) proving the specific candidate ASN currently shows a real reachability advantage over the foreign-VPS baseline.
-- Populate an attestation record conforming to the schema in `docs/CASCADE-ASN-ATTESTATION.md`, per-ASN and not brand-inferred, with an expiry/next-recheck date.
-- Weigh the result against the documented latent tradeoff (escaping the foreign-DC freeze bucket trades into a different RKN TLS-fingerprint/rate path on a flagged RU AS).
-
-## Out of scope
-
-- No probe commands, tool invocations, CIDR/ASN inventories, or provider names committed to the repo — the record is a dated claim with a pointer to evidence, never the raw feed.
-- No live provisioning, role converge, or hosting account until this attestation passes. A later governance decision permits inert, default-off implementation before hosting; it does not reverse the live no-go.
-- No brand-based or assumed pass (Yandex.Cloud LLC vs YANDEX LLC are distinct ASNs).
-
-## Ship definition
-
-- [x] A schema-valid attestation record exists for at least one candidate ASN, or a written decision to kill the cascade effort is recorded.
-- [x] No passing record was created because no result qualified as per-ASN, RU-side, current, and non-brand-inferred.
-- [x] `docs/RU-CASCADE-DECISION.md` records the live no-go and the later implementation-only authorization; all activation paths remain blocked.
-- [x] The latent-risk tradeoff was explicitly weighed and recorded as part of the decision.
-
-## Links
-
-- `docs/CASCADE-ASN-ATTESTATION.md`
-- `docs/RU-CASCADE-DECISION.md`
+- `7832f2a98add1a0ea773cdf324548e6436f9ebcf` recorded the no-go decision and completed acceptance criteria.
+- `cccb73fc17f7e3261340193c81785d485c0d31b2` retained the live no-go while allowing only inert, default-off implementation work.
+- `docs/CASCADE-ASN-ATTESTATION.md` and `docs/RU-CASCADE-DECISION.md` preserve the repository-owned decision record.

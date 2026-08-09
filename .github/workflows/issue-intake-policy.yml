@@ -1,0 +1,46 @@
+---
+name: issue-intake-policy
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  enforce:
+    name: close human-created public issues
+    if: github.event.issue.pull_request == null
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Preserve automation signals and close human intake
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            const issue = context.payload.issue;
+            if (issue.user?.login === 'github-actions[bot]') {
+              core.info(`Preserving automation-created issue #${issue.number}`);
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: [
+                'This repository uses the Git-native backlog under `docs/tasks/` for planned work.',
+                'A maintainer can convert actionable, non-sensitive information into a portfolio task.',
+                'For vulnerabilities, use Private Vulnerability Reporting; never post ' +
+                  'credentials, host identifiers, or policy data publicly.'
+              ].join('\n\n')
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              state: 'closed',
+              state_reason: 'not_planned'
+            });

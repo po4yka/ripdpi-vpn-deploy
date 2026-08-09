@@ -2,7 +2,7 @@
 
 ## Reporting
 
-This repo deploys **active VPN infrastructure**. Some classes of issue, if
+This repo deploys **active network infrastructure**. Some classes of issue, if
 disclosed publicly, hand attackers an immediate operational advantage.
 Use the right channel.
 
@@ -29,9 +29,11 @@ Channel:
 
 Expected acknowledgement window: **24 hours**.
 
-### Non-critical — public issues
+### Non-critical — public intake
 
-These are fine to open as a normal issue with the `security` label:
+Human-created public issues are intake-only and are closed automatically. A
+maintainer may convert useful, non-sensitive details into a Git-native task.
+Contributors can also submit a focused pull request for:
 
 - Template misconfigurations that the validators didn't catch.
 - Role hardening suggestions (sysctl, systemd unit, capability drops).

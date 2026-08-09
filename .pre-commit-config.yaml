@@ -53,6 +53,24 @@ repos:
 
   - repo: local
     hooks:
+      - id: task-contract
+        name: task, mdtask, and OpenSpec contract
+        entry: env OPENSPEC_TELEMETRY=0 ./taskctl validate
+        language: system
+        pass_filenames: false
+        files: >-
+          (?x)^(
+            \.mdtaskrc |
+            taskctl |
+            docs/tasks/.* |
+            openspec/.* |
+            tools/tasking/.* |
+            scripts/tasks/.* |
+            \.agents/skills/(mdtask.*|sdd|repo-task-board|openspec-.*)/.* |
+            AGENTS\.md |
+            CLAUDE\.md
+          )$
+
       - id: secrets-coverage
         name: secrets-coverage (template vars must be in example secrets)
         entry: python3 scripts/check-secrets-coverage.py
