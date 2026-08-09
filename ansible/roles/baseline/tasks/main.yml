@@ -22,6 +22,19 @@
     update_cache: true
     cache_valid_time: 3600
 
+- name: Remove VPS firmware update tooling
+  ansible.builtin.apt:
+    name:
+      - fwupd
+    state: absent
+    purge: true
+
+- name: Clear obsolete fwupd failed units
+  ansible.builtin.command:
+    cmd: systemctl reset-failed fwupd.service fwupd-refresh.service
+  changed_when: false
+  failed_when: false
+
 - name: Collect service facts
   ansible.builtin.service_facts:
 

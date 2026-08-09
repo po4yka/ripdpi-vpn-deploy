@@ -11,6 +11,13 @@
         cmd: nft --version
       changed_when: false
 
+    - name: Host-firmware tooling is absent from the VPS baseline
+      ansible.builtin.command:
+        cmd: dpkg-query -W fwupd
+      register: fwupd_package
+      changed_when: false
+      failed_when: fwupd_package.rc == 0
+
     - name: systemd-resolved drop-in present when service exists
       ansible.builtin.stat:
         path: /etc/systemd/resolved.conf.d/no-stub.conf

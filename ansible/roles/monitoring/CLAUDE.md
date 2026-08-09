@@ -21,8 +21,9 @@ seconds and exports only repository-owned technical inbound/outbound tags.
 
 ## What's done well
 
-- **Logrotate with retention** — xray and nginx-vpn logs rotated daily with
-  14-day retention. No long-term log corpus to subpoena.
+- **Logrotate with retention** — monitoring owns one package-wide Nginx policy
+  and the Xray policy, both with daily rotation and 14-day retention. The role
+  removes the old overlapping `nginx-vpn` drop-in so every log has one owner.
 - **Prometheus textfile collector enabled** — `--collector.systemd` and
   `--collector.processes` ship systemd unit states and process stats without
   any extra configuration.
@@ -37,10 +38,13 @@ seconds and exports only repository-owned technical inbound/outbound tags.
 
 - **node_exporter on a public port = fingerprint** — never bind anything
   other than 127.0.0.1. Verified by `verify.yml`.
-- **Logrotate postrotate signal** — the nginx-vpn logrotate stanza uses
+- **Logrotate postrotate signal** — the Nginx logrotate stanza uses
   `systemctl reload nginx`. If nginx is not running (e.g. on a Hysteria-only
   node), the `|| true` guard prevents a failure, but confirm the service name
   matches your deployment.
+- **Nginx logrotate globs must not overlap** — never add a second policy for a
+  subset of `/var/log/nginx/*.log`; logrotate rejects the complete configuration
+  when the same log appears twice.
 - **No alerting included** — by design. Alerting is operator-side, via
   `install-operator-crons` on a workstation, not on the server.
 - **Counters reset with Xray** — graph rates or increases. They are diagnostic

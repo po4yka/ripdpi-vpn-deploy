@@ -232,25 +232,27 @@
   when: vpn.enable_xray_reality | default(true)
 
 - name: Drop logrotate config for nginx
-  ansible.builtin.copy:
-    dest: /etc/logrotate.d/nginx-vpn
+  ansible.builtin.template:
+    src: logrotate-nginx.j2
+    dest: /etc/logrotate.d/nginx
     owner: root
     group: root
     mode: "0644"
-    content: |
-      /var/log/nginx/vpn-*.log {
-          daily
-          rotate 14
-          compress
-          missingok
-          notifempty
-          create 0640 www-data adm
-          sharedscripts
-          postrotate
-              systemctl reload nginx 2>/dev/null || true
-          endscript
-      }
   when: >-
     (vpn.enable_nginx_xhttp | default(true)) or
     (vpn.enable_cdn_front | default(false)) or
     (vpn.enable_subscription_host | default(false))
+
+- name: Remove overlapping legacy nginx logrotate config
+  ansible.builtin.file:
+    path: /etc/logrotate.d/nginx-vpn
+    state: absent
+  when: >-
+    (vpn.enable_nginx_xhttp | default(true)) or
+    (vpn.enable_cdn_front | default(false)) or
+    (vpn.enable_subscription_host | default(false))
+
+- name: Validate the complete logrotate configuration
+  ansible.builtin.command:
+    cmd: logrotate --debug /etc/logrotate.conf
+  changed_when: false

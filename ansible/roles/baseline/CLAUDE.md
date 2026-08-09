@@ -14,6 +14,10 @@ A reboot mid-deploy would burn idempotency.
 **SSH policy lives in `security_controls`** — the role still owns the drop-in,
 but operator posture knobs live under `security_controls.ssh_*`, not `vpn.*`.
 
+**No host-firmware daemon on VPS guests** — cloud nodes cannot flash their
+hypervisor firmware. Baseline removes `fwupd` instead of leaving an irrelevant
+daemon able to degrade systemd after a partial package update.
+
 ## What's done well
 
 - **Sysctl convergence self-heals after interrupted plays** — the role reapplies `/etc/sysctl.d` on every converge, so a play that failed after writing a file but before handlers ran cannot leave runtime values stale indefinitely.
@@ -53,3 +57,5 @@ but operator posture knobs live under `security_controls.ssh_*`, not `vpn.*`.
   is `0` so older OpenSSH versions never see an unsupported directive.
 - **Hostname change requires re-running cloud-init handlers** — don't
   change `ansible_hostname` mid-deploy.
+- **Firmware belongs to the provider** — do not reinstall `fwupd` on these VPS
+  nodes to silence a failed unit; remove it and clear the obsolete failure.

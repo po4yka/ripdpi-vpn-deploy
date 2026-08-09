@@ -96,3 +96,22 @@
         path: /etc/logrotate.d/xray
       register: lr
       failed_when: not lr.stat.exists
+
+    - name: Inspect nginx logrotate ownership
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/logrotate.d/nginx
+        - /etc/logrotate.d/nginx-vpn
+      register: nginx_logrotate_files
+
+    - name: Nginx logs have one package-wide rotation policy
+      ansible.builtin.assert:
+        that:
+          - nginx_logrotate_files.results[0].stat.exists
+          - not nginx_logrotate_files.results[1].stat.exists
+
+    - name: Nginx rotation policy covers the complete log directory
+      ansible.builtin.command:
+        cmd: grep -Fq '/var/log/nginx/*.log {' /etc/logrotate.d/nginx
+      changed_when: false

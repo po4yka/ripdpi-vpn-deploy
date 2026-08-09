@@ -48,6 +48,12 @@ oneshot open indefinitely.
 - **A partial listener outage is a failure** — primary, fallback, and every
   cohort listener are all probed; one red listener increments the common
   consecutive-failure counter.
+- **Xray validation opens its configured logs** — the service sandbox must
+  keep the Xray log directory writable or `xray run -test` reports a false
+  configuration failure before validating the listener contract.
+- **Nginx validation opens its error log** — `nginx -t` needs the Nginx log
+  directory writable inside the strict watchdog sandbox even though it only
+  validates configuration syntax.
 - **Inventory must preserve both addresses** — `make inventory` emits
   `vpn_service_address` beside `ansible_host`. Local SSH overrides may replace
   only the latter.

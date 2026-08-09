@@ -35,3 +35,6 @@ retention).
 - **Restore drills run as root but never target live paths** — the service
   needs the root-only password and restored files, so runtime cleanup must
   complete before the success marker is replaced.
+- **AmneziaWG backup and restore share `amneziawg_config_dir`** — never derive
+  a shorter parent path or assume configs live directly under `/etc/amnezia`;
+  the drill must validate the same nested directory that the role renders.

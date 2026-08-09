@@ -7,7 +7,7 @@
     xray_api_listen: 127.0.0.1:10086
     vpn:
       enable_xray_reality: true
-      enable_nginx_xhttp: false
+      enable_nginx_xhttp: true
       enable_honeypot: true
   pre_tasks:
     - name: Create synthetic Xray runtime account

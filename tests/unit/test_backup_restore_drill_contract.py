@@ -91,17 +91,17 @@ def test_drill_requires_baseline_and_enabled_transport_artifacts() -> None:
         "etc/hysteria/config.yaml",
         "etc/hysteria/server.fullchain.pem",
         "etc/hysteria/server.key",
-        "etc/amnezia/awg-test.conf",
+        "etc/amnezia/amneziawg/awg-test.conf",
     ):
         assert path in script
     assert 'python3 -m json.tool "$restore_target/etc/xray/config.json"' in script
 
 
-def test_drill_requires_legacy_amneziawg_interface_when_instance_list_is_empty() -> None:
+def test_drill_requires_legacy_amneziawg_interface_in_the_config_directory() -> None:
     script = _render(remote_enabled=False, awg_instances=[])
 
-    assert "etc/amnezia/awg0.conf" in script
-    assert "etc/amnezia/awg-test.conf" not in script
+    assert "etc/amnezia/amneziawg/awg0.conf" in script
+    assert "etc/amnezia/amneziawg/awg-test.conf" not in script
 
 
 def test_drill_cleans_restored_secrets_before_atomically_publishing_success() -> None:
@@ -169,7 +169,7 @@ elif "restore" in args:
         "etc/hysteria/config.yaml": "listen: :443\\n",
         "etc/hysteria/server.fullchain.pem": "certificate\\n",
         "etc/hysteria/server.key": "private key\\n",
-        "etc/amnezia/awg-test.conf": "[Interface]\\n",
+        "etc/amnezia/amneziawg/awg-test.conf": "[Interface]\\n",
     }
     for relative, content in files.items():
         destination = target / relative

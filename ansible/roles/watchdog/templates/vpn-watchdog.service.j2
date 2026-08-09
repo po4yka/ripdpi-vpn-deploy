@@ -23,4 +23,4 @@ LockPersonality=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 SystemCallArchitectures=native
-ReadWritePaths={{ watchdog.state_file | dirname }}
+ReadWritePaths={{ watchdog.state_file | dirname }}{% if vpn.enable_xray_reality | default(true) %} {{ xray_log_dir | default('/var/log/xray') }}{% endif %}{% if (vpn.enable_nginx_xhttp | default(true)) or (vpn.enable_cdn_front | default(false)) or (vpn.enable_subscription_host | default(false)) %} /var/log/nginx{% endif %}

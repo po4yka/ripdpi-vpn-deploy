@@ -9,7 +9,9 @@ INCLUDES=(
   /etc/xray
   /etc/hysteria
   /etc/snell
-  /etc/amnezia
+{% if vpn.enable_amneziawg | default(false) %}
+  "{{ amneziawg_config_dir }}"
+{% endif %}
   /etc/nginx
   /etc/nftables.conf
   /etc/ssh

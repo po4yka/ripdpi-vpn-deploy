@@ -78,6 +78,34 @@ def test_watchdog_fails_when_stats_service_is_not_queryable():
     assert 'api statsquery "--server=${XRAY_API_SERVER}"' in rendered
 
 
+def test_watchdog_sandbox_allows_xray_config_validation_to_open_logs():
+    variables = _multi_cohort_vars()
+    variables["xray_log_dir"] = "/var/log/xray-custom"
+
+    rendered = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
+
+    assert "ReadWritePaths=/var/lib/vpn-watchdog /var/log/xray-custom" in rendered
+
+
+def test_watchdog_sandbox_keeps_xray_logs_read_only_when_xray_is_disabled():
+    variables = _multi_cohort_vars()
+    variables["vpn"]["enable_xray_reality"] = False
+
+    rendered = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
+
+    assert "/var/log/xray" not in rendered
+
+
+def test_watchdog_sandbox_allows_nginx_config_validation_to_open_logs():
+    variables = _multi_cohort_vars()
+    variables["vpn"]["enable_xray_reality"] = False
+    variables["vpn"]["enable_nginx_xhttp"] = True
+
+    rendered = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
+
+    assert "ReadWritePaths=/var/lib/vpn-watchdog /var/log/nginx" in rendered
+
+
 def test_reality_probe_requires_the_explicit_service_address() -> None:
     variables = _multi_cohort_vars()
     variables.pop("vpn_service_address")
