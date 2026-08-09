@@ -22,7 +22,7 @@ capability.
 - [x] CIC-1786296210502723 Remove the unused branch-protection checkout and disable credential persistence on every remaining flagged checkout; prove no affected job requires authenticated follow-up git operations #feature !high @item:CIC-1786295418152915 @blocked_by:CIC-1786296210479892
 - [x] CIC-1786296210530158 Apply a seven-day cooldown to every active Dependabot ecosystem while preserving immediate security updates; add a focused dependency-delivery contract test #feature !high @item:CIC-1786295418152915 @blocked_by:CIC-1786296210502723
 - [x] CIC-1786296210558254 Replace the redundant release-upload action with built-in `gh release upload`, use one resolved tag for tag and manual runs, and prove release asset and rerun behavior with focused tests #feature !high @item:CIC-1786295418152915 @blocked_by:CIC-1786296210530158
-- [ ] CIC-1786296210585916 Pin zizmor 1.29.0, add the strict offline Make gate and required least-privilege CI job, add parity/scope tests and operator documentation, then run all named local gates #feature !high @item:CIC-1786295418152915 @blocked_by:CIC-1786296210558254
+- [x] CIC-1786296210585916 Pin zizmor 1.29.0, add the strict offline Make gate and required least-privilege CI job, add parity/scope tests and operator documentation, then run all named local gates #feature !high @item:CIC-1786295418152915 @blocked_by:CIC-1786296210558254
 
 ## Verification
 
