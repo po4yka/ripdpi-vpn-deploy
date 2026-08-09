@@ -41,7 +41,15 @@ def test_installer_keeps_awg_private_key_off_argv_and_uses_strict_ssh(tmp_path: 
                         "min_failed_vantages": 1,
                     }
                 ],
-                "sentinels": [{"id": "tls-freeze-a", "ssh_target": "sentinel-a", "policy": "fullstack"}],
+                "sentinels": [
+                    {
+                        "id": "tls-freeze-a",
+                        "ssh_target": "sentinel-a",
+                        "ssh_transport_host": "sentinel-direct",
+                        "ssh_host_key_alias": "sentinel-a",
+                        "policy": "fullstack",
+                    }
+                ],
             }
         )
     )
@@ -120,9 +128,20 @@ printf 'scp' >> "$CALL_LOG"; printf ' <%s>' "$@" >> "$CALL_LOG"; printf '\n' >> 
     assert private_key not in calls + result.stdout + result.stderr
     assert "<StrictHostKeyChecking=yes>" in calls
     assert "<BatchMode=yes>" in calls
+    for option in (
+        "<HostName=sentinel-direct>",
+        "<HostKeyAlias=sentinel-a>",
+        "<ProxyCommand=none>",
+        "<ControlMaster=no>",
+        "<ControlPath=none>",
+        "<ControlPersist=no>",
+    ):
+        assert option in calls
     assert "audit append-best-effort --action install-liveness-sentinel" in calls
     registry = json.loads((tmp_path / "registry.json").read_text())
     assert registry["sentinels"]["tls-freeze-a"]["client"] == "liveness-a"
+    assert registry["sentinels"]["tls-freeze-a"]["ssh_transport_host"] == "sentinel-direct"
+    assert registry["sentinels"]["tls-freeze-a"]["ssh_host_key_alias"] == "sentinel-a"
 
 
 def test_installer_requires_private_key_from_stdin(tmp_path: Path) -> None:

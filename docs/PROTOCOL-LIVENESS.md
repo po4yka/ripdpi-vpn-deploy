@@ -26,13 +26,15 @@ policies:
 sentinels:
   - id: tls-freeze-a
     ssh_target: sentinel-a
+    ssh_transport_host: sentinel-direct
+    ssh_host_key_alias: sentinel-a
     policy: fullstack
   - id: udp-filtered-b
     ssh_target: sentinel-b
     policy: fullstack
 ```
 
-The contract is `contract/protocol-liveness.schema.json`. Each `ssh_target` is an OpenSSH host alias with a pinned host key. The operator pulls reports with `BatchMode=yes`, `StrictHostKeyChecking=yes`, and a bounded timeout; there is no public result collector.
+The contract is `contract/protocol-liveness.schema.json`. Each `ssh_target` is an OpenSSH host alias with a pinned host key. When that alias has a legacy or network-specific route, set `ssh_transport_host` and `ssh_host_key_alias` together: the former selects a directly reachable transport address, while the latter preserves the pinned host identity. This mode explicitly ignores inherited `ProxyCommand` and connection multiplexing for the sentinel pull. The operator always uses `BatchMode=yes`, `StrictHostKeyChecking=yes`, and a bounded timeout; there is no public result collector.
 
 ## Sentinel onboarding
 

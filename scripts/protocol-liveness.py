@@ -94,15 +94,40 @@ def remote_probe_deadline(config: dict, sentinel: dict) -> int:
     return config.get("probe_timeout_seconds", 15) * stages + 20
 
 
-def pull_report(sentinel: dict, connect_timeout: int, command_timeout: int) -> tuple[str, str, str]:
-    command = [
-        "ssh",
+def ssh_options(sentinel: dict, connect_timeout: int) -> list[str]:
+    options = [
         "-o",
         "BatchMode=yes",
         "-o",
         "StrictHostKeyChecking=yes",
         "-o",
         f"ConnectTimeout={min(connect_timeout, 10)}",
+    ]
+    transport_host = sentinel.get("ssh_transport_host")
+    if transport_host:
+        options.extend(
+            [
+                "-o",
+                f"HostName={transport_host}",
+                "-o",
+                f"HostKeyAlias={sentinel['ssh_host_key_alias']}",
+                "-o",
+                "ProxyCommand=none",
+                "-o",
+                "ControlMaster=no",
+                "-o",
+                "ControlPath=none",
+                "-o",
+                "ControlPersist=no",
+            ]
+        )
+    return options
+
+
+def pull_report(sentinel: dict, connect_timeout: int, command_timeout: int) -> tuple[str, str, str]:
+    command = [
+        "ssh",
+        *ssh_options(sentinel, connect_timeout),
         sentinel["ssh_target"],
         *REMOTE_COMMAND,
     ]

@@ -139,6 +139,49 @@ def test_schema_accepts_the_documented_configuration(tmp_path: Path) -> None:
     assert module["remote_probe_deadline"](config, config["sentinels"][0]) == 95
 
 
+def test_schema_requires_transport_and_host_key_alias_together(tmp_path: Path) -> None:
+    import jsonschema
+
+    schema = json.loads(SCHEMA.read_text())
+    config = yaml.safe_load(_config(tmp_path).read_text())
+    config["sentinels"][0]["ssh_transport_host"] = "sentinel-direct"
+
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.Draft202012Validator(schema).validate(config)
+
+
+def test_pull_report_uses_direct_transport_with_pinned_host_identity(monkeypatch) -> None:
+    module = runpy.run_path(str(SCRIPT))
+    captured: list[str] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured.extend(command)
+        return subprocess.CompletedProcess(command, 0, stdout="{}\n", stderr="")
+
+    monkeypatch.setattr(module["subprocess"], "run", fake_run)
+    sentinel = {
+        "id": "tls-freeze-a",
+        "ssh_target": "sentinel-a",
+        "ssh_transport_host": "sentinel-direct",
+        "ssh_host_key_alias": "sentinel-a",
+        "policy": "fullstack",
+    }
+
+    sentinel_id, raw, error = module["pull_report"](sentinel, 10, 30)
+
+    assert (sentinel_id, raw, error) == ("tls-freeze-a", "{}", "")
+    for option in (
+        "HostName=sentinel-direct",
+        "HostKeyAlias=sentinel-a",
+        "ProxyCommand=none",
+        "ControlMaster=no",
+        "ControlPath=none",
+        "ControlPersist=no",
+    ):
+        assert option in captured
+    assert "StrictHostKeyChecking=yes" in captured
+
+
 @pytest.mark.parametrize(
     ("reports", "decision"),
     [

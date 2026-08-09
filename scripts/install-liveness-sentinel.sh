@@ -39,8 +39,8 @@ for tool in python3 ssh scp tar; do
   command -v "$tool" >/dev/null 2>&1 || { echo "missing: $tool" >&2; exit 1; }
 done
 
-IFS=$'\t' read -r SSH_TARGET REQUIRED_PROFILES PROBE_URL EXPECTED_STATUS TIMEOUT_SECONDS DEGRADED_AFTER_MS SING_BOX_VERSION AWG_VERSION < <(python3 - "$CONFIG" "$SENTINEL" <<'PY'
-import sys, yaml
+IFS=$'\t' read -r SSH_TARGET SSH_TRANSPORT_HOST SSH_HOST_KEY_ALIAS REQUIRED_PROFILES PROBE_URL EXPECTED_STATUS TIMEOUT_SECONDS DEGRADED_AFTER_MS SING_BOX_VERSION AWG_VERSION < <(python3 - "$CONFIG" "$SENTINEL" <<'PY'
+import re, sys, yaml
 config = yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}
 sentinel = next((s for s in config.get("sentinels", []) if s.get("id") == sys.argv[2]), None)
 if not sentinel:
@@ -49,9 +49,19 @@ policy = next((p for p in config.get("policies", []) if p.get("id") == sentinel.
 if not policy:
     raise SystemExit("sentinel policy is not declared")
 runtime = config.get("expected_runtime") or {}
-print("\t".join(map(str, [sentinel["ssh_target"], ",".join(policy["required_profiles"]), config["probe_url"], config["expected_status"], config.get("probe_timeout_seconds", 15), config.get("degraded_after_ms", 3000), runtime["sing_box"], runtime["awg"]])))
+transport = sentinel.get("ssh_transport_host")
+host_key_alias = sentinel.get("ssh_host_key_alias")
+if bool(transport) != bool(host_key_alias):
+    raise SystemExit("ssh_transport_host and ssh_host_key_alias must be configured together")
+if transport and not re.fullmatch(r"[A-Za-z0-9_.-]+", transport):
+    raise SystemExit("invalid ssh transport host")
+if host_key_alias and not re.fullmatch(r"[A-Za-z0-9_.@-]+", host_key_alias):
+    raise SystemExit("invalid ssh host key alias")
+print("\t".join(map(str, [sentinel["ssh_target"], transport or "-", host_key_alias or "-", ",".join(policy["required_profiles"]), config["probe_url"], config["expected_status"], config.get("probe_timeout_seconds", 15), config.get("degraded_after_ms", 3000), runtime["sing_box"], runtime["awg"]])))
 PY
 )
+[[ "$SSH_TRANSPORT_HOST" == "-" ]] && SSH_TRANSPORT_HOST=""
+[[ "$SSH_HOST_KEY_ALIAS" == "-" ]] && SSH_HOST_KEY_ALIAS=""
 
 AWG_PRIVATE_KEY=""
 if [[ ",${REQUIRED_PROFILES}," == *",p2-amneziawg,"* ]]; then
@@ -173,6 +183,16 @@ chmod 0600 "$WORK/install"/*
 chmod 0755 "$WORK/install/vpn-protocol-liveness"
 
 SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+if [[ -n "$SSH_TRANSPORT_HOST" ]]; then
+  SSH_OPTS+=(
+    -o "HostName=${SSH_TRANSPORT_HOST}"
+    -o "HostKeyAlias=${SSH_HOST_KEY_ALIAS}"
+    -o ProxyCommand=none
+    -o ControlMaster=no
+    -o ControlPath=none
+    -o ControlPersist=no
+  )
+fi
 REMOTE_USER="$(ssh "${SSH_OPTS[@]}" "$SSH_TARGET" id -un)"
 [[ "$REMOTE_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]] || { echo "unsafe remote username" >&2; exit 1; }
 REMOTE_DIR="/tmp/vpn-liveness-${SENTINEL}"
@@ -192,7 +212,7 @@ if report.get("control", {}).get("verdict") not in {"ok", "throttled"} or bad:
     raise SystemExit("installed sentinel did not pass its initial authenticated probe")
 PY
 
-python3 - "$REGISTRY" "$SENTINEL" "$CLIENT" "$SSH_TARGET" <<'PY'
+python3 - "$REGISTRY" "$SENTINEL" "$CLIENT" "$SSH_TARGET" "$SSH_TRANSPORT_HOST" "$SSH_HOST_KEY_ALIAS" <<'PY'
 import json, os, pathlib, tempfile, sys
 path = pathlib.Path(sys.argv[1])
 path.parent.mkdir(parents=True, exist_ok=True)
@@ -200,7 +220,10 @@ try:
     registry = json.loads(path.read_text())
 except (OSError, json.JSONDecodeError):
     registry = {"schema_version": 1, "sentinels": {}}
-registry.setdefault("sentinels", {})[sys.argv[2]] = {"client": sys.argv[3], "ssh_target": sys.argv[4]}
+entry = {"client": sys.argv[3], "ssh_target": sys.argv[4]}
+if sys.argv[5]:
+    entry.update({"ssh_transport_host": sys.argv[5], "ssh_host_key_alias": sys.argv[6]})
+registry.setdefault("sentinels", {})[sys.argv[2]] = entry
 fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
 with os.fdopen(fd, "w") as handle:
     json.dump(registry, handle, sort_keys=True)
