@@ -19,6 +19,8 @@ Reused keys break replay protection.
 **Source refs require matching immutable commits** — the secrets example and
 both bootstrap generators emit each source tag with its resolved commit SHA.
 The role verifies the checkout still resolves to that SHA before building.
+Build receipts bind the installed binaries to those resolved commits, so
+check mode reports only actionable binary drift and never runs a compiler.
 
 **arm64 S3/S4 floor is a cross-repo policy** — `contract/amneziawg-arm64-version-floor.json` records known-broken versions, tracked upstream issue states, and candidate/verified floors. A release claim only opens a revalidation issue; the role and client remain fail-closed until physical arm64 evidence establishes a safe floor.
 
@@ -45,3 +47,6 @@ The role verifies the checkout still resolves to that SHA before building.
 - **Issue closure is not proof of an arm64 fix** — amnezia-client #2582
   reproduced S3/S4 failure after an earlier claimed fix. Never weaken the
   guard from release notes alone; follow the tracker checklist.
+- **The tools build output is `src/wg`, not `src/awg`** — `/usr/bin/awg` is
+  created by `make install`. Using the installed name as the source artifact
+  makes every check-mode run report false drift.

@@ -61,11 +61,53 @@
       {{ amneziawg_go_version }} appears to have moved upstream — refusing
       to build unverified source.
 
+- name: Inspect amneziawg-go build artifacts
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: true
+  loop:
+    - /opt/src/amneziawg-go/amneziawg-go
+    - /usr/local/bin/amneziawg-go
+    - /opt/src/amneziawg-go/.ripdpi-built-commit
+  register: _awg_go_artifacts
+
+- name: Read amneziawg-go build receipt
+  ansible.builtin.slurp:
+    src: /opt/src/amneziawg-go/.ripdpi-built-commit
+  register: _awg_go_receipt
+  when: _awg_go_artifacts.results[2].stat.exists
+
+- name: Determine whether amneziawg-go needs rebuilding
+  ansible.builtin.set_fact:
+    _awg_go_rebuild_required: >-
+      {{
+        not _awg_go_artifacts.results[0].stat.exists
+        or not _awg_go_artifacts.results[1].stat.exists
+        or not _awg_go_artifacts.results[2].stat.exists
+        or (
+          _awg_go_artifacts.results[0].stat.checksum | default('')
+          != _awg_go_artifacts.results[1].stat.checksum | default('')
+        )
+        or (
+          _awg_go_receipt.content | default('') | b64decode | trim
+          != _awg_go_head.stdout | trim
+        )
+      }}
+
+- name: Report amneziawg-go build drift
+  ansible.builtin.debug:
+    msg: amneziawg-go build artifacts do not match the pinned source commit
+  when: ansible_check_mode
+  changed_when: _awg_go_rebuild_required
+
 - name: Build amneziawg-go
   ansible.builtin.command:
     cmd: make
     chdir: /opt/src/amneziawg-go
-    creates: /opt/src/amneziawg-go/amneziawg-go
+  when:
+    - _awg_go_rebuild_required
+    - not ansible_check_mode
+  changed_when: true
 
 - name: Install amneziawg-go binary
   ansible.builtin.copy:
@@ -75,6 +117,20 @@
     owner: root
     group: root
     mode: "0755"
+  when:
+    - _awg_go_rebuild_required
+    - not ansible_check_mode
+
+- name: Record amneziawg-go built commit
+  ansible.builtin.copy:
+    content: "{{ _awg_go_head.stdout | trim }}\n"
+    dest: /opt/src/amneziawg-go/.ripdpi-built-commit
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - _awg_go_rebuild_required
+    - not ansible_check_mode
 
 - name: Clone amneziawg-tools
   ansible.builtin.git:
@@ -101,18 +157,73 @@
       {{ amneziawg_tools_version }} appears to have moved upstream — refusing
       to build unverified source.
 
+- name: Inspect amneziawg-tools build artifacts
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: true
+  loop:
+    - /opt/src/amneziawg-tools/src/wg
+    - /usr/bin/awg
+    - /opt/src/amneziawg-tools/.ripdpi-built-commit
+  register: _awg_tools_artifacts
+
+- name: Read amneziawg-tools build receipt
+  ansible.builtin.slurp:
+    src: /opt/src/amneziawg-tools/.ripdpi-built-commit
+  register: _awg_tools_receipt
+  when: _awg_tools_artifacts.results[2].stat.exists
+
+- name: Determine whether amneziawg-tools needs rebuilding
+  ansible.builtin.set_fact:
+    _awg_tools_rebuild_required: >-
+      {{
+        not _awg_tools_artifacts.results[0].stat.exists
+        or not _awg_tools_artifacts.results[1].stat.exists
+        or not _awg_tools_artifacts.results[2].stat.exists
+        or (
+          _awg_tools_artifacts.results[0].stat.checksum | default('')
+          != _awg_tools_artifacts.results[1].stat.checksum | default('')
+        )
+        or (
+          _awg_tools_receipt.content | default('') | b64decode | trim
+          != _awg_tools_head.stdout | trim
+        )
+      }}
+
+- name: Report amneziawg-tools build drift
+  ansible.builtin.debug:
+    msg: amneziawg-tools build artifacts do not match the pinned source commit
+  when: ansible_check_mode
+  changed_when: _awg_tools_rebuild_required
+
 - name: Build amneziawg-tools
   ansible.builtin.command:
     cmd: make
     chdir: /opt/src/amneziawg-tools/src
-    creates: /opt/src/amneziawg-tools/src/awg
+  when:
+    - _awg_tools_rebuild_required
+    - not ansible_check_mode
+  changed_when: true
 
 - name: Install amneziawg-tools
   ansible.builtin.command:
     cmd: make install
     chdir: /opt/src/amneziawg-tools/src
-  args:
-    creates: /usr/bin/awg
+  when:
+    - _awg_tools_rebuild_required
+    - not ansible_check_mode
+  changed_when: true
+
+- name: Record amneziawg-tools built commit
+  ansible.builtin.copy:
+    content: "{{ _awg_tools_head.stdout | trim }}\n"
+    dest: /opt/src/amneziawg-tools/.ripdpi-built-commit
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - _awg_tools_rebuild_required
+    - not ansible_check_mode
 
 - name: Ensure AmneziaWG config directory
   ansible.builtin.file:
