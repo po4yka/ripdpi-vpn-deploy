@@ -101,6 +101,35 @@ def test_scaleway_provider_root_is_accepted(tmp_path: Path) -> None:
     ]
 
 
+def test_vultr_plan_runs_control_plane_preflight_first(tmp_path: Path) -> None:
+    stub_dir = _terraform_stub(tmp_path).parent
+    python = stub_dir / "python3"
+    python.write_text("#!/usr/bin/env bash\nprintf 'preflight\\n' >> \"$STUB_LOG\"\n")
+    python.chmod(python.stat().st_mode | stat.S_IXUSR)
+    env = os.environ | {
+        "PATH": f"{stub_dir}:{os.environ['PATH']}",
+        "STUB_LOG": str(tmp_path / "terraform.log"),
+        "PROVIDER": "vultr",
+        "ENV": "p2-vultr",
+        "EXISTING_WORKSPACE": "p2-vultr",
+        "TF_VAR_vultr_api_key": "test-key",
+    }
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "plan", "-refresh-only"],
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    lines = (tmp_path / "terraform.log").read_text().splitlines()
+    assert lines[0].endswith("workspace select p2-vultr")
+    assert lines[1] == "preflight"
+    assert lines[2].endswith("plan -refresh-only")
+
+
 def test_operator_scripts_pass_provider_and_environment_to_wrapper() -> None:
     for script in [REPO_ROOT / "scripts/destroy.sh", REPO_ROOT / "scripts/drift-since-tag.sh"]:
         source = script.read_text()

@@ -9,10 +9,13 @@ root wires it through the sensitive `vultr_api_key` variable; prefer exporting
 
 Keep that variable in an ignored local environment file or the operator's
 secret store, with local-file mode `0600`. When API access is restricted by an
-allowlist, add the current operator egress address before planning. After a
-key replacement, run a scoped `make PROVIDER=vultr ENV=<environment> plan`
-before revoking the prior key. Never pass a key on the command line or commit
-it to this repository.
+allowlist, add only the current operator egress address as an exact IP/CIDR
+before planning; do not admit all IPv4 or IPv6 ranges. The canonical
+`scripts/terraform-env.sh` wrapper performs a redacted authenticated preflight
+before Vultr plan/apply/import/refresh operations and distinguishes an ACL
+rejection from invalid credentials or network failure. After a key replacement,
+run a scoped `make PROVIDER=vultr ENV=<environment> plan` before revoking the
+prior key. Never pass a key on the command line or commit it to this repository.
 
 The root exports the same inventory-facing outputs as `providers/upcloud/`:
 

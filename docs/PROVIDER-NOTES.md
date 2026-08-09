@@ -183,8 +183,11 @@ Uses:
 - The provider schema requires an API key in provider config. This root maps
   sensitive variable `vultr_api_key`; export `TF_VAR_vultr_api_key` instead
   of writing tokens into tfvars.
-- If an API access allowlist is enabled, admit the operator's current egress
-  address before the first plan. Validate a replacement key with a scoped
+- If an API access allowlist is enabled, admit only the operator's current
+  egress as an exact IP/CIDR before the first plan; never use an all-addresses
+  entry. The Terraform workspace wrapper runs a redacted authenticated
+  preflight for control-plane operations and reports allowlist, credential,
+  and network failures separately. Validate a replacement key with a scoped
   plan before revoking its predecessor; a failed plan is not provider-state
   evidence.
 - Optional secondary IPv4 allocation uses the provider's reboot path. After apply, `render-inventory.sh` blocks until the address appears on a guest interface over the primary SSH endpoint; API allocation alone is not sufficient evidence for publishing `honeypot_listen_addr`.

@@ -50,4 +50,12 @@ if ! tf workspace select "$workspace" >/dev/null 2>&1; then
   exit 1
 fi
 
+if [[ "$PROVIDER" == "vultr" ]]; then
+  case "$1" in
+    plan|apply|destroy|import|refresh)
+      "${REPO_ROOT}/scripts/check-vultr-control-plane.py"
+      ;;
+  esac
+fi
+
 exec terraform "-chdir=${TF_DIR}" "$@"

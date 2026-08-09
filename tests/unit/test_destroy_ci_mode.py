@@ -15,7 +15,7 @@ def _test_repo(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     scripts = root / "scripts"
     scripts.mkdir(parents=True)
-    for name in ("destroy.sh", "terraform-env.sh"):
+    for name in ("check-vultr-control-plane.py", "destroy.sh", "terraform-env.sh"):
         shutil.copy2(REPO_ROOT / "scripts" / name, scripts / name)
     for provider in ("upcloud", "hetzner", "vultr", "scaleway"):
         (root / f"terraform/providers/{provider}/environments").mkdir(parents=True)
@@ -34,6 +34,9 @@ def _terraform_stub(tmp_path: Path, *, fail_apply: bool = False) -> Path:
         "if [[ \"${1:-}\" == apply && \"${FAIL_APPLY:-false}\" == true ]]; then exit 1; fi\n"
     )
     stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
+    python = tmp_path / "python3"
+    python.write_text("#!/usr/bin/env bash\nexit 0\n")
+    python.chmod(python.stat().st_mode | stat.S_IXUSR)
     return stub
 
 

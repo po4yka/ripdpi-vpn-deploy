@@ -25,6 +25,8 @@ flag exists for testing but is undocumented.
 
 **Terraform is workspace-routed centrally** — scripts call `scripts/terraform-env.sh`, which maps `PROVIDER` + `ENV` to the correct local state workspace. `prod` intentionally selects Terraform's legacy `default` workspace; new environments must be initialized through `make ... init`.
 
+**Vultr control-plane access fails before Terraform** — state-changing and refresh-capable Vultr commands run a redacted authenticated API preflight through `check-vultr-control-plane.py`. Keep the key environment-only; classify exact-IP allowlist rejection separately from credential and network failures, and never print the rejected egress address or response body.
+
 **Provider roots share one inventory schema** — UpCloud, Hetzner, Vultr, and Scaleway export the same canonical outputs, so `render-inventory.sh` stays provider-neutral. Add provider-specific inventory code only when a control-plane address needs extra guest convergence proof, as Vultr's secondary IPv4 does.
 
 **Bundle topology is host-order independent** — `emit-bundle.sh` aggregates
