@@ -39,6 +39,7 @@
     owner: root
     group: root
     mode: "0644"
+    unsafe_writes: true
   no_log: true
   diff: false
 

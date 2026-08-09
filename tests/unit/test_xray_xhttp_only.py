@@ -67,6 +67,7 @@ def test_p1_hostname_self_resolution_is_managed_and_verified() -> None:
     assert pin["ansible.builtin.blockinfile"]["path"] == "/etc/hosts"
     assert "vpn_service_address" in pin["ansible.builtin.blockinfile"]["block"]
     assert "nginx_xhttp.server_name" in pin["ansible.builtin.blockinfile"]["block"]
+    assert pin["ansible.builtin.blockinfile"]["unsafe_writes"] is True
     assert pin["no_log"] is True
     assert pin["diff"] is False
 
