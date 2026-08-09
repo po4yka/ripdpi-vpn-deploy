@@ -2,7 +2,7 @@
 id: CIC-1786295418152915
 title: Integrate zizmor and remediate GitHub Actions security findings
 kind: feature
-status: doing
+status: review
 area: ci
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: integrate-zizmor-ci-security-gate
 created: 2026-08-09
 updated: 2026-08-09
 related_tasks: []
+status_detail: Implementation complete and locally validated on 916b0c0; awaiting required remote CI on the pushed final SHA.
 ---
 
 ## Goal
