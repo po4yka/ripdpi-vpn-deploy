@@ -29,6 +29,11 @@ flag exists for testing but is undocumented.
 
 **Provider roots share one inventory schema** — UpCloud, Hetzner, Vultr, and Scaleway export the same canonical outputs, so `render-inventory.sh` stays provider-neutral. Add provider-specific inventory code only when a control-plane address needs extra guest convergence proof, as Vultr's secondary IPv4 does.
 
+**Deploy identity follows deployable content** — `deploy-source-identity.sh`
+hashes committed Git blob IDs and paths under `ansible/`, `scripts/`, and
+`requirements.yml`. Do not hash `git archive` bytes: commit timestamps would
+turn documentation-only commits into false live drift.
+
 **Bundle topology is host-order independent** — `emit-bundle.sh` aggregates
 split-hop ingress and realm metadata across every `HOSTS` entry. Never infer
 client-facing topology from the first host; conflicting non-null realm IDs

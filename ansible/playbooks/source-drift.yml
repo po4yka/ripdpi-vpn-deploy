@@ -1,0 +1,45 @@
+---
+- name: Verify live nodes match the deployable repository source
+  hosts: vpn
+  become: true
+  gather_facts: false
+
+  vars:
+    expected_source_revision: "{{ lookup('env', 'DEPLOY_SOURCE_REVISION') }}"
+    expected_deployable_digest: "{{ lookup('env', 'DEPLOYABLE_SOURCE_DIGEST') }}"
+    source_manifest_path: /var/lib/ripdpi-vpn-deploy/manifest.json
+
+  tasks:
+    - name: Validate expected source identity
+      ansible.builtin.assert:
+        that:
+          - expected_source_revision is match('^[0-9a-f]{40}$')
+          - expected_deployable_digest is match('^[0-9a-f]{64}$')
+        fail_msg: >-
+          Run through the repository Makefile so the clean deploy source
+          identity is exported to Ansible.
+
+    - name: Read deployed source manifest
+      ansible.builtin.slurp:
+        src: "{{ source_manifest_path }}"
+      register: deployed_source_manifest_raw
+
+    - name: Decode deployed source manifest
+      ansible.builtin.set_fact:
+        deployed_source_manifest: >-
+          {{ deployed_source_manifest_raw.content | b64decode | from_json }}
+
+    - name: Require live deployable source parity
+      ansible.builtin.assert:
+        that:
+          - deployed_source_manifest.schema_version | int >= 2
+          - deployed_source_manifest.source_revision is match('^[0-9a-f]{40}$')
+          - deployed_source_manifest.deployable_digest == expected_deployable_digest
+        fail_msg: >-
+          repo-to-live drift detected: host={{ inventory_hostname }}
+          deployed_revision={{ deployed_source_manifest.source_revision | default('unknown') }}
+          expected_revision={{ expected_source_revision }}. Run a reviewed
+          `make deploy`, then repeat `make source-drift`.
+        success_msg: >-
+          deployable source matches host={{ inventory_hostname }}
+          deployed_revision={{ deployed_source_manifest.source_revision | default('unknown') }}

@@ -1798,7 +1798,9 @@ def test_makefile_exposes_sops_gated_awg_evidence_entrypoint() -> None:
 def test_makefile_deploy_supports_safe_limit_and_extra_vars() -> None:
     makefile = (ROOT / "Makefile").read_text()
     target = makefile.split(
-        "deploy: require-inventory validate-ansible-extra-vars pre-deploy-check", 1
+        "deploy: require-clean-source require-inventory "
+        "validate-ansible-extra-vars pre-deploy-check",
+        1,
     )[1].split("\n\n", 1)[0]
     extra_vars_preflight = makefile.split("validate-ansible-extra-vars:", 1)[1].split(
         "\n\n", 1

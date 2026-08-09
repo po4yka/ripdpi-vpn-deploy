@@ -19,10 +19,14 @@ make validate          # gitleaks + lint must pass
 make dry-run           # ansible --check --diff — read every changed line
 make deploy
 make verify
+make source-drift      # normally repeated by deploy/verify; useful alone
 make clean
 ```
 
 If `dry-run` shows changes you didn't expect, **stop**. Investigate.
+`deploy` refuses a dirty checkout so the live manifest can name an immutable
+source revision. Documentation-only commits do not force convergence: the
+parity gate compares a digest of deployable paths rather than the whole tree.
 Don't push. The most common cause is a forgotten edit on a different
 branch, or a role that's accidentally redownloading the binary because
 the version pin moved.

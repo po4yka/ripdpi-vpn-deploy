@@ -30,9 +30,10 @@ def _render_manifest(vars_: dict | None = None) -> dict:
     merged.update({
         "inventory_hostname": "vpn-test",
         "ansible_hostname": "vpn-test",
-        "ansible_date_time": {"iso8601": "2026-06-16T00:00:00Z"},
         "node_manifest_environment": "prod",
         "node_manifest_provider": "upcloud",
+        "node_manifest_source_revision": "1" * 40,
+        "node_manifest_deployable_digest": "2" * 64,
     })
     if vars_:
         merged.update(vars_)
@@ -42,13 +43,16 @@ def _render_manifest(vars_: dict | None = None) -> dict:
 
 def test_default_manifest_contract():
     manifest = _render_manifest()
-    assert manifest["schema_version"] == 1
+    assert manifest["schema_version"] == 2
+    assert manifest["source_revision"] == "1" * 40
+    assert manifest["deployable_digest"] == "2" * 64
     assert manifest["hostname"] == "vpn-test"
     assert manifest["environment"] == "prod"
     assert manifest["provider"] == "upcloud"
     assert set(manifest) == {
         "schema_version",
-        "generated_at",
+        "source_revision",
+        "deployable_digest",
         "hostname",
         "environment",
         "provider",

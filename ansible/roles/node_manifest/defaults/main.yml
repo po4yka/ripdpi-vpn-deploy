@@ -5,7 +5,7 @@
 node_manifest:
   dir: /var/lib/ripdpi-vpn-deploy
   path: /var/lib/ripdpi-vpn-deploy/manifest.json
-  schema_version: 1
+  schema_version: 2
   rollback_artifacts:
     - /etc/xray/config.json.prev
     - /etc/ssh/moduli.prev

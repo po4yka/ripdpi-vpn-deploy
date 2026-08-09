@@ -222,6 +222,7 @@ make deploy      # ansible-playbook site.yml
 make deploy-canary # same deploy flow with ENV=canary
 make os-maintenance # serial OS upgrade/reboot, then verify + security-verify
 make verify      # post-deploy verification playbook
+make source-drift # deployable-content parity against live node manifests
 make security-verify # host hardening verification playbook
 make clean       # shred decrypted secrets
 

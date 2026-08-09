@@ -55,6 +55,8 @@ def merge_render_vars() -> dict:
     merged.setdefault("xray_sha256", "0" * 64)
     merged.setdefault("hysteria_arch", "amd64")
     merged.setdefault("hysteria_sha256", "0" * 64)
+    merged.setdefault("node_manifest_source_revision", "1" * 40)
+    merged.setdefault("node_manifest_deployable_digest", "2" * 64)
     merged.setdefault(
         "watchdog_reality_probes",
         [

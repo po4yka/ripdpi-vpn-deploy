@@ -10,6 +10,11 @@
 
 **Per-host fleet labels** — multi-provider inventories carry `provider` and `env` host variables. The role prefers those values and only falls back to the operator process environment for legacy single-host inventories.
 
+**Deploy provenance is deterministic** — the manifest records the clean Git
+revision used by the operator and a digest of deployable repository paths.
+Documentation-only commits may change the revision without changing the
+digest; live parity is decided by the digest.
+
 ## What's done well
 
 - No UUIDs, private keys, client names, cert material, tokens, subscription URLs, or IP reputation data belong in the manifest.
@@ -22,3 +27,5 @@
 - Do not add secrets-derived peer or client details for AmneziaWG, Xray, subscription-host, or watchdog providers.
 - Keep the schema additive and deterministic so fleet tooling can consume it without brittle host-specific parsing.
 - Never derive every host's labels from the controller's `PROVIDER` and `ENV` variables during a multi-provider play.
+- Do not add timestamps or controller-local paths. They make every check-mode
+  run look like drift and hide meaningful source changes.

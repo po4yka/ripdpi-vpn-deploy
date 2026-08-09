@@ -52,6 +52,7 @@ NON_SECRET_TOPLEVEL = {
     # Role-internal compute (set_fact)
     "xray_arch", "xray_sha256", "hysteria_arch", "hysteria_sha256",
     "node_manifest_environment", "node_manifest_provider",
+    "node_manifest_source_revision", "node_manifest_deployable_digest",
     # real-vps-awg-nat template context assembled by role tasks/pre_tasks
     "_evidence_awg_toolchain_manifest", "_evidence_firewall_description",
     "_evidence_firewall_loader", "_evidence_firewall_policy",

@@ -16,6 +16,10 @@ aliases for existing inventories and must stay guarded by `role-tiers.yml`.
 default. `group_vars` only overrides. Reading a role's defaults file tells
 you everything it exposes.
 
+**Live source parity is explicit** — `node_manifest` records the clean source
+revision and deployable digest. `source-drift.yml` compares the live digest
+with the current checkout; `deploy` and `verify` run that gate automatically.
+
 **Inventory is rendered, not committed** — `scripts/render-inventory.sh`
 reads `terraform output -json` and emits `inventory/<env>.yml`. Don't edit
 the rendered file.

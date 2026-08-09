@@ -20,11 +20,13 @@ SECRETS_FILE  ?= $(RUNTIME_DIR)/vpn-$(ENV).secrets.yaml
 SOPS_FILE     ?= $(HOME)/.config/vpn-provision/$(ENV).secrets.sops.yaml
 TFVARS        := $(TF_ROOT)/environments/$(ENV).tfvars
 TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
+DEPLOY_SOURCE_REVISION ?= $(shell ./scripts/deploy-source-identity.sh --revision 2>/dev/null)
+DEPLOYABLE_SOURCE_DIGEST ?= $(shell ./scripts/deploy-source-identity.sh --digest 2>/dev/null)
 
 export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
-export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CONFIG
+export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CONFIG DEPLOY_SOURCE_REVISION DEPLOYABLE_SOURCE_DIGEST
 
-.PHONY: help init validate plan apply inventory wait decrypt require-inventory validate-ansible-extra-vars dry-run deploy deploy-canary os-maintenance verify security-verify security-audit clean \
+.PHONY: help init validate plan apply inventory wait decrypt require-inventory require-clean-source validate-ansible-extra-vars dry-run deploy deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
         pre-deploy-check \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
@@ -77,6 +79,7 @@ help:
 	@echo "  deploy-canary              Deploy ENV=canary through the normal deploy flow"
 	@echo "  os-maintenance             Rolling full OS upgrade + required reboot + verification"
 	@echo "  verify [TAG_ON_SUCCESS=1]  ansible-playbook verify.yml (+ optional known-good git tag)"
+	@echo "  source-drift               Require live deployable digest to match the clean checkout"
 	@echo "  security-verify            Host hardening checks (SSH/sysctl/firewall/services)"
 	@echo "  awg-evidence-provision     Provision the three-host AWG evidence lane (after decrypt)"
 	@echo "  smoke-test                 End-to-end traffic test through every enabled profile"
@@ -198,6 +201,10 @@ require-inventory:
 	@test -s "$(ANSIBLE_DIR)/inventory/generated.ini" || { echo "missing generated inventory — run 'make inventory'"; exit 1; }
 	@ansible-inventory --list | python3 -c 'import json, sys; document = json.load(sys.stdin); hosts = document.get("vpn", {}).get("hosts", []); raise SystemExit(0 if hosts else 1)' || { echo "generated inventory has no vpn hosts — run 'make inventory'"; exit 1; }
 
+require-clean-source:
+	@test -n "$(DEPLOY_SOURCE_REVISION)" && test -n "$(DEPLOYABLE_SOURCE_DIGEST)" || { echo "cannot derive deploy source identity"; exit 1; }
+	@test -z "$$(git status --porcelain --untracked-files=normal)" || { echo "deployment and live source verification require a clean git checkout"; exit 1; }
+
 validate-ansible-extra-vars:
 	@if [ -n "$(ANSIBLE_EXTRA_VARS_FILE)" ]; then \
 	  test -n "$(ANSIBLE_LIMIT)" || { echo "ANSIBLE_EXTRA_VARS_FILE requires ANSIBLE_LIMIT"; exit 1; }; \
@@ -222,12 +229,13 @@ dry-run: require-inventory validate-ansible-extra-vars pre-deploy-check
 	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
 	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
 
-deploy: require-inventory validate-ansible-extra-vars pre-deploy-check
+deploy: require-clean-source require-inventory validate-ansible-extra-vars pre-deploy-check
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/site.yml \
 	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
 	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)") \
 	  $(if $(strip $(ANSIBLE_TAGS)),--tags "$(ANSIBLE_TAGS)")
+	$(MAKE) source-drift ANSIBLE_LIMIT="$(ANSIBLE_LIMIT)" ANSIBLE_EXTRA_VARS_FILE="$(ANSIBLE_EXTRA_VARS_FILE)"
 	@ENV=$(ENV) PROVIDER=$(PROVIDER) ./scripts/audit-log.sh append-best-effort \
 	  --action site-deploy \
 	  --note "playbook=site.yml warp_outbound_role=conditional"
@@ -235,7 +243,7 @@ deploy: require-inventory validate-ansible-extra-vars pre-deploy-check
 deploy-canary:
 	$(MAKE) ENV=canary deploy
 
-os-maintenance: require-inventory validate-ansible-extra-vars pre-deploy-check
+os-maintenance: require-clean-source require-inventory validate-ansible-extra-vars pre-deploy-check
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/os-maintenance.yml \
 	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
 	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
@@ -245,7 +253,7 @@ os-maintenance: require-inventory validate-ansible-extra-vars pre-deploy-check
 	  --action os-maintenance \
 	  --note "playbook=os-maintenance.yml serial=1 verified=true"
 
-verify: require-inventory validate-ansible-extra-vars pre-deploy-check
+verify: require-clean-source require-inventory validate-ansible-extra-vars pre-deploy-check
 	@if [ "$(TAG_ON_SUCCESS)" = "1" ] && [ -n "$(ANSIBLE_LIMIT)" ]; then \
 	  echo "TAG_ON_SUCCESS=1 requires an unbounded fleet verification"; \
 	  exit 1; \
@@ -254,10 +262,16 @@ verify: require-inventory validate-ansible-extra-vars pre-deploy-check
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/verify.yml \
 	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
 	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
+	$(MAKE) source-drift ANSIBLE_LIMIT="$(ANSIBLE_LIMIT)" ANSIBLE_EXTRA_VARS_FILE="$(ANSIBLE_EXTRA_VARS_FILE)"
 	@if [ "$(TAG_ON_SUCCESS)" = "1" ]; then \
 	  tag="vpn-deploy-known-good-$$(date +%Y-%m-%d-%H%M)"; \
 	  git tag "$$tag" && echo "tagged: $$tag"; \
 	fi
+
+source-drift: require-clean-source require-inventory validate-ansible-extra-vars
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/source-drift.yml \
+	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
+	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
 
 security-verify: require-inventory validate-ansible-extra-vars pre-deploy-check
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \

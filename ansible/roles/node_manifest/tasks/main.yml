@@ -11,6 +11,17 @@
   ansible.builtin.set_fact:
     node_manifest_environment: "{{ env | default(lookup('env', 'ENV'), true) }}"
     node_manifest_provider: "{{ provider | default(lookup('env', 'PROVIDER'), true) }}"
+    node_manifest_source_revision: "{{ lookup('env', 'DEPLOY_SOURCE_REVISION') }}"
+    node_manifest_deployable_digest: "{{ lookup('env', 'DEPLOYABLE_SOURCE_DIGEST') }}"
+
+- name: Require immutable deploy source identity
+  ansible.builtin.assert:
+    that:
+      - node_manifest_source_revision is match('^[0-9a-f]{40}$')
+      - node_manifest_deployable_digest is match('^[0-9a-f]{64}$')
+    fail_msg: >-
+      Run deployment through the repository Makefile from a clean checkout;
+      direct playbook execution cannot produce an auditable source manifest.
 
 - name: Build public listener manifest when role runs directly
   ansible.builtin.set_fact:

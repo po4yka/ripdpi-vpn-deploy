@@ -42,8 +42,9 @@
 {% set _ = ns.public_listeners.append(item) -%}
 {% endfor -%}
 {
-  "schema_version": {{ node_manifest.schema_version | default(1) | int }},
-  "generated_at": "{{ (ansible_date_time | default({})).iso8601 | default('1970-01-01T00:00:00Z') }}",
+  "schema_version": {{ node_manifest.schema_version | default(2) | int }},
+  "source_revision": {{ node_manifest_source_revision | to_json }},
+  "deployable_digest": {{ node_manifest_deployable_digest | to_json }},
   "hostname": "{{ ansible_hostname | default(inventory_hostname | default('unknown')) }}",
   "environment": "{{ node_manifest_environment | default('') }}",
   "provider": "{{ node_manifest_provider | default('') }}",

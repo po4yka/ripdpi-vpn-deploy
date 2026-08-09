@@ -41,7 +41,7 @@ def test_os_maintenance_is_rolling_and_closes_the_backlog() -> None:
 def test_make_exposes_verified_os_maintenance_target() -> None:
     makefile = (REPO_ROOT / "Makefile").read_text()
 
-    assert "os-maintenance: require-inventory" in makefile
+    assert "os-maintenance: require-clean-source require-inventory" in makefile
     assert "playbooks/os-maintenance.yml" in makefile
     assert "$(MAKE) verify" in makefile
     assert "$(MAKE) security-verify" in makefile
