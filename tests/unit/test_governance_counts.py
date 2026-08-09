@@ -66,7 +66,7 @@ def test_governance_counts_match_live_repository():
     )[0]
     for pointer in ("make check", ".github/workflows/ci.yml", "docs/TESTING.md", "required checks"):
         assert pointer in contributor_guidance
-    assert "check: validate ci-fast" in (ROOT / "Makefile").read_text()
+    assert "check: task-check validate ci-fast" in (ROOT / "Makefile").read_text()
     assert not re.search(r"\b\d+\+? jobs\b|matrix:\s*\d+\s+roles", contributor_guidance, re.IGNORECASE)
     assert "Renovate PRs" in contributing
     assert "Ansible plus systemd own runtime state" in contributing
