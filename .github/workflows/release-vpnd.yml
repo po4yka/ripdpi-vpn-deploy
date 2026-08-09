@@ -21,14 +21,17 @@ jobs:
     outputs:
       release-tag: ${{ steps.validate.outputs.release-tag }}
     steps:
+      - name: Checkout release revision and tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
       - name: Validate release tag
         id: validate
         env:
           TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-        run: |
-          set -euo pipefail
-          [[ "$TAG" =~ ^vpnd-v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          echo "release-tag=$TAG" >> "$GITHUB_OUTPUT"
+        run: bash scripts/validate-vpnd-release-tag.sh "$TAG" "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
 
   build-x86_64-linux:
     name: build (x86_64-unknown-linux-gnu)
