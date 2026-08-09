@@ -2,7 +2,7 @@
 
 ## Vision
 
-Reproducible, layered IaC for a four-tier multi-profile VPN stack
+Reproducible, layered IaC for a four-tier multi-profile outbound connectivity stack
 (P0 VLESS+REALITY+Vision, P1 nginx+XHTTP direct, P2 Hysteria2 + AmneziaWG,
 P3 manual reachability). Threat model is active L7 fingerprinting and
 aggressive QoS.
@@ -19,7 +19,7 @@ operator surface; `vpnd/` is a convenience CLI in front of it (see
 - One UUID / shortId / peer key per device — never shared.
 - Pinned versions; pre-releases through staging only.
 - Gitleaks gates CI.
-- CDN is **not** the RU baseline (see `docs/CDN-DECISION.md`).
+- CDN is **not** the filtered-path baseline (see `docs/CDN-DECISION.md`).
 - **No references to external knowledge stores** (store names, filesystem
   paths, page slugs, or externally hosted citations) anywhere in this repo — code,
   comments, docs, commit messages, task notes. Knowledge that needs to live in
@@ -67,7 +67,7 @@ scripts/CLAUDE.md                        — shell/python conventions
 tests/CLAUDE.md                          — unit + snapshot + molecule + tf-test layers
 vpnd/CLAUDE.md                           — Rust convenience CLI
 vpnd/src/cli.rs                          — vpnd subcommand + flag definitions (canonical SOT)
-docs/CDN-DECISION.md                     — ADR: CDN is not the RU baseline
+docs/CDN-DECISION.md                     — ADR: CDN is not the filtered-path baseline
 ```
 
 ## Development
@@ -141,23 +141,16 @@ uncommitted unless the user explicitly asks for that.
 
 ## Task tracking
 
-Tasks live as Markdown notes (checkbox-task line format) under
-`docs/tasks/`. The format is documented locally in
-`.claude/skills/repo-task-board/SKILL.md`; nothing outside this repo is
-load-bearing.
+Portfolio state lives in `docs/tasks/issues/`; execution lives in exactly one
+mdtask file under `docs/tasks/work/` or an active OpenSpec change. The generated
+`docs/tasks/board.md` is read-only. The strict schema, risk rule, federation
+contract, and two-commit close lifecycle are in `docs/tasks/README.md` and the
+canonical `.agents/skills/repo-task-board/SKILL.md` skill.
 
-- `docs/tasks/issues/<slug>.md` — source of truth, one note per task/epic.
-- `docs/tasks/active.md`, `backlog.md`, `blocked.md`, `epics.md`,
-  `dashboard.md`, `board.md` — query-only views (do not add tasks here).
-- Canonical task line:
-  `- [ ] #task <title> #repo/RIPDPI-VPN-DEPLOY #area/<area> #status/<status> <priority>`
-- Allowed areas: `ansible | terraform | vpnd | xray-config | ci | sbom | scripts | secrets | docs | epic`.
-- Lifecycle is delete-on-close (git history is the audit trail).
-
-Full schema, allowed statuses, priority markers, and workflows are in
-`.claude/skills/repo-task-board/SKILL.md`. Some task notes carry optional
-extension fields (`source_references`, `linked_task`) used by local
-authoring tools; treat them as opaque metadata.
+Use only `./taskctl` for task lifecycle, mdtask access, OpenSpec archival, and
+validation. Cross-repository references are qualified as `project#TASK-ID` and
+are checked against a peer checkout rather than mirrored manually. Install the
+exact tools with `make task-tools`; run `make task-check` before handoff.
 
 ## When the user says "remember"
 

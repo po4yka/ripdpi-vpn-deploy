@@ -37,7 +37,7 @@ GitHub → Actions → **branch-protection** → Run workflow → leave default
 (`main`) → Run.
 
 Verify it succeeded; the job logs should print the required-status-check
-count (currently 29 in the repository manifest).
+count (currently 30 in the repository manifest).
 
 ### 4. Verify in Settings
 
@@ -48,7 +48,7 @@ Settings → Branches → `main` → see:
 - Dismiss stale pull request approvals ✅
 - Require review from Code Owners ✅
 - Require status checks to pass before merging ✅
-- 29 status checks listed after the current workflow has been applied
+- 30 status checks listed after the current workflow has been applied
 - Require branches to be up to date before merging ✅
 - Require conversation resolution before merging ✅
 - Require linear history ✅
@@ -61,6 +61,7 @@ Settings → Branches → `main` → see:
 | Workflow | Job name |
 |---|---|
 | ci.yml | `required checks` |
+| ci.yml | `task-contract` |
 | ci.yml | `gitleaks` |
 | ci.yml | `terraform fmt + validate (upcloud)` |
 | ci.yml | `terraform fmt + validate (hetzner)` |
@@ -98,8 +99,8 @@ indefinitely.
 The aggregate `required checks` context is the forward-compatible gate: it
 depends on the complete current CI graph, including Scaleway and newer test
 jobs. The remaining individual contexts preserve explicit failure visibility
-and compatibility. If Settings still shows 28 contexts, the remote rule is
-stale; rerun `branch-protection` after this documentation commit is green.
+and compatibility. If Settings shows fewer than 30 contexts, the remote rule
+is stale; rerun `branch-protection` after this documentation commit is green.
 
 ## Admin enforcement
 

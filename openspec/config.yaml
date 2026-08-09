@@ -1,0 +1,31 @@
+schema: ripdpi-deploy-change
+
+context: |
+  RIPDPI VPN deployment is reproducible infrastructure built through Terraform,
+  cloud-init, Ansible, SOPS+age, and the optional vpnd CLI. Follow AGENTS.md,
+  dedicated-worktree isolation, layer ownership, and the distinction between
+  local, remote CI, dry-run, staging, live, client, and artifact proof. Every
+  change links to exactly one docs/tasks portfolio ID.
+
+rules:
+  proposal:
+    - Include the exact portfolio Task ID.
+    - Separate observable operator or infrastructure behavior from implementation detail.
+  specs:
+    - Give requirements stable IDs and cover failure, security, rollback, and compatibility paths.
+    - Surface Terraform, Ansible, secrets, configuration, CLI, and deployment contracts when applicable.
+  design:
+    - Identify affected layers, owned paths, migrations, rollback, external effects, and exact gates.
+  tasks:
+    - Use mdtask IDs and an @item backlink on every checkbox.
+    - Keep work feature-first and include implementation plus verification in the same slice.
+  verification:
+    - Record exact-SHA evidence and map each requirement to an execution step.
+
+operations:
+  apply:
+    guidance:
+      - Work only in a dedicated worktree and never infer completion from a checkbox alone.
+  archive:
+    guidance:
+      - Archive only through taskctl after strict validation and complete evidence.

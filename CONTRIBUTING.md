@@ -26,11 +26,27 @@ and tag releases.
 After cloning, run this once to wire up the local pre-commit hooks:
 
 ```bash
+make task-tools
 make install-hooks
 ```
 
-This installs commit-time and commit-message hooks for the repository's
-quality and Conventional Commit policies.
+This installs the pinned tasking tools plus commit-time and commit-message
+hooks for the repository's quality and Conventional Commit policies.
+
+## Task and OpenSpec contract
+
+Every non-trivial PR names a portfolio Task ID from `docs/tasks/issues/`.
+Features, infrastructure behavior, schema, security/network, deployment
+lifecycle, and cross-repository changes use an OpenSpec change; narrow waived
+work records an allowed `spec_reason`. Use `./taskctl`, not direct edits to the
+generated board or direct OpenSpec archive commands.
+
+Cross-repository dependencies use qualified IDs such as
+`po4yka/RIPDPI#TRN-...`. Validate them against a sibling checkout with:
+
+```bash
+make task-federation PEER_ROOT=../RIPDPI
+```
 
 ## Local pre-flight
 
@@ -40,7 +56,7 @@ Before opening or updating a PR:
 make check
 ```
 
-`make check` is the fail-closed union of `make validate` and `make ci-fast`.
+`make check` is the fail-closed union of `make task-check`, `make validate`, and `make ci-fast`.
 It is the canonical local parity gate; `docs/TESTING.md` records the Molecule,
 GitHub-native security, and credentialed deploy checks that remain separate or
 CI-only. When changing a role, also run its focused
@@ -105,7 +121,7 @@ new provider, new vpnd subcommand, new AWG cohort) are in the root
 
 ## What not to PR
 
-- `Cloudflare CDN as RU baseline` — see `docs/CDN-DECISION.md` ADR.
+- `Cloudflare CDN as filtered-path baseline` — see `docs/CDN-DECISION.md` ADR.
 - A web admin panel (Marzban / Remnawave / 3x-ui) — architectural
   invariant.
 - Calendar-based credential auto-rotation — rotation must be event-driven.

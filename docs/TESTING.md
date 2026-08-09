@@ -20,8 +20,8 @@ real VPS. This doc enumerates each layer and where coverage gaps exist
 | **Ansible role: firewall** | ansible-lint | render check | **molecule** | tests nftables.conf parse + presence of expected ports. |
 | **Ansible role: xray** | ansible-lint | render check (JSON validity) | **molecule** (template-only, stub binary) | tests config.json shape, systemd unit, symlink rollback. |
 | **PQ-REALITY adoption policy** | `scripts/check-xray-breaking-changes.py` (pre-commit + CI + `make ci-fast`) | every rendered VLESS+REALITY inbound must retain `settings.decryption: "none"` | n/a while phase is HOLD | Unit tests cover single/multi-cohort renders, every violating inbound, selector scope, and fail-closed guard metadata. |
-| **Ansible role: nginx-xhttp** | ansible-lint | render check (`nginx -t`) | **molecule** (idempotence + verify) | self-signed cert generated in pre_tasks; verifies no Cloudflare-specific directives leaked into RU baseline. |
-| **Ansible role: cdn-front** | ansible-lint | render check (`nginx -t`) | **molecule** | opt-in tactical Cloudflare-fronted XHTTP role; not part of the RU baseline or required CI molecule matrix. |
+| **Ansible role: nginx-xhttp** | ansible-lint | render check (`nginx -t`) | **molecule** (idempotence + verify) | self-signed cert generated in pre_tasks; verifies no Cloudflare-specific directives leaked into the filtered-path baseline. |
+| **Ansible role: cdn-front** | ansible-lint | render check (`nginx -t`) | **molecule** | opt-in tactical Cloudflare-fronted XHTTP role; not part of the filtered-path baseline or required CI molecule matrix. |
 | **Ansible role: hysteria** | ansible-lint | render check | **molecule** (template-only, stub binary) | verifies clients render + Salamander disabled by default. |
 | **Ansible role: amneziawg** | ansible-lint | render check | **molecule (syntax+create only)** | full converge needs a kernel TUN device + golang build of amneziawg-go that Docker can't reliably provide; scenario exercises task-file structure so regressions are caught early, deeper testing happens against a real VPS. |
 | **Ansible role: real-vps-awg-nat** | ansible-lint + focused provisioning contracts | render/source-policy checks + immutable offline-build fixtures | **local three-host evidence lane (not Molecule)** | Meaningful convergence requires three separate root/systemd/network namespaces, a physical TUN-capable sentinel, a public echo host, and an AWG/NAT VPS. Unit tests cover fail-closed rendering, transaction recovery, archive safety, and idempotent immutable tool reuse; the recurring Mac-to-sentinel-to-VPS lane is the functional and idempotency proof. A single privileged container cannot validate these trust and routing boundaries. |
@@ -68,6 +68,7 @@ real VPS. This doc enumerates each layer and where coverage gaps exist
 | **Terraform policy (cross-provider, Conftest)** | `.github/workflows/tf-policy.yml` per PR | n/a | n/a | Runs each provider's native Terraform tests with `mock_provider`, then `conftest verify -p terraform/policy/` for Rego syntax/unit-test validation. The workflow intentionally does not run real provider plans against example tfvars because those require operator credentials and provider API access. `make tf-policy` for local. |
 | **Container image scanning (Trivy)** | `.github/workflows/image-scan.yml` per PR | n/a | n/a | Every PR scans the complete deduplicated set of digest-pinned images from all Molecule scenarios, independent of changed paths. Uploads HIGH/CRITICAL SARIF to the Security tab. Escalate only with rationale + expiry + owner in `.trivyignore`. |
 | **Repo drift (weekly)** | `.github/workflows/drift.yml` | `scripts/drift-since-tag.sh --repo-only` | n/a | Scheduled Monday 12:00 UTC. Diffs the repository against the last known-good tag. Updates a single rolling issue labelled `automation:drift` when drift is detected; silent when clean. Operator-side cron (against live servers) is unchanged and uses the script without `--repo-only`. |
+| **Task and OpenSpec contract** | `make task-check` + required `task-contract` CI job | strict portfolio, mdtask, OpenSpec, generated-asset, board, and deletion-history validation | peer checkout in CI | Federation resolves qualified RIPDPI task references, terminal Git history, and cross-repository cycles. |
 | **Jinja2 snapshot diff (97 templates)** | `scripts/render-snapshots.py` | golden-file diff | n/a | Fails on any unintended render change. Run `make snapshot-update` after intentional template edits. |
 
 ## Test fixtures and stubs
@@ -239,6 +240,8 @@ server disambiguates a provider-edge drop (zero inbound) from server-side silenc
 Local pre-commit configuration (`.pre-commit-config.yaml`) catches common
 issues before CI cycles:
 
+- `task-contract` — validates portfolio records, mdtask execution, OpenSpec,
+  generated assets, board freshness, and terminal-history rules.
 - `terraform_fmt`, `terraform_docs`, `terraform_tflint` via
   `antonbabenko/pre-commit-terraform` — Terraform formatting, auto-generated
   per-provider README, and security linting.

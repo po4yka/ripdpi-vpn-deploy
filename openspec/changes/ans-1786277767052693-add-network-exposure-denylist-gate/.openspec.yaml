@@ -1,0 +1,6 @@
+schema: ripdpi-deploy-change
+created: "2026-08-09"
+goal: "ANS-1786277767052693 Implement a disabled-by-default network exposure denylist gate"
+affected_areas: ["ansible", "security"]
+skip_specs: false
+retire_capabilities: false

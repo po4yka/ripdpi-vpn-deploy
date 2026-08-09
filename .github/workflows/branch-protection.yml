@@ -39,6 +39,7 @@ jobs:
           # .github/workflows/ci.yml + codeql.yml.
           CONTEXTS=$(jq -nc '[
             "required checks",
+            "task-contract",
             "gitleaks",
             "terraform fmt + validate (upcloud)",
             "terraform fmt + validate (hetzner)",
