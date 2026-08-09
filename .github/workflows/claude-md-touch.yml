@@ -20,9 +20,15 @@ jobs:
 
       - name: Collect changed files
         id: changed
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        shell: bash
         run: |
-          git fetch origin "${{ github.base_ref }}" --depth=1
-          git diff --name-only "origin/${{ github.base_ref }}"...HEAD > /tmp/changed_files.txt
+          set -euo pipefail
+          git check-ref-format --branch "$BASE_REF" >/dev/null
+          git fetch --depth=1 origin \
+            "refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          git diff --name-only "origin/${BASE_REF}"...HEAD > /tmp/changed_files.txt
           echo "Changed files:"
           cat /tmp/changed_files.txt
 
