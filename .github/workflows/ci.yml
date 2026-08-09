@@ -79,10 +79,22 @@ jobs:
           PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           args=()
+          base_sha=""
           if [[ "$EVENT_NAME" == "pull_request" && -n "$PR_BASE_SHA" ]]; then
-            args+=(--base "$PR_BASE_SHA")
+            base_sha="$PR_BASE_SHA"
           elif [[ "$EVENT_NAME" == "push" && "$PUSH_BEFORE_SHA" != "0000000000000000000000000000000000000000" ]]; then
-            args+=(--base "$PUSH_BEFORE_SHA")
+            base_sha="$PUSH_BEFORE_SHA"
+          fi
+          if [[ -n "$base_sha" ]]; then
+            git cat-file -e "${base_sha}^{commit}" || {
+              echo "::error::Task-contract base commit is unavailable: $base_sha"
+              exit 1
+            }
+            if git cat-file -e "${base_sha}:tools/tasking/project.json"; then
+              args+=(--base "$base_sha")
+            else
+              echo "::notice::Pre-contract bootstrap base; strict history starts with the next change"
+            fi
           fi
           ./taskctl validate "${args[@]}"
           ./taskctl federation validate --peer-root .task-peers/RIPDPI
