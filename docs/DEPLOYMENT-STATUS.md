@@ -11,8 +11,8 @@ and decrypted SOPS values. Those remain in git-ignored operator files.
 |---|---|
 | Last verified deployment | 2026-08-09 |
 | Git release | [`infra-v1.0.0`](https://github.com/po4yka/ripdpi-vpn-deploy/releases/tag/infra-v1.0.0) |
-| Deployed source commit | `52d8e2f8a7463cd9ead4b5addbf8979741996993` |
-| Source validation | [GitHub CI run 31306843858](https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/31306843858), CodeQL, and Scorecard passed |
+| Deployed source commit | `529d32a660f59f177f3ce2f21c1d5cc8746dbf29` |
+| Source validation | [GitHub CI run 31310800563](https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/31310800563), CodeQL, and Scorecard passed |
 | Release state | published `infra-v1.0.0` baseline plus verified post-release `main` updates |
 
 The deployed source was applied to the existing fleet. No server was replaced
@@ -53,9 +53,10 @@ unreachable or failed host:
 
 | Gate | P0 | P1 | P2 |
 |---|---:|---:|---:|
-| `make deploy` | `ok=140 changed=5 failed=0` | `ok=125 changed=14 failed=0` | `ok=115 changed=12 failed=0` |
+| `make deploy` | `ok=145 changed=2 failed=0` | `ok=128 changed=3 failed=0` | `ok=118 changed=2 failed=0` |
+| automatic `make source-drift` | `ok=4 changed=0 failed=0` | `ok=4 changed=0 failed=0` | `ok=4 changed=0 failed=0` |
 | `make verify` | `ok=16 failed=0` | `ok=16 failed=0` | `ok=13 failed=0` |
-| `make security-verify` | `ok=15 failed=0` | `ok=15 failed=0` | `ok=15 failed=0` |
+| `make security-verify` | `ok=17 failed=0` | `ok=17 failed=0` | `ok=17 failed=0` |
 
 The P0 verification included both authenticated REALITY round trips. Direct
 SSH-path inspection confirmed that all three Ansible sessions traversed
@@ -90,6 +91,19 @@ P0 verification again included authenticated REALITY round trips and fresh
 Xray StatsService metrics. P1 verified its XHTTP listener and P2 verified its
 Hysteria2 UDP and AmneziaWG listeners after reboot.
 
+Later on 2026-08-09, a full check-mode comparison found real repo-to-live
+drift: P0 and P1 still had the previous backup script, and P1 retained the VPS
+firmware package removed by the current baseline. The fleet was converged in
+P1, P2, P0 order without replacing a server. The original focused check then
+reported `ok=40 changed=0 failed=0` on every node.
+
+Node manifests now use deterministic schema 2 provenance: the clean source
+revision is recorded for audit, while parity is decided by a digest of the
+deployable Ansible, script, and dependency paths. `make source-drift` was red
+on all three old manifests before convergence and green with `ok=4 changed=0
+failed=0` on all three afterward. The gate runs automatically after both
+`make deploy` and `make verify`; deployment from a dirty checkout is rejected.
+
 Secret schema validation, placeholder checks, certificate checks, and private
 key/certificate matching passed before deployment. The decrypted SOPS file was
 shredded with `make clean`, and local Terraform plan artifacts were removed.
@@ -123,7 +137,10 @@ address and must be updated when that address changes.
 5. Run `make deploy`, `make verify`, and `make security-verify`. When package
    backlog or reboot markers are present, run `make os-maintenance`; it rolls
    one node at a time and repeats both verification gates.
-6. Run the relevant outside-in client-path probes.
-7. Run `make clean` and remove plan artifacts.
-8. Update this file only from observed results; never copy live endpoints or
+6. Confirm `make source-drift` is green for every node; `deploy` and `verify`
+   run it automatically, but the standalone command is the fastest parity
+   check.
+7. Run the relevant outside-in client-path probes.
+8. Run `make clean` and remove plan artifacts.
+9. Update this file only from observed results; never copy live endpoints or
    secret material into it.
