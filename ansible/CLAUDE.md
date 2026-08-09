@@ -2,7 +2,7 @@
 
 ## Design decisions
 
-**One playbook per intent** — `site.yml` (deploy), `verify.yml`, `security-verify.yml`, `smoke-test.yml`, `rollback-config.yml`, `rollback-xray.yml`, `rotate-credentials.yml`. No mega-playbook with conditional flags; new intent = new playbook.
+**One playbook per intent** — `site.yml` (deploy), `os-maintenance.yml` (serial OS upgrades/reboots), `verify.yml`, `security-verify.yml`, `smoke-test.yml`, `rollback-config.yml`, `rollback-xray.yml`, `rotate-credentials.yml`. No mega-playbook with conditional flags; new intent = new playbook.
 
 **Roles are feature-toggleable** — `group_vars/all.yml` carries `vpn.enable_*`
 booleans. Disabling a profile is a config change, not a code change.
@@ -54,6 +54,9 @@ exercises `site.yml` end-to-end.
   Don't disable globally; disable per-play if you must.
 - **Role ordering matters** — baseline → package_updates → firewall → intrusion_prevention → geodata → transport/listener roles → monitoring → backup → watchdog → node_manifest.
   `site.yml` enforces this; don't rely on `meta: dependencies`.
+- **OS maintenance is fleet-serial** — `os-maintenance.yml` upgrades and,
+  when required, reboots one host at a time. It must reject residual packages
+  and reboot markers before advancing.
 - **Handler queues fire at end-of-play** — a service restart triggered in
   role A doesn't happen until role B is done. Use `meta: flush_handlers` if
   later roles depend on the restart having happened.

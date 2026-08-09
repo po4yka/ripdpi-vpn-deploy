@@ -10,9 +10,14 @@ is false.
 defaults false. Reboots stay operator-controlled so deploys do not silently
 interrupt active tunnels.
 
-**Opt-in at site level** — `site.yml` runs the role only when
-`security_controls.unattended_upgrades` is true. Role defaults are safe, but
-the fleet default remains disabled.
+**Enabled for the fleet baseline** — `site.yml` runs the role when
+`security_controls.unattended_upgrades` is true, and the fleet default enables
+it. Profiles may disable it only when their lifecycle provides an equivalent
+patching mechanism.
+
+**Full upgrades are a separate rolling intent** — unattended runs remain
+security-only. `playbooks/os-maintenance.yml` owns full upgrades and any
+required operator-controlled reboot, one host at a time.
 
 ## What's done well
 
@@ -31,3 +36,5 @@ the fleet default remains disabled.
   package/config shape; live nodes still need `make verify` after enabling.
 - **Automatic reboots are a policy change** — keep them disabled unless an
   operator has a separate rollout and alerting plan.
+- **Do not add full upgrades to convergence** — routine `site.yml` deploys must
+  not turn an application change into an implicit OS upgrade or reboot.

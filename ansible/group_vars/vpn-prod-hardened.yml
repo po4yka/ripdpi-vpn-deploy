@@ -2,8 +2,9 @@
 # Profile: production-hardened family node.
 #
 # Transport surface matches vpn-device-full, but host hardening is stricter:
-# unattended security updates, Fail2Ban-backed SSH intrusion prevention,
-# tighter SSH session limits, and observation-mode egress counters.
+# Fail2Ban-backed SSH intrusion prevention, tighter SSH session limits, and
+# observation-mode egress counters. Security-only unattended updates are part
+# of the fleet baseline inherited from all.yml.
 #
 # This profile deliberately avoids RESEARCH-tier roles; keep it in sync with
 # ansible/role-tiers.yml family_profiles.

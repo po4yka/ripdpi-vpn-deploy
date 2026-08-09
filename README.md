@@ -220,6 +220,7 @@ make wait        # wait for cloud-init to finish on the new VPS
 make dry-run     # ansible-playbook --check --diff
 make deploy      # ansible-playbook site.yml
 make deploy-canary # same deploy flow with ENV=canary
+make os-maintenance # serial OS upgrade/reboot, then verify + security-verify
 make verify      # post-deploy verification playbook
 make security-verify # host hardening verification playbook
 make clean       # shred decrypted secrets

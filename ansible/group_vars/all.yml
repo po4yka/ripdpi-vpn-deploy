@@ -140,7 +140,7 @@ security_controls:
   ssh_required_rsa_size: 0  # 0 omits RequiredRSASize for older OpenSSH compatibility
   ssh_max_sessions: 2
   ssh_max_startups: "10:30:20"
-  unattended_upgrades: false
+  unattended_upgrades: true
   automatic_reboot: false
   fail2ban: false
   crowdsec: false
@@ -148,6 +148,17 @@ security_controls:
   aide: false
   lynis: false
   auditd: false
+
+# Security updates are continuous; full distribution upgrades and any required
+# reboot run only through the serial os-maintenance playbook.
+package_updates:
+  enabled: true
+  security_only: true
+  automatic_reboot: false
+  mail: root
+  mail_only_on_error: true
+  remove_unused_dependencies: true
+  install_apticron: false
 
 # nftables policy. `permissive` preserves the historical output-chain behavior
 # (`policy accept`). `logged` keeps accept but adds low-noise counters only.

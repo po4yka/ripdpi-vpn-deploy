@@ -24,7 +24,7 @@ TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
 export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
 export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CONFIG
 
-.PHONY: help init validate plan apply inventory wait decrypt require-inventory validate-ansible-extra-vars dry-run deploy deploy-canary verify security-verify security-audit clean \
+.PHONY: help init validate plan apply inventory wait decrypt require-inventory validate-ansible-extra-vars dry-run deploy deploy-canary os-maintenance verify security-verify security-audit clean \
         pre-deploy-check \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
@@ -75,6 +75,7 @@ help:
 	@echo "  dry-run                    ansible-playbook --check --diff"
 	@echo "  deploy                     ansible-playbook site.yml (optional ANSIBLE_LIMIT / ANSIBLE_EXTRA_VARS_FILE)"
 	@echo "  deploy-canary              Deploy ENV=canary through the normal deploy flow"
+	@echo "  os-maintenance             Rolling full OS upgrade + required reboot + verification"
 	@echo "  verify [TAG_ON_SUCCESS=1]  ansible-playbook verify.yml (+ optional known-good git tag)"
 	@echo "  security-verify            Host hardening checks (SSH/sysctl/firewall/services)"
 	@echo "  awg-evidence-provision     Provision the three-host AWG evidence lane (after decrypt)"
@@ -233,6 +234,16 @@ deploy: require-inventory validate-ansible-extra-vars pre-deploy-check
 
 deploy-canary:
 	$(MAKE) ENV=canary deploy
+
+os-maintenance: require-inventory validate-ansible-extra-vars pre-deploy-check
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/os-maintenance.yml \
+	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
+	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
+	$(MAKE) verify ANSIBLE_LIMIT="$(ANSIBLE_LIMIT)" ANSIBLE_EXTRA_VARS_FILE="$(ANSIBLE_EXTRA_VARS_FILE)"
+	$(MAKE) security-verify ANSIBLE_LIMIT="$(ANSIBLE_LIMIT)" ANSIBLE_EXTRA_VARS_FILE="$(ANSIBLE_EXTRA_VARS_FILE)"
+	@ENV=$(ENV) PROVIDER=$(PROVIDER) ./scripts/audit-log.sh append-best-effort \
+	  --action os-maintenance \
+	  --note "playbook=os-maintenance.yml serial=1 verified=true"
 
 verify: require-inventory validate-ansible-extra-vars pre-deploy-check
 	@if [ "$(TAG_ON_SUCCESS)" = "1" ] && [ -n "$(ANSIBLE_LIMIT)" ]; then \

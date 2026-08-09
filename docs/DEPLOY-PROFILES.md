@@ -18,17 +18,21 @@ surfaces and fails if any RESEARCH-tier role becomes enabled.
 | `vpn-p2-udp.yml` | Hysteria2 + AmneziaWG | default family controls | UDP-only fallback endpoint |
 | `vpn-family-standard.yml` | Xray REALITY + nginx-xhttp + Hysteria2 | default family controls | normal family node without AmneziaWG |
 | `vpn-device-full.yml` | family-standard + AmneziaWG | default family controls | full device-VPN family node |
-| `vpn-prod-hardened.yml` | device-full | unattended security updates, Fail2Ban, tighter SSH limits, egress observation counters | production node when the operator accepts extra host controls |
+| `vpn-prod-hardened.yml` | device-full | Fail2Ban, tighter SSH limits, egress observation counters | production node when the operator accepts extra host controls |
 
 `vpn-p0-minimal.yml` intentionally leaves `vpn.enable_reality_self_steal` off. Use `vpn-p0-self-steal.yml` only after adding the owned certificate secret contract and changing `xray.target` plus `xray.server_names` together; the role adds a private loopback TLS target without widening the profile's public listener surface.
+
+Every fleet profile inherits security-only unattended updates from `all.yml`.
+Automatic reboot remains disabled; use `make os-maintenance` for a serial full
+upgrade, conditional reboot, and both verification gates.
 
 ## Hardened production profile
 
 `vpn-prod-hardened.yml` intentionally keeps the same transport contract as
 `vpn-device-full.yml` while changing host hardening. It enables:
 
-- `security_controls.unattended_upgrades=true` through the `package_updates`
-  role. The role does not configure automatic reboots.
+- the baseline `package_updates` policy without changing its no-automatic-reboot
+  contract.
 - `security_controls.fail2ban=true` through the `intrusion_prevention` role.
   Fail2Ban uses nftables sets owned by the firewall role.
 - Stricter SSH posture: `RequiredRSASize 3072`, `MaxSessions 1`, and lower
