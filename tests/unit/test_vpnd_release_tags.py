@@ -57,6 +57,19 @@ def test_release_job_uses_one_validated_tag_for_all_dispatch_paths(tmp_path):
         ["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True
     ).strip()
     subprocess.run(
+        ["git", "branch", "vpnd-v1.2.3"], cwd=tmp_path, check=True, env=environment
+    )
+    branch_only = subprocess.run(
+        ["bash", validator, "vpnd-v1.2.3", tagged_revision],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert branch_only.returncode != 0
+    assert "does not resolve to a commit" in branch_only.stderr
+
+    subprocess.run(
         ["git", "tag", "vpnd-v1.2.3"], cwd=tmp_path, check=True, env=environment
     )
 

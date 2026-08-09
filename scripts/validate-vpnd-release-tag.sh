@@ -14,7 +14,7 @@ if [[ -z "$expected_revision" ]]; then
   exit 1
 fi
 
-if ! tag_revision="$(git rev-parse --verify "${tag}^{commit}")"; then
+if ! tag_revision="$(git rev-parse --verify "refs/tags/${tag}^{commit}")"; then
   echo "vpnd release tag does not resolve to a commit: $tag" >&2
   exit 1
 fi
