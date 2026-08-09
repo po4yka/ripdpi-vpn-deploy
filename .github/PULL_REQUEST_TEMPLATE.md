@@ -1,54 +1,33 @@
-<!--
-Thanks for the contribution. Most of this template is a checklist — every
-item maps to a CI gate that will run on this PR. Confirming locally first
-saves a CI cycle.
--->
+## Task contract
+
+- Task ID: <!-- AREA-16-digit-ID -->
+- Task record: <!-- docs/tasks/issues/<slug>.md -->
+- OpenSpec change: <!-- change name, or N/A -->
+- Spec-not-required reason: <!-- allowed reason, or N/A -->
+- Cross-repository references: <!-- qualified project#TASK-ID values, or N/A -->
 
 ## Summary
 
-<!-- What does this PR change? Two-three sentences. -->
-
-## Linked issue
-
-<!-- Closes #NNN, or leave blank for trivial chores. -->
+<!-- What observable outcome does this PR deliver and why? -->
 
 ## Scope
 
-- [ ] Terraform (`terraform/...`)
-- [ ] Ansible role: <!-- name -->
-- [ ] Ansible playbook: <!-- name -->
-- [ ] Script (`scripts/...`)
-- [ ] Documentation (`docs/...`, `README.md`, `CHANGELOG.md`)
-- [ ] CI / GitHub automation (`.github/...`)
+- [ ] Terraform
+- [ ] Ansible
+- [ ] `vpnd` or scripts
+- [ ] Documentation
+- [ ] CI / GitHub automation
 - [ ] Other: <!-- describe -->
 
-## Test plan
+## Evidence
 
-Run before push (operator-side gates):
+<!-- Exact commands and the observed local, remote CI, dry-run, staging, live, client, and artifact evidence that apply. -->
 
-- [ ] `make validate` (terraform fmt + validate, gitleaks, ansible-lint, ansible syntax-check)
-- [ ] `python3 scripts/check-secrets-coverage.py`
-- [ ] `python3 scripts/check-templates-render.py`
-- [ ] `bash -n scripts/*.sh && shellcheck -s bash -S warning scripts/*.sh`
-- [ ] If a role changed: `make molecule-test ROLE=<name>`
-- [ ] If transport changed: `make smoke-test` against staging
+## Checklist
 
-CI gates that will run automatically:
-
-- terraform fmt+validate (matrix), cloud-init schema, ansible-lint+syntax,
-  molecule (matrix), shellcheck, secrets-coverage, templates-render,
-  yamllint, gitleaks, codeql, scorecard, markdown-link-check.
-
-## Conventional Commits
-
-This PR's commit subjects follow [Conventional Commits](https://www.conventionalcommits.org/)
-so release-please can pick them up:
-
-- `feat: …` for new behavior
-- `fix: …` for bug fixes
-- `docs: …` for documentation only
-- `refactor: …`, `test: …`, `perf: …`, `chore: …`
-
-## Anything reviewers should specifically check
-
-<!-- Edge cases, security implications, open questions. -->
+- [ ] `make task-check` passes
+- [ ] `make check` passes, or unavailable gates and their reason are recorded above
+- [ ] No task or execution step is marked complete without observed evidence
+- [ ] No secret, decrypted value, address feed, state, credential, or host inventory is exposed
+- [ ] Changes to runtime policy remain disabled by default unless separately approved
+- [ ] mdtask PolyForm Shield internal-tool use is owner/legal-approved if `tools/tasking` changes

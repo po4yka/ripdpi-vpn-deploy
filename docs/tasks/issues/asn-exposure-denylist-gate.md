@@ -1,43 +1,50 @@
-# ASN exposure denylist gate
+---
+id: ANS-1786277767052693
+title: Implement a disabled-by-default network exposure denylist gate
+kind: feature
+status: backlog
+area: ansible
+priority: high
+risk: high
+owner: Infrastructure security role
+parent: null
+blocked_by: []
+related_tasks: []
+spec_mode: required
+openspec_change: ans-1786277767052693-add-network-exposure-denylist-gate
+created: 2026-08-09
+updated: 2026-08-09
+---
 
-- [ ] #task Design disabled-by-default ASN exposure denylist gate #repo/RIPDPI-VPN-DEPLOY #area/ansible #status/backlog 🔼
+# Implement a disabled-by-default network exposure denylist gate
 
 ## Goal
 
-Design a disabled-by-default server-side denylist gate for high-risk ASN/service-network exposure reduction without committing ranges, generated rule payloads, firewall commands, route files, or provider-specific policy.
+Deliver a fail-closed, disabled-by-default Ansible gate that can validate a reviewed network-exposure feed, render separate ingress and egress policy intent, and produce a redacted dry-run or log-only result without shipping deployable address data in the repository.
 
-## Why now
+## Ownership
 
-Public sources such as `https://github.com/C24Be/AS_Network_List` and `https://docs.google.com/spreadsheets/d/1YWS5aMEykkM9koxcZW1q_bZBi2j1UGmTbhFhOfnrd4k/edit?gid=2065371898#gid=2065371898` can inform a defensive server-hardening pattern. The deploy repo needs a safe adoption path before any runtime enforcement is considered.
+- Primary paths: a new Ansible role, its defaults/templates/tests, placeholder-only fixtures, and operator documentation.
+- Integration paths: `ansible/group_vars/`, `ansible/playbooks/site.yml`, firewall render inputs, and optional `vpnd` dry-run review.
+- Serialized lanes: firewall role templates, secrets schema, and shared group variables require one writer at a time.
 
-## Scope
+## Acceptance criteria
 
-- Define feed metadata schema and policy-intent schema with placeholder fixtures only.
-- Add parser validation and redacted dry-run summary design.
-- Keep ingress and egress decisions separate in data model and review output.
-- Require log-only/canary mode, false-positive monitoring, disabled-by-default toggles, and rollback criteria.
-- Prove existing firewall render is unchanged when the gate is disabled.
-- Document integration points for Ansible firewall rendering and optional `vpnd` dry-run review without adding an auto-updater.
+- The default configuration does not change the rendered firewall or any managed host.
+- Feed metadata and policy intent have validated schemas and placeholder-only fixtures; the repository contains no address ranges or ready-to-load rule payloads.
+- Ingress, host-originated egress, and forwarded-traffic decisions remain explicit and independently reviewable.
+- Invalid, stale, unsigned, or unreviewed inputs fail closed before render or apply.
+- Dry-run output exposes only counts, repository-local source identifiers, policy direction, validation state, and content digest.
+- Log-only and canary modes have explicit promotion, false-positive monitoring, rollback, and expiry criteria.
+- Feed refresh is a reviewed artifact update; no hidden updater or apply path exists.
 
-## Out of scope
+## Verification commands
 
-- No committed ASN rows, IP ranges, ready-to-load nftables/ipset content, route blackholes, or provider firewall rules.
-- No geography-, carrier-, ISP-, or operator-named variables, files, cohorts, or comments.
-- No default-on blocking behavior.
-- No external vault references.
+- `make task-check`
+- `make molecule-test ROLE=<denylist-role>`
+- `python3 -m pytest tests/unit/ -q`
+- `make dry-run` against an isolated staging inventory with the feature disabled and in log-only mode
 
-## Ship definition
+## Context
 
-- [ ] `docs/ASN-EXPOSURE-DENYLIST.md` is treated as the design boundary.
-- [ ] A schema proposal exists with placeholder-only fixtures.
-- [ ] Dry-run output redacts inventories and reports only counts, source URLs, policy direction, and validation status.
-- [ ] Tests prove disabled-by-default behavior does not alter rendered firewall output.
-- [ ] Operator docs describe review, canary, false-positive monitoring, and rollback without deployable rule payloads.
-- [ ] The implementation plan explicitly answers host-originated vs forwarded-traffic scope for egress policy.
-- [ ] The implementation plan states whether feed refresh is manual-reviewed artifact update or dry-run-only automation; no hidden apply path exists.
-
-## Links
-
-- `docs/ASN-EXPOSURE-DENYLIST.md`
-- `https://github.com/C24Be/AS_Network_List`
-- `https://docs.google.com/spreadsheets/d/1YWS5aMEykkM9koxcZW1q_bZBi2j1UGmTbhFhOfnrd4k/edit?gid=2065371898#gid=2065371898`
+The prior record referred to external source locations. Repository policy now requires durable knowledge and provenance to live in-repository, so the implementation will use reviewed metadata and content digests without externally hosted citations or deployable network data.
