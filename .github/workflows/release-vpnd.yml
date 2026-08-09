@@ -18,12 +18,17 @@ permissions:
 jobs:
   validate-tag:
     runs-on: ubuntu-24.04
+    outputs:
+      release-tag: ${{ steps.validate.outputs.release-tag }}
     steps:
       - name: Validate release tag
+        id: validate
         env:
           TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
+          set -euo pipefail
           [[ "$TAG" =~ ^vpnd-v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "release-tag=$TAG" >> "$GITHUB_OUTPUT"
 
   build-x86_64-linux:
     name: build (x86_64-unknown-linux-gnu)
@@ -107,14 +112,16 @@ jobs:
 
   release:
     name: attach release assets
-    needs: attest
+    needs:
+      - attest
+      - validate-tag
     runs-on: ubuntu-24.04
-    # contents: write is required for softprops/action-gh-release to publish the
-    # GitHub release and upload assets. Scoped to this job only; the top-level
-    # token is read-only and the action is on Scorecard's recognized-release-
-    # action allowlist (Token-Permissions check does not penalize this).
+    # contents: write is required for gh release upload. It is scoped to this
+    # job only; the top-level token remains read-only.
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ needs.validate-tag.outputs.release-tag }}
 
     steps:
       - name: Checkout repository
@@ -141,7 +148,7 @@ jobs:
         # example schema here ensures the artifact is always present; operators
         # can re-run with real secrets locally via `scripts/emit-sbom.py`.
         env:
-          SBOM_LABEL: ${{ github.ref_name }}
+          SBOM_LABEL: ${{ needs.validate-tag.outputs.release-tag }}
         run: |
           python3 -m pip install --quiet --require-hashes --no-deps -r requirements.txt
           python3 scripts/emit-sbom.py
@@ -150,18 +157,21 @@ jobs:
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
-          name: sbom-${{ github.ref_name }}
+          name: sbom-${{ needs.validate-tag.outputs.release-tag }}
           path: dist/sbom.json
           retention-days: 90
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: |
-            dist/vpnd-x86_64-unknown-linux-gnu
-            dist/vpnd-aarch64-unknown-linux-gnu
-            dist/vpnd-x86_64-apple-darwin
-            dist/vpnd-aarch64-apple-darwin
-            dist/SHA256SUMS
-            dist/sbom.json
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" \
+            dist/vpnd-x86_64-unknown-linux-gnu \
+            dist/vpnd-aarch64-unknown-linux-gnu \
+            dist/vpnd-x86_64-apple-darwin \
+            dist/vpnd-aarch64-apple-darwin \
+            dist/SHA256SUMS \
+            dist/sbom.json \
+            --clobber
