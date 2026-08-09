@@ -144,6 +144,24 @@
       changed_when: false
       when: vpn.enable_nginx_xhttp | default(true)
 
+    - name: P1 public hostname resolves to its service address
+      ansible.builtin.command:
+        argv:
+          - getent
+          - ahostsv4
+          - "{{ nginx_xhttp.server_name }}"
+      register: nginx_xhttp_verify_resolution
+      changed_when: false
+      failed_when: >-
+        nginx_xhttp_verify_resolution.rc != 0 or
+        not (
+          nginx_xhttp_verify_resolution.stdout is search(
+            '(?m)^' ~ (vpn_service_address | regex_escape) ~ '\\s'
+          )
+        )
+      no_log: true
+      when: vpn.enable_nginx_xhttp | default(true)
+
     - name: Hysteria service active
       ansible.builtin.command:
         cmd: systemctl is-active hysteria-server

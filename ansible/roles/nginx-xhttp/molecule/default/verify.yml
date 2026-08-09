@@ -8,6 +8,15 @@
         cmd: nginx -t
       changed_when: false
 
+    - name: Public hostname resolves through the managed hosts entry
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          getent ahostsv4 vpn.example.test \
+            | awk '$1 == "127.0.0.1" { found=1 } END { exit !found }'
+        executable: /bin/bash
+      changed_when: false
+
     - name: Site is enabled
       ansible.builtin.stat:
         path: /etc/nginx/sites-enabled/vpn-xhttp.conf

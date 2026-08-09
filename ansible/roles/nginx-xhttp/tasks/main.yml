@@ -23,6 +23,42 @@
       - public_site_canonical_url == 'https://' ~ nginx_xhttp.server_name
     fail_msg: public_site_canonical_url must equal the HTTPS URL for nginx_xhttp.server_name.
 
+- name: Pre-flight — public service address is available for self-resolution
+  ansible.builtin.assert:
+    that:
+      - vpn_service_address is defined
+      - vpn_service_address | length > 0
+      - vpn_service_address is match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
+    fail_msg: vpn_service_address must contain the provider-assigned public IPv4 address.
+
+- name: Pin public hostname for node-local resolution
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} RIPDPI nginx self-resolution"
+    block: "{{ vpn_service_address }} {{ nginx_xhttp.server_name }}"
+    owner: root
+    group: root
+    mode: "0644"
+  no_log: true
+  diff: false
+
+- name: Verify node-local public hostname resolution
+  ansible.builtin.command:
+    argv:
+      - getent
+      - ahostsv4
+      - "{{ nginx_xhttp.server_name }}"
+  register: nginx_xhttp_self_resolution
+  changed_when: false
+  failed_when: >-
+    nginx_xhttp_self_resolution.rc != 0 or
+    not (
+      nginx_xhttp_self_resolution.stdout is search(
+        '(?m)^' ~ (vpn_service_address | regex_escape) ~ '\\s'
+      )
+    )
+  no_log: true
+
 - name: Pre-flight — fallback frontend port must not collide with other listeners
   ansible.builtin.assert:
     that:

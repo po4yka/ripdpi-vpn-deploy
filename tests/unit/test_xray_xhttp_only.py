@@ -13,6 +13,8 @@ RENDERER = REPO_ROOT / "scripts" / "check-templates-render.py"
 TEMPLATE = REPO_ROOT / "ansible" / "roles" / "xray" / "templates" / "config.json.j2"
 SITE_PLAYBOOK = REPO_ROOT / "ansible" / "playbooks" / "site.yml"
 ROTATION_PLAYBOOK = REPO_ROOT / "ansible" / "playbooks" / "rotate-credentials.yml"
+VERIFY_PLAYBOOK = REPO_ROOT / "ansible" / "playbooks" / "verify.yml"
+NGINX_XHTTP_TASKS = REPO_ROOT / "ansible" / "roles" / "nginx-xhttp" / "tasks" / "main.yml"
 
 spec = importlib.util.spec_from_file_location("xhttp_only_renderer", RENDERER)
 renderer = importlib.util.module_from_spec(spec)
@@ -55,3 +57,26 @@ def test_xray_restart_chain_is_inert_in_check_mode() -> None:
     restart_chain = [task for task in handlers if task.get("listen") == "Restart xray"]
     assert len(restart_chain) == 3
     assert all(task.get("when") == "not ansible_check_mode" for task in restart_chain)
+
+
+def test_p1_hostname_self_resolution_is_managed_and_verified() -> None:
+    role_tasks = yaml.safe_load(NGINX_XHTTP_TASKS.read_text())
+    role_by_name = {task["name"]: task for task in role_tasks}
+
+    pin = role_by_name["Pin public hostname for node-local resolution"]
+    assert pin["ansible.builtin.blockinfile"]["path"] == "/etc/hosts"
+    assert "vpn_service_address" in pin["ansible.builtin.blockinfile"]["block"]
+    assert "nginx_xhttp.server_name" in pin["ansible.builtin.blockinfile"]["block"]
+    assert pin["no_log"] is True
+    assert pin["diff"] is False
+
+    role_probe = role_by_name["Verify node-local public hostname resolution"]
+    assert role_probe["changed_when"] is False
+    assert role_probe["no_log"] is True
+
+    verify_tasks = yaml.safe_load(VERIFY_PLAYBOOK.read_text())[0]["tasks"]
+    verify_by_name = {task["name"]: task for task in verify_tasks}
+    verify_probe = verify_by_name["P1 public hostname resolves to its service address"]
+    assert verify_probe["changed_when"] is False
+    assert verify_probe["no_log"] is True
+    assert "enable_nginx_xhttp" in verify_probe["when"]
