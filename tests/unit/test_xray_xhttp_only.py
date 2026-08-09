@@ -81,3 +81,9 @@ def test_p1_hostname_self_resolution_is_managed_and_verified() -> None:
     assert verify_probe["changed_when"] is False
     assert verify_probe["no_log"] is True
     assert "enable_nginx_xhttp" in verify_probe["when"]
+
+    ipv6_probe = verify_by_name["P1 public hostname exposes its IPv6 service address"]
+    assert ipv6_probe["changed_when"] is False
+    assert ipv6_probe["no_log"] is True
+    assert "enable_nginx_xhttp" in ipv6_probe["when"]
+    assert "server_ipv6" in ipv6_probe["failed_when"]

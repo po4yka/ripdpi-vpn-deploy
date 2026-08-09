@@ -45,6 +45,13 @@ See `terraform/providers/vultr/CLAUDE.md` for design decisions and pitfalls.
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.15, < 2.0 |
 | <a name="requirement_vultr"></a> [vultr](#requirement\_vultr) | ~> 2.31 |
 
+## Providers
+
+| Name | Version |
+| ---- | ------- |
+| <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
+| <a name="provider_vultr"></a> [vultr](#provider\_vultr) | 2.32.0 |
+
 ## Modules
 
 No modules.
@@ -54,6 +61,7 @@ No modules.
 | Name | Type |
 | ---- | ---- |
 | [terraform_data.ssh_port](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
+| [vultr_dns_record.public_ipv6_endpoint](https://registry.terraform.io/providers/vultr/vultr/latest/docs/resources/dns_record) | resource |
 | [vultr_firewall_group.vpn](https://registry.terraform.io/providers/vultr/vultr/latest/docs/resources/firewall_group) | resource |
 | [vultr_firewall_rule.icmp](https://registry.terraform.io/providers/vultr/vultr/latest/docs/resources/firewall_rule) | resource |
 | [vultr_firewall_rule.ssh](https://registry.terraform.io/providers/vultr/vultr/latest/docs/resources/firewall_rule) | resource |
@@ -75,9 +83,14 @@ No modules.
 | <a name="input_enable_hysteria"></a> [enable\_hysteria](#input\_enable\_hysteria) | n/a | `bool` | `true` | no |
 | <a name="input_enable_ipv6"></a> [enable\_ipv6](#input\_enable\_ipv6) | Allocate and expose a public IPv6 address. | `bool` | `true` | no |
 | <a name="input_labels"></a> [labels](#input\_labels) | Provider-specific resource tags/labels. | `map(string)` | `{}` | no |
+| <a name="input_manage_public_ipv6_endpoint"></a> [manage\_public\_ipv6\_endpoint](#input\_manage\_public\_ipv6\_endpoint) | Manage the shared public IPv6 endpoint as a Vultr DNS AAAA record. | `bool` | `false` | no |
 | <a name="input_nginx_xhttp_public_port"></a> [nginx\_xhttp\_public\_port](#input\_nginx\_xhttp\_public\_port) | Public TCP port for nginx-xhttp. Keep this in sync with Ansible nginx\_xhttp\_public\_port. | `number` | `8443` | no |
 | <a name="input_os_id"></a> [os\_id](#input\_os\_id) | Vultr OS id, e.g. Debian or Ubuntu image id from `vultr-cli os list`. | `number` | n/a | yes |
 | <a name="input_plan"></a> [plan](#input\_plan) | Vultr plan slug, e.g. vc2-1c-1gb or vhf-1c-1gb. | `string` | n/a | yes |
+| <a name="input_public_ipv6_endpoint_address"></a> [public\_ipv6\_endpoint\_address](#input\_public\_ipv6\_endpoint\_address) | Public IPv6 address published by the managed AAAA record. | `string` | `""` | no |
+| <a name="input_public_ipv6_endpoint_domain"></a> [public\_ipv6\_endpoint\_domain](#input\_public\_ipv6\_endpoint\_domain) | Existing Vultr DNS zone that owns the public IPv6 endpoint. | `string` | `""` | no |
+| <a name="input_public_ipv6_endpoint_name"></a> [public\_ipv6\_endpoint\_name](#input\_public\_ipv6\_endpoint\_name) | Relative Vultr DNS record name; empty means the zone apex. | `string` | `""` | no |
+| <a name="input_public_ipv6_endpoint_ttl"></a> [public\_ipv6\_endpoint\_ttl](#input\_public\_ipv6\_endpoint\_ttl) | TTL in seconds for the managed public IPv6 endpoint. | `number` | `300` | no |
 | <a name="input_public_listeners"></a> [public\_listeners](#input\_public\_listeners) | Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port\_range for each entry. | <pre>list(object({<br/>    name       = string<br/>    protocol   = string<br/>    port       = optional(number)<br/>    port_range = optional(string)<br/>  }))</pre> | `[]` | no |
 | <a name="input_region"></a> [region](#input\_region) | Vultr region, e.g. ams, fra, lhr, ewr. | `string` | n/a | yes |
 | <a name="input_server_name"></a> [server\_name](#input\_server\_name) | Hostname / Terraform name of the VPS. | `string` | n/a | yes |

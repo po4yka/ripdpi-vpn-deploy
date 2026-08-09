@@ -191,6 +191,12 @@ Uses:
   plan before revoking its predecessor; a failed plan is not provider-state
   evidence.
 - Optional secondary IPv4 allocation uses the provider's reboot path. After apply, `render-inventory.sh` blocks until the address appears on a guest interface over the primary SSH endpoint; API allocation alone is not sufficient evidence for publishing `honeypot_listen_addr`.
+- The optional `vultr_dns_record.public_ipv6_endpoint` owns the shared AAAA
+  record because the authoritative DNS zone is hosted by Vultr. Keep its
+  target in the ignored environment `*.tfvars` file, populated from the
+  endpoint provider's `server_ipv6` output. A server replacement is not
+  complete until the record is refreshed and `make verify` confirms the
+  published address.
 
 ## Scaleway
 

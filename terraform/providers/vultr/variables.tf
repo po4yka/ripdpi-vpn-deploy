@@ -126,6 +126,66 @@ variable "enable_ipv6" {
   description = "Allocate and expose a public IPv6 address."
 }
 
+variable "manage_public_ipv6_endpoint" {
+  type        = bool
+  default     = false
+  description = "Manage the shared public IPv6 endpoint as a Vultr DNS AAAA record."
+}
+
+variable "public_ipv6_endpoint_domain" {
+  type        = string
+  default     = ""
+  description = "Existing Vultr DNS zone that owns the public IPv6 endpoint."
+
+  validation {
+    condition = (
+      var.public_ipv6_endpoint_domain == ""
+      || can(regex("^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$", var.public_ipv6_endpoint_domain))
+    )
+    error_message = "public_ipv6_endpoint_domain must be empty or a DNS domain name."
+  }
+}
+
+variable "public_ipv6_endpoint_name" {
+  type        = string
+  default     = ""
+  description = "Relative Vultr DNS record name; empty means the zone apex."
+
+  validation {
+    condition = (
+      var.public_ipv6_endpoint_name == ""
+      || can(regex("^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$", var.public_ipv6_endpoint_name))
+    )
+    error_message = "public_ipv6_endpoint_name must be empty or a relative DNS name."
+  }
+}
+
+variable "public_ipv6_endpoint_address" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Public IPv6 address published by the managed AAAA record."
+
+  validation {
+    condition = (
+      var.public_ipv6_endpoint_address == ""
+      || can(cidrhost("${var.public_ipv6_endpoint_address}/128", 0))
+    )
+    error_message = "public_ipv6_endpoint_address must be empty or a valid IPv6 address."
+  }
+}
+
+variable "public_ipv6_endpoint_ttl" {
+  type        = number
+  default     = 300
+  description = "TTL in seconds for the managed public IPv6 endpoint."
+
+  validation {
+    condition     = var.public_ipv6_endpoint_ttl >= 60 && var.public_ipv6_endpoint_ttl <= 86400
+    error_message = "public_ipv6_endpoint_ttl must be between 60 and 86400 seconds."
+  }
+}
+
 variable "enable_backups" {
   type    = bool
   default = false

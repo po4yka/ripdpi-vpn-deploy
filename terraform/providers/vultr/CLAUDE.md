@@ -11,6 +11,11 @@ to AMS / FRA / LHR for low-latency RU paths.
 
 **Secondary IPv4 convergence is provider reboot plus guest proof** — `vultr_instance_ipv4.honeypot` keeps `reboot = true`, then `render-inventory.sh` polls the primary SSH address until the secondary IPv4 is present on a guest interface. Inventory must not publish `honeypot_listen_addr` from API state alone.
 
+**Vultr DNS owns the shared public IPv6 record** — the optional
+`vultr_dns_record.public_ipv6_endpoint` publishes a provider-assigned address
+from another fleet root without coupling server lifecycles. It is disabled by
+default and enabled only in the production Vultr workspace.
+
 ## What's done well
 
 - **`backups_enabled = false`** — Vultr's built-in backups can store unencrypted
@@ -34,3 +39,6 @@ to AMS / FRA / LHR for low-latency RU paths.
   ACCEPT is not evidence. See `docs/PROVIDER-NOTES.md` → "UDP/443 edge
   reachability".
 - **Secondary IPv4 needs live-provider evidence** — mock-provider tests prove the reboot flag and inventory gate, not Vultr's control-plane/guest timing. A real deploy completes this check when inventory rendering observes the address inside the guest; failure is blocking.
+- **The public IPv6 target is cross-root input** — after replacing the endpoint
+  server, refresh the ignored Vultr tfvars from that provider's `server_ipv6`
+  output before applying DNS. Never copy the address into tracked files.

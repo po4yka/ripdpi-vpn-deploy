@@ -162,6 +162,37 @@
       no_log: true
       when: vpn.enable_nginx_xhttp | default(true)
 
+    - name: P1 public IPv6 service address is available
+      ansible.builtin.assert:
+        that:
+          - server_ipv6 is defined
+          - server_ipv6 | length > 0
+        fail_msg: P1 requires a provider-assigned public IPv6 address.
+      when: vpn.enable_nginx_xhttp | default(true)
+
+    - name: P1 public hostname exposes its IPv6 service address
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - >-
+            import ipaddress, socket, sys;
+            expected = ipaddress.ip_address(sys.argv[2]);
+            resolved = {
+              ipaddress.ip_address(item[4][0])
+              for item in socket.getaddrinfo(sys.argv[1], 443, socket.AF_INET6, socket.SOCK_STREAM)
+            };
+            sys.exit(0 if expected in resolved else 1)
+          - "{{ nginx_xhttp.server_name }}"
+          - "{{ server_ipv6 }}"
+      register: nginx_xhttp_verify_ipv6_resolution
+      changed_when: false
+      failed_when: >-
+        server_ipv6 is not defined or
+        nginx_xhttp_verify_ipv6_resolution.rc != 0
+      no_log: true
+      when: vpn.enable_nginx_xhttp | default(true)
+
     - name: Hysteria service active
       ansible.builtin.command:
         cmd: systemctl is-active hysteria-server
