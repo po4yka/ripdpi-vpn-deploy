@@ -18,6 +18,8 @@ jobs:
       matrix: ${{ steps.images.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Collect base images from molecule scenarios
         id: images
@@ -50,6 +52,8 @@ jobs:
         image: ${{ fromJson(needs.enumerate-images.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: No Molecule base images configured
         if: matrix.image == '__none__'
