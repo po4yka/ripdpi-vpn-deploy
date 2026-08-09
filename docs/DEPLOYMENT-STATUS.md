@@ -9,10 +9,10 @@ and decrypted SOPS values. Those remain in git-ignored operator files.
 
 | Field | Value |
 |---|---|
-| Last verified deployment | 2026-08-08 |
+| Last verified deployment | 2026-08-09 |
 | Git release | [`infra-v1.0.0`](https://github.com/po4yka/ripdpi-vpn-deploy/releases/tag/infra-v1.0.0) |
-| Deployed source commit | `bb29e38b7079776b4613575c102ce9452ea84f8a` |
-| Source validation | [GitHub CI run 31269498581](https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/31269498581), CodeQL, and Scorecard passed |
+| Deployed source commit | `52d8e2f8a7463cd9ead4b5addbf8979741996993` |
+| Source validation | [GitHub CI run 31306843858](https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/31306843858), CodeQL, and Scorecard passed |
 | Release state | published `infra-v1.0.0` baseline plus verified post-release `main` updates |
 
 The deployed source was applied to the existing fleet. No server was replaced
@@ -40,9 +40,11 @@ contained only the missing `terraform_data.ssh_port` state resource; applying
 it did not replace a server. The resulting plans reported `No changes`.
 
 - UpCloud and Scaleway were refreshed against their provider APIs.
-- Vultr reported no configuration-to-state change with `-refresh=false`.
-  Provider-live refresh remains outstanding because the current operator
-  egress address is not admitted by the Vultr API allowlist.
+- Vultr control-plane preflight passed after admitting the exact operator
+  address and disabling the broad IPv4 and IPv6 allowlist entries. A normal
+  provider-refreshed plan reported `No changes`. A refresh-only comparison
+  reports only the provider's volatile, sensitive, computed `kvm` attribute;
+  it does not represent a configured infrastructure change.
 
 ### Ansible
 
@@ -67,6 +69,27 @@ endpoint variants were `ok`, with no monitoring errors or rotation candidate.
 The collector exports only aggregate inbound/outbound counters and freshness;
 it does not expose client identifiers.
 
+On 2026-08-09, the dedicated rolling OS-maintenance playbook upgraded the
+fleet in P1, P2, P0 order with `serial: 1`. The initial package backlog was
+60 packages on P0, 25 on P1, and 8 on P2. All three nodes rebooted when their
+package state required it and returned through the Tailscale management path.
+The post-maintenance simulation reported zero remaining upgrades and no reboot
+marker on every node. Managed unattended security upgrades are installed and
+the `apt-daily-upgrade` timer is enabled throughout the fleet.
+
+The maintenance playbook and both post-deploy gates completed without an
+unreachable or failed host:
+
+| Gate | P0 | P1 | P2 |
+|---|---:|---:|---:|
+| `make os-maintenance` | `ok=17 failed=0` | `ok=16 failed=0` | `ok=18 failed=0` |
+| `make verify` | `ok=16 failed=0` | `ok=16 failed=0` | `ok=13 failed=0` |
+| `make security-verify` | `ok=17 failed=0` | `ok=17 failed=0` | `ok=17 failed=0` |
+
+P0 verification again included authenticated REALITY round trips and fresh
+Xray StatsService metrics. P1 verified its XHTTP listener and P2 verified its
+Hysteria2 UDP and AmneziaWG listeners after reboot.
+
 Secret schema validation, placeholder checks, certificate checks, and private
 key/certificate matching passed before deployment. The decrypted SOPS file was
 shredded with `make clean`, and local Terraform plan artifacts were removed.
@@ -84,8 +107,9 @@ identifies source code; it is not a substitute for future live drift evidence.
 
 ## Current operator limitations
 
-- A live Vultr refresh requires admitting the operator's current egress
-  address in the provider API allowlist, then re-running `make plan`.
+No provider control-plane limitation was observed during the latest rollout.
+The Vultr allowlist entry is intentionally tied to the current exact operator
+address and must be updated when that address changes.
 
 ## Refresh procedure
 
@@ -96,7 +120,9 @@ identifies source code; it is not a substitute for future live drift evidence.
    replacement or unexplained drift.
 4. Rebuild the inventory, restore the documented Tailscale SSH override, and
    prove the SSH path before deployment.
-5. Run `make deploy`, `make verify`, and `make security-verify`.
+5. Run `make deploy`, `make verify`, and `make security-verify`. When package
+   backlog or reboot markers are present, run `make os-maintenance`; it rolls
+   one node at a time and repeats both verification gates.
 6. Run the relevant outside-in client-path probes.
 7. Run `make clean` and remove plan artifacts.
 8. Update this file only from observed results; never copy live endpoints or
