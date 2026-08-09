@@ -31,3 +31,4 @@ ignore: |
   state-backups/
   tests/fixtures/*.sops.yaml
   tests/bats/test_helper/
+  tools/tasking/node_modules/
