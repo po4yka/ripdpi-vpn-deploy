@@ -42,7 +42,7 @@ export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CON
         remove-operator-crons issue-sub-token sub-reads \
         awg-evidence-provision \
         test-unit snapshot-check snapshot-update validate-secrets \
-        actionlint-check zizmor-check cloud-init-schema tf-test yamllint-check shellcheck \
+        actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
         ci-fast bats-test vpnd-test vpnd-clippy vpnd-deny vpnd-msrv vpnd-mutants tf-policy \
         task-tools task-check task-list task-ready task-graph task-federation \
         check
@@ -400,10 +400,17 @@ actionlint-check:
 zizmor-check:
 	@command -v zizmor >/dev/null 2>&1 || { echo "missing: zizmor $(ZIZMOR_VERSION) (run: mise install)" >&2; exit 1; }
 	@test "$$(zizmor --version)" = "zizmor $(ZIZMOR_VERSION)" || { echo "zizmor $(ZIZMOR_VERSION) required (run: mise install)" >&2; exit 1; }
+	@case "$${ZIZMOR_FORMAT:-plain}" in \
+	  plain|github) ;; \
+	  *) echo "ZIZMOR_FORMAT must be plain or github (SARIF does not fail on findings)" >&2; exit 1 ;; \
+	esac
 	zizmor --offline --strict-collection --no-config --persona=regular \
 	  --format="$${ZIZMOR_FORMAT:-plain}" \
 	  --collect=workflows --collect=actions --collect=dependabot --collect=pre-commit \
 	  .github .pre-commit-config.yaml
+
+zizmor-test:
+	python3 tests/zizmor_gate_runtime.py
 
 cloud-init-schema:
 	@set -eu; \
@@ -471,6 +478,7 @@ task-federation:
 ci-fast:
 	@$(MAKE) actionlint-check
 	@$(MAKE) zizmor-check
+	@$(MAKE) zizmor-test
 	@$(MAKE) cloud-init-schema
 	@$(MAKE) tf-test
 	@$(MAKE) yamllint-check

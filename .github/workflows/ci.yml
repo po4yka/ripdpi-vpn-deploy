@@ -76,6 +76,9 @@ jobs:
       - name: Audit owned GitHub automation
         run: make zizmor-check ZIZMOR_FORMAT=github
 
+      - name: Verify fail-closed scope and findings
+        run: make zizmor-test
+
   task-contract:
     name: task-contract
     runs-on: ubuntu-24.04
