@@ -73,7 +73,7 @@
     name: nftables
     enabled: true
     state: started
-  when: ansible_virtualization_type | default('') != 'docker'
+  when: ansible_facts.get('virtualization_type', '') != 'docker'
 
 # policy-ratelimit verifies firewall-owned sets in the same play. Reload only
 # nftables here rather than flushing the global handler queue, which can

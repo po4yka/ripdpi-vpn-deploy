@@ -29,12 +29,12 @@ def _render_manifest(vars_: dict | None = None) -> dict:
     merged = ctr.merge_render_vars()
     merged.update({
         "inventory_hostname": "vpn-test",
-        "ansible_hostname": "vpn-test",
         "node_manifest_environment": "prod",
         "node_manifest_provider": "upcloud",
         "node_manifest_source_revision": "1" * 40,
         "node_manifest_deployable_digest": "2" * 64,
     })
+    merged["ansible_facts"] = {**merged["ansible_facts"], "hostname": "vpn-test"}
     if vars_:
         merged.update(vars_)
     merged["public_listener_manifest"] = json.loads(ctr.render_template(LISTENER_TEMPLATE, merged))

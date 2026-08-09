@@ -47,9 +47,9 @@
 
 - name: Set architecture-specific Hysteria archive facts
   ansible.builtin.set_fact:
-    hysteria_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+    hysteria_arch: "{{ 'amd64' if ansible_facts['architecture'] == 'x86_64' else 'arm64' }}"
     hysteria_sha256: >-
-      {{ (hysteria.linux_amd64_sha256 if ansible_architecture == 'x86_64'
+      {{ (hysteria.linux_amd64_sha256 if ansible_facts['architecture'] == 'x86_64'
           else hysteria.linux_arm64_sha256 | default('')) }}
 
 - name: SHA256 for current architecture is set

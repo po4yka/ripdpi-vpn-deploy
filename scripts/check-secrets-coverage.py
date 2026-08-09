@@ -29,9 +29,7 @@ EXAMPLE_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 # secrets file.
 NON_SECRET_TOPLEVEL = {
     "ansible_user", "ansible_host", "vpn_service_address", "ansible_facts",
-    "ansible_architecture",
-    "ansible_os_family", "ansible_distribution", "ansible_distribution_release",
-    "ansible_python_interpreter", "ansible_hostname",
+    "ansible_distribution", "ansible_python_interpreter",
     "vpn", "security_controls", "allowed_ssh_cidrs",
     "xray_port", "nginx_xhttp_port", "hysteria_port",
     "xray_install_root", "xray_config_dir", "xray_log_dir",

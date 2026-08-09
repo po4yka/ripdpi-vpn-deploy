@@ -61,10 +61,12 @@ def _base_vars() -> dict:
     merged.update(
         {
             "ansible_user": "deploy",
-            "ansible_architecture": "x86_64",
-            "ansible_os_family": "Debian",
-            "ansible_distribution": "Debian",
-            "ansible_distribution_release": "trixie",
+            "ansible_facts": {
+                "architecture": "x86_64",
+                "os_family": "Debian",
+                "distribution": "Debian",
+                "distribution_release": "trixie",
+            },
             "allowed_ssh_cidrs": ["198.51.100.42/32"],
         }
     )

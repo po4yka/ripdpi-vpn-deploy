@@ -23,7 +23,7 @@ destroy table inet nat
 {% set nginx_tcp_port = nginx_xhttp_public_port | default(8443) | int %}
 {% set nginx_collides_with_xray = (vpn.enable_xray_reality | default(true)) and (nginx_tcp_port in xray_tcp_ports) %}
 {% set _awg_inst = (amneziawg_secrets.instances | default([])) if amneziawg_secrets is defined else [] %}
-{% set awg_uplink_interface = firewall_awg_uplink_interface | default((ansible_default_ipv4 | default({})).interface | default('eth0')) %}
+{% set awg_uplink_interface = firewall_awg_uplink_interface | default(ansible_facts.get('default_ipv4', {}).get('interface', 'eth0')) %}
 {% set egress_policy = firewall_egress_policy | default('permissive') -%}
 {% set transport_needs_open_egress = (vpn.enable_xray_reality | default(true)) or (vpn.enable_hysteria | default(false)) or (vpn.enable_naive | default(false)) -%}
 

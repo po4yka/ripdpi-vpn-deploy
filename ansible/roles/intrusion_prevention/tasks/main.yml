@@ -5,7 +5,7 @@
 - name: intrusion_prevention supports Debian-family hosts only
   ansible.builtin.assert:
     that:
-      - ansible_os_family == "Debian"
+      - ansible_facts["os_family"] == "Debian"
     fail_msg: "intrusion_prevention supports Debian/Ubuntu hosts only."
 
 - name: Fail closed on unsupported intrusion prevention providers

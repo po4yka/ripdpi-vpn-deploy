@@ -19,10 +19,14 @@ SYNTHETIC_FACTS = {
     "ansible_user": "deploy",
     "ansible_host": "198.51.100.10",
     "vpn_service_address": "198.51.100.10",
-    "ansible_architecture": "x86_64",
-    "ansible_os_family": "Debian",
-    "ansible_distribution": "Debian",
-    "ansible_distribution_release": "trixie",
+    "ansible_facts": {
+        "architecture": "x86_64",
+        "os_family": "Debian",
+        "distribution": "Debian",
+        "distribution_release": "trixie",
+        "default_ipv4": {"interface": "eth0"},
+        "hostname": "unknown",
+    },
     "allowed_ssh_cidrs": ["198.51.100.42/32"],
     "firewall_effective_ssh_ports": [22],
 }

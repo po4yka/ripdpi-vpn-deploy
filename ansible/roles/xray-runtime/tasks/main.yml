@@ -3,13 +3,13 @@
   ansible.builtin.assert:
     that:
       - xray.version | default('') | length > 0
-      - (xray.linux_amd64_sha256 if ansible_architecture == 'x86_64' else xray.linux_arm64_sha256) | default('') | length > 0
+      - (xray.linux_amd64_sha256 if ansible_facts['architecture'] == 'x86_64' else xray.linux_arm64_sha256) | default('') | length > 0
     fail_msg: Xray version and architecture checksum are required.
 
 - name: Set Xray runtime archive facts
   ansible.builtin.set_fact:
-    xray_runtime_arch: "{{ '64' if ansible_architecture == 'x86_64' else 'arm64-v8a' }}"
-    xray_runtime_sha256: "{{ xray.linux_amd64_sha256 if ansible_architecture == 'x86_64' else xray.linux_arm64_sha256 }}"
+    xray_runtime_arch: "{{ '64' if ansible_facts['architecture'] == 'x86_64' else 'arm64-v8a' }}"
+    xray_runtime_sha256: "{{ xray.linux_amd64_sha256 if ansible_facts['architecture'] == 'x86_64' else xray.linux_arm64_sha256 }}"
 
 - name: Install Xray runtime dependencies
   ansible.builtin.apt:

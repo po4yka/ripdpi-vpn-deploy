@@ -38,8 +38,11 @@
 
 - name: Set Snell architecture facts
   ansible.builtin.set_fact:
-    snell_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
-    snell_sha256: "{{ snell_secrets.linux_amd64_sha256 if ansible_architecture == 'x86_64' else snell_secrets.linux_arm64_sha256 }}"
+    snell_arch: "{{ 'amd64' if ansible_facts['architecture'] == 'x86_64' else 'arm64' }}"
+    snell_sha256: >-
+      {{ snell_secrets.linux_amd64_sha256
+         if ansible_facts['architecture'] == 'x86_64'
+         else snell_secrets.linux_arm64_sha256 }}
 
 - name: Ensure Snell user
   ansible.builtin.user:

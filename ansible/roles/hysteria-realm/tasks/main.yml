@@ -25,10 +25,10 @@
 
 - name: Set architecture-specific sing-box archive facts
   ansible.builtin.set_fact:
-    sing_box_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+    sing_box_arch: "{{ 'amd64' if ansible_facts['architecture'] == 'x86_64' else 'arm64' }}"
     sing_box_sha256: >-
       {{ (hysteria_realm_secrets.linux_amd64_sha256
-          if ansible_architecture == 'x86_64'
+          if ansible_facts['architecture'] == 'x86_64'
           else hysteria_realm_secrets.linux_arm64_sha256 | default('')) }}
 
 - name: SHA256 for current architecture is set

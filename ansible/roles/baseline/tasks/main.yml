@@ -67,7 +67,7 @@
   register: baseline_timesync
   changed_when: >-
     baseline_timesync.changed and
-    ansible_virtualization_type | default("") != "docker"
+    ansible_facts.get("virtualization_type", "") != "docker"
 
 - name: Ensure sshd drop-in directory exists
   ansible.builtin.file:

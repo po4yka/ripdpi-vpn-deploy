@@ -107,11 +107,11 @@
   ansible.builtin.set_fact:
     _probe_mtg_url: >-
       {{ probe_matrix_target_secrets.mtg_linux_amd64_url
-         if ansible_architecture == 'x86_64'
+         if ansible_facts['architecture'] == 'x86_64'
          else probe_matrix_target_secrets.mtg_linux_arm64_url }}
     _probe_mtg_sha256: >-
       {{ probe_matrix_target_secrets.mtg_linux_amd64_sha256
-         if ansible_architecture == 'x86_64'
+         if ansible_facts['architecture'] == 'x86_64'
          else probe_matrix_target_secrets.mtg_linux_arm64_sha256 }}
 
 - name: Validate mtg release asset pin

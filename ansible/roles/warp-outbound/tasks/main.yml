@@ -53,7 +53,7 @@
     mode: "0644"
     content: >-
       deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg]
-      https://pkg.cloudflareclient.com/ {{ ansible_distribution_release }} main
+      https://pkg.cloudflareclient.com/ {{ ansible_facts['distribution_release'] }} main
   when: warp_outbound.install_warp_cli | default(true)
 
 - name: Install cloudflare-warp package

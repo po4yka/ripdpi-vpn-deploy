@@ -1,7 +1,7 @@
 ---
 - name: Capture security audit timestamp
   ansible.builtin.set_fact:
-    security_audit_run_id: "{{ ansible_date_time.iso8601_basic_short | default('%Y%m%dT%H%M%S' | strftime) }}"
+    security_audit_run_id: "{{ ansible_facts.get('date_time', {}).get('iso8601_basic_short', '%Y%m%dT%H%M%S' | strftime) }}"
 
 - name: Ensure security audit report directory
   ansible.builtin.file:
@@ -19,8 +19,8 @@
     mode: "0640"
     content: |
       ripdpi-vpn-deploy security audit
-      generated_at={{ ansible_date_time.iso8601 | default(security_audit_run_id) }}
-      hostname={{ ansible_hostname | default(inventory_hostname) }}
+      generated_at={{ ansible_facts.get('date_time', {}).get('iso8601', security_audit_run_id) }}
+      hostname={{ ansible_facts.get('hostname', inventory_hostname) }}
       non_blocking=true
       aide_enabled={{ security_audit.aide | default(false) }}
       rkhunter_enabled={{ security_audit.rkhunter | default(false) }}

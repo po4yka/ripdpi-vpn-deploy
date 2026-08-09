@@ -20,6 +20,9 @@ you everything it exposes.
 revision and deployable digest. `source-drift.yml` compares the live digest
 with the current checkout; `deploy` and `verify` run that gate automatically.
 
+**Injected fact aliases are disabled** — use `ansible_facts[...]` for gathered
+facts. Top-level `ansible_*` names are reserved for magic and inventory vars.
+
 **Inventory is rendered, not committed** — `scripts/render-inventory.sh`
 reads `terraform output -json` and emits `inventory/<env>.yml`. Don't edit
 the rendered file.
@@ -56,6 +59,8 @@ exercises `site.yml` end-to-end.
   changed every run, breaking idempotency assertions.
 - **`gather_facts: true` on every play** — needed for OS-specific branches.
   Don't disable globally; disable per-play if you must.
+- **Gathered facts are not top-level variables** — `inject_facts_as_vars` is
+  disabled for ansible-core 2.24 compatibility. Use `ansible_facts[...]`.
 - **Role ordering matters** — baseline → package_updates → firewall → intrusion_prevention → geodata → transport/listener roles → monitoring → backup → watchdog → node_manifest.
   `site.yml` enforces this; don't rely on `meta: dependencies`.
 - **OS maintenance is fleet-serial** — `os-maintenance.yml` upgrades and,
