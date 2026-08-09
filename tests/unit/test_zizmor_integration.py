@@ -20,6 +20,8 @@ def test_mise_and_make_pin_one_strict_offline_zizmor_gate():
     assert f'"pipx:zizmor" = "{VERSION}"' in mise
     assert f"ZIZMOR_VERSION := {VERSION}" in makefile
     assert 'test "$$(zizmor --version)" = "zizmor $(ZIZMOR_VERSION)"' in target
+    assert 'plain|github)' in target
+    assert "SARIF does not fail on findings" in target
     for flag in (
         "--offline",
         "--strict-collection",
@@ -49,4 +51,5 @@ def test_ci_installs_verified_release_and_calls_the_make_gate():
     assert 'echo "${ZIZMOR_SHA256}  ${archive}" | sha256sum -c -' in install
     assert 'tar -xzf "$archive" -C "$bin_dir"' in install
     assert job["steps"][2]["run"] == "make zizmor-check ZIZMOR_FORMAT=github"
+    assert job["steps"][3]["run"] == "make zizmor-test"
     assert "zizmor" in workflow["jobs"]["required"]["needs"]
