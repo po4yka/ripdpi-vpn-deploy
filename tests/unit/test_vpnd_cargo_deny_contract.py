@@ -21,7 +21,14 @@ def test_ci_runs_cargo_deny_with_vpnd_config():
     assert "cargo-command: test --release --locked" in ci
     assert "cargo-command: clippy --release --all-targets --locked -- -D warnings" in ci
     assert 'default: "test --release --locked"' in reusable
-    assert 'case " ${{ inputs.cargo-command }} " in' in reusable
+    assert "CARGO_COMMAND: ${{ inputs.cargo-command }}" in reusable
+    assert "RUST_TARGET: ${{ inputs.target }}" in reusable
+    assert 'case " $CARGO_COMMAND " in' in reusable
+    assert '[[ ! "$RUST_TARGET" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]]' in reusable
+    assert 'read -r -a cargo_args <<< "$CARGO_COMMAND"' in reusable
+    assert 'cargo "${cargo_args[@]}" --target "$RUST_TARGET"' in reusable
+    assert 'cross "${cargo_args[@]}" --target "$RUST_TARGET"' in reusable
+    assert "run: cargo ${{ inputs.cargo-command }}" not in reusable
     assert release.count("cargo-command: build --release --locked") == 4
     assert makefile.count("cargo test --release --locked") == 3
     assert makefile.count("cargo clippy --release --all-targets --locked -- -D warnings") == 2

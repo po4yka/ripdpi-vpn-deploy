@@ -2,7 +2,7 @@
 id: CIC-1786295418152915
 title: Integrate zizmor and remediate GitHub Actions security findings
 kind: feature
-status: backlog
+status: doing
 area: ci
 priority: high
 risk: high

@@ -15,7 +15,7 @@ capability.
 
 ## Execution
 
-- [ ] CIC-1786296210350045 Harden reusable Rust workflow inputs with validated environment values and argument arrays; update its contract tests and run the scoped template-injection audit #feature !high @item:CIC-1786295418152915
+- [x] CIC-1786296210350045 Harden reusable Rust workflow inputs with validated environment values and argument arrays; update its contract tests and run the scoped template-injection audit #feature !high @item:CIC-1786295418152915
 - [ ] CIC-1786296210412999 Harden pull-request base-ref fetch and diff handling with environment transfer, ref validation, quoted refspecs, and actionlint coverage #feature !high @item:CIC-1786295418152915 @blocked_by:CIC-1786296210350045
 - [ ] CIC-1786296210451056 Remove dispatch-zone shell expansion from both credentialed deployment workflows through validated `TF_VAR_zone`; run affected workflow and Terraform contract tests #feature !high @item:CIC-1786295418152915 @blocked_by:CIC-1786296210412999
 - [ ] CIC-1786296210479892 Validate reproducible-build version and digest pins and consume step outputs only through quoted environment variables; run pin and workflow contract tests #feature !high @item:CIC-1786295418152915 @blocked_by:CIC-1786296210451056
