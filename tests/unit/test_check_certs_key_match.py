@@ -11,12 +11,12 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def test_check_certs_uses_public_key_der_digest_not_rsa_modulus():
     script = (ROOT / "scripts/check-certs.sh").read_text()
-    assert "openssl x509 -pubkey -noout" in script
-    assert "openssl pkey -pubout -outform DER" in script
+    assert 'openssl x509 -in "$cert_file" -pubkey -noout' in script
+    assert 'openssl pkey -in "$key_file" -pubout -outform DER' in script
     assert "openssl rsa  -noout -modulus" not in script
 
 
-def test_check_certs_accepts_indented_openssl_san_output(tmp_path):
+def test_check_certs_accepts_indented_openssl_san_output_from_certificate_chain(tmp_path):
     pytest.importorskip("yaml")
     key = tmp_path / "key.pem"
     cert = tmp_path / "cert.pem"
@@ -45,7 +45,10 @@ def test_check_certs_accepts_indented_openssl_san_output(tmp_path):
         capture_output=True,
         text=True,
     )
-    cert_text = cert.read_text()
+    # A chain larger than the pipe buffer makes openssl close stdin after the
+    # first certificate while the producer is still writing. The producer's
+    # SIGPIPE must not turn a successfully parsed certificate into a finding.
+    cert_text = cert.read_text() * 256
     key_text = key.read_text()
     secrets = tmp_path / "secrets.yaml"
     import yaml
@@ -72,4 +75,5 @@ def test_check_certs_accepts_indented_openssl_san_output(tmp_path):
 
     assert result.returncode == 1
     assert "appears self-signed" in result.stdout
+    assert "openssl could not parse cert_pem" not in result.stdout
     assert "SAN does not cover example.test" not in result.stdout

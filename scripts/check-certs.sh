@@ -23,6 +23,25 @@ for tool in openssl python3; do
   command -v "$tool" >/dev/null 2>&1 || { echo "missing tool: $tool" >&2; exit 2; }
 done
 
+umask 077
+tmp_dir="$(mktemp -d -t vpn-check-certs.XXXXXX)"
+# shellcheck disable=SC2329  # Invoked indirectly by the EXIT trap.
+cleanup() {
+  local status=$? file
+  trap - EXIT
+  for file in "$tmp_dir"/*; do
+    [[ -f "$file" ]] || continue
+    if command -v shred >/dev/null 2>&1; then
+      shred -u "$file" || rm -f "$file" || status=1
+    else
+      rm -f "$file" || status=1
+    fi
+  done
+  rmdir "$tmp_dir" || status=1
+  exit "$status"
+}
+trap cleanup EXIT
+
 findings=0
 report() { echo "  - $1"; findings=$((findings+1)); }
 
@@ -54,12 +73,17 @@ check_block() {
     return
   fi
 
+  local cert_file="$tmp_dir/${block}.cert.pem"
+  local key_file="$tmp_dir/${block}.key.pem"
+  printf '%s\n' "$cert" > "$cert_file"
+  printf '%s\n' "$key" > "$key_file"
+
   local subj issuer
-  if ! subj="$(printf '%s\n' "$cert" | openssl x509 -noout -subject 2>/dev/null)"; then
+  if ! subj="$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null)"; then
     report "openssl could not parse cert_pem"
     return
   fi
-  issuer="$(printf '%s\n' "$cert" | openssl x509 -noout -issuer 2>/dev/null)"
+  issuer="$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null)"
   if [[ "${subj#subject=}" == "${issuer#issuer=}" ]]; then
     report "appears self-signed (subject == issuer)"
   fi
@@ -67,8 +91,7 @@ check_block() {
   # SAN coverage
   if [[ -n "$host" ]]; then
     local san_lines
-    san_lines="$(printf '%s\n' "$cert" \
-      | openssl x509 -noout -ext subjectAltName 2>/dev/null \
+    san_lines="$(openssl x509 -in "$cert_file" -noout -ext subjectAltName 2>/dev/null \
       | grep DNS: || true)"
     if ! grep -qiE "(^|[[:space:]],?[[:space:]]*)DNS:${host//./\\.}(,|$)" <<< "$san_lines"; then
       # also tolerate single wildcard one-level above
@@ -81,7 +104,7 @@ check_block() {
 
   # Expiry
   local end_iso days
-  end_iso="$(printf '%s\n' "$cert" | openssl x509 -noout -enddate 2>/dev/null | sed 's/notAfter=//')"
+  end_iso="$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | sed 's/notAfter=//')"
   if [[ -n "$end_iso" ]]; then
     days="$(python3 -c "
 from datetime import datetime, timezone
@@ -96,8 +119,8 @@ print((end - datetime.now(timezone.utc)).days)
 
   # Compare public-key DER digests. Unlike RSA modulus this works for EC too.
   local cert_pub key_pub
-  cert_pub="$(printf '%s\n' "$cert" | openssl x509 -pubkey -noout 2>/dev/null | openssl pkey -pubin -outform DER 2>/dev/null | openssl sha256 2>/dev/null || true)"
-  key_pub="$(printf '%s\n' "$key" | openssl pkey -pubout -outform DER 2>/dev/null | openssl sha256 2>/dev/null || true)"
+  cert_pub="$(openssl x509 -in "$cert_file" -pubkey -noout 2>/dev/null | openssl pkey -pubin -outform DER 2>/dev/null | openssl sha256 2>/dev/null || true)"
+  key_pub="$(openssl pkey -in "$key_file" -pubout -outform DER 2>/dev/null | openssl sha256 2>/dev/null || true)"
   if [[ -z "$cert_pub" || -z "$key_pub" || "$cert_pub" != "$key_pub" ]]; then
     report "certificate public key does not match private key"
   fi
