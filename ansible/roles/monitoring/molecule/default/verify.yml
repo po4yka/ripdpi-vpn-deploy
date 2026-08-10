@@ -68,9 +68,9 @@
       register: xray_stats_textfile
       failed_when: >-
         not xray_stats_textfile.stat.exists or
-        xray_stats_textfile.stat.pw_name != 'xray' or
+        xray_stats_textfile.stat.pw_name != 'prometheus' or
         xray_stats_textfile.stat.gr_name != 'node_exporter_textfile' or
-        xray_stats_textfile.stat.mode != '0640'
+        xray_stats_textfile.stat.mode != '0600'
 
     - name: node_exporter reads the protected Xray metric
       ansible.builtin.uri:

@@ -129,7 +129,7 @@ def atomic_write(path: Path, content: str) -> None:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
-        os.chmod(temporary, 0o640)
+        os.chmod(temporary, 0o600)
         os.replace(temporary, path)
     finally:
         if temporary:

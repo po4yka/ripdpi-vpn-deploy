@@ -175,9 +175,9 @@
   ansible.builtin.file:
     path: "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_xray.prom"
     state: file
-    owner: "{{ xray_runtime_user | default('xray') }}"
+    owner: "{{ monitoring.node_exporter_user | default('prometheus') }}"
     group: "{{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}"
-    mode: "0640"
+    mode: "0600"
   when:
     - _xray_stats_textfile.stat.exists | default(false)
 

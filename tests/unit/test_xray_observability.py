@@ -116,13 +116,13 @@ def test_exporter_reports_fallback_write_failure_without_sensitive_detail(
     assert secret not in captured.out + captured.err
 
 
-def test_exporter_atomic_write_restricts_world_access(tmp_path: Path) -> None:
+def test_exporter_atomic_write_is_owner_only(tmp_path: Path) -> None:
     output = tmp_path / "vpn_xray.prom"
 
     exporter.atomic_write(output, "vpn_xray_stats_collection_success 1\n")
 
     assert output.read_text() == "vpn_xray_stats_collection_success 1\n"
-    assert stat.S_IMODE(output.stat().st_mode) == 0o640
+    assert stat.S_IMODE(output.stat().st_mode) == 0o600
 
 
 def test_exporter_rejects_unsafe_technical_labels_without_echoing_them() -> None:
@@ -160,7 +160,7 @@ def test_disabling_xray_removes_exporter_units_and_stale_metrics() -> None:
     assert any("vpn_xray.prom" in path for path in removed_runtime)
 
 
-def test_monitoring_role_grants_group_read_access_to_node_exporter() -> None:
+def test_monitoring_role_runs_xray_exporter_as_the_textfile_reader() -> None:
     tasks = yaml.safe_load(MONITORING_TASKS.read_text())
     task_by_name = {task["name"]: task for task in tasks}
 
@@ -174,7 +174,13 @@ def test_monitoring_role_grants_group_read_access_to_node_exporter() -> None:
     transfer = task_by_name[
         "Transfer existing Xray diagnostic textfile to the exporter account"
     ]["ansible.builtin.file"]
-    assert transfer["mode"] == "0640"
+    assert transfer == {
+        "path": "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_xray.prom",
+        "state": "file",
+        "owner": "{{ monitoring.node_exporter_user | default('prometheus') }}",
+        "group": "{{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}",
+        "mode": "0600",
+    }
 
 
 def test_new_timer_handler_is_safe_during_check_mode() -> None:
