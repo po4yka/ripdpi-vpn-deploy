@@ -1,9 +1,9 @@
 ---
 task_id: CIC-1786295418152915
 change: integrate-zizmor-ci-security-gate
-commit_sha: 916b0c05a36e3ad69b5f8f12c3013c46647edc06
+commit_sha: 2203e15af04bc2ad184cea2412e4138de069148b
 local: passed
-local_evidence: "Passed on implementation SHA 916b0c0: exact zizmor 1.29.0 strict offline scan with zero findings (75 persona-suppressed); four executable negative/scope fixtures; release tag/ref contract including branch-only and mismatched-commit rejection; focused pytest, actionlint, yamllint, and shellcheck; make ci-fast with CI-compatible Bash 5.2, actionlint 1.7.7, and shellcheck 0.10.0; make validate; taskctl validate. Full local suite: Terraform 20/18/20/17, 903 Python passed and 2 skipped, 48 bats passed, Rust clippy and tests passed."
+local_evidence: "Passed on implementation SHA 2203e15: exact zizmor 1.29.0 strict offline scan with zero findings (75 persona-suppressed); four executable negative/scope fixtures; release tag/ref contract including branch-only and mismatched-commit rejection; focused pytest, actionlint, yamllint, and shellcheck; make ci-fast with CI-compatible Bash 5.2, actionlint 1.7.7, and shellcheck 0.10.0; make validate; taskctl validate. Full local suite: Terraform 20/18/20/17, 903 Python passed and 2 skipped, 48 bats passed, Rust clippy and tests passed."
 remote_ci: required
 remote_ci_evidence: null
 dry_run: not_applicable

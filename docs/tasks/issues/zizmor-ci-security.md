@@ -14,7 +14,7 @@ openspec_change: integrate-zizmor-ci-security-gate
 created: 2026-08-09
 updated: 2026-08-09
 related_tasks: []
-status_detail: Implementation complete and locally validated on 916b0c0; awaiting required remote CI on the pushed final SHA.
+status_detail: Implementation complete and locally validated on 2203e15; awaiting required remote CI on the pushed final SHA.
 ---
 
 ## Goal
