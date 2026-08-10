@@ -28,6 +28,13 @@
         executable: /bin/bash
       changed_when: false
 
+    - name: node_exporter belongs to the protected textfile reader group
+      ansible.builtin.command:
+        cmd: id -nG prometheus
+      register: node_exporter_groups
+      changed_when: false
+      failed_when: "'node_exporter_textfile' not in node_exporter_groups.stdout.split()"
+
     - name: Textfile directory preserves honeypot write access
       ansible.builtin.stat:
         path: /var/lib/node_exporter/textfile
@@ -63,7 +70,16 @@
         not xray_stats_textfile.stat.exists or
         xray_stats_textfile.stat.pw_name != 'xray' or
         xray_stats_textfile.stat.gr_name != 'node_exporter_textfile' or
-        xray_stats_textfile.stat.mode != '0644'
+        xray_stats_textfile.stat.mode != '0640'
+
+    - name: node_exporter reads the protected Xray metric
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9100/metrics
+        return_content: true
+      register: node_exporter_metrics
+      failed_when: >-
+        'vpn_xray_inbound_traffic_bytes_total{direction="uplink",inbound="vless-reality"} 1024'
+        not in node_exporter_metrics.content
 
     - name: Xray collector API and output stay local and redacted
       ansible.builtin.shell:

@@ -1,6 +1,7 @@
 ---
 monitoring:
   node_exporter_listen: "127.0.0.1:9100"
+  node_exporter_user: prometheus
   node_exporter_textfile_dir: /var/lib/node_exporter/textfile
   node_exporter_textfile_group: node_exporter_textfile
   xray_stats_interval: 60s

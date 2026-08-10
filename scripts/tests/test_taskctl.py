@@ -5,11 +5,10 @@ import hashlib
 import json
 import subprocess
 import tempfile
-import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
-from unittest import mock
+from unittest import TestCase, main, mock
 
 from scripts.tasks import taskctl
 
@@ -42,7 +41,7 @@ DEPLOY_EVIDENCE_CATEGORIES = (
 )
 
 
-class TaskctlFixture(unittest.TestCase):
+class TaskctlFixture(TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory(prefix="ripdpi-taskctl-test-")
         self.root = Path(self.temp.name)
@@ -1651,4 +1650,4 @@ class TaskctlConcurrencyTest(TaskctlFixture):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()

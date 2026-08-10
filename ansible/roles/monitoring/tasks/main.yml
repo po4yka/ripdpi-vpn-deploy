@@ -32,6 +32,13 @@
     name: "{{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}"
     system: true
 
+- name: Ensure node_exporter joins textfile group
+  ansible.builtin.user:
+    name: "{{ monitoring.node_exporter_user | default('prometheus') }}"
+    groups: "{{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}"
+    append: true
+  notify: Restart node_exporter
+
 - name: Discover existing honeypot account
   ansible.builtin.getent:
     database: passwd
@@ -170,7 +177,7 @@
     state: file
     owner: "{{ xray_runtime_user | default('xray') }}"
     group: "{{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}"
-    mode: "0644"
+    mode: "0640"
   when:
     - _xray_stats_textfile.stat.exists | default(false)
 
