@@ -1,11 +1,11 @@
 ---
 task_id: CIC-1786295418152915
 change: integrate-zizmor-ci-security-gate
-commit_sha: 2203e15af04bc2ad184cea2412e4138de069148b
+commit_sha: a9a13254705eac841e608097e4be2610b99c8442
 local: passed
-local_evidence: "Passed on implementation SHA 2203e15: exact zizmor 1.29.0 strict offline scan with zero findings (75 persona-suppressed); four executable negative/scope fixtures; release tag/ref contract including branch-only and mismatched-commit rejection; focused pytest, actionlint, yamllint, and shellcheck; make ci-fast with CI-compatible Bash 5.2, actionlint 1.7.7, and shellcheck 0.10.0; make validate; taskctl validate. Full local suite: Terraform 20/18/20/17, 903 Python passed and 2 skipped, 48 bats passed, Rust clippy and tests passed."
-remote_ci: required
-remote_ci_evidence: "The zizmor integration passed required CI on PR #69, but final acceptance now also requires the refreshed Molecule image-scan matrix and complete required aggregate to pass on the new pushed final SHA."
+local_evidence: "On implementation SHA a9a13254705eac841e608097e4be2610b99c8442: exact zizmor 1.29.0 scan, actionlint, yamllint, gitleaks, ansible-lint production profile, Ansible syntax, focused branch/image contracts, and full pytest passed (905 passed, 2 skipped). Trivy 0.73.0 with DB updated 2026-08-10 reported 0 HIGH/CRITICAL findings for both exact new image digests. Local Molecule could not contact the Docker daemon; make ci-fast/tf-test/validate Terraform phases could not download uncached providers after registry and release checksum timeouts. Hosted CI supplied the missing Docker, Terraform, Rust, and Bats evidence."
+remote_ci: passed
+remote_ci_evidence: "PR #69 implementation head a9a13254705eac841e608097e4be2610b99c8442: workflow run 31355493090 completed success with all CI dependencies and the required-checks aggregate successful; both image-scan matrix jobs passed on the refreshed exact digests, as did all Molecule, Terraform, pytest, Rust, zizmor, task-contract, CodeQL, and repository security checks."
 dry_run: not_applicable
 dry_run_evidence: No infrastructure render or mutation is owned by this CI-only change.
 staging: not_applicable
@@ -39,4 +39,4 @@ artifact_evidence: The change consumes a checksum-pinned analyzer but publishes 
 | REQ-ZIZMOR-CANONICAL-GATE | CIC-1786296210585916 | `make zizmor-check`, `make ci-fast`, and local/CI invocation parity tests | passed locally |
 | REQ-ZIZMOR-ROLLBACK | CIC-1786296210585916 | Focused commit history, final diff review, and documented rollback boundary | passed locally |
 | REQ-SOLO-MAINTAINER-MERGE | CIC-1786296210618391 | Commit 4da2a7a; focused pytest, actionlint, and zizmor passed; live classic protection has 0 approvals, no Code Owner requirement, 30 strict checks, admin/linear/conversation enforcement, no force/delete; both ruleset surfaces empty | passed |
-| REQ-MOLECULE-IMAGE-CLEAN | CIC-1786296210649187 | Exact digest inventory, local image scan, hosted image-scan matrix, and required aggregate | pending |
+| REQ-MOLECULE-IMAGE-CLEAN | CIC-1786296210649187 | 35 Debian and 1 Ubuntu references use verified immutable digests; local Trivy found 0 HIGH/CRITICAL for both; hosted run 31355493090 passed both image-scan matrix jobs and the complete CI workflow | passed |

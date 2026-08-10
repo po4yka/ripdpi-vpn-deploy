@@ -2,7 +2,7 @@
 id: CIC-1786295418152915
 title: Integrate zizmor and remediate GitHub Actions security findings
 kind: feature
-status: doing
+status: review
 area: ci
 priority: high
 risk: high
@@ -14,7 +14,7 @@ openspec_change: integrate-zizmor-ci-security-gate
 created: 2026-08-09
 updated: 2026-08-10
 related_tasks: []
-status_detail: "Removing the sole-maintainer approval deadlock and refreshing vulnerable Molecule image digests for PR #69."
+status_detail: "PR #69 implementation SHA a9a1325 passed both image scans and the complete hosted CI; zero-approval solo-maintainer policy is live."
 ---
 
 ## Goal
