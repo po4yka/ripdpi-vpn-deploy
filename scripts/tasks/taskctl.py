@@ -11,7 +11,6 @@ import json
 import os
 import random
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -2314,7 +2313,7 @@ def command_close_prepare(args: argparse.Namespace) -> int:
         if not transition_allowed(document.values["status"], "dropped"):
             fail(f"cannot drop task from {document.values['status']}")
         task_steps = [step for step in steps if step.item_id == document.task_id]
-        execution = prepare_dropped_execution(args.root, document, task_steps, args.reason)
+        prepare_dropped_execution(args.root, document, task_steps, args.reason)
     values = dict(document.values)
     values["status"] = args.outcome
     values["updated"] = date.today().isoformat()

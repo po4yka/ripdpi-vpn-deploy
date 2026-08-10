@@ -5,8 +5,8 @@ Requires=xray.service
 
 [Service]
 Type=oneshot
-User=xray
-Group=xray
+User=prometheus
+Group=prometheus
 SupplementaryGroups=node_exporter_textfile
 ExecStart=/usr/local/sbin/xray-stats-exporter --server 127.0.0.1:10086 --output /var/lib/node_exporter/textfile/vpn_xray.prom
 

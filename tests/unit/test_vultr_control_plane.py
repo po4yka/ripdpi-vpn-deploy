@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import os
 import runpy
 import urllib.error
 from pathlib import Path

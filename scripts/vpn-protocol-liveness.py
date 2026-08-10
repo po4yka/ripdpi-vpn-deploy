@@ -171,6 +171,7 @@ def wait_for_ports(process: subprocess.Popen[str], ports: list[int], timeout: fl
                 with socket.create_connection(("127.0.0.1", port), timeout=0.1):
                     pending.remove(port)
             except OSError:
+                # Listener startup is asynchronous; retry until the bounded deadline.
                 pass
         if pending:
             time.sleep(0.05)
