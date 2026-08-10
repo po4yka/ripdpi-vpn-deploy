@@ -1,11 +1,11 @@
 ---
 task_id: CIC-1786295418152915
 change: integrate-zizmor-ci-security-gate
-commit_sha: a9a13254705eac841e608097e4be2610b99c8442
+commit_sha: 92ae01016dd3ddac70aa7429dc47803bbc65ce0a
 local: passed
-local_evidence: "On implementation SHA a9a13254705eac841e608097e4be2610b99c8442: exact zizmor 1.29.0 scan, actionlint, yamllint, gitleaks, ansible-lint production profile, Ansible syntax, focused branch/image contracts, and full pytest passed (905 passed, 2 skipped). Trivy 0.73.0 with DB updated 2026-08-10 reported 0 HIGH/CRITICAL findings for both exact new image digests. Local Molecule could not contact the Docker daemon; make ci-fast/tf-test/validate Terraform phases could not download uncached providers after registry and release checksum timeouts. Hosted CI supplied the missing Docker, Terraform, Rust, and Bats evidence."
+local_evidence: "On implementation SHA 92ae01016dd3ddac70aa7429dc47803bbc65ce0a: exact zizmor 1.29.0 scan, actionlint, yamllint, gitleaks, ansible-lint production profile, Ansible syntax, focused branch/image/release contracts, and full pytest passed (906 passed, 2 skipped; 961 total tests collected across the complete suite). Trivy 0.73.0 with DB updated 2026-08-10 reported 0 HIGH/CRITICAL findings for both exact new image digests. Local Molecule could not contact the Docker daemon; make ci-fast/tf-test/validate Terraform phases could not download uncached providers after registry and release checksum timeouts. Hosted CI supplied the missing Docker, Terraform, Rust, and Bats evidence."
 remote_ci: passed
-remote_ci_evidence: "PR #69 implementation head a9a13254705eac841e608097e4be2610b99c8442: workflow run 31355493090 completed success with all CI dependencies and the required-checks aggregate successful; both image-scan matrix jobs passed on the refreshed exact digests, as did all Molecule, Terraform, pytest, Rust, zizmor, task-contract, CodeQL, and repository security checks."
+remote_ci_evidence: "PR #69 implementation head 92ae01016dd3ddac70aa7429dc47803bbc65ce0a: workflow run 31356881309 completed success with all 59 checks and the required-checks aggregate successful; both image-scan matrix jobs passed on the refreshed exact digests, the release creation/rerun contract passed in pytest, and all Molecule, Terraform, Rust, zizmor, task-contract, CodeQL, and repository security checks were green."
 dry_run: not_applicable
 dry_run_evidence: No infrastructure render or mutation is owned by this CI-only change.
 staging: not_applicable
