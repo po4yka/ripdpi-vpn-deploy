@@ -3,8 +3,8 @@
 # This is single-operator by default. If you bring on a second operator,
 # split per-area (e.g. terraform → @ops, docs → @docs).
 #
-# CODEOWNERS is enforced only when branch protection has "Require review
-# from Code Owners" enabled — see docs/BRANCH-PROTECTION.md.
+# CODEOWNERS currently routes review but is not a required gate while the
+# repository has one maintainer. See docs/BRANCH-PROTECTION.md.
 
 * @po4yka
 

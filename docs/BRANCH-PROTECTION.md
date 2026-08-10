@@ -1,7 +1,9 @@
 # Branch protection
 
-`main` should require every CI gate to pass before merge, plus a
-CODEOWNERS review, a linear history, and admin enforcement. The default
+`main` requires every CI gate to pass before merge, plus a pull request,
+linear history, conversation resolution, and admin enforcement. Approving
+reviews are not required while this is a single-maintainer repository because
+GitHub does not allow an author to approve their own pull request. The default
 `GITHUB_TOKEN` does **not** carry `Administration: write`, so the
 protection rule is applied through `.github/workflows/branch-protection.yml`,
 gated on a fine-grained personal access token (PAT).
@@ -44,9 +46,8 @@ count (currently 30 in the repository manifest).
 Settings → Branches → `main` → see:
 
 - Require a pull request before merging ✅
-- Require approvals (1) ✅
-- Dismiss stale pull request approvals ✅
-- Require review from Code Owners ✅
+- Required approvals: **0** ✅
+- Require review from Code Owners: **disabled** ✅
 - Require status checks to pass before merging ✅
 - 30 status checks listed after the current workflow has been applied
 - Require branches to be up to date before merging ✅
@@ -104,11 +105,14 @@ is stale; rerun `branch-protection` after this documentation commit is green.
 
 ## Admin enforcement
 
-The workflow sets `enforce_admins: true`. This is deliberate: this repo
-deploys active VPN infrastructure, so maintainers should not be able to bypass
-the required CI, CODEOWNERS review, stale-review dismissal, or conversation
-resolution gates on `main`. Emergency production repair should happen through a
-short-lived PR with the same checks, not by pushing around branch protection.
+The workflow sets `enforce_admins: true`. This is deliberate: this repo deploys
+active VPN infrastructure, so maintainers cannot bypass required CI, the pull
+request boundary, linear history, or conversation resolution on `main`. The
+solo maintainer can merge a green, resolved pull request without an impossible
+self-approval. If a second maintainer joins, raise the approval count and
+re-enable Code Owner review in the codified workflow before relying on reviews
+as a gate. Emergency production repair should still use a short-lived PR with
+the same checks, not a direct push around branch protection.
 
 ## Why not just enable it in Settings?
 
