@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: integrate-zizmor-ci-security-gate
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-10
 related_tasks: []
-status_detail: Implementation complete and locally validated on 2203e15; awaiting required remote CI on the pushed final SHA.
+status_detail: "Required hosted CI passed on clean SHA 49b61b7; awaiting Code Owner approval and merge of PR #69."
 ---
 
 ## Goal

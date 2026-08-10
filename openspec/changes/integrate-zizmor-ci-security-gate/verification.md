@@ -4,8 +4,8 @@ change: integrate-zizmor-ci-security-gate
 commit_sha: 2203e15af04bc2ad184cea2412e4138de069148b
 local: passed
 local_evidence: "Passed on implementation SHA 2203e15: exact zizmor 1.29.0 strict offline scan with zero findings (75 persona-suppressed); four executable negative/scope fixtures; release tag/ref contract including branch-only and mismatched-commit rejection; focused pytest, actionlint, yamllint, and shellcheck; make ci-fast with CI-compatible Bash 5.2, actionlint 1.7.7, and shellcheck 0.10.0; make validate; taskctl validate. Full local suite: Terraform 20/18/20/17, 903 Python passed and 2 skipped, 48 bats passed, Rust clippy and tests passed."
-remote_ci: required
-remote_ci_evidence: null
+remote_ci: passed
+remote_ci_evidence: "PR #69 clean head 49b61b7f2d914dad30be81449b9ca21f8573de57: required CI run 31353307486 passed zizmor, task-contract, all required dependencies, and the required-checks aggregate. The two failing image-scan matrix jobs are non-required pre-existing Trivy findings against unchanged pinned Molecule base images and are outside this change's CI contract."
 dry_run: not_applicable
 dry_run_evidence: No infrastructure render or mutation is owned by this CI-only change.
 staging: not_applicable
