@@ -85,10 +85,10 @@ deployment paths are unaffected.
 - Add a seven-day Dependabot default cooldown to every ecosystem. Security
   updates remain exempt from cooldown; deleting Dependabot is rejected because
   it is the observed active dependency updater.
-- Replace the redundant release-upload action with `gh release upload
-  --clobber`, using one resolved tag for tag and manual-dispatch paths. The
-  command fails if release-please has not created the release; it does not
-  create or rewrite release notes.
+- Replace the redundant release-upload action with built-in `gh`, using one
+  resolved tag for tag and manual-dispatch paths. Create a missing release with
+  its complete asset set, preserve existing notes on reruns through `upload
+  --clobber`, recover an interrupted draft, and serialize mutations per tag.
 - Keep the pull-request protection object but encode zero required approving
   reviews and disable mandatory Code Owner review. Keep strict required status
   checks, admin enforcement, linear history, conversation resolution, and

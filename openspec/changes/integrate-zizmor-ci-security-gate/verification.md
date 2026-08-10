@@ -33,7 +33,7 @@ artifact_evidence: The change consumes a checksum-pinned analyzer but publishes 
 | REQ-ZIZMOR-ZERO-BASELINE | CIC-1786296210479892 | Reproducible-pin contract tests and scoped analyzer | passed locally |
 | REQ-ZIZMOR-ZERO-BASELINE | CIC-1786296210502723 | Checkout credential-persistence contract tests and scoped analyzer | passed locally |
 | REQ-ZIZMOR-ZERO-BASELINE | CIC-1786296210530158 | Dependabot cooldown contract test and scoped analyzer | passed locally |
-| REQ-ZIZMOR-ZERO-BASELINE | CIC-1786296210558254 | Release asset/tag contract tests, exact-tag commit binding, and scoped analyzer | passed locally |
+| REQ-ZIZMOR-ZERO-BASELINE | CIC-1786296210558254 | Release create/upload/draft recovery contract tests, exact-tag commit binding, and scoped analyzer | passed locally |
 | REQ-ZIZMOR-LEAST-PRIVILEGE | CIC-1786296210502723 | No persisted checkout credentials across owned workflows | passed locally |
 | REQ-ZIZMOR-LEAST-PRIVILEGE | CIC-1786296210585916 | Offline no-token CI job with read-only permissions and temporary install | passed locally |
 | REQ-ZIZMOR-CANONICAL-GATE | CIC-1786296210585916 | `make zizmor-check`, `make ci-fast`, and local/CI invocation parity tests | passed locally |

@@ -119,8 +119,11 @@ jobs:
       - attest
       - validate-tag
     runs-on: ubuntu-24.04
-    # contents: write is required for gh release upload. It is scoped to this
-    # job only; the top-level token remains read-only.
+    concurrency:
+      group: vpnd-release-${{ needs.validate-tag.outputs.release-tag }}
+      cancel-in-progress: false
+    # contents: write is required for gh release create/upload/edit. It is
+    # scoped to this job only; the top-level token remains read-only.
     permissions:
       contents: write
     env:
@@ -170,11 +173,28 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release upload "$RELEASE_TAG" \
-            dist/vpnd-x86_64-unknown-linux-gnu \
-            dist/vpnd-aarch64-unknown-linux-gnu \
-            dist/vpnd-x86_64-apple-darwin \
-            dist/vpnd-aarch64-apple-darwin \
-            dist/SHA256SUMS \
-            dist/sbom.json \
-            --clobber
+          assets=(
+            dist/vpnd-x86_64-unknown-linux-gnu
+            dist/vpnd-aarch64-unknown-linux-gnu
+            dist/vpnd-x86_64-apple-darwin
+            dist/vpnd-aarch64-apple-darwin
+            dist/SHA256SUMS
+            dist/sbom.json
+          )
+
+          for asset in "${assets[@]}"; do
+            test -s "$asset"
+          done
+
+          if release_is_draft="$(gh release view "$RELEASE_TAG" \
+            --json isDraft --jq .isDraft 2>/dev/null)"; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+            if [[ "$release_is_draft" == "true" ]]; then
+              gh release edit "$RELEASE_TAG" --draft=false
+            fi
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
+              --verify-tag \
+              --title "$RELEASE_TAG" \
+              --notes ""
+          fi
