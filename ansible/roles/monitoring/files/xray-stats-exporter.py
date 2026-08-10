@@ -129,7 +129,7 @@ def atomic_write(path: Path, content: str) -> None:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
-        os.chmod(temporary, 0o644)
+        os.chmod(temporary, 0o600)
         os.replace(temporary, path)
     finally:
         if temporary:
@@ -152,8 +152,12 @@ def main(argv: list[str] | None = None) -> int:
     except CollectionError as exc:
         try:
             atomic_write(args.output, render_failure(collected_at))
-        except OSError:
-            pass
+        except OSError as write_exc:
+            print(
+                "xray-stats-exporter: failure metric update failed "
+                f"({type(write_exc).__name__})",
+                file=sys.stderr,
+            )
         print(f"xray-stats-exporter: collection failed ({exc})", file=sys.stderr)
         return 1
     except OSError as exc:

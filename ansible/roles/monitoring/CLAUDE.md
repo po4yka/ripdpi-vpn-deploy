@@ -17,7 +17,9 @@ without granting those producers ownership or cross-producer replacement.
 
 **Xray diagnostics exclude user identity at the source** — per-user counters
 stay disabled. A hardened one-shot queries loopback StatsService every 60
-seconds and exports only repository-owned technical inbound/outbound tags.
+seconds and exports only repository-owned technical inbound/outbound tags. It
+runs as the local node_exporter account so its atomic textfile can remain 0600
+instead of granting group or world read access.
 
 ## What's done well
 

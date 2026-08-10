@@ -12,7 +12,6 @@ import json
 import os
 import stat
 import subprocess
-import sys
 import tempfile
 import time
 import urllib.error
