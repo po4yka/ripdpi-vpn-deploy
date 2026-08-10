@@ -9,6 +9,13 @@ scope. The existing `ci.yml` workflow already has a `required` aggregate job,
 and `mise.toml` plus the Makefile are the canonical local tool and operator
 surfaces.
 
+The repository has one maintainer, but classic branch protection currently
+requires one approving CODEOWNERS review while enforcing the rule for admins.
+GitHub does not permit self-approval, so a green pull request cannot be merged
+by its only maintainer. No repository rulesets are configured. Separately, the
+two immutable Molecule image pins now produce fixed HIGH findings in Trivy;
+fresh upstream digests are available and scan clean.
+
 The remediation is a repository/CI change only. Terraform roots, cloud-init,
 Ansible roles, SOPS+age secrets, `vpnd` runtime behavior, fleet state, and live
 deployment paths are unaffected.
@@ -21,6 +28,10 @@ deployment paths are unaffected.
   local validation contract and a required CI job.
 - Goal: preserve the semantics of builds, releases, dependency delivery, and
   deployment workflows while reducing credential and input-expansion risk.
+- Goal: preserve required CI and destructive-history protections while removing
+  the impossible approval requirement for the sole maintainer.
+- Goal: restore the hosted image-scan gate by refreshing immutable upstream
+  image digests instead of suppressing fixed vulnerabilities.
 - Non-goal: audit shell or program files indirectly invoked by workflow steps;
   `zizmor` does not model those files.
 - Non-goal: gate on vendored or third-party workflow fixtures outside the owned
@@ -78,6 +89,14 @@ deployment paths are unaffected.
   --clobber`, using one resolved tag for tag and manual-dispatch paths. The
   command fails if release-please has not created the release; it does not
   create or rewrite release notes.
+- Keep the pull-request protection object but encode zero required approving
+  reviews and disable mandatory Code Owner review. Keep strict required status
+  checks, admin enforcement, linear history, conversation resolution, and
+  force-push/deletion denial. Retain CODEOWNERS as future review routing, but do
+  not enforce it while the repository is operated by one maintainer.
+- Replace every old Debian 13 and Ubuntu 24.04 Molecule image digest with the
+  verified current upstream immutable digest. Do not add Trivy exceptions for
+  vulnerabilities already fixed in those images.
 - Add focused contract tests for the analyzer pin/flags/scope/required job and
   for each changed workflow contract. Update the governance test count only
   from the final collected suite rather than predicting it.
@@ -118,6 +137,11 @@ deployment paths are unaffected.
 - Local validation cannot prove required remote CI execution -> retain the task
   in review until a pushed final SHA has observed remote evidence; commits alone
   prove only the local gates requested here.
+- A future second maintainer may need mandatory review -> re-enable required
+  reviews in the codified payload and documentation as an intentional policy
+  change; CODEOWNERS remains available for routing.
+- Upstream image tags are mutable even when their digests are not -> commit only
+  registry-resolved digests and require the hosted scan before acceptance.
 
 ## Migration Plan
 
@@ -133,6 +157,12 @@ deployment paths are unaffected.
    validation, and final diff inspection.
 5. Record observed local evidence. Remote CI remains explicitly unverified
    until the commits are pushed and the required aggregate completes.
+6. Commit the solo-maintainer protection contract, update the live classic
+   branch protection through the GitHub API, and verify both classic protection
+   and rulesets surfaces.
+7. Commit the Molecule image digest refresh separately, then require both the
+   hosted image-scan matrix and the complete required aggregate to pass on the
+   pushed final SHA.
 
 Rollback is commit-oriented: revert the integration commit to remove the gate
 and tool prerequisite while keeping the independently safe remediation commits.

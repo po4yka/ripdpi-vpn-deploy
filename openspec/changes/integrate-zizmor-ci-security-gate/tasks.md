@@ -23,6 +23,8 @@ capability.
 - [x] CIC-1786296210530158 Apply a seven-day cooldown to every active Dependabot ecosystem while preserving immediate security updates; add a focused dependency-delivery contract test #feature !high @item:CIC-1786295418152915 @blocked_by:CIC-1786296210502723
 - [x] CIC-1786296210558254 Replace the redundant release-upload action with built-in `gh release upload`, use one resolved tag for tag and manual runs, and prove release asset and rerun behavior with focused tests #feature !high @item:CIC-1786295418152915 @blocked_by:CIC-1786296210530158
 - [x] CIC-1786296210585916 Pin zizmor 1.29.0, add the strict offline Make gate and required least-privilege CI job, add parity/scope tests and operator documentation, then run all named local gates #feature !high @item:CIC-1786295418152915 @blocked_by:CIC-1786296210558254
+- [ ] CIC-1786296210618391 Codify and apply a solo-maintainer branch-protection policy that requires green CI but no approving review; verify classic protection and rulesets state #feature !high @item:CIC-1786295418152915 @blocked_by:CIC-1786296210585916
+- [ ] CIC-1786296210649187 Refresh every Molecule Debian and Ubuntu image reference to verified immutable scan-clean digests; pass focused contracts and hosted image-scan #bug !high @item:CIC-1786295418152915 @blocked_by:CIC-1786296210618391
 
 ## Verification
 

@@ -4,8 +4,8 @@ change: integrate-zizmor-ci-security-gate
 commit_sha: 2203e15af04bc2ad184cea2412e4138de069148b
 local: passed
 local_evidence: "Passed on implementation SHA 2203e15: exact zizmor 1.29.0 strict offline scan with zero findings (75 persona-suppressed); four executable negative/scope fixtures; release tag/ref contract including branch-only and mismatched-commit rejection; focused pytest, actionlint, yamllint, and shellcheck; make ci-fast with CI-compatible Bash 5.2, actionlint 1.7.7, and shellcheck 0.10.0; make validate; taskctl validate. Full local suite: Terraform 20/18/20/17, 903 Python passed and 2 skipped, 48 bats passed, Rust clippy and tests passed."
-remote_ci: passed
-remote_ci_evidence: "PR #69 clean head 49b61b7f2d914dad30be81449b9ca21f8573de57: required CI run 31353307486 passed zizmor, task-contract, all required dependencies, and the required-checks aggregate. The two failing image-scan matrix jobs are non-required pre-existing Trivy findings against unchanged pinned Molecule base images and are outside this change's CI contract."
+remote_ci: required
+remote_ci_evidence: "The zizmor integration passed required CI on PR #69, but final acceptance now also requires the refreshed Molecule image-scan matrix and complete required aggregate to pass on the new pushed final SHA."
 dry_run: not_applicable
 dry_run_evidence: No infrastructure render or mutation is owned by this CI-only change.
 staging: not_applicable
@@ -38,3 +38,5 @@ artifact_evidence: The change consumes a checksum-pinned analyzer but publishes 
 | REQ-ZIZMOR-LEAST-PRIVILEGE | CIC-1786296210585916 | Offline no-token CI job with read-only permissions and temporary install | passed locally |
 | REQ-ZIZMOR-CANONICAL-GATE | CIC-1786296210585916 | `make zizmor-check`, `make ci-fast`, and local/CI invocation parity tests | passed locally |
 | REQ-ZIZMOR-ROLLBACK | CIC-1786296210585916 | Focused commit history, final diff review, and documented rollback boundary | passed locally |
+| REQ-SOLO-MAINTAINER-MERGE | CIC-1786296210618391 | Codified payload contract plus live classic-protection and rulesets inspection | pending |
+| REQ-MOLECULE-IMAGE-CLEAN | CIC-1786296210649187 | Exact digest inventory, local image scan, hosted image-scan matrix, and required aggregate | pending |

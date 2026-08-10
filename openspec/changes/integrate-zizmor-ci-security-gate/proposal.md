@@ -21,6 +21,11 @@ policy, secret, or supply-chain checks.
   repository-owned input.
 - Existing actionable findings are removed without disabling audit rules or
   weakening workflow permissions, immutable action references, or other gates.
+- The protected `main` branch keeps required CI, linear history, conversation
+  resolution, and force-push/deletion protection, but does not require an
+  approving review while the repository has one maintainer.
+- Molecule base-image digests are refreshed to upstream immutable manifests
+  that pass the repository's HIGH/CRITICAL Trivy gate without exceptions.
 - Vendored and third-party test fixtures are excluded from the production gate.
 - No runtime VPN, cloud resource, managed host, secret schema, or deployment
   behavior changes.
@@ -41,7 +46,8 @@ policy, secret, or supply-chain checks.
 ## Impact
 
 - Affects the repository toolchain, Makefile validation surface, GitHub Actions
-  definitions, Dependabot configuration, and focused validation tests.
+  definitions, branch-protection policy, Molecule base-image pins, Dependabot
+  configuration, and focused validation tests.
 - Adds a pinned development-tool dependency, but no production or deployed
   runtime dependency.
 - Changes only CI and contributor contracts; Terraform, cloud-init, Ansible,

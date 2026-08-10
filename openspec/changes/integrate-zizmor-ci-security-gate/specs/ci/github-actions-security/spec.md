@@ -123,3 +123,34 @@ changing runtime infrastructure, secrets, or deployment state.
 - **WHEN** an upstream analyzer regression blocks all repository validation
 - **THEN** operators can revert the pinned integration commit while retaining
   the independently safe workflow remediations
+
+### Requirement: REQ-SOLO-MAINTAINER-MERGE — Do not require self-approval
+
+The default branch protection MUST allow the sole maintainer to merge a pull
+request without an approving review while retaining required status checks,
+strict up-to-date branches, admin enforcement, linear history, conversation
+resolution, and force-push and deletion protection.
+
+#### Scenario: Sole maintainer merges a validated pull request
+
+- **WHEN** all required checks pass and all conversations are resolved
+- **THEN** GitHub permits the maintainer to merge without an approving or Code
+  Owner review
+
+#### Scenario: Protection policy is reapplied
+
+- **WHEN** the repository branch-protection workflow is run again
+- **THEN** it preserves the no-required-review policy instead of restoring an
+  impossible self-approval requirement
+
+### Requirement: REQ-MOLECULE-IMAGE-CLEAN — Keep immutable test images scan-clean
+
+Every Molecule platform image MUST remain digest-pinned, and the distinct
+resolved images MUST pass the hosted HIGH/CRITICAL Trivy scan without adding a
+vulnerability exception for findings fixed by an available upstream image.
+
+#### Scenario: Upstream image refresh is available
+
+- **WHEN** a pinned image accumulates fixed HIGH or CRITICAL findings
+- **THEN** every reference is updated coherently to a verified immutable digest
+  and the hosted image-scan matrix passes
