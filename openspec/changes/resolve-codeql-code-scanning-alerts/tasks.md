@@ -19,7 +19,7 @@ and monitoring files have one writer in the dedicated
 - [x] SCR-1786336382872322 Make exporter fallback-write failure redacted and observable, document bounded socket retry intent, remove unused script imports, and pass focused monitoring and liveness tests #bug !high @item:SEC-1786336086885514 @blocked_by:ANS-1786336382853856
 - [x] SEC-1786336382890713 Remove taskctl's overwritten execution assignment and redundant imports, normalize unittest imports, and pass task lifecycle and Vultr preflight regressions #bug !high @item:SEC-1786336086885514 @blocked_by:SCR-1786336382872322
 - [x] TST-1786336382909520 Run task-contract validation, the full fast CI gate, monitoring Molecule, make validate, and record every exact local outcome without weakening or skipping a gate #bug !high @item:SEC-1786336086885514 @blocked_by:SEC-1786336382890713
-- [ ] CIC-1786336382929709 Obtain hosted codeql python success on the exact implementation SHA and verify alerts 320 through 327 are closed with no replacement alert or dismissal #bug !high @item:SEC-1786336086885514 @blocked_by:TST-1786336382909520
+- [x] CIC-1786336382929709 Obtain hosted codeql python success on the exact implementation SHA and verify alerts 320 through 327 are closed with no replacement alert or dismissal #bug !high @item:SEC-1786336086885514 @blocked_by:TST-1786336382909520
 
 ## Verification
 
