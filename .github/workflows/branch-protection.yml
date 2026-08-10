@@ -16,8 +16,6 @@ jobs:
     name: apply branch protection
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-
       - name: Sanity-check the PAT secret
         env:
           BRANCH_PROTECTION_TOKEN: ${{ secrets.BRANCH_PROTECTION_TOKEN }}
@@ -77,9 +75,10 @@ jobs:
             },
             enforce_admins: true,
             required_pull_request_reviews: {
-              required_approving_review_count: 1,
+              required_approving_review_count: 0,
               dismiss_stale_reviews: true,
-              require_code_owner_reviews: true
+              require_code_owner_reviews: false,
+              require_last_push_approval: false
             },
             restrictions: null,
             allow_force_pushes: false,

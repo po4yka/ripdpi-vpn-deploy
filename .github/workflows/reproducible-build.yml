@@ -43,11 +43,18 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import yaml, sys
+          import re
+          import yaml
           d = yaml.safe_load(open("secrets/prod.secrets.example.yaml")) or {}
           x = d.get("xray") or {}
           v   = x.get("version", "")
           amd = x.get("linux_amd64_sha256", "")
+          version_pattern = r"(?:v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.+-]+)?|REPLACE_WITH_[A-Z0-9_]+)"
+          sha_pattern = r"(?:[0-9a-fA-F]{64}|REPLACE_WITH_RELEASE_SHA256|)"
+          if re.fullmatch(version_pattern, v) is None:
+              raise SystemExit("invalid xray version pin")
+          if re.fullmatch(sha_pattern, amd) is None:
+              raise SystemExit("invalid xray sha256 pin")
           print(f"version={v}")
           print(f"sha={amd}")
           PY
@@ -65,8 +72,10 @@ jobs:
 
       - name: Clone Xray-core at pinned tag
         if: ${{ steps.pin.outputs.sha != 'REPLACE_WITH_RELEASE_SHA256' && steps.pin.outputs.sha != '' }}
+        env:
+          PIN_VERSION: ${{ steps.pin.outputs.version }}
         run: |
-          git clone --depth 1 --branch "${{ steps.pin.outputs.version }}" \
+          git clone --depth 1 --branch "$PIN_VERSION" \
             https://github.com/XTLS/Xray-core src
 
       - name: Build deterministically
@@ -83,9 +92,11 @@ jobs:
 
       - name: Compare local build sha256 against schema pin
         if: ${{ steps.pin.outputs.sha != 'REPLACE_WITH_RELEASE_SHA256' && steps.pin.outputs.sha != '' }}
+        env:
+          PIN_SHA: ${{ steps.pin.outputs.sha }}
         run: |
           local_sha="$(sha256sum xray-built | awk '{print $1}')"
-          schema_sha="${{ steps.pin.outputs.sha }}"
+          schema_sha="$PIN_SHA"
           echo "schema:  ${schema_sha}"
           echo "rebuild: ${local_sha}"
           # xray mismatch is advisory only: Go releases are not reproducible
@@ -117,11 +128,20 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import re
           import yaml
           d = yaml.safe_load(open("secrets/prod.secrets.example.yaml")) or {}
           h = d.get("hysteria") or {}
-          print(f"version={h.get('version','')}")
-          print(f"sha={h.get('linux_amd64_sha256','')}")
+          v = h.get("version", "")
+          amd = h.get("linux_amd64_sha256", "")
+          version_pattern = r"(?:v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.+-]+)?|REPLACE_WITH_[A-Z0-9_]+)"
+          sha_pattern = r"(?:[0-9a-fA-F]{64}|REPLACE_WITH_RELEASE_SHA256|)"
+          if re.fullmatch(version_pattern, v) is None:
+              raise SystemExit("invalid hysteria version pin")
+          if re.fullmatch(sha_pattern, amd) is None:
+              raise SystemExit("invalid hysteria sha256 pin")
+          print(f"version={v}")
+          print(f"sha={amd}")
           PY
 
       - name: Skip when pin is a placeholder
@@ -130,15 +150,18 @@ jobs:
 
       - name: Verify release-asset sha256 matches schema
         if: ${{ steps.pin.outputs.sha != 'REPLACE_WITH_RELEASE_SHA256' && steps.pin.outputs.sha != '' }}
+        env:
+          PIN_SHA: ${{ steps.pin.outputs.sha }}
+          PIN_VERSION: ${{ steps.pin.outputs.version }}
         run: |
           set -euo pipefail
-          ver="${{ steps.pin.outputs.version }}"
+          ver="$PIN_VERSION"
           url="https://github.com/apernet/hysteria/releases/download/app/${ver}/hysteria-linux-amd64"
           curl -fsSL -o hysteria-bin "$url"
           asset_sha="$(sha256sum hysteria-bin | awk '{print $1}')"
           echo "release asset sha256: ${asset_sha}"
-          echo "schema pin:           ${{ steps.pin.outputs.sha }}"
-          [[ "$asset_sha" == "${{ steps.pin.outputs.sha }}" ]] \
+          echo "schema pin:           $PIN_SHA"
+          [[ "$asset_sha" == "$PIN_SHA" ]] \
             || { echo "::error::release-asset sha256 differs from schema pin"; exit 1; }
 
   realitlscanner:
@@ -152,20 +175,28 @@ jobs:
       - name: Read pinned RealiTLScanner version + sha256
         id: pin
         run: |
+          set -euo pipefail
           ver="$(grep -E '^REALI_VERSION=' scripts/scan-reality-targets.sh \
                  | cut -d'"' -f2)"
           sha="$(grep -E '^REALI_LINUX_SHA256=' scripts/scan-reality-targets.sh \
                  | cut -d'"' -f2)"
+          [[ "$ver" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.+-]+)?$ ]] \
+            || { echo "::error::invalid RealiTLScanner version pin"; exit 1; }
+          [[ "$sha" =~ ^[0-9a-fA-F]{64}$ ]] \
+            || { echo "::error::invalid RealiTLScanner sha256 pin"; exit 1; }
           echo "version=${ver}" >> "$GITHUB_OUTPUT"
           echo "sha=${sha}"     >> "$GITHUB_OUTPUT"
 
       - name: Verify release-asset sha256 matches script pin
+        env:
+          PIN_SHA: ${{ steps.pin.outputs.sha }}
+          PIN_VERSION: ${{ steps.pin.outputs.version }}
         run: |
           set -euo pipefail
-          url="https://github.com/XTLS/RealiTLScanner/releases/download/${{ steps.pin.outputs.version }}/RealiTLScanner-linux-64"
+          url="https://github.com/XTLS/RealiTLScanner/releases/download/${PIN_VERSION}/RealiTLScanner-linux-64"
           curl -fsSL -o reali "$url"
           asset_sha="$(sha256sum reali | awk '{print $1}')"
           echo "release asset sha256: ${asset_sha}"
-          echo "script pin:           ${{ steps.pin.outputs.sha }}"
-          [[ "$asset_sha" == "${{ steps.pin.outputs.sha }}" ]] \
+          echo "script pin:           $PIN_SHA"
+          [[ "$asset_sha" == "$PIN_SHA" ]] \
             || { echo "::error::release-asset sha256 differs from script pin"; exit 1; }

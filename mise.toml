@@ -30,3 +30,6 @@ rust = "1.96.0"
 
 # gitleaks rev: v8.30.1 in .pre-commit-config.yaml
 gitleaks = "8.30.1"
+
+# Static analysis for owned GitHub Actions, Dependabot, and pre-commit config.
+"pipx:zizmor" = "1.29.0"

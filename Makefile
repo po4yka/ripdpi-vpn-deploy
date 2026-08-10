@@ -20,6 +20,7 @@ SECRETS_FILE  ?= $(RUNTIME_DIR)/vpn-$(ENV).secrets.yaml
 SOPS_FILE     ?= $(HOME)/.config/vpn-provision/$(ENV).secrets.sops.yaml
 TFVARS        := $(TF_ROOT)/environments/$(ENV).tfvars
 TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
+ZIZMOR_VERSION := 1.29.0
 DEPLOY_SOURCE_REVISION ?= $(shell ./scripts/deploy-source-identity.sh --revision 2>/dev/null)
 DEPLOYABLE_SOURCE_DIGEST ?= $(shell ./scripts/deploy-source-identity.sh --digest 2>/dev/null)
 
@@ -41,7 +42,7 @@ export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CON
         remove-operator-crons issue-sub-token sub-reads \
         awg-evidence-provision \
         test-unit snapshot-check snapshot-update validate-secrets \
-        actionlint-check cloud-init-schema tf-test yamllint-check shellcheck \
+        actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
         ci-fast bats-test vpnd-test vpnd-clippy vpnd-deny vpnd-msrv vpnd-mutants tf-policy \
         task-tools task-check task-list task-ready task-graph task-federation \
         check
@@ -151,6 +152,7 @@ help:
 	@echo "  validate-secrets           jsonschema check (strict if SECRETS_FILE is set)"
 	@echo "  validate-bundle            jsonschema + fingerprint check of a ripdpi bundle (BUNDLE=… or example)"
 	@echo "  actionlint-check           Validate every GitHub Actions workflow"
+	@echo "  zizmor-check               Audit owned GitHub automation (strict, offline)"
 	@echo "  cloud-init-schema          Render shared cloud-init and run cloud-init schema"
 	@echo "  tf-test                    terraform test for all provider roots"
 	@echo "  yamllint-check             Lint repository YAML with the CI configuration"
@@ -395,6 +397,21 @@ actionlint-check:
 	@command -v actionlint >/dev/null 2>&1 || { echo "missing: actionlint" >&2; exit 1; }
 	actionlint
 
+zizmor-check:
+	@command -v zizmor >/dev/null 2>&1 || { echo "missing: zizmor $(ZIZMOR_VERSION) (run: mise install)" >&2; exit 1; }
+	@test "$$(zizmor --version)" = "zizmor $(ZIZMOR_VERSION)" || { echo "zizmor $(ZIZMOR_VERSION) required (run: mise install)" >&2; exit 1; }
+	@case "$${ZIZMOR_FORMAT:-plain}" in \
+	  plain|github) ;; \
+	  *) echo "ZIZMOR_FORMAT must be plain or github (SARIF does not fail on findings)" >&2; exit 1 ;; \
+	esac
+	zizmor --offline --strict-collection --no-config --persona=regular \
+	  --format="$${ZIZMOR_FORMAT:-plain}" \
+	  --collect=workflows --collect=actions --collect=dependabot --collect=pre-commit \
+	  .github .pre-commit-config.yaml
+
+zizmor-test:
+	python3 tests/zizmor_gate_runtime.py
+
 cloud-init-schema:
 	@set -eu; \
 	  rendered="$$(mktemp -t cloud-init.rendered.XXXXXX)"; \
@@ -460,6 +477,8 @@ task-federation:
 # tooling is a failure rather than a misleading green gate.
 ci-fast:
 	@$(MAKE) actionlint-check
+	@$(MAKE) zizmor-check
+	@$(MAKE) zizmor-test
 	@$(MAKE) cloud-init-schema
 	@$(MAKE) tf-test
 	@$(MAKE) yamllint-check

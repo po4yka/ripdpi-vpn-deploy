@@ -15,6 +15,7 @@ def test_validate_checks_every_provider_and_ci_fast_has_no_tool_skips():
     ci_fast = makefile.split("ci-fast:", 1)[1].split("\n\n# Union gate", 1)[0]
     for target in (
         "actionlint-check",
+        "zizmor-check",
         "cloud-init-schema",
         "tf-test",
         "yamllint-check",

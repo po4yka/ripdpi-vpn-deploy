@@ -32,6 +32,9 @@ jobs:
   rust:
     name: rust (${{ inputs.target }})
     runs-on: ${{ contains(inputs.target, 'apple') && 'macos-latest' || 'ubuntu-24.04' }}
+    env:
+      CARGO_COMMAND: ${{ inputs.cargo-command }}
+      RUST_TARGET: ${{ inputs.target }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -58,7 +61,11 @@ jobs:
       - name: Require the committed dependency graph
         shell: bash
         run: |
-          case " ${{ inputs.cargo-command }} " in
+          if [[ ! "$RUST_TARGET" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]]; then
+            echo "invalid Rust target: ${RUST_TARGET}" >&2
+            exit 1
+          fi
+          case " $CARGO_COMMAND " in
             *" --locked "*) ;;
             *)
               echo "cargo-command must include --locked" >&2
@@ -69,19 +76,25 @@ jobs:
       - name: Run cargo ${{ inputs.cargo-command }} (native)
         if: ${{ !inputs.cross }}
         working-directory: vpnd
-        run: cargo ${{ inputs.cargo-command }} --target ${{ inputs.target }}
+        shell: bash
+        run: |
+          read -r -a cargo_args <<< "$CARGO_COMMAND"
+          cargo "${cargo_args[@]}" --target "$RUST_TARGET"
 
       - name: Run cross ${{ inputs.cargo-command }} (cross)
         if: ${{ inputs.cross }}
         working-directory: vpnd
-        run: cross ${{ inputs.cargo-command }} --target ${{ inputs.target }}
+        shell: bash
+        run: |
+          read -r -a cargo_args <<< "$CARGO_COMMAND"
+          cross "${cargo_args[@]}" --target "$RUST_TARGET"
 
       - name: Rename binary with target suffix
         if: ${{ inputs.upload-binary }}
         shell: bash
         run: |
-          src="vpnd/target/${{ inputs.target }}/release/vpnd"
-          dst="vpnd-${{ inputs.target }}"
+          src="vpnd/target/${RUST_TARGET}/release/vpnd"
+          dst="vpnd-${RUST_TARGET}"
           cp "${src}" "${dst}"
 
       - name: Upload binary artifact

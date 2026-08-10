@@ -5,7 +5,7 @@ dependency:
 driver: {name: docker}
 platforms:
   - name: vpn-snell-debian13
-    image: geerlingguy/docker-debian13-ansible@sha256:9b433580e02f960ea57525e0bcfe13d7cb32188f9ebc1952f21b9dfa19d8bd47
+    image: geerlingguy/docker-debian13-ansible@sha256:3f1b0bbef1ed8d87fb6b1c4557adf48f63fc65d8619a3a071c142245b55f17a0
     pre_build_image: true
     privileged: true
     command: /lib/systemd/systemd

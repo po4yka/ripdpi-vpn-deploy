@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-08-09
+goal: CIC-1786295418152915 Integrate zizmor and remediate GitHub Actions
+  security findings

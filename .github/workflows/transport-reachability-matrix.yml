@@ -57,6 +57,7 @@ jobs:
     env:
       UPCLOUD_USERNAME: ${{ secrets.UPCLOUD_USERNAME }}
       UPCLOUD_PASSWORD: ${{ secrets.UPCLOUD_PASSWORD }}
+      TF_VAR_zone: ${{ github.event.inputs.zone || 'fi-hel1' }}
       ANSIBLE_HOST_KEY_CHECKING: "False"
       CI_UPCLOUD_TEMPLATE_UUID: ${{ secrets.CI_UPCLOUD_TEMPLATE_UUID }}
       PROFILES_INPUT: ${{ github.event.inputs.profiles || 'p0,p0p1,p0p1p2' }}
@@ -138,7 +139,6 @@ jobs:
           echo "CI_SERVER_NAME=${server_name}" >> "$GITHUB_ENV"
           cat > "terraform/providers/upcloud/environments/${ci_env}.tfvars" <<TFVARS
           server_name          = "${server_name}"
-          zone                 = "${{ github.event.inputs.zone || 'fi-hel1' }}"
           plan                 = "1xCPU-2GB"
           storage_template     = "${CI_UPCLOUD_TEMPLATE_UUID}"
           admin_ssh_public_key = file("~/.ssh/vpn_deploy.pub")
