@@ -38,5 +38,5 @@ artifact_evidence: The change consumes a checksum-pinned analyzer but publishes 
 | REQ-ZIZMOR-LEAST-PRIVILEGE | CIC-1786296210585916 | Offline no-token CI job with read-only permissions and temporary install | passed locally |
 | REQ-ZIZMOR-CANONICAL-GATE | CIC-1786296210585916 | `make zizmor-check`, `make ci-fast`, and local/CI invocation parity tests | passed locally |
 | REQ-ZIZMOR-ROLLBACK | CIC-1786296210585916 | Focused commit history, final diff review, and documented rollback boundary | passed locally |
-| REQ-SOLO-MAINTAINER-MERGE | CIC-1786296210618391 | Codified payload contract plus live classic-protection and rulesets inspection | pending |
+| REQ-SOLO-MAINTAINER-MERGE | CIC-1786296210618391 | Commit 4da2a7a; focused pytest, actionlint, and zizmor passed; live classic protection has 0 approvals, no Code Owner requirement, 30 strict checks, admin/linear/conversation enforcement, no force/delete; both ruleset surfaces empty | passed |
 | REQ-MOLECULE-IMAGE-CLEAN | CIC-1786296210649187 | Exact digest inventory, local image scan, hosted image-scan matrix, and required aggregate | pending |
