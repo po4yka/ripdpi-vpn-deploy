@@ -19,7 +19,7 @@ platforms:
     cgroupns_mode: host
 
   - name: vpn-baseline-ubuntu2404
-    image: geerlingguy/docker-ubuntu2404-ansible@sha256:a92c929b640cd4e5cf73f67fd1e9d0466c58335449fdc37a889c0bb4bbf78e2e
+    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404@sha256:c85d002450dc2ad94c21b05dd6410fb3d37c13365bc958fcd679d7cca5e7b90d
     pre_build_image: true
     privileged: true
     command: /lib/systemd/systemd
