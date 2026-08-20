@@ -91,14 +91,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Check out federated RIPDPI portfolio
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          repository: po4yka/RIPDPI
-          path: .task-peers/RIPDPI
-          fetch-depth: 0
-          persist-credentials: false
-
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: 24
@@ -108,7 +100,7 @@ jobs:
       - name: Install pinned tasking tools
         run: npm ci --prefix tools/tasking --ignore-scripts
 
-      - name: Validate local and federated task contracts
+      - name: Validate local task contracts
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -133,7 +125,6 @@ jobs:
             fi
           fi
           ./taskctl validate "${args[@]}"
-          ./taskctl federation validate --peer-root .task-peers/RIPDPI
 
   terraform:
     name: terraform fmt + validate

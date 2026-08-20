@@ -10,7 +10,7 @@ driver:
 
 platforms:
   - name: vpn-baseline-debian13
-    image: geerlingguy/docker-debian13-ansible@sha256:3f1b0bbef1ed8d87fb6b1c4557adf48f63fc65d8619a3a071c142245b55f17a0
+    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13@sha256:ca807cb2cbdf06021beb87a376005c78b63f11f718b32802e3b2b358c786380d
     pre_build_image: true
     privileged: true
     command: /lib/systemd/systemd
@@ -19,7 +19,7 @@ platforms:
     cgroupns_mode: host
 
   - name: vpn-baseline-ubuntu2404
-    image: geerlingguy/docker-ubuntu2404-ansible@sha256:a92c929b640cd4e5cf73f67fd1e9d0466c58335449fdc37a889c0bb4bbf78e2e
+    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404@sha256:c85d002450dc2ad94c21b05dd6410fb3d37c13365bc958fcd679d7cca5e7b90d
     pre_build_image: true
     privileged: true
     command: /lib/systemd/systemd

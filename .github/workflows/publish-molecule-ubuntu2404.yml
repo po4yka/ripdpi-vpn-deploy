@@ -1,0 +1,54 @@
+name: publish-molecule-ubuntu2404
+
+on:
+  push:
+    paths:
+      - 'images/molecule-ubuntu2404/**'
+      - '.github/workflows/publish-molecule-ubuntu2404.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      IMAGE: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6
+        with:
+          context: images/molecule-ubuntu2404
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.31.0
+        with:
+          image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: sarif
+          output: trivy-results.sarif
+          trivyignores: .trivyignore
+          limit-severities-for-sarif: true
+      - if: always()
+        uses: github/codeql-action/upload-sarif@d1ba80a13dd99fba24a470575428917156a28b43  # v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: molecule-ubuntu2404
+      - env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "${IMAGE}@${IMAGE_DIGEST}" >> "$GITHUB_STEP_SUMMARY"
