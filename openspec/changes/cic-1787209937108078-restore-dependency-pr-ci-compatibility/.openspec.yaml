@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-08-20
+goal: CIC-1787209937108078 Restore dependency PR CI compatibility gates
