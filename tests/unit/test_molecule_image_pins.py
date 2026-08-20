@@ -4,15 +4,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MOLECULE_IMAGE = re.compile(
-    r"geerlingguy/(?P<name>docker-(?:debian13|ubuntu2404)-ansible)@"
+    r"(?P<name>geerlingguy/docker-ubuntu2404-ansible|"
+    r"ghcr\.io/po4yka/ripdpi-vpn-deploy/molecule-debian13)@"
     r"sha256:(?P<digest>[0-9a-f]{64})"
 )
 
 EXPECTED_DIGESTS = {
-    "docker-debian13-ansible": {
-        "3f1b0bbef1ed8d87fb6b1c4557adf48f63fc65d8619a3a071c142245b55f17a0"
+    "ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13": {
+        "ca807cb2cbdf06021beb87a376005c78b63f11f718b32802e3b2b358c786380d"
     },
-    "docker-ubuntu2404-ansible": {
+    "geerlingguy/docker-ubuntu2404-ansible": {
         "a92c929b640cd4e5cf73f67fd1e9d0466c58335449fdc37a889c0bb4bbf78e2e"
     },
 }
