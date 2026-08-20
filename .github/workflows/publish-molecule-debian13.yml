@@ -60,4 +60,6 @@ jobs:
           category: molecule-debian13
 
       - name: Report immutable digest
-        run: echo "${IMAGE}@${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "${IMAGE}@${IMAGE_DIGEST}" >> "$GITHUB_STEP_SUMMARY"

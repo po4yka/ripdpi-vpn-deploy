@@ -4,5 +4,4 @@ FROM geerlingguy/docker-debian13-ansible@sha256:cddf7cf7310a35fd4833b4fb278704a3
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean
