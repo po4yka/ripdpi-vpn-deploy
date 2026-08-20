@@ -1,10 +1,9 @@
-## Purpose
+# ci/task-contract-validation Specification
 
+## Purpose
 Keep pull-request task-contract validation authoritative for this repository
 after the formerly federated peer removes its incompatible task configuration.
-
-## MODIFIED Requirements
-
+## Requirements
 ### Requirement: REQ-CIC-1787209937108078-001 — validate local contract history
 
 The task-contract job MUST validate this repository's current task contract

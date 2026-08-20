@@ -1,0 +1,11 @@
+{
+  "change": "cic-1787209937108078-restore-dependency-pr-ci-compatibility",
+  "evidence_summary": "https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/32356133238",
+  "execution_sha256": "e44988d3f21fe9d6dcf3fc48218bed8884fed3489ebbb61a2d1bee2f7e80cb78",
+  "issue_sha256": "3635e0cfc0c4aa8d9a30b065baa33530e9baa0af2c489f4c939130c91aeee6df",
+  "outcome": "done",
+  "prepared_at": "2026-08-20T09:58:47Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1787209937108078"
+}
