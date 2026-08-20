@@ -2,7 +2,7 @@
 id: CIC-1787209937108078
 title: Restore dependency PR CI compatibility gates
 kind: bug
-status: review
+status: done
 area: ci
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-08-20
 updated: 2026-08-20
 related_tasks: []
 status_detail: "Hosted CI passed on main after merging dependency PRs #75 and #79."
+closed_at: "2026-08-20T10:02:57Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/32356133238"
 ---
 
 ## Goal
@@ -27,5 +30,5 @@ without bypassing task-contract or image-security controls.
 - Local task-contract history validation succeeds without the retired peer.
 - The Debian 13 Molecule image is immutable, scan-clean for fixed HIGH and
   CRITICAL findings, and used by every Debian 13 scenario.
-- Hosted CI is green on the repair and on Dependabot PRs #75 and #76 before
-  either is merged.
+- Hosted CI is green on the repair, Dependabot PR #75, and PR #79, which
+  superseded Dependabot PR #76 after it was closed as stale, before merge.
