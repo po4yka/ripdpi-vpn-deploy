@@ -2,7 +2,7 @@
 id: CIC-1787209937108078
 title: Restore dependency PR CI compatibility gates
 kind: bug
-status: doing
+status: review
 area: ci
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: cic-1787209937108078-restore-dependency-pr-ci-compatibility
 created: 2026-08-20
 updated: 2026-08-20
 related_tasks: []
+status_detail: "Hosted CI passed on main after merging dependency PRs #75 and #79."
 ---
 
 ## Goal
