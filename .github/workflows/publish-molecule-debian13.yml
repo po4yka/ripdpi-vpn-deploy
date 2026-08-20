@@ -1,6 +1,10 @@
 name: publish-molecule-debian13
 
 on:
+  push:
+    paths:
+      - 'images/molecule-debian13/**'
+      - '.github/workflows/publish-molecule-debian13.yml'
   workflow_dispatch:
 
 permissions:
