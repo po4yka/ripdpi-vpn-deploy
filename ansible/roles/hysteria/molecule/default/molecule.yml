@@ -10,7 +10,7 @@ driver:
 
 platforms:
   - name: vpn-hysteria-debian13
-    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13@sha256:ca807cb2cbdf06021beb87a376005c78b63f11f718b32802e3b2b358c786380d
+    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13@sha256:0de09c528cdbf83545420a1b3a9524af9f38d65fc1b28ff6a8af1eff052987da
     pre_build_image: true
     privileged: true
     command: /lib/systemd/systemd
