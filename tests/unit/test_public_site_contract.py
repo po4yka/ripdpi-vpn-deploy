@@ -521,3 +521,16 @@ def test_transport_profiles_share_one_canonical_site_identity() -> None:
     assert secrets["hysteria"]["masquerade_url"] == "https://vpn.example.com"
     tasks = (REPO_ROOT / "ansible" / "roles" / "hysteria" / "tasks" / "main.yml").read_text()
     assert "hysteria.masquerade_url == public_site_canonical_url" in tasks
+
+
+def test_committed_profiles_carry_only_the_neutral_placeholder_origin() -> None:
+    """The decoy identity is operator-supplied (ANSIBLE_EXTRA_VARS_FILE), never committed."""
+    for path in sorted((REPO_ROOT / "ansible" / "group_vars").glob("*.yml")):
+        document = yaml.safe_load(path.read_text())
+        url = (document or {}).get("public_site_canonical_url")
+        if url is None:
+            continue
+        assert url == "https://vpn.example.com", (
+            f"{path.name} must carry the neutral placeholder; the real decoy "
+            "origin is supplied per deploy via ANSIBLE_EXTRA_VARS_FILE"
+        )

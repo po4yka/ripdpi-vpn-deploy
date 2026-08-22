@@ -66,6 +66,24 @@ make verify
 make smoke-test
 ```
 
+## Decoy site identity
+
+Committed profiles carry only the neutral placeholder
+(`https://vpn.example.com`) for `public_site_canonical_url`. Supply the real
+decoy origin per deploy through the validated override file (regular,
+non-symlink, owner-only mode 0600) and deploy only to explicitly limited
+hosts:
+
+```bash
+echo 'public_site_canonical_url: "https://<your-decoy-origin>"' > secrets/local/decoy-origin.yml
+chmod 0600 secrets/local/decoy-origin.yml
+make deploy ANSIBLE_LIMIT=<host> ANSIBLE_EXTRA_VARS_FILE=secrets/local/decoy-origin.yml
+```
+
+The value must be an https origin; convergence fails closed on the
+`nginx-xhttp` / `hysteria` role asserts if it does not match the site identity
+in secrets. Rotating the decoy domain therefore never touches committed files.
+
 ## When not to use it
 
 Use `vpn-device-full.yml` instead when you are debugging a new node and want the

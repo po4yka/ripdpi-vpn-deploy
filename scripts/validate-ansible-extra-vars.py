@@ -14,6 +14,7 @@ ALLOWED_KEYS = {
     "ansible_host",
     "ansible_port",
     "firewall_forward_interface_contract",
+    "public_site_canonical_url",
 }
 DNS_NAME = re.compile(
     r"(?=^.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*"
@@ -52,6 +53,22 @@ def validate(path: Path) -> None:
             or not 1 <= port <= 65535
         ):
             raise ValueError("ansible_port must be an integer from 1 through 65535")
+
+    if "public_site_canonical_url" in document:
+        url = document["public_site_canonical_url"]
+        # Origin only: the nginx-xhttp assert pins this value to
+        # https://<nginx_xhttp.server_name>, so a path would never converge.
+        if (
+            not isinstance(url, str)
+            or not url.startswith("https://")
+            or "/" in url[len("https://"):]
+        ):
+            raise ValueError(
+                "public_site_canonical_url must be an https origin (https://<host>)"
+            )
+        host = url[len("https://"):]
+        if DNS_NAME.fullmatch(host) is None:
+            raise ValueError("public_site_canonical_url host is not a valid DNS name")
 
     if "firewall_forward_interface_contract" in document:
         contracts = document["firewall_forward_interface_contract"]

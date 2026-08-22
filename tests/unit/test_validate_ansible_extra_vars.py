@@ -101,3 +101,30 @@ def test_rejects_unsafe_or_malformed_forwarding_entries(
 
     with pytest.raises(ValueError):
         validator.validate(path)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://decoy-site.example",
+        "https://edge.decoy-site.example",
+    ],
+)
+def test_accepts_https_origin_decoy_overrides(tmp_path: Path, value: str) -> None:
+    validator.validate(write_yaml(tmp_path, {"public_site_canonical_url": value}))
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "http://decoy-site.example",
+        "decoy-site.example",
+        "https://decoy-site.example/",
+        "https://decoy-site.example/about.html",
+        "https://decoy site.example",
+        443,
+    ],
+)
+def test_rejects_malformed_decoy_overrides(tmp_path: Path, value: object) -> None:
+    with pytest.raises(ValueError):
+        validator.validate(write_yaml(tmp_path, {"public_site_canonical_url": value}))
