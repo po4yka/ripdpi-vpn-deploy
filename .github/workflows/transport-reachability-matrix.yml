@@ -50,6 +50,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
 
+    # Required-reviewer approval gate — same rationale as real-vps-deploy:
+    # the label trigger must not reach provider credentials without an
+    # approved deployment on the ci-real-deploy environment.
+    environment: ci-real-deploy
+
     concurrency:
       group: transport-reachability-matrix
       cancel-in-progress: false
@@ -123,14 +128,17 @@ jobs:
 
       - name: Stage SSH key + age key + CI tfvars
         if: steps.gate.outputs.skip != 'true'
+        env:
+          CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
+          CI_SOPS_AGE_KEY: ${{ secrets.CI_SOPS_AGE_KEY }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh ~/.config/vpn-provision
           chmod 0700 ~/.ssh ~/.config/vpn-provision
-          printf '%s\n' "${{ secrets.CI_SSH_PRIVATE_KEY }}" > ~/.ssh/vpn_deploy
+          printf '%s\n' "$CI_SSH_PRIVATE_KEY" > ~/.ssh/vpn_deploy
           chmod 0600 ~/.ssh/vpn_deploy
           ssh-keygen -y -f ~/.ssh/vpn_deploy > ~/.ssh/vpn_deploy.pub
-          printf '%s\n' "${{ secrets.CI_SOPS_AGE_KEY }}" > ~/.config/vpn-provision/age.key
+          printf '%s\n' "$CI_SOPS_AGE_KEY" > ~/.config/vpn-provision/age.key
           chmod 0600 ~/.config/vpn-provision/age.key
           ts="$(date -u +%Y%m%d-%H%M%S)"
           ci_env="ci-${{ github.run_id }}-trm-${ts}"
