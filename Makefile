@@ -180,8 +180,8 @@ init:
 
 validate:
 	@for provider in upcloud hetzner vultr scaleway; do \
-	  terraform -chdir=terraform/providers/$$provider fmt -check -recursive; \
-	  terraform -chdir=terraform/providers/$$provider validate; \
+	  terraform -chdir=terraform/providers/$$provider fmt -check -recursive || exit 1; \
+	  terraform -chdir=terraform/providers/$$provider validate || exit 1; \
 	done
 	gitleaks git --redact --no-banner .
 	gitleaks git --staged --redact --no-banner .
@@ -735,6 +735,6 @@ tf-policy:
 	@for p in upcloud hetzner vultr scaleway; do \
 	  echo "== $$p =="; \
 	  terraform -chdir=terraform/providers/$$p init -backend=false >/dev/null && \
-	  terraform -chdir=terraform/providers/$$p test; \
+	  terraform -chdir=terraform/providers/$$p test || exit 1; \
 	done
 	conftest verify --rego-version v0 -p terraform/policy/
