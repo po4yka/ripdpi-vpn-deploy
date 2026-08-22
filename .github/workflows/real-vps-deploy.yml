@@ -57,6 +57,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 
+    # Required-reviewer approval gate: a `ci-real-deploy` label alone must
+    # never reach the provider credentials and CI age key — an approved
+    # deployment on the ci-real-deploy environment is the second factor.
+    environment: ci-real-deploy
+
     # Cross-distro matrix. Both entries fan out only when their template
     # secret is populated; an empty template short-circuits the matrix
     # entry with a warning at the first step (so an operator who hasn't
@@ -163,14 +168,17 @@ jobs:
 
       - name: Stage SSH key + age key + CI tfvars
         if: steps.gate.outputs.skip != 'true'
+        env:
+          CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
+          CI_SOPS_AGE_KEY: ${{ secrets.CI_SOPS_AGE_KEY }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh ~/.config/vpn-provision
           chmod 0700 ~/.ssh ~/.config/vpn-provision
-          printf '%s\n' "${{ secrets.CI_SSH_PRIVATE_KEY }}" > ~/.ssh/vpn_deploy
+          printf '%s\n' "$CI_SSH_PRIVATE_KEY" > ~/.ssh/vpn_deploy
           chmod 0600 ~/.ssh/vpn_deploy
           ssh-keygen -y -f ~/.ssh/vpn_deploy > ~/.ssh/vpn_deploy.pub
-          printf '%s\n' "${{ secrets.CI_SOPS_AGE_KEY }}" > ~/.config/vpn-provision/age.key
+          printf '%s\n' "$CI_SOPS_AGE_KEY" > ~/.config/vpn-provision/age.key
           chmod 0600 ~/.config/vpn-provision/age.key
           # CI tfvars: short-lived ephemeral env name. Distro suffix
           # keeps the matrix entries' state files / hostnames apart so

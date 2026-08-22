@@ -27,8 +27,15 @@ def test_research_roles_are_tiered_and_wired_behind_explicit_toggles() -> None:
 def test_listener_manifest_exposes_five_target_ports_and_ingress_wireguard() -> None:
     manifest = (ROOT / "ansible/templates/listener-manifest.json.j2").read_text()
     for name in ("mtproto", "xhttp_vless", "xhttp_trojan", "tcp_trojan", "tls_non_443"):
-        assert f"probe_matrix_target.ports.{name}" in manifest
-    assert "split_hop_ingress.listen_port" in manifest
+        assert f"_probe_ports.{name} | default(0)" in manifest
+    assert "(split_hop_ingress | default({})).listen_port" in manifest
+
+
+def test_listener_manifest_guarded_for_pre_task_scope() -> None:
+    """The manifest renders in a site.yml pre_task where role defaults are out of scope."""
+    manifest = (ROOT / "ansible/templates/listener-manifest.json.j2").read_text()
+    assert "probe_matrix_target.ports." not in manifest
+    assert "split_hop_ingress.listen_port" not in manifest
 
 
 def test_ingress_marks_only_new_original_direction_runtime_connections() -> None:

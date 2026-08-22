@@ -55,6 +55,8 @@ __pycache__/
 # Operator-side artifacts (not for git)
 state-backups/
 share/
+output/
+tmp/
 vpnd/state/
 vpnd/config/*.yaml
 
