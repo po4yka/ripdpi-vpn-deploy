@@ -41,3 +41,12 @@
   [[ "$output" == *"$BATS_TEST_TMPDIR/age.key"* ]]
   [[ "$output" == *'PATH="/custom/bin:/usr/bin:/bin"'* ]]
 }
+
+@test "operator cron writes payload-throttle log under owner state dir, not /tmp" {
+  run env PAYLOAD_THROTTLE_HOST=203.0.113.9 ./scripts/install-operator-crons.sh --dry-run
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"probe-payload-throttle"* ]]
+  [[ "$output" != *">>/tmp/"* ]]
+  [[ "$output" == *"payload-throttle.log"* ]]
+}

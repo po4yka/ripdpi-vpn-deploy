@@ -76,6 +76,11 @@ write_metrics() {
     echo "# HELP vpn_burn_run_error Whether the latest run ended before reachability could be classified"
     echo "# TYPE vpn_burn_run_error gauge"
     echo "vpn_burn_run_error{provider=\"${provider_label}\",env=\"${env_label}\"} $((1 - CHECK_COMPLETED))"
+    if (( RESULT_VALID )); then
+      echo "# HELP vpn_burn_pending_nodes Nodes whose check-host.net results had not arrived when polling stopped"
+      echo "# TYPE vpn_burn_pending_nodes gauge"
+      echo "vpn_burn_pending_nodes{provider=\"${provider_label}\",env=\"${env_label}\"} ${PENDING}"
+    fi
     if (( CHECK_COMPLETED )); then
       echo "# HELP vpn_burn_total_nodes Number of vantage points probed"
       echo "# TYPE vpn_burn_total_nodes gauge"
@@ -164,12 +169,20 @@ done
 # Count nodes whose first result didn't include an "address" field success.
 # A successful check-tcp result looks like: {"address":"…","time":0.123}.
 # Failures look like {"error":"Connection refused"} or {"error":"Connection timed out"}.
+# Nodes still reporting null are PENDING, not failed — a slow API must not
+# page the operator as a burn verdict.
 if ! TOTAL="$(echo "$RESULT" | jq -er 'length')"; then
   API_ERROR=1
   echo "check-host.net result count is invalid" >&2
   exit 2
 fi
+if ! PENDING="$(echo "$RESULT" | jq -er '[to_entries[] | select(.value == null)] | length')"; then
+  API_ERROR=1
+  echo "check-host.net pending count is invalid" >&2
+  exit 2
+fi
 if ! FAILS="$(echo "$RESULT" | jq -er '[to_entries[]
+  | select(.value != null)
   | .key as $node
   | (.value // [[]])[0] // []
   | (.[0] // {})
@@ -180,7 +193,11 @@ if ! FAILS="$(echo "$RESULT" | jq -er '[to_entries[]
   exit 2
 fi
 RESULT_VALID=1
-CHECK_COMPLETED=1
+if (( PENDING == 0 )); then
+  CHECK_COMPLETED=1
+else
+  echo "WARN: ${PENDING} of ${TOTAL} check-host.net nodes are still pending after the poll window — run marked incomplete (vpn_burn_run_error=1), pending nodes excluded from the failure count" >&2
+fi
 
 echo "burn-check: ${PROVIDER}/${ENV} ${IP}:443  →  ${TOTAL} nodes probed, ${FAILS} failed"
 echo "$RESULT" | jq -r 'to_entries[] | "  \(.key): \(.value // "pending")"'

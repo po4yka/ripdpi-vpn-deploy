@@ -140,8 +140,14 @@ EOF
 EOF
   fi
   if [[ -n "$PAYLOAD_THROTTLE_HOST" ]]; then
+    # Owner-only state directory instead of a predictable name in
+    # world-writable /tmp.
+    log_dir="${XDG_STATE_HOME:-${HOME}/.local/state}/vpn-provision/logs"
+    mkdir -p "$log_dir"
+    chmod 0700 "${XDG_STATE_HOME:-${HOME}/.local/state}" "${XDG_STATE_HOME:-${HOME}/.local/state}/vpn-provision" "$log_dir" 2>/dev/null || true
+    printf -v log_dir_q '%q' "$log_dir"
     cat <<EOF
-7 4 * * *      cd ${repo} && make probe-payload-throttle HOST=${PAYLOAD_THROTTLE_HOST} >>/tmp/vpn-payload-throttle.log 2>&1
+7 4 * * *      cd ${repo} && make probe-payload-throttle HOST=${PAYLOAD_THROTTLE_HOST} >>${log_dir_q}/payload-throttle.log 2>&1
 EOF
   fi
   if [[ -n "$REALITY_TARGET_VANTAGE" ]]; then

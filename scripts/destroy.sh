@@ -34,6 +34,15 @@ INV="${REPO_ROOT}/ansible/inventory/generated.ini"
 OVERRIDE="${TF_DIR}/_destroy_override.tf"
 TFVARS="${TF_DIR}/environments/${ENV}.tfvars"
 
+if [[ -e "$OVERRIDE" ]]; then
+  echo "error: ${OVERRIDE} already exists." >&2
+  echo "A previous destroy crashed before its cleanup ran, so prevent_destroy" >&2
+  echo "is currently disabled for this root. Inspect the file, confirm no" >&2
+  echo "terraform run is in progress, and remove it manually before retrying:" >&2
+  echo "  rm ${OVERRIDE}" >&2
+  exit 1
+fi
+
 if [[ ! -d "$TF_DIR" ]]; then
   echo "no terraform root: $TF_DIR" >&2
   exit 1

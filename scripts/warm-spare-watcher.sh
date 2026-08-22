@@ -5,7 +5,7 @@
 #
 # Designed to run from cron every 1-5 minutes:
 #
-#   */2 * * * * cd ~/GitRep/vpn-deploy && make watch-spare >>/tmp/vpn-spare.log 2>&1
+#   */2 * * * * cd ~/GitRep/vpn-deploy && make watch-spare 2>&1 | logger -t vpn-spare
 #
 # State directory: ~/.cache/vpn-deploy/spare-state/
 #   blue-failed-streak       integer
