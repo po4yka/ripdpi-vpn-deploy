@@ -159,12 +159,15 @@
   "enabled": (vpn.enable_naive | default(false)) and not subscription_only,
   "reason": "NaiveProxy public listener"
 }) %}
+{# pre_task scope: role defaults are NOT loaded here, so every lookup is
+   default-guarded and mirrors ansible/roles/*/defaults/main.yml. #}
+{% set _probe_ports = (probe_matrix_target | default({})).ports | default({}) %}
 {% for probe_listener in [
-  {"name": "mtproto", "port": probe_matrix_target.ports.mtproto},
-  {"name": "xhttp-vless", "port": probe_matrix_target.ports.xhttp_vless},
-  {"name": "xhttp-trojan", "port": probe_matrix_target.ports.xhttp_trojan},
-  {"name": "tcp-trojan", "port": probe_matrix_target.ports.tcp_trojan},
-  {"name": "tls-non-443", "port": probe_matrix_target.ports.tls_non_443}
+  {"name": "mtproto", "port": _probe_ports.mtproto | default(0)},
+  {"name": "xhttp-vless", "port": _probe_ports.xhttp_vless | default(0)},
+  {"name": "xhttp-trojan", "port": _probe_ports.xhttp_trojan | default(0)},
+  {"name": "tcp-trojan", "port": _probe_ports.tcp_trojan | default(0)},
+  {"name": "tls-non-443", "port": _probe_ports.tls_non_443 | default(0)}
 ] %}
 {% set _ = ns.listeners.append({
   "role": "probe-matrix-" ~ probe_listener.name,
@@ -177,7 +180,7 @@
 {% set _ = ns.listeners.append({
   "role": "split-hop-ingress",
   "protocol": "udp",
-  "port": split_hop_ingress.listen_port | int,
+  "port": (split_hop_ingress | default({})).listen_port | default(51821) | int,
   "enabled": (vpn.enable_split_hop_ingress | default(false)) and not subscription_only,
   "reason": "split-hop responder listener"
 }) %}
