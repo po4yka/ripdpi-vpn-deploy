@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-08-23
+goal: "VPD-1787497426503364 Align vpnd operator output contract: man page, json
+  flag, clip flag, doctor resilience"
