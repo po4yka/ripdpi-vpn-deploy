@@ -2,7 +2,7 @@
 id: SEC-1787489155988233
 title: Client configuration registry and issuance-option persistence
 kind: feature
-status: backlog
+status: review
 area: security
 priority: high
 risk: standard
