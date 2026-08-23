@@ -13,6 +13,13 @@ if [[ "$CONFIRMATION" != "$EXPECTED_CONFIRMATION" ]]; then
   exit 1
 fi
 
+# A fresh clone has no .terraform directory; validate/plan would fail with
+# "no package for ... cached". Initialize once instead of failing opaquely.
+if [[ ! -d "${ROOT}/.terraform" ]]; then
+  echo "cascade exception root not initialized; running terraform init" >&2
+  terraform "-chdir=${ROOT}" init -input=false
+fi
+
 python3 "${REPO_ROOT}/scripts/check-cascade-attestation.py" --attestation "$ATTESTATION"
 exec terraform "-chdir=${ROOT}" plan \
   -var="exception_confirmation=${CONFIRMATION}" \
