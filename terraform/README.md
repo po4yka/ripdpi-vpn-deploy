@@ -72,8 +72,8 @@ The Rego rules under `terraform/policy/` gate plans through conftest in two plac
 
 | Provider | Lock version | Notes |
 |---|---|---|
-| `upcloud` | 5.41.0 | Uses `UpCloudLtd/upcloud`. |
-| `hetzner` | 1.66.1 | Uses `hetznercloud/hcloud`. Export `HCLOUD_TOKEN` before planning. |
+| `upcloud` | 5.43.0 | Uses `UpCloudLtd/upcloud`. |
+| `hetzner` | 1.68.0 | Uses `hetznercloud/hcloud`. Export `HCLOUD_TOKEN` before planning. |
 | `vultr` | 2.32.0 | Uses `vultr/vultr`. Export `VULTR_API_KEY` before planning. |
 | `scaleway` | 2.78.0 | Uses `scaleway/scaleway`. Export `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, and `SCW_DEFAULT_PROJECT_ID` before planning. |
 
