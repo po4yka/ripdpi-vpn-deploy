@@ -5,7 +5,7 @@ variable "server_name" {
 
 variable "region" {
   type        = string
-  description = "Vultr region, e.g. ams, fra, lhr, ewr."
+  description = "Vultr region, e.g. ams, fra, lhr."
 
   validation {
     condition     = contains(["ams", "fra", "lhr"], var.region)
@@ -28,7 +28,8 @@ variable "os_id" {
   description = "Vultr OS id, e.g. Debian or Ubuntu image id from `vultr-cli os list`."
 
   validation {
-    # Known Vultr OS IDs for approved base images (Debian 12, Debian 11, Ubuntu 24.04, Ubuntu 22.04).
+    # Known Vultr OS IDs for approved base images: 1743 Debian 11,
+    # 2136 Debian 12, 2284 Debian 13, 1869 Ubuntu 24.04.
     # Run `vultr-cli os list` to obtain IDs for new releases; add here and update error_message.
     condition     = contains([1743, 2136, 2284, 1869], var.os_id)
     error_message = "os_id must be an approved Vultr OS ID: 1743 (Debian 11), 2136 (Debian 12), 2284 (Debian 13), 1869 (Ubuntu 24.04)."
@@ -69,8 +70,9 @@ variable "ssh_port" {
 }
 
 variable "enable_hysteria" {
-  type    = bool
-  default = true
+  type        = bool
+  default     = true
+  description = "Include the Hysteria2 UDP/443 listener in the legacy default set. Explicit public_listeners ignore this toggle; add hysteria there directly."
 }
 
 variable "nginx_xhttp_public_port" {
