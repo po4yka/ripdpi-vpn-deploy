@@ -172,6 +172,34 @@ printf '{"name":"%s","password":"%s"}' "$NAME" "$HY_PASSWORD" |
 printf '{"name":"%s","public_key":"%s","preshared_key":"%s","allowed_ips":"%s"}' "$NAME" "$AWG_PUB" "$AWG_PSK" "$AWG_ALLOWED_IPS" |
   sops set --value-stdin "$SOPS_TEMP" "[\"amneziawg_secrets\"][\"peers\"][${awg_index}]"
 
+# Registry entry: issuance parameters, lifecycle state, and the AWG
+# private-key RECOVERY copy. The device-local key stays primary; this
+# SOPS copy exists so losing the local plaintext artifacts is not a
+# permanent key loss.
+AWG_FINGERPRINT="$(printf '%s' "$AWG_PUB" | shasum -a 256 2>/dev/null | awk '{print $1}')"
+if [[ -z "$AWG_FINGERPRINT" ]]; then
+  AWG_FINGERPRINT="$(printf '%s' "$AWG_PUB" | sha256sum | awk '{print $1}')"
+fi
+ISSUED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+registry_json="$(HOST_PAIR="${PROVIDER}:${ENV}" FINGERPRINT="sha256:${AWG_FINGERPRINT:0:16}" \
+  ISSUED_AT="$ISSUED_AT" AWG_PRIV="$AWG_PRIV" python3 -c '
+import json, os
+
+print(json.dumps({
+    "status": "issued",
+    "issued_at": os.environ["ISSUED_AT"],
+    "formats": [],
+    "hosts": [os.environ["HOST_PAIR"]],
+    "cohorts": [],
+    "token_hash_prefix": "",
+    "token_expires": "",
+    "awg_public_key_fingerprint": os.environ["FINGERPRINT"],
+    "awg_private_key": os.environ["AWG_PRIV"],
+    "last_payload_identity": {"source": "", "outputs": ""},
+}))
+')"
+printf '%s' "$registry_json" | sops set --value-stdin "$SOPS_TEMP" "[\"client_registry\"][\"$NAME\"]"
+
 while IFS=$'\t' read -r variant_index user_index _variant_id; do
   [[ -n "$variant_index" ]] || continue
   SNELL_USERKEY="$(openssl rand -base64 24)"
@@ -191,15 +219,18 @@ created client: ${NAME}
   AWG allowed IPs:  ${AWG_ALLOWED_IPS}
   Snell userkeys:   $([[ -n "$snell_plan" ]] && echo "stored per variant" || echo "skipped (not configured)")
 
-The client also needs the AWG private key to configure the device:
-  AWG private:      ${AWG_PRIV}
+The AWG private key is stored in the encrypted client_registry as a
+recovery copy; the device-local key remains primary:
+  AWG private:      (stored in SOPS client_registry.${NAME}.awg_private_key)
 
-Hand the private key to the device through a secure channel (Signal, in-person
-QR, encrypted notes app). Do NOT email it. Do NOT store it after the device is
-configured — re-issue means rotate, not recover.
+Deliver the key to the device through a secure channel (Signal, QR,
+encrypted notes app). Local plaintext artifacts under
+secrets/local/clients/ are disposable caches — shred them after
+delivery; recovery reads the SOPS document, not local files.
 
 To remove this client later: sops --set '...' to delete the matching entries
-in xray.clients / hysteria.clients / amneziawg_secrets.peers and run
+in xray.clients / hysteria.clients / amneziawg_secrets.peers /
+client_registry and run
   make rotate-credentials.
 EOF
 
