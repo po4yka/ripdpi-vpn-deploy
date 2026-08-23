@@ -15,8 +15,9 @@ and decrypted SOPS values. Those remain in git-ignored operator files.
 | Source validation | [#87 CI](https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/32634672153) green, CodeQL and Scorecard passing |
 | Release state | full-fleet recreation: every server was deliberately destroyed and rebuilt from git + secrets |
 
-The deployed source was applied to the existing fleet. No server was replaced
-or recreated during this update.
+Every server in the fleet was deliberately destroyed and rebuilt from git +
+secrets through the sanctioned disposable-node path; no prior-generation node
+survives.
 
 ## Active fleet
 
@@ -80,9 +81,14 @@ Outside-in probes after convergence: P0 REALITY TCP/443 reachable, P1 site
 answers HTTPS 200 with the correct SNI identity, P2 exposes exactly its
 listener contract (Hysteria2 UDP/443, AmneziaWG UDP/51820).
 
-SSH host keys were regenerated on every node by design; clients that pinned
-old host keys will see a host-key-change warning once and must accept the new
-keys. All public endpoints changed except the P1 IPv4 — client devices must
+SSH host keys were regenerated on every node by design. On nodes with new
+addresses the first connection simply pins the new key. The P1 IPv4 is
+unchanged, so a client holding the previous P1 key gets a host-key-change
+failure instead: `StrictHostKeyChecking=accept-new` (used by
+`scripts/wait-cloud-init.sh` and `make wait`) rejects changed keys until the
+stale entry is removed. Clear it first with `ssh-keygen -R <p1-host>` (repeat
+for the Tailscale name if that path was pinned), then reconnect to accept the
+new key. All public endpoints changed except the P1 IPv4 — client devices must
 re-fetch the subscription or update endpoints manually.
 
 Secret schema validation, placeholder checks, certificate checks, and private
