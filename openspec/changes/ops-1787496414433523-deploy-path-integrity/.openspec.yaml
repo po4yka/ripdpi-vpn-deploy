@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-08-23
+goal: "OPS-1787496414433523 Harden deploy-path integrity: guards, rollback, rotation"
