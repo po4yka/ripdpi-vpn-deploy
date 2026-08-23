@@ -50,3 +50,11 @@
   [[ "$output" != *">>/tmp/"* ]]
   [[ "$output" == *"payload-throttle.log"* ]]
 }
+
+@test "operator cron dry run creates no state directories" {
+  state="$BATS_TEST_TMPDIR/custom-state"
+  run env PAYLOAD_THROTTLE_HOST=203.0.113.9 XDG_STATE_HOME="$state" ./scripts/install-operator-crons.sh --dry-run
+
+  [ "$status" -eq 0 ]
+  [ ! -e "$state" ]
+}

@@ -27,6 +27,8 @@ rotation is a secrets-plus-local-file operation that never touches git.
 - [x] ANS-1787422768127223 Document the decoy-origin override workflow in docs/DEPLOY-PROFILES.md including mode-0600 file handling and the fail-closed assert behavior #docs !high @item:ANS-1787422293187845
 - [x] ANS-1787422768128553 Run named gates: focused pytest files, full pytest tests/unit, make validate #test !high @item:ANS-1787422293187845
 
+- [x] ANS-1787458582373507 Remediate PR review: redact the measured domain as an explicit placeholder that preserves historical observations, add mkdir for the ignored override directory, pass the override to the documented dry run, and list every secret that rotates with the origin #docs !high @item:ANS-1787422293187845
+
 ## Verification
 
 Use the exact gates and evidence categories in `verification.md`.

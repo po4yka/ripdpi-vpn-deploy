@@ -75,14 +75,35 @@ non-symlink, owner-only mode 0600) and deploy only to explicitly limited
 hosts:
 
 ```bash
+mkdir -p secrets/local
 echo 'public_site_canonical_url: "https://<your-decoy-origin>"' > secrets/local/decoy-origin.yml
 chmod 0600 secrets/local/decoy-origin.yml
+make dry-run ANSIBLE_LIMIT=<host> ANSIBLE_EXTRA_VARS_FILE=secrets/local/decoy-origin.yml
 make deploy ANSIBLE_LIMIT=<host> ANSIBLE_EXTRA_VARS_FILE=secrets/local/decoy-origin.yml
 ```
 
 The value must be an https origin; convergence fails closed on the
 `nginx-xhttp` / `hysteria` role asserts if it does not match the site identity
-in secrets. Rotating the decoy domain therefore never touches committed files.
+in secrets. The dry run reaches those same asserts, so it needs the override
+too.
+
+### Secrets that rotate together with the origin
+
+Changing the override alone is not enough — the following SOPS keys must be
+updated to the new domain in the same rotation, or convergence fails (or worse,
+clients keep the old TLS name):
+
+| Secrets key | Why it must match |
+|---|---|
+| `nginx_xhttp.server_name`, `nginx_xhttp.cert_pem`, `nginx_xhttp.key_pem` | The p1-web site identity; the nginx-xhttp assert pins `public_site_canonical_url == https://<server_name>` |
+| `nginx_xhttp.fallback_server_name`, `fallback_cert_pem`, `fallback_key_pem` | Only when the optional direct fallback serves a distinct domain |
+| `hysteria.masquerade_url` | The hysteria assert requires it to equal `public_site_canonical_url` exactly |
+| `hysteria.cert_pem`, `hysteria.key_pem` | Hysteria's own TLS certificate must cover the client-facing name |
+| Client-facing server name used by emitters (`hysteria.server_name` or, on p1-web, `nginx_xhttp.server_name`) | Emitted clients derive their TLS SNI from it; a stale value keeps old-domain traffic alive after rotation |
+| `reality_self_steal.server_name`, `cert_pem`, `key_pem` | Only when REALITY self-steal shares the decoy identity |
+
+Rotating means: register the new domain, issue the certificate, update these
+keys in SOPS, update the extra-vars override file — never any committed file.
 
 ## When not to use it
 

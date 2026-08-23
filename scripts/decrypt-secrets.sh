@@ -11,7 +11,9 @@ set -euo pipefail
 
 ENV="${ENV:-prod}"
 SOPS_FILE="${SOPS_FILE:-${HOME}/.config/vpn-provision/${ENV}.secrets.sops.yaml}"
-RUNTIME_DIR="${VPN_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}/vpn-provision}}"
+# User-specific fallback: a shared predictable directory would be owned by
+# whichever local account created it first, locking every other one out.
+RUNTIME_DIR="${VPN_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}/vpn-provision-$(id -u)}}"
 OUT="${SECRETS_FILE:-${RUNTIME_DIR}/vpn-${ENV}.secrets.yaml}"
 
 if [[ ! -f "$SOPS_FILE" ]]; then
