@@ -27,6 +27,13 @@ resource "vultr_ssh_key" "admin" {
 
 resource "vultr_firewall_group" "vpn" {
   description = "${var.server_name} vpn ingress"
+
+  lifecycle {
+    precondition {
+      condition     = length(local.effective_public_listeners) > 0
+      error_message = "public_listeners resolves to an empty set; set public_listeners explicitly or opt into the historical defaults with use_legacy_public_listeners = true."
+    }
+  }
 }
 
 resource "vultr_instance" "vpn" {
