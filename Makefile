@@ -512,7 +512,7 @@ molecule-test:
 	cd $(ANSIBLE_DIR)/roles/$(ROLE) && molecule test
 
 molecule-full-stack:
-	cd $(ANSIBLE_DIR) && molecule -c molecule/full-stack/molecule.yml test
+	cd $(ANSIBLE_DIR) && molecule -c molecule/full-stack/molecule.yml test -s full-stack
 
 smoke-test:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }

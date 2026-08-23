@@ -4,7 +4,7 @@
 server_name = "vpn-staging-ams1"
 region      = "ams"
 plan        = "vc2-1c-1gb"
-os_id       = 1743 # replace with your pinned Debian/Ubuntu OS id
+os_id       = 2284 # Debian 13; see variables.tf validation for approved ids
 
 admin_user           = "deploy"
 admin_ssh_public_key = "ssh-ed25519 AAAA_STAGING_PUBLIC_KEY operator@laptop"

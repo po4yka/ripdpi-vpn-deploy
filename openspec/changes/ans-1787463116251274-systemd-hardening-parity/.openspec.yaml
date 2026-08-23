@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-08-23
+goal: ANS-1787463116251274 Align systemd hardening across internet-facing transports

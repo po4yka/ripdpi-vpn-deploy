@@ -140,6 +140,21 @@ def check(payload: dict[str, Any]) -> list[str]:
                         f"{range_listener.label} owned by {range_listener.describe()}"
                     )
 
+    for i in range(len(ranges)):
+        for j in range(i + 1, len(ranges)):
+            first, second = ranges[i], ranges[j]
+            if first.protocol != second.protocol:
+                continue
+            assert first.start is not None and first.end is not None
+            assert second.start is not None and second.end is not None
+            if first.start <= second.end and second.start <= first.end:
+                allowed = first.label in allow or second.label in allow
+                if not allowed:
+                    findings.append(
+                        f"{first.protocol}: {first.label} owned by {first.describe()} "
+                        f"overlaps {second.label} owned by {second.describe()}"
+                    )
+
     return findings
 
 

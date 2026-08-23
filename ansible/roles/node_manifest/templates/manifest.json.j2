@@ -56,7 +56,7 @@
     "ssh_prune_moduli": {{ (security_controls | default({})).ssh_prune_moduli | default(false) | to_json }},
     "unattended_upgrades": {{ (security_controls | default({})).unattended_upgrades | default(false) | to_json }},
     "fail2ban": {{ (security_controls | default({})).fail2ban | default(false) | to_json }},
-    "crowdsec": {{ (security_controls | default({})).crowdsec | default(false) | to_json }},
+    "crowdsec": {{ (intrusion_prevention | default({})).crowdsec.enabled | default(false) | to_json }},
     "firewall_egress_policy": {{ firewall_egress_policy | default('permissive') | to_json }}
   },
   "recovery": {

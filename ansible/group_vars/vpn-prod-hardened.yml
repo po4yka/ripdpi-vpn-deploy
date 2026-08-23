@@ -37,13 +37,7 @@ security_controls:
   ssh_max_sessions: 1
   ssh_max_startups: "5:30:10"
   unattended_upgrades: true
-  automatic_reboot: false
   fail2ban: true
-  crowdsec: false
-  proc_hidepid: false
-  aide: false
-  lynis: false
-  auditd: false
 
 package_updates:
   enabled: true

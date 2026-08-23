@@ -87,10 +87,14 @@ UpCloud is the primary provider in v1. Resource shape:
 
 ### Useful UpCloud zones for EU baseline
 
+The UpCloud root validates `zone` against an allowlist: `fi-hel1`,
+`de-fra1`, `nl-ams1`, `sg-sin1` (see
+`terraform/providers/upcloud/variables.tf`). Warsaw (`pl-waw1`) is NOT in the
+allowlist and fails `terraform validate`.
+
 - `fi-hel1` — Helsinki (default in `prod.tfvars.example`)
 - `de-fra1` — Frankfurt
 - `nl-ams1` — Amsterdam
-- `pl-waw1` — Warsaw
 
 #### Zone selection by client cohort
 
@@ -283,6 +287,9 @@ to a runtime that JITs.
 - `honeypot_ipv4` — optional, may be `null`
 - `admin_user` — required
 - `server_hostname` — required
+- `ssh_port` — required, validated as 1–65535
+- `public_listeners` — required JSON map; exact-matched against the runtime
+  listener manifest before deployment
 
 Provider roots that don't export these names will need a parallel branch in
 the script. Keep the names identical to avoid that.

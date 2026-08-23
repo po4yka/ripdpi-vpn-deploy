@@ -28,7 +28,6 @@ askama = "0.12"
 qrcode = "0.14"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "fs", "io-util", "signal", "time"] }
 serde = { version = "1", features = ["derive"] }
-serde_yaml = "0.9"
 serde_json = "1"
 toml = "0.8"
 tracing = "0.1"
@@ -44,6 +43,7 @@ ureq = { version = "3", default-features = false, features = ["rustls", "json"] 
 include_dir = "0.7"
 tar = "0.4"
 flate2 = "1"
+serde_yaml_ng = "0.10.0"
 
 [build-dependencies]
 clap = { version = "4.5", features = ["derive", "env"] }

@@ -7,33 +7,52 @@
   "vulnerabilityAlerts": {
     "enabled": true
   },
-  "schedule": ["on weekend"],
+  "schedule": [
+    "on weekend"
+  ],
   "packageRules": [
     {
       "description": "Group all Terraform provider updates into one weekly PR",
-      "matchManagers": ["terraform"],
-      "matchDepTypes": ["provider"],
+      "matchManagers": [
+        "terraform"
+      ],
+      "matchDepTypes": [
+        "provider"
+      ],
       "groupName": "terraform providers",
-      "schedule": ["on weekend"]
+      "schedule": [
+        "on weekend"
+      ]
     },
     {
       "description": "Group all Rust crate updates into one weekly PR",
-      "matchManagers": ["cargo"],
+      "matchManagers": [
+        "cargo"
+      ],
       "groupName": "rust crates",
-      "schedule": ["on weekend"]
+      "schedule": [
+        "on weekend"
+      ]
     },
     {
       "description": "One PR per GitHub Actions update with digest pinning; preserve version comment",
-      "matchManagers": ["github-actions"],
+      "matchManagers": [
+        "github-actions"
+      ],
       "separateMinorPatch": false,
-      "addLabels": ["dependencies", "github-actions"]
+      "addLabels": [
+        "dependencies",
+        "github-actions"
+      ]
     }
   ],
   "customManagers": [
     {
       "description": "Hysteria-realm (sing-box) version pin in Ansible role defaults",
       "customType": "regex",
-      "fileMatch": ["^ansible/roles/hysteria-realm/defaults/main\\.yml$"],
+      "fileMatch": [
+        "^ansible/roles/hysteria-realm/defaults/main\\.yml$"
+      ],
       "matchStrings": [
         "hysteria_realm:\\s*\\n(?:[^\\n]*\\n)*?\\s+version:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
       ],
@@ -44,9 +63,39 @@
     {
       "description": "Snell research candidate sing-box version pin",
       "customType": "regex",
-      "fileMatch": ["^ansible/roles/snell/defaults/main\\.yml$"],
-      "matchStrings": ["snell:\\s*\\n(?:[^\\n]*\\n)*?\\s+version:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"],
+      "fileMatch": [
+        "^ansible/roles/snell/defaults/main\\.yml$"
+      ],
+      "matchStrings": [
+        "snell:\\s*\\n(?:[^\\n]*\\n)*?\\s+version:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+      ],
       "depNameTemplate": "SagerNet/sing-box",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver-coerced"
+    },
+    {
+      "description": "xcaddy build-tool version pin in the naive role",
+      "customType": "regex",
+      "fileMatch": [
+        "^ansible/roles/naive/defaults/main\\.yml$"
+      ],
+      "matchStrings": [
+        "\\n\\s+xcaddy_version:\\s*[\"']?(?<currentValue>v[^\"'\\s]+)[\"']?"
+      ],
+      "depNameTemplate": "caddyserver/xcaddy",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver-coerced"
+    },
+    {
+      "description": "Caddy version pin in the naive role",
+      "customType": "regex",
+      "fileMatch": [
+        "^ansible/roles/naive/defaults/main\\.yml$"
+      ],
+      "matchStrings": [
+        "\\n\\s+caddy_version:\\s*[\"']?(?<currentValue>v[^\"'\\s]+)[\"']?"
+      ],
+      "depNameTemplate": "caddyserver/caddy",
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver-coerced"
     }

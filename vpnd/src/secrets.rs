@@ -15,7 +15,7 @@ pub struct Secrets {
     #[serde(default)]
     pub subscription: SubscriptionSecrets,
     #[serde(flatten)]
-    pub(crate) _extra: serde_yaml::Mapping,
+    pub(crate) _extra: serde_yaml_ng::Mapping,
 }
 
 impl std::fmt::Debug for Secrets {
@@ -32,7 +32,7 @@ pub struct XraySecrets {
     #[serde(default)]
     pub clients: Vec<Client>,
     #[serde(flatten)]
-    pub(crate) _extra: serde_yaml::Mapping,
+    pub(crate) _extra: serde_yaml_ng::Mapping,
 }
 
 #[derive(Deserialize, Default)]
@@ -40,7 +40,7 @@ pub struct NginxXhttpSecrets {
     #[serde(default)]
     pub server_name: Option<String>,
     #[serde(flatten)]
-    pub(crate) _extra: serde_yaml::Mapping,
+    pub(crate) _extra: serde_yaml_ng::Mapping,
 }
 
 #[derive(Deserialize, Default)]
@@ -50,7 +50,7 @@ pub struct SubscriptionSecrets {
     #[serde(default)]
     pub port: Option<u64>,
     #[serde(flatten)]
-    pub(crate) _extra: serde_yaml::Mapping,
+    pub(crate) _extra: serde_yaml_ng::Mapping,
 }
 
 #[allow(dead_code)]
@@ -63,7 +63,7 @@ pub struct Client {
     #[serde(default)]
     pub short_id: Option<String>,
     #[serde(flatten)]
-    pub(crate) _extra: serde_yaml::Mapping,
+    pub(crate) _extra: serde_yaml_ng::Mapping,
 }
 
 impl std::fmt::Debug for Client {
@@ -98,7 +98,7 @@ impl Secrets {
             ));
         }
         let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
-        let s: Secrets = serde_yaml::from_slice(&bytes).context("parse decrypted secrets YAML")?;
+        let s: Secrets = serde_yaml_ng::from_slice(&bytes).context("parse decrypted secrets YAML")?;
         Ok(s)
     }
 

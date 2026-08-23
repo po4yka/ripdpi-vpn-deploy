@@ -15,12 +15,11 @@
 # Designed to run via:
 #   make molecule-full-stack
 # or directly:
-#   cd ansible && molecule -c molecule/full-stack/molecule.yml test
-
-dependency:
-  name: galaxy
-  options:
-    requirements-file: ../../../requirements.yml
+#   cd ansible && molecule -c molecule/full-stack/molecule.yml test -s full-stack
+#
+# Collections come from the repo-root requirements.yml, installed by the
+# operator or CI before molecule runs; a galaxy dependency block here would
+# resolve its relative path against the invoking CWD and break.
 
 driver:
   name: docker
@@ -64,8 +63,20 @@ provisioner:
         hysteria_log_dir: /var/log/hysteria
         amneziawg_config_dir: /etc/amnezia/amneziawg
         restic_repo_dir: /var/backups/vpn-restic
+        # Provider edge contract as render-inventory.sh would inject it
+        # (base64 of the compact JSON public_listeners output), matching this
+        # scenario's enabled toggle set exactly.
+        terraform_public_listeners_b64_chunks:
+          - "W3sibmFtZSI6InhyYXkiLCJwcm90b2NvbCI6InRjcCIsInBvcnQiOjQ0MywicG9ydF9yYW5nZSI6bnVsbH0seyJuYW1lIjoieHJheS1mYWxsYmFjayIsInByb3RvY29sIjoidGNwIiwi"
+          - "cG9ydCI6MjA1MywicG9ydF9yYW5nZSI6bnVsbH0seyJuYW1lIjoicHVibGljLXNpdGUtaHR0cCIsInByb3RvY29sIjoidGNwIiwicG9ydCI6ODAsInBvcnRfcmFuZ2UiOm51bGx9LHsi"
+          - "bmFtZSI6Im5naW54LXhodHRwIiwicHJvdG9jb2wiOiJ0Y3AiLCJwb3J0Ijo4NDQzLCJwb3J0X3JhbmdlIjpudWxsfSx7Im5hbWUiOiJoeXN0ZXJpYSIsInByb3RvY29sIjoidWRwIiwi"
+          - "cG9ydCI6NDQzLCJwb3J0X3JhbmdlIjpudWxsfSx7Im5hbWUiOiJob25leXBvdCIsInByb3RvY29sIjoidGNwIiwicG9ydCI6NDQ0MywicG9ydF9yYW5nZSI6bnVsbH1d"
+        terraform_public_listeners_b64: >-
+          {{ terraform_public_listeners_b64_chunks | join('') }}
       vpn:
         ansible_user: root
+        # Provider-assigned public IPv4; render-inventory.sh injects the real one.
+        vpn_service_address: 203.0.113.10
         allowed_ssh_cidrs: ["0.0.0.0/0"]
         vpn:
           enable_xray_reality: true

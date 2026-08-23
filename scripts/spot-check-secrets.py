@@ -95,12 +95,19 @@ def check_cert_pem(pem: str, key_pem: str | None, path: str, f: Findings) -> Non
             ["openssl", "x509", "-noout", "-issuer"],
             input=pem.encode(), capture_output=True, check=True,
         ).stdout.decode().strip()
-    except subprocess.CalledProcessError:
+        subject = subprocess.run(
+            ["openssl", "x509", "-noout", "-subject"],
+            input=pem.encode(), capture_output=True, check=True,
+        ).stdout.decode().strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        # The expiry check above already reported a diagnostic for this PEM;
+        # a second failure here must not crash the gate.
         return
-    if " CN=" in issuer and issuer.split("CN=", 1)[1].strip() == \
-            subprocess.run(["openssl", "x509", "-noout", "-subject"],
-                           input=pem.encode(), capture_output=True, check=True,
-                           ).stdout.decode().split("CN=", 1)[1].strip():
+    m_issuer = re.search(r"CN=(.+)$", issuer)
+    m_subject = re.search(r"CN=(.+)$", subject)
+    # Compare only when both sides carry a non-empty CN; a missing CN is not
+    # evidence of self-signing.
+    if m_issuer and m_subject and m_issuer.group(1).strip() == m_subject.group(1).strip():
         f.add(path, "cert appears self-signed (issuer == subject)")
 
     if key_pem and not PLACEHOLDER_RE.search(key_pem):
@@ -132,7 +139,16 @@ def main() -> int:
     if not path.exists():
         print(f"missing: {path}", file=sys.stderr)
         return 2
-    data = yaml.safe_load(path.read_text())
+    try:
+        data = yaml.safe_load(path.read_text())
+    except yaml.YAMLError as exc:
+        # This script gates deploys; a malformed secrets file must produce a
+        # diagnosis, not a traceback. Never echo file content (may be secret).
+        print(f"invalid YAML in {path}: {type(exc).__name__} — fix the file and re-run", file=sys.stderr)
+        return 2
+    except OSError as exc:
+        print(f"cannot read {path}: {exc.strerror}", file=sys.stderr)
+        return 2
 
     f = Findings()
 
