@@ -1,17 +1,17 @@
 ---
 task_id: ANS-1787422293187845
 change: ans-1787422293187845-decommit-public-site-domain
-commit_sha: null
+commit_sha: 4e26e7ede02b3b43d8a3f8c728bbd9e760e351df
 local: passed
 local_evidence: pytest tests/unit/test_public_site_contract.py (27 passed), tests/unit/test_validate_ansible_extra_vars.py (20 passed), full pytest tests/unit green with refreshed governance count, make validate green
-remote_ci: blocked
-remote_ci_evidence: pending required checks on the remediation PR; record SHA and run on merge
+remote_ci: passed
+remote_ci_evidence: all 54 required checks green on PR #84 final SHA 9aa0e5eb37bf4f5b583ccdf2b3cb19e1d1c0a12a; merged to main as 4e26e7ede02b3b43d8a3f8c728bbd9e760e351df
 dry_run: not_applicable
 dry_run_evidence: no deploy executed; convergence behavior is covered by role asserts and unit contracts
 staging: not_applicable
 staging_evidence: placeholder matches the hysteria masquerade default, so lab profiles converge unchanged by construction
-live: blocked
-live_evidence: next production deploy on the p1-web/p2-udp profiles must pass the decoy origin via ANSIBLE_EXTRA_VARS_FILE; operator to record the run after merge
+live: not_applicable
+live_evidence: no deployment is executed by this change; lab profiles converge unchanged because the placeholder matches the hysteria masquerade default, and the first production converge under the new defaults requires the documented override (operator follow-up in docs/DEPLOY-PROFILES.md)
 client: not_applicable
 client_evidence: no client-facing emitter changed
 artifact: not_applicable
