@@ -304,7 +304,7 @@ echo "  * survives multiple fetches until ${EXPIRES:-revoked}"
 if [[ -n "$EXPIRES" ]]; then
   echo "  * server returns 410 after ${EXPIRES}"
 fi
-echo "  * revoke: append the hash to subscription.revoked_token_hashes,"
+echo "  * revoke: append the hash to subscription.revoked_tokens,"
 echo "    re-deploy. The Python service re-reads the file on each request."
 echo
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -189,3 +190,17 @@ def test_refresh_without_emitter_environment_is_quiet(tmp_path: Path) -> None:
     result = _run_issuer(env, "--refresh-token", REGISTERED_TOKEN)
     assert result.returncode == 0, result.stderr + result.stdout
     assert "ignored:" not in result.stdout
+
+
+def test_issuer_revoke_hint_names_the_key_the_role_consumes() -> None:
+    """The printed revoke instruction must name the consumed secrets key.
+
+    The role renders the revocation file from `subscription.revoked_tokens`;
+    the issuer used to tell operators to append the hash to
+    `subscription.revoked_token_hashes`, which nothing reads — so a leaked
+    token stayed valid after a by-the-book revocation.
+    """
+    role_tasks = (REPO_ROOT / "ansible/roles/subscription-host/tasks/main.yml").read_text()
+    iterated = set(re.findall(r"for \w+ in subscription\.(\w+)", role_tasks))
+    assert iterated == {"revoked_tokens"}
+    assert set(re.findall(r"subscription\.(revoked_\w+)", ISSUER.read_text())) == iterated
