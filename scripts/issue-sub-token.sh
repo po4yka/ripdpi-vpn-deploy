@@ -149,6 +149,13 @@ print(",".join(cohorts))
   else
     REUSED="${REUSED:+$REUSED,}expires"
   fi
+  # HOSTS/COHORTS are emitter environment, not flags: the registry always wins
+  # on refresh. Say so, otherwise an operator passing HOSTS= sees a payload
+  # that silently ignores it.
+  if [[ -n "${REGISTRY_HOSTS}${REGISTRY_COHORTS}" ]] &&
+     [[ "$REGISTRY_HOSTS" != "$registry_hosts" || "$REGISTRY_COHORTS" != "$registry_cohorts" ]]; then
+    echo "ignored: emitter HOSTS/COHORTS from the environment — the registry entry is authoritative on refresh"
+  fi
   REGISTRY_HOSTS="$registry_hosts"
   REGISTRY_COHORTS="$registry_cohorts"
   echo "refresh options — reused: ${REUSED:-none}; overridden: ${OVERRIDDEN:-none}"
