@@ -90,8 +90,8 @@ with mode 0600, re-encrypts on save, and deletes the plaintext. It never
 writes plaintext to a path you can `cat` later.
 
 Without a `.fleet.mk` override, `SECRETS_FILE` resolves below
-`${XDG_RUNTIME_DIR:-$HOME/.cache}/vpn-provision/`. A repo-local operator can
-set the following in the ignored `.fleet.mk`:
+`${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}/vpn-provision-$(id -u)}/`. A repo-local
+operator can set the following in the ignored `.fleet.mk`:
 
 ```make
 SOPS_FILE = $(CURDIR)/secrets/local/config/prod.secrets.sops.yaml

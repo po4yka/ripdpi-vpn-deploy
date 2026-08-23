@@ -255,7 +255,8 @@ make blue-green GREEN_ENV=<name>          # orchestrate blue-green replacement
 
 `make help` is the canonical target inventory. `SOPS_FILE`, `SECRETS_FILE`,
 `HOSTS`, and `COHORTS` may be set in the git-ignored `.fleet.mk`; the default
-plaintext runtime path is `${XDG_RUNTIME_DIR:-$HOME/.cache}/vpn-provision/`.
+plaintext runtime path is
+`${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}/vpn-provision-$(id -u)}/`.
 
 ## Hard rules
 
