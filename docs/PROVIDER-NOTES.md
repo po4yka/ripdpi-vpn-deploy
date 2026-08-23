@@ -184,9 +184,9 @@ Uses:
 - Wider region coverage than UpCloud / Hetzner.
 - IP reputation is more variable; rotate regions when burn-check shows
   a region's prefix is RKN-blocked.
-- The provider schema requires an API key in provider config. This root maps
-  sensitive variable `vultr_api_key`; export `TF_VAR_vultr_api_key` instead
-  of writing tokens into tfvars.
+- The provider schema marks its API key as required but fills it from the
+  `VULTR_API_KEY` environment variable; the provider block stays empty and
+  tokens never enter tfvars or state inputs.
 - If an API access allowlist is enabled, admit only the operator's current
   egress as an exact IP/CIDR before the first plan; never use an all-addresses
   entry. The Terraform workspace wrapper runs a redacted authenticated
