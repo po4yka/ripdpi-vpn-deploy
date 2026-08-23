@@ -1,0 +1,11 @@
+{
+  "change": "sec-1787489155988233-client-config-registry",
+  "evidence_summary": "Live acceptance and per-requirement evidence resolved in openspec/changes/archive/2026-08-23-sec-1787489155988233-client-config-registry/verification.md; change archived; refresh-notice and revoke-key regressions covered by tests/unit/test_client_registry.py.",
+  "execution_sha256": "ba891ed2be38ded752c19c098cd16a4b0d76a016b1b1eb2d2d0fff2dd4b1b8f0",
+  "issue_sha256": "5c63fbf9b207ddaaaed523a9ed2cc9b70fe90c3121b4e6d9bef6644b8bf550aa",
+  "outcome": "done",
+  "prepared_at": "2026-08-23T18:44:56Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1787489155988233"
+}

@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -168,3 +169,38 @@ def test_fresh_issuance_records_multi_host_env(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr + result.stdout
     doc = json.loads(secrets_file.read_text())
     assert doc["client_registry"]["phone"]["hosts"] == multi_hosts.split(",")
+
+
+def test_refresh_reports_ignored_emitter_environment(tmp_path: Path) -> None:
+    """A refresh must say that env HOSTS/COHORTS lost to the registry.
+
+    The registry is authoritative on refresh by design, but silently
+    discarding an operator-supplied HOSTS= produced a payload that did not
+    match the invocation with nothing in the output to explain it.
+    """
+    env, _, _, _ = _harness(tmp_path)
+    env["HOSTS"] = "vultr:some-other-host"
+    result = _run_issuer(env, "--refresh-token", REGISTERED_TOKEN)
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "ignored: emitter HOSTS/COHORTS" in result.stdout
+
+
+def test_refresh_without_emitter_environment_is_quiet(tmp_path: Path) -> None:
+    env, _, _, _ = _harness(tmp_path)
+    result = _run_issuer(env, "--refresh-token", REGISTERED_TOKEN)
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "ignored:" not in result.stdout
+
+
+def test_issuer_revoke_hint_names_the_key_the_role_consumes() -> None:
+    """The printed revoke instruction must name the consumed secrets key.
+
+    The role renders the revocation file from `subscription.revoked_tokens`;
+    the issuer used to tell operators to append the hash to
+    `subscription.revoked_token_hashes`, which nothing reads — so a leaked
+    token stayed valid after a by-the-book revocation.
+    """
+    role_tasks = (REPO_ROOT / "ansible/roles/subscription-host/tasks/main.yml").read_text()
+    iterated = set(re.findall(r"for \w+ in subscription\.(\w+)", role_tasks))
+    assert iterated == {"revoked_tokens"}
+    assert set(re.findall(r"subscription\.(revoked_\w+)", ISSUER.read_text())) == iterated
