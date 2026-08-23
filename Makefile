@@ -115,6 +115,7 @@ help:
 	@echo "  emit-qr CLIENT=…           PNG QR for the client (TYPE=singbox|uri, OUT=path)"
 	@echo "  issue-bootstrap CLIENT=…   Issue a one-time /bootstrap/<token> URL"
 	@echo "  issue-sub-token CLIENT=…   Issue a long-lived /sub/<token> URL (FORMAT=singbox|ripdpi EXPIRES=… QR=1)"
+	@echo "  client-drift CLIENT=…      Compare a device's last delivery identity with current inputs"
 	@echo "  sub-reads [SINCE=… ROUTE=… LIMIT=…]  Pull the server-side read-audit log"
 	@echo "  check-killswitch BUNDLE=…  Validate the kill-switch properties of a bundle"
 	@echo ""
@@ -615,8 +616,7 @@ issue-sub-token:
 	@test -n "$${CLIENT:-}" || { echo "usage: make issue-sub-token CLIENT=phone [FORMAT=singbox|ripdpi] [EXPIRES=YYYY-MM-DD] [QR=1]"; exit 1; }
 	HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
 	./scripts/issue-sub-token.sh "$${CLIENT}" \
-	  $(if $(FORMAT),--format $(FORMAT)) \
-	  $(if $(EXPIRES),--expires $(EXPIRES)) \
+	  $(if $(FORMAT),--format $(FORMAT)) \	  $(if $(EXPIRES),--expires $(EXPIRES)) \
 	  $(if $(filter 1 yes true,$(QR)),--qr)
 
 sub-reads:
@@ -624,6 +624,11 @@ sub-reads:
 	  $(if $(SINCE),--since $(SINCE)) \
 	  $(if $(ROUTE),--route $(ROUTE)) \
 	  $(if $(LIMIT),--limit $(LIMIT))
+
+client-drift:
+	@test -n "$${CLIENT:-}" || { echo "usage: make client-drift CLIENT=phone"; exit 1; }
+	SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" ENV=$(ENV) \
+	./scripts/client-drift.py "$${CLIENT}"
 
 test-tls-policing:
 	@test -n "$(HOST)" || { echo "usage: make test-tls-policing HOST=vpn.example.com [STEPS=1,4,8,12,16,24]"; exit 1; }

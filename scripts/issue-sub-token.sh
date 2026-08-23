@@ -222,8 +222,15 @@ REGISTRY_TEMP="$registry_temp"
 cp "$sops_file" "$registry_temp"
 chmod 0600 "$registry_temp"
 
+# Payload identity at delivery time (source digest + consumed outputs).
+identity_line="$(HOSTS="${REGISTRY_HOSTS:-${PROVIDER}:${ENV}}" \
+  python3 "${REPO_ROOT}/scripts/client-drift.py" --print-identity \
+    --hosts "${REGISTRY_HOSTS:-${PROVIDER}:${ENV}}")"
+read -r source_id outputs_id <<<"$identity_line"
+
 entry_json="$(FORMAT="$FORMAT" HOSTS="${REGISTRY_HOSTS:-${PROVIDER}:${ENV}}" \
   COHORTS="$REGISTRY_COHORTS" HASH_PREFIX="$hash_prefix" EXPIRY="$EXPIRES" \
+  SOURCE_ID="$source_id" OUTPUTS_ID="$outputs_id" \
   python3 <<PYEOF
 import json, os
 from datetime import datetime, timezone
@@ -237,6 +244,10 @@ entry = {
     "cohorts": [c for c in os.environ["COHORTS"].split(",") if c],
     "token_hash_prefix": os.environ["HASH_PREFIX"],
     "token_expires": os.environ["EXPIRY"],
+    "last_payload_identity": {
+        "source": os.environ["SOURCE_ID"],
+        "outputs": os.environ["OUTPUTS_ID"],
+    },
 }
 existing = json.loads(subprocess.run(
     ["sops", "--decrypt", "--extract", '["client_registry"]', "--output-type", "json", "$sops_file"],
