@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-08-23
+goal: VPD-1787497073989478 Harden share bundle token handling and file permissions

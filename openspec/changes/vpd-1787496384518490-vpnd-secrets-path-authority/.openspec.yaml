@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-08-23
+goal: VPD-1787496384518490 Make vpnd the single authority for the decrypted
+  secrets path and redaction
