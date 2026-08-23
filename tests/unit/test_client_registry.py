@@ -152,3 +152,19 @@ def test_fresh_issuance_records_registry_entry(tmp_path: Path) -> None:
     assert entry["token_hash_prefix"] == prefix
     assert entry["hosts"] == ["upcloud:prod"]
     assert "singbox" in entry["formats"]
+
+
+def test_fresh_issuance_records_multi_host_env(tmp_path: Path) -> None:
+    """HOSTS from the emitter environment must land in the registry.
+
+    Regression: first issuance recorded only PROVIDER:ENV while the emitter
+    consumed HOSTS, so a bare refresh downgraded a multi-host subscription
+    to a single-host payload.
+    """
+    env, payload_file, _, secrets_file = _harness(tmp_path)
+    multi_hosts = "upcloud:p0-upcloud,scaleway:p1-scaleway,vultr:p2-vultr"
+    env["HOSTS"] = multi_hosts
+    result = _run_issuer(env, "--format", "singbox", "--print-token-only")
+    assert result.returncode == 0, result.stderr + result.stdout
+    doc = json.loads(secrets_file.read_text())
+    assert doc["client_registry"]["phone"]["hosts"] == multi_hosts.split(",")
