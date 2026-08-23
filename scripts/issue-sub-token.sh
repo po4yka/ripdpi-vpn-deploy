@@ -86,9 +86,11 @@ fi
 # A bare --refresh-token reuses only the bearer token; format, hosts, and
 # cohorts would otherwise reset to defaults and overwrite a multi-host or
 # ripdpi subscription with a wrong single-host sing-box payload.
+# First issuance seeds the recorded options from the emitter environment so
+# the registry reflects exactly what was delivered.
 # ---------------------------------------------------------------------------
-REGISTRY_HOSTS=""
-REGISTRY_COHORTS=""
+REGISTRY_HOSTS="${HOSTS:-}"
+REGISTRY_COHORTS="${COHORTS:-}"
 OVERRIDDEN=""
 REUSED=""
 if [[ -n "$REFRESH_TOKEN" ]]; then
