@@ -89,6 +89,19 @@ build_operator_path() {
   printf '%s' "$result"
 }
 
+payload_throttle_log_dir() {
+  printf '%s' "${XDG_STATE_HOME:-${HOME}/.local/state}/vpn-provision/logs"
+}
+
+ensure_log_dir() {
+  # Chmod only the leaf directory we own; a custom XDG_STATE_HOME keeps the
+  # permissions its owner chose.
+  local dir
+  dir="$(payload_throttle_log_dir)"
+  mkdir -p "$dir"
+  chmod 0700 "$dir"
+}
+
 make_block() {
   local repo="$1" repo_q env_q vantage_q liveness_q sops_q age_key_q operator_path path_escaped
   printf -v repo_q '%q' "$repo"
@@ -140,8 +153,12 @@ EOF
 EOF
   fi
   if [[ -n "$PAYLOAD_THROTTLE_HOST" ]]; then
+    # Owner-only state directory instead of a predictable name in
+    # world-writable /tmp. The directory is created by ensure_log_dir on the
+    # real install path only, so a --dry-run never mutates the filesystem.
+    printf -v log_dir_q '%q' "$(payload_throttle_log_dir)"
     cat <<EOF
-7 4 * * *      cd ${repo} && make probe-payload-throttle HOST=${PAYLOAD_THROTTLE_HOST} >>/tmp/vpn-payload-throttle.log 2>&1
+7 4 * * *      cd ${repo} && make probe-payload-throttle HOST=${PAYLOAD_THROTTLE_HOST} >>${log_dir_q}/payload-throttle.log 2>&1
 EOF
   fi
   if [[ -n "$REALITY_TARGET_VANTAGE" ]]; then
@@ -186,6 +203,8 @@ if (( DRY_RUN )); then
   echo "$block"
   exit 0
 fi
+
+[[ -n "$PAYLOAD_THROTTLE_HOST" ]] && ensure_log_dir
 
 # Replace any existing marked block with the new one.
 {

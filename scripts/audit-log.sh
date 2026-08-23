@@ -97,9 +97,32 @@ PY
 )"
   {
     printf '%s\n' "$record" | age -a -r "$recipient"
-  } >> "$LOG_FILE"
+  } | append_locked
   chmod 0600 "$LOG_FILE"
   echo "audit: ${ACTION} ${CLIENT:-<no-client>} → ${LOG_FILE}"
+}
+
+# Serialize envelope appends: two writers (cron watcher + interactive deploy
+# wrapper) can fire around rotation events, and interleaved ciphertext would
+# be silently dropped by the read path. flock takes a descriptor on Linux;
+# BSD lockf takes a file path plus command on macOS — same fallback pattern
+# as scripts/new-client.sh.
+append_locked() {
+  local lock_file="${LOG_FILE}.lock"
+  if command -v flock >/dev/null 2>&1; then
+    exec 9>> "$lock_file"
+    if ! flock 9; then
+      echo "error: could not acquire audit log lock for $LOG_FILE" >&2
+      return 2
+    fi
+    cat >> "$LOG_FILE"
+    exec 9>&-
+  elif command -v lockf >/dev/null 2>&1; then
+    lockf -s -t 60 "$lock_file" cat >> "$LOG_FILE"
+  else
+    echo "error: audit-log requires flock (Linux) or lockf (macOS)" >&2
+    return 2
+  fi
 }
 
 case "$cmd" in

@@ -105,6 +105,23 @@ def test_noninteractive_destroy_rejects_non_ci_environment(tmp_path: Path) -> No
     assert not (stub.parent / "terraform.log").exists()
 
 
+def test_destroy_refuses_to_run_over_a_stale_override(tmp_path: Path) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-123-stale"
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text('server_name = "vpn-ci.test"\n')
+    stale = root / "terraform/providers/upcloud/_destroy_override.tf"
+    stale.write_text("# leftover from a crashed destroy\n")
+    stub = _terraform_stub(tmp_path)
+
+    result = _run(root, stub.parent, env_name)
+
+    assert result.returncode == 1
+    assert "already exists" in result.stderr
+    assert "prevent_destroy" in result.stderr
+    assert stale.exists()
+    assert not (stub.parent / "terraform.log").exists()
+
+
 def test_failed_ci_destroy_keeps_inventory_for_diagnosis(tmp_path: Path) -> None:
     root = _test_repo(tmp_path)
     env_name = "ci-123-failure"

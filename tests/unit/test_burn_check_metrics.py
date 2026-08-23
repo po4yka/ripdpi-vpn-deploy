@@ -118,3 +118,24 @@ def test_reachability_failure_is_not_reported_as_probe_error(tmp_path: pathlib.P
     assert 'vpn_burn_api_error{provider="upcloud",env="test"} 0' in metrics
     assert 'vpn_burn_run_error{provider="upcloud",env="test"} 0' in metrics
     assert 'vpn_burn_failed_nodes{provider="upcloud",env="test"} 2' in metrics
+
+
+def test_pending_nodes_are_never_counted_as_burn_failures(tmp_path: pathlib.Path) -> None:
+    result = _run_burn_check(
+        tmp_path,
+        "#!/usr/bin/env bash\n"
+        "case \"$*\" in\n"
+        "  *check-tcp*) printf '%s\\n' '{\"request_id\":\"request-1\"}' ;;\n"
+        "  *check-result*) printf '%s\\n' '{\"node-a.example\":[[{\"address\":\"203.0.113.10\"}]],\"node-b.example\":null}' ;;\n"
+        "  *) exit 22 ;;\n"
+        "esac\n",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "still pending" in result.stderr
+    metrics = _metrics(tmp_path)
+    assert 'vpn_burn_run_error{provider="upcloud",env="test"} 1' in metrics
+    assert 'vpn_burn_pending_nodes{provider="upcloud",env="test"} 1' in metrics
+    # An incomplete run publishes no burn verdict series at all.
+    assert "vpn_burn_failed_nodes" not in metrics
+    assert "vpn_burn_reachable" not in metrics

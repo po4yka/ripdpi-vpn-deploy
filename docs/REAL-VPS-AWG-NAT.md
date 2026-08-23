@@ -93,17 +93,32 @@ AWG_EVIDENCE_MODES="echo,server" \
 ANSIBLE_SSH_PRIVATE_KEY_FILE=/secure/operator-key \
 scripts/render-inventory.sh
 
-make deploy ANSIBLE_LIMIT=vpn-p1-web
+make deploy ANSIBLE_LIMIT=vpn-p1-web \
+  ANSIBLE_EXTRA_VARS_FILE=/secure/decoy-origin.yml
 make deploy ANSIBLE_LIMIT=vpn-p2-udp \
   ANSIBLE_EXTRA_VARS_FILE=/secure/real-vps-awg-nat-forward.yml
 ```
 
-Both commands use the canonical SOPS-gated deploy path. Any extra-vars file
-must be a same-owner, non-symlink regular file with mode `0600`; private values
-still belong only in SOPS and must not be copied into this file. The file is
-accepted only with `ANSIBLE_LIMIT` and may contain only management-path fields
-or `firewall_forward_interface_contract`; data-plane and protocol variables
-are rejected. A forwarding override must contain exactly one named entry with
+Both commands use the canonical SOPS-gated deploy path and need an extra-vars
+override file carrying `public_site_canonical_url` (see "Decoy site identity"
+in docs/DEPLOY-PROFILES.md) — with production secrets, convergence fails on
+the role asserts without it. The P2 override combines it with the forwarding
+contract:
+
+```yaml
+public_site_canonical_url: "https://<your-decoy-origin>"
+firewall_forward_interface_contract:
+  - name: real-vps-awg-nat-forward
+    input_interface: awg-evidence0
+    output_interface: <real-uplink>
+```
+
+Any extra-vars file must be a same-owner, non-symlink regular file with mode
+`0600`; private values still belong only in SOPS and must not be copied into
+this file. The file is accepted only with `ANSIBLE_LIMIT` and may contain only
+management-path fields, `public_site_canonical_url`, or
+`firewall_forward_interface_contract`; data-plane and protocol variables are
+rejected. A forwarding override must contain exactly one named entry with
 safe Linux interface names. The root Makefile exports
 `ANSIBLE_CONFIG=ansible/ansible.cfg`, so these commands retain the repository
 inventory, role path, SSH, and privilege-escalation settings.

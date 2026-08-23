@@ -23,4 +23,7 @@ vpn:
   enable_snell: false
 
 nginx_xhttp_public_port: 443
-public_site_canonical_url: "https://chinallmodel.com"
+# Neutral placeholder. The real decoy origin is operator-supplied per deploy
+# via ANSIBLE_EXTRA_VARS_FILE (see docs/DEPLOY-PROFILES.md); nginx-xhttp's
+# converge assert pins it to https://<nginx_xhttp.server_name> from secrets.
+public_site_canonical_url: "https://vpn.example.com"

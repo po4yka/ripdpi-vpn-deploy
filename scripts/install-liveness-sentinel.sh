@@ -195,10 +195,13 @@ if [[ -n "$SSH_TRANSPORT_HOST" ]]; then
 fi
 REMOTE_USER="$(ssh "${SSH_OPTS[@]}" "$SSH_TARGET" id -un)"
 [[ "$REMOTE_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]] || { echo "unsafe remote username" >&2; exit 1; }
-REMOTE_DIR="/tmp/vpn-liveness-${SENTINEL}"
+# Randomized private staging directory on the sentinel host: a predictable
+# /tmp path would let a local user pre-plant a symlink that scp/tar follow.
+REMOTE_DIR="$(ssh "${SSH_OPTS[@]}" "$SSH_TARGET" 'mktemp -d')"
+[[ "$REMOTE_DIR" == /* ]] || { echo "remote mktemp returned an unsafe path: $REMOTE_DIR" >&2; exit 1; }
 COPYFILE_DISABLE=1 tar --no-xattrs -C "$WORK/install" -czf "$WORK/install.tar.gz" .
-scp "${SSH_OPTS[@]}" "$WORK/install.tar.gz" "${SSH_TARGET}:${REMOTE_DIR}.tar.gz"
-ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "set -eu; rm -rf '${REMOTE_DIR}'; mkdir -m 0700 '${REMOTE_DIR}'; tar -xzf '${REMOTE_DIR}.tar.gz' -C '${REMOTE_DIR}'; sudo install -d -m 0700 /etc/vpn-liveness; sudo install -m 0755 '${REMOTE_DIR}/vpn-protocol-liveness' /usr/local/sbin/vpn-protocol-liveness; sudo find '${REMOTE_DIR}' -maxdepth 1 -type f ! -name vpn-protocol-liveness -exec install -m 0600 {} /etc/vpn-liveness/ \;; printf '%s ALL=(root) NOPASSWD: /usr/local/sbin/vpn-protocol-liveness\n' '${REMOTE_USER}' | sudo tee /etc/sudoers.d/vpn-protocol-liveness >/dev/null; sudo chmod 0440 /etc/sudoers.d/vpn-protocol-liveness; sudo visudo -cf /etc/sudoers.d/vpn-protocol-liveness >/dev/null; rm -rf '${REMOTE_DIR}' '${REMOTE_DIR}.tar.gz'"
+scp "${SSH_OPTS[@]}" "$WORK/install.tar.gz" "${SSH_TARGET}:${REMOTE_DIR}/install.tar.gz"
+ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "set -eu; tar -xzf '${REMOTE_DIR}/install.tar.gz' -C '${REMOTE_DIR}'; sudo install -d -m 0700 /etc/vpn-liveness; sudo install -m 0755 '${REMOTE_DIR}/vpn-protocol-liveness' /usr/local/sbin/vpn-protocol-liveness; sudo find '${REMOTE_DIR}' -maxdepth 1 -type f ! -name vpn-protocol-liveness ! -name install.tar.gz -exec install -m 0600 {} /etc/vpn-liveness/ \;; printf '%s ALL=(root) NOPASSWD: /usr/local/sbin/vpn-protocol-liveness\n' '${REMOTE_USER}' | sudo tee /etc/sudoers.d/vpn-protocol-liveness >/dev/null; sudo chmod 0440 /etc/sudoers.d/vpn-protocol-liveness; sudo visudo -cf /etc/sudoers.d/vpn-protocol-liveness >/dev/null; rm -rf '${REMOTE_DIR}'"
 
 VERIFY="$(ssh "${SSH_OPTS[@]}" "$SSH_TARGET" sudo -n /usr/local/sbin/vpn-protocol-liveness)"
 VERIFY_JSON="$VERIFY" python3 - "$SENTINEL" "$REQUIRED_PROFILES" <<'PY'

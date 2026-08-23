@@ -245,7 +245,7 @@ Add to your operator's cron / launchd:
 */30 * * * *  cd ~/GitRep/ripdpi-vpn-deploy && make burn-check >> /tmp/vpn-burn.log 2>&1
 
 # Every 2 min — authenticated protocol quorum (requires managed sentinels)
-*/2 * * * *   cd ~/GitRep/ripdpi-vpn-deploy && LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml GREEN_ENV=spare make watch-spare >> /tmp/vpn-spare.log 2>&1
+*/2 * * * *   cd ~/GitRep/ripdpi-vpn-deploy && LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml GREEN_ENV=spare make watch-spare 2>&1 | logger -t vpn-spare
 
 # Daily — encrypted backup of TF state to ~/.config/vpn-provision/state-backups/
 47 3 * * *   cd ~/GitRep/ripdpi-vpn-deploy && make backup-state >> /tmp/vpn-tfstate-backup.log 2>&1

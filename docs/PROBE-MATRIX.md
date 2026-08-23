@@ -37,7 +37,7 @@ The local runner requires `curl`, `openssl`, the same pinned Xray release declar
 
 ```bash
 make probe-matrix-tools
-export PROBE_MATRIX_MTPROTO_BIN="${XDG_RUNTIME_DIR:-$HOME/.cache}/vpn-provision/probe-matrix/bin/probe-matrix-mtproto"
+export PROBE_MATRIX_MTPROTO_BIN="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}/vpn-provision-$(id -u)}/probe-matrix/bin/probe-matrix-mtproto"
 ```
 
 Secrets are read only from the profile file. They are never passed through process arguments, environment variables, `--explain`, stderr, or report JSON.

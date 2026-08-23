@@ -18,6 +18,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -208,7 +209,12 @@ def aggregate_variants(profile: str, variants: list[dict]) -> dict:
 
 def probe_sing_box_profiles(sing_box: dict, config: dict, control_alive: bool) -> list[dict]:
     profile_ports = sing_box["profiles"]
-    log_path = Path(f"/tmp/vpn-liveness-{os.getpid()}-sing-box.log")
+    # Private per-run log file: a predictable name in a world-writable
+    # directory lets a local user pre-plant a symlink that this (possibly
+    # root-run) writer would follow.
+    log_fd, log_name = tempfile.mkstemp(prefix="vpn-liveness-sing-box-", suffix=".log")
+    os.close(log_fd)
+    log_path = Path(log_name)
     process: subprocess.Popen[str] | None = None
     try:
         with log_path.open("w", encoding="utf-8") as log_handle:

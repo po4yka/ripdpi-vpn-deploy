@@ -80,6 +80,7 @@ def test_installer_keeps_awg_private_key_off_argv_and_uses_strict_ssh(tmp_path: 
         """#!/usr/bin/env bash
 printf 'ssh' >> "$CALL_LOG"; printf ' <%s>' "$@" >> "$CALL_LOG"; printf '\n' >> "$CALL_LOG"
 if [[ "$*" == *' id -un' ]]; then echo probe; exit 0; fi
+if [[ "$*" == *'mktemp -d'* ]]; then echo /tmp/vpn-liveness-staging.XXXXXX; exit 0; fi
 if [[ "$*" == *'/usr/local/sbin/vpn-protocol-liveness' ]]; then
   printf '{"schema_version":1,"sentinel":"tls-freeze-a","observed_at":9999999999,"control":{"verdict":"ok"},"profiles":[{"profile":"p0-reality","verdict":"ok"},{"profile":"p2-amneziawg","verdict":"ok"}],"runtime":{"sing_box":"1.14.0","awg":"1.0.0"}}\n'
 fi
@@ -197,6 +198,7 @@ def test_installer_supports_policy_without_amneziawg_key(tmp_path: Path) -> None
         bin_dir / "ssh",
         """#!/usr/bin/env bash
 if [[ "$*" == *' id -un' ]]; then echo probe; exit 0; fi
+if [[ "$*" == *'mktemp -d'* ]]; then echo /tmp/vpn-liveness-staging.XXXXXX; exit 0; fi
 if [[ "$*" == *'/usr/local/sbin/vpn-protocol-liveness' ]]; then
   printf '{"schema_version":1,"sentinel":"stream-a","control":{"verdict":"ok"},"profiles":[{"profile":"p0-reality","verdict":"ok"}]}\n'
 fi
