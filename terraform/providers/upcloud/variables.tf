@@ -76,8 +76,9 @@ variable "ssh_port" {
 }
 
 variable "enable_hysteria" {
-  type    = bool
-  default = true
+  type        = bool
+  default     = true
+  description = "Include the Hysteria2 UDP/443 listener in the legacy default set. Explicit public_listeners ignore this toggle; add hysteria there directly."
 }
 
 variable "nginx_xhttp_public_port" {
