@@ -11,8 +11,8 @@ and decrypted SOPS values. Those remain in git-ignored operator files.
 |---|---|
 | Last verified deployment | 2026-08-23 |
 | Git release | post-`infra-v1.0.0` `main` |
-| Deployed source commit | `0c22a24` (`fix(infra): start ssh unit before first-boot reload in cloud-init`, includes all audit remediation through #86) |
-| Source validation | [#87 CI](https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/32634672153) green, CodeQL and Scorecard passing |
+| Deployed source commit | `0c22a24cff5733947900ad345da4b9fe830a528e` (`fix(infra): start ssh unit before first-boot reload in cloud-init`, includes all audit remediation through #86) |
+| Source validation | PR #87 CI fully green, CodeQL and Scorecard passing on the deployed commit |
 | Release state | full-fleet recreation: every server was deliberately destroyed and rebuilt from git + secrets |
 
 Every server in the fleet was deliberately destroyed and rebuilt from git +
@@ -89,7 +89,12 @@ failure instead: `StrictHostKeyChecking=accept-new` (used by
 stale entry is removed. Clear it first with `ssh-keygen -R <p1-host>` (repeat
 for the Tailscale name if that path was pinned), then reconnect to accept the
 new key. All public endpoints changed except the P1 IPv4 — client devices must
-re-fetch the subscription or update endpoints manually.
+re-fetch the subscription or update endpoints manually. Static `/sub/`
+payloads rendered by `scripts/issue-sub-token.sh` are stored once as hashed
+files and are not regenerated on fetch; before telling any device to re-fetch,
+rerun the issuer for every outstanding token with
+`scripts/issue-sub-token.sh <client> --refresh-token <token>` so the stored
+payload picks up the current Terraform outputs.
 
 Secret schema validation, placeholder checks, certificate checks, and private
 key/certificate matching passed before deployment. The decrypted SOPS file was
@@ -123,9 +128,15 @@ above until the first real convergence.
    replacement or unexplained drift.
 4. Rebuild the inventory, restore the documented Tailscale SSH override, and
    prove the SSH path before deployment.
-5. Run `make deploy`, `make verify`, and `make security-verify`. When package
-   backlog or reboot markers are present, run `make os-maintenance`; it rolls
-   one node at a time and repeats both verification gates.
+5. Run the deployment gates with the cohort limit and the decoy-origin
+   override required by DEPLOY-PROFILES.md ("Decoy site identity") — the
+   committed P1/P2 profiles carry only a placeholder origin and their identity
+   asserts fail without it:
+   `ANSIBLE_LIMIT="<all cohort hosts>" ANSIBLE_EXTRA_VARS_FILE=secrets/local/decoy-origin.yml make deploy`,
+   then the same prefix for `make verify` and `make security-verify`. When
+   package backlog or reboot markers are present, run `make os-maintenance`
+   with the same variables; it rolls one node at a time and repeats both
+   verification gates.
 6. Confirm `make source-drift` is green for every node; `deploy` and `verify`
    run it automatically, but the standalone command is the fastest parity
    check.
