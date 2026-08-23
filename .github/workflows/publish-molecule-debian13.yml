@@ -7,15 +7,18 @@ on:
       - '.github/workflows/publish-molecule-debian13.yml'
   workflow_dispatch:
 
+# Top-level token stays read-only; the publish job elevates only what
+# it needs (GHCR push, SARIF upload).
 permissions:
   contents: read
-  packages: write
-  security-events: write
 
 jobs:
   publish:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      packages: write
+      security-events: write
     env:
       IMAGE: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13
     steps:
