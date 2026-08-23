@@ -1,0 +1,11 @@
+{
+  "change": "ans-1787422293187845-decommit-public-site-domain",
+  "evidence_summary": "All 54 required CI checks green on PR #84 final SHA 9aa0e5e, merged to main as 4e26e7e; full pytest green (925 passed); make validate green; OpenSpec change archived with requirement evidence in verification.md",
+  "execution_sha256": "f788907cf40af4217ae97a9762ae4e57cb8d6a608f7ae148bd2259d052ce6fe0",
+  "issue_sha256": "ba0ef78fff7bc488e5825fd58204213937e29b69c8614fc36ac896a51c3d7eb7",
+  "outcome": "done",
+  "prepared_at": "2026-08-23T04:56:03Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1787422293187845"
+}
