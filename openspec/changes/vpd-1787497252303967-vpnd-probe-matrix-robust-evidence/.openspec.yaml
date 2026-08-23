@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-08-23
+goal: VPD-1787497252303967 Fix probe-matrix process leaks, timeouts, durability,
+  and evidence semantics

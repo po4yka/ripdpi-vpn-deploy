@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-08-23
+goal: VPD-1787497317352770 Guarantee secrets cleanup and scoped targeting on
+  deploy paths
