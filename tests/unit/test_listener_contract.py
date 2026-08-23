@@ -134,7 +134,13 @@ def test_p0_self_steal_keeps_the_same_public_listener_surface() -> None:
 
 def test_p1_web_listener_surface_is_normal_http_and_https() -> None:
     actual = _profile_manifest("vpn-p1-web.yml")
-    expected = [_expected("public-site-http", "tcp", 80), _expected("nginx-xhttp", "tcp", 443)]
+    expected = [
+        _expected("public-site-http", "tcp", 80),
+        _expected("nginx-xhttp", "tcp", 443),
+        # Subscription delivery co-located on the p1 web node (v1 default,
+        # SUBSCRIPTION-HOST-SEPARATION.md) — the only non-web TCP listener.
+        _expected("subscription-host", "tcp", 8444),
+    ]
     assert contract.check({"expected": expected, "actual": actual}) == []
 
 
