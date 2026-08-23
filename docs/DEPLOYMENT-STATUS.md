@@ -94,7 +94,16 @@ payloads rendered by `scripts/issue-sub-token.sh` are stored once as hashed
 files and are not regenerated on fetch; before telling any device to re-fetch,
 rerun the issuer for every outstanding token with
 `scripts/issue-sub-token.sh <client> --refresh-token <token>` so the stored
-payload picks up the current Terraform outputs.
+payload picks up the current Terraform outputs. `--refresh-token` reuses only
+the bearer token — every other option resets to its default (`FORMAT=singbox`,
+`PROVIDER=upcloud`, `ENV=prod`, single-host emitters), which silently replaces
+a multi-host or ripdpi-format subscription with a wrong payload. Re-pass the
+original issuance options on every refresh: `--format` and `--expires`, the
+correct `PROVIDER`/`ENV` pair, and for `--format ripdpi` the emitter
+environment (`HOSTS`, plus `COHORTS`/`SOPS_FILES` if non-default). The
+issuance audit entry records only format, expiry, and whether it was a
+refresh — keep the full original invocation alongside the token, since no
+server-side store preserves it.
 
 Secret schema validation, placeholder checks, certificate checks, and private
 key/certificate matching passed before deployment. The decrypted SOPS file was
