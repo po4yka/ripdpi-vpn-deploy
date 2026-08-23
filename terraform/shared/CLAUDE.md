@@ -29,3 +29,8 @@ and exits. The Ansible run handles the rest. Anything secret stays in SOPS.
   (`python3`, `sudo`); everything else is Ansible's job.
 - **SSH host key regeneration is one-shot** — done by cloud-init on first
   boot. Don't re-run, or recipients pinning host keys will see a "MITM" warning.
+- **Newer distro images socket-activate SSH** — `ssh.service` is inactive on
+  first boot (Ubuntu 24.04 observed 2026-08), so a bare
+  `systemctl reload ssh` in runcmd fails and the fail-closed marker never
+  publishes. The bootstrap runs `systemctl enable --now ssh` before the
+  reload; keep that ordering if you touch the chain.
