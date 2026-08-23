@@ -583,7 +583,7 @@ jobs:
       # per-role matrix cannot catch cross-role interactions.
       - name: molecule full-stack test
         working-directory: ansible
-        run: molecule -c molecule/full-stack/molecule.yml test
+        run: molecule -c molecule/full-stack/molecule.yml test -s full-stack
         env:
           PY_COLORS: "1"
           ANSIBLE_FORCE_COLOR: "1"

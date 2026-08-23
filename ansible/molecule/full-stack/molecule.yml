@@ -15,12 +15,11 @@
 # Designed to run via:
 #   make molecule-full-stack
 # or directly:
-#   cd ansible && molecule -c molecule/full-stack/molecule.yml test
-
-dependency:
-  name: galaxy
-  options:
-    requirements-file: ../../../requirements.yml
+#   cd ansible && molecule -c molecule/full-stack/molecule.yml test -s full-stack
+#
+# Collections come from the repo-root requirements.yml, installed by the
+# operator or CI before molecule runs; a galaxy dependency block here would
+# resolve its relative path against the invoking CWD and break.
 
 driver:
   name: docker

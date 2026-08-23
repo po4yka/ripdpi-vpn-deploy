@@ -102,9 +102,20 @@ def test_matching_otp_is_consumed_once_and_swing_runs(tmp_path: Path) -> None:
 
 def test_diff_secrets_gates_fail_closed_without_network(tmp_path: Path) -> None:
     """diff-secrets must refuse before any SSH when its inputs are absent."""
+    import stat
+
     script = REPO_ROOT / "scripts" / "diff-secrets.sh"
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    # CI runners and minimal workstations lack the full toolchain; stub the
+    # tools the script probes so the test reaches the input gates.
+    for tool in ("terraform", "ssh", "ansible", "ansible-playbook", "diff", "jq"):
+        stub = stubs / tool
+        stub.write_text("#!/usr/bin/env bash\nexit 0\n")
+        stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
+
     env = os.environ.copy()
-    env["PATH"] = f"{tmp_path}:{env['PATH']}"
+    env["PATH"] = f"{stubs}:{env['PATH']}"
     # No ANSIBLE_SSH_PRIVATE_KEY_FILE at all.
     result = subprocess.run(
         ["bash", str(script)], text=True, capture_output=True, check=False,
