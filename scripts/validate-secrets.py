@@ -37,6 +37,46 @@ SCHEMA = REPO_ROOT / "secrets" / "schema.json"
 DEFAULT_TARGET = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 
 PLACEHOLDER = re.compile(r"REPLACE_WITH_[A-Z0-9_]+")
+AWG_FINGERPRINT = re.compile(r"^sha256:([0-9a-fA-F]{16})$")
+
+
+def _awg_peer_pubkeys(doc: dict) -> dict[str, str]:
+    """Map peer name -> public key across all AmneziaWG collections."""
+    peers: dict[str, str] = {}
+    sections = [doc.get("amneziawg_secrets") or {}]
+    sections += (doc.get("amneziawg_secrets") or {}).get("instances") or []
+    for section in sections:
+        for peer in section.get("peers") or []:
+            if isinstance(peer, dict) and peer.get("name") and peer.get("public_key"):
+                peers[peer["name"]] = peer["public_key"]
+    return peers
+
+
+def _registry_errors(doc: dict) -> list[tuple[str, str]]:
+    """Validate client_registry relationships JSON Schema cannot express."""
+    errors: list[tuple[str, str]] = []
+    registry = doc.get("client_registry") or {}
+    if not isinstance(registry, dict):
+        return [("client_registry", "must be a mapping of device name to entry")]
+    awg_peers = _awg_peer_pubkeys(doc)
+    for device, entry in registry.items():
+        if not isinstance(entry, dict):
+            continue
+        fingerprint = entry.get("awg_public_key_fingerprint") or ""
+        match = AWG_FINGERPRINT.match(fingerprint)
+        if match:
+            expected = {
+                __import__("hashlib").sha256(key.encode()).hexdigest()[:16]
+                for key in awg_peers.values()
+            }
+            if match.group(1).lower() not in expected:
+                errors.append(
+                    (
+                        f"client_registry.{device}.awg_public_key_fingerprint",
+                        "does not match any amneziawg_secrets peer public key",
+                    )
+                )
+    return errors
 
 
 def _walk_strings(node, path=""):
@@ -189,7 +229,7 @@ def main() -> int:
             print(f"  {loc}: failed {e.validator} constraint", file=sys.stderr)
         return 1
 
-    semantic_errors = _semantic_errors(doc)
+    semantic_errors = _semantic_errors(doc) + _registry_errors(doc)
     if semantic_errors:
         print(f"validate-secrets: {len(semantic_errors)} semantic violation(s) in {target}:", file=sys.stderr)
         for loc, message in semantic_errors:

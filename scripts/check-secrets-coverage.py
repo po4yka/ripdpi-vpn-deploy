@@ -66,6 +66,11 @@ EXPECTED_SECRET_TOPLEVEL = {
     "dns_morph_bridge_secrets", "hysteria_realm_secrets", "split_hop_egress_secrets",
     "split_hop_ingress_secrets", "probe_matrix_target_secrets",
     "snell_secrets", "real_vps_awg_nat_secrets",
+    # Operator-side per-device configuration registry (issuance options,
+    # lifecycle state, AWG private-key recovery copies). Not consumed by
+    # Ansible templates but required in every secrets document so
+    # new-client.sh / issue-sub-token.sh can persist issuance parameters.
+    "client_registry",
 }
 
 # Non-greedy capture of {{ ... }} with optional whitespace

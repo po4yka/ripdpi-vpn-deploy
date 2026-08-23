@@ -91,7 +91,7 @@ _run_new_client() {
     printf '0\n' > "$SOPS_STATE"
     _run_new_client
     [ "$status" -eq 0 ]
-    [ "$(grep -c '^mutation-' "$SOPS_FILE")" -eq 3 ]
+    [ "$(grep -c '^mutation-' "$SOPS_FILE")" -eq 4 ]
   done
 }
 
@@ -99,7 +99,7 @@ _run_new_client() {
   _run_new_client
 
   [ "$status" -eq 0 ]
-  [ "$(grep -c '^mutation-' "$SOPS_FILE")" -eq 3 ]
+  [ "$(grep -c '^mutation-' "$SOPS_FILE")" -eq 4 ]
   [ -z "$(find "$BATS_TEST_TMPDIR" -maxdepth 1 -name '*.new-client.*.yaml' -print -quit)" ]
 }
 
@@ -109,7 +109,7 @@ _run_new_client() {
   _run_new_client
 
   [ "$status" -eq 0 ]
-  [ "$(grep -c '^mutation-' "$SOPS_FILE")" -eq 6 ]
+  [ "$(grep -c '^mutation-' "$SOPS_FILE")" -eq 7 ]
   [ -z "$(find "$BATS_TEST_TMPDIR" -maxdepth 1 -name '*.new-client.*.yaml' -print -quit)" ]
 }
 
@@ -143,7 +143,7 @@ _run_new_client() {
   _run_new_client
 
   [ "$status" -eq 0 ]
-  [ "$(grep -c '^mutation-' "$SOPS_FILE")" -eq 3 ]
+  [ "$(grep -c '^mutation-' "$SOPS_FILE")" -eq 4 ]
 }
 
 @test "symlink secrets path updates its target without replacing the link" {
@@ -157,5 +157,5 @@ _run_new_client() {
 
   [ "$status" -eq 0 ]
   [ -L "$link" ]
-  [ "$(grep -c '^mutation-' "$target")" -eq 3 ]
+  [ "$(grep -c '^mutation-' "$target")" -eq 4 ]
 }
