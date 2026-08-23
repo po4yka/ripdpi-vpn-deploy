@@ -141,13 +141,7 @@ security_controls:
   ssh_max_sessions: 2
   ssh_max_startups: "10:30:20"
   unattended_upgrades: true
-  automatic_reboot: false
   fail2ban: false
-  crowdsec: false
-  proc_hidepid: false
-  aide: false
-  lynis: false
-  auditd: false
 
 # Security updates are continuous; full distribution upgrades and any required
 # reboot run only through the serial os-maintenance playbook.

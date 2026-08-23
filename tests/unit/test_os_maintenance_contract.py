@@ -14,7 +14,9 @@ def test_vpn_fleet_enables_unattended_security_updates() -> None:
     group_vars = yaml.safe_load((REPO_ROOT / "ansible/group_vars/all.yml").read_text())
 
     assert group_vars["security_controls"]["unattended_upgrades"] is True
-    assert group_vars["security_controls"]["automatic_reboot"] is False
+    # The reboot switch lives under package_updates; the security_controls
+    # duplicate was a silent no-op and was removed.
+    assert group_vars["package_updates"]["automatic_reboot"] is False
     assert group_vars["package_updates"]["security_only"] is True
 
 

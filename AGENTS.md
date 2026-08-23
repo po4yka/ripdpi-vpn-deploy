@@ -87,8 +87,9 @@ AGENTS.md / CLAUDE.md                                — this file (root)
 ansible/                                             — playbook order, group_vars contract
 ansible/roles/{amneziawg,backup,baseline,cdn-front,
               cascade-egress,cascade-ingress,dns-morph-bridge,firewall,geodata,honeypot,
-              hysteria,hysteria-realm,monitoring,naive,real-vps-awg-nat,reality-self-steal,
-              nginx-xhttp,policy-ratelimit,split-hop-egress,
+              hysteria,hysteria-realm,intrusion_prevention,monitoring,naive,node_manifest,
+              nginx-xhttp,policy-ratelimit,package_updates,real-vps-awg-nat,reality-self-steal,
+              security_audit,split-hop-egress,
               split-hop-ingress,probe-matrix-target,snell,subscription-host,
               warp-outbound,watchdog,xray,xray-runtime}/  — 31 roles
 terraform/                                           — provider-root strategy
@@ -112,7 +113,7 @@ When working inside a subtree, the nearest `AGENTS.md` wins.
 | Protocol toggles | `ansible/group_vars/all.yml` + cohort files (`vpn-p0.yml`, `vpn-p1p2.yml`, `vpn-fullstack.yml`) |
 | Recipient page | `vpnd/templates/recipient.html` |
 | AWG cohort profiles | `ansible/roles/amneziawg/vars/cohorts/` |
-| Xray version pin | `ansible/roles/xray/defaults/main.yml` |
+| Xray version pin | SOPS secret `xray.version` (see `secrets/prod.secrets.example.yaml`) |
 
 ## Task board and specifications
 
