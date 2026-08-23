@@ -4,7 +4,7 @@ package terraform.policy.ssh_cidrs
 
 test_deny_hcloud_ssh_unlisted_cidr {
   result := deny with input as {
-    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}},
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}, "ssh_port": {"value": 22}},
     "resource_changes": [{
       "address": "hcloud_firewall.vpn",
       "type": "hcloud_firewall",
@@ -21,7 +21,7 @@ test_deny_hcloud_ssh_unlisted_cidr {
 
 test_deny_vultr_ssh_unlisted_cidr {
   result := deny with input as {
-    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}},
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}, "ssh_port": {"value": 22}},
     "resource_changes": [{
       "address": "vultr_firewall_rule.ssh_0",
       "type": "vultr_firewall_rule",
@@ -38,7 +38,7 @@ test_deny_vultr_ssh_unlisted_cidr {
 
 test_deny_upcloud_ssh_unlisted_cidr {
   result := deny with input as {
-    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}},
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}, "ssh_port": {"value": 22}},
     "resource_changes": [{
       "address": "upcloud_firewall_rules.vpn",
       "type": "upcloud_firewall_rules",
@@ -58,7 +58,7 @@ test_deny_upcloud_ssh_unlisted_cidr {
 
 test_deny_scaleway_ssh_unlisted_cidr {
   result := deny with input as {
-    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}},
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}, "ssh_port": {"value": 22}},
     "resource_changes": [{
       "address": "scaleway_instance_security_group.vpn",
       "type": "scaleway_instance_security_group",
@@ -77,7 +77,7 @@ test_deny_scaleway_ssh_unlisted_cidr {
 
 test_allow_hcloud_ssh_listed_cidr {
   result := deny with input as {
-    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}},
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}, "ssh_port": {"value": 22}},
     "resource_changes": [{
       "address": "hcloud_firewall.vpn",
       "type": "hcloud_firewall",
@@ -94,7 +94,7 @@ test_allow_hcloud_ssh_listed_cidr {
 
 test_allow_vultr_ssh_listed_cidr {
   result := deny with input as {
-    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}},
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}, "ssh_port": {"value": 22}},
     "resource_changes": [{
       "address": "vultr_firewall_rule.ssh_0",
       "type": "vultr_firewall_rule",
@@ -111,7 +111,7 @@ test_allow_vultr_ssh_listed_cidr {
 
 test_allow_upcloud_ssh_listed_cidr {
   result := deny with input as {
-    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}},
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}, "ssh_port": {"value": 22}},
     "resource_changes": [{
       "address": "upcloud_firewall_rules.vpn",
       "type": "upcloud_firewall_rules",
@@ -131,7 +131,7 @@ test_allow_upcloud_ssh_listed_cidr {
 
 test_allow_scaleway_ssh_listed_cidr {
   result := deny with input as {
-    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}},
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}, "ssh_port": {"value": 22}},
     "resource_changes": [{
       "address": "scaleway_instance_security_group.vpn",
       "type": "scaleway_instance_security_group",

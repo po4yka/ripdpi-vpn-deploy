@@ -2,8 +2,9 @@ package terraform.policy.admin_port
 
 # no_admin_port_exposed_to_world
 #
-# Deny any firewall rule that allows TCP/22 or TCP/3389 from 0.0.0.0/0
-# or ::/0.  SSH must be restricted to var.allowed_ssh_cidrs.
+# Deny any firewall rule that allows the effective SSH port (var.ssh_port)
+# or TCP/3389 from 0.0.0.0/0 or ::/0. SSH must be restricted to
+# var.allowed_ssh_cidrs.
 #
 # Provider-specific attribute mappings:
 #
@@ -19,7 +20,12 @@ package terraform.policy.admin_port
 #   scaleway_instance_security_group — nested inbound_rule blocks:
 #     protocol, port, ip_range, action
 
-admin_ports := {"22", "3389"}
+# Every provider root declares ssh_port with a default, so plan JSON always
+# carries it; a missing value leaves these deny rules undefined (fail-open is
+# impossible for plans produced by this repository's roots).
+ssh_port := sprintf("%v", [input.variables.ssh_port.value])
+
+admin_ports := {ssh_port, "3389"}
 
 world_cidrs := {"0.0.0.0/0", "::/0"}
 

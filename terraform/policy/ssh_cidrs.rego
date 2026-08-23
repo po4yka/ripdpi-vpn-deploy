@@ -5,21 +5,26 @@ package terraform.policy.ssh_cidrs
 # SSH allow rules must reference a CIDR that appears in var.allowed_ssh_cidrs.
 # Inline string literals that are not in the variable list are denied.
 #
+# The effective SSH port comes from var.ssh_port, not a literal: every root
+# declares it with a default, so plan JSON always carries the value.
+#
 # Provider-specific checks:
 #
-#   upcloud_firewall_rules — firewall_rule blocks for TCP/22 must have
+#   upcloud_firewall_rules — firewall_rule blocks for var.ssh_port/tcp must have
 #     source_address_start matching a network address from allowed_ssh_cidrs.
 #
-#   hcloud_firewall — rule blocks for TCP/22 must have all source_ips
+#   hcloud_firewall — rule blocks for var.ssh_port/tcp must have all source_ips
 #     members present in allowed_ssh_cidrs.
 #
 #   vultr_firewall_rule (resource "vultr_firewall_rule" "ssh") — subnet
 #     must match one of the allowed_ssh_cidrs entries.
 #
-#   scaleway_instance_security_group — nested TCP/22 inbound_rule blocks use
+#   scaleway_instance_security_group — nested inbound_rule blocks use
 #     ip_range directly.
 
 allowed_cidrs := {cidr | cidr := input.variables.allowed_ssh_cidrs.value[_]}
+
+ssh_port := sprintf("%v", [input.variables.ssh_port.value])
 
 # upcloud: each SSH accept rule source must be within an allowed CIDR.
 # We compare source_address_start to the network address of each allowed CIDR.
@@ -36,7 +41,7 @@ deny[msg] {
   rule.action == "accept"
   rule.direction == "in"
   rule.protocol == "tcp"
-  rule.destination_port_start == "22"
+  rule.destination_port_start == ssh_port
 
   # Extract the CIDR from the comment ("SSH allow <cidr>")
   comment := rule.comment
@@ -57,7 +62,7 @@ deny[msg] {
   rule := rc.change.after.inbound_rule[_]
   rule.action == "accept"
   rule.protocol == "TCP"
-  rule.port == 22
+  sprintf("%v", [rule.port]) == ssh_port
   not allowed_cidrs[rule.ip_range]
 
   msg := sprintf(
@@ -73,7 +78,7 @@ deny[msg] {
   rule := rc.change.after.rule[_]
   rule.direction == "in"
   rule.protocol == "tcp"
-  rule.port == "22"
+  rule.port == ssh_port
   source_ip := rule.source_ips[_]
   not allowed_cidrs[source_ip]
 
@@ -89,7 +94,7 @@ deny[msg] {
   rc := input.resource_changes[_]
   rc.type == "vultr_firewall_rule"
   rc.change.after.protocol == "tcp"
-  rc.change.after.port == "22"
+  rc.change.after.port == ssh_port
   after := rc.change.after
   cidr := sprintf("%s/%d", [after.subnet, after.subnet_size])
   not allowed_cidrs[cidr]
