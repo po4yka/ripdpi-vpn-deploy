@@ -48,8 +48,11 @@ write_files:
 
 runcmd:
   # Validate and reload sshd only on first boot so subsequent reboots do not
-  # drop active tunnels. Keep the marker in the same success chain: external
-  # waiters must never observe completion after a failed validation or reload.
-  - [sh, -c, "test -f /var/lib/cloud-init-vpn-bootstrap.done || { install -d -m 0755 /run/sshd && /usr/sbin/sshd -t && systemctl reload ssh && touch /var/lib/cloud-init-vpn-bootstrap.done; }"]
+  # drop active tunnels. Newer distro images ship socket-activated SSH with
+  # the service inactive on first boot, where a bare reload fails; enable the
+  # unit first (a no-op when it is already active). Keep the marker in the
+  # same success chain: external waiters must never observe completion after
+  # a failed validation or activation.
+  - [sh, -c, "test -f /var/lib/cloud-init-vpn-bootstrap.done || { install -d -m 0755 /run/sshd && /usr/sbin/sshd -t && systemctl enable --now ssh && systemctl reload ssh && touch /var/lib/cloud-init-vpn-bootstrap.done; }"]
 
 final_message: "VPN VPS bootstrap complete after $UPTIME seconds"
