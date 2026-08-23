@@ -3,7 +3,6 @@
 mock_provider "vultr" {}
 
 variables {
-  vultr_api_key        = "test-vultr-api-key"
   server_name          = "vpn-test"
   region               = "ams"
   plan                 = "vc2-1c-1gb"
