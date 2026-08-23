@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-08-23
+goal: TST-1787497001212692 Make verification reflect deployed state
