@@ -86,13 +86,24 @@ tokens are dead anyway).
 
 ### 4. Drift check = identity comparison, not file diff
 
-`emit-bundle.sh` / `emit-singbox.sh` gain a stable identity line derived from
-`deploy-source-identity.sh` output plus a hash of the Terraform outputs they
-consumed. `scripts/client-drift.py CLIENT=<name>`:
+As implemented, the identity is computed at delivery time by
+`scripts/client-drift.py --print-identity` and recorded by
+`issue-sub-token.sh` in `registry.last_payload_identity`:
 
-- renders the payload in-memory from current inputs,
-- compares identity against `registry.last_payload_identity`,
-- prints `current` / `stale (+delta)` / `unknown`,
+- `source`: `deploy-source-identity.sh --digest` (git blob IDs over
+  `ansible/`, `scripts/`, `requirements.yml`);
+- `outputs`: sha256 over the endpoint outputs (`server_ipv4`,
+  `admin_user`, `server_hostname`) of every host pair in the entry.
+
+The emitters are NOT modified. An earlier draft considered embedding an
+identity line into emitted payloads, but standard sing-box payloads must pass
+the pinned upstream parser, so foreign top-level keys are off-limits;
+computing the identity outside the payload keeps both formats untouched.
+`scripts/client-drift.py CLIENT=<name>`:
+
+- reads the registry entry,
+- recomputes both digests from current inputs,
+- prints `current` / `stale (+changed component)` / `unknown`,
 - exit codes: 0 current, 1 stale, 2 unknown/missing entry.
 
 No delivered file is required locally — the identity recorded in the

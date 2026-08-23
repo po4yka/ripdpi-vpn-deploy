@@ -114,8 +114,18 @@ geodata.{geosite_url, geoip_url, geosite_sha256, geoip_sha256, install_dir, refr
 amneziawg_go_version + amneziawg_go_commit / amneziawg_tools_version + amneziawg_tools_commit
 amneziawg_secrets.{server_private_key, jc/jmin/jmax/s1/s2/h1-h4, peers[*]}
 backup.restic_password
+client_registry.<device>.{status, issued_at, formats, hosts, cohorts, token_hash_prefix, token_expires, awg_public_key_fingerprint, awg_private_key, last_payload_identity}
 subscription.{port, server_name}     # optional
 ```
+
+`client_registry` is operator-side per-device metadata (never consumed by
+Ansible roles): issuance options for each device so `issue-sub-token.sh
+--refresh-token` can reproduce the original payload instead of falling back
+to defaults, the lifecycle status (`issued → delivered → active → stale |
+revoked | burned`), the AWG client private key as a recovery copy (the
+device-local key stays primary), and the payload identity
+(`deploy-source-identity` digest + Terraform outputs hash) recorded at last
+delivery for `make client-drift CLIENT=<device>`.
 
 ## Rotation
 

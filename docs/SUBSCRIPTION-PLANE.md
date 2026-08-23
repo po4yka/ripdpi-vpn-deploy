@@ -53,9 +53,13 @@ is operational rather than architectural:
 
 1. **Periodic rotation of `/sub/` tokens** — even with expiry,
    long-lived /sub/ URLs accumulate trust over time. A scheduled
-   re-issue cadence (e.g. quarterly) trims the leak window. Not
-   currently automated; `./scripts/issue-sub-token.sh <client>
-   --refresh-token <existing-token>` performs the manual operation.
+   re-issue cadence (e.g. quarterly) trims the leak window.
+   `./scripts/issue-sub-token.sh <client> --refresh-token <existing-token>`
+   performs the manual operation; the original format/hosts/cohorts are
+   resolved from the encrypted `client_registry`, so a refresh can no longer
+   silently fall back to default single-host sing-box options. Detect devices
+   whose delivered payload no longer matches current inputs with
+   `make client-drift CLIENT=<device>` (`current` / `stale` / `unknown`).
 2. **`make sub-reads` aggregation** — the read-audit log is JSONL
    and grep-friendly today; a small summary script (top-pulling
    tokens, geographic clustering of src_ip, rate spikes) would help
