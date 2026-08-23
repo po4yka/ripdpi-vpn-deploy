@@ -9,14 +9,15 @@ and decrypted SOPS values. Those remain in git-ignored operator files.
 
 | Field | Value |
 |---|---|
-| Last verified deployment | 2026-08-09 |
-| Git release | [`infra-v1.0.0`](https://github.com/po4yka/ripdpi-vpn-deploy/releases/tag/infra-v1.0.0) |
-| Deployed source commit | `529d32a660f59f177f3ce2f21c1d5cc8746dbf29` |
-| Source validation | [GitHub CI run 31310800563](https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/31310800563), CodeQL, and Scorecard passed |
-| Release state | published `infra-v1.0.0` baseline plus verified post-release `main` updates |
+| Last verified deployment | 2026-08-23 |
+| Git release | post-`infra-v1.0.0` `main` |
+| Deployed source commit | `0c22a24cff5733947900ad345da4b9fe830a528e` (`fix(infra): start ssh unit before first-boot reload in cloud-init`, includes all audit remediation through #86) |
+| Source validation | PR #87 CI fully green, CodeQL and Scorecard passing on the deployed commit |
+| Release state | full-fleet recreation: every server was deliberately destroyed and rebuilt from git + secrets |
 
-The deployed source was applied to the existing fleet. No server was replaced
-or recreated during this update.
+Every server in the fleet was deliberately destroyed and rebuilt from git +
+secrets through the sanctioned disposable-node path; no prior-generation node
+survives.
 
 ## Active fleet
 
@@ -35,16 +36,23 @@ data-plane probes therefore continue to target the public service address.
 
 ### Terraform
 
-The three named workspaces were initialized and reconciled. Each initial plan
-contained only the missing `terraform_data.ssh_port` state resource; applying
-it did not replace a server. The resulting plans reported `No changes`.
+On 2026-08-23 all three servers were destroyed and recreated through the
+sanctioned disposable-node path (`scripts/destroy.sh` with its interactive
+confirmations, then plan + apply per environment).
 
-- UpCloud and Scaleway were refreshed against their provider APIs.
-- Vultr control-plane preflight passed after admitting the exact operator
-  address and disabling the broad IPv4 and IPv6 allowlist entries. A normal
-  provider-refreshed plan reported `No changes`. A refresh-only comparison
-  reports only the provider's volatile, sensitive, computed `kvm` attribute;
-  it does not represent a configured infrastructure change.
+- The operator egress CIDR in every environment tfvars was rotated from the
+  stale address to the current one before the firewall applies; the Vultr
+  control-plane allowlist was updated in the provider console to the same new
+  exact address.
+- Scaleway assigned P1 the same IPv4 as the previous generation, but its IPv6
+  changed; P0 and P2 received entirely new public addresses.
+- A fresh Ubuntu 24.04 image socket-activates SSH, leaving `ssh.service`
+  inactive during cloud-init first boot. The fail-closed bootstrap marker
+  chain died at `systemctl reload ssh`, which is fixed on `main` by #87
+  (enable the unit before the reload) and verified live on the recreated P1.
+- The recreated P1 required a DNS AAAA rotation for the owned site identity;
+  the `verify.yml` hostname-resolution gate caught the stale record and went
+  green after the update.
 
 ### Ansible
 
@@ -53,56 +61,49 @@ unreachable or failed host:
 
 | Gate | P0 | P1 | P2 |
 |---|---:|---:|---:|
-| `make deploy` | `ok=145 changed=2 failed=0` | `ok=128 changed=3 failed=0` | `ok=118 changed=2 failed=0` |
+| `make deploy` | `failed=0` | `failed=0` | `failed=0` |
 | automatic `make source-drift` | `ok=4 changed=0 failed=0` | `ok=4 changed=0 failed=0` | `ok=4 changed=0 failed=0` |
-| `make verify` | `ok=16 failed=0` | `ok=16 failed=0` | `ok=13 failed=0` |
+| `make verify` | `ok=16 failed=0` | `ok=19 failed=0` | `ok=13 failed=0` |
 | `make security-verify` | `ok=17 failed=0` | `ok=17 failed=0` | `ok=17 failed=0` |
 
-The P0 verification included both authenticated REALITY round trips. Direct
-SSH-path inspection confirmed that all three Ansible sessions traversed
-Tailscale.
+Deployment ran with the validated decoy-origin override
+(`secrets/local/decoy-origin.yml`, see DEPLOY-PROFILES.md "Decoy site
+identity") so the `nginx-xhttp` and `hysteria` identity asserts hold against
+the real owned origin.
 
-On 2026-08-08, P0 and P1 converged loopback-only Xray StatsService and a
-60-second redacting textfile collector without server replacement. Redacted
-`xray-diagnostics` completed on both nodes with `ok=3 failed=0`. The outside-in
-ARM64 VLESS sentinel returned `healthy`: its direct control and both REALITY
-endpoint variants were `ok`, with no monitoring errors or rotation candidate.
-The collector exports only aggregate inbound/outbound counters and freshness;
-it does not expose client identifiers.
+First-provision dry-run note: three check-mode-only failures are expected on
+fresh nodes because package-install/download/directory tasks are skipped under
+`--check` while their dependents still evaluate (baseline timesyncd enable,
+xray archive unpack destination, hysteria binary staging). They do not occur
+in a real run and are not repo-to-live drift.
 
-On 2026-08-09, the dedicated rolling OS-maintenance playbook upgraded the
-fleet in P1, P2, P0 order with `serial: 1`. The initial package backlog was
-60 packages on P0, 25 on P1, and 8 on P2. All three nodes rebooted when their
-package state required it and returned through the Tailscale management path.
-The post-maintenance simulation reported zero remaining upgrades and no reboot
-marker on every node. Managed unattended security upgrades are installed and
-the `apt-daily-upgrade` timer is enabled throughout the fleet.
+Outside-in probes after convergence: P0 REALITY TCP/443 reachable, P1 site
+answers HTTPS 200 with the correct SNI identity, P2 exposes exactly its
+listener contract (Hysteria2 UDP/443, AmneziaWG UDP/51820).
 
-The maintenance playbook and both post-deploy gates completed without an
-unreachable or failed host:
-
-| Gate | P0 | P1 | P2 |
-|---|---:|---:|---:|
-| `make os-maintenance` | `ok=17 failed=0` | `ok=16 failed=0` | `ok=18 failed=0` |
-| `make verify` | `ok=16 failed=0` | `ok=16 failed=0` | `ok=13 failed=0` |
-| `make security-verify` | `ok=17 failed=0` | `ok=17 failed=0` | `ok=17 failed=0` |
-
-P0 verification again included authenticated REALITY round trips and fresh
-Xray StatsService metrics. P1 verified its XHTTP listener and P2 verified its
-Hysteria2 UDP and AmneziaWG listeners after reboot.
-
-Later on 2026-08-09, a full check-mode comparison found real repo-to-live
-drift: P0 and P1 still had the previous backup script, and P1 retained the VPS
-firmware package removed by the current baseline. The fleet was converged in
-P1, P2, P0 order without replacing a server. The original focused check then
-reported `ok=40 changed=0 failed=0` on every node.
-
-Node manifests now use deterministic schema 2 provenance: the clean source
-revision is recorded for audit, while parity is decided by a digest of the
-deployable Ansible, script, and dependency paths. `make source-drift` was red
-on all three old manifests before convergence and green with `ok=4 changed=0
-failed=0` on all three afterward. The gate runs automatically after both
-`make deploy` and `make verify`; deployment from a dirty checkout is rejected.
+SSH host keys were regenerated on every node by design. On nodes with new
+addresses the first connection simply pins the new key. The P1 IPv4 is
+unchanged, so a client holding the previous P1 key gets a host-key-change
+failure instead: `StrictHostKeyChecking=accept-new` (used by
+`scripts/wait-cloud-init.sh` and `make wait`) rejects changed keys until the
+stale entry is removed. Clear it first with `ssh-keygen -R <p1-host>` (repeat
+for the Tailscale name if that path was pinned), then reconnect to accept the
+new key. All public endpoints changed except the P1 IPv4 — client devices must
+re-fetch the subscription or update endpoints manually. Static `/sub/`
+payloads rendered by `scripts/issue-sub-token.sh` are stored once as hashed
+files and are not regenerated on fetch; before telling any device to re-fetch,
+rerun the issuer for every outstanding token with
+`scripts/issue-sub-token.sh <client> --refresh-token <token>` so the stored
+payload picks up the current Terraform outputs. `--refresh-token` reuses only
+the bearer token — every other option resets to its default (`FORMAT=singbox`,
+`PROVIDER=upcloud`, `ENV=prod`, single-host emitters), which silently replaces
+a multi-host or ripdpi-format subscription with a wrong payload. Re-pass the
+original issuance options on every refresh: `--format` and `--expires`, the
+correct `PROVIDER`/`ENV` pair, and for `--format ripdpi` the emitter
+environment (`HOSTS`, plus `COHORTS`/`SOPS_FILES` if non-default). The
+issuance audit entry records only format, expiry, and whether it was a
+refresh — keep the full original invocation alongside the token, since no
+server-side store preserves it.
 
 Secret schema validation, placeholder checks, certificate checks, and private
 key/certificate matching passed before deployment. The decrypted SOPS file was
@@ -121,9 +122,11 @@ identifies source code; it is not a substitute for future live drift evidence.
 
 ## Current operator limitations
 
-No provider control-plane limitation was observed during the latest rollout.
-The Vultr allowlist entry is intentionally tied to the current exact operator
-address and must be updated when that address changes.
+The Vultr allowlist entry is intentionally tied to the exact operator address
+admitted on 2026-08-23 and must be updated in the provider console whenever
+that address changes; the API rejects all requests from unlisted addresses.
+Fresh-node dry-runs show the three documented check-mode-only failures listed
+above until the first real convergence.
 
 ## Refresh procedure
 
@@ -134,9 +137,15 @@ address and must be updated when that address changes.
    replacement or unexplained drift.
 4. Rebuild the inventory, restore the documented Tailscale SSH override, and
    prove the SSH path before deployment.
-5. Run `make deploy`, `make verify`, and `make security-verify`. When package
-   backlog or reboot markers are present, run `make os-maintenance`; it rolls
-   one node at a time and repeats both verification gates.
+5. Run the deployment gates with the cohort limit and the decoy-origin
+   override required by DEPLOY-PROFILES.md ("Decoy site identity") — the
+   committed P1/P2 profiles carry only a placeholder origin and their identity
+   asserts fail without it:
+   `ANSIBLE_LIMIT="<all cohort hosts>" ANSIBLE_EXTRA_VARS_FILE=secrets/local/decoy-origin.yml make deploy`,
+   then the same prefix for `make verify` and `make security-verify`. When
+   package backlog or reboot markers are present, run `make os-maintenance`
+   with the same variables; it rolls one node at a time and repeats both
+   verification gates.
 6. Confirm `make source-drift` is green for every node; `deploy` and `verify`
    run it automatically, but the standalone command is the fastest parity
    check.
