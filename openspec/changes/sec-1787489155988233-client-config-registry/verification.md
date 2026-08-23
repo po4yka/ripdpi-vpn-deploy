@@ -1,9 +1,9 @@
 ---
 task_id: SEC-1787489155988233
 change: sec-1787489155988233-client-config-registry
-commit_sha: null
-local: required
-local_evidence: null
+commit_sha: a80a032
+local: passed
+local_evidence: "make ci-fast green in worktree (actionlint, zizmor 1.29.0, cloud-init schema, tf-test 20+18+20+17 bats passed, yamllint, pytest 962 passed / 2 skipped incl. new test_client_registry.py and test_client_drift.py, shellcheck); taskctl validate (11 tasks, 53 steps); openspec validate 8/8; governance count updated to (1017 collected)."
 remote_ci: required
 remote_ci_evidence: null
 dry_run: not_applicable

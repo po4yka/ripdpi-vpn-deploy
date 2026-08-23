@@ -23,27 +23,27 @@ outputs plus persisted issuance options.
 
 ## Execution
 
-- [ ] SCR-1787489427509997 Add registry schema block, coverage rules, and private-key field to the secrets contracts !high #feature @item:SEC-1787489155988233
+- [x] SCR-1787489427509997 Add registry schema block, coverage rules, and private-key field to the secrets contracts !high #feature @item:SEC-1787489155988233
   Extend `secrets/schema.json` and `secrets/prod.secrets.example.yaml` with
   `clients[*].registry` (status, issued_at, formats, hosts, cohorts,
   token_hash_prefix, token_expires, awg_public_key_fingerprint,
   last_payload_identity) and `clients[*].awg_private_key`; update
   `scripts/check-secrets-coverage.py` and `scripts/validate-secrets.py` so a
   missing registry field fails naming the device. Gate: `make ci-fast`.
-- [ ] SCT-1787489427528995 Persist issuance parameters in provisioning and make refresh resolve options from the registry !high #feature @item:SEC-1787489155988233 @blocked_by:SCR-1787489427509997
+- [x] SCT-1787489427528995 Persist issuance parameters in provisioning and make refresh resolve options from the registry !high #feature @item:SEC-1787489155988233 @blocked_by:SCR-1787489427509997
   `new-client.sh` writes the AWG private key and a complete registry entry at
   generation time under the existing SOPS lock; `issue-sub-token.sh
   --refresh-token` fails closed on unregistered tokens, reuses registry
   options (explicit overrides win and are echoed), updates status/expiry, and
   extends the audit note with reused vs overridden options. Gate:
   shellcheck + targeted pytest.
-- [ ] TST-1787489427553290 Implement payload identity embedding and the client-drift check !high #feature @item:SEC-1787489155988233 @blocked_by:SCR-1787489427509997
+- [x] TST-1787489427553290 Implement payload identity embedding and the client-drift check !high #feature @item:SEC-1787489155988233 @blocked_by:SCR-1787489427509997
   Embed a source+outputs identity line in emitter payloads; add
   `scripts/client-drift.py` and `make client-drift CLIENT=<name>` reporting
   `current` (exit 0) / `stale +delta` (exit 1) / `unknown` (exit 2) without
   requiring local stored files; add unit tests for the verdict matrix and
   snapshot tests for registry rendering. Gate: `make ci-fast`.
-- [ ] DOC-1787489427574672 Reverse the private-key custody contract and document the registry workflow !high #docs @item:SEC-1787489155988233 @blocked_by:SCT-1787489427528995
+- [x] DOC-1787489427574672 Reverse the private-key custody contract and document the registry workflow !high #docs @item:SEC-1787489155988233 @blocked_by:SCT-1787489427528995
   Update `docs/RIPDPI-BUNDLE.md` (device-local primary, SOPS recovery copy,
   plaintext artifacts disposable), `docs/SECRETS.md` contents inventory, and
   `docs/SUBSCRIPTION-PLANE.md` rotation item; document the lifecycle states
