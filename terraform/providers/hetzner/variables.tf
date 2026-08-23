@@ -104,6 +104,20 @@ variable "public_listeners" {
     ])
     error_message = "Each public listener must use tcp or udp and exactly one valid port or port_range."
   }
+
+  validation {
+    condition = length(var.public_listeners) == length({
+      for listener in var.public_listeners :
+      "${listener.protocol}-${coalesce(try(tostring(listener.port), null), try(listener.port_range, null))}" => true
+    })
+    error_message = "public_listeners entries must not repeat the same protocol and port or port_range."
+  }
+}
+
+variable "use_legacy_public_listeners" {
+  type        = bool
+  default     = false
+  description = "Opt-in to the historical implicit listener set when public_listeners is empty. New environments must define public_listeners explicitly; an empty effective contract fails the plan."
 }
 
 variable "build_env" {

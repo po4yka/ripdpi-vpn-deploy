@@ -10,6 +10,13 @@ variables {
   admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness"
   allowed_ssh_cidrs    = ["203.0.113.42/32"]
   build_env            = "test"
+  public_listeners = [
+    { name = "xray", protocol = "tcp", port = 443 },
+    { name = "xray-fallback", protocol = "tcp", port = 2053 },
+    { name = "nginx-xhttp", protocol = "tcp", port = 8443 },
+    { name = "hysteria", protocol = "udp", port = 443 },
+    { name = "amneziawg", protocol = "udp", port = 51820 },
+  ]
 }
 
 run "server_cloud_init_user_data_is_wired" {

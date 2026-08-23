@@ -24,7 +24,7 @@ cloud-init owns first-boot bootstrap; Ansible owns runtime state.
 **Floating IP is optional** — `var.use_floating_ip` per provider. Cheap
 operators skip it; blue-green operators turn it on.
 
-**Typed listener contract crosses the cloud/runtime boundary** — `public_listeners` in tfvars is the provider-edge allowlist. Its resolved Terraform output is rendered into inventory, verified against Ansible's enabled listener manifest before deploy, and used by nftables and security verification.
+**Typed listener contract crosses the cloud/runtime boundary** — `public_listeners` in tfvars is the provider-edge allowlist. Its resolved Terraform output is rendered into inventory, verified against Ansible's enabled listener manifest before deploy, and used by nftables and security verification. An empty contract fails the plan; the historical implicit default set survives only behind the explicit `use_legacy_public_listeners = true` opt-in.
 
 ## What's done well
 
