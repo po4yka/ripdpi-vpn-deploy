@@ -64,6 +64,10 @@ Operator scripts and `vpnd` use `scripts/terraform-env.sh`; do not invoke raw `t
 
 Each provider/environment contract is tied to the Ansible cohort deployed for that environment. If `COHORTS` selects a different profile, change and validate `public_listeners` in the matching tfvars before `make plan apply`; the fail-closed pre-task intentionally rejects a mismatched profile.
 
+## Plan policy enforcement
+
+The Rego rules under `terraform/policy/` gate plans through conftest in two places. PR CI (`tf-policy.yml`) runs their unit tests for every provider and, for the roots whose SDK tolerates credential-shaped dummies at configure time (`hetzner`, `vultr`), renders an offline plan and evaluates the full rule set against it. Operator environments must run `make PROVIDER=<p> ENV=<e> tf-conftest` before every apply; this is the only enforcement point for `upcloud` and `scaleway`, whose providers cannot render a credential-free plan.
+
 ## Providers
 
 | Provider | Lock version | Notes |

@@ -48,3 +48,43 @@ jobs:
 
       - name: conftest policy unit tests
         run: conftest verify --rego-version v0 -p terraform/policy/
+
+      # Full plan evaluation needs provider configuration. Only the roots whose
+      # SDKs tolerate credential-shaped dummies at configure time (hetzner,
+      # vultr) can render an offline plan here; upcloud and scaleway are gated
+      # by `make PROVIDER=<p> ENV=<e> tf-conftest` before every operator apply.
+      - name: conftest policies against rendered plan
+        if: matrix.provider == 'hetzner' || matrix.provider == 'vultr'
+        working-directory: terraform/providers/${{ matrix.provider }}
+        env:
+          HCLOUD_TOKEN: >-
+            0000000000000000000000000000000000000000000000000000000000000000
+          VULTR_API_KEY: ci-plan-only-dummy
+        run: |
+          set -euo pipefail
+          case "${{ matrix.provider }}" in
+            hetzner)
+              printf '%s\n' \
+                'server_name = "ci-policy"' \
+                'location = "hel1"' \
+                'server_type = "cx22"' \
+                'admin_ssh_public_key = "ssh-ed25519 AAAACI ci@invalid"' \
+                'allowed_ssh_cidrs = ["192.0.2.33/32"]' \
+                > environments/ci-policy.tfvars
+              ;;
+            vultr)
+              printf '%s\n' \
+                'server_name = "ci-policy"' \
+                'region = "ams"' \
+                'plan = "vc2-1c-1gb"' \
+                'os_id = 2136' \
+                'admin_ssh_public_key = "ssh-ed25519 AAAACI ci@invalid"' \
+                'allowed_ssh_cidrs = ["192.0.2.33/32"]' \
+                > environments/ci-policy.tfvars
+              ;;
+          esac
+          terraform plan -input=false -refresh=false -lock=false \
+            -var-file=environments/ci-policy.tfvars -out=ci-policy.tfplan
+          terraform show -json ci-policy.tfplan > ci-policy.json
+          conftest test --rego-version v0 --all-namespaces \
+            -p ../../policy ci-policy.json
