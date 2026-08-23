@@ -3,12 +3,11 @@
 Terraform root for a single Vultr VPS running the provider-neutral Ansible
 stack.
 
-The Vultr provider requires `api_key` in the Terraform provider config. This
-root wires it through the sensitive `vultr_api_key` variable; prefer exporting
-`TF_VAR_vultr_api_key` instead of writing tokens into tfvars.
+Credentials come from the `VULTR_API_KEY` environment variable; the provider
+block stays empty, matching the other provider roots. Never write tokens into
+tfvars or the provider config.
 
-Keep that variable in an ignored local environment file or the operator's
-secret store, with local-file mode `0600`. When API access is restricted by an
+When API access is restricted by an
 allowlist, add only the current operator egress address as an exact IP/CIDR
 before planning; do not admit all IPv4 or IPv6 ranges. The canonical
 `scripts/terraform-env.sh` wrapper performs a redacted authenticated preflight
@@ -32,7 +31,7 @@ Example:
 cp terraform/providers/vultr/environments/prod.tfvars.example \
    terraform/providers/vultr/environments/prod.tfvars
 $EDITOR terraform/providers/vultr/environments/prod.tfvars
-TF_VAR_vultr_api_key=... make PROVIDER=vultr ENV=prod init plan
+VULTR_API_KEY=... make PROVIDER=vultr ENV=prod init plan
 ```
 
 See `terraform/providers/vultr/CLAUDE.md` for design decisions and pitfalls.
@@ -95,7 +94,6 @@ No modules.
 | <a name="input_region"></a> [region](#input\_region) | Vultr region, e.g. ams, fra, lhr, ewr. | `string` | n/a | yes |
 | <a name="input_server_name"></a> [server\_name](#input\_server\_name) | Hostname / Terraform name of the VPS. | `string` | n/a | yes |
 | <a name="input_ssh_port"></a> [ssh\_port](#input\_ssh\_port) | Effective SSH listener port configured by cloud-init and opened at the provider edge. | `number` | `22` | no |
-| <a name="input_vultr_api_key"></a> [vultr\_api\_key](#input\_vultr\_api\_key) | Vultr API key. Prefer TF\_VAR\_vultr\_api\_key in the operator environment. | `string` | n/a | yes |
 
 ## Outputs
 

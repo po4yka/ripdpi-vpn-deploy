@@ -93,8 +93,10 @@ ansible/roles/{amneziawg,backup,baseline,cdn-front,
               split-hop-ingress,probe-matrix-target,snell,subscription-host,
               warp-outbound,watchdog,xray,xray-runtime}/  — 31 roles
 terraform/                                           — provider-root strategy
-terraform/providers/{hetzner,upcloud,vultr}/         — per-provider quirks
+terraform/providers/{hetzner,scaleway,upcloud,vultr}/ — per-provider quirks
 terraform/shared/                                    — cloud-init contract
+terraform/policy/                                    — OPA/conftest plan policies
+terraform/exception/cascade-ingress/                 — inert governance-gated scaffold
 scripts/                                             — shell/python conventions
 tests/                                               — unit, snapshot, molecule, tf-test layers
 vpnd/                                                — Rust convenience CLI

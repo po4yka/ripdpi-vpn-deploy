@@ -49,6 +49,11 @@ variable "admin_ssh_public_key" {
 variable "allowed_ssh_cidrs" {
   type        = list(string)
   description = "Source CIDRs allowed to reach ssh_port/tcp."
+
+  validation {
+    condition     = alltrue([for cidr in var.allowed_ssh_cidrs : can(cidrhost(cidr, 0))])
+    error_message = "allowed_ssh_cidrs entries must be valid IPv4 or IPv6 CIDRs in prefix notation, e.g. 203.0.113.42/32."
+  }
 }
 
 variable "ssh_port" {
@@ -63,8 +68,9 @@ variable "ssh_port" {
 }
 
 variable "enable_hysteria" {
-  type    = bool
-  default = true
+  type        = bool
+  default     = true
+  description = "Include the Hysteria2 UDP/443 listener in the legacy default set. Explicit public_listeners ignore this toggle; add hysteria there directly."
 }
 
 variable "nginx_xhttp_public_port" {
@@ -99,6 +105,20 @@ variable "public_listeners" {
     ])
     error_message = "Each public listener must use tcp or udp and exactly one valid port or port_range."
   }
+
+  validation {
+    condition = length(var.public_listeners) == length({
+      for listener in var.public_listeners :
+      "${listener.protocol}-${coalesce(try(tostring(listener.port), null), try(listener.port_range, null))}" => true
+    })
+    error_message = "public_listeners entries must not repeat the same protocol and port or port_range."
+  }
+}
+
+variable "use_legacy_public_listeners" {
+  type        = bool
+  default     = false
+  description = "Opt-in to the historical implicit listener set when public_listeners is empty. New environments must define public_listeners explicitly; an empty effective contract fails the plan."
 }
 
 variable "build_env" {

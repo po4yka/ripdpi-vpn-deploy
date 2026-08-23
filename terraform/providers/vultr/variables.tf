@@ -1,9 +1,3 @@
-variable "vultr_api_key" {
-  type        = string
-  sensitive   = true
-  description = "Vultr API key. Prefer TF_VAR_vultr_api_key in the operator environment."
-}
-
 variable "server_name" {
   type        = string
   description = "Hostname / Terraform name of the VPS."
@@ -11,7 +5,7 @@ variable "server_name" {
 
 variable "region" {
   type        = string
-  description = "Vultr region, e.g. ams, fra, lhr, ewr."
+  description = "Vultr region, e.g. ams, fra, lhr."
 
   validation {
     condition     = contains(["ams", "fra", "lhr"], var.region)
@@ -34,7 +28,8 @@ variable "os_id" {
   description = "Vultr OS id, e.g. Debian or Ubuntu image id from `vultr-cli os list`."
 
   validation {
-    # Known Vultr OS IDs for approved base images (Debian 12, Debian 11, Ubuntu 24.04, Ubuntu 22.04).
+    # Known Vultr OS IDs for approved base images: 1743 Debian 11,
+    # 2136 Debian 12, 2284 Debian 13, 1869 Ubuntu 24.04.
     # Run `vultr-cli os list` to obtain IDs for new releases; add here and update error_message.
     condition     = contains([1743, 2136, 2284, 1869], var.os_id)
     error_message = "os_id must be an approved Vultr OS ID: 1743 (Debian 11), 2136 (Debian 12), 2284 (Debian 13), 1869 (Ubuntu 24.04)."
@@ -56,6 +51,11 @@ variable "admin_ssh_public_key" {
 variable "allowed_ssh_cidrs" {
   type        = list(string)
   description = "Source CIDRs allowed to reach ssh_port/tcp."
+
+  validation {
+    condition     = alltrue([for cidr in var.allowed_ssh_cidrs : can(cidrhost(cidr, 0))])
+    error_message = "allowed_ssh_cidrs entries must be valid IPv4 or IPv6 CIDRs in prefix notation, e.g. 203.0.113.42/32."
+  }
 }
 
 variable "ssh_port" {
@@ -70,8 +70,9 @@ variable "ssh_port" {
 }
 
 variable "enable_hysteria" {
-  type    = bool
-  default = true
+  type        = bool
+  default     = true
+  description = "Include the Hysteria2 UDP/443 listener in the legacy default set. Explicit public_listeners ignore this toggle; add hysteria there directly."
 }
 
 variable "nginx_xhttp_public_port" {
@@ -106,6 +107,20 @@ variable "public_listeners" {
     ])
     error_message = "Each public listener must use tcp or udp and exactly one valid port or port_range."
   }
+
+  validation {
+    condition = length(var.public_listeners) == length({
+      for listener in var.public_listeners :
+      "${listener.protocol}-${coalesce(try(tostring(listener.port), null), try(listener.port_range, null))}" => true
+    })
+    error_message = "public_listeners entries must not repeat the same protocol and port or port_range."
+  }
+}
+
+variable "use_legacy_public_listeners" {
+  type        = bool
+  default     = false
+  description = "Opt-in to the historical implicit listener set when public_listeners is empty. New environments must define public_listeners explicitly; an empty effective contract fails the plan."
 }
 
 variable "build_env" {

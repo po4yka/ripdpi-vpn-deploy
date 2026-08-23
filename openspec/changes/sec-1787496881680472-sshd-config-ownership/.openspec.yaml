@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-08-23
+goal: SEC-1787496881680472 Establish single-owner sshd configuration layers

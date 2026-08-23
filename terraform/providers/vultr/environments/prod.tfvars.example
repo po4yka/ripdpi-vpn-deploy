@@ -1,5 +1,5 @@
 # Copy to prod.tfvars and fill. Do NOT commit prod.tfvars.
-# Export TF_VAR_vultr_api_key instead of placing the API key here.
+# Export VULTR_API_KEY before planning; never place the API key here.
 
 server_name = "vpn-prod-ams1"
 region      = "ams"

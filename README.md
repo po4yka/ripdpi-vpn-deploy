@@ -81,8 +81,8 @@ flowchart LR
 
 | Provider | Terraform root | Locked provider version |
 |---|---|---|
-| UpCloud | supported; P0 in `.fleet.mk.example` | 5.41.0 |
-| Hetzner | supported | 1.66.1 |
+| UpCloud | supported; P0 in `.fleet.mk.example` | 5.43.0 |
+| Hetzner | supported | 1.68.0 |
 | Vultr | supported; P2 in `.fleet.mk.example` | 2.32.0 |
 | Scaleway | supported; P1 in `.fleet.mk.example` | 2.78.0 |
 

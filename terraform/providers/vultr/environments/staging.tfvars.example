@@ -1,5 +1,5 @@
 # Copy to staging.tfvars and fill. Do NOT commit staging.tfvars.
-# Export TF_VAR_vultr_api_key instead of placing the API key here.
+# Export VULTR_API_KEY before planning; never place the API key here.
 
 server_name = "vpn-staging-ams1"
 region      = "ams"

@@ -1,0 +1,27 @@
+---
+id: TST-1787497001212692
+title: Make verification reflect deployed state
+kind: bug
+status: backlog
+area: testing
+priority: high
+risk: standard
+owner: po4yka
+parent: null
+blocked_by: []
+spec_mode: required
+openspec_change: tst-1787497001212692-verification-truthfulness
+created: 2026-08-23
+updated: 2026-08-23
+related_tasks: []
+---
+
+## Goal
+
+Verification tooling asserts the state deploy actually produced for every supported host class: subscription-only gating for verify/smoke transport assertions, revision comparison in source-drift, parameterized and fallback-inclusive listener checks, idempotence phases in full-stack scenarios, an amneziawg scenario that executes real role tasks, TESTING.md rows matching observed sequences, and a single-SSH-listener assertion. See openspec/changes/tst-1787497001212692-verification-truthfulness/.
+
+## Acceptance criteria
+
+- All ten execution steps in the linked change are checked with recorded evidence.
+- Full-stack idempotence phases pass (second converge changed=0); verify/smoke complete on subscription-only profiles.
+- docs/TESTING.md row-by-row audit matches molecule.yml sequences.

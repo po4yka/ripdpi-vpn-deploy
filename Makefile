@@ -437,6 +437,10 @@ tf-test:
 	  terraform -chdir=terraform/providers/$$provider test || exit 1; \
 	done
 
+tf-conftest:
+	@command -v conftest >/dev/null 2>&1 || { echo "missing: conftest" >&2; exit 1; }
+	@./scripts/tf-policy-test.sh -p "$(PROVIDER)" -e "$(ENV)"
+
 yamllint-check:
 	@command -v yamllint >/dev/null 2>&1 || { echo "missing: yamllint" >&2; exit 1; }
 	yamllint -c .yamllint.yml .
