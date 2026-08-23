@@ -2,7 +2,7 @@
 
 ## Boundaries
 
-- Only vpnd Rust sources and tests change. Subscription URL shape (https://host/sub/token) is unchanged; recipient pages keep their template.
+- Only vpnd Rust sources and tests change. Subscription URL shape (`https://host/sub/token`) is unchanged; recipient pages keep their template.
 
 ## Decisions
 
