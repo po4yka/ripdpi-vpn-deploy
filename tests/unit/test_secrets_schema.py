@@ -357,3 +357,117 @@ def test_awg_instance_cidr_is_validated_semantically(filled, tmp_path):
 
     assert proc.returncode == 1
     assert "instances.0.address_v4" in proc.stderr
+
+
+# ---------------------------------------------------------------------------
+# client_registry — per-device configuration registry contract
+# ---------------------------------------------------------------------------
+
+def _registry_entry(**overrides):
+    entry = {
+        "status": "delivered",
+        "issued_at": "2026-08-23T12:00:00Z",
+        "formats": ["ripdpi"],
+        "hosts": ["upcloud:prod", "scaleway:prod"],
+        "cohorts": [],
+        "token_hash_prefix": "9f86d081",
+        "token_expires": "2026-12-31",
+        "awg_public_key_fingerprint": "REPLACE_WITH_AWG_KEY_FINGERPRINT",
+        "awg_private_key": "PRIVATEKEYPRIVATEKEYPRIVATEKEY",
+        "last_payload_identity": {"source": "", "outputs": ""},
+    }
+    entry.update(overrides)
+    return entry
+
+
+def test_registry_entry_validates(filled):
+    filled["client_registry"] = {"phone": _registry_entry()}
+    errors = list(_validator().iter_errors(filled))
+    assert not [e for e in errors if e.absolute_path[0] == "client_registry"]
+
+
+def test_registry_missing_field_names_device(filled):
+    entry = _registry_entry()
+    del entry["token_hash_prefix"]
+    filled["client_registry"] = {"phone": entry}
+    errors = [
+        e for e in _validator().iter_errors(filled)
+        if e.absolute_path and e.absolute_path[0] == "client_registry"
+    ]
+    assert any("phone" in ".".join(str(p) for p in e.absolute_path) for e in errors)
+
+
+def test_registry_rejects_unknown_status_and_format(filled):
+    filled["client_registry"] = {
+        "phone": _registry_entry(status="forgotten"),
+    }
+    assert list(_validator().iter_errors(filled))
+    filled["client_registry"] = {"phone": _registry_entry(formats=["yaml"])}
+    assert list(_validator().iter_errors(filled))
+
+
+def test_registry_token_prefix_must_be_8_hex_or_empty(filled):
+    for bad in ("9f86d0", "z" * 8, "9f86d0818"):
+        filled["client_registry"] = {"phone": _registry_entry(token_hash_prefix=bad)}
+        assert list(_validator().iter_errors(filled)), bad
+    filled["client_registry"] = {"phone": _registry_entry(token_hash_prefix="")}
+    assert not [
+        e for e in _validator().iter_errors(filled)
+        if e.absolute_path and e.absolute_path[0] == "client_registry"
+    ]
+
+
+def test_registry_fingerprint_placeholder_is_schema_valid(filled):
+    filled["client_registry"] = {"phone": _registry_entry()}
+    assert not [
+        e for e in _validator().iter_errors(filled)
+        if e.absolute_path and e.absolute_path[0] == "client_registry"
+    ]
+
+
+def _run_validator_on(doc: dict, tmp_path):
+    path = tmp_path / "doc.yaml"
+    path.write_text(yaml.safe_dump(doc))
+    import os
+
+    return subprocess.run(
+        ["python3", str(VALIDATOR), str(path)],
+        capture_output=True, text=True,
+        env={**os.environ, "VPN_SECRETS_FILE": ""},
+    )
+
+
+def test_registry_semantic_mismatch_fails_naming_device(filled, tmp_path):
+    filled["client_registry"] = {
+        "phone": _registry_entry(awg_public_key_fingerprint="sha256:" + "0" * 16)
+    }
+    result = _run_validator_on(filled, tmp_path)
+    assert result.returncode == 1
+    assert "client_registry.phone.awg_public_key_fingerprint" in result.stderr
+
+
+def test_registry_semantic_match_passes(filled, tmp_path):
+    import hashlib
+
+    pubkey = "PUBLICKEYPUBLICKEYPUBLIC"
+    good = "sha256:" + hashlib.sha256(pubkey.encode()).hexdigest()[:16]
+    filled["client_registry"] = {
+        "phone": _registry_entry(awg_public_key_fingerprint=good)
+    }
+    result = _run_validator_on(filled, tmp_path)
+    assert result.returncode == 0, result.stderr
+
+
+def test_example_file_contains_client_registry_block(example_doc):
+    assert isinstance(example_doc.get("client_registry"), dict)
+
+
+def test_coverage_checker_requires_client_registry():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "check_secrets_coverage", REPO_ROOT / "scripts" / "check-secrets-coverage.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert "client_registry" in module.EXPECTED_SECRET_TOPLEVEL
