@@ -82,6 +82,7 @@ Thumbs.db
 /.claude/*
 !/.claude/skills/
 .omc/
+.omo/
 
 # SBOM artifacts (reproducible from secrets schema via make emit-sbom)
 sbom/*.json
