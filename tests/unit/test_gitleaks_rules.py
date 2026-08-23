@@ -140,7 +140,6 @@ def test_actionlint_is_checksum_verified_not_go_installed() -> None:
     workflow = _yaml.safe_load(
         (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
     )
-    steps = workflow["jobs"]["workflow-lint"]["steps"] if "workflow-lint" in workflow["jobs"] else None
     job_name = next(
         name for name, job in workflow["jobs"].items()
         if any(step.get("name", "").startswith("Install") and "actionlint" in step.get("name", "") for step in job.get("steps", []))
