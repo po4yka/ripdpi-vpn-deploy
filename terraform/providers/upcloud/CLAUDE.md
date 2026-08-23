@@ -11,8 +11,9 @@ across providers so `scripts/render-inventory.sh` is provider-neutral.
 even though we keep them out of TF. State is age-encrypted via
 `make backup-state`. Loss → re-import (see `RUNBOOK-restore.md`).
 
-**Floating IP optional** — `var.use_floating_ip` toggles allocation. Useful
-for blue-green; pointless if the operator only runs one VPS.
+**Secondary public IP is opt-in** — `additional_public_ip = true` allocates a
+second public IPv4 for the honeypot role; there is no generic floating-IP
+toggle. Blue-green moves follow the disposable-node path instead.
 
 **Explicit address families** — every public interface declares IPv4 or IPv6.
 The provider schema may otherwise leave the family unknown during planning,
@@ -30,8 +31,10 @@ which makes interface-count policy and IPv6-disable tests ambiguous.
 
 - **UpCloud plan names change** — the API accepts both legacy `1xCPU-1GB` and
   new tier strings. Pin via the validation block; don't accept arbitrary input.
-- **SSH key fingerprint format** — UpCloud expects MD5; some keypairs cache
-  SHA256. The variable description says "MD5 fingerprint of the public key".
+- **Admin user is provisioned twice by design** — the server `login` block
+  and cloud-init `users` both create `admin_user`. The login block delivers
+  SSH access even when cloud-init fails; cloud-init owns sshd hardening.
+  Do not drop either path without replacing its guarantee.
 - **Storage size is in GiB** — if you pass `50` thinking GB, you get the
   smaller billing tier silently.
 - **Region affects RU latency more than provider** — Helsinki / Frankfurt /
