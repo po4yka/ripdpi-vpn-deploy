@@ -6,7 +6,6 @@ resource "upcloud_firewall_rules" "vpn" {
     action    = "accept"
     direction = "in"
     family    = "IPv4"
-    icmp_type = ""
     protocol  = "icmp"
     comment   = "ICMPv4"
   }
@@ -69,5 +68,12 @@ resource "upcloud_firewall_rules" "vpn" {
     direction = "in"
     family    = "IPv6"
     comment   = "default deny inbound v6"
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(local.effective_public_listeners) > 0
+      error_message = "public_listeners resolves to an empty set; set public_listeners explicitly or opt into the historical defaults with use_legacy_public_listeners = true."
+    }
   }
 }

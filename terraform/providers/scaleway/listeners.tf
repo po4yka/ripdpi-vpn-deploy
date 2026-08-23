@@ -9,7 +9,7 @@ locals {
     { name = "hysteria", protocol = "udp", port = 443, port_range = null },
   ] : [])
 
-  effective_public_listeners = length(var.public_listeners) > 0 ? var.public_listeners : local.legacy_public_listeners
+  effective_public_listeners = length(var.public_listeners) > 0 ? var.public_listeners : (var.use_legacy_public_listeners ? local.legacy_public_listeners : [])
   public_listener_rule_groups = {
     for listener in local.effective_public_listeners :
     "${listener.protocol}-${coalesce(try(tostring(listener.port), null), try(listener.port_range, null))}" => listener...

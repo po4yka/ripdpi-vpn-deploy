@@ -38,6 +38,13 @@ resource "hcloud_firewall" "vpn" {
       description = rule.value.name == "xray" && rule.value.protocol == "tcp" && rule.value.port == 443 ? "TCP/443 VLESS+REALITY" : rule.value.name == "hysteria" && rule.value.protocol == "udp" && rule.value.port == 443 ? "UDP/443 Hysteria2" : "${upper(rule.value.protocol)}/${coalesce(try(tostring(rule.value.port), null), rule.value.port_range)} ${rule.value.name}"
     }
   }
+
+  lifecycle {
+    precondition {
+      condition     = length(local.effective_public_listeners) > 0
+      error_message = "public_listeners resolves to an empty set; set public_listeners explicitly or opt into the historical defaults with use_legacy_public_listeners = true."
+    }
+  }
 }
 
 resource "hcloud_firewall_attachment" "vpn" {

@@ -1,6 +1,6 @@
 provider "vultr" {
-  # The provider also recognizes VULTR_API_KEY internally, but its Terraform
-  # schema marks api_key as required, so wire it through a sensitive variable.
-  # Prefer TF_VAR_vultr_api_key in the operator environment.
-  api_key = var.vultr_api_key
+  # Credentials come from the environment — never put them in tfvars or state.
+  #   VULTR_API_KEY
+  # The provider schema marks api_key as required but fills it from
+  # VULTR_API_KEY via EnvDefaultFunc, so an empty block is sufficient.
 }

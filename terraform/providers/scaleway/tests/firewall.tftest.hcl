@@ -9,6 +9,24 @@ variables {
   image                = "ubuntu_noble"
   admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness"
   allowed_ssh_cidrs    = ["203.0.113.42/32"]
+  public_listeners = [
+    { name = "xray", protocol = "tcp", port = 443 },
+    { name = "xray-fallback", protocol = "tcp", port = 2053 },
+    { name = "nginx-xhttp", protocol = "tcp", port = 8443 },
+    { name = "hysteria", protocol = "udp", port = 443 },
+    { name = "amneziawg", protocol = "udp", port = 51820 },
+  ]
+}
+
+run "firewall_fails_closed_without_listener_contract" {
+  command = plan
+
+  variables {
+    public_listeners            = []
+    use_legacy_public_listeners = false
+  }
+
+  expect_failures = [scaleway_instance_security_group.vpn]
 }
 
 run "firewall_is_stateful_default_deny" {
@@ -42,7 +60,9 @@ run "firewall_opens_hysteria_udp_443_when_enabled" {
   command = plan
 
   variables {
-    enable_hysteria = true
+    enable_hysteria             = true
+    public_listeners            = []
+    use_legacy_public_listeners = true
   }
 
   assert {
@@ -60,7 +80,9 @@ run "firewall_drops_hysteria_udp_443_when_disabled" {
   command = plan
 
   variables {
-    enable_hysteria = false
+    enable_hysteria             = false
+    public_listeners            = []
+    use_legacy_public_listeners = true
   }
 
   assert {
