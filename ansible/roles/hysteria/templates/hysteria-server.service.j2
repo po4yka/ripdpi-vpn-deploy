@@ -27,7 +27,11 @@ RestrictNamespaces=yes
 LockPersonality=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
+# Same filter profile hysteria-realm's sing-box processes run with in production.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
 ReadWritePaths={{ hysteria_log_dir }} /var/lib/hysteria {{ hysteria_config_dir }}
 
 [Install]

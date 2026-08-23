@@ -318,7 +318,7 @@ fn load_config(path: &Path) -> Result<MatrixConfig> {
     let raw =
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let config: MatrixConfig =
-        serde_yaml::from_str(&raw).with_context(|| format!("parsing {}", path.display()))?;
+        serde_yaml_ng::from_str(&raw).with_context(|| format!("parsing {}", path.display()))?;
     validate_config(&config)?;
     validate_profiles(&config)?;
     Ok(config)

@@ -14,14 +14,21 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
 ReadWritePaths={{ snell.log_dir }}
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
-MemoryDenyWriteExecute=true
-LockPersonality=true
-RestrictRealtime=true
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+RestrictRealtime=yes
 RestrictSUIDSGID=true
 SystemCallArchitectures=native
+# Shared internet-facing transport baseline (see REQ-SANDBOX-BASELINE).
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
 
 [Install]
 WantedBy=multi-user.target

@@ -19,13 +19,13 @@ def _custom_rule(rule_id: str) -> dict:
     return next(rule for rule in config["rules"] if rule["id"] == rule_id)
 
 
-def test_unit_test_job_installs_pinned_gitleaks() -> None:
+def test_unit_test_job_installs_checksum_verified_gitleaks() -> None:
     workflow = yaml.safe_load(
         (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
     )
     steps = workflow["jobs"]["unit-tests"]["steps"]
     install_index = next(
-        index for index, step in enumerate(steps) if step.get("name") == "Install gitleaks"
+        index for index, step in enumerate(steps) if step.get("name") == "Install checksum-verified gitleaks"
     )
     pytest_index = next(
         index for index, step in enumerate(steps) if step.get("name") == "pytest tests/unit/"
@@ -33,8 +33,11 @@ def test_unit_test_job_installs_pinned_gitleaks() -> None:
     install_command = steps[install_index]["run"]
 
     assert install_index < pytest_index
-    assert "go install github.com/zricethezav/gitleaks/v8@v8.30.1" in install_command
-    assert 'echo "$(go env GOPATH)/bin" >> "${GITHUB_PATH}"' in install_command
+    # The leak-detection tool itself must be supply-chain verified, matching
+    # the zizmor install pattern: pinned release archive + sha256 check.
+    assert "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" in install_command
+    assert "${GITLEAKS_SHA256}  ${archive}" in install_command
+    assert "go install" not in install_command
 
 
 def test_snell_credential_rule_ignores_python_psk_identifiers() -> None:
@@ -129,3 +132,20 @@ def test_gitleaks_staged_scan_detects_force_added_local_secret(tmp_path: Path) -
     staged = _gitleaks(repo, "--staged")
     assert staged.returncode == 1
     assert "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" not in staged.stdout + staged.stderr
+
+
+def test_actionlint_is_checksum_verified_not_go_installed() -> None:
+    import yaml as _yaml
+
+    workflow = _yaml.safe_load(
+        (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    )
+    steps = workflow["jobs"]["workflow-lint"]["steps"] if "workflow-lint" in workflow["jobs"] else None
+    job_name = next(
+        name for name, job in workflow["jobs"].items()
+        if any(step.get("name", "").startswith("Install") and "actionlint" in step.get("name", "") for step in job.get("steps", []))
+    )
+    steps = workflow["jobs"][job_name]["steps"]
+    install = next(step["run"] for step in steps if "actionlint" in step.get("name", ""))
+    assert "ACTIONLINT_SHA256}  ${archive}" in install
+    assert "go install" not in install
