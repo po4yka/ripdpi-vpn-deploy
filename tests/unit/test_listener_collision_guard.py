@@ -108,3 +108,49 @@ def test_xray_fallback_collision_is_caught_by_manifest_render():
     manifest = ctr.render_template(MANIFEST_TEMPLATE, vars_)
     findings = guard.check({"listeners": __import__("json").loads(manifest), "allowlist": []})
     assert any("tcp/8443" in finding and "xray" in finding and "nginx-xhttp" in finding for finding in findings)
+
+
+def _range_entry(role: str, protocol: str, start: int, end: int) -> dict:
+    return {
+        "role": role,
+        "protocol": protocol,
+        "range": f"{start}-{end}",
+        "enabled": True,
+        "reason": f"{role} listener",
+    }
+
+
+def test_overlapping_ranges_are_reported():
+    findings = guard.check({
+        "listeners": [
+            _range_entry("hysteria", "udp", 20000, 20100),
+            _range_entry("amneziawg-hops", "udp", 20050, 20200),
+        ],
+        "allowlist": [],
+    })
+    assert len(findings) == 1
+    assert "udp/20000-20100" in findings[0]
+    assert "overlaps udp/20050-20200" in findings[0]
+
+
+def test_disjoint_and_cross_protocol_ranges_pass():
+    findings = guard.check({
+        "listeners": [
+            _range_entry("hysteria", "udp", 20000, 20100),
+            _range_entry("amneziawg-hops", "udp", 20101, 20200),
+            _range_entry("xray-hops", "tcp", 20000, 20200),
+        ],
+        "allowlist": [],
+    })
+    assert findings == []
+
+
+def test_overlapping_range_allowed_via_allowlist():
+    findings = guard.check({
+        "listeners": [
+            _range_entry("hysteria", "udp", 20000, 20100),
+            _range_entry("amneziawg-hops", "udp", 20050, 20200),
+        ],
+        "allowlist": ["udp/20000-20100"],
+    })
+    assert findings == []
