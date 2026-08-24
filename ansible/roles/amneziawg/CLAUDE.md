@@ -47,6 +47,11 @@ check mode reports only actionable binary drift and never runs a compiler.
 - **Issue closure is not proof of an arm64 fix** — amnezia-client #2582
   reproduced S3/S4 failure after an earlier claimed fix. Never weaken the
   guard from release notes alone; follow the tracker checklist.
+- **Config changes restart instances, briefly dropping tunnels** — the
+  handler uses a full `systemd` restart (not reload): `awg-quick strip`
+  cannot apply address/route changes and aborts on inactive instances.
+  Expect a seconds-long tunnel interruption on every peer/config change;
+  schedule AWG config waves accordingly.
 - **The tools build output is `src/wg`, not `src/awg`** — `/usr/bin/awg` is
   created by `make install`. Using the installed name as the source artifact
   makes every check-mode run report false drift.

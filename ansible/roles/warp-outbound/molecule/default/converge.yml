@@ -71,9 +71,15 @@
         content: |
           #!/bin/sh
           # Molecule stub — returns a fake warp=on trace for the WARP check.
+          # WARP_TRACE_FIXTURE=warp-off flips the trace to warp=off (rc=0)
+          # so verify can exercise the tunnel-down health-gate fixture.
           echo "warp-cli stub: curl $*" >> /tmp/warp-cli-calls.log
           echo "fl=stub"
-          echo "warp=on"
+          if [ "${WARP_TRACE_FIXTURE:-}" = "warp-off" ]; then
+            echo "warp=off"
+          else
+            echo "warp=on"
+          fi
           echo "gateway=stub"
           exit 0
 

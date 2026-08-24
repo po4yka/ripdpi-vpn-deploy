@@ -134,6 +134,20 @@
         not mirror_ssh_key.stat.exists
         or mirror_ssh_key.stat.mode != "0600"
 
+    - name: Revocation hash list survives the triggered --delete pull
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep -q 'deadbeefdeadbeefdeadbeef' /var/lib/vpn-subscription/revoked
+        executable: /bin/bash
+      changed_when: false
+
+    - name: vpn-bootstrap .ssh state survives the triggered --delete pull
+      ansible.builtin.stat:
+        path: /var/lib/vpn-subscription/.ssh
+      register: mirror_ssh_state
+      failed_when: not mirror_ssh_state.stat.exists
+
     - name: vpn-sub-mirror.service journal has no fatal entries
       ansible.builtin.shell:
         cmd: |
