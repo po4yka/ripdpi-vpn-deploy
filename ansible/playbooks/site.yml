@@ -23,6 +23,20 @@
           VPN_SECRETS_FILE is not set. Run `make decrypt` or export the path
           to your decrypted secrets file before running this playbook.
 
+    # The firewall renders zero SSH accept rules under policy drop when the
+    # allowlist is empty; a non-populated inventory would converge green and
+    # lock the operator out. Fail fast instead (REQ-SSH-ALLOWLIST-FAILFAST).
+    - name: Ensure the SSH management-path allowlist is populated
+      ansible.builtin.assert:
+        that:
+          - allowed_ssh_cidrs is defined
+          - allowed_ssh_cidrs | length > 0
+        fail_msg: |
+          allowed_ssh_cidrs is empty. The firewall role would render a
+          policy-drop ruleset with no SSH accept rule and lock you out of
+          this node. Populate allowed_ssh_cidrs in tfvars and re-render the
+          inventory (scripts/render-inventory.sh) before deploying.
+
     # Role-tier guard: a role tagged `research` in ansible/role-tiers.yml must
     # never converge on a family node. A lab/pilot host opts in explicitly by
     # listing the role in `allow_research_roles` in its inventory (git-visible).
