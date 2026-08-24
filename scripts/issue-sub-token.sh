@@ -241,7 +241,7 @@ entry_json="$(FORMAT="$FORMAT" HOSTS="${REGISTRY_HOSTS:-${PROVIDER}:${ENV}}" \
   COHORTS="$REGISTRY_COHORTS" HASH_PREFIX="$hash_prefix" EXPIRY="$EXPIRES" \
   SOURCE_ID="$source_id" OUTPUTS_ID="$outputs_id" \
   python3 <<PYEOF
-import json, os
+import json, os, sys
 from datetime import datetime, timezone
 import subprocess
 
@@ -258,10 +258,21 @@ entry = {
         "outputs": os.environ["OUTPUTS_ID"],
     },
 }
-existing = json.loads(subprocess.run(
+existing = {}
+registry_read = subprocess.run(
     ["sops", "--decrypt", "--extract", '["client_registry"]', "--output-type", "json", "$sops_file"],
     capture_output=True, text=True,
-).stdout or "{}").get("$CLIENT") or {}
+)
+if registry_read.returncode != 0:
+    # Absent client_registry key is the first-ever issuance case; anything
+    # else (key unavailable, agent error, corrupt document) must abort before
+    # the rewrite below or the merged entry would silently drop prior fields
+    # such as the AWG private-key recovery copy.
+    stderr = registry_read.stderr
+    if "client_registry" not in stderr and "extract" not in stderr.lower():
+        sys.stderr.write(stderr)
+        raise SystemExit("issue-sub-token: secrets unavailable: sops decrypt of client_registry failed")
+existing = (json.loads(registry_read.stdout) if registry_read.stdout.strip() else {}).get("$CLIENT") or {}
 merged = {**existing, **{k: v for k, v in entry.items()}}
 # Preserve prior formats when refreshing with a reused format.
 if existing.get("formats") and os.environ["FORMAT"] in existing["formats"]:
@@ -286,6 +297,21 @@ sub_port="$(sops --decrypt --output-type json "$sops_file" | \
   python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('subscription') or {}).get('port') or 8444)")"
 
 url="https://${sub_host}:${sub_port}/sub/${token}"
+
+# Audit-log before the --print-token-only early exit: machine-issued tokens
+# must leave the same incident-scoping record. append-best-effort never blocks
+# delivery and never writes to stdout.
+if [[ -n "$REFRESH_TOKEN" ]]; then
+  options_note="options=reused:${REUSED:-none};overridden:${OVERRIDDEN:-none}"
+else
+  options_note="options=issued:format=${FORMAT},hosts=${REGISTRY_HOSTS:-${PROVIDER}:${ENV}}"
+fi
+note="hash=${token_hash:0:16} expires=${EXPIRES:-none} format=${FORMAT} qr=${EMIT_QR} refresh=${REFRESH_TOKEN:+yes} ${options_note}"
+ENV="$ENV" PROVIDER="$PROVIDER" \
+  "${REPO_ROOT}/scripts/audit-log.sh" append-best-effort \
+    --action issue-sub-token \
+    --client "$CLIENT" \
+    --note "$note"
 
 if (( PRINT_TOKEN_ONLY )); then
   printf '%s\n' "$token"
@@ -315,17 +341,3 @@ if (( EMIT_QR )); then
   echo "$url" | qrencode -t PNG -o "$qr_out"
   echo "QR rendered: $qr_out"
 fi
-
-# Audit-log the issuance without blocking token delivery if local logging is
-# unavailable.
-if [[ -n "$REFRESH_TOKEN" ]]; then
-  options_note="options=reused:${REUSED:-none};overridden:${OVERRIDDEN:-none}"
-else
-  options_note="options=issued:format=${FORMAT},hosts=${REGISTRY_HOSTS:-${PROVIDER}:${ENV}}"
-fi
-note="hash=${token_hash:0:16} expires=${EXPIRES:-none} format=${FORMAT} qr=${EMIT_QR} refresh=${REFRESH_TOKEN:+yes} ${options_note}"
-ENV="$ENV" PROVIDER="$PROVIDER" \
-  "${REPO_ROOT}/scripts/audit-log.sh" append-best-effort \
-    --action issue-sub-token \
-    --client "$CLIENT" \
-    --note "$note"
