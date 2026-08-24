@@ -161,6 +161,7 @@
       dest: "{{ naive.config_dir }}/server.key"
   no_log: true
   diff: false
+  notify: Restart caddy-naive
 
 - name: Render Caddyfile
   ansible.builtin.template:
