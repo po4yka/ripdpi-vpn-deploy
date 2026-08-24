@@ -56,6 +56,47 @@ test_deny_upcloud_ssh_unlisted_cidr {
   count(result) == 1
 }
 
+# A missing comment must not bypass the gate: evaluation is structural.
+test_deny_upcloud_ssh_unlisted_cidr_no_comment {
+  result := deny with input as {
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}, "ssh_port": {"value": 22}},
+    "resource_changes": [{
+      "address": "upcloud_firewall_rules.vpn",
+      "type": "upcloud_firewall_rules",
+      "change": {"after": {"firewall_rule": [{
+        "action": "accept",
+        "direction": "in",
+        "protocol": "tcp",
+        "destination_port_start": "22",
+        "source_address_start": "198.51.100.99",
+        "source_address_end": "198.51.100.99",
+      }]}},
+    }],
+  }
+  count(result) == 1
+}
+
+# A reworded comment naming a different CIDR must not bypass the gate either.
+test_deny_upcloud_ssh_reworded_comment {
+  result := deny with input as {
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}, "ssh_port": {"value": 22}},
+    "resource_changes": [{
+      "address": "upcloud_firewall_rules.vpn",
+      "type": "upcloud_firewall_rules",
+      "change": {"after": {"firewall_rule": [{
+        "action": "accept",
+        "direction": "in",
+        "protocol": "tcp",
+        "destination_port_start": "22",
+        "comment": "SSH allow 203.0.113.42/32",
+        "source_address_start": "198.51.100.99",
+        "source_address_end": "198.51.100.99",
+      }]}},
+    }],
+  }
+  count(result) == 1
+}
+
 test_deny_scaleway_ssh_unlisted_cidr {
   result := deny with input as {
     "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}, "ssh_port": {"value": 22}},
@@ -123,6 +164,46 @@ test_allow_upcloud_ssh_listed_cidr {
         "comment": "SSH allow 203.0.113.42/32",
         "source_address_start": "203.0.113.42",
         "source_address_end": "203.0.113.42",
+      }]}},
+    }],
+  }
+  count(result) == 0
+}
+
+# A listed host without any comment passes on structural evaluation.
+test_allow_upcloud_ssh_listed_cidr_no_comment {
+  result := deny with input as {
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}, "ssh_port": {"value": 22}},
+    "resource_changes": [{
+      "address": "upcloud_firewall_rules.vpn",
+      "type": "upcloud_firewall_rules",
+      "change": {"after": {"firewall_rule": [{
+        "action": "accept",
+        "direction": "in",
+        "protocol": "tcp",
+        "destination_port_start": "22",
+        "source_address_start": "203.0.113.42",
+        "source_address_end": "203.0.113.42",
+      }]}},
+    }],
+  }
+  count(result) == 0
+}
+
+# A host inside a broader allowed network passes via CIDR containment.
+test_allow_upcloud_ssh_host_inside_allowed_network {
+  result := deny with input as {
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.0/24"]}, "ssh_port": {"value": 22}},
+    "resource_changes": [{
+      "address": "upcloud_firewall_rules.vpn",
+      "type": "upcloud_firewall_rules",
+      "change": {"after": {"firewall_rule": [{
+        "action": "accept",
+        "direction": "in",
+        "protocol": "tcp",
+        "destination_port_start": "22",
+        "source_address_start": "203.0.113.7",
+        "source_address_end": "203.0.113.7",
       }]}},
     }],
   }
