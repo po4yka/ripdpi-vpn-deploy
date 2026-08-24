@@ -180,16 +180,26 @@ fn set_private_mode(path: &std::path::Path, mode: u32) -> Result<()> {
 
 fn write_private(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
     use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
     let temp = path.with_extension("tmp");
+    // Clear a stale temp left by an interrupted run before recreating it
+    // exclusively; create_new would otherwise fail forever.
+    let _ = std::fs::remove_file(&temp);
     let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
+        .mode(0o600)
         .open(&temp)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    set_private_mode(&temp, 0o600)?;
-    std::fs::rename(temp, path)?;
-    Ok(())
+    let outcome = (|| -> Result<()> {
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        std::fs::rename(&temp, path)?;
+        Ok(())
+    })();
+    if outcome.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    outcome
 }
 
 fn per_platform_apps() -> Vec<recipient::AppCard> {

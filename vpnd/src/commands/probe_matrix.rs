@@ -223,7 +223,14 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
     while tokio::time::Instant::now() < deadline {
         let tick_start = tokio::time::Instant::now();
         let tick_wall = SystemTime::now();
-        let mut control = run_control(ctx, &config_path, tick, tick_wall).await;
+        let mut control = run_control(
+            ctx,
+            &config_path,
+            tick,
+            tick_wall,
+            Duration::from_secs(config.control.timeout_seconds),
+        )
+        .await;
         let mut jobs = JoinSet::new();
         for (pindex, protocol) in config.protocols.iter().copied().enumerate() {
             for (tindex, target) in config.targets.iter().cloned().enumerate() {
@@ -327,15 +334,7 @@ fn load_config(path: &Path) -> Result<MatrixConfig> {
 fn validate_profiles(config: &MatrixConfig) -> Result<()> {
     use std::os::unix::fs::MetadataExt;
 
-    let owner = std::process::Command::new("id")
-        .arg("-u")
-        .output()
-        .context("resolving current uid")?;
-    let uid = std::str::from_utf8(&owner.stdout)
-        .context("decoding current uid")?
-        .trim()
-        .parse::<u32>()
-        .context("parsing current uid")?;
+    let uid = uzers::get_current_uid();
     let mut comparison_fingerprints: BTreeMap<&str, serde_json::Value> = BTreeMap::new();
     for target in &config.targets {
         let metadata = std::fs::symlink_metadata(&target.profile_file)
@@ -473,10 +472,23 @@ fn technical_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
-async fn run_control(ctx: &Context, path: &Path, tick: u32, now: SystemTime) -> ControlResult {
+async fn run_control(
+    ctx: &Context,
+    path: &Path,
+    tick: u32,
+    now: SystemTime,
+    timeout: Duration,
+) -> ControlResult {
     let path = path.to_string_lossy();
     let command = make::target_with(ctx, "probe-matrix-control", &[("MATRIX_CONFIG", &path)]);
-    let probe = capture(command.capture(false).await);
+    let probe = match tokio::time::timeout(timeout, command.capture(false)).await {
+        Ok(result) => capture(result),
+        Err(_) => ProbeOutput {
+            verdict: Verdict::Unknown,
+            rtt_ms: None,
+            error_kind: Some("control_timeout".to_string()),
+        },
+    };
     ControlResult {
         tick,
         timestamp_unix_ms: unix_ms(now),
