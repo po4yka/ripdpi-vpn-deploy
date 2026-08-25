@@ -94,8 +94,15 @@ table inet filter {
     ip6 saddr @policy_offenders6 drop
 {% endif %}
 
-    ip protocol icmp accept
-    ip6 nexthdr ipv6-icmp accept
+    # ICMP follows the shaping floor: stateless error reports pass so
+    # PMTUD and traceroute semantics stay intact, NDP is scoped to
+    # link-local, and echo-request is rate-limited per family instead
+    # of being accepted blanket.
+    ip protocol icmp icmp type { destination-unreachable, time-exceeded, parameter-problem } accept
+    ip protocol icmp icmp type echo-request limit rate 10/second burst 20 packets accept
+    ip6 nexthdr ipv6-icmp icmpv6 type { destination-unreachable, packet-too-big, time-exceeded, parameter-problem } accept
+    ip6 nexthdr ipv6-icmp icmpv6 type { nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } ip6 saddr fe80::/10 accept
+    ip6 nexthdr ipv6-icmp icmpv6 type echo-request limit rate 10/second burst 20 packets accept
 
 {% if ssh_v4_cidrs %}
     tcp dport {{ ssh_port }} ip saddr { {{ ssh_v4_cidrs | join(", ") }} } accept

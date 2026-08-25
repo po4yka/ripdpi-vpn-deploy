@@ -102,3 +102,31 @@
       register: timer_enabled
       changed_when: false
       failed_when: timer_enabled.stdout not in ['enabled', 'static']
+
+    - name: Refresh service unit exists
+      ansible.builtin.stat:
+        path: /etc/systemd/system/vpn-geodata-refresh.service
+      register: refresh_unit
+
+    - name: Read refresh service unit
+      ansible.builtin.slurp:
+        src: /etc/systemd/system/vpn-geodata-refresh.service
+      register: refresh_unit_raw
+
+    - name: Decode refresh unit content
+      ansible.builtin.set_fact:
+        refresh_unit_text: "{{ refresh_unit_raw.content | b64decode }}"
+
+    - name: Assert hardening floor directives present
+      ansible.builtin.assert:
+        that:
+          - "'NoNewPrivileges=true' in refresh_unit_text"
+          - "'ProtectSystem=strict' in refresh_unit_text"
+          - "'PrivateTmp=true' in refresh_unit_text"
+          - "'ReadWritePaths=' in refresh_unit_text"
+        fail_msg: "vpn-geodata-refresh.service lost its sandbox floor"
+
+    - name: systemd-analyze verify accepts vpn-geodata-refresh.service
+      ansible.builtin.command:
+        cmd: systemd-analyze verify /etc/systemd/system/vpn-geodata-refresh.service
+      changed_when: false
