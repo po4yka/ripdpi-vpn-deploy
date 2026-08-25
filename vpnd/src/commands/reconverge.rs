@@ -60,7 +60,7 @@ pub async fn run(ctx: &Context, args: ReconvergeArgs) -> Result<()> {
 
     // Reconverge = re-decrypt, re-plan, dry-run, then site.yml (idempotent steps will no-op).
     make::target(ctx, "decrypt").run(ctx.explain).await?;
-    ctx.secure_secrets_file();
+    ctx.secure_secrets_file()?;
     make::target(ctx, "init").run(ctx.explain).await?;
     make::target(ctx, "plan").run(ctx.explain).await?;
     let mut dry_run = ansible::dry_run(ctx);

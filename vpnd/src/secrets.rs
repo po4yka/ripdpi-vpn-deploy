@@ -78,18 +78,38 @@ impl std::fmt::Debug for Client {
 
 impl Secrets {
     pub fn load(path: &Path) -> Result<Self> {
+        use std::io::Read;
         use std::os::unix::fs::MetadataExt;
-        let metadata = std::fs::symlink_metadata(path)
+        // Reject symlinks before opening so a swapped link cannot redirect
+        // the read to attacker-chosen content.
+        let lstat = std::fs::symlink_metadata(path)
             .with_context(|| format!("inspect {}", path.display()))?;
+        if !lstat.file_type().is_file() {
+            return Err(anyhow!(
+                "decrypted secrets at {} must be a regular file, not a symlink or special file",
+                path.display()
+            ));
+        }
+        // Open once and stat the HELD handle: what is permission-checked
+        // here is byte-for-byte what gets read below — no stat/read
+        // window for a concurrent mode or content swap.
+        let mut handle =
+            std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
+        let metadata = handle
+            .metadata()
+            .with_context(|| format!("stat held handle for {}", path.display()))?;
         let uid = uzers::get_current_uid();
         if !metadata.file_type().is_file() || metadata.uid() != uid || metadata.mode() & 0o077 != 0
         {
             return Err(anyhow!(
-                "decrypted secrets at {} is missing or has unsafe owner, type, or permissions",
+                "decrypted secrets at {} has unsafe owner, type, or permissions",
                 path.display()
             ));
         }
-        let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
+        let mut bytes = Vec::new();
+        handle
+            .read_to_end(&mut bytes)
+            .with_context(|| format!("read {}", path.display()))?;
         let s: Secrets =
             serde_yaml_ng::from_slice(&bytes).context("parse decrypted secrets YAML")?;
         Ok(s)

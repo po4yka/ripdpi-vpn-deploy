@@ -58,7 +58,7 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
     // Decrypt happens via the Makefile, so SOPS gating and audit-log behavior match operator habit.
     if !ctx.secrets_file.is_file() {
         make::target(ctx, "decrypt").run(ctx.explain).await?;
-        ctx.secure_secrets_file();
+        ctx.secure_secrets_file()?;
     }
 
     if ctx.explain {
@@ -160,16 +160,32 @@ fn read_token(args: &ShareArgs) -> Result<String> {
         std::io::stdin().read_to_string(&mut token)?;
         token
     } else if let Some(path) = &args.token_file {
-        use std::os::unix::fs::MetadataExt;
-        let metadata = std::fs::symlink_metadata(path)?;
-        if !metadata.file_type().is_file() || metadata.mode() & 0o077 != 0 {
-            return Err(anyhow!("token file must be a regular 0600 file"));
-        }
-        std::fs::read_to_string(path)?
+        load_token_file(path)?
     } else {
         return Err(anyhow!("provide --token-stdin or --token-file"));
     };
     Ok(token.trim().to_owned())
+}
+
+/// Open-once gate for the operator-supplied token file, matching the
+/// Secrets::load discipline: reject symlinks before opening, then stat
+/// the held handle so what is permission-checked is exactly what gets
+/// read — no stat/read window for a concurrent swap.
+fn load_token_file(path: &std::path::Path) -> Result<String> {
+    use std::io::Read;
+    use std::os::unix::fs::MetadataExt;
+    let lstat = std::fs::symlink_metadata(path)?;
+    if !lstat.file_type().is_file() {
+        return Err(anyhow!("token file must be a regular file"));
+    }
+    let mut handle = std::fs::File::open(path)?;
+    let metadata = handle.metadata()?;
+    if !metadata.file_type().is_file() || metadata.mode() & 0o077 != 0 {
+        return Err(anyhow!("token file must be a regular 0600 file"));
+    }
+    let mut token = String::new();
+    handle.read_to_string(&mut token)?;
+    Ok(token)
 }
 
 fn set_private_mode(path: &std::path::Path, mode: u32) -> Result<()> {
@@ -249,4 +265,46 @@ fn per_platform_apps() -> Vec<recipient::AppCard> {
 pub fn urlencode(s: &str) -> String {
     use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
     utf8_percent_encode(s, NON_ALPHANUMERIC).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn write_mode(path: &std::path::Path, contents: &str, mode: u32) {
+        std::fs::write(path, contents).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap();
+    }
+
+    #[test]
+    fn token_file_gate_rejects_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("real-token");
+        write_mode(&target, "tok", 0o600);
+        let link = dir.path().join("link-token");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let err = load_token_file(&link).expect_err("symlinked token file must be rejected");
+        assert!(err.to_string().contains("regular file"), "{err}");
+    }
+
+    #[test]
+    fn token_file_gate_rejects_loose_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("loose-token");
+        write_mode(&path, "tok", 0o644);
+        let err = load_token_file(&path).expect_err("0644 token file must be rejected");
+        assert!(err.to_string().contains("0600"), "{err}");
+    }
+
+    #[test]
+    fn token_file_gate_accepts_0600_raw() {
+        // Trimming is read_token's job (both stdin and file branches);
+        // the gate returns the raw contents verbatim.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        write_mode(&path, "  tok-value \n", 0o600);
+        assert_eq!(load_token_file(&path).unwrap(), "  tok-value \n");
+    }
 }

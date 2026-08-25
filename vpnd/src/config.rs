@@ -54,13 +54,7 @@ impl Context {
             .ok_or_else(|| anyhow!("could not resolve user config dir"))?;
 
         let sops_file = config_dir.join(format!("{}.secrets.sops.yaml", cli.env));
-        let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                directories::BaseDirs::new()
-                    .map(|b| b.cache_dir().join("vpn-provision"))
-                    .unwrap_or_else(|| config_dir.join("runtime"))
-            });
+        let runtime_dir = resolve_runtime_dir(&config_dir);
         let secrets_file = runtime_dir.join(format!("vpn-{}.secrets.yaml", cli.env));
 
         Ok(Self {
@@ -83,14 +77,36 @@ impl Context {
     }
 
     /// Ensure the decrypted secrets file has mode 0600 if it exists.
-    /// Called immediately after a successful decrypt step.
-    pub fn secure_secrets_file(&self) {
+    /// Called immediately after a successful decrypt step. Fallible by
+    /// contract: a chmod that cannot be applied means the plaintext
+    /// secrets sit world-readable — the caller must abort, not continue.
+    pub fn secure_secrets_file(&self) -> Result<()> {
         use std::os::unix::fs::PermissionsExt;
         if self.secrets_file.exists() {
             let perms = std::fs::Permissions::from_mode(0o600);
-            let _ = std::fs::set_permissions(&self.secrets_file, perms);
+            std::fs::set_permissions(&self.secrets_file, perms).with_context(|| {
+                format!(
+                    "failed to set 0600 on decrypted secrets {}",
+                    self.secrets_file.display()
+                )
+            })?;
         }
+        Ok(())
     }
+}
+
+/// Resolve the directory holding the decrypted secrets file. XDG_RUNTIME_DIR
+/// wins; otherwise fall back to the user cache dir, then a repo-local
+/// runtime dir. Single authority so make (via the explicit SECRETS_FILE
+/// kv) and vpnd always agree on one location.
+fn resolve_runtime_dir(config_dir: &Path) -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            directories::BaseDirs::new()
+                .map(|b| b.cache_dir().join("vpn-provision"))
+                .unwrap_or_else(|| config_dir.join("runtime"))
+        })
 }
 
 fn find_repo_root() -> Result<PathBuf> {
@@ -108,4 +124,88 @@ fn find_repo_root() -> Result<PathBuf> {
 
 fn is_repo_root(p: &Path) -> bool {
     p.join("Makefile").is_file() && p.join("ansible").is_dir() && p.join("terraform").is_dir()
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::*;
+    use std::sync::Mutex;
+
+    // Env-var mutation is process-global; serialize the resolution-matrix
+    // test against any other test touching the environment.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn runtime_dir_resolution_matrix_xdg_set_and_unset() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let config_dir = Path::new("/fixture-config");
+
+        // XDG_RUNTIME_DIR set wins outright.
+        std::env::set_var("XDG_RUNTIME_DIR", "/runtime-xdg");
+        assert_eq!(
+            resolve_runtime_dir(config_dir),
+            PathBuf::from("/runtime-xdg")
+        );
+
+        // XDG_RUNTIME_DIR unset falls back to the user cache dir when
+        // BaseDirs is available in this environment.
+        std::env::remove_var("XDG_RUNTIME_DIR");
+        let fallback = resolve_runtime_dir(config_dir);
+        match directories::BaseDirs::new() {
+            Some(b) => {
+                assert_eq!(fallback, b.cache_dir().join("vpn-provision"));
+            }
+            None => {
+                assert_eq!(fallback, config_dir.join("runtime"));
+            }
+        }
+
+        std::env::remove_var("XDG_RUNTIME_DIR");
+    }
+
+    // Path-based chmod only honors parent-directory bits on Linux; darwin
+    // grants it from file ownership alone, so the injection is exercised
+    // on Linux CI runners and compiled out elsewhere.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn secure_secrets_file_propagates_chmod_failure() {
+        use std::os::unix::fs::PermissionsExt;
+        let _guard = ENV_LOCK.lock().unwrap();
+        if uzers::get_current_uid() == 0 {
+            // Root ignores parent-dir permission bits, so the injected
+            // failure cannot be reproduced; skip rather than fake it.
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let inner = tempfile::tempdir_in(dir.path()).unwrap();
+        let secrets = inner.path().join("vpn-test.secrets.yaml");
+        std::fs::write(&secrets, "stub: 1\n").unwrap();
+
+        // Read-only grandparent makes chmod on the inner file fail with
+        // EACCES on the rename-free metadata path exercised here.
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        let ctx = Context {
+            root: dir.path().into(),
+            ansible_dir: dir.path().into(),
+            tf_root: dir.path().into(),
+            env: "test".into(),
+            provider: "upcloud".into(),
+            sops_file: dir.path().into(),
+            secrets_file: secrets.clone(),
+            config_dir: dir.path().into(),
+            explain: false,
+            yes: false,
+            json: false,
+        };
+        let outcome = ctx.secure_secrets_file();
+        // Restore write access so tempdir cleanup succeeds.
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        let err = outcome.expect_err("chmod under read-only parent must fail");
+        assert!(
+            err.to_string().contains("failed to set 0600"),
+            "unexpected error: {err}"
+        );
+    }
 }
