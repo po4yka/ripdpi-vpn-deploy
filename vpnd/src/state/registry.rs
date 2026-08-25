@@ -61,4 +61,116 @@ impl Registry {
     pub fn get(&self, name: &str) -> Option<&Host> {
         self.hosts.get(name)
     }
+
+    /// Resolve a registered host and enforce env/provider match with the
+    /// active context — the single authority every `--host` consumer
+    /// (reconverge, doctor, probe) shares.
+    pub fn resolve_for(&self, name: &str, env: &str, provider: &str) -> Result<Host> {
+        let host = self
+            .get(name)
+            .ok_or_else(|| anyhow!("host '{name}' not in registry"))?;
+        if host.env != env || host.provider != provider {
+            return Err(anyhow!(
+                "host '{}' belongs to {}/{} not {}/{}",
+                name,
+                host.env,
+                host.provider,
+                env,
+                provider
+            ));
+        }
+        Ok(host.clone())
+    }
+}
+
+/// Strict IPv4 literal for ansible `--limit` values. Registry entries that
+/// carry pattern-ish values ("all", "prod:*", malformed octets) must be
+/// rejected before the value reaches an ansible command line — a pattern
+/// would silently widen the limit from one host to an entire group.
+pub fn ipv4_limit(host_name: &str, host: &Host) -> Result<String> {
+    let raw = host
+        .ipv4
+        .as_deref()
+        .ok_or_else(|| anyhow!("host '{host_name}' has no IPv4 limit address"))?;
+    let ip: std::net::Ipv4Addr = raw.parse().map_err(|_| {
+        anyhow!(
+            "host '{host_name}' ipv4 '{raw}' is not an IPv4 literal — refusing to build --limit"
+        )
+    })?;
+    Ok(ip.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::*;
+
+    fn host(env: &str, provider: &str, ipv4: Option<&str>) -> Host {
+        Host {
+            env: env.into(),
+            provider: provider.into(),
+            ipv4: ipv4.map(Into::into),
+            ipv6: None,
+            deployed_with: None,
+        }
+    }
+
+    #[test]
+    fn resolve_for_rejects_unknown_alias() {
+        let mut reg = Registry::default();
+        reg.upsert("prod1", host("prod", "upcloud", Some("203.0.113.5")));
+        let err = reg
+            .resolve_for("ghost", "prod", "upcloud")
+            .expect_err("unknown alias must fail");
+        assert!(err.to_string().contains("not in registry"), "{err}");
+    }
+
+    #[test]
+    fn resolve_for_rejects_env_or_provider_mismatch() {
+        let mut reg = Registry::default();
+        reg.upsert("box", host("staging", "hetzner", None));
+        assert!(reg.resolve_for("box", "prod", "hetzner").is_err());
+        assert!(reg.resolve_for("box", "staging", "vultr").is_err());
+        assert!(reg.resolve_for("box", "staging", "hetzner").is_ok());
+    }
+
+    /// Rejection table: none of these values may ever reach a --limit.
+    #[test]
+    fn ipv4_limit_rejection_table() {
+        for bad in [
+            "all",
+            "prod:*",
+            "999.1.1.1",
+            "",
+            "203.0.113.5x",
+            "prod:!tag",
+        ] {
+            let h = host("prod", "upcloud", Some(bad));
+            assert!(
+                ipv4_limit("bad-host", &h).is_err(),
+                "value '{bad}' must be rejected as a limit"
+            );
+        }
+    }
+
+    #[test]
+    fn ipv4_limit_rejects_zero_padded_octets() {
+        // std Ipv4Addr parsing is strict: no leading zeros, so ambiguous
+        // octal-looking forms can never reach an ansible --limit.
+        let h = host("prod", "upcloud", Some("203.000.113.005"));
+        assert!(ipv4_limit("padded", &h).is_err());
+    }
+
+    #[test]
+    fn ipv4_limit_accepts_literal() {
+        let h = host("prod", "upcloud", Some("203.0.113.5"));
+        assert_eq!(ipv4_limit("ok", &h).unwrap(), "203.0.113.5");
+    }
+
+    #[test]
+    fn ipv4_limit_requires_an_address() {
+        let h = host("prod", "upcloud", None);
+        let err = ipv4_limit("noip", &h).expect_err("missing ipv4 must fail");
+        assert!(err.to_string().contains("no IPv4 limit address"), "{err}");
+    }
 }

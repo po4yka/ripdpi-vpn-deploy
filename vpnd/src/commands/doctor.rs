@@ -5,8 +5,17 @@ use crate::cli::DoctorArgs;
 use crate::config::Context;
 use crate::docs_bundle;
 use crate::runner::{make, Cmd};
+use crate::state::Registry;
 
 pub async fn run(ctx: &Context, args: DoctorArgs) -> Result<()> {
+    // Resolve --host against the registry before any diagnostic runs:
+    // unknown or cross-env aliases fail loudly instead of labeling the
+    // report with a phantom host.
+    if args.host.is_some() {
+        let reg = Registry::load()?;
+        super::ensure_host_in_registry(ctx, &reg, args.host.as_ref())?;
+    }
+
     let steps: Vec<Cmd> = vec![
         make::target(ctx, "fleet-status"),
         make::target(ctx, "burn-check"),
