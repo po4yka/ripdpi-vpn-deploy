@@ -23,8 +23,9 @@ Source: repository-local deployment measurements and operator validation.
 For a full deploy this primarily affects the **egress** IP, not the
 ingress: a node that ingresses on REALITY/TCP and egresses through the
 same VPS IP will hit the TCP-freeze rule when the upstream is on one of
-the "Avoid" ASNs. Split-hop egress (separate exit IP, e.g. via WARP) is
-documented in `docs/ARCHITECTURE.md` once that role lands.
+the "Avoid" ASNs. Split-hop egress (a separate exit VPS) is specified in
+`docs/SPLIT-HOP-TOPOLOGY.md`, with the operator procedure in
+`docs/RUNBOOK-split-hop-pilot.md`.
 
 ## UDP/443 edge reachability (Hysteria2 / P2)
 
