@@ -60,7 +60,12 @@ mod tests {
             .iter()
             .map(|cmd| cmd.explain())
             .collect();
-        let names = ["validate-secrets", "spot-check-secrets", "audit-permissions", "check-certs"];
+        let names = [
+            "validate-secrets",
+            "spot-check-secrets",
+            "audit-permissions",
+            "check-certs",
+        ];
         assert_eq!(rendered.len(), names.len());
         for (step, name) in rendered.iter().zip(names.iter()) {
             assert!(step.contains(&format!("make {name} ")), "{step}");

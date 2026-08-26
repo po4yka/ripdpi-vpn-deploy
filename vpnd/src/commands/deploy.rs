@@ -146,8 +146,18 @@ mod tests {
         };
         let rendered = target_names(&ctx, &args);
         let expected = [
-            "check-prereqs", "validate", "decrypt", "init", "plan", "apply",
-            "inventory", "wait", "deploy", "verify", "smoke-test", "clean",
+            "check-prereqs",
+            "validate",
+            "decrypt",
+            "init",
+            "plan",
+            "apply",
+            "inventory",
+            "wait",
+            "deploy",
+            "verify",
+            "smoke-test",
+            "clean",
         ];
         assert_eq!(rendered.len(), expected.len(), "step count drifted");
         for (rendered_step, expected_step) in rendered.iter().zip(expected.iter()) {
