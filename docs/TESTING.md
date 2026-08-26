@@ -271,7 +271,7 @@ Generated `terraform/providers/<name>/README.md` files are committed; the
   coupling CI to upstream build would introduce flakiness. Shellcheck covers
   the wrapper script shape.
 - **`scripts/restore.sh` real mode.** The `--dry-run` mode is covered by
-  `tests/unit/test_restore_dryrun.py`. The live restore path (decrypts
+  `tests/bats/restore_dryrun.bats`. The live restore path (decrypts
   SOPS secrets, re-provisions real infrastructure) is only safe to exercise
   against a throwaway VPS; a maintainer TODO covers adding it to the
   `ci-real-deploy` label workflow.
