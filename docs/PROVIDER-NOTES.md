@@ -217,7 +217,9 @@ Uses:
 
 The Ansible role `dns-morph-bridge` adds a bootstrap-channel listener
 on UDP/53 — a fallback tier beyond P0–P2 used when transport-layer
-discovery is itself being interfered with. Operational profile:
+discovery is itself being interfered with. Auxiliary tiers extend the
+four-profile baseline documented in `ARCHITECTURE.md`; the role is
+tiered RESEARCH in `ROLE-TIERING.md`. Operational profile:
 
 - **Port:** UDP/53, public listener (must be allowed inbound on the
   provider's hypervisor firewall — UpCloud/Hetzner/Vultr/Scaleway all default
@@ -250,7 +252,9 @@ for the per-role design notes.
 The Ansible role `hysteria-realm` adds a sing-box realm-service inbound
 that mediates UDP-hole-punching handshakes between two peers. The VPN
 data plane never touches this VPS — only the small TLS-wrapped
-rendezvous handshake. Operational profile:
+rendezvous handshake. Like P4, this auxiliary tier sits beyond the
+P0–P3 baseline; `hysteria-realm` is tiered RESEARCH in
+`ROLE-TIERING.md`. Operational profile:
 
 - **Port:** TCP/`hysteria_realm.listen_port` (default 8444). The realm
   flow is TLS-wrapped because the handshake payload is small enough to
