@@ -53,8 +53,9 @@ make verify
 ```
 
 `prevent_destroy = true` on `upcloud_server` blocks accidental destruction
-in `terraform apply`. To deliberately destroy, drop that lifecycle block
-in a feature branch.
+in `terraform apply`. To deliberately destroy, run `make destroy`: the
+wrapper lifts that lifecycle block through a temporary override file so
+the tracked source stays clean.
 
 ## Add a new client device
 
