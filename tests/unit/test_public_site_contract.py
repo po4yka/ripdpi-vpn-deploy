@@ -88,6 +88,9 @@ def test_subscription_routes_inherit_the_complete_no_store_header_baseline() -> 
     for header in ("Strict-Transport-Security", "Content-Security-Policy", "Permissions-Policy", "X-Content-Type-Options", "Referrer-Policy", "X-Robots-Tag"):
         assert f"add_header {header} " in server_scope
     assert 'add_header Cache-Control "no-store" always;' in server_scope
+    for header in ("Cache-Control", "Referrer-Policy", "X-Robots-Tag"):
+        assert f"proxy_hide_header {header};" in server_scope
+    assert "proxy_hide_header " not in locations
     assert "add_header " not in locations, "location overrides discard all inherited headers"
     for route in ("sub", "bootstrap", "share"):
         assert f'"^/{route}/' in locations
