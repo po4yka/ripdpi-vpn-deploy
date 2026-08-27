@@ -2,7 +2,7 @@
 id: TST-1787497584762133
 title: Close vpnd audit test coverage gaps
 kind: chore
-status: review
+status: done
 area: testing
 priority: high
 risk: standard
@@ -16,6 +16,9 @@ updated: 2026-08-27
 spec_reason: regression-tested-single-module
 related_tasks: []
 status_detail: Implementation and targeted regressions passed; exact-source hosted CI and final closure remain pending.
+closed_at: "2026-08-27T14:31:29Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Exact 66f08e9ca7f205be27bc7763dbaf02227b04d1f7: 169 local Rust release tests and formatting passed; hosted CI 33081754654 and all seven associated workflows passed. Real IO, command, secrets, input and property regressions are retained on schema 2; deferred probe behavior remains a separate blocked task."
 ---
 
 ## Goal
