@@ -11,8 +11,7 @@ use crate::cli::ProbeMatrixArgs;
 use crate::config::Context;
 use crate::runner::make;
 
-const CONFIG_SCHEMA_VERSION: u32 = 2;
-const REPORT_SCHEMA_VERSION: u32 = 3;
+const SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -153,8 +152,7 @@ struct Window {
     comparison_set: String,
     destination_class: DestinationClass,
     topology: Topology,
-    onset_unix_ms: u64,
-    last_impaired_unix_ms: u64,
+    onset_unix_ms: Option<u64>,
     recovery_unix_ms: Option<u64>,
 }
 
@@ -183,8 +181,6 @@ struct Observation {
 #[derive(Debug, Clone, Serialize)]
 pub struct MatrixReport {
     schema_version: u32,
-    completed: bool,
-    interrupted: bool,
     vantage: String,
     started_at_unix_ms: u64,
     finished_at_unix_ms: u64,
@@ -220,70 +216,30 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
 
     let wall_start = SystemTime::now();
     let mono_start = tokio::time::Instant::now();
-    let deadline = mono_start
-        .checked_add(duration)
-        .context("duration exceeds clock range")?;
-    mono_start
-        .checked_add(interval)
-        .context("poll interval exceeds clock range")?;
-    let output = args.output.unwrap_or_else(|| {
-        ctx.root.join(format!(
-            "vpnd/state/probe-matrix-{}.json",
-            unix_ms(wall_start)
-        ))
-    });
-    let mut report = MatrixReport {
-        schema_version: REPORT_SCHEMA_VERSION,
-        completed: false,
-        interrupted: false,
-        vantage: config.vantage.clone(),
-        started_at_unix_ms: unix_ms(wall_start),
-        finished_at_unix_ms: unix_ms(wall_start),
-        poll_interval_seconds: interval.as_secs(),
-        controls: Vec::new(),
-        cells: Vec::new(),
-        windows: Vec::new(),
-        observations: Vec::new(),
-    };
-    let mut signals = InterruptSignals::new()?;
-    let mut journal = start_journal(&output)?;
-    checkpoint(&mut report, &config.protocols, &output, &mut journal, None)?;
-    let mut interruption = None;
+    let deadline = mono_start + duration;
+    let mut controls = Vec::new();
+    let mut cells = Vec::new();
     let mut tick = 0u32;
     while tokio::time::Instant::now() < deadline {
         let tick_start = tokio::time::Instant::now();
         let tick_wall = SystemTime::now();
-        let mut control = tokio::select! {
-            biased;
-            signal = signals.next() => {
-                interruption = Some(signal);
-                ControlResult { tick, timestamp_unix_ms: unix_ms(tick_wall), verdict: Verdict::Unknown, rtt_ms: None, error_kind: Some("interrupted".into()), sweep_duration_ms: 0, overrun_ms: 0 }
-            },
-            value = run_control(ctx, &config_path, tick, tick_wall, Duration::from_secs(config.control.timeout_seconds)) => value,
-        };
+        let mut control = run_control(
+            ctx,
+            &config_path,
+            tick,
+            tick_wall,
+            Duration::from_secs(config.control.timeout_seconds),
+        )
+        .await;
         let mut jobs = JoinSet::new();
-        let mut task_orders = BTreeMap::new();
-        let mut tick_cells = Vec::new();
-        for protocol in config.protocols.iter().copied() {
-            for target in &config.targets {
-                let order = tick_cells.len();
-                tick_cells.push(cell_error(
-                    tick,
-                    tick_wall,
-                    protocol,
-                    target,
-                    Verdict::Unknown,
-                    "interrupted",
-                ));
-                if interruption.is_some() {
-                    continue;
-                }
+        for (pindex, protocol) in config.protocols.iter().copied().enumerate() {
+            for (tindex, target) in config.targets.iter().cloned().enumerate() {
                 let ctx = ctx.clone();
                 let path = config_path.clone();
                 let timeout = Duration::from_secs(config.control.timeout_seconds);
+                let order = pindex * config.targets.len() + tindex;
                 let control_verdict = control.verdict;
-                let target = target.clone();
-                let task = jobs.spawn(async move {
+                jobs.spawn(async move {
                     let value = tokio::time::timeout(
                         timeout,
                         run_cell(
@@ -309,93 +265,52 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
                     });
                     (order, value)
                 });
-                task_orders.insert(task.id(), order);
             }
         }
-        while !jobs.is_empty() {
-            tokio::select! {
-                biased;
-                signal = signals.next(), if interruption.is_none() => {
-                    interruption = Some(signal);
-                    jobs.abort_all();
-                },
-                result = jobs.join_next() => match result {
-                    Some(Ok((order, value))) => tick_cells[order] = value,
-                    Some(Err(error)) if !error.is_cancelled() => {
-                        if let Some(order) = task_orders.get(&error.id()) {
-                            tick_cells[*order].verdict = Verdict::Error;
-                            tick_cells[*order].error_kind = Some("task-failed".into());
-                        }
-                    },
-                    _ => {},
-                },
-            }
-        }
+        cells.extend(collect_ordered(jobs).await?);
+
         let sweep = tokio::time::Instant::now().duration_since(tick_start);
         control.sweep_duration_ms = ms(sweep);
         control.overrun_ms = ms(sweep.saturating_sub(interval));
-        report.controls.push(control);
-        report.cells.extend(tick_cells);
-        report.interrupted = interruption.is_some();
-        checkpoint(
-            &mut report,
-            &config.protocols,
-            &output,
-            &mut journal,
-            Some(tick),
-        )?;
-        if interruption.is_some() {
-            break;
-        }
+        controls.push(control);
         tick = tick.saturating_add(1);
         let next = scheduled_tick(mono_start, interval, tick);
         if next >= deadline {
             break;
         }
         if next > tokio::time::Instant::now() {
-            tokio::select! {
-                biased;
-                signal = signals.next() => { interruption = Some(signal); break; },
-                _ = tokio::time::sleep_until(next) => {},
-            }
+            tokio::time::sleep_until(next).await;
         }
     }
-    report.completed = interruption.is_none();
-    report.interrupted = interruption.is_some();
-    checkpoint(&mut report, &config.protocols, &output, &mut journal, None)?;
+    let report = MatrixReport {
+        schema_version: SCHEMA_VERSION,
+        vantage: config.vantage,
+        started_at_unix_ms: unix_ms(wall_start),
+        finished_at_unix_ms: unix_ms(SystemTime::now()),
+        poll_interval_seconds: interval.as_secs(),
+        windows: windows(&cells),
+        observations: analyze(&config.protocols, &cells),
+        controls,
+        cells,
+    };
+    let output = args.output.unwrap_or_else(|| {
+        ctx.root.join(format!(
+            "vpnd/state/probe-matrix-{}.json",
+            unix_ms(wall_start)
+        ))
+    });
+    write_report(&report, &output)?;
     println!("wrote {}", output.display());
-    if let Some(signal) = interruption {
-        return Err(Interrupted { signal }.into());
-    }
     Ok(())
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("probe matrix interrupted by signal {signal}; partial report preserved")]
-pub struct Interrupted {
-    signal: u8,
-}
-impl Interrupted {
-    pub fn exit_code(&self) -> u8 {
-        128 + self.signal
+async fn collect_ordered<T: Send + 'static>(mut jobs: JoinSet<(usize, T)>) -> Result<Vec<T>> {
+    let mut ordered = Vec::new();
+    while let Some(result) = jobs.join_next().await {
+        ordered.push(result.context("probe cell task")?);
     }
-}
-
-struct InterruptSignals {
-    interrupt: tokio::signal::unix::Signal,
-    terminate: tokio::signal::unix::Signal,
-}
-impl InterruptSignals {
-    fn new() -> Result<Self> {
-        use tokio::signal::unix::{signal, SignalKind};
-        Ok(Self {
-            interrupt: signal(SignalKind::interrupt())?,
-            terminate: signal(SignalKind::terminate())?,
-        })
-    }
-    async fn next(&mut self) -> u8 {
-        tokio::select! { _ = self.interrupt.recv() => 2, _ = self.terminate.recv() => 15 }
-    }
+    ordered.sort_by_key(|(order, _)| *order);
+    Ok(ordered.into_iter().map(|(_, value)| value).collect())
 }
 
 fn scheduled_tick(
@@ -499,8 +414,8 @@ fn transport_fingerprint(mut profile: serde_json::Value) -> serde_json::Value {
 }
 
 fn validate_config(config: &MatrixConfig) -> Result<()> {
-    if config.schema_version != CONFIG_SCHEMA_VERSION {
-        return Err(anyhow!("schema_version must be {CONFIG_SCHEMA_VERSION}"));
+    if config.schema_version != SCHEMA_VERSION {
+        return Err(anyhow!("schema_version must be {SCHEMA_VERSION}"));
     }
     if !technical_id(&config.vantage)
         || !config.control.url.starts_with("https://")
@@ -665,38 +580,32 @@ fn windows(cells: &[CellResult]) -> Vec<Window> {
             .or_default()
             .push(cell);
     }
-    let mut output = Vec::new();
-    for mut values in series.into_values() {
-        values.sort_by_key(|cell| cell.tick);
-        let mut current: Option<Window> = None;
-        for cell in values {
-            match cell.verdict {
-                Verdict::Blocked | Verdict::Throttled => {
-                    let window = current.get_or_insert_with(|| Window {
-                        protocol: cell.protocol,
-                        target_id: cell.target_id.clone(),
-                        comparison_set: cell.comparison_set.clone(),
-                        destination_class: cell.destination_class,
-                        topology: cell.topology,
-                        onset_unix_ms: cell.timestamp_unix_ms,
-                        last_impaired_unix_ms: cell.timestamp_unix_ms,
-                        recovery_unix_ms: None,
-                    });
-                    window.last_impaired_unix_ms = cell.timestamp_unix_ms;
-                }
-                Verdict::Ok | Verdict::Unknown | Verdict::Error => {
-                    if let Some(mut window) = current.take() {
-                        if cell.verdict == Verdict::Ok {
-                            window.recovery_unix_ms = Some(cell.timestamp_unix_ms);
-                        }
-                        output.push(window);
-                    }
-                }
-            }
-        }
-        output.extend(current);
-    }
-    output
+    series
+        .into_values()
+        .filter_map(|mut values| {
+            values.sort_by_key(|cell| cell.tick);
+            let first = *values.first()?;
+            let onset = values
+                .iter()
+                .find(|cell| cell.verdict != Verdict::Ok)
+                .map(|cell| cell.timestamp_unix_ms);
+            let recovery = onset.and_then(|value| {
+                values
+                    .iter()
+                    .find(|cell| cell.timestamp_unix_ms > value && cell.verdict == Verdict::Ok)
+                    .map(|cell| cell.timestamp_unix_ms)
+            });
+            Some(Window {
+                protocol: first.protocol,
+                target_id: first.target_id.clone(),
+                comparison_set: first.comparison_set.clone(),
+                destination_class: first.destination_class,
+                topology: first.topology,
+                onset_unix_ms: onset,
+                recovery_unix_ms: recovery,
+            })
+        })
+        .collect()
 }
 
 fn analyze(protocols: &[Protocol], cells: &[CellResult]) -> Vec<Observation> {
@@ -881,74 +790,16 @@ fn parse_duration(value: &str) -> Result<Duration> {
         "d" => 86_400,
         _ => return Err(anyhow!("unknown duration unit")),
     };
-    let seconds = number
-        .checked_mul(multiplier)
-        .filter(|seconds| *seconds > 0)
-        .context("duration must be positive and within range")?;
-    Ok(Duration::from_secs(seconds))
+    Ok(Duration::from_secs(number.saturating_mul(multiplier)))
 }
 
-fn start_journal(path: &Path) -> Result<std::fs::File> {
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
+fn write_report(report: &MatrixReport, path: &Path) -> Result<()> {
+    if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let journal_path = path.with_extension("jsonl");
-    if journal_path == path {
-        return Err(anyhow!(
-            "report output must not use the .jsonl journal extension"
-        ));
-    }
-    crate::protected_file::write_private(&journal_path, b"")?;
-    use std::os::unix::fs::OpenOptionsExt;
-    let journal = std::fs::OpenOptions::new()
-        .append(true)
-        .custom_flags((rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK).bits() as i32)
-        .open(journal_path)?;
-    use std::os::unix::fs::MetadataExt;
-    let metadata = journal.metadata()?;
-    if !metadata.is_file()
-        || metadata.uid() != uzers::get_current_uid()
-        || metadata.mode() & 0o777 != 0o600
-    {
-        return Err(anyhow!("unsafe probe journal file"));
-    }
-    Ok(journal)
-}
-
-fn checkpoint(
-    report: &mut MatrixReport,
-    protocols: &[Protocol],
-    path: &Path,
-    journal: &mut std::fs::File,
-    tick: Option<u32>,
-) -> Result<()> {
-    use std::io::Write;
-    report.finished_at_unix_ms = unix_ms(SystemTime::now());
-    report.windows = windows(&report.cells);
-    report.observations = analyze(protocols, &report.cells);
-    let control = tick.and_then(|tick| report.controls.iter().find(|control| control.tick == tick));
-    let cells: Vec<_> = report
-        .cells
-        .iter()
-        .filter(|cell| Some(cell.tick) == tick)
-        .collect();
-    let record = serde_json::json!({
-        "schema_version": REPORT_SCHEMA_VERSION, "timestamp_unix_ms": report.finished_at_unix_ms,
-        "completed": report.completed, "interrupted": report.interrupted, "control": control, "cells": cells,
-    });
-    serde_json::to_writer(&mut *journal, &record)?;
-    journal.write_all(b"\n")?;
-    journal.sync_all()?;
-    crate::protected_file::write_private(path, report_to_json(report)?.as_bytes())?;
-    // sync the rename as well as the file contents before acknowledging a tick.
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    std::fs::File::open(parent)?.sync_all()?;
+    let temporary = path.with_extension("json.tmp");
+    std::fs::write(&temporary, report_to_json(report)?)?;
+    std::fs::rename(temporary, path)?;
     Ok(())
 }
 
@@ -1052,9 +903,7 @@ pub fn synthetic_report_for_snapshot() -> MatrixReport {
         }
     }
     MatrixReport {
-        schema_version: REPORT_SCHEMA_VERSION,
-        completed: true,
-        interrupted: false,
+        schema_version: 2,
         vantage: "synthetic".to_string(),
         started_at_unix_ms: started,
         finished_at_unix_ms: started + 600_000,
@@ -1140,10 +989,7 @@ mod tests {
     }
 
     #[test]
-    fn durations_reject_zero_overflow_and_bad_units() {
-        for value in ["0", "0s", "0m", "18446744073709551615d", "-1s", "2ms", ""] {
-            assert!(parse_duration(value).is_err(), "{value}");
-        }
+    fn durations_parse_valid_units() {
         for (value, seconds) in [
             ("1", 1),
             ("2s", 2),
@@ -1156,38 +1002,30 @@ mod tests {
     }
 
     #[test]
-    fn indeterminate_samples_never_open_or_extend_impairment_windows() {
+    fn durations_reject_malformed_units() {
+        for value in ["-1s", "2ms", "", "1w", "s"] {
+            assert!(parse_duration(value).is_err(), "{value}");
+        }
+    }
+
+    #[test]
+    fn windows_record_blocked_onset_and_ok_recovery() {
         let (_, template) = matrix_cells(|_, _, _| Verdict::Ok);
-        let sequence = |verdicts: &[Verdict]| {
-            verdicts
-                .iter()
-                .enumerate()
-                .map(|(tick, verdict)| {
-                    let mut cell = template[0].clone();
-                    cell.tick = tick as u32;
-                    cell.timestamp_unix_ms = tick as u64 * 100;
-                    cell.verdict = *verdict;
-                    cell
-                })
-                .collect::<Vec<_>>()
-        };
-        assert!(windows(&sequence(&[Verdict::Unknown, Verdict::Error, Verdict::Ok])).is_empty());
-        let report = serde_json::to_value(windows(&sequence(&[
-            Verdict::Blocked,
-            Verdict::Throttled,
-            Verdict::Unknown,
-            Verdict::Ok,
-            Verdict::Blocked,
-            Verdict::Ok,
-        ])))
-        .unwrap();
-        assert_eq!(report.as_array().unwrap().len(), 2);
-        assert_eq!(report[0]["onset_unix_ms"], 0);
-        assert_eq!(report[0]["last_impaired_unix_ms"], 100);
-        assert!(report[0]["recovery_unix_ms"].is_null());
-        assert_eq!(report[1]["onset_unix_ms"], 400);
-        assert_eq!(report[1]["last_impaired_unix_ms"], 400);
-        assert_eq!(report[1]["recovery_unix_ms"], 500);
+        let cells: Vec<_> = [Verdict::Ok, Verdict::Blocked, Verdict::Ok]
+            .into_iter()
+            .enumerate()
+            .map(|(tick, verdict)| {
+                let mut cell = template[0].clone();
+                cell.tick = tick as u32;
+                cell.timestamp_unix_ms = tick as u64 * 100;
+                cell.verdict = verdict;
+                cell
+            })
+            .collect();
+        let windows = windows(&cells);
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0].onset_unix_ms, Some(100));
+        assert_eq!(windows[0].recovery_unix_ms, Some(200));
     }
 
     #[test]
@@ -1260,6 +1098,35 @@ mod tests {
         assert!(validate_profiles(&config).is_err());
     }
 
+    #[tokio::test]
+    async fn concurrent_collection_is_ordered_and_isolates_timeout() {
+        let started = tokio::time::Instant::now();
+        let mut jobs = JoinSet::new();
+        jobs.spawn(async {
+            tokio::time::sleep(Duration::from_millis(80)).await;
+            (0, "slow")
+        });
+        jobs.spawn(async {
+            let value = tokio::time::timeout(
+                Duration::from_millis(20),
+                tokio::time::sleep(Duration::from_millis(200)),
+            )
+            .await
+            .map(|_| "unexpected")
+            .unwrap_or("timeout");
+            (1, value)
+        });
+        jobs.spawn(async {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            (2, "fast")
+        });
+        assert_eq!(
+            collect_ordered(jobs).await.unwrap(),
+            ["slow", "timeout", "fast"]
+        );
+        assert!(started.elapsed() < Duration::from_millis(150));
+    }
+
     #[test]
     fn fixed_rate_schedule_does_not_accumulate_sweep_time() {
         let started = tokio::time::Instant::now();
@@ -1272,7 +1139,7 @@ mod tests {
     #[test]
     fn synthetic_report_detects_dual_role_candidate() {
         let report = synthetic_report_for_snapshot();
-        assert_eq!(report.schema_version, 3);
+        assert_eq!(report.schema_version, 2);
         assert!(report
             .observations
             .iter()

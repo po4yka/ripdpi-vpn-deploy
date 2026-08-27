@@ -4,20 +4,7 @@ use clap::Parser;
 use vpnd::{cli, commands, config};
 
 #[tokio::main]
-async fn main() -> std::process::ExitCode {
-    match execute().await {
-        Ok(()) => std::process::ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("Error: {error:#}");
-            let code = error
-                .downcast_ref::<commands::probe_matrix::Interrupted>()
-                .map_or(1, commands::probe_matrix::Interrupted::exit_code);
-            std::process::ExitCode::from(code)
-        }
-    }
-}
-
-async fn execute() -> Result<()> {
+async fn main() -> Result<()> {
     init_tracing();
 
     let cli = cli::Cli::parse();
