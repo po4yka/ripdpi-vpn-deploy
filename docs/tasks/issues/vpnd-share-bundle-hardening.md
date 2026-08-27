@@ -2,17 +2,17 @@
 id: VPD-1787497073989478
 title: Harden share bundle token handling and file permissions
 kind: bug
-status: backlog
+status: doing
 area: vpnd
 priority: high
 risk: high
-owner: po4yka
+owner: vpnd implementation
 parent: null
 blocked_by: []
 spec_mode: required
 openspec_change: vpd-1787497073989478-vpnd-share-bundle-hardening
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-27
 related_tasks: []
 ---
 
@@ -35,3 +35,9 @@ related_tasks: []
 - Missing server_name exits nonzero naming the secrets key; no "(unset)" URLs possible.
 - Re-run after simulated crash mid-write succeeds; failed write leaves no temp residue.
 - All bundle artifacts incl. qr.svg / qr-ripdpi.svg are mode 0600.
+
+## High-priority implementation ownership
+
+- The vpnd subagent owns vpnd source/tests and vpnd documentation for share/probe-matrix hardening and audit coverage.
+- The primary agent serializes task/OpenSpec records, generated board, Makefile, shared CI/toolchain files, documentation inventory, staging, commits, and remote delivery. Agents do not commit or mutate credentials/infrastructure.
+- Worktree: `codex/complete-high-review`. All writers preserve unrelated changes and coordinate shared-file edits.
