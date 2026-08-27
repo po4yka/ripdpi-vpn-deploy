@@ -260,6 +260,12 @@ jobs:
           - amneziawg
           - geodata
           - cascade-egress
+          - cdn-front
+          - warp-outbound
+          - hysteria-realm
+          - honeypot
+          - dns-morph-bridge
+          - split-hop-egress
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -517,7 +523,7 @@ jobs:
 
   molecule-failure-scenarios:
     # Non-default Molecule scenarios that exercise red-path / failure
-    # injection plus the paired cascade classifier scenarios. Both populated
+    # injection, shared TLS permissions, and paired cascade classifiers. Both populated
     # and forced-empty are required; happy-path alone is not promotion evidence.
     name: molecule failure (${{ matrix.role }})
     runs-on: ubuntu-24.04
@@ -531,6 +537,8 @@ jobs:
             scenario: populated
           - role: cascade-ingress
             scenario: forced-empty
+          - role: hysteria-realm
+            scenario: shared-tls
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
