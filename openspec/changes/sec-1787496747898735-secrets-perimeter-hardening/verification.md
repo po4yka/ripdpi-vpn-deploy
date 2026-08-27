@@ -1,19 +1,19 @@
 ---
 task_id: "SEC-1787496747898735"
 change: "sec-1787496747898735-secrets-perimeter-hardening"
-commit_sha: "bbc346415f412ab49f296db3927ff0fbefdaa8e0"
-local: "blocked"
-local_evidence: "2026-08-27: Rust debug/release each passed 173 tests, clippy/MSRV/deny passed; make validate and cloud-init schema passed. Full make check found two existing AWG installer fresh-directory failures under umask 077; root-cause correction and a complete rerun are pending."
-remote_ci: "blocked"
-remote_ci_evidence: "PR #108 is published. Expanded hosted Molecule coverage exposed runtime and scenario defects; final required-check success and main merge are still pending."
+commit_sha: "984b4528b634b4b48fa74fac0b4cbb22b8b7b887"
+local: "passed"
+local_evidence: "Full build-gate -- make -j1 check passed under umask 077: 1024 Python tests passed, 1 existing live-scanner placeholder skipped; 55 BATS; 173 Rust release tests; 79 Terraform mocks; 102 snapshots. Release clippy, Rust 1.88 MSRV, cargo deny, Docker cloud-init schema, make validate, lint/render/schema gates passed. Separate Rust debug suite: 173 passed."
+remote_ci: "passed"
+remote_ci_evidence: "PR #108, exact implementation SHA 984b4528b634b4b48fa74fac0b4cbb22b8b7b887: CI run 33069634871 completed success; 62 successful checks and one neutral Trivy SARIF report, with both image scan jobs successful. All required checks and expanded hosted Molecule scenarios passed. This is PR evidence; protected main merge remains a delivery step."
 dry_run: "blocked"
 dry_run_evidence: "Real strict secrets precheck passed, but SSH to all three inventory hosts timed out and Tailscale requires reauthentication. No full fleet playbook dry-run completed."
 staging: "not_applicable"
-staging_evidence: "no separate staging environment exists; CI molecule convergence and check-mode security-verify cover the controls"
+staging_evidence: "No separate staging environment is configured; hosted Molecule covers role controls. Required fleet security-verify check-mode acceptance remains blocked under dry_run."
 live: "blocked"
 live_evidence: "No fleet convergence or live traffic/service acceptance ran: management access is unavailable. Local amd64 systemd containers on this arm64 Mac also fail pidfd_open with ENOSYS before roles execute; hosted amd64 Molecule is the runtime test lane, not live fleet proof."
 client: "not_applicable"
-client_evidence: "no client emitter changed; vhost headers verified via live curl under live gate"
+client_evidence: "No client emitter changed; required live vhost header curl verification remains blocked under live."
 artifact: "not_applicable"
 artifact_evidence: "no build artifacts produced by this change"
 ---
@@ -39,18 +39,14 @@ artifact_evidence: "no build artifacts produced by this change"
 - Dry-run: full-inventory `make dry-run` including security-verify in check mode.
 - Live: one node re-converged; headers curl-verified; timer observed firing once.
 
-## 2026-08-27 review
+### Final checks on the reviewed implementation
 
-The original implementation was reopened after review found executable defects.
-Local regressions do not substitute for the dry-run, staging, live, or hosted-CI categories above.
-Archive and terminal closure remain blocked until all required evidence is complete.
+- `build-gate -- make -j1 check` passed under restrictive umask 077: Python 1024 passed, 1 existing unconditional live-scanner placeholder skipped; BATS 55 passed; Rust release 173 passed; Terraform mocks 79 passed; 102 snapshots matched.
+- Release clippy, Rust 1.88 locked MSRV, cargo deny, cloud-init schema in Docker, and all render/schema/lint gates passed. `make validate` also passed after the final role edit. Rust debug independently passed 173 tests.
+- [Hosted CI run 33069634871](https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/33069634871) passed on `984b4528b634b4b48fa74fac0b4cbb22b8b7b887`. PR #108 has 62 successful checks and one neutral Trivy SARIF report; both image scan jobs succeeded. Expanded Molecule scenarios executed on hosted amd64 Linux.
+- Earlier umask, role runtime, fixture, and container validation failures are superseded by these successful reruns. Local amd64 systemd Molecule on this arm64 Mac remains unavailable (`pidfd_open` ENOSYS); hosted Molecule is the observed role-runtime evidence, not production evidence.
+- Existing cargo-deny duplicate-dependency warnings and one workflow line-length warning remain. The skipped live scanner test is not counted as acceptance.
 
-### Shared local checks on the reviewed source
+## Remaining acceptance blockers
 
-- `python3 -m pytest tests/unit -q`: 995 passed, 2 existing skips; one honeypot thread shutdown warning. The warning was reproduced only when the test fixture closes its listener while a daemon accept thread is running; it was not observed before cleanup. The stale collected-count documentation was corrected before this successful run.
-- `bats tests/bats/`: 55 passed.
-- `make tf-test`: 79 provider mock tests passed.
-- `make snapshot-check`: 102 templates matched.
-- `make validate`, actionlint, shellcheck, cargo-deny and Rust 1.88 MSRV check passed. YAML lint has one existing workflow line-length warning.
-- Render, AWG version floor, Xray guards, secrets coverage, deploy-profile, example secrets schema and bundle schema checks passed.
-- `make check` did not pass: its Docker cloud-init step lost the Colima connection. Per-role Molecule did not run. These checks must be rerun in a working container environment.
+Implementation and local/hosted regression gates passed. Archive and terminal closure remain blocked by the dry-run, staging (where required), and live categories above. SSH to all three configured production hosts timed out; this Mac requires Tailscale reauthentication. No production deployment ran.

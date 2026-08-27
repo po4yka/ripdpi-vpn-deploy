@@ -1,17 +1,17 @@
 ---
 task_id: "VPD-1787496384518490"
 change: "vpd-1787496384518490-vpnd-secrets-path-authority"
-commit_sha: "bbc346415f412ab49f296db3927ff0fbefdaa8e0"
-local: "blocked"
-local_evidence: "2026-08-27: Rust debug/release each passed 173 tests, clippy/MSRV/deny passed; make validate and cloud-init schema passed. Full make check found two existing AWG installer fresh-directory failures under umask 077; root-cause correction and a complete rerun are pending."
-remote_ci: "blocked"
-remote_ci_evidence: "PR #108 is published. Expanded hosted Molecule coverage exposed runtime and scenario defects; final required-check success and main merge are still pending."
+commit_sha: "984b4528b634b4b48fa74fac0b4cbb22b8b7b887"
+local: "passed"
+local_evidence: "Full build-gate -- make -j1 check passed under umask 077: 1024 Python tests passed, 1 existing live-scanner placeholder skipped; 55 BATS; 173 Rust release tests; 79 Terraform mocks; 102 snapshots. Release clippy, Rust 1.88 MSRV, cargo deny, Docker cloud-init schema, make validate, lint/render/schema gates passed. Separate Rust debug suite: 173 passed."
+remote_ci: "passed"
+remote_ci_evidence: "PR #108, exact implementation SHA 984b4528b634b4b48fa74fac0b4cbb22b8b7b887: CI run 33069634871 completed success; 62 successful checks and one neutral Trivy SARIF report, with both image scan jobs successful. All required checks and expanded hosted Molecule scenarios passed. This is PR evidence; protected main merge remains a delivery step."
 dry_run: "not_applicable"
 dry_run_evidence: "no Terraform surface"
 staging: "not_applicable"
 staging_evidence: "covered by local tests and CI cargo suite"
 live: "passed"
-live_evidence: "2026-08-27: real operator SOPS and Terraform state, macOS without XDG_RUNTIME_DIR, source 33d30da. Two vpnd share invocations made exactly one real SOPS call via a pass-through counter; runtime mode 0600 and private bundle files verified. Official sing-box 1.13.16 accepted the actual payload. Unpublished local token only; no recipient issuance or network delivery claimed. Both plaintext runtime files were removed with make clean."
+live_evidence: "Real operator SOPS and Terraform state, macOS without XDG_RUNTIME_DIR, exact source 984b4528b634b4b48fa74fac0b4cbb22b8b7b887: two vpnd share invocations made exactly one real SOPS call through a pass-through counter. Runtime mode 0600 and private bundle modes verified; official sing-box 1.13.16 accepted the actual payload. Unpublished local token only, no recipient issuance or delivery. All runtime plaintext and generated private files removed with make clean."
 client: "not_applicable"
 client_evidence: "recipient bundles unaffected"
 artifact: "not_applicable"
@@ -29,24 +29,16 @@ artifact_evidence: "no artifact contracts affected"
 | REQ-SECRETS-HARDEN-GATE | VPD-1787497013490086 | Test injecting chmod failure asserts nonzero exit at each call site | Passed |
 | REQ-SECRETS-HARDEN-GATE | VPD-1787497013509056 | Gate tests reject symlink-swap and bad-mode files opened through the held handle | Passed |
 
-## 2026-08-27 review
+### Final checks on the reviewed implementation
 
-The original implementation was reopened after review found executable defects.
-Local regressions do not substitute for the dry-run, staging, live, or hosted-CI categories above.
-Archive and terminal closure remain blocked until all required evidence is complete.
+- `build-gate -- make -j1 check` passed under restrictive umask 077: Python 1024 passed, 1 existing unconditional live-scanner placeholder skipped; BATS 55 passed; Rust release 173 passed; Terraform mocks 79 passed; 102 snapshots matched.
+- Release clippy, Rust 1.88 locked MSRV, cargo deny, cloud-init schema in Docker, and all render/schema/lint gates passed. `make validate` also passed after the final role edit. Rust debug independently passed 173 tests.
+- [Hosted CI run 33069634871](https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/33069634871) passed on `984b4528b634b4b48fa74fac0b4cbb22b8b7b887`. PR #108 has 62 successful checks and one neutral Trivy SARIF report; both image scan jobs succeeded. Expanded Molecule scenarios executed on hosted amd64 Linux.
+- Earlier umask, role runtime, fixture, and container validation failures are superseded by these successful reruns. Local amd64 systemd Molecule on this arm64 Mac remains unavailable (`pidfd_open` ENOSYS); hosted Molecule is the observed role-runtime evidence, not production evidence.
+- Existing cargo-deny duplicate-dependency warnings and one workflow line-length warning remain. The skipped live scanner test is not counted as acceptance.
 
-### Shared local checks on the reviewed source
+## Operator acceptance
 
-- `python3 -m pytest tests/unit -q`: 995 passed, 2 existing skips; one honeypot thread shutdown warning. The warning was reproduced only when the test fixture closes its listener while a daemon accept thread is running; it was not observed before cleanup. The stale collected-count documentation was corrected before this successful run.
-- `bats tests/bats/`: 55 passed.
-- `make tf-test`: 79 provider mock tests passed.
-- `make snapshot-check`: 102 templates matched.
-- `make validate`, actionlint, shellcheck, cargo-deny and Rust 1.88 MSRV check passed. YAML lint has one existing workflow line-length warning.
-- Render, AWG version floor, Xray guards, secrets coverage, deploy-profile, example secrets schema and bundle schema checks passed.
-- `make check` did not pass: its Docker cloud-init step lost the Colima connection. Per-role Molecule did not run. These checks must be rerun in a working container environment.
+Real operator SOPS and Terraform state, macOS without XDG_RUNTIME_DIR, exact source 984b4528b634b4b48fa74fac0b4cbb22b8b7b887: two vpnd share invocations made exactly one real SOPS call through a pass-through counter. Runtime mode 0600 and private bundle modes verified; official sing-box 1.13.16 accepted the actual payload. Unpublished local token only, no recipient issuance or delivery. All runtime plaintext and generated private files removed with make clean.
 
-## Resumed acceptance
-
-- Atomic no-follow/nonblocking descriptor gates now cover secrets, tokens, and chmod. Missing/unsafe inputs and real fd chmod failure abort every caller.
-- Make emission reuses the same protected plaintext; actual Make/emitter regression tests and a real SOPS share confirm one decrypt. The official parser passed both fixture and operator-generated payloads.
-- The remaining global local/hosted checks above still prevent archival.
+Atomic descriptor gates reject missing, symlink, FIFO, foreign-owner, and unsafe-mode inputs. Real fd chmod failure aborts each caller. Make emission consumes the same protected plaintext and does not fall back to SOPS for an explicitly invalid file. All required evidence categories are complete.

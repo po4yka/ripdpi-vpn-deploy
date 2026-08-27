@@ -21,7 +21,7 @@ Every scoped transport and defensive service converges correctly on a real node 
 - [x] ANS-1787496118906948 Quote interpolated string scalars in hysteria/templates/config.yaml.j2 via to_json (masquerade url, client name keys) matching the xray template discipline #bug !low @item:ANS-1787495907091073
 - [x] ANS-1787496118906870 Resolve the dangling awg-quick.target reference: ship a minimal target unit templated with Wants= for enabled instances, or remove the PartOf= line; assert the choice in molecule #bug !low @item:ANS-1787495907091073
 - [x] ANS-1787496118906549 Enforce a total per-connection deadline in honeypot.py.j2 computed from accept time (monotonic clock) replacing the per-recv timeout reset; count slot-exhaustion drops #bug !low @item:ANS-1787495907091073
-- [ ] ANS-1787496118906757 Run named gates for all touched roles: molecule scenarios for split-hop-egress, warp-outbound, hysteria-realm, subscription-host, amneziawg, firewall, hysteria, honeypot; then make ci-fast and make validate #test !high @item:ANS-1787495907091073
+- [x] ANS-1787496118906757 Run named gates for all touched roles: molecule scenarios for split-hop-egress, warp-outbound, hysteria-realm, subscription-host, amneziawg, firewall, hysteria, honeypot; then make ci-fast and make validate #test !high @item:ANS-1787495907091073
 
 ## Verification
 
