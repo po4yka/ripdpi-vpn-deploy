@@ -122,7 +122,7 @@ if [[ -n "${NTFY_TOPIC:-}" ]]; then
   [[ -n "${NTFY_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer ${NTFY_TOKEN}")
   msg="IP reputation finding on ${PROVIDER}:${ENV} IP=${IP}
 $(printf '%s\n' "${findings[@]}")"
-  curl -fsS -X POST \
+  curl -fsS --connect-timeout 5 --max-time 15 -X POST \
     -H "Title: IP reputation: ${PROVIDER}:${ENV}" \
     -H "Priority: high" \
     -H "Tags: warning,vpn,ip-reputation" \

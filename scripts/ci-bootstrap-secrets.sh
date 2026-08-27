@@ -74,8 +74,8 @@ hys_url="https://github.com/apernet/hysteria/releases/download/app/${hys_version
 echo "ci-bootstrap: fetching sha256 for ${xray_version} + ${hys_version}" >&2
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
-curl -fsSL -o "$tmpdir/xray.zip" "$xray_url"
-curl -fsSL -o "$tmpdir/hysteria"  "$hys_url"
+curl -fsSL --connect-timeout 5 --max-time 30 -o "$tmpdir/xray.zip" "$xray_url"
+curl -fsSL --connect-timeout 5 --max-time 30 -o "$tmpdir/hysteria"  "$hys_url"
 xray_sha="$(sha256sum "$tmpdir/xray.zip"  | awk '{print $1}')"
 hys_sha="$( sha256sum "$tmpdir/hysteria" | awk '{print $1}')"
 

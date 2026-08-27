@@ -67,7 +67,7 @@ send_alert() {
     if [[ -n "${NTFY_TOPIC:-}" ]]; then
       auth=()
       [[ -n "${NTFY_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer ${NTFY_TOKEN}")
-      curl -fsS -X POST \
+      curl -fsS --connect-timeout 5 --max-time 15 -X POST \
         -H "Title: ${title}" \
         -H "Priority: high" \
         -H "Tags: warning,vpn,asn-drift" \

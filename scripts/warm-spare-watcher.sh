@@ -47,7 +47,7 @@ notify_operator() {
     local auth=()
     [[ -n "${NTFY_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer ${NTFY_TOKEN}")
     # bash 3.2 (macOS): expand an empty array safely under set -u.
-    curl -fsS -X POST -H "Title: ${title}" -H "Priority: ${priority}" -H "Tags: ${tags}" ${auth[@]+"${auth[@]}"} --data "$body" "${ntfy_url%/}/${NTFY_TOPIC}" >/dev/null || echo "warm-spare: ntfy push failed (will retry next run)" >&2
+    curl -fsS --connect-timeout 5 --max-time 15 -X POST -H "Title: ${title}" -H "Priority: ${priority}" -H "Tags: ${tags}" ${auth[@]+"${auth[@]}"} --data "$body" "${ntfy_url%/}/${NTFY_TOPIC}" >/dev/null || echo "warm-spare: ntfy push failed (will retry next run)" >&2
   else
     echo "$body"
   fi
@@ -222,7 +222,7 @@ if [[ -n "${NTFY_TOPIC:-}" ]]; then
   auth=()
   [[ -n "${NTFY_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer ${NTFY_TOKEN}")
   # bash 3.2 (macOS): expand an empty array safely under set -u.
-  curl -fsS -X POST \
+  curl -fsS --connect-timeout 5 --max-time 15 -X POST \
     -H "Title: warm-spare: promote required ${PROVIDER}:${BLUE_ENV}" \
     -H "Priority: urgent" \
     -H "Tags: rotating_light,vpn,warm-spare" \
