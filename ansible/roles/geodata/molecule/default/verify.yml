@@ -20,9 +20,29 @@
         - /usr/local/share/xray/geoip.dat
 
     - name: Run the installed refresh service inside its sandbox
-      ansible.builtin.command:
-        cmd: systemctl start vpn-geodata-refresh.service
-      changed_when: false
+      block:
+        - name: Start the refresh service
+          ansible.builtin.command:
+            cmd: systemctl start vpn-geodata-refresh.service
+          changed_when: false
+      rescue:
+        - name: Read failed refresh service state
+          ansible.builtin.command:
+            cmd: systemctl show vpn-geodata-refresh.service --property=Result --property=ExecMainStatus
+          register: failed_refresh_state
+          changed_when: false
+
+        - name: Read failed refresh journal
+          ansible.builtin.command:
+            cmd: journalctl --unit=vpn-geodata-refresh.service --no-pager --lines=30
+          register: failed_refresh_journal
+          changed_when: false
+
+        - name: Fail with the actual sandbox diagnostics
+          ansible.builtin.fail:
+            msg: |
+              {{ failed_refresh_state.stdout }}
+              {{ failed_refresh_journal.stdout }}
 
     - name: Read the refresh service result
       ansible.builtin.command:
