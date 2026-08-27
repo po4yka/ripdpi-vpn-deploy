@@ -28,16 +28,9 @@
       peers: []
 
   pre_tasks:
-    - name: Install minimal build deps (needed by pre-flight assert only)
+    - name: Install process inspection dependency for the template-only verifier
       ansible.builtin.apt:
-        name:
-          - golang
-          - git
-          - make
-          - libmnl-dev
-          - resolvconf
-          - iproute2
-          - iptables
+        name: procps
         state: present
         update_cache: true
         cache_valid_time: 3600
