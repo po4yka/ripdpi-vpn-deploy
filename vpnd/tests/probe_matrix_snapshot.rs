@@ -20,8 +20,6 @@ fn probe_matrix_report_carries_required_top_level_fields() {
     let json = report_to_json(&report).expect("MatrixReport serialises");
     for required in [
         "\"schema_version\"",
-        "\"completed\"",
-        "\"interrupted\"",
         "\"vantage\"",
         "\"started_at_unix_ms\"",
         "\"finished_at_unix_ms\"",

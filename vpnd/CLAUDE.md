@@ -29,7 +29,7 @@ analysis pass; each per-cell shell-out is still a `Cmd` to a documented
 Make target. That preserves the "convenience layer" contract — the
 shell-out surface stays canonical, vpnd just adds the scheduling glue
 that's awkward to express in Make. Schema is versioned via
-`schema_version` (report 3, input config 2) and locked by an `insta` snapshot
+`schema_version` in the report JSON and locked by an `insta` snapshot
 in `tests/`. See `commands/probe_matrix.rs` + `docs/PROBE-MATRIX.md`.
 
 **Recipient page** — `pages/recipient.rs` renders via askama; template lives at
@@ -72,13 +72,9 @@ against `^[A-Za-z0-9_-]+$` before use.
   `NOFOLLOW|NONBLOCK`, then validates the regular-file type and current UID on
   the held descriptor. Read only after private-mode validation; harden through
   the descriptor, never through the path. Missing or empty plaintext is an error.
-- **Private artifacts share one atomic writer** — share JSON/HTML/QR and matrix
-  checkpoints create unique mode-0600 temp files, sync, and rename; unrelated
-  stale temp files are preserved and failed writes clean only their own file.
-- **Captured commands own process groups** — cancellation kills descendants,
-  not just make. Interactive `run()` keeps terminal signal behavior.
-- **Probe evidence is durable and conservative** — per-tick JSON + JSONL, explicit
-  completed/interrupted state, Unknown/Error never extends impairment windows.
+- **Private share artifacts share one atomic writer** — JSON/HTML/QR outputs
+  create unique mode-0600 temp files, sync, and rename; unrelated stale temp
+  files are preserved and failed writes clean only their own file.
 - **Ansible limits match inventory keys, not `ansible_host`** — resolve the
   `vpn` inventory group with env/provider and `vpn_service_address`, then use
   validated exact host keys. Reject missing or ambiguous registry matches.
