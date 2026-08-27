@@ -1,0 +1,17 @@
+---
+- name: Review signed network exposure policy without changing managed hosts
+  hosts: vpn
+  gather_facts: false
+  become: false
+  vars_files:
+    - "{{ lookup('env', 'NETWORK_EXPOSURE_CONFIG') | default(playbook_dir ~ '/../roles/network-exposure-gate/defaults/main.yml', true) }}"
+  pre_tasks:
+    - name: Require explicit operator review configuration
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'NETWORK_EXPOSURE_CONFIG') | length > 0
+        fail_msg: "NETWORK_EXPOSURE_CONFIG must name the reviewed operator configuration."
+  tasks:
+    - name: Validate and summarize reviewed policy
+      ansible.builtin.import_role:
+        name: network-exposure-gate

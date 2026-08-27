@@ -52,6 +52,7 @@ tiers:
   warp-outbound: tactical   # Cloudflare WARP egress; changes ASN
   subscription-host: tactical # self-service config pull; v1 default is scp
   intrusion_prevention: tactical # opt-in Fail2Ban sshd jail, nftables-native
+  network-exposure-gate: tactical # reviewed controller gate, disabled by default
   security_audit: tactical  # operator-run non-blocking host audit reports
   reality-self-steal: tactical # owned loopback TLS/H2 target for P0 REALITY
 

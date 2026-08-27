@@ -77,7 +77,11 @@ table inet filter {
     policy drop;
 
     iif "lo" accept
-    # Echo requests remain tracked after the first reply. Drop excess
+{% if (_network_exposure_plan | default({})).mode | default('disabled') in ['canary', 'enforce'] %}
+{% for prefix in _network_exposure_plan.directions.ingress %}
+    {{ 'ip6' if ':' in prefix else 'ip' }} saddr {{ prefix }} counter drop comment "exposure-ingress"
+{% endfor %}
+{% endif %}    # Echo requests remain tracked after the first reply. Drop excess
     # requests before conntrack can accept an established echo stream.
     ip protocol icmp icmp type echo-request limit rate over 10/second burst 20 packets drop
     meta l4proto ipv6-icmp icmpv6 type echo-request limit rate over 10/second burst 20 packets drop
@@ -134,7 +138,11 @@ table inet filter {
   chain forward {
     type filter hook forward priority 0;
     policy drop;
-    ct state established,related accept
+{% if (_network_exposure_plan | default({})).mode | default('disabled') in ['canary', 'enforce'] %}
+{% for prefix in _network_exposure_plan.directions.forwarded %}
+    {{ 'ip6' if ':' in prefix else 'ip' }} daddr {{ prefix }} counter drop comment "exposure-forwarded"
+{% endfor %}
+{% endif %}    ct state established,related accept
 {% if vpn.enable_amneziawg | default(false) %}
 {% if _awg_inst | length > 0 %}
 {% for inst in _awg_inst %}
@@ -157,7 +165,11 @@ table inet filter {
 
   chain output {
     type filter hook output priority 0;
-{% if egress_policy == 'strict' %}
+{% if (_network_exposure_plan | default({})).mode | default('disabled') in ['canary', 'enforce'] %}
+{% for prefix in _network_exposure_plan.directions.host_egress %}
+    {{ 'ip6' if ':' in prefix else 'ip' }} daddr {{ prefix }} counter drop comment "exposure-host-egress"
+{% endfor %}
+{% endif %}{% if egress_policy == 'strict' %}
     policy drop;
 
     oif "lo" accept

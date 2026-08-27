@@ -15,6 +15,11 @@
     - "{{ vpn_secrets_file }}"
 
   pre_tasks:
+    - name: Validate reviewed network exposure policy before host changes
+      ansible.builtin.import_role:
+        name: network-exposure-gate
+      tags: [always]
+
     - name: Ensure VPN_SECRETS_FILE was provided
       tags: [always]
       ansible.builtin.assert:

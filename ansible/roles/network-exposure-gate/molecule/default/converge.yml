@@ -1,0 +1,17 @@
+---
+- name: Converge the unchanged default firewall
+  hosts: all
+  become: true
+  vars_files:
+    - "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/exposure-fixture/vars.json"
+  vars:
+    allowed_ssh_cidrs: "{{ exposure_test_ssh_cidrs }}"
+    vpn:
+      enable_amneziawg: false
+      enable_xray_reality: false
+      enable_hysteria: false
+    public_listener_contract: []
+    network_exposure_gate:
+      mode: disabled
+  roles:
+    - role: firewall
