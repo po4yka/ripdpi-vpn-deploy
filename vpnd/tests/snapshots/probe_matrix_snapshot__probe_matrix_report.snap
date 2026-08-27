@@ -3,7 +3,9 @@ source: tests/probe_matrix_snapshot.rs
 expression: json
 ---
 {
-  "schema_version": 2,
+  "schema_version": 3,
+  "completed": true,
+  "interrupted": false,
   "vantage": "synthetic",
   "started_at_unix_ms": 1700000000000,
   "finished_at_unix_ms": 1700000600000,
@@ -294,15 +296,7 @@ expression: json
       "destination_class": "allowlist-pattern",
       "topology": "single-ip-dual-role",
       "onset_unix_ms": 1700000300000,
-      "recovery_unix_ms": null
-    },
-    {
-      "protocol": "mtproto",
-      "target_id": "allow-split",
-      "comparison_set": "allow-pair",
-      "destination_class": "allowlist-pattern",
-      "topology": "split-hop-ingress",
-      "onset_unix_ms": null,
+      "last_impaired_unix_ms": 1700000300000,
       "recovery_unix_ms": null
     },
     {
@@ -312,15 +306,7 @@ expression: json
       "destination_class": "non-allowlist-pattern",
       "topology": "single-ip-dual-role",
       "onset_unix_ms": 1700000300000,
-      "recovery_unix_ms": null
-    },
-    {
-      "protocol": "mtproto",
-      "target_id": "nonallow-split",
-      "comparison_set": "nonallow-pair",
-      "destination_class": "non-allowlist-pattern",
-      "topology": "split-hop-ingress",
-      "onset_unix_ms": null,
+      "last_impaired_unix_ms": 1700000300000,
       "recovery_unix_ms": null
     },
     {
@@ -330,15 +316,7 @@ expression: json
       "destination_class": "allowlist-pattern",
       "topology": "single-ip-dual-role",
       "onset_unix_ms": 1700000300000,
-      "recovery_unix_ms": null
-    },
-    {
-      "protocol": "xhttp-vless",
-      "target_id": "allow-split",
-      "comparison_set": "allow-pair",
-      "destination_class": "allowlist-pattern",
-      "topology": "split-hop-ingress",
-      "onset_unix_ms": null,
+      "last_impaired_unix_ms": 1700000300000,
       "recovery_unix_ms": null
     },
     {
@@ -348,15 +326,7 @@ expression: json
       "destination_class": "non-allowlist-pattern",
       "topology": "single-ip-dual-role",
       "onset_unix_ms": 1700000300000,
-      "recovery_unix_ms": null
-    },
-    {
-      "protocol": "xhttp-vless",
-      "target_id": "nonallow-split",
-      "comparison_set": "nonallow-pair",
-      "destination_class": "non-allowlist-pattern",
-      "topology": "split-hop-ingress",
-      "onset_unix_ms": null,
+      "last_impaired_unix_ms": 1700000300000,
       "recovery_unix_ms": null
     },
     {
@@ -366,15 +336,7 @@ expression: json
       "destination_class": "allowlist-pattern",
       "topology": "single-ip-dual-role",
       "onset_unix_ms": 1700000300000,
-      "recovery_unix_ms": null
-    },
-    {
-      "protocol": "tcp-trojan",
-      "target_id": "allow-split",
-      "comparison_set": "allow-pair",
-      "destination_class": "allowlist-pattern",
-      "topology": "split-hop-ingress",
-      "onset_unix_ms": null,
+      "last_impaired_unix_ms": 1700000300000,
       "recovery_unix_ms": null
     },
     {
@@ -384,15 +346,7 @@ expression: json
       "destination_class": "non-allowlist-pattern",
       "topology": "single-ip-dual-role",
       "onset_unix_ms": 1700000300000,
-      "recovery_unix_ms": null
-    },
-    {
-      "protocol": "tcp-trojan",
-      "target_id": "nonallow-split",
-      "comparison_set": "nonallow-pair",
-      "destination_class": "non-allowlist-pattern",
-      "topology": "split-hop-ingress",
-      "onset_unix_ms": null,
+      "last_impaired_unix_ms": 1700000300000,
       "recovery_unix_ms": null
     }
   ],
