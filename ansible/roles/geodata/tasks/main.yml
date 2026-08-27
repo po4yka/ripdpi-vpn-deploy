@@ -17,6 +17,13 @@
       geodata.geoip_sha256 to concrete release artifacts before enabling
       vpn.enable_geodata.
 
+- name: Install the scheduled refresher download dependency
+  ansible.builtin.apt:
+    name: curl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
 - name: Ensure geodata install directory
   ansible.builtin.file:
     path: "{{ geodata.install_dir }}"
