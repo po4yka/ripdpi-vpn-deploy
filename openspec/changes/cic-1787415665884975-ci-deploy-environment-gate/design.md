@@ -13,18 +13,19 @@ execution primitive, not a formatting risk.
 - Goals: make reviewer approval a hard second factor for credentialed runs;
   remove secret values from the template-expansion surface; keep both
   invariants machine-checked locally.
-- Non-Goals: migrating the `CI_*` secrets into environment-scoped secrets
-  (values are operator-managed; repo-level secrets behind an approval gate
-  give the same protection); changing what the workflows deploy; adding
+- Non-Goals: provisioning operator-managed credential values; changing what
+  the workflows deploy; adding
   approval flows to non-credentialed jobs.
 
 ## Decisions
 
 ### D1 — Protected GitHub Environment as the gate (chosen)
 
-A required-reviewer environment is enforced server-side: the job cannot start
-until the deployment is approved, independent of workflow file contents on the
-PR head. Alternatives rejected:
+A required-reviewer environment is enforced server-side for jobs that reference
+it: the job cannot start until the deployment is approved. Workflow authors
+remain trusted; a modified workflow can omit that reference. Deployment secrets
+belong in the protected environment, because repository-level secrets would
+still be available to jobs that omit the gate. Alternatives rejected:
 
 - Removing the label trigger entirely loses the documented PR-integration
   flow (`docs/CI-REAL-DEPLOY.md`).
@@ -48,6 +49,9 @@ A pytest contract test asserts `environment:` on both jobs and forbids
 `${{ secrets.` inside any `run:` block of either file. A dedicated zizmor
 config rule would duplicate the audit that already covers this class; the
 contract test runs in the fast local gate where contributors actually iterate.
+`make check-ci-deploy-gate` separately reads the hosted environment through the
+GitHub API and fails closed on missing reviewer rules or unavailable evidence.
+Unit tests exercise that verifier's missing-rule and API-failure behavior.
 
 ## Risks / Trade-offs
 

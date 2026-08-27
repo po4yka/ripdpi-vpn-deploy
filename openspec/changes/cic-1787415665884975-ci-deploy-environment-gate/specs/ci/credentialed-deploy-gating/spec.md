@@ -30,8 +30,14 @@ settings.
 
 - **WHEN** the referenced environment does not exist or loses its
   required-reviewer rule in repository settings
-- **THEN** the contract test fails and the gap must be remediated through the
+- **THEN** `make check-ci-deploy-gate` fails and the gap must be remediated through the
   GitHub API before credentialed runs are trusted again
+
+#### Scenario: Hosted protection cannot be inspected
+
+- **WHEN** the GitHub API request fails, times out, or returns invalid data
+- **THEN** the live gate verifier fails without claiming approval protection;
+  offline workflow tests do not substitute for this hosted check
 
 ### Requirement: REQ-DEPLOY-GATE-SECRETS — No direct secret expansion into run blocks
 

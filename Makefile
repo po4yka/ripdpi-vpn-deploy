@@ -321,6 +321,10 @@ clean:
 	  echo "shredded $(SECRETS_FILE)"; \
 	fi
 
+.PHONY: check-ci-deploy-gate
+check-ci-deploy-gate:
+	python3 scripts/check-ci-deploy-gate.py
+
 rollback-xray:
 	@test -n "$(ROLLBACK_XRAY_VERSION)" || { echo "ROLLBACK_XRAY_VERSION required"; exit 1; }
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
