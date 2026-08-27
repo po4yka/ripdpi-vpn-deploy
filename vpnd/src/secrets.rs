@@ -81,15 +81,7 @@ impl Secrets {
         use std::os::unix::fs::MetadataExt;
         let metadata = std::fs::symlink_metadata(path)
             .with_context(|| format!("inspect {}", path.display()))?;
-        let owner = std::process::Command::new("id")
-            .arg("-u")
-            .output()
-            .context("resolve current uid")?;
-        let uid = std::str::from_utf8(&owner.stdout)
-            .context("decode current uid")?
-            .trim()
-            .parse::<u32>()
-            .context("parse current uid")?;
+        let uid = uzers::get_current_uid();
         if !metadata.file_type().is_file() || metadata.uid() != uid || metadata.mode() & 0o077 != 0
         {
             return Err(anyhow!(
@@ -98,7 +90,8 @@ impl Secrets {
             ));
         }
         let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
-        let s: Secrets = serde_yaml_ng::from_slice(&bytes).context("parse decrypted secrets YAML")?;
+        let s: Secrets =
+            serde_yaml_ng::from_slice(&bytes).context("parse decrypted secrets YAML")?;
         Ok(s)
     }
 

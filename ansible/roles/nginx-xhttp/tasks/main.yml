@@ -109,6 +109,7 @@
     mode: "0644"
   no_log: true
   diff: false
+  notify: Reload nginx-xhttp
 
 - name: Drop server certificate key
   ansible.builtin.copy:
@@ -119,6 +120,7 @@
     mode: "0600"
   no_log: true
   diff: false
+  notify: Reload nginx-xhttp
 
 - name: Drop fallback server certificate (full chain) when a distinct domain is used
   ansible.builtin.copy:
@@ -129,6 +131,7 @@
     mode: "0644"
   no_log: true
   diff: false
+  notify: Reload nginx-xhttp
   when:
     - nginx_xhttp.fallback_enabled | default(false) | bool
     - (nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name)) != nginx_xhttp.server_name
@@ -142,6 +145,7 @@
     mode: "0600"
   no_log: true
   diff: false
+  notify: Reload nginx-xhttp
   when:
     - nginx_xhttp.fallback_enabled | default(false) | bool
     - (nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name)) != nginx_xhttp.server_name
