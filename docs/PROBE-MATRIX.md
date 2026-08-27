@@ -52,13 +52,18 @@ vpnd --explain probe-matrix --duration 4h --config /absolute/path/probe-matrix.y
 
 Each tick first runs one direct HTTPS control through `make probe-matrix-control`. All cells then run concurrently through `make probe-matrix-cell`. Network failure is `blocked` only when the direct control is healthy; otherwise it is `unknown`. Runtime, version, profile, TLS-validation, authentication, malformed-output, and cleanup failures are `error`.
 
-Ticks are scheduled from the original monotonic start time. A slow sweep does not shift every later tick; `sweep_duration_ms` and `overrun_ms` record when a sweep exceeds its interval.
+Ticks are scheduled from the original monotonic start time. A slow sweep does not shift every later tick; `sweep_duration_ms` and `overrun_ms` record when a sweep exceeds its interval. A duration or interval of zero is rejected. Both control and cell invocations have the configured control timeout; cancellation kills their captured process groups, including descendants.
 
-## Report schema version 2
+## Report schema version 3
 
 Reports default to `vpnd/state/probe-matrix-<unix-ms>.json`, an ignored operator-state directory. The formal schema is `contract/probe-matrix-report.schema.json`.
 
-Every cell contains `tick`, `timestamp_unix_ms`, `protocol`, `target_id`, `comparison_set`, `destination_class`, `topology`, `verdict`, optional `rtt_ms`, and optional categorical `error_kind`. It never contains the target endpoint. Windows are keyed by protocol and target. Controls and analyzer observations are top-level arrays.
+Each tick flushes a mode-0600 sibling `.jsonl` journal and atomically replaces the mode-0600 JSON report. The JSONL stream contains initial, per-tick, and terminal records with `schema_version`, `timestamp_unix_ms`, `completed`, `interrupted`, `control` (object or null), and `cells`. Tick records contain only that tick's observations; status records have no cells. Keep both files together. Output must not itself end in `.jsonl`.
+
+`completed: false, interrupted: false` identifies a running checkpoint; an abrupt crash leaves this explicitly unfinished evidence. A normal finish sets `completed: true`, which describes execution completion, not a healthy network verdict. SIGINT/SIGTERM stop child processes, preserve completed cells, mark unfinished cells `unknown`, and flush `interrupted: true, completed: false` before exiting with code 130/143. Indeterminate partial ticks never become positive filtering observations. The report schema is 3; input configuration remains schema 2 and target profiles remain schema 1.
+
+
+Every cell contains `tick`, `timestamp_unix_ms`, `protocol`, `target_id`, `comparison_set`, `destination_class`, `topology`, `verdict`, optional `rtt_ms`, and optional categorical `error_kind`. It never contains the target endpoint. Windows describe separate episodes per protocol and target. Only `blocked` or `throttled` opens an episode; `last_impaired_unix_ms` advances only on another such sample. An adjacent `ok` supplies `recovery_unix_ms`. An `unknown` or `error` ends the episode at its last observed impairment, without claiming recovery across the evidence gap. Healthy or indeterminate-only series have no windows. Controls and analyzer observations are top-level arrays.
 
 The analyzer emits:
 

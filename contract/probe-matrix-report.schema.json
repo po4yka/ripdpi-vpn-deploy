@@ -3,10 +3,12 @@
   "$id": "https://example.invalid/ripdpi-vpn-deploy/probe-matrix-report.schema.json",
   "title": "Probe matrix report",
   "type": "object",
-  "required": ["schema_version", "vantage", "started_at_unix_ms", "finished_at_unix_ms", "poll_interval_seconds", "controls", "cells", "windows", "observations"],
+  "required": ["schema_version", "completed", "interrupted", "vantage", "started_at_unix_ms", "finished_at_unix_ms", "poll_interval_seconds", "controls", "cells", "windows", "observations"],
   "additionalProperties": false,
   "properties": {
-    "schema_version": { "const": 2 },
+    "schema_version": { "const": 3 },
+    "completed": { "type": "boolean" },
+    "interrupted": { "type": "boolean" },
     "vantage": { "$ref": "#/$defs/technical_id" },
     "started_at_unix_ms": { "type": "integer", "minimum": 0 },
     "finished_at_unix_ms": { "type": "integer", "minimum": 0 },
@@ -41,11 +43,12 @@
       }
     },
     "window": {
-      "type": "object", "required": ["protocol", "target_id", "comparison_set", "destination_class", "topology", "onset_unix_ms", "recovery_unix_ms"], "additionalProperties": false,
+      "type": "object", "required": ["protocol", "target_id", "comparison_set", "destination_class", "topology", "onset_unix_ms", "last_impaired_unix_ms", "recovery_unix_ms"], "additionalProperties": false,
       "properties": {
         "protocol": { "$ref": "#/$defs/protocol" }, "target_id": { "$ref": "#/$defs/technical_id" },
         "comparison_set": { "$ref": "#/$defs/technical_id" }, "destination_class": { "$ref": "#/$defs/class" }, "topology": { "$ref": "#/$defs/topology" },
-        "onset_unix_ms": { "type": ["integer", "null"], "minimum": 0 }, "recovery_unix_ms": { "type": ["integer", "null"], "minimum": 0 }
+        "onset_unix_ms": { "type": "integer", "minimum": 0 },
+        "last_impaired_unix_ms": { "type": "integer", "minimum": 0 }, "recovery_unix_ms": { "type": ["integer", "null"], "minimum": 0 }
       }
     },
     "observation": {

@@ -168,6 +168,7 @@ impl Cmd {
         // Same orphan-prevention contract as run(): dropped futures must kill
         // the child, not leave it probing in the background.
         cmd.kill_on_drop(true)
+            .process_group(0)
             .args(self.args.iter())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
@@ -178,6 +179,7 @@ impl Cmd {
             cmd.current_dir(cwd);
         }
         let mut child = cmd.spawn()?;
+        let _group = CaptureGroup::new(child.id())?;
         let stdout = child.stdout.take().ok_or_else(|| anyhow!("no stdout"))?;
         let mut buf = String::new();
         let mut reader = BufReader::new(stdout).lines();
@@ -195,6 +197,28 @@ impl Cmd {
             ));
         }
         Ok(Output { rc, stdout: buf })
+    }
+}
+
+/// Only captured, noninteractive commands get a dedicated group. Keep this
+/// guard alive until capture finishes; cancellation must also kill descendants
+/// that inherited stdout, otherwise a timed-out probe can continue indefinitely.
+struct CaptureGroup(rustix::process::Pid);
+
+impl CaptureGroup {
+    fn new(id: Option<u32>) -> Result<Self> {
+        let pid = id
+            .and_then(|id| i32::try_from(id).ok())
+            .and_then(rustix::process::Pid::from_raw)
+            .filter(|pid| *pid != rustix::process::getpgrp())
+            .ok_or_else(|| anyhow!("invalid captured process group"))?;
+        Ok(Self(pid))
+    }
+}
+
+impl Drop for CaptureGroup {
+    fn drop(&mut self) {
+        let _ = rustix::process::kill_process_group(self.0, rustix::process::Signal::KILL);
     }
 }
 
