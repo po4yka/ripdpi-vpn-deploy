@@ -3,15 +3,15 @@ task_id: SEC-1787843484501357
 change: sec-1787843484501357-upcloud-firewall-activation
 commit_sha: null
 local: passed
-local_evidence: "2026-08-27: make validate passed; all 96 native Terraform tests and 45 Conftest policy tests passed; 69 focused pytest regressions passed; actionlint, strict offline zizmor, task validation and diff checks passed."
-remote_ci: required
-remote_ci_evidence: null
-dry_run: blocked
-dry_run_evidence: Exact-source live plan requires separately authorized provider access; no apply is authorized.
+local_evidence: "2026-08-27: make validate passed; 96 native Terraform tests, 45 Conftest policy tests and 1056 unit tests passed (one existing network-scanner skip). These checks do not prove complete stateless return paths."
+remote_ci: passed
+remote_ci_evidence: "PR 110 at 4110fa1dddb81d070c4c05c05b23c4f6a47cc9a9: CI 33095973167 passed; 62 checks succeeded and one was neutral. Merge remains blocked by a valid P1 review finding."
+dry_run: passed
+dry_run_evidence: "Operator-owned isolated plan at 9b02486ee76819e2a69447e26a94c2753340d06b exited 2 (successful diff): server and SSH trigger no-op, only 16-rule update, no replacement, policy equal after optional-field normalization. No apply."
 staging: not_applicable
 staging_evidence: Native mock tests exercise source behavior; the existing node rollout is a separate required live gate.
 live: blocked
-live_evidence: Recovery reported manually activated rules and restored DNS; that is not evidence of applying this source revision.
+live_evidence: "No source apply or complete forwarding acceptance. Review found missing generic TCP/UDP and IPv6 return paths; unconditional activation is not deployment-ready."
 client: not_applicable
 client_evidence: No client contract changes.
 artifact: not_applicable
@@ -41,10 +41,29 @@ source copy failed as expected; this is offline behavior proof, not live proof.
 
 The primary agent additionally observed 69 listener/provider/environment and
 workflow regression tests passing, plus actionlint and strict offline zizmor.
-Independent read-only review found no blocking defect. The primary agent ran
+The initial independent review approval was withdrawn after the P1 finding below.
+The primary agent ran
 `make validate` successfully, including all four provider validations, gitleaks,
 Ansible production lint (zero failures/warnings), and syntax checking. All
 96 native Terraform tests and 45 Conftest policy tests passed. The additional
 operator `tf-conftest` plan stopped before provider access because this isolated
 worktree intentionally has no production tfvars; no live plan or apply was run.
-Exact-SHA hosted CI remains required.
+The full local unit suite subsequently passed: 1056 passed and one existing
+network-scanner skip. The original CI failed only because the documented test
+count had not been incremented; the documentation fix passed CI 33095973167.
+
+## Blocking review finding
+
+PR 110 review correctly identified that the provider's Public/Utility firewall
+is stateless. A reply from remote TCP/443 to guest TCP/40000 matches neither a
+listener rule nor a DNS reply rule, then reaches the terminal deny. Generic
+TCP/UDP VPN forwarding and IPv6 return traffic need a complete policy too.
+Documenting this as a residual risk was insufficient for unconditional activation.
+The source is not approved for merge or apply; the task stays open.
+
+The operator-owned exact-source plan confirms that the existing live policy
+matches the candidate after rule-order/comment/optional-field normalization.
+It does not prove that either policy supports every required traffic path.
+Changing the default to disable the firewall would weaken an already-enabled
+node and is not an acceptable workaround. A broader return policy requires
+explicit network-owner coordination and separate live forwarding acceptance.

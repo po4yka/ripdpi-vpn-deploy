@@ -2,7 +2,7 @@
 id: SEC-1787843484501357
 title: Require UpCloud provider firewall activation
 kind: bug
-status: doing
+status: blocked
 area: security
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: sec-1787843484501357-upcloud-firewall-activation
 created: 2026-08-27
 updated: 2026-08-27
 related_tasks: []
+status_detail: PR review confirmed that the stateless provider policy models DNS replies but not generic TCP/UDP or IPv6 return traffic. Unconditional activation is not deployable; source merge and apply are blocked pending an approved complete return-path policy or an explicit activation guard. The exact-source isolated plan passed without replacement and matched the live rule policy; this is not live forwarding acceptance.
 ---
 
 ## Goal
