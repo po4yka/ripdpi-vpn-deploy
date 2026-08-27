@@ -72,7 +72,7 @@ def test_health_gate_rejects_successful_http_with_inactive_tunnel() -> None:
     from jinja2 import Environment
 
     gate = _task_by_name("Verify WARP exit IP is reachable")["failed_when"]
-    evaluate = Environment().compile_expression(gate)
+    evaluate = Environment(autoescape=True).compile_expression(gate)
     assert evaluate(warp_trace={"rc": 0, "stdout": "warp=off\n"})
     assert evaluate(warp_trace={"rc": 7, "stdout": "warp=on\n"})
     assert not evaluate(warp_trace={"rc": 0, "stdout": "warp=on\n"})
