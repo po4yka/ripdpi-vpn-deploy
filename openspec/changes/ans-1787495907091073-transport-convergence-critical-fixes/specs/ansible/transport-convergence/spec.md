@@ -44,10 +44,17 @@ Mirror reconciliation MUST NOT delete the revoked-hashes file, SSH known_hosts, 
 
 The amneziawg config-change handler MUST apply changes with a verb that succeeds regardless of instance active state and reapplies interface-level configuration (address, routes), not peer-only synchronization.
 
+The AWG acceptance toolchain MUST initialize a new command directory with its exact ownership and mode under a restrictive umask, while rejecting unsafe pre-existing directories without modifying them.
+
 #### Scenario: peer rotation on a stopped instance
 
 - **WHEN** credential rotation notifies the handler while one AWG instance is inactive
 - **THEN** the play does not abort at handler flush and the instance converges on next start
+
+#### Scenario: Toolchain activation under a restrictive umask
+
+- **WHEN** the acceptance toolchain initializes a previously absent command directory under umask 077
+- **THEN** the new directory receives the required mode through its ownership-checked descriptor, while unsafe pre-existing directories remain unchanged and are rejected
 
 ### Requirement: REQ-CHECKMODE-SAFE-PROBES — Read-only probes MUST execute under check mode
 

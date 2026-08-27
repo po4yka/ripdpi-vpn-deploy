@@ -14,6 +14,7 @@ Ten defects from the cloud-init → Ansible audit (2026-08-23) each break conver
 - hysteria-realm access: append-only supplementary group on the existing user task (rejected: SupplementaryGroups in the unit — the user task is the single identity surface).
 - Mirror state: rsync excludes in the pull script (rejected: relocating files — the revoked path is already referenced by the Python service defaults and molecule fixtures).
 - AWG handler: restart (rejected: conditional reload-then-start — two verbs for one lifecycle, and reload cannot apply address/route changes).
+- The AWG acceptance toolchain must also initialize its command directory under restrictive operator umasks. Set the exact mode only on a newly created, ownership-checked directory descriptor; never repair or accept an unsafe pre-existing directory.
 - UFW probe: `check_mode: false` on the status command, matching the adjacent `sshd -T` probe.
 - Honeypot: absolute monotonic deadline per connection (rejected: per-recv timeout increase — does not bound total hold time).
 
@@ -21,6 +22,7 @@ Ten defects from the cloud-init → Ansible audit (2026-08-23) each break conver
 
 - Roles owned by this change: split-hop-egress, warp-outbound, hysteria-realm, subscription-host, amneziawg, firewall, hysteria, honeypot (tasks/, templates/, handlers/, molecule/).
 - No Terraform, vpnd, secrets-schema, or listener-contract surface changes.
+- The required full gate exposed a fresh-command-directory defect in `scripts/install-real-vps-awg-client-tools.py`; its narrow creation fix and provisioning regressions are included as an AWG acceptance prerequisite.
 
 ## Risks / Trade-offs
 
