@@ -105,6 +105,14 @@ def main() -> int:
             print(f"removed {len(stale)} orphan golden(s):")
             for rel in stale:
                 print(f"  {rel}")
+        if diffs:
+            print(
+                f"{len(diffs)} template(s) failed to render; their goldens were NOT refreshed:",
+                file=sys.stderr,
+            )
+            for error in diffs:
+                print(f"  {error}", file=sys.stderr)
+            return 1
         return 0
 
     if diffs:
