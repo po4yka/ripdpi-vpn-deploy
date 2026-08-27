@@ -4,12 +4,35 @@
 #   1. GeoIP DB cache file lands at expected path (/usr/local/share/xray/).
 #   2. sha256 of the cached file matches the fixture planted in prepare.yml.
 #   3. Database refresh timer is installed and enabled.
-# No live network call is made — the fixture was seeded in prepare.yml.
+# The installed systemd service downloads local fixtures through its sandbox.
+# This does not exercise a live upstream release or an active Xray daemon.
 
 - name: Verify geodata role
   hosts: all
   become: true
   tasks:
+    - name: Remove cached outputs to require a real refresh download
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /usr/local/share/xray/geosite.dat
+        - /usr/local/share/xray/geoip.dat
+
+    - name: Run the installed refresh service inside its sandbox
+      ansible.builtin.command:
+        cmd: systemctl start vpn-geodata-refresh.service
+      changed_when: false
+
+    - name: Read the refresh service result
+      ansible.builtin.command:
+        cmd: systemctl show vpn-geodata-refresh.service --property=Result --property=ExecMainStatus
+      register: refresh_result
+      changed_when: false
+      failed_when: >-
+        'Result=success' not in refresh_result.stdout
+        or 'ExecMainStatus=0' not in refresh_result.stdout
+
     - name: geosite.dat is present at expected install path
       ansible.builtin.stat:
         path: /usr/local/share/xray/geosite.dat

@@ -34,13 +34,15 @@ provisioner:
 verifier:
   name: ansible
 
-# AmneziaWG userspace requires kernel features that aren't reliably
-# available in a Docker container. Standard sequence is reduced to
-# syntax-only to catch task-file regressions without trying to bring
-# up an awg interface.
+# The fixture renders real configuration and target templates without
+# bringing up AWG or requiring TUN. Runtime lifecycle acceptance stays a
+# separate real-node check; the config assertions must still execute here.
 scenario:
   test_sequence:
     - dependency
     - syntax
     - create
+    - converge
+    - idempotence
+    - verify
     - destroy

@@ -122,25 +122,54 @@
       # Same note as above — absent when install_warp_cli: false.
       failed_when: false
 
-    # Tunnel-down fixture: curl succeeds (rc=0) but the trace says the
-    # WARP tunnel is off. The conjunctive-free gate must treat this as
-    # a failure — curl success alone never passes.
-    - name: Run trace fixture with inactive tunnel (warp=off, rc=0)
-      ansible.builtin.command:
-        cmd: >-
-          curl --max-time 1 --socks5-hostname 127.0.0.1:40000
-          https://www.cloudflare.com/cdn-cgi/trace
+    - name: Reject a successful trace response from an inactive tunnel
       environment:
         WARP_TRACE_FIXTURE: warp-off
-      register: warp_off_trace
-      changed_when: false
-      failed_when: false
+      block:
+        - name: Run the actual role with the inactive-tunnel response
+          ansible.builtin.include_role:
+            name: warp-outbound
+          vars:
+            warp_outbound:
+              install_warp_cli: false
+              mode: proxy
+              socks_port: 40000
 
-    - name: Inactive-tunnel trace fails the health gate
-      ansible.builtin.assert:
-        that:
-          - warp_off_trace.rc != 0 or 'warp=on' not in warp_off_trace.stdout
-        success_msg: "Gate correctly rejects curl-success with warp=off"
-        fail_msg: >-
-          Health gate passed on an inactive tunnel:
-          rc={{ warp_off_trace.rc }} stdout={{ warp_off_trace.stdout }}
+        - name: Fail if the role accepts the inactive tunnel
+          ansible.builtin.fail:
+            msg: The actual WARP health gate accepted warp=off
+      rescue:
+        - name: Require failure from the role health gate
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Verify WARP exit IP is reachable'
+              - ansible_failed_result.rc == 0
+              - "'warp=off' in ansible_failed_result.stdout"
+
+    - name: Reject an empty signing-key pin before repository installation
+      block:
+        - name: Run the actual installer with an empty pin
+          ansible.builtin.include_role:
+            name: warp-outbound
+          vars:
+            warp_outbound:
+              install_warp_cli: true
+              pubkey_sha256: ""
+
+        - name: Fail if the role accepts an empty signing-key pin
+          ansible.builtin.fail:
+            msg: The actual WARP installer accepted an empty key pin
+      rescue:
+        - name: Require failure from the signing-key pin preflight
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Assert the repository signing key pin is present'
+
+    - name: Empty pin leaves the repository and key absent
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/apt/sources.list.d/cloudflare-warp.list
+        - /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+      register: rejected_install_artifacts
+      failed_when: rejected_install_artifacts.stat.exists

@@ -1,10 +1,7 @@
 ---
-# Converge geodata role using fixture files seeded by prepare.yml.
-# The fixture checksums are read from /tmp/geodata-fixture-checksums.env
-# (written by prepare.yml) so the role's checksum assertion passes without
-# any live network fetch. The get_url tasks see the files already present
-# with matching checksums and skip the download.
-- name: Converge geodata role (fixture-backed, no live download)
+# Exercise real get_url and sandboxed curl downloads against pinned local
+# files; source fixtures stay outside PrivateTmp and outside install_dir.
+- name: Converge geodata role with pinned local downloads
   hosts: all
   become: true
 
@@ -27,11 +24,8 @@
     - role: geodata
       vars:
         geodata:
-          # Point at localhost URLs that will 404 — the role's get_url uses
-          # force: true but the checksum guard means it skips if the file at
-          # dest already has the right sha256. prepare.yml pre-seeded both.
-          geosite_url: "http://127.0.0.1:0/geosite.dat"
-          geoip_url: "http://127.0.0.1:0/geoip.dat"
+          geosite_url: "file:///var/lib/molecule-geodata-source/geosite.dat"
+          geoip_url: "file:///var/lib/molecule-geodata-source/geoip.dat"
           geosite_sha256: "{{ _geosite_sha256 }}"
           geoip_sha256: "{{ _geoip_sha256 }}"
           install_dir: /usr/local/share/xray

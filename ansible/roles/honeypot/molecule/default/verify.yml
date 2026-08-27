@@ -32,6 +32,38 @@
       register: script
       failed_when: not script.stat.exists or not script.stat.executable
 
+    - name: Actual service bounds a client that continually dribbles bytes
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import runpy
+            import socket
+            import time
+
+            config = runpy.run_path("/usr/local/bin/honeypot.py")
+            budget = config["CONNECTION_DEADLINE_SECONDS"]
+            started = time.monotonic()
+            closed = False
+            with socket.create_connection(("127.0.0.1", 4443), timeout=2) as client:
+                client.settimeout(0.1)
+                while time.monotonic() - started < budget + 3:
+                    try:
+                        client.sendall(b"x")
+                        if client.recv(1) == b"":
+                            closed = True
+                            break
+                    except socket.timeout:
+                        continue
+                    except (BrokenPipeError, ConnectionResetError):
+                        closed = True
+                        break
+            elapsed = time.monotonic() - started
+            assert closed, f"dribbling client exceeded deadline: {elapsed:.2f}s"
+            assert budget * 0.8 <= elapsed < budget + 3, elapsed
+      changed_when: false
+
     - name: Logrotate timer is enabled
       ansible.builtin.command:
         cmd: systemctl is-enabled --quiet honeypot-logrotate.timer
