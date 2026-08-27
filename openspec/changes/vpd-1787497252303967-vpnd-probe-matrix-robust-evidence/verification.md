@@ -12,10 +12,10 @@ staging: required
 staging_evidence: ""
 live: required
 live_evidence: ""
-client: not_applicable
-client_evidence: client emitters unaffected
+client: blocked
+client_evidence: "Schema 3 is withheld from this main candidate until po4yka/RIPDPI synchronizes the vendored probe report schema. Contract-sync run 33079404221 detected the exact mismatch; no gate is bypassed."
 artifact: not_applicable
-artifact_evidence: report JSON consumed in place, no artifact contracts
+artifact_evidence: No release artifact is published; report schema validation is covered by local and client evidence categories.
 ---
 
 # Verification

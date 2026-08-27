@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "All touched external curl calls have explicit connection and total deadlines; existing stricter deadlines remain intact. Implementation verified at 1221ccb59ae90f4d5d7fc3951018dcbef1634841: local make check passed (1055 pytest, one pre-existing network-scan skip, 55 Bats, 79 Terraform tests, 45 Conftest tests, 102 snapshots); hosted CI run 33079404315 passed all 51 jobs. Probe schema synchronization is a separate withheld task.",
+  "execution_sha256": "dcf586f9ae401f451c699e418f66bb0e0ef85bc788de1bc842c09f48c3b081b4",
+  "issue_sha256": "37638b53676449b0dc86a6f511bacb09d65ad6d2e295b74fdeda2b1c73209e08",
+  "outcome": "done",
+  "prepared_at": "2026-08-27T14:12:47Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "MON-1787495848936301"
+}

@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Snapshot tests prove renderer failures are reported and fail the update instead of publishing incomplete goldens. Implementation verified at 1221ccb59ae90f4d5d7fc3951018dcbef1634841: local make check passed (1055 pytest, one pre-existing network-scan skip, 55 Bats, 79 Terraform tests, 45 Conftest tests, 102 snapshots); hosted CI run 33079404315 passed all 51 jobs. Probe schema synchronization is a separate withheld task.",
+  "execution_sha256": "2f297dfb213b83bcd89a9be19c8ab86f10cfcc52697335b54adefadfde358923",
+  "issue_sha256": "74236d167f720a8ca6d4decb2357fa7dc6fad8cdafd238ae7e497839bc32bedd",
+  "outcome": "done",
+  "prepared_at": "2026-08-27T14:12:46Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "TST-1787495848194568"
+}
