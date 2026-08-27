@@ -133,7 +133,7 @@ IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" ou
 # check-host.net rest API: GET /check-tcp?host=<ip>:<port>&node=<n1>&node=<n2>…
 # returns a request_id; results are polled at /check-result/<request_id>.
 NODE_PARAMS="$(echo "$NODES" | tr ',' '\n' | sed 's/^/\&node=/' | tr -d '\n')"
-if ! REQ="$(curl -fsS -H 'Accept: application/json' \
+if ! REQ="$(curl -fsS --connect-timeout 5 --max-time 20 -H 'Accept: application/json' \
   "https://check-host.net/check-tcp?host=${IP}:443${NODE_PARAMS}")"; then
   API_ERROR=1
   echo "check-host.net request failed" >&2
@@ -149,7 +149,7 @@ fi
 # Poll up to 30s for results
 for _ in $(seq 1 15); do
   sleep 2
-  if ! RESULT="$(curl -fsS -H 'Accept: application/json' \
+  if ! RESULT="$(curl -fsS --connect-timeout 5 --max-time 20 -H 'Accept: application/json' \
     "https://check-host.net/check-result/${REQUEST_ID}")"; then
     API_ERROR=1
     echo "check-host.net result request failed" >&2

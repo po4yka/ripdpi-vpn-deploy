@@ -86,10 +86,10 @@ trap 'rm -rf "${tmpdir}"' EXIT
 # Download binary and checksums
 # ---------------------------------------------------------------------------
 echo "Downloading ${binary_name} ..."
-curl -fsSL -o "${tmpdir}/vpnd" "${binary_url}"
+curl -fsSL --connect-timeout 5 --max-time 30 -o "${tmpdir}/vpnd" "${binary_url}"
 
 echo "Downloading SHA256SUMS ..."
-curl -fsSL -o "${tmpdir}/SHA256SUMS" "${sums_url}"
+curl -fsSL --connect-timeout 5 --max-time 30 -o "${tmpdir}/SHA256SUMS" "${sums_url}"
 
 # ---------------------------------------------------------------------------
 # Verify checksum

@@ -80,7 +80,7 @@ run_dtls() {
 }
 
 run_baseline() {
-  if curl -fsS --max-time 8 -o /dev/null "https://${CANARY_BASELINE_HOST}/cdn-cgi/trace"; then
+  if curl -fsS --connect-timeout 5 --max-time 8 -o /dev/null "https://${CANARY_BASELINE_HOST}/cdn-cgi/trace"; then
     echo pass
   else
     echo fail
@@ -155,7 +155,7 @@ if [[ -f "$yest_file" ]]; then
     if [[ -n "${NTFY_TOPIC:-}" ]]; then
       auth=()
       [[ -n "${NTFY_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer ${NTFY_TOKEN}")
-      curl -fsS -X POST \
+      curl -fsS --connect-timeout 5 --max-time 15 -X POST \
         -H "Title: TSPU canary drift" \
         -H "Priority: high" \
         -H "Tags: warning,tspu,canary" \

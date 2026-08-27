@@ -93,7 +93,7 @@ install_reali() {
   uname_s="$(uname -s)"
   if [[ "$uname_s" == "Linux" ]]; then
     echo "fetching RealiTLScanner ${REALI_VERSION} (Linux amd64)" >&2
-    curl -fsSL --retry 3 -o "${REALI_BIN}.tmp" "$REALI_LINUX_URL"
+    curl -fsSL --connect-timeout 5 --max-time 30 --retry 3 -o "${REALI_BIN}.tmp" "$REALI_LINUX_URL"
     local got
     got="$(shasum -a 256 "${REALI_BIN}.tmp" | awk '{print $1}')"
     if [[ "$got" != "$REALI_LINUX_SHA256" ]]; then
