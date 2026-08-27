@@ -2221,7 +2221,7 @@ def command_steps_add(args: argparse.Namespace) -> int:
     else:
         content = f"# {document.task_id}\n\n## Execution\n\n{record}"
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
-    with os.fdopen(os.open(path, flags, 0o644), "a", encoding="utf-8") as handle:
+    with os.fdopen(os.open(path, flags, 0o600), "a", encoding="utf-8") as handle:
         handle.write(content)
         handle.flush()
         os.fsync(handle.fileno())

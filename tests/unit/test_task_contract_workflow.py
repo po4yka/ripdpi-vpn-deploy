@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -57,10 +58,12 @@ def test_steps_add_allocates_backlink_defaults_and_preserves_content(portfolio, 
     issue = portfolio.add_simple_task()
     document = taskctl.read_document(issue)
     path = taskctl.expected_execution_path(portfolio.root, document)
+    path.chmod(0o640)
     previous = path.read_bytes()
     assert _add(portfolio, document.task_id, "Verify the failure path") == 0
     steps = taskctl.read_steps(path)
     assert path.read_bytes().startswith(previous)
+    assert path.stat().st_mode & 0o777 == 0o640
     assert len(steps) == 2 and not steps[-1].done
     assert steps[-1].item_id == document.task_id
     assert steps[-1].text == f"Verify the failure path #chore !high @item:{document.task_id}"
@@ -76,7 +79,12 @@ def test_steps_add_bootstraps_and_continues_only_selected_planning(portfolio, ca
     (change / "verification.md").unlink()
     with pytest.raises(taskctl.ContractError, match="missing execution"):
         taskctl.load_state(portfolio.root)
-    assert _add(portfolio, document.task_id, "Implement guard") == 0
+    previous_umask = os.umask(0)
+    try:
+        assert _add(portfolio, document.task_id, "Implement guard") == 0
+    finally:
+        os.umask(previous_umask)
+    assert (change / "tasks.md").stat().st_mode & 0o777 == 0o600
     first = (change / "tasks.md").read_bytes()
     assert _add(portfolio, document.task_id, "Test rejection", "--kind", "bug", "--priority", "critical") == 0
     assert (change / "tasks.md").read_bytes().startswith(first)
