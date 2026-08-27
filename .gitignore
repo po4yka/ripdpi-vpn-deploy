@@ -59,6 +59,10 @@ output/
 tmp/
 vpnd/state/
 vpnd/config/*.yaml
+# Client credential QR payloads
+*.qr.png
+*.qr.png.*
+
 # Tasking toolchain dependencies (reproducible via make task-tools)
 tools/tasking/node_modules/
 

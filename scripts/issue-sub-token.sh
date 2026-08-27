@@ -21,6 +21,9 @@
 # The token IS the bearer. Distribute the URL over a secure channel.
 set -euo pipefail
 
+# QR payloads contain credentials; create them owner-only.
+umask 077
+
 CLIENT="${1:-}"
 [[ -n "$CLIENT" && "$CLIENT" != "-h" && "$CLIENT" != "--help" ]] || {
   sed -n '2,/^set -euo/p' "$0" | sed '$d' >&2
@@ -338,6 +341,13 @@ if (( EMIT_QR )); then
   command -v qrencode >/dev/null 2>&1 || {
     echo "qrencode not installed; skip --qr" >&2; exit 0; }
   qr_out="${CLIENT}.sub.qr.png"
-  echo "$url" | qrencode -t PNG -o "$qr_out"
+  # Replace atomically so legacy 0644 files never expose the new payload.
+  (
+    qr_tmp="$(mktemp "${qr_out}.XXXXXX")"
+    trap 'rm -f "$qr_tmp"' EXIT
+    echo "$url" | qrencode -t PNG -o "$qr_tmp"
+    chmod 0600 "$qr_tmp"
+    python3 -c 'import os, sys; os.replace(sys.argv[1], sys.argv[2])' "$qr_tmp" "$qr_out"
+  )
   echo "QR rendered: $qr_out"
 fi

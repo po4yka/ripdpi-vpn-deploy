@@ -20,3 +20,8 @@ def _ignored_by_repository(tmp_path: Path, candidate: str) -> None:
 
 def test_tasking_dependencies_are_ignored_without_global_config(tmp_path: Path) -> None:
     _ignored_by_repository(tmp_path, "tools/tasking/node_modules/package/index.js")
+
+
+def test_credential_qr_artifacts_are_ignored_without_global_config(tmp_path: Path) -> None:
+    _ignored_by_repository(tmp_path, "phone.sub.qr.png")
+    _ignored_by_repository(tmp_path, "phone.sub.qr.png.Ab12Cd")

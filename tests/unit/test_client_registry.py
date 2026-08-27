@@ -204,3 +204,31 @@ def test_issuer_revoke_hint_names_the_key_the_role_consumes() -> None:
     iterated = set(re.findall(r"for \w+ in subscription\.(\w+)", role_tasks))
     assert iterated == {"revoked_tokens"}
     assert set(re.findall(r"subscription\.(revoked_\w+)", ISSUER.read_text())) == iterated
+
+
+@pytest.mark.parametrize('script_name,arguments,artifact', [
+    ('issue-sub-token.sh', ['--qr'], 'phone.sub.qr.png'),
+    ('issue-bootstrap.sh', ['--qr'], 'phone.bootstrap.qr.png'),
+    ('emit-qr.sh', [], 'phone.qr.png'),
+])
+@pytest.mark.parametrize('legacy_output', [False, True])
+def test_qr_output_is_private_at_creation(tmp_path, script_name, arguments, artifact, legacy_output):
+    env, _, _, _ = _harness(tmp_path)
+    env['QR_MODE_LOG'] = str(tmp_path / 'qr-mode')
+    if legacy_output:
+        (tmp_path / artifact).write_text('old credential')
+        (tmp_path / artifact).chmod(0o644)
+    _write_executable(tmp_path / 'bin/qrencode', '''#!/usr/bin/env python3
+import os, pathlib, stat, sys
+output = pathlib.Path(sys.argv[sys.argv.index('-o') + 1])
+with output.open('wb') as stream:
+    stream.write(sys.stdin.buffer.read())
+    pathlib.Path(os.environ['QR_MODE_LOG']).write_text(str(stat.S_IMODE(os.fstat(stream.fileno()).st_mode)))
+''')
+    result = subprocess.run(
+        ['bash', str(REPO_ROOT / 'scripts' / script_name), 'phone', *arguments],
+        env=env, cwd=tmp_path, text=True, capture_output=True, timeout=20, umask=0o022,
+    )
+    assert result.returncode == 0, result.stderr
+    assert int((tmp_path / 'qr-mode').read_text()) == 0o600
+    assert (tmp_path / artifact).stat().st_mode & 0o777 == 0o600
