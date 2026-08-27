@@ -18,13 +18,26 @@ surface is healthy".
 ## When it runs
 
 The workflow is intentionally NOT triggered on every push — it burns
-provider credit and takes ~15-20 minutes per run. Two triggers:
+provider credit and takes ~15-20 minutes per run. Three triggers:
 
   * **workflow_dispatch** — manual: Actions → "real-vps-deploy" →
     Run workflow. Optional `zone` input.
   * **pull_request labeled `ci-real-deploy`** — a maintainer
     consciously adds the label when a PR touches provisioning,
     role ordering, or cloud-init.
+  * **schedule** — Mondays at 06:00 UTC.
+
+Every trigger waits for a required reviewer to approve the deployment on the
+protected `ci-real-deploy` GitHub Environment before any job step runs. A PR
+label alone is insufficient. The same gate applies to
+`transport-reachability-matrix`. Before trusting a credentialed run, execute
+`make check-ci-deploy-gate`: this read-only check fails if the environment is
+missing, has no required reviewer, or cannot be verified through the GitHub API.
+The local workflow contract tests cannot inspect hosted repository settings.
+
+Workflow authors remain trusted: a job is protected only while it references
+the protected environment. Keep deployment credentials as environment secrets;
+repository-level secrets are also available to workflows that omit that gate.
 
 The job refuses to start on a fork PR (secrets aren't exposed there)
 and uses per-distro concurrency groups so two runs for the same distro
