@@ -1,8 +1,8 @@
 ---
 # Full converge for warp-outbound in a privileged systemd container.
 # The real cloudflare-warp CLI cannot register in CI (no reachable
-# Cloudflare endpoint), so we stub it and systemd-networkd here so the
-# role tasks succeed and we can assert service-unit + fallback state.
+# Cloudflare endpoint), so we stub the CLI and service. Proxy mode does
+# not require managing systemd-networkd in this fixture.
 
 - name: Converge warp-outbound role
   hosts: all
@@ -17,13 +17,6 @@
       routing_tag: warp-out
 
   pre_tasks:
-    - name: Install systemd-networkd if absent
-      ansible.builtin.apt:
-        name: systemd-networkd
-        state: present
-        update_cache: true
-        cache_valid_time: 3600
-
     - name: Ensure /usr/bin exists (stub target)
       ansible.builtin.file:
         path: /usr/bin
