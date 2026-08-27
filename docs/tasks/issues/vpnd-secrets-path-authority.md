@@ -2,7 +2,7 @@
 id: VPD-1787496384518490
 title: Make vpnd the single authority for the decrypted secrets path and redaction
 kind: bug
-status: review
+status: blocked
 area: vpnd
 priority: critical
 risk: high
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: vpd-1787496384518490-vpnd-secrets-path-authority
 created: 2026-08-23
-updated: 2026-08-25
+updated: 2026-08-27
 related_tasks: []
+status_detail: Runtime/redaction fixes committed; atomic open and held-fd chmod need rustix approval, then hosted CI and real macOS share acceptance.
 ---
 
 ## Goal
@@ -37,3 +38,8 @@ One resolved decrypted-secrets path everywhere: make receives it explicitly, doc
 - Bundle AND AI-prompt outputs mask lines containing the resolved secrets path (tests cover non-/tmp shapes).
 - Injected chmod failure aborts share/preflight/reconverge nonzero.
 - Gate rejects symlink-swapped or bad-mode files when opened through the held handle.
+
+## Review ownership
+
+- The vpnd reviewer owns vpnd source/tests and scripts/decrypt-secrets.sh plus its regression tests for the two critical vpnd tasks.
+- The primary agent serializes Makefile, task/OpenSpec records, generated board, evidence updates, staging, commits, and remote delivery. Reviewers do not commit or change production settings.

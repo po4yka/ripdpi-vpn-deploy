@@ -2,12 +2,12 @@
 
 ## Boundaries
 
-- Rust-only change in vpnd/. Make targets and ansible inventory semantics unchanged; the CLI contract for --limit inputs tightens.
+- The CLI consumes the canonical rendered Ansible inventory. `make clean` also changes to quote the selected path, avoid following symlinks, and propagate removal failures.
 
 ## Decisions
 
-- Failure cleanup: wrap step loops so Err from any step triggers a best-effort cleanup invocation before returning the original error; explain mode skips cleanup execution like other steps.
-- Limit validation uses strict IPv4 parsing (std::net::Ipv4Addr) — no pattern metacharacters can survive.
+- Cleanup runs after success, failure, and dry-run. A cleanup failure fails an otherwise successful command but preserves an earlier pipeline error; explain mode only prints the command.
+- Parse registry addresses as strict IPv4 literals, then resolve them to exact host keys in the `vpn` inventory group with matching environment/provider. Match `vpn_service_address` before the management `ansible_host`; reject missing/ambiguous matches and host keys that could denote patterns or groups. Without `--host`, limit execution to the selected environment/provider.
 - Host resolution reuses Registry::get with env/provider match identical to reconverge's existing logic, extracted into a shared helper.
 - Summary rows render fixed placeholders instead of paths.
 

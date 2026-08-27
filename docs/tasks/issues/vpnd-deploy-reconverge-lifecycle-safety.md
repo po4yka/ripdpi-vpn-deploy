@@ -2,7 +2,7 @@
 id: VPD-1787497317352770
 title: Guarantee secrets cleanup and scoped targeting on deploy paths
 kind: bug
-status: review
+status: blocked
 area: vpnd
 priority: critical
 risk: high
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: vpd-1787497317352770-vpnd-deploy-reconverge-lifecycle-safety
 created: 2026-08-23
-updated: 2026-08-25
+updated: 2026-08-27
 related_tasks: []
+status_detail: Cleanup and scoped-targeting regressions pass; required staging/dry-run/live acceptance and hosted CI are pending.
 ---
 
 ## Goal
@@ -35,3 +36,8 @@ Deploy paths never leave plaintext secrets behind, production applies stay scope
 - Pattern-valued ipv4 (`all`, `prod:*`, malformed octets) aborts reconverge naming the record.
 - doctor/probe fail fast on unknown aliases or env/provider mismatch.
 - Plan summary snapshot shows placeholders where secret paths used to appear.
+
+## Review ownership
+
+- The vpnd reviewer owns vpnd source/tests and scripts/decrypt-secrets.sh plus its regression tests for the two critical vpnd tasks.
+- The primary agent serializes Makefile, task/OpenSpec records, generated board, evidence updates, staging, commits, and remote delivery. Reviewers do not commit or change production settings.

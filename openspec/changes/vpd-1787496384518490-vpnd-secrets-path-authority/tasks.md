@@ -12,8 +12,8 @@ One resolved secrets path everywhere: make receives it explicitly, doctor redact
 
 - [x] VPD-1787497013454189 Thread SECRETS_FILE through make::target/target_with for decrypt and consuming targets; add resolution-matrix tests (XDG set/unset) proving no double-decrypt #bug !high @item:VPD-1787496384518490
 - [x] VPD-1787497013472302 Derive doctor redaction from the resolved path, apply it to the --ai prompt path, and extend proptest/doctor_bundle tests to non-/tmp shapes #bug !high @item:VPD-1787496384518490
-- [x] VPD-1787497013490086 Make secure_secrets_file fallible and propagate at all three call sites with a test for the read-only-parent failure #bug !high @item:VPD-1787496384518490
-- [x] VPD-1787497013509056 Switch secrets/token gates to open-once fstat reads with symlink and mode rejection tests #bug !high @item:VPD-1787496384518490
+- [ ] VPD-1787497013490086 Make secure_secrets_file fallible and propagate at all three call sites with a test for the read-only-parent failure #bug !high @item:VPD-1787496384518490
+- [ ] VPD-1787497013509056 Switch secrets/token gates to open-once fstat reads with symlink and mode rejection tests #bug !high @item:VPD-1787496384518490
 
 ## Verification
 
