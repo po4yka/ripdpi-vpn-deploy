@@ -14,7 +14,7 @@ openspec_change: tst-1787497001212692-verification-truthfulness
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
-status_detail: Runtime implementation is committed separately on codex/complete-high-review at 374b5f7 and is not included in this main integration. Accessible nodes and the required live/staging acceptance are missing; all three matching inventory server peers are offline. OPS additionally requires live-inventory dry-run BEFORE MERGE.
+status_detail: Implementation remains on codex/complete-high-review at 37f3a6a50b21e294e5da6048a491d91568cd4627, not main. Recovery restored direct SSH. Read-only P0/P2 manifests still identify an older source revision; exact-source deployment and authorized live verification remain open. Watchdog verification was not invoked because it can restart services.
 ---
 
 ## Goal
