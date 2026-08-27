@@ -10,8 +10,8 @@ Own `images/molecule-debian13/`, `.github/workflows/publish-molecule-debian13.ym
 
 ## Execution
 
-- [ ] SEC-1787810718115434 Enable cache-free repository-owned Debian 13 image refreshes, record the successfully scanned GHCR digest, and preserve the existing HIGH/CRITICAL Trivy policy. #feature !high @item:SEC-1787810718115433
-- [ ] SEC-1787810718115435 Repin every Debian 13 Molecule scenario to the successfully scanned immutable digest and verify the obsolete digest has no remaining references. #feature !high @item:SEC-1787810718115433
+- [x] SEC-1787810718115434 Enable cache-free repository-owned Debian 13 image refreshes, record the successfully scanned GHCR digest, and preserve the existing HIGH/CRITICAL Trivy policy. #feature !high @item:SEC-1787810718115433
+- [x] SEC-1787810718115435 Repin every Debian 13 Molecule scenario to the successfully scanned immutable digest and verify the obsolete digest has no remaining references. #feature !high @item:SEC-1787810718115433
 - [ ] SEC-1787810718115436 Validate the image refresh through static workflow checks, the published-image Trivy scan, and hosted Molecule matrix before merging the blocked dependency PRs. #feature !high @item:SEC-1787810718115433
 
 ## Verification
