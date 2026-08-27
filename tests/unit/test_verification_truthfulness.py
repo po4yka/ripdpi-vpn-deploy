@@ -76,9 +76,17 @@ def test_integration_sequence_checks_second_converge(scenario):
 
 
 def test_amneziawg_scenario_executes_real_role():
-    play = yaml.safe_load((ROOT / 'ansible/roles/amneziawg/molecule/default/converge.yml').read_text())[0]
+    scenario = ROOT / 'ansible/roles/amneziawg/molecule/default'
+    play = yaml.safe_load((scenario / 'converge.yml').read_text())[0]
     assert any(task.get('ansible.builtin.include_role', {}).get('name') == 'amneziawg'
                for task, _ in walk(play.get('tasks', [])))
+    sequence = yaml.safe_load((scenario / 'molecule.yml').read_text())['scenario']['test_sequence']
+    assert sequence.index('prepare') < sequence.index('converge')
+    prepare = yaml.safe_load((scenario / 'prepare.yml').read_text())[0]
+    preseeds = [task['ansible.builtin.debconf'] for task, _ in walk(prepare['tasks'])
+                if 'ansible.builtin.debconf' in task]
+    assert {'name': 'resolvconf', 'question': 'resolvconf/linkify-resolvconf',
+            'vtype': 'boolean', 'value': 'false'} in preseeds
 
 
 @pytest.mark.parametrize('stale_socket,expected', [(False, ['2222']), (True, ['22', '2222'])])

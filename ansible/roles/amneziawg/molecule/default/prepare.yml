@@ -1,0 +1,14 @@
+---
+- name: Preserve the Docker-owned resolver during package installation
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    # Debian resolvconf defaults to replacing /etc/resolv.conf with a symlink.
+    # Docker owns that bind mount; retain it while installing the real package.
+    - name: Disable resolvconf takeover of the container resolver
+      ansible.builtin.debconf:
+        name: resolvconf
+        question: resolvconf/linkify-resolvconf
+        vtype: boolean
+        value: "false"
