@@ -23,7 +23,9 @@ breaking change until upstream cuts a stable line.
 **Shared cert with the P2 hysteria role** — `share_hysteria_tls: true`
 (default) symlinks the hysteria role's cert/key into this role's config
 dir. One renewal path covers both tiers. Set to `false` to point at a
-separately-managed cert when the operator splits hostnames.
+separately-managed cert when the operator splits hostnames. Supplementary
+`hysteria` membership and `append` are enabled together only for shared TLS;
+Ansible rejects `append: true` without a `groups` argument.
 
 ## What's done well
 
