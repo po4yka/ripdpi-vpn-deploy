@@ -2,17 +2,17 @@
 id: TST-1787497584762133
 title: Close vpnd audit test coverage gaps
 kind: chore
-status: backlog
+status: doing
 area: testing
 priority: high
 risk: standard
-owner: po4yka
+owner: vpnd implementation
 parent: null
 blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-27
 spec_reason: test-only
 related_tasks: []
 ---
@@ -38,3 +38,9 @@ Close the test-coverage gaps the vpnd audit surfaced: vacuous tests replaced wit
 - Registry save/load and Cmd run/capture execution paths covered (nonzero exit, missing binary, signal death).
 - Property tests assert requirement-shaped properties (no secrets-path in output for any runtime dir shape).
 - Rejection-branch tests for validate_config/validate_profiles and the fingerprint-secrecy property land.
+
+## High-priority implementation ownership
+
+- The vpnd subagent owns vpnd source/tests for behavior coverage, coordinating with its share/probe-matrix fixes.
+- The primary agent serializes task/OpenSpec records, generated board, Makefile, shared CI/toolchain files, documentation inventory, staging, commits, and remote delivery. Agents do not commit or mutate credentials/infrastructure.
+- Worktree: `codex/complete-high-review`. All writers preserve unrelated changes and coordinate shared-file edits.

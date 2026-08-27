@@ -2,17 +2,17 @@
 id: VPD-1787497252303967
 title: Fix probe-matrix process leaks, timeouts, durability, and evidence semantics
 kind: bug
-status: backlog
+status: doing
 area: vpnd
 priority: high
 risk: high
-owner: po4yka
+owner: vpnd implementation
 parent: null
 blocked_by: []
 spec_mode: required
 openspec_change: vpd-1787497252303967-vpnd-probe-matrix-robust-evidence
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-27
 related_tasks: []
 ---
 
@@ -36,3 +36,9 @@ Probe-matrix runs are bounded and durable: timed-out cells die with their proces
 - Hanging control stub records Unknown and the run continues.
 - Simulated interrupt leaves all observed ticks on disk marked interrupted with nonzero exit; duration 0 rejected at validation.
 - Unknown-only series produces no window; Blocked→Ok recovery still detected; insta snapshot refreshed with schema_version bump documented in docs/PROBE-MATRIX.md.
+
+## High-priority implementation ownership
+
+- The vpnd subagent owns vpnd source/tests and docs/PROBE-MATRIX.md for share/probe-matrix hardening and audit coverage.
+- The primary agent serializes task/OpenSpec records, generated board, Makefile, shared CI/toolchain files, documentation inventory, staging, commits, and remote delivery. Agents do not commit or mutate credentials/infrastructure.
+- Worktree: `codex/complete-high-review`. All writers preserve unrelated changes and coordinate shared-file edits.
