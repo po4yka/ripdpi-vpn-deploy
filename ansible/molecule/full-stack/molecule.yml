@@ -50,6 +50,8 @@ provisioner:
     group_vars:
       all:
         xray_port: 443
+        xray_fallback_port: 2053
+        public_site_canonical_url: "https://vpn.example.com"
         nginx_xhttp_public_port: 8443
         nginx_xhttp_port: 10085
         hysteria_port: 443
@@ -112,5 +114,6 @@ scenario:
     - create
     - prepare
     - converge
+    - idempotence
     - verify
     - destroy

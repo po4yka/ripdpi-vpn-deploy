@@ -34,9 +34,9 @@ provisioner:
 verifier:
   name: ansible
 
-# The fixture renders real configuration and target templates without
-# bringing up AWG or requiring TUN. Runtime lifecycle acceptance stays a
-# separate real-node check; the config assertions must still execute here.
+# The scenario executes the role, including guards, receipt comparisons,
+# configuration, and service lifecycle, against no-TUN fixture binaries.
+# Actual tunnel and upstream binary acceptance require a separate real-node check.
 scenario:
   test_sequence:
     - dependency

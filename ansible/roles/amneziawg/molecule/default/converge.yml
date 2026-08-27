@@ -1,13 +1,10 @@
 ---
-# Converge for amneziawg static-verify scenario.
-# AmneziaWG userspace requires TUN device + kernel build deps not available
-# in CI containers. We skip the live AWG bring-up and only render the
-# config files so verify.yml can assert cohort param shape.
-
-- name: Converge amneziawg role (config-render only, no TUN device)
+# Executes real role tasks with pinned upstream source and no-TUN binary fixtures.
+- name: Converge actual amneziawg role with stubbed runtime binaries
   hosts: all
   become: true
   vars:
+    amneziawg_config_dir: /etc/amneziawg
     amneziawg_go_version: "v0.2.12"
     amneziawg_go_commit: "2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf"
     amneziawg_tools_version: "v1.0.20241018"
@@ -28,117 +25,57 @@
       peers: []
 
   pre_tasks:
-    - name: Install process inspection dependency for the template-only verifier
+    - name: Install fixture prerequisites
       ansible.builtin.apt:
-        name: procps
+        name: [git, procps]
         state: present
         update_cache: true
         cache_valid_time: 3600
 
-    - name: Ensure amneziawg config directory
-      ansible.builtin.file:
-        path: /etc/amneziawg
-        state: directory
-        owner: root
-        group: root
-        mode: "0700"
+    - name: Prepare real pinned source trees for the role build-receipt path
+      ansible.builtin.git:
+        repo: "https://github.com/amnezia-vpn/{{ item.name }}"
+        dest: "/opt/src/{{ item.name }}"
+        version: "{{ item.version }}"
+        update: false
+      loop:
+        - name: amneziawg-go
+          version: "{{ amneziawg_go_version }}"
+        - name: amneziawg-tools
+          version: "{{ amneziawg_tools_version }}"
 
-    - name: Ensure amneziawg-go source dir exists
-      ansible.builtin.file:
-        path: /opt/src/amneziawg-go
-        state: directory
-        owner: root
-        group: root
-        mode: "0755"
-
-    - name: Stub amneziawg-go binary
+    - name: Install deterministic runtime fixture binaries
       ansible.builtin.copy:
-        dest: /opt/src/amneziawg-go/amneziawg-go
+        dest: "{{ item }}"
         owner: root
         group: root
         mode: "0755"
-        content: "#!/bin/sh\necho amneziawg-go stub && exit 0\n"
-        force: false
-
-    - name: Stub awg-tools source dir
-      ansible.builtin.file:
-        path: /opt/src/amneziawg-tools/src
-        state: directory
-        owner: root
-        group: root
-        mode: "0755"
-
-    - name: Stub awg binary (so make install creates=target passes)
-      ansible.builtin.copy:
-        dest: /usr/bin/awg
-        owner: root
-        group: root
-        mode: "0755"
-        content: "#!/bin/sh\necho awg stub && exit 0\n"
-        force: false
-
-    - name: Stub amneziawg-go installed binary
-      ansible.builtin.copy:
-        dest: /usr/local/bin/amneziawg-go
-        owner: root
-        group: root
-        mode: "0755"
-        content: "#!/bin/sh\necho amneziawg-go stub && exit 0\n"
-        force: false
-
-    - name: Stub awg-quick systemd unit template pre-req
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/awg-quick@.service
-        owner: root
-        group: root
-        mode: "0644"
         content: |
-          [Unit]
-          Description=AmneziaWG Interface (stub) %i
-          [Service]
-          Type=oneshot
-          RemainAfterExit=yes
-          ExecStart=/bin/true
-          ExecStop=/bin/true
-          [Install]
-          WantedBy=multi-user.target
+          #!/bin/sh
+          # Molecule fixture: no tunnel or protocol liveness is claimed.
+          printf '%s\n' "$*" >> /run/molecule-awg-calls
         force: false
+      loop:
+        - /opt/src/amneziawg-go/amneziawg-go
+        - /usr/local/bin/amneziawg-go
+        - /opt/src/amneziawg-tools/src/wg
+        - /usr/bin/awg
+        - /usr/bin/awg-quick
 
-    - name: Load cohort profile (mirrors tasks/main.yml include_vars)
-      ansible.builtin.include_vars:
-        file: "{{ playbook_dir }}/../../../../roles/amneziawg/vars/cohorts/{{ vpn.awg_cohort }}.yml"
-
-    - name: Render awg0.conf directly (bypasses live role tasks that need TUN)
-      ansible.builtin.template:
-        src: "{{ playbook_dir }}/../../../../roles/amneziawg/templates/awg0.conf.j2"
-        dest: /etc/amneziawg/awg0.conf
-        owner: root
-        group: root
-        mode: "0600"
-      vars:
-        _inst:
-          server_private_key: "{{ amneziawg_secrets.server_private_key }}"
-          listen_port: "{{ amneziawg.listen_port }}"
-          address_v4: "{{ amneziawg.address_v4 }}"
-          address_v6: "{{ amneziawg.address_v6 }}"
-          jc: "{{ amneziawg_secrets.jc | default(amneziawg_cohort.jc) }}"
-          jmin: "{{ amneziawg_secrets.jmin | default(amneziawg_cohort.jmin) }}"
-          jmax: "{{ amneziawg_secrets.jmax | default(amneziawg_cohort.jmax) }}"
-          s1: "{{ amneziawg_secrets.s1 | default(amneziawg_cohort.s1) }}"
-          s2: "{{ amneziawg_secrets.s2 | default(amneziawg_cohort.s2) }}"
-          h1: "{{ amneziawg_secrets.h1 | default(amneziawg_cohort.h1) }}"
-          h2: "{{ amneziawg_secrets.h2 | default(amneziawg_cohort.h2) }}"
-          h3: "{{ amneziawg_secrets.h3 | default(amneziawg_cohort.h3) }}"
-          h4: "{{ amneziawg_secrets.h4 | default(amneziawg_cohort.h4) }}"
-          peers: "{{ amneziawg_secrets.peers }}"
-
-    - name: Render instance target without starting stub interfaces
-      ansible.builtin.template:
-        src: "{{ playbook_dir }}/../../../../roles/amneziawg/templates/awg-quick.target.j2"
-        dest: /etc/systemd/system/awg-quick.target
+    - name: Bind fixture artifacts to the real checked-out commits
+      ansible.builtin.copy:
+        dest: "/opt/src/{{ item.name }}/.ripdpi-built-commit"
+        content: "{{ item.commit }}\n"
         owner: root
         group: root
         mode: "0644"
-      vars:
-        _awg_instances:
-          - name: awg0
+      loop:
+        - name: amneziawg-go
+          commit: "{{ amneziawg_go_commit }}"
+        - name: amneziawg-tools
+          commit: "{{ amneziawg_tools_commit }}"
+
+  tasks:
+    - name: Execute amneziawg role including configuration and service lifecycle
+      ansible.builtin.include_role:
+        name: amneziawg

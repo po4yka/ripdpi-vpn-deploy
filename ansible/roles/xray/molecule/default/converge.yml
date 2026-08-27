@@ -39,38 +39,6 @@
         home: /var/lib/xray
         create_home: true
 
-    - name: Stub xray binary at /usr/local/bin/xray (so validate doesn't fail)
-      ansible.builtin.copy:
-        dest: /usr/local/bin/xray
-        owner: root
-        group: root
-        mode: "0755"
-        content: |
-          #!/bin/sh
-          # Stub for molecule. Accepts `run -test -config <path>` and exits 0
-          # if file exists.
-          if [ "$1" = "run" ] && [ "$2" = "-test" ]; then
-            shift 2
-            while [ $# -gt 0 ]; do
-              if [ "$1" = "-config" ]; then
-                test -f "$2" && exit 0 || exit 1
-              fi
-              shift
-            done
-          fi
-          if [ "$1" = "version" ]; then
-            echo "Xray STUB v26.3.27 (molecule)"
-            exit 0
-          fi
-          if [ "$1" = "run" ] && [ "$2" = "-config" ]; then
-            trap 'exit 0' TERM INT
-            while true; do
-              sleep 3600 &
-              wait $!
-            done
-          fi
-          exit 0
-
     - name: Pre-create release dir so role's get_url+unarchive can be skipped
       ansible.builtin.file:
         path: /opt/xray/releases/v26.3.27

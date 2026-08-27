@@ -38,6 +38,7 @@ def test_source_drift_playbook_fails_closed_on_revision_mismatch() -> None:
     assert "source_revision" in rendered
     assert "deployable_digest" in rendered
     assert "expected_deployable_digest" in rendered
+    assert "deployed_source_manifest.source_revision == expected_source_revision" in rendered
     assert source.count("source_revision | default('unknown')") == 2
 
 

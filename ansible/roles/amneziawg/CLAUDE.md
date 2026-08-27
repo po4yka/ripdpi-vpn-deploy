@@ -26,6 +26,10 @@ check mode reports only actionable binary drift and never runs a compiler.
 
 ## What's done well
 
+- **Molecule executes role tasks** — pinned source trees and explicit no-TUN
+  binaries exercise guards, build receipt comparison, config and systemd
+  lifecycle. They are not evidence of upstream binary or tunnel liveness.
+
 - **Cohort selection is explicit** — `vpn.awg_cohort` names a file under
   `vars/cohorts/`; there's no "auto" because cohort tuning is operator
   judgment, not a default. Empty string keeps the broad-rule baseline

@@ -27,6 +27,7 @@
         cmd: sshd -T
       register: security_sshd_t
       changed_when: false
+      check_mode: false
 
     - name: SSH effective hardening is applied
       vars:

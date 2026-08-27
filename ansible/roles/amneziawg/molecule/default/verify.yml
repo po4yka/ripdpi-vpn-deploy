@@ -114,3 +114,15 @@
         fail_msg: |
           awg-quick.target does not pin the enabled instance set.
           Content: {{ awg_target_text }}
+
+    - name: Real role enabled and started the instance service
+      ansible.builtin.command:
+        cmd: systemctl is-active awg-quick@awg0.service
+      register: awg_active
+      changed_when: false
+      failed_when: awg_active.stdout != 'active'
+
+    - name: Role service unit executed the runtime fixture
+      ansible.builtin.command:
+        cmd: grep -Fx 'up awg0' /run/molecule-awg-calls
+      changed_when: false

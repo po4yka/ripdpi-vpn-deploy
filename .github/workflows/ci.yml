@@ -580,9 +580,13 @@ jobs:
           ANSIBLE_FORCE_COLOR: "1"
 
   molecule-full-stack:
-    name: molecule full-stack
+    name: molecule ${{ matrix.scenario }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [full-stack, full-stack-published]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -605,15 +609,16 @@ jobs:
 
       # The only CI surface exercising role ORDERING across site.yml — the
       # per-role matrix cannot catch cross-role interactions.
-      - name: molecule full-stack test
+      - name: molecule integration test
         working-directory: ansible
         run: |
           DEPLOY_SOURCE_REVISION="$(git rev-parse HEAD)"
           export DEPLOY_SOURCE_REVISION
           DEPLOYABLE_SOURCE_DIGEST="$(../scripts/deploy-source-identity.sh --digest)"
           export DEPLOYABLE_SOURCE_DIGEST
-          molecule -c molecule/full-stack/molecule.yml test -s full-stack
+          molecule -c "molecule/${SCENARIO}/molecule.yml" test -s "$SCENARIO"
         env:
+          SCENARIO: ${{ matrix.scenario }}
           PY_COLORS: "1"
           ANSIBLE_FORCE_COLOR: "1"
 
