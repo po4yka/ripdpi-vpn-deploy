@@ -1,11 +1,11 @@
 ---
 task_id: SEC-1787810718115433
 change: refresh-molecule-debian13-security
-commit_sha: 07b16874f67f44b3aa4b004ffe7234229b0d661d
-local: required
-local_evidence: null
-remote_ci: required
-remote_ci_evidence: "PR run 33046238741 passed at commit 07b16874f67f44b3aa4b004ffe7234229b0d661d, including pytest unit tests and the hosted Molecule matrix."
+commit_sha: "af555c20705258c989b3255e31d5cce3c7d8b4fc"
+local: "passed"
+local_evidence: "Reviewed immutable Debian image pins and the no-bypass workflow contract; repository governance-count test passed. Full local union gate passed in the implementation worktree; native image runtime evidence is the hosted CI matrix, not the local arm64 container attempt."
+remote_ci: "passed"
+remote_ci_evidence: "Exact main af555c20705258c989b3255e31d5cce3c7d8b4fc: CI run 33071688476 completed successfully with all 51 jobs including the hosted Molecule matrix."
 dry_run: not_applicable
 dry_run_evidence: No Terraform or deployment-plan surface is changed.
 staging: not_applicable
@@ -14,8 +14,8 @@ live: not_applicable
 live_evidence: No production infrastructure is changed.
 client: not_applicable
 client_evidence: No client-facing configuration or artifact changes.
-artifact: required
-artifact_evidence: "Publisher run 33045335444 built and scanned ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13@sha256:fd0443883979e0879e912231914df2093769d45fcb82af251704b30e2fc5c42e successfully."
+artifact: "passed"
+artifact_evidence: "Fresh image-scan run 33075359774 completed successfully on af555c20705258c989b3255e31d5cce3c7d8b4fc, including enumeration and both exact Debian fd0443883979e0879e912231914df2093769d45fcb82af251704b30e2fc5c42e and Ubuntu 48e1ab7caa1e28148148576cd2f15e46fcd9d44601125bbce7f3056306f40cf1 digest scans. No ignores or bypasses were added."
 ---
 
 # Verification

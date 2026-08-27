@@ -2,7 +2,7 @@
 id: TST-1786299293097217
 title: Complete recurring AmneziaWG live acceptance
 kind: feature
-status: backlog
+status: blocked
 area: testing
 priority: high
 risk: high
@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: tst-1786299293097217-complete-recurring-amneziawg-live-acceptance
 created: 2026-08-09
-updated: 2026-08-09
-related_tasks:
-  - po4yka/RIPDPI#TRN-1786264762917677
+updated: 2026-08-27
+related_tasks: ["po4yka/RIPDPI#TRN-1786264762917677"]
+status_detail: Current inventory server peers remain offline after local Tailscale renewal. No disposable staging target, current RIPDPI client artifact, or recurring acceptance observation is available. Existing amneziawg-go evidence does not prove current RIPDPI client acceptance.
 ---
 
 ## Goal

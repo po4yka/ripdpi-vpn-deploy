@@ -2,7 +2,7 @@
 id: VPD-1787497252303967
 title: Fix probe-matrix process leaks, timeouts, durability, and evidence semantics
 kind: bug
-status: doing
+status: blocked
 area: vpnd
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: vpd-1787497252303967-vpnd-probe-matrix-robust-evidence
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
+status_detail: "Source and local regressions implemented. Staging and live protocol-matrix observations unavailable: all three matching inventory server peers are offline. Process fixtures are not live network evidence."
 ---
 
 ## Goal

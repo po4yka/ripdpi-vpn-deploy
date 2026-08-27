@@ -2,7 +2,7 @@
 id: TST-1787497584762133
 title: Close vpnd audit test coverage gaps
 kind: chore
-status: doing
+status: review
 area: testing
 priority: high
 risk: standard
@@ -13,8 +13,9 @@ spec_mode: not-required
 openspec_change: null
 created: 2026-08-23
 updated: 2026-08-27
-spec_reason: test-only
+spec_reason: regression-tested-single-module
 related_tasks: []
+status_detail: Implementation and targeted regressions passed; exact-source hosted CI and final closure remain pending.
 ---
 
 ## Goal

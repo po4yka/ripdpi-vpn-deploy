@@ -5,7 +5,7 @@ commit_sha: 3794558584ee9e01cf6b42588e5309be8d478d81
 local: passed
 local_evidence: "Passed: focused pytest 25 and 57 tests; make task-check; make ci-fast with 895 passed, 2 skipped, 48 bats, 75 Terraform tests, and complete Rust checks/tests; monitoring Molecule converge, changed=0 idempotence, verify, and destroy with the Xray textfile owner-only at 0600 and visible in a live node_exporter scrape; make validate with Terraform validation, gitleaks, ansible-lint across 364 files, and site syntax-check."
 remote_ci: passed
-remote_ci_evidence: "PR #70 required checks all passed on head 3794558584ee9e01cf6b42588e5309be8d478d81. CodeQL run 31359932601 passed for Python and Actions; its current PR merge analysis bcffc81d6e2ec59dd9a4507ec544027bb4264301 reported zero Python results. Alerts 320-327 were absent from the PR ref and replacement alert 328 was fixed without dismissal. Default-branch closure must be re-queried after merge."
+remote_ci_evidence: "Re-reviewed default branch af555c20705258c989b3255e31d5cce3c7d8b4fc: CodeQL run 33071688071 passed; both exact-SHA Python and Actions analyses report zero results and no analysis errors. Fresh open-alert query filtered to tool CodeQL returns an empty list. Four separately generated Scorecard alerts are outside this CodeQL task and were not dismissed. CI run 33071688476 passed all 51 jobs."
 dry_run: not_applicable
 dry_run_evidence: Role-level Molecule convergence is the owned runtime proof; no fleet inventory or deployment action is authorized.
 staging: not_applicable

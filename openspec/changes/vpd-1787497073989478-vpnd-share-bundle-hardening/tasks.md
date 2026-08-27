@@ -10,9 +10,9 @@ Share emits bundles only from validated tokens and configured hosts, and every b
 
 ## Execution
 
-- [ ] VPD-1787497123361827 Reject empty tokens in validate_token and cover empty stdin and token-file inputs in tests #bug !high @item:VPD-1787497073989478
-- [ ] VPD-1787497123379234 Replace the (unset) host fallback with a hard error naming the missing secrets key; add the no-server_name regression test #bug !high @item:VPD-1787497073989478
-- [ ] VPD-1787497123396516 Route qr::write_svg and write_private through a create-with-mode(0600)+replace-stale-temp+rename helper; assert modes and crash recovery in tests #bug !high @item:VPD-1787497073989478
+- [x] VPD-1787497123361827 Reject empty tokens in validate_token and cover empty stdin and token-file inputs in tests #bug !high @item:VPD-1787497073989478
+- [x] VPD-1787497123379234 Replace the (unset) host fallback with a hard error naming the missing secrets key; add the no-server_name regression test #bug !high @item:VPD-1787497073989478
+- [x] VPD-1787497123396516 Route qr::write_svg and write_private through a create-with-mode(0600)+replace-stale-temp+rename helper; assert modes and crash recovery in tests #bug !high @item:VPD-1787497073989478
 
 ## Verification
 
