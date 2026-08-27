@@ -13,9 +13,9 @@ Tags are mutable, so a family deploy must pin both the checkout ref and the exac
 resolved commit SHA:
 
 ```yaml
-amneziawg_go_version: "v0.2.16"        # tag or immutable commit ref to checkout
+amneziawg_go_version: "v0.2.12"        # tag or immutable commit ref to checkout
 amneziawg_go_commit: "<40-hex-sha>"    # expected `git rev-parse HEAD`
-amneziawg_tools_version: "v1.0.202406"
+amneziawg_tools_version: "v1.0.20241018"
 amneziawg_tools_commit: "<40-hex-sha>"
 ```
 

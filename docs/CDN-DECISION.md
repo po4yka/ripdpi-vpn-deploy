@@ -14,9 +14,10 @@ not).
 
 ## Decision
 
-The `nginx-xhttp` role deploys a **direct foreign VPS** with nginx fronting
-443/tcp and proxying a path to the Xray XHTTP inbound on `127.0.0.1`. No
-CDN by default.
+The `nginx-xhttp` role deploys a **direct foreign VPS** with nginx
+terminating TLS on the public listener (`nginx_xhttp_public_port`, 8443 by
+default; direct-only cohorts may override to 443/tcp) and proxying a path
+to the Xray XHTTP inbound on `127.0.0.1`. No CDN by default.
 
 ## Context
 
@@ -41,7 +42,8 @@ overnight.
 ## What this means in code
 
 - `roles/nginx-xhttp/templates/site.conf.j2` ships nginx pointed at a
-  public CA cert for the domain you control, listening on 443/tcp/udp,
+  public CA cert for the domain you control, listening on the configured
+  public port (`nginx_xhttp_public_port`, default 8443, TCP) and
   proxying the XHTTP path to Xray. No `set_real_ip_from`, no
   `CF-Connecting-IP`, no Origin CA logic.
 - `ansible/roles/cdn-front` exists as a separate, opt-in tactical role
@@ -96,8 +98,9 @@ on `nginx-xhttp`.
 
 Re-evaluate this decision if:
 
-- Cloudflare reverses the RU-PoP-via-TSPU situation (re-check the wiki
-  page cited under "Evidence anchor" before flipping this decision).
+- Cloudflare reverses the RU-PoP-via-TSPU situation (re-check the
+  measurements recorded under "Evidence anchor" before flipping this
+  decision).
 - A non-RU CDN provides documented, stable, non-TSPU paths into RU.
 - The threat model changes (e.g., the operator is no longer targeting RU,
   or the operator wants browser camouflage as the dominant property).

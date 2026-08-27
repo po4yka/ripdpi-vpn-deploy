@@ -111,8 +111,9 @@ the effective nftables allowlist.
 
 - Multi-region fleet automation. v1 is single-VPS; second-VPS guidance
   is in `RUNBOOK-add-fallback.md`.
-- Subscription delivery API with revocation and rate-limit middleware.
-  v1 ships only `subscription-host` as a static-payload nginx vhost.
+- Subscription delivery as a dynamic API service. `subscription-host`
+  ships static token payloads with a revoked-tokens map and a
+  rate-limit zone; there is no application server behind the vhost.
 - P3 reachability layer automation. By design — the reachability layer is
   network-specific and operator-judged, not deterministically deployable.
 - Per-role Molecule coverage for supported roles; selected red-path scenarios run in CI.
