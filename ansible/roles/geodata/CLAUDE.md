@@ -21,6 +21,10 @@ versions are restarted and must be active before the refresh succeeds.
 
 ## Pitfalls
 
+- **The timer uses curl, not Ansible get_url** — the role installs curl
+  explicitly before scheduling refreshes; Python downloads during converge
+  do not prove the service's shell dependencies are available.
+
 - **Pin must be updated on every upstream dat release** — stale SHA256 pins
   mean `get_url` will not update the file even when the URL changes. Bump
   `geodata.geosite_sha256` and `geodata.geoip_sha256` together with the URL.
