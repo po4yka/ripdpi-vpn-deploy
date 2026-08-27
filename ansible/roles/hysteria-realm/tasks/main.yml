@@ -49,7 +49,7 @@
     home: "{{ hysteria_realm.install_root }}"
     create_home: false
     groups: "{{ ['hysteria'] if (hysteria_realm.share_hysteria_tls | default(true)) else omit }}"
-    append: true
+    append: "{{ hysteria_realm.share_hysteria_tls | default(true) }}"
 
 - name: Ensure directories
   ansible.builtin.file:
