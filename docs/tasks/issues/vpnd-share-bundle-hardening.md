@@ -2,7 +2,7 @@
 id: VPD-1787497073989478
 title: Harden share bundle token handling and file permissions
 kind: bug
-status: review
+status: done
 area: vpnd
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
 status_detail: Implementation and targeted regressions passed; exact-source hosted CI and final closure remain pending.
+closed_at: "2026-08-27T14:12:48Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Share token/host rejection and atomic private bundle regressions passed on exact 1221ccb59ae90f4d5d7fc3951018dcbef1634841; local make check passed with 172 Rust release tests; hosted CI 33079404315 passed all 51 jobs.
 ---
 
 ## Goal

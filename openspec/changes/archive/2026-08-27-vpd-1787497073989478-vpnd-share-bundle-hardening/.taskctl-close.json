@@ -1,0 +1,11 @@
+{
+  "change": "vpd-1787497073989478-vpnd-share-bundle-hardening",
+  "evidence_summary": "Share token/host rejection and atomic private bundle regressions passed on exact 1221ccb59ae90f4d5d7fc3951018dcbef1634841; local make check passed with 172 Rust release tests; hosted CI 33079404315 passed all 51 jobs.",
+  "execution_sha256": "9151c29b8ea3bca455612a4a583959be2e896bd6d864d8d3d9b4d9507fb80386",
+  "issue_sha256": "9cba6fdcb552861c4594fd292733b485ca4aeca20a407e039281de4cb4fdd111",
+  "outcome": "done",
+  "prepared_at": "2026-08-27T14:12:48Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "VPD-1787497073989478"
+}

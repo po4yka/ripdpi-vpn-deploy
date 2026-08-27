@@ -2,7 +2,7 @@
 id: CIC-1787495848795458
 title: Add conftest Rego gate to the local union gate
 kind: bug
-status: review
+status: done
 area: ci
 priority: high
 risk: standard
@@ -16,6 +16,9 @@ updated: 2026-08-27
 spec_reason: tooling-only
 related_tasks: []
 status_detail: Implementation and targeted regressions passed; exact-source hosted CI and final closure remain pending.
+closed_at: "2026-08-27T14:12:47Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Pinned Conftest runs in local and CI gates; policy tests include real negative plans and fail closed without the pinned binary. Implementation verified at 1221ccb59ae90f4d5d7fc3951018dcbef1634841: local make check passed (1055 pytest, one pre-existing network-scan skip, 55 Bats, 79 Terraform tests, 45 Conftest tests, 102 snapshots); hosted CI run 33079404315 passed all 51 jobs. Probe schema synchronization is a separate withheld task."
 ---
 
 ## Goal

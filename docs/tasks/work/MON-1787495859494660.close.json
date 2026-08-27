@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Portable millisecond clock regression uses the Python nanosecond clock and does not require GNU date. Implementation verified at 1221ccb59ae90f4d5d7fc3951018dcbef1634841: local make check passed (1055 pytest, one pre-existing network-scan skip, 55 Bats, 79 Terraform tests, 45 Conftest tests, 102 snapshots); hosted CI run 33079404315 passed all 51 jobs. Probe schema synchronization is a separate withheld task.",
+  "execution_sha256": "9a29c563b63f74a3d5ee567c083c593e4d493575bf3156946c294478b52a2551",
+  "issue_sha256": "ec22651464f50d10301126018646c2c817a297218f7be288e7cf42c9df8803bb",
+  "outcome": "done",
+  "prepared_at": "2026-08-27T14:12:47Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "MON-1787495859494660"
+}

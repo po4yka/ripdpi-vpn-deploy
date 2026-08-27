@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Repository-local ignore tests exclude tasking dependencies independently of global ignore settings. Implementation verified at 1221ccb59ae90f4d5d7fc3951018dcbef1634841: local make check passed (1055 pytest, one pre-existing network-scan skip, 55 Bats, 79 Terraform tests, 45 Conftest tests, 102 snapshots); hosted CI run 33079404315 passed all 51 jobs. Probe schema synchronization is a separate withheld task.",
+  "execution_sha256": "d7e02c3a9c0b2ea1306676a7191e0d56724d26bbecdd5d80d11abc35afacd77b",
+  "issue_sha256": "ad163f9e9d19ee55c4ced602b4275a6571d3fa3e4f73c6fff7582554aa45f4c5",
+  "outcome": "done",
+  "prepared_at": "2026-08-27T14:12:46Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1787495848053690"
+}
