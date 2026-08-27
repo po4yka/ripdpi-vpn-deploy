@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-08-27T14:07:48Z",
+  "change": "refresh-molecule-debian13-security",
+  "commit_sha": "af555c20705258c989b3255e31d5cce3c7d8b4fc",
+  "outcome": "review",
+  "schema": 1,
+  "task_id": "SEC-1787810718115433"
+}

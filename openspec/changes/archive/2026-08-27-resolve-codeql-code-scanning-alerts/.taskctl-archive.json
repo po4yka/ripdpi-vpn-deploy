@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-08-27T14:07:03Z",
+  "change": "resolve-codeql-code-scanning-alerts",
+  "commit_sha": "3794558584ee9e01cf6b42588e5309be8d478d81",
+  "outcome": "review",
+  "schema": 1,
+  "task_id": "SEC-1786336086885514"
+}
