@@ -29,6 +29,10 @@ reloaded before roles that pre-flight firewall-owned nftables sets run in the
 same play. Deferred handlers would make a first toggle fail against stale
 runtime state.
 
+**Echo limits precede conntrack** — established echo streams must still hit
+the excess-packet drop. NDP uses hop-limit 255; only router advertisements
+require a link-local source, since neighbor discovery includes DAD from `::`.
+
 ## What's done well
 
 - **Cleanup limited to known ports** — when toggling features (disabling

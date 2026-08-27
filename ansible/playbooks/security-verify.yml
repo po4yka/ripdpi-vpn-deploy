@@ -99,15 +99,22 @@
     - name: Perimeter ICMP follows the shaping floor
       # Blanket ICMP accepts are forbidden; echo must carry a limit
       # clause per family, PMTUD (packet-too-big) and link-local NDP
-      # must remain reachable.
+      # must remain reachable; rate-limit drops precede conntrack accepts.
       ansible.builtin.assert:
         that:
           - security_nft_ruleset is not search('(?m)^\s*ip protocol icmp accept\s*$')
           - security_nft_ruleset is not search('(?m)^\s*ip6 nexthdr ipv6-icmp accept\s*$')
-          - "'icmp type echo-request limit rate' in security_nft_ruleset"
-          - "'icmpv6 type echo-request limit rate' in security_nft_ruleset"
+          - "'icmp type echo-request limit rate over 10/second burst 20 packets drop' in security_nft_ruleset"
+          - "'icmpv6 type echo-request limit rate over 10/second burst 20 packets drop' in security_nft_ruleset"
+          - >-
+            security_nft_ruleset.index('icmp type echo-request limit rate over') <
+            security_nft_ruleset.index('ct state established,related accept')
+          - >-
+            security_nft_ruleset.index('icmpv6 type echo-request limit rate over') <
+            security_nft_ruleset.index('ct state established,related accept')
           - "'packet-too-big' in security_nft_ruleset"
-          - "'nd-neighbor-solicit' in security_nft_ruleset"
+          - "'icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert } ip6 hoplimit 255 accept' in security_nft_ruleset"
+          - "'icmpv6 type nd-router-advert ip6 saddr fe80::/10 ip6 hoplimit 255 accept' in security_nft_ruleset"
         fail_msg: >-
           Perimeter ICMP must be shaped: rate-limited echo per family,
           explicit non-echo ICMPv6 types, no blanket accepts.

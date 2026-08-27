@@ -78,6 +78,21 @@ def test_hysteria_string_values_roundtrip_through_yaml(value: str) -> None:
     assert parsed["masquerade"]["proxy"]["url"] == "https://owned.example.test/" + value
 
 
+def test_subscription_routes_inherit_the_complete_no_store_header_baseline() -> None:
+    variables = renderer.merge_render_vars()
+    variables["subscription"]["enable_bootstrap"] = True
+    variables["vpn"]["share_bundles"] = [{"token": "synthetic"}]
+    template = REPO_ROOT / "ansible/roles/subscription-host/templates/subscription.conf.j2"
+    rendered = renderer.render_template(template, variables)
+    server_scope, locations = rendered.split("    location ", 1)
+    for header in ("Strict-Transport-Security", "Content-Security-Policy", "Permissions-Policy", "X-Content-Type-Options", "Referrer-Policy", "X-Robots-Tag"):
+        assert f"add_header {header} " in server_scope
+    assert 'add_header Cache-Control "no-store" always;' in server_scope
+    assert "add_header " not in locations, "location overrides discard all inherited headers"
+    for route in ("sub", "bootstrap", "share"):
+        assert f'"^/{route}/' in locations
+
+
 def test_primary_and_fallback_vhosts_share_the_hardened_tls_http_identity() -> None:
     rendered = _render(fallback=True)
     assert "TLSv1.2" not in rendered

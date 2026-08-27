@@ -49,6 +49,27 @@ def test_firewall_uses_effective_custom_ssh_port() -> None:
     assert "tcp dport 22 ip saddr" not in rendered
 
 
+def test_echo_flood_drop_precedes_established_accept_for_both_families() -> None:
+    rendered = _render()
+    established = rendered.index("ct state established,related accept")
+    for protocol in ("icmp", "icmpv6"):
+        drop = f"{protocol} type echo-request limit rate over 10/second burst 20 packets drop"
+        assert rendered.index(drop) < established
+        assert f"{protocol} type echo-request accept" in rendered
+
+
+def test_neighbor_discovery_preserves_dad_and_global_sources_on_the_link() -> None:
+    rendered = _render()
+    neighbor_rule = next(line for line in rendered.splitlines() if "icmpv6 type { nd-neighbor-solicit" in line)
+    assert "nd-neighbor-advert" in neighbor_rule
+    assert "ip6 hoplimit 255 accept" in neighbor_rule
+    # RFC 4861 NS uses :: for DAD and may use a global address otherwise.
+    # Restricting either NS or NA to fe80::/10 would break those packets.
+    assert "saddr" not in neighbor_rule
+    assert "meta l4proto ipv6-icmp" in neighbor_rule
+    assert "icmpv6 type nd-router-advert ip6 saddr fe80::/10 ip6 hoplimit 255 accept" in rendered
+
+
 def test_firewall_discovers_ssh_port_before_rendering() -> None:
     tasks = (
         REPO_ROOT / "ansible" / "roles" / "firewall" / "tasks" / "main.yml"

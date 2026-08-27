@@ -19,6 +19,20 @@
       register: cdn_site
       failed_when: not cdn_site.stat.exists or not cdn_site.stat.islnk
 
+    - name: Run prefix refresh through the real systemd sandbox
+      ansible.builtin.command:
+        cmd: systemctl start cdn-front-prefix-refresh.service
+      changed_when: false
+
+    - name: Sandboxed refresh completed successfully
+      ansible.builtin.command:
+        cmd: systemctl show cdn-front-prefix-refresh.service --property=Result --property=ExecMainStatus
+      register: prefix_refresh_result
+      changed_when: false
+      failed_when: >-
+        'Result=success' not in prefix_refresh_result.stdout or
+        'ExecMainStatus=0' not in prefix_refresh_result.stdout
+
     - name: Refresh script writes IPv4 and IPv6 Cloudflare prefix caches
       ansible.builtin.shell:
         cmd: |

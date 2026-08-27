@@ -31,3 +31,7 @@ ranges, `CF-Connecting-IP`), Origin CA cert, and Authenticated Origin Pulls.
   missing.
 - **Mixing CF and direct on the same vhost is forbidden** — separate
   `server_name`/`listen` blocks. Header inheritance otherwise leaks origin IP.
+- **`nginx -t` needs writable PID/log files even for validation** — the
+  refresh sandbox grants only `/run/nginx.pid` and `/var/log/nginx` beyond
+  prefix state, and starts after nginx so the PID bind mount exists. Test
+  `systemctl start cdn-front-prefix-refresh.service`, not only the script.
