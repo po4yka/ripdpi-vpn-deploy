@@ -1,9 +1,10 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context as _, Result};
 use owo_colors::OwoColorize;
 
 use crate::cli::{ShareArgs, ShareType};
 use crate::config::Context;
 use crate::pages::{qr, recipient};
+use crate::protected_file::write_private;
 use crate::runner::make;
 use crate::secrets::Secrets;
 use crate::wizard::section;
@@ -38,12 +39,13 @@ pub fn build_sub_urls(base: &str, segment: &str) -> SubUrls {
 
 /// Validate that a token contains only base64url alphabet characters.
 fn validate_token(token: &str) -> Result<()> {
-    let valid = token
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    let valid = !token.is_empty()
+        && token
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
     if !valid {
         return Err(anyhow!(
-            "token contains invalid characters — only base64url alphabet [A-Za-z0-9_-] is allowed"
+            "token must be non-empty and contain only base64url alphabet [A-Za-z0-9_-]"
         ));
     }
     Ok(())
@@ -80,15 +82,27 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
     // Transport host — used only as a URL host fallback when no dedicated
     // subscription host is configured. The path segment itself must always be
     // an operator-issued opaque bearer token; client-name fallback is forbidden.
+    let sub_host = secrets
+        .subscription_host()
+        .filter(|host| !host.trim().is_empty())
+        .or_else(|| {
+            secrets
+                .nginx_xhttp
+                .server_name
+                .as_deref()
+                .filter(|host| !host.trim().is_empty())
+        })
+        .ok_or_else(|| {
+            anyhow!("missing subscription.server_name or nginx_xhttp.server_name in secrets")
+        })?;
     let host = secrets
         .nginx_xhttp
         .server_name
         .as_deref()
-        .unwrap_or("(unset)");
+        .filter(|host| !host.trim().is_empty())
+        .unwrap_or(sub_host);
 
     let token = read_token(&args)?;
-    validate_token(&token)?;
-    let sub_host = secrets.subscription_host().unwrap_or(host);
     let base = match secrets.subscription_port() {
         Some(443) | None => format!("https://{sub_host}"),
         Some(port) => format!("https://{sub_host}:{port}"),
@@ -164,7 +178,14 @@ fn read_token(args: &ShareArgs) -> Result<String> {
     } else {
         return Err(anyhow!("provide --token-stdin or --token-file"));
     };
-    Ok(token.trim().to_owned())
+    let token = token.trim().to_owned();
+    let source = if args.token_stdin {
+        "stdin"
+    } else {
+        "token file"
+    };
+    validate_token(&token).with_context(|| format!("invalid token from {source}"))?;
+    Ok(token)
 }
 
 /// Read a current-owner private token through the same atomic file gate as secrets.
@@ -180,30 +201,6 @@ fn set_private_mode(path: &std::path::Path, mode: u32) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
     Ok(())
-}
-
-fn write_private(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
-    use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
-    let temp = path.with_extension("tmp");
-    // Clear a stale temp left by an interrupted run before recreating it
-    // exclusively; create_new would otherwise fail forever.
-    let _ = std::fs::remove_file(&temp);
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&temp)?;
-    let outcome = (|| -> Result<()> {
-        file.write_all(bytes)?;
-        file.sync_all()?;
-        std::fs::rename(&temp, path)?;
-        Ok(())
-    })();
-    if outcome.is_err() {
-        let _ = std::fs::remove_file(&temp);
-    }
-    outcome
 }
 
 fn per_platform_apps() -> Vec<recipient::AppCard> {
