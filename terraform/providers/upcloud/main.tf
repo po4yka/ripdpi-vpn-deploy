@@ -28,6 +28,7 @@ resource "upcloud_server" "vpn" {
   cpu = null
   mem = null
 
+  firewall  = true
   metadata  = true
   user_data = local.user_data
 

@@ -3,6 +3,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -161,3 +165,51 @@ def test_listener_contract_pre_tasks_run_during_tagged_deploys() -> None:
     tasks = {task["name"]: task for task in play["pre_tasks"] if task["name"] in required}
     assert set(tasks) == required
     assert all("always" in task.get("tags", []) for task in tasks.values())
+
+
+def test_upcloud_dns_replies_select_primary_not_secondary_ipv4(tmp_path: Path) -> None:
+    # Native Terraform mocks share computed IPs across repeated NIC blocks.
+    # Evaluate the actual selector with distinct addresses, without a provider.
+    source = (REPO_ROOT / "terraform/providers/upcloud/firewall.tf").read_text()
+    selectors = re.findall(r"(?m)^\s*primary_public_ipv4\s*=\s*([^\n]+)$", source)
+    assert len(selectors) == 1, "Expected exactly one primary IPv4 selector"
+    selector = selectors[0]
+    reference = "upcloud_server.vpn.network_interface"
+    assert selector.count(reference) == 1
+    destinations = re.findall(
+        r"(?m)^\s*destination_address_(?:start|end)\s*=\s*(\S+)\s*$", source,
+    )
+    assert destinations == ["local.primary_public_ipv4", "local.primary_public_ipv4"]
+
+    expressions = []
+    expected = []
+    for primary, secondary, utility_first in [
+        ("203.0.113.10", "203.0.113.20", True),
+        ("198.51.100.10", "198.51.100.20", False),
+    ]:
+        public = [
+            {"type": "public", "ip_address_family": "IPv4", "ip_address": primary},
+            {"type": "public", "ip_address_family": "IPv4", "ip_address": secondary},
+        ]
+        other = [
+            {"type": "utility", "ip_address_family": "IPv4", "ip_address": "10.0.0.10"},
+            {"type": "public", "ip_address_family": "IPv6", "ip_address": "2001:db8::10"},
+        ]
+        interfaces = other + public if utility_first else public + other
+        expressions.append(selector.replace(reference, json.dumps(interfaces)))
+        expected.append(primary)
+
+    terraform = shutil.which("terraform")
+    assert terraform is not None, "Terraform is required for the offline selector regression"
+    result = subprocess.run(
+        [terraform, "console", "-no-color"],
+        input="jsonencode([" + ",".join(expressions) + "])\n",
+        text=True,
+        capture_output=True,
+        cwd=tmp_path,
+        env={key: value for key, value in os.environ.items() if not key.startswith("TF_")},
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(json.loads(result.stdout)) == expected

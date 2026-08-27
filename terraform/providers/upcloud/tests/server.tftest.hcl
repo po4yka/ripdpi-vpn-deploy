@@ -1,6 +1,13 @@
 # Asserts on the server resource itself.
 
-mock_provider "upcloud" {}
+mock_provider "upcloud" {
+  mock_resource "upcloud_server" {
+    defaults = {
+      firewall          = false
+      network_interface = { ip_address = "203.0.113.10" }
+    }
+  }
+}
 
 variables {
   server_name          = "vpn-test"
@@ -119,4 +126,14 @@ run "rejects_unfilled_template_marker" {
   }
 
   expect_failures = [var.storage_template]
+}
+
+run "server_firewall_is_explicitly_enabled" {
+  # Mock apply resolves the optional/computed flag to false if omitted.
+  command = apply
+
+  assert {
+    condition     = upcloud_server.vpn.firewall == true
+    error_message = "Managed servers must explicitly activate the provider firewall"
+  }
 }

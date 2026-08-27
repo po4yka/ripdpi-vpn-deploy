@@ -25,6 +25,21 @@ UPCLOUD_USERNAME=... UPCLOUD_PASSWORD=... make PROVIDER=upcloud ENV=prod init pl
 
 See `terraform/providers/upcloud/CLAUDE.md` for design decisions and pitfalls.
 
+## Existing-node firewall activation
+
+The server explicitly enables the provider firewall. DNS reply rules accept
+TCP/UDP source port 53 only from `dns_resolver_ipv4s`, to the primary public
+IPv4 and `dns_reply_port_range`. The defaults are UpCloud's IPv4 resolvers and
+ports 32768–60999; verify the guest resolver and DNS client source-port policy,
+because not every client uses that kernel range. IPv6 DNS replies are excluded.
+
+Terraform updates the server before its dependent rules. Before enabling an
+existing disabled firewall, preinstall and verify approved SSH and DNS rules,
+then separately authorize an activation-only plan without replacement or
+unrelated changes. Targeting the rules with `-target` still includes the server
+dependency and is not a safe ordering workaround. A source merge does not
+authorize live activation.
+
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
 
@@ -54,8 +69,10 @@ No modules.
 | <a name="input_admin_user"></a> [admin\_user](#input\_admin\_user) | Non-root user created by cloud-init for SSH and Ansible access. | `string` | `"deploy"` | no |
 | <a name="input_allowed_ssh_cidrs"></a> [allowed\_ssh\_cidrs](#input\_allowed\_ssh\_cidrs) | Source CIDRs allowed to reach ssh\_port/tcp. | `list(string)` | n/a | yes |
 | <a name="input_build_env"></a> [build\_env](#input\_build\_env) | Free-form label baked into /etc/vpn-build-id by cloud-init. | `string` | `"prod"` | no |
+| <a name="input_dns_reply_port_range"></a> [dns\_reply\_port\_range](#input\_dns\_reply\_port\_range) | Guest ephemeral destination ports allowed for replies from approved DNS resolvers. Verify the guest and DNS client source-port policy before activation; this default is not universal. | <pre>object({<br/>    start = number<br/>    end   = number<br/>  })</pre> | <pre>{<br/>  "end": 60999,<br/>  "start": 32768<br/>}</pre> | no |
+| <a name="input_dns_resolver_ipv4s"></a> [dns\_resolver\_ipv4s](#input\_dns\_resolver\_ipv4s) | Approved DNS resolver IPv4 literals whose TCP/UDP replies may reach the primary public IPv4. Defaults are UpCloud's DNS resolvers; keep aligned with guest resolver configuration. | `list(string)` | <pre>[<br/>  "94.237.127.9",<br/>  "94.237.40.9"<br/>]</pre> | no |
 | <a name="input_enable_backups"></a> [enable\_backups](#input\_enable\_backups) | Enable provider-side server backups (daily, 7-day retention). | `bool` | `true` | no |
-| <a name="input_enable_hysteria"></a> [enable\_hysteria](#input\_enable\_hysteria) | n/a | `bool` | `true` | no |
+| <a name="input_enable_hysteria"></a> [enable\_hysteria](#input\_enable\_hysteria) | Include the Hysteria2 UDP/443 listener in the legacy default set. Explicit public\_listeners ignore this toggle; add hysteria there directly. | `bool` | `true` | no |
 | <a name="input_enable_ipv6"></a> [enable\_ipv6](#input\_enable\_ipv6) | Allocate and expose a public IPv6 address. | `bool` | `true` | no |
 | <a name="input_labels"></a> [labels](#input\_labels) | Provider-specific resource tags/labels. | `map(string)` | `{}` | no |
 | <a name="input_nginx_xhttp_public_port"></a> [nginx\_xhttp\_public\_port](#input\_nginx\_xhttp\_public\_port) | Public TCP port for nginx-xhttp. Keep this in sync with Ansible nginx\_xhttp\_public\_port. | `number` | `8443` | no |
@@ -65,6 +82,7 @@ No modules.
 | <a name="input_ssh_port"></a> [ssh\_port](#input\_ssh\_port) | Effective SSH listener port configured by cloud-init and opened at the provider edge. | `number` | `22` | no |
 | <a name="input_storage_size_gb"></a> [storage\_size\_gb](#input\_storage\_size\_gb) | Root disk size in GB. | `number` | `25` | no |
 | <a name="input_storage_template"></a> [storage\_template](#input\_storage\_template) | Storage template UUID to clone from. Pin to a specific Debian 13 / Ubuntu 24.04 template. | `string` | n/a | yes |
+| <a name="input_use_legacy_public_listeners"></a> [use\_legacy\_public\_listeners](#input\_use\_legacy\_public\_listeners) | Opt-in to the historical implicit listener set when public\_listeners is empty. New environments must define public\_listeners explicitly; an empty effective contract fails the plan. | `bool` | `false` | no |
 | <a name="input_zone"></a> [zone](#input\_zone) | UpCloud zone. Allowed: fi-hel1 (Helsinki), de-fra1 (Frankfurt), nl-ams1 (Amsterdam), sg-sin1 (Singapore). | `string` | n/a | yes |
 
 ## Outputs

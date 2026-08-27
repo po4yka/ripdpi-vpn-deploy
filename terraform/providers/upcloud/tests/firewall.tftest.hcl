@@ -12,7 +12,13 @@
 #
 # Requires Terraform 1.6+ (native test framework).
 
-mock_provider "upcloud" {}
+mock_provider "upcloud" {
+  mock_resource "upcloud_server" {
+    defaults = {
+      network_interface = { ip_address = "203.0.113.10" }
+    }
+  }
+}
 
 variables {
   server_name          = "vpn-test"
@@ -195,12 +201,179 @@ run "firewall_default_deny_terminates_both_chains" {
   command = plan
 
   assert {
-    condition = length([
-      for r in upcloud_firewall_rules.vpn.firewall_rule :
-      r if startswith(r.comment, "default deny inbound")
-    ]) == 2
+    condition = [
+      for i, r in upcloud_firewall_rules.vpn.firewall_rule : i
+      if r.action == "drop" && r.direction == "in"
+      ] == [
+      length(upcloud_firewall_rules.vpn.firewall_rule) - 2,
+      length(upcloud_firewall_rules.vpn.firewall_rule) - 1,
+      ] && toset([
+        for r in upcloud_firewall_rules.vpn.firewall_rule : r.family if r.action == "drop"
+    ]) == toset(["IPv4", "IPv6"])
     error_message = "Default-deny must close both IPv4 and IPv6 inbound chains"
   }
+}
+
+run "firewall_dns_replies_are_narrow_and_precede_denies" {
+  command = apply
+
+  assert {
+    condition = toset([
+      for r in upcloud_firewall_rules.vpn.firewall_rule : "${r.source_address_start}/${r.protocol}"
+      if r.comment == "DNS resolver reply"
+    ]) == toset(["94.237.127.9/tcp", "94.237.127.9/udp", "94.237.40.9/tcp", "94.237.40.9/udp"])
+    error_message = "Default policy must emit TCP and UDP replies from exactly the two approved resolvers"
+  }
+
+  assert {
+    condition = length([
+      for r in upcloud_firewall_rules.vpn.firewall_rule : r if r.comment == "DNS resolver reply"
+      ]) == 4 && alltrue([
+      for i, r in upcloud_firewall_rules.vpn.firewall_rule :
+      r.action == "accept" && r.direction == "in" && r.family == "IPv4" &&
+      r.source_address_start == r.source_address_end &&
+      r.source_port_start == "53" && r.source_port_end == "53" &&
+      r.destination_address_start == output.server_ipv4 && r.destination_address_end == output.server_ipv4 &&
+      r.destination_port_start == "32768" && r.destination_port_end == "60999" &&
+      i < length(upcloud_firewall_rules.vpn.firewall_rule) - 2
+      if r.comment == "DNS resolver reply"
+    ])
+    error_message = "Every DNS reply must constrain both addresses and ports before either inbound deny"
+  }
+
+  assert {
+    condition = length(upcloud_firewall_rules.vpn.firewall_rule) == 19 && alltrue([
+      for r in upcloud_firewall_rules.vpn.firewall_rule :
+      r.protocol == "tcp" && r.source_address_start == "203.0.113.42" &&
+      r.source_address_end == "203.0.113.42" &&
+      r.destination_port_start == "22" && r.destination_port_end == "22"
+      if startswith(r.comment, "SSH allow ")
+    ]) && output.public_listeners == var.public_listeners
+    error_message = "DNS replies must not widen the SSH or public listener contracts"
+  }
+}
+
+run "firewall_dns_custom_policy_with_secondary_interface" {
+  command = apply
+
+  variables {
+    additional_public_ip = true
+    dns_resolver_ipv4s   = ["192.0.2.53", "198.51.100.53"]
+    dns_reply_port_range = { start = 40000, end = 50000 }
+  }
+
+  # Native mocks share computed values across repeated NIC blocks. This checks
+  # the full rule shape with a secondary NIC, not distinct-address selection.
+  assert {
+    condition = length([
+      for ni in upcloud_server.vpn.network_interface : ni
+      if ni.type == "public" && ni.ip_address_family == "IPv4"
+      ]) == 2 && toset([
+      for r in upcloud_firewall_rules.vpn.firewall_rule : "${r.source_address_start}/${r.protocol}"
+      if r.comment == "DNS resolver reply"
+    ]) == toset(["192.0.2.53/tcp", "192.0.2.53/udp", "198.51.100.53/tcp", "198.51.100.53/udp"])
+    error_message = "Custom DNS resolvers must replace the defaults, with two replies per resolver"
+  }
+
+  assert {
+    condition = length([
+      for r in upcloud_firewall_rules.vpn.firewall_rule : r if r.comment == "DNS resolver reply"
+      ]) == 4 && alltrue([
+      for i, r in upcloud_firewall_rules.vpn.firewall_rule :
+      r.action == "accept" && r.direction == "in" && r.family == "IPv4" &&
+      r.source_address_start == r.source_address_end &&
+      r.source_port_start == "53" && r.source_port_end == "53" &&
+      r.destination_address_start == "203.0.113.10" && r.destination_address_end == "203.0.113.10" &&
+      r.destination_port_start == "40000" && r.destination_port_end == "50000" &&
+      i < length(upcloud_firewall_rules.vpn.firewall_rule) - 2
+      if r.comment == "DNS resolver reply"
+    ])
+    error_message = "Custom DNS policy must keep the complete address, port, protocol and ordering constraints"
+  }
+}
+
+run "rejects_empty_dns_resolvers" {
+  command = plan
+  variables { dns_resolver_ipv4s = [] }
+  expect_failures = [var.dns_resolver_ipv4s]
+}
+
+run "rejects_duplicate_dns_resolvers" {
+  command = plan
+  variables { dns_resolver_ipv4s = ["192.0.2.53", "192.0.2.53"] }
+  expect_failures = [var.dns_resolver_ipv4s]
+}
+
+run "rejects_ipv6_dns_resolver" {
+  command = plan
+  variables { dns_resolver_ipv4s = ["2001:db8::53"] }
+  expect_failures = [var.dns_resolver_ipv4s]
+}
+
+run "rejects_dns_resolver_cidr" {
+  command = plan
+  variables { dns_resolver_ipv4s = ["192.0.2.53/32"] }
+  expect_failures = [var.dns_resolver_ipv4s]
+}
+
+run "rejects_dns_resolver_hostname" {
+  command = plan
+  variables { dns_resolver_ipv4s = ["resolver.example.invalid"] }
+  expect_failures = [var.dns_resolver_ipv4s]
+}
+
+run "rejects_empty_dns_resolver_address" {
+  command = plan
+  variables { dns_resolver_ipv4s = [""] }
+  expect_failures = [var.dns_resolver_ipv4s]
+}
+
+run "rejects_dns_resolver_whitespace" {
+  command = plan
+  variables { dns_resolver_ipv4s = [" 192.0.2.53"] }
+  expect_failures = [var.dns_resolver_ipv4s]
+}
+
+run "rejects_noncanonical_dns_resolver" {
+  command = plan
+  variables { dns_resolver_ipv4s = ["192.000.2.53"] }
+  expect_failures = [var.dns_resolver_ipv4s]
+}
+
+run "rejects_invalid_dns_resolver_octet" {
+  command = plan
+  variables { dns_resolver_ipv4s = ["192.0.2.256"] }
+  expect_failures = [var.dns_resolver_ipv4s]
+}
+
+run "rejects_zero_dns_reply_port" {
+  command = plan
+  variables { dns_reply_port_range = { start = 0, end = 60999 } }
+  expect_failures = [var.dns_reply_port_range]
+}
+
+run "rejects_overflow_dns_reply_port" {
+  command = plan
+  variables { dns_reply_port_range = { start = 32768, end = 65536 } }
+  expect_failures = [var.dns_reply_port_range]
+}
+
+run "rejects_reversed_dns_reply_ports" {
+  command = plan
+  variables { dns_reply_port_range = { start = 60999, end = 32768 } }
+  expect_failures = [var.dns_reply_port_range]
+}
+
+run "rejects_fractional_dns_reply_start" {
+  command = plan
+  variables { dns_reply_port_range = { start = 32768.5, end = 60999 } }
+  expect_failures = [var.dns_reply_port_range]
+}
+
+run "rejects_fractional_dns_reply_end" {
+  command = plan
+  variables { dns_reply_port_range = { start = 32768, end = 60999.5 } }
+  expect_failures = [var.dns_reply_port_range]
 }
 
 # ---------------------------------------------------------------------------

@@ -19,6 +19,11 @@ toggle. Blue-green moves follow the disposable-node path instead.
 The provider schema may otherwise leave the family unknown during planning,
 which makes interface-count policy and IPv6-disable tests ambiguous.
 
+**Enforcement and DNS replies are explicit** — `server.firewall = true` activates
+the separate rules resource. DNS replies are not public listeners: approved
+IPv4 resolvers, TCP/UDP source port 53, primary public IPv4 only, and configured
+guest ephemeral destination ports. Secondary IPv4 never expands this scope.
+
 ## What's done well
 
 - **Inputs are typed** — every variable has a `type` and `validation` block
@@ -29,6 +34,17 @@ which makes interface-count policy and IPv6-disable tests ambiguous.
 
 ## Pitfalls
 
+- **Rules must precede live activation** — Terraform updates the server before
+  its dependent rules resource. For an existing disabled firewall, preinstall
+  and verify approved SSH and DNS rules before separately authorized activation;
+  `-target` on the rules does not avoid its server dependency. Reject replacement
+  or unrelated changes. Source integration is not live rollout permission.
+- **DNS source ports vary** — 32768–60999 is a typical guest kernel range, not a
+  guarantee for every DNS client. Verify resolver addresses and actual client
+  source-port policy before activation; this rule does not allow IPv6 replies.
+- **Provider filtering is stateless** — DNS reply rules do not establish return
+  paths for HTTPS, NTP or other outbound traffic. Verify required traffic during
+  the separate live rollout; do not infer it from ICMP or populated rules.
 - **UpCloud plan names change** — the API accepts both legacy `1xCPU-1GB` and
   new tier strings. Pin via the validation block; don't accept arbitrary input.
 - **Admin user is provisioned twice by design** — the server `login` block

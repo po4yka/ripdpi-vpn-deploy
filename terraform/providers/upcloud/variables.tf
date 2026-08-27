@@ -75,6 +75,47 @@ variable "ssh_port" {
   }
 }
 
+variable "dns_resolver_ipv4s" {
+  type        = list(string)
+  default     = ["94.237.127.9", "94.237.40.9"]
+  description = "Approved DNS resolver IPv4 literals whose TCP/UDP replies may reach the primary public IPv4. Defaults are UpCloud's DNS resolvers; keep aligned with guest resolver configuration."
+
+  validation {
+    condition = try(
+      length(var.dns_resolver_ipv4s) > 0 &&
+      length(var.dns_resolver_ipv4s) == length(distinct(var.dns_resolver_ipv4s)) &&
+      alltrue([
+        for ip in var.dns_resolver_ipv4s :
+        can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$", ip)) &&
+        try(cidrhost("${ip}/32", 0) == ip, false)
+      ]),
+      false,
+    )
+    error_message = "dns_resolver_ipv4s must be a nonempty list of distinct canonical IPv4 literals, without CIDRs, hostnames or whitespace."
+  }
+}
+
+variable "dns_reply_port_range" {
+  type = object({
+    start = number
+    end   = number
+  })
+  default     = { start = 32768, end = 60999 }
+  description = "Guest ephemeral destination ports allowed for replies from approved DNS resolvers. Verify the guest and DNS client source-port policy before activation; this default is not universal."
+
+  validation {
+    condition = try(
+      var.dns_reply_port_range.start >= 1 &&
+      var.dns_reply_port_range.end <= 65535 &&
+      var.dns_reply_port_range.start <= var.dns_reply_port_range.end &&
+      floor(var.dns_reply_port_range.start) == var.dns_reply_port_range.start &&
+      floor(var.dns_reply_port_range.end) == var.dns_reply_port_range.end,
+      false,
+    )
+    error_message = "dns_reply_port_range must contain ordered integer port bounds within 1..65535."
+  }
+}
+
 variable "enable_hysteria" {
   type        = bool
   default     = true

@@ -1,7 +1,11 @@
+locals {
+  primary_public_ipv4 = [for ni in upcloud_server.vpn.network_interface : ni.ip_address if ni.type == "public" && ni.ip_address_family == "IPv4"][0]
+}
+
 resource "upcloud_firewall_rules" "vpn" {
   server_id = upcloud_server.vpn.id
 
-  # Loopback / established
+  # ICMP reachability; this provider firewall is stateless.
   firewall_rule {
     action    = "accept"
     direction = "in"
@@ -52,6 +56,30 @@ resource "upcloud_firewall_rules" "vpn" {
       destination_port_start = tostring(firewall_rule.value.listener.port != null ? firewall_rule.value.listener.port : tonumber(split("-", firewall_rule.value.listener.port_range)[0]))
       destination_port_end   = tostring(firewall_rule.value.listener.port != null ? firewall_rule.value.listener.port : tonumber(split("-", firewall_rule.value.listener.port_range)[1]))
       comment                = firewall_rule.value.listener.name == "xray" && firewall_rule.value.listener.protocol == "tcp" && firewall_rule.value.listener.port == 443 ? "TCP/443 VLESS+REALITY${firewall_rule.value.family == "IPv6" ? " IPv6" : ""}" : firewall_rule.value.listener.name == "hysteria" && firewall_rule.value.listener.protocol == "udp" && firewall_rule.value.listener.port == 443 ? "UDP/443 Hysteria2" : "${upper(firewall_rule.value.listener.protocol)}/${coalesce(try(tostring(firewall_rule.value.listener.port), null), firewall_rule.value.listener.port_range)} ${firewall_rule.value.listener.name}"
+    }
+  }
+
+  # DNS replies are not public listeners. Keep both endpoints and the guest's
+  # ephemeral destination ports constrained, before either terminal deny.
+  dynamic "firewall_rule" {
+    for_each = {
+      for pair in setproduct(toset(var.dns_resolver_ipv4s), ["tcp", "udp"]) :
+      "${pair[0]}-${pair[1]}" => { resolver = pair[0], protocol = pair[1] }
+    }
+    content {
+      action                    = "accept"
+      direction                 = "in"
+      family                    = "IPv4"
+      protocol                  = firewall_rule.value.protocol
+      source_address_start      = firewall_rule.value.resolver
+      source_address_end        = firewall_rule.value.resolver
+      source_port_start         = "53"
+      source_port_end           = "53"
+      destination_address_start = local.primary_public_ipv4
+      destination_address_end   = local.primary_public_ipv4
+      destination_port_start    = tostring(var.dns_reply_port_range.start)
+      destination_port_end      = tostring(var.dns_reply_port_range.end)
+      comment                   = "DNS resolver reply"
     }
   }
 
