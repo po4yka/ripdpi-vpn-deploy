@@ -91,3 +91,26 @@
           true
         executable: /bin/bash
       changed_when: false
+
+    - name: awg-quick target unit exists (PartOf= dependency resolves)
+      ansible.builtin.stat:
+        path: /etc/systemd/system/awg-quick.target
+      register: awg_target_unit
+      failed_when: not awg_target_unit.stat.exists
+
+    - name: Read awg-quick.target content
+      ansible.builtin.slurp:
+        src: /etc/systemd/system/awg-quick.target
+      register: awg_target_raw
+
+    - name: Decode awg-quick.target
+      ansible.builtin.set_fact:
+        awg_target_text: "{{ awg_target_raw.content | b64decode }}"
+
+    - name: Target wants exactly the enabled instances
+      ansible.builtin.assert:
+        that:
+          - awg_target_text is search('(?m)^Wants=awg-quick@awg0\.service$')
+        fail_msg: |
+          awg-quick.target does not pin the enabled instance set.
+          Content: {{ awg_target_text }}

@@ -254,6 +254,19 @@
     mode: "0644"
   notify: Reload systemd
 
+- name: Install awg-quick target (resolves PartOf= dependency)
+  # awg-quick@.service declares PartOf=awg-quick.target; without this
+  # unit every daemon-reload carries an unresolvable dependency and
+  # `systemctl start awg-quick.target` has no handle to bring the whole
+  # converged instance set up at once.
+  ansible.builtin.template:
+    src: awg-quick.target.j2
+    dest: /etc/systemd/system/awg-quick.target
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
 - name: Render AmneziaWG interface configs
   ansible.builtin.template:
     src: awg0.conf.j2

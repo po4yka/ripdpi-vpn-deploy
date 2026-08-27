@@ -1,4 +1,4 @@
 pub mod registry;
 pub mod version;
 
-pub use registry::{Host, Registry};
+pub use registry::{ipv4_limit, Host, Registry};

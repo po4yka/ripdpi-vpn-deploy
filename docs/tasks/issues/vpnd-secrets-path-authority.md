@@ -2,7 +2,7 @@
 id: VPD-1787496384518490
 title: Make vpnd the single authority for the decrypted secrets path and redaction
 kind: bug
-status: backlog
+status: review
 area: vpnd
 priority: critical
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: vpd-1787496384518490-vpnd-secrets-path-authority
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-25
 related_tasks: []
 ---
 

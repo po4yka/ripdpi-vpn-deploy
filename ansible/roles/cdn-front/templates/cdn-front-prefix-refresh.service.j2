@@ -1,0 +1,25 @@
+[Unit]
+Description=Refresh Cloudflare prefix lists used by cdn-front
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cdn-front-refresh-cf-prefixes
+
+# Hardening floor for a root oneshot: strict read-only filesystem view,
+# private tmp, no privilege escalation or kernel surfaces. Writes are
+# confined to the CF prefix directory; nginx reload goes through
+# systemd's D-Bus surface.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+ReadWritePaths={{ cdn_front.cf_prefix_dir }}

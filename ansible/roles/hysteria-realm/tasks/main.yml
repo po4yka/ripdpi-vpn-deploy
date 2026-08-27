@@ -38,12 +38,18 @@
     fail_msg: "Add hysteria_realm_secrets.linux_{{ sing_box_arch }}_sha256 to your secrets file."
 
 - name: Ensure system user
+  # With share_hysteria_tls the TLS material stays owned root:hysteria
+  # 0640 in the hysteria role's config dir; grant this service identity
+  # read access via an appended supplementary group rather than
+  # re-owning or widening the shared PEMs.
   ansible.builtin.user:
     name: hysteria-realm
     system: true
     shell: /usr/sbin/nologin
     home: "{{ hysteria_realm.install_root }}"
     create_home: false
+    groups: "{{ ['hysteria'] if (hysteria_realm.share_hysteria_tls | default(true)) else omit }}"
+    append: true
 
 - name: Ensure directories
   ansible.builtin.file:

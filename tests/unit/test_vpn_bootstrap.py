@@ -13,6 +13,7 @@ depend on:
   * one JSONL audit record per request with hash prefix (not full hash)
   * X-Real-IP is preferred over peer address
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -323,6 +324,18 @@ def test_revoked_file_with_comments_and_blanks(service):
     assert service.get(f"/sub/{token}").status == 410
 
 
+def test_revocation_match_is_case_insensitive(service):
+    """Operator-supplied uppercase hashes must still revoke: both the
+    rendered revoked file (Ansible lowercases on render) and the match
+    side normalize case before comparison."""
+    token = "case1000case1000"
+    service.place("sub", token, b"payload")
+    h_upper = hashlib.sha256(token.encode()).hexdigest().upper()
+    service.revoked_file.write_text(f"{h_upper}\n")
+    assert service.get(f"/sub/{token}").status == 410
+    assert service.reads()[-1]["outcome"] == "revoked"
+
+
 def test_invalid_expiry_metadata_fails_closed_and_is_audited(service):
     token = "A" * 32
     service.place("sub", token, b"payload")
@@ -337,7 +350,9 @@ def test_unreadable_revocation_state_fails_closed_and_is_audited(service, monkey
     token = "B" * 32
     service.place("sub", token, b"payload")
     original = service.module.REVOKED_FILE
-    monkeypatch.setattr(service.module, "REVOKED_FILE", original / "missing" / "revoked")
+    monkeypatch.setattr(
+        service.module, "REVOKED_FILE", original / "missing" / "revoked"
+    )
 
     assert service.get(f"/sub/{token}").status == 503
     assert service.reads()[-1]["outcome"] == "revocation-unavailable"
@@ -410,6 +425,7 @@ def test_audit_record_shape_locked(service):
 # Workstream 5 extension — revoke-then-read lifecycle
 # ---------------------------------------------------------------------------
 
+
 class TestRevokeLifecycle:
     """End-to-end: issue a token, serve it, revoke it, assert 410 on the next read.
 
@@ -439,9 +455,7 @@ class TestRevokeLifecycle:
 
         # Step 4: read after revocation must return 410 Gone
         resp2 = service.get(f"/sub/{token}")
-        assert resp2.status == 410, (
-            f"Expected 410 after revocation, got {resp2.status}"
-        )
+        assert resp2.status == 410, f"Expected 410 after revocation, got {resp2.status}"
 
     def test_audit_log_records_revoked_outcome(self, service):
         """The audit log must record 'revoked' outcome after revocation,
@@ -449,9 +463,9 @@ class TestRevokeLifecycle:
         token = "rev_audit_rev_aaa"  # 17 chars
 
         service.place("sub", token, b"payload")
-        service.get(f"/sub/{token}")   # consumed
+        service.get(f"/sub/{token}")  # consumed
         service.revoke(token)
-        service.get(f"/sub/{token}")   # revoked
+        service.get(f"/sub/{token}")  # revoked
 
         outcomes = [r["outcome"] for r in service.reads()]
         assert outcomes[-1] == "revoked", (

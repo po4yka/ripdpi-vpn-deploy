@@ -1,0 +1,10 @@
+[Unit]
+Description=AmneziaWG instance group rendered by the amneziawg role
+# PartOf=awg-quick.target in awg-quick@.service requires this target to
+# exist or every daemon-reload reports an unresolvable dependency. Wants=
+# is generated per enabled instance so `systemctl start awg-quick.target`
+# brings up exactly the converged instance set.
+
+
+[Install]
+WantedBy=multi-user.target

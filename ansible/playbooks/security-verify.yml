@@ -87,6 +87,31 @@
         cmd: nft -c -f /etc/nftables.conf
       changed_when: false
 
+    - name: Read rendered nftables ruleset
+      ansible.builtin.slurp:
+        src: /etc/nftables.conf
+      register: security_nft_ruleset_raw
+
+    - name: Decode nftables ruleset
+      ansible.builtin.set_fact:
+        security_nft_ruleset: "{{ security_nft_ruleset_raw.content | b64decode }}"
+
+    - name: Perimeter ICMP follows the shaping floor
+      # Blanket ICMP accepts are forbidden; echo must carry a limit
+      # clause per family, PMTUD (packet-too-big) and link-local NDP
+      # must remain reachable.
+      ansible.builtin.assert:
+        that:
+          - security_nft_ruleset is not search('(?m)^\s*ip protocol icmp accept\s*$')
+          - security_nft_ruleset is not search('(?m)^\s*ip6 nexthdr ipv6-icmp accept\s*$')
+          - "'icmp type echo-request limit rate' in security_nft_ruleset"
+          - "'icmpv6 type echo-request limit rate' in security_nft_ruleset"
+          - "'packet-too-big' in security_nft_ruleset"
+          - "'nd-neighbor-solicit' in security_nft_ruleset"
+        fail_msg: >-
+          Perimeter ICMP must be shaped: rate-limited echo per family,
+          explicit non-echo ICMPv6 types, no blanket accepts.
+
     - name: Node capability manifest exists
       ansible.builtin.stat:
         path: /var/lib/ripdpi-vpn-deploy/manifest.json

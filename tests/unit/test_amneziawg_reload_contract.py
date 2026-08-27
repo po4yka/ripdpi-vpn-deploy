@@ -12,12 +12,15 @@ UNIT_TEMPLATE = ROLE_DIR / "templates" / "awg-quick@.service.j2"
 ROTATION_PLAYBOOK = REPO_ROOT / "ansible" / "playbooks" / "rotate-credentials.yml"
 
 
-def test_role_reload_uses_the_awg_quick_systemd_unit():
-    """The unit strips awg-quick-only directives before syncconf runs."""
+def test_role_restart_applies_full_state_via_the_awg_quick_unit():
+    """Config changes apply through a full unit restart: the reload verb
+    cannot apply address/route changes and aborts on inactive instances,
+    which silently skipped the rest of the handler loop."""
     content = HANDLER.read_text()
 
     assert 'name: "awg-quick@{{ item.name }}"' in content
-    assert "state: reloaded" in content
+    assert "state: restarted" in content
+    assert "state: reloaded" not in content
     assert "awg syncconf" not in content
 
 
@@ -40,7 +43,10 @@ def test_rotation_uses_the_role_instance_normalization_for_every_instance():
     assert "ansible.builtin.systemd_service:" in handler
     assert 'name: "awg-quick@{{ item.name }}"' in handler
     assert "state: reloaded" in handler
-    assert 'loop: "{{ _awg_instances | default([{\'name\': amneziawg.interface}]) }}"' in handler
+    assert (
+        "loop: \"{{ _awg_instances | default([{'name': amneziawg.interface}]) }}\""
+        in handler
+    )
 
 
 def test_instance_normalization_remains_role_owned():

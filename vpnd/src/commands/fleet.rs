@@ -73,7 +73,10 @@ mod tests {
         let ctx = fake_ctx();
         let plain = rotation_target(&ctx, Path::new("/p/fleet.yaml"), false, false).explain();
         assert!(plain.contains("PLAN=/p/fleet.yaml"), "{plain}");
-        assert!(!plain.contains("RESUME=") && !plain.contains("DRY_RUN="), "{plain}");
+        assert!(
+            !plain.contains("RESUME=") && !plain.contains("DRY_RUN="),
+            "{plain}"
+        );
 
         let full = rotation_target(&ctx, Path::new("/p/fleet.yaml"), true, true).explain();
         assert!(full.contains("RESUME=1"), "{full}");

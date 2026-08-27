@@ -24,6 +24,10 @@ honeypot:
   # storm; the per-minute COUNT still updates every event.
   events_per_minute_max: 1000
   max_concurrent_connections: 64
+  # Total seconds one connection may hold a worker slot, measured from
+  # accept time on a monotonic clock. Bounds slow-reader DoS that a
+  # per-recv timeout cannot (it resets on every delivered chunk).
+  connection_deadline_seconds: 10
   # A dedicated timer checks this size every five minutes. At the default
   # event cap this bounds the active log much more tightly than daily
   # system logrotate alone.

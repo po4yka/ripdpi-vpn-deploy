@@ -1,9 +1,9 @@
 ---
 task_id: VPD-1787497317352770
 change: vpd-1787497317352770-vpnd-deploy-reconverge-lifecycle-safety
-commit_sha: null
+commit_sha: b2d209a
 local: required
-local_evidence: ""
+local_evidence: "Local on fix/board-criticals@b2d209a: cargo test 153 passed / 0 failed (failure-injection cleanup sentinel with stub Makefile, ipv4 rejection table incl 'all'/'prod:*'/999.1.1.1/zero-padded, unknown-host resolution errors, summary placeholder contract); cargo clippy -D warnings clean."
 remote_ci: required
 remote_ci_evidence: ""
 dry_run: required

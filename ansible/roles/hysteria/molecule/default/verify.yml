@@ -26,8 +26,8 @@
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          grep -q 'alice:' /etc/hysteria/config.yaml
-          grep -q 'bob:' /etc/hysteria/config.yaml
+          grep -q '"alice":' /etc/hysteria/config.yaml
+          grep -q '"bob":' /etc/hysteria/config.yaml
         executable: /bin/bash
       changed_when: false
 

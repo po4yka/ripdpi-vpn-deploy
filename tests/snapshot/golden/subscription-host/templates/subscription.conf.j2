@@ -15,7 +15,14 @@ server {
     ssl_protocols       TLSv1.2 TLSv1.3;
     add_header Strict-Transport-Security "max-age=31536000" always;
     add_header Cache-Control "no-store" always;
+    # Header baseline aligned with the public-site vhost. CSP is tuned
+    # to the static recipient pages: inline <style> and the same-origin
+    # QR image are the only active surfaces; no script, frame, or
+    # form targets exist on these pages.
+    add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
     add_header Referrer-Policy "no-referrer" always;
+    add_header X-Content-Type-Options "nosniff" always;
     add_header X-Robots-Tag "noindex, nofollow" always;
 
     # Long-lived /sub/<token>. Proxied to the local vpn-bootstrap

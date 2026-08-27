@@ -67,10 +67,10 @@ def _is_revoked(token_hash: str) -> bool | None:
         # the read is amortised by the per-IP nginx rate limit.
         with REVOKED_FILE.open("r", encoding="ascii") as fh:
             for line in fh:
-                line = line.strip()
-                if not line or line.startswith("#"):
+                entry = line.strip().lower()
+                if not entry or entry.startswith("#"):
                     continue
-                if line == token_hash:
+                if entry == token_hash.strip().lower():
                     return True
     except FileNotFoundError as exc:
         logging.error("revocation state is missing: %s", exc)

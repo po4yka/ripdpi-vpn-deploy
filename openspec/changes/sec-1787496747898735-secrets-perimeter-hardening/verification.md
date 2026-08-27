@@ -1,9 +1,9 @@
 ---
 task_id: SEC-1787496747898735
 change: sec-1787496747898735-secrets-perimeter-hardening
-commit_sha: null
+commit_sha: b2d209a
 local: required
-local_evidence: null
+local_evidence: "Local on fix/board-criticals@b2d209a: pytest tests/unit 972 passed (incl warp pin contract); make snapshot-check 102/102; make validate production profile 0 failures; security-verify gains ICMP-shaping assertions (limit clauses, no blanket accepts); backup/geodata units validated via systemd-analyze verify in molecule; WARP pubkey pinned to fetched digest 0f37fc29...1264d."
 remote_ci: required
 remote_ci_evidence: null
 dry_run: required
