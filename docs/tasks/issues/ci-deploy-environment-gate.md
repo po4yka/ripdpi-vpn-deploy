@@ -2,7 +2,7 @@
 id: CIC-1787415665884975
 title: Gate credentialed CI deploys behind environment approval
 kind: bug
-status: review
+status: done
 area: ci
 priority: critical
 risk: high
@@ -15,6 +15,9 @@ created: 2026-08-22
 updated: 2026-08-27
 related_tasks: []
 status_detail: Implementation and local approval-gate checks passed; protected-main PR and exact-SHA hosted CI still pending.
+closed_at: "2026-08-27T12:08:49Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Exact implementation 984b452: full make check passed; hosted CI 33069634871 succeeded with all required checks; required-reviewer environment API check passed. No credentialed deployment claimed."
 ---
 
 ## Goal
