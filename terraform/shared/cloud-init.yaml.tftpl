@@ -31,12 +31,13 @@ write_files:
     owner: root:root
     permissions: "0644"
     content: |
+      # Owns first-boot Port and authentication primitives only.
+      # Tunable hardening belongs to 20-ansible-hardening.conf.
       Port ${ssh_port}
       PasswordAuthentication no
       KbdInteractiveAuthentication no
       PermitRootLogin no
       PubkeyAuthentication yes
-      X11Forwarding no
 
   - path: /etc/vpn-build-id
     owner: root:root

@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+**SSH bootstrap owns only Port and auth primitives** — tunable hardening and
+algorithm lists belong to baseline's 20- drop-in. Never duplicate its keys in
+10-: baseline rejects overlaps, including legacy X11Forwarding on old nodes.
+
 **Single cloud-init template** — `cloud-init.yaml.tftpl` is rendered by every
 provider root with identical inputs. Behavior is consistent across providers
 by construction.

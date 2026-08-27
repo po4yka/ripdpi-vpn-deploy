@@ -1,0 +1,3 @@
+---
+- name: Prepare sibling first-boot fixture
+  ansible.builtin.import_playbook: ../full-stack/prepare.yml

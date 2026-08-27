@@ -15,8 +15,7 @@
       - rsync
       - htop
       - dnsutils
-      # openssh-server is what `sshd` lives in. The hardening drop-in below
-      # uses `validate: sshd -t -f %s`, which needs the binary present.
+      # The assembled configuration validator needs the real sshd parser.
       - openssh-server
     state: present
     update_cache: true
@@ -94,15 +93,29 @@
     validate: "sshd -t -f %s"
   notify: Reload ssh
 
-- name: Drop SSH hardening config
+- name: Install assembled SSH configuration validator
+  ansible.builtin.copy:
+    src: validate-sshd.py
+    dest: /usr/local/sbin/vpn-validate-sshd
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Drop SSH hardening config after ownership and effective-policy validation
   ansible.builtin.template:
     src: sshd_config.d-hardening.conf.j2
     dest: /etc/ssh/sshd_config.d/20-ansible-hardening.conf
     owner: root
     group: root
     mode: "0644"
-    validate: "sshd -t -f %s"
+    validate: "/usr/local/sbin/vpn-validate-sshd %s"
   notify: Reload ssh
+
+- name: Validate assembled SSH policy before queued reload
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/vpn-validate-sshd /etc/ssh/sshd_config.d/20-ansible-hardening.conf
+  changed_when: false
+  when: not ansible_check_mode
 
 - name: Prune weak SSH Diffie-Hellman moduli
   ansible.builtin.include_tasks: ssh_moduli.yml

@@ -1,0 +1,22 @@
+---
+- name: Prepare first-boot SSH ownership fixture
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Create cloud-init SSH drop-in directory fixture
+      ansible.builtin.file:
+        path: /etc/ssh/sshd_config.d
+        state: directory
+        mode: "0755"
+
+    - name: Install cloud-init SSH ownership fixture
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/10-cloud-init-hardening.conf
+        mode: "0644"
+        content: |
+          Port 22
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+          PermitRootLogin no
+          PubkeyAuthentication yes

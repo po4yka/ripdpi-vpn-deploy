@@ -32,7 +32,8 @@ daemon able to degrade systemd after a partial package update.
   if clocks drift > 90 s; `verify.yml` asserts sync state.
 - **SSH hardening via drop-in** — `templates/sshd_config.d-hardening.conf.j2`
   is dropped at `/etc/ssh/sshd_config.d/20-ansible-hardening.conf` with
-  `validate: sshd -t -f %s` before activation.
+  assembled OpenSSH validation before activation. Cloud-init alone owns Port
+  and auth primitives; duplicate keys fail before candidate installation.
 - **SFTP is internal and managed once** — the packaged `Subsystem sftp` line is
   commented before the drop-in declares `internal-sftp`, avoiding duplicate
   Subsystem directives on Debian/Ubuntu while preserving Ansible file transfer.
@@ -43,6 +44,14 @@ daemon able to degrade systemd after a partial package update.
   is true; removed when disabled. Avoids forwarding on P0-only nodes.
 
 ## Pitfalls
+
+- **Legacy bootstrap X11 ownership must be removed by node recreation** — old
+  `10-cloud-init-hardening.conf` files containing `X11Forwarding` fail closed;
+  baseline never edits the bootstrap-owned file. Use fresh cloud-init or a
+  separately reviewed migration before convergence.
+- **Validation uses the actual Include order** — the validator substitutes
+  the candidate at the managed path, runs `sshd -T`, compares all owned keys,
+  and repeats after installation before reload. Out-of-band shadows fail.
 
 - **Does not install `chrony` or `unattended-upgrades`** — time sync is
   `systemd-timesyncd` (distro default on Debian 13/Ubuntu 24.04). Unattended

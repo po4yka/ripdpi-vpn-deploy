@@ -78,6 +78,59 @@
           - "'maxsessions 2' in sshd_t.stdout | lower"
           - "'maxstartups 10:30:20' in sshd_t.stdout | lower"
 
+    - name: Effective SSH policy matches all owned directives and pinned algorithms
+      ansible.builtin.command:
+        cmd: /usr/local/sbin/vpn-validate-sshd /etc/ssh/sshd_config.d/20-ansible-hardening.conf
+      changed_when: false
+
+    - name: Reject duplicate ownership and unmanaged effective-policy shadows
+      block:
+        - name: Create duplicate boot directive candidate
+          ansible.builtin.copy:
+            dest: /run/molecule-sshd-candidate
+            mode: "0600"
+            content: "PasswordAuthentication no\n"
+
+        - name: Validate duplicate candidate without installing it
+          ansible.builtin.command:
+            cmd: /usr/local/sbin/vpn-validate-sshd /run/molecule-sshd-candidate
+          register: ssh_duplicate
+          changed_when: false
+          failed_when: false
+
+        - name: Duplicate ownership is rejected by key
+          ansible.builtin.assert:
+            that:
+              - ssh_duplicate.rc != 0
+              - "'duplicate SSH directive ownership: passwordauthentication' in ssh_duplicate.stderr"
+
+        - name: Inject an unmanaged earlier forwarding directive
+          ansible.builtin.copy:
+            dest: /etc/ssh/sshd_config.d/00-molecule-shadow.conf
+            mode: "0644"
+            content: "AllowTcpForwarding yes\n"
+
+        - name: Validate assembled configuration without reloading the service
+          ansible.builtin.command:
+            cmd: /usr/local/sbin/vpn-validate-sshd /etc/ssh/sshd_config.d/20-ansible-hardening.conf
+          register: ssh_shadow
+          changed_when: false
+          failed_when: false
+
+        - name: Effective configuration mismatch is rejected by key
+          ansible.builtin.assert:
+            that:
+              - ssh_shadow.rc != 0
+              - "'effective SSH directive mismatch: allowtcpforwarding' in ssh_shadow.stderr"
+      always:
+        - name: Remove SSH negative-test fixtures without reloading
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /run/molecule-sshd-candidate
+            - /etc/ssh/sshd_config.d/00-molecule-shadow.conf
+
     - name: Check whether SSH moduli file exists
       ansible.builtin.stat:
         path: /etc/ssh/moduli
