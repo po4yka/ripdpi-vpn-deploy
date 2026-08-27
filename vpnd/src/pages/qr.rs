@@ -9,7 +9,7 @@ pub fn write_svg(payload: &str, out: &Path) -> Result<()> {
         .render::<svg::Color<'_>>()
         .min_dimensions(256, 256)
         .build();
-    std::fs::write(out, s)?;
+    crate::protected_file::write_private(out, s.as_bytes())?;
     Ok(())
 }
 
@@ -43,6 +43,6 @@ pub fn write_png(payload: &str, out: &Path) -> Result<()> {
     }
     // Write the .ppm payload but with the .png filename — operators can
     // post-process; emit-qr.sh remains the canonical PNG path.
-    std::fs::write(out, ppm)?;
+    crate::protected_file::write_private(out, ppm.as_bytes())?;
     Ok(())
 }

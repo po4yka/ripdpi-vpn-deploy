@@ -46,10 +46,86 @@ pub(crate) fn harden(path: &Path) -> Result<()> {
         .context("set 0600 on protected file descriptor")
 }
 
+pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::{ErrorKind, Write};
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let filename = path
+        .file_name()
+        .context("protected output must name a file")?;
+    // Create exclusively under a unique name. A stale file or concurrent
+    // writer is never ours to unlink, including reports sharing a basename.
+    for _ in 0..128 {
+        let mut name = filename.to_os_string();
+        name.push(format!(
+            ".{}.{}.tmp",
+            std::process::id(),
+            NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
+        ));
+        let temp = parent.join(name);
+        let mut file = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&temp)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let outcome = (|| -> Result<()> {
+            file.write_all(bytes)?;
+            file.sync_all()?;
+            std::fs::rename(&temp, path)?;
+            Ok(())
+        })();
+        if outcome.is_err() {
+            let _ = std::fs::remove_file(&temp);
+        }
+        return outcome;
+    }
+    Err(anyhow!("cannot reserve a protected temporary file"))
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
+
+    #[test]
+    fn private_write_preserves_an_unrelated_temp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("report.json");
+        let unrelated = dir.path().join("report.tmp");
+        std::fs::write(&unrelated, b"another writer's bytes").unwrap();
+        write_private(&output, b"new report").unwrap();
+        assert_eq!(std::fs::read(unrelated).unwrap(), b"another writer's bytes");
+        assert_eq!(std::fs::read(&output).unwrap(), b"new report");
+        assert_eq!(std::fs::metadata(output).unwrap().mode() & 0o777, 0o600);
+    }
+
+    #[test]
+    fn parallel_private_writes_with_shared_stems_do_not_collide() {
+        let dir = tempfile::tempdir().unwrap();
+        std::thread::scope(|scope| {
+            for extension in ["json", "jsonl", "html", "svg"] {
+                let path = dir.path().join(format!("report.{extension}"));
+                scope.spawn(move || {
+                    for _ in 0..20 {
+                        write_private(&path, extension.as_bytes()).unwrap();
+                    }
+                    assert_eq!(std::fs::read(path).unwrap(), extension.as_bytes());
+                });
+            }
+        });
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 4);
+    }
 
     #[test]
     fn metadata_gate_rejects_a_foreign_uid_even_for_a_private_regular_file() {

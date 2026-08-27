@@ -101,17 +101,15 @@ fn write_svg_min_dimensions_at_least_256() {
     let out = dir.path().join("qr.svg");
     qr::write_svg(PAYLOAD, &out).unwrap();
     let contents = std::fs::read_to_string(&out).unwrap();
-    // The SVG is rendered with min_dimensions(256, 256) — verify width attribute
-    // We check for a numeric value >= 256 in the svg tag attributes
-    if let Some(start) = contents.find("<svg") {
-        let tag_end = contents[start..].find('>').unwrap_or(200);
-        let tag = &contents[start..start + tag_end];
-        // Extract width value
-        if let Some(w_start) = tag.find("width=\"") {
-            let w_str = &tag[w_start + 7..];
-            let w_end = w_str.find('"').unwrap_or(10);
-            let w: u32 = w_str[..w_end].parse().unwrap_or(0);
-            assert!(w >= 256, "SVG width must be >= 256, got {w}");
-        }
+    let start = contents.find("<svg").expect("SVG root must exist");
+    let tag_end = contents[start..].find('>').expect("SVG root must close");
+    let tag = &contents[start..start + tag_end];
+    for attribute in ["width", "height"] {
+        let marker = format!("{attribute}=\"");
+        let start = tag.find(&marker).expect("dimension attribute must exist") + marker.len();
+        let value = &tag[start..];
+        let end = value.find('"').expect("dimension value must close");
+        let value: u32 = value[..end].parse().expect("dimension must be numeric");
+        assert!(value >= 256, "SVG {attribute} must be >= 256, got {value}");
     }
 }

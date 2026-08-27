@@ -2,24 +2,19 @@
 //!
 //! The share command requires a decrypted secrets file and a make emit-singbox stub.
 //! We test the structural invariants via the recipient page and qr modules directly,
-//! and test urlencode behavior via the percent-encoding crate (mirrors share.rs impl).
+//! and test the production URL encoder. Full bundle/token validation is in share_command.rs.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use tempfile::TempDir;
 use vpnd::commands::share::{build_sub_urls, urlencode as share_urlencode};
 use vpnd::pages::{qr, recipient};
-
-fn urlencode(s: &str) -> String {
-    utf8_percent_encode(s, NON_ALPHANUMERIC).to_string()
-}
 
 // --- urlencode tests ---
 
 #[test]
 fn urlencode_encodes_colon_and_slashes() {
     let url = "https://vpn.example.com/sub/phone.json";
-    let encoded = urlencode(url);
+    let encoded = share_urlencode(url);
     assert!(
         !encoded.contains(':'),
         "colon must be encoded, got: {encoded}"
@@ -43,7 +38,7 @@ fn urlencode_matches_subscription_host_route_expectation() {
     let sub_url = format!("https://{host}/sub/{client}.json");
     let deeplink = format!(
         "sing-box://import-remote-profile?url={}",
-        urlencode(&sub_url)
+        share_urlencode(&sub_url)
     );
 
     assert!(
@@ -65,7 +60,7 @@ fn urlencode_matches_subscription_host_route_expectation() {
 #[test]
 fn urlencode_is_reversible() {
     let original = "https://vpn.example.com/sub/my client.json";
-    let encoded = urlencode(original);
+    let encoded = share_urlencode(original);
     // percent_encoding::percent_decode can reverse it
     let decoded = percent_encoding::percent_decode_str(&encoded)
         .decode_utf8()
@@ -137,25 +132,6 @@ fn share_bundle_qr_svg_is_valid_xml() {
     assert!(
         content.contains("</svg>"),
         "qr.svg must have closing SVG tag"
-    );
-}
-
-#[test]
-fn share_bundle_config_singbox_json_placeholder() {
-    // The real emit-singbox make target is stub-gated in CI;
-    // verify the output file is writable at the expected path.
-    let dir = TempDir::new().unwrap();
-    let out = dir.path().to_path_buf();
-
-    let fake_singbox = r#"{"outbounds":[],"dns":{}}"#;
-    std::fs::write(out.join("config.singbox.json"), fake_singbox).unwrap();
-
-    assert!(out.join("config.singbox.json").is_file());
-    let content = std::fs::read_to_string(out.join("config.singbox.json")).unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&content).expect("must be valid JSON");
-    assert!(
-        parsed.get("outbounds").is_some(),
-        "singbox JSON must have outbounds key"
     );
 }
 
@@ -232,49 +208,5 @@ fn build_sub_urls_port_443_omitted() {
     assert!(
         !urls.subscription_url.contains(":443"),
         "port 443 must not appear"
-    );
-}
-
-#[test]
-fn build_sub_urls_no_token_fallback_uses_encoded_name() {
-    // (c) no-token fallback — segment is the percent-encoded client name on the transport host
-    let host = "vpn.example.com";
-    let client_name = "my phone"; // space forces encoding
-    let encoded = share_urlencode(client_name);
-    let base = format!("https://{host}");
-    let urls = build_sub_urls(&base, &encoded);
-
-    assert!(
-        urls.subscription_url.contains("my%20phone") || urls.subscription_url.contains("my+phone"),
-        "encoded name must appear in URL, got: {}",
-        urls.subscription_url
-    );
-    assert!(
-        urls.subscription_url
-            .starts_with("https://vpn.example.com/sub/"),
-        "must use transport host, got: {}",
-        urls.subscription_url
-    );
-}
-
-#[test]
-fn validate_token_rejects_invalid_characters() {
-    // (d) token with forbidden characters must produce an error in the share run path.
-    // We test this by constructing a token with <> and verifying urlencode does NOT
-    // silently strip them (i.e. they'd be URL-injected if passed to build_sub_urls
-    // unchecked). The actual validation lives in share::run via a private fn; we
-    // confirm the helper itself doesn't sanitize — the caller must guard.
-    let hostile = "token<script>";
-    let encoded = share_urlencode(hostile);
-    // Encoded form must contain percent-signs (not raw angle brackets in path context).
-    assert!(
-        !encoded.contains('<') && !encoded.contains('>'),
-        "urlencode must percent-encode angle brackets, got: {encoded}"
-    );
-    // And confirm that a well-formed token passes through build_sub_urls unchanged.
-    let urls = build_sub_urls("https://sub.example.com", "validToken-123_ABC");
-    assert_eq!(
-        urls.subscription_url,
-        "https://sub.example.com/sub/validToken-123_ABC"
     );
 }
