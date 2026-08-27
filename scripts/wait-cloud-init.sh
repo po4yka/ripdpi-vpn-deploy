@@ -20,10 +20,24 @@ if ! [[ "$SSH_PORT" =~ ^[1-9][0-9]*$ ]] || (( SSH_PORT > 65535 )); then
   exit 1
 fi
 
+# Bound the SSH process itself as well as its connection and remote command.
+# ConnectTimeout alone does not bound a connected but unresponsive session.
+bounded_ssh() {
+  python3 - "$@" <<'PYTHON'
+import subprocess
+import sys
+try:
+    result = subprocess.run(["ssh", *sys.argv[2:]], timeout=int(sys.argv[1]))
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+sys.exit(result.returncode)
+PYTHON
+}
+
 echo "waiting for SSH on ${USER}@${IP}:${SSH_PORT}…"
 ssh_up=""
 for _ in $(seq 1 30); do
-  if ssh -o StrictHostKeyChecking=accept-new \
+  if bounded_ssh 15 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
          -o ConnectTimeout=5 \
          -p "$SSH_PORT" \
          -i "${ANSIBLE_SSH_PRIVATE_KEY_FILE}" \
@@ -35,17 +49,21 @@ for _ in $(seq 1 30); do
 done
 
 if [[ -z "$ssh_up" ]]; then
-  echo "error: SSH on ${USER}@${IP}:${SSH_PORT} did not come up after 30 attempts (~150s)" >&2
+  echo "error: SSH on ${USER}@${IP}:${SSH_PORT} did not come up after 30 bounded attempts" >&2
   exit 1
 fi
 
-echo "SSH up. Waiting for cloud-init to finish…"
-if ! ssh -o StrictHostKeyChecking=accept-new \
+echo "SSH up. Waiting for cloud-init to finish (maximum 300s)…"
+status=0
+bounded_ssh 320 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
     -o ConnectTimeout=10 \
     -p "$SSH_PORT" \
     -i "${ANSIBLE_SSH_PRIVATE_KEY_FILE}" \
     "${USER}@${IP}" \
-    'cloud-init status --wait || true; test -f /var/lib/cloud-init-vpn-bootstrap.done && echo "bootstrap marker present"'; then
-  echo "error: cloud-init did not complete or the bootstrap marker is missing on ${IP}" >&2
-  exit 1
-fi
+    'timeout 300 cloud-init status --wait >/dev/null 2>&1 || exit 20; test -f /var/lib/cloud-init-vpn-bootstrap.done || exit 22' || status=$?
+case "$status" in
+  0) echo "bootstrap ready on ${IP}" ;;
+  20) echo "error: cloud-init failed or exceeded its deadline on ${IP}" >&2; exit 1 ;;
+  22) echo "error: bootstrap marker is missing on ${IP}" >&2; exit 1 ;;
+  *) echo "error: bootstrap SSH failed or timed out on ${IP} (status ${status})" >&2; exit 1 ;;
+esac

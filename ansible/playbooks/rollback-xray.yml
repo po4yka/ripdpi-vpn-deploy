@@ -11,14 +11,37 @@
     - name: ROLLBACK_XRAY_VERSION is set
       ansible.builtin.assert:
         that:
-          - rollback_xray_version | length > 0
+          - rollback_xray_version is match('^[v]?[0-9]+[.][0-9]+[.][0-9]+$')
         fail_msg: "ROLLBACK_XRAY_VERSION env var is required (e.g. v26.3.27)."
 
     - name: Target rollback release exists on disk
       ansible.builtin.stat:
         path: "/opt/xray/releases/{{ rollback_xray_version }}/xray"
       register: rb_release
-      failed_when: not rb_release.stat.exists
+      failed_when: not rb_release.stat.exists or not rb_release.stat.isreg or not rb_release.stat.executable
+
+    - name: Inspect the currently selected Xray release
+      ansible.builtin.stat:
+        path: /opt/xray/current
+        follow: false
+      register: rb_current
+
+    - name: Refuse a no-op rollback
+      ansible.builtin.assert:
+        that:
+          - rb_current.stat.lnk_source | default('') != '/opt/xray/releases/' ~ rollback_xray_version
+        fail_msg: "The rollback release is already selected. Choose a different known-good release."
+
+    - name: Validate current config with rollback binary
+      ansible.builtin.command:
+        argv:
+          - "/opt/xray/releases/{{ rollback_xray_version }}/xray"
+          - run
+          - -test
+          - -config
+          - /etc/xray/config.json
+      changed_when: false
+      check_mode: false
 
     - name: Point /opt/xray/current at the rollback release
       ansible.builtin.file:
@@ -26,11 +49,6 @@
         dest: "/opt/xray/current"
         state: link
         force: true
-
-    - name: Validate current config with rollback binary
-      ansible.builtin.command:
-        cmd: /usr/local/bin/xray run -test -config /etc/xray/config.json
-      changed_when: false
 
     - name: Restart Xray
       ansible.builtin.systemd_service:

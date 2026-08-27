@@ -138,13 +138,13 @@
     content: |
       net.ipv4.ip_forward = 1
       net.ipv6.conf.all.forwarding = 1
-  when: vpn.enable_amneziawg | default(false)
+  when: vpn.enable_amneziawg | default(true)
 
 - name: Remove forwarding sysctl when AmneziaWG is disabled
   ansible.builtin.file:
     path: /etc/sysctl.d/91-vpn-forward.conf
     state: absent
-  when: not (vpn.enable_amneziawg | default(false))
+  when: not (vpn.enable_amneziawg | default(true))
 
 - name: Reconcile effective sysctl values on every converge
   ansible.builtin.command:

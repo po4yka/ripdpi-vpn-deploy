@@ -110,7 +110,7 @@ def test_egress_has_no_classifier_or_geodata_knowledge() -> None:
     assert "geodata" not in egress.lower()
 
 
-def test_cascade_roles_are_exception_tier_and_absent_from_family_profiles() -> None:
+def test_cascade_roles_are_exception_tier_and_disabled_in_family_profiles() -> None:
     manifest = yaml.safe_load((ANSIBLE / "role-tiers.yml").read_text())
     assert manifest["tiers"]["cascade-ingress"] == "exception"
     assert manifest["tiers"]["cascade-egress"] == "exception"
@@ -118,8 +118,11 @@ def test_cascade_roles_are_exception_tier_and_absent_from_family_profiles() -> N
 
     for relative in manifest["family_profiles"]:
         text = (ANSIBLE / relative).read_text()
-        assert "enable_cascade_ingress" not in text
-        assert "enable_cascade_egress" not in text
+        profile = yaml.safe_load(text)
+        # Canonical defaults declare the complete toggle surface explicitly;
+        # absent per-cohort overrides and literal false must both stay inert.
+        for toggle in ("enable_cascade_ingress", "enable_cascade_egress"):
+            assert profile.get("vpn", {}).get(toggle, False) is False
         assert "allow_exception_roles" not in text
 
 

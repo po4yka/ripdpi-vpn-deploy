@@ -213,17 +213,6 @@ def test_clean_reports_failure_when_secret_cannot_be_removed(tmp_path):
     assert str(secrets) not in result.stdout + result.stderr
 
 
-def test_local_policy_gate_propagates_a_real_policy_failure(tmp_path):
-    root = Path(__file__).resolve().parents[2]
-    policy = tmp_path / 'terraform/policy'
-    policy.mkdir(parents=True)
-    (policy / 'failing_test.rego').write_text('package regression\ntest_deliberate_failure { false }\n')
-    result = subprocess.run(['make', '--no-print-directory', '-f', str(root / 'Makefile'),
-                             'tf-policy-verify'], cwd=tmp_path, capture_output=True, text=True, timeout=10)
-    assert result.returncode != 0
-    assert '1 failure' in result.stdout + result.stderr
-
-
 @pytest.mark.parametrize('secrets_file,sops_file,accepted', [
     ('/tmp/vpn-prod.secrets.yaml', '/tmp/canary.secrets.sops.yaml', False),
     ('/tmp/vpn-canary.secrets.yaml', '/tmp/prod.secrets.sops.yaml', False),
@@ -247,3 +236,37 @@ def test_canary_scope_guard_precedes_recursive_deploy(tmp_path, secrets_file, so
         assert result.returncode == 2, result.stderr
         assert 'refusing deploy-canary' in result.stderr
         assert not marker.exists()
+
+
+@pytest.mark.parametrize('host_list,fail_pair', [('upcloud:test,hetzner:test', ''),
+                                               ('upcloud:test,hetzner:test', 'upcloud:test')])
+def test_bootstrap_readiness_visits_fleet_and_stops_on_failure(tmp_path, host_list, fail_pair):
+    root = Path(__file__).resolve().parents[2]
+    scripts = tmp_path / 'scripts'
+    scripts.mkdir()
+    marker = tmp_path / 'waits'
+    wait = scripts / 'wait-cloud-init.sh'
+    wait.write_text('#!/bin/sh\nprintf "%s:%s\\n" "$PROVIDER" "$ENV" >> "$WAIT_LOG"\n'
+                    'test "$PROVIDER:$ENV" != "$FAIL_PAIR"\n')
+    wait.chmod(0o755)
+    result = subprocess.run(['make', '--no-print-directory', '-f', str(root / 'Makefile'),
+                             'bootstrap-readiness', f'HOSTS={host_list}'], cwd=tmp_path,
+                            env={**os.environ, 'WAIT_LOG': str(marker), 'FAIL_PAIR': fail_pair},
+                            capture_output=True, text=True, timeout=10)
+    assert (result.returncode == 0) == (not fail_pair), result.stderr
+    assert marker.read_text().splitlines() == (['upcloud:test'] if fail_pair else host_list.split(','))
+    makefile = (root / 'Makefile').read_text()
+    for target in ('deploy', 'dry-run'):
+        body = makefile.split(f'{target}:', 1)[1].split('\n\n', 1)[0]
+        assert body.index('$(MAKE) bootstrap-readiness') < body.index('ansible-playbook')
+
+
+def test_local_policy_gate_propagates_a_real_policy_failure(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    policy = tmp_path / 'terraform/policy'
+    policy.mkdir(parents=True)
+    (policy / 'failing_test.rego').write_text('package regression\ntest_deliberate_failure { false }\n')
+    result = subprocess.run(['make', '--no-print-directory', '-f', str(root / 'Makefile'),
+                             'tf-policy-verify'], cwd=tmp_path, capture_output=True, text=True, timeout=10)
+    assert result.returncode != 0
+    assert '1 failure' in result.stdout + result.stderr

@@ -16,6 +16,7 @@
 
   pre_tasks:
     - name: Ensure VPN_SECRETS_FILE was provided
+      tags: [always]
       ansible.builtin.assert:
         that:
           - lookup('env', 'VPN_SECRETS_FILE') | length > 0
@@ -27,6 +28,7 @@
     # allowlist is empty; a non-populated inventory would converge green and
     # lock the operator out. Fail fast instead (REQ-SSH-ALLOWLIST-FAILFAST).
     - name: Ensure the SSH management-path allowlist is populated
+      tags: [always]
       ansible.builtin.assert:
         that:
           - allowed_ssh_cidrs is defined
@@ -42,10 +44,12 @@
     # listing the role in `allow_research_roles` in its inventory (git-visible).
     # The static half of this guard is scripts/check-deploy-profile.py (CI).
     - name: Load role tier manifest
+      tags: [always]
       ansible.builtin.include_vars:
         file: "{{ playbook_dir }}/../role-tiers.yml"
 
     - name: Guard — block RESEARCH-tier roles in a family deploy
+      tags: [always]
       vars:
         _enabled_research_roles: >-
           {{ toggle_role_map | dict2items
@@ -73,6 +77,7 @@
         success_msg: "Tier guard OK — no unapproved research-tier roles enabled."
 
     - name: Guard — block unapproved EXCEPTION-tier roles
+      tags: [always]
       vars:
         _enabled_exception_roles: >-
           {{ toggle_role_map | dict2items
@@ -252,11 +257,11 @@
       tags: [naive, p1, transport]
 
     - role: hysteria
-      when: (vpn.enable_hysteria | default(false)) and not (vpn_subscription_only | default(false))
+      when: (vpn.enable_hysteria | default(true)) and not (vpn_subscription_only | default(false))
       tags: [hysteria, p2, transport]
 
     - role: amneziawg
-      when: (vpn.enable_amneziawg | default(false)) and not (vpn_subscription_only | default(false))
+      when: (vpn.enable_amneziawg | default(true)) and not (vpn_subscription_only | default(false))
       tags: [amneziawg, awg, p2, transport]
 
     - role: subscription-host

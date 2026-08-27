@@ -53,8 +53,8 @@ variable "allowed_ssh_cidrs" {
   description = "Source CIDRs allowed to reach ssh_port/tcp."
 
   validation {
-    condition     = alltrue([for cidr in var.allowed_ssh_cidrs : can(cidrhost(cidr, 0))])
-    error_message = "allowed_ssh_cidrs entries must be valid IPv4 or IPv6 CIDRs in prefix notation, e.g. 203.0.113.42/32."
+    condition     = length(var.allowed_ssh_cidrs) > 0 && alltrue([for cidr in var.allowed_ssh_cidrs : can(cidrhost(cidr, 0))])
+    error_message = "allowed_ssh_cidrs must be non-empty and its entries must be valid IPv4 or IPv6 CIDRs in prefix notation, e.g. 203.0.113.42/32."
   }
 }
 

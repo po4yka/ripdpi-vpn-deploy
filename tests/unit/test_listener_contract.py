@@ -153,6 +153,11 @@ def test_p2_udp_listener_surface_has_no_public_tcp_service() -> None:
 def test_listener_contract_pre_tasks_run_during_tagged_deploys() -> None:
     play = yaml.safe_load((REPO_ROOT / "ansible" / "playbooks" / "site.yml").read_text())[0]
     required = {
+        "Ensure VPN_SECRETS_FILE was provided",
+        "Ensure the SSH management-path allowlist is populated",
+        "Load role tier manifest",
+        "Guard — block RESEARCH-tier roles in a family deploy",
+        "Guard — block unapproved EXCEPTION-tier roles",
         "Build effective public listener manifest",
         "Decode provider listener contract from rendered inventory",
         "Guard — provider edge and runtime listener contracts agree",

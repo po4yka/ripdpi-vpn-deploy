@@ -27,7 +27,7 @@ DEPLOYABLE_SOURCE_DIGEST ?= $(shell ./scripts/deploy-source-identity.sh --digest
 export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
 export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CONFIG DEPLOY_SOURCE_REVISION DEPLOYABLE_SOURCE_DIGEST
 
-.PHONY: help init validate plan apply inventory wait decrypt require-inventory require-clean-source validate-ansible-extra-vars dry-run deploy deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
+.PHONY: help init validate plan apply inventory wait bootstrap-readiness decrypt require-inventory require-clean-source validate-ansible-extra-vars dry-run deploy deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
         pre-deploy-check \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
@@ -208,6 +208,13 @@ inventory:
 wait:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/wait-cloud-init.sh
 
+bootstrap-readiness: export BOOTSTRAP_HOSTS = $(if $(strip $(HOSTS)),$(HOSTS),$(PROVIDER):$(ENV))
+bootstrap-readiness:
+	@set -eu; printf '%s\n' "$$BOOTSTRAP_HOSTS" | tr ',' '\n' | \
+	  while IFS=: read -r provider environment; do \
+	    PROVIDER="$$provider" ENV="$$environment" ./scripts/wait-cloud-init.sh || exit $$?; \
+	  done
+
 require-inventory:
 	@test -s "$(ANSIBLE_DIR)/inventory/generated.ini" || { echo "missing generated inventory — run 'make inventory'"; exit 1; }
 	@ansible-inventory --list | python3 -c 'import json, sys; document = json.load(sys.stdin); hosts = document.get("vpn", {}).get("hosts", []); raise SystemExit(0 if hosts else 1)' || { echo "generated inventory has no vpn hosts — run 'make inventory'"; exit 1; }
@@ -235,12 +242,14 @@ pre-deploy-check:
 	fi
 
 dry-run: require-inventory validate-ansible-extra-vars pre-deploy-check
+	$(MAKE) bootstrap-readiness
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/site.yml --check --diff \
 	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
 	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
 
 deploy: require-clean-source require-inventory validate-ansible-extra-vars pre-deploy-check
+	$(MAKE) bootstrap-readiness
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/site.yml \
 	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \

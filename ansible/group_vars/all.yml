@@ -74,6 +74,9 @@ vpn:
                                   # per-IP dual-role flow classifier.
                                   # See docs/SPLIT-HOP-TOPOLOGY.md
                                   # and docs/RUNBOOK-split-hop-pilot.md.
+  # EXCEPTION tier: each leg requires its exact allow_exception_roles entry.
+  enable_cascade_ingress: false
+  enable_cascade_egress: false
   enable_split_hop_ingress: false # opt-in RESEARCH Node A responder;
                                   # requires allow_research_roles.
   enable_probe_matrix_target: false # opt-in RESEARCH five-protocol target;
