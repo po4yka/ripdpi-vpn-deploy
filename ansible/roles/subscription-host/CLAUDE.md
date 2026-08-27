@@ -38,6 +38,8 @@ Decryptable only with the audit-log key. See `scripts/sub-reads.sh`.
 - **Expiry instants preserve explicit offsets** — normalize new issuance to UTC, treat legacy naive timestamps as UTC, keep numeric epoch sidecars compatible, fail closed on invalid metadata, and expire exactly when `now >= expires`.
 - **Keep response headers at server scope** — every delivery route inherits
   the same no-store and security baseline. Any child `add_header` suppresses
-  that entire inherited set on supported nginx versions.
+  that entire inherited set on supported nginx versions. Hide the backend
+  copies of Cache-Control, Referrer-Policy, and X-Robots-Tag at nginx so
+  successful responses and errors expose one authoritative public value.
 - **Mirror exclusions follow `revoked_file`** — changing its basename or
   nesting it inside the payload root must not let `rsync --delete` remove it.

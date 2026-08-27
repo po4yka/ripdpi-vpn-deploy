@@ -28,6 +28,12 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Robots-Tag "noindex, nofollow" always;
 
+    # The backend also protects direct loopback responses. Replace those
+    # fields at the TLS edge instead of emitting duplicate public headers.
+    proxy_hide_header Cache-Control;
+    proxy_hide_header Referrer-Policy;
+    proxy_hide_header X-Robots-Tag;
+
     # Long-lived /sub/<token>. Proxied to the local vpn-bootstrap
     # service, which:
     #   * hashes the URL token with sha256
