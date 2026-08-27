@@ -222,6 +222,12 @@
         not (vpn_subscription_only | default(false))
       tags: [geodata, xray]
 
+    # Verify the optional egress before any Xray render or handler flush can
+    # activate routes that depend on it. The xray tag must retain this gate.
+    - role: warp-outbound
+      when: (vpn.enable_warp_outbound | default(false)) and not (vpn_subscription_only | default(false))
+      tags: [warp, outbound, xray, p0, p1, transport]
+
     - role: xray
       when: >-
         ((vpn.enable_xray_reality | default(true)) or
@@ -256,10 +262,6 @@
     - role: subscription-host
       when: (vpn.enable_subscription_host | default(false)) or (vpn_subscription_only | default(false))
       tags: [subscription]
-
-    - role: warp-outbound
-      when: (vpn.enable_warp_outbound | default(false)) and not (vpn_subscription_only | default(false))
-      tags: [warp, outbound]
 
     - role: honeypot
       when: (vpn.enable_honeypot | default(false)) and not (vpn_subscription_only | default(false))

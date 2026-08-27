@@ -5,8 +5,8 @@ listen: ":{{ hysteria_port | default(443) }}"
 {% endif %}
 
 tls:
-  cert: {{ hysteria_config_dir }}/server.fullchain.pem
-  key:  {{ hysteria_config_dir }}/server.key
+  cert: {{ (hysteria_config_dir ~ '/server.fullchain.pem') | to_json }}
+  key:  {{ (hysteria_config_dir ~ '/server.key') | to_json }}
 
 auth:
   type: userpass
@@ -23,15 +23,15 @@ auth:
 obfs:
   type: salamander
   salamander:
-    password: "{{ hysteria.salamander_password }}"
+    password: {{ hysteria.salamander_password | to_json }}
 {% endif %}
 
 bandwidth:
-  up:   {{ hysteria.bandwidth_up   | default("100 mbps") }}
-  down: {{ hysteria.bandwidth_down | default("200 mbps") }}
+  up:   {{ hysteria.bandwidth_up   | default("100 mbps") | to_json }}
+  down: {{ hysteria.bandwidth_down | default("200 mbps") | to_json }}
 
 masquerade:
-  type: {{ hysteria.masquerade_type | default('proxy') }}
+  type: {{ hysteria.masquerade_type | default('proxy') | to_json }}
 {% if (hysteria.masquerade_type | default('proxy')) == 'proxy' %}
   proxy:
     url: {{ hysteria.masquerade_url | to_json }}

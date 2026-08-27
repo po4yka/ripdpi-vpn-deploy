@@ -281,7 +281,7 @@
     label: "{{ item.name }}"
   vars:
     _inst: "{{ item }}"
-  notify: Reload amneziawg
+  notify: Restart amneziawg
 
 - name: Enable and start awg-quick@<iface> for every instance
   ansible.builtin.systemd_service:

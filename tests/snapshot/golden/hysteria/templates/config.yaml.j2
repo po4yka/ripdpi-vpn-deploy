@@ -3,8 +3,8 @@ listen: ":443"
 
 
 tls:
-  cert: /etc/hysteria/server.fullchain.pem
-  key:  /etc/hysteria/server.key
+  cert: "/etc/hysteria/server.fullchain.pem"
+  key:  "/etc/hysteria/server.key"
 
 auth:
   type: userpass
@@ -20,11 +20,11 @@ auth:
 
 
 bandwidth:
-  up:   100 mbps
-  down: 200 mbps
+  up:   "100 mbps"
+  down: "200 mbps"
 
 masquerade:
-  type: proxy
+  type: "proxy"
 
   proxy:
     url: "https://vpn.example.com"
