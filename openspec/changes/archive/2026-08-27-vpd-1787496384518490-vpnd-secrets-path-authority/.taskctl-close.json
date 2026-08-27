@@ -1,0 +1,11 @@
+{
+  "change": "vpd-1787496384518490-vpnd-secrets-path-authority",
+  "evidence_summary": "Exact implementation 984b452: full make check and hosted CI 33069634871 passed; two real operator vpnd share calls used one SOPS decrypt; official sing-box parser passed; private files cleaned.",
+  "execution_sha256": "d1136559cd07e7d40cfe50ef2934ea2d3462c6f1cecee1855643c69b44d40f5e",
+  "issue_sha256": "8f523b18b5bd04f142b840c7fd2d69ab61e9fdfe62e1dc4d7fd86b33b976fd7e",
+  "outcome": "done",
+  "prepared_at": "2026-08-27T12:09:25Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "VPD-1787496384518490"
+}
