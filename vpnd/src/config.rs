@@ -172,19 +172,10 @@ mod tests {
     fn secure_secrets_file_propagates_chmod_failure() {
         use std::os::unix::fs::PermissionsExt;
         let _guard = ENV_LOCK.lock().unwrap();
-        if uzers::get_current_uid() == 0 {
-            // Root ignores parent-dir permission bits, so the injected
-            // failure cannot be reproduced; skip rather than fake it.
-            return;
-        }
         let dir = tempfile::tempdir().unwrap();
-        let inner = tempfile::tempdir_in(dir.path()).unwrap();
-        let secrets = inner.path().join("vpn-test.secrets.yaml");
-        std::fs::write(&secrets, "stub: 1\n").unwrap();
-
-        // Read-only grandparent makes chmod on the inner file fail with
-        // EACCES on the rename-free metadata path exercised here.
-        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+        // procfs rejects chmod even for root, so this is a stable Linux
+        // failure injection rather than relying on parent-directory bits.
+        let secrets = PathBuf::from("/proc/version");
 
         let ctx = Context {
             root: dir.path().into(),
@@ -200,9 +191,7 @@ mod tests {
             json: false,
         };
         let outcome = ctx.secure_secrets_file();
-        // Restore write access so tempdir cleanup succeeds.
-        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
-        let err = outcome.expect_err("chmod under read-only parent must fail");
+        let err = outcome.expect_err("chmod on procfs must fail");
         assert!(
             err.to_string().contains("failed to set 0600"),
             "unexpected error: {err}"

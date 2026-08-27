@@ -95,6 +95,15 @@
       changed_when: false
       failed_when: mirror_timer_active.stdout != "active"
 
+    - name: Seed vpn-bootstrap SSH state before the --delete pull
+      ansible.builtin.copy:
+        dest: /var/lib/vpn-subscription/.ssh/known_hosts
+        content: "molecule-mirror.example.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoleculeKnownHost\n"
+        owner: vpn-bootstrap
+        group: vpn-bootstrap
+        mode: "0600"
+        directory_mode: "0700"
+
     - name: Trigger one mirror pull (oneshot) so payload lands on disk
       ansible.builtin.command:
         cmd: systemctl start vpn-sub-mirror.service

@@ -29,4 +29,4 @@ StateDirectoryMode=0750
 # restic's default cache lives under $HOME, which ProtectHome hides;
 # pin it inside the state directory.
 Environment=RESTIC_CACHE_DIR=/var/lib/vpn-backup/cache
-ReadWritePaths={{ restic_repo_dir }} /var/lib/vpn-backup
+ReadWritePaths={{ restic_repo_dir }} /var/backups /var/lib/vpn-backup
