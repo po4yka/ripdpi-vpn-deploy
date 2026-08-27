@@ -1,21 +1,21 @@
 ---
-task_id: ANS-1787495907091073
-change: ans-1787495907091073-transport-convergence-critical-fixes
-commit_sha: bbc346415f412ab49f296db3927ff0fbefdaa8e0
-local: blocked
-local_evidence: '2026-08-27: focused regression suites passed (104 tests); 102 snapshots passed; make validate passed; Terraform mock-provider tests passed (79). Full make check stopped at cloud-init-schema when the Colima daemon disconnected (exit 125). Required Molecule scenarios did not start; no runtime acceptance is claimed.'
-remote_ci: blocked
-remote_ci_evidence: No hosted CI run for this implementation SHA; protected-main PR delivery is pending authorization.
-dry_run: blocked
-dry_run_evidence: No operator credentials used. Fleet dry-run requires authorization and reachable management transport.
-staging: not_applicable
-staging_evidence: no separate staging environment exists; CI molecule convergence per touched role covers the fixed behavior
-live: blocked
-live_evidence: No fleet convergence or filtered-path probe performed; authorization is pending.
-client: not_applicable
-client_evidence: no client-facing emitter or vpnd surface changed
-artifact: not_applicable
-artifact_evidence: no build artifacts produced by this change
+task_id: "ANS-1787495907091073"
+change: "ans-1787495907091073-transport-convergence-critical-fixes"
+commit_sha: "bbc346415f412ab49f296db3927ff0fbefdaa8e0"
+local: "blocked"
+local_evidence: "2026-08-27: Rust debug/release each passed 173 tests, clippy/MSRV/deny passed; make validate and cloud-init schema passed. Full make check found two existing AWG installer fresh-directory failures under umask 077; root-cause correction and a complete rerun are pending."
+remote_ci: "blocked"
+remote_ci_evidence: "PR #108 is published. Expanded hosted Molecule coverage exposed runtime and scenario defects; final required-check success and main merge are still pending."
+dry_run: "blocked"
+dry_run_evidence: "Real strict secrets precheck passed, but SSH to all three inventory hosts timed out and Tailscale requires reauthentication. No full fleet playbook dry-run completed."
+staging: "not_applicable"
+staging_evidence: "no separate staging environment exists; CI molecule convergence per touched role covers the fixed behavior"
+live: "blocked"
+live_evidence: "No fleet convergence or live traffic/service acceptance ran: management access is unavailable. Local amd64 systemd containers on this arm64 Mac also fail pidfd_open with ENOSYS before roles execute; hosted amd64 Molecule is the runtime test lane, not live fleet proof."
+client: "not_applicable"
+client_evidence: "no client-facing emitter or vpnd surface changed"
+artifact: "not_applicable"
+artifact_evidence: "no build artifacts produced by this change"
 ---
 
 # Verification
@@ -46,7 +46,7 @@ artifact_evidence: no build artifacts produced by this change
 
 The original implementation was reopened after review found executable defects.
 Local regressions do not substitute for the dry-run, staging, live, or hosted-CI categories above.
-No archive or terminal closure is authorized by this evidence record.
+Archive and terminal closure remain blocked until all required evidence is complete.
 
 ### Shared local checks on the reviewed source
 

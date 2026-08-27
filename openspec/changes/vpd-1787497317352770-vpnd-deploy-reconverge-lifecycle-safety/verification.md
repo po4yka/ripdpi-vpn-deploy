@@ -1,21 +1,21 @@
 ---
-task_id: VPD-1787497317352770
-change: vpd-1787497317352770-vpnd-deploy-reconverge-lifecycle-safety
-commit_sha: bbc346415f412ab49f296db3927ff0fbefdaa8e0
-local: passed
-local_evidence: '2026-08-27: cargo test passed 164 tests and cargo clippy --all-targets -D warnings passed, including subprocess failure/cleanup, exact inventory selection, registry probe, and doctor redaction cases. Make cleanup regressions passed in the 14-test strict-gate suite. External command doubles are local regression evidence only.'
-remote_ci: blocked
-remote_ci_evidence: No hosted CI run for this implementation SHA; protected-main PR delivery is pending authorization.
-dry_run: blocked
-dry_run_evidence: No real inventory dry-run executed; management access and credential-use authorization are pending.
-staging: blocked
-staging_evidence: No staging acceptance performed. An authorized staging target is still required by this change.
-live: blocked
-live_evidence: No live deploy/reconverge performed. Fleet execution remains authorization-gated.
-client: not_applicable
-client_evidence: client-facing emitters untouched
-artifact: not_applicable
-artifact_evidence: no artifact contracts affected
+task_id: "VPD-1787497317352770"
+change: "vpd-1787497317352770-vpnd-deploy-reconverge-lifecycle-safety"
+commit_sha: "bbc346415f412ab49f296db3927ff0fbefdaa8e0"
+local: "blocked"
+local_evidence: "2026-08-27: Rust debug/release each passed 173 tests, clippy/MSRV/deny passed; make validate and cloud-init schema passed. Full make check found two existing AWG installer fresh-directory failures under umask 077; root-cause correction and a complete rerun are pending."
+remote_ci: "blocked"
+remote_ci_evidence: "PR #108 is published. Expanded hosted Molecule coverage exposed runtime and scenario defects; final required-check success and main merge are still pending."
+dry_run: "blocked"
+dry_run_evidence: "Attempted real Ansible management ping for all three inventory hosts: SSH timed out. Tailscale node authentication expired on 2026-08-20; no peer connectivity. A playbook dry-run could not start."
+staging: "blocked"
+staging_evidence: "Only the three production fleet nodes are configured. A staging target or explicit selection of a new paid target remains unresolved."
+live: "blocked"
+live_evidence: "No live deploy/reconverge ran because management access is unavailable. Broad operator authorization was granted; connectivity and staging, not permission to use existing credentials, are the blockers."
+client: "not_applicable"
+client_evidence: "client-facing emitters untouched"
+artifact: "not_applicable"
+artifact_evidence: "no artifact contracts affected"
 ---
 
 # Verification
@@ -24,16 +24,16 @@ artifact_evidence: no artifact contracts affected
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-DEPLOY-CLEAN-GUARANTEE | VPD-1787497373487307 | Failure-injection test asserts cleanup executed and original error surfaced | Pending |
-| REQ-RECONVERGE-LIMIT-VALIDATION | VPD-1787497373490128 | Rejection-table unit tests over pattern and malformed ipv4 values | Pending |
-| REQ-HOST-FLAG-RESOLUTION | VPD-1787497373493403 | Tests assert registry resolution and unknown-alias failure for doctor and probe | Pending |
-| REQ-SUMMARY-SECRETS-PATHS | VPD-1787497373493403 | Snapshot of the plan summary shows placeholders only | Pending |
+| REQ-DEPLOY-CLEAN-GUARANTEE | VPD-1787497373487307 | Failure-injection test asserts cleanup executed and original error surfaced | Passed (local) |
+| REQ-RECONVERGE-LIMIT-VALIDATION | VPD-1787497373490128 | Rejection-table unit tests over pattern and malformed ipv4 values | Passed (local) |
+| REQ-HOST-FLAG-RESOLUTION | VPD-1787497373493403 | Tests assert registry resolution and unknown-alias failure for doctor and probe | Passed (local) |
+| REQ-SUMMARY-SECRETS-PATHS | VPD-1787497373493403 | Snapshot of the plan summary shows placeholders only | Passed (local) |
 
 ## 2026-08-27 review
 
 The original implementation was reopened after review found executable defects.
 Local regressions do not substitute for the dry-run, staging, live, or hosted-CI categories above.
-No archive or terminal closure is authorized by this evidence record.
+Archive and terminal closure remain blocked until all required evidence is complete.
 
 ### Shared local checks on the reviewed source
 

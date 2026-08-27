@@ -14,7 +14,7 @@ openspec_change: vpd-1787497317352770-vpnd-deploy-reconverge-lifecycle-safety
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
-status_detail: Cleanup and scoped-targeting regressions pass; required staging/dry-run/live acceptance and hosted CI are pending.
+status_detail: Implementation tests passed. All three management SSH endpoints timed out; Tailscale login expired, and no staging target is configured. Dry-run/staging/live acceptance remains outstanding.
 ---
 
 ## Goal
