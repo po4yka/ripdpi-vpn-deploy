@@ -30,7 +30,7 @@ pub async fn run(ctx: &Context, args: DoctorArgs) -> Result<()> {
         let out = cmd.capture(ctx.explain).await?;
         report.push_str(&format!(
             "### {}\n\n```\n{}\n```\n\n",
-            cmd.explain(),
+            cmd.redacted_explain(),
             out.stdout
         ));
     }
@@ -66,7 +66,10 @@ pub async fn run(ctx: &Context, args: DoctorArgs) -> Result<()> {
     } else if args.bundle.is_none() {
         println!("{}", "Doctor report".bold().underline());
         println!();
-        println!("{report}");
+        println!(
+            "{}",
+            redact_secrets(report, &ctx.secrets_file.to_string_lossy())
+        );
     }
     Ok(())
 }
@@ -77,7 +80,7 @@ fn ai_prompt(ctx: &Context, host: Option<&str>, report: &str, excerpts: &str) ->
     let secrets_display = ctx.secrets_file.display().to_string();
     let report = redact_secrets(report.to_owned(), &secrets_display);
     let excerpts = redact_secrets(excerpts.to_owned(), &secrets_display);
-    format!(
+    let prompt = format!(
         r#"You are debugging a vpn-deploy host running a four-tier multi-profile VPN
 stack (P0 VLESS+REALITY+Vision, P1 nginx+XHTTP direct, P2 Hysteria2 + AmneziaWG).
 
@@ -96,7 +99,8 @@ propose the smallest safe remediation, and cite which runbook or script applies.
         env = ctx.env,
         provider = ctx.provider,
         host = host.unwrap_or("(active env)"),
-    )
+    );
+    redact_secrets(prompt, &secrets_display)
 }
 
 async fn write_bundle(ctx: &Context, report: &str, out_path: &std::path::Path) -> Result<()> {
@@ -155,6 +159,8 @@ async fn write_bundle(ctx: &Context, report: &str, out_path: &std::path::Path) -
     let mut tar = Builder::new(enc);
 
     for (name, data) in &entries {
+        let data = redact_secrets(String::from_utf8_lossy(data).into_owned(), &secrets_display)
+            .into_bytes();
         let mut header = tar::Header::new_gnu();
         header.set_size(data.len() as u64);
         header.set_mode(0o644);

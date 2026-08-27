@@ -17,6 +17,7 @@ pub struct Cmd {
     env: Vec<(String, String)>,
     cwd: Option<PathBuf>,
     description: Option<String>,
+    sensitive: Vec<String>,
 }
 
 impl Cmd {
@@ -27,6 +28,7 @@ impl Cmd {
             env: Vec::new(),
             cwd: None,
             description: None,
+            sensitive: Vec::new(),
         }
     }
 
@@ -60,15 +62,47 @@ impl Cmd {
         self
     }
 
+    /// Keep execution argv unchanged while masking operator-only paths in logs.
+    pub fn sensitive(mut self, value: impl Into<String>) -> Self {
+        let value = value.into();
+        if !value.is_empty() {
+            self.sensitive.push(value);
+        }
+        self
+    }
+
+    fn redacted(&self, value: &str) -> String {
+        self.sensitive
+            .iter()
+            .fold(value.to_owned(), |value, secret| {
+                value.replace(secret, "<redacted: secrets file path>")
+            })
+    }
+
     /// Shell-quoted form suitable for `--explain` output.
     pub fn explain(&self) -> String {
+        self.render(false)
+    }
+
+    pub fn redacted_explain(&self) -> String {
+        self.render(true)
+    }
+
+    fn render(&self, redact: bool) -> String {
+        let display = |value: &str| {
+            if redact {
+                self.redacted(value)
+            } else {
+                value.to_owned()
+            }
+        };
         let mut parts: Vec<String> = Vec::new();
         for (k, v) in &self.env {
-            parts.push(format!("{}={}", k, shell_words::quote(v)));
+            parts.push(format!("{}={}", k, shell_words::quote(&display(v))));
         }
         parts.push(shell_words::quote(&self.program).into_owned());
         for a in &self.args {
-            parts.push(shell_words::quote(&a.to_string_lossy()).into_owned());
+            parts.push(shell_words::quote(&display(&a.to_string_lossy())).into_owned());
         }
         let mut s = parts.join(" ");
         if let Some(cwd) = &self.cwd {
@@ -85,9 +119,9 @@ impl Cmd {
     /// and useful as a status line in interactive runs.
     pub fn print_explain(&self) {
         if let Some(d) = &self.description {
-            eprintln!("{} {}", "→".cyan(), d.bold());
+            eprintln!("{} {}", "→".cyan(), self.redacted(d).bold());
         }
-        eprintln!("  {} {}", "$".dimmed(), self.explain().dimmed());
+        eprintln!("  {} {}", "$".dimmed(), self.redacted_explain().dimmed());
     }
 
     /// Run interactively, streaming stdout/stderr to the parent terminal.
@@ -114,7 +148,7 @@ impl Cmd {
             return Err(anyhow!(
                 "command failed (rc={}): {}",
                 rc,
-                self.description.as_deref().unwrap_or(&self.program)
+                self.redacted(self.description.as_deref().unwrap_or(&self.program))
             ));
         }
         Ok(rc)
@@ -157,7 +191,7 @@ impl Cmd {
             return Err(anyhow!(
                 "command failed (rc={}): {}",
                 rc,
-                self.description.as_deref().unwrap_or(&self.program)
+                self.redacted(self.description.as_deref().unwrap_or(&self.program))
             ));
         }
         Ok(Output { rc, stdout: buf })
@@ -176,6 +210,19 @@ pub struct Output {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sensitive_paths_are_masked_before_shell_quoting_without_changing_argv() {
+        let path = "/private/O'Brien/runtime secrets.yaml";
+        let cmd = Cmd::new("make")
+            .arg(format!("SECRETS_FILE={path}"))
+            .env("VPN_SECRETS_FILE", path)
+            .sensitive(path);
+        assert!(cmd.redacted_explain().contains("redacted"));
+        assert!(!cmd.redacted_explain().contains("Brien"));
+        assert_eq!(cmd.args[0], OsString::from(format!("SECRETS_FILE={path}")));
+        assert_eq!(cmd.env[0].1, path);
+    }
 
     #[test]
     fn explain_plain_program_no_env_no_cwd() {

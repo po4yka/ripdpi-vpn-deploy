@@ -54,7 +54,7 @@ impl Context {
             .ok_or_else(|| anyhow!("could not resolve user config dir"))?;
 
         let sops_file = config_dir.join(format!("{}.secrets.sops.yaml", cli.env));
-        let runtime_dir = resolve_runtime_dir(&config_dir);
+        let runtime_dir = resolve_runtime_dir();
         let secrets_file = runtime_dir.join(format!("vpn-{}.secrets.yaml", cli.env));
 
         Ok(Self {
@@ -82,6 +82,9 @@ impl Context {
     /// secrets sit world-readable — the caller must abort, not continue.
     pub fn secure_secrets_file(&self) -> Result<()> {
         use std::os::unix::fs::PermissionsExt;
+        if self.explain {
+            return Ok(());
+        }
         if self.secrets_file.exists() {
             let perms = std::fs::Permissions::from_mode(0o600);
             std::fs::set_permissions(&self.secrets_file, perms).with_context(|| {
@@ -96,16 +99,14 @@ impl Context {
 }
 
 /// Resolve the directory holding the decrypted secrets file. XDG_RUNTIME_DIR
-/// wins; otherwise fall back to the user cache dir, then a repo-local
-/// runtime dir. Single authority so make (via the explicit SECRETS_FILE
-/// kv) and vpnd always agree on one location.
-fn resolve_runtime_dir(config_dir: &Path) -> PathBuf {
+/// wins; otherwise use a user-specific temporary directory, matching the
+/// canonical decrypt script. Plaintext must not enter persistent caches.
+fn resolve_runtime_dir() -> PathBuf {
     std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            directories::BaseDirs::new()
-                .map(|b| b.cache_dir().join("vpn-provision"))
-                .unwrap_or_else(|| config_dir.join("runtime"))
+            std::env::temp_dir().join(format!("vpn-provision-{}", uzers::get_current_uid()))
         })
 }
 
@@ -139,29 +140,24 @@ mod tests {
     #[test]
     fn runtime_dir_resolution_matrix_xdg_set_and_unset() {
         let _guard = ENV_LOCK.lock().unwrap();
-        let config_dir = Path::new("/fixture-config");
+        let original = std::env::var_os("XDG_RUNTIME_DIR");
 
         // XDG_RUNTIME_DIR set wins outright.
         std::env::set_var("XDG_RUNTIME_DIR", "/runtime-xdg");
-        assert_eq!(
-            resolve_runtime_dir(config_dir),
-            PathBuf::from("/runtime-xdg")
-        );
+        assert_eq!(resolve_runtime_dir(), PathBuf::from("/runtime-xdg"));
 
-        // XDG_RUNTIME_DIR unset falls back to the user cache dir when
-        // BaseDirs is available in this environment.
+        // Missing or empty XDG_RUNTIME_DIR uses volatile, user-specific storage.
         std::env::remove_var("XDG_RUNTIME_DIR");
-        let fallback = resolve_runtime_dir(config_dir);
-        match directories::BaseDirs::new() {
-            Some(b) => {
-                assert_eq!(fallback, b.cache_dir().join("vpn-provision"));
-            }
-            None => {
-                assert_eq!(fallback, config_dir.join("runtime"));
-            }
+        let expected =
+            std::env::temp_dir().join(format!("vpn-provision-{}", uzers::get_current_uid()));
+        assert_eq!(resolve_runtime_dir(), expected);
+        std::env::set_var("XDG_RUNTIME_DIR", "");
+        assert_eq!(resolve_runtime_dir(), expected);
+        if let Some(value) = original {
+            std::env::set_var("XDG_RUNTIME_DIR", value);
+        } else {
+            std::env::remove_var("XDG_RUNTIME_DIR");
         }
-
-        std::env::remove_var("XDG_RUNTIME_DIR");
     }
 
     // Path-based chmod only honors parent-directory bits on Linux; darwin
