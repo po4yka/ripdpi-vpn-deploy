@@ -2,6 +2,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use serde_json::{json, Value};
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -33,6 +34,9 @@ impl Fixture {
         Self { root }
     }
     fn command(&self, duration: &str) -> Command {
+        self.command_at(duration, &self.root.path().join("report.json"))
+    }
+    fn command_at(&self, duration: &str, output: &Path) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_vpnd"));
         command.args([
             "--root",
@@ -45,8 +49,8 @@ impl Fixture {
             "--duration",
             duration,
             "--output",
-            self.root.path().join("report.json").to_str().unwrap(),
         ]);
+        command.arg(output);
         command
             .env_remove("MAKEFLAGS")
             .env_remove("MFLAGS")
@@ -80,6 +84,162 @@ fn wait(child: &mut Child) -> std::process::ExitStatus {
     }
 }
 const OK: &str = "printf '%s\\n' '{\"verdict\":\"ok\",\"rtt_ms\":1}'";
+
+fn wait_for_checkpoint(path: &Path) {
+    let deadline = Instant::now() + Duration::from_secs(4);
+    loop {
+        if let Ok(bytes) = std::fs::read(path) {
+            if let Ok(report) = serde_json::from_slice::<Value>(&bytes) {
+                if report["controls"]
+                    .as_array()
+                    .is_some_and(|rows| !rows.is_empty())
+                {
+                    return;
+                }
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "no checkpoint before test deadline"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn companion(path: &Path, suffix: &str) -> std::path::PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(suffix);
+    name.into()
+}
+
+fn assert_journal_matches_report(path: &Path) {
+    let report: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let records: Vec<Value> = std::fs::read_to_string(companion(path, ".jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let cells: Vec<Value> = records
+        .iter()
+        .flat_map(|record| record["cells"].as_array().unwrap().clone())
+        .collect();
+    assert_eq!(&cells, report["cells"].as_array().unwrap());
+    assert_eq!(records.last().unwrap()["completed"], report["completed"]);
+    assert_eq!(
+        records.last().unwrap()["interrupted"],
+        report["interrupted"]
+    );
+}
+
+#[test]
+fn simultaneous_reports_with_shared_stems_keep_distinct_journals() {
+    let fixture = Fixture::new(OK, OK);
+    let first_path = fixture.root.path().join("réport.json");
+    let second_path = fixture.root.path().join("réport.txt");
+    let mut first = Running(fixture.command_at("3s", &first_path).spawn().unwrap());
+    wait_for_checkpoint(&first_path);
+    let mut second = Running(fixture.command_at("1s", &second_path).spawn().unwrap());
+    assert!(wait(&mut second.0).success());
+    assert!(wait(&mut first.0).success());
+    assert_journal_matches_report(&first_path);
+    assert_journal_matches_report(&second_path);
+}
+
+#[test]
+fn same_output_sessions_are_exclusive_and_crash_releases_the_lock() {
+    use std::os::unix::fs::MetadataExt;
+    let fixture = Fixture::new(OK, OK);
+    let output = fixture.root.path().join("report.json");
+    let mut first = Running(
+        fixture
+            .command("120s")
+            .args(["--poll-interval-seconds", "60"])
+            .spawn()
+            .unwrap(),
+    );
+    wait_for_checkpoint(&output);
+    let before = std::fs::read(&output).unwrap();
+    let second = fixture
+        .command("1s")
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+    assert!(
+        !second.status.success(),
+        "a second writer must not acquire an active output"
+    );
+    assert!(String::from_utf8_lossy(&second.stderr).contains("already in use"));
+    assert_eq!(std::fs::read(&output).unwrap(), before);
+    let lock_path = companion(&output, ".lock");
+    let metadata = std::fs::metadata(&lock_path).unwrap();
+    assert_eq!(metadata.mode() & 0o777, 0o600);
+    assert_eq!(metadata.len(), 0);
+    first.0.kill().unwrap();
+    assert!(!wait(&mut first.0).success());
+    assert!(fixture.command("1s").status().unwrap().success());
+    assert_eq!(std::fs::metadata(lock_path).unwrap().ino(), metadata.ino());
+    assert_journal_matches_report(&output);
+}
+
+#[test]
+fn unsafe_existing_session_locks_are_rejected_without_mutation() {
+    for kind in ["symlink", "directory", "fifo", "loose-mode", "nonempty"] {
+        let fixture = Fixture::new("touch invoked", "touch invoked");
+        let output = fixture.root.path().join("report.json");
+        std::fs::write(&output, "previous evidence").unwrap();
+        let lock = companion(&output, ".lock");
+        let target = fixture.root.path().join("untouched");
+        std::fs::write(&target, "do not change").unwrap();
+        match kind {
+            "symlink" => std::os::unix::fs::symlink(&target, &lock).unwrap(),
+            "directory" => std::fs::create_dir(&lock).unwrap(),
+            "fifo" => {
+                assert!(Command::new("mkfifo")
+                    .arg(&lock)
+                    .status()
+                    .unwrap()
+                    .success());
+            }
+            _ => {
+                std::fs::write(&lock, "existing lock").unwrap();
+                let mode = if kind == "loose-mode" { 0o644 } else { 0o600 };
+                std::fs::set_permissions(&lock, std::fs::Permissions::from_mode(mode)).unwrap();
+            }
+        }
+        let mut child = Running(fixture.command("1s").spawn().unwrap());
+        assert!(!wait(&mut child.0).success(), "{kind}");
+        assert_eq!(
+            std::fs::read_to_string(&output).unwrap(),
+            "previous evidence"
+        );
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "do not change");
+        assert!(std::fs::symlink_metadata(&lock).is_ok());
+        assert!(!fixture.root.path().join("invoked").exists());
+        assert!(!companion(&output, ".jsonl").exists());
+    }
+}
+
+#[test]
+fn reserved_companion_suffixes_are_rejected_before_probes() {
+    for name in [
+        "report.jsonl",
+        "report.lock",
+        "report.JSONL",
+        "report.LOCK",
+        "report.locK",
+        "report.jſonl",
+    ] {
+        let fixture = Fixture::new("touch invoked", "touch invoked");
+        let output = fixture.root.path().join(name);
+        assert!(!fixture
+            .command_at("1s", &output)
+            .status()
+            .unwrap()
+            .success());
+        assert!(!output.exists());
+        assert!(!fixture.root.path().join("invoked").exists());
+    }
+}
 
 #[test]
 fn zero_duration_is_rejected_without_running_probes() {
@@ -138,7 +298,8 @@ fn interrupts_preserve_completed_ticks_and_mark_partial_report() {
         let prior = checkpoint["cells"].as_array().unwrap();
         let final_cells = report["cells"].as_array().unwrap();
         assert_eq!(&final_cells[..prior.len()], prior);
-        let journal = std::fs::read_to_string(fixture.root.path().join("report.jsonl")).unwrap();
+        let journal =
+            std::fs::read_to_string(fixture.root.path().join("report.json.jsonl")).unwrap();
         let records: Vec<Value> = journal
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())

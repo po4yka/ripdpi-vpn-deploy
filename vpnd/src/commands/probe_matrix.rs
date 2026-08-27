@@ -246,6 +246,7 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
         observations: Vec::new(),
     };
     let mut signals = InterruptSignals::new()?;
+    let _session_lock = lock_output(&output)?;
     let mut journal = start_journal(&output)?;
     checkpoint(&mut report, &config.protocols, &output, &mut journal, None)?;
     let mut interruption = None;
@@ -888,19 +889,65 @@ fn parse_duration(value: &str) -> Result<Duration> {
     Ok(Duration::from_secs(seconds))
 }
 
-fn start_journal(path: &Path) -> Result<std::fs::File> {
+fn companion_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(suffix);
+    PathBuf::from(name)
+}
+
+fn validate_output_path(path: &Path) -> Result<()> {
+    if path.file_name().is_none() {
+        return Err(anyhow!("report output must name a file"));
+    }
+    if let Some(extension) = path.extension() {
+        let extension = extension
+            .to_str()
+            .filter(|extension| extension.is_ascii())
+            .context("report output extension must be ASCII")?;
+        if extension.eq_ignore_ascii_case("jsonl") || extension.eq_ignore_ascii_case("lock") {
+            return Err(anyhow!(
+                "report output must not use a reserved .jsonl or .lock suffix"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn lock_output(path: &Path) -> Result<std::fs::File> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+
+    validate_output_path(path)?;
     if let Some(parent) = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
     {
         std::fs::create_dir_all(parent)?;
     }
-    let journal_path = path.with_extension("jsonl");
-    if journal_path == path {
-        return Err(anyhow!(
-            "report output must not use the .jsonl journal extension"
-        ));
+    // Never replace or unlink this inode: every invocation must lock the same
+    // file, including after crashes. The kernel releases the lock on close.
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags((rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK).bits() as i32)
+        .open(companion_path(path, ".lock"))?;
+    let metadata = lock.metadata()?;
+    if !metadata.is_file()
+        || metadata.uid() != uzers::get_current_uid()
+        || metadata.mode() & 0o777 != 0o600
+        || metadata.len() != 0
+    {
+        return Err(anyhow!("unsafe probe session lock file"));
     }
+    rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive)
+        .context("probe report output is already in use or cannot be locked")?;
+    Ok(lock)
+}
+
+fn start_journal(path: &Path) -> Result<std::fs::File> {
+    let journal_path = companion_path(path, ".jsonl");
     crate::protected_file::write_private(&journal_path, b"")?;
     use std::os::unix::fs::OpenOptionsExt;
     let journal = std::fs::OpenOptions::new()
@@ -1086,6 +1133,42 @@ pub fn report_to_json(report: &MatrixReport) -> Result<String, serde_json::Error
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn companion_names_preserve_non_utf8_filename_bytes() {
+        use std::os::unix::ffi::{OsStrExt, OsStringExt};
+        let name = std::ffi::OsString::from_vec(b"report-\xff.json".to_vec());
+        assert!(validate_output_path(Path::new(&name)).is_ok());
+        for suffix in [".jsonl", ".lock"] {
+            let mut expected = name.as_bytes().to_vec();
+            expected.extend_from_slice(suffix.as_bytes());
+            assert_eq!(
+                companion_path(Path::new(&name), suffix)
+                    .as_os_str()
+                    .as_bytes(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn output_names_reject_reserved_and_non_ascii_extensions() {
+        for name in [
+            "report.jsonl",
+            "report.JSONL",
+            "report.lock",
+            "report.LOCK",
+            "report.locK",
+            "report.jſonl",
+            "report.扩展",
+            "/",
+        ] {
+            assert!(validate_output_path(Path::new(name)).is_err(), "{name}");
+        }
+        for name in ["report", "report.json", "réport.txt"] {
+            assert!(validate_output_path(Path::new(name)).is_ok(), "{name}");
+        }
+    }
 
     fn matrix_cells(
         verdict: impl Fn(Protocol, DestinationClass, Topology) -> Verdict,
