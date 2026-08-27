@@ -1,6 +1,10 @@
 """ci-fast and validate must not silently reduce their promised coverage."""
 
 from pathlib import Path
+import os
+import subprocess
+
+import pytest
 
 
 def test_validate_checks_every_provider_and_ci_fast_has_no_tool_skips():
@@ -159,3 +163,50 @@ def test_partial_verify_cannot_create_a_fleet_known_good_tag():
     assert '"$(TAG_ON_SUCCESS)" = "1"' in target
     assert '"$(ANSIBLE_LIMIT)"' in target
     assert "requires an unbounded fleet verification" in target
+
+
+@pytest.mark.parametrize("shred_succeeds", [True, False])
+def test_clean_removes_exact_secret_path_without_logging_it(tmp_path, shred_succeeds):
+    root = Path(__file__).resolve().parents[2]
+    secrets = tmp_path / "cache directory" / 'vpn-"quoted".secrets.yaml'
+    secrets.parent.mkdir()
+    secrets.write_text("synthetic test secret\n")
+    tool_dir = tmp_path / "bin"
+    tool_dir.mkdir()
+    shred = tool_dir / "shred"
+    shred.write_text("#!/bin/sh\n" + (
+        'exec /bin/rm -- "$3"\n' if shred_succeeds else "exit 1\n"
+    ))
+    shred.chmod(0o755)
+    result = subprocess.run(
+        ["make", "--no-print-directory", "-f", str(root / "Makefile"),
+         "clean", f"SECRETS_FILE={secrets}"],
+        cwd=tmp_path, env={**os.environ, "PATH": f"{tool_dir}:{os.environ['PATH']}"},
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not secrets.exists()
+    assert str(secrets) not in result.stdout + result.stderr
+
+
+def test_clean_reports_failure_when_secret_cannot_be_removed(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    secrets = tmp_path / "vpn-test.secrets.yaml"
+    secrets.write_text("synthetic test secret\n")
+    tool_dir = tmp_path / "bin"
+    tool_dir.mkdir()
+    for name in ("shred", "rm"):
+        tool = tool_dir / name
+        tool.write_text("#!/bin/sh\nexit 1\n")
+        tool.chmod(0o755)
+    result = subprocess.run(
+        ["make", "--no-print-directory", "-f", str(root / "Makefile"),
+         "clean", f"SECRETS_FILE={secrets}"],
+        cwd=tmp_path, env={**os.environ, "PATH": f"{tool_dir}:{os.environ['PATH']}"},
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode != 0
+    assert secrets.exists()
+    assert "shredded" not in result.stdout
+    assert "failed to remove decrypted secrets" in result.stderr
+    assert str(secrets) not in result.stdout + result.stderr

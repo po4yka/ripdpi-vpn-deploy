@@ -315,10 +315,14 @@ pyinfra-audit:
 	@command -v pyinfra >/dev/null 2>&1 || { echo "missing: pyinfra (optional; see requirements.in and pyinfra/README.md)"; exit 1; }
 	pyinfra pyinfra/inventory.py pyinfra/deploys/read_only_audit.py
 
+clean: export CLEAN_SECRETS_FILE = $(SECRETS_FILE)
 clean:
-	@if [ -f "$(SECRETS_FILE)" ]; then \
-	  shred -u $(SECRETS_FILE) 2>/dev/null || rm -f $(SECRETS_FILE); \
-	  echo "shredded $(SECRETS_FILE)"; \
+	@set -eu; \
+	if [ -L "$$CLEAN_SECRETS_FILE" ]; then \
+	  rm -f -- "$$CLEAN_SECRETS_FILE" 2>/dev/null || { echo "failed to remove decrypted secrets" >&2; exit 1; }; \
+	elif [ -f "$$CLEAN_SECRETS_FILE" ]; then \
+	  shred -u -- "$$CLEAN_SECRETS_FILE" 2>/dev/null || \
+	    rm -f -- "$$CLEAN_SECRETS_FILE" 2>/dev/null || { echo "failed to remove decrypted secrets" >&2; exit 1; }; \
 	fi
 
 .PHONY: check-ci-deploy-gate

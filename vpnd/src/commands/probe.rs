@@ -4,13 +4,20 @@ use owo_colors::OwoColorize;
 use crate::cli::{ProbeArgs, Profile};
 use crate::config::Context;
 use crate::runner::{make, Cmd};
-use crate::state::Registry;
+use crate::state::{ipv4_limit, Registry};
 
 pub async fn run(ctx: &Context, args: ProbeArgs) -> Result<()> {
     // --host must resolve through the registry (env/provider matched);
     // unknown aliases fail before any probe step is built.
     let registry = Registry::load()?;
-    super::ensure_host_in_registry(ctx, &registry, args.host.as_ref())?;
+    let address = args
+        .host
+        .as_ref()
+        .map(|name| {
+            let host = registry.resolve_for(name, &ctx.env, &ctx.provider)?;
+            ipv4_limit(name, &host)
+        })
+        .transpose()?;
 
     let mut steps: Vec<Cmd> = Vec::new();
 
@@ -20,7 +27,7 @@ pub async fn run(ctx: &Context, args: ProbeArgs) -> Result<()> {
         steps.push(make::target(ctx, "tspu-canary"));
     }
     if matches!(args.profile, Profile::P1 | Profile::All) {
-        if let Some(host) = &args.host {
+        if let Some(host) = &address {
             steps.push(make::target_with(
                 ctx,
                 "test-tls-policing",

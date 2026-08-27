@@ -35,7 +35,6 @@ fn plan_steps(ctx: &Context, args: &DeployArgs) -> Vec<Cmd> {
     steps.push(deploy_step);
     steps.push(verify_step);
     steps.push(make::target(ctx, "smoke-test"));
-    steps.push(make::target(ctx, "clean"));
     steps
 }
 
@@ -82,7 +81,7 @@ pub async fn run(ctx: &Context, args: DeployArgs) -> Result<()> {
         Ok(())
     }
     .await;
-    super::finish_or_cleanup(ctx, outcome).await?;
+    super::finish_with_cleanup(ctx, outcome).await?;
 
     if !ctx.explain {
         success_summary(ctx);
@@ -152,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    fn pipeline_matches_makefile_order_and_ends_with_clean() {
+    fn pipeline_matches_makefile_order_before_unconditional_cleanup() {
         let ctx = fake_ctx();
         let args = DeployArgs {
             skip_precheck: false,
@@ -171,7 +170,6 @@ mod tests {
             "deploy",
             "verify",
             "smoke-test",
-            "clean",
         ];
         assert_eq!(rendered.len(), expected.len(), "step count drifted");
         for (rendered_step, expected_step) in rendered.iter().zip(expected.iter()) {
@@ -180,7 +178,6 @@ mod tests {
                 "expected make {expected_step} in step: {rendered_step}"
             );
         }
-        assert!(rendered.last().expect("steps").contains("make clean"));
     }
 
     #[test]

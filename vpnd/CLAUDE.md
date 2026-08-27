@@ -41,8 +41,9 @@ against `^[A-Za-z0-9_-]+$` before use.
 
 ## What's done well
 
-- **`--explain` is honest** — env vars and cwd are encoded in the shell-quoted
-  form. No hidden state leaks past the shell line you read.
+- **`--explain` is side-effect free** — env vars and cwd are encoded in
+  shell-quoted form; secret-file paths use explicit redaction placeholders.
+  Inventory-dependent targeting is marked unresolved, never silently widened.
 - **Decryption is delegated** — `vpnd` never reimplements SOPS. It shells out
   to `sops`, preserving the existing audit-log and YubiKey paths.
 - **Read-only secrets** — `secrets::Secrets` only reads decrypted YAML.
@@ -65,6 +66,13 @@ against `^[A-Za-z0-9_-]+$` before use.
 - **`make decrypt` is not idempotent** — it overwrites the configured
   `SECRETS_FILE` every time. Subcommands check `secrets_file.is_file()` before
   triggering it.
+- **Runtime plaintext is volatile** — use `XDG_RUNTIME_DIR` or a user-specific
+  temporary directory, never a persistent cache. Make receives this exact path.
+- **Ansible limits match inventory keys, not `ansible_host`** — resolve the
+  `vpn` inventory group with env/provider and `vpn_service_address`, then use
+  validated exact host keys. Reject missing or ambiguous registry matches.
+- **Cleanup is unconditional after a deployment pipeline starts** — successful
+  dry runs also clean. A cleanup error fails success but never masks the primary error.
 - **Make targets carry state via env** — `ENV` and `PROVIDER` must be passed on
   every invocation; `make::target()` does this. Don't bypass it.
 - **Terraform must use the workspace wrapper** — runner builders call `scripts/terraform-env.sh` with `PROVIDER` and `ENV`; do not construct raw Terraform commands, or non-production environments can select the wrong local state.
