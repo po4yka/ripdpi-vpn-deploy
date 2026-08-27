@@ -232,3 +232,37 @@ with output.open('wb') as stream:
     assert result.returncode == 0, result.stderr
     assert int((tmp_path / 'qr-mode').read_text()) == 0o600
     assert (tmp_path / artifact).stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize('script_name', ['issue-sub-token.sh', 'issue-bootstrap.sh'])
+@pytest.mark.parametrize('directory', ["/opt/o'brien", 'relative/path', '/opt/../evil', '/opt/$(id)', '/opt/space dir'])
+def test_subscription_directory_rejected_before_external_commands(tmp_path, script_name, directory):
+    scripts = tmp_path / 'scripts'
+    scripts.mkdir()
+    script = scripts / script_name
+    script.write_text((REPO_ROOT / 'scripts' / script_name).read_text())
+    marker = tmp_path / 'external-call'
+    _write_executable(scripts / 'terraform-env.sh', f'#!/bin/sh\ntouch {marker}\nexit 73\n')
+    result = subprocess.run(
+        ['bash', str(script), 'phone'], env={**os.environ, 'SUBSCRIPTION_DIR': directory},
+        capture_output=True, text=True, timeout=5,
+    )
+    assert result.returncode == 2, result.stderr
+    assert 'SUBSCRIPTION_DIR must be' in result.stderr
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize('script_name', ['issue-sub-token.sh', 'issue-bootstrap.sh'])
+def test_safe_subscription_directory_reaches_next_stage(tmp_path, script_name):
+    scripts = tmp_path / 'scripts'
+    scripts.mkdir()
+    script = scripts / script_name
+    script.write_text((REPO_ROOT / 'scripts' / script_name).read_text())
+    marker = tmp_path / 'external-call'
+    _write_executable(scripts / 'terraform-env.sh', f'#!/bin/sh\ntouch {marker}\nexit 73\n')
+    result = subprocess.run(
+        ['bash', str(script), 'phone'], env={**os.environ, 'SUBSCRIPTION_DIR': '/var/lib/vpn-subscription'},
+        capture_output=True, text=True, timeout=5,
+    )
+    assert result.returncode == 73, result.stderr
+    assert marker.exists()
