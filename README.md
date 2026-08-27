@@ -260,6 +260,20 @@ make blue-green GREEN_ENV=<name>          # orchestrate blue-green replacement
 plaintext runtime path is
 `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}/vpn-provision-$(id -u)}/`.
 
+### Reviewed network exposure policy
+
+The network exposure gate is disabled by default. It accepts only a reviewed,
+signed operator-owned artifact and keeps ingress, host egress, and forwarded
+traffic separate. `make network-exposure-review NETWORK_EXPOSURE_CONFIG=/path/to/private-config.yml`
+validates and prints redacted counts without applying firewall rules. Canary
+and enforcement require an explicit trusted key, artifact digest, approval, and
+exact host allowlist. See [NETWORK-EXPOSURE-GATE.md](docs/NETWORK-EXPOSURE-GATE.md)
+for input/signature format, expiry, promotion, and explicit rollback.
+
+`make deploy-canary` refuses production secrets, including production filenames
+under a canary-named directory. Supply both `SECRETS_FILE` with basename
+`vpn-canary.secrets.yaml` and `SOPS_FILE` with basename `canary.secrets.sops.yaml`.
+
 ## Hard rules
 
 - No secrets in git, in Terraform state, in Terraform variables/outputs, in
