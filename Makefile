@@ -364,6 +364,7 @@ diff-secrets:
 emit-singbox:
 	@test -n "$${CLIENT:-}" || { echo "CLIENT=<name> required"; exit 1; }
 	@HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
+	  VPN_SECRETS_FILE="$(SECRETS_FILE)" \
 	  ./scripts/emit-singbox.sh "$${CLIENT}"
 
 emit-awg:

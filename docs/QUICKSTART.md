@@ -196,8 +196,15 @@ For an official sing-box JSON with selector + urltest covering the supported
 P0 REALITY and P2 Hysteria2 profiles:
 
 ```bash
+make decrypt
 make emit-singbox CLIENT=laptop > laptop.singbox.json
+make clean
 ```
+
+The emitter reads the same private runtime file as `vpnd share`; it does not
+decrypt again. Do not combine that shared document with per-host `SOPS_FILES`.
+For independent per-host encrypted inputs, invoke `scripts/emit-singbox.sh`
+directly without `VPN_SECRETS_FILE`.
 
 The standard artifact intentionally excludes P1 XHTTP because official
 sing-box does not implement that transport. Use the RIPDPI-specific artifact

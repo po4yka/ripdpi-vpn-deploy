@@ -18,6 +18,12 @@ vpnd MUST pass its resolved decrypted-secrets path explicitly (SECRETS_FILE) to 
 - **WHEN** reconverge runs the site playbook
 - **THEN** VPN_SECRETS_FILE passed to ansible-playbook equals vpnd's resolved path and the file exists
 
+#### Scenario: Share renders from the same decrypted document
+
+- **WHEN** share renders the recipient metadata and the sing-box payload
+- **THEN** both consume the same resolved plaintext document without a second SOPS decrypt, and an explicit missing or unsafe plaintext input fails instead of falling back to SOPS
+- **AND** a shared plaintext input cannot be combined with per-host SOPS_FILES
+
 ### Requirement: REQ-SECRETS-REDACTION-COVERAGE — Resolved-path redaction on every export surface
 
 Doctor-derived exports (bundle tarball and AI prompt output/clipboard) MUST mask any line containing the resolved decrypted-secrets path before leaving the process, in addition to legacy path patterns.

@@ -44,6 +44,13 @@ official sing-box P0/P2 syntax and must pass the pinned upstream parser. Only
 `emit-bundle.sh` selects the RIPDPI format that carries P1 XHTTP; never leak an
 XHTTP outbound into the standard subscription.
 
+**Share emission reuses authoritative plaintext** — `emit-singbox.sh` reads
+explicit `VPN_SECRETS_FILE` once through a no-follow, nonblocking descriptor
+with current-owner/private-mode checks, then shares its JSON snapshot across
+hosts. Invalid plaintext never falls back to SOPS; `SOPS_FILES` is ambiguous
+with that shared input and is rejected. Direct script calls without plaintext
+retain per-host SOPS inputs.
+
 **Vultr secondary IPv4 inventory is live-gated** — Terraform output proves allocation only. `render-inventory.sh` polls the primary SSH endpoint and publishes `honeypot_listen_addr` only after the exact IPv4 appears on a guest interface.
 
 **Destroy is provider-aware and plan-verified** — `destroy.sh` maps each supported provider to its canonical server resource and checks that the destroy plan contains a delete action for that exact address before apply. Unknown providers fail before an override file is written.

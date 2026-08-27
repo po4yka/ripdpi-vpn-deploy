@@ -11,11 +11,15 @@
 - Permission gate: use the safe `rustix` filesystem API to open with `NOFOLLOW | NONBLOCK | CLOEXEC`, then evaluate regular-file type, current UID, and private mode bits on the held descriptor before reading. `File::open` followed by metadata alone cannot reject a symlink swap. A private read-only file remains a valid read input.
 - Hardening opens the same way and applies mode 0600 through the held descriptor. Missing, symlink, special, foreign-owner, or failed-chmod inputs abort; explain mode performs no filesystem mutation.
 - The user approved direct `rustix` 1.x with its `fs` feature. The locked version was already transitive; adding the direct edge does not add a new package version or project unsafe code.
+- `make emit-singbox` passes the resolved plaintext as `VPN_SECRETS_FILE`. The emitter validates and converts that document once for all selected hosts; it never falls back to SOPS for an invalid explicit input. Combining this shared document with per-host `SOPS_FILES` is rejected. Direct script invocation without a plaintext input still supports independent encrypted documents.
 
 ## Migration / Rollback
 
-No state migration. Single-commit revert restores previous resolution order.
+No state migration. Direct `make emit-singbox` now requires `make decrypt` first;
+run `make clean` after use. Call the emitter script directly for per-host SOPS
+documents. This prevents recipient metadata and payload from using different
+secret generations.
 
 ## Validation
 
-Focused cargo tests: config path resolution matrix (XDG set/unset), doctor redaction with resolved paths incl. --ai branch, chmod-failure propagation (error injected via read-only parent), fstat gate rejecting symlink/mode swap; clippy -D warnings.
+Focused cargo tests: config path resolution matrix (XDG set/unset), doctor redaction with resolved paths incl. --ai branch, actual fd chmod-failure propagation, fstat gate rejecting symlink/mode swap; clippy -D warnings. Actual Make decrypt-to-emitter tests count SOPS invocations and verify the payload uses the authoritative plaintext.
