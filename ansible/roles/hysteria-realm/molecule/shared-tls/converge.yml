@@ -1,0 +1,94 @@
+---
+# Converge for the shared-TLS scenario. Mirrors the default scenario's
+# stubbing (no egress, stub sing-box binary) but flips
+# share_hysteria_tls to true: the hysteria role has NOT run, so prepare
+# fabricates the hysteria side exactly as that role ships it — group
+# `hysteria`, config dir root:hysteria 0750, PEMs root:hysteria 0640.
+
+- name: Converge hysteria-realm role (shared-TLS path)
+  hosts: all
+  become: true
+  vars:
+    vpn:
+      enable_hysteria_realm: true
+
+    hysteria_config_dir: /etc/hysteria
+
+    hysteria_realm:
+      version: "v1.14.0-alpha.22"
+      install_root: /opt/hysteria-realm
+      config_dir: /etc/hysteria-realm
+      log_dir: /var/log/hysteria-realm
+      listen_port: 8444
+      listen_addr: "::"
+      share_hysteria_tls: true
+      tls_cert_path: /etc/hysteria-realm/server.fullchain.pem
+      tls_key_path: /etc/hysteria-realm/server.key
+      sni: vpn.example.test
+      events_per_minute_max: 600
+
+    hysteria_realm_secrets:
+      linux_amd64_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      linux_arm64_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      auth_token: "MOLECULE_STUB_AUTH_TOKEN_NOT_REAL"
+
+  pre_tasks:
+    - name: Create the hysteria group (normally owned by the hysteria role)
+      ansible.builtin.group:
+        name: hysteria
+        system: true
+
+    - name: Create the hysteria config dir with production ownership
+      ansible.builtin.file:
+        path: /etc/hysteria
+        state: directory
+        owner: root
+        group: hysteria
+        mode: "0750"
+
+    - name: Drop shared TLS material with production modes
+      ansible.builtin.copy:
+        dest: "{{ item.dest }}"
+        content: "{{ item.content }}"
+        owner: root
+        group: hysteria
+        mode: "0640"
+      loop:
+        - dest: /etc/hysteria/server.fullchain.pem
+          content: |
+            -----BEGIN CERTIFICATE-----
+            STUB_SHARED_CERT_FOR_MOLECULE
+            -----END CERTIFICATE-----
+        - dest: /etc/hysteria/server.key
+          content: |
+            -----BEGIN PRIVATE KEY-----
+            STUB_SHARED_KEY_FOR_MOLECULE
+            -----END PRIVATE KEY-----
+
+    - name: Stub release directory
+      ansible.builtin.file:
+        path: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Drop stub sing-box binary
+      ansible.builtin.copy:
+        dest: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}/sing-box"
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          if [ "$1" = "run" ]; then
+            trap 'exit 0' TERM INT
+            while true; do
+              sleep 3600 &
+              wait $!
+            done
+          fi
+          exit 0
+
+  roles:
+    - role: hysteria-realm

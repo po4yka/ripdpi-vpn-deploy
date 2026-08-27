@@ -19,16 +19,27 @@ fn fake_ctx() -> Context {
     }
 }
 
-/// Build a `make <name> ENV=… PROVIDER=…` invocation pinned to the repo root.
+/// Build a `make <name> ENV=… PROVIDER=… SECRETS_FILE=…` invocation pinned
+/// to the repo root. SECRETS_FILE is carried explicitly on every target so
+/// recipes that read or produce the decrypted file (decrypt at minimum,
+/// audit-log style consumers wherever their recipe references it) resolve
+/// the same path vpnd does — no double-decrypt into divergent locations.
 pub fn target(ctx: &Context, name: &str) -> Cmd {
+    let secrets = ctx.secrets_file.display().to_string();
     Cmd::new("make")
         .arg(name)
         .arg(format!("ENV={}", ctx.env))
         .arg(format!("PROVIDER={}", ctx.provider))
+        .arg(format!("SECRETS_FILE={secrets}"))
         .cwd(ctx.root.clone())
         .describe(format!(
-            "make {} ENV={} PROVIDER={}",
-            name, ctx.env, ctx.provider
+            "make {} ENV={} PROVIDER={} SECRETS_FILE={}",
+            name,
+            ctx.env,
+            ctx.provider,
+            // The describe surface must not leak more than the path itself;
+            // the runtime path is operator-trusted but not a secret value.
+            secrets
         ))
 }
 
@@ -55,6 +66,22 @@ mod tests {
         let prov_pos = s.find("PROVIDER=upcloud").expect("PROVIDER=");
         assert!(name_pos < env_pos, "target name before ENV=, got: {s}");
         assert!(env_pos < prov_pos, "ENV= before PROVIDER=, got: {s}");
+    }
+
+    #[test]
+    fn target_carries_resolved_secrets_file_after_provider() {
+        // Resolution-matrix seam: make must receive exactly the path
+        // Context resolved, so `make decrypt` lands where vpnd reads and
+        // a decrypt is never duplicated into a divergent location.
+        let ctx = fake_ctx();
+        let s = target(&ctx, "decrypt").explain();
+        let prov_pos = s.find("PROVIDER=upcloud").expect("PROVIDER=");
+        let secrets_kv = format!("SECRETS_FILE={}", ctx.secrets_file.display());
+        let sec_pos = s.find(&secrets_kv).expect("SECRETS_FILE kv");
+        assert!(
+            prov_pos < sec_pos,
+            "SECRETS_FILE comes after PROVIDER=, got: {s}"
+        );
     }
 
     #[test]

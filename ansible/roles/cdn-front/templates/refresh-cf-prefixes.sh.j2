@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Refresh Cloudflare prefix lists used by nginx (real-IP restoration)
 # and nftables (origin firewall, when enabled). Runs daily from
-# /etc/cron.daily/.
+# cdn-front-prefix-refresh.timer.
 #
 # Downloads, validation, and firewall preflight complete before cache files are published, so malformed input or an nftables error keeps the previous good state.
 set -Eeuo pipefail

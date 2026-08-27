@@ -22,7 +22,7 @@ pub async fn run(ctx: &Context, args: PreflightArgs) -> Result<()> {
     // Ensure we have a decrypted secrets file to inspect.
     if !ctx.secrets_file.is_file() {
         make::target(ctx, "decrypt").run(ctx.explain).await?;
-        ctx.secure_secrets_file();
+        ctx.secure_secrets_file()?;
     }
 
     for cmd in &required_steps(ctx, args.skip_certs) {
@@ -60,7 +60,12 @@ mod tests {
             .iter()
             .map(|cmd| cmd.explain())
             .collect();
-        let names = ["validate-secrets", "spot-check-secrets", "audit-permissions", "check-certs"];
+        let names = [
+            "validate-secrets",
+            "spot-check-secrets",
+            "audit-permissions",
+            "check-certs",
+        ];
         assert_eq!(rendered.len(), names.len());
         for (step, name) in rendered.iter().zip(names.iter()) {
             assert!(step.contains(&format!("make {name} ")), "{step}");

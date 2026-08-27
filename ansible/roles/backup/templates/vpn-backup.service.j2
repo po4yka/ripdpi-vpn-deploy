@@ -1,0 +1,32 @@
+[Unit]
+Description=VPN config backup (restic, optional rclone sync)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vpn-backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+# Hardening floor for a root oneshot: strict read-only filesystem view,
+# private tmp, no privilege escalation or kernel surfaces. Writes are
+# confined to the restic repository and this unit's state directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+StateDirectory=vpn-backup
+StateDirectoryMode=0750
+# restic's default cache lives under $HOME, which ProtectHome hides;
+# pin it inside the state directory.
+Environment=RESTIC_CACHE_DIR=/var/lib/vpn-backup/cache
+ReadWritePaths={{ restic_repo_dir }} /var/backups /var/lib/vpn-backup

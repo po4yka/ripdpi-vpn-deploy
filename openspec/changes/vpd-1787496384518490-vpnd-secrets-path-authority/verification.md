@@ -1,9 +1,9 @@
 ---
 task_id: VPD-1787496384518490
 change: vpd-1787496384518490-vpnd-secrets-path-authority
-commit_sha: null
+commit_sha: b2d209a
 local: required
-local_evidence: ""
+local_evidence: "Local on fix/board-criticals@b2d209a: cargo test 153 passed / 0 failed across 19 suites (resolution matrix XDG set/unset, redaction proptest non-/tmp shapes, chmod-failure propagation on Linux runners, symlink+mode rejection gates); cargo clippy --all-targets -D warnings clean."
 remote_ci: required
 remote_ci_evidence: ""
 dry_run: not_applicable

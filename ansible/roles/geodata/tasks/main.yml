@@ -57,21 +57,16 @@
     group: root
     mode: "0750"
 
-- name: Drop refresh systemd service
-  ansible.builtin.copy:
+- name: Install geodata refresh systemd service unit
+  # Template carries the root-oneshot hardening floor (NoNewPrivileges,
+  # ProtectSystem=strict, PrivateTmp and peers) with the only writable
+  # surface being the geodata install directory.
+  ansible.builtin.template:
+    src: vpn-geodata-refresh.service.j2
     dest: /etc/systemd/system/vpn-geodata-refresh.service
     owner: root
     group: root
     mode: "0644"
-    content: |
-      [Unit]
-      Description=Refresh Xray geodata
-      Wants=network-online.target
-      After=network-online.target
-
-      [Service]
-      Type=oneshot
-      ExecStart=/usr/local/sbin/vpn-geodata-refresh.sh
 
 - name: Drop refresh systemd timer
   ansible.builtin.copy:

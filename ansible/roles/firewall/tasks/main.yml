@@ -41,9 +41,13 @@
   register: _firewall_ufw_binary
 
 - name: Check whether UFW is active
+  # Probe must run for real under --check: the disable step below keys on
+  # this registered stdout, and a check-mode skip leaves it undefined,
+  # aborting dry-runs on provider images that preinstall UFW.
   ansible.builtin.command: ufw status
   register: _firewall_ufw_status
   changed_when: false
+  check_mode: false
   when: _firewall_ufw_binary.stat.exists
 
 # Provider images can enable UFW before Ansible's first converge. Its

@@ -19,13 +19,43 @@
 - name: Install refresh script
   ansible.builtin.template:
     src: refresh-cf-prefixes.sh.j2
-    dest: /etc/cron.daily/cdn-front-refresh-cf-prefixes
+    dest: /usr/local/sbin/cdn-front-refresh-cf-prefixes
     owner: root
     group: root
     mode: "0755"
 
+- name: Remove legacy cron.daily scheduling entry
+  # Scheduling moved to cdn-front-prefix-refresh.timer; leaving this file
+  # behind would double-schedule the refresh.
+  ansible.builtin.file:
+    dest: /etc/cron.daily/cdn-front-refresh-cf-prefixes
+    state: absent
+
+- name: Install prefix-refresh service unit
+  ansible.builtin.template:
+    src: cdn-front-prefix-refresh.service.j2
+    dest: /etc/systemd/system/cdn-front-prefix-refresh.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install prefix-refresh timer unit
+  ansible.builtin.template:
+    src: cdn-front-prefix-refresh.timer.j2
+    dest: /etc/systemd/system/cdn-front-prefix-refresh.timer
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable prefix-refresh timer
+  ansible.builtin.systemd_service:
+    name: cdn-front-prefix-refresh.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
 - name: Seed CF prefix list (first run)
-  ansible.builtin.command: /etc/cron.daily/cdn-front-refresh-cf-prefixes
+  ansible.builtin.command: /usr/local/sbin/cdn-front-refresh-cf-prefixes
   register: _cf_seed
   changed_when: false
   # Tolerate transient network failures on first-deploy (rc != 0 and empty

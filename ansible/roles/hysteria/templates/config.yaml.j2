@@ -12,7 +12,7 @@ auth:
   type: userpass
   userpass:
 {% for client in hysteria.clients %}
-    {{ client.name }}: "{{ client.password }}"
+    {{ client.name | to_json }}: {{ client.password | to_json }}
 {% endfor %}
 
 # Salamander obfuscation: disabled by default. Enable only if vanilla
@@ -34,7 +34,7 @@ masquerade:
   type: {{ hysteria.masquerade_type | default('proxy') }}
 {% if (hysteria.masquerade_type | default('proxy')) == 'proxy' %}
   proxy:
-    url: {{ hysteria.masquerade_url }}
+    url: {{ hysteria.masquerade_url | to_json }}
     rewriteHost: true
 {% endif %}
 

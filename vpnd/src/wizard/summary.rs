@@ -22,6 +22,11 @@ impl Summary {
         self
     }
 
+    /// Read-only view of the collected rows, for contract tests.
+    pub fn rows(&self) -> &[(String, String)] {
+        &self.rows
+    }
+
     pub fn render(&self) {
         println!();
         println!("{}", self.title.bold().underline());

@@ -3,10 +3,15 @@
   ansible.builtin.systemd_service:
     daemon_reload: true
 
-- name: Reload amneziawg
+- name: Restart amneziawg
+  # restart, not reload: `awg-quick strip` (what reloaded maps to) cannot
+  # apply address/route changes, and on an inactive instance the reload
+  # verb aborts the handler loop entirely, leaving later instances stale.
+  # A full restart applies complete up-time state; it drops active tunnels
+  # briefly on peer changes — accepted for this role's convergence model.
   ansible.builtin.systemd_service:
     name: "awg-quick@{{ item.name }}"
-    state: reloaded
+    state: restarted
   loop: "{{ _awg_instances | default([{'name': amneziawg.interface}]) }}"
   loop_control:
     label: "{{ item.name }}"

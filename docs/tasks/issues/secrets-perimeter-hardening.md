@@ -2,7 +2,7 @@
 id: SEC-1787496747898735
 title: Close secrets-handling and perimeter hardening gaps
 kind: bug
-status: backlog
+status: review
 area: security
 priority: critical
 risk: high
@@ -12,8 +12,8 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1787496747898735-secrets-perimeter-hardening
 created: 2026-08-23
-updated: 2026-08-23
-related_tasks: ["ANS-1787463116251274"]
+updated: 2026-08-25
+related_tasks: [ANS-1787463116251274]
 ---
 
 ## Goal

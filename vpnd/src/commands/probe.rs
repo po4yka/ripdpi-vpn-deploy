@@ -4,8 +4,14 @@ use owo_colors::OwoColorize;
 use crate::cli::{ProbeArgs, Profile};
 use crate::config::Context;
 use crate::runner::{make, Cmd};
+use crate::state::Registry;
 
 pub async fn run(ctx: &Context, args: ProbeArgs) -> Result<()> {
+    // --host must resolve through the registry (env/provider matched);
+    // unknown aliases fail before any probe step is built.
+    let registry = Registry::load()?;
+    super::ensure_host_in_registry(ctx, &registry, args.host.as_ref())?;
+
     let mut steps: Vec<Cmd> = Vec::new();
 
     if matches!(args.profile, Profile::P0 | Profile::All) {

@@ -1,0 +1,24 @@
+[Unit]
+Description=Refresh Xray geodata
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vpn-geodata-refresh.sh
+
+# Hardening floor for a root oneshot: strict read-only filesystem view,
+# private tmp, no privilege escalation or kernel surfaces. The only
+# writable surface is the geodata install directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+ReadWritePaths=/usr/local/share/xray

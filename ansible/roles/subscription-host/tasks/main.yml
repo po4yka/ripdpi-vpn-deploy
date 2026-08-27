@@ -99,7 +99,7 @@
       # Managed by Ansible role subscription-host. One sha256 hex per line.
       # The Python service re-reads this file on every request.
       {% for h in subscription.revoked_tokens | default([]) %}
-      {{ h }}
+      {{ h | trim | lower }}
       {% endfor %}
   no_log: true
   diff: false

@@ -95,6 +95,23 @@
       changed_when: false
       failed_when: mirror_timer_active.stdout != "active"
 
+    - name: Create vpn-bootstrap SSH state before the --delete pull
+      ansible.builtin.file:
+        path: /var/lib/vpn-subscription/.ssh
+        state: directory
+        owner: vpn-bootstrap
+        group: vpn-bootstrap
+        mode: "0700"
+
+    - name: Seed vpn-bootstrap SSH state before the --delete pull
+      ansible.builtin.copy:
+        dest: /var/lib/vpn-subscription/.ssh/known_hosts
+        content: "molecule-mirror.example.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoleculeKnownHost\n"
+        owner: vpn-bootstrap
+        group: vpn-bootstrap
+        mode: "0600"
+        directory_mode: "0700"
+
     - name: Trigger one mirror pull (oneshot) so payload lands on disk
       ansible.builtin.command:
         cmd: systemctl start vpn-sub-mirror.service
@@ -133,6 +150,20 @@
       failed_when: >-
         not mirror_ssh_key.stat.exists
         or mirror_ssh_key.stat.mode != "0600"
+
+    - name: Revocation hash list survives the triggered --delete pull
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep -q 'deadbeefdeadbeefdeadbeef' /var/lib/vpn-subscription/revoked
+        executable: /bin/bash
+      changed_when: false
+
+    - name: vpn-bootstrap .ssh state survives the triggered --delete pull
+      ansible.builtin.stat:
+        path: /var/lib/vpn-subscription/.ssh
+      register: mirror_ssh_state
+      failed_when: not mirror_ssh_state.stat.exists
 
     - name: vpn-sub-mirror.service journal has no fatal entries
       ansible.builtin.shell:

@@ -123,3 +123,32 @@
         that:
           - marker_after_failure.content == marker_before_failure.content
       when: backup.remote.enabled | bool
+
+    - name: Backup service unit exists
+      ansible.builtin.stat:
+        path: /etc/systemd/system/vpn-backup.service
+      register: backup_unit
+
+    - name: Backup unit carries the root-oneshot hardening floor
+      ansible.builtin.slurp:
+        src: /etc/systemd/system/vpn-backup.service
+      register: backup_unit_raw
+
+    - name: Decode backup unit content
+      ansible.builtin.set_fact:
+        backup_unit_text: "{{ backup_unit_raw.content | b64decode }}"
+
+    - name: Assert hardening floor directives present
+      ansible.builtin.assert:
+        that:
+          - "'NoNewPrivileges=true' in backup_unit_text"
+          - "'ProtectSystem=strict' in backup_unit_text"
+          - "'PrivateTmp=true' in backup_unit_text"
+          - "'ReadWritePaths=' in backup_unit_text"
+          - "'RESTIC_CACHE_DIR=/var/lib/vpn-backup/cache' in backup_unit_text"
+        fail_msg: "vpn-backup.service lost its sandbox floor or cache pin"
+
+    - name: systemd-analyze verify accepts vpn-backup.service
+      ansible.builtin.command:
+        cmd: systemd-analyze verify /etc/systemd/system/vpn-backup.service
+      changed_when: false
