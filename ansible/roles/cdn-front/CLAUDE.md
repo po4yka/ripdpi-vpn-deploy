@@ -12,6 +12,11 @@ listener gains Cloudflare real-IP restoration (`set_real_ip_from` for CF
 ranges, `CF-Connecting-IP`), Origin CA cert, and Authenticated Origin Pulls.
 `nginx-xhttp` keeps doing its direct thing on its own port.
 
+**Cold start is explicit** — a stopped nginx is seeded with `--seed-only`,
+then the CDN vhost is installed and validated before the service starts.
+The packaged default site is disabled. Active refreshes and timer runs
+must reload successfully; they retain transactional rollback on failure.
+
 ## What's done well
 
 - **Origin CA is generated locally, not pulled from CF** — avoids a

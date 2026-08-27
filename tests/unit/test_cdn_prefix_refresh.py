@@ -18,7 +18,7 @@ def _write_executable(path: Path, content: str) -> None:
     path.chmod(0o700)
 
 
-def _run_refresh(tmp_path: Path, *, v4_mode: str = "valid", fail_lock: bool = False, fail_nginx_call: int = 0, fail_nft_check: bool = False, fail_nft_apply: bool = False, fail_reload: bool = False, fail_cache_restore: bool = False, origin_firewall: bool = True) -> tuple[subprocess.CompletedProcess[str], Path, str]:
+def _run_refresh(tmp_path: Path, *, v4_mode: str = "valid", fail_lock: bool = False, fail_nginx_call: int = 0, fail_nft_check: bool = False, fail_nft_apply: bool = False, fail_reload: bool = False, fail_cache_restore: bool = False, origin_firewall: bool = True, seed_only: bool = False, nginx_active: bool = True) -> tuple[subprocess.CompletedProcess[str], Path, str]:
     prefix_dir = tmp_path / "prefixes"
     prefix_dir.mkdir()
     (prefix_dir / "cloudflare.v4").write_text("192.0.2.0/24\n")
@@ -88,6 +88,14 @@ fi
 """)
     _write_executable(fake_bin / "systemctl", """#!/usr/bin/env bash
 printf 'systemctl %s\n' "$*" >> "$CALL_LOG"
+if [[ "$1" == "is-active" ]]; then
+  [[ "${NGINX_ACTIVE:-1}" == "1" ]] && exit 0
+  exit 3
+fi
+if [[ "$1" == "reload" && "${NGINX_ACTIVE:-1}" != "1" ]]; then
+  echo 'nginx.service is not active, cannot reload.' >&2
+  exit 3
+fi
 if [[ "${FAIL_RELOAD:-0}" == "1" ]]; then
   touch "$RESTORE_FAIL_MARKER"
   exit 45
@@ -103,6 +111,7 @@ exit 0
         "CALL_LOG": str(call_log),
         "NGINX_STATE": str(nginx_state),
         "V4_MODE": v4_mode,
+        "NGINX_ACTIVE": "1" if nginx_active else "0",
         "FAIL_FLOCK": "1" if fail_lock else "0",
         "FAIL_NGINX_CALL": str(fail_nginx_call),
         "FAIL_NFT_CHECK": "1" if fail_nft_check else "0",
@@ -112,7 +121,7 @@ exit 0
         "REAL_INSTALL": shutil.which("install", path=os.environ["PATH"]) or "/usr/bin/install",
         "RESTORE_FAIL_MARKER": str(restore_fail_marker),
     }
-    result = subprocess.run([str(script)], capture_output=True, text=True, env=env)
+    result = subprocess.run([str(script), *(["--seed-only"] if seed_only else [])], capture_output=True, text=True, env=env)
     return result, prefix_dir, call_log.read_text() if call_log.exists() else ""
 
 
@@ -243,3 +252,41 @@ def test_origin_firewall_disabled_does_not_require_nft(tmp_path):
     assert (prefix_dir / "cloudflare.v4").read_text().splitlines()[0] == "198.51.100.0/25"
     assert "nft " not in calls
     assert "systemctl reload nginx" in calls
+
+
+def test_cold_seed_publishes_validated_prefixes_without_starting_nginx(tmp_path):
+    result, prefix_dir, calls = _run_refresh(tmp_path, seed_only=True, nginx_active=False)
+
+    assert result.returncode == 0, result.stderr
+    assert (prefix_dir / "cloudflare.v4").read_text().startswith("198.51.100.0/25")
+    assert "nginx -t" in calls
+    assert "systemctl reload" not in calls
+    assert "systemctl start" not in calls
+
+
+def test_seed_only_rejects_an_active_nginx_before_mutation(tmp_path):
+    result, prefix_dir, calls = _run_refresh(tmp_path, seed_only=True)
+
+    assert result.returncode != 0
+    assert (prefix_dir / "cloudflare.real_ip").read_text() == "old-real-ip\n"
+    assert "nft " not in calls
+    assert "nginx -t" not in calls
+
+
+def test_regular_refresh_does_not_pass_when_nginx_is_stopped(tmp_path):
+    result, prefix_dir, calls = _run_refresh(tmp_path, nginx_active=False)
+
+    assert result.returncode != 0
+    assert (prefix_dir / "cloudflare.real_ip").read_text() == "old-real-ip\n"
+    assert "systemctl reload nginx" in calls
+
+
+def test_role_starts_nginx_only_after_the_desired_site_is_validated():
+    tasks = (TEMPLATE.parents[1] / "tasks/main.yml").read_text()
+    assert "--seed-only" in tasks
+    assert "policy_rc_d: 101" in tasks, "package install must not start the default listener"
+    assert tasks.index("Disable default nginx site") < tasks.index("Seed CF prefix list")
+    validate = tasks.index("name: Validate the full nginx config")
+    start = tasks.index("name: Ensure nginx is enabled and started after validation")
+    timer = tasks.index("name: Enable prefix-refresh timer")
+    assert tasks.index("name: Drop nginx CDN-front site") < validate < start < timer
