@@ -260,6 +260,10 @@ make blue-green GREEN_ENV=<name>          # orchestrate blue-green replacement
 plaintext runtime path is
 `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}/vpn-provision-$(id -u)}/`.
 
+`make deploy-canary` refuses production secrets, including production filenames
+under a canary-named directory. Supply both `SECRETS_FILE` with basename
+`vpn-canary.secrets.yaml` and `SOPS_FILE` with basename `canary.secrets.sops.yaml`.
+
 ## Hard rules
 
 - No secrets in git, in Terraform state, in Terraform variables/outputs, in
