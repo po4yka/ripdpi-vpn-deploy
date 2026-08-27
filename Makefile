@@ -251,7 +251,13 @@ deploy: require-clean-source require-inventory validate-ansible-extra-vars pre-d
 	  --action site-deploy \
 	  --note "playbook=site.yml warp_outbound_role=conditional"
 
+deploy-canary: export CANARY_SECRETS_FILE = $(SECRETS_FILE)
+deploy-canary: export CANARY_SOPS_FILE = $(SOPS_FILE)
 deploy-canary:
+	@case "$${CANARY_SECRETS_FILE##*/}" in vpn-canary.secrets.yaml) ;; \
+	  *) echo "refusing deploy-canary: SECRETS_FILE must name vpn-canary.secrets.yaml" >&2; exit 2 ;; esac
+	@case "$${CANARY_SOPS_FILE##*/}" in canary.secrets.sops.yaml) ;; \
+	  *) echo "refusing deploy-canary: SOPS_FILE must name canary.secrets.sops.yaml" >&2; exit 2 ;; esac
 	$(MAKE) ENV=canary deploy
 
 os-maintenance: require-clean-source require-inventory validate-ansible-extra-vars pre-deploy-check

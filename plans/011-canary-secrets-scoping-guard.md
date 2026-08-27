@@ -71,27 +71,15 @@
 
 ### Step 1: Add the scoping guard to deploy-canary
 
-Replace the recipe with:
+The implementation validates canonical basenames rather than the substring
+`canary`: `/tmp/canary/vpn-prod.secrets.yaml` must still be refused. It exports
+the resolved paths into the recipe environment so quoting in a path cannot
+become shell code. Accepted basenames are `vpn-canary.secrets.yaml` and
+`canary.secrets.sops.yaml`; both must match before recursive deploy.
 
-```make
-# .fleet.mk is included before the ENV-derived ?= defaults, so fleet-pinned
-# SECRETS_FILE/SOPS_FILE would silently scope a canary deploy to the PROD
-# secrets document. Refuse unless the resolved files are canary-scoped.
-deploy-canary:
-	@if [ -n "$(SECRETS_FILE)" ] && ! case "$(SECRETS_FILE)" in *canary*) false ;; *) true ;; esac; then \
-	  echo "refusing deploy-canary: SECRETS_FILE '$(SECRETS_FILE)' is not canary-scoped;" >&2; \
-	  echo "  set a canary SECRETS_FILE in .fleet.mk (or override on the command line)" >&2; \
-	  exit 2; \
-	fi
-	@if [ -n "$(SOPS_FILE)" ] && ! case "$(SOPS_FILE)" in *canary*) false ;; *) true ;; esac; then \
-	  echo "refusing deploy-canary: SOPS_FILE '$(SOPS_FILE)' is not canary-scoped;" >&2; \
-	  echo "  set a canary SOPS_FILE in .fleet.mk (or override on the command line)" >&2; \
-	  exit 2; \
-	fi
-	$(MAKE) ENV=canary deploy
-```
-
-Semantics: any resolved value whose path does not contain `canary` refuses — this covers BOTH the default prod-derived value and a `.fleet.mk` pin. Operators with genuinely differently-named canary documents override explicitly per invocation (message says so).
+See `Makefile` for the canonical recipe and
+`tests/unit/test_make_strict_gates.py` for executable pass/refusal cases using
+an isolated child-command seam. These tests do not contact infrastructure.
 
 **Verify**: `make -n check >/dev/null && echo ok` → `ok` (recipe parses; `-n` does not execute guards).
 
