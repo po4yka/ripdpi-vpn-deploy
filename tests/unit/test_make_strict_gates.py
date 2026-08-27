@@ -222,3 +222,28 @@ def test_local_policy_gate_propagates_a_real_policy_failure(tmp_path):
                              'tf-policy-verify'], cwd=tmp_path, capture_output=True, text=True, timeout=10)
     assert result.returncode != 0
     assert '1 failure' in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('secrets_file,sops_file,accepted', [
+    ('/tmp/vpn-prod.secrets.yaml', '/tmp/canary.secrets.sops.yaml', False),
+    ('/tmp/vpn-canary.secrets.yaml', '/tmp/prod.secrets.sops.yaml', False),
+    ('/tmp/canary/vpn-prod.secrets.yaml', '/tmp/canary.secrets.sops.yaml', False),
+    ('/tmp/vpn-canary.secrets.yaml', '/tmp/canary.secrets.sops.yaml', True),
+])
+def test_canary_scope_guard_precedes_recursive_deploy(tmp_path, secrets_file, sops_file, accepted):
+    root = Path(__file__).resolve().parents[2]
+    marker = tmp_path / 'deploy-called'
+    child_make = tmp_path / 'child-make'
+    child_make.write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" > {marker}\n')
+    child_make.chmod(0o755)
+    result = subprocess.run([
+        'make', '--no-print-directory', '-f', str(root / 'Makefile'), 'deploy-canary',
+        f'MAKE={child_make}', f'SECRETS_FILE={secrets_file}', f'SOPS_FILE={sops_file}',
+    ], cwd=tmp_path, capture_output=True, text=True, timeout=10)
+    if accepted:
+        assert result.returncode == 0, result.stderr
+        assert marker.read_text().strip() == 'ENV=canary deploy'
+    else:
+        assert result.returncode == 2, result.stderr
+        assert 'refusing deploy-canary' in result.stderr
+        assert not marker.exists()
