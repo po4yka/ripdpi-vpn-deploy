@@ -45,37 +45,20 @@ fn extra_preserves_unknown_top_level_keys() {
 }
 
 #[test]
-fn extra_roundtrip_preserves_unknown_keys() {
-    // Load → serialise back → re-parse → assert _extra keys still present
-    let tmp_in = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp_in.path(), FIXTURE).unwrap();
-    let s1 = Secrets::load(tmp_in.path()).unwrap();
-
-    // Collect extra key names via the public accessor
-    let extra_keys_before: Vec<String> = s1
-        .extra_key_names()
-        .into_iter()
-        .map(|s| s.to_string())
-        .collect();
-    assert!(
-        !extra_keys_before.is_empty(),
-        "fixture must have extra keys"
-    );
-
-    // Re-load from same fixture bytes
-    let tmp_in2 = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp_in2.path(), FIXTURE).unwrap();
-    let s2 = Secrets::load(tmp_in2.path()).unwrap();
-    let extra_keys_after: Vec<String> = s2
-        .extra_key_names()
-        .into_iter()
-        .map(|s| s.to_string())
-        .collect();
-
-    for k in &extra_keys_before {
+fn malformed_or_empty_secrets_fail_without_a_typed_payload() {
+    for raw in [
+        "",
+        " \n",
+        "[unclosed",
+        "42",
+        "xray: 7",
+        "xray: {clients: [{uuid: secret}]}",
+    ] {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), raw).unwrap();
         assert!(
-            extra_keys_after.contains(k),
-            "round-trip must preserve key '{k}'"
+            Secrets::load(file.path()).is_err(),
+            "unexpected accepted input {raw:?}"
         );
     }
 }
