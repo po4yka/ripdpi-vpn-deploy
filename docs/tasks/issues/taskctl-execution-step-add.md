@@ -2,7 +2,7 @@
 id: CIC-1787849827002217
 title: Allocate execution steps through the public taskctl CLI
 kind: bug
-status: review
+status: done
 area: ci
 priority: high
 risk: standard
@@ -15,6 +15,9 @@ created: 2026-08-27
 updated: 2026-08-27
 spec_reason: tooling-only
 related_tasks: []
+closed_at: "2026-08-27T17:20:25Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Public CLI implemented and independently reviewed; root 86 focused tests plus four subtests, full unit suite 1086 passed with one existing network-scanner skip, strict task contracts and staged gitleaks passed. Actual pinned OpenSpec integration and six-step consumer use passed. Hosted checks remain the protected-branch delivery gate.
 ---
 
 ## Goal
