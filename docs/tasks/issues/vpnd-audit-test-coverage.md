@@ -2,7 +2,7 @@
 id: TST-1787497584762133
 title: Close vpnd audit test coverage gaps
 kind: chore
-status: doing
+status: review
 area: testing
 priority: high
 risk: standard
@@ -13,8 +13,9 @@ spec_mode: not-required
 openspec_change: null
 created: 2026-08-23
 updated: 2026-08-27
-spec_reason: test-only
+spec_reason: regression-tested-single-module
 related_tasks: []
+status_detail: Implementation and targeted regressions passed; final source CI and closure lifecycle remain pending.
 ---
 
 ## Goal
@@ -44,3 +45,13 @@ Close the test-coverage gaps the vpnd audit surfaced: vacuous tests replaced wit
 - The vpnd subagent owns vpnd source/tests for behavior coverage, coordinating with its share/probe-matrix fixes.
 - The primary agent serializes task/OpenSpec records, generated board, Makefile, shared CI/toolchain files, documentation inventory, staging, commits, and remote delivery. Agents do not commit or mutate credentials/infrastructure.
 - Worktree: `codex/complete-high-review`. All writers preserve unrelated changes and coordinate shared-file edits.
+
+## Regression fixes exposed by real tests
+
+Coverage exercises the existing public contracts instead of parallel test-only
+implementations. Narrow fixes remain inside their owning vpnd modules: release
+tag comparison and future-dated cache expiry, newline-bearing diagnostic path
+redaction, refusal of empty non-mapping secrets, and registry directory-path
+errors. No new CLI flag, configuration schema, or cross-layer contract is added.
+Process-group cancellation and private output publication belong to the linked
+probe/share OpenSpec changes, with tests reused here.

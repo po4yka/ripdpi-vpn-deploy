@@ -6,12 +6,12 @@ local: required
 local_evidence: null
 remote_ci: required
 remote_ci_evidence: null
-dry_run: required
-dry_run_evidence: null
+dry_run: blocked
+dry_run_evidence: "Implementation committed; mandatory live-inventory dry-run BEFORE MERGE and deploy/rotation/rollback rehearsal unavailable: all three matching server peers are offline. This change is not eligible for main integration."
 staging: not_applicable
 staging_evidence: no separate staging environment exists; CI molecule plus a live-inventory dry-run cover gate behavior
-live: required
-live_evidence: null
+live: blocked
+live_evidence: "Implementation committed; mandatory live-inventory dry-run BEFORE MERGE and deploy/rotation/rollback rehearsal unavailable: all three matching server peers are offline. This change is not eligible for main integration."
 client: not_applicable
 client_evidence: no client-facing emitter or vpnd surface changed
 artifact: not_applicable
@@ -44,3 +44,13 @@ artifact_evidence: no build artifacts produced by this change
 - Remote CI: green run on the merge SHA.
 - Dry-run: `make dry-run` against live inventory including the new gates.
 - Live: one deploy-path cycle exercising wait gate, rotation .prev, and rollback rehearsal order.
+
+## Observed implementation checks (2026-08-27)
+
+`make check` exited 0: 1107 unit tests passed with one skipped test,
+55 Bats checks, 83 Terraform mock tests, 45 Conftest tests, 102 snapshots,
+strict Ansible lint, Rust MSRV and dependency checks, and 172 release tests.
+The subsequent QR legacy-output regression slice passed 28 tests; full-stack
+fixture guards passed for both inventories and the 14-test verification slice
+passed with inherited privilege escalation enabled. Native Linux Molecule and
+real staging/live acceptance are separate, still-required evidence.

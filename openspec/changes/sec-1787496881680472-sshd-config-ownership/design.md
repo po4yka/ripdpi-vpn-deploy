@@ -24,10 +24,10 @@ OpenSSH first-obtained-value semantics across lexicographically ordered `sshd_co
 
 - Lockout during rehearsal → mitigated by scratch-node rehearsal gate before fleet rollout.
 - Over-tight algorithm lists can reject legacy clients → list derived from pinned images' compiled-in sets; verified via molecule matrix.
-- Editing cloud-init.yaml.tftpl affects new nodes only → existing nodes converge via baseline role without reprovisioning.
+- Editing cloud-init.yaml.tftpl affects new nodes only. Existing nodes with the old bootstrap-owned X11Forwarding directive fail the duplicate guard; recreate them from the new template before rollout. Baseline never silently edits bootstrap-owned configuration.
 
 ## Migration Plan
 
-- Forward: next converge removes duplicated keys from effect (values currently agree), adds checks and pins.
+- Forward: fresh nodes use the single-owner layout. Legacy nodes with bootstrap-owned X11Forwarding require recreation (or a separate reviewed migration) before baseline convergence; there is no compatibility path. Add checks and pins only after the candidate validates.
 - Rollback: revert commits; drop-ins regenerate to prior state.
 - Gates: molecule matrix both distros, lockout rehearsal, `make ci-fast`, `make validate`.

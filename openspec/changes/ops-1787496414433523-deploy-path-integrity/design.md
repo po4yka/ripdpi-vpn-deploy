@@ -9,7 +9,8 @@ Thirteen deploy-path findings from the audit (2026-08-23) share a theme: the saf
 
 ## Decisions
 
-- Bootstrap gate as a Makefile prerequisite rather than an Ansible pre_task: it keeps the wait outside converge, avoiding dpkg-lock contention by construction.
+- Bootstrap gate as the first Makefile recipe action after existing prerequisites rather than an Ansible pre_task: it keeps the wait outside converge, avoiding dpkg-lock contention by construction.
+- Bootstrap readiness uses a 300-second remote command deadline and a 320-second controller SSH deadline; a connected but stalled session cannot hang convergence.
 - Cohort validation against the group_vars file set rather than a second allowlist: single source of truth for profile names.
 - SSH allowlist enforced in both Terraform validation and site.yml assert: plan-time failure plus defense in depth for hand-rendered inventories.
 - Rotation .prev via copy before template write: reuses the exact contract rollback-config already consumes; no new artifact format.

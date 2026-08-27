@@ -2,7 +2,7 @@
 id: TST-1787497001212692
 title: Make verification reflect deployed state
 kind: bug
-status: doing
+status: blocked
 area: testing
 priority: high
 risk: standard
@@ -14,6 +14,7 @@ openspec_change: tst-1787497001212692-verification-truthfulness
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
+status_detail: Implementation committed; hosted native Linux scenario results and live verify/source-drift cycle remain pending. Local fixtures prove command and cleanup semantics only; all three matching server peers are offline.
 ---
 
 ## Goal

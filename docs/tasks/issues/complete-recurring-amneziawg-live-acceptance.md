@@ -2,19 +2,19 @@
 id: TST-1786299293097217
 title: Complete recurring AmneziaWG live acceptance
 kind: feature
-status: backlog
+status: blocked
 area: testing
 priority: high
 risk: high
-owner: AWG live acceptance
+owner: primary
 parent: null
 blocked_by: []
 spec_mode: required
 openspec_change: tst-1786299293097217-complete-recurring-amneziawg-live-acceptance
 created: 2026-08-09
-updated: 2026-08-09
-related_tasks:
-  - po4yka/RIPDPI#TRN-1786264762917677
+updated: 2026-08-27
+related_tasks: ["po4yka/RIPDPI#TRN-1786264762917677"]
+status_detail: Current fleet SSH unavailable (3/3 timeout); the local mesh session was renewed but all three matching server peers remain offline. No approved disposable staging target, current RIPDPI client acceptance artifact, or recurring observation is available. Existing amneziawg-go executor evidence does not bind an exact RIPDPI client revision.
 ---
 
 ## Goal

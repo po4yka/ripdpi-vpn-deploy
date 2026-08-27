@@ -2,7 +2,7 @@
 id: CIC-1787495848053690
 title: Ignore tools/tasking/node_modules in repo .gitignore
 kind: bug
-status: doing
+status: review
 area: ci
 priority: high
 risk: standard
@@ -15,6 +15,7 @@ created: 2026-08-23
 updated: 2026-08-27
 spec_reason: test-only
 related_tasks: []
+status_detail: Implementation and targeted regressions passed; final source CI and closure lifecycle remain pending.
 ---
 
 ## Goal

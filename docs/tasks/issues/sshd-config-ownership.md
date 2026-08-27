@@ -2,7 +2,7 @@
 id: SEC-1787496881680472
 title: Establish single-owner sshd configuration layers
 kind: bug
-status: doing
+status: blocked
 area: security
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: sec-1787496881680472-sshd-config-ownership
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
+status_detail: Implementation committed; scratch-node custom-port/algorithm lockout rehearsal and one fleet converge require accessible nodes. All three matching server peers are offline. Legacy duplicated bootstrap directives intentionally fail and require node recreation or a separately reviewed migration.
 ---
 
 ## Goal

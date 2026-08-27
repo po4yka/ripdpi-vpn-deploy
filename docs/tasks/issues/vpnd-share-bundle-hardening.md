@@ -2,7 +2,7 @@
 id: VPD-1787497073989478
 title: Harden share bundle token handling and file permissions
 kind: bug
-status: doing
+status: review
 area: vpnd
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: vpd-1787497073989478-vpnd-share-bundle-hardening
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
+status_detail: Implementation and targeted regressions passed; final source CI and closure lifecycle remain pending.
 ---
 
 ## Goal

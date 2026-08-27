@@ -2,7 +2,7 @@
 id: TST-1787495848194568
 title: Make snapshot-update fail loudly on render errors
 kind: bug
-status: doing
+status: review
 area: testing
 priority: high
 risk: standard
@@ -15,6 +15,7 @@ created: 2026-08-23
 updated: 2026-08-27
 spec_reason: regression-tested-single-module
 related_tasks: []
+status_detail: Implementation and targeted regressions passed; final source CI and closure lifecycle remain pending.
 ---
 
 ## Goal

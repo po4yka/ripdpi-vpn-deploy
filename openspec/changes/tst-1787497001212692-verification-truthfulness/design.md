@@ -11,7 +11,7 @@ Seven verification-honesty findings share a mechanism: gates assert less than de
 
 - Idempotence phases appended to existing sequences rather than a new scenario: the contract applies to the same converge.
 - amneziawg converge rewritten around include_role with the existing binary stubs: keeps the scenario hermetic while executing real task code.
-- Fallback-listener assertions conditional on fallback_enabled: mirrors deployment conditions, avoids failing hosts that never open those ports.
+- Fallback-listener assertions mirror the actual templates: Xray uses a positive distinct xray_fallback_port with no explicit cohorts; nginx uses nginx_xhttp.fallback_enabled and its configured fallback port. No new enable toggle is introduced.
 - TESTING.md synced by observation (read each molecule.yml), not by intent.
 
 ## Contracts and ownership

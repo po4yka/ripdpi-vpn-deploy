@@ -10,8 +10,8 @@ dry_run: not_applicable
 dry_run_evidence: covered by the live lockout rehearsal; check-mode adds no signal beyond molecule for this surface
 staging: not_applicable
 staging_evidence: no separate staging environment exists; the scratch-node lockout rehearsal is the staging equivalent
-live: required
-live_evidence: null
+live: blocked
+live_evidence: "Implementation committed; scratch-node custom-port/algorithm lockout rehearsal and one fleet converge require accessible nodes. All three matching server peers are offline. Legacy duplicated bootstrap directives intentionally fail and require node recreation or a separately reviewed migration."
 client: not_applicable
 client_evidence: no client emitter changed
 artifact: not_applicable
@@ -33,3 +33,13 @@ artifact_evidence: no build artifacts produced by this change
 - Local: baseline molecule matrix, `make ci-fast`, `make validate`.
 - Remote CI: green run on the merge SHA.
 - Live: scratch-node lockout rehearsal (custom port + pinned algorithms) followed by one fleet node converge.
+
+## Observed implementation checks (2026-08-27)
+
+`make check` exited 0: 1107 unit tests passed with one skipped test,
+55 Bats checks, 83 Terraform mock tests, 45 Conftest tests, 102 snapshots,
+strict Ansible lint, Rust MSRV and dependency checks, and 172 release tests.
+The subsequent QR legacy-output regression slice passed 28 tests; full-stack
+fixture guards passed for both inventories and the 14-test verification slice
+passed with inherited privilege escalation enabled. Native Linux Molecule and
+real staging/live acceptance are separate, still-required evidence.
