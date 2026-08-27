@@ -25,6 +25,9 @@
 
 set -euo pipefail
 
+# Epoch milliseconds without GNU date extensions.
+now_ms() { python3 -c 'import time; print(time.time_ns() // 1_000_000)'; }
+
 # Portable bounded-run wrapper. macOS lacks `timeout` (coreutils ships it as
 # `gtimeout`); use that, or run without a limit if neither is present. On Linux
 # this resolves to `timeout`, so behaviour there is unchanged.
@@ -114,7 +117,7 @@ probe() {
   local host="${target%:*}"
   local port="${target#*:}"
   local pre_ms post_ms elapsed verdict err
-  pre_ms="$(date +%s%3N)"
+  pre_ms="$(now_ms)"
   if err="$(run_timeout 30 openssl s_client \
       -connect "$host:$port" -servername "$sni" \
       -verify_quiet -brief -no_ign_eof < /dev/null 2>&1)"; then
@@ -122,7 +125,7 @@ probe() {
   else
     verdict="failed"
   fi
-  post_ms="$(date +%s%3N)"
+  post_ms="$(now_ms)"
   elapsed=$(( post_ms - pre_ms ))
   jq -nc \
     --arg sni "$sni" \
