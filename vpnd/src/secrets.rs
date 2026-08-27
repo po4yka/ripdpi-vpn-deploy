@@ -84,8 +84,17 @@ impl Secrets {
         handle
             .read_to_end(&mut bytes)
             .context("read protected secrets file")?;
-        let s: Secrets =
+        // Empty YAML deserializes into default fields; require an actual
+        // mapping so a missing payload cannot masquerade as loaded secrets.
+        let payload: serde_yaml_ng::Value =
             serde_yaml_ng::from_slice(&bytes).context("parse decrypted secrets YAML")?;
+        if !payload.is_mapping() {
+            return Err(anyhow::anyhow!(
+                "decrypted secrets YAML must contain a mapping"
+            ));
+        }
+        let s: Secrets =
+            serde_yaml_ng::from_value(payload).context("parse decrypted secrets YAML")?;
         Ok(s)
     }
 

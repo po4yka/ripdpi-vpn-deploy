@@ -16,25 +16,24 @@ fn env_strategy() -> impl Strategy<Value = String> {
     "[a-z][a-z0-9-]{0,15}".prop_map(|s| s)
 }
 
-/// A resolved secrets path in a non-/tmp location (user cache dir shape).
+/// Unix runtime paths can contain whitespace, quotes, Unicode, and line breaks.
 fn resolved_path_strategy() -> impl Strategy<Value = String> {
-    (
-        "(/Users/[a-z]+/Library/Caches/|/home/[a-z]+/.cache/|/var/root/cache/)"
-            .prop_map(|s| s.to_string()),
-        "[a-z][a-z0-9-]{0,15}",
+    prop::collection::vec(
+        prop_oneof![
+            Just("runtime"),
+            Just("space dir"),
+            Just("O'Brien"),
+            Just("данные"),
+            Just("line\nbreak"),
+            Just("tab\tpath")
+        ],
+        1..5,
     )
-        .prop_map(|(dir, env)| format!("{dir}/vpn-provision/vpn-{env}.secrets.yaml"))
+    .prop_map(|parts| format!("/{}/vpn-test.secrets.yaml", parts.join("/")))
 }
-
-/// Strategy: a single non-empty line (no embedded newlines) with no secrets
-/// path pattern. Empty lines are excluded because the `lines() + join("\n")`
-/// idiom in `redact_secrets` is lossy on all-empty inputs (`"\n".lines()` is
-/// a single empty line, but `[""].join("\n")` is the empty string — they
-/// round-trip differently). Real bug-relevant inputs are never empty, so
-/// constraining the strategy keeps the property meaningful.
 fn safe_line_strategy() -> impl Strategy<Value = String> {
-    "[ -~]{1,80}".prop_filter("must not contain secrets pattern", |s| {
-        !s.contains(".secrets.yaml")
+    "[ -~]{0,80}".prop_filter("no historical secret path", |s| {
+        !(s.contains("/tmp/vpn-") && s.contains(".secrets.yaml"))
     })
 }
 proptest! {
@@ -73,25 +72,15 @@ proptest! {
         );
     }
 
-    /// For any multi-line input with no secrets-path lines, every line is
-    /// passed through unchanged.
-    ///
-    /// `redact_secrets` is implemented as `lines().map(...).join("\n")`, which
-    /// is lossy on trailing newlines: `"a\n".lines()` yields `["a"]`. We test
-    /// the per-line invariant directly to avoid that ambiguity.
+    /// Empty lines and trailing newline are part of the input contract.
     #[test]
     fn redact_preserves_non_secret_lines(
-        lines in prop::collection::vec(safe_line_strategy(), 1..10),
+        lines in prop::collection::vec(safe_line_strategy(), 0..10),
+        trailing_newline in any::<bool>(),
     ) {
-        let input = lines.join("\n");
-        prop_assume!(!(input.contains("/tmp/vpn-") && input.contains(".secrets.yaml")));
+        let mut input = lines.join("\n");
+        if trailing_newline { input.push('\n'); }
         let result = redact_secrets(input.clone(), "/nonexistent/resolved.secrets.yaml");
-        let input_lines: Vec<&str> = input.lines().collect();
-        let result_lines: Vec<&str> = result.lines().collect();
-        prop_assert_eq!(
-            input_lines,
-            result_lines,
-            "every non-secrets line must pass through unchanged"
-        );
+        prop_assert_eq!(result, input);
     }
 }

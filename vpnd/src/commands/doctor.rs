@@ -191,26 +191,38 @@ async fn run_capture(program: &str, args: &[&str]) -> Vec<u8> {
 /// resolved runtime path exactly (derived from Context, so non-/tmp
 /// locations like a user cache dir are covered) plus the historical
 /// default-location pattern for older captures.
-pub fn redact_secrets(s: String, resolved_secrets_path: &str) -> String {
-    let trailing_newline = s.ends_with('\n');
-    let mut result = s
-        .lines()
+pub fn redact_secrets(mut text: String, resolved_secrets_path: &str) -> String {
+    const MARKER: &str = "<redacted: secrets file path>";
+    // A legal Unix path can itself contain newlines. Locate the full path
+    // before splitting into lines, and redact every line touched by it.
+    if !resolved_secrets_path.is_empty() {
+        let mut offset = 0;
+        while let Some(relative) = text[offset..].find(resolved_secrets_path) {
+            let start = offset + relative;
+            let end = start + resolved_secrets_path.len();
+            let line_start = text[..start].rfind('\n').map_or(0, |index| index + 1);
+            let line_end = text[end..]
+                .find('\n')
+                .map_or(text.len(), |index| end + index);
+            text.replace_range(line_start..line_end, MARKER);
+            offset = line_start + MARKER.len();
+        }
+    }
+    text.split_inclusive('\n')
         .map(|line| {
-            let historical_default = line.contains("/tmp/vpn-") && line.contains(".secrets.yaml");
-            if (!resolved_secrets_path.is_empty() && line.contains(resolved_secrets_path))
-                || historical_default
-            {
-                "<redacted: secrets file path>"
+            if line.contains("/tmp/vpn-") && line.contains(".secrets.yaml") {
+                if line.ends_with("\r\n") {
+                    format!("{MARKER}\r\n")
+                } else if line.ends_with('\n') {
+                    format!("{MARKER}\n")
+                } else {
+                    MARKER.to_owned()
+                }
             } else {
-                line
+                line.to_owned()
             }
         })
-        .collect::<Vec<_>>()
-        .join("\n");
-    if trailing_newline {
-        result.push('\n');
-    }
-    result
+        .collect()
 }
 
 async fn try_copy_to_clipboard(s: &str) -> Result<()> {

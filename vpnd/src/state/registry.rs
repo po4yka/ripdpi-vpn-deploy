@@ -33,10 +33,13 @@ impl Registry {
 
     pub fn load() -> Result<Self> {
         let p = Self::path()?;
-        if !p.is_file() {
-            return Ok(Self::default());
-        }
-        let s = std::fs::read_to_string(&p).with_context(|| format!("read {}", p.display()))?;
+        let s = match std::fs::read_to_string(&p) {
+            Ok(raw) => raw,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Self::default())
+            }
+            Err(error) => return Err(error).with_context(|| format!("read {}", p.display())),
+        };
         toml::from_str(&s).with_context(|| format!("parse {}", p.display()))
     }
 
