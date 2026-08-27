@@ -7,6 +7,14 @@
     state: present
     update_cache: true
     cache_valid_time: 3600
+    # Activate only after the packaged default site is removed and nginx -t passes.
+    policy_rc_d: 101
+
+- name: Disable default nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx
 
 - name: Ensure prefix-list directory
   ansible.builtin.file:
@@ -47,8 +55,18 @@
     group: root
     mode: "0644"
 
+- name: Inspect nginx state before selecting the initial seed mode
+  ansible.builtin.command: systemctl is-active --quiet nginx
+  register: _cdn_nginx_active
+  changed_when: false
+  check_mode: false
+  failed_when: _cdn_nginx_active.rc not in [0, 3]
+
 - name: Seed CF prefix list (first run)
-  ansible.builtin.command: /usr/local/sbin/cdn-front-refresh-cf-prefixes
+  ansible.builtin.command:
+    argv: >-
+      {{ ['/usr/local/sbin/cdn-front-refresh-cf-prefixes']
+         + ([] if _cdn_nginx_active.rc == 0 else ['--seed-only']) }}
   register: _cf_seed
   changed_when: false
   # Tolerate transient network failures on first-deploy (rc != 0 and empty
@@ -87,6 +105,12 @@
   ansible.builtin.command:
     cmd: nginx -t
   changed_when: false
+
+- name: Ensure nginx is enabled and started after validation
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+    state: started
 
 - name: Enable prefix-refresh timer after the initial prefix seed and validation
   ansible.builtin.systemd_service:

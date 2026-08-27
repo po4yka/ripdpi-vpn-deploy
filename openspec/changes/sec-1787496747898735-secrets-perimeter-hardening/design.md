@@ -13,6 +13,8 @@ Seven findings share a theme: implementation drifted from the repo's own written
 - Inline units become templates rather than drop-in overrides: single artifact, molecule-verifiable.
 - ICMPv6: split required types explicitly instead of rate-limiting the family — breaking NDP would be worse than the current state.
 - Timer migration removes the cron file in the same converge to prevent double-scheduling.
+- CDN cold start seeds prefixes without reload only while nginx is inactive, then validates the final vhost before starting nginx and enabling the timer. Active-service refresh keeps reload failure and rollback semantics.
+- nginx owns the public response-header baseline and hides duplicate upstream policy headers; direct loopback backend responses retain their own protection.
 - WARP pin: prefer shipping a real default digest; fail-closed fallback if upstream rotation invalidates it.
 - Rate-limit layering: decide before implementation in review; both sides are implementable, the design constraint is one-layer-only with documentation synced.
 

@@ -8,6 +8,12 @@
         cmd: nginx -t
       changed_when: false
 
+    - name: Packaged default nginx listener is disabled
+      ansible.builtin.stat:
+        path: /etc/nginx/sites-enabled/default
+      register: default_site
+      failed_when: default_site.stat.exists
+
     - name: nftables config parses
       ansible.builtin.command:
         cmd: nft -c -f /etc/nftables.conf
