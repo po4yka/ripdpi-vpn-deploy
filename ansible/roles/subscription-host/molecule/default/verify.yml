@@ -95,6 +95,14 @@
       changed_when: false
       failed_when: mirror_timer_active.stdout != "active"
 
+    - name: Create vpn-bootstrap SSH state before the --delete pull
+      ansible.builtin.file:
+        path: /var/lib/vpn-subscription/.ssh
+        state: directory
+        owner: vpn-bootstrap
+        group: vpn-bootstrap
+        mode: "0700"
+
     - name: Seed vpn-bootstrap SSH state before the --delete pull
       ansible.builtin.copy:
         dest: /var/lib/vpn-subscription/.ssh/known_hosts

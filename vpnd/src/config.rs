@@ -170,7 +170,6 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn secure_secrets_file_propagates_chmod_failure() {
-        use std::os::unix::fs::PermissionsExt;
         let _guard = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         // procfs rejects chmod even for root, so this is a stable Linux
