@@ -463,8 +463,17 @@ def test_existing_legacy_toolchain_permissions_are_hardened(
         assert stat.S_IMODE((target / "bin" / name).stat().st_mode) == 0o500
 
 
+@pytest.fixture(params=[0o022, 0o077], ids=["umask022", "umask077"])
+def toolchain_umask(request):
+    previous = os.umask(request.param)
+    try:
+        yield
+    finally:
+        os.umask(previous)
+
+
 def test_digest_keyed_build_activates_complete_clean_host_command_set(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, toolchain_umask
 ) -> None:
     module = _load_toolchain()
     monkeypatch.setattr(module, "ROOT_UID", os.geteuid())
@@ -563,7 +572,7 @@ def test_digest_keyed_build_activates_complete_clean_host_command_set(
 
 
 def test_activation_failure_preserves_previous_complete_toolchain(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, toolchain_umask
 ) -> None:
     module = _load_toolchain()
     monkeypatch.setattr(module, "ROOT_UID", os.geteuid())
@@ -599,6 +608,35 @@ def test_activation_failure_preserves_previous_complete_toolchain(
     assert os.readlink(module.ACTIVE_LINK) == old_destination
     for name in module.BINARY_NAMES:
         assert module.digest(module.COMMAND_DIR / name) == binaries[name]
+
+
+@pytest.mark.parametrize("kind", ["private", "writable", "symlink", "foreign_uid", "foreign_gid"])
+def test_activation_rejects_unsafe_existing_command_directory_without_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    module = _load_toolchain()
+    monkeypatch.setattr(module, "ROOT_UID", os.geteuid() + (kind == "foreign_uid"))
+    monkeypatch.setattr(module, "ROOT_GID", os.getegid() + (kind == "foreign_gid"))
+    command_dir = tmp_path / "bin"
+    target = tmp_path / "existing-directory"
+    target.mkdir()
+    target.chmod({"private": 0o700, "writable": 0o777}.get(kind, 0o755))
+    (target / "sentinel").write_text("must remain unchanged")
+    if kind == "symlink":
+        command_dir.symlink_to(target, target_is_directory=True)
+    else:
+        target.rename(command_dir)
+        target = command_dir
+    monkeypatch.setattr(module, "COMMAND_DIR", command_dir)
+    before = target.stat()
+    with pytest.raises(ValueError, match="AWG command directory is unsafe"):
+        module.activate_toolchain(tmp_path / "not-used", {})
+    after = target.stat()
+    assert (after.st_mode, after.st_uid, after.st_gid, after.st_ino) == (
+        before.st_mode, before.st_uid, before.st_gid, before.st_ino
+    )
+    assert (target / "sentinel").read_text() == "must remain unchanged"
+    assert command_dir.is_symlink() == (kind == "symlink")
 
 
 def test_toolchain_installer_uses_nonblocking_shared_lane_lock(

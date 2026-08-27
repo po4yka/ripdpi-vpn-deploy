@@ -376,7 +376,26 @@ def active_toolchain_is_valid(target: Path, binaries: dict[str, str]) -> bool:
 
 
 def activate_toolchain(target: Path, binaries: dict[str, str]) -> bool:
-    COMMAND_DIR.mkdir(parents=True, exist_ok=True, mode=0o755)
+    try:
+        COMMAND_DIR.mkdir(parents=True, mode=0o755)
+    except FileExistsError:
+        pass  # Existing paths must satisfy the strict gate without repair.
+    else:
+        descriptor = os.open(
+            COMMAND_DIR, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        )
+        try:
+            info = os.fstat(descriptor)
+            if (
+                not stat.S_ISDIR(info.st_mode)
+                or info.st_uid != ROOT_UID
+                or info.st_gid != ROOT_GID
+            ):
+                raise ValueError("AWG command directory is unsafe")
+            # mkdir applies umask; set the contract only on our new directory.
+            os.fchmod(descriptor, 0o755)
+        finally:
+            os.close(descriptor)
     validate_secure_directory(COMMAND_DIR, 0o755, "AWG command directory")
     if active_toolchain_is_valid(target, binaries):
         return False
