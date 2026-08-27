@@ -28,7 +28,17 @@ if [ -z "$SOURCE" ]; then
   exit 1
 fi
 
+# Local-only state that lives inside DEST but is NOT part of the pulled
+# payload tree. `--delete` would erase it on every pull, so both are
+# excluded explicitly:
+#   /revoked  — the revocation hash list rendered by Ansible
+#               (subscription.revoked_file); the remote build worker
+#               does not own revocation state.
+#   /.ssh     — vpn-bootstrap's known_hosts under its home (= DEST),
+#               built up by StrictHostKeyChecking=accept-new.
 rsync -az --delete \
+  --exclude=/revoked \
+  --exclude=/.ssh \
   -e "ssh -i ${SSH_KEY} ${SSH_OPTS}" \
   "$SOURCE" "${DEST}/"
 

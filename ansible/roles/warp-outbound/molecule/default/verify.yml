@@ -121,3 +121,26 @@
       register: warp_gpg_keyring
       # Same note as above — absent when install_warp_cli: false.
       failed_when: false
+
+    # Tunnel-down fixture: curl succeeds (rc=0) but the trace says the
+    # WARP tunnel is off. The conjunctive-free gate must treat this as
+    # a failure — curl success alone never passes.
+    - name: Run trace fixture with inactive tunnel (warp=off, rc=0)
+      ansible.builtin.command:
+        cmd: >-
+          curl --max-time 1 --socks5-hostname 127.0.0.1:40000
+          https://www.cloudflare.com/cdn-cgi/trace
+      environment:
+        WARP_TRACE_FIXTURE: warp-off
+      register: warp_off_trace
+      changed_when: false
+      failed_when: false
+
+    - name: Inactive-tunnel trace fails the health gate
+      ansible.builtin.assert:
+        that:
+          - warp_off_trace.rc != 0 or 'warp=on' not in warp_off_trace.stdout
+        success_msg: "Gate correctly rejects curl-success with warp=off"
+        fail_msg: >-
+          Health gate passed on an inactive tunnel:
+          rc={{ warp_off_trace.rc }} stdout={{ warp_off_trace.stdout }}

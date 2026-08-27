@@ -39,18 +39,15 @@ fn plan_steps(ctx: &Context, args: &DeployArgs) -> Vec<Cmd> {
     steps
 }
 
-pub async fn run(ctx: &Context, args: DeployArgs) -> Result<()> {
-    section(
-        "Deploy wizard",
-        "Bundles: validate → decrypt → plan → apply → inventory → wait → preflight → site → verify.",
-    );
-
+fn build_plan_summary(ctx: &Context, args: &DeployArgs) -> Summary {
     let mut s = Summary::new("Deploy plan");
+    // Fixed placeholders, never filesystem paths: the summary is the
+    // operator-facing panel and must not echo secret-file locations.
     s.add("env", &ctx.env)
         .add("provider", &ctx.provider)
-        .add("repo", ctx.root.display().to_string())
-        .add("sops file", ctx.sops_file.display().to_string())
-        .add("secrets file", ctx.secrets_file.display().to_string())
+        .add("repo", "<checkout root>")
+        .add("sops file", "(sops-managed store)")
+        .add("secrets file", "(runtime plaintext — never logged)")
         .add(
             "skip precheck",
             if args.skip_precheck { "yes" } else { "no" },
@@ -59,16 +56,33 @@ pub async fn run(ctx: &Context, args: DeployArgs) -> Result<()> {
             "tag on success",
             if args.tag_on_success { "yes" } else { "no" },
         );
-    s.render();
+    s
+}
+
+pub async fn run(ctx: &Context, args: DeployArgs) -> Result<()> {
+    section(
+        "Deploy wizard",
+        "Bundles: validate → decrypt → plan → apply → inventory → wait → preflight → site → verify.",
+    );
+
+    build_plan_summary(ctx, &args).render();
 
     if !ctx.yes && !ctx.explain && !confirm("Proceed with these settings?", true)? {
         eprintln!("{}", "aborted by user".yellow());
         return Ok(());
     }
 
-    for cmd in &plan_steps(ctx, &args) {
-        cmd.run(ctx.explain).await?;
+    // Any step failure triggers best-effort plaintext-secrets cleanup
+    // before the original error surfaces.
+    let steps = plan_steps(ctx, &args);
+    let outcome: Result<()> = async {
+        for cmd in &steps {
+            cmd.run(ctx.explain).await?;
+        }
+        Ok(())
     }
+    .await;
+    super::finish_or_cleanup(ctx, outcome).await?;
 
     if !ctx.explain {
         success_summary(ctx);
@@ -187,5 +201,29 @@ mod tests {
             .find(|s| s.contains("make verify "))
             .expect("verify step");
         assert!(verify.contains("TAG_ON_SUCCESS=1"), "{verify}");
+    }
+
+    /// The plan summary is the operator-facing panel: it must render
+    /// fixed placeholders, never filesystem paths or secrets filenames.
+    #[test]
+    fn plan_summary_renders_placeholders_not_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut ctx = fake_ctx();
+        ctx.root = dir.path().into();
+        ctx.sops_file = std::path::PathBuf::from("/deep/nested/prod.secrets.sops.yaml");
+        ctx.secrets_file = std::path::PathBuf::from("/runtime/vpn-prod.secrets.yaml");
+
+        let args = DeployArgs {
+            skip_precheck: false,
+            tag_on_success: true,
+        };
+        let summary = build_plan_summary(&ctx, &args);
+        assert!(!summary.rows().is_empty());
+        for (_key, value) in summary.rows() {
+            assert!(
+                !value.contains('/') && !value.contains(".yaml"),
+                "summary row leaks a path-like value: {value}"
+            );
+        }
     }
 }

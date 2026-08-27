@@ -1,9 +1,9 @@
 ---
 task_id: ANS-1787495907091073
 change: ans-1787495907091073-transport-convergence-critical-fixes
-commit_sha: null
+commit_sha: b2d209a
 local: required
-local_evidence: null
+local_evidence: "Local on fix/board-criticals@b2d209a: pytest tests/unit 972 passed (incl amneziawg restart-contract, revocation case-insensitivity, honeypot deadline/slot metrics, warp pin contract); make snapshot-check 102/102 goldens; make validate production profile 0 failures; make tf-test 18+19 passed across provider roots; molecule scenarios extended for split-hop-egress backslash guard, warp tunnel-down fixture, hysteria-realm shared-TLS permissions, subscription-host pull-persistence, amneziawg target Wants=, cdn-front timer migration."
 remote_ci: required
 remote_ci_evidence: null
 dry_run: required

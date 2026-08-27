@@ -111,24 +111,16 @@
     - Reload systemd
     - Restart backup restore drill timer
 
-- name: Drop backup systemd service
-  ansible.builtin.copy:
+- name: Install backup systemd service unit
+  # Template carries the root-oneshot hardening floor (NoNewPrivileges,
+  # ProtectSystem=strict, PrivateTmp and peers) with writes confined to
+  # the restic repo and the unit's own state directory.
+  ansible.builtin.template:
+    src: vpn-backup.service.j2
     dest: /etc/systemd/system/vpn-backup.service
     owner: root
     group: root
     mode: "0644"
-    content: |
-      [Unit]
-      Description=VPN config backup (restic, optional rclone sync)
-      Wants=network-online.target
-      After=network-online.target
-
-      [Service]
-      Type=oneshot
-      ExecStart=/usr/local/sbin/vpn-backup.sh
-      Nice=10
-      IOSchedulingClass=best-effort
-      IOSchedulingPriority=7
 
 - name: Drop backup systemd timer
   ansible.builtin.copy:

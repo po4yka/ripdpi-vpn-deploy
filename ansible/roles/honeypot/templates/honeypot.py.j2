@@ -36,6 +36,11 @@ LOG_DIR = pathlib.Path("{{ honeypot.log_dir }}")
 TEXTFILE_DIR = pathlib.Path("{{ honeypot.textfile_dir }}")
 EVENTS_PER_MINUTE_MAX = {{ honeypot.events_per_minute_max | default(1000) }}
 MAX_CONCURRENT_CONNECTIONS = {{ honeypot.max_concurrent_connections | default(64) }}
+# Total per-connection budget measured from accept time. A per-recv
+# timeout resets on every delivered chunk, so a reader dribbling one
+# byte per interval could pin a worker slot indefinitely; the absolute
+# monotonic deadline bounds the slot-hold instead.
+CONNECTION_DEADLINE_SECONDS = {{ honeypot.connection_deadline_seconds | default(10) }}
 # Cap unique-IP and unique-SNI sets to avoid unbounded memory growth
 # under mass-scan conditions (mirrors the bounded _recent_minutes deque).
 UNIQUE_SETS_MAX = {{ honeypot.unique_sets_max | default(50000) }}
@@ -54,6 +59,7 @@ _recent_minutes: deque[tuple[int, int]] = deque(maxlen=60)  # (minute_epoch, cou
 _total_events = 0
 _unique_ips: set[str] = set()
 _unique_snis: set[str] = set()
+_slot_exhaustion_drops = 0
 
 
 def _prune_recent_minutes(now_min: int) -> None:
@@ -104,6 +110,7 @@ def _flush_textfile() -> None:
         total = _total_events
         unique_ips = len(_unique_ips)
         unique_snis = len(_unique_snis)
+        slot_drops = _slot_exhaustion_drops
     out = TEXTFILE_DIR / "vpn_honeypot.prom"
     tmp = out.with_suffix(".prom.tmp")
     last_minute_count = (
@@ -126,6 +133,9 @@ def _flush_textfile() -> None:
         "# HELP vpn_honeypot_unique_snis Cumulative unique SNIs seen",
         "# TYPE vpn_honeypot_unique_snis gauge",
         f"vpn_honeypot_unique_snis {unique_snis}",
+        "# HELP vpn_honeypot_slot_exhaustion_drops_total Connections closed because every worker slot was busy",
+        "# TYPE vpn_honeypot_slot_exhaustion_drops_total counter",
+        f"vpn_honeypot_slot_exhaustion_drops_total {slot_drops}",
     ]
     tmp.write_text("\n".join(lines) + "\n")
     tmp.replace(out)
@@ -162,15 +172,23 @@ def _flush_loop() -> None:
 
 def _handle(conn: socket.socket, addr: tuple) -> None:
     src_ip, src_port = addr[0], addr[1]
-    conn.settimeout(3.0)
+    # Absolute monotonic deadline computed at accept time. Each recv is
+    # capped by the remaining budget, so a reader dribbling one byte per
+    # interval cannot reset its own timeout and pin this slot forever.
+    deadline = time.monotonic() + CONNECTION_DEADLINE_SECONDS
     buf = b""
     try:
         while len(buf) < 512:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break  # total slot-hold budget exhausted
+            conn.settimeout(remaining)
             chunk = conn.recv(512 - len(buf))
-            if not chunk: break
+            if not chunk:
+                break
             buf += chunk
     except socket.timeout:
-        pass
+        pass  # deadline reached mid-read
     except Exception as exc:
         logging.debug("recv error from %s: %s", src_ip, exc)
     finally:
@@ -216,11 +234,15 @@ def _create_listener_sockets() -> list[socket.socket]:
 
 
 def _accept_loop(listener: socket.socket) -> None:
+    global _slot_exhaustion_drops
     address = listener.getsockname()[0]
     logging.info("honeypot listening on %s:%d", address, LISTEN_PORT)
     while True:
         conn, addr = listener.accept()
         if not _workers.acquire(blocking=False):
+            # Slot exhaustion: count the drop instead of closing silently.
+            with _events_lock:
+                _slot_exhaustion_drops += 1
             conn.close()
             continue
         def worker(conn: socket.socket = conn, addr: tuple = addr) -> None:

@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily Cloudflare prefix list refresh for cdn-front
+
+[Timer]
+# Daily refresh with jitter so a fleet does not stampede the upstream
+# prefix source at the same instant.
+OnCalendar=*-*-* 06:25:00
+RandomizedDelaySec=45m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

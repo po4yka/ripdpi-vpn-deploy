@@ -15,6 +15,19 @@
     cache_valid_time: 3600
   when: warp_outbound.install_warp_cli | default(true)
 
+- name: Assert the repository signing key pin is present
+  # Fail closed: an unset or malformed pin must never silently degrade
+  # the key check to TOFU. After an upstream rotation update
+  # warp_outbound.pubkey_sha256 (procedure in defaults/main.yml).
+  ansible.builtin.assert:
+    that:
+      - warp_outbound.pubkey_sha256 | default('') is match('^[0-9a-f]{64}$')
+    fail_msg: >-
+      warp_outbound.pubkey_sha256 must pin the sha256 of Cloudflare's WARP
+      apt signing key. Fetch the current key from a trusted network,
+      verify it out-of-band, and set the pin before enabling this role.
+  when: warp_outbound.install_warp_cli | default(true)
+
 - name: Install Cloudflare WARP GPG key
   ansible.builtin.get_url:
     url: https://pkg.cloudflareclient.com/pubkey.gpg
@@ -23,14 +36,12 @@
     force: false
   when: warp_outbound.install_warp_cli | default(true)
 
-- name: Verify Cloudflare WARP GPG key checksum (when pin is set)
+- name: Verify Cloudflare WARP GPG key checksum against the pin
   ansible.builtin.stat:
     path: /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
     checksum_algorithm: sha256
   register: _warp_gpg_stat
-  when:
-    - warp_outbound.install_warp_cli | default(true)
-    - warp_outbound.pubkey_sha256 | default('') | length > 0
+  when: warp_outbound.install_warp_cli | default(true)
 
 - name: Assert GPG key matches pinned sha256
   ansible.builtin.assert:
@@ -41,9 +52,7 @@
       {{ _warp_gpg_stat.stat.checksum }} but warp_outbound.pubkey_sha256 pins
       {{ warp_outbound.pubkey_sha256 }}. Verify the key has not been rotated
       upstream and update the pin if intentional.
-  when:
-    - warp_outbound.install_warp_cli | default(true)
-    - warp_outbound.pubkey_sha256 | default('') | length > 0
+  when: warp_outbound.install_warp_cli | default(true)
 
 - name: Add Cloudflare WARP apt source
   ansible.builtin.copy:
@@ -107,6 +116,8 @@
       https://www.cloudflare.com/cdn-cgi/trace
   register: warp_trace
   changed_when: false
-  failed_when:
-    - warp_trace.rc != 0
-    - "'warp=on' not in warp_trace.stdout"
+  # Single conjunctive-free boolean: curl success alone does NOT pass the
+  # gate — an inactive tunnel returns warp=off with rc=0 and must fail.
+  failed_when: >-
+    warp_trace.rc != 0
+    or 'warp=on' not in warp_trace.stdout

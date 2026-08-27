@@ -1,4 +1,5 @@
 """Public HTTP behavior for the nginx XHTTP edge."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -12,8 +13,12 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RENDERER = REPO_ROOT / "scripts" / "check-templates-render.py"
-TEMPLATE = REPO_ROOT / "ansible" / "roles" / "nginx-xhttp" / "templates" / "site.conf.j2"
-HYSTERIA_TEMPLATE = REPO_ROOT / "ansible" / "roles" / "hysteria" / "templates" / "config.yaml.j2"
+TEMPLATE = (
+    REPO_ROOT / "ansible" / "roles" / "nginx-xhttp" / "templates" / "site.conf.j2"
+)
+HYSTERIA_TEMPLATE = (
+    REPO_ROOT / "ansible" / "roles" / "hysteria" / "templates" / "config.yaml.j2"
+)
 SITE_FILES = REPO_ROOT / "ansible" / "roles" / "nginx-xhttp" / "files" / "public-site"
 SITE_TEMPLATES = TEMPLATE.parent / "public-site"
 
@@ -62,7 +67,7 @@ def test_primary_and_fallback_vhosts_share_the_hardened_tls_http_identity() -> N
     assert rendered.count("ssl_protocols       TLSv1.3;") == 2
     assert rendered.count("ssl_ecdh_curve      X25519;") == 2
     for header in (
-        'Content-Security-Policy "default-src \'self\'; base-uri \'none\'; form-action \'none\'; frame-ancestors \'none\'; object-src \'none\'"',
+        "Content-Security-Policy \"default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'\"",
         'Permissions-Policy "camera=(), microphone=(), geolocation=()"',
         'Referrer-Policy "no-referrer"',
         'X-Content-Type-Options "nosniff"',
@@ -141,13 +146,11 @@ def test_homepage_declares_one_consistent_search_identity() -> None:
     }
     assert (
         '<meta name="description" content="Independent notes on practical '
-        'language-model evaluation and inference behavior.">'
-        in homepage
+        'language-model evaluation and inference behavior.">' in homepage
     )
     assert (
         '<meta property="og:description" content="Independent notes on practical '
-        'language-model evaluation and inference behavior.">'
-        in homepage
+        'language-model evaluation and inference behavior.">' in homepage
     )
     assert (SITE_FILES / "logo.svg").is_file()
     favicon = (SITE_FILES / "favicon.svg").read_text()
@@ -189,13 +192,9 @@ def test_articles_identify_the_editorial_project_and_publication_dates() -> None
         assert article["datePublished"] == "2026-07-16"
         assert article["dateModified"] == "2026-07-16"
         assert article["inLanguage"] == "en"
-        assert article["author"] == {
-            "@id": "https://notes.example.test/#organization"
-        }
+        assert article["author"] == {"@id": "https://notes.example.test/#organization"}
         assert article["publisher"] == article["author"]
-        assert article["isPartOf"] == {
-            "@id": "https://notes.example.test/#website"
-        }
+        assert article["isPartOf"] == {"@id": "https://notes.example.test/#website"}
 
         organization = by_type["Organization"]
         assert organization["@id"] == article["author"]["@id"]
@@ -228,9 +227,7 @@ def test_supporting_pages_connect_metadata_to_the_website_identity() -> None:
         assert schema["url"] == canonical
         assert schema["name"] == title
         assert schema["inLanguage"] == "en"
-        assert schema["isPartOf"] == {
-            "@id": "https://notes.example.test/#website"
-        }
+        assert schema["isPartOf"] == {"@id": "https://notes.example.test/#website"}
         assert f'<link rel="canonical" href="{canonical}">' in page
         assert f'<meta property="og:url" content="{canonical}">' in page
         assert '<meta property="og:site_name" content="LLM Model Notes">' in page
@@ -377,7 +374,9 @@ def test_homepage_links_to_substantive_comparison_guide() -> None:
 
 def test_about_page_explains_scope_and_maintenance() -> None:
     about = _render_site_page("about.html.j2")
-    assert '<link rel="canonical" href="https://notes.example.test/about.html">' in about
+    assert (
+        '<link rel="canonical" href="https://notes.example.test/about.html">' in about
+    )
     for heading in (
         "A small independent reference",
         "What this site covers",
@@ -410,7 +409,10 @@ def test_methodology_page_defines_the_shared_evidence_standard() -> None:
 
 def test_updates_page_records_dated_revision_history() -> None:
     updates = _render_site_page("updates.html.j2")
-    assert '<link rel="canonical" href="https://notes.example.test/updates.html">' in updates
+    assert (
+        '<link rel="canonical" href="https://notes.example.test/updates.html">'
+        in updates
+    )
     assert '<time datetime="2026-07-12">12 July 2026</time>' in updates
     assert '<time datetime="2026-07-16">16 July 2026</time>' in updates
     assert "Added three connected guides" in updates
@@ -450,14 +452,25 @@ def test_site_copy_is_neutral_and_has_no_vpn_or_admin_surface() -> None:
         for path in root.rglob("*")
         if path.is_file() and path.name != "site.conf.j2"
     ).lower()
-    for forbidden in ("vpn", "proxy", "xray", "hysteria", "amnezia", "/admin", "/metrics", "/health"):
+    for forbidden in (
+        "vpn",
+        "proxy",
+        "xray",
+        "hysteria",
+        "amnezia",
+        "/admin",
+        "/metrics",
+        "/health",
+    ):
         assert forbidden not in text
 
 
 def test_hysteria_masquerade_uses_the_owned_site_identity() -> None:
     variables = renderer.merge_render_vars()
     rendered = renderer.render_template(HYSTERIA_TEMPLATE, variables)
-    assert f"url: https://{variables['nginx_xhttp']['server_name']}" in rendered
+    # Scalar strings render JSON-quoted (to_json) so fragment-bearing
+    # URLs cannot break YAML structure.
+    assert f'url: "https://{variables["nginx_xhttp"]["server_name"]}"' in rendered
     assert "bing.com" not in rendered
 
 
@@ -472,7 +485,15 @@ def test_discovery_files_follow_the_configured_site_hostname() -> None:
 
 
 def test_molecule_exercises_live_http_semantics() -> None:
-    verify = (REPO_ROOT / "ansible" / "roles" / "nginx-xhttp" / "molecule" / "default" / "verify.yml").read_text()
+    verify = (
+        REPO_ROOT
+        / "ansible"
+        / "roles"
+        / "nginx-xhttp"
+        / "molecule"
+        / "default"
+        / "verify.yml"
+    ).read_text()
     for behavior in (
         "%{redirect_url}",
         "--head",
@@ -504,7 +525,9 @@ def test_operator_healthcheck_probes_the_site_root_not_a_health_endpoint() -> No
 
 
 def test_nginx_role_activates_validated_site_immediately() -> None:
-    tasks = (REPO_ROOT / "ansible" / "roles" / "nginx-xhttp" / "tasks" / "main.yml").read_text()
+    tasks = (
+        REPO_ROOT / "ansible" / "roles" / "nginx-xhttp" / "tasks" / "main.yml"
+    ).read_text()
     validate_at = tasks.index("cmd: nginx -t")
     flush_at = tasks.index("ansible.builtin.meta: flush_handlers")
     ensure_at = tasks.index("name: Ensure nginx is enabled and started")
@@ -515,11 +538,15 @@ def test_transport_profiles_share_one_canonical_site_identity() -> None:
     group_vars = REPO_ROOT / "ansible" / "group_vars"
     p1 = yaml.safe_load((group_vars / "vpn-p1-web.yml").read_text())
     p2 = yaml.safe_load((group_vars / "vpn-p2-udp.yml").read_text())
-    secrets = yaml.safe_load((REPO_ROOT / "secrets" / "prod.secrets.example.yaml").read_text())
+    secrets = yaml.safe_load(
+        (REPO_ROOT / "secrets" / "prod.secrets.example.yaml").read_text()
+    )
 
     assert p1["public_site_canonical_url"] == p2["public_site_canonical_url"]
     assert secrets["hysteria"]["masquerade_url"] == "https://vpn.example.com"
-    tasks = (REPO_ROOT / "ansible" / "roles" / "hysteria" / "tasks" / "main.yml").read_text()
+    tasks = (
+        REPO_ROOT / "ansible" / "roles" / "hysteria" / "tasks" / "main.yml"
+    ).read_text()
     assert "hysteria.masquerade_url == public_site_canonical_url" in tasks
 
 

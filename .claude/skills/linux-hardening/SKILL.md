@@ -85,8 +85,14 @@ table inet vpn-deploy {
 }
 ```
 
-Rate-limit chains for subscription endpoints are added by `policy-ratelimit` — keep them
-out of the base policy file.
+Rate-limit enforcement is single-layer per surface. `policy-ratelimit`
+owns the transport-layer blackhole chains (added outside the base
+policy file — keep them out of it). Browser-facing HTTP vhosts are the
+documented exception: their per-route limits live at nginx (`limit_req`
+zones such as the snell-evaluation and subscription endpoints) because
+throttling token endpoints needs route- and burst-granularity that an
+nftables chain cannot express. Never enforce the same surface at both
+layers.
 
 ## sysctl floor
 

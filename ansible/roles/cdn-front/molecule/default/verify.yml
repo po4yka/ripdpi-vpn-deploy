@@ -56,10 +56,30 @@
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          grep -q 'ipaddress.ip_network' /etc/cron.daily/cdn-front-refresh-cf-prefixes
-          grep -Fq 'nft -c -f "$WORK/nft.batch"' /etc/cron.daily/cdn-front-refresh-cf-prefixes
-          grep -Fq 'nft -f "$WORK/nft.batch"' /etc/cron.daily/cdn-front-refresh-cf-prefixes
-          grep -q 'add element inet filter cdn_front_origins_v6' /etc/cron.daily/cdn-front-refresh-cf-prefixes
-          ! grep -q '2>/dev/null || true' /etc/cron.daily/cdn-front-refresh-cf-prefixes
+          grep -q 'ipaddress.ip_network' /usr/local/sbin/cdn-front-refresh-cf-prefixes
+          grep -Fq 'nft -c -f "$WORK/nft.batch"' /usr/local/sbin/cdn-front-refresh-cf-prefixes
+          grep -Fq 'nft -f "$WORK/nft.batch"' /usr/local/sbin/cdn-front-refresh-cf-prefixes
+          grep -q 'add element inet filter cdn_front_origins_v6' /usr/local/sbin/cdn-front-refresh-cf-prefixes
+          ! grep -q '2>/dev/null || true' /usr/local/sbin/cdn-front-refresh-cf-prefixes
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Legacy cron.daily scheduling entry removed in the same converge
+      ansible.builtin.stat:
+        path: /etc/cron.daily/cdn-front-refresh-cf-prefixes
+      register: legacy_cron_file
+
+    - name: Assert no double-scheduling surface remains
+      ansible.builtin.assert:
+        that:
+          - not legacy_cron_file.stat.exists
+        fail_msg: "cron.daily refresh file still present — double-scheduling risk"
+
+    - name: Prefix-refresh timer is enabled and active
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          test "$(systemctl is-enabled cdn-front-prefix-refresh.timer)" = "enabled"
+          test "$(systemctl is-active cdn-front-prefix-refresh.timer)" = "active"
         executable: /bin/bash
       changed_when: false

@@ -69,12 +69,16 @@
   notify: Restart dns-morph-bridge
 
 - name: Render bridge config
+  # Carries the signing key; repo-wide secret-render discipline keeps the
+  # rendered content out of verbose dry-run output (no_log) and diff mode.
   ansible.builtin.template:
     src: dns-morph-bridge.yaml.j2
     dest: "{{ dns_morph_bridge.config_dir }}/dns-morph-bridge.yaml"
     owner: root
     group: dns-morph-bridge
     mode: "0640"
+  no_log: true
+  diff: false
   notify: Restart dns-morph-bridge
 
 - name: Install systemd unit

@@ -2,7 +2,7 @@
 id: VPD-1787497317352770
 title: Guarantee secrets cleanup and scoped targeting on deploy paths
 kind: bug
-status: doing
+status: review
 area: vpnd
 priority: critical
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: vpd-1787497317352770-vpnd-deploy-reconverge-lifecycle-safety
 created: 2026-08-23
-updated: 2026-08-24
+updated: 2026-08-25
 related_tasks: []
 ---
 

@@ -2,7 +2,7 @@
 id: ANS-1787495907091073
 title: Fix production-breaking transport convergence defects
 kind: bug
-status: doing
+status: review
 area: ansible
 priority: critical
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: ans-1787495907091073-transport-convergence-critical-fixes
 created: 2026-08-23
-updated: 2026-08-24
+updated: 2026-08-25
 related_tasks: []
 ---
 

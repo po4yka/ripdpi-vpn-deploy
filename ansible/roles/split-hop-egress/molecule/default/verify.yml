@@ -55,3 +55,11 @@
           - cfg_text is search('(?m)^AllowedIPs\s*=\s*10\.200\.0\.1/30\s*$')
           - cfg_text is not search('AllowedIPs\s*=\s*0\.0\.0\.0/0')
         fail_msg: "AllowedIPs widened beyond Node A's tunnel address"
+
+    - name: No rendered config line ends in a lone backslash
+      # wg-quick does not honor backslash continuations; a PostUp value
+      # split across physical lines breaks `wg-quick up` parsing.
+      ansible.builtin.assert:
+        that:
+          - cfg_text is not search('(?m)\\\s*$')
+        fail_msg: "Rendered WG config carries a backslash continuation — wg-quick cannot parse it"
