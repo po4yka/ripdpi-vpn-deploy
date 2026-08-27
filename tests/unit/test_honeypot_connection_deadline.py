@@ -125,6 +125,8 @@ def test_slot_exhaustion_drops_are_counted_and_exported(
         try:
             honeypot._accept_loop(StoppableListener())
         except StopAcceptLoop:
+            # The fixture's sentinel ends normal shutdown; unexpected errors
+            # below remain visible to the teardown assertion.
             pass
         except Exception as error:
             loop_errors.append(error)
