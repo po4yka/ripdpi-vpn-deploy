@@ -8,6 +8,8 @@ Deploy-path subcommands must never leave plaintext secrets behind, must scope pr
 
 When any deploy or reconverge step fails, the cleanup equivalent of `make clean` MUST still be attempted before the command exits, and its own failure MUST NOT mask the original error.
 
+Cleanup MUST also run after success and dry-run. Its failure MUST fail an otherwise successful command. Explain mode MUST NOT execute cleanup or change file permissions.
+
 #### Scenario: Failed verify step
 
 - **WHEN** the verify step exits nonzero during deploy
@@ -15,12 +17,17 @@ When any deploy or reconverge step fails, the cleanup equivalent of `make clean`
 
 ### Requirement: REQ-RECONVERGE-LIMIT-VALIDATION — Strict IPv4 limit targeting
 
-A registry ipv4 used as an ansible limit MUST parse as an IPv4 literal; any other value MUST abort the operation naming the offending host record before any playbook runs.
+A registry IPv4 used to select an Ansible target MUST parse as an IPv4 literal; any other value MUST abort the operation naming the offending host record before any playbook runs. The address MUST resolve to exactly one safe inventory host key in the selected environment/provider. Reconverge MUST pass exact host keys to `--limit` and reject ambiguous matches and pattern/group collisions. Without a host alias, reconverge MUST still restrict targets to the selected environment/provider.
 
 #### Scenario: Pattern-valued registry entry
 
 - **WHEN** a host record carries `all` or `prod:*` in the ipv4 field
 - **THEN** reconverge refuses to run and names that record
+
+#### Scenario: Separate management address
+
+- **WHEN** an inventory host has a public `vpn_service_address` matching the registry and a different management `ansible_host`
+- **THEN** reconverge selects that exact inventory host key and does not pass the public address as an inventory pattern
 
 ### Requirement: REQ-HOST-FLAG-RESOLUTION — Documented registry resolution
 

@@ -8,8 +8,8 @@ The vpnd deep audit found that deploy and reconverge abort on the first failing 
 
 ## What Changes
 
-- deploy and reconverge run the cleanup step on failure paths (best-effort; a second failure is reported without masking the original error).
-- reconverge validates the registry ipv4 as a strict IPv4 literal before using it as --limit; anything else is rejected with the offending record named.
+- deploy and reconverge run cleanup after every outcome, including dry-run. Cleanup failure fails a successful pipeline without masking an earlier pipeline error.
+- reconverge validates registry IPv4 and resolves exact inventory host keys within the selected environment/provider. A public IPv4 identifies the host; the inventory key, not the IP or an unchecked pattern, is passed to `--limit`.
 - doctor and probe resolve --host against the host registry, failing for unknown aliases; probe passes the resolved address where the make target expects one.
 - The pre-confirm summary no longer prints secret-file paths; it shows redacted placeholders instead.
 
@@ -25,5 +25,5 @@ The vpnd deep audit found that deploy and reconverge abort on the first failing 
 
 ## Impact
 
-- `vpnd/src/commands/{deploy,reconverge,doctor,probe,host}.rs` and tests.
+- `vpnd/src/commands/{deploy,reconverge,doctor,probe,host}.rs`, inventory resolution, `make clean`, and tests.
 - Operators relying on pattern-valued limit fields must register real IPv4 addresses.

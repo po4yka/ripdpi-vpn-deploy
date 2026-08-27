@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: cic-1787415665884975-ci-deploy-environment-gate
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-27
 related_tasks: []
+status_detail: Implementation and local approval-gate checks passed; protected-main PR and exact-SHA hosted CI still pending.
 ---
 
 ## Goal
@@ -36,3 +37,8 @@ never through direct `${{ secrets.* }}` expansion inside `run:` blocks.
 - Fork short-circuit steps remain as defense in depth.
 - Operator-visible behavior is documented: every trigger (label, dispatch,
   schedule) waits for reviewer approval on the environment.
+
+## Review ownership
+
+- The primary agent owns credentialed workflow gating, its focused tests, and operator documentation.
+- The primary agent serializes Makefile, task/OpenSpec records, generated board, evidence updates, staging, commits, and remote delivery. Reviewers do not commit or change production settings.

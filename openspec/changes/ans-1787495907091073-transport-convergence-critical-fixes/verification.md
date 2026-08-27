@@ -1,17 +1,17 @@
 ---
 task_id: ANS-1787495907091073
 change: ans-1787495907091073-transport-convergence-critical-fixes
-commit_sha: b2d209a
-local: required
-local_evidence: "Local on fix/board-criticals@b2d209a: pytest tests/unit 972 passed (incl amneziawg restart-contract, revocation case-insensitivity, honeypot deadline/slot metrics, warp pin contract); make snapshot-check 102/102 goldens; make validate production profile 0 failures; make tf-test 18+19 passed across provider roots; molecule scenarios extended for split-hop-egress backslash guard, warp tunnel-down fixture, hysteria-realm shared-TLS permissions, subscription-host pull-persistence, amneziawg target Wants=, cdn-front timer migration."
-remote_ci: required
-remote_ci_evidence: null
-dry_run: required
-dry_run_evidence: null
+commit_sha: bbc346415f412ab49f296db3927ff0fbefdaa8e0
+local: blocked
+local_evidence: '2026-08-27: focused regression suites passed (104 tests); 102 snapshots passed; make validate passed; Terraform mock-provider tests passed (79). Full make check stopped at cloud-init-schema when the Colima daemon disconnected (exit 125). Required Molecule scenarios did not start; no runtime acceptance is claimed.'
+remote_ci: blocked
+remote_ci_evidence: No hosted CI run for this implementation SHA; protected-main PR delivery is pending authorization.
+dry_run: blocked
+dry_run_evidence: No operator credentials used. Fleet dry-run requires authorization and reachable management transport.
 staging: not_applicable
 staging_evidence: no separate staging environment exists; CI molecule convergence per touched role covers the fixed behavior
-live: required
-live_evidence: null
+live: blocked
+live_evidence: No fleet convergence or filtered-path probe performed; authorization is pending.
 client: not_applicable
 client_evidence: no client-facing emitter or vpnd surface changed
 artifact: not_applicable
@@ -41,3 +41,19 @@ artifact_evidence: no build artifacts produced by this change
 - Remote CI: green run on the merge SHA.
 - Dry-run: `make dry-run` completes on a UFW-preinstalled target.
 - Live: one filtered-path node re-converged; split-hop bring-up and mirror pull observed.
+
+## 2026-08-27 review
+
+The original implementation was reopened after review found executable defects.
+Local regressions do not substitute for the dry-run, staging, live, or hosted-CI categories above.
+No archive or terminal closure is authorized by this evidence record.
+
+### Shared local checks on the reviewed source
+
+- `python3 -m pytest tests/unit -q`: 995 passed, 2 existing skips; one honeypot thread shutdown warning. The warning was reproduced only when the test fixture closes its listener while a daemon accept thread is running; it was not observed before cleanup. The stale collected-count documentation was corrected before this successful run.
+- `bats tests/bats/`: 55 passed.
+- `make tf-test`: 79 provider mock tests passed.
+- `make snapshot-check`: 102 templates matched.
+- `make validate`, actionlint, shellcheck, cargo-deny and Rust 1.88 MSRV check passed. YAML lint has one existing workflow line-length warning.
+- Render, AWG version floor, Xray guards, secrets coverage, deploy-profile, example secrets schema and bundle schema checks passed.
+- `make check` did not pass: its Docker cloud-init step lost the Colima connection. Per-role Molecule did not run. These checks must be rerun in a working container environment.
