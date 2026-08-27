@@ -2,7 +2,7 @@
 id: SEC-1787810718115433
 title: Refresh Debian Molecule image to clear vulnerability gate
 kind: bug
-status: doing
+status: review
 area: security
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: refresh-molecule-debian13-security
 created: 2026-08-27
 updated: 2026-08-27
 related_tasks: []
+status_detail: Published digest passed Trivy and PR CI run 33046238741; awaiting merge.
 ---
 
 ## Goal

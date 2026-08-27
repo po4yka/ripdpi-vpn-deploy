@@ -1,11 +1,11 @@
 ---
 task_id: SEC-1787810718115433
 change: refresh-molecule-debian13-security
-commit_sha: dc9f7a35f44006f3c555433340284b3a0bcc6d0e
+commit_sha: 07b16874f67f44b3aa4b004ffe7234229b0d661d
 local: required
 local_evidence: null
 remote_ci: required
-remote_ci_evidence: null
+remote_ci_evidence: "PR run 33046238741 passed at commit 07b16874f67f44b3aa4b004ffe7234229b0d661d, including pytest unit tests and the hosted Molecule matrix."
 dry_run: not_applicable
 dry_run_evidence: No Terraform or deployment-plan surface is changed.
 staging: not_applicable
@@ -26,4 +26,4 @@ artifact_evidence: "Publisher run 33045335444 built and scanned ghcr.io/po4yka/r
 |---|---|---|---|
 | REQ-DEBIAN-MOLECULE-IMAGE-SECURITY | SEC-1787810718115434 | Publisher run 33045335444 and scanned digest `sha256:fd0443883979e0879e912231914df2093769d45fcb82af251704b30e2fc5c42e` | passed remotely |
 | REQ-DEBIAN-MOLECULE-DIGEST-CONSISTENCY | SEC-1787810718115435 | All 35 Debian Molecule references repinned; old digest search returned no matches | passed locally |
-| REQ-DEBIAN-MOLECULE-SECURITY-NO-BYPASS | SEC-1787810718115436 | `.trivyignore` diff, workflow policy review, and hosted image scan | pending |
+| REQ-DEBIAN-MOLECULE-SECURITY-NO-BYPASS | SEC-1787810718115436 | PR run 33046238741 passed after the digest contract update; no `.trivyignore` change or policy bypass was used, and publisher run 33045335444 reported the Trivy scan successful | passed remotely |
