@@ -2,7 +2,7 @@
 id: VPD-1787496384518490
 title: Make vpnd the single authority for the decrypted secrets path and redaction
 kind: bug
-status: blocked
+status: review
 area: vpnd
 priority: critical
 risk: high
@@ -14,7 +14,7 @@ openspec_change: vpd-1787496384518490-vpnd-secrets-path-authority
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
-status_detail: Runtime/redaction fixes committed; atomic open and held-fd chmod need rustix approval, then hosted CI and real macOS share acceptance.
+status_detail: "Atomic file gates and real macOS SOPS share passed; final full gate and PR #108 hosted CI remain pending."
 ---
 
 ## Goal

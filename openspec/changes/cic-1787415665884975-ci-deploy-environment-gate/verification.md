@@ -1,21 +1,21 @@
 ---
-task_id: CIC-1787415665884975
-change: cic-1787415665884975-ci-deploy-environment-gate
-commit_sha: bbc346415f412ab49f296db3927ff0fbefdaa8e0
-local: passed
-local_evidence: '2026-08-27: 11 credentialed-deploy contract tests, 6 provisioning tests, 14 Make gate tests passed; actionlint passed; make validate passed. The live read-only make check-ci-deploy-gate command verified a required reviewer.'
-remote_ci: blocked
-remote_ci_evidence: Protected main requires PR delivery and 30 required checks. No hosted run exists for this implementation SHA; permission for PR delivery is pending.
-dry_run: not_applicable
-dry_run_evidence: no deploy pipeline change; workflow YAML validated statically
-staging: not_applicable
-staging_evidence: gating is enforced by GitHub Environment settings, not by a deployable artifact
-live: passed
-live_evidence: '2026-08-27: make check-ci-deploy-gate read the GitHub environment API and verified required-reviewer protection. No deployment was dispatched and CI operator secrets are not provisioned.'
-client: not_applicable
-client_evidence: no client-facing surface changed
-artifact: not_applicable
-artifact_evidence: no build artifacts produced by this change
+task_id: "CIC-1787415665884975"
+change: "cic-1787415665884975-ci-deploy-environment-gate"
+commit_sha: "bbc346415f412ab49f296db3927ff0fbefdaa8e0"
+local: "blocked"
+local_evidence: "2026-08-27: Rust debug/release each passed 173 tests, clippy/MSRV/deny passed; make validate and cloud-init schema passed. Full make check found two existing AWG installer fresh-directory failures under umask 077; root-cause correction and a complete rerun are pending."
+remote_ci: "blocked"
+remote_ci_evidence: "PR #108 is published. Expanded hosted Molecule coverage exposed runtime and scenario defects; final required-check success and main merge are still pending."
+dry_run: "not_applicable"
+dry_run_evidence: "no deploy pipeline change; workflow YAML validated statically"
+staging: "not_applicable"
+staging_evidence: "gating is enforced by GitHub Environment settings, not by a deployable artifact"
+live: "passed"
+live_evidence: "2026-08-27: make check-ci-deploy-gate read the GitHub environment API and verified required-reviewer protection. No deployment was dispatched and CI operator secrets are not provisioned."
+client: "not_applicable"
+client_evidence: "no client-facing surface changed"
+artifact: "not_applicable"
+artifact_evidence: "no build artifacts produced by this change"
 ---
 
 # Verification
@@ -41,7 +41,7 @@ artifact_evidence: no build artifacts produced by this change
 
 The original implementation was reopened after review found executable defects.
 Local regressions do not substitute for the dry-run, staging, live, or hosted-CI categories above.
-No archive or terminal closure is authorized by this evidence record.
+Archive and terminal closure remain blocked until all required evidence is complete.
 
 ### Shared local checks on the reviewed source
 

@@ -2,7 +2,7 @@
 id: SEC-1787496747898735
 title: Close secrets-handling and perimeter hardening gaps
 kind: bug
-status: blocked
+status: doing
 area: security
 priority: critical
 risk: high
@@ -14,7 +14,7 @@ openspec_change: sec-1787496747898735-secrets-perimeter-hardening
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: [ANS-1787463116251274]
-status_detail: Review fixes committed; required systemd/Molecule runtime and fleet dry-run/live checks remain unverified.
+status_detail: User authorized operator acceptance; running required container and live controls.
 ---
 
 ## Goal
