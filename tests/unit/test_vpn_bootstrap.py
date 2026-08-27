@@ -361,9 +361,10 @@ def test_unreadable_revocation_state_fails_closed_and_is_audited(service, monkey
 # ---------------------------------------------------------------------------
 # Unknown / shape errors
 # ---------------------------------------------------------------------------
-def test_unknown_token_returns_410_audit_unknown(service):
+@pytest.mark.parametrize("route", ["sub", "bootstrap"])
+def test_unknown_token_returns_410_audit_unknown(service, route):
     token = "missing0missing0"
-    resp = service.get(f"/sub/{token}")
+    resp = service.get(f"/{route}/{token}")
     assert resp.status == 410
     assert service.reads()[-1]["outcome"] == "unknown"
 

@@ -168,7 +168,8 @@
           Host: sub.example.test
       loop:
         - {route: sub, status: 200}
-        - {route: bootstrap, status: 404}
+        # A well-shaped but absent token is Gone; only malformed paths are 404.
+        - {route: bootstrap, status: 410}
       register: delivery_responses
 
     - name: Every delivery response has the complete no-store header baseline
