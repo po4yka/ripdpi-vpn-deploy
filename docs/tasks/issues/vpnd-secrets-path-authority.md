@@ -2,7 +2,7 @@
 id: VPD-1787496384518490
 title: Make vpnd the single authority for the decrypted secrets path and redaction
 kind: bug
-status: review
+status: done
 area: vpnd
 priority: critical
 risk: high
@@ -15,6 +15,9 @@ created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
 status_detail: "Atomic file gates and real macOS SOPS share passed; final full gate and PR #108 hosted CI remain pending."
+closed_at: "2026-08-27T12:09:25Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Exact implementation 984b452: full make check and hosted CI 33069634871 passed; two real operator vpnd share calls used one SOPS decrypt; official sing-box parser passed; private files cleaned."
 ---
 
 ## Goal
