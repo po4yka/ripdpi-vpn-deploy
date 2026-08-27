@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 import yaml
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -55,7 +56,7 @@ def _setup(tmp_path: Path) -> tuple[Path, dict[str, str], str]:
     _executable(bin_dir / "xray", """#!/usr/bin/env python3
 import json, socket, sys
 if sys.argv[1:2] == ["version"]:
-    print("Xray v26.3.27")
+    print("Xray 26.3.27 (Xray, Penetrates Everything.) d2758a0 (go1.26.1 darwin/arm64)")
     raise SystemExit(0)
 if "-test" in sys.argv:
     raise SystemExit(0)
@@ -148,6 +149,23 @@ def test_xray_version_mismatch_is_dependency_error(tmp_path: Path) -> None:
     assert secret not in result.stdout + result.stderr
 
 
+@pytest.mark.parametrize("pin,banner,returncode", [
+    ("v26.3.2", "Xray 26.3.27", 0),
+    ("v26.3.27", "unrelated v26.3.27", 0),
+    ("v26.3.27", "Xray 26.3.27", 1),
+])
+def test_xray_pin_requires_exact_successful_version_banner(tmp_path, pin, banner, returncode):
+    config, env, _ = _setup(tmp_path)
+    profile = tmp_path / "target.json"
+    document = json.loads(profile.read_text())
+    document["expected_xray_version"] = pin
+    profile.write_text(json.dumps(document))
+    xray = Path(env["PATH"].split(":", 1)[0]) / "xray"
+    _executable(xray, f"#!/usr/bin/env python3\nprint({banner!r})\nraise SystemExit({returncode})\n")
+    result = _run(config, env, "cell", "--target-id", "generic-dual", "--protocol", "tcp-trojan", "--control-verdict", "ok")
+    assert json.loads(result.stdout)["error_kind"] == "version-mismatch"
+
+
 def test_xray_authentication_rejection_never_becomes_filtering_claim(tmp_path: Path) -> None:
     config, env, _ = _setup(tmp_path)
     bin_dir = Path(env["PATH"].split(":", 1)[0])
@@ -155,7 +173,7 @@ def test_xray_authentication_rejection_never_becomes_filtering_claim(tmp_path: P
     _executable(bin_dir / "xray", """#!/usr/bin/env python3
 import json, pathlib, socket, sys
 if sys.argv[1:2] == ["version"]:
-    print("Xray v26.3.27")
+    print("Xray 26.3.27")
     raise SystemExit(0)
 if "-test" in sys.argv:
     raise SystemExit(0)

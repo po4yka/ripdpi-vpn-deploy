@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import socket
 import stat
@@ -237,7 +238,9 @@ def xray_probe(matrix: dict[str, Any], profile: dict[str, Any], protocol: str, c
         version = subprocess.run([binary, "version"], text=True, capture_output=True, timeout=5, check=False)
     except (OSError, subprocess.TimeoutExpired):
         return verdict("error", error_kind="dependency-missing")
-    if version.returncode != 0 or expected_version not in version.stdout + version.stderr:
+    banner = re.search(r"(?m)^Xray\s+(\S+)", version.stdout + version.stderr)
+    installed_version = banner.group(1) if banner else ""
+    if version.returncode != 0 or installed_version != expected_version.removeprefix("v"):
         return verdict("error", error_kind="version-mismatch")
     settings = profile["protocols"].get(protocol)
     if not isinstance(settings, dict):
