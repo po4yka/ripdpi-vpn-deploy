@@ -23,15 +23,23 @@ if [[ ! -f "$SOPS_FILE" ]]; then
 fi
 
 umask 077
-mkdir -p "$RUNTIME_DIR"
-chmod 0700 "$RUNTIME_DIR"
-[[ -d "$RUNTIME_DIR" && ! -L "$RUNTIME_DIR" ]] || { echo "unsafe runtime directory: $RUNTIME_DIR" >&2; exit 1; }
-tmp="$(mktemp "${RUNTIME_DIR}/.vpn-${ENV}.secrets.XXXXXX")"
+# The explicit output path is authoritative. Create its parent, and stage
+# beside the destination so publication is atomic even across filesystems.
+# Do not chmod an existing operator directory (it may have other users).
+OUT_DIR="$(dirname "$OUT")"
+mkdir -p "$OUT_DIR"
+[[ -d "$OUT_DIR" && ! -L "$OUT_DIR" && -O "$OUT_DIR" ]] || { echo "unsafe secrets output directory" >&2; exit 1; }
+if [[ -n "$(find "$OUT_DIR" -prune \( -perm -0020 -o -perm -0002 \) -print)" ]]; then
+  echo "secrets output directory must not be writable by other users" >&2
+  exit 1
+fi
+[[ ! -L "$OUT" && ( ! -e "$OUT" || -f "$OUT" ) ]] || { echo "secrets output must be a regular file" >&2; exit 1; }
+tmp="$(mktemp "${OUT_DIR}/.vpn-${ENV}.secrets.XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 sops --decrypt "$SOPS_FILE" > "$tmp"
 chmod 0600 "$tmp"
 mv -f "$tmp" "$OUT"
 trap - EXIT
 
-echo "decrypted to $OUT"
-echo "remember to shred after use: shred -u $OUT"
+echo "decrypted secrets ready (0600)"
+echo "remember to run make clean after use"

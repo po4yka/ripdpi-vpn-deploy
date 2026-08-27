@@ -31,15 +31,12 @@ pub fn target(ctx: &Context, name: &str) -> Cmd {
         .arg(format!("ENV={}", ctx.env))
         .arg(format!("PROVIDER={}", ctx.provider))
         .arg(format!("SECRETS_FILE={secrets}"))
+        .sensitive(&secrets)
+        .sensitive(ctx.sops_file.to_string_lossy())
         .cwd(ctx.root.clone())
         .describe(format!(
-            "make {} ENV={} PROVIDER={} SECRETS_FILE={}",
-            name,
-            ctx.env,
-            ctx.provider,
-            // The describe surface must not leak more than the path itself;
-            // the runtime path is operator-trusted but not a secret value.
-            secrets
+            "make {} ENV={} PROVIDER={}",
+            name, ctx.env, ctx.provider
         ))
 }
 

@@ -21,8 +21,8 @@ fn redact_masks_historical_default_tmp_path() {
 
 #[test]
 fn redact_masks_resolved_path_outside_tmp() {
-    // XDG_RUNTIME_DIR unset resolves into a user cache dir; that shape
-    // must be masked via the resolved-path argument.
+    // Historical cached plaintext paths and explicit non-/tmp paths must
+    // still be masked via the resolved-path argument.
     let resolved = "/Users/op/Library/Caches/vpn-provision/vpn-prod.secrets.yaml";
     let input = format!("reading secrets from {resolved} (env=prod)");
     let result = redact_secrets(input, resolved);
