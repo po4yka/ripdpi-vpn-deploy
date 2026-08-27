@@ -1,0 +1,11 @@
+{
+  "change": "resolve-codeql-code-scanning-alerts",
+  "evidence_summary": "CodeQL analyses 33071688071 on main af555c20705258c989b3255e31d5cce3c7d8b4fc passed with zero results and zero errors; current CodeQL open alerts query returned zero; unrelated Scorecard alerts are not included.",
+  "execution_sha256": "062f184bc22d3877fb7bd18c4d167de7937011d30785307feb8111ba2945c86c",
+  "issue_sha256": "07ca5147909864bf552a7bdbfa2319b63d946afb29e9256d6471ef7e2a0b5014",
+  "outcome": "done",
+  "prepared_at": "2026-08-27T14:07:04Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1786336086885514"
+}

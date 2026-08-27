@@ -2,7 +2,7 @@
 id: CIC-1786295418152915
 title: Integrate zizmor and remediate GitHub Actions security findings
 kind: feature
-status: review
+status: done
 area: ci
 priority: high
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: integrate-zizmor-ci-security-gate
 created: 2026-08-09
-updated: 2026-08-10
+updated: 2026-08-27
 related_tasks: []
 status_detail: "PR #69 implementation SHA a9a1325 passed both image scans and the complete hosted CI; zero-approval solo-maintainer policy is live."
+closed_at: "2026-08-27T14:07:03Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Pinned zizmor enforcement and local checks verified; main af555c20705258c989b3255e31d5cce3c7d8b4fc CI 33071688476 passed all 51 jobs; candidate 1221ccb CI 33079404315 zizmor also passed.
 ---
 
 ## Goal

@@ -2,7 +2,7 @@
 
 Keep the immutable Debian 13 image used by Molecule free of fixable HIGH and CRITICAL vulnerabilities so dependency and infrastructure changes are evaluated by the repository security gate.
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: REQ-DEBIAN-MOLECULE-IMAGE-SECURITY — refreshed digest is security-gated
 

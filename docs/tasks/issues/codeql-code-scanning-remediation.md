@@ -2,7 +2,7 @@
 id: SEC-1786336086885514
 title: Resolve all open CodeQL code scanning alerts
 kind: bug
-status: review
+status: done
 area: security
 priority: high
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: resolve-codeql-code-scanning-alerts
 created: 2026-08-10
-updated: 2026-08-10
+updated: 2026-08-27
 related_tasks: []
 status_detail: "Local gates and PR #70 required checks passed; current hosted CodeQL PR analysis reports zero Python results, with alerts 320-327 absent and replacement 328 fixed without dismissal."
+closed_at: "2026-08-27T14:07:04Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: CodeQL analyses 33071688071 on main af555c20705258c989b3255e31d5cce3c7d8b4fc passed with zero results and zero errors; current CodeQL open alerts query returned zero; unrelated Scorecard alerts are not included.
 ---
 
 ## Goal

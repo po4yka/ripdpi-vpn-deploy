@@ -1,0 +1,11 @@
+{
+  "change": "integrate-zizmor-ci-security-gate",
+  "evidence_summary": "Pinned zizmor enforcement and local checks verified; main af555c20705258c989b3255e31d5cce3c7d8b4fc CI 33071688476 passed all 51 jobs; candidate 1221ccb CI 33079404315 zizmor also passed.",
+  "execution_sha256": "551a8203f037cc53beccdb7f278d2c096e1ba2515b70776ed831ed56243c2580",
+  "issue_sha256": "23c2773e1487bcc1e8ddd0f33788667a648ad180c6f957f6a808f8b7bd33d471",
+  "outcome": "done",
+  "prepared_at": "2026-08-27T14:07:03Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1786295418152915"
+}

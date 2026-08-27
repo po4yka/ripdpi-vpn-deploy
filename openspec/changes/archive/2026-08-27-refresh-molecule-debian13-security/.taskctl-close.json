@@ -1,0 +1,11 @@
+{
+  "change": "refresh-molecule-debian13-security",
+  "evidence_summary": "Fresh image enumeration and scans passed in 33075359774 on main af555c20705258c989b3255e31d5cce3c7d8b4fc for both pinned digests; main CI 33071688476 passed all 51 jobs. Corrected the new capability delta from MODIFIED to ADDED before validated archival.",
+  "execution_sha256": "58d1396dceadf99bc2ac01f0cd26fedb9d169ef768ec0232ec8654d882c5e7aa",
+  "issue_sha256": "11b6667ab553e90f03bdcf6b6bf67c08d2829a81fa7836d70eadd6768a9d08d2",
+  "outcome": "done",
+  "prepared_at": "2026-08-27T14:07:48Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1787810718115433"
+}
