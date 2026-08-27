@@ -123,7 +123,7 @@ def test_cascade_roles_are_exception_tier_and_disabled_in_family_profiles() -> N
         # absent per-cohort overrides and literal false must both stay inert.
         for toggle in ("enable_cascade_ingress", "enable_cascade_egress"):
             assert profile.get("vpn", {}).get(toggle, False) is False
-        assert "allow_exception_roles" not in text
+        assert "allow_exception_roles" not in profile
 
 
 def test_site_has_attestation_and_colocation_guards_before_roles() -> None:
