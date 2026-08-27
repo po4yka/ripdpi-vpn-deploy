@@ -236,7 +236,9 @@ make destroy                              # safe, double-confirmation destroy
 make backup-state                         # age-encrypt local TF state
 make burn-check                           # external IP reachability probe
 make diff-secrets                         # drift detection
-make emit-singbox CLIENT=<name>           # official sing-box P0/P2 client JSON
+make decrypt                             # materialize the private runtime secrets file
+make emit-singbox CLIENT=<name>           # official sing-box P0/P2 JSON from that file
+make clean                               # remove the runtime plaintext after use
 make emit-awg CLIENT=<name>              # AmneziaWG wg-quick .conf for a named peer
 make emit-bundle CLIENT=<name>           # RIPDPI P0/P1/P2 JSON with ripdpi extension
 make install-hooks                        # one-time pre-commit setup

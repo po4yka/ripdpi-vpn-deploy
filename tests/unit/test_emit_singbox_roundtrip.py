@@ -104,7 +104,7 @@ def _build_env(tmp_path: Path, sops_file: Path) -> dict[str, str]:
     env["SOPS_FILE"] = str(sops_file)
     env["STUB_LOG"] = str(tmp_path / "stub.log")
     # Clear multi-host vars so the script uses single-host SOPS_FILE path.
-    for var in ("HOSTS", "SOPS_FILES", "COHORTS", "PROVIDER", "ENV"):
+    for var in ("HOSTS", "SOPS_FILES", "COHORTS", "PROVIDER", "ENV", "VPN_SECRETS_FILE"):
         env.pop(var, None)
     return env
 
@@ -202,6 +202,8 @@ def _run_snell_only_script(tmp_path: Path, *, omit_variant: str | None = None) -
     (fake_bin / "sops").chmod(0o700)
     (fake_bin / "terraform").chmod(0o700)
     environment = os.environ.copy()
+    for var in ("HOSTS", "SOPS_FILES", "COHORTS", "VPN_SECRETS_FILE"):
+        environment.pop(var, None)
     environment.update({"PATH": f"{fake_bin}:{environment['PATH']}", "SOPS_FILE": str(secrets), "PROVIDER": "upcloud", "ENV": "staging"})
     return subprocess.run(
         ["bash", str(repo / "scripts/emit-singbox.sh"), "laptop"],
@@ -225,6 +227,131 @@ def _utls_fingerprints(bundle: dict) -> list[str]:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
+def _plaintext_emitter(tmp_path, *, mode=0o600):
+    source = _secrets_as_json(tmp_path)
+    secrets = json.loads(source.read_text())
+    secrets["hysteria"]["clients"][-1]["password"] = "authoritative-plaintext-password"
+    plaintext = tmp_path / "private-runtime-secrets.yaml"
+    plaintext.write_text(yaml.safe_dump(secrets))
+    plaintext.chmod(mode)
+    env = _build_env(tmp_path, source)
+    env["VPN_SECRETS_FILE"] = str(plaintext)
+    # Decryption is forbidden when an explicit plaintext source was supplied.
+    (tmp_path / "bin/sops").write_text(
+        '#!/bin/sh\nprintf "unexpected decrypt\\n" >> "$STUB_LOG"\nexit 71\n'
+    )
+    work = tmp_path / "runtime"
+    work.mkdir()
+    env["TMPDIR"] = str(work)
+    return plaintext, env
+
+
+def _run_plaintext_emitter(env):
+    return subprocess.run(
+        ["bash", str(SCRIPT), "laptop"], capture_output=True, text=True,
+        env=env, cwd=REPO_ROOT, timeout=20,
+    )
+
+
+@pytest.mark.parametrize("mode", [0o600, 0o400])
+@pytest.mark.parametrize("hosts", ["upcloud:prod", "upcloud:prod,hetzner:prod"])
+def test_emit_singbox_uses_explicit_plaintext_without_sops(tmp_path, mode, hosts):
+    plaintext, env = _plaintext_emitter(tmp_path, mode=mode)
+    env["HOSTS"] = hosts
+    before = plaintext.read_bytes()
+    result = _run_plaintext_emitter(env)
+    assert result.returncode == 0, result.stderr
+    outbounds = json.loads(result.stdout)["outbounds"]
+    passwords = [item["password"] for item in outbounds if item.get("type") == "hysteria2"]
+    assert passwords == ["laptop:authoritative-plaintext-password"] * len(hosts.split(","))
+    assert "unexpected decrypt" not in Path(env["STUB_LOG"]).read_text()
+    assert plaintext.read_bytes() == before
+    assert plaintext.stat().st_mode & 0o777 == mode
+    assert not list(Path(env["TMPDIR"]).iterdir())
+
+
+@pytest.mark.parametrize("kind", ["missing", "symlink", "directory", "fifo", "loose", "yaml", "empty"])
+def test_emit_singbox_rejects_invalid_plaintext_without_fallback(tmp_path, kind):
+    plaintext, env = _plaintext_emitter(tmp_path)
+    if kind in {"missing", "symlink", "directory", "fifo"}:
+        plaintext.unlink()
+    if kind == "symlink":
+        target = tmp_path / "symlink-target.yaml"
+        target.write_text("{}")
+        target.chmod(0o600)
+        plaintext.symlink_to(target)
+    elif kind == "directory":
+        plaintext.mkdir()
+    elif kind == "fifo":
+        os.mkfifo(plaintext, 0o600)
+    elif kind == "loose":
+        plaintext.chmod(0o644)
+    elif kind == "yaml":
+        plaintext.write_text('private-value: [secret-content-marker')
+    elif kind == "empty":
+        env["VPN_SECRETS_FILE"] = ""
+    result = _run_plaintext_emitter(env)
+    assert result.returncode != 0
+    assert "plaintext secrets" in result.stderr
+    assert str(plaintext) not in result.stdout + result.stderr
+    assert "secret-content-marker" not in result.stdout + result.stderr
+    assert not Path(env["STUB_LOG"]).exists(), "must fail before decrypt or terraform"
+    assert not list(Path(env["TMPDIR"]).iterdir())
+
+
+def test_emit_singbox_rejects_plaintext_and_per_host_sops_sources(tmp_path):
+    _, env = _plaintext_emitter(tmp_path)
+    env["SOPS_FILES"] = env["SOPS_FILE"]
+    result = _run_plaintext_emitter(env)
+    assert result.returncode != 0
+    assert "SOPS_FILES" in result.stderr
+    assert not Path(env["STUB_LOG"]).exists()
+
+
+def test_make_decrypt_then_emit_singbox_decrypts_exactly_once(tmp_path):
+    plaintext, env = _plaintext_emitter(tmp_path)
+    source = tmp_path / "source.yaml"
+    source.write_bytes(plaintext.read_bytes())
+    plaintext.unlink()
+    env.pop("VPN_SECRETS_FILE")
+    (tmp_path / "bin/sops").write_text(
+        '#!/bin/sh\nprintf "decrypt\\n" >> "$STUB_LOG"\ncat "$SOPS_FILE"\n'
+    )
+    args = [
+        "make", "--no-print-directory", f"SECRETS_FILE={plaintext}",
+        f"SOPS_FILE={source}", "HOSTS=", "SOPS_FILES=", "CLIENT=laptop",
+    ]
+    decrypt = subprocess.run(
+        [*args, "decrypt"], env=env, cwd=REPO_ROOT, capture_output=True, text=True,
+        timeout=20,
+    )
+    assert decrypt.returncode == 0, decrypt.stderr
+    # Prove the emitter needs neither the encrypted input nor another decrypt.
+    source.unlink()
+    emitted = subprocess.run(
+        [*args, "emit-singbox"], env=env, cwd=REPO_ROOT, capture_output=True, text=True,
+        timeout=20,
+    )
+    assert emitted.returncode == 0, emitted.stderr
+    assert json.loads(emitted.stdout)["outbounds"]
+    assert Path(env["STUB_LOG"]).read_text().splitlines().count("decrypt") == 1
+
+
+def test_make_emit_singbox_rejects_missing_explicit_plaintext(tmp_path):
+    plaintext, env = _plaintext_emitter(tmp_path)
+    plaintext.unlink()
+    env.pop("VPN_SECRETS_FILE")
+    result = subprocess.run(
+        ["make", "--no-print-directory", "emit-singbox", "CLIENT=laptop",
+         f"SECRETS_FILE={plaintext}", "SOPS_FILES="],
+        env=env, cwd=REPO_ROOT, capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode != 0
+    assert "plaintext secrets" in result.stderr
+    assert str(plaintext) not in result.stdout + result.stderr
+    assert not Path(env["STUB_LOG"]).exists()
+
 
 def test_emit_singbox_json_structure(tmp_path):
     """emit-singbox.sh laptop emits valid JSON with outbounds, route, dns."""

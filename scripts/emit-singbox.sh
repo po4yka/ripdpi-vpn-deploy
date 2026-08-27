@@ -16,6 +16,8 @@
 # Per-host SOPS files: by default each pair uses
 # ~/.config/vpn-provision/<ENV>.secrets.sops.yaml. Override with SOPS_FILE
 # (single shared file) or SOPS_FILES (comma-separated, one per host).
+# VPN_SECRETS_FILE instead supplies one protected plaintext YAML document shared
+# by all hosts. It is authoritative and cannot be combined with SOPS_FILES.
 #
 # Client uTLS fingerprint (REALITY + XHTTP outbounds; Hysteria2's QUIC TLS has
 # no uTLS knob): per-profile via group_vars `xray_utls_fingerprint` (declared in
@@ -57,7 +59,14 @@ done
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-for tool in sops terraform jq python3; do
+tools=(terraform jq python3)
+if [[ ! ${VPN_SECRETS_FILE+x} ]]; then
+  tools+=(sops)
+elif [[ -n "${SOPS_FILES:-}" ]]; then
+  echo "plaintext secrets cannot be combined with SOPS_FILES" >&2
+  exit 1
+fi
+for tool in "${tools[@]}"; do
   command -v "$tool" >/dev/null 2>&1 || { echo "missing: $tool" >&2; exit 1; }
 done
 
@@ -163,10 +172,42 @@ toggle_enabled() {
     <<< "$config_json"
 }
 
-# Each host's secrets get decrypted to its own tempfile; cleaned on exit.
+# All temporary materializations are private and cleaned on exit.
 umask 0077
 WORK="$(mktemp -d -t vpn-singbox.XXXXXX)"
 trap 'find "$WORK" -type f -exec shred -u {} \; 2>/dev/null; rm -rf "$WORK"' EXIT
+
+# Read once through the permission-checked descriptor, then share the JSON
+# snapshot across hosts. Never fall back to SOPS for a rejected explicit path.
+if [[ ${VPN_SECRETS_FILE+x} ]]; then
+  python3 - > "${WORK}/shared-secrets.json" <<'PY'
+import json
+import os
+import stat
+import sys
+
+import yaml
+
+try:
+    descriptor = os.open(
+        os.environ["VPN_SECRETS_FILE"],
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+    )
+    with os.fdopen(descriptor, encoding="utf-8") as handle:
+        metadata = os.fstat(handle.fileno())
+        if (not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_uid != os.getuid()
+                or metadata.st_mode & 0o077):
+            raise ValueError("unsafe plaintext")
+        document = yaml.safe_load(handle)
+    if not isinstance(document, dict):
+        raise ValueError("expected a secrets mapping")
+    payload = json.dumps(document)
+except (OSError, ValueError, TypeError, yaml.YAMLError):
+    sys.exit("cannot read plaintext secrets: require a current-owner private regular YAML file")
+sys.stdout.write(payload)
+PY
+fi
 
 OUTBOUNDS='[]'
 SNELL_TAGS='[]'
@@ -176,27 +217,31 @@ for i in "${!host_pairs[@]}"; do
   prov="${pair%:*}"
   env="${pair#*:}"
 
-  # Pick the right SOPS file for this host
-  if [[ -n "${SOPS_FILES:-}" ]]; then
-    sops_file="${sops_per_host[$i]:-}"
-    if [[ -z "$sops_file" ]]; then
-      echo "missing SOPS_FILES entry for ${prov}:${env}" >&2
+  if [[ ${VPN_SECRETS_FILE+x} ]]; then
+    secrets_tmp="${WORK}/shared-secrets.json"
+    sops_file="the protected plaintext input"
+  else
+    # Direct script users may still select one encrypted source per host.
+    if [[ -n "${SOPS_FILES:-}" ]]; then
+      sops_file="${sops_per_host[$i]:-}"
+      if [[ -z "$sops_file" ]]; then
+        echo "missing SOPS_FILES entry for ${prov}:${env}" >&2
+        exit 1
+      fi
+    elif [[ -n "${SOPS_FILE:-}" ]]; then
+      sops_file="$SOPS_FILE"
+    else
+      sops_file="${HOME}/.config/vpn-provision/${env}.secrets.sops.yaml"
+    fi
+
+    if [[ ! -f "$sops_file" ]]; then
+      echo "missing $sops_file (for ${prov}:${env})" >&2
       exit 1
     fi
-  elif [[ -n "${SOPS_FILE:-}" ]]; then
-    sops_file="$SOPS_FILE"
-  else
-    sops_file="${HOME}/.config/vpn-provision/${env}.secrets.sops.yaml"
+    secrets_tmp="${WORK}/secrets-${i}.json"
+    sops --decrypt --output-type json "$sops_file" > "$secrets_tmp"
+    chmod 0600 "$secrets_tmp"
   fi
-
-  if [[ ! -f "$sops_file" ]]; then
-    echo "missing $sops_file (for ${prov}:${env})" >&2
-    exit 1
-  fi
-
-  secrets_tmp="${WORK}/secrets-${i}.json"
-  sops --decrypt --output-type json "$sops_file" > "$secrets_tmp"
-  chmod 0600 "$secrets_tmp"
 
   server_ip="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
   server_hostname="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_hostname 2>/dev/null || true)"
