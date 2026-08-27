@@ -98,6 +98,9 @@ impl Cmd {
         }
 
         let mut cmd = Command::new(&self.program);
+        // Dropping a spawned Cmd (timeout, cancellation) must not orphan the
+        // child: probe-matrix cells run unattended for hours.
+        cmd.kill_on_drop(true);
         cmd.args(self.args.iter());
         for (k, v) in &self.env {
             cmd.env(k, v);
@@ -128,7 +131,10 @@ impl Cmd {
         }
 
         let mut cmd = Command::new(&self.program);
-        cmd.args(self.args.iter())
+        // Same orphan-prevention contract as run(): dropped futures must kill
+        // the child, not leave it probing in the background.
+        cmd.kill_on_drop(true)
+            .args(self.args.iter())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
         for (k, v) in &self.env {

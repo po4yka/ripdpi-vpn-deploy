@@ -55,6 +55,11 @@ separately-managed cert when the operator splits hostnames.
   UpCloud/Hetzner/Vultr default closed. The Ansible firewall role opens
   it inside the VM, but the cloud firewall is a separate layer; the
   Terraform provider must include the rule.
+- **Shared-cert renewal restarts realm only via its own converge** — the
+  symlink to the hysteria cert dir is stable, so Ansible sees no change when
+  only the underlying PEM rotates; a hysteria-side restart does not reach
+  this service. Re-run the realm role (or restart it manually) after
+  rotating shared TLS material.
 - **Hole-punch failure is silent at this tier** — if NAT mapping
   collapses between rendezvous and data-plane setup, the client sees a
   timeout, not a server-side error. Logs here will show a successful

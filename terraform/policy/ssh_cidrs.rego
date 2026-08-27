@@ -11,7 +11,8 @@ package terraform.policy.ssh_cidrs
 # Provider-specific checks:
 #
 #   upcloud_firewall_rules — firewall_rule blocks for var.ssh_port/tcp must have
-#     source_address_start matching a network address from allowed_ssh_cidrs.
+#     source_address_start inside a network from allowed_ssh_cidrs (structural
+#     check; the rule comment is not trusted).
 #
 #   hcloud_firewall — rule blocks for var.ssh_port/tcp must have all source_ips
 #     members present in allowed_ssh_cidrs.
@@ -27,13 +28,11 @@ allowed_cidrs := {cidr | cidr := input.variables.allowed_ssh_cidrs.value[_]}
 ssh_port := sprintf("%v", [input.variables.ssh_port.value])
 
 # upcloud: each SSH accept rule source must be within an allowed CIDR.
-# We compare source_address_start to the network address of each allowed CIDR.
-# Conftest/OPA does not have a native CIDR-contains function, so we verify
-# that the source_address_start appears as a key in our allowed set when
-# normalised to /32 or /128 notation, OR that the comment field names the CIDR.
-# The most reliable signal available in the plan JSON is the comment field,
-# which the TF code sets to "SSH allow <cidr>".
-
+# Evaluation is structural — the comment is not trusted: a missing or
+# reworded comment must not bypass the gate, because conftest is the only
+# offline enforcement point for this provider. A source passes when it is
+# exactly listed in var.allowed_ssh_cidrs or falls inside one of those
+# networks (net.cidr_contains accepts both bare hosts and nested CIDRs).
 deny[msg] {
   rc := input.resource_changes[_]
   rc.type == "upcloud_firewall_rules"
@@ -43,16 +42,22 @@ deny[msg] {
   rule.protocol == "tcp"
   rule.destination_port_start == ssh_port
 
-  # Extract the CIDR from the comment ("SSH allow <cidr>")
-  comment := rule.comment
-  startswith(comment, "SSH allow ")
-  cidr := substring(comment, count("SSH allow "), -1)
-  not allowed_cidrs[cidr]
+  source := rule.source_address_start
+  not upcloud_source_allowed(source)
 
   msg := sprintf(
-    "resource %q: SSH allow rule for CIDR %q is not in var.allowed_ssh_cidrs",
-    [rc.address, cidr],
+    "resource %q: SSH allow rule source %q is not in var.allowed_ssh_cidrs",
+    [rc.address, source],
   )
+}
+
+upcloud_source_allowed(source) {
+  allowed_cidrs[source]
+}
+
+upcloud_source_allowed(source) {
+  cidr := allowed_cidrs[_]
+  net.cidr_contains(cidr, source)
 }
 
 # scaleway: each SSH inbound rule must use a documented CIDR.
