@@ -411,6 +411,21 @@ jobs:
           echo "${SING_BOX_CLIENT_LINUX_AMD64_SHA256}  /tmp/${archive}" | sha256sum -c -
           tar -xzf "/tmp/${archive}" -C /tmp
           sudo install -m 0755 "/tmp/sing-box-${version}-linux-amd64/sing-box" /usr/local/bin/sing-box
+      - name: Install checksum-verified Conftest for policy regression tests
+        env:
+          CONFTEST_VERSION: "0.57.0"
+          CONFTEST_SHA256: db1018a7e301cada4d4bd8a70880a13314daae27b3f4d409c7ffba1847718392
+        run: |
+          archive="$RUNNER_TEMP/conftest.tar.gz"
+          bin_dir="$RUNNER_TEMP/conftest-bin"
+          curl -fsSL --connect-timeout 5 --max-time 60 \
+            "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
+            -o "$archive"
+          echo "${CONFTEST_SHA256}  ${archive}" | sha256sum -c -
+          mkdir -p "$bin_dir"
+          tar -xzf "$archive" -C "$bin_dir" conftest
+          sudo install -m 0755 "$bin_dir/conftest" /usr/local/bin/conftest
+          conftest --version
       - name: Run real pinned sing-box check
         run: python3 scripts/check-singbox-client-compatibility.py --expected-version "${SING_BOX_CLIENT_VERSION}"
       - name: pytest tests/unit/

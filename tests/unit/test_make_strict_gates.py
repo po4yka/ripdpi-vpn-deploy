@@ -22,6 +22,7 @@ def test_validate_checks_every_provider_and_ci_fast_has_no_tool_skips():
         "zizmor-check",
         "cloud-init-schema",
         "tf-test",
+        "tf-policy-verify",
         "yamllint-check",
         "shellcheck",
         "vpnd-deny",
@@ -210,3 +211,14 @@ def test_clean_reports_failure_when_secret_cannot_be_removed(tmp_path):
     assert "shredded" not in result.stdout
     assert "failed to remove decrypted secrets" in result.stderr
     assert str(secrets) not in result.stdout + result.stderr
+
+
+def test_local_policy_gate_propagates_a_real_policy_failure(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    policy = tmp_path / 'terraform/policy'
+    policy.mkdir(parents=True)
+    (policy / 'failing_test.rego').write_text('package regression\ntest_deliberate_failure { false }\n')
+    result = subprocess.run(['make', '--no-print-directory', '-f', str(root / 'Makefile'),
+                             'tf-policy-verify'], cwd=tmp_path, capture_output=True, text=True, timeout=10)
+    assert result.returncode != 0
+    assert '1 failure' in result.stdout + result.stderr
