@@ -100,16 +100,50 @@ def test_slot_exhaustion_drops_are_counted_and_exported(
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.bind(("127.0.0.1", 0))
     listener.listen(4)
+    listener.settimeout(0.1)
     port = listener.getsockname()[1]
 
-    loop = threading.Thread(target=honeypot._accept_loop, args=(listener,), daemon=True)
+    loop_errors: list[Exception] = []
+    stop = threading.Event()
+
+    class StopAcceptLoop(Exception):
+        """Test-only termination, raised before closing the real listener."""
+
+    class StoppableListener:
+        def getsockname(self):
+            return listener.getsockname()
+
+        def accept(self):
+            while not stop.is_set():
+                try:
+                    return listener.accept()
+                except socket.timeout:
+                    continue
+            raise StopAcceptLoop
+
+    def run_loop() -> None:
+        try:
+            honeypot._accept_loop(StoppableListener())
+        except StopAcceptLoop:
+            pass
+        except Exception as error:
+            loop_errors.append(error)
+
+    loop = threading.Thread(target=run_loop, daemon=True)
     loop.start()
-    client = socket.create_connection(("127.0.0.1", port), timeout=2)
+    client = None
     try:
+        client = socket.create_connection(("127.0.0.1", port), timeout=2)
         time.sleep(0.4)
     finally:
-        client.close()
+        if client is not None:
+            client.close()
+        stop.set()
+        loop.join(timeout=2)
         listener.close()
+
+    assert not loop.is_alive(), "accept thread leaked beyond fixture teardown"
+    assert not loop_errors, f"accept thread failed during fixture teardown: {loop_errors}"
 
     assert honeypot._slot_exhaustion_drops == 1
 
