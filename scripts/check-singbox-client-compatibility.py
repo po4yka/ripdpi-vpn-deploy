@@ -84,7 +84,7 @@ def render_profile(directory: Path) -> Path:
             "STUB_LOG": str(directory / "stub.log"),
         }
     )
-    for variable in ("HOSTS", "SOPS_FILES", "COHORTS", "PROVIDER", "ENV"):
+    for variable in ("HOSTS", "SOPS_FILES", "COHORTS", "PROVIDER", "ENV", "VPN_SECRETS_FILE"):
         environment.pop(variable, None)
 
     rendered = run(["bash", str(EMITTER), "laptop"], environment=environment)
