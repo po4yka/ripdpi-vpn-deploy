@@ -51,7 +51,13 @@ case "$target" in
       SECRETS_FILE="$secret" SOPS_FILE="$SOPS_FIXTURE" bash "$SCRIPT_DECRYPT"
     else
       mkdir -p "$(dirname "$secret")"; printf 'fixture: true\n' > "$secret"; chmod 0600 "$secret"
-    fi ;;
+    fi
+    case "${HARDEN_TEST_MODE:-regular}" in
+      missing) rm -f "$secret" ;;
+      directory) rm -f "$secret"; mkdir "$secret" ;;
+      symlink) rm -f "$secret"; ln -s "$FIXTURE_ROOT/hardening-target" "$secret" ;;
+      immutable) /usr/bin/chflags uchg "$secret" ;;
+    esac ;;
   clean) rm -f "$secret"; exit "${CLEAN_EXIT:-0}" ;;
   test-tls-policing) test "$host" = 203.0.113.5 ;;
   emit-singbox) printf '%s\n' '{"outbounds":[]}' ;;
@@ -269,4 +275,82 @@ fn share_without_xdg_decrypts_once_through_the_canonical_script() {
         .join("vpn-test.secrets.yaml");
     assert!(plaintext.is_file());
     assert!(fixture.dir.path().join("share/phone/index.html").is_file());
+}
+
+#[test]
+fn every_decrypting_caller_stops_at_an_unsafe_or_missing_plaintext_file() {
+    for args in [
+        vec!["share", "phone", "--token-file", "unused"],
+        vec!["preflight"],
+        vec!["reconverge"],
+    ] {
+        for mode in ["missing", "directory", "symlink"] {
+            let fixture = Fixture::new();
+            let target = fixture.dir.path().join("hardening-target");
+            std::fs::write(&target, "not a secret\n").unwrap();
+            std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
+            let output = fixture
+                .command(&args)
+                .env("HARDEN_TEST_MODE", mode)
+                .output()
+                .unwrap();
+            assert!(!output.status.success(), "{args:?}: {mode}");
+            assert!(String::from_utf8_lossy(&output.stderr).contains("failed to set 0600"));
+            assert_eq!(
+                target.metadata().unwrap().permissions().mode() & 0o777,
+                0o644
+            );
+            let calls = fixture.calls();
+            assert!(
+                !calls.contains("make init")
+                    && !calls.contains("make validate-secrets")
+                    && !calls.contains("make emit-singbox")
+            );
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn every_decrypting_caller_propagates_a_real_fd_chmod_failure() {
+    struct ClearImmutable(std::path::PathBuf);
+    impl Drop for ClearImmutable {
+        fn drop(&mut self) {
+            let _ = Command::new("/usr/bin/chflags")
+                .arg("nouchg")
+                .arg(&self.0)
+                .status();
+        }
+    }
+    for args in [
+        vec!["share", "phone", "--token-file", "unused"],
+        vec!["preflight"],
+        vec!["reconverge"],
+    ] {
+        let fixture = Fixture::new();
+        let _clear = ClearImmutable(fixture.secrets());
+        let output = fixture
+            .command(&args)
+            .env("HARDEN_TEST_MODE", "immutable")
+            .output()
+            .unwrap();
+        assert!(Command::new("/usr/bin/chflags")
+            .arg("nouchg")
+            .arg(fixture.secrets())
+            .status()
+            .unwrap()
+            .success());
+        assert!(!output.status.success(), "{args:?}");
+        let error = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            error.contains("set 0600 on protected file descriptor"),
+            "{error}"
+        );
+        let calls = fixture.calls();
+        assert!(
+            !calls.contains("make init")
+                && !calls.contains("make validate-secrets")
+                && !calls.contains("make emit-singbox")
+        );
+    }
 }

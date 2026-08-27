@@ -31,6 +31,8 @@ Doctor-derived exports (bundle tarball and AI prompt output/clipboard) MUST mask
 
 Failure to set 0600 on the freshly decrypted file MUST abort the calling subcommand with a clear error, and the secrets/token permission gate MUST evaluate type, owner, and mode from the same open file handle that is subsequently read.
 
+Opening MUST atomically refuse a final-component symlink and MUST NOT block on a FIFO. Hardening MUST operate on the held descriptor and reject missing files. Private read-only regular files owned by the current user remain valid read inputs.
+
 #### Scenario: chmod fails after decrypt
 
 - **WHEN** set_permissions cannot apply 0600 after a successful decrypt
@@ -40,3 +42,13 @@ Failure to set 0600 on the freshly decrypted file MUST abort the calling subcomm
 
 - **WHEN** the secrets path is replaced by a symlink after initial stat
 - **THEN** the open-handle gate rejects the swapped file instead of reading it
+
+#### Scenario: Missing decrypted output
+
+- **WHEN** decrypt reports success but its expected plaintext file is absent
+- **THEN** share, preflight, or reconverge exits nonzero before consuming the file
+
+#### Scenario: Token file has a foreign owner
+
+- **WHEN** a token file is a regular private file owned by another UID
+- **THEN** token loading refuses it before parsing its contents

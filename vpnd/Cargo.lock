@@ -1894,6 +1894,7 @@ dependencies = [
  "percent-encoding",
  "proptest",
  "qrcode",
+ "rustix 1.1.4",
  "serde",
  "serde_json",
  "serde_yaml_ng",

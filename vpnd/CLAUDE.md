@@ -68,6 +68,10 @@ against `^[A-Za-z0-9_-]+$` before use.
   triggering it.
 - **Runtime plaintext is volatile** — use `XDG_RUNTIME_DIR` or a user-specific
   temporary directory, never a persistent cache. Make receives this exact path.
+- **Secret/token file gates share `protected_file`** — rustix opens with
+  `NOFOLLOW|NONBLOCK`, then validates the regular-file type and current UID on
+  the held descriptor. Read only after private-mode validation; harden through
+  the descriptor, never through the path. Missing plaintext is an error.
 - **Ansible limits match inventory keys, not `ansible_host`** — resolve the
   `vpn` inventory group with env/provider and `vpn_service_address`, then use
   validated exact host keys. Reject missing or ambiguous registry matches.

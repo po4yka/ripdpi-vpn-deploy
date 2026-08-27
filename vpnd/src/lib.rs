@@ -3,6 +3,7 @@ pub mod commands;
 pub mod config;
 pub mod docs_bundle;
 pub mod pages;
+mod protected_file;
 pub mod runner;
 pub mod secrets;
 pub mod state;
