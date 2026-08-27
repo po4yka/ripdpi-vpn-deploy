@@ -2,7 +2,7 @@
 id: SEC-1787496881680472
 title: Establish single-owner sshd configuration layers
 kind: bug
-status: doing
+status: blocked
 area: security
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: sec-1787496881680472-sshd-config-ownership
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
+status_detail: Runtime implementation is committed separately on codex/complete-high-review at 374b5f7 and is not included in this main integration. Accessible nodes and the required live/staging acceptance are missing; all three matching inventory server peers are offline. OPS additionally requires live-inventory dry-run BEFORE MERGE.
 ---
 
 ## Goal

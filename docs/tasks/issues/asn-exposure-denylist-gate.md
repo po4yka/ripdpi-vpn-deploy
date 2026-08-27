@@ -2,18 +2,19 @@
 id: ANS-1786277767052693
 title: Implement a disabled-by-default network exposure denylist gate
 kind: feature
-status: backlog
+status: blocked
 area: ansible
 priority: high
 risk: high
 owner: Infrastructure security role
 parent: null
 blocked_by: []
-related_tasks: []
 spec_mode: required
 openspec_change: ans-1786277767052693-add-network-exposure-denylist-gate
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-27
+related_tasks: []
+status_detail: Runtime implementation is committed separately on codex/complete-high-review at 374b5f7 and is not included in this main integration. Accessible nodes and the required live/staging acceptance are missing; all three matching inventory server peers are offline. OPS additionally requires live-inventory dry-run BEFORE MERGE.
 ---
 
 # Implement a disabled-by-default network exposure denylist gate

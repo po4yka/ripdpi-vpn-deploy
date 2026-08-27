@@ -2,7 +2,7 @@
 id: OPS-1787496414433523
 title: "Harden deploy-path integrity: guards, rollback, rotation"
 kind: bug
-status: backlog
+status: blocked
 area: operations
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: ops-1787496414433523-deploy-path-integrity
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-27
 related_tasks: []
+status_detail: Runtime implementation is committed separately on codex/complete-high-review at 374b5f7 and is not included in this main integration. Accessible nodes and the required live/staging acceptance are missing; all three matching inventory server peers are offline. OPS additionally requires live-inventory dry-run BEFORE MERGE.
 ---
 
 ## Goal
