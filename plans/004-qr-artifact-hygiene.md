@@ -142,3 +142,12 @@ Static contract tests as above. Runtime behavior is exercised only with real cre
 
 - Custom `--out /path/name.png` outputs bypass the `*.qr.png` ignore rule by design; the maintainer may later want a louder warning when the custom path lives inside the repo tree.
 - If QR generation ever moves into Python, preserve both guards there; the static greps in this plan's verification will need updating alongside.
+
+## Implementation refinement (2026-08-27)
+
+The legacy-output regression proved that umask plus post-write chmod leaves an
+existing 0644 output exposed during overwrite. File output now renders into an
+exclusive mode-0600 temporary file beside the destination and uses os.replace
+only after successful encoding. The subshell cleanup trap preserves the issuer
+registry cleanup trap and removes only its own temporary file. Standard output
+is unchanged. Real script-path tests cover both fresh and legacy 0644 outputs.

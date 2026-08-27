@@ -19,6 +19,9 @@
 # server returns 410 once the date passes even before any fetch.
 set -euo pipefail
 
+# QR payloads contain credentials; create them owner-only.
+umask 077
+
 CLIENT="${1:-}"
 [[ "$CLIENT" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || { echo "client name must contain only letters, digits, underscores, or dashes" >&2; exit 1; }
 [[ -n "$CLIENT" && "$CLIENT" != "-h" && "$CLIENT" != "--help" ]] || {
@@ -101,7 +104,14 @@ if (( EMIT_QR )); then
   command -v qrencode >/dev/null 2>&1 || {
     echo "qrencode not installed; skip --qr" >&2; exit 0; }
   qr_out="${CLIENT}.bootstrap.qr.png"
-  echo "$url" | qrencode -t PNG -o "$qr_out"
+  # Replace atomically so legacy 0644 files never expose the new payload.
+  (
+    qr_tmp="$(mktemp "${qr_out}.XXXXXX")"
+    trap 'rm -f "$qr_tmp"' EXIT
+    echo "$url" | qrencode -t PNG -o "$qr_tmp"
+    chmod 0600 "$qr_tmp"
+    python3 -c 'import os, sys; os.replace(sys.argv[1], sys.argv[2])' "$qr_tmp" "$qr_out"
+  )
   echo "  * QR rendered: $qr_out"
 fi
 
