@@ -79,6 +79,9 @@ against `^[A-Za-z0-9_-]+$` before use.
   not just make. Interactive `run()` keeps terminal signal behavior.
 - **Probe evidence is durable and conservative** — per-tick JSON + JSONL, explicit
   completed/interrupted state, Unknown/Error never extends impairment windows.
+  Journal and stable empty 0600 OS-lock companions append `.jsonl`/`.lock` to
+  the full filename; never unlink an active lock. Extensions must be ASCII
+  and must not use either reserved suffix (case-insensitive).
 - **Ansible limits match inventory keys, not `ansible_host`** — resolve the
   `vpn` inventory group with env/provider and `vpn_service_address`, then use
   validated exact host keys. Reject missing or ambiguous registry matches.

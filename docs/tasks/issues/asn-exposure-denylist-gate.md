@@ -6,7 +6,7 @@ status: blocked
 area: ansible
 priority: high
 risk: high
-owner: network-exposure-implementation
+owner: primary
 parent: null
 blocked_by: []
 spec_mode: required
@@ -14,7 +14,7 @@ openspec_change: ans-1786277767052693-add-network-exposure-denylist-gate
 created: 2026-08-09
 updated: 2026-08-27
 related_tasks: []
-status_detail: Implementation committed; native Linux Molecule, operator-reviewed signed artifact, non-mutating real-inventory review and staging promotion/rollback evidence remain pending. Local container lacked working netlink; no approved staging target is available.
+status_detail: Native Linux exposure and firewall Molecule scenarios passed. Still blocked on the operator-reviewed signed artifact, real-inventory non-mutating review, and approved staging promotion/rollback; no main integration.
 ---
 
 # Implement a disabled-by-default network exposure denylist gate

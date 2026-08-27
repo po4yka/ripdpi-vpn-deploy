@@ -6,7 +6,7 @@ status: blocked
 area: vpnd
 priority: high
 risk: high
-owner: vpnd implementation
+owner: primary
 parent: null
 blocked_by: []
 spec_mode: required
@@ -14,7 +14,7 @@ openspec_change: vpd-1787497252303967-vpnd-probe-matrix-robust-evidence
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
-status_detail: Source and regression tests implemented; approved staging and live protocol-matrix observations remain unavailable. Three inventory server peers are offline; synthetic process tests are not live path evidence.
+status_detail: Source and 178-test debug/release suites passed, including concurrent journal ownership and crash-safe OS locks. Schema 3 awaits RIPDPI vendored synchronization and staging/live evidence; all three matching inventory peers remain offline. Implementation is withheld from main.
 ---
 
 ## Goal

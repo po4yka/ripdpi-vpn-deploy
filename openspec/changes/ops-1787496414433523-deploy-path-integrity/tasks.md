@@ -24,7 +24,7 @@ The canonical deploy path enforces its own guarantees on every invocation shape:
 - [x] OPS-1787496118906821 Align every playbook inline enable_* default with group_vars/all.yml (hysteria/amneziawg true, nginx_xhttp true uniformly); add a pytest parity check over playbooks vs all.yml #bug !low @item:OPS-1787496414433523
 - [x] OPS-1787496118906614 Run the apt dist-upgrade simulation under LC_ALL=C so the residual-backlog assertion is locale-independent #bug !low @item:OPS-1787496414433523
 - [x] OPS-1787496118906731 Declare enable_cascade_ingress/enable_cascade_egress (default false) in group_vars/all.yml alongside the other toggles with a governance pointer comment #chore !low @item:OPS-1787496414433523
-- [ ] OPS-1787496118907122 Extend tests/unit with named cases: tagged-guard execution, renderer slug/collision rejection, rollback ordering, rotation .prev creation, toggle-default parity; then make ci-fast and make validate #test !high @item:OPS-1787496414433523
+- [x] OPS-1787496118907122 Extend tests/unit with named cases: tagged-guard execution, renderer slug/collision rejection, rollback ordering, rotation .prev creation, toggle-default parity; then make ci-fast and make validate #test !high @item:OPS-1787496414433523
 
 ## Verification
 

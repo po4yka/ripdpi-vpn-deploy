@@ -6,7 +6,7 @@ status: blocked
 area: testing
 priority: high
 risk: standard
-owner: Ansible implementation
+owner: primary
 parent: null
 blocked_by: []
 spec_mode: required
@@ -14,7 +14,7 @@ openspec_change: tst-1787497001212692-verification-truthfulness
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
-status_detail: Implementation committed; hosted native Linux scenario results and live verify/source-drift cycle remain pending. Local fixtures prove command and cleanup semantics only; all three matching server peers are offline.
+status_detail: "Both native full-stack variants and real AWG role convergence passed. The required live verify/source-drift cycle remains unavailable: all three matching inventory peers are offline."
 ---
 
 ## Goal

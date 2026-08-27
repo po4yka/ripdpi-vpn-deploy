@@ -14,7 +14,7 @@ openspec_change: ops-1787496414433523-deploy-path-integrity
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
-status_detail: "Implementation committed; mandatory live-inventory dry-run BEFORE MERGE and deploy/rotation/rollback rehearsal unavailable: all three matching server peers are offline. This change is not eligible for main integration."
+status_detail: Source and local/native CI regressions passed. The mandatory live-inventory dry-run BEFORE MERGE and deploy/rotation/rollback rehearsal are unavailable; this change is not eligible for main integration.
 ---
 
 ## Goal

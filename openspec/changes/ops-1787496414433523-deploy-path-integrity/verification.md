@@ -5,7 +5,7 @@ commit_sha: null
 local: required
 local_evidence: null
 remote_ci: required
-remote_ci_evidence: null
+remote_ci_evidence: "Pre-merge implementation candidate 5581b6fa31efa01fc11d3c136ba32f558bf8f4af passed CI run 33080350367, all 53 jobs including both full-stack variants, baseline on both distributions, AWG, exposure and firewall. The specification still requires final merge-SHA evidence after the external acceptance blockers are satisfied."
 dry_run: blocked
 dry_run_evidence: "Implementation committed; mandatory live-inventory dry-run BEFORE MERGE and deploy/rotation/rollback rehearsal unavailable: all three matching server peers are offline. This change is not eligible for main integration."
 staging: not_applicable
@@ -52,5 +52,6 @@ artifact_evidence: no build artifacts produced by this change
 strict Ansible lint, Rust MSRV and dependency checks, and 172 release tests.
 The subsequent QR legacy-output regression slice passed 28 tests; full-stack
 fixture guards passed for both inventories and the 14-test verification slice
-passed with inherited privilege escalation enabled. Native Linux Molecule and
-real staging/live acceptance are separate, still-required evidence.
+passed with inherited privilege escalation enabled. Native Linux Molecule subsequently passed in run 33080350367 on exact
+5581b6fa31efa01fc11d3c136ba32f558bf8f4af (all 53 jobs). Real staging/live
+acceptance and final merge-SHA verification remain separate requirements.

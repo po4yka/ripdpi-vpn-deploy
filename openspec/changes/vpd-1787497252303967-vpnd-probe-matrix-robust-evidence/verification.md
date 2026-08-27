@@ -1,9 +1,9 @@
 ---
 task_id: VPD-1787497252303967
 change: vpd-1787497252303967-vpnd-probe-matrix-robust-evidence
-commit_sha: null
-local: required
-local_evidence: ""
+commit_sha: 9ed66db442c3862b9af028f07887bac804eda6b1
+local: passed
+local_evidence: "Exact journal-fix source 9ed66db442c3862b9af028f07887bac804eda6b1 passed 178 debug and 178 release tests, strict Clippy, MSRV 1.88, formatting, and independent review. Real concurrent sessions, crash lock release, unsafe locks, and Unicode suffix aliases were exercised."
 remote_ci: required
 remote_ci_evidence: ""
 dry_run: not_applicable
@@ -12,10 +12,10 @@ staging: blocked
 staging_evidence: "Source and regression tests implemented; approved staging and live protocol-matrix observations remain unavailable. Three inventory server peers are offline; synthetic process tests are not live path evidence."
 live: blocked
 live_evidence: "Source and regression tests implemented; approved staging and live protocol-matrix observations remain unavailable. Three inventory server peers are offline; synthetic process tests are not live path evidence."
-client: not_applicable
-client_evidence: client emitters unaffected
+client: blocked
+client_evidence: "The report schema 3 must be synchronized to the RIPDPI vendored contract before main integration. The schema migration remains withheld from PR 109."
 artifact: not_applicable
-artifact_evidence: report JSON consumed in place, no artifact contracts
+artifact_evidence: No release artifact is published; report schema validation belongs to local and client evidence.
 ---
 
 # Verification
