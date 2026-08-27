@@ -59,6 +59,8 @@ output/
 tmp/
 vpnd/state/
 vpnd/config/*.yaml
+# Tasking toolchain dependencies (reproducible via make task-tools)
+tools/tasking/node_modules/
 
 # OS
 .DS_Store
