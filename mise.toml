@@ -18,6 +18,9 @@
 # hashicorp/setup-terraform@v4 with terraform_version: "1.15.2" in ci.yml
 terraform = "1.15.2"
 
+# Checksum-pinned version in .github/workflows/tf-policy.yml.
+conftest = "0.57.0"
+
 # actions/setup-python with python-version: "3.12" in ci.yml.
 # After `mise install`, run `pip install -r requirements.txt` to get the
 # pinned ansible-core / ansible-lint / yamllint into this interpreter.

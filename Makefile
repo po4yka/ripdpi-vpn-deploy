@@ -43,7 +43,7 @@ export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CON
         awg-evidence-provision \
         test-unit snapshot-check snapshot-update validate-secrets \
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
-        ci-fast bats-test vpnd-test vpnd-clippy vpnd-deny vpnd-msrv vpnd-mutants tf-policy \
+        ci-fast bats-test vpnd-test vpnd-clippy vpnd-deny vpnd-msrv vpnd-mutants tf-policy tf-policy-verify \
         task-tools task-check task-list task-ready task-graph task-federation \
         check
 
@@ -165,6 +165,7 @@ help:
 	@echo "  vpnd-deny                  cargo-deny policy against the committed lockfile"
 	@echo "  vpnd-msrv                  cargo check --locked with Rust 1.88.0"
 	@echo "  tf-policy                  terraform test + conftest OPA policy check for all providers"
+	@echo "  tf-policy-verify           Run pinned Conftest policy tests without provider credentials"
 	@echo "  molecule-test ROLE=<name>  Run one role's molecule scenario"
 	@echo "  molecule-full-stack        site.yml end-to-end inside a Docker container"
 
@@ -446,6 +447,10 @@ tf-test:
 	  terraform -chdir=terraform/providers/$$provider test || exit 1; \
 	done
 
+tf-policy-verify:
+	@command -v conftest >/dev/null 2>&1 || { echo "missing: conftest (see mise.toml)" >&2; exit 1; }
+	conftest verify --rego-version v0 -p terraform/policy/
+
 tf-conftest:
 	@command -v conftest >/dev/null 2>&1 || { echo "missing: conftest" >&2; exit 1; }
 	@./scripts/tf-policy-test.sh -p "$(PROVIDER)" -e "$(ENV)"
@@ -495,6 +500,7 @@ ci-fast:
 	@$(MAKE) zizmor-test
 	@$(MAKE) cloud-init-schema
 	@$(MAKE) tf-test
+	@$(MAKE) tf-policy-verify
 	@$(MAKE) yamllint-check
 	@$(MAKE) shellcheck
 	@$(MAKE) vpnd-deny
