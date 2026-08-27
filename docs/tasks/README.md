@@ -63,6 +63,8 @@ Required changes use `ripdpi-deploy-change`: `proposal.md -> delta specs -> desi
   --spec-mode not-required --spec-reason tooling-only
 ./taskctl start <TASK-ID> --owner "Role name"
 ./taskctl steps <TASK-ID> list
+./taskctl steps <TASK-ID> add "Implement the guard"
+./taskctl steps <TASK-ID> add "Verify rejection paths" --kind bug --priority high
 ./taskctl transition <TASK-ID> review
 ./taskctl verify <TASK-ID>
 ./taskctl generate-board
@@ -70,6 +72,18 @@ Required changes use `ripdpi-deploy-change`: `proposal.md -> delta specs -> desi
 ```
 
 Completing all execution checkboxes advances the portfolio task at most to `review`; it does not prove acceptance.
+
+`steps ... add` allocates the ID through the shared Git allocator and adds the
+owning `@item` backlink; kind and priority default to the portfolio task. Titles
+must be plain single-line text, without manual IDs or mdtask metadata. Existing
+content is preserved. For the selected active OpenSpec task only, validated
+proposal/specs/design can bootstrap `tasks.md` before verification mappings are
+complete; subsequent adds remain available during authoring. Missing or
+incomplete verification still blocks ordinary validation, start and closure.
+Unrelated invalid records are never ignored. `add`, `done` and `set` share a
+write lock; coordinate lifecycle transitions and external editors separately.
+After editing steps and completing verification mappings, run `generate-board`
+before `validate`; `add` does not rewrite the generated board.
 
 Archive a completed OpenSpec change only through `./taskctl openspec archive`. Then run `close prepare`, commit the terminal record, run `close purge`, and commit the deletion separately. CI rejects deletion without the preceding terminal-state commit. Direct upstream archive, `--no-validate`, manual task IDs, and mdtask archive/ID assignment are unsupported.
 
