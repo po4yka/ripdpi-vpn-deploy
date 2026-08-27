@@ -17,24 +17,27 @@ pub mod reconverge;
 pub mod share;
 pub mod update;
 
-/// Run best-effort secrets cleanup after any pipeline failure. The
+/// Run secrets cleanup after every pipeline outcome, including dry runs. The
 /// ORIGINAL error always takes precedence: cleanup failures are logged,
 /// never mask the root cause. Explain mode never executes cleanup, like
 /// every other step.
-pub(crate) async fn finish_or_cleanup(ctx: &Context, outcome: Result<()>) -> Result<()> {
-    if let Err(err) = outcome {
-        if !ctx.explain {
+pub(crate) async fn finish_with_cleanup(ctx: &Context, outcome: Result<()>) -> Result<()> {
+    let cleanup = crate::runner::make::target(ctx, "clean")
+        .run(ctx.explain)
+        .await;
+    match outcome {
+        Err(err) => {
             eprintln!(
-                "{} pipeline failed — running best-effort secrets cleanup (make clean)",
+                "{} pipeline failed — attempted secrets cleanup (make clean)",
                 "error:".red().bold()
             );
-            if let Err(cleanup_err) = crate::runner::make::target(ctx, "clean").run(false).await {
+            if let Err(cleanup_err) = cleanup {
                 eprintln!("{} cleanup also failed: {cleanup_err}", "warn:".yellow());
             }
+            Err(err)
         }
-        return Err(err);
+        Ok(()) => cleanup.map(|_| ()),
     }
-    Ok(())
 }
 
 /// Validate an optional `--host` alias against the loaded registry with
@@ -100,7 +103,7 @@ mod tests {
         }
         .await;
 
-        let err = finish_or_cleanup(&ctx, outcome)
+        let err = finish_with_cleanup(&ctx, outcome)
             .await
             .expect_err("failed middle step must propagate");
         assert!(
@@ -117,6 +120,17 @@ mod tests {
             "cleaned",
             "cleanup must run after the failure, not before"
         );
+    }
+
+    #[tokio::test]
+    async fn successful_pipeline_requires_successful_cleanup() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("Makefile"), "clean:\n\t@exit 7\n").unwrap();
+        let ctx = ctx_in(dir.path(), false);
+        let err = finish_with_cleanup(&ctx, Ok(()))
+            .await
+            .expect_err("cleanup failure must fail the command");
+        assert!(err.to_string().contains("make clean"));
     }
 
     #[test]

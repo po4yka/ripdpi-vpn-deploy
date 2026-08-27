@@ -5,7 +5,7 @@ use crate::cli::ReconvergeArgs;
 use crate::config::Context;
 use crate::runner::ansible;
 use crate::runner::make;
-use crate::state::{ipv4_limit, version, Registry};
+use crate::state::{version, Registry};
 use crate::wizard::{confirm, section, Summary};
 
 pub async fn run(ctx: &Context, args: ReconvergeArgs) -> Result<()> {
@@ -14,16 +14,19 @@ pub async fn run(ctx: &Context, args: ReconvergeArgs) -> Result<()> {
         "Idempotent re-deploy against an existing host. Bundles decrypt → plan → dry-run → apply if drifted.",
     );
 
-    let limit = if let Some(name) = &args.host {
+    let registered_host = if let Some(name) = &args.host {
         let reg = Registry::load()?;
         let host = reg.resolve_for(name, &ctx.env, &ctx.provider)?;
         version::warn_on_skew(name, &host);
-        // Strict IPv4 literal only — a pattern value would silently
-        // widen --limit from one host to an entire group.
-        Some(ipv4_limit(name, &host)?)
+        Some((name.as_str(), host))
     } else {
         None
     };
+    let limit = ansible::scoped_limit(
+        ctx,
+        registered_host.as_ref().map(|(name, host)| (*name, host)),
+    )
+    .await?;
 
     let mut s = Summary::new("Reconverge plan");
     s.add("env", &ctx.env)
@@ -51,10 +54,7 @@ pub async fn run(ctx: &Context, args: ReconvergeArgs) -> Result<()> {
         ctx.secure_secrets_file()?;
         make::target(ctx, "init").run(ctx.explain).await?;
         make::target(ctx, "plan").run(ctx.explain).await?;
-        let mut dry_run = ansible::dry_run(ctx);
-        if let Some(host) = &limit {
-            dry_run = dry_run.arg("--limit").arg(host);
-        }
+        let dry_run = ansible::dry_run(ctx).arg("--limit").arg(&limit);
         dry_run.run(ctx.explain).await?;
 
         if args.dry_run {
@@ -62,21 +62,14 @@ pub async fn run(ctx: &Context, args: ReconvergeArgs) -> Result<()> {
             return Ok(());
         }
 
-        let mut deploy = ansible::site(ctx);
-        if let Some(host) = &limit {
-            deploy = deploy.arg("--limit").arg(host);
-        }
+        let deploy = ansible::site(ctx).arg("--limit").arg(&limit);
         deploy.run(ctx.explain).await?;
-        let mut verify = ansible::verify(ctx);
-        if let Some(host) = &limit {
-            verify = verify.arg("--limit").arg(host);
-        }
+        let verify = ansible::verify(ctx).arg("--limit").arg(&limit);
         verify.run(ctx.explain).await?;
-        make::target(ctx, "clean").run(ctx.explain).await?;
         Ok(())
     }
     .await;
-    super::finish_or_cleanup(ctx, outcome).await?;
+    super::finish_with_cleanup(ctx, outcome).await?;
 
     if !ctx.explain {
         println!();
