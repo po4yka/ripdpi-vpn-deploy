@@ -10,7 +10,7 @@ driver:
 
 platforms:
   - name: vpn-honeypot-debian13
-    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13@sha256:0de09c528cdbf83545420a1b3a9524af9f38d65fc1b28ff6a8af1eff052987da
+    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13@sha256:fd0443883979e0879e912231914df2093769d45fcb82af251704b30e2fc5c42e
     pre_build_image: true
     privileged: true
     command: /lib/systemd/systemd
