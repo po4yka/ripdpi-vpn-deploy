@@ -29,6 +29,11 @@
         state: present
         update_cache: true
 
+    - name: Start the real SSH service required by firewall discovery
+      ansible.builtin.systemd_service:
+        name: ssh
+        state: started
+
     - name: Check whether the provider-image UFW fixture was initialized
       ansible.builtin.stat:
         path: /etc/molecule-ufw-fixture-initialized
@@ -47,3 +52,17 @@
       when: not _firewall_molecule_ufw_fixture.stat.exists
   roles:
     - role: firewall
+
+  post_tasks:
+    - name: Repeat the role in check mode with UFW preinstalled
+      check_mode: true
+      block:
+        - name: Exercise the actual dry-run task path
+          ansible.builtin.include_role:
+            name: firewall
+
+    - name: Dry-run still probes the installed UFW state
+      ansible.builtin.assert:
+        that:
+          - not (_firewall_ufw_status.skipped | default(false))
+          - "'Status: inactive' in _firewall_ufw_status.stdout"

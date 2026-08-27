@@ -86,9 +86,9 @@
     - name: No live awg-quick or wg-quick processes running (TUN not needed)
       ansible.builtin.shell:
         cmd: |
-          ! pgrep -x awg-quick >/dev/null 2>&1
-          ! pgrep -x wg-quick  >/dev/null 2>&1
-          true
+          command -v pgrep >/dev/null &&
+          ! pgrep -x awg-quick >/dev/null 2>&1 &&
+          ! pgrep -x wg-quick >/dev/null 2>&1
         executable: /bin/bash
       changed_when: false
 
@@ -110,7 +110,7 @@
     - name: Target wants exactly the enabled instances
       ansible.builtin.assert:
         that:
-          - awg_target_text is search('(?m)^Wants=awg-quick@awg0\.service$')
+          - awg_target_text | regex_findall('(?m)^Wants=(.+)$') == ['awg-quick@awg0.service']
         fail_msg: |
           awg-quick.target does not pin the enabled instance set.
           Content: {{ awg_target_text }}

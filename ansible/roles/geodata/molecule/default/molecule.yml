@@ -33,9 +33,8 @@ provisioner:
 verifier:
   name: ansible
 
-# prepare.yml seeds fixture files at the expected install paths and
-# computes their sha256 values so verify.yml can assert them without
-# any live network fetch. converge runs the role against the fixtures.
+# prepare.yml seeds pinned source files separately from downloaded outputs.
+# verify.yml starts the actual refresh service, including its systemd sandbox.
 scenario:
   test_sequence:
     - dependency

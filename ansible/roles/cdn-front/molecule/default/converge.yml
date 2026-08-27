@@ -28,8 +28,14 @@
         name:
           - nftables
           - openssl
+          - openssh-server
         state: present
         update_cache: true
+
+    - name: Start the real SSH service required by firewall discovery
+      ansible.builtin.systemd_service:
+        name: ssh
+        state: started
 
     - name: Ensure nginx TLS directory exists
       ansible.builtin.file:

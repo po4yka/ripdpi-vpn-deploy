@@ -50,18 +50,6 @@
         group: root
         mode: "0700"
 
-    - name: Stub amneziawg-go binary (skips actual compile)
-      ansible.builtin.copy:
-        dest: /opt/src/amneziawg-go/amneziawg-go
-        owner: root
-        group: root
-        mode: "0755"
-        content: |
-          #!/bin/sh
-          echo "amneziawg-go stub" && exit 0
-      args:
-        creates: /opt/src/amneziawg-go/amneziawg-go
-
     - name: Ensure amneziawg-go source dir exists
       ansible.builtin.file:
         path: /opt/src/amneziawg-go
@@ -150,3 +138,14 @@
           h3: "{{ amneziawg_secrets.h3 | default(amneziawg_cohort.h3) }}"
           h4: "{{ amneziawg_secrets.h4 | default(amneziawg_cohort.h4) }}"
           peers: "{{ amneziawg_secrets.peers }}"
+
+    - name: Render instance target without starting stub interfaces
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../../../../roles/amneziawg/templates/awg-quick.target.j2"
+        dest: /etc/systemd/system/awg-quick.target
+        owner: root
+        group: root
+        mode: "0644"
+      vars:
+        _awg_instances:
+          - name: awg0
