@@ -9,8 +9,8 @@
 # interactively.
 set -euo pipefail
 
-DEST="{{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}"
-BACKEND="{{ subscription.mirror.backend | default('rsync') }}"
+DEST={{ subscription.subscription_dir | default('/var/lib/vpn-subscription') | quote }}
+DEST="${DEST%/}"
 
 {% if (subscription.mirror.backend | default('rsync')) == 'rsync' %}
 # ---------------------------------------------------------------------------
@@ -31,14 +31,17 @@ fi
 # Local-only state that lives inside DEST but is NOT part of the pulled
 # payload tree. `--delete` would erase it on every pull, so both are
 # excluded explicitly:
-#   /revoked  — the revocation hash list rendered by Ansible
-#               (subscription.revoked_file); the remote build worker
-#               does not own revocation state.
+#   revoked_file — the configured revocation hash list rendered by Ansible;
+#                  the remote build worker does not own revocation state.
 #   /.ssh     — vpn-bootstrap's known_hosts under its home (= DEST),
 #               built up by StrictHostKeyChecking=accept-new.
+REVOKED_FILE={{ subscription.revoked_file | default('/var/lib/vpn-subscription/revoked') | quote }}
+LOCAL_STATE_FILTERS=(--exclude=/.ssh)
+case "$REVOKED_FILE" in
+  "$DEST"/*) LOCAL_STATE_FILTERS+=(--exclude="/${REVOKED_FILE#"$DEST"/}") ;;
+esac
 rsync {{ subscription.mirror.rsync_opts | default('-az --delete') }} \
-  --exclude=/revoked \
-  --exclude=/.ssh \
+  "${LOCAL_STATE_FILTERS[@]}" \
   -e "ssh -i ${SSH_KEY} ${SSH_OPTS}" \
   "$SOURCE" "${DEST}/"
 {% else %}

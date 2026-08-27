@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import yaml
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -59,6 +60,22 @@ def test_primary_vhost_serves_static_site_and_keeps_xhttp_path_separate() -> Non
     assert "try_files $uri $uri/ =404;" in rendered
     assert "proxy_pass http://127.0.0.1:" in rendered
     assert rendered.index("# XHTTP path") < rendered.index("location / {")
+
+
+@pytest.mark.parametrize("value", ['quote"and\\slash', "line\nbreak", "# hash: [scalar]"])
+def test_hysteria_string_values_roundtrip_through_yaml(value: str) -> None:
+    variables = renderer.merge_render_vars()
+    variables["hysteria"] = {
+        **variables["hysteria"],
+        "salamander_enabled": True,
+        "salamander_password": value,
+        "clients": [{"name": value, "password": value}],
+        "masquerade_url": "https://owned.example.test/" + value,
+    }
+    parsed = yaml.safe_load(renderer.render_template(HYSTERIA_TEMPLATE, variables))
+    assert parsed["obfs"]["salamander"]["password"] == value
+    assert parsed["auth"]["userpass"] == {value: value}
+    assert parsed["masquerade"]["proxy"]["url"] == "https://owned.example.test/" + value
 
 
 def test_primary_and_fallback_vhosts_share_the_hardened_tls_http_identity() -> None:

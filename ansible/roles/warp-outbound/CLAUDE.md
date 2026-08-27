@@ -5,6 +5,8 @@
 **Health-gated activation** — `vpn.enable_warp_outbound` flips the toggle,
 but the role only swings outbound routing *after* WARP confirms it's up.
 Failure leaves the previous egress intact.
+`site.yml` runs this gate before Xray, including `--tags xray`; a later
+nginx handler flush must never activate unverified WARP routes first.
 
 **SOCKS5 at 127.0.0.1:40000** — WARP runs in `proxy` mode; Xray's
 `outbound.protocol: socks` points at it. Don't try kernel-level routing

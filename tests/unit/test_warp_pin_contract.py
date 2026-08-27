@@ -56,3 +56,23 @@ def test_checksum_tasks_are_not_gated_on_the_pin_being_set() -> None:
     enforce = _task_by_name("Assert GPG key matches pinned sha256")
     assert enforce is not None
     assert enforce["when"] == "warp_outbound.install_warp_cli | default(true)"
+
+
+def test_health_gate_runs_before_xray_can_activate_warp_routes() -> None:
+    plays = yaml.safe_load((REPO_ROOT / "ansible/playbooks/site.yml").read_text())
+    roles = next(play["roles"] for play in plays if "roles" in play)
+    names = [role["role"] for role in roles]
+    assert names.index("warp-outbound") < names.index("xray")
+    assert names.index("warp-outbound") < names.index("nginx-xhttp")
+    warp = roles[names.index("warp-outbound")]
+    assert set(roles[names.index("xray")]["tags"]) <= set(warp["tags"])
+
+
+def test_health_gate_rejects_successful_http_with_inactive_tunnel() -> None:
+    from jinja2 import Environment
+
+    gate = _task_by_name("Verify WARP exit IP is reachable")["failed_when"]
+    evaluate = Environment().compile_expression(gate)
+    assert evaluate(warp_trace={"rc": 0, "stdout": "warp=off\n"})
+    assert evaluate(warp_trace={"rc": 7, "stdout": "warp=on\n"})
+    assert not evaluate(warp_trace={"rc": 0, "stdout": "warp=on\n"})
