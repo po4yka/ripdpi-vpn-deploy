@@ -45,6 +45,7 @@ tar = "0.4"
 flate2 = "1"
 serde_yaml_ng = "0.10.0"
 uzers = { version = "0.12", default-features = false }
+rustix = { version = "1", features = ["fs"] }
 
 [build-dependencies]
 clap = { version = "4.5", features = ["derive", "env"] }

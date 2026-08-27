@@ -167,22 +167,10 @@ fn read_token(args: &ShareArgs) -> Result<String> {
     Ok(token.trim().to_owned())
 }
 
-/// Open-once gate for the operator-supplied token file, matching the
-/// Secrets::load discipline: reject symlinks before opening, then stat
-/// the held handle so what is permission-checked is exactly what gets
-/// read — no stat/read window for a concurrent swap.
+/// Read a current-owner private token through the same atomic file gate as secrets.
 fn load_token_file(path: &std::path::Path) -> Result<String> {
     use std::io::Read;
-    use std::os::unix::fs::MetadataExt;
-    let lstat = std::fs::symlink_metadata(path)?;
-    if !lstat.file_type().is_file() {
-        return Err(anyhow!("token file must be a regular file"));
-    }
-    let mut handle = std::fs::File::open(path)?;
-    let metadata = handle.metadata()?;
-    if !metadata.file_type().is_file() || metadata.mode() & 0o077 != 0 {
-        return Err(anyhow!("token file must be a regular 0600 file"));
-    }
+    let mut handle = crate::protected_file::open_private(path)?;
     let mut token = String::new();
     handle.read_to_string(&mut token)?;
     Ok(token)

@@ -76,25 +76,16 @@ impl Context {
         self.ansible_dir.join("ansible.cfg")
     }
 
-    /// Ensure the decrypted secrets file has mode 0600 if it exists.
+    /// Require a current-owner regular file and set mode 0600 through its fd.
     /// Called immediately after a successful decrypt step. Fallible by
     /// contract: a chmod that cannot be applied means the plaintext
     /// secrets sit world-readable — the caller must abort, not continue.
     pub fn secure_secrets_file(&self) -> Result<()> {
-        use std::os::unix::fs::PermissionsExt;
         if self.explain {
             return Ok(());
         }
-        if self.secrets_file.exists() {
-            let perms = std::fs::Permissions::from_mode(0o600);
-            std::fs::set_permissions(&self.secrets_file, perms).with_context(|| {
-                format!(
-                    "failed to set 0600 on decrypted secrets {}",
-                    self.secrets_file.display()
-                )
-            })?;
-        }
-        Ok(())
+        crate::protected_file::harden(&self.secrets_file)
+            .context("failed to set 0600 on decrypted secrets file")
     }
 }
 
@@ -160,9 +151,7 @@ mod tests {
         }
     }
 
-    // Path-based chmod only honors parent-directory bits on Linux; darwin
-    // grants it from file ownership alone, so the injection is exercised
-    // on Linux CI runners and compiled out elsewhere.
+    // procfs provides a same-owner regular file whose fd rejects chmod.
     #[cfg(target_os = "linux")]
     #[test]
     fn secure_secrets_file_propagates_chmod_failure() {
@@ -170,7 +159,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         // procfs rejects chmod even for root, so this is a stable Linux
         // failure injection rather than relying on parent-directory bits.
-        let secrets = PathBuf::from("/proc/version");
+        let secrets = PathBuf::from("/proc/self/cmdline");
 
         let ctx = Context {
             root: dir.path().into(),

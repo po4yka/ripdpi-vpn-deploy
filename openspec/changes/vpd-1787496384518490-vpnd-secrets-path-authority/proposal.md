@@ -11,7 +11,7 @@ The deep audit found that when XDG_RUNTIME_DIR is unset (macOS default), vpnd co
 - Every vpnd-invoked make target that consumes or produces the decrypted file receives SECRETS_FILE=<vpnd-resolved path> explicitly; vpnd's resolution becomes the single source of truth on all platforms.
 - Doctor redaction masks any line containing the resolved secrets_file path (plus the legacy patterns), and the --ai prompt applies the same redaction as the bundle before printing/copying.
 - secure_secrets_file returns a Result; callers propagate instead of proceeding on failure.
-- Secrets::load opens the file once and fstats the held fd, closing the check-then-read gap; same treatment for share token files.
+- Secrets::load and share-token loading atomically reject symlinks and nonblocking special-file opens, then check type/owner/private mode and read through the same held descriptor. Hardening also chmods the held descriptor and rejects missing files.
 
 ## Capabilities
 
