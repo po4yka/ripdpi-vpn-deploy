@@ -61,6 +61,11 @@ fi
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 SUBSCRIPTION_DIR="${SUBSCRIPTION_DIR:-/var/lib/vpn-subscription}"
+# This path is interpolated into remote root commands; reject shell syntax.
+if [[ ! "$SUBSCRIPTION_DIR" =~ ^/[A-Za-z0-9_][A-Za-z0-9_./-]*$ ]] || [[ "$SUBSCRIPTION_DIR" == *..* ]]; then
+  echo "SUBSCRIPTION_DIR must be an absolute path using only [A-Za-z0-9_./-], with no '..'" >&2
+  exit 2
+fi
 
 server_ip="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
 admin_user="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user 2>/dev/null || echo admin)"
