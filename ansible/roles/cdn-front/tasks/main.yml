@@ -47,13 +47,6 @@
     group: root
     mode: "0644"
 
-- name: Enable prefix-refresh timer
-  ansible.builtin.systemd_service:
-    name: cdn-front-prefix-refresh.timer
-    enabled: true
-    state: started
-    daemon_reload: true
-
 - name: Seed CF prefix list (first run)
   ansible.builtin.command: /usr/local/sbin/cdn-front-refresh-cf-prefixes
   register: _cf_seed
@@ -94,3 +87,10 @@
   ansible.builtin.command:
     cmd: nginx -t
   changed_when: false
+
+- name: Enable prefix-refresh timer after the initial prefix seed and validation
+  ansible.builtin.systemd_service:
+    name: cdn-front-prefix-refresh.timer
+    enabled: true
+    state: started
+    daemon_reload: true

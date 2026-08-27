@@ -13,6 +13,9 @@ server {
     ssl_certificate_key /etc/nginx/tls/vpn.example.com.key;
 
     ssl_protocols       TLSv1.2 TLSv1.3;
+    # Keep the complete header set at server scope: every child location
+    # inherits the same no-store policy and security headers. A child
+    # add_header would discard this entire set on supported nginx versions.
     add_header Strict-Transport-Security "max-age=31536000" always;
     add_header Cache-Control "no-store" always;
     # Header baseline aligned with the public-site vhost. CSP is tuned
@@ -41,13 +44,6 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-
-        # Make Cache-Control / Referrer-Policy / X-Robots-Tag explicit at
-        # the location level — see /bootstrap/ for the inheritance-reset
-        # rationale.
-        add_header Cache-Control "no-store"                always;
-        add_header Referrer-Policy "no-referrer"           always;
-        add_header X-Robots-Tag "noindex, nofollow"        always;
 
         access_log off;
     }

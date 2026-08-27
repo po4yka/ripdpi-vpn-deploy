@@ -13,6 +13,9 @@ server {
     ssl_certificate_key /etc/nginx/tls/{{ subscription.server_name | default(nginx_xhttp.server_name) }}.key;
 
     ssl_protocols       TLSv1.2 TLSv1.3;
+    # Keep the complete header set at server scope: every child location
+    # inherits the same no-store policy and security headers. A child
+    # add_header would discard this entire set on supported nginx versions.
     add_header Strict-Transport-Security "max-age=31536000" always;
     add_header Cache-Control "no-store" always;
     # Header baseline aligned with the public-site vhost. CSP is tuned
@@ -42,13 +45,6 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
 
-        # Make Cache-Control / Referrer-Policy / X-Robots-Tag explicit at
-        # the location level — see /bootstrap/ for the inheritance-reset
-        # rationale.
-        add_header Cache-Control "no-store"                always;
-        add_header Referrer-Policy "no-referrer"           always;
-        add_header X-Robots-Tag "noindex, nofollow"        always;
-
         access_log off;
     }
 
@@ -66,14 +62,6 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
 
-        # Make Cache-Control / Referrer-Policy / X-Robots-Tag explicit at
-        # the location level — nginx normally inherits the server-level
-        # `add_header` directives, but a single location-level `add_header`
-        # resets inheritance for that location, so we re-state all three.
-        add_header Cache-Control "no-store"             always;
-        add_header Referrer-Policy "no-referrer"        always;
-        add_header X-Robots-Tag "noindex, nofollow"     always;
-
         access_log off;
     }
 {% endif %}
@@ -87,10 +75,6 @@ server {
     location ~ "^/share/(?<vpn_share_token>[A-Za-z0-9_-]{16,64})(/.*)?$" {
         alias /var/www/subscription-host/share/$vpn_share_token/;
         try_files $uri $uri/index.html =404;
-
-        add_header Cache-Control "no-store"             always;
-        add_header Referrer-Policy "no-referrer"        always;
-        add_header X-Robots-Tag "noindex, nofollow"     always;
 
         access_log off;
     }

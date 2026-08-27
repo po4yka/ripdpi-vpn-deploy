@@ -159,6 +159,31 @@
         executable: /bin/bash
       changed_when: false
 
+    - name: Delivery routes retain inherited headers on success and errors
+      ansible.builtin.uri:
+        url: "https://127.0.0.1:8444/{{ item.route }}/molecule_header_probe_token"
+        validate_certs: false
+        status_code: "{{ item.status }}"
+        headers:
+          Host: sub.example.test
+      loop:
+        - {route: sub, status: 200}
+        - {route: bootstrap, status: 404}
+      register: delivery_responses
+
+    - name: Every delivery response has the complete no-store header baseline
+      ansible.builtin.assert:
+        that:
+          - "'no-store' in item.cache_control"
+          - "'default-src' in item.content_security_policy"
+          - item.x_content_type_options == 'nosniff'
+          - item.permissions_policy == 'camera=(), microphone=(), geolocation=()'
+          - item.referrer_policy == 'no-referrer'
+          - "'max-age=' in item.strict_transport_security"
+      loop: "{{ delivery_responses.results }}"
+      loop_control:
+        label: "{{ item.item.route }}"
+
     - name: vpn-bootstrap .ssh state survives the triggered --delete pull
       ansible.builtin.stat:
         path: /var/lib/vpn-subscription/.ssh
