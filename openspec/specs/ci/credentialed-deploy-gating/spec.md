@@ -68,4 +68,3 @@ as defense in depth behind the environment gate.
   approves its deployment
 - **THEN** the fork short-circuit still fails the job before credentials are
   exposed to any subsequent step
-
