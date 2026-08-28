@@ -99,4 +99,23 @@ artifact_evidence: no build artifacts produced by this change
 - Independent whole-module rerun: 20 passed. `make validate` passed, including Terraform validation, gitleaks, Ansible lint and syntax. The full `make check` was attempted three times: the first two stopped at Terraform Registry request timeouts; the third passed Terraform/policy/parsers and reported 1458 Python tests passed, one failed and one existing skipped placeholder. All 20 wait/renderer cases passed in that run; Rust and Bats were not reached.
 - The failed existing `test_awg_namespace_is_removed_after_probe_failure` expected `blocked` but received `error`. Its source and runtime were unchanged from base. Eight fresh isolated reproductions on base all returned `blocked` with the `network` category; the intermittent failure's original category was not captured, so its cause is not established. Separate diagnostic-only commit `6c6caa3ef21f5d826f509e7e5c0a484e0b6702a1` adds the categorical result to that assertion without changing acceptance, timeouts or runtime behavior. A successful full local gate and exact-source hosted checks remain required before integration.
 - Original source commit `71186606f018b079c38ae6a8321eaee0bdf278c9` passed hosted CI `33175393913` (51 jobs), CodeQL `33175393693`, and the remaining PR checks (63 success, one neutral). PR #114 remains draft. The branch then merged main `2009b6f694e326fa1f6d99333da497544b115cdd`, preserving both changes and verifying 1591 collected tests. The combined-tree full run reported 1534 passed, three failed, one existing skip: all three failures were the explicit real-restic prerequisite assertion because that invocation omitted the installed test-tool directory from PATH. The same unchanged three cases passed with the verified restic 0.16.4 tool directory restored (13.31 seconds). A complete rerun with all prerequisites remains required; no acceptance check was weakened.
+- The subsequent complete `build-gate -- mise exec -- make -j1 check` on `7b6622c6b6e34f4b89e0336f5a2aff264b85175f` exited zero with the verified restic and sing-box tool directories on PATH: 1537 Python tests passed, one existing placeholder skipped, all 55 Bats tests passed, and Terraform/policy, real parser, Rust release tests and strict Clippy gates passed. A final review found three CodeQL comments about unexplained `ProcessLookupError` handlers in test cleanup. Explanations now state that deadline/cancellation cleanup may already have removed the process group; the test AST is identical, with no behavior, assertion or timeout change. Exact final-comment commit hosted checks remain required before protected merge.
 - The tests execute the unchanged production script/remote shell and real GNU timeout, substituting only Terraform outputs, SSH transport, and the marker path. The spawn-window test additionally injects signal timing around real `Popen` in a temporary Python runtime shim; it is local fault-injection evidence, not provider or live proof. No host commands, Make gate changes or live acceptance were performed by this slice.
+
+## Main integration of inventory-bound readiness — 2026-08-28
+
+- Merged actual main `bdc6b5a9c7f3d47b801341eba5560171ce41b589` into the
+  controller candidate. The shared readiness engine and first-boot adapter remain
+  authoritative; the incoming SSH recovery installer is unchanged. Actual Make
+  regressions now cover literal ENV/PROVIDER inputs for deploy, backup-configure
+  and install-ssh-recovery: six cases passed without transport execution.
+- The first combined run caught a merge-created duplicate wait fixture: its old
+  definition replaced the adapter-aware helper and omitted the shared module.
+  Removed that duplicate while preserving all incoming cleanup explanations and
+  every assertion/deadline. The complete 20-case wait module then passed.
+- Final combined controller, wait, SSH installer and strict-Make modules passed
+  all 121 tests (295.18 seconds). The adjacent backup controller/Make/transport
+  parity selection passed 30 tests (81.84 seconds). Collection observed 1811 total
+  Python cases, including 1758 under tests/unit. Task validation passed 28 tasks
+  and 136 steps. These local integration checks do not replace the full repository,
+  exact hosted-SHA or authorized live gates.

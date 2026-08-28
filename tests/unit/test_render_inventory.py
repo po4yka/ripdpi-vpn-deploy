@@ -418,6 +418,7 @@ def test_wait_bounds_connected_ssh_and_kills_its_descendants(tmp_path):
             try:
                 os.killpg(group, signal.SIGKILL)
             except ProcessLookupError:
+                # Deadline/cancellation cleanup may already have removed this group.
                 pass
         process.communicate()
 
@@ -455,6 +456,7 @@ def test_wait_interruption_kills_only_its_ssh_process_group(tmp_path, interrupt)
             try:
                 os.killpg(group, signal.SIGKILL)
             except ProcessLookupError:
+                # Deadline/cancellation cleanup may already have removed this group.
                 pass
         process.communicate()
 
@@ -503,6 +505,7 @@ runpy.run_path(sys.argv[0], run_name="__main__")
             try:
                 os.killpg(group, signal.SIGKILL)
             except ProcessLookupError:
+                # Deadline/cancellation cleanup may already have removed this group.
                 pass
         process.communicate()
 

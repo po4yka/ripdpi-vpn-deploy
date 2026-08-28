@@ -180,15 +180,22 @@ def test_make_inputs_do_not_expand_make_functions(workspace, field):
 
 
 @pytest.mark.parametrize("field", ["ENV", "PROVIDER"])
-@pytest.mark.parametrize("target", ["deploy", "backup-configure"])
+@pytest.mark.parametrize("target", ["deploy", "backup-configure", "install-ssh-recovery"])
 def test_make_labels_do_not_expand_before_controller_privacy_guard(workspace, field, target):
     marker = workspace["root"].parent / "early-label-expansion"
     workspace["env"]["ANSIBLE_DEBUG"] = "true"
-    if target == "backup-configure":
-        shutil.copy2(ROOT / "scripts/backup-configure.py", workspace["root"] / "scripts/backup-configure.py")
-    result = invoke(workspace, target=target, **{field: "$(shell touch " + str(marker) + ")"})
-    message = "ansible-debug-not-supported" if target == "backup-configure" else "debug is not supported"
-    assert result.returncode != 0 and message in result.stderr
+    controller = {"backup-configure": "backup-configure.py",
+                  "install-ssh-recovery": "install-sshd-recovery.py"}.get(target)
+    if controller:
+        shutil.copy2(ROOT / "scripts" / controller, workspace["root"] / "scripts" / controller)
+    result = invoke(workspace, target=target, limit="node-one", SSH_RECOVERY_EXCLUSIVE_WINDOW="1",
+                    **{field: "$(shell touch " + str(marker) + ")"})
+    assert result.returncode != 0
+    if target == "install-ssh-recovery":
+        assert json.loads(result.stdout)["reason"] == "ssh-recovery-install-failed"
+    else:
+        message = "ansible-debug-not-supported" if target == "backup-configure" else "debug is not supported"
+        assert message in result.stderr
     assert not marker.exists()
     assert calls(workspace) == []
 

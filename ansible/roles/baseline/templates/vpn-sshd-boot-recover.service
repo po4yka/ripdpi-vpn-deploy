@@ -1,0 +1,23 @@
+[Unit]
+Description=Reconcile unconfirmed SSH ownership before listeners start
+DefaultDependencies=no
+After=local-fs.target
+Before=ssh.service ssh.socket
+RequiresMountsFor=/etc/ssh /var/lib/vpn-sshd-transaction
+
+[Service]
+Type=oneshot
+RuntimeDirectory=sshd vpn-sshd-validation
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/bin/python3 -I -B /usr/local/lib/vpn-sshd/sshd_bundle.py boot-recover
+TimeoutStartSec=90
+UMask=0077
+Environment=TMPDIR=/run/vpn-sshd-validation
+NoNewPrivileges=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/etc/ssh/sshd_config.d /var/lib/vpn-sshd-transaction /run/vpn-sshd-validation /usr/local/lib/vpn-sshd/bundle.lock
+
+[Install]
+RequiredBy=ssh.service ssh.socket

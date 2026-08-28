@@ -1,0 +1,176 @@
+---
+# Install only recovery code. SSH configuration and service state are untouched.
+- name: Install persistent SSH ownership recovery on one explicit node
+  hosts: vpn
+  become: true
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+
+  pre_tasks:
+    - name: Require an exact node and exclusive maintenance window
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+          - ansible_limit is defined
+          - ansible_limit is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$')
+          - ansible_limit == inventory_hostname
+          - ssh_recovery_exclusive_window | default(false) | bool
+          - not ansible_check_mode
+          - ssh_recovery_generation is defined
+          - ssh_recovery_generation is match('^[0-9a-f]{64}$')
+          - ssh_recovery_manifest is defined
+          - ssh_recovery_manifest | hash('sha256') == ssh_recovery_generation
+        fail_msg: Require one exact alias, exclusive window, and complete source manifest
+      tags: [always]
+
+    - name: Reject unsafe installation and staging paths before any copy
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -I
+          - -c
+          - |
+            import hashlib,json,os,pathlib,re,stat,sys
+            root=pathlib.Path('/usr/local/lib/vpn-sshd')
+            generation=sys.argv[1]
+            dispatcher_digest=sys.argv[2]
+            assert re.fullmatch('[0-9a-f]{64}',dispatcher_digest)
+            assert re.fullmatch('[0-9a-f]{64}',generation)
+            raw=sys.stdin.buffer.read(8193)
+            assert len(raw)<=8192 and hashlib.sha256(raw).hexdigest()==generation
+            manifest=json.loads(raw)
+            names={'sshd_migrate.py','sshd_transaction.py','sshd_ownership.py',
+              'units/vpn-sshd-boot-recover.service','units/vpn-sshd-recover.service',
+              'units/vpn-sshd-recover.timer'}
+            assert set(manifest)=={'schema_version','files'} and type(manifest['schema_version']) is int
+            assert manifest['schema_version']==1 and set(manifest['files'])==names
+            def directory(path,private=False):
+              for parent in (path,*path.parents):
+                if os.path.lexists(parent):
+                  info=parent.lstat()
+                  assert stat.S_ISDIR(info.st_mode) and info.st_uid==0 and not info.st_mode&0o022
+                  if parent==path and private: assert stat.S_IMODE(info.st_mode)==0o700
+            directory(root)
+            directory(root/'staging',True)
+            directory(root/'generations')
+            directory(pathlib.Path('/var/lib/vpn-sshd-transaction'),True)
+            stage=root/'staging'/generation
+            directory(stage)
+            directory(stage/'units')
+            for name in names|{'manifest.json'}:
+              path=stage/name
+              if os.path.lexists(path):
+                info=path.lstat()
+                assert stat.S_ISREG(info.st_mode) and info.st_uid==0 and info.st_nlink==1
+                assert stat.S_IMODE(info.st_mode)==0o644 and info.st_size<=1048576
+                fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+                with os.fdopen(fd,'rb') as stream: data=stream.read(1048577)
+                expected=generation if name=='manifest.json' else manifest['files'][name]
+                assert len(data)<=1048576 and hashlib.sha256(data).hexdigest()==expected
+            dispatcher=root/'sshd_bundle.py'
+            if os.path.lexists(dispatcher):
+              info=dispatcher.lstat()
+              assert stat.S_ISREG(info.st_mode) and info.st_uid==0 and info.st_nlink==1
+              assert stat.S_IMODE(info.st_mode)==0o644 and info.st_size<=1048576
+              fd=os.open(dispatcher,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+              with os.fdopen(fd,'rb') as stream: data=stream.read(1048577)
+              assert len(data)<=1048576 and hashlib.sha256(data).hexdigest()==dispatcher_digest
+          - "{{ ssh_recovery_generation }}"
+          - "{{ lookup('file', playbook_dir + '/../roles/baseline/files/sshd_bundle.py', rstrip=False) | hash('sha256') }}"
+        stdin: "{{ ssh_recovery_manifest }}"
+        stdin_add_newline: false
+      changed_when: false
+      tags: [always]
+
+  tasks:
+    - name: Create safe package and candidate directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - {path: /usr/local/lib/vpn-sshd, mode: '0755'}
+        - {path: /usr/local/lib/vpn-sshd/staging, mode: '0700'}
+        - {path: /usr/local/lib/vpn-sshd/generations, mode: '0755'}
+        - {path: '/usr/local/lib/vpn-sshd/staging/{{ ssh_recovery_generation }}', mode: '0755'}
+        - {path: '/usr/local/lib/vpn-sshd/staging/{{ ssh_recovery_generation }}/units', mode: '0755'}
+
+    - name: Stage immutable recovery modules without overwriting existing bytes
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../roles/baseline/files/{{ item }}"
+        dest: "/usr/local/lib/vpn-sshd/staging/{{ ssh_recovery_generation }}/{{ item }}"
+        owner: root
+        group: root
+        mode: '0644'
+        force: false
+        validate: '/usr/bin/python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" %s'
+      loop:
+        - sshd_ownership.py
+        - sshd_transaction.py
+        - sshd_migrate.py
+
+    - name: Stage the complete persistent unit set
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../roles/baseline/templates/{{ item }}"
+        dest: "/usr/local/lib/vpn-sshd/staging/{{ ssh_recovery_generation }}/units/{{ item }}"
+        owner: root
+        group: root
+        mode: '0644'
+        force: false
+      loop:
+        - vpn-sshd-boot-recover.service
+        - vpn-sshd-recover.service
+        - vpn-sshd-recover.timer
+
+    - name: Stage the controller computed public source manifest
+      ansible.builtin.copy:
+        content: "{{ ssh_recovery_manifest }}"
+        dest: "/usr/local/lib/vpn-sshd/staging/{{ ssh_recovery_generation }}/manifest.json"
+        owner: root
+        group: root
+        mode: '0644'
+        force: false
+
+    # The fixed bootstrap is a trust root, not an upgradable bundle member.
+    - name: Install the fixed dispatcher only when absent
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../roles/baseline/files/sshd_bundle.py"
+        dest: /usr/local/lib/vpn-sshd/sshd_bundle.py
+        force: false
+        owner: root
+        group: root
+        mode: '0644'
+        validate: '/usr/bin/python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" %s'
+
+    - name: Verify the bootstrap after its atomic creation
+      ansible.builtin.stat:
+        path: /usr/local/lib/vpn-sshd/sshd_bundle.py
+        follow: false
+        checksum_algorithm: sha256
+      register: ssh_recovery_bootstrap
+
+    - name: Require the exact stable bootstrap before executing it
+      ansible.builtin.assert:
+        that:
+          - ssh_recovery_bootstrap.stat.isreg | default(false)
+          - ssh_recovery_bootstrap.stat.uid == 0
+          - ssh_recovery_bootstrap.stat.mode == '0644'
+          - >-
+            ssh_recovery_bootstrap.stat.checksum ==
+            lookup('file', playbook_dir + '/../roles/baseline/files/sshd_bundle.py', rstrip=False) | hash('sha256')
+        fail_msg: Existing bootstrap differs from the stable trusted dispatcher
+
+    - name: Publish and reconcile the complete immutable generation
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -I
+          - -B
+          - /usr/local/lib/vpn-sshd/sshd_bundle.py
+          - publish
+        stdin: "{{ {'generation': ssh_recovery_generation} | to_json }}"
+      register: ssh_recovery_published
+      changed_when: (ssh_recovery_published.stdout | from_json).status == 'installed'
