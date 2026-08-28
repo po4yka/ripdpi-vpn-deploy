@@ -499,7 +499,7 @@ def test_smoke_real_curl_cannot_bypass_closed_proxy_via_no_proxy(tmp_path, proto
             for source_port in (31080, 31081):
                 command = command.replace(f'socks5h://127.0.0.1:{source_port}',
                                           f'socks5h://127.0.0.1:{proxy_port}')
-            rendered = Environment(undefined=StrictUndefined).from_string(command).render(
+            rendered = Environment(autoescape=True, undefined=StrictUndefined).from_string(command).render(
                 smoketest_target=target, snell={'smoke_port_base': proxy_port - snell_index},
                 snell_index=snell_index)
             argv = shlex.split(rendered)
