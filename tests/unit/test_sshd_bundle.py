@@ -124,7 +124,7 @@ def test_interrupted_publication_blocks_mutations_and_same_generation_retry_fini
     owner, method = (runtime, 'activate') if phase == 'activate' else (bundle, '_' + phase)
     original = getattr(owner, method)
     def crash(*args):
-        result = original(*args)
+        original(*args)
         raise SystemExit('injected publication death')
     monkeypatch.setattr(owner, method, crash)
     with pytest.raises(SystemExit):
@@ -421,6 +421,19 @@ def test_only_periodic_dispatcher_busy_is_a_categorical_deferral(module, monkeyp
     assert json.loads(capsys.readouterr().out) == (
         {'status': 'deferred', 'reason': 'busy'} if expected == 75
         else {'status': 'error', 'reason': 'ssh-bundle-failed'})
+
+
+def test_dispatcher_refuses_an_unexpected_exec_return(module, tmp_path, monkeypatch, capsys):
+    @contextmanager
+    def selected(self, action):
+        assert action == 'status'
+        yield tmp_path
+    monkeypatch.setattr(module.Bundle, 'selected', selected)
+    monkeypatch.setattr(module.os, 'geteuid', lambda: 0)
+    monkeypatch.setattr(module.os, 'execve', lambda *args: None)
+    monkeypatch.setattr(sys, 'argv', ['sshd_bundle.py', 'status'])
+    assert module.main() == 1
+    assert json.loads(capsys.readouterr().out) == {'status': 'error', 'reason': 'ssh-bundle-failed'}
 
 
 def test_installer_bootstrap_hash_guard_accepts_unchanged_and_refuses_drift(module, setup, monkeypatch):

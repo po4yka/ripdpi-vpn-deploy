@@ -189,7 +189,6 @@ def test_real_planner_transaction_and_installed_policy_round_trip(adapter, confi
         def reload(self):
             self.reloads += 1
     runtime = LocalRuntime()
-    root = config.parent / (config.name + '-state')
     import tempfile
     with tempfile.TemporaryDirectory(prefix='.sshd-state-', dir=config.parent) as state:
         root = Path(state)
@@ -241,7 +240,6 @@ def test_installation_uses_one_publisher_not_sequential_live_modules(adapter):
 
 
 def test_installed_generation_and_controlled_links_are_checked(adapter, tmp_path, monkeypatch):
-    from test_sshd_bundle import stage, Runtime
     import test_sshd_bundle
     spec = importlib.util.spec_from_file_location('bundle', FILES / 'sshd_bundle.py')
     module = importlib.util.module_from_spec(spec)
@@ -253,8 +251,8 @@ def test_installed_generation_and_controlled_links_are_checked(adapter, tmp_path
     (root / 'sshd_bundle.py').write_bytes((FILES / 'sshd_bundle.py').read_bytes())
     (root / 'sshd_bundle.py').chmod(0o644)
     units.mkdir(mode=0o755)
-    bundle = module.Bundle(root, state, units, Runtime())
-    generation = stage(bundle)
+    bundle = module.Bundle(root, state, units, test_sshd_bundle.Runtime())
+    generation = test_sshd_bundle.stage(bundle)
     bundle.publish(generation)
     directory = root / 'generations' / generation
     monkeypatch.setattr(adapter, 'BUNDLE_ROOT', root)

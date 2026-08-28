@@ -421,6 +421,7 @@ class Runtime:
                     try:
                         os.killpg(process.pid, signal.SIGKILL)
                     except ProcessLookupError:
+                        # The group already exited; wait below still reaps the leader.
                         pass
                     process.wait()
 
@@ -466,6 +467,7 @@ def main():
             if os.environ.get('TMPDIR') == '/run/vpn-sshd-validation':
                 environment['TMPDIR'] = os.environ['TMPDIR']
             os.execve('/usr/bin/python3', ['/usr/bin/python3', '-I', '-B', str(directory / 'sshd_migrate.py'), args.action], environment)
+            raise BundleError('exec-returned')
     except (BundleError, OSError, ValueError, TypeError) as error:
         if args.action == 'recover' and isinstance(error, BundleError) and str(error) == 'busy':
             print(json.dumps({'status': 'deferred', 'reason': 'busy'}))

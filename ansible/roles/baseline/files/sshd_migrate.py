@@ -83,6 +83,7 @@ def _command(arguments):
                 try:
                     os.killpg(process.pid, signal.SIGKILL)
                 except ProcessLookupError:
+                    # The group already exited; wait below still reaps the leader.
                     pass
                 process.wait()
 

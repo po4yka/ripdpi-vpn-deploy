@@ -101,7 +101,6 @@ def test_make_does_not_call_git_before_controller_privacy_guard(tmp_path):
 
 def test_manifest_covers_exact_bundle_source_and_binds_generation(controller):
     import hashlib
-    import json
     generation, manifest = controller.bundle_manifest()
     assert generation == hashlib.sha256(manifest.encode()).hexdigest()
     document = json.loads(manifest)
