@@ -25,7 +25,7 @@ artifact_evidence: no build artifacts produced by this change
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
 | REQ-VERIFY-HOSTCLASS-GATING | TST-1787496118906453 | verify + smoke against subscription-only profile inventory | pending |
-| REQ-DRIFT-FULL-IDENTITY | TST-1787496118906639 | negative source-drift run with mismatched revision fixture | pending |
+| REQ-DRIFT-FULL-IDENTITY | TST-1787496118906639 | Complete production playbook on local synthetic manifests: matching identity passes; wrong revision with matching digest and wrong digest fail | local source verified; live acceptance pending |
 | REQ-VERIFY-DEPLOYED-LISTENERS | TST-1787496118906882 | Local production-task regressions for configured Hysteria and conditional fallback ports passed; required full gates and live verify remain open | local source verified; acceptance pending |
 | REQ-IDEMPOTENCE-WHERE-DECLARED | TST-1787496118906321 | full-stack idempotence phase output showing second-run changed=0 | pending |
 | REQ-SCENARIO-RUNS-ROLE | TST-1787496118906595 | rewritten amneziawg converge executing role tasks | pending |
@@ -49,3 +49,10 @@ artifact_evidence: no build artifacts produced by this change
 - Independent parent review matched the fallback conditions against the canonical runtime templates and found no blocking issue. Its separate full listener-module run passed **39 tests in 18.27s** (`/private/tmp/ripdpi-listeners-independent.log`). Step `TST-1787496118906882` is complete for this implementation; the other nine execution steps and overall acceptance remain open.
 - Collection-only checks observed **1521 repository tests** and **1468 tests under tests/unit/**; TESTING.md records these observed counts without a full-suite success claim.
 - Outstanding: combined full gates, exact-SHA hosted checks, and the authorized live verification required above. No commit, push, or host operation was performed by this slice.
+
+## Exact source revision regression evidence (2026-08-28)
+
+- Step `TST-1787496118906639`: the complete unchanged production playbook is executed through installed Ansible against a temporary local manifest. Only inventory connection, manifest path and expected synthetic identity are supplied by the fixture; no SSH or live manifest is used.
+- Before the fix, a valid but different 40-character revision with the expected digest incorrectly returned success: one regression failed and two controls passed. Adding revision equality makes all three cases pass; the full existing source-identity module passed **7 tests in 5.83s**. The matching identity remains accepted, and a mismatched digest remains rejected.
+- This deliberately requires the exact deployed source commit even when a documentation-only commit leaves the deployable digest unchanged. Existing live nodes may fail this stricter gate until a reviewed deploy; no manifest was rewritten and no deployment was performed.
+- Collection-only checks found **1615 repository tests / 1562 unit tests**. Full combined checks, exact hosted checks and live acceptance remain required; this implementation does not close the portfolio task.

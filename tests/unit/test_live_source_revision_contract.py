@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import os
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 
@@ -39,6 +44,42 @@ def test_source_drift_playbook_fails_closed_on_revision_mismatch() -> None:
     assert "deployable_digest" in rendered
     assert "expected_deployable_digest" in rendered
     assert source.count("source_revision | default('unknown')") == 2
+
+
+@pytest.mark.parametrize("revision, digest, succeeds", [
+    ("a" * 40, "b" * 64, True),
+    ("c" * 40, "b" * 64, False),
+    ("a" * 40, "d" * 64, False),
+])
+def test_source_drift_executes_full_manifest_identity_check(tmp_path, revision, digest, succeeds):
+    """Exercise the complete production playbook against a local synthetic manifest."""
+    executable = shutil.which("ansible-playbook")
+    assert executable, "real Ansible is required for source identity regressions"
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({
+        "schema_version": 2, "source_revision": revision, "deployable_digest": digest,
+    }))
+    playbook = tmp_path / "source-drift.yml"
+    shutil.copyfile(SOURCE_DRIFT_PLAYBOOK, playbook)
+    inventory = tmp_path / "inventory.ini"
+    inventory.write_text("[vpn]\nlocalhost ansible_connection=local\n")
+    variables = tmp_path / "variables.json"
+    variables.write_text(json.dumps({
+        "ansible_become": False, "ansible_python_interpreter": sys.executable,
+        "source_manifest_path": str(manifest),
+    }))
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\nfact_caching=memory\n")
+    env = {key: value for key, value in os.environ.items() if not key.startswith("ANSIBLE_")}
+    env.update(ANSIBLE_CONFIG=str(config), ANSIBLE_LOCAL_TEMP=str(tmp_path / "ansible-local"),
+               DEPLOY_SOURCE_REVISION="a" * 40, DEPLOYABLE_SOURCE_DIGEST="b" * 64)
+    result = subprocess.run(
+        [executable, "-i", str(inventory), str(playbook), "--extra-vars", "@" + str(variables)],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=40,
+    )
+    output = result.stdout + result.stderr
+    assert (result.returncode == 0) == succeeds, output
+    assert ("deployable source matches" if succeeds else "repo-to-live drift detected") in output
 
 
 def test_make_deploy_records_and_verifies_clean_head() -> None:

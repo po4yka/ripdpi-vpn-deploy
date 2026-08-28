@@ -37,3 +37,7 @@ Verification tooling asserts the state deploy actually produced for every suppor
 
 - The listener subagent owns only `verify.yml` configured Hysteria and Xray/nginx fallback assertions, their local Ansible regressions in `tests/unit/test_listener_contract.py`, and step `TST-1787496118906882` evidence in `codex/high-verify-listeners-20260828` from `7da8b74`.
 - SSH, watchdog, liveness, backup, source drift, toggle defaults, Molecule, Makefile, and client contracts are outside this slice. The primary agent serializes TESTING.md, board, full gates, and Git delivery; the portfolio remains blocked on the other steps and required live evidence.
+
+## Full source identity implementation ownership
+
+- The primary agent owns the source-revision equality assertion in `source-drift.yml` and actual-playbook regressions in `test_live_source_revision_contract.py`, in `codex/high-deploy-safety-20260828`. This does not include controller dispatch, live manifest migration, SSH, or watchdog execution. Other worktrees and their test hunks are preserved during integration.

@@ -17,7 +17,7 @@ default. `group_vars` only overrides. Reading a role's defaults file tells
 you everything it exposes.
 
 **Live source parity is explicit** — `node_manifest` records the clean source
-revision and deployable digest. `source-drift.yml` compares the live digest
+revision and deployable digest. `source-drift.yml` compares both live values
 with the current checkout; `deploy` and `verify` run that gate automatically.
 
 **Injected fact aliases are disabled** — use `ansible_facts[...]` for gathered
