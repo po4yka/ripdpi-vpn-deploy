@@ -34,7 +34,12 @@ retention).
 - **Remote store credentials live in SOPS** — never in env on the server.
 - **Restore drills run as root but never target live paths** — the service
   needs the root-only password and restored files, so runtime cleanup must
-  complete before the success marker is replaced.
+  complete before the success marker is replaced. Claim the target with atomic
+  `mkdir` before arming cleanup; pre-existing files, directories, and symlinks
+  are never owned by that invocation. Metadata and pending markers use private
+  unique temporary files, not predictable paths that may contain prior data.
+  Publish with atomic replacement, never a move that accepts a destination
+  directory; cleanup failures must leave prior success evidence unchanged.
 - **AmneziaWG backup and restore share `amneziawg_config_dir`** — never derive
   a shorter parent path or assume configs live directly under `/etc/amnezia`;
   the drill must validate the same nested directory that the role renders.

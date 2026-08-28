@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import runpy
 import stat
 import subprocess
 import threading
@@ -15,6 +16,23 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MONITOR = REPO_ROOT / "scripts" / "monitor-protocol-liveness.py"
+
+
+def test_monitor_deadline_outlives_maximum_parallel_collector(monkeypatch, tmp_path):
+    monkeypatch.syspath_prepend(str(REPO_ROOT / "scripts"))
+    monitor = runpy.run_path(str(MONITOR))
+    engine = runpy.run_path(str(REPO_ROOT / "scripts/liveness_generation.py"))
+    collector = runpy.run_path(str(REPO_ROOT / "scripts/protocol-liveness.py"))
+    deadlines = []
+    def run(argv, **kwargs):
+        deadlines.append(kwargs["timeout"])
+        return subprocess.CompletedProcess(argv, 0, stdout='{"decision":"healthy"}')
+    monkeypatch.setattr(subprocess, "run", run)
+    assert monitor["evaluate"](tmp_path / "fixture.yaml", tmp_path / "state") == {"decision": "healthy"}
+    profiles = sorted(engine["PROFILES"])
+    config = {"probe_timeout_seconds": 60, "policies": [{"id": "full", "required_profiles": profiles}]}
+    remote = collector["remote_probe_deadline"](config, {"policy": "full"})
+    assert engine["probe_deadline"](60, profiles) < remote < deadlines[0] == engine["JOB_TIMEOUT_SECONDS"] == 600
 
 
 def _executable(path: Path, body: str) -> None:

@@ -26,6 +26,10 @@ DEPLOYABLE_SOURCE_DIGEST ?= $(shell ./scripts/deploy-source-identity.sh --digest
 
 export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
 export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CONFIG DEPLOY_SOURCE_REVISION DEPLOYABLE_SOURCE_DIGEST
+INSPECT_HOSTS ?=
+INSPECT_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini
+INSPECT_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
+export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 
 .PHONY: help init validate plan apply inventory wait decrypt require-inventory require-clean-source validate-ansible-extra-vars dry-run deploy deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
         pre-deploy-check \
@@ -86,7 +90,8 @@ help:
 	@echo "  deploy                     ansible-playbook site.yml (optional ANSIBLE_LIMIT / ANSIBLE_EXTRA_VARS_FILE)"
 	@echo "  deploy-canary              Deploy ENV=canary through the normal deploy flow"
 	@echo "  os-maintenance             Rolling full OS upgrade + required reboot + verification"
-	@echo "  verify [TAG_ON_SUCCESS=1]  ansible-playbook verify.yml (+ optional known-good git tag)"
+	@echo "  verify [TAG_ON_SUCCESS=1]  ACTIVE checks; watchdog may restart services (+ optional tag)"
+	@echo "  inspect INSPECT_HOSTS=…    Passive SSH observation of exact comma-separated inventory names"
 	@echo "  source-drift               Require live deployable digest to match the clean checkout"
 	@echo "  security-verify            Host hardening checks (SSH/sysctl/firewall/services)"
 	@echo "  awg-evidence-provision     Provision the three-host AWG evidence lane (after decrypt)"
@@ -500,6 +505,10 @@ task-federation:
 # without provider credentials, GitHub services, or Molecule containers.
 # `make check` adds validate (fmt, gitleaks, ansible-lint). Missing local
 # tooling is a failure rather than a misleading green gate.
+.PHONY: liveness-profile-check
+liveness-profile-check:
+	python3 scripts/check-liveness-profile-compatibility.py --sing-box-version 1.13.16 --xray-version 26.3.27
+
 ci-fast:
 	@$(MAKE) actionlint-check
 	@$(MAKE) zizmor-check
@@ -521,6 +530,7 @@ ci-fast:
 	@echo "== bundle contract =="; python3 scripts/validate-bundle.py
 	@command -v ansible-playbook >/dev/null 2>&1 || { echo "missing: ansible-playbook" >&2; exit 1; }
 	@echo "== ansible syntax =="; cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,'
+	@$(MAKE) liveness-profile-check
 	@echo "== unit tests =="; python3 -m pytest tests/unit/ -q
 	@echo "== bats shell tests =="; bats tests/bats/
 	@command -v cargo >/dev/null 2>&1 || { echo "missing: cargo" >&2; exit 1; }
@@ -663,6 +673,10 @@ test-tls-policing:
 
 fleet-status:
 	./scripts/fleet-status.sh
+
+.PHONY: inspect
+inspect:
+	python3 scripts/fleet-inspect.py
 
 drift-since-tag:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) VPN_SECRETS_FILE=$(SECRETS_FILE) \

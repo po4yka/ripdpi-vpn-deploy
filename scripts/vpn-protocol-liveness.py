@@ -11,35 +11,139 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
+import ipaddress
 import json
 import os
 import re
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
 from urllib.parse import urlparse
+from uuid import uuid4
 
 
 DEFAULT_CONFIG = Path("/etc/vpn-liveness/config.json")
 DEFAULT_LOCK = Path("/run/lock/vpn-protocol-liveness.lock")
 NETWORK_FAILURE_CODES = {7, 28, 35, 52, 56}
 AUTH_ERROR = re.compile(r"auth|credential|invalid user|rejected|bad certificate", re.IGNORECASE)
+AWG_TOOLCHAIN_BASE = Path("/opt/ripdpi-real-vps-awg-nat/toolchains")
+AWG_TOOLCHAIN_UID = 0
+AWG_TOOLCHAIN_GID = 0
+
+
+def verify_awg_toolchain(expected_id: str) -> dict:
+    """Verify the immutable installer's canonical input, tree and binary hashes."""
+    if not isinstance(expected_id, str) or re.fullmatch(r"[0-9a-f]{64}", expected_id) is None:
+        raise ValueError("toolchain pin invalid")
+    root = AWG_TOOLCHAIN_BASE / expected_id
+    for directory in root.parents:
+        info = directory.lstat()
+        sticky_root = info.st_uid == 0 and info.st_mode & stat.S_ISVTX
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid not in {0, AWG_TOOLCHAIN_UID}
+                or info.st_mode & 0o022 and not sticky_root):
+            raise ValueError("toolchain parent unsafe")
+    entries = [root]
+    for directory, dirs, files in os.walk(root, followlinks=False):
+        entries.extend(Path(directory) / name for name in dirs + files)
+        if len(entries) > 60000:
+            raise ValueError("toolchain entry limit")
+    for path in entries:
+        info = path.lstat()
+        if (info.st_uid != AWG_TOOLCHAIN_UID or info.st_gid != AWG_TOOLCHAIN_GID
+                or (stat.S_ISDIR(info.st_mode) and stat.S_IMODE(info.st_mode) != 0o500)
+                or (stat.S_ISREG(info.st_mode) and (stat.S_IMODE(info.st_mode) not in {0o400, 0o500} or info.st_nlink != 1))
+                or not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode))):
+            raise ValueError("toolchain metadata invalid")
+    manifest_path = root / "manifest.json"
+    if manifest_path.stat().st_size > 65536:
+        raise ValueError("toolchain manifest limit")
+    raw = manifest_path.read_bytes()
+    manifest = json.loads(raw)
+    canonical = lambda value: (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    if (not isinstance(manifest, dict) or raw != canonical(manifest)
+            or set(manifest) != {"schemaVersion", "inputs", "binaries", "treeSha256"}
+            or type(manifest["schemaVersion"]) is not int or manifest["schemaVersion"] != 1):
+        raise ValueError("toolchain manifest invalid")
+    inputs = manifest["inputs"]
+    fields = {"goBundleSha256": 64, "goCommit": 40, "toolsBundleSha256": 64, "toolsCommit": 40, "vendorSha256": 64}
+    if (not isinstance(inputs, dict) or set(inputs) != set(fields)
+            or any(not isinstance(inputs[k], str) or re.fullmatch(r"[0-9a-f]{" + str(n) + "}", inputs[k]) is None for k, n in fields.items())
+            or hashlib.sha256(canonical(inputs)).hexdigest() != expected_id):
+        raise ValueError("toolchain inputs invalid")
+    names = {"amneziawg-go", "awg", "awg-quick"}
+    if not isinstance(manifest["binaries"], dict) or set(manifest["binaries"]) != names:
+        raise ValueError("toolchain binaries invalid")
+    tree = hashlib.sha256()
+    binaries = {}
+    total = 0
+    deadline = time.monotonic() + 30
+    for path in sorted(entries[1:], key=lambda value: value.as_posix()):
+        info = path.lstat()
+        relative = path.relative_to(root).as_posix()
+        metadata = f"{info.st_uid}:{info.st_gid}:{stat.S_IMODE(info.st_mode):04o}".encode()
+        if stat.S_ISDIR(info.st_mode):
+            tree.update(b"D\0" + relative.encode() + b"\0" + metadata + b"\0")
+        elif path != manifest_path:
+            tree.update(b"F\0" + relative.encode() + b"\0" + metadata + b"\0")
+            digest = hashlib.sha256()
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+            with os.fdopen(fd, "rb") as stream:
+                while chunk := stream.read(1024 * 1024):
+                    total += len(chunk)
+                    if total > 1024 * 1024 * 1024 or time.monotonic() > deadline:
+                        raise ValueError("toolchain read limit")
+                    tree.update(chunk)
+                    digest.update(chunk)
+            if relative in {f"bin/{name}" for name in names}:
+                if stat.S_IMODE(info.st_mode) != 0o500 or manifest["binaries"][path.name] != digest.hexdigest():
+                    raise ValueError("toolchain binary mismatch")
+                binaries[path.name] = str(path)
+    if set(binaries) != names or manifest["treeSha256"] != tree.hexdigest():
+        raise ValueError("toolchain tree mismatch")
+    return {"id": expected_id, "binaries": binaries}
+
+
+def awg_probe_url(config: dict):
+    url = config.get("probe_url")
+    if not isinstance(url, str) or any(ord(c) <= 32 for c in url):
+        raise ValueError("AWG URL invalid")
+    parsed = urlparse(url)
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.port not in (None, 443)
+            or parsed.username is not None or parsed.password is not None or parsed.fragment
+            or ":" in parsed.hostname):
+        raise ValueError("AWG requires IPv4 HTTPS port 443")
+    if ipaddress.ip_interface(config["amneziawg"]["address"]).version != 4:
+        raise ValueError("AWG requires IPv4 client address")
+    return parsed
 
 
 def command_version(command: list[str]) -> str:
     for attempt in range(2):
         try:
             result = subprocess.run(command, text=True, capture_output=True, timeout=5, check=False)
-            match = re.search(r"v?(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)", result.stdout + result.stderr)
+            if result.returncode != 0:
+                return "unknown"
+            match = re.search(r"v?(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)", result.stdout)
             return match.group(1) if match else "unknown"
         except (OSError, subprocess.TimeoutExpired):
             if attempt == 0:
                 time.sleep(0.1)
     return "missing"
+
+
+def xray_version() -> str:
+    try:
+        result = subprocess.run(["xray", "version"], text=True, capture_output=True, timeout=5, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return "missing"
+    banner = re.search(r"(?m)^Xray\s+(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)(?:\s|$)", result.stdout)
+    return banner.group(1) if result.returncode == 0 and banner else "unknown"
 
 
 def classify_curl(result: subprocess.CompletedProcess[str], config: dict) -> dict:
@@ -55,17 +159,18 @@ def classify_curl(result: subprocess.CompletedProcess[str], config: dict) -> dic
             pass
     if result.returncode == 0 and status == config["expected_status"] and duration_ms is not None:
         verdict = "throttled" if duration_ms > config["degraded_after_ms"] else "ok"
-        return {"verdict": verdict, "duration_ms": duration_ms, "http_status": status}
+        return {"verdict": verdict, "duration_ms": duration_ms, "http_status": status, "payload_transport": "tcp-https"}
     if AUTH_ERROR.search(result.stderr):
-        return {"verdict": "error", "duration_ms": duration_ms, "error_kind": "authentication"}
+        return {"verdict": "error", "duration_ms": duration_ms, "error_kind": "authentication", "payload_transport": "tcp-https"}
     if result.returncode in NETWORK_FAILURE_CODES:
-        return {"verdict": "blocked", "duration_ms": duration_ms, "error_kind": "network"}
-    return {"verdict": "error", "duration_ms": duration_ms, "error_kind": "unexpected_response"}
+        return {"verdict": "blocked", "duration_ms": duration_ms, "error_kind": "network", "payload_transport": "tcp-https"}
+    return {"verdict": "error", "duration_ms": duration_ms, "error_kind": "unexpected_response", "payload_transport": "tcp-https"}
 
 
 def curl_command(config: dict, extra: list[str] | None = None, prefix: list[str] | None = None) -> list[str]:
     command = list(prefix or []) + [
         "curl",
+        "--disable",
         "-sS",
         "-o",
         "/dev/null",
@@ -74,6 +179,12 @@ def curl_command(config: dict, extra: list[str] | None = None, prefix: list[str]
         "--max-time",
         str(config["timeout_seconds"]),
     ]
+    # An AWG namespace uses its own route, while a SOCKS request must never
+    # honor a NO_PROXY bypass. Neither path may inherit an ambient proxy.
+    if "--socks5-hostname" in (extra or []):
+        command.extend(["--noproxy", ""])
+    else:
+        command.extend(["--proxy", "", "--noproxy", "*"])
     command.extend(extra or [])
     command.append(config["probe_url"])
     return command
@@ -82,9 +193,14 @@ def curl_command(config: dict, extra: list[str] | None = None, prefix: list[str]
 def curl_probe(config: dict, extra: list[str] | None = None, prefix: list[str] | None = None) -> dict:
     command = curl_command(config, extra, prefix)
     try:
-        result = subprocess.run(command, text=True, capture_output=True, timeout=config["timeout_seconds"] + 2, check=False)
+        result = subprocess.run(
+            command, text=True, capture_output=True,
+            timeout=config["timeout_seconds"] + 2, check=False,
+            env={key: value for key, value in os.environ.items() if not key.lower().endswith("_proxy")},
+        )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        return {"verdict": "error", "duration_ms": None, "error_kind": type(exc).__name__.lower()}
+        return {"verdict": "error", "duration_ms": None, "error_kind": type(exc).__name__.lower(),
+                **({"payload_transport": "tcp-https"} if isinstance(exc, subprocess.TimeoutExpired) else {})}
     return classify_curl(result, config)
 
 
@@ -100,6 +216,7 @@ def parallel_curl_probes(config: dict, extras: list[list[str]]) -> list[dict]:
                     text=True,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
+                    env={key: value for key, value in os.environ.items() if not key.lower().endswith("_proxy")},
                 )
             except OSError as exc:
                 processes.append(None)
@@ -127,6 +244,7 @@ def parallel_curl_probes(config: dict, extras: list[list[str]]) -> list[dict]:
                     "verdict": "error",
                     "duration_ms": None,
                     "error_kind": "timeoutexpired",
+                    "payload_transport": "tcp-https",
                 }
     finally:
         for process in processes:
@@ -140,7 +258,7 @@ def parallel_curl_probes(config: dict, extras: list[list[str]]) -> list[dict]:
 
 
 def process_result(profile: str, result: dict) -> dict:
-    return {"profile": profile, **result}
+    return {"profile": profile, "payload_transport": "unknown", "target_address_family": "unknown", **result}
 
 
 def stop_process(process: subprocess.Popen[str] | None) -> None:
@@ -207,24 +325,48 @@ def aggregate_variants(profile: str, variants: list[dict]) -> dict:
     }
 
 
-def probe_sing_box_profiles(sing_box: dict, config: dict, control_alive: bool) -> list[dict]:
-    profile_ports = sing_box["profiles"]
+def probe_runtime_profiles(runtime: str, settings: dict, config: dict, control_alive: bool) -> list[dict]:
+    profile_ports = settings["profiles"]
+    all_ports = [port for ports in profile_ports.values() for port in ports]
+    reservations = []
+    try:
+        for port in all_ports:
+            reservation = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            reservations.append(reservation)
+            reservation.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            reservation.bind(("127.0.0.1", port))
+            reservation.listen(1)
+    except OSError:
+        return [process_result(profile, {"verdict": "error", "duration_ms": None,
+                                         "error_kind": "listener_in_use"}) for profile in sorted(profile_ports)]
+    finally:
+        for reservation in reservations:
+            reservation.close()
     # Private per-run log file: a predictable name in a world-writable
     # directory lets a local user pre-plant a symlink that this (possibly
     # root-run) writer would follow.
-    log_fd, log_name = tempfile.mkstemp(prefix="vpn-liveness-sing-box-", suffix=".log")
+    log_fd, log_name = tempfile.mkstemp(prefix=f"vpn-liveness-{runtime}-", suffix=".log")
     os.close(log_fd)
     log_path = Path(log_name)
     process: subprocess.Popen[str] | None = None
     try:
+        command = [runtime, "run", "-config" if runtime == "xray" else "-c", settings["config"]]
+        if runtime == "xray":
+            validated = subprocess.run(
+                [runtime, "run", "-test", "-config", settings["config"]],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False,
+            )
+            if validated.returncode:
+                return [process_result(profile, {"verdict": "error", "duration_ms": None,
+                                                  "error_kind": "runtime_config"})
+                        for profile in sorted(profile_ports)]
         with log_path.open("w", encoding="utf-8") as log_handle:
             process = subprocess.Popen(
-                ["sing-box", "run", "-c", sing_box["config"]],
+                command,
                 stdout=log_handle,
                 stderr=log_handle,
                 text=True,
             )
-        all_ports = [port for ports in profile_ports.values() for port in ports]
         if not wait_for_ports(process, all_ports):
             return [
                 process_result(profile, {"verdict": "error", "duration_ms": None, "error_kind": "runtime_start"})
@@ -239,12 +381,19 @@ def probe_sing_box_profiles(sing_box: dict, config: dict, control_alive: bool) -
             for index, result in enumerate(variants):
                 if not control_alive and result["verdict"] == "blocked":
                     variants[index] = {
+                        **result,
                         "verdict": "unknown",
                         "duration_ms": result.get("duration_ms"),
                         "error_kind": "control_unavailable",
                     }
             results.append(aggregate_variants(profile, variants))
+        if process.poll() is not None:
+            return [process_result(profile, {"verdict": "error", "duration_ms": None,
+                                             "error_kind": "runtime_exited"}) for profile in sorted(profile_ports)]
         stop_process(process)
+        if process.poll() is None:
+            return [process_result(profile, {"verdict": "error", "duration_ms": None,
+                                             "error_kind": "cleanup"}) for profile in sorted(profile_ports)]
         if any(item["verdict"] == "blocked" for item in results):
             try:
                 if AUTH_ERROR.search(log_path.read_text(encoding="utf-8", errors="replace")):
@@ -272,7 +421,7 @@ def probe_sing_box_profiles(sing_box: dict, config: dict, control_alive: bool) -
                 # Diagnostic loss must not turn a network result into an auth claim.
                 pass
         return results
-    except OSError as exc:
+    except (OSError, subprocess.TimeoutExpired) as exc:
         return [
             process_result(profile, {"verdict": "error", "duration_ms": None, "error_kind": type(exc).__name__.lower()})
             for profile in sorted(profile_ports)
@@ -286,27 +435,55 @@ def probe_sing_box_profiles(sing_box: dict, config: dict, control_alive: bool) -
             pass
 
 
-def probe_awg(config: dict, control_alive: bool) -> dict:
+def namespace_exists(name: str) -> bool:
+    # iproute2's /var/run/netns resolves to /run/netns on the managed hosts.
+    # Inspect only our generated name, never infer ownership from a broad list.
+    return os.path.lexists(Path("/run/netns") / name)
+
+
+def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
     profile = "p2-amneziawg"
-    namespace = f"vpn-live-{os.getpid()}"
-    interface = f"awglive{os.getpid() % 10000}"
+    namespace = f"vpn-live-{uuid4().hex}"
+    interface = f"awglive{uuid4().hex[:8]}"
     awg_config = config["amneziawg"]["config"]
     created = False
+    namespace_attempted = False
+    address_family = "unknown"
+    interface_location = None
     go_process: subprocess.Popen[str] | None = None
     result: dict
     cleanup_failed = False
     try:
+        parsed = awg_probe_url(config)
+        target_ip = socket.getaddrinfo(parsed.hostname, 443, family=socket.AF_INET, type=socket.SOCK_STREAM)[0][4][0]
+        if ipaddress.ip_address(target_ip).version != 4:
+            raise ValueError("AWG target is not IPv4")
+        address_family = "ipv4"
+        existing = subprocess.run(["ip", "link", "show", interface], timeout=2, check=False, capture_output=True)
+        if existing.returncode != 1:
+            raise RuntimeError("AWG interface is not available")
+        if namespace_exists(namespace):
+            raise RuntimeError("AWG namespace is not available")
+        # The root-owned namespace directory and unguessable name were absent.
+        # Remember the attempt before a timeout/signal can interrupt ip after
+        # creating its mount, then reconcile that partial result in finally.
+        namespace_attempted = True
         subprocess.run(["ip", "netns", "add", namespace], timeout=5, check=True, capture_output=True)
         created = True
         stripped = subprocess.run(
-            ["awg-quick", "strip", awg_config], text=True, capture_output=True, timeout=5, check=True
+            [toolchain["binaries"]["awg-quick"], "strip", awg_config], text=True, capture_output=True, timeout=5, check=True
         )
+        go_env = {key: value for key, value in os.environ.items() if key not in {"WG_TUN_FD", "WG_UAPI_FD", "WG_PROCESS_FOREGROUND", "LOG_LEVEL"}}
+        go_env["LOG_LEVEL"] = "silent"
         go_process = subprocess.Popen(
-            ["amneziawg-go", interface],
+            [toolchain["binaries"]["amneziawg-go"], "-f", interface],
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             text=True,
+            env=go_env,
         )
+        interface_location = "host"
         startup_timeout = max(5.0, min(float(config["timeout_seconds"]), 10.0))
         startup_deadline = time.monotonic() + startup_timeout
         while time.monotonic() < startup_deadline:
@@ -319,7 +496,7 @@ def probe_awg(config: dict, control_alive: bool) -> dict:
         else:
             raise RuntimeError("amneziawg-go interface startup timed out")
         subprocess.run(
-            ["awg", "setconf", interface, "/dev/stdin"],
+            [toolchain["binaries"]["awg"], "setconf", interface, "/dev/stdin"],
             input=stripped.stdout,
             text=True,
             timeout=5,
@@ -328,13 +505,10 @@ def probe_awg(config: dict, control_alive: bool) -> dict:
         )
         # The interface is created in the host namespace so the userspace UDP socket keeps the sentinel's underlay after the interface moves; addresses and routes exist only in the disposable namespace.
         subprocess.run(["ip", "link", "set", interface, "netns", namespace], timeout=5, check=True, capture_output=True)
+        interface_location = "namespace"
         subprocess.run(["ip", "-n", namespace, "address", "add", config["amneziawg"]["address"], "dev", interface], timeout=5, check=True, capture_output=True)
         subprocess.run(["ip", "-n", namespace, "link", "set", interface, "up"], timeout=5, check=True, capture_output=True)
         subprocess.run(["ip", "-n", namespace, "route", "add", "default", "dev", interface], timeout=5, check=True, capture_output=True)
-        parsed = urlparse(config["probe_url"])
-        if not parsed.hostname:
-            raise ValueError("probe_url has no hostname")
-        target_ip = socket.getaddrinfo(parsed.hostname, 443, family=socket.AF_INET, type=socket.SOCK_STREAM)[0][4][0]
         started = int(time.time())
         result = curl_probe(
             config,
@@ -342,44 +516,53 @@ def probe_awg(config: dict, control_alive: bool) -> dict:
             ["ip", "netns", "exec", namespace],
         )
         handshake = subprocess.run(
-            ["ip", "netns", "exec", namespace, "awg", "show", interface, "latest-handshakes"],
+            ["ip", "netns", "exec", namespace, toolchain["binaries"]["awg"], "show", interface, "latest-handshakes"],
             text=True,
             capture_output=True,
             timeout=5,
             check=False,
         )
-        epochs = [int(value) for value in re.findall(r"\b\d{9,}\b", handshake.stdout)]
-        if result["verdict"] in {"ok", "throttled"} and not any(epoch >= started - 5 for epoch in epochs):
-            result = {"verdict": "error", "duration_ms": result.get("duration_ms"), "error_kind": "no_fresh_handshake"}
+        fields = [line.split() for line in handshake.stdout.splitlines() if line.strip()]
+        fresh = (handshake.returncode == 0 and len(fields) == 1 and len(fields[0]) == 2
+                 and fields[0][1].isdigit() and started - 5 <= int(fields[0][1]) <= int(time.time()))
+        if result["verdict"] in {"ok", "throttled"} and not fresh:
+            result = {**result, "verdict": "error", "error_kind": "no_fresh_handshake"}
+        elif result["verdict"] in {"ok", "throttled"}:
+            result["fresh_handshake"] = True
         if not control_alive and result["verdict"] == "blocked":
-            result = {"verdict": "unknown", "duration_ms": None, "error_kind": "control_unavailable"}
+            result = {**result, "verdict": "unknown", "duration_ms": None, "error_kind": "control_unavailable"}
     except (OSError, subprocess.SubprocessError, RuntimeError, ValueError) as exc:
         result = {"verdict": "error", "duration_ms": None, "error_kind": type(exc).__name__.lower()}
     finally:
-        if created:
-            try:
-                route = subprocess.run(["ip", "-n", namespace, "route", "delete", "default"], timeout=5, check=False, capture_output=True)
-                cleanup_failed |= route.returncode not in {0, 1, 2}
-            except (OSError, subprocess.TimeoutExpired):
-                cleanup_failed = True
-            try:
-                link = subprocess.run(["ip", "-n", namespace, "link", "delete", interface], timeout=5, check=False, capture_output=True)
-                cleanup_failed |= link.returncode not in {0, 1, 2}
-            except (OSError, subprocess.TimeoutExpired):
-                cleanup_failed = True
+        stop_process(go_process)
+        if go_process is not None and go_process.poll() is None:
+            cleanup_failed = True
+        if created or (namespace_attempted and namespace_exists(namespace)):
+            if interface_location is not None:
+                try:
+                    prefix = ["ip", "-n", namespace] if interface_location == "namespace" else ["ip"]
+                    # Closing the foreground TUN owner may already remove it.
+                    present = subprocess.run([*prefix, "link", "show", interface], timeout=5, check=False, capture_output=True)
+                    if present.returncode == 0:
+                        link = subprocess.run([*prefix, "link", "delete", interface], timeout=5, check=False, capture_output=True)
+                        cleanup_failed |= link.returncode != 0
+                    elif present.returncode != 1:
+                        cleanup_failed = True
+                except (OSError, subprocess.TimeoutExpired):
+                    cleanup_failed = True
             try:
                 deleted = subprocess.run(["ip", "netns", "delete", namespace], timeout=5, check=False, capture_output=True)
                 cleanup_failed |= deleted.returncode != 0
             except (OSError, subprocess.TimeoutExpired):
                 cleanup_failed = True
-        stop_process(go_process)
     if cleanup_failed:
-        result = {"verdict": "error", "duration_ms": None, "error_kind": "cleanup"}
-    return process_result(profile, result)
+        result = {**result, "verdict": "error", "duration_ms": None, "error_kind": "cleanup"}
+    return process_result(profile, {**result, "target_address_family": address_family})
 
 
 def error_profiles(config: dict, error_kind: str) -> list[dict]:
-    profiles = sorted((config.get("sing_box") or {}).get("profiles", {}))
+    profiles = sorted({profile for runtime in ("sing_box", "xray")
+                       for profile in (config.get(runtime) or {}).get("profiles", {})})
     if "amneziawg" in config:
         profiles.append("p2-amneziawg")
     return [
@@ -398,6 +581,32 @@ def main() -> int:
         print(f"vpn-protocol-liveness: invalid config: {exc}", file=sys.stderr)
         return 2
 
+    if "p1-xhttp" in (config.get("sing_box") or {}).get("profiles", {}):
+        print("vpn-protocol-liveness: migration required: p1-xhttp requires xray", file=sys.stderr)
+        return 2
+    if "xray" in config:
+        settings = config["xray"]
+        expected_xray = config.get("expected_runtime", {}).get("xray")
+        if (not isinstance(settings, dict)
+                or not isinstance(settings.get("config"), str) or not Path(settings["config"]).is_absolute()
+                or not isinstance(settings.get("profiles"), dict) or set(settings["profiles"]) != {"p1-xhttp"}
+                or not isinstance(settings["profiles"]["p1-xhttp"], list) or not settings["profiles"]["p1-xhttp"]
+                or any(type(port) is not int or not 1 <= port <= 65535 for port in settings["profiles"]["p1-xhttp"])
+                or len(set(settings["profiles"]["p1-xhttp"])) != len(settings["profiles"]["p1-xhttp"])
+                or not isinstance(expected_xray, str)
+                or not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?", expected_xray)):
+            print("vpn-protocol-liveness: invalid xray profile or expected_runtime.xray pin", file=sys.stderr)
+            return 2
+
+    toolchain = None
+    if "amneziawg" in config:
+        try:
+            awg_probe_url(config)
+            toolchain = verify_awg_toolchain(config.get("expected_runtime", {}).get("awg_toolchain"))
+        except (OSError, ValueError, TypeError, KeyError):
+            print("vpn-protocol-liveness: invalid AWG toolchain or IPv4 HTTPS profile", file=sys.stderr)
+            return 2
+
     lock_path = Path(os.environ.get("VPN_LIVENESS_LOCK", DEFAULT_LOCK))
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("w", encoding="utf-8") as lock:
@@ -409,17 +618,23 @@ def main() -> int:
 
         control = curl_probe(config)
         control_alive = control["verdict"] in {"ok", "throttled"}
-        runtime = {
-            "sing_box": command_version(["sing-box", "version"]),
-            "awg": command_version(["awg", "--version"]),
-        }
+        runtime = {}
+        if "sing_box" in config:
+            runtime["sing_box"] = command_version(["sing-box", "version"])
+        if "xray" in config:
+            runtime["xray"] = xray_version()
+        if toolchain is not None:
+            runtime["awg"] = command_version([toolchain["binaries"]["awg"], "--version"])
+            runtime["awg_toolchain"] = toolchain["id"]
         if runtime != config["expected_runtime"]:
             profiles = error_profiles(config, "runtime_mismatch")
         else:
             sing_box = config.get("sing_box") or {"config": "", "profiles": {}}
-            profiles = probe_sing_box_profiles(sing_box, config, control_alive) if sing_box["profiles"] else []
+            profiles = probe_runtime_profiles("sing-box", sing_box, config, control_alive) if sing_box["profiles"] else []
+            if "xray" in config:
+                profiles.extend(probe_runtime_profiles("xray", config["xray"], config, control_alive))
             if "amneziawg" in config:
-                profiles.append(probe_awg(config, control_alive))
+                profiles.append(probe_awg(config, control_alive, toolchain))
         payload = {
             "schema_version": 1,
             "sentinel": config["sentinel"],
@@ -427,6 +642,7 @@ def main() -> int:
             "control": control,
             "profiles": profiles,
             "runtime": runtime,
+            "provenance": config["provenance"],
         }
         print(json.dumps(payload, sort_keys=True))
     return 0

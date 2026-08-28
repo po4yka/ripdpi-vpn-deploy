@@ -1,244 +1,550 @@
-"""Security-facing tests for sentinel onboarding."""
-
+"""Onboarding orchestration fixtures; fake tools/SSH are not live VPN proof."""
 from __future__ import annotations
 
+import base64
+import importlib.util
+import io
 import json
 import os
-import stat
-import subprocess
 from pathlib import Path
+import sys
 
+import pytest
 import yaml
 
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = REPO_ROOT / "scripts" / "install-liveness-sentinel.sh"
+ROOT = Path(__file__).resolve().parents[2]
 
 
-def _exe(path: Path, body: str) -> None:
-    path.write_text(body)
-    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+def load(path, name):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-def test_installer_keeps_awg_private_key_off_argv_and_uses_strict_ssh(tmp_path: Path) -> None:
-    config = tmp_path / "liveness.yaml"
-    config.write_text(
-        yaml.safe_dump(
-            {
-                "schema_version": 1,
-                "probe_url": "https://www.gstatic.com/generate_204",
-                "expected_status": 204,
-                "probe_timeout_seconds": 15,
-                "degraded_after_ms": 3000,
-                "stale_after_seconds": 120,
-                "failure_threshold": 3,
-                "otp_ttl_seconds": 3600,
-                "expected_runtime": {"sing_box": "1.14.0", "awg": "1.0.0"},
-                "policies": [
-                    {
-                        "id": "fullstack",
-                        "required_profiles": ["p0-reality", "p2-amneziawg"],
-                        "min_failed_vantages": 1,
-                    }
-                ],
-                "sentinels": [
-                    {
-                        "id": "tls-freeze-a",
-                        "ssh_target": "sentinel-a",
-                        "ssh_transport_host": "sentinel-direct",
-                        "ssh_host_key_alias": "sentinel-a",
-                        "policy": "fullstack",
-                    }
-                ],
-            }
-        )
-    )
-    emitted = tmp_path / "emitted.json"
-    emitted.write_text(
-        json.dumps(
-            {
-                "outbounds": [
-                    {"type": "vless", "tag": "p0-reality-upcloud-prod", "uuid": "secret-uuid"}
-                ]
-            }
-        )
-    )
-    emit_singbox = tmp_path / "emit-singbox"
-    _exe(emit_singbox, f"#!/usr/bin/env bash\ncat {emitted}\n")
-    emit_awg = tmp_path / "emit-awg"
-    _exe(
-        emit_awg,
-        "#!/usr/bin/env bash\nprintf '[Interface]\\nPrivateKey = PASTE_CLIENT_PRIVATE_KEY_HERE\\nAddress = 10.66.66.2/32\\nDNS = 1.1.1.1\\n[Peer]\\nPublicKey = server\\n'\n",
-    )
-    audit_log = tmp_path / "audit-log"
-    _exe(audit_log, "#!/usr/bin/env bash\nprintf 'audit %s\\n' \"$*\" >> \"$CALL_LOG\"\n")
-    call_log = tmp_path / "calls.log"
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    _exe(
-        bin_dir / "ssh",
-        """#!/usr/bin/env bash
-printf 'ssh' >> "$CALL_LOG"; printf ' <%s>' "$@" >> "$CALL_LOG"; printf '\n' >> "$CALL_LOG"
-if [[ "$*" == *' id -un' ]]; then echo probe; exit 0; fi
-if [[ "$*" == *'mktemp -d'* ]]; then echo /tmp/vpn-liveness-staging.XXXXXX; exit 0; fi
-if [[ "$*" == *'/usr/local/sbin/vpn-protocol-liveness' ]]; then
-  printf '{"schema_version":1,"sentinel":"tls-freeze-a","observed_at":9999999999,"control":{"verdict":"ok"},"profiles":[{"profile":"p0-reality","verdict":"ok"},{"profile":"p2-amneziawg","verdict":"ok"}],"runtime":{"sing_box":"1.14.0","awg":"1.0.0"}}\n'
-fi
-""",
-    )
-    _exe(
-        bin_dir / "scp",
-        """#!/usr/bin/env bash
-printf 'scp' >> "$CALL_LOG"; printf ' <%s>' "$@" >> "$CALL_LOG"; printf '\n' >> "$CALL_LOG"
-""",
-    )
-    env = os.environ.copy()
-    env.update(
-        {
-            "PATH": f"{bin_dir}:{env['PATH']}",
-            "CALL_LOG": str(call_log),
-            "EMIT_SINGBOX": str(emit_singbox),
-            "EMIT_AWG": str(emit_awg),
-            "LIVENESS_SENTINEL_REGISTRY": str(tmp_path / "registry.json"),
-            "AUDIT_LOG": str(audit_log),
-        }
-    )
-    private_key = "PRIVATE_KEY_MUST_NOT_APPEAR"
+@pytest.fixture
+def setup(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
+    module = load(ROOT / "scripts/install_liveness_sentinel.py", "installer")
+    fixture = load(ROOT / "tests/unit/test_liveness_profiles.py", "profile_fixture")
+    values = fixture.inputs()
+    config = {"schema_version": 1, "probe_url": "https://192.0.2.9/health", "expected_status": 204,
+              "expected_runtime": {"sing_box": "1.14.0", "xray": "26.3.27", "awg": "1.0.0", "awg_toolchain": "d" * 64},
+              "policies": [{"id": "fullstack", "required_profiles": values["required_profiles"], "min_failed_vantages": 1}],
+              "sentinels": [{"id": "probe-a", "ssh_target": "sentinel-a", "ssh_transport_host": "sentinel-direct",
+                             "ssh_host_key_alias": "sentinel-a", "policy": "fullstack", "vantage": "external",
+                             "awg_target": values["awg_binding"]}]}
+    path = tmp_path / "liveness.yaml"
+    path.write_text(yaml.safe_dump(config))
+    path.chmod(0o600)
+    registry = tmp_path / "registry.json"
+    calls, bundles, plaintexts = [], [], []
+    state = {"receipt": None, "parser_failure": False, "lost_launch": False, "unknown": False}
+    environment = {"PATH": os.environ["PATH"], "HOME": str(tmp_path), "HOSTS": "upcloud:probe,scaleway:probe,vultr:probe",
+                   "COHORTS": "p0,p1-web,p2-udp", "SOPS_FILE": str(tmp_path / "encrypted.yaml")}
 
-    result = subprocess.run(
-        [
-            "bash",
-            str(SCRIPT),
-            "--config",
-            str(config),
-            "--sentinel",
-            "tls-freeze-a",
-            "--client",
-            "liveness-a",
-            "--awg-private-key-stdin",
-        ],
-        input=private_key + "\n",
-        text=True,
-        capture_output=True,
-        env=env,
-        check=False,
-    )
+    def fake_run(command, *, environment=None, input_bytes=b"", timeout=30, **_kwargs):
+        calls.append((list(command), dict(environment or {}), input_bytes))
+        name = Path(command[0]).name
+        if name == "audit-log.sh":
+            return b""
+        if name == "decrypt-secrets.sh":
+            destination = Path(environment["SECRETS_FILE"])
+            assert destination.parent.stat().st_mode & 0o777 == 0o700
+            destination.write_text(yaml.safe_dump(values["secrets_doc"]))
+            destination.chmod(0o600)
+            plaintexts.append(destination)
+            return b"decrypted\n"
+        if name == "emit-singbox.sh":
+            assert environment["VPN_SECRETS_FILE"] == str(plaintexts[-1])
+            doc = values["ripdpi_doc"] if command[-1] == "ripdpi" else values["standard_doc"]
+            return json.dumps(doc).encode()
+        if name == "terraform-env.sh":
+            assert environment["PROVIDER"] == "vultr" and environment["ENV"] == "probe"
+            assert command[1:] == ["output", "-raw", "server_ipv4"]
+            return b"192.0.2.3"
+        if name in ("awg", "wg"):
+            assert command[1:] == ["pubkey"]
+            return (values["derive_public_key"](input_bytes.decode().strip()) + "\n").encode()
+        if name in ("sing-box", "xray"):
+            if command[1] == "version":
+                return ("Xray 26.3.27\n" if name == "xray" else "sing-box version 1.14.0\n").encode()
+            if state["parser_failure"]:
+                raise module.InstallError("fixture-parser-failed")
+            assert Path(command[-1]).stat().st_mode & 0o777 == 0o600
+            return b""
+        if name == "ssh":
+            if command[-1] == "id -un":
+                return b"probe\n"
+            if command[-1] == "sudo -n true":
+                return b""
+            if input_bytes:
+                bundle = json.loads(input_bytes)
+                bundles.append(bundle)
+                metadata = json.loads(base64.b64decode(bundle["files"]["metadata.json"]))
+                state["receipt"] = {"generation_id": bundle["generation_id"], "status": "committed",
+                                    "runner_sha256": metadata["provenance"]["runner_sha256"], "provenance": metadata["provenance"]}
+                if state["lost_launch"]:
+                    raise module.InstallError("fixture-ssh-lost")
+                return b'{"status":"queued"}'
+            if state["unknown"]:
+                raise module.InstallError("fixture-unknown")
+            if state["receipt"] is None:
+                return b'{"state":"uncommitted"}'
+            return json.dumps({"state": "committed", "receipt": state["receipt"]}).encode()
+        raise AssertionError(f"unexpected fixture command {command}")
 
-    assert result.returncode == 0, result.stderr
-    calls = call_log.read_text()
-    assert private_key not in calls + result.stdout + result.stderr
-    assert "<StrictHostKeyChecking=yes>" in calls
-    assert "<BatchMode=yes>" in calls
-    for option in (
-        "<HostName=sentinel-direct>",
-        "<HostKeyAlias=sentinel-a>",
-        "<ProxyCommand=none>",
-        "<ControlMaster=no>",
-        "<ControlPath=none>",
-        "<ControlPersist=no>",
-    ):
-        assert option in calls
-    assert "audit append-best-effort --action install-liveness-sentinel" in calls
-    registry = json.loads((tmp_path / "registry.json").read_text())
-    assert registry["sentinels"]["tls-freeze-a"]["client"] == "liveness-a"
-    assert registry["sentinels"]["tls-freeze-a"]["ssh_transport_host"] == "sentinel-direct"
-    assert registry["sentinels"]["tls-freeze-a"]["ssh_host_key_alias"] == "sentinel-a"
+    monkeypatch.setattr(module, "_run", fake_run)
+    monkeypatch.setattr(module, "_source_identity", lambda _repo: ("a" * 40, b"# runner fixture\n", b"# engine fixture\n"))
+    monkeypatch.setattr(module.shutil, "which", lambda name, **_kwargs: name)
+    monkeypatch.setattr(module, "RECEIPT_TIMEOUT", 0)
+
+    def install():
+        path.write_text(yaml.safe_dump(config))
+        return module.install(path, "probe-a", "sentinel", registry, read_awg_stdin=True,
+                              stdin=io.StringIO(values["private_key"] + "\n"), environment=environment)
+    return locals()
 
 
-def test_installer_requires_private_key_from_stdin(tmp_path: Path) -> None:
-    config = tmp_path / "liveness.yaml"
-    config.write_text(
-        yaml.safe_dump(
-            {
-                "probe_url": "https://www.gstatic.com/generate_204",
-                "expected_status": 204,
-                "expected_runtime": {"sing_box": "1.14.0", "awg": "1.0.0"},
-                "policies": [{"id": "fullstack", "required_profiles": ["p2-amneziawg"]}],
-                "sentinels": [{"id": "x", "ssh_target": "sentinel-x", "policy": "fullstack"}],
-            }
-        )
-    )
-    result = subprocess.run(
-        ["bash", str(SCRIPT), "--config", str(config), "--sentinel", "x", "--client", "x"],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+def test_four_profiles_use_one_decrypt_and_receipt_before_assignment(setup):
+    s = setup
+    result = s["install"]()
+    calls, bundle = s["calls"], s["bundles"][0]
+    assert result["status"] == "committed"
+    assert sum(Path(c[0][0]).name == "decrypt-secrets.sh" for c in calls) == 1
+    assert [c[0][-1] for c in calls if Path(c[0][0]).name == "emit-singbox.sh"] == ["sing-box", "ripdpi"]
+    assert not any(p.exists() for p in s["plaintexts"])
+    assert set(bundle["files"]) == {"runner.py", "config.json", "metadata.json", "profiles/sing-box.json", "profiles/xray.json", "profiles/awg.conf"}
+    contents = b"\n".join(base64.b64decode(v) for v in bundle["files"].values())
+    assert s["values"]["secrets_doc"]["amneziawg_secrets"]["server_private_key"].encode() not in contents
+    assert b"client_registry" not in contents
+    config = json.loads(base64.b64decode(bundle["files"]["config.json"]))
+    assert config["xray"]["config"].endswith("/profiles/xray.json")
+    assert config["expected_runtime"] == s["config"]["expected_runtime"]
+    registry = json.loads(s["registry"].read_text())
+    assert registry["sentinels"]["probe-a"]["generation_id"] == result["generation_id"]
+    assert s["registry"].stat().st_mode & 0o777 == 0o600
+    for command, environment, _stdin in calls:
+        exposed = json.dumps([command, environment])
+        assert s["values"]["private_key"] not in exposed
+        assert s["values"]["secrets_doc"]["amneziawg_secrets"]["server_private_key"] not in exposed
+    ssh = [c[0] for c in calls if c[0][0] == "ssh"]
+    assert all("StrictHostKeyChecking=yes" in c and "BatchMode=yes" in c and "ProxyCommand=none" in c for c in ssh)
+    assert not any("scp" == Path(c[0][0]).name for c in calls)
 
-    assert result.returncode != 0
-    assert "--awg-private-key-stdin" in result.stderr
+
+@pytest.mark.parametrize("fault", ["parser", "revoked", "wrong-key", "bad-binding", "missing-hosts", "missing-cohorts", "cohort-mismatch", "dirty", "missing-key", "oversized-key"])
+def test_local_failures_never_contact_ssh_and_clean_plaintext(setup, fault, monkeypatch):
+    s, module = setup, setup["module"]
+    if fault == "parser":
+        s["state"]["parser_failure"] = True
+    elif fault == "revoked":
+        s["values"]["secrets_doc"]["client_registry"]["sentinel"]["status"] = "revoked"
+    elif fault == "wrong-key":
+        s["values"]["private_key"] = s["fixture"].key(9)
+    elif fault == "bad-binding":
+        s["config"]["sentinels"][0]["awg_target"]["environment"] = "other"
+    elif fault in ("missing-hosts", "missing-cohorts"):
+        s["environment"].pop("HOSTS" if fault == "missing-hosts" else "COHORTS")
+    elif fault == "cohort-mismatch":
+        s["environment"]["COHORTS"] = "p0"
+    elif fault == "dirty":
+        monkeypatch.setattr(module, "_source_identity", lambda _repo: (_ for _ in ()).throw(module.InstallError("source-dirty")))
+    elif fault == "missing-key":
+        s["values"]["private_key"] = ""
+    else:
+        s["values"]["private_key"] = "A" * 10000
+    with pytest.raises((module.InstallError, module.ProfileError)):
+        s["install"]()
+    assert not any(c[0][0] == "ssh" for c in s["calls"])
+    assert not any(p.exists() for p in s["plaintexts"])
+    assert not s["registry"].exists()
 
 
-def test_installer_supports_policy_without_amneziawg_key(tmp_path: Path) -> None:
-    config = tmp_path / "liveness.yaml"
-    config.write_text(
-        yaml.safe_dump(
-            {
-                "schema_version": 1,
-                "probe_url": "https://www.gstatic.com/generate_204",
-                "expected_status": 204,
-                "expected_runtime": {"sing_box": "1.14.0", "awg": "1.0.0"},
-                "policies": [{"id": "stream", "required_profiles": ["p0-reality"]}],
-                "sentinels": [{"id": "stream-a", "ssh_target": "sentinel-a", "policy": "stream"}],
-            }
-        )
-    )
-    emit_singbox = tmp_path / "emit-singbox"
-    _exe(
-        emit_singbox,
-        "#!/usr/bin/env bash\nprintf '{\"outbounds\":[{\"type\":\"vless\",\"tag\":\"p0-reality-upcloud-primary\"},{\"type\":\"vless\",\"tag\":\"p0-reality-upcloud-fallback\"}]}\n'\n",
-    )
-    emit_awg = tmp_path / "emit-awg"
-    _exe(emit_awg, "#!/usr/bin/env bash\nexit 99\n")
-    audit_log = tmp_path / "audit-log"
-    _exe(audit_log, "#!/usr/bin/env bash\nexit 0\n")
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    _exe(
-        bin_dir / "ssh",
-        """#!/usr/bin/env bash
-if [[ "$*" == *' id -un' ]]; then echo probe; exit 0; fi
-if [[ "$*" == *'mktemp -d'* ]]; then echo /tmp/vpn-liveness-staging.XXXXXX; exit 0; fi
-if [[ "$*" == *'/usr/local/sbin/vpn-protocol-liveness' ]]; then
-  printf '{"schema_version":1,"sentinel":"stream-a","control":{"verdict":"ok"},"profiles":[{"profile":"p0-reality","verdict":"ok"}]}\n'
-fi
-""",
-    )
-    _exe(
-        bin_dir / "scp",
-        """#!/usr/bin/env bash
-for arg in "$@"; do
-  if [[ -f "$arg" ]]; then tar -xzf "$arg" -C "$SCP_CAPTURE"; fi
-done
-""",
-    )
-    scp_capture = tmp_path / "scp-capture"
-    scp_capture.mkdir()
-    env = os.environ.copy()
-    env.update(
-        {
-            "PATH": f"{bin_dir}:{env['PATH']}",
-            "EMIT_SINGBOX": str(emit_singbox),
-            "EMIT_AWG": str(emit_awg),
-            "LIVENESS_SENTINEL_REGISTRY": str(tmp_path / "registry.json"),
-            "AUDIT_LOG": str(audit_log),
-            "SCP_CAPTURE": str(scp_capture),
-        }
-    )
+@pytest.mark.parametrize("bad", ["malformed", "world-readable", "symlink", "duplicate-client"])
+def test_registry_is_strict_and_blocks_decrypt_and_ssh(setup, bad):
+    s = setup
+    content = {"schema_version": 1, "sentinels": {"other": {"client": "sentinel", "ssh_target": "other"}}}
+    s["registry"].write_text("{" if bad == "malformed" else json.dumps(content if bad == "duplicate-client" else {"schema_version": 1, "sentinels": {}}))
+    s["registry"].chmod(0o644 if bad == "world-readable" else 0o600)
+    if bad == "symlink":
+        original = s["registry"].with_suffix(".original")
+        s["registry"].rename(original)
+        s["registry"].symlink_to(original)
+    before = s["registry"].read_bytes()
+    with pytest.raises(s["module"].InstallError):
+        s["install"]()
+    assert s["registry"].read_bytes() == before
+    assert not s["calls"]
 
-    result = subprocess.run(
-        ["bash", str(SCRIPT), "--config", str(config), "--sentinel", "stream-a", "--client", "stream-a"],
-        text=True,
-        capture_output=True,
-        env=env,
-        check=False,
-    )
 
-    assert result.returncode == 0, result.stderr
-    assert json.loads((tmp_path / "registry.json").read_text())["sentinels"]["stream-a"]["client"] == "stream-a"
-    installed = json.loads((scp_capture / "config.json").read_text())
-    assert installed["sing_box"]["profiles"]["p0-reality"] == [18081, 18082]
-    sing_box = json.loads((scp_capture / "sing-box.json").read_text())
-    assert [item["type"] for item in sing_box["outbounds"]] == ["vless", "vless"]
-    assert len(sing_box["inbounds"]) == 2
-    assert "tar --no-xattrs" in SCRIPT.read_text()
+def test_lost_launch_is_reconciled_only_from_exact_receipt(setup):
+    setup["state"]["lost_launch"] = True
+    assert setup["install"]()["status"] == "committed"
+    assert setup["registry"].exists()
+
+
+def test_unknown_keeps_old_assignment_and_retry_needs_no_plaintext(setup):
+    s = setup
+    old = {"schema_version": 1, "sentinels": {"probe-a": {"client": "old-client", "ssh_target": "old-host"}}}
+    s["registry"].write_text(json.dumps(old))
+    s["registry"].chmod(0o600)
+    s["state"]["unknown"] = True
+    with pytest.raises(s["module"].InstallError, match="unknown"):
+        s["install"]()
+    assert json.loads(s["registry"].read_text()) == old
+    assert not any(p.exists() for p in s["plaintexts"])
+    before = len(s["calls"])
+    s["state"]["unknown"] = False
+    assert s["install"]()["status"] == "committed"
+    assert all(Path(c[0][0]).name in ("ssh", "audit-log.sh") for c in s["calls"][before:])
+
+
+def test_reachable_uncommitted_retry_reuses_same_generation(setup):
+    s = setup
+    s["state"]["unknown"] = True
+    with pytest.raises(s["module"].InstallError):
+        s["install"]()
+    first = s["bundles"][0]["generation_id"]
+    s["state"].update(unknown=False, receipt=None)
+    s["install"]()
+    assert s["bundles"][1]["generation_id"] == first
+    assert len(s["plaintexts"]) == 2
+
+
+def test_wrong_receipt_cannot_publish_assignment(setup):
+    s = setup
+    run = s["module"]._run
+    def wrong(command, **kwargs):
+        result = run(command, **kwargs)
+        if command[0] == "ssh" and not kwargs.get("input_bytes") and result.startswith(b'{"state": "committed"'):
+            report = json.loads(result)
+            report["receipt"]["provenance"]["public_profile_digest"] = "f" * 64
+            return json.dumps(report).encode()
+        return result
+    s["module"]._run = wrong
+    with pytest.raises(s["module"].InstallError):
+        s["install"]()
+    assert not s["registry"].exists()
+
+
+def test_policy_without_awg_does_not_read_key_or_resolve_endpoint(setup):
+    s = setup
+    s["config"]["policies"][0]["required_profiles"] = ["p0-reality"]
+    del s["config"]["sentinels"][0]["awg_target"]
+    s["values"]["private_key"] = ""
+    s["install"]()
+    config = json.loads(base64.b64decode(s["bundles"][0]["files"]["config.json"]))
+    assert config["expected_runtime"] == {"sing_box": "1.14.0"}
+    assert not any(Path(c[0][0]).name in ("awg", "wg", "terraform-env.sh") for c in s["calls"])
+
+
+def test_registry_lock_excludes_concurrent_authoring(setup):
+    s = setup
+    with s["module"].registry_lock(s["registry"]):
+        with pytest.raises(s["module"].InstallError, match="busy"):
+            s["install"]()
+    assert not s["calls"]
+
+
+def test_shell_is_only_a_python_entrypoint():
+    script = (ROOT / "scripts/install-liveness-sentinel.sh").read_text()
+    assert 'exec python3' in script and 'install_liveness_sentinel.py' in script
+    assert 'scp ' not in script and 'sops ' not in script
+
+
+@pytest.mark.parametrize("field", ["ssh_transport_host", "required_profiles", "provenance"])
+def test_registry_rejects_malformed_entry_fields_before_commands(setup, field):
+    s = setup
+    value = {"client": "someone", "ssh_target": "other", field: 42}
+    s["registry"].write_text(json.dumps({"schema_version": 1, "sentinels": {"other": value}}))
+    s["registry"].chmod(0o600)
+    with pytest.raises(s["module"].InstallError):
+        s["install"]()
+    assert not s["calls"]
+
+
+def test_yaml_duplicate_identity_is_not_silently_overwritten(setup):
+    s = setup
+    s["path"].write_text("schema_version: 1\nschema_version: 2\n")
+    with pytest.raises(s["module"].InstallError, match="duplicate"):
+        s["module"]._yaml(s["path"])
+
+
+def test_bound_awg_cohort_cannot_disable_actual_role(setup):
+    s = setup
+    s["environment"]["COHORTS"] = "p0,p1-web,p0"
+    with pytest.raises(s["module"].InstallError, match="awg-disabled"):
+        s["install"]()
+    assert not any(c[0][0] == "ssh" for c in s["calls"])
+
+
+def test_same_generation_retry_refuses_changed_public_profile(setup):
+    s = setup
+    s["state"]["unknown"] = True
+    with pytest.raises(s["module"].InstallError):
+        s["install"]()
+    s["state"].update(unknown=False, receipt=None)
+    s["values"]["standard_doc"]["outbounds"][0]["server"] = "192.0.2.44"
+    before = len(s["bundles"])
+    with pytest.raises(s["module"].InstallError, match="conflict"):
+        s["install"]()
+    assert len(s["bundles"]) == before
+
+
+def test_local_runtime_version_pin_is_checked_before_parser_or_ssh(setup):
+    s = setup
+    s["config"]["expected_runtime"]["xray"] = "26.3.28"
+    with pytest.raises(s["module"].InstallError, match="pin-mismatch"):
+        s["install"]()
+    assert not any(c[0][0] == "ssh" for c in s["calls"])
+
+
+def test_real_source_identity_rejects_dirty_git_before_reading_runner(setup, monkeypatch):
+    s = setup
+    fresh = load(ROOT / "scripts/install_liveness_sentinel.py", "source_installer")
+    calls = []
+    def dirty(command, **_kwargs):
+        calls.append(command)
+        return b" M scripts/example.py\n"
+    monkeypatch.setattr(fresh, "_run", dirty)
+    with pytest.raises(fresh.InstallError, match="clean-and-committed"):
+        fresh._source_identity(ROOT)
+    assert len(calls) == 1
+
+
+def receiver_run(module, root, bundle, monkeypatch, *, code=None, engine_result=None):
+    """Execute the actual receiver with only fixed root/owner and systemd adapted.
+
+    Filesystem reads/writes/locking/rename are real. This is not a privileged
+    host installation or systemd execution proof.
+    """
+    import subprocess
+    import types
+    root.parent.mkdir(mode=0o700, exist_ok=True)
+    source = (code or module.REMOTE_STAGE).replace("ROOT = pathlib.Path('/etc/vpn-liveness')", f"ROOT = pathlib.Path({str(root)!r})")
+    source = source.replace("OWNER = 0", "OWNER = os.geteuid()")
+    source = source.replace("pathlib.Path('/usr/local/lib/vpn-liveness/liveness_generation.py')", f"pathlib.Path({str(root.parent / 'installed-engine.py')!r})")
+    assert "OWNER = os.geteuid()" in source
+    calls = []
+    def systemd(command, **kwargs):
+        if engine_result is not None and command[0] == "/usr/bin/python3":
+            return types.SimpleNamespace(returncode=engine_result, stdout=b'{}')
+        assert command[0] in ("/usr/bin/systemctl", "/usr/bin/systemd-run")
+        calls.append(command)
+        return types.SimpleNamespace(returncode=0, stdout=b"inactive\n")
+    monkeypatch.setattr(subprocess, "run", systemd)
+    monkeypatch.setattr(sys, "argv", ["fixture", bundle["generation_id"]])
+    monkeypatch.setattr(sys, "stdin", types.SimpleNamespace(buffer=io.BytesIO(json.dumps(bundle).encode())))
+    namespace = {}
+    try:
+        exec(compile(source, "receiver-fixture", "exec"), namespace)
+    except BaseException:
+        if "lock" in namespace:
+            os.close(namespace["lock"])
+        raise
+    return calls
+
+
+def test_receiver_atomically_stages_private_candidate_and_reuses_identical_bytes(setup, tmp_path, monkeypatch):
+    s = setup
+    s["install"]()
+    bundle = s["bundles"][0]
+    root = tmp_path / "receiver" / "root"
+    calls = receiver_run(s["module"], root, bundle, monkeypatch)
+    stage = root / "staging" / bundle["generation_id"]
+    for name, encoded in bundle["files"].items():
+        assert (stage / name).read_bytes() == base64.b64decode(encoded)
+        assert (stage / name).stat().st_mode & 0o777 == 0o600
+    assert root.stat().st_mode & 0o777 == 0o700
+    assert stage.stat().st_mode & 0o777 == 0o700
+    assert not list(stage.parent.glob(".candidate-*"))
+    receiver_run(s["module"], root, bundle, monkeypatch)
+    job = next(c for c in calls if c[0] == "/usr/bin/systemd-run")
+    assert "--no-block" in job and "--collect" in job
+    assert "--property=KillMode=control-group" in job and "--property=TimeoutStartSec=600" in job
+    assert "--property=RuntimeMaxSec=600" in job
+
+
+def test_receipt_deadline_outlives_maximum_probe_and_root_job(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
+    module = load(ROOT / "scripts/install_liveness_sentinel.py", "deadline_installer")
+    engine = load(ROOT / "scripts/liveness_generation.py", "deadline_engine")
+    assert engine.probe_deadline(60, sorted(engine.PROFILES)) < engine.JOB_TIMEOUT_SECONDS < module.RECEIPT_TIMEOUT
+    assert module.RECEIPT_TIMEOUT == engine.RECEIPT_TIMEOUT == 660
+
+
+@pytest.mark.parametrize("fault", ["path-traversal", "stage-symlink", "profile-symlink", "changed-profile", "changed-engine", "root-world-writable"])
+def test_receiver_rejects_unsafe_or_conflicting_staging_without_overwriting(setup, tmp_path, monkeypatch, fault):
+    s = setup
+    s["install"]()
+    bundle = s["bundles"][0]
+    root = tmp_path / "receiver" / "root"
+    receiver_run(s["module"], root, bundle, monkeypatch)
+    stage = root / "staging" / bundle["generation_id"]
+    original = (stage / "runner.py").read_bytes()
+    if fault == "path-traversal":
+        bundle["files"]["../outside"] = base64.b64encode(b"unexpected").decode()
+    elif fault == "stage-symlink":
+        moved = stage.with_name("original")
+        stage.rename(moved)
+        stage.symlink_to(moved)
+    elif fault == "profile-symlink":
+        profile = stage / "profiles/awg.conf"
+        profile.unlink()
+        profile.symlink_to(stage / "runner.py")
+    elif fault == "changed-profile":
+        bundle["files"]["profiles/awg.conf"] = base64.b64encode(b"changed").decode()
+    elif fault == "changed-engine":
+        bundle["engine"] = base64.b64encode(b"changed").decode()
+    else:
+        root.chmod(0o777)
+    with pytest.raises((ValueError, OSError)):
+        receiver_run(s["module"], root, bundle, monkeypatch)
+    assert (stage / "runner.py").read_bytes() == original
+    assert not (root / "outside").exists()
+
+
+def test_ssh_does_not_inherit_provider_or_secret_environment(setup):
+    s = setup
+    s["environment"]["PROVIDER_TOKEN"] = "fixture-provider-token"
+    s["install"]()
+    for command, environment, _stdin in s["calls"]:
+        if command[0] == "ssh":
+            assert "PROVIDER_TOKEN" not in environment and "SOPS_FILE" not in environment
+
+
+def test_actual_git_source_identity_requires_all_inputs_committed(setup, tmp_path):
+    import subprocess
+    s = setup
+    fresh = load(ROOT / "scripts/install_liveness_sentinel.py", "git_installer")
+    repo = tmp_path / "git-fixture"
+    repo.mkdir()
+    (repo / "scripts").mkdir()
+    (repo / "scripts/vpn-protocol-liveness.py").write_bytes(b"# committed runner\n")
+    (repo / "scripts/liveness_generation.py").write_bytes(b"# committed engine\n")
+    env = {"PATH": os.environ["PATH"], "HOME": str(tmp_path), "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
+    for args in (["init", "-q"], ["add", "scripts"], ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"]):
+        subprocess.run(["git", "-C", str(repo), *args], env=env, check=True, capture_output=True)
+    revision, runner, engine = fresh._source_identity(repo)
+    assert len(revision) == 40 and runner == b"# committed runner\n" and engine == b"# committed engine\n"
+    (repo / "uncommitted").write_text("fixture")
+    with pytest.raises(fresh.InstallError, match="clean-and-committed"):
+        fresh._source_identity(repo)
+
+
+@pytest.mark.parametrize("state", ["running", "refused", "malformed"])
+def test_pending_state_cannot_trigger_new_activation(setup, state):
+    s = setup
+    s["state"]["unknown"] = True
+    with pytest.raises(s["module"].InstallError):
+        s["install"]()
+    before = len(s["bundles"])
+    run = s["module"]._run
+    def reply(command, **kwargs):
+        if command[0] == "ssh" and not kwargs.get("input_bytes"):
+            return json.dumps({"state": state}).encode()
+        return run(command, **kwargs)
+    s["module"]._run = reply
+    with pytest.raises(s["module"].InstallError):
+        s["install"]()
+    assert len(s["bundles"]) == before
+    assert not s["registry"].exists()
+
+
+@pytest.mark.parametrize("code,state", [(3, "uncommitted"), (75, "running"), (1, "refused")])
+def test_remote_receipt_distinguishes_retryable_busy_and_corrupt(setup, tmp_path, monkeypatch, capsys, code, state):
+    s = setup
+    s["install"]()
+    bundle = s["bundles"][0]
+    root = tmp_path / "receiver" / "root"
+    receiver_run(s["module"], root, bundle, monkeypatch)
+    capsys.readouterr()
+    receiver_run(s["module"], root, bundle, monkeypatch, code=s["module"].REMOTE_RECEIPT, engine_result=code)
+    assert json.loads(capsys.readouterr().out) == {"state": state}
+
+
+@pytest.mark.parametrize("existing", ["pending.json", "current", "receipts"])
+def test_missing_engine_with_existing_transaction_state_refuses(setup, tmp_path, monkeypatch, existing):
+    s = setup
+    s["install"]()
+    bundle = s["bundles"][0]
+    root = tmp_path / "receiver" / "root"
+    root.mkdir(parents=True, mode=0o700)
+    if existing == "receipts":
+        (root / existing).mkdir(mode=0o700)
+        (root / existing / "evidence.json").write_text("{}")
+    else:
+        (root / existing).write_text("private transaction fixture")
+    with pytest.raises(ValueError):
+        receiver_run(s["module"], root, bundle, monkeypatch, code=s["module"].REMOTE_RECEIPT)
+
+
+def test_missing_job_engine_can_query_safe_fixed_installed_engine(setup, tmp_path, monkeypatch, capsys):
+    s = setup
+    s["install"]()
+    root = tmp_path / "receiver" / "root"
+    root.mkdir(parents=True, mode=0o700)
+    (root.parent / "installed-engine.py").write_bytes(b"# installed engine fixture\n")
+    (root.parent / "installed-engine.py").chmod(0o644)
+    receiver_run(s["module"], root, s["bundles"][0], monkeypatch, code=s["module"].REMOTE_RECEIPT, engine_result=75)
+    assert json.loads(capsys.readouterr().out) == {"state": "running"}
+
+
+@pytest.mark.parametrize("url", ["https://host.example:444/health", "https://user:password@192.0.2.9/", "https://[2001:db8::1]/", "https://192.0.2.9/#fragment"])
+def test_awg_runtime_url_contract_is_checked_before_any_ssh(setup, url):
+    s = setup
+    s["config"]["probe_url"] = url
+    with pytest.raises(s["module"].InstallError):
+        s["install"]()
+    assert not any(c[0][0] == "ssh" for c in s["calls"])
+
+
+@pytest.mark.parametrize("filename", ["awg.conf", "engine.py"])
+def test_receiver_failed_copy_removes_only_owned_temporary_and_retry_works(setup, tmp_path, monkeypatch, filename):
+    s = setup
+    s["install"]()
+    root = tmp_path / "receiver" / "root"
+    bundle = s["bundles"][0]
+    original_open = os.open
+    def failed_open(path, flags, *args, **kwargs):
+        if Path(path).is_relative_to(root) and Path(path).name == filename and flags & os.O_CREAT:
+            raise OSError("fixture ENOSPC")
+        return original_open(path, flags, *args, **kwargs)
+    monkeypatch.setattr(os, "open", failed_open)
+    with pytest.raises(OSError):
+        receiver_run(s["module"], root, bundle, monkeypatch)
+    if filename == "engine.py":
+        assert not (root / "jobs" / bundle["generation_id"]).exists()
+        assert not list((root / "jobs").glob(".job-*"))
+    else:
+        assert not (root / "staging" / bundle["generation_id"]).exists()
+        assert not list((root / "staging").glob(".candidate-*"))
+    monkeypatch.setattr(os, "open", original_open)
+    receiver_run(s["module"], root, bundle, monkeypatch)
+    assert (root / "jobs" / bundle["generation_id"] / "engine.py").read_bytes() == base64.b64decode(bundle["engine"])
+
+
+def test_success_preserves_audit_per_explicit_host_and_audit_failure_is_not_rollback(setup):
+    s = setup
+    run = s["module"]._run
+    audits = []
+    def audit(command, **kwargs):
+        if Path(command[0]).name == "audit-log.sh":
+            audits.append(command)
+            raise s["module"].InstallError("fixture-audit-unavailable")
+        return run(command, **kwargs)
+    s["module"]._run = audit
+    assert s["install"]()["status"] == "committed"
+    assert len(audits) == 3
+    assert {c[c.index("--provider") + 1] for c in audits} == {"upcloud", "scaleway", "vultr"}
+    assert all(c[c.index("--env") + 1] == "probe" for c in audits)
+    assert s["registry"].exists()
+
+
+def test_invalid_policy_quorum_or_reference_fails_before_any_tools(setup):
+    s = setup
+    s["config"]["policies"][0]["min_failed_vantages"] = 2
+    with pytest.raises(s["module"].InstallError):
+        s["install"]()
+    assert not s["calls"]

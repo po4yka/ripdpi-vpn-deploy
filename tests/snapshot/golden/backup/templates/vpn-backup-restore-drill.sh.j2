@@ -13,19 +13,37 @@ REPOSITORY_SOURCE="local"
 
 
 restore_target="${RUNTIME_DIRECTORY}/restore"
-snapshot_metadata="${RUNTIME_DIRECTORY}/snapshot.json"
+snapshot_metadata=""
 marker="${STATE_DIRECTORY}/restore-drill-last-success.json"
-marker_tmp="${STATE_DIRECTORY}/.restore-drill-last-success.json.$$"
+marker_tmp=""
+
+# Claim the target atomically. A prior directory, file, or dangling symlink is
+# not ours, and must fail before any cleanup is armed.
+mkdir -- "$restore_target"
+restore_owned=true
+
+remove_restore() {
+  if [[ "$restore_owned" == true ]]; then
+    restore_owned=false
+    rm -rf -- "$restore_target"
+    test ! -e "$restore_target" && test ! -L "$restore_target"
+  fi
+}
 
 cleanup() {
   local status=$?
-  rm -rf -- "$restore_target" || status=1
-  rm -f -- "$snapshot_metadata" "$marker_tmp" || status=1
+  remove_restore || status=1
+  if [[ -n "$snapshot_metadata" ]]; then
+    rm -f -- "$snapshot_metadata" || status=1
+  fi
+  if [[ -n "$marker_tmp" ]]; then
+    rm -f -- "$marker_tmp" || status=1
+  fi
   exit "$status"
 }
 trap cleanup EXIT
 
-test ! -e "$restore_target"
+snapshot_metadata=$(mktemp "${RUNTIME_DIRECTORY}/.snapshot.XXXXXXXXXX")
 restic -r "$REPO" --no-cache snapshots --tag vpn-stack --latest 1 --json > "$snapshot_metadata"
 
 mapfile -t snapshot < <(python3 - "$snapshot_metadata" <<'PY'
@@ -49,7 +67,6 @@ PY
 snapshot_id="${snapshot[0]:?snapshot id missing}"
 snapshot_time="${snapshot[1]:?snapshot time missing}"
 
-mkdir -p -- "$restore_target"
 restic -r "$REPO" --no-cache restore "$snapshot_id" --target "$restore_target"
 
 require_file() {
@@ -97,17 +114,18 @@ require_file "etc/amnezia/amneziawg/awg0.conf"
 
 # Restored files contain live credentials. Remove and verify cleanup before
 # publishing any success signal.
-rm -rf -- "$restore_target"
-test ! -e "$restore_target"
+remove_restore
 rm -f -- "$snapshot_metadata"
+snapshot_metadata=""
 
-python3 - "$marker_tmp" "$REPOSITORY_SOURCE" "$snapshot_id" "$snapshot_time" <<'PY'
+marker_tmp=$(mktemp "${STATE_DIRECTORY}/.restore-drill-last-success.json.XXXXXXXXXX")
+python3 - "$marker_tmp" "$marker" "$REPOSITORY_SOURCE" "$snapshot_id" "$snapshot_time" <<'PY'
 import datetime as dt
 import json
 import os
 import sys
 
-path, repository_source, snapshot_id, snapshot_time = sys.argv[1:]
+path, marker_path, repository_source, snapshot_id, snapshot_time = sys.argv[1:]
 payload = {
     "version": 1,
     "repository_source": repository_source,
@@ -115,10 +133,12 @@ payload = {
     "snapshot_time": snapshot_time,
     "verified_at": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
 }
-with open(path, "x", encoding="utf-8") as handle:
+with open(path, "w", encoding="utf-8") as handle:
     json.dump(payload, handle, sort_keys=True)
     handle.write("\n")
 os.chmod(path, 0o600)
+# Atomic replacement never treats a directory (or its symlink) as a container.
+os.replace(path, marker_path)
 PY
-mv -f -- "$marker_tmp" "$marker"
+marker_tmp=""
 echo "restore drill: verified snapshot ${snapshot_id:0:8} from ${REPOSITORY_SOURCE} repository"

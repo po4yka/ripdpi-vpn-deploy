@@ -20,6 +20,7 @@ import urllib.request
 from pathlib import Path
 
 import yaml
+from liveness_generation import JOB_TIMEOUT_SECONDS
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -27,7 +28,7 @@ DEFAULT_EVALUATOR = REPO_ROOT / "scripts" / "protocol-liveness.py"
 DECRYPT_SECRETS = REPO_ROOT / "scripts" / "decrypt-secrets.sh"
 DECISIONS = {"healthy", "degraded", "unknown", "rotation_candidate"}
 REMINDER_SECONDS = 24 * 60 * 60
-EVALUATOR_TIMEOUT_SECONDS = 360
+EVALUATOR_TIMEOUT_SECONDS = JOB_TIMEOUT_SECONDS
 
 
 class MonitorError(RuntimeError):

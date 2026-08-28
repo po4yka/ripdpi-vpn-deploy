@@ -13,14 +13,18 @@ import concurrent.futures
 import hashlib
 import json
 import os
-import subprocess
+import re
 import sys
 import tempfile
 import time
 from collections import Counter
 from pathlib import Path
+from urllib.parse import urlparse
+from uuid import UUID
 
 import yaml
+from fleet_inspection import InspectionError, bounded_command
+from liveness_generation import probe_deadline
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -29,17 +33,30 @@ PROFILES = set(json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))["$defs"]["pro
 VERDICTS = {"ok", "throttled", "blocked", "unknown", "error"}
 ALIVE = {"ok", "throttled"}
 REMOTE_COMMAND = ["sudo", "-n", "/usr/local/sbin/vpn-protocol-liveness"]
+RUNTIME_KEYS = {"sing_box", "xray", "awg", "awg_toolchain"}
+PROVENANCE_KEYS = {"controller_revision", "runner_sha256", "client_generation_id", "public_profile_digest", "vantage"}
 
 
 class ConfigError(ValueError):
     """Configuration cannot be evaluated safely."""
 
 
+def required_runtime(policy: dict) -> set[str]:
+    profiles = set(policy["required_profiles"])
+    return ({"sing_box"} if profiles & {"p0-reality", "p2-hysteria2"} else set()) | (
+        {"xray"} if "p1-xhttp" in profiles else set()) | (
+        {"awg", "awg_toolchain"} if "p2-amneziawg" in profiles else set())
+
+
 def load_config(path: Path) -> dict:
     try:
         config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError) as exc:
-        raise ConfigError(f"cannot read configuration: {exc}") from exc
+    except (OSError, yaml.YAMLError):
+        raise ConfigError("cannot read configuration") from None
+    return validate_config(config)
+
+
+def validate_config(config: dict) -> dict:
     try:
         import jsonschema
     except ImportError as exc:
@@ -47,13 +64,16 @@ def load_config(path: Path) -> dict:
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     errors = sorted(
         jsonschema.Draft202012Validator(schema).iter_errors(config),
-        key=lambda error: list(error.absolute_path),
+        key=lambda error: tuple(map(str, error.absolute_path)),
     )
-    messages = [
-        f"{'.'.join(map(str, error.absolute_path)) or '<root>'}: {error.message}"
-        for error in errors
-    ]
-    messages.extend(semantic_errors(config))
+    messages = []
+    for error in errors:
+        path = list(error.absolute_path)
+        if error.validator == "required" and isinstance(error.instance, dict):
+            path += [key for key in error.validator_value if key not in error.instance][:1]
+        messages.append(f"{'.'.join(map(str, path)) or '<root>'}: invalid {error.validator}")
+    if not errors:
+        messages.extend(semantic_errors(config))
     if messages:
         raise ConfigError("; ".join(messages))
     return config
@@ -75,6 +95,9 @@ def semantic_errors(config: dict) -> list[str]:
         assigned[policy_id] += 1
         if policy_id not in known_policies:
             messages.append(f"sentinel {sentinel.get('id')} references unknown policy: {policy_id}")
+        policy = next((p for p in policies if p.get("id") == policy_id), {})
+        if "p2-amneziawg" in policy.get("required_profiles", []) and not sentinel.get("awg_target"):
+            messages.append(f"sentinel {sentinel.get('id')}: migration required: explicit awg_target provider/environment/instance")
     for policy in policies:
         policy_id = policy.get("id")
         quorum = policy.get("min_failed_vantages", 2)
@@ -82,95 +105,129 @@ def semantic_errors(config: dict) -> list[str]:
             messages.append(
                 f"policy {policy_id} quorum {quorum} exceeds assigned sentinels {assigned[policy_id]}"
             )
+        required = policy.get("required_profiles", [])
+        runtime = config.get("expected_runtime", {})
+        for key in required_runtime(policy) - {"xray", "awg_toolchain"}:
+            if not runtime.get(key):
+                messages.append(f"migration required: expected_runtime.{key} pin")
+        if "p1-xhttp" in required and not runtime.get("xray"):
+            messages.append("migration required: expected_runtime.xray pin for p1-xhttp")
+        if "p2-amneziawg" in required:
+            if not runtime.get("awg_toolchain"):
+                messages.append("migration required: expected_runtime.awg_toolchain source-input digest")
+            try:
+                raw_url = config.get("probe_url", "")
+                if not isinstance(raw_url, str) or any(ord(char) <= 32 for char in raw_url):
+                    raise ValueError
+                url = urlparse(raw_url)
+                valid_url = (url.scheme == "https" and url.hostname and ":" not in url.hostname
+                             and url.port in (None, 443) and url.username is None and url.password is None
+                             and not url.fragment)
+            except ValueError:
+                valid_url = False
+            if not valid_url:
+                messages.append("AWG probe requires IPv4 HTTPS port 443 without credentials or fragment")
     return messages
 
 
 def remote_probe_deadline(config: dict, sentinel: dict) -> int:
     policy = next(policy for policy in config["policies"] if policy["id"] == sentinel["policy"])
-    required = set(policy["required_profiles"])
-    stages = 1
-    stages += len(required - {"p2-amneziawg"})
-    stages += "p2-amneziawg" in required
-    return config.get("probe_timeout_seconds", 15) * stages + 20
+    # SSH connection and fixed remote startup must not consume the probe budget.
+    return probe_deadline(config.get("probe_timeout_seconds", 15), policy["required_profiles"]) + 20
 
 
 def ssh_options(sentinel: dict, connect_timeout: int) -> list[str]:
-    options = [
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "StrictHostKeyChecking=yes",
-        "-o",
-        f"ConnectTimeout={min(connect_timeout, 10)}",
-    ]
+    values = ["BatchMode=yes", "StrictHostKeyChecking=yes", "UpdateHostKeys=no",
+              "VerifyHostKeyDNS=no", f"ConnectTimeout={min(connect_timeout, 10)}", "ConnectionAttempts=1",
+              "ProxyCommand=none", "ProxyJump=none", "ControlMaster=no", "ControlPath=none", "ControlPersist=no",
+              "ClearAllForwardings=yes", "ForwardAgent=no", "ForwardX11=no", "PermitLocalCommand=no",
+              "RemoteCommand=none", "RequestTTY=no", "PasswordAuthentication=no", "KbdInteractiveAuthentication=no",
+              "GSSAPIAuthentication=no", "HostbasedAuthentication=no", "PreferredAuthentications=publickey",
+              "NumberOfPasswordPrompts=0", "LogLevel=ERROR"]
     transport_host = sentinel.get("ssh_transport_host")
     if transport_host:
-        options.extend(
-            [
-                "-o",
-                f"HostName={transport_host}",
-                "-o",
-                f"HostKeyAlias={sentinel['ssh_host_key_alias']}",
-                "-o",
-                "ProxyCommand=none",
-                "-o",
-                "ControlMaster=no",
-                "-o",
-                "ControlPath=none",
-                "-o",
-                "ControlPersist=no",
-            ]
-        )
-    return options
+        values.extend([f"HostName={transport_host}", f"HostKeyAlias={sentinel['ssh_host_key_alias']}"])
+    return [argument for value in values for argument in ("-o", value)]
 
 
 def pull_report(sentinel: dict, connect_timeout: int, command_timeout: int) -> tuple[str, str, str]:
     command = [
         "ssh",
         *ssh_options(sentinel, connect_timeout),
+        "--",
         sentinel["ssh_target"],
         *REMOTE_COMMAND,
     ]
     try:
-        result = subprocess.run(
-            command,
-            text=True,
-            capture_output=True,
-            timeout=command_timeout,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return sentinel["id"], "", f"ssh: {type(exc).__name__}"
-    if result.returncode != 0:
-        return sentinel["id"], "", f"ssh exited {result.returncode}"
-    return sentinel["id"], result.stdout.strip(), ""
+        environment = {key: os.environ[key] for key in ("PATH", "HOME", "SSH_AUTH_SOCK") if key in os.environ}
+        environment.update({"LANG": "C", "LC_ALL": "C"})
+        raw = bounded_command(command, timeout=command_timeout, limit=65536, environment=environment)
+        return sentinel["id"], raw.decode("utf-8").strip(), ""
+    except (InspectionError, UnicodeError):
+        return sentinel["id"], "", "ssh: unavailable or invalid bounded report"
 
 
 def validate_report(raw: str, sentinel: dict, config: dict, now: int) -> tuple[dict | None, str]:
+    if not isinstance(raw, str) or len(raw) > 65536:
+        return None, f"{sentinel['id']}: malformed report"
     try:
         report = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
+    except (ValueError, TypeError, RecursionError):
         return None, f"{sentinel['id']}: malformed report"
-    if not isinstance(report, dict) or report.get("schema_version") != 1:
+    if not isinstance(report, dict) or type(report.get("schema_version")) is not int or report["schema_version"] != 1:
         return None, f"{sentinel['id']}: unsupported report schema"
     if report.get("sentinel") != sentinel["id"]:
         return None, f"{sentinel['id']}: sentinel identity mismatch"
     observed_at = report.get("observed_at")
-    if not isinstance(observed_at, int) or abs(now - observed_at) > config.get("stale_after_seconds", 120):
+    if type(observed_at) is not int or not now - config.get("stale_after_seconds", 120) <= observed_at <= now:
         return None, f"{sentinel['id']}: stale report"
-    control = report.get("control") or {}
-    if control.get("verdict") not in VERDICTS:
+    control = report.get("control")
+    if not isinstance(control, dict) or not isinstance(control.get("verdict"), str) or control["verdict"] not in VERDICTS:
         return None, f"{sentinel['id']}: invalid control verdict"
-    runtime = report.get("runtime") or {}
-    for key, expected in config["expected_runtime"].items():
-        if runtime.get(key) != expected:
+    provenance = report.get("provenance")
+    if not isinstance(provenance, dict) or set(provenance) != PROVENANCE_KEYS:
+        return None, f"{sentinel['id']}: invalid provenance"
+    for key, size in (("controller_revision", 40), ("runner_sha256", 64), ("public_profile_digest", 64)):
+        if not isinstance(provenance[key], str) or re.fullmatch(r"[0-9a-f]{" + str(size) + "}", provenance[key]) is None:
+            return None, f"{sentinel['id']}: invalid provenance"
+    identity = provenance["client_generation_id"]
+    try:
+        if not isinstance(identity, str) or str(UUID(identity)) != identity:
+            raise ValueError
+    except ValueError:
+        return None, f"{sentinel['id']}: invalid provenance"
+    if provenance["vantage"] not in ("external", "filtered") or provenance["vantage"] != sentinel["vantage"]:
+        return None, f"{sentinel['id']}: provenance vantage mismatch"
+    runtime = report.get("runtime")
+    if (not isinstance(runtime, dict) or set(runtime) - RUNTIME_KEYS
+            or any(not isinstance(value, str) or re.fullmatch(
+                r"[0-9a-f]{64}" if key == "awg_toolchain" else r"(?:\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?|missing|unknown)", value) is None
+                   for key, value in runtime.items())):
+        return None, f"{sentinel['id']}: invalid runtime evidence"
+    policy = next(policy for policy in config["policies"] if policy["id"] == sentinel["policy"])
+    for key in sorted(required_runtime(policy)):
+        if runtime.get(key) != config["expected_runtime"].get(key) or key not in runtime:
             return None, f"{sentinel['id']}: {key} runtime mismatch"
+    if not isinstance(report.get("profiles"), list):
+        return None, f"{sentinel['id']}: invalid profile result"
     seen: set[str] = set()
-    for profile in report.get("profiles") or []:
+    for profile in report["profiles"]:
+        if not isinstance(profile, dict):
+            return None, f"{sentinel['id']}: invalid profile result"
         name = profile.get("profile")
         verdict = profile.get("verdict")
-        if name not in PROFILES or verdict not in VERDICTS or name in seen:
+        if not isinstance(name, str) or not isinstance(verdict, str) or name not in PROFILES or verdict not in VERDICTS or name in seen:
             return None, f"{sentinel['id']}: invalid profile result"
+        transport = profile.get("payload_transport", "unknown")
+        family = profile.get("target_address_family", "unknown")
+        if transport not in ("tcp-https", "unknown") or (transport == "unknown" and verdict != "error"):
+            return None, f"{sentinel['id']}: invalid payload transport evidence"
+        if family not in (("ipv4", "unknown") if name == "p2-amneziawg" else ("unknown",)):
+            return None, f"{sentinel['id']}: invalid target address family evidence"
+        if "fresh_handshake" in profile and (name != "p2-amneziawg" or type(profile["fresh_handshake"]) is not bool):
+            return None, f"{sentinel['id']}: invalid handshake evidence"
+        if name == "p2-amneziawg" and verdict in ALIVE and (family != "ipv4" or profile.get("fresh_handshake") is not True):
+            return None, f"{sentinel['id']}: missing authenticated AWG evidence"
         variants = profile.get("variants")
         if name != "p2-amneziawg" and verdict != "error" and not variants:
             return None, f"{sentinel['id']}: missing endpoint variant evidence"
@@ -183,15 +240,18 @@ def validate_report(raw: str, sentinel: dict, config: dict, now: int) -> tuple[d
                     return None, f"{sentinel['id']}: invalid endpoint variant evidence"
                 variant_id = variant.get("variant")
                 if (
-                    not isinstance(variant_id, int)
+                    type(variant_id) is not int
                     or variant_id < 1
                     or variant_id in variant_ids
-                    or variant.get("verdict") not in VERDICTS
+                    or not isinstance(variant.get("verdict"), str) or variant["verdict"] not in VERDICTS
                 ):
                     return None, f"{sentinel['id']}: invalid endpoint variant evidence"
                 variant_ids.add(variant_id)
+            variant_verdicts = {variant["verdict"] for variant in variants}
+            expected_verdict = next(value for value in ("ok", "throttled", "error", "unknown", "blocked") if value in variant_verdicts)
+            if verdict != expected_verdict:
+                return None, f"{sentinel['id']}: inconsistent endpoint variant verdict"
         seen.add(name)
-    policy = next(policy for policy in config["policies"] if policy["id"] == sentinel["policy"])
     missing = sorted(set(policy["required_profiles"]) - seen)
     if missing:
         return None, f"{sentinel['id']}: missing required profiles: {','.join(missing)}"
@@ -233,6 +293,18 @@ def aggregate(config: dict, reports: dict[str, dict], errors: list[str]) -> dict
             "policy": policy["id"],
             "control": report["control"]["verdict"],
             "profiles": {name: profiles[name] for name in required},
+            "observed_at": report["observed_at"],
+            "runtime": {key: report["runtime"][key] for key in sorted(RUNTIME_KEYS & report["runtime"].keys())},
+            "provenance": {key: report["provenance"][key] for key in sorted(PROVENANCE_KEYS)},
+            "deployed_server_identity": {"status": "unknown"},
+            "profile_observations": {
+                name: {
+                    "payload_transport": profile_results[name].get("payload_transport", "unknown"),
+                    "target_address_family": profile_results[name].get("target_address_family", "unknown"),
+                    **({"fresh_handshake": True} if name == "p2-amneziawg" and profiles[name] in ALIVE
+                       and profile_results[name].get("fresh_handshake") is True else {}),
+                } for name in required
+            },
         }
         if endpoint_variants:
             item["endpoint_variants"] = endpoint_variants

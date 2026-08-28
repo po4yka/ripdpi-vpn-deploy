@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import socket
+import ssl
 import stat
 import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import yaml
@@ -14,6 +19,150 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DRIVER = REPO_ROOT / "scripts" / "probe-matrix-driver.py"
+
+
+@pytest.fixture
+def https_control(tmp_path: Path, monkeypatch):
+    """Real loopback TLS/curl path checks, not VPN protocol acceptance."""
+    cert, key = tmp_path / "cert.pem", tmp_path / "key.pem"
+    subprocess.run([
+        "openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256",
+        "-nodes", "-days", "1", "-subj", "/CN=127.0.0.1",
+        "-addext", "subjectAltName=IP:127.0.0.1", "-keyout", str(key), "-out", str(cert),
+    ], check=True, capture_output=True, timeout=10)
+    requests = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - stdlib callback name
+            requests.append(self.path)
+            self.send_response(204)
+            self.end_headers()
+
+        def log_message(self, _format, *_args):
+            return
+
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(cert, key)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.socket = context.wrap_socket(server.socket, server_side=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    # Bind without listening: the failed SOCKS endpoint cannot be stolen by
+    # another test between port discovery and curl's connection attempt.
+    with socket.socket() as refused:
+        refused.bind(("127.0.0.1", 0))
+        monkeypatch.setenv("CURL_CA_BUNDLE", str(cert))
+        monkeypatch.setenv("CURL_HOME", str(tmp_path))
+        try:
+            yield {
+                "url": f"https://127.0.0.1:{server.server_port}/probe",
+                "expected_status": 204, "timeout_seconds": 2, "degraded_after_ms": 3000,
+            }, refused.getsockname()[1], requests
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+
+@pytest.fixture(params=["matrix", "sentinel", "sentinel-parallel"])
+def real_curl_probe(request):
+    name = request.param
+    path = DRIVER if name == "matrix" else REPO_ROOT / "scripts" / "vpn-protocol-liveness.py"
+    spec = importlib.util.spec_from_file_location("loopback_probe", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def run(control, port=None):
+        if name == "matrix":
+            return module.curl_probe({"control": control}, proxy_port=port)
+        config = {**control, "probe_url": control["url"]}
+        extra = ["--socks5-hostname", f"127.0.0.1:{port}"] if port is not None else []
+        if name == "sentinel-parallel":
+            return module.parallel_curl_probes(config, [extra])[0]
+        return module.curl_probe(config, extra)
+
+    return run
+
+
+@pytest.mark.parametrize("ambient", ["curlrc", "uppercase-proxy", "lowercase-proxy"])
+def test_real_curl_direct_control_ignores_ambient_proxy(
+    tmp_path, monkeypatch, https_control, real_curl_probe, ambient,
+):
+    control, port, requests = https_control
+    for name in list(os.environ):
+        if name.lower().endswith("_proxy"):
+            monkeypatch.delenv(name)
+    proxy = f"http://127.0.0.1:{port}"
+    if ambient == "curlrc":
+        (tmp_path / ".curlrc").write_text(f'proxy = "{proxy}"\n')
+    else:
+        for name in ("https_proxy", "all_proxy"):
+            monkeypatch.setenv(name.upper() if ambient == "uppercase-proxy" else name, proxy)
+    assert real_curl_probe(control)["verdict"] == "ok"
+    assert requests == ["/probe"]
+
+
+@pytest.mark.parametrize("ambient", ["curlrc", "NO_PROXY", "no_proxy"])
+def test_real_curl_dead_socks_cannot_bypass_tunnel(
+    tmp_path, monkeypatch, https_control, real_curl_probe, ambient,
+):
+    control, port, requests = https_control
+    if ambient == "curlrc":
+        (tmp_path / ".curlrc").write_text('noproxy = "*"\n')
+    else:
+        monkeypatch.setenv(ambient, "*")
+    assert real_curl_probe(control)["verdict"] == "ok"
+    result = real_curl_probe(control, port)
+    assert result["verdict"] not in {"ok", "throttled"}
+    assert result["error_kind"] == "network"
+    assert requests == ["/probe"]
+
+
+def test_real_curl_curlrc_cannot_disable_tls_validation(
+    tmp_path, monkeypatch, https_control, real_curl_probe,
+):
+    control, _, requests = https_control
+    monkeypatch.delenv("CURL_CA_BUNDLE")
+    (tmp_path / ".curlrc").write_text("insecure\n")
+    result = real_curl_probe(control)
+    assert result["verdict"] == "error"
+    assert result["error_kind"].replace("_", "-") == "unexpected-response"
+    assert requests == []
+
+
+def test_real_curl_expected_https_status_is_required(https_control, real_curl_probe):
+    control, _, requests = https_control
+    result = real_curl_probe({**control, "expected_status": 200})
+    assert result["verdict"] == "error"
+    assert result["error_kind"].replace("_", "-") == "unexpected-response"
+    assert requests == ["/probe"]
+
+
+def test_real_curl_subprocess_has_explicit_path_and_no_proxy_environment(
+    monkeypatch, https_control, real_curl_probe,
+):
+    control, port, _ = https_control
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+                 "http_proxy", "https_proxy", "all_proxy", "no_proxy"):
+        monkeypatch.setenv(name, "ambient-value")
+    actual_popen = subprocess.Popen
+    calls = []
+
+    def observed_popen(command, *args, **kwargs):
+        calls.append((command, kwargs.get("env")))
+        return actual_popen(command, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", observed_popen)
+    assert real_curl_probe(control)["verdict"] == "ok"
+    assert real_curl_probe(control, port)["verdict"] not in {"ok", "throttled"}
+    assert len(calls) == 2
+    for index, (command, environment) in enumerate(calls):
+        assert command[:2] == ["curl", "--disable"]
+        assert environment is not None
+        assert not any(name.lower().endswith("_proxy") for name in environment)
+        assert environment["PATH"] == os.environ["PATH"]
+        assert command[command.index("--noproxy") + 1] == ("" if index else "*")
+    assert calls[0][0][calls[0][0].index("--proxy") + 1] == ""
 
 
 def _executable(path: Path, body: str) -> None:
