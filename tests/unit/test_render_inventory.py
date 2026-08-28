@@ -282,6 +282,230 @@ def test_wait_cloud_init_uses_terraform_ssh_port() -> None:
     assert source.count('-p "$SSH_PORT"') == 2
 
 
+def _isolated_wait_script(tmp_path):
+    """Run the real wait and remote shell; substitute only TF, SSH and the marker path."""
+    import shutil
+
+    root = tmp_path / "repo"
+    (root / "scripts").mkdir(parents=True)
+    shutil.copyfile(WAIT_SCRIPT, root / "scripts/wait-cloud-init.sh")
+    _make_stub(root / "scripts", "terraform-env.sh",
+               'case "$3" in server_ipv4) printf 192.0.2.1;; '
+               'admin_user) printf deploy;; ssh_port) printf 2222;; *) exit 99;; esac')
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    _make_stub(bindir, "cloud-init",
+               'printf "called\\n" >> "$WAIT_CLOUD_LOG"; '
+               'printf "synthetic-cloud-private-output\\n"; '
+               'printf "synthetic-cloud-private-error\\n" >&2; '
+               'if [ "$WAIT_CLOUD_CODE" = hang-once ]; then '
+               'if [ "$(wc -l < "$WAIT_CLOUD_LOG")" -eq 1 ]; then sleep 30; fi; exit 0; fi; '
+               'exit "$WAIT_CLOUD_CODE"')
+    ssh = bindir / "ssh"
+    ssh.write_text('''#!/usr/bin/env python3
+import json, os, subprocess, sys, time
+from pathlib import Path
+with open(os.environ["WAIT_SSH_LOG"], "a") as stream:
+    stream.write(json.dumps(sys.argv[1:]) + "\\n")
+if sys.argv[-1] == "true":
+    sys.exit(0)
+if os.environ.get("WAIT_SSH_FAULT") == "hang":
+    child = subprocess.Popen(["sleep", "60"])
+    pids = Path(os.environ["WAIT_SSH_PIDS"])
+    pids.with_suffix(".tmp").write_text(json.dumps([os.getpid(), child.pid, os.getpgrp()]))
+    pids.with_suffix(".tmp").replace(pids)
+    time.sleep(60)
+if os.environ.get("WAIT_SSH_FAULT") == "disconnect":
+    sys.exit(255)
+marker_boundary = 'test() { if [ "$1" = -f ] && [ "$2" = /var/lib/cloud-init-vpn-bootstrap.done ]; then builtin test -f "$WAIT_MARKER"; else builtin test "$@"; fi; }; '
+sys.exit(subprocess.run(["bash", "-c", marker_boundary + sys.argv[-1]]).returncode)
+''')
+    ssh.chmod(0o700)
+    assert shutil.which("timeout"), "GNU timeout is required for the remote wait regression"
+    environment = {**os.environ, "PATH": str(bindir) + os.pathsep + os.environ["PATH"],
+                   "PROVIDER": "upcloud", "ENV": "test", "ANSIBLE_SSH_PRIVATE_KEY_FILE": "fixture-key",
+                   "WAIT_CLOUD_CODE": "0", "WAIT_MARKER": str(tmp_path / "bootstrap.done"),
+                   "WAIT_CLOUD_LOG": str(tmp_path / "cloud.log"), "WAIT_SSH_PIDS": str(tmp_path / "pids.json"),
+                   "WAIT_SSH_LOG": str(tmp_path / "ssh.jsonl")}
+    return root / "scripts/wait-cloud-init.sh", environment
+
+
+@pytest.mark.parametrize("cloud_code,expected", [(0, None), (1, "cloud-init error"),
+                                                 (2, "cloud-init recoverable error")])
+def test_wait_requires_error_free_cloud_init_even_with_marker(tmp_path, cloud_code, expected):
+    script, environment = _isolated_wait_script(tmp_path)
+    environment["WAIT_CLOUD_CODE"] = str(cloud_code)
+    Path(environment["WAIT_MARKER"]).touch()
+    result = subprocess.run(["bash", str(script)], env=environment, capture_output=True, text=True, timeout=10)
+    assert (result.returncode == 0) == (expected is None), result.stdout + result.stderr
+    if expected:
+        assert expected in result.stderr
+    assert "synthetic-cloud-private" not in result.stdout + result.stderr
+    calls = [json.loads(line) for line in Path(environment["WAIT_SSH_LOG"]).read_text().splitlines()]
+    assert len(calls) == 2
+    assert all("BatchMode=yes" in call for call in calls)
+    assert all(call[call.index("-p") + 1] == "2222" for call in calls)
+    assert all("StrictHostKeyChecking=accept-new" in call for call in calls)
+
+
+@pytest.mark.parametrize("cloud_code", [124, 137])
+def test_wait_retries_remote_deadline_then_reports_cloud_timeout(tmp_path, cloud_code):
+    script, environment = _isolated_wait_script(tmp_path)
+    environment["WAIT_CLOUD_CODE"] = str(cloud_code)
+    Path(environment["WAIT_MARKER"]).touch()
+    result = subprocess.run(["bash", str(script)], env=environment, capture_output=True, text=True, timeout=15)
+    assert result.returncode != 0
+    assert "cloud-init timeout" in result.stderr
+    assert "SSH session timeout" not in result.stderr
+    assert len(Path(environment["WAIT_CLOUD_LOG"]).read_text().splitlines()) == 30
+    assert "synthetic-cloud-private" not in result.stdout + result.stderr
+
+
+def test_wait_retries_a_real_remote_timeout_then_accepts_completed_bootstrap(tmp_path):
+    script, environment = _isolated_wait_script(tmp_path)
+    environment["WAIT_CLOUD_CODE"] = "hang-once"
+    Path(environment["WAIT_MARKER"]).touch()
+    result = subprocess.run(["bash", str(script)], env=environment, capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert len(Path(environment["WAIT_CLOUD_LOG"]).read_text().splitlines()) == 2
+    assert "bootstrap ready" in result.stdout
+    assert "synthetic-cloud-private" not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("fault,expected", [("marker", "bootstrap marker missing"),
+                                           ("disconnect", "SSH transport failure"),
+                                           ("unavailable", "cloud-init status unavailable")])
+def test_wait_failure_categories_do_not_claim_readiness(tmp_path, fault, expected):
+    script, environment = _isolated_wait_script(tmp_path)
+    environment["WAIT_SSH_FAULT"] = fault
+    if fault == "unavailable":
+        environment["WAIT_CLOUD_CODE"] = "127"
+    result = subprocess.run(["bash", str(script)], env=environment, capture_output=True, text=True, timeout=10)
+    assert result.returncode != 0
+    assert expected in result.stderr
+    assert "bootstrap ready" not in result.stdout
+    assert "synthetic-cloud-private" not in result.stdout + result.stderr
+
+
+def test_wait_bounds_connected_ssh_and_kills_its_descendants(tmp_path):
+    import signal
+
+    script, environment = _isolated_wait_script(tmp_path)
+    environment["WAIT_SSH_FAULT"] = "hang"
+    process = subprocess.Popen(["bash", str(script)], env=environment, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True, start_new_session=True)
+    pids_file = Path(environment["WAIT_SSH_PIDS"])
+    try:
+        try:
+            stdout, stderr = process.communicate(timeout=13)
+        except subprocess.TimeoutExpired:
+            pytest.fail("connected SSH exceeded its production session deadline")
+        assert process.returncode != 0
+        assert "SSH session timeout" in stderr
+        assert "cloud-init timeout" not in stderr
+        assert "synthetic-cloud-private" not in stdout + stderr
+        for pid in json.loads(pids_file.read_text())[:2]:
+            state = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True)
+            assert not state.stdout.strip() or state.stdout.strip().startswith("Z"), "SSH descendant still running"
+    finally:
+        groups = {process.pid}
+        if pids_file.exists():
+            groups.add(json.loads(pids_file.read_text())[2])
+        for group in groups:
+            assert group != os.getpgrp()
+            try:
+                os.killpg(group, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        process.communicate()
+
+
+@pytest.mark.parametrize("interrupt", ["SIGTERM", "SIGINT"])
+def test_wait_interruption_kills_only_its_ssh_process_group(tmp_path, interrupt):
+    import signal
+    import time
+
+    script, environment = _isolated_wait_script(tmp_path)
+    environment["WAIT_SSH_FAULT"] = "hang"
+    process = subprocess.Popen(["bash", str(script)], env=environment, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True, start_new_session=True)
+    pids_file = Path(environment["WAIT_SSH_PIDS"])
+    try:
+        # Synchronize at the SSH boundary; setup may use the 15s readiness budget.
+        # The actual interruption-to-cleanup bound below remains three seconds.
+        deadline = time.monotonic() + 20
+        while not pids_file.exists() and process.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert pids_file.exists(), "SSH fixture did not start"
+        process.send_signal(getattr(signal, interrupt))
+        stdout, stderr = process.communicate(timeout=3)
+        assert process.returncode == 128 + getattr(signal, interrupt)
+        assert "bootstrap ready" not in stdout + stderr
+        for pid in json.loads(pids_file.read_text())[:2]:
+            state = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True)
+            assert not state.stdout.strip() or state.stdout.strip().startswith("Z"), "SSH descendant still running"
+    finally:
+        groups = {process.pid}
+        if pids_file.exists():
+            groups.add(json.loads(pids_file.read_text())[2])
+        for group in groups:
+            assert group != os.getpgrp()
+            try:
+                os.killpg(group, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        process.communicate()
+
+
+def test_wait_cancellation_during_spawn_cleans_the_real_child(tmp_path):
+    """Inject SIGTERM at Popen return before production code can assign its child."""
+    import signal
+    import sys
+
+    script, environment = _isolated_wait_script(tmp_path)
+    environment["WAIT_SSH_FAULT"] = "hang"
+    spawned = tmp_path / "spawned.pid"
+    environment["WAIT_SPAWNED_PID"] = str(spawned)
+    runtime = tmp_path / "bin/python3"
+    runtime.write_text(f'''#!{sys.executable}
+import os, signal, subprocess, sys
+from pathlib import Path
+if sys.argv[1] != "-":
+    os.execv({sys.executable!r}, [{sys.executable!r}, *sys.argv[1:]])
+source = sys.stdin.read()
+sys.argv = sys.argv[1:]
+original = subprocess.Popen
+def interrupted_spawn(command, **kwargs):
+    child = original(command, **kwargs)
+    if command[-1] != "true":
+        Path(os.environ["WAIT_SPAWNED_PID"]).write_text(str(child.pid))
+        os.kill(os.getpid(), signal.SIGTERM)
+    return child
+subprocess.Popen = interrupted_spawn
+exec(compile(source, "<production-wait-controller>", "exec"))
+''')
+    runtime.chmod(0o700)
+    process = subprocess.Popen(["bash", str(script)], env=environment, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True, start_new_session=True)
+    try:
+        process.communicate(timeout=5)
+        assert process.returncode != 0
+        child_pid = int(spawned.read_text())
+        state = subprocess.run(["ps", "-o", "stat=", "-p", str(child_pid)], capture_output=True, text=True)
+        assert not state.stdout.strip() or state.stdout.strip().startswith("Z"), "spawned SSH escaped cleanup"
+    finally:
+        groups = {process.pid}
+        if spawned.exists():
+            groups.add(int(spawned.read_text()))
+        for group in groups:
+            assert group != os.getpgrp()
+            try:
+                os.killpg(group, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        process.communicate()
+
+
 def _isolated_inventory_repo(tmp_path):
     import shutil
 
