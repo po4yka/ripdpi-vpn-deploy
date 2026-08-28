@@ -96,6 +96,11 @@ through Make and argv; no general site/backup task runs during installation.
 
 ## Pitfalls
 
+- **SSH connection timeout is not a session deadline** — bootstrap waits bound
+  each SSH process group locally and each remote status query with GNU timeout.
+  Remote deadline retries are distinct from an unresponsive SSH session; cloud-init
+  exit codes 1 and 2 both refuse readiness even when the marker already exists.
+  Keep raw cloud-init output suppressed and reclaim the owned SSH group on interruption.
 - **Rollback state must be readable before mutation** — enforce the same byte
   limit on serialized pending writes and reads, including base64 snapshots.
   SSH/job/monitor deadlines must leave room around the shared probe budget.

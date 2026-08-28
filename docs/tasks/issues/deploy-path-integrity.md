@@ -37,3 +37,8 @@ The operator deploy path enforces its own guarantees on every invocation shape: 
 
 - The primary agent owns only the five existing safety pre-task tags in `ansible/playbooks/site.yml` and their real-Ansible local regression coverage in `tests/unit/test_listener_contract.py` on `codex/high-tagged-guards-20260828`.
 - This slice covers `OPS-1787496118906514`; it does not change role defaults, SSH migration, firewall policy, or live runtime. The inventory-guards slice and backup configuration work remain separate, and the overall task stays open.
+
+## Bounded bootstrap wait ownership — 2026-08-28
+
+- The bounded-wait agent owns only `scripts/wait-cloud-init.sh`, its existing `tests/unit/test_render_inventory.py` coverage, brief `scripts/CLAUDE.md` guidance, and evidence for `OPS-1787496118906208` in `codex/high-bootstrap-wait-20260828`.
+- This slice preserves Terraform output routing and SSH identity, port, and trust policy. Make deploy integration, transport migration, backup configuration, shared board/count updates, and live acceptance remain with their existing owners. The overall task remains blocked.
