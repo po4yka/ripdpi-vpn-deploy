@@ -3,9 +3,13 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 
@@ -161,3 +165,69 @@ def test_listener_contract_pre_tasks_run_during_tagged_deploys() -> None:
     tasks = {task["name"]: task for task in play["pre_tasks"] if task["name"] in required}
     assert set(tasks) == required
     assert all("always" in task.get("tags", []) for task in tasks.values())
+
+
+@pytest.mark.parametrize(
+    "case, expected_failure",
+    [
+        ("missing-secrets", "VPN_SECRETS_FILE is not set"),
+        ("empty-allowlist", "allowed_ssh_cidrs is empty"),
+        ("research", "RESEARCH-tier role(s)"),
+        ("exception", "EXCEPTION-tier role(s)"),
+        ("standard", None),
+        ("approved-research", None),
+    ],
+)
+def test_tagged_convergence_executes_source_preflight_guards(tmp_path, case, expected_failure):
+    """Execute unchanged source guards, never the host-mutating site roles."""
+    executable = shutil.which("ansible-playbook")
+    assert executable, "ansible-playbook is required to exercise tag filtering"
+    source = yaml.safe_load((REPO_ROOT / "ansible/playbooks/site.yml").read_text())[0]
+    names = {
+        "Ensure VPN_SECRETS_FILE was provided",
+        "Ensure the SSH management-path allowlist is populated",
+        "Load role tier manifest",
+        "Guard — block RESEARCH-tier roles in a family deploy",
+        "Guard — block unapproved EXCEPTION-tier roles",
+    }
+    guards = [task for task in source["pre_tasks"] if task["name"] in names]
+    assert {task["name"] for task in guards} == names
+    playbooks = tmp_path / "ansible/playbooks"
+    playbooks.mkdir(parents=True)
+    shutil.copyfile(REPO_ROOT / "ansible/role-tiers.yml", playbooks.parent / "role-tiers.yml")
+    variables = {"vpn": {}, "allowed_ssh_cidrs": ["203.0.113.1/32"]}
+    if case == "empty-allowlist":
+        variables["allowed_ssh_cidrs"] = []
+    if case in {"research", "approved-research"}:
+        variables["vpn"]["enable_split_hop_egress"] = True
+    if case == "approved-research":
+        variables["allow_research_roles"] = ["split-hop-egress"]
+    if case == "exception":
+        variables["vpn"]["enable_cascade_ingress"] = True
+    play = {
+        "name": "Exercise tagged source guards without deploying roles",
+        "hosts": "localhost", "gather_facts": False, "become": False,
+        "vars": variables, "pre_tasks": guards,
+        "tasks": [{"name": "Convergence sentinel", "tags": ["p0"],
+                   "ansible.builtin.debug": {"msg": "CONVERGENCE_REACHED"}}],
+    }
+    playbook = playbooks / "guards.yml"
+    playbook.write_text(yaml.safe_dump([play], sort_keys=False))
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\nfact_caching=memory\n")
+    env = {**os.environ, "ANSIBLE_CONFIG": str(config), "ANSIBLE_NOCOLOR": "1",
+           "ANSIBLE_FORCE_COLOR": "0", "ANSIBLE_STDOUT_CALLBACK": "default",
+           "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
+           "VPN_SECRETS_FILE": "" if case == "missing-secrets" else "synthetic-test-input"}
+    result = subprocess.run(
+        [executable, "-i", "localhost,", "-c", "local", str(playbook), "--tags", "p0"],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=40,
+    )
+    output = result.stdout + result.stderr
+    if expected_failure:
+        assert result.returncode != 0, output
+        assert expected_failure in output
+        assert "CONVERGENCE_REACHED" not in output
+    else:
+        assert result.returncode == 0, output
+        assert "CONVERGENCE_REACHED" in output
