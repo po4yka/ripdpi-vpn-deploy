@@ -163,10 +163,15 @@ def test_remote_collector_never_invokes_repair_or_restic(monkeypatch):
     monkeypatch.setattr(m, "read_host_json", lambda path: (_ for _ in ()).throw(m.InspectionError("missing")))
     result = m.collect()
     assert result["services"]["ssh.service"]["active_state"] == "failed"
+    assert result["services"]["ssh.service"]["exec_main_exit_timestamp"] is None
+    assert result["manifest"] == {"status": "unknown"}
+    assert result["backup"]["restore"] == {"status": "unknown"}
     assert result["backup"]["latest_snapshot"]["status"] == "unknown"
     assert all(c[:2] == ["/usr/bin/systemctl", "show"] or c == ["/usr/bin/ss", "-H", "-lntu"] for c in commands)
     assert "watchdog.sh" not in json.dumps(commands)
     assert "restic" not in json.dumps(commands)
+    monkeypatch.setattr(m, "bounded_command", lambda *args, **kwargs: (_ for _ in ()).throw(m.InspectionError("unavailable")))
+    assert m.collect()["listeners"] == {"status": "unknown"}
 
 
 def test_command_output_limit_and_deadline_are_enforced():

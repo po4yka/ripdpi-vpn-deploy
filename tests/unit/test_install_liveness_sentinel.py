@@ -301,7 +301,6 @@ def test_local_runtime_version_pin_is_checked_before_parser_or_ssh(setup):
 
 
 def test_real_source_identity_rejects_dirty_git_before_reading_runner(setup, monkeypatch):
-    s = setup
     fresh = load(ROOT / "scripts/install_liveness_sentinel.py", "source_installer")
     calls = []
     def dirty(command, **_kwargs):
@@ -416,7 +415,6 @@ def test_ssh_does_not_inherit_provider_or_secret_environment(setup):
 
 def test_actual_git_source_identity_requires_all_inputs_committed(setup, tmp_path):
     import subprocess
-    s = setup
     fresh = load(ROOT / "scripts/install_liveness_sentinel.py", "git_installer")
     repo = tmp_path / "git-fixture"
     repo.mkdir()
