@@ -112,7 +112,10 @@ active evaluator evidence never substitutes controller identity for server state
   name, client name, or path uses `"$1"` quoting and `printf '%q'` when
   forwarding to nested shells. Never `eval`.
 - **`mktemp` differs on macOS vs Linux** — operator workstations are both.
-  Use `mktemp -t prefix.XXXXXX` (works on both) rather than the bare form.
+  When a controller owns cleanup, use an explicit template under its `TMPDIR`:
+  macOS `mktemp -t` prefers the Darwin user temp directory over `TMPDIR`.
+  Private precheck copies must remain inside controller cleanup even when a
+  timeout or cancellation kills a child before its shell EXIT trap can run.
 - **`age` keyring location** — `~/.config/sops/age/keys.txt` on Linux,
   `~/Library/Application Support/sops/age/keys.txt` on macOS. The wrapper
   scripts pick correctly via `${SOPS_AGE_KEY_FILE:-…}`; don't hard-code.

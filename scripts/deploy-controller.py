@@ -301,10 +301,14 @@ def controller(mode):
             commands.append(fleet_inspection.ssh_command(host, known_hosts))
         playbooks = prepare_playbooks(root, directory, hosts, memberships, metadata, secrets, overrides, commands)
         if os.environ.get("DEPLOY_SKIP_PRECHECK", "") != "1":
+            # Reclaim precheck secret copies even if their EXIT traps are killed.
+            # Keep Ansible's default temp root: nested paths exceed macOS's RPC socket limit.
+            precheck_environment = {**environment, "TMPDIR": str(directory)}
             checked([sys.executable, str(root / "scripts/validate-secrets.py"), str(secrets), "--strict"],
-                    environment=environment, cwd=directory)
-            checked([sys.executable, str(root / "scripts/spot-check-secrets.py")], environment=environment, cwd=directory)
-            checked([str(root / "scripts/check-certs.sh")], environment=environment, cwd=directory)
+                    environment=precheck_environment, cwd=directory)
+            checked([sys.executable, str(root / "scripts/spot-check-secrets.py")],
+                    environment=precheck_environment, cwd=directory)
+            checked([str(root / "scripts/check-certs.sh")], environment=precheck_environment, cwd=directory)
         for command in commands:
             wait_for_bootstrap(command[:-1], environment=environment)
         current = source_identity(root, environment, require_clean=mode == "deploy")

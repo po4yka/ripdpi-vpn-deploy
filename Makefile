@@ -3,6 +3,13 @@ ENV      ?= prod
 
 -include .fleet.mk
 
+# Capture deployment labels before the eager Terraform path assignments below.
+# The included fleet file remains trusted executable Make configuration.
+ifneq ($(filter deploy dry-run deploy-canary backup-configure install-ssh-recovery,$(MAKECMDGOALS)),)
+override ENV := $(value ENV)
+override PROVIDER := $(value PROVIDER)
+endif
+
 HOSTS   ?=
 COHORTS ?=
 SOPS_FILES ?=
@@ -246,8 +253,6 @@ ifneq ($(filter deploy dry-run deploy-canary,$(MAKECMDGOALS)),)
 override ANSIBLE_LIMIT := $(value ANSIBLE_LIMIT)
 override ANSIBLE_TAGS := $(value ANSIBLE_TAGS)
 override SKIP_PRECHECK := $(value SKIP_PRECHECK)
-override ENV := $(value ENV)
-override PROVIDER := $(value PROVIDER)
 override SECRETS_FILE := $(if $(filter file default undefined,$(origin SECRETS_FILE)),$(SECRETS_FILE),$(value SECRETS_FILE))
 override ANSIBLE_EXTRA_VARS_FILE := $(if $(filter file default undefined,$(origin ANSIBLE_EXTRA_VARS_FILE)),$(ANSIBLE_EXTRA_VARS_FILE),$(value ANSIBLE_EXTRA_VARS_FILE))
 override INSPECT_KNOWN_HOSTS := $(if $(filter file default undefined,$(origin INSPECT_KNOWN_HOSTS)),$(INSPECT_KNOWN_HOSTS),$(value INSPECT_KNOWN_HOSTS))

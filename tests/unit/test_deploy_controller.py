@@ -179,6 +179,20 @@ def test_make_inputs_do_not_expand_make_functions(workspace, field):
     assert not any(entry["program"] in ("ssh", "ansible-playbook") for entry in calls(workspace))
 
 
+@pytest.mark.parametrize("field", ["ENV", "PROVIDER"])
+@pytest.mark.parametrize("target", ["deploy", "backup-configure"])
+def test_make_labels_do_not_expand_before_controller_privacy_guard(workspace, field, target):
+    marker = workspace["root"].parent / "early-label-expansion"
+    workspace["env"]["ANSIBLE_DEBUG"] = "true"
+    if target == "backup-configure":
+        shutil.copy2(ROOT / "scripts/backup-configure.py", workspace["root"] / "scripts/backup-configure.py")
+    result = invoke(workspace, target=target, **{field: "$(shell touch " + str(marker) + ")"})
+    message = "ansible-debug-not-supported" if target == "backup-configure" else "debug is not supported"
+    assert result.returncode != 0 and message in result.stderr
+    assert not marker.exists()
+    assert calls(workspace) == []
+
+
 @pytest.mark.parametrize("fault", ["second-key", "known-hosts", "secrets-yaml", "cohort-yaml"])
 def test_every_local_input_is_validated_before_first_ssh(workspace, fault):
     if fault == "second-key":
@@ -276,6 +290,98 @@ def test_prechecks_keep_strict_schema_validation_before_readiness(workspace):
     assert not Path(observed[0]["args"][0]).exists(), "private secrets snapshot must be cleaned"
 
 
+@pytest.mark.parametrize("failure", ["timeout", "sigterm"])
+def test_cert_precheck_temporary_keys_are_reclaimed_on_interruption(workspace, failure):
+    root = workspace["root"]
+    shutil.copy2(ROOT / "scripts/check-certs.sh", root / "scripts/check-certs.sh")
+    workspace["secrets"].write_text(yaml.safe_dump({"nginx_xhttp": {
+        "server_name": "fixture.example.invalid", "cert_pem": "STUB_CERT_PUBLIC",
+        "key_pem": "STUB_CERT_PRIVATE"}}))
+    binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
+    record = root.parent / "cert-precheck.json"
+    write(binary / "openssl", f"""#!{sys.executable}
+import json, os, pathlib, sys, time
+record = pathlib.Path({str(record)!r})
+record.with_suffix('.tmp').write_text(json.dumps({{
+    'cert': sys.argv[sys.argv.index('-in') + 1], 'group': os.getpgrp(),
+    'private': str(pathlib.Path(os.environ['VPN_SECRETS_FILE']).parent)}}))
+record.with_suffix('.tmp').replace(record)
+time.sleep(60)
+""", 0o700)
+    process = subprocess.Popen(["make", "dry-run", "ANSIBLE_LIMIT=node-one",
+                                "SECRETS_FILE=" + str(workspace["secrets"])],
+                               cwd=root, env=workspace["env"], text=True,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+    observed = None
+    try:
+        deadline = time.monotonic() + 15
+        while not record.exists() and process.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert record.exists(), "real certificate precheck did not reach the OpenSSL boundary"
+        observed = json.loads(record.read_text())
+        cert = Path(observed["cert"])
+        key = cert.with_name("nginx_xhttp.key.pem")
+        assert key.read_text() == "STUB_CERT_PRIVATE\n"
+        assert key.stat().st_mode & 0o777 == 0o600
+        if failure == "sigterm":
+            process.send_signal(signal.SIGTERM)
+        stdout, stderr = process.communicate(timeout=3 if failure == "sigterm" else 20)
+        assert process.returncode != 0
+        if failure == "timeout":
+            assert "session timeout" in stderr
+        assert "STUB_CERT_PRIVATE" not in stdout + stderr
+        assert not any(entry["program"] in ("ssh", "ansible-playbook") for entry in calls(workspace))
+        assert not Path(observed["private"]).exists(), "controller snapshots survived interruption"
+        assert not cert.parent.exists(), "private certificate copies escaped controller cleanup"
+    finally:
+        for group in {process.pid, *([observed["group"]] if observed else [])}:
+            assert group != os.getpgrp()
+            try:
+                os.killpg(group, signal.SIGKILL)
+            except ProcessLookupError:
+                # Production cancellation already reclaimed this owned group.
+                pass
+        process.communicate()
+        if observed:
+            # A failing regression may leave its synthetic copies outside the
+            # controller directory. Reclaim only this fixture's recorded bundle.
+            cert = Path(observed["cert"])
+            assert cert.name == "nginx_xhttp.cert.pem" and cert.parent.name.startswith("vpn-check-certs.")
+            if cert.parent.exists():
+                shutil.rmtree(cert.parent)
+
+
+def test_standalone_cert_precheck_honors_private_tmpdir_and_cleans_failed_parse(workspace):
+    root = workspace["root"]
+    temporary = root.parent / "private-cert-temp"
+    temporary.mkdir(mode=0o700)
+    workspace["secrets"].write_text(yaml.safe_dump({"nginx_xhttp": {
+        "server_name": "fixture.example.invalid", "cert_pem": "STUB_CERT_PUBLIC",
+        "key_pem": "STUB_CERT_PRIVATE"}}))
+    record = root.parent / "standalone-cert.json"
+    binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
+    write(binary / "openssl", f"""#!{sys.executable}
+import json, pathlib, sys
+cert = pathlib.Path(sys.argv[sys.argv.index('-in') + 1])
+key = cert.with_name('nginx_xhttp.key.pem')
+pathlib.Path({str(record)!r}).write_text(json.dumps({{
+    'cert': str(cert), 'mode': key.stat().st_mode & 0o777,
+    'directory_mode': cert.parent.stat().st_mode & 0o777}}))
+raise SystemExit(1)
+""", 0o700)
+    result = subprocess.run([str(ROOT / "scripts/check-certs.sh")], cwd=root,
+                            env={**workspace["env"], "TMPDIR": str(temporary),
+                                 "VPN_SECRETS_FILE": str(workspace["secrets"])},
+                            text=True, capture_output=True, timeout=10)
+    assert result.returncode == 1 and "openssl could not parse cert_pem" in result.stdout
+    observed = json.loads(record.read_text())
+    cert = Path(observed["cert"])
+    assert observed["mode"] == 0o600 and observed["directory_mode"] == 0o700
+    assert not cert.parent.exists(), "standalone EXIT trap must still reclaim its private copies"
+    assert cert.parent.parent == temporary
+    assert "STUB_CERT_PRIVATE" not in result.stdout + result.stderr
+
+
 @pytest.mark.parametrize("failure", ["exit", "unavailable"])
 def test_audit_remains_best_effort_and_uses_only_approved_audit_environment(workspace, failure):
     root = workspace["root"]
@@ -284,6 +390,7 @@ def test_audit_remains_best_effort_and_uses_only_approved_audit_environment(work
     keys = {"AGE_KEY": "synthetic-key-location", "AUDIT_LOG_FILE": "synthetic-log-location",
             "AUDIT_ACTOR": "fixture-operator"}
     workspace["env"].update(keys, AWS_SECRET_ACCESS_KEY="synthetic-provider-credential")
+    write(root / ".fleet.mk", "ENV = canary\nPROVIDER = scaleway\n")
     write(audit, f"""#!{sys.executable}
 import json, os, pathlib
 pathlib.Path({str(environment_record)!r}).write_text(json.dumps(dict(os.environ)))
@@ -301,6 +408,7 @@ raise SystemExit(19)
     if failure == "exit":
         environment = json.loads(environment_record.read_text())
         assert {key: environment.get(key) for key in keys} == keys
+        assert environment["ENV"] == "canary" and environment["PROVIDER"] == "scaleway"
         assert "AWS_SECRET_ACCESS_KEY" not in environment
     assert "synthetic-provider-credential" not in result.stdout + result.stderr
 

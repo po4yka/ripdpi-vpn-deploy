@@ -24,7 +24,7 @@ for tool in openssl python3; do
 done
 
 umask 077
-tmp_dir="$(mktemp -d -t vpn-check-certs.XXXXXX)"
+tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/vpn-check-certs.XXXXXX")"
 # shellcheck disable=SC2329  # Invoked indirectly by the EXIT trap.
 cleanup() {
   local status=$? file
