@@ -257,11 +257,11 @@
       tags: [naive, p1, transport]
 
     - role: hysteria
-      when: (vpn.enable_hysteria | default(false)) and not (vpn_subscription_only | default(false))
+      when: (vpn.enable_hysteria | default(true)) and not (vpn_subscription_only | default(false))
       tags: [hysteria, p2, transport]
 
     - role: amneziawg
-      when: (vpn.enable_amneziawg | default(false)) and not (vpn_subscription_only | default(false))
+      when: (vpn.enable_amneziawg | default(true)) and not (vpn_subscription_only | default(false))
       tags: [amneziawg, awg, p2, transport]
 
     - role: subscription-host

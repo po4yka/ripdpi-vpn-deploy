@@ -48,3 +48,8 @@ The operator deploy path enforces its own guarantees on every invocation shape: 
 - The maintenance agent owns only `ansible/playbooks/os-maintenance.yml`, its existing `tests/unit/test_os_maintenance_contract.py` coverage, and this task's corresponding evidence on `codex/high-maintenance-guards-20260828`, based on main `bdc6b5a9c7f3d47b801341eba5560171ce41b589`.
 - Steps `OPS-1787496118906956` and `OPS-1787496118906614` remove the external service from the unconditional health check and make the residual package simulation locale-independent. Local Ansible task-slice tests replace only OS command executables; they never run real package, service or reboot operations.
 - Integration, all other deploy-path changes, and live rolling maintenance remain with their existing owners. These two source fixes do not close the parent task.
+
+## Toggle-default ownership — 2026-08-28
+
+- After the maintenance slice, the same agent owns ordinary transport fallback corrections in `site.yml`, `verify.yml`, `smoke-test.yml`, `os-maintenance.yml` and `rotate-credentials.yml`, plus disabled cascade declarations in `ansible/group_vars/all.yml`, existing profile/cascade tests, and corresponding evidence for steps `OPS-1787496118906821` and `OPS-1787496118906731`.
+- Backup configuration prerequisites, baseline/SSH code, all role behavior and other agents' playbook changes remain untouched. Integration must preserve the already-reviewed smoke, verification and rotation changes in the primary agent's combined tree; this slice does not authorize live operations.

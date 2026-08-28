@@ -96,7 +96,7 @@ Post-maintenance service checks MUST NOT hard-fail on units no Ansible role inst
 
 ### Requirement: REQ-TOGGLE-DEFAULT-PARITY — Playbook inline toggle defaults MUST match the declared surface
 
-Every inline enable_* default in playbooks MUST equal the corresponding default in group_vars/all.yml, enforced by test.
+Every inline enable_* default selecting ordinary transport behavior in deploy, verify, smoke, maintenance and rotation MUST equal the corresponding default in group_vars/all.yml, enforced by test. Explicit cohort boolean values MUST take precedence. Fail-closed configuration prerequisites, including backup-configure's enable_backup assertion, are not transport selectors and MUST retain their rejection of absent required inputs.
 
 #### Scenario: new profile omitting a key
 
@@ -114,7 +114,7 @@ Package-backlog assertions MUST parse simulation output generated under a pinned
 
 ### Requirement: REQ-DECLARED-TOGGLE-SURFACE — Every consumable feature toggle MUST appear in the declared toggle surface
 
-All vpn.enable_* keys consumed by playbooks or roles MUST have documented defaults in group_vars/all.yml.
+All vpn.enable_* keys consumed by playbooks or roles MUST have documented defaults in group_vars/all.yml. Cascade ingress and egress MUST default to false; their declarations MUST NOT authorize exception roles or change the implementation-only governance state.
 
 #### Scenario: operator enables governance-gated topology
 

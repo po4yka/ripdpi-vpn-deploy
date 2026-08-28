@@ -110,17 +110,20 @@ def test_egress_has_no_classifier_or_geodata_knowledge() -> None:
     assert "geodata" not in egress.lower()
 
 
-def test_cascade_roles_are_exception_tier_and_absent_from_family_profiles() -> None:
+def test_cascade_roles_are_declared_disabled_and_exception_tier() -> None:
     manifest = yaml.safe_load((ANSIBLE / "role-tiers.yml").read_text())
     assert manifest["tiers"]["cascade-ingress"] == "exception"
     assert manifest["tiers"]["cascade-egress"] == "exception"
     assert manifest["cascade_governance_status"] == "implementation-only"
 
+    defaults = yaml.safe_load((ANSIBLE / "group_vars/all.yml").read_text())["vpn"]
+    assert defaults["enable_cascade_ingress"] is False
+    assert defaults["enable_cascade_egress"] is False
     for relative in manifest["family_profiles"]:
-        text = (ANSIBLE / relative).read_text()
-        assert "enable_cascade_ingress" not in text
-        assert "enable_cascade_egress" not in text
-        assert "allow_exception_roles" not in text
+        profile = yaml.safe_load((ANSIBLE / relative).read_text())
+        for toggle in ("enable_cascade_ingress", "enable_cascade_egress"):
+            assert profile.get("vpn", {}).get(toggle, False) is False
+        assert "allow_exception_roles" not in profile
 
 
 def test_site_has_attestation_and_colocation_guards_before_roles() -> None:

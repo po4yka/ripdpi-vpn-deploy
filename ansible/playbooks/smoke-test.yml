@@ -149,7 +149,7 @@
     # P2 Hysteria2 — client dial
     # ---------------------------------------------------------------
     - name: Render Hysteria client config
-      when: vpn.enable_hysteria | default(false)
+      when: vpn.enable_hysteria | default(true)
       ansible.builtin.copy:
         dest: "{{ smoketest_dir }}/hysteria-client.yaml"
         owner: root
@@ -167,7 +167,7 @@
       diff: false
 
     - name: Run Hysteria smoke client
-      when: vpn.enable_hysteria | default(false)
+      when: vpn.enable_hysteria | default(true)
       ansible.builtin.command:
         cmd: |
           systemd-run --quiet --no-block --collect
@@ -179,14 +179,14 @@
       changed_when: true
 
     - name: Wait for Hysteria smoke listener
-      when: vpn.enable_hysteria | default(false)
+      when: vpn.enable_hysteria | default(true)
       ansible.builtin.wait_for:
         host: 127.0.0.1
         port: 31081
         timeout: 10
 
     - name: Probe through Hysteria proxy
-      when: vpn.enable_hysteria | default(false)
+      when: vpn.enable_hysteria | default(true)
       ansible.builtin.command:
         cmd: |
           curl -sS -o /dev/null -w '%{http_code}'
@@ -198,7 +198,7 @@
       failed_when: hysteria_probe.stdout | int != smoketest_expected_code
 
     - name: Stop Hysteria smoke client
-      when: vpn.enable_hysteria | default(false)
+      when: vpn.enable_hysteria | default(true)
       ansible.builtin.command:
         cmd: systemctl stop vpn-smoke-hysteria.service
       changed_when: true

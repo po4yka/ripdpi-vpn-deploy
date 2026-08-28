@@ -199,7 +199,7 @@
       register: hy_status
       changed_when: false
       failed_when: hy_status.stdout != "active"
-      when: vpn.enable_hysteria | default(false)
+      when: vpn.enable_hysteria | default(true)
 
     - name: Snell configuration is valid
       ansible.builtin.command:
@@ -233,13 +233,13 @@
           ss -lnu | awk '{print $4}' | grep -q ':443$'
         executable: /bin/bash
       changed_when: false
-      when: vpn.enable_hysteria | default(false)
+      when: vpn.enable_hysteria | default(true)
 
     - name: AmneziaWG interface up
       ansible.builtin.command:
         cmd: awg show awg0
       changed_when: false
-      when: vpn.enable_amneziawg | default(false)
+      when: vpn.enable_amneziawg | default(true)
 
     - name: SSH password auth disabled
       ansible.builtin.command:

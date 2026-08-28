@@ -51,10 +51,10 @@
       loop: >-
         {{
           ['nftables', 'prometheus-node-exporter']
-          + (['xray'] if ((vpn.enable_xray_reality | default(false)) or
-                          (vpn.enable_nginx_xhttp | default(false))) else [])
-          + (['nginx'] if (vpn.enable_nginx_xhttp | default(false)) else [])
-          + (['hysteria-server'] if (vpn.enable_hysteria | default(false)) else [])
+          + (['xray'] if ((vpn.enable_xray_reality | default(true)) or
+                          (vpn.enable_nginx_xhttp | default(true))) else [])
+          + (['nginx'] if (vpn.enable_nginx_xhttp | default(true)) else [])
+          + (['hysteria-server'] if (vpn.enable_hysteria | default(true)) else [])
         }}
       loop_control:
         label: "{{ item }}"
@@ -66,7 +66,7 @@
       changed_when: false
       when:
         - not ansible_check_mode
-        - vpn.enable_amneziawg | default(false)
+        - vpn.enable_amneziawg | default(true)
 
     - name: Simulate another full upgrade
       ansible.builtin.command:
