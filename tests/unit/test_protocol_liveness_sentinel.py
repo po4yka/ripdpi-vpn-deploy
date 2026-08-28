@@ -631,7 +631,7 @@ def test_awg_namespace_is_removed_after_probe_failure(tmp_path: Path) -> None:
         item for item in payload["profiles"] if item["profile"] == "p2-amneziawg"
     )
     calls = (tmp_path / "calls.log").read_text()
-    assert awg["verdict"] == "blocked"
+    assert awg["verdict"] == "blocked", awg
     assert "netns delete vpn-live-" in calls
     awg_pid = (tmp_path / "awg.pid").read_text().strip()
     assert subprocess.run(["ps", "-p", awg_pid], capture_output=True).returncode != 0
