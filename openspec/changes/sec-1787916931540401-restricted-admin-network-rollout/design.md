@@ -92,6 +92,45 @@ Only periodic lock contention returns a categorical deferred result with exit
 failed, but readiness still requires exit 0 from a completed execution.
 Boot contention remains a failure that blocks SSH listeners.
 
+### Activation readiness without self-contention
+
+An observed native transaction-lock contention made the periodic worker exit
+75 and a later apply refuse before writing configuration. Reading the worker's
+last result while holding that same lock makes normal activation invalidate its
+own readiness condition. Keep the strict completed-execution requirement, but
+separate fresh execution proof from the final capability check.
+
+Apply first validates its identity, prepared state and deadline under the
+transaction lock, then releases that lock while retaining the bundle shared
+lock. Before starting any root service, validate the immutable generation,
+loaded pinned units, absence of overrides and pending daemon reload, persistent
+timer and strict boot recovery; this structural preflight must not reject the
+previous coherent periodic busy result before it can obtain fresh proof. Only
+valid completed exit 0 or known exit 75 permits a new execution; a real failure,
+unknown state or future completion must refuse before start rather than be
+erased by the next successful execution. Start the
+periodic worker exactly once, with one aggregate monotonic deadline covering
+validation, execution and the final fence; there is no retry loop. Read related
+properties in one show per unit and require a fresh completed exit-0 execution
+for this apply call. Unchanged cached execution metrics after a no-op start do
+not establish fresh proof.
+Keep its generation, boot identity and execution identity only in memory.
+
+After reacquiring the transaction lock, revalidate the exact prepared state,
+lease, full configuration snapshot and pinned recovery capability before the
+first write. A worker that recovered an expired transaction between phases,
+state replacement or any drift invalidates the proof. A later periodic busy
+result or in-flight invocation is not itself proof: it may only be attributed
+to this lock interval when the earlier fresh exit-0 proof remains valid and
+the execution ordering is unambiguous. Compare systemd timestamps using
+CLOCK_MONOTONIC, taking this lock's marker only after successful flock and
+rejecting executions that started before it or have future timestamps. Keep
+CLOCK_BOOTTIME solely for the existing lease semantics.
+Unknown ordering, failed or never-executed boot recovery, real worker failure,
+disabled timers or changed units always refuse activation. Standalone
+installation readiness still rejects 75. No durable success cache, new
+dispatcher action or change to public transaction receipts is introduced.
+
 Recovery units create the standard privsep directory and a separate runtime validation scratch directory before OpenSSH checks. The scratch parent is root-owned and not group/other writable; every temporary child is 0700 and its config file 0600. Actual home and temporary paths remain readable for existing HostKey references. OpenSSH checks have a shared 30-second budget per full effective validation, within the recovery unit's 90-second total timeout. Local filesystem and mocked service tests do not constitute cold-boot or real SSH acceptance.
 
 

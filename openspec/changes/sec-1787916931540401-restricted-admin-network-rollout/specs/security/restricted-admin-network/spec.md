@@ -50,6 +50,12 @@ Every SSH or guest-firewall activation MUST save and validate the original bytes
 - **WHEN** an unconfirmed transaction survives a reboot
 - **THEN** boot reconciliation restores the previous configuration before normal network service acceptance.
 
+#### Scenario: Periodic recovery contends with activation
+
+- **WHEN** a periodic worker encounters the transaction lock during activation readiness
+- **THEN** its deferred exit 75 is not accepted as execution proof; activation obtains one fresh completed successful worker execution outside the lock and revalidates that proof, the prepared state, lease, snapshot and recovery capability under the lock before writing.
+- **AND** only an unambiguous later contention with that same lock interval may be distinguished from a real failure; stale or absent proof, unknown execution ordering, expired state and capability drift refuse activation without writes.
+
 ### Requirement: REQ-ADMIN-PROMOTION — Promotion uses independent proof and serial scope
 
 A rollout MUST stop on the first failed node, use an explicit single-node target, and confirm through a new non-multiplexed SSH connection with the existing user/key/port and pinned host identity. It MUST verify transaction identity, DNS, required VPN probes, unchanged public access and the new Tailnet path before confirmation. Provider firewall changes MUST have an external rollback executor and validated prior rules; guest-only recovery MUST NOT count as provider rollback.

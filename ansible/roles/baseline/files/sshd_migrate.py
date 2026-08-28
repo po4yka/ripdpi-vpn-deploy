@@ -45,13 +45,16 @@ COMMAND_TIMEOUT = 10
 UNIT_HASHES = {'vpn-sshd-boot-recover.service': 'f000d66c64bdeaf2148d3053f569e587a9b9d4dda3b42502d16261d12a67946d', 'vpn-sshd-recover.service': '6f6f66d895f463b50af1bd34ac90100edad0015a764a791dcc1b0d56f1f7121b', 'vpn-sshd-recover.timer': '8f25882b7f60d9795acfb90dead7c037590693f879d58fc424be164224125c6d'}
 
 
-def _command(arguments):
+def _command(arguments, *, deadline=None):
     """No shell, bounded stdout/stderr and process-group cleanup on timeout."""
+    now = time.monotonic()
+    deadline = min(now + COMMAND_TIMEOUT, deadline) if deadline is not None else now + COMMAND_TIMEOUT
+    if deadline <= now:
+        raise TransactionError('command-timeout')
     with subprocess.Popen(arguments, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                           start_new_session=True, env={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin', 'LANG':'C'}) as process:
         output = bytearray()
         total = 0
-        deadline = time.monotonic() + COMMAND_TIMEOUT
         selector = selectors.DefaultSelector()
         try:
             for stream in (process.stdout, process.stderr):
@@ -127,47 +130,154 @@ class Runtime:
     def reload(self):
         _command(['/usr/bin/systemctl', 'reload', 'ssh.service'])
 
+    @staticmethod
+    def activation_clock():
+        # systemd's process timestamps use CLOCK_MONOTONIC, not lease BOOTTIME.
+        return time.clock_gettime_ns(time.CLOCK_MONOTONIC) // 1000
+
+    def _budget(self, deadline):
+        if self.activation_clock() >= deadline:
+            raise TransactionError('recovery-deadline')
+
+    def _show(self, unit, fields, deadline):
+        self._budget(deadline)
+        raw = _command(['/usr/bin/systemctl', 'show', unit,
+                        '--property=' + ','.join(fields)], deadline=deadline / 1000000)
+        values = {}
+        for line in raw.splitlines():
+            key, separator, value = line.partition('=')
+            if not separator or key not in fields or key in values:
+                raise TransactionError('recovery-properties-invalid')
+            values[key] = value
+        if set(values) != set(fields):
+            raise TransactionError('recovery-properties-invalid')
+        self._budget(deadline)
+        return values
+
+    def _capability(self, deadline):
+        self._budget(deadline)
+        directory = _validate_installation()
+        units = {}
+        common = ('LoadState', 'NeedDaemonReload', 'FragmentPath', 'DropInPaths', 'ActiveState', 'SubState')
+        execution = ('Result', 'MainPID', 'ExecMainPID', 'ExecMainCode', 'ExecMainStatus',
+                     'ExecMainStartTimestampMonotonic', 'ExecMainExitTimestampMonotonic')
+        for unit in UNIT_HASHES:
+            fields = common + (execution if unit.endswith('.service') else ('Requires', 'After'))
+            if unit != 'vpn-sshd-recover.service':
+                fields += ('UnitFileState',)
+            values = self._show(unit, fields, deadline)
+            fragments = {str(UNIT_ROOT / unit), str(BUNDLE_ROOT / 'current/units' / unit),
+                         str(directory / 'units' / unit)}
+            if (values['LoadState'] != 'loaded' or values['NeedDaemonReload'] != 'no'
+                    or values['FragmentPath'] not in fragments or values['DropInPaths']):
+                raise TransactionError('recovery-capability-invalid')
+            units[unit] = values
+        timer = units['vpn-sshd-recover.timer']
+        boot = units['vpn-sshd-boot-recover.service']
+        if (timer['UnitFileState'] != 'enabled' or timer['ActiveState'] != 'active'
+                or timer['SubState'] not in {'waiting', 'running'}
+                or boot['UnitFileState'] != 'enabled' or self._completed(boot) is None):
+            raise TransactionError('recovery-capability-invalid')
+        for unit in ('ssh.service', 'ssh.socket'):
+            units[unit] = self._show(unit, ('Requires', 'After'), deadline)
+        for unit in ('ssh.service', 'ssh.socket', 'vpn-sshd-recover.timer'):
+            if any('vpn-sshd-boot-recover.service' not in units[unit][field].split()
+                   for field in ('Requires', 'After')):
+                raise TransactionError('recovery-capability-invalid')
+        boot_id = self.boot_id()
+        self._budget(deadline)
+        return {'generation': str(directory), 'boot_id': boot_id, 'units': units}
+
+    def _completed(self, values, status='0'):
+        numbers = [values[name] for name in ('ExecMainPID', 'ExecMainStartTimestampMonotonic',
+                                             'ExecMainExitTimestampMonotonic')]
+        if (any(re.fullmatch('[1-9][0-9]{0,19}', value) is None for value in numbers)
+                or values['ActiveState'] != 'inactive' or values['SubState'] != 'dead'
+                or values['Result'] != 'success' or values['ExecMainCode'] != '1'
+                or values['ExecMainStatus'] != status or values['MainPID'] != '0'):
+            return None
+        pid, started, exited = map(int, numbers)
+        return (pid, started, exited) if started <= exited <= self.activation_clock() else None
+
     def recovery_ready(self):
         try:
-            directory = _validate_installation()
-            def systemctl(*arguments):
-                return _command(['/usr/bin/systemctl', *arguments])
-            if (systemctl('is-enabled', 'vpn-sshd-recover.timer') != 'enabled'
-                    or systemctl('is-enabled', 'vpn-sshd-boot-recover.service') != 'enabled'):
-                return False
-            if systemctl('is-active', 'vpn-sshd-recover.timer') != 'active':
-                return False
-            for unit in UNIT_HASHES:
-                # systemd versions expose either the unit lookup path or the
-                # resolved fragment. Every allowed path is independently pinned.
-                fragments = {str(UNIT_ROOT / unit), str(BUNDLE_ROOT / 'current/units' / unit)}
-                if directory is not None:
-                    fragments.add(str(directory / 'units' / unit))
-                if (systemctl('show', unit, '--property=LoadState', '--value') != 'loaded'
-                        or systemctl('show', unit, '--property=NeedDaemonReload', '--value') != 'no'
-                        or systemctl('show', unit, '--property=FragmentPath', '--value') not in fragments
-                        or systemctl('show', unit, '--property=DropInPaths', '--value')):
-                    return False
-                # A live timer is not recovery capability when its worker (or
-                # the boot dependency) has already failed to execute.
-                if unit.endswith('.service') and (
-                        systemctl('show', unit, '--property=ActiveState', '--value') not in {'inactive', 'active'}
-                        or systemctl('show', unit, '--property=Result', '--value') != 'success'):
-                    return False
-                if unit.endswith('.service'):
-                    started = systemctl('show', unit, '--property=ExecMainStartTimestampMonotonic', '--value')
-                    exited = systemctl('show', unit, '--property=ExecMainExitTimestampMonotonic', '--value')
-                    if (not re.fullmatch('[1-9][0-9]{0,19}', started)
-                            or not re.fullmatch('[1-9][0-9]{0,19}', exited)
-                            or int(exited) < int(started)
-                            or systemctl('show', unit, '--property=ExecMainStatus', '--value') != '0'):
-                        return False
-            for unit in ('ssh.service', 'ssh.socket', 'vpn-sshd-recover.timer'):
-                for prop in ('Requires', 'After'):
-                    if 'vpn-sshd-boot-recover.service' not in systemctl('show', unit, '--property='+prop, '--value').split():
-                        return False
-            return True
+            snapshot = self._capability(self.activation_clock() + 30000000)
+            return self._completed(snapshot['units']['vpn-sshd-recover.service']) is not None
         except (TransactionError, OSError):
+            return False
+
+    def activation_recovery(self):
+        deadline = self.activation_clock() + 30000000
+        try:
+            # Do not erase a real previous failure by starting the service.
+            # Only completed success or known lock contention permits one new
+            # execution; neither substitutes for that call's fresh exit-0 proof.
+            before = self._capability(deadline)
+            previous_worker = before['units']['vpn-sshd-recover.service']
+            if (self._completed(previous_worker) is None
+                    and self._completed(previous_worker, '75') is None):
+                raise TransactionError('recovery-previous-execution-invalid')
+            started_after = self.activation_clock()
+            _command(['/usr/bin/systemctl', 'start', 'vpn-sshd-recover.service'],
+                     deadline=deadline / 1000000)
+            current = self._capability(deadline)
+            worker = current['units']['vpn-sshd-recover.service']
+            identity = self._completed(worker)
+            if (identity is None or identity[1] < started_after
+                    or identity[2] > self.activation_clock()
+                    or worker == before['units']['vpn-sshd-recover.service']
+                    or current['generation'] != before['generation']
+                    or current['boot_id'] != before['boot_id']
+                    or current['units']['vpn-sshd-boot-recover.service'] != before['units']['vpn-sshd-boot-recover.service']):
+                raise TransactionError('recovery-execution-not-fresh')
+            self._budget(deadline)
+            return {'snapshot': current, 'identity': identity, 'deadline': deadline,
+                    'started_after': started_after, 'observed_at': self.activation_clock()}
+        except (TransactionError, OSError):
+            return None
+
+    def activation_fence(self, proof, acquired):
+        try:
+            if (not isinstance(proof, dict)
+                    or set(proof) != {'snapshot', 'identity', 'deadline', 'started_after', 'observed_at'}
+                    or any(type(value) is not int for value in
+                           (acquired, proof['deadline'], proof['started_after'], proof['observed_at']))):
+                return False
+            fresh = self._completed(proof['snapshot']['units']['vpn-sshd-recover.service'])
+            if (fresh is None or fresh != proof['identity']
+                    or not 0 < proof['started_after'] <= fresh[1] <= fresh[2] <= proof['observed_at'] <= acquired <= self.activation_clock()
+                    or not proof['observed_at'] < proof['deadline'] <= proof['started_after'] + 30000000):
+                return False
+            self._budget(proof['deadline'])
+            current = self._capability(proof['deadline'])
+            previous = proof['snapshot']
+            worker_name = 'vpn-sshd-recover.service'
+            def stable(unit, values):
+                # The timer changes waiting/running while its pinned worker is
+                # in flight; both states remain active and were checked above.
+                return {key: value for key, value in values.items()
+                        if unit != 'vpn-sshd-recover.timer' or key != 'SubState'}
+            if (current['generation'] != previous['generation'] or current['boot_id'] != previous['boot_id']
+                    or any(stable(unit, current['units'][unit]) != stable(unit, previous['units'][unit])
+                           for unit in current['units'] if unit != worker_name)):
+                return False
+            worker = current['units'][worker_name]
+            if worker == previous['units'][worker_name] and self._completed(worker) == proof['identity']:
+                return True
+            # Only a different execution starting strictly after this caller
+            # acquired the transaction lock can be its own periodic contention.
+            busy = self._completed(worker, '75')
+            if busy is not None:
+                return acquired < busy[1] <= busy[2] <= self.activation_clock()
+            started = worker['ExecMainStartTimestampMonotonic']
+            return (worker['ActiveState'] == 'activating' and worker['SubState'] == 'start'
+                    and worker['Result'] == 'success' and worker['ExecMainCode'] == '0'
+                    and worker['ExecMainStatus'] == '0' and worker['ExecMainExitTimestampMonotonic'] == '0'
+                    and re.fullmatch('[1-9][0-9]{0,19}', worker['ExecMainPID']) is not None
+                    and worker['MainPID'] == worker['ExecMainPID']
+                    and re.fullmatch('[1-9][0-9]{0,19}', started) is not None
+                    and acquired < int(started) <= self.activation_clock())
+        except (TransactionError, OSError, KeyError, TypeError, ValueError, IndexError):
             return False
 
 

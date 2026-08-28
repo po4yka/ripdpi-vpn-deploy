@@ -400,10 +400,24 @@ class Transaction:
                 return self._receipt(state)
             if state['status'] != 'prepared':
                 raise TransactionError('state-not-prepared')
-            if not self.runtime.recovery_ready():
-                raise TransactionError('recovery-not-ready')
+            expected_state = state['checksum']
+        # The caller retains the bundle shared lease. Do not make the worker
+        # contend with this transaction while obtaining fresh execution proof.
+        proof = self.runtime.activation_recovery()
+        if proof is None:
+            raise TransactionError('recovery-not-ready')
+        with self._locked():
+            acquired = self.runtime.activation_clock()
+            state = self._load()
+            self._identity(state, generation, nonce)
+            self._live(state)
+            if state['status'] != 'prepared' or state['checksum'] != expected_state:
+                raise TransactionError('state-changed')
             self._graph(state['plan'], 'before')
             self.runtime.assert_snapshot(state['plan'], self.config)
+            if not self.runtime.activation_fence(proof, acquired):
+                raise TransactionError('recovery-not-ready')
+            self._graph(state['plan'], 'before')
             self._live(state)
             state['status'] = 'applying'
             self._save(state)
