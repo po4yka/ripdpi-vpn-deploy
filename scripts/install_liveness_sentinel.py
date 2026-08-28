@@ -602,7 +602,6 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
             profiles = build_profiles(*emitted, secrets, client, required, sentinel.get("awg_target"), endpoint, private,
                                       lambda key: _derive(key, env), f"/etc/vpn-liveness/generations/{generation}/profiles",
                                       awg_defaults=defaults, awg_cohort=cohort)
-            private = None
             provenance = {"controller_revision": revision, "runner_sha256": hashlib.sha256(runner).hexdigest(),
                           "client_generation_id": generation, "public_profile_digest": profiles["public_profile_digest"], "vantage": sentinel["vantage"]}
             _provenance(provenance)

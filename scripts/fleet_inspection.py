@@ -262,12 +262,11 @@ def service_evidence(raw):
     except ValueError:
         result["exec_main_status"] = None
     # systemd's human timestamp is parsed, never copied as free-form output.
-    result["exec_main_exit_timestamp"] = None
     try:
         parsed = dt.datetime.strptime(values["ExecMainExitTimestamp"], "%a %Y-%m-%d %H:%M:%S UTC")
         result["exec_main_exit_timestamp"] = timestamp(parsed.replace(tzinfo=dt.timezone.utc))
     except ValueError:
-        pass
+        result["exec_main_exit_timestamp"] = None
     return result
 
 
@@ -300,15 +299,15 @@ def collect():
         raw = bounded_command(["/usr/bin/ss", "-H", "-lntu"], timeout=2)
         result["listeners"] = {"status": "observed", "items": parse_listeners(raw.decode("utf-8"))}
     except (InspectionError, UnicodeError):
-        pass
+        result["listeners"] = {"status": "unknown"}
     try:
         result["manifest"] = manifest_evidence(read_host_json(MANIFEST))
     except InspectionError:
-        pass
+        result["manifest"] = {"status": "unknown"}
     try:
         result["backup"]["restore"] = restore_evidence(read_host_json(RESTORE), now)
     except InspectionError:
-        pass
+        result["backup"]["restore"] = {"status": "unknown"}
     return result
 
 
