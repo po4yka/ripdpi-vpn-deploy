@@ -52,13 +52,37 @@ vpnd --explain probe-matrix --duration 4h --config /absolute/path/probe-matrix.y
 
 Each tick first runs one direct HTTPS control through `make probe-matrix-control`. All cells then run concurrently through `make probe-matrix-cell`. Network failure is `blocked` only when the direct control is healthy; otherwise it is `unknown`. Runtime, version, profile, TLS-validation, authentication, malformed-output, and cleanup failures are `error`.
 
+Duration must be positive and fit both the seconds representation and the local
+monotonic clock, including in `--explain`. The configured control timeout bounds
+both controls and cells; a timed-out control records `unknown` with
+`control_timeout` and does not prevent the cells from running.
+
+ProbeMatrix and Doctor explicitly own their captured Make process groups.
+Timeout or cancellation kills those groups, including ordinary shell/probe
+descendants. Only those noninteractive CLI dispatches register SIGINT/SIGTERM
+handlers, returning 130/143 and cancelling concurrent jobs. Other captures
+(Share and Reconverge) keep foreground behavior so blocking token input and
+confirmation prompts retain default signal handling. They do not gain group
+cleanup. Neither do raw helper subprocesses or daemonized descendants after
+successful command completion. Interrupted sweeps do **not**
+yet persist a partial report; durable interruption evidence remains unfinished.
+
 Ticks are scheduled from the original monotonic start time. A slow sweep does not shift every later tick; `sweep_duration_ms` and `overrun_ms` record when a sweep exceeds its interval.
+If the next tick cannot fit the monotonic clock, it is beyond the bounded session
+deadline: finish with the observed results, without panic or a synthetic `unknown`.
 
 ## Report schema version 2
 
 Reports default to `vpnd/state/probe-matrix-<unix-ms>.json`, an ignored operator-state directory. The formal schema is `contract/probe-matrix-report.schema.json`.
 
 Every cell contains `tick`, `timestamp_unix_ms`, `protocol`, `target_id`, `comparison_set`, `destination_class`, `topology`, `verdict`, optional `rtt_ms`, and optional categorical `error_kind`. It never contains the target endpoint. Windows are keyed by protocol and target. Controls and analyzer observations are top-level arrays.
+
+There is at most one window per protocol/target: onset is its first observed
+`blocked` or `throttled` cell. Series without observed impairment have no window.
+Recovery is the first subsequent `ok` only if no `unknown` or `error` intervenes.
+A null recovery means recovery was **unobserved**, not that impairment continued
+through an indeterminate gap. These timestamps describe discrete observations,
+not exact continuous outage durations. Input and report schemas remain version 2.
 
 The analyzer emits:
 
