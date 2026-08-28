@@ -1,10 +1,51 @@
 use anyhow::{anyhow, Result};
 use owo_colors::OwoColorize;
+use rustix::process::{getpgrp, kill_process_group, Pid, Signal};
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+
+/// A captured command owns its process group until its direct child is reaped.
+/// Declare this guard after Child so it drops first and kills descendants
+/// before Tokio kills/reaps the child and allows its process-group ID to be reused.
+struct CaptureGroup(Option<Pid>);
+
+impl CaptureGroup {
+    fn new(id: Option<u32>) -> Result<Self> {
+        let pid = id
+            .and_then(|id| i32::try_from(id).ok())
+            .and_then(Pid::from_raw)
+            .filter(|pid| *pid != getpgrp())
+            .ok_or_else(|| anyhow!("captured process has no isolated process group"))?;
+        Ok(Self(Some(pid)))
+    }
+
+    fn disarm(&mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for CaptureGroup {
+    fn drop(&mut self) {
+        if let Some(pid) = self.0 {
+            if let Err(error) = kill_process_group(pid, Signal::KILL) {
+                // ESRCH means the owned process group has already exited.
+                if error != rustix::io::Errno::SRCH {
+                    tracing::warn!(%error, "could not terminate captured process group");
+                }
+            }
+        }
+    }
+}
+
+/// Group ownership is only for noninteractive dispatch with a signal owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CapturePolicy {
+    Foreground,
+    OwnedProcessGroup,
+}
 
 /// Fluent builder for an external process invocation.
 ///
@@ -18,6 +59,7 @@ pub struct Cmd {
     cwd: Option<PathBuf>,
     description: Option<String>,
     sensitive: Vec<String>,
+    capture_policy: CapturePolicy,
 }
 
 impl Cmd {
@@ -29,11 +71,19 @@ impl Cmd {
             cwd: None,
             description: None,
             sensitive: Vec::new(),
+            capture_policy: CapturePolicy::Foreground,
         }
     }
 
     pub fn arg(mut self, a: impl Into<OsString>) -> Self {
         self.args.push(a.into());
+        self
+    }
+
+    /// Opt in only when the calling dispatch cancels captures on SIGINT/TERM.
+    /// Interactive run() always retains its foreground behavior.
+    pub fn capture_policy(mut self, policy: CapturePolicy) -> Self {
+        self.capture_policy = policy;
         self
     }
 
@@ -165,12 +215,15 @@ impl Cmd {
         }
 
         let mut cmd = Command::new(&self.program);
-        // Same orphan-prevention contract as run(): dropped futures must kill
-        // the child, not leave it probing in the background.
+        // Foreground remains the default for commands that may prompt or read
+        // stdin. Noninteractive dispatch can explicitly own its descendants.
         cmd.kill_on_drop(true)
             .args(self.args.iter())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
+        if self.capture_policy == CapturePolicy::OwnedProcessGroup {
+            cmd.process_group(0);
+        }
         for (k, v) in &self.env {
             cmd.env(k, v);
         }
@@ -178,6 +231,10 @@ impl Cmd {
             cmd.current_dir(cwd);
         }
         let mut child = cmd.spawn()?;
+        let mut group = match self.capture_policy {
+            CapturePolicy::Foreground => None,
+            CapturePolicy::OwnedProcessGroup => Some(CaptureGroup::new(child.id())?),
+        };
         let stdout = child.stdout.take().ok_or_else(|| anyhow!("no stdout"))?;
         let mut buf = String::new();
         let mut reader = BufReader::new(stdout).lines();
@@ -185,7 +242,13 @@ impl Cmd {
             buf.push_str(&line);
             buf.push('\n');
         }
-        let status = child.wait().await?;
+        let status = child.wait().await;
+        // No await between reaping and disarming: never signal a recycled ID.
+        // Successful completion does not promise cleanup of detached daemons.
+        if let Some(group) = &mut group {
+            group.disarm();
+        }
+        let status = status?;
         let rc = status.code().unwrap_or(-1);
         if !status.success() {
             return Err(anyhow!(

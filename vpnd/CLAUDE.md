@@ -80,6 +80,10 @@ against `^[A-Za-z0-9_-]+$` before use.
   validated exact host keys. Reject missing or ambiguous registry matches.
 - **Cleanup is unconditional after a deployment pipeline starts** — successful
   dry runs also clean. A cleanup error fails success but never masks the primary error.
+- **Group cleanup is explicit** — only ProbeMatrix/Doctor opt into owned capture
+  groups and scoped CLI signal handling. Share/Reconverge keep foreground captures
+  and default signals around blocking input/prompts; run() and raw helpers are
+  unchanged. Probe schema 2 still has no durable interrupted report.
 - **Make targets carry state via env** — `ENV` and `PROVIDER` must be passed on
   every invocation; `make::target()` does this. Don't bypass it.
 - **Terraform must use the workspace wrapper** — runner builders call `scripts/terraform-env.sh` with `PROVIDER` and `ENV`; do not construct raw Terraform commands, or non-production environments can select the wrong local state.

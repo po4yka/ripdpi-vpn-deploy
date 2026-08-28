@@ -25,8 +25,8 @@ Probe-matrix runs are bounded and durable: timed-out cells die with their proces
 
 | Finding | Evidence |
 |---|---|
-| Timed-out cells leak child processes (no kill_on_drop) | probe_matrix.rs:236-258 timeout drops the future; process.rs has no kill_on_drop anywhere |
-| Control probe runs without timeout | probe_matrix.rs:226 awaited bare vs cells wrapped at :236 |
+| Direct-child cancellation exists; descendant cleanup is unproven | Main 069f664 has kill_on_drop on run/capture, but no capture process group; a real Make child/grandchild timeout regression is required |
+| Control timeout already exists; regression is missing | Main 069f664 run_control uses tokio::time::timeout and Unknown/control_timeout; add a real hanging-control regression without rewriting that behavior |
 | Whole session in RAM, single terminal write; no signal handling | probe_matrix.rs:220-297; main.rs has no tokio::signal usage; one panicking task also kills the run via collect_ordered `?` at :300-307 |
 | --duration 0 yields empty report exit 0 | parse_duration probe_matrix.rs:767-782 accepts 0; only interval validated at :208-210 |
 | windows() conflates local failures with filtering | onset on any verdict != Ok incl Unknown/Error at probe_matrix.rs:576-585 |
@@ -43,3 +43,8 @@ Probe-matrix runs are bounded and durable: timed-out cells die with their proces
 - The vpnd subagent owns vpnd source/tests and docs/PROBE-MATRIX.md for share/probe-matrix hardening and audit coverage.
 - The primary agent serializes task/OpenSpec records, generated board, Makefile, shared CI/toolchain files, documentation inventory, staging, commits, and remote delivery. Agents do not commit or mutate credentials/infrastructure.
 - Worktree: `codex/complete-high-review`. All writers preserve unrelated changes and coordinate shared-file edits.
+
+## Bounded runtime ownership — 2026-08-28
+
+- The runtime agent owns the explicit capture policy/group guard, signal cancellation scoped to ProbeMatrix/Doctor dispatch, their opt-in call sites, probe duration/windows, existing relevant Rust tests/snapshot, the existing rustix process feature and this task's planning/evidence on `codex/high-probe-runtime-20260828` from `069f664949cd04ca3d64954b6135cf48258e443c`.
+- This slice targets steps 1429/9177/2715025 without changing schema 2. Share/Reconverge keep foreground behavior and do not gain group cleanup. The durability step 2698055, schema-3/client synchronization, writer/journal handling, broad gates and host acceptance remain separate; this slice does not close the portfolio task.

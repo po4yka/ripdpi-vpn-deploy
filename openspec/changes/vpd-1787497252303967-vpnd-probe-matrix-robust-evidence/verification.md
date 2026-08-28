@@ -3,7 +3,7 @@ task_id: VPD-1787497252303967
 change: vpd-1787497252303967-vpnd-probe-matrix-robust-evidence
 commit_sha: null
 local: required
-local_evidence: ""
+local_evidence: "Full Rust suite: 177 tests passed, none failed/ignored/filtered; all-target Clippy passed. Independent runtime review found no blocking findings. Full repository, hosted and live gates remain pending."
 remote_ci: required
 remote_ci_evidence: ""
 dry_run: not_applicable
@@ -24,7 +24,79 @@ artifact_evidence: No release artifact is published; report schema validation is
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-MATRIX-CELL-TIMEOUT-KILL | VPD-1787497252661429 | Timeout test asserts no surviving child after cancellation | Pending |
-| REQ-MATRIX-CONTROL-TIMEOUT | VPD-1787497252679177 | Unit test with hanging control stub records Unknown and continues | Pending |
-| REQ-MATRIX-DURABILITY | VPD-1787497252698055 | Interrupt simulation leaves partial marked report with nonzero exit; duration 0 rejected | Pending |
-| REQ-MATRIX-EVIDENCE-SEMANTICS | VPD-1787497252715025 | windows() unit tests: Unknown-only series yields none; refreshed snapshot reviewed | Pending |
+| REQ-MATRIX-CELL-TIMEOUT-KILL | VPD-1787497252661429 | Actual Cmd → GNU Make → shell → sleep PID-handshake regression fails before the fix and passes after; eight direct/foreground SIGINT/TERM cases exercise probe jobs and doctor captures | Focused local pass; broad gates pending |
+| REQ-MATRIX-CONTROL-TIMEOUT | VPD-1787497252679177 | Actual hanging Make control records Unknown/control_timeout and both cells complete; this test already passes on the base implementation | Existing behavior verified locally; broad gates pending |
+| REQ-MATRIX-DURABILITY | VPD-1787497252698055 | Zero/overflow rejection and nonzero signal exit pass locally; partial checkpoint, JSONL and interrupted marker remain unimplemented in this schema-2 slice | Pending |
+| REQ-MATRIX-EVIDENCE-SEMANTICS | VPD-1787497252715025 | No-impairment and gap/recovery tests pass; schema-2 snapshot removes six all-Ok phantom windows, with fields and observations unchanged | Focused local pass; broad gates pending |
+
+## Bounded runtime evidence — 2026-08-28
+
+- Base `069f664949cd04ca3d64954b6135cf48258e443c`, branch
+  `codex/high-probe-runtime-20260828`. Before source edits, library tests had
+  86 pass / 2 fail, lifecycle 2 pass / 2 fail, runner 1 pass / 1 fail.
+  Failures reproduced zero acceptance/overflow panic, unsupported window claims,
+  and live Make descendants after timeout or CLI signal. Fixture cleanup then
+  confirmed its recorded processes were gone; no live hosts were involved.
+- After scoped capture/signal ownership and the reviewed snapshot update,
+  `cargo test --locked --jobs 2 --lib --test runner_execution --test probe_matrix_lifecycle --test probe_matrix_snapshot --test share_command --test deploy_lifecycle --no-fail-fast`
+  passed all 112 tests (88 library, 8 deploy lifecycle, 6 probe lifecycle,
+  3 snapshot, 2 runner, 5 share) through the machine build gate. Signals target either the
+  real CLI PID or its fixture-owned foreground process group; both probe jobs
+  and doctor return 130/143 and leave no running recorded Make/shell/sleep process
+  within three seconds. This observes cancellation of nested JoinSet captures,
+  not merely a dropped handle. The hanging-control test is credit for the
+  already-existing timeout, not a new timeout implementation.
+- Existing rustix 1 gains only its `process` feature; no package/version or lock
+  change. No unsafe code, contracts, schema-3 fields, journal or report writer
+  changes are included. These local process fixtures do not establish hosted,
+  staging, filtered-path, client or durable interruption acceptance.
+- An intermediate global-listener design passed 97 focused tests, but actual
+  blocking stdin/PTY tests exposed changed signal behavior before publication.
+  The corrected candidate explicitly opts only ProbeMatrix and Doctor captures
+  into group ownership, with signal listeners scoped to those dispatches.
+  Share and Reconverge retain foreground captures and default signal behavior;
+  their source does not gain descendant-cleanup guarantees.
+- Four actual interactive cases now pass: Share first consumes synthetic pipe
+  bytes with EOF withheld; Reconverge first displays its real dialoguer prompt
+  in a controlling PTY after an inventory fixture. SIGINT and SIGTERM must each
+  terminate by that exact signal within three seconds. On Darwin only, a
+  pre-close E/P_WEXIT observation permits releasing the PTY master before reaping;
+  the exact requested signal is still mandatory, so closing a live terminal and
+  inducing SIGHUP cannot pass. The same final harness remains RED against the
+  preserved intermediate binary and GREEN against the scoped candidate.
+- `cargo clippy --locked --jobs 2 --all-targets -- -D warnings` passed for the
+  scoped candidate through the machine build gate. Formatting, strict OpenSpec
+  validation, task validation and diff whitespace checks also passed.
+- Follow-up arithmetic review found that a valid one-second session with a
+  maximum-u64 CLI or configuration poll interval still panicked after its first
+  real Make sweep. The new CLI regression reproduced exit 101 in both cases.
+  Checked interval multiplication and Instant addition now return no next tick
+  when it lies beyond the representable clock, ending the bounded session with
+  its one observed Ok control and two Ok cells. Existing fixed-rate cadence
+  coverage remains, extended with multiplication/addition overflow and tick-zero
+  cases. No new schema fields or interval restrictions were added. The 112-test
+  rerun and final all-target clippy passed.
+
+## Full Rust validation — 2026-08-28
+
+- From `vpnd/`, ran the complete unfiltered suite and all-target Clippy in one
+  machine-wide build-gate slot, with the existing worktree-local target cache
+  and two Cargo jobs:
+
+  ```sh
+  CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR="$PWD/target" mise exec -- build-gate -- sh -c 'cargo test --locked --jobs 2 --no-fail-fast && cargo clippy --locked --jobs 2 --all-targets -- -D warnings'
+  ```
+
+- The combined command exited **0**. All **177 Rust tests passed**, with zero
+  failed, ignored, measured or filtered cases; the documentation-test target
+  contained zero tests. This includes 88 library tests and 89 integration/property
+  tests, including real process cancellation and interactive pipe/PTY fixtures.
+  Clippy completed with warnings denied. This is a debug-profile local Rust gate,
+  not the repository-wide `make check` or hosted release-profile gate.
+- Independent read-only review covered capture ownership/drop ordering, scoped
+  signals and Doctor opt-ins, the final checked schedule arithmetic, and the
+  corresponding real process/CLI tests; no blocking findings remained. Runtime,
+  test, snapshot and schema files were unchanged during this full validation.
+- Full repository checks, hosted checks and authorized live/client acceptance
+  remain separate. Partial-checkpoint/journal/interrupted-report durability is
+  still outside this schema-2 implementation; the overall task stays open.

@@ -10,6 +10,7 @@ use tokio::task::JoinSet;
 use crate::cli::ProbeMatrixArgs;
 use crate::config::Context;
 use crate::runner::make;
+use crate::runner::process::CapturePolicy;
 
 const SCHEMA_VERSION: u32 = 2;
 
@@ -209,14 +210,16 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
         return Err(anyhow!("poll interval must be greater than zero"));
     }
     let duration = parse_duration(&args.duration)?;
+    let mono_start = tokio::time::Instant::now();
+    let deadline = mono_start
+        .checked_add(duration)
+        .context("duration exceeds the monotonic clock range")?;
     if ctx.explain {
         explain(ctx, &config, duration, interval, &config_path);
         return Ok(());
     }
 
     let wall_start = SystemTime::now();
-    let mono_start = tokio::time::Instant::now();
-    let deadline = mono_start + duration;
     let mut controls = Vec::new();
     let mut cells = Vec::new();
     let mut tick = 0u32;
@@ -274,7 +277,10 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
         control.overrun_ms = ms(sweep.saturating_sub(interval));
         controls.push(control);
         tick = tick.saturating_add(1);
-        let next = scheduled_tick(mono_start, interval, tick);
+        let Some(next) = scheduled_tick(mono_start, interval, tick) else {
+            // An unrepresentable next tick is beyond the validated deadline.
+            break;
+        };
         if next >= deadline {
             break;
         }
@@ -317,8 +323,10 @@ fn scheduled_tick(
     start: tokio::time::Instant,
     interval: Duration,
     tick: u32,
-) -> tokio::time::Instant {
-    start + interval.saturating_mul(tick)
+) -> Option<tokio::time::Instant> {
+    interval
+        .checked_mul(tick)
+        .and_then(|offset| start.checked_add(offset))
 }
 
 fn load_config(path: &Path) -> Result<MatrixConfig> {
@@ -480,7 +488,8 @@ async fn run_control(
     timeout: Duration,
 ) -> ControlResult {
     let path = path.to_string_lossy();
-    let command = make::target_with(ctx, "probe-matrix-control", &[("MATRIX_CONFIG", &path)]);
+    let command = make::target_with(ctx, "probe-matrix-control", &[("MATRIX_CONFIG", &path)])
+        .capture_policy(CapturePolicy::OwnedProcessGroup);
     let probe = match tokio::time::timeout(timeout, command.capture(false)).await {
         Ok(result) => capture(result),
         Err(_) => ProbeOutput {
@@ -519,7 +528,8 @@ async fn run_cell(
             ("PROTOCOL", protocol.name()),
             ("CONTROL_VERDICT", control.name()),
         ],
-    );
+    )
+    .capture_policy(CapturePolicy::OwnedProcessGroup);
     let probe = capture(command.capture(false).await);
     CellResult {
         tick,
@@ -585,16 +595,15 @@ fn windows(cells: &[CellResult]) -> Vec<Window> {
         .filter_map(|mut values| {
             values.sort_by_key(|cell| cell.tick);
             let first = *values.first()?;
-            let onset = values
+            let onset_index = values
                 .iter()
-                .find(|cell| cell.verdict != Verdict::Ok)
+                .position(|cell| matches!(cell.verdict, Verdict::Blocked | Verdict::Throttled))?;
+            let onset = Some(values[onset_index].timestamp_unix_ms);
+            let recovery = values[onset_index + 1..]
+                .iter()
+                .take_while(|cell| !matches!(cell.verdict, Verdict::Unknown | Verdict::Error))
+                .find(|cell| cell.verdict == Verdict::Ok)
                 .map(|cell| cell.timestamp_unix_ms);
-            let recovery = onset.and_then(|value| {
-                values
-                    .iter()
-                    .find(|cell| cell.timestamp_unix_ms > value && cell.verdict == Verdict::Ok)
-                    .map(|cell| cell.timestamp_unix_ms)
-            });
             Some(Window {
                 protocol: first.protocol,
                 target_id: first.target_id.clone(),
@@ -790,7 +799,11 @@ fn parse_duration(value: &str) -> Result<Duration> {
         "d" => 86_400,
         _ => return Err(anyhow!("unknown duration unit")),
     };
-    Ok(Duration::from_secs(number.saturating_mul(multiplier)))
+    let seconds = number
+        .checked_mul(multiplier)
+        .filter(|seconds| *seconds > 0)
+        .context("duration must be nonzero and fit in seconds")?;
+    Ok(Duration::from_secs(seconds))
 }
 
 fn write_report(report: &MatrixReport, path: &Path) -> Result<()> {
@@ -1009,6 +1022,44 @@ mod tests {
     }
 
     #[test]
+    fn durations_reject_zero_and_multiplication_overflow() {
+        for value in ["0", "0s", "0m", "0h", "0d", "18446744073709551615d"] {
+            assert!(parse_duration(value).is_err(), "{value}");
+        }
+    }
+
+    #[test]
+    fn windows_exclude_local_failures_and_do_not_bridge_indeterminate_gaps() {
+        use Verdict::{Blocked, Error, Ok, Throttled, Unknown};
+        let cases = [
+            (vec![Ok, Unknown, Error, Ok], vec![]),
+            (vec![Unknown, Throttled, Ok], vec![(100, Some(200))]),
+            (vec![Blocked, Unknown, Ok], vec![(0, None)]),
+            (vec![Blocked, Error, Throttled, Ok], vec![(0, None)]),
+            (vec![Blocked, Throttled, Ok, Blocked], vec![(0, Some(200))]),
+        ];
+        let (_, template) = matrix_cells(|_, _, _| Ok);
+        for (verdicts, expected) in cases {
+            let cells: Vec<_> = verdicts
+                .into_iter()
+                .enumerate()
+                .map(|(tick, verdict)| {
+                    let mut cell = template[0].clone();
+                    cell.tick = tick as u32;
+                    cell.timestamp_unix_ms = tick as u64 * 100;
+                    cell.verdict = verdict;
+                    cell
+                })
+                .collect();
+            let actual: Vec<_> = windows(&cells)
+                .iter()
+                .map(|window| (window.onset_unix_ms.unwrap(), window.recovery_unix_ms))
+                .collect();
+            assert_eq!(actual, expected, "{cells:?}");
+        }
+    }
+
+    #[test]
     fn windows_record_blocked_onset_and_ok_recovery() {
         let (_, template) = matrix_cells(|_, _, _| Verdict::Ok);
         let cells: Vec<_> = [Verdict::Ok, Verdict::Blocked, Verdict::Ok]
@@ -1131,9 +1182,14 @@ mod tests {
     fn fixed_rate_schedule_does_not_accumulate_sweep_time() {
         let started = tokio::time::Instant::now();
         assert_eq!(
-            scheduled_tick(started, Duration::from_secs(5), 3).duration_since(started),
+            scheduled_tick(started, Duration::from_secs(5), 3)
+                .unwrap()
+                .duration_since(started),
             Duration::from_secs(15)
         );
+        assert_eq!(scheduled_tick(started, Duration::MAX, 0), Some(started));
+        assert!(scheduled_tick(started, Duration::MAX, 2).is_none());
+        assert!(scheduled_tick(started, Duration::from_secs(u64::MAX), 1).is_none());
     }
 
     #[test]

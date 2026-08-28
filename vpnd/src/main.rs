@@ -1,14 +1,45 @@
 use anyhow::Result;
 use clap::Parser;
+use std::process::ExitCode;
+use tokio::signal::unix::{signal, SignalKind};
 
 use vpnd::{cli, commands, config};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> ExitCode {
     init_tracing();
-
     let cli = cli::Cli::parse();
+    let outcome: Result<ExitCode> = async {
+        // Interactive commands keep default signal behavior: a synchronous
+        // stdin read or prompt would prevent this select from being polled.
+        if !matches!(
+            &cli.command,
+            cli::Command::ProbeMatrix(_) | cli::Command::Doctor(_)
+        ) {
+            return execute(cli).await.map(|()| ExitCode::SUCCESS);
+        }
+        // These noninteractive dispatches explicitly own capture groups.
+        // Register before polling them so no spawn precedes its signal owner.
+        let mut interrupt = signal(SignalKind::interrupt())?;
+        let mut terminate = signal(SignalKind::terminate())?;
+        tokio::select! {
+            biased;
+            _ = interrupt.recv() => Ok(ExitCode::from(130)),
+            _ = terminate.recv() => Ok(ExitCode::from(143)),
+            result = execute(cli) => result.map(|()| ExitCode::SUCCESS),
+        }
+    }
+    .await;
+    match outcome {
+        Ok(code) => code,
+        Err(error) => {
+            eprintln!("Error: {error:#}");
+            ExitCode::FAILURE
+        }
+    }
+}
 
+async fn execute(cli: cli::Cli) -> Result<()> {
     // Completions doesn't need a repo root — handle it before Context::discover.
     if let cli::Command::Completions(args) = &cli.command {
         return commands::completions::run(args.clone());

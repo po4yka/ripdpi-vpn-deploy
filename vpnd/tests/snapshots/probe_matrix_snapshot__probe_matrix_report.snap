@@ -298,29 +298,11 @@ expression: json
     },
     {
       "protocol": "mtproto",
-      "target_id": "allow-split",
-      "comparison_set": "allow-pair",
-      "destination_class": "allowlist-pattern",
-      "topology": "split-hop-ingress",
-      "onset_unix_ms": null,
-      "recovery_unix_ms": null
-    },
-    {
-      "protocol": "mtproto",
       "target_id": "nonallow-dual",
       "comparison_set": "nonallow-pair",
       "destination_class": "non-allowlist-pattern",
       "topology": "single-ip-dual-role",
       "onset_unix_ms": 1700000300000,
-      "recovery_unix_ms": null
-    },
-    {
-      "protocol": "mtproto",
-      "target_id": "nonallow-split",
-      "comparison_set": "nonallow-pair",
-      "destination_class": "non-allowlist-pattern",
-      "topology": "split-hop-ingress",
-      "onset_unix_ms": null,
       "recovery_unix_ms": null
     },
     {
@@ -334,29 +316,11 @@ expression: json
     },
     {
       "protocol": "xhttp-vless",
-      "target_id": "allow-split",
-      "comparison_set": "allow-pair",
-      "destination_class": "allowlist-pattern",
-      "topology": "split-hop-ingress",
-      "onset_unix_ms": null,
-      "recovery_unix_ms": null
-    },
-    {
-      "protocol": "xhttp-vless",
       "target_id": "nonallow-dual",
       "comparison_set": "nonallow-pair",
       "destination_class": "non-allowlist-pattern",
       "topology": "single-ip-dual-role",
       "onset_unix_ms": 1700000300000,
-      "recovery_unix_ms": null
-    },
-    {
-      "protocol": "xhttp-vless",
-      "target_id": "nonallow-split",
-      "comparison_set": "nonallow-pair",
-      "destination_class": "non-allowlist-pattern",
-      "topology": "split-hop-ingress",
-      "onset_unix_ms": null,
       "recovery_unix_ms": null
     },
     {
@@ -370,29 +334,11 @@ expression: json
     },
     {
       "protocol": "tcp-trojan",
-      "target_id": "allow-split",
-      "comparison_set": "allow-pair",
-      "destination_class": "allowlist-pattern",
-      "topology": "split-hop-ingress",
-      "onset_unix_ms": null,
-      "recovery_unix_ms": null
-    },
-    {
-      "protocol": "tcp-trojan",
       "target_id": "nonallow-dual",
       "comparison_set": "nonallow-pair",
       "destination_class": "non-allowlist-pattern",
       "topology": "single-ip-dual-role",
       "onset_unix_ms": 1700000300000,
-      "recovery_unix_ms": null
-    },
-    {
-      "protocol": "tcp-trojan",
-      "target_id": "nonallow-split",
-      "comparison_set": "nonallow-pair",
-      "destination_class": "non-allowlist-pattern",
-      "topology": "split-hop-ingress",
-      "onset_unix_ms": null,
       "recovery_unix_ms": null
     }
   ],
