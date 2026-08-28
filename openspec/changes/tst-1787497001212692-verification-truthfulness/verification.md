@@ -26,7 +26,7 @@ artifact_evidence: no build artifacts produced by this change
 |---|---|---|---|
 | REQ-VERIFY-HOSTCLASS-GATING | TST-1787496118906453 | verify + smoke against subscription-only profile inventory | pending |
 | REQ-DRIFT-FULL-IDENTITY | TST-1787496118906639 | negative source-drift run with mismatched revision fixture | pending |
-| REQ-VERIFY-DEPLOYED-LISTENERS | TST-1787496118906882 | verify run with custom hysteria_port + enabled fallbacks | pending |
+| REQ-VERIFY-DEPLOYED-LISTENERS | TST-1787496118906882 | Local production-task regressions for configured Hysteria and conditional fallback ports passed; required full gates and live verify remain open | local source verified; acceptance pending |
 | REQ-IDEMPOTENCE-WHERE-DECLARED | TST-1787496118906321 | full-stack idempotence phase output showing second-run changed=0 | pending |
 | REQ-SCENARIO-RUNS-ROLE | TST-1787496118906595 | rewritten amneziawg converge executing role tasks | pending |
 | REQ-TESTING-DOCS-REALITY | TST-1787496118906567 | row-by-row matrix audit vs molecule.yml sequences | pending |
@@ -37,3 +37,15 @@ artifact_evidence: no build artifacts produced by this change
 - Local: touched molecule scenarios, `make ci-fast`, `make validate`.
 - Remote CI: green run on the merge SHA including both full-stack variants.
 - Live: one verify + source-drift cycle against live inventory.
+
+## Listener-only local regression evidence (2026-08-28)
+
+- Scope: step `TST-1787496118906882` in `codex/high-verify-listeners-20260828`, based on `7da8b74`. No SSH, watchdog, liveness, backup, source-drift, toggle-default, Makefile, or Molecule changes are included. The task and its full/live acceptance remain blocked; this entry does not complete the other host-class gating step.
+- Tests execute the unmodified selected shell tasks and their `when` expressions through real Ansible on localhost. Only external `ss` output is supplied by an executable in a private temporary directory. They do not run the full verify playbook, contact hosts, inspect real listeners, or prove protocol traffic.
+- RED/GREEN: configured Hysteria port cases first failed twice (custom port rejected; unrelated UDP/443 accepted), then both passed; four fallback cases first failed because the assertions were absent, then passed; subscription-only cases initially produced one Hysteria failure and two skips, then all three passed.
+- `mise exec -- python3 -m pytest -q tests/unit/test_listener_contract.py`: **39 passed in 16.34s**, including 21 new cases. Coverage includes matching/wrong ports, fallback enablement, Xray explicit cohorts, zero/absent/same-as-primary fallback ports, disabled transports, subscription-only hosts, and existing runtime default ports.
+- `mise exec -- ansible-lint ansible/playbooks/verify.yml`: production profile passed, one file; `mise exec -- yamllint ansible/playbooks/verify.yml` and `git diff --check` passed.
+- Local execution logs: `/private/tmp/ripdpi-listeners-hysteria-{red,green}.log`, `/private/tmp/ripdpi-listeners-fallback-{red,green}.log`, `/private/tmp/ripdpi-listeners-subscription-{red,green}.log`, `/private/tmp/ripdpi-listeners-entire.log`, and `/private/tmp/ripdpi-listeners-lint.log`. These are local run evidence, not hosted CI or live acceptance.
+- Independent parent review matched the fallback conditions against the canonical runtime templates and found no blocking issue. Its separate full listener-module run passed **39 tests in 18.27s** (`/private/tmp/ripdpi-listeners-independent.log`). Step `TST-1787496118906882` is complete for this implementation; the other nine execution steps and overall acceptance remain open.
+- Collection-only checks observed **1521 repository tests** and **1468 tests under tests/unit/**; TESTING.md records these observed counts without a full-suite success claim.
+- Outstanding: combined full gates, exact-SHA hosted checks, and the authorized live verification required above. No commit, push, or host operation was performed by this slice.

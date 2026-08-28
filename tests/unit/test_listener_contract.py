@@ -231,3 +231,105 @@ def test_tagged_convergence_executes_source_preflight_guards(tmp_path, case, exp
     else:
         assert result.returncode == 0, output
         assert "CONVERGENCE_REACHED" in output
+
+
+def _run_listener_task(tmp_path, match, variables, protocol, port):
+    """Run the unchanged verification task; only the external ss output is a fixture."""
+    executable = shutil.which("ansible-playbook")
+    assert executable, "real Ansible is required for listener verification regressions"
+    source = yaml.safe_load((REPO_ROOT / "ansible/playbooks/verify.yml").read_text())[0]
+    tasks = [task for task in source["tasks"]
+             if match in task.get("ansible.builtin.shell", {}).get("cmd", "")]
+    assert len(tasks) == 1, f"expected one production listener task for {match}"
+    binary = tmp_path / "ss"
+    trace = tmp_path / "ss-called"
+    binary.write_text(
+        f"#!{sys.executable}\nimport pathlib, sys\n"
+        f"pathlib.Path({str(trace)!r}).write_text(' '.join(sys.argv[1:]))\n"
+        f"if sys.argv[1:] == [{'-lnu' if protocol == 'udp' else '-lnt'!r}] and {port!r} is not None:\n"
+        f"    print('LISTEN 0 128 0.0.0.0:{port} *:*')\n"
+    )
+    binary.chmod(0o755)
+    playbook = tmp_path / "listeners.yml"
+    playbook.write_text(yaml.safe_dump([{
+        "name": "Exercise production listener verification without host calls",
+        "hosts": "localhost", "gather_facts": False, "become": False,
+        "vars": {**variables, "ansible_python_interpreter": sys.executable},
+        "environment": {"PATH": str(tmp_path) + ":" + os.environ["PATH"]},
+        "tasks": tasks,
+    }], sort_keys=False))
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\nfact_caching=memory\n")
+    env = {key: value for key, value in os.environ.items() if not key.startswith("ANSIBLE_")}
+    env.update(ANSIBLE_CONFIG=str(config), ANSIBLE_LOCAL_TEMP=str(tmp_path / "ansible-local"))
+    result = subprocess.run(
+        [executable, "-i", "localhost,", "-c", "local", str(playbook)],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=40,
+    )
+    return result, trace.exists()
+
+
+@pytest.mark.parametrize("observed_port, success", [(7443, True), (443, False)])
+def test_verify_hysteria_uses_configured_udp_port(tmp_path, observed_port, success):
+    result, inspected = _run_listener_task(
+        tmp_path, "ss -lnu", {"vpn": {"enable_hysteria": True}, "hysteria_port": 7443},
+        "udp", observed_port,
+    )
+    assert inspected, result.stdout + result.stderr
+    assert (result.returncode == 0) == success, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("fallback, configured_port, observed_port, success", [
+    ("xray", 2443, 2443, True),
+    ("xray", 2443, 443, False),
+    ("nginx_xhttp", 2444, 2444, True),
+    ("nginx_xhttp", 2444, 8443, False),
+])
+def test_verify_requires_enabled_fallback_listener(tmp_path, fallback, configured_port, observed_port, success):
+    variables = {"vpn": {"enable_xray_reality": True, "enable_nginx_xhttp": True},
+                 "xray": {}, "nginx_xhttp": {"fallback_enabled": True},
+                 fallback + "_fallback_port": configured_port}
+    result, inspected = _run_listener_task(tmp_path, fallback + "_fallback_port", variables, "tcp", observed_port)
+    assert inspected, result.stdout + result.stderr
+    assert (result.returncode == 0) == success, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("match", ["ss -lnu", "xray_fallback_port", "nginx_xhttp_fallback_port"])
+def test_verify_listener_tasks_skip_subscription_only_hosts(tmp_path, match):
+    variables = {"vpn_subscription_only": True,
+                 "vpn": {"enable_hysteria": True, "enable_xray_reality": True, "enable_nginx_xhttp": True},
+                 "xray": {}, "xray_fallback_port": 2443, "nginx_xhttp": {"fallback_enabled": True}}
+    result, inspected = _run_listener_task(tmp_path, match, variables, "tcp", None)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not inspected, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("match, variables", [
+    ("ss -lnu", {"vpn": {"enable_hysteria": False}}),
+    ("ss -lnu", {"vpn": {}}),
+    ("xray_fallback_port", {"vpn": {"enable_xray_reality": False}, "xray_fallback_port": 2443}),
+    ("xray_fallback_port", {"vpn": {}, "xray": {"cohorts": [{"name": "explicit", "port": 443}]},
+                            "xray_fallback_port": 2443}),
+    ("xray_fallback_port", {"vpn": {}, "xray_fallback_port": 0}),
+    ("xray_fallback_port", {"vpn": {}, "xray_fallback_port": 2443, "xray_port": 2443}),
+    ("xray_fallback_port", {"vpn": {}}),
+    ("nginx_xhttp_fallback_port", {"vpn": {"enable_nginx_xhttp": False},
+                                   "nginx_xhttp": {"fallback_enabled": True}}),
+    ("nginx_xhttp_fallback_port", {"vpn": {}, "nginx_xhttp": {"fallback_enabled": False}}),
+    ("nginx_xhttp_fallback_port", {"vpn": {}, "nginx_xhttp": {}}),
+])
+def test_verify_does_not_require_undeployed_listener(tmp_path, match, variables):
+    result, inspected = _run_listener_task(tmp_path, match, variables, "tcp", None)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not inspected, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("match, variables, protocol, port", [
+    ("ss -lnu", {"vpn": {"enable_hysteria": True}}, "udp", 443),
+    ("nginx_xhttp_fallback_port", {"vpn": {"enable_nginx_xhttp": True},
+                                   "nginx_xhttp": {"fallback_enabled": True}}, "tcp", 2083),
+])
+def test_verify_listener_defaults_match_rendered_configuration(tmp_path, match, variables, protocol, port):
+    result, inspected = _run_listener_task(tmp_path, match, variables, protocol, port)
+    assert inspected, result.stdout + result.stderr
+    assert result.returncode == 0, result.stdout + result.stderr

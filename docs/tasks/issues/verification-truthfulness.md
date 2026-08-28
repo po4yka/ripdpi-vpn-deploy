@@ -32,3 +32,8 @@ Verification tooling asserts the state deploy actually produced for every suppor
 - The Ansible subagent owns verify/smoke/source-drift behavior, Molecule sequences, focused tests, and affected snapshots; shared TESTING.md is reserved for the primary agent.
 - The primary agent serializes task/OpenSpec records, generated board, Makefile, shared CI/toolchain files, documentation inventory, staging, commits, and remote delivery. Agents do not commit or mutate credentials/infrastructure.
 - Worktree: `codex/complete-high-review`. All writers preserve unrelated changes and coordinate shared-file edits.
+
+## Listener verification implementation ownership
+
+- The listener subagent owns only `verify.yml` configured Hysteria and Xray/nginx fallback assertions, their local Ansible regressions in `tests/unit/test_listener_contract.py`, and step `TST-1787496118906882` evidence in `codex/high-verify-listeners-20260828` from `7da8b74`.
+- SSH, watchdog, liveness, backup, source drift, toggle defaults, Molecule, Makefile, and client contracts are outside this slice. The primary agent serializes TESTING.md, board, full gates, and Git delivery; the portfolio remains blocked on the other steps and required live evidence.
