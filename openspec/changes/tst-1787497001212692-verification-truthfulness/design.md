@@ -36,3 +36,9 @@ Seven verification-honesty findings share a mechanism: gates assert less than de
 
 - A single outer smoke transport block gates protocol credentials, local facts, resource preflight/claim, clients and cleanup on `not vpn_subscription_only` plus an enabled supported transport. Subscription-only and all-disabled hosts require no transport credentials and perform no smoke-client or workdir operation; the existing secrets-file entrypoint requirement remains.
 - Protocol-local assertions and client selection execute only for that protocol. Existing ports, enable defaults and client credential formats remain unchanged. Local tests run the real source task graph with no transport credentials for subscription-only hosts and assert zero temporary-executable calls and no workdir.
+
+## Verification host-class slice — 2026-08-28
+
+- Step TST-1787496118906453 adds the existing subscription-only predicate to all eleven remaining transport tasks: REALITY TCP, nginx public TCP/configuration, P1 IPv4/IPv6 prerequisites and resolution, Hysteria service, Snell configuration/service/listeners, and AmneziaWG interface checks. Existing toggle defaults and task bodies are unchanged.
+- The guard follows site.yml's subscription-only transport skip. Shared bootstrap, manifest, firewall, SSH and sysctl checks remain outside transport gating. No role, watchdog, SSH setting, listener contract or source-drift behavior changes.
+- Tests extend the existing real-Ansible listener fixture to execute unchanged task slices with temporary executables at external inspection boundaries. Every added guard has a subscription-only regression; enabled and disabled controls plus shared-hardening checks prevent blanket skipping. This is conditional/task-slice proof, not full-playbook or live-host acceptance.

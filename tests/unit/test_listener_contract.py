@@ -250,6 +250,13 @@ def _run_listener_task(tmp_path, match, variables, protocol, port):
         f"    print('LISTEN 0 128 0.0.0.0:{port} *:*')\n"
     )
     binary.chmod(0o755)
+    return _run_verify_task_slice(tmp_path, tasks, variables), trace.exists()
+
+
+def _run_verify_task_slice(tmp_path, tasks, variables):
+    """Execute source tasks/conditions with external inspection supplied by the caller."""
+    executable = shutil.which("ansible-playbook")
+    assert executable, "real Ansible is required for verification regressions"
     playbook = tmp_path / "listeners.yml"
     playbook.write_text(yaml.safe_dump([{
         "name": "Exercise production listener verification without host calls",
@@ -266,7 +273,7 @@ def _run_listener_task(tmp_path, match, variables, protocol, port):
         [executable, "-i", "localhost,", "-c", "local", str(playbook)],
         cwd=tmp_path, env=env, capture_output=True, text=True, timeout=40,
     )
-    return result, trace.exists()
+    return result
 
 
 @pytest.mark.parametrize("observed_port, success", [(7443, True), (443, False)])
@@ -333,3 +340,105 @@ def test_verify_listener_defaults_match_rendered_configuration(tmp_path, match, 
     result, inspected = _run_listener_task(tmp_path, match, variables, protocol, port)
     assert inspected, result.stdout + result.stderr
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+HOSTCLASS_TASKS = (
+    'Xray TCP listener active', 'nginx-xhttp public TCP listener active', 'nginx -t',
+    'P1 public hostname resolves to its service address', 'P1 public IPv6 service address is available',
+    'P1 public hostname exposes its IPv6 service address', 'Hysteria service active',
+    'Snell configuration is valid', 'Snell service active', 'Snell TCP listeners active',
+    'AmneziaWG interface up',
+)
+
+
+def _run_hostclass_task_slice(tmp_path, names, *, subscription_only, enabled=True, bad_sysctl=False):
+    source = yaml.safe_load((REPO_ROOT / 'ansible/playbooks/verify.yml').read_text())[0]
+    tasks = [task for task in source['tasks'] if task['name'] in names]
+    assert {task['name'] for task in tasks} == set(names)
+    trace = tmp_path / 'inspection-calls.jsonl'
+    program = rf"""#!{sys.executable}
+import json
+import pathlib
+import sys
+name = pathlib.Path(sys.argv[0]).name
+with pathlib.Path({str(trace)!r}).open('a') as stream:
+    stream.write(json.dumps({{'name': name, 'argv': sys.argv[1:]}}) + '\n')
+if name == 'ss':
+    for port in (443, 8443, 4443):
+        print(f'LISTEN 0 128 0.0.0.0:{{port}} *:*')
+elif name == 'systemctl':
+    print('active')
+elif name == 'getent':
+    print('192.0.2.7 STREAM fixture.invalid')
+elif name == 'sshd':
+    print('passwordauthentication no\npermitrootlogin no\nkbdinteractiveauthentication no\npubkeyauthentication yes\nx11forwarding no\nallowtcpforwarding no')
+elif name == 'sysctl':
+    values = {{'fs.protected_hardlinks': '1', 'fs.protected_symlinks': '1',
+               'kernel.randomize_va_space': '2', 'kernel.kptr_restrict': '2',
+               'kernel.yama.ptrace_scope': '2', 'net.ipv4.conf.all.accept_redirects': '0'}}
+    print('wrong' if {bad_sysctl!r} else values[sys.argv[-1]])
+elif name not in ('nginx', 'python3', 'sing-box-snell', 'awg', 'nft'):
+    raise AssertionError(name)
+"""
+    for name in ('ss', 'systemctl', 'getent', 'nginx', 'python3', 'sing-box-snell', 'awg', 'nft', 'sshd', 'sysctl'):
+        binary = tmp_path / name
+        binary.write_text(program)
+        binary.chmod(0o755)
+    # Relocate only the absolute external binary and bootstrap marker. All
+    # original task conditions, assertion expressions and command arguments stay.
+    for task in tasks:
+        command = task.get('ansible.builtin.command', {})
+        if command.get('cmd', '').startswith('/usr/local/bin/sing-box-snell '):
+            command['cmd'] = command['cmd'].replace('/usr/local/bin/sing-box-snell', str(tmp_path / 'sing-box-snell'), 1)
+        if task['name'] == 'Cloud-init bootstrap marker exists':
+            marker = tmp_path / 'bootstrap.done'
+            marker.touch()
+            task['ansible.builtin.stat']['path'] = str(marker)
+    variables = {
+        'vpn_subscription_only': subscription_only,
+        'vpn': {key: enabled for key in ('enable_xray_reality', 'enable_nginx_xhttp',
+                                        'enable_hysteria', 'enable_snell', 'enable_amneziawg')},
+        'nginx_xhttp': {'server_name': 'fixture.invalid'}, 'vpn_service_address': '192.0.2.7',
+        'server_ipv6': '2001:db8::7',
+        'snell': {'variants': [{'id': 'v4-stream', 'listen_port': 4443}]},
+        'security_controls': {'ssh_strict': False},
+    }
+    result = _run_verify_task_slice(tmp_path, tasks, variables)
+    calls = [json.loads(line) for line in trace.read_text().splitlines()] if trace.exists() else []
+    return result, calls
+
+
+@pytest.mark.parametrize('name', HOSTCLASS_TASKS)
+def test_verify_hostclass_skips_each_transport_inspection(tmp_path, name):
+    result, calls = _run_hostclass_task_slice(tmp_path, [name], subscription_only=True)
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert not calls, output
+    assert 'skipping: [localhost]' in output, output
+
+
+def test_verify_hostclass_enabled_transports_still_inspect_state(tmp_path):
+    result, calls = _run_hostclass_task_slice(tmp_path, HOSTCLASS_TASKS, subscription_only=False)
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert 'skipping: [localhost]' not in output, output
+    assert [call['name'] for call in calls] == [
+        'ss', 'ss', 'nginx', 'getent', 'python3', 'systemctl', 'sing-box-snell', 'systemctl', 'ss', 'awg',
+    ]
+
+
+def test_verify_hostclass_disabled_transports_do_not_inspect_state(tmp_path):
+    result, calls = _run_hostclass_task_slice(tmp_path, HOSTCLASS_TASKS, subscription_only=False, enabled=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not calls, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('bad_sysctl', (False, True))
+def test_verify_hostclass_preserves_shared_hardening_checks(tmp_path, bad_sysctl):
+    names = ('Cloud-init bootstrap marker exists', 'nftables config syntax valid',
+             'SSH password auth disabled', 'SSH effective hardening is applied', 'Sysctl hardening values are applied')
+    result, calls = _run_hostclass_task_slice(tmp_path, names, subscription_only=True, bad_sysctl=bad_sysctl)
+    output = result.stdout + result.stderr
+    assert (result.returncode == 0) is (not bad_sysctl), output
+    assert 'skipping: [localhost]' not in output, output
+    assert [call['name'] for call in calls] == ['nft', 'sshd'] + ['sysctl'] * 6

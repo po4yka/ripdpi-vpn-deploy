@@ -46,3 +46,8 @@ Verification tooling asserts the state deploy actually produced for every suppor
 
 - The smoke agent owns `ansible/playbooks/smoke-test.yml`, focused local Ansible smoke regression coverage, and the relevant existing planning/evidence for `TST-1787496118906712` in `codex/high-smoke-cleanup-20260828`. The shared playbook implements cleanup and subscription-only gating together; the two portfolio records retain their separate acceptance boundaries.
 - Other playbooks, transport defaults/ports, Make, SSH, backup, production and other worktrees remain outside this slice. Source tests use temporary local executables; no host/provider operation or whole-task close is authorized here. The primary agent retains integration, generated board/counts and live acceptance.
+
+## Verification host-class implementation ownership
+
+- The Ansible subagent owns only subscription-only predicates in verify.yml, corresponding source-task regressions in test_listener_contract.py, and this step's existing planning/evidence on codex/high-verify-hostclass-20260828 from a823ed2. Step TST-1787496118906453 covers the eleven currently unguarded transport tasks, not just the older six-group inventory.
+- Other source, SSH/watchdog execution, source drift, Molecule, toggle defaults, generated counts/board and Git delivery remain with the primary agent. No host operation or portfolio close is part of this slice.

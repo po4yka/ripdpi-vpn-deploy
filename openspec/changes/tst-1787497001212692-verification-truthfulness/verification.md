@@ -24,7 +24,7 @@ artifact_evidence: no build artifacts produced by this change
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-VERIFY-HOSTCLASS-GATING | TST-1787496118906453 | verify remains pending; smoke step TST-1787496118906712 passes actual source-task subscription-only and all-disabled fixtures with no transport credentials or client calls | smoke local control-flow PASS only; verify, remote and live gates pending |
+| REQ-VERIFY-HOSTCLASS-GATING | TST-1787496118906453 | Local source-task verify predicates and credential-free smoke subscription/all-disabled regressions passed | conditional/task-slice PASS; combined full and live acceptance pending |
 | REQ-DRIFT-FULL-IDENTITY | TST-1787496118906639 | Complete production playbook on local synthetic manifests: matching identity passes; wrong revision with matching digest and wrong digest fail | local source verified; live acceptance pending |
 | REQ-VERIFY-DEPLOYED-LISTENERS | TST-1787496118906882 | Local production-task regressions for configured Hysteria and conditional fallback ports passed; required full gates and live verify remain open | local source verified; acceptance pending |
 | REQ-IDEMPOTENCE-WHERE-DECLARED | TST-1787496118906321 | full-stack idempotence phase output showing second-run changed=0 | pending |
@@ -66,3 +66,13 @@ artifact_evidence: no build artifacts produced by this change
 - Only implementation step `TST-1787496118906712` is marked complete through taskctl after the approved local checks; parent-task state and every other execution step are unchanged by this slice.
 
 - Parent final review: `make validate` exited zero after backend-disabled, lockfile-readonly initialization of all four Terraform roots; production Ansible lint and syntax passed. Parent independently passed 19 lifecycle cases and two source-derived real-curl NO_PROXY cases. Configured pre-commit passed after synthetic fixture labels were changed to the repository-approved STUB convention; no scanner rule or acceptance assertion was weakened. Full combined checks and live evidence remain open.
+
+## Verification host-class regression evidence (2026-08-28)
+
+- Scope: step `TST-1787496118906453`, branch `codex/high-verify-hostclass-20260828`, based on `a823ed23f82180f69e597a1dc776e5a4afe0711e`. The source change adds only the existing subscription-only predicate to eleven transport tasks. Parsed-source comparison confirmed every other task field, original toggle default, command, assertion and shared check is unchanged.
+- Tests-first: after correcting a temporary-executable newline setup error (not counted as behavior evidence), all eleven subscription-only cases failed because the real source task executed instead of skipping; four enabled/disabled/shared-hardening controls already passed. After the source fix, the entire existing module passed: `mise exec -- python3 -m pytest tests/unit/test_listener_contract.py -q` reported **54 passed in 52.65 seconds**. The fifteen new cases include each transport task, all-enabled execution, all-disabled nonexecution, and shared bootstrap/nft/SSH/sysctl execution with a failing-sysctl control.
+- Tests reuse the existing real-Ansible task runner and preserve task conditions, command arguments and assertions. Temporary executables supply external inspection results; only the absolute Snell binary and bootstrap-marker path are relocated into the fixture. P1 DNS is an external fixture boundary. This proves conditional/task-slice behavior, not execution of the full verify playbook, deployed services, DNS, SSH or sysctls on a live host.
+- Production Ansible lint passed with zero failures/warnings; yamllint, strict OpenSpec validation, task validation (27 tasks, 130 steps), parsed-source predicate-only comparison and `git diff --check` passed. Logs: `/private/tmp/ripdpi-verify-hostclass-{red,green,lint}.log`; the separate fixture-setup log is not RED evidence.
+- No full gate, Molecule, hosted CI or live acceptance was run in this lane. The primary agent later marked only implementation step TST-1787496118906453 complete through taskctl and regenerated board/counts; parent-task and live acceptance remain open.
+
+- Independent parent review passed all **15 new cases in 21.72 seconds** and confirmed predicate-only source changes. Collection-only checks observed **1630 repository tests / 1577 unit tests**; these counts do not assert a full-suite pass.

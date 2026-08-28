@@ -6,7 +6,7 @@ Verification tooling tells the truth: it passes for every supported host class e
 
 ### Requirement: REQ-VERIFY-HOSTCLASS-GATING — Transport verification MUST honor host class
 
-Transport assertions in verify and smoke tooling MUST skip on hosts where site.yml deliberately skips deployment (subscription-only), using the same contract as sibling tasks. Smoke gating MUST cover transport credential lookup, temporary resource creation and cleanup as well as probes, so a subscription-only host needs no transport credentials and invokes no smoke clients.
+Transport assertions in verify and smoke tooling MUST skip on hosts where site.yml deliberately skips deployment (subscription-only), using the same contract as sibling tasks. This includes transport configuration validation, service/interface state, listeners and P1 DNS/address prerequisites. Shared bootstrap, manifest, firewall, SSH and sysctl verification MUST remain active on subscription-only hosts. Smoke gating MUST cover transport credential lookup, temporary resource creation and cleanup as well as probes, so a subscription-only host needs no transport credentials and invokes no smoke clients.
 
 #### Scenario: verify on subscription-only host
 
