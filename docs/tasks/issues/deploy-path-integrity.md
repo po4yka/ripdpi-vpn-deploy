@@ -26,3 +26,9 @@ The operator deploy path enforces its own guarantees on every invocation shape: 
 - All fourteen execution steps in the linked change are checked with recorded evidence.
 - Named pytest cases cover tagged guards, renderer rejections, rollback ordering, rotation .prev creation, and toggle-default parity.
 - A full deploy-path cycle (wait gate, rotation, rollback rehearsal) completes on live inventory; `make ci-fast`/`make validate` green.
+
+## Narrow implementation ownership — 2026-08-28
+
+- The inventory-guards agent owns only `scripts/render-inventory.sh`, its existing `tests/unit/test_render_inventory.py` coverage, and the relevant `scripts/CLAUDE.md` guidance in `codex/high-inventory-guards-20260828`.
+- This slice covers steps `OPS-1787496118906369` and `OPS-1787496118906901`: reject unknown cohort profiles and duplicate inventory aliases without replacing the last valid inventory. Its tests use isolated local Terraform output fixtures, not provider or SSH access.
+- The primary agent retains all other source, integration, and live acceptance ownership. The task remains blocked pending the remaining deploy-path work and required acceptance; this slice does not authorize deployment or close the task.

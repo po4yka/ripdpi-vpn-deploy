@@ -29,6 +29,8 @@ flag exists for testing but is undocumented.
 
 **Provider roots share one inventory schema** — UpCloud, Hetzner, Vultr, and Scaleway export the same canonical outputs, so `render-inventory.sh` stays provider-neutral. Add provider-specific inventory code only when a control-plane address needs extra guest convergence proof, as Vultr's secondary IPv4 does.
 
+**Inventory inputs fail before publication** — nonempty cohort slugs must name an existing `group_vars/vpn-*.yml` profile, and host aliases must be unique across provider/environment pairs. Reject malformed profiles before Terraform calls and preserve the last valid inventory on either failure.
+
 **Deploy identity follows deployable content** — `deploy-source-identity.sh`
 hashes committed Git blob IDs and paths under `ansible/`, `scripts/`, and
 `requirements.yml`. Do not hash `git archive` bytes: commit timestamps would
