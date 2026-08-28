@@ -279,7 +279,8 @@ def test_wait_cloud_init_uses_terraform_ssh_port() -> None:
     source = WAIT_SCRIPT.read_text()
 
     assert "output -raw ssh_port" in source
-    assert source.count('-p "$SSH_PORT"') == 2
+    assert '"$IP" "$SSH_USER" "$SSH_PORT"' in source
+    assert "bootstrap_readiness.py" in source
 
 
 def _isolated_wait_script(tmp_path):
@@ -289,6 +290,7 @@ def _isolated_wait_script(tmp_path):
     root = tmp_path / "repo"
     (root / "scripts").mkdir(parents=True)
     shutil.copyfile(WAIT_SCRIPT, root / "scripts/wait-cloud-init.sh")
+    shutil.copyfile(REPO_ROOT / "scripts/bootstrap_readiness.py", root / "scripts/bootstrap_readiness.py")
     _make_stub(root / "scripts", "terraform-env.sh",
                'case "$3" in server_ipv4) printf 192.0.2.1;; '
                'admin_user) printf deploy;; ssh_port) printf 2222;; *) exit 99;; esac')
@@ -333,7 +335,15 @@ sys.exit(subprocess.run(["bash", "-c", marker_boundary + sys.argv[-1]]).returnco
 @pytest.mark.parametrize("cloud_code,expected", [(0, None), (1, "cloud-init error"),
                                                  (2, "cloud-init recoverable error")])
 def test_wait_requires_error_free_cloud_init_even_with_marker(tmp_path, cloud_code, expected):
+    import shlex
+    import sys
+
     script, environment = _isolated_wait_script(tmp_path)
+    controller_log = tmp_path / "controllers.log"
+    _make_stub(tmp_path / "bin", "python3",
+               'case "$1" in -|*/bootstrap_readiness.py) printf "controller\\n" >> '
+               + shlex.quote(str(controller_log)) + ';; esac; exec '
+               + shlex.quote(sys.executable) + ' "$@"')
     environment["WAIT_CLOUD_CODE"] = str(cloud_code)
     Path(environment["WAIT_MARKER"]).touch()
     result = subprocess.run(["bash", str(script)], env=environment, capture_output=True, text=True, timeout=10)
@@ -346,6 +356,7 @@ def test_wait_requires_error_free_cloud_init_even_with_marker(tmp_path, cloud_co
     assert all("BatchMode=yes" in call for call in calls)
     assert all(call[call.index("-p") + 1] == "2222" for call in calls)
     assert all("StrictHostKeyChecking=accept-new" in call for call in calls)
+    assert controller_log.read_text().splitlines() == ["controller"]
 
 
 @pytest.mark.parametrize("cloud_code", [124, 137])
@@ -470,11 +481,10 @@ def test_wait_cancellation_during_spawn_cleans_the_real_child(tmp_path):
     environment["WAIT_SPAWNED_PID"] = str(spawned)
     runtime = tmp_path / "bin/python3"
     runtime.write_text(f'''#!{sys.executable}
-import os, signal, subprocess, sys
+import os, runpy, signal, subprocess, sys
 from pathlib import Path
-if sys.argv[1] != "-":
+if not sys.argv[1].endswith("bootstrap_readiness.py"):
     os.execv({sys.executable!r}, [{sys.executable!r}, *sys.argv[1:]])
-source = sys.stdin.read()
 sys.argv = sys.argv[1:]
 original = subprocess.Popen
 def interrupted_spawn(command, **kwargs):
@@ -484,7 +494,7 @@ def interrupted_spawn(command, **kwargs):
         os.kill(os.getpid(), signal.SIGTERM)
     return child
 subprocess.Popen = interrupted_spawn
-exec(compile(source, "<production-wait-controller>", "exec"))
+runpy.run_path(sys.argv[0], run_name="__main__")
 ''')
     runtime.chmod(0o700)
     process = subprocess.Popen(["bash", str(script)], env=environment, stdout=subprocess.PIPE,
