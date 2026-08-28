@@ -3,6 +3,8 @@
 ## Design decisions
 
 **One playbook per intent** — `site.yml` (deploy), `os-maintenance.yml` (serial OS upgrades/reboots), `verify.yml`, `security-verify.yml`, `smoke-test.yml`, `rollback-config.yml`, `rollback-xray.yml`, `rotate-credentials.yml`. No mega-playbook with conditional flags; new intent = new playbook.
+`install-sshd-recovery.yml` installs the isolated recovery foundation on one
+explicit node; it never activates a migration or imports baseline handlers.
 
 **Roles are feature-toggleable** — `group_vars/all.yml` carries `vpn.enable_*`
 booleans. Disabling a profile is a config change, not a code change.

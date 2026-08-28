@@ -1,0 +1,15 @@
+[Unit]
+Description=Bound unconfirmed SSH ownership activation
+Requires=vpn-sshd-boot-recover.service
+After=vpn-sshd-boot-recover.service
+
+[Timer]
+OnBootSec=15s
+OnUnitActiveSec=15s
+OnCalendar=*-*-* *:*:00/15
+AccuracySec=1s
+Persistent=true
+Unit=vpn-sshd-recover.service
+
+[Install]
+WantedBy=timers.target

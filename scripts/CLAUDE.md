@@ -72,6 +72,14 @@ shared probe budget, fixed launcher, lock, rollback snapshot and committed recei
 Onboarding publishes its local assignment only after exact receipt reconciliation;
 active evaluator evidence never substitutes controller identity for server state.
 
+**SSH recovery installation has an early privacy guard** — the dedicated
+controller rejects enabled Ansible debug before inventory processing, forwards
+`ANSIBLE_DEBUG=false` to override config defaults, and validates exact aliases
+and clean source before Ansible. It isolates the selected alias from external
+host/group vars, allows only tool/home/locale environment inheritance, and uses
+portable strict SSH options for transfers. Caller fields remain literal data
+through Make and argv; no general site/backup task runs during installation.
+
 ## What's done well
 
 - **`set -euo pipefail` everywhere** — fail-loud is the default.
@@ -88,6 +96,11 @@ active evaluator evidence never substitutes controller identity for server state
 
 ## Pitfalls
 
+- **SSH connection timeout is not a session deadline** — bootstrap waits bound
+  each SSH process group locally and each remote status query with GNU timeout.
+  Remote deadline retries are distinct from an unresponsive SSH session; cloud-init
+  exit codes 1 and 2 both refuse readiness even when the marker already exists.
+  Keep raw cloud-init output suppressed and reclaim the owned SSH group on interruption.
 - **Rollback state must be readable before mutation** — enforce the same byte
   limit on serialized pending writes and reads, including base64 snapshots.
   SSH/job/monitor deadlines must leave room around the shared probe budget.

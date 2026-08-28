@@ -89,6 +89,42 @@ If you have a UpCloud floating IP attached to blue, transfer it to green
 in the UpCloud console (or via API), and the IP-bound clients reconnect
 without reissuing.
 
+## SSH ownership recovery foundation
+
+The separate installer publishes recovery code and persistent systemd units;
+it does **not** migrate SSH configuration or change listeners, keys, firewall
+rules or Tailnet policy. From a clean tested checkout, during an exclusive
+single-node maintenance window:
+
+```bash
+make install-ssh-recovery ANSIBLE_LIMIT=<exact-inventory-alias> \
+  SSH_RECOVERY_EXCLUSIVE_WINDOW=1
+```
+
+The existing generated inventory and pinned known-hosts file are required.
+Optional `SSH_RECOVERY_INVENTORY` and `SSH_RECOVERY_KNOWN_HOSTS` select existing
+owner-controlled files; they never disable host-key checking. Enabled Ansible
+debug is rejected. Only validated connection fields enter the isolated play.
+
+Installed root operations use `/usr/bin/python3 -I -B
+/usr/local/lib/vpn-sshd/sshd_bundle.py` with `prepare`, `apply`, `confirm`,
+`rollback`, `status`, `recover` or `boot-recover`. Mutation requests use bounded
+JSON on stdin; preserve generation/nonce receipts only in private storage.
+Preparation requires complete global and direct/Tailnet OpenSSH policy parity
+and installed recovery readiness. Unconfirmed activation expires and rolls back;
+boot recovery runs before SSH listeners. Unexpected file drift or corrupt state
+is an explicit failure that retains evidence for console/rescue recovery.
+
+Do not delete transaction state, install journals or old code generations to
+clear a refusal. Retry an interrupted installation only with its same generation.
+Full network rollback, strict post-activation connection promotion and real
+disconnect/reboot staging acceptance remain separate gates. Until those pass,
+this foundation is not permission for production ownership migration or a
+substitute for ordinary desired-state configuration.
+The current baseline template still reinstates duplicate authentication
+directives; align baseline and fresh-bootstrap ownership before migrating real
+nodes, so the next ordinary deploy cannot undo the ownership invariant.
+
 ## What blocks rollback
 
 - **Lost Terraform state** — without state, Terraform doesn't know about

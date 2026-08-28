@@ -76,3 +76,8 @@ artifact_evidence: no build artifacts produced by this change
 - No full gate, Molecule, hosted CI or live acceptance was run in this lane. The primary agent later marked only implementation step TST-1787496118906453 complete through taskctl and regenerated board/counts; parent-task and live acceptance remain open.
 
 - Independent parent review passed all **15 new cases in 21.72 seconds** and confirmed predicate-only source changes. Collection-only checks observed **1630 repository tests / 1577 unit tests**; these counts do not assert a full-suite pass.
+
+## Combined main integration check — 2026-08-28
+
+- The combined source tree `70c8ed645126c3b4c6c75458cad02f41c2664868` includes main `bdc6b5a9c7f3d47b801341eba5560171ce41b589` and the allowlist, restore-point, source-parity, smoke and host-class fixes. Full `make check` passed validation, Terraform/policy, parsers and MSRV, then stopped with **1810 unit tests passed, one existing placeholder skipped and one failed in 1181.35 seconds**. The failure was an older static hostname test assuming `when` was a string, although the added subscription guard correctly makes it a list; Rust release and Bats were not reached.
+- The two hostname assertions now require the complete original toggle condition as a list member. No runtime source, timeout or acceptance predicate changed. The complete listener and Xray modules passed **72 tests in 54.52 seconds**. A repeated full gate and exact hosted checks remain required before integration; the parent task remains open.

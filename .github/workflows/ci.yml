@@ -380,7 +380,8 @@ jobs:
       - name: Install SOPS and age
         run: |
           sudo apt-get update
-          sudo apt-get install -y age restic
+          sudo apt-get install -y age restic openssh-server
+          sudo install -d -m 0755 /run/sshd
           curl -fsSL "https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64" -o /tmp/sops
           echo "0d65660fbe785647ff4f1764d7f69edf598f79d6d79ebbef4a501909b6ff6b82  /tmp/sops" | sha256sum -c -
           sudo install -m 0755 /tmp/sops /usr/local/bin/sops

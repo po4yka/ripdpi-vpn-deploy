@@ -53,3 +53,8 @@ The operator deploy path enforces its own guarantees on every invocation shape: 
 
 - The smoke agent owns `ansible/playbooks/smoke-test.yml`, focused local Ansible smoke regression coverage, and the relevant existing planning/evidence for `OPS-1787496118906646` in `codex/high-smoke-cleanup-20260828`. The shared playbook implements cleanup and subscription-only gating together; the two portfolio records retain their separate acceptance boundaries.
 - Other playbooks, transport defaults/ports, Make, SSH, backup, production and other worktrees remain outside this slice. Source tests use temporary local executables; no host/provider operation or whole-task close is authorized here. The primary agent retains integration, generated board/counts and live acceptance.
+
+## Bounded bootstrap wait ownership — 2026-08-28
+
+- The bounded-wait agent owns only `scripts/wait-cloud-init.sh`, its existing `tests/unit/test_render_inventory.py` coverage, brief `scripts/CLAUDE.md` guidance, and evidence for `OPS-1787496118906208` in `codex/high-bootstrap-wait-20260828`.
+- This slice preserves Terraform output routing and SSH identity, port, and trust policy. Make deploy integration, transport migration, backup configuration, shared board/count updates, and live acceptance remain with their existing owners. The overall task remains blocked.
