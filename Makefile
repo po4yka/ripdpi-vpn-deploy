@@ -705,7 +705,6 @@ monitor-protocol-liveness:
 
 install-liveness-sentinel:
 	@test -n "$(LIVENESS_CONFIG)" -a -n "$(SENTINEL)" -a -n "$(CLIENT)" || { echo "usage: make install-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=…"; exit 1; }
-	@echo "If the sentinel policy requires AWG, paste the one-time private key for $(CLIENT), then press Enter:"
 	@HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
 	  ./scripts/install-liveness-sentinel.sh --config "$(LIVENESS_CONFIG)" --sentinel "$(SENTINEL)" --client "$(CLIENT)" --awg-private-key-stdin
 
