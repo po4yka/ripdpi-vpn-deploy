@@ -42,3 +42,9 @@ The operator deploy path enforces its own guarantees on every invocation shape: 
 
 - The bounded-wait agent owns only `scripts/wait-cloud-init.sh`, its existing `tests/unit/test_render_inventory.py` coverage, brief `scripts/CLAUDE.md` guidance, and evidence for `OPS-1787496118906208` in `codex/high-bootstrap-wait-20260828`.
 - This slice preserves Terraform output routing and SSH identity, port, and trust policy. Make deploy integration, transport migration, backup configuration, shared board/count updates, and live acceptance remain with their existing owners. The overall task remains blocked.
+
+## Maintenance guard ownership — 2026-08-28
+
+- The maintenance agent owns only `ansible/playbooks/os-maintenance.yml`, its existing `tests/unit/test_os_maintenance_contract.py` coverage, and this task's corresponding evidence on `codex/high-maintenance-guards-20260828`, based on main `bdc6b5a9c7f3d47b801341eba5560171ce41b589`.
+- Steps `OPS-1787496118906956` and `OPS-1787496118906614` remove the external service from the unconditional health check and make the residual package simulation locale-independent. Local Ansible task-slice tests replace only OS command executables; they never run real package, service or reboot operations.
+- Integration, all other deploy-path changes, and live rolling maintenance remain with their existing owners. These two source fixes do not close the parent task.

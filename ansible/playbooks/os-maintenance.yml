@@ -50,7 +50,7 @@
       changed_when: false
       loop: >-
         {{
-          ['tailscaled', 'nftables', 'prometheus-node-exporter']
+          ['nftables', 'prometheus-node-exporter']
           + (['xray'] if ((vpn.enable_xray_reality | default(false)) or
                           (vpn.enable_nginx_xhttp | default(false))) else [])
           + (['nginx'] if (vpn.enable_nginx_xhttp | default(false)) else [])
@@ -71,6 +71,8 @@
     - name: Simulate another full upgrade
       ansible.builtin.command:
         cmd: apt-get -s -o Debug::NoLocking=true dist-upgrade
+      environment:
+        LC_ALL: C
       register: os_maintenance_residual_upgrade
       changed_when: false
       when: not ansible_check_mode
