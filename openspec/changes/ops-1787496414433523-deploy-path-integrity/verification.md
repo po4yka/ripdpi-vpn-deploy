@@ -146,3 +146,9 @@ artifact_evidence: no build artifacts produced by this change
   Python cases, including 1758 under tests/unit. Task validation passed 28 tasks
   and 136 steps. These local integration checks do not replace the full repository,
   exact hosted-SHA or authorized live gates.
+
+## Restore caller regression — 2026-08-28
+
+- Exact combined commit `fc3acc6e1f9a55b02dc2ecef29c9d3b3cf695ba2` passed hosted Python, Molecule, Rust and CodeQL checks, but CI `33203837486` failed the Bats restore test that expected the old inline Make recipe. The controller now owns a separate private secret snapshot; its path is intentionally not printed by `make -n`.
+- The original Bats failure was reproduced locally before changing tests. The procedural restore test still requires decrypt before the first tagged deploy. Its obsolete recipe-string assertions are replaced by an actual Make/decrypt/controller test in `test_deploy_controller.py`: missing plaintext refuses before transport, the default `RUNTIME_DIR` path receives the expected bytes with mode 0600, prechecks and both playbooks consume one private snapshot, tags reach only site, and snapshot cleanup preserves the source file.
+- The new runtime case passed (9.01 seconds), and all 12 restore Bats cases passed. A subsequent complete local Bats run passed all 55 cases. This executes the real Make, decrypt script and controller with synthetic SOPS, precheck and SSH/Ansible subprocess boundaries; it does not prove encryption, full schema validation or live restore. Source code and test deadlines are unchanged. Collection observed 1921 Python cases (1868 unit); the complete combined local and exact-source hosted gates remain required.

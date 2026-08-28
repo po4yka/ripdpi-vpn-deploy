@@ -100,6 +100,78 @@ def calls(workspace):
     return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
 
+def test_restore_runtime_secrets_reach_the_first_tagged_deploy(workspace):
+    """Real Make/decrypt/controller; only SOPS, checks and transport are fixtures."""
+    import hashlib
+
+    root = workspace["root"]
+    binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
+    plaintext = workspace["secrets"].read_bytes()
+    runtime = root.parent / "restore runtime"
+    source = runtime / "vpn-prod.secrets.yaml"
+    encrypted = write(root.parent / "restore.sops.yaml", "synthetic encrypted fixture\n")
+    shutil.copy2(ROOT / "scripts/decrypt-secrets.sh", root / "scripts/decrypt-secrets.sh")
+    write(binary / "sops", f"""#!{sys.executable}
+import json, pathlib, sys
+assert sys.argv[1:] == ['--decrypt', {str(encrypted)!r}]
+with pathlib.Path({str(workspace['calls'])!r}).open('a') as stream:
+    stream.write(json.dumps({{'program': 'sops'}}) + '\\n')
+sys.stdout.buffer.write({plaintext!r})
+""", 0o700)
+    recorder = f"""#!{sys.executable}
+import hashlib, json, os, pathlib, stat, sys
+name = pathlib.Path(sys.argv[0]).name
+secret = pathlib.Path(os.environ['VPN_SECRETS_FILE'])
+record = {{'program': name, 'args': sys.argv[1:], 'secret': str(secret),
+          'mode': stat.S_IMODE(secret.stat().st_mode),
+          'digest': hashlib.sha256(secret.read_bytes()).hexdigest()}}
+if name == 'validate-secrets.py':
+    assert sys.argv[1:] == [str(secret), '--strict']
+if name == 'ansible-playbook':
+    play = json.loads(pathlib.Path(sys.argv[1]).read_text())
+    assert all(str(secret) in files for files in play[0]['vars']['deployment_input_files'].values())
+    record['play'] = pathlib.Path(play[-1]['import_playbook']).stem
+with pathlib.Path({str(workspace['calls'])!r}).open('a') as stream:
+    stream.write(json.dumps(record) + '\\n')
+"""
+    for name in ("validate-secrets.py", "spot-check-secrets.py", "check-certs.sh"):
+        write(root / "scripts" / name, recorder, 0o700)
+    write(binary / "ansible-playbook", recorder, 0o700)
+    commit_fixture(workspace)
+    environment = {key: value for key, value in workspace["env"].items()
+                   if key not in ("SECRETS_FILE", "SKIP_PRECHECK")}
+    common = ["ENV=prod", "RUNTIME_DIR=" + str(runtime)]
+    deploy = ["make", "deploy", *common, "ANSIBLE_LIMIT=node-one",
+              "ANSIBLE_TAGS=baseline,firewall,backup"]
+
+    missing = subprocess.run(deploy, cwd=root, env=environment, capture_output=True, text=True, timeout=25)
+    assert missing.returncode != 0
+    assert calls(workspace) == [], "plaintext must exist before checks, SSH or site execution"
+    decrypted = subprocess.run(["make", "decrypt", *common, "SOPS_FILE=" + str(encrypted)],
+                               cwd=root, env=environment, capture_output=True, text=True, timeout=25)
+    assert decrypted.returncode == 0, decrypted.stderr
+    assert source.read_bytes() == plaintext and source.stat().st_mode & 0o777 == 0o600
+    result = subprocess.run(deploy, cwd=root, env=environment, capture_output=True, text=True, timeout=25)
+    assert result.returncode == 0, result.stderr
+    observed = calls(workspace)
+    assert [entry["program"] for entry in observed] == [
+        "sops", "validate-secrets.py", "spot-check-secrets.py", "check-certs.sh", "ssh",
+        "ansible-playbook", "ansible-playbook", "audit-log.sh"]
+    consumers = [entry for entry in observed if "secret" in entry]
+    snapshot = Path(consumers[0]["secret"])
+    assert snapshot != source
+    assert all(entry["secret"] == str(snapshot) and entry["mode"] == 0o600
+               and entry["digest"] == hashlib.sha256(plaintext).hexdigest() for entry in consumers)
+    plays = [entry for entry in observed if entry["program"] == "ansible-playbook"]
+    assert [entry["play"] for entry in plays] == ["site", "source-drift"]
+    assert plays[0]["args"][-2:] == ["--tags", "baseline,firewall,backup"]
+    assert "--tags" not in plays[1]["args"]
+    assert not snapshot.exists(), "private controller snapshot must be removed"
+    assert source.read_bytes() == plaintext and source.stat().st_mode & 0o777 == 0o600
+    assert "synthetic-private-value" not in (
+        missing.stdout + missing.stderr + decrypted.stdout + decrypted.stderr + result.stdout + result.stderr)
+
+
 @pytest.mark.parametrize("limit,expected", [
     ("", ["192.0.2.1", "192.0.2.2"]),
     ("node-one", ["192.0.2.1"]),
