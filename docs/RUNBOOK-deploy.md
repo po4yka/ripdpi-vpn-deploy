@@ -25,8 +25,9 @@ make clean
 
 If `dry-run` shows changes you didn't expect, **stop**. Investigate.
 `deploy` refuses a dirty checkout so the live manifest can name an immutable
-source revision. Documentation-only commits do not force convergence: the
-parity gate compares a digest of deployable paths rather than the whole tree.
+source revision. The parity gate compares both that exact revision and the
+deployable-path digest. Even a documentation-only commit requires a reviewed
+deploy before live source parity can pass; do not rewrite manifests by hand.
 Don't push. The most common cause is a forgotten edit on a different
 branch, or a role that's accidentally redownloading the binary because
 the version pin moved.
