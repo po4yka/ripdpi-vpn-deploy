@@ -57,7 +57,7 @@ No modules.
 | <a name="input_allowed_ssh_cidrs"></a> [allowed\_ssh\_cidrs](#input\_allowed\_ssh\_cidrs) | Source CIDRs allowed to reach ssh\_port/tcp. | `list(string)` | n/a | yes |
 | <a name="input_build_env"></a> [build\_env](#input\_build\_env) | Free-form label baked into /etc/vpn-build-id by cloud-init. | `string` | `"prod"` | no |
 | <a name="input_enable_backups"></a> [enable\_backups](#input\_enable\_backups) | Enable provider-side server backups. | `bool` | `true` | no |
-| <a name="input_enable_hysteria"></a> [enable\_hysteria](#input\_enable\_hysteria) | n/a | `bool` | `true` | no |
+| <a name="input_enable_hysteria"></a> [enable\_hysteria](#input\_enable\_hysteria) | Include the Hysteria2 UDP/443 listener in the legacy default set. Explicit public\_listeners ignore this toggle; add hysteria there directly. | `bool` | `true` | no |
 | <a name="input_enable_ipv6"></a> [enable\_ipv6](#input\_enable\_ipv6) | Allocate and expose a public IPv6 address. | `bool` | `true` | no |
 | <a name="input_image"></a> [image](#input\_image) | Hetzner image slug. Allowed: debian-12, ubuntu-24.04. | `string` | `"debian-12"` | no |
 | <a name="input_labels"></a> [labels](#input\_labels) | Provider-specific resource tags/labels. | `map(string)` | `{}` | no |
@@ -67,6 +67,7 @@ No modules.
 | <a name="input_server_name"></a> [server\_name](#input\_server\_name) | Hostname / Terraform name of the VPS. | `string` | n/a | yes |
 | <a name="input_server_type"></a> [server\_type](#input\_server\_type) | Hetzner server type, e.g. cpx21, cpx31, cx22, cx32. | `string` | n/a | yes |
 | <a name="input_ssh_port"></a> [ssh\_port](#input\_ssh\_port) | Effective SSH listener port configured by cloud-init and opened at the provider edge. | `number` | `22` | no |
+| <a name="input_use_legacy_public_listeners"></a> [use\_legacy\_public\_listeners](#input\_use\_legacy\_public\_listeners) | Opt-in to the historical implicit listener set when public\_listeners is empty. New environments must define public\_listeners explicitly; an empty effective contract fails the plan. | `bool` | `false` | no |
 
 ## Outputs
 

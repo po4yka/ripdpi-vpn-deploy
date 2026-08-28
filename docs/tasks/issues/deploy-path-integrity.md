@@ -37,3 +37,9 @@ The operator deploy path enforces its own guarantees on every invocation shape: 
 
 - The primary agent owns only the five existing safety pre-task tags in `ansible/playbooks/site.yml` and their real-Ansible local regression coverage in `tests/unit/test_listener_contract.py` on `codex/high-tagged-guards-20260828`.
 - This slice covers `OPS-1787496118906514`; it does not change role defaults, SSH migration, firewall policy, or live runtime. The inventory-guards slice and backup configuration work remain separate, and the overall task stays open.
+
+## SSH allowlist implementation ownership — 2026-08-28
+
+- The allowlist agent owns only `allowed_ssh_cidrs` validation in the four `terraform/providers/*/variables.tf` files, their existing `tests/firewall.tftest.hcl` regression cases, and this step's task/evidence notes on `codex/high-ssh-allowlist-20260828`.
+- This slice covers `OPS-1787496118906156`; the matching `site.yml` nonempty assertion and always-tag coverage already exist in the base commit. Provider firewall rules, activation, SSH ports, runtime, tfvars, state, inventory, and other agents' source remain outside this slice.
+- Validation uses native Terraform mock-provider plans only. Hosted checks and the parent task's remaining live acceptance are separate; this slice does not authorize apply or close the task.

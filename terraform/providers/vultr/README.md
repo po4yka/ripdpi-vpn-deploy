@@ -44,13 +44,6 @@ See `terraform/providers/vultr/CLAUDE.md` for design decisions and pitfalls.
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.15, < 2.0 |
 | <a name="requirement_vultr"></a> [vultr](#requirement\_vultr) | ~> 2.31 |
 
-## Providers
-
-| Name | Version |
-| ---- | ------- |
-| <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
-| <a name="provider_vultr"></a> [vultr](#provider\_vultr) | 2.32.0 |
-
 ## Modules
 
 No modules.
@@ -79,7 +72,7 @@ No modules.
 | <a name="input_allowed_ssh_cidrs"></a> [allowed\_ssh\_cidrs](#input\_allowed\_ssh\_cidrs) | Source CIDRs allowed to reach ssh\_port/tcp. | `list(string)` | n/a | yes |
 | <a name="input_build_env"></a> [build\_env](#input\_build\_env) | Free-form label baked into /etc/vpn-build-id by cloud-init. | `string` | `"prod"` | no |
 | <a name="input_enable_backups"></a> [enable\_backups](#input\_enable\_backups) | Enable provider-side server backups. Off by default: Vultr snapshots are unencrypted and bypass the restic+age backup chain. | `bool` | `false` | no |
-| <a name="input_enable_hysteria"></a> [enable\_hysteria](#input\_enable\_hysteria) | n/a | `bool` | `true` | no |
+| <a name="input_enable_hysteria"></a> [enable\_hysteria](#input\_enable\_hysteria) | Include the Hysteria2 UDP/443 listener in the legacy default set. Explicit public\_listeners ignore this toggle; add hysteria there directly. | `bool` | `true` | no |
 | <a name="input_enable_ipv6"></a> [enable\_ipv6](#input\_enable\_ipv6) | Allocate and expose a public IPv6 address. | `bool` | `true` | no |
 | <a name="input_labels"></a> [labels](#input\_labels) | Provider-specific resource tags/labels. | `map(string)` | `{}` | no |
 | <a name="input_manage_public_ipv6_endpoint"></a> [manage\_public\_ipv6\_endpoint](#input\_manage\_public\_ipv6\_endpoint) | Manage the shared public IPv6 endpoint as a Vultr DNS AAAA record. | `bool` | `false` | no |
@@ -91,9 +84,10 @@ No modules.
 | <a name="input_public_ipv6_endpoint_name"></a> [public\_ipv6\_endpoint\_name](#input\_public\_ipv6\_endpoint\_name) | Relative Vultr DNS record name; empty means the zone apex. | `string` | `""` | no |
 | <a name="input_public_ipv6_endpoint_ttl"></a> [public\_ipv6\_endpoint\_ttl](#input\_public\_ipv6\_endpoint\_ttl) | TTL in seconds for the managed public IPv6 endpoint. | `number` | `300` | no |
 | <a name="input_public_listeners"></a> [public\_listeners](#input\_public\_listeners) | Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port\_range for each entry. | <pre>list(object({<br/>    name       = string<br/>    protocol   = string<br/>    port       = optional(number)<br/>    port_range = optional(string)<br/>  }))</pre> | `[]` | no |
-| <a name="input_region"></a> [region](#input\_region) | Vultr region, e.g. ams, fra, lhr, ewr. | `string` | n/a | yes |
+| <a name="input_region"></a> [region](#input\_region) | Vultr region, e.g. ams, fra, lhr. | `string` | n/a | yes |
 | <a name="input_server_name"></a> [server\_name](#input\_server\_name) | Hostname / Terraform name of the VPS. | `string` | n/a | yes |
 | <a name="input_ssh_port"></a> [ssh\_port](#input\_ssh\_port) | Effective SSH listener port configured by cloud-init and opened at the provider edge. | `number` | `22` | no |
+| <a name="input_use_legacy_public_listeners"></a> [use\_legacy\_public\_listeners](#input\_use\_legacy\_public\_listeners) | Opt-in to the historical implicit listener set when public\_listeners is empty. New environments must define public\_listeners explicitly; an empty effective contract fails the plan. | `bool` | `false` | no |
 
 ## Outputs
 
