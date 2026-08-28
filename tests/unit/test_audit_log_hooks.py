@@ -104,6 +104,7 @@ def test_lifecycle_hooks_call_best_effort_append():
         assert "append-best-effort" in text
         assert action in text
 
-    makefile = (REPO_ROOT / "Makefile").read_text()
-    assert "--action site-deploy" in makefile
-    assert "warp_outbound_role=conditional" in makefile
+    controller = (REPO_ROOT / "scripts/deploy-controller.py").read_text()
+    assert '"--action", "site-deploy"' in controller
+    assert '"append-best-effort"' in controller
+    assert "warp_outbound_role=conditional" in controller

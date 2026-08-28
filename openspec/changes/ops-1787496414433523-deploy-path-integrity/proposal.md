@@ -9,7 +9,7 @@ The audit found the operator deploy path can bypass its own safety rails or leav
 ## What Changes
 
 - Guard pre_tasks in `site.yml` carry `tags: [always]` so tag-scoped runs cannot skip them.
-- `make deploy` and `make dry-run` depend on a bootstrap-readiness step invoking `scripts/wait-cloud-init.sh`.
+- `make deploy` and `make dry-run` run one controller that freezes the selected canonical inventory, validates every local input and strict SSH identity, waits for bootstrap, and uses the same host records for convergence and source parity. Empty selection, exact aliases, canonical cohort groups and comma unions are supported; other Ansible patterns fail closed.
 - The remote cloud-init wait runs inside a bounded retry loop and distinguishes error state from marker absence.
 - Cohort slugs validate against the known `group_vars/vpn-*.yml` set at render time.
 - An empty SSH allowlist fails at plan time (Terraform variable validation plus a site.yml assert).
@@ -35,6 +35,6 @@ The audit found the operator deploy path can bypass its own safety rails or leav
 ## Impact
 
 - Ansible playbooks: site.yml, verify-adjacent pre_tasks consumers, smoke-test.yml, os-maintenance.yml, rotate-credentials.yml, rollback-xray.yml.
-- Scripts: wait-cloud-init.sh, render-inventory.sh. Makefile deploy/dry-run dependency graph.
+- Scripts: wait-cloud-init.sh, shared bootstrap_readiness.py, deploy-controller.py, render-inventory.sh. Makefile deploy/dry-run dispatch and literal input capture; standalone inspection and backup APIs are unchanged.
 - Terraform provider variables (validation block for the SSH allowlist input).
 - group_vars/all.yml gains explicit defaults only; no behavior change where keys are defined.

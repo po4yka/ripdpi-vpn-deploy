@@ -240,22 +240,33 @@ pre-deploy-check:
 	  VPN_SECRETS_FILE=$(SECRETS_FILE) ./scripts/check-certs.sh; \
 	fi
 
-dry-run: require-inventory validate-ansible-extra-vars pre-deploy-check
-	VPN_SECRETS_FILE=$(SECRETS_FILE) \
-	ansible-playbook $(ANSIBLE_DIR)/playbooks/site.yml --check --diff \
-	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
-	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
+# Preserve literal operator inputs before Make exports them. Source identity is
+# recomputed inside the controller's closed environment, after its privacy gate.
+ifneq ($(filter deploy dry-run deploy-canary,$(MAKECMDGOALS)),)
+override ANSIBLE_LIMIT := $(value ANSIBLE_LIMIT)
+override ANSIBLE_TAGS := $(value ANSIBLE_TAGS)
+override SKIP_PRECHECK := $(value SKIP_PRECHECK)
+override ENV := $(value ENV)
+override PROVIDER := $(value PROVIDER)
+override SECRETS_FILE := $(if $(filter file default undefined,$(origin SECRETS_FILE)),$(SECRETS_FILE),$(value SECRETS_FILE))
+override ANSIBLE_EXTRA_VARS_FILE := $(if $(filter file default undefined,$(origin ANSIBLE_EXTRA_VARS_FILE)),$(ANSIBLE_EXTRA_VARS_FILE),$(value ANSIBLE_EXTRA_VARS_FILE))
+override INSPECT_KNOWN_HOSTS := $(if $(filter file default undefined,$(origin INSPECT_KNOWN_HOSTS)),$(INSPECT_KNOWN_HOSTS),$(value INSPECT_KNOWN_HOSTS))
+endif
+deploy dry-run deploy-canary: override DEPLOY_SOURCE_REVISION :=
+deploy dry-run deploy-canary: override DEPLOYABLE_SOURCE_DIGEST :=
+deploy dry-run: export DEPLOY_LIMIT = $(ANSIBLE_LIMIT)
+deploy dry-run: export DEPLOY_TAGS = $(ANSIBLE_TAGS)
+deploy dry-run: export DEPLOY_SKIP_PRECHECK = $(SKIP_PRECHECK)
+deploy dry-run: export DEPLOY_SECRETS_FILE = $(SECRETS_FILE)
+deploy dry-run: export DEPLOY_EXTRA_VARS_FILE = $(ANSIBLE_EXTRA_VARS_FILE)
+deploy dry-run: export DEPLOY_KNOWN_HOSTS = $(INSPECT_KNOWN_HOSTS)
+deploy dry-run: export DEPLOY_ENV = $(ENV)
+deploy dry-run: export DEPLOY_PROVIDER = $(PROVIDER)
+dry-run:
+	@python3 scripts/deploy-controller.py dry-run
 
-deploy: require-clean-source require-inventory validate-ansible-extra-vars pre-deploy-check
-	VPN_SECRETS_FILE=$(SECRETS_FILE) \
-	ansible-playbook $(ANSIBLE_DIR)/playbooks/site.yml \
-	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
-	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)") \
-	  $(if $(strip $(ANSIBLE_TAGS)),--tags "$(ANSIBLE_TAGS)")
-	$(MAKE) source-drift ANSIBLE_LIMIT="$(ANSIBLE_LIMIT)" ANSIBLE_EXTRA_VARS_FILE="$(ANSIBLE_EXTRA_VARS_FILE)"
-	@ENV=$(ENV) PROVIDER=$(PROVIDER) ./scripts/audit-log.sh append-best-effort \
-	  --action site-deploy \
-	  --note "playbook=site.yml warp_outbound_role=conditional"
+deploy:
+	@python3 scripts/deploy-controller.py deploy
 
 # Capture caller data as simple variables before implicit environment export can
 # expand Make functions. Repository-defined default paths still resolve normally.

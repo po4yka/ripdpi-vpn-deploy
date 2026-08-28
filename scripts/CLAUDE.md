@@ -36,6 +36,13 @@ hashes committed Git blob IDs and paths under `ansible/`, `scripts/`, and
 `requirements.yml`. Do not hash `git archive` bytes: commit timestamps would
 turn documentation-only commits into false live drift.
 
+**Readiness and convergence share one inventory snapshot** — `deploy-controller.py`
+resolves empty/exact/cohort/comma selections and calls `select_hosts` once.
+Canonical variables load per host with real Ansible; frozen strict transport
+records govern wait, site and source-drift without rereading original inputs.
+`bootstrap_readiness.py` is shared with the Terraform first-boot adapter, whose
+trust policy stays separate. Do not duplicate its deadlines or cancellation loop.
+
 **Bundle topology is host-order independent** — `emit-bundle.sh` aggregates
 split-hop ingress and realm metadata across every `HOSTS` entry. Never infer
 client-facing topology from the first host; conflicting non-null realm IDs
@@ -87,6 +94,11 @@ active evaluator evidence never substitutes controller identity for server state
   matches the host architecture or is complete.
 
 ## Pitfalls
+
+- **Plugin path environment variables are not a complete isolation boundary** —
+  Ansible also auto-discovers plugin subdirectories at playbook and role bases.
+  Reject unsupported discovery/shadow-role paths before SSH; private cwd and
+  disabled host_group_vars alone do not prevent a legacy vars plugin executing.
 
 - **SSH connection timeout is not a session deadline** — bootstrap waits bound
   each SSH process group locally and each remote status query with GNU timeout.
