@@ -29,6 +29,11 @@ make verify
 make clean
 ```
 
+For changed Xray configuration, rotation saves the outgoing bytes in
+`/etc/xray/config.json.prev` before publication. An unchanged configuration
+keeps the existing restore point. This follows the Xray role's change-detection
+contract; it is not an automatic rollback if a later service restart fails.
+
 Other clients are unaffected. The dropped client now gets `403`/`reset` /
 `Authentication failure` on every transport.
 

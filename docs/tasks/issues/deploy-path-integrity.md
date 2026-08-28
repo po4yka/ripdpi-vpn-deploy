@@ -14,7 +14,7 @@ openspec_change: ops-1787496414433523-deploy-path-integrity
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
-status_detail: Implementation remains on codex/complete-high-review at 37f3a6a50b21e294e5da6048a491d91568cd4627, not main. The bounded exact-source P0/P2 live-inventory dry-run passed on 2026-08-27; P2 used the existing private canonical-origin override. Recovery restored access. Live wait/rotation/rollback acceptance still requires a separately coordinated staging window.
+status_detail: Inventory and tagged guards are integrated through PR113; bounded wait is draft PR114. Rotation/rollback fixes pass focused local checks in codex/high-xray-restore-points-20260828 but full and hosted gates remain pending. Other steps and coordinated staging/live acceptance remain open. Recovery restored management access; no rotation or rollback was run on hosts in this slice.
 ---
 
 ## Goal
@@ -43,3 +43,8 @@ The operator deploy path enforces its own guarantees on every invocation shape: 
 - The allowlist agent owns only `allowed_ssh_cidrs` validation in the four `terraform/providers/*/variables.tf` files, their existing `tests/firewall.tftest.hcl` regression cases, and this step's task/evidence notes on `codex/high-ssh-allowlist-20260828`.
 - This slice covers `OPS-1787496118906156`; the matching `site.yml` nonempty assertion and always-tag coverage already exist in the base commit. Provider firewall rules, activation, SSH ports, runtime, tfvars, state, inventory, and other agents' source remain outside this slice.
 - Validation uses native Terraform mock-provider plans only. Hosted checks and the parent task's remaining live acceptance are separate; this slice does not authorize apply or close the task.
+
+## Xray restore-point implementation ownership — 2026-08-28
+
+- The primary agent owns only `rollback-xray.yml`, the Xray portion of `rotate-credentials.yml`, the existing Xray/XHTTP regression module and matching runbook guidance in `codex/high-xray-restore-points-20260828`.
+- Steps `OPS-1787496118906340` and `OPS-1787496118906432` have local source-behavior proof; full/hosted checks and staging/live acceptance remain separate. No host rotation, binary rollback or restart was performed.
