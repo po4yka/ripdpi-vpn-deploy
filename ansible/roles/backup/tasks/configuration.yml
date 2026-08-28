@@ -1,0 +1,48 @@
+---
+# The configuration-only intent supplies a fixed private staging prefix.
+# No unit, notification, repository initialization or execution belongs here.
+- name: Ensure rclone configuration directory
+  ansible.builtin.file:
+    path: "{{ _backup_configuration_prefix | default('') }}/etc/rclone"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: backup.remote.enabled | default(false)
+  register: _backup_configuration_directory
+  changed_when: >-
+    _backup_configuration_directory.changed and
+    (_backup_configuration_prefix | default('') == '')
+
+- name: Drop rclone config (full content from secrets)
+  ansible.builtin.copy:
+    content: "{{ backup.remote.rclone_config }}"
+    dest: "{{ _backup_configuration_prefix | default('') }}/etc/rclone/rclone.conf"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+  when: backup.remote.enabled | default(false)
+  register: _backup_configuration_remote
+  changed_when: >-
+    _backup_configuration_remote.changed and
+    (_backup_configuration_prefix | default('') == '')
+
+- name: Render backup scripts
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ _backup_configuration_prefix | default('') }}/usr/local/sbin/{{ item }}"
+    owner: root
+    group: root
+    mode: "0750"
+    validate: /bin/bash -n %s
+  loop:
+    - vpn-backup.sh
+    - vpn-backup-restore-drill.sh
+  no_log: true
+  diff: false
+  register: _backup_configuration_scripts
+  changed_when: >-
+    _backup_configuration_scripts.changed and
+    (_backup_configuration_prefix | default('') == '')

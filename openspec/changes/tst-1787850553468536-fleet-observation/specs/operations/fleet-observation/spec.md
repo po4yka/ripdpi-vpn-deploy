@@ -69,6 +69,88 @@ select a remote backend, or fall back from remote to local restore.
 - **THEN** it fails before restore and cleanup leaves that data and any previous
   success marker untouched.
 
+### Requirement: REQ-OBS-BACKUP-CONFIG — Configure offsite replication without execution
+
+`make backup-configure` MUST require clean committed controller source, an
+explicit exact single inventory alias (not a group, pattern, exclusion, or
+unknown host), and strict canonical secret validation.
+Git cleanliness and provenance MUST use the actual controller checkout under a
+controlled environment before any Ansible process. Inventory selection MUST use
+one immutable private snapshot and pin the selected SSH identity/transport. Child
+processes MUST NOT inherit execution/plugin/callback overrides. Automatic vars
+plugins MUST be disabled; tracked all/vpn/cohort variables, SOPS and validated
+extra-vars MUST retain their canonical order through actual Ansible loading.
+External host_vars and arbitrary inventory backup overrides are unsupported.
+
+It MUST configure the existing rclone remote and backup/restore scripts through
+shared role configuration tasks. It MAY install the already-declared rclone
+package when absent, without upgrading packages or refreshing all package
+indexes. It MUST require an initialized existing local repository and matching
+private restic password; it MUST NOT initialize or change either. It MUST NOT
+import site/baseline/firewall tasks, skip safety checks, run backup, prune, sync,
+restore, or modify/start/restart units or timers. Secret content and diffs MUST
+remain private. Whole-site source identity MUST NOT be rewritten by this command.
+Repository preflight MUST use only the installed restic binary with the explicit
+canonical local repository/password paths, `--no-cache --no-lock cat config`, a
+bounded timeout, and discarded captured output. Failure MUST precede lock,
+package, or configuration writes. This proves configuration decryption only,
+not repository integrity or recovery. Enabled Ansible debug MUST be rejected
+and disabled explicitly for child processes so `no_log` cannot be bypassed by
+inherited configuration.
+
+#### Scenario: Ambient controller or inventory overrides
+
+- **WHEN** another Git directory, adjacent host_vars, or an Ansible plugin/SSH
+  environment override is present
+- **THEN** it cannot change source validation, selected transport, variable
+  loading or execution; canonical cohort rendering remains unchanged.
+
+#### Scenario: Existing local backup gains remote configuration
+
+- **WHEN** the selected host has a valid local repository and matching password,
+  rclone is absent, and the owner has quiesced backup execution
+- **THEN** the command installs rclone, validates and installs the remote config
+  and both scripts, leaves services/timers unchanged, and is idempotent on rerun.
+
+### Requirement: REQ-OBS-BACKUP-QUIESCENCE — Configuration owns a finite exclusive window
+
+The configuration command MUST require an owner-controlled exclusive maintenance
+window, both backup timers persistently disabled, both timers and services
+inactive, and no queued jobs for those units. It MUST recheck quiescence before and after file installation, serialize
+configuration using an exclusive per-host lock, and reject existing locks.
+All candidate files MUST be staged and validated before live replacement; prior
+files MUST remain recoverable privately. Failure MUST NOT start services, remove
+operator resources, or conceal partial installation. Concurrent privileged
+manual execution or deployment outside that window is not guaranteed safe.
+Any publication or postcheck failure MUST restore previous bytes, modes, and
+absence for all three files. If restoration cannot be confirmed, the command
+MUST retain its private recovery bundle and lock and explicitly prohibit timer
+resumption until operator repair.
+It MUST reject incomplete or malformed persistent recovery bundles even when
+the runtime lock has disappeared. This does not promise atomic multi-file
+publication across power loss; disabled timers prevent the canonical automatic
+trigger while recovery remains pending.
+
+#### Scenario: Active timer or overlapping configuration
+
+- **WHEN** a timer/service is active, a unit job is pending, or another invocation
+  owns the lock
+- **THEN** configuration fails before replacing live files, does not stop the
+  other work, and does not remove the existing lock or prior configuration.
+
+### Requirement: REQ-OBS-OFFSITE-PROOF — Configuration is not recovery evidence
+
+A successful configuration command MUST NOT be reported as an uploaded backup
+or successful recovery. Actual offsite acceptance MUST separately verify an
+initial copy and an isolated restore from the configured remote without local
+fallback, with no retention pruning or restore into live configuration paths.
+
+#### Scenario: Remote configuration exists without an initial copy
+
+- **WHEN** configuration has completed but the destination has no verified copy
+- **THEN** offsite and recovery acceptance remain pending, regardless of timer
+  state or configuration success.
+
 ### Requirement: REQ-OBS-XHTTP — Fullstack onboarding uses compatible runtimes
 
 Required REALITY and Hysteria2 profiles MUST use the official pinned sing-box

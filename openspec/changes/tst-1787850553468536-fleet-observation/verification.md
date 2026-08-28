@@ -3,7 +3,7 @@ task_id: TST-1787850553468536
 change: tst-1787850553468536-fleet-observation
 commit_sha: null
 local: passed
-local_evidence: "Final serialized build-gate -- mise exec -- make ci-fast exited 0: 1429 Python tests passed, 1 existing network skip, 55 BATS passed, Terraform mocks and policy tests passed, real pinned sentinel parsers passed, Rust release clippy and tests passed. make validate and final staged gitleaks passed."
+local_evidence: "Final configuration candidate based on main 7da8b74: serialized build-gate -- make check exited 0. Python: 1524 passed, 1 skipped in 486.86 seconds. Bats: 55 passed. Rust: 169 release tests and strict release Clippy passed. Task/OpenSpec, four-provider Terraform validation/mocks, Conftest policy, cloud-init schema, production Ansible lint/syntax, gitleaks, render/snapshots, secret/bundle schemas and real pinned liveness parsers passed."
 remote_ci: required
 remote_ci_evidence: null
 dry_run: required
@@ -28,6 +28,9 @@ artifact_evidence: null
 | REQ-OBS-SSH | TST-1787850885266502 | Same suite: isolated SSH options, identity/port pins, explicit subset and malformed inventory rejection | Local regression passed; no new host-key trust |
 | REQ-OBS-EVIDENCE | TST-1787850885266502 | Same suite: no-follow/FIFO/size guards, stale/future markers, malformed manifest and redacted projection | Local regression passed; unknown remains unknown |
 | REQ-OBS-RESTORE | TST-1787851685101244 | `test_backup_restore_drill_contract.py`: 22 tests, including existing target/symlink preservation, cleanup and atomic marker failures | Local regression passed; no new restore or offsite proof |
+| REQ-OBS-BACKUP-CONFIG | TST-1787916690652478 | 79 configuration/integrity cases; real restic 0.16.4/0.18.0 config decryption, private intake, literal Make data, exact target and Ansible debug-redaction regressions | Local positive path passed; exact-source Linux systemd/package validation pending |
+| REQ-OBS-BACKUP-QUIESCENCE | TST-1787916690652478 | Filesystem idempotence, disabled/inactive/no-job checks, exclusive lock, persistent recovery, each publication and postcheck rollback, incomplete rollback retention | Local failure-path regressions passed; Linux unit non-execution validation pending |
+| REQ-OBS-OFFSITE-PROOF | TST-1787916691156561 | Approved initial copy followed by actual remote-only isolated restore | Pending production-owner execution; configuration tests are not remote proof |
 | REQ-OBS-PATH | TST-1787850896670736 | Sentinel and matrix tests use real loopback HTTPS with curlrc/proxy/NO_PROXY poisoning | Local loopback passed; not external VPN traffic |
 | REQ-OBS-XHTTP | TST-1787850897343789 | `check-liveness-profile-compatibility.py`: canonical emitters and real sing-box 1.13.16 / Xray 26.3.27 parsers passed; materializer suite 54 passed | Local parser evidence; no external traffic claim |
 | REQ-OBS-IDENTITY | TST-1787850897969705 | Installer/materializer regressions: explicit host/instance, key derivation match, revoked client and other-client exclusion, one private decryption | Local regression passed; no real client installation |
@@ -37,6 +40,9 @@ artifact_evidence: null
 
 ## Evidence boundaries
 
+- The final local gate includes controller environment/inventory isolation and
+  the exact production Ansible variable loader. Exact-SHA hosted CI and Linux
+  Molecule remain required; the local gate does not establish host acceptance.
 - Implementation and local regression evidence are present. Exact-source hosted
   CI, deployment and traffic acceptance remain separate evidence categories.
 - Real-vantage prerequisites: reachable approved sentinel, pinned clients, and
@@ -58,6 +64,11 @@ artifact_evidence: null
   redacted report to exact source. Unit fixtures cannot stand in for that proof.
 - Offsite destination is not configured. Existing local restore results, if
   obtained separately, do not close the offsite-backup requirement.
+- The local backup Molecule attempt failed in unchanged seed-copy tasks before
+  role convergence: the pinned amd64 guest Python segfaulted on arm64 Colima.
+  Automatic destroy passed. The new Linux configuration phase did not execute;
+  hosted Linux Molecule must supply that evidence. No production configuration,
+  initial offsite copy, or remote restore was performed by this source change.
 
 ## Independent review
 
@@ -65,6 +76,8 @@ artifact_evidence: null
   Confirmed findings were reproduced before fixes: unreadable oversized rollback
   state, nested deadline mismatch, failed-command version banners, premature
   network evidence, and partially created namespace cleanup.
-- Final targeted reviews found no additional blocking issue. The final full
-  local source gate passed; exact-SHA hosted CI remains required. Local tests
-  are not a substitute for external acceptance.
+- Final targeted reviews found no additional blocking issue. The configuration
+  delta additionally fixed debug-before-Ansible ordering and verified real
+  local repository decryption before any target configuration write. Its full
+  local gate passed; exact-SHA hosted CI remains required. Local tests are not
+  a substitute for external acceptance.

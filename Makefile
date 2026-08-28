@@ -31,7 +31,7 @@ INSPECT_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini
 INSPECT_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
 export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 
-.PHONY: help init validate plan apply inventory wait decrypt require-inventory require-clean-source validate-ansible-extra-vars dry-run deploy deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
+.PHONY: help init validate plan apply inventory wait decrypt require-inventory require-clean-source validate-ansible-extra-vars dry-run deploy backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
         pre-deploy-check \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
@@ -86,6 +86,7 @@ help:
 	@echo "  inventory                  Render Ansible inventory from TF outputs"
 	@echo "  wait                       Wait for cloud-init to finish"
 	@echo "  pre-deploy-check           spot-check-secrets + check-certs (auto for deploy/verify; SKIP_PRECHECK=1 to bypass)"
+	@echo "  backup-configure          Configure one exact ANSIBLE_LIMIT during an exclusive stopped-backup window; never runs backups or timers"
 	@echo "  dry-run                    ansible-playbook --check --diff"
 	@echo "  deploy                     ansible-playbook site.yml (optional ANSIBLE_LIMIT / ANSIBLE_EXTRA_VARS_FILE)"
 	@echo "  deploy-canary              Deploy ENV=canary through the normal deploy flow"
@@ -255,6 +256,25 @@ deploy: require-clean-source require-inventory validate-ansible-extra-vars pre-d
 	@ENV=$(ENV) PROVIDER=$(PROVIDER) ./scripts/audit-log.sh append-best-effort \
 	  --action site-deploy \
 	  --note "playbook=site.yml warp_outbound_role=conditional"
+
+# Capture caller data as simple variables before implicit environment export can
+# expand Make functions. Repository-defined default paths still resolve normally.
+ifneq ($(filter backup-configure,$(MAKECMDGOALS)),)
+ifneq ($(MAKECMDGOALS),backup-configure)
+$(error backup-configure must be invoked as the only Make goal)
+endif
+override ANSIBLE_LIMIT := $(value ANSIBLE_LIMIT)
+override SECRETS_FILE := $(if $(filter file default undefined,$(origin SECRETS_FILE)),$(SECRETS_FILE),$(value SECRETS_FILE))
+override ANSIBLE_EXTRA_VARS_FILE := $(if $(filter file default undefined,$(origin ANSIBLE_EXTRA_VARS_FILE)),$(ANSIBLE_EXTRA_VARS_FILE),$(value ANSIBLE_EXTRA_VARS_FILE))
+override DEPLOY_SOURCE_REVISION :=
+override DEPLOYABLE_SOURCE_DIGEST :=
+endif
+backup-configure: export BACKUP_CONFIGURE_INVENTORY = $(ANSIBLE_DIR)/inventory/generated.ini
+backup-configure: export BACKUP_CONFIGURE_HOST = $(ANSIBLE_LIMIT)
+backup-configure: export BACKUP_CONFIGURE_SECRETS_FILE = $(SECRETS_FILE)
+backup-configure: export BACKUP_CONFIGURE_EXTRA_VARS_FILE = $(ANSIBLE_EXTRA_VARS_FILE)
+backup-configure:
+	@python3 scripts/backup-configure.py controller
 
 deploy-canary: export CANARY_SECRETS_FILE = $(SECRETS_FILE)
 deploy-canary: export CANARY_SOPS_FILE = $(SOPS_FILE)
