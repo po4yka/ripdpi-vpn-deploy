@@ -34,7 +34,11 @@ external sentinels. Local service state never substitutes for client traffic.
 - Backup freshness, local versus remote source, and actual restore success are
   reported separately. Missing evidence remains unknown, not healthy.
 - Restore cleanup never deletes a pre-existing target and preserves previous
-  success evidence on failure; no retention or remote-backend changes.
+  success evidence on failure; no retention changes.
+- A canonical configuration-only backup command installs the existing rclone
+  dependency and remote configuration during an exclusive disabled-timer window,
+  without backup/prune/restore, service actions, or full-site convergence.
+  Actual first copy and remote isolated restore remain separate live evidence.
 - Existing tests are extended tests-first; runtime parser checks, independent
   review, and a real external probe are required. Fixtures alone do not close work.
 
@@ -47,6 +51,10 @@ external sentinels. Local service state never substitutes for client traffic.
   acceptance, Rust schema migration, or offsite provider selection is included.
 - The existing backup restore runner may be exercised separately within its
   isolated runtime directory; no backup prune or restore into live paths.
+- The bounded backup configuration delta owns the backup role configuration
+  slice, dedicated playbook, Make target, existing backup tests and docs in
+  `codex/backup-configure-20260828`. Inventory-worker files remain untouched;
+  shared Makefile edits are serialized. This slice has source-only authority.
 
 ## Implementation delivery
 

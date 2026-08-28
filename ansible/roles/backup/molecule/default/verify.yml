@@ -152,3 +152,95 @@
       ansible.builtin.command:
         cmd: systemd-analyze verify /etc/systemd/system/vpn-backup.service
       changed_when: false
+
+    - name: Exercise configuration-only positive path with real stopped systemd units
+      when: backup.remote.enabled | bool
+      vars:
+        vpn:
+          enable_xray_reality: true
+          enable_nginx_xhttp: false
+          enable_hysteria: false
+          enable_amneziawg: false
+      block:
+        - name: Stop backup automatic triggers for the exclusive test window
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            state: stopped
+          loop:
+            - vpn-backup.timer
+            - vpn-backup-restore-drill.timer
+            - vpn-backup.service
+            - vpn-backup-restore-drill.service
+
+        - name: Persistently disable fixture timers before configuration
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            enabled: false
+          loop:
+            - vpn-backup.timer
+            - vpn-backup-restore-drill.timer
+
+        - name: Clear the intentionally failed prior restore fixture
+          ansible.builtin.command:
+            argv: [systemctl, reset-failed, vpn-backup-restore-drill.service]
+          changed_when: false
+
+        - name: Record service execution timestamps before configuration
+          ansible.builtin.command:
+            argv:
+              - systemctl
+              - show
+              - --property=Id,ExecMainStartTimestampMonotonic,ActiveState,SubState
+              - vpn-backup.service
+              - vpn-backup-restore-drill.service
+              - vpn-backup.timer
+              - vpn-backup-restore-drill.timer
+          register: backup_configuration_before
+          changed_when: false
+
+        - name: Remove rclone to exercise the real dependency installation
+          ansible.builtin.apt:
+            name: rclone
+            state: absent
+
+        - name: Configure remote backup without the role lifecycle
+          ansible.builtin.include_role:
+            name: backup
+            tasks_from: configure-only
+
+        - name: Verify rclone was installed by the configuration intent
+          ansible.builtin.command:
+            argv: [rclone, version]
+          changed_when: false
+
+        - name: Configure the same files again to prove idempotent publication
+          ansible.builtin.include_role:
+            name: backup
+            tasks_from: configure-only
+
+        - name: Require the second publication to be unchanged
+          ansible.builtin.assert:
+            that: not ((_backup_publication.stdout | from_json).changed | bool)
+
+        - name: Record service execution timestamps after configuration
+          ansible.builtin.command:
+            argv:
+              - systemctl
+              - show
+              - --property=Id,ExecMainStartTimestampMonotonic,ActiveState,SubState
+              - vpn-backup.service
+              - vpn-backup-restore-drill.service
+              - vpn-backup.timer
+              - vpn-backup-restore-drill.timer
+          register: backup_configuration_after
+          changed_when: false
+
+        - name: Configuration never ran a backup or restore and left timers stopped
+          ansible.builtin.assert:
+            that: backup_configuration_before.stdout == backup_configuration_after.stdout
+
+        - name: Verify owned staging secrets were removed
+          ansible.builtin.stat:
+            path: /run/vpn-backup-configure.lock
+          register: backup_configuration_lock
+          failed_when: backup_configuration_lock.stat.exists

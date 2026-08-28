@@ -234,6 +234,7 @@ make rotate-credentials
 # Operations
 make destroy                              # safe, double-confirmation destroy
 make backup-state                         # age-encrypt local TF state
+make backup-configure ANSIBLE_LIMIT=node   # offsite configuration only; requires stopped backup timers/services
 make burn-check                           # external IP reachability probe
 make diff-secrets                         # drift detection
 make decrypt                             # materialize the private runtime secrets file

@@ -6,6 +6,14 @@
 rclone mirrors its opaque contents to the configured offsite backend. The
 restic password remains separate from the SOPS/age recovery key.
 
+**Configuration is a separate intent** — `make backup-configure` selects one
+exact host and shares configuration rendering with the normal role, but never
+imports repository initialization, password writes, units, or timer handlers.
+Only the existing rclone package may be installed. A disabled-timer/inactive-service
+window belongs to the operator; the command never creates or releases that window.
+The controller isolates inventory/plugins and loads tracked AWG defaults as data,
+then all/vpn/cohort vars and SOPS. External host_vars are outside this intent.
+
 **Server only backs up its own state** — `/etc/xray`, `/etc/nginx`,
 `/var/lib/<service>/` configs and small data. Not logs (`monitoring` has
 retention).
@@ -32,6 +40,15 @@ retention).
 - **restic forget policy is destructive** — keep at least 7 daily + 4 weekly.
   Bumping the policy down between deploys silently aged-out older snapshots.
 - **Remote store credentials live in SOPS** — never in env on the server.
+- **Three-file publication must roll back together** — candidate rclone config
+  and both scripts are staged before publication. A publication/postcheck failure
+  restores prior bytes, modes, and absence. Incomplete rollback retains the private
+  recovery bundle and lock; do not resume timers until the owner repairs it.
+  Persistent pending bundles block the next invocation even if reboot erased
+  the runtime lock; this is not multi-file power-loss atomicity.
+- **The configuration lock does not stop root** — it serializes this entrypoint,
+  not manual scripts or full deploys. Keep the owner-exclusive window throughout.
+  A configuration result is not remote-copy, restore, or whole-site parity proof.
 - **Restore drills run as root but never target live paths** — the service
   needs the root-only password and restored files, so runtime cleanup must
   complete before the success marker is replaced. Claim the target with atomic

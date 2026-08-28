@@ -1,0 +1,57 @@
+---
+- name: Configure offsite backup during an exclusive stopped-timer window
+  hosts: vpn
+  become: true
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  vars:
+    vpn_secrets_file: >-
+      {{ lookup('env', 'VPN_SECRETS_FILE')
+         | default(playbook_dir ~ '/../../secrets/prod.secrets.example.yaml', true) }}
+  pre_tasks:
+    - name: Require the canonical single-host configuration entrypoint
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'BACKUP_CONFIGURE_HOST') | length > 0
+          - inventory_hostname == lookup('env', 'BACKUP_CONFIGURE_HOST')
+          - ansible_play_hosts_all | length == 1
+          - lookup('env', 'DEPLOY_SOURCE_REVISION') is match('^[0-9a-f]{40}$')
+          - lookup('env', 'DEPLOYABLE_SOURCE_DIGEST') is match('^[0-9a-f]{64}$')
+          - lookup('env', 'VPN_SECRETS_FILE') | length > 0
+          - lookup('env', 'BACKUP_CONFIGURATION_VARS_FILES') | length > 0
+        fail_msg: Run make backup-configure with one exact ANSIBLE_LIMIT and canonical secrets.
+
+    - name: Load only the approved canonical variables in precedence order
+      ansible.builtin.include_vars:
+        file: "{{ item }}"
+        hash_behaviour: replace
+      loop: "{{ (lookup('env', 'BACKUP_CONFIGURATION_VARS_FILES') | from_json) + [vpn_secrets_file] }}"
+      no_log: true
+
+    - name: Require the canonical backup configuration
+      ansible.builtin.assert:
+        that:
+          - vpn.enable_backup | default(false) | bool
+          - restic_repo_dir == '/var/backups/vpn-restic'
+      no_log: true
+
+    - name: Require complete offsite configuration
+      ansible.builtin.assert:
+        that:
+          - backup.remote.enabled | default(false) | bool
+          - backup.remote.rclone_config | default('') | length > 0
+          - backup.remote.rclone_remote | default('') | length > 0
+          - backup.remote.rclone_path | default('') | length > 0
+      no_log: true
+
+    - name: Reject check mode because this transaction requires actual quiescence and staging
+      ansible.builtin.assert:
+        that: not ansible_check_mode
+        fail_msg: Use local rendering tests; this configuration transaction does not implement check mode.
+
+  tasks:
+    - name: Run the configuration-only backup transaction
+      ansible.builtin.include_role:
+        name: backup
+        tasks_from: configure-only
