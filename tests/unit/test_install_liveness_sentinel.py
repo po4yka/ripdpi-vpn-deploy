@@ -7,7 +7,9 @@ import io
 import json
 import os
 from pathlib import Path
+import stat
 import sys
+import tempfile
 
 import pytest
 import yaml
@@ -20,6 +22,23 @@ def load(path, name):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.fixture
+def receiver_root():
+    # Production refuses writable ancestors, including sticky /tmp. Keep the
+    # real receiver checks intact by placing its fixture beneath a safe home.
+    parent = Path.home()
+    assert parent.is_absolute(), "receiver fixture requires an absolute home"
+    for ancestor in (parent, *parent.parents):
+        info = ancestor.lstat()
+        assert (stat.S_ISDIR(info.st_mode) and info.st_uid in (0, os.geteuid())
+                and not info.st_mode & 0o022), "receiver fixture requires owner-controlled ancestors"
+    with tempfile.TemporaryDirectory(prefix=".vpn-liveness-receiver-", dir=parent) as directory:
+        path = Path(directory)
+        info = path.lstat()
+        assert info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o700
+        yield path / "root"
 
 
 @pytest.fixture
@@ -345,11 +364,11 @@ def receiver_run(module, root, bundle, monkeypatch, *, code=None, engine_result=
     return calls
 
 
-def test_receiver_atomically_stages_private_candidate_and_reuses_identical_bytes(setup, tmp_path, monkeypatch):
+def test_receiver_atomically_stages_private_candidate_and_reuses_identical_bytes(setup, receiver_root, monkeypatch):
     s = setup
     s["install"]()
     bundle = s["bundles"][0]
-    root = tmp_path / "receiver" / "root"
+    root = receiver_root
     calls = receiver_run(s["module"], root, bundle, monkeypatch)
     stage = root / "staging" / bundle["generation_id"]
     for name, encoded in bundle["files"].items():
@@ -374,11 +393,11 @@ def test_receipt_deadline_outlives_maximum_probe_and_root_job(monkeypatch):
 
 
 @pytest.mark.parametrize("fault", ["path-traversal", "stage-symlink", "profile-symlink", "changed-profile", "changed-engine", "root-world-writable"])
-def test_receiver_rejects_unsafe_or_conflicting_staging_without_overwriting(setup, tmp_path, monkeypatch, fault):
+def test_receiver_rejects_unsafe_or_conflicting_staging_without_overwriting(setup, receiver_root, monkeypatch, fault):
     s = setup
     s["install"]()
     bundle = s["bundles"][0]
-    root = tmp_path / "receiver" / "root"
+    root = receiver_root
     receiver_run(s["module"], root, bundle, monkeypatch)
     stage = root / "staging" / bundle["generation_id"]
     original = (stage / "runner.py").read_bytes()
@@ -451,11 +470,11 @@ def test_pending_state_cannot_trigger_new_activation(setup, state):
 
 
 @pytest.mark.parametrize("code,state", [(3, "uncommitted"), (75, "running"), (1, "refused")])
-def test_remote_receipt_distinguishes_retryable_busy_and_corrupt(setup, tmp_path, monkeypatch, capsys, code, state):
+def test_remote_receipt_distinguishes_retryable_busy_and_corrupt(setup, receiver_root, monkeypatch, capsys, code, state):
     s = setup
     s["install"]()
     bundle = s["bundles"][0]
-    root = tmp_path / "receiver" / "root"
+    root = receiver_root
     receiver_run(s["module"], root, bundle, monkeypatch)
     capsys.readouterr()
     receiver_run(s["module"], root, bundle, monkeypatch, code=s["module"].REMOTE_RECEIPT, engine_result=code)
@@ -463,25 +482,25 @@ def test_remote_receipt_distinguishes_retryable_busy_and_corrupt(setup, tmp_path
 
 
 @pytest.mark.parametrize("existing", ["pending.json", "current", "receipts"])
-def test_missing_engine_with_existing_transaction_state_refuses(setup, tmp_path, monkeypatch, existing):
+def test_missing_engine_with_existing_transaction_state_refuses(setup, receiver_root, monkeypatch, existing):
     s = setup
     s["install"]()
     bundle = s["bundles"][0]
-    root = tmp_path / "receiver" / "root"
+    root = receiver_root
     root.mkdir(parents=True, mode=0o700)
     if existing == "receipts":
         (root / existing).mkdir(mode=0o700)
         (root / existing / "evidence.json").write_text("{}")
     else:
         (root / existing).write_text("private transaction fixture")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="unresolved-state-without-engine"):
         receiver_run(s["module"], root, bundle, monkeypatch, code=s["module"].REMOTE_RECEIPT)
 
 
-def test_missing_job_engine_can_query_safe_fixed_installed_engine(setup, tmp_path, monkeypatch, capsys):
+def test_missing_job_engine_can_query_safe_fixed_installed_engine(setup, receiver_root, monkeypatch, capsys):
     s = setup
     s["install"]()
-    root = tmp_path / "receiver" / "root"
+    root = receiver_root
     root.mkdir(parents=True, mode=0o700)
     (root.parent / "installed-engine.py").write_bytes(b"# installed engine fixture\n")
     (root.parent / "installed-engine.py").chmod(0o644)
@@ -499,10 +518,10 @@ def test_awg_runtime_url_contract_is_checked_before_any_ssh(setup, url):
 
 
 @pytest.mark.parametrize("filename", ["awg.conf", "engine.py"])
-def test_receiver_failed_copy_removes_only_owned_temporary_and_retry_works(setup, tmp_path, monkeypatch, filename):
+def test_receiver_failed_copy_removes_only_owned_temporary_and_retry_works(setup, receiver_root, monkeypatch, filename):
     s = setup
     s["install"]()
-    root = tmp_path / "receiver" / "root"
+    root = receiver_root
     bundle = s["bundles"][0]
     original_open = os.open
     def failed_open(path, flags, *args, **kwargs):
