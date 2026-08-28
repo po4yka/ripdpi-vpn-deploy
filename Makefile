@@ -361,6 +361,31 @@ clean:
 check-ci-deploy-gate:
 	python3 scripts/check-ci-deploy-gate.py
 
+# This goal treats caller fields as literal data, not make/shell programs.
+ifneq ($(filter install-ssh-recovery,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error install-ssh-recovery requires exactly one goal)
+endif
+# Source identity is derived only inside the sanitized controller environment.
+override DEPLOY_SOURCE_REVISION :=
+override DEPLOYABLE_SOURCE_DIGEST :=
+override ANSIBLE_DEBUG := $(value ANSIBLE_DEBUG)
+export ANSIBLE_DEBUG
+override SSH_RECOVERY_TARGET := $(value ANSIBLE_LIMIT)
+override SSH_RECOVERY_WINDOW := $(value SSH_RECOVERY_EXCLUSIVE_WINDOW)
+override SSH_RECOVERY_INVENTORY := $(value SSH_RECOVERY_INVENTORY)
+override SSH_RECOVERY_KNOWN_HOSTS := $(value SSH_RECOVERY_KNOWN_HOSTS)
+unexport ANSIBLE_LIMIT SSH_RECOVERY_EXCLUSIVE_WINDOW
+unexport MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+export SSH_RECOVERY_TARGET SSH_RECOVERY_WINDOW SSH_RECOVERY_INVENTORY SSH_RECOVERY_KNOWN_HOSTS
+endif
+
+.PHONY: install-ssh-recovery
+# The controller checks debug, exact inventory and clean source before Ansible.
+install-ssh-recovery:
+	@python3 ./scripts/install-sshd-recovery.py
+
 rollback-xray:
 	@test -n "$(ROLLBACK_XRAY_VERSION)" || { echo "ROLLBACK_XRAY_VERSION required"; exit 1; }
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
