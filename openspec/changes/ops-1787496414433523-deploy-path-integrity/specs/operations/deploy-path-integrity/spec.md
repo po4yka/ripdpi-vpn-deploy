@@ -15,12 +15,33 @@ Secrets-presence assertion, tier guards, listener-contract, and collision pre_ta
 
 ### Requirement: REQ-BOOTSTRAP-GATED-DEPLOY — Convergence MUST NOT start before bootstrap completes
 
-Deploy and dry-run entry points MUST wait for cloud-init completion on every target host before running Ansible.
+Deploy and dry-run entry points MUST wait for successful cloud-init completion and the bootstrap marker on every selected canonical inventory host before running Ansible. Selection MUST use one private immutable inventory snapshot: empty means all vpn hosts; exact aliases, canonical cohort groups and comma unions are supported. Unknown or ambiguous names, empty results and complex Ansible patterns MUST fail before SSH. HOSTS and Terraform outputs MUST NOT widen or redirect this selection.
+
+Every local input, key, known-host file and selected transport MUST be validated before the first SSH operation. Approved host/port overrides MUST apply before readiness. The unchanged strict SSH builder's host identity and frozen transport records MUST govern readiness, convergence and the subsequent source-drift check. A changed or dirty source after waiting MUST prevent mutating convergence. Existing prechecks, check/diff behavior, tag guards and best-effort audit ordering MUST remain effective.
+
+Canonical variable loading MUST preserve per-host cohort membership, runtime metadata and Ansible types/templating/precedence before secrets and approved overrides. Ambient Ansible configuration, host/group variable files, plugins, callbacks, collection paths or Git routing MUST NOT alter the selected authority. Protected transport variables MUST NOT redirect controller-local delegated tasks.
+
+Unsupported plugin discovery directories at playbook/role bases, symlinked role paths and playbook-relative shadow roles MUST be rejected before SSH, including during a dirty-source dry-run. Canonical roles and the explicitly configured trusted collection installation remain available.
 
 #### Scenario: apply followed immediately by deploy
 
 - **WHEN** `make apply && make deploy` runs against fresh nodes
 - **THEN** converge begins only after each node publishes its bootstrap marker
+
+#### Scenario: bounded cohort deployment with an approved transport override
+
+- **WHEN** a cohort limit and approved address/port override select a subset of a multi-host inventory
+- **THEN** readiness and Ansible use the same selected host identities and effective transports, preserve each host's canonical cohort variables, and never contact unselected hosts
+
+#### Scenario: inventory or source changes during readiness
+
+- **WHEN** the original inventory changes after selection or source becomes dirty during a bootstrap wait
+- **THEN** the inventory change cannot affect convergence or source-drift targets, and dirty source prevents mutating convergence
+
+#### Scenario: ambient Ansible authority or a local-input failure
+
+- **WHEN** an ambient host_vars/plugin/environment override is present or any selected key/input is invalid
+- **THEN** ambient authority is excluded, invalid inputs fail before the first SSH operation, and controller-local delegated guards remain local
 
 ### Requirement: REQ-BOUNDED-WAIT — The bootstrap wait MUST be bounded and diagnose error state
 

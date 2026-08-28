@@ -58,3 +58,8 @@ The operator deploy path enforces its own guarantees on every invocation shape: 
 
 - The bounded-wait agent owns only `scripts/wait-cloud-init.sh`, its existing `tests/unit/test_render_inventory.py` coverage, brief `scripts/CLAUDE.md` guidance, and evidence for `OPS-1787496118906208` in `codex/high-bootstrap-wait-20260828`.
 - This slice preserves Terraform output routing and SSH identity, port, and trust policy. Make deploy integration, transport migration, backup configuration, shared board/count updates, and live acceptance remain with their existing owners. The overall task remains blocked.
+
+## Inventory-bound readiness ownership — 2026-08-28
+
+- The readiness agent owns `scripts/deploy-controller.py`, shared `scripts/bootstrap_readiness.py`, the narrow `scripts/wait-cloud-init.sh` adapter, deploy/dry-run Make dispatch and matching literal inputs, focused controller/Make/wait tests, and relevant runbook/scripts guidance on `codex/high-deploy-readiness-20260828` from `7b6622c6b6e34f4b89e0336f5a2aff264b85175f`.
+- Step `OPS-1787496118906556` uses one private canonical-inventory selection for readiness, convergence and source parity. `fleet_inspection.py` APIs, backup configuration, SSH migration, provider/host operations and other agents' worktrees are outside this ownership. Shared integration, broad gates, board/count changes and live acceptance remain serialized by the primary agent; this task is not closed by local fixtures.

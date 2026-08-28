@@ -89,7 +89,10 @@ def test_make_deploy_records_and_verifies_clean_head() -> None:
     assert "DEPLOYABLE_SOURCE_DIGEST" in makefile
     assert "require-clean-source" in makefile
     assert "source-drift" in makefile
-    assert "deploy: require-clean-source" in makefile
+    assert "deploy:\n\t@python3 scripts/deploy-controller.py deploy" in makefile
+    controller = (REPO_ROOT / "scripts/deploy-controller.py").read_text()
+    assert controller.count('require_clean=mode == "deploy"') == 2
+    assert 'playbooks["source-drift"]' in controller
     assert "verify: require-clean-source" in makefile
 
 

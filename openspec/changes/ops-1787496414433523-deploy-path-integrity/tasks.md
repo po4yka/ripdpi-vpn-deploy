@@ -12,7 +12,7 @@ The canonical deploy path enforces its own guarantees on every invocation shape:
 ## Execution
 
 - [x] OPS-1787496118906514 Add tags: [always] to the secrets assert, role-tiers include_vars, research-tier guard, exception-tier guard, and listener-contract pre_tasks in site.yml #bug !high @item:OPS-1787496414433523
-- [ ] OPS-1787496118906556 Make deploy and dry-run depend on a bootstrap-readiness target that runs scripts/wait-cloud-init.sh per HOSTS pair before converge #bug !high @item:OPS-1787496414433523
+- [x] OPS-1787496118906556 Gate deploy and dry-run through one immutable canonical-inventory selection and strict transport for bounded bootstrap readiness, convergence and source parity #bug !high @item:OPS-1787496414433523
 - [x] OPS-1787496118906208 Bound the remote cloud-init wait phase with a retry loop symmetric to the SSH phase and distinguish cloud-init error state from missing marker in the failure message #bug !high @item:OPS-1787496414433523
 - [x] OPS-1787496118906369 Validate each COHORTS slug against the known group_vars/vpn-*.yml set during inventory rendering, failing loudly on unknown values #bug !high @item:OPS-1787496414433523
 - [x] OPS-1787496118906156 Reject an empty SSH allowlist at plan time: add a Terraform validation block requiring at least one CIDR and a matching site.yml assert mirroring the listener-contract guards #bug !high @item:OPS-1787496414433523
