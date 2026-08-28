@@ -31,3 +31,8 @@ Seven verification-honesty findings share a mechanism: gates assert less than de
 - Forward: single commit per concern; no production state changes.
 - Rollback: revert commits independently.
 - Gates: touched molecule scenarios, live-inventory verify cycle, `make ci-fast`, `make validate`.
+
+## Smoke host-class slice — 2026-08-28
+
+- A single outer smoke transport block gates protocol credentials, local facts, resource preflight/claim, clients and cleanup on `not vpn_subscription_only` plus an enabled supported transport. Subscription-only and all-disabled hosts require no transport credentials and perform no smoke-client or workdir operation; the existing secrets-file entrypoint requirement remains.
+- Protocol-local assertions and client selection execute only for that protocol. Existing ports, enable defaults and client credential formats remain unchanged. Local tests run the real source task graph with no transport credentials for subscription-only hosts and assert zero temporary-executable calls and no workdir.

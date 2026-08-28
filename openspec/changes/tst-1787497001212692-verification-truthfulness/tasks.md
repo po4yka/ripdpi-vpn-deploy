@@ -12,7 +12,7 @@ Verification passes exactly when deployed state matches intent: subscription-onl
 ## Execution
 
 - [ ] TST-1787496118906453 Add not vpn_subscription_only gating to the six unguarded transport assertion groups in verify.yml, mirroring sibling conditions #bug !high @item:TST-1787497001212692
-- [ ] TST-1787496118906712 Gate all transport blocks in smoke-test.yml for subscription-only hosts #bug !high @item:TST-1787497001212692
+- [x] TST-1787496118906712 Gate all transport blocks in smoke-test.yml for subscription-only hosts #bug !high @item:TST-1787497001212692
 - [x] TST-1787496118906639 Extend the source-drift parity assert with deployed_source_manifest.source_revision == expected_source_revision #bug !high @item:TST-1787497001212692
 - [x] TST-1787496118906882 Parameterize the verify.yml Hysteria check with hysteria_port | default(443) and add conditional TCP listener assertions for xray_fallback_port and nginx_xhttp_fallback_port when fallback_enabled #bug !high @item:TST-1787497001212692
 - [ ] TST-1787496118906321 Append an idempotence phase to full-stack and full-stack-published test sequences and make them pass (fix any revealed non-idempotent tasks) #bug !high @item:TST-1787497001212692

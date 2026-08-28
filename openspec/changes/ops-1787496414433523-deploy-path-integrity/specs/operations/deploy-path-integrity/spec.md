@@ -78,12 +78,12 @@ Rollback MUST validate the target release binary against the current configurati
 
 ### Requirement: REQ-SMOKE-CLEANUP — Failed probes MUST reclaim transient resources
 
-Smoke-test protocol blocks MUST stop transient services and remove their workdir on every exit path including failures.
+For a reachable host and a continuing controller, smoke-test protocol blocks MUST attempt to stop their own transient services and remove their own workdir on success and failure. Cleanup errors MUST fail the invocation without concealing the original probe failure. An unconfirmed start or stop MUST retain the private workdir claim and configs, require manual recovery, and refuse a subsequent canonical invocation without touching the prior resources. Removal is allowed only before any start or after confirmed client cleanup. An invocation MUST use fresh per-run unit names and atomically claim its workdir before creating clients; a failed claim MUST NOT clean up another invocation. Only an observed successful start authorizes stopping that unit; a failed start, including a foreign-name collision, MUST NOT authorize a stop. Bounded transient runtime limits service lifetime after disconnect, but does not prove workdir cleanup. Before each start, every corresponding smoke listener port MUST be vacant while the claim is held. After listener readiness and after all protocol probes, the invocation MUST confirm its unique client unit is active; a foreign listener response MUST NOT turn observed client death into success. Every curl smoke probe MUST force its configured SOCKS proxy regardless of inherited NO_PROXY or no_proxy values; direct target access MUST NOT count as proxy success. This does not guarantee socket ownership against a concurrent privileged external actor.
 
 #### Scenario: wait_for timeout mid-smoke
 
 - **WHEN** a smoke-test stage times out
-- **THEN** no transient proxy unit remains running and the credential-bearing workdir is removed
+- **THEN** the run stops its confirmed owned client and removes its private workdir, or fails with the private claim retained when cleanup cannot be confirmed; the original probe failure remains visible
 
 ### Requirement: REQ-MAINTENANCE-SERVICE-GATE — Maintenance verification MUST depend only on repo-managed services
 

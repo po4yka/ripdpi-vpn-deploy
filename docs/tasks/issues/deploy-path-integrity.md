@@ -48,3 +48,8 @@ The operator deploy path enforces its own guarantees on every invocation shape: 
 
 - The primary agent owns only `rollback-xray.yml`, the Xray portion of `rotate-credentials.yml`, the existing Xray/XHTTP regression module and matching runbook guidance in `codex/high-xray-restore-points-20260828`.
 - Steps `OPS-1787496118906340` and `OPS-1787496118906432` have local source-behavior proof; full/hosted checks and staging/live acceptance remain separate. No host rotation, binary rollback or restart was performed.
+
+## Bounded smoke implementation ownership — 2026-08-28
+
+- The smoke agent owns `ansible/playbooks/smoke-test.yml`, focused local Ansible smoke regression coverage, and the relevant existing planning/evidence for `OPS-1787496118906646` in `codex/high-smoke-cleanup-20260828`. The shared playbook implements cleanup and subscription-only gating together; the two portfolio records retain their separate acceptance boundaries.
+- Other playbooks, transport defaults/ports, Make, SSH, backup, production and other worktrees remain outside this slice. Source tests use temporary local executables; no host/provider operation or whole-task close is authorized here. The primary agent retains integration, generated board/counts and live acceptance.

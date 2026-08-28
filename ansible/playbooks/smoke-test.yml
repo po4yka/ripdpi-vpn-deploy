@@ -35,232 +35,367 @@
           VPN_SECRETS_FILE is not set. Run `make decrypt` or export the path
           to your decrypted secrets file before running this playbook.
 
-    - name: Pre-flight — required vars present
-      ansible.builtin.assert:
-        that:
-          - xray.clients | length > 0
-          - xray.reality_public_key is defined
-          - xray.server_names | length > 0
-        fail_msg: "secrets are missing client/REALITY data; cannot smoke-test"
+    - name: Smoke-test enabled transports with owned cleanup
+      when:
+        - not (vpn_subscription_only | default(false))
+        - >-
+          (vpn.enable_xray_reality | default(true)) or
+          (vpn.enable_hysteria | default(false)) or
+          (vpn.enable_snell | default(false))
+      block:
+        - name: Claim the smoke workdir without adopting existing resources
+          ansible.builtin.command:
+            argv: [mkdir, -m, "0700", /run/vpn-smoketest]
+          changed_when: true
 
-    - name: Set local test workdir
-      ansible.builtin.set_fact:
-        smoketest_dir: /run/vpn-smoketest
-        smoketest_client: "{{ xray.clients[0] }}"
-        smoketest_target: "https://www.google.com/generate_204"
-        smoketest_expected_code: 204
+        - name: Exercise owned smoke clients
+          block:
+            - name: Set local test workdir and unique unit suffix
+              ansible.builtin.set_fact:
+                smoketest_dir: /run/vpn-smoketest
+                smoketest_target: "https://www.google.com/generate_204"
+                smoketest_expected_code: 204
+                smoketest_cleanup_confirmed: true
+                smoketest_unit_suffix: "{{ lookup('password', '/dev/null', length=32, chars=['ascii_lowercase', 'digits']) }}"
+              no_log: true
 
-    - name: Create tmpfs workdir
-      ansible.builtin.file:
-        path: "{{ smoketest_dir }}"
-        state: directory
-        owner: root
-        group: root
-        mode: "0700"
+            - name: Smoke-test REALITY
+              when: vpn.enable_xray_reality | default(true)
+              block:
+                - name: Require REALITY smoke credentials
+                  ansible.builtin.assert:
+                    that:
+                      - xray.clients | length > 0
+                      - xray.reality_public_key is defined
+                      - xray.server_names | length > 0
+                    fail_msg: "secrets are missing client/REALITY data; cannot smoke-test"
+                  no_log: true
 
-    # ---------------------------------------------------------------
-    # P0 REALITY — Xray client dial
-    # ---------------------------------------------------------------
-    - name: Render Xray client config (REALITY)
-      when: vpn.enable_xray_reality | default(true)
-      ansible.builtin.copy:
-        dest: "{{ smoketest_dir }}/xray-client.json"
-        owner: root
-        group: root
-        mode: "0600"
-        content: |
-          {
-            "log": { "loglevel": "warning" },
-            "inbounds": [{
-              "tag": "smoke-socks",
-              "listen": "127.0.0.1",
-              "port": 31080,
-              "protocol": "socks",
-              "settings": { "auth": "noauth", "udp": true }
-            }],
-            "outbounds": [{
-              "tag": "smoke-reality",
-              "protocol": "vless",
-              "settings": {
-                "vnext": [{
-                  "address": "127.0.0.1",
-                  "port": 443,
-                  "users": [{
-                    "id": "{{ smoketest_client.uuid }}",
-                    "encryption": "none",
-                    "flow": "xtls-rprx-vision"
-                  }]
-                }]
-              },
-              "streamSettings": {
-                "network": "raw",
-                "security": "reality",
-                "realitySettings": {
-                  "fingerprint": "chrome",
-                  "serverName": "{{ xray.server_names[0] }}",
-                  "publicKey": "{{ xray.reality_public_key }}",
-                  "shortId": "{{ smoketest_client.short_id }}"
-                }
-              }
-            }]
-          }
-      no_log: true
-      diff: false
+                - name: Select REALITY smoke client
+                  ansible.builtin.set_fact:
+                    smoketest_client: "{{ xray.clients[0] }}"
+                  no_log: true
 
-    - name: Run Xray smoke client (REALITY) for 6 seconds
-      when: vpn.enable_xray_reality | default(true)
-      ansible.builtin.command:
-        cmd: |
-          systemd-run --quiet --no-block --collect
-            --unit=vpn-smoke-xray
-            --property=Type=simple
-            /usr/local/bin/xray run -config {{ smoketest_dir }}/xray-client.json
-      args:
-        creates: /run/systemd/transient/vpn-smoke-xray.service
-      changed_when: true
+                - name: Render Xray client config (REALITY)
+                  ansible.builtin.copy:
+                    dest: "{{ smoketest_dir }}/xray-client.json"
+                    owner: root
+                    group: root
+                    mode: "0600"
+                    content: |
+                      {
+                        "log": { "loglevel": "warning" },
+                        "inbounds": [{
+                          "tag": "smoke-socks",
+                          "listen": "127.0.0.1",
+                          "port": 31080,
+                          "protocol": "socks",
+                          "settings": { "auth": "noauth", "udp": true }
+                        }],
+                        "outbounds": [{
+                          "tag": "smoke-reality",
+                          "protocol": "vless",
+                          "settings": {
+                            "vnext": [{
+                              "address": "127.0.0.1",
+                              "port": 443,
+                              "users": [{
+                                "id": "{{ smoketest_client.uuid }}",
+                                "encryption": "none",
+                                "flow": "xtls-rprx-vision"
+                              }]
+                            }]
+                          },
+                          "streamSettings": {
+                            "network": "raw",
+                            "security": "reality",
+                            "realitySettings": {
+                              "fingerprint": "chrome",
+                              "serverName": "{{ xray.server_names[0] }}",
+                              "publicKey": "{{ xray.reality_public_key }}",
+                              "shortId": "{{ smoketest_client.short_id }}"
+                            }
+                          }
+                        }]
+                      }
+                  no_log: true
+                  diff: false
 
-    - name: Wait briefly for the smoke listener
-      when: vpn.enable_xray_reality | default(true)
-      ansible.builtin.wait_for:
-        host: 127.0.0.1
-        port: 31080
-        timeout: 10
+                - name: Require vacant REALITY smoke listener ports
+                  ansible.builtin.wait_for:
+                    host: 127.0.0.1
+                    port: 31080
+                    state: stopped
+                    timeout: 1
 
-    - name: Probe through REALITY proxy
-      when: vpn.enable_xray_reality | default(true)
-      ansible.builtin.command:
-        cmd: |
-          curl -sS -o /dev/null -w '%{http_code}'
-            --max-time 15
-            --proxy socks5h://127.0.0.1:31080
-            {{ smoketest_target }}
-      register: reality_probe
-      changed_when: false
-      failed_when: reality_probe.stdout | int != smoketest_expected_code
+                - name: Mark REALITY smoke ownership as uncertain before start
+                  ansible.builtin.set_fact:
+                    smoketest_cleanup_confirmed: false
 
-    - name: Stop REALITY smoke client
-      when: vpn.enable_xray_reality | default(true)
-      ansible.builtin.command:
-        cmd: systemctl stop vpn-smoke-xray.service
-      changed_when: true
-      failed_when: false
+                - name: Run Xray smoke client (REALITY)
+                  ansible.builtin.command:
+                    cmd: |
+                      systemd-run --quiet --no-block --collect
+                        --unit=vpn-smoke-xray-{{ smoketest_unit_suffix }}
+                        --property=Type=simple --property=RuntimeMaxSec=60
+                        /usr/local/bin/xray run -config {{ smoketest_dir }}/xray-client.json
+                  changed_when: true
+                  register: smoketest_start_xray
 
-    # ---------------------------------------------------------------
-    # P2 Hysteria2 — client dial
-    # ---------------------------------------------------------------
-    - name: Render Hysteria client config
-      when: vpn.enable_hysteria | default(false)
-      ansible.builtin.copy:
-        dest: "{{ smoketest_dir }}/hysteria-client.yaml"
-        owner: root
-        group: root
-        mode: "0600"
-        content: |
-          server: 127.0.0.1:{{ hysteria_port | default(443) }}
-          auth: "{{ hysteria.clients[0].name }}:{{ hysteria.clients[0].password }}"
-          tls:
-            sni: "{{ nginx_xhttp.server_name | default(xray.server_names[0]) }}"
-            insecure: true
-          socks5:
-            listen: 127.0.0.1:31081
-      no_log: true
-      diff: false
+                - name: Wait briefly for the smoke listener
+                  ansible.builtin.wait_for:
+                    host: 127.0.0.1
+                    port: 31080
+                    timeout: 10
 
-    - name: Run Hysteria smoke client
-      when: vpn.enable_hysteria | default(false)
-      ansible.builtin.command:
-        cmd: |
-          systemd-run --quiet --no-block --collect
-            --unit=vpn-smoke-hysteria
-            --property=Type=simple
-            /usr/local/bin/hysteria client -c {{ smoketest_dir }}/hysteria-client.yaml
-      args:
-        creates: /run/systemd/transient/vpn-smoke-hysteria.service
-      changed_when: true
+                - name: Confirm own REALITY smoke unit is active before probing
+                  ansible.builtin.command:
+                    cmd: systemctl is-active --quiet vpn-smoke-xray-{{ smoketest_unit_suffix }}.service
+                  changed_when: false
 
-    - name: Wait for Hysteria smoke listener
-      when: vpn.enable_hysteria | default(false)
-      ansible.builtin.wait_for:
-        host: 127.0.0.1
-        port: 31081
-        timeout: 10
+                - name: Probe through REALITY proxy
+                  ansible.builtin.command:
+                    cmd: |
+                      curl -sS -o /dev/null -w '%{http_code}'
+                        --max-time 15
+                        --noproxy '' --proxy socks5h://127.0.0.1:31080
+                        {{ smoketest_target }}
+                  register: reality_probe
+                  changed_when: false
+                  failed_when: reality_probe.stdout | int != smoketest_expected_code
 
-    - name: Probe through Hysteria proxy
-      when: vpn.enable_hysteria | default(false)
-      ansible.builtin.command:
-        cmd: |
-          curl -sS -o /dev/null -w '%{http_code}'
-            --max-time 15
-            --proxy socks5h://127.0.0.1:31081
-            {{ smoketest_target }}
-      register: hysteria_probe
-      changed_when: false
-      failed_when: hysteria_probe.stdout | int != smoketest_expected_code
+                - name: Confirm own REALITY smoke unit is active after probing
+                  ansible.builtin.command:
+                    cmd: systemctl is-active --quiet vpn-smoke-xray-{{ smoketest_unit_suffix }}.service
+                  changed_when: false
 
-    - name: Stop Hysteria smoke client
-      when: vpn.enable_hysteria | default(false)
-      ansible.builtin.command:
-        cmd: systemctl stop vpn-smoke-hysteria.service
-      changed_when: true
-      failed_when: false
+              rescue:
+                - name: Report REALITY smoke failure
+                  ansible.builtin.fail:
+                    msg: "REALITY smoke probe failed; see the original task error. Owned-resource cleanup follows."
+              always:
+                - name: Stop the successfully started REALITY smoke client
+                  when:
+                    - smoketest_start_xray is defined
+                    - smoketest_start_xray.rc | default(-1) == 0
+                  ansible.builtin.command:
+                    cmd: systemctl stop vpn-smoke-xray-{{ smoketest_unit_suffix }}.service
+                  environment:
+                    LC_ALL: C
+                  register: smoketest_stop_xray
+                  changed_when: smoketest_stop_xray.rc == 0
+                  failed_when: >-
+                    smoketest_stop_xray.rc != 0 and
+                    ('Unit vpn-smoke-xray-' ~ smoketest_unit_suffix ~ '.service not loaded.') not in smoketest_stop_xray.stderr
 
-    - name: Render Snell smoke client configuration
-      when: vpn.enable_snell | default(false)
-      ansible.builtin.copy:
-        dest: "{{ smoketest_dir }}/snell-client.json"
-        owner: root
-        group: root
-        mode: "0600"
-        content: "{{ lookup('template', playbook_dir ~ '/../roles/snell/templates/smoke-client.json.j2') }}"
-      no_log: true
-      diff: false
+                - name: Confirm REALITY smoke client cleanup
+                  when:
+                    - smoketest_start_xray is defined
+                    - smoketest_start_xray.rc | default(-1) == 0
+                  ansible.builtin.set_fact:
+                    smoketest_cleanup_confirmed: true
 
-    - name: Run Snell smoke client
-      when: vpn.enable_snell | default(false)
-      ansible.builtin.command:
-        cmd: >-
-          systemd-run --quiet --no-block --collect --unit=vpn-smoke-snell
-          --property=Type=simple /usr/local/bin/sing-box-snell run
-          -c {{ smoketest_dir }}/snell-client.json
-      args:
-        creates: /run/systemd/transient/vpn-smoke-snell.service
-      changed_when: true
+            - name: Smoke-test Hysteria
+              when: vpn.enable_hysteria | default(false)
+              block:
+                - name: Render Hysteria client config
+                  ansible.builtin.copy:
+                    dest: "{{ smoketest_dir }}/hysteria-client.yaml"
+                    owner: root
+                    group: root
+                    mode: "0600"
+                    content: |
+                      server: 127.0.0.1:{{ hysteria_port | default(443) }}
+                      auth: "{{ hysteria.clients[0].name }}:{{ hysteria.clients[0].password }}"
+                      tls:
+                        sni: "{{ nginx_xhttp.server_name | default(xray.server_names[0]) }}"
+                        insecure: true
+                      socks5:
+                        listen: 127.0.0.1:31081
+                  no_log: true
+                  diff: false
 
-    - name: Wait for Snell smoke listeners
-      when: vpn.enable_snell | default(false)
-      ansible.builtin.wait_for:
-        host: 127.0.0.1
-        port: "{{ snell.smoke_port_base + snell_index }}"
-        timeout: 10
-      loop: "{{ snell.variants }}"
-      loop_control: {index_var: snell_index}
+                - name: Require vacant Hysteria smoke listener ports
+                  ansible.builtin.wait_for:
+                    host: 127.0.0.1
+                    port: 31081
+                    state: stopped
+                    timeout: 1
 
-    - name: Probe through every Snell variant
-      when: vpn.enable_snell | default(false)
-      ansible.builtin.command:
-        cmd: >-
-          curl -sS -o /dev/null -w '%{http_code}' --max-time 15
-          --proxy socks5h://127.0.0.1:{{ snell.smoke_port_base + snell_index }}
-          {{ smoketest_target }}
-      register: snell_probe
-      changed_when: false
-      failed_when: snell_probe.stdout | int != smoketest_expected_code
-      loop: "{{ snell.variants }}"
-      loop_control: {index_var: snell_index}
+                - name: Mark Hysteria smoke ownership as uncertain before start
+                  ansible.builtin.set_fact:
+                    smoketest_cleanup_confirmed: false
 
-    - name: Stop Snell smoke client
-      when: vpn.enable_snell | default(false)
-      ansible.builtin.command: {cmd: systemctl stop vpn-smoke-snell.service}
-      changed_when: true
-      failed_when: false
+                - name: Run Hysteria smoke client
+                  ansible.builtin.command:
+                    cmd: |
+                      systemd-run --quiet --no-block --collect
+                        --unit=vpn-smoke-hysteria-{{ smoketest_unit_suffix }}
+                        --property=Type=simple --property=RuntimeMaxSec=60
+                        /usr/local/bin/hysteria client -c {{ smoketest_dir }}/hysteria-client.yaml
+                  changed_when: true
+                  register: smoketest_start_hysteria
 
-    # ---------------------------------------------------------------
-    # cleanup
-    # ---------------------------------------------------------------
-    - name: Remove smoke tmpfs workdir
-      ansible.builtin.file:
-        path: "{{ smoketest_dir }}"
-        state: absent
+                - name: Wait for Hysteria smoke listener
+                  ansible.builtin.wait_for:
+                    host: 127.0.0.1
+                    port: 31081
+                    timeout: 10
+
+                - name: Confirm own Hysteria smoke unit is active before probing
+                  ansible.builtin.command:
+                    cmd: systemctl is-active --quiet vpn-smoke-hysteria-{{ smoketest_unit_suffix }}.service
+                  changed_when: false
+
+                - name: Probe through Hysteria proxy
+                  ansible.builtin.command:
+                    cmd: |
+                      curl -sS -o /dev/null -w '%{http_code}'
+                        --max-time 15
+                        --noproxy '' --proxy socks5h://127.0.0.1:31081
+                        {{ smoketest_target }}
+                  register: hysteria_probe
+                  changed_when: false
+                  failed_when: hysteria_probe.stdout | int != smoketest_expected_code
+
+                - name: Confirm own Hysteria smoke unit is active after probing
+                  ansible.builtin.command:
+                    cmd: systemctl is-active --quiet vpn-smoke-hysteria-{{ smoketest_unit_suffix }}.service
+                  changed_when: false
+
+              rescue:
+                - name: Report Hysteria smoke failure
+                  ansible.builtin.fail:
+                    msg: "Hysteria smoke probe failed; see the original task error. Owned-resource cleanup follows."
+              always:
+                - name: Stop the successfully started Hysteria smoke client
+                  when:
+                    - smoketest_start_hysteria is defined
+                    - smoketest_start_hysteria.rc | default(-1) == 0
+                  ansible.builtin.command:
+                    cmd: systemctl stop vpn-smoke-hysteria-{{ smoketest_unit_suffix }}.service
+                  environment:
+                    LC_ALL: C
+                  register: smoketest_stop_hysteria
+                  changed_when: smoketest_stop_hysteria.rc == 0
+                  failed_when: >-
+                    smoketest_stop_hysteria.rc != 0 and
+                    ('Unit vpn-smoke-hysteria-' ~ smoketest_unit_suffix ~ '.service not loaded.') not in smoketest_stop_hysteria.stderr
+
+                - name: Confirm Hysteria smoke client cleanup
+                  when:
+                    - smoketest_start_hysteria is defined
+                    - smoketest_start_hysteria.rc | default(-1) == 0
+                  ansible.builtin.set_fact:
+                    smoketest_cleanup_confirmed: true
+
+            - name: Smoke-test Snell
+              when: vpn.enable_snell | default(false)
+              block:
+                - name: Render Snell smoke client configuration
+                  ansible.builtin.copy:
+                    dest: "{{ smoketest_dir }}/snell-client.json"
+                    owner: root
+                    group: root
+                    mode: "0600"
+                    content: "{{ lookup('template', playbook_dir ~ '/../roles/snell/templates/smoke-client.json.j2') }}"
+                  no_log: true
+                  diff: false
+
+                - name: Require vacant Snell smoke listener ports
+                  ansible.builtin.wait_for:
+                    host: 127.0.0.1
+                    port: "{{ snell.smoke_port_base + snell_index }}"
+                    state: stopped
+                    timeout: 1
+                  loop: "{{ snell.variants }}"
+                  loop_control: {index_var: snell_index}
+
+                - name: Mark Snell smoke ownership as uncertain before start
+                  ansible.builtin.set_fact:
+                    smoketest_cleanup_confirmed: false
+
+                - name: Run Snell smoke client
+                  ansible.builtin.command:
+                    cmd: >-
+                      systemd-run --quiet --no-block --collect --unit=vpn-smoke-snell-{{ smoketest_unit_suffix }}
+                      --property=Type=simple --property=RuntimeMaxSec={{ 60 + (snell.variants | length) * 30 }}
+                      /usr/local/bin/sing-box-snell run
+                      -c {{ smoketest_dir }}/snell-client.json
+                  changed_when: true
+                  register: smoketest_start_snell
+
+                - name: Wait for Snell smoke listeners
+                  ansible.builtin.wait_for:
+                    host: 127.0.0.1
+                    port: "{{ snell.smoke_port_base + snell_index }}"
+                    timeout: 10
+                  loop: "{{ snell.variants }}"
+                  loop_control: {index_var: snell_index}
+
+                - name: Confirm own Snell smoke unit is active before probing
+                  ansible.builtin.command:
+                    cmd: systemctl is-active --quiet vpn-smoke-snell-{{ smoketest_unit_suffix }}.service
+                  changed_when: false
+
+                - name: Probe through every Snell variant
+                  ansible.builtin.command:
+                    cmd: >-
+                      curl -sS -o /dev/null -w '%{http_code}' --max-time 15
+                      --noproxy '' --proxy socks5h://127.0.0.1:{{ snell.smoke_port_base + snell_index }}
+                      {{ smoketest_target }}
+                  register: snell_probe
+                  changed_when: false
+                  failed_when: snell_probe.stdout | int != smoketest_expected_code
+                  loop: "{{ snell.variants }}"
+                  loop_control: {index_var: snell_index}
+
+                - name: Confirm own Snell smoke unit is active after probing
+                  ansible.builtin.command:
+                    cmd: systemctl is-active --quiet vpn-smoke-snell-{{ smoketest_unit_suffix }}.service
+                  changed_when: false
+
+              rescue:
+                - name: Report Snell smoke failure
+                  ansible.builtin.fail:
+                    msg: "Snell smoke probe failed; see the original task error. Owned-resource cleanup follows."
+              always:
+                - name: Stop the successfully started Snell smoke client
+                  when:
+                    - smoketest_start_snell is defined
+                    - smoketest_start_snell.rc | default(-1) == 0
+                  ansible.builtin.command:
+                    cmd: systemctl stop vpn-smoke-snell-{{ smoketest_unit_suffix }}.service
+                  environment:
+                    LC_ALL: C
+                  register: smoketest_stop_snell
+                  changed_when: smoketest_stop_snell.rc == 0
+                  failed_when: >-
+                    smoketest_stop_snell.rc != 0 and
+                    ('Unit vpn-smoke-snell-' ~ smoketest_unit_suffix ~ '.service not loaded.') not in smoketest_stop_snell.stderr
+
+                - name: Confirm Snell smoke client cleanup
+                  when:
+                    - smoketest_start_snell is defined
+                    - smoketest_start_snell.rc | default(-1) == 0
+                  ansible.builtin.set_fact:
+                    smoketest_cleanup_confirmed: true
+
+          always:
+            - name: Remove the owned smoke tmpfs workdir
+              when: smoketest_cleanup_confirmed | default(true)
+              ansible.builtin.file:
+                path: /run/vpn-smoketest
+                state: absent
+
+            - name: Require manual recovery when smoke cleanup is unconfirmed
+              when: not (smoketest_cleanup_confirmed | default(true))
+              ansible.builtin.fail:
+                msg: >-
+                  Smoke client start or stop was not confirmed; manual recovery is required.
+                  The private /run/vpn-smoketest claim and configs are retained to block unsafe retries.
+                  Verify the transient clients have stopped before removing the retained workdir.
+                  RuntimeMaxSec is a lifetime bound, not proof that cleanup completed.
 
     - name: Smoke summary
       ansible.builtin.debug:

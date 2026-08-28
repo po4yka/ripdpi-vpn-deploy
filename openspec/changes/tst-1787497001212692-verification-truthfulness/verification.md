@@ -24,7 +24,7 @@ artifact_evidence: no build artifacts produced by this change
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-VERIFY-HOSTCLASS-GATING | TST-1787496118906453 | verify + smoke against subscription-only profile inventory | pending |
+| REQ-VERIFY-HOSTCLASS-GATING | TST-1787496118906453 | verify remains pending; smoke step TST-1787496118906712 passes actual source-task subscription-only and all-disabled fixtures with no transport credentials or client calls | smoke local control-flow PASS only; verify, remote and live gates pending |
 | REQ-DRIFT-FULL-IDENTITY | TST-1787496118906639 | Complete production playbook on local synthetic manifests: matching identity passes; wrong revision with matching digest and wrong digest fail | local source verified; live acceptance pending |
 | REQ-VERIFY-DEPLOYED-LISTENERS | TST-1787496118906882 | Local production-task regressions for configured Hysteria and conditional fallback ports passed; required full gates and live verify remain open | local source verified; acceptance pending |
 | REQ-IDEMPOTENCE-WHERE-DECLARED | TST-1787496118906321 | full-stack idempotence phase output showing second-run changed=0 | pending |
@@ -56,3 +56,13 @@ artifact_evidence: no build artifacts produced by this change
 - Before the fix, a valid but different 40-character revision with the expected digest incorrectly returned success: one regression failed and two controls passed. Adding revision equality makes all three cases pass; the full existing source-identity module passed **7 tests in 5.83s**. The matching identity remains accepted, and a mismatched digest remains rejected.
 - This deliberately requires the exact deployed source commit even when a documentation-only commit leaves the deployable digest unchanged. Existing live nodes may fail this stricter gate until a reviewed deploy; no manifest was rewritten and no deployment was performed.
 - Collection-only checks found **1615 repository tests / 1562 unit tests**. Full combined checks, exact hosted checks and live acceptance remain required; this implementation does not close the portfolio task.
+
+## Bounded smoke host-class slice — 2026-08-28
+
+- Step `TST-1787496118906712` shares the smoke playbook change with `OPS-1787496118906646`, based on main `2009b6f694e326fa1f6d99333da497544b115cdd`; `verify.yml` and every other execution step are unchanged by this slice.
+- `test_smoke_skips_all_transport_access_without_credentials` runs the actual source task graph with subscription-only and all-disabled inputs and zero transport credentials. Both pass, invoke no temporary systemd/network executable, create no smoke workdir and report skipped transports. The required secrets-file entrypoint assertion remains in place.
+- Final `mise exec -- python3 -m pytest tests/unit/test_smoke_test_cleanup.py -q`: **57 passed in 314.81 seconds**, including the two host-class cases and all supported-protocol positives/failure paths. Production Ansible lint, strict OpenSpec validation and task validation passed; original configuration/ports were preserved, and probe commands gained only `--noproxy ''` to prevent inherited proxy bypass. See the OPS verification slice for the observed tests-first cleanup and truthful-probe regressions.
+- These are local Ansible control-flow/temporary-file tests plus eight real-curl dynamic-loopback proxy-bypass regressions, not Linux systemd, deployed transport, hosted CI or live subscription-host proof. No full gate was run in this bounded lane, and the overall verification task and remaining acceptance stay open.
+- Only implementation step `TST-1787496118906712` is marked complete through taskctl after the approved local checks; parent-task state and every other execution step are unchanged by this slice.
+
+- Parent final review: `make validate` exited zero after backend-disabled, lockfile-readonly initialization of all four Terraform roots; production Ansible lint and syntax passed. Parent independently passed 19 lifecycle cases and two source-derived real-curl NO_PROXY cases. Configured pre-commit passed after synthetic fixture labels were changed to the repository-approved STUB convention; no scanner rule or acceptance assertion was weakened. Full combined checks and live evidence remain open.

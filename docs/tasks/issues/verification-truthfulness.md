@@ -41,3 +41,8 @@ Verification tooling asserts the state deploy actually produced for every suppor
 ## Full source identity implementation ownership
 
 - The primary agent owns the source-revision equality assertion in `source-drift.yml` and actual-playbook regressions in `test_live_source_revision_contract.py`, in `codex/high-deploy-safety-20260828`. This does not include controller dispatch, live manifest migration, SSH, or watchdog execution. Other worktrees and their test hunks are preserved during integration.
+
+## Bounded smoke implementation ownership — 2026-08-28
+
+- The smoke agent owns `ansible/playbooks/smoke-test.yml`, focused local Ansible smoke regression coverage, and the relevant existing planning/evidence for `TST-1787496118906712` in `codex/high-smoke-cleanup-20260828`. The shared playbook implements cleanup and subscription-only gating together; the two portfolio records retain their separate acceptance boundaries.
+- Other playbooks, transport defaults/ports, Make, SSH, backup, production and other worktrees remain outside this slice. Source tests use temporary local executables; no host/provider operation or whole-task close is authorized here. The primary agent retains integration, generated board/counts and live acceptance.

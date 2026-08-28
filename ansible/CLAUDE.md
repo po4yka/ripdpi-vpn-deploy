@@ -80,3 +80,5 @@ exercises `site.yml` end-to-end.
 - **Handler queues fire at end-of-play** — a service restart triggered in
   role A doesn't happen until role B is done. Use `meta: flush_handlers` if
   later roles depend on the restart having happened.
+
+- **Smoke cleanup requires ownership** — atomically claim the private workdir, use unique per-run unit names, and stop only clients whose start returned success; failed claims or starts never authorize cleaning another invocation, and an unconfirmed start/stop retains the private claim to block unsafe retries.
