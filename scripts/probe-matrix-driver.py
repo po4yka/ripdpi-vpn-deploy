@@ -116,6 +116,7 @@ def curl_probe(matrix: dict[str, Any], proxy_port: int | None = None) -> dict[st
         return verdict("error", error_kind="dependency-missing")
     command = [
         "curl",
+        "--disable",
         "-sS",
         "-o",
         "/dev/null",
@@ -125,10 +126,15 @@ def curl_probe(matrix: dict[str, Any], proxy_port: int | None = None) -> dict[st
         str(timeout),
     ]
     if proxy_port is not None:
-        command.extend(["--socks5-hostname", f"127.0.0.1:{proxy_port}"])
+        command.extend(["--noproxy", "", "--socks5-hostname", f"127.0.0.1:{proxy_port}"])
+    else:
+        command.extend(["--proxy", "", "--noproxy", "*"])
     command.append(url)
     try:
-        result = subprocess.run(command, text=True, capture_output=True, timeout=timeout + 2, check=False)
+        result = subprocess.run(
+            command, text=True, capture_output=True, timeout=timeout + 2, check=False,
+            env={key: value for key, value in os.environ.items() if not key.lower().endswith("_proxy")},
+        )
     except (OSError, subprocess.TimeoutExpired):
         return verdict("error", error_kind="control-timeout" if proxy_port is None else "runtime-timeout")
     parts = result.stdout.strip().split()

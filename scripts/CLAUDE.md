@@ -59,6 +59,17 @@ retain per-host SOPS inputs.
 
 **Probe-matrix drivers keep secrets file-bound** — `probe-matrix-driver.py` reads an owner-controlled `0600` target profile, writes Xray configs only inside `0700` temporary directories, and sends MTProxy requests to the pinned Go helper on stdin. Keep credentials out of argv, environment variables, diagnostics, and reports; only same-tick failures with a healthy direct control can become `blocked`.
 
+**Passive inspection has no deployment prerequisites** — `fleet-inspect.py`
+reads an explicit existing INI subset and sends the stdlib collector on strict
+SSH stdin. Keep inventory parsing non-executable and local/remote reads bounded
+and no-follow. The controller validates every output field. Do not add restic,
+watchdog, readiness, Ansible or provider calls to fill absent evidence.
+
+**Sentinel activation is generation-bound** — `liveness_generation.py` owns the
+shared probe budget, fixed launcher, lock, rollback snapshot and committed receipt.
+Onboarding publishes its local assignment only after exact receipt reconciliation;
+active evaluator evidence never substitutes controller identity for server state.
+
 ## What's done well
 
 - **`set -euo pipefail` everywhere** — fail-loud is the default.
@@ -75,6 +86,9 @@ retain per-host SOPS inputs.
 
 ## Pitfalls
 
+- **Rollback state must be readable before mutation** — enforce the same byte
+  limit on serialized pending writes and reads, including base64 snapshots.
+  SSH/job/monitor deadlines must leave room around the shared probe budget.
 - **Shell-injection on operator-supplied input** — any script taking a host
   name, client name, or path uses `"$1"` quoting and `printf '%q'` when
   forwarding to nested shells. Never `eval`.

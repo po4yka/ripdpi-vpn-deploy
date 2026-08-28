@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RENDERER = REPO_ROOT / "scripts" / "check-templates-render.py"
@@ -107,10 +109,10 @@ def test_drill_requires_legacy_amneziawg_interface_in_the_config_directory() -> 
 def test_drill_cleans_restored_secrets_before_atomically_publishing_success() -> None:
     script = _render(remote_enabled=False)
 
-    cleanup = script.index('rm -rf -- "$restore_target"')
-    cleanup_check = script.index('test ! -e "$restore_target"')
-    marker_publish = script.index('mv -f -- "$marker_tmp" "$marker"')
-    assert cleanup < cleanup_check < marker_publish
+    cleanup = script.index("\nremove_restore\n", script.index("# Restored files contain live credentials."))
+    metadata_cleanup = script.index('rm -f -- "$snapshot_metadata"', cleanup)
+    marker_publish = script.index("os.replace(path, marker_path)")
+    assert cleanup < metadata_cleanup < marker_publish
     assert "restore-drill-last-success.json" in script
     for field in ("version", "repository_source", "snapshot_id", "snapshot_time", "verified_at"):
         assert f'"{field}"' in script
@@ -136,7 +138,7 @@ def test_restore_drill_systemd_units_isolate_runtime_and_run_monthly() -> None:
     assert "Persistent=true" in timer
 
 
-def test_rendered_drill_cleans_restore_and_preserves_marker_after_failure(tmp_path: Path) -> None:
+def _drill_environment(tmp_path: Path) -> tuple[Path, dict[str, str], Path, Path, Path]:
     script = tmp_path / "vpn-backup-restore-drill.sh"
     script.write_text(_render(remote_enabled=False))
     script.chmod(0o700)
@@ -195,6 +197,181 @@ else:
         "RUNTIME_DIRECTORY": str(runtime_dir),
         "STATE_DIRECTORY": str(state_dir),
     }
+    return script, env, runtime_dir, state_dir, live_sentinel
+
+
+@pytest.mark.parametrize("target_kind", ["directory", "file", "symlink", "dangling-symlink"])
+def test_existing_restore_target_and_evidence_are_not_owned_by_cleanup(
+    tmp_path: Path, target_kind: str
+) -> None:
+    script, env, runtime_dir, state_dir, _ = _drill_environment(tmp_path)
+    target = runtime_dir / "restore"
+    other = tmp_path / "other"
+    if target_kind == "directory":
+        target.mkdir()
+        (target / "prior-data").write_text("prior data")
+    elif target_kind == "file":
+        target.write_text("prior data")
+    else:
+        if target_kind == "symlink":
+            other.mkdir()
+            (other / "prior-data").write_text("prior data")
+        target.symlink_to(other, target_is_directory=True)
+    metadata = runtime_dir / "snapshot.json"
+    metadata.write_text("prior snapshot metadata")
+    marker = state_dir / "restore-drill-last-success.json"
+    marker.write_text("prior success")
+
+    failed = subprocess.run([script], env=env, capture_output=True, text=True, check=False)
+
+    assert failed.returncode != 0
+    assert os.path.lexists(target)
+    if target_kind == "directory":
+        assert (target / "prior-data").read_text() == "prior data"
+    elif target_kind == "file":
+        assert target.read_text() == "prior data"
+    else:
+        assert target.is_symlink()
+        assert target.readlink() == other
+        if target_kind == "symlink":
+            assert (other / "prior-data").read_text() == "prior data"
+        else:
+            assert not other.exists()
+    assert metadata.read_text() == "prior snapshot metadata"
+    assert marker.read_text() == "prior success"
+
+
+@pytest.mark.parametrize("corrupt_restore", [False, True])
+@pytest.mark.parametrize("metadata_kind", ["file", "symlink"])
+def test_restore_preserves_unowned_snapshot_metadata(
+    tmp_path: Path, corrupt_restore: bool, metadata_kind: str
+) -> None:
+    script, env, runtime_dir, state_dir, _ = _drill_environment(tmp_path)
+    metadata = runtime_dir / "snapshot.json"
+    prior = tmp_path / "prior-snapshot.json"
+    prior.write_text("prior snapshot metadata")
+    if metadata_kind == "symlink":
+        metadata.symlink_to(prior)
+    else:
+        metadata.write_text("prior snapshot metadata")
+    marker = state_dir / "restore-drill-last-success.json"
+    marker.write_text("prior success")
+
+    result = subprocess.run(
+        [script],
+        env={**env, "RESTIC_STUB_CORRUPT_XRAY": str(int(corrupt_restore))},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert (result.returncode != 0) == corrupt_restore, result.stderr
+    assert metadata.read_text() == "prior snapshot metadata"
+    assert prior.read_text() == "prior snapshot metadata"
+    assert metadata.is_symlink() == (metadata_kind == "symlink")
+    assert list(runtime_dir.iterdir()) == [metadata]
+    if corrupt_restore:
+        assert marker.read_text() == "prior success"
+
+
+def test_failed_restore_preserves_unowned_pending_marker(tmp_path: Path) -> None:
+    script, env, runtime_dir, state_dir, _ = _drill_environment(tmp_path)
+    marker = state_dir / "restore-drill-last-success.json"
+    marker.write_text("prior success")
+    failed = subprocess.run(
+        [
+            "bash", "-c",
+            'printf "prior pending marker" > "$STATE_DIRECTORY/.restore-drill-last-success.json.$$"; exec "$1"',
+            "restore-test", str(script),
+        ],
+        env={**env, "RESTIC_STUB_CORRUPT_XRAY": "1"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert failed.returncode != 0
+    pending = list(state_dir.glob(".restore-drill-last-success.json.*"))
+    assert len(pending) == 1
+    assert pending[0].read_text() == "prior pending marker"
+    assert marker.read_text() == "prior success"
+    assert not list(runtime_dir.iterdir())
+
+
+def test_cleanup_does_not_remove_a_target_claimed_after_its_restore_finishes(tmp_path: Path) -> None:
+    script, env, runtime_dir, state_dir, _ = _drill_environment(tmp_path)
+    python = tmp_path / "bin" / "python3"
+    python.write_text(
+        f"#!{sys.executable}\n"
+        "import os, pathlib, sys\n"
+        "if len(sys.argv) > 2 and pathlib.Path(sys.argv[2]).name.startswith('.restore-drill-last-success.json.'):\n"
+        "    target = pathlib.Path(os.environ['RUNTIME_DIRECTORY']) / 'restore'\n"
+        "    target.mkdir()\n"
+        "    (target / 'other-invocation').write_text('not owned')\n"
+        "os.execv(sys.executable, [sys.executable, *sys.argv[1:]])\n"
+    )
+    python.chmod(0o700)
+
+    success = subprocess.run([script], env=env, capture_output=True, text=True, check=False)
+
+    assert success.returncode == 0, success.stderr
+    assert (runtime_dir / "restore" / "other-invocation").read_text() == "not owned"
+    assert json.loads((state_dir / "restore-drill-last-success.json").read_text())["snapshot_id"] == "a" * 64
+
+
+@pytest.mark.parametrize("marker_kind", ["directory", "symlink-to-directory"])
+def test_marker_publication_never_moves_a_file_inside_an_existing_directory(
+    tmp_path: Path, marker_kind: str
+) -> None:
+    script, env, runtime_dir, state_dir, _ = _drill_environment(tmp_path)
+    marker = state_dir / "restore-drill-last-success.json"
+    directory = marker if marker_kind == "directory" else tmp_path / "prior-directory"
+    directory.mkdir()
+    prior = directory / "prior-data"
+    prior.write_text("not a restore marker")
+    if marker_kind == "symlink-to-directory":
+        marker.symlink_to(directory, target_is_directory=True)
+
+    result = subprocess.run([script], env=env, capture_output=True, text=True, check=False)
+
+    assert (result.returncode != 0) == (marker_kind == "directory"), result.stderr
+    assert list(directory.iterdir()) == [prior]
+    assert prior.read_text() == "not a restore marker"
+    if marker_kind == "symlink-to-directory":
+        assert not marker.is_symlink()
+        assert json.loads(marker.read_text())["snapshot_id"] == "a" * 64
+    assert not list(runtime_dir.iterdir())
+    assert not list(state_dir.glob(".restore-drill-last-success.json.*"))
+
+
+@pytest.mark.parametrize("delete_result", [0, 1])
+def test_restore_cleanup_failure_preserves_previous_success_marker(
+    tmp_path: Path, delete_result: int
+) -> None:
+    script, env, runtime_dir, state_dir, _ = _drill_environment(tmp_path)
+    marker = state_dir / "restore-drill-last-success.json"
+    marker.write_text("prior success")
+    rm = tmp_path / "bin" / "rm"
+    rm.write_text(
+        f"#!{sys.executable}\n"
+        "import os, sys\n"
+        "if sys.argv[-1] == os.path.join(os.environ['RUNTIME_DIRECTORY'], 'restore'):\n"
+        f"    raise SystemExit({delete_result})\n"
+        "os.execv('/bin/rm', ['/bin/rm', *sys.argv[1:]])\n"
+    )
+    rm.chmod(0o700)
+
+    failed = subprocess.run([script], env=env, capture_output=True, text=True, check=False)
+
+    assert failed.returncode != 0
+    assert marker.read_text() == "prior success"
+    assert list(runtime_dir.iterdir()) == [runtime_dir / "restore"]
+    assert (runtime_dir / "restore" / "etc/xray/config.json").read_text() == "{}\n"
+    assert not list(state_dir.glob(".restore-drill-last-success.json.*"))
+
+
+def test_rendered_drill_cleans_restore_and_preserves_marker_after_failure(tmp_path: Path) -> None:
+    script, env, runtime_dir, state_dir, live_sentinel = _drill_environment(tmp_path)
 
     success = subprocess.run([script], env=env, capture_output=True, text=True, check=False)
     assert success.returncode == 0, success.stderr

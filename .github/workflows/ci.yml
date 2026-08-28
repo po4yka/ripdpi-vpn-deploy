@@ -371,6 +371,8 @@ jobs:
     env:
       SING_BOX_CLIENT_VERSION: "1.13.16"
       SING_BOX_CLIENT_LINUX_AMD64_SHA256: "e37c312859dfa84cba148f41072ff6369f08361ae91d622dc1fd3aab49611a8d"
+      XRAY_LIVENESS_VERSION: "26.3.27"
+      XRAY_LIVENESS_LINUX_AMD64_SHA256: "23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -428,6 +430,18 @@ jobs:
           conftest --version
       - name: Run real pinned sing-box check
         run: python3 scripts/check-singbox-client-compatibility.py --expected-version "${SING_BOX_CLIENT_VERSION}"
+      - name: Install checksum-verified Xray sentinel parser
+        run: |
+          archive="$RUNNER_TEMP/xray-liveness.zip"
+          bin_dir="$RUNNER_TEMP/xray-liveness"
+          curl -fsSL --connect-timeout 10 --max-time 120 \
+            "https://github.com/XTLS/Xray-core/releases/download/v${XRAY_LIVENESS_VERSION}/Xray-linux-64.zip" -o "$archive"
+          echo "${XRAY_LIVENESS_LINUX_AMD64_SHA256}  ${archive}" | sha256sum -c -
+          mkdir -p "$bin_dir"
+          unzip -q "$archive" xray -d "$bin_dir"
+          sudo install -m 0755 "$bin_dir/xray" /usr/local/bin/xray
+      - name: Check canonical sentinel profiles with real pinned runtimes
+        run: make liveness-profile-check
       - name: pytest tests/unit/
         run: python3 -m pytest tests/unit/ -v
 
