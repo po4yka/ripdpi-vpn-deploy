@@ -98,14 +98,70 @@ accept-new SSH keys, or the repair watchdog. See proposal and normative specs.
   probe-matrix-driver.py}`, inspector implementation, related operator docs.
 - Extend existing unit suites for installer, sentinel, evaluator, monitor, and
   matrix driver. New inspector tests have no natural existing passive suite.
-- Backup scope is only the restore-drill template and existing contract tests:
+- Backup restore cleanup remains confined to the restore-drill template:
   atomically claim a missing private target before arming its cleanup; keep
   ownership of each temporary artifact explicit. Existing target or symlink is
   a failure, not permission to remove prior data. Preserve the existing success
   marker until all restored secrets have been removed.
-- No Terraform root, secrets schema, or vpnd public CLI changes. Ansible changes
-  stop at that restore cleanup fix; no retention or sandbox consolidation.
-  Any additional dependency or lifecycle scope requires a new decision.
+- Add a dedicated `backup-configure.yml` intent behind `make backup-configure`.
+  It never imports `site.yml` or the backup role's main task list. A shared
+  configuration slice installs only rclone (`state: present`, no cache refresh
+  or upgrades), stages and validates rclone configuration and the two existing
+  scripts, then installs them in config/backup-script/drill-script order. The
+  normal role uses this same slice; its repository initialization, password,
+  units, notifications, and scheduling remain outside the slice.
+- Configuration requires clean committed controller source, one explicit exact
+  inventory alias (no groups/patterns/exclusions/unknown names), strict canonical
+  SOPS plaintext validation, and an existing
+  root-owned local repository, password, restic binary, and backup units. Compare
+  the supplied restic password with the existing file without exposing it; never
+  initialize a repository or overwrite its password. Reject unsafe remote/path
+  fields before rendering shell scripts. Do not bypass prechecks or select tags.
+  Before claiming the lock, validate decryption with the installed restic's
+  `--no-cache --no-lock -r /var/backups/vpn-restic --password-file
+  /etc/restic/password cat config` (15-second timeout, stdout/stderr captured
+  and discarded). Clear inherited RESTIC_* inputs for this exact local read.
+  This is not integrity/restore proof. Controller debug uses Ansible's boolean
+  parser: reject true, accept false, and forward `ANSIBLE_DEBUG=false` to prevent
+  inherited config-file debug from bypassing private task output.
+- Build the controller child environment from an allowlist before checking Git
+  cleanliness and deriving source identity; ambient Git routing cannot select a
+  different checkout. The dedicated Make goal suppresses early recursive source
+  identity exports. Validate one immutable private inventory snapshot with the
+  existing selector, then retain only the selected alias and cohort membership.
+  Disable automatic vars plugins and load tracked AWG defaults as data, then
+  all/vpn/cohort vars explicitly through ordered Ansible include_vars (replace),
+  followed by the private SOPS snapshot and validated
+  extra-vars. Pin SSH host identity, transport, user, key and port independently of
+  ambient config/plugins/callbacks. Approved transport overrides preserve the
+  selected host-key alias. This breaks external host_vars and arbitrary inventory
+  backup overrides; they are not a supported configuration API for this intent.
+  Actual Ansible parity fixtures cover p0, p1p2, fullstack and allowed overrides.
+- The owner persistently disables/stops both backup timers and stops services before the configuration
+  command and maintains an exclusive maintenance window. Check all four units
+  are inactive with no queued jobs and both timers disabled before changes and
+  again before/after install. Reject pending, incomplete, or malformed persistent
+  recovery bundles before claiming a new lock, including after reboot clears
+  `/run`. This prevents automatic timer execution, not power-loss atomicity of
+  three distinct file replacements.
+  An owned, private per-host directory lock serializes configuration invocations;
+  an existing or stale lock fails closed, without automatic removal. Normal
+  failure cleans only the invocation's staging and lock. No masks, drop-ins,
+  daemon reloads, start/stop/restart, backup, prune, sync, or restore are invoked.
+  The canonical automatic triggers are these timers; concurrent privileged
+  manual starts or another deploy are outside this exclusive-window guarantee.
+- Stage every candidate and validate it before replacing any live file. Preserve
+  existing bytes, modes, and absence in a private recovery directory before
+  atomic per-file writes. Any publication or postcheck failure rolls back all
+  three paths. If rollback cannot be confirmed, retain the recovery bundle and
+  lock, fail explicitly, and require the owner to keep timers stopped until
+  repair. Never implicitly execute or delete pre-existing recovery resources.
+  Configuration reports its narrow result, not full deployment parity, backup
+  freshness, or offsite proof; do not rewrite the node's whole-site manifest or
+  require the new controller digest to equal that historical manifest.
+- No Terraform root, secrets schema, vpnd public CLI, retention, or sandbox
+  changes. Destination selection and actual first copy/isolated restore remain
+  separately authorized owner operations. Existing rclone dependency is reused.
 
 ## Risks / Trade-offs
 

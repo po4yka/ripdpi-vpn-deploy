@@ -1,0 +1,83 @@
+---
+- name: Configure backup within the owner-controlled exclusive window
+  vars:
+    _backup_configuration_prefix: /run/vpn-backup-configure.lock/stage
+    _backup_configuration_helper: "{{ role_path }}/../../../scripts/backup-configure.py"
+  block:
+    - name: Claim configuration lock after read-only prerequisite and quiescence checks
+      ansible.builtin.script:
+        cmd: "{{ _backup_configuration_helper }} claim"
+        executable: /usr/bin/python3
+      register: _backup_claim
+      changed_when: false
+
+    - name: Configure only the selected backup files
+      block:
+        - name: Keep this invocation's lock identity
+          ansible.builtin.set_fact:
+            _backup_configuration_token: "{{ (_backup_claim.stdout | from_json).token }}"
+
+        - name: Prepare private script staging directories
+          ansible.builtin.file:
+            path: "{{ _backup_configuration_prefix }}/usr/local/sbin"
+            state: directory
+            owner: root
+            group: root
+            mode: "0700"
+          changed_when: false
+
+        - name: Stage matching password and settings privately
+          ansible.builtin.copy:
+            dest: "{{ _backup_configuration_prefix }}/{{ item.name }}"
+            content: "{{ item.content }}"
+            owner: root
+            group: root
+            mode: "0600"
+          loop:
+            - name: password
+              content: "{{ backup.restic_password }}"
+            - name: settings.json
+              content: >-
+                {{ {'enabled': backup.remote.enabled,
+                    'rclone_remote': backup.remote.rclone_remote,
+                    'rclone_path': backup.remote.rclone_path,
+                    'transfers': backup.remote.transfers | default(4),
+                    'bwlimit': backup.remote.bwlimit | default('off'),
+                    'restic_repo_dir': restic_repo_dir} | to_json }}
+          no_log: true
+          diff: false
+          changed_when: false
+
+        - name: Stage the shared backup configuration without loading role lifecycle tasks
+          ansible.builtin.include_tasks: configuration.yml
+
+        - name: Validate all staged files and the existing restic password
+          ansible.builtin.script:
+            cmd: "{{ _backup_configuration_helper }} validate {{ _backup_configuration_token }}"
+            executable: /usr/bin/python3
+          changed_when: false
+
+        - name: Install only the already-declared rclone dependency when absent
+          ansible.builtin.include_tasks: install-rclone.yml
+
+        - name: Publish all files with rollback on publication or postcheck failure
+          ansible.builtin.script:
+            cmd: "{{ _backup_configuration_helper }} publish {{ _backup_configuration_token }}"
+            executable: /usr/bin/python3
+          register: _backup_publication
+          changed_when: (_backup_publication.stdout | from_json).changed | bool
+
+        - name: Report configuration only without claiming backup or restore evidence
+          ansible.builtin.debug:
+            msg: >-
+              Configuration installed; timers remain stopped. Initial remote copy and
+              isolated remote restore are separate owner operations. No whole-site
+              source manifest or recovery success marker was updated.
+      always:
+        - name: Release only the owned staging lock after confirmed publication or rollback
+          ansible.builtin.script:
+            cmd: >-
+              {{ _backup_configuration_helper }} release
+              {{ (_backup_claim.stdout | from_json).token }}
+            executable: /usr/bin/python3
+          changed_when: false

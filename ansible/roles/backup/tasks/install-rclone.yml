@@ -1,0 +1,7 @@
+---
+- name: Install rclone (remote sync only)
+  ansible.builtin.apt:
+    name: rclone
+    state: present
+    update_cache: false
+  when: backup.remote.enabled | default(false)

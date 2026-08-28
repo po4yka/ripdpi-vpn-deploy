@@ -92,6 +92,85 @@ Do not hand-repair a snowflake server. Path A is the default. Path B
 exists for the "I need to be live in 15 minutes and have a known-good
 restic snapshot" case.
 
+## Configure an existing offsite replica without running backup
+
+Use the dedicated command on an already provisioned node. Full `make deploy`,
+including a backup tag selection, can converge other roles and start persistent
+timers; it is not a configuration-only operation.
+
+The production owner must hold an exclusive maintenance window, record the
+previous timer states, persistently disable and stop both backup timers, and let any active backup or
+restore finish. Both services and timers must be inactive with no pending jobs.
+Do not overlap this window with another deploy or a privileged manual backup.
+The command checks that state but never stops, masks, restarts, or enables units.
+It requires `UnitFileState=disabled` for both timers so reboot cannot trigger
+the canonical schedules during recovery. It is not a multi-file power-loss
+atomicity guarantee. Incomplete persistent recovery bundles also block a new
+configuration after reboot removes the runtime lock.
+
+Prepare the approved `backup.remote` settings in the canonical encrypted SOPS
+document and materialize them with `make decrypt`. Keep the existing restic
+password: configuration compares it privately with `/etc/restic/password`, and
+never initializes the repository or replaces that password.
+Before any lock/package/configuration writes, the installed restic also reads
+the local configuration with `--no-cache --no-lock ... cat config`, explicit
+repository/password paths, and a 15-second timeout. Output is captured and
+discarded. This verifies configuration decryption, not integrity or restoration.
+
+```bash
+# Clean committed checkout; exact inventory alias, not a group or pattern.
+make backup-configure ANSIBLE_LIMIT=node
+```
+
+Invoke this as the only Make goal. Its alias and explicitly supplied secret or
+extra-vars paths are literal data, including `$` and quotes; repository-defined
+default paths still resolve normally. This is not a sandbox for operator-written
+Makefiles or `make --eval`.
+
+The controller derives Git cleanliness/provenance under a controlled environment,
+validates one immutable private inventory snapshot, and invokes Ansible with only
+that selected alias. SSH uses the selected private key and pinned identity from
+`~/.ssh/known_hosts`, without SSH config, agents, multiplexing or proxy inheritance.
+Approved `ansible_host`/`ansible_port` extra-vars change transport while retaining
+the selected host-key identity. Git routing and Ansible execution/plugin/callback
+environment overrides are not forwarded; automatic vars plugins are disabled.
+
+**Configuration contract:** tracked AWG role defaults (data only), `all.yml`,
+`vpn.yml`, selected cohort files in Ansible group order, then SOPS are loaded
+explicitly; validated extra-vars retain final precedence. External `host_vars`
+and arbitrary inventory backup overrides are not supported by this intent.
+The AWG defaults supply the same interface name visible to full-site backup
+rendering; they do not import or execute AWG tasks or handlers.
+
+The command runs strict secret/certificate and optional extra-vars validation,
+requires the existing canonical `/var/backups/vpn-restic` repository and units,
+and installs only rclone when missing (`apt state=present`, no cache refresh or
+package upgrades requested). Package installation still has ordinary dpkg
+effects; this is not a promise of zero host writes. It stages and validates
+`/etc/rclone/rclone.conf` and both backup scripts, then replaces them atomically
+per file in config/backup/drill order. It does not invoke backup, prune, sync,
+restore, timer handlers, or update the whole-node source manifest.
+
+Any publication or final quiescence-check failure restores all three previous
+files, including permissions and prior absence. Prior bytes remain in a private
+`/var/lib/vpn-backup/configure-recovery/<invocation>/` bundle. A stale lock or
+`rollback-incomplete-keep-timers-stopped` requires owner recovery: **do not resume
+timers or remove the lock until all three paths have been verified/repaired**.
+Do not print recovery JSON or copy it into reports; it contains old credentials.
+Only this invocation's staging is cleaned automatically. An interrupted controller
+or killed remote process can leave a private lock/bundle for this same recovery.
+
+On success, the owner separately performs the approved initial copy and isolated
+remote restore before restoring the previous timer states. On an ordinary failed
+configuration with confirmed rollback, restore those states only after reviewing
+the reported failure. Configuration success is not offsite-copy or restore proof;
+the restore runner must actually open the remote repository without fallback.
+No public destination, shared-key isolation, or provider permissions are invented
+by this command. Keep reports and Ansible output free of config contents.
+Enabled `ANSIBLE_DEBUG` is refused; accepted false values are normalized to
+`ANSIBLE_DEBUG=false` for child processes, including when an inherited Ansible
+configuration enables debug. Debug logging bypasses Ansible's `no_log` boundary.
+
 ## Backup verification (recurring task)
 
 The `backup` role runs a daily snapshot and a monthly non-destructive restore

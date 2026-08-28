@@ -11,14 +11,8 @@
     update_cache: true
     cache_valid_time: 3600
 
-- name: Install rclone (remote sync only)
-  ansible.builtin.apt:
-    name:
-      - rclone
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
-  when: backup.remote.enabled | default(false)
+- name: Install the optional remote dependency
+  ansible.builtin.import_tasks: install-rclone.yml
 
 - name: Ensure restic repo directory
   ansible.builtin.file:
@@ -55,41 +49,8 @@
     'created restic repository' in (restic_init.stderr | default('')) or
     'created restic repository' in (restic_init.stdout | default(''))
 
-- name: Ensure rclone config directory
-  ansible.builtin.file:
-    path: /etc/rclone
-    state: directory
-    owner: root
-    group: root
-    mode: "0700"
-  when: backup.remote.enabled | default(false)
-
-- name: Drop rclone config (full content from secrets)
-  ansible.builtin.copy:
-    content: "{{ backup.remote.rclone_config }}"
-    dest: /etc/rclone/rclone.conf
-    owner: root
-    group: root
-    mode: "0600"
-  no_log: true
-  diff: false
-  when: backup.remote.enabled | default(false)
-
-- name: Render backup script
-  ansible.builtin.template:
-    src: vpn-backup.sh.j2
-    dest: /usr/local/sbin/vpn-backup.sh
-    owner: root
-    group: root
-    mode: "0750"
-
-- name: Render backup restore drill script
-  ansible.builtin.template:
-    src: vpn-backup-restore-drill.sh.j2
-    dest: /usr/local/sbin/vpn-backup-restore-drill.sh
-    owner: root
-    group: root
-    mode: "0750"
+- name: Render backup configuration
+  ansible.builtin.import_tasks: configuration.yml
 
 - name: Drop backup restore drill systemd service
   ansible.builtin.template:
