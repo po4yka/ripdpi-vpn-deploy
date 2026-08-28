@@ -47,6 +47,15 @@ if [[ -n "${COHORTS:-}" && ${#cohort_list[@]} -ne ${#host_pairs[@]} ]]; then
   exit 1
 fi
 
+for cohort in "${cohort_list[@]}"; do
+  [[ -z "$cohort" ]] && continue
+  if [[ ! "$cohort" =~ ^[a-z0-9][a-z0-9-]*$ ]] || \
+      [[ ! -f "${REPO_ROOT}/ansible/group_vars/vpn-${cohort}.yml" ]]; then
+    echo "unknown or invalid cohort: ${cohort}" >&2
+    exit 1
+  fi
+done
+
 if [[ -n "${AWG_EVIDENCE_MODES:-}" && ${#awg_evidence_mode_list[@]} -ne ${#host_pairs[@]} ]]; then
   echo "AWG_EVIDENCE_MODES count (${#awg_evidence_mode_list[@]}) must equal HOSTS count (${#host_pairs[@]})" >&2
   exit 1
@@ -54,6 +63,7 @@ fi
 
 declare -a vpn_lines=()
 declare -A cohort_groups=()
+declare -A host_sources=()
 
 terraform_json_var() {
   local provider="$1"
@@ -127,6 +137,11 @@ for i in "${!host_pairs[@]}"; do
   user="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user)"
   ssh_port="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw ssh_port)"
   hostname="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_hostname)"
+  if [[ -n "${host_sources[$hostname]:-}" ]]; then
+    echo "duplicate inventory alias '${hostname}' from ${host_sources[$hostname]} and ${pair}" >&2
+    exit 1
+  fi
+  host_sources["$hostname"]="$pair"
   public_listeners="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -json public_listeners | jq -c .)"
   public_listeners_b64="$(printf '%s' "$public_listeners" | base64 | tr -d '\n')"
   allowed_ssh_cidrs="$(terraform_json_var "$prov" "$env" "$tfvars_rel" "var.allowed_ssh_cidrs")"

@@ -280,3 +280,63 @@ def test_wait_cloud_init_uses_terraform_ssh_port() -> None:
 
     assert "output -raw ssh_port" in source
     assert source.count('-p "$SSH_PORT"') == 2
+
+
+def _isolated_inventory_repo(tmp_path):
+    import shutil
+
+    root = tmp_path / "repo"
+    (root / "scripts").mkdir(parents=True)
+    for script in ("render-inventory.sh", "terraform-env.sh"):
+        shutil.copy(REPO_ROOT / "scripts" / script, root / "scripts" / script)
+    for provider in ("upcloud", "hetzner"):
+        envdir = root / "terraform" / "providers" / provider / "environments"
+        envdir.mkdir(parents=True)
+        (envdir / "test.tfvars").write_text("")
+    (root / "ansible" / "inventory").mkdir(parents=True)
+    (root / "ansible" / "inventory" / "generated.ini").write_text("last-good\n")
+    (root / "ansible" / "group_vars").mkdir()
+    (root / "ansible" / "group_vars" / "vpn-p0.yml").write_text("---\n")
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    _build_terraform_stub(bindir, FIXTURES / "tf-output-sample.json")
+    _make_stub(bindir, "ssh", "echo unexpected SSH call >&2; exit 99")
+    env = {
+        **os.environ,
+        "PATH": f"{bindir}:{os.environ['PATH']}",
+        "ANSIBLE_SSH_PRIVATE_KEY_FILE": "/tmp/test-key",
+        "PROVIDER": "upcloud",
+        "ENV": "test",
+        "HOSTS": "upcloud:test",
+        "COHORTS": "",
+        "AWG_EVIDENCE_MODES": "",
+        "STUB_LOG": str(tmp_path / "terraform.log"),
+    }
+    return root, env
+
+
+@pytest.mark.parametrize("cohort", ["missing", "../p0", "p0]"])
+def test_unknown_cohort_fails_before_terraform_and_preserves_inventory(tmp_path, cohort):
+    root, env = _isolated_inventory_repo(tmp_path)
+    env["COHORTS"] = cohort
+    result = subprocess.run(
+        ["bash", str(root / "scripts/render-inventory.sh")],
+        env=env, capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode != 0
+    assert "unknown or invalid cohort" in result.stderr
+    assert not Path(env["STUB_LOG"]).exists()
+    assert (root / "ansible/inventory/generated.ini").read_text() == "last-good\n"
+
+
+def test_duplicate_host_alias_preserves_last_inventory(tmp_path):
+    root, env = _isolated_inventory_repo(tmp_path)
+    env["HOSTS"] = "upcloud:test,hetzner:test"
+    result = subprocess.run(
+        ["bash", str(root / "scripts/render-inventory.sh")],
+        env=env, capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode != 0
+    assert "duplicate inventory alias" in result.stderr
+    assert "upcloud:test" in result.stderr and "hetzner:test" in result.stderr
+    assert (root / "ansible/inventory/generated.ini").read_text() == "last-good\n"
