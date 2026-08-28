@@ -111,7 +111,10 @@ separate authorized action; onboarding does not download or install runtimes.
 
 From a clean committed checkout, explicitly supply the target mapping, for example
 `make install-liveness-sentinel HOSTS=vultr:prod COHORTS=fullstack LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml SENTINEL=tls-freeze-a CLIENT=liveness-a`.
-Supply the one-time AWG private key on stdin when prompted. Onboarding decrypts
+Supply the one-time AWG private key on stdin. Interactive input is prompted only
+after terminal echo is disabled; a pipe or redirected private file needs no prompt.
+Terminal settings are restored after a read error or Ctrl-C, and unavailable echo
+control refuses input. Onboarding decrypts
 once into a private temporary directory, invokes both canonical client emitters,
 matches the supplied key to the selected peer, and validates generated profiles
 with real local parsers before any remote writes. REALITY and Hysteria2 use

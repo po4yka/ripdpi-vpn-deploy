@@ -7,9 +7,12 @@ import io
 import json
 import os
 from pathlib import Path
+import pty
+import select
 import stat
 import sys
 import tempfile
+import termios
 
 import pytest
 import yaml
@@ -150,6 +153,104 @@ def test_four_profiles_use_one_decrypt_and_receipt_before_assignment(setup):
     ssh = [c[0] for c in calls if c[0][0] == "ssh"]
     assert all("StrictHostKeyChecking=yes" in c and "BatchMode=yes" in c and "ProxyCommand=none" in c for c in ssh)
     assert not any("scp" == Path(c[0][0]).name for c in calls)
+
+
+@pytest.mark.parametrize("outcome", ["valid", "invalid", "interrupt", "read-error"])
+def test_terminal_key_input_hides_bytes_and_restores_terminal(setup, outcome):
+    s = setup
+    master, slave = pty.openpty()
+    original = termios.tcgetattr(slave)
+    echoed_flags = []
+    key = s["values"]["private_key"] if outcome == "valid" else "invalid-private-key"
+    try:
+        with os.fdopen(slave, "r", closefd=False) as reader:
+            class TerminalInput:
+                def isatty(self):
+                    return True
+
+                def fileno(self):
+                    return slave
+
+                def readline(self, limit):
+                    assert limit == 128
+                    echoed_flags.append(termios.tcgetattr(slave)[3] & (termios.ECHO | termios.ECHONL))
+                    if outcome == "interrupt":
+                        raise KeyboardInterrupt
+                    if outcome == "read-error":
+                        raise OSError("fixture read failure")
+                    os.write(master, (key + "\n").encode())
+                    return reader.readline(limit)
+
+            def invoke():
+                return s["module"].install(s["path"], "probe-a", "sentinel", s["registry"],
+                                           read_awg_stdin=True, stdin=TerminalInput(), environment=s["environment"])
+
+            if outcome == "valid":
+                assert invoke()["status"] == "committed"
+            else:
+                error = KeyboardInterrupt if outcome == "interrupt" else (s["module"].InstallError, OSError)
+                with pytest.raises(error):
+                    invoke()
+                assert not any(c[0][0] == "ssh" for c in s["calls"])
+            assert termios.tcgetattr(slave) == original
+            transcript = os.read(master, 4096) if select.select([master], [], [], 0.05)[0] else b""
+            assert key.encode() not in transcript
+            assert echoed_flags == [0]
+    finally:
+        termios.tcsetattr(slave, termios.TCSANOW, original)
+        os.close(slave)
+        os.close(master)
+
+
+@pytest.mark.parametrize("failure", ["inspect", "disable", "restore"])
+def test_terminal_key_input_refuses_without_echo_control(setup, monkeypatch, failure):
+    s = setup
+    master, slave = pty.openpty()
+    get_attributes, set_attributes = termios.tcgetattr, termios.tcsetattr
+    original = get_attributes(slave)
+    transitions, reads = [], []
+
+    class TerminalInput:
+        def isatty(self):
+            return True
+
+        def fileno(self):
+            return slave
+
+        def readline(self, limit):
+            assert limit == 128
+            assert not get_attributes(slave)[3] & (termios.ECHO | termios.ECHONL)
+            reads.append(True)
+            return s["values"]["private_key"] + "\n"
+
+    def inspect(fd):
+        if failure == "inspect":
+            raise termios.error("fixture inspection failure")
+        return get_attributes(fd)
+
+    def transition(fd, action, attributes):
+        transitions.append(action)
+        if failure == "restore" and action == termios.TCSAFLUSH:
+            raise termios.error("fixture restoration failure")
+        set_attributes(fd, action, attributes)
+        if failure == "disable" and action == termios.TCSADRAIN:
+            raise termios.error("fixture failure after applying hidden mode")
+
+    monkeypatch.setattr(termios, "tcgetattr", inspect)
+    monkeypatch.setattr(termios, "tcsetattr", transition)
+    try:
+        with pytest.raises(s["module"].InstallError, match="private-key-terminal-unavailable"):
+            s["module"].install(s["path"], "probe-a", "sentinel", s["registry"],
+                                read_awg_stdin=True, stdin=TerminalInput(), environment=s["environment"])
+        assert not s["calls"]
+        assert bool(reads) == (failure == "restore")
+        assert transitions == ([] if failure == "inspect" else [termios.TCSADRAIN, termios.TCSAFLUSH])
+        if failure != "restore":
+            assert get_attributes(slave) == original
+    finally:
+        set_attributes(slave, termios.TCSANOW, original)
+        os.close(slave)
+        os.close(master)
 
 
 @pytest.mark.parametrize("fault", ["parser", "revoked", "wrong-key", "bad-binding", "missing-hosts", "missing-cohorts", "cohort-mismatch", "dirty", "missing-key", "oversized-key"])

@@ -24,6 +24,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import termios
 import time
 from uuid import UUID, uuid4
 
@@ -43,6 +44,25 @@ PROVENANCE = {"controller_revision", "runner_sha256", "client_generation_id", "p
 
 class InstallError(ValueError):
     """Categorical diagnostics only; subprocess/config contents stay private."""
+
+
+def _read_awg_private_key(stream):
+    try:
+        if not stream.isatty():
+            return stream.readline(128).rstrip("\r\n")
+        descriptor = stream.fileno()
+        original = termios.tcgetattr(descriptor)
+        hidden = list(original)
+        hidden[3] &= ~(termios.ECHO | termios.ECHONL)
+        try:
+            termios.tcsetattr(descriptor, termios.TCSADRAIN, hidden)
+            print("AWG private key (hidden): ", end="", file=sys.stderr, flush=True)
+            return stream.readline(128).rstrip("\r\n")
+        finally:
+            # Discard unread terminal input before the shell regains echo.
+            termios.tcsetattr(descriptor, termios.TCSAFLUSH, original)
+    except (OSError, ValueError, termios.error):
+        raise InstallError("private-key-terminal-unavailable") from None
 
 
 def _run(command, *, environment=None, input_bytes=b"", timeout=30):
@@ -582,7 +602,7 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
         if "p2-amneziawg" in required:
             if not read_awg_stdin:
                 raise InstallError("--awg-private-key-stdin-required")
-            private = (stdin or sys.stdin).readline(128).rstrip("\r\n")
+            private = _read_awg_private_key(stdin if stdin is not None else sys.stdin)
             if not re.fullmatch(r"[A-Za-z0-9+/]{43}=", private):
                 raise InstallError("invalid-private-key-stdin")
         with tempfile.TemporaryDirectory(prefix="vpn-liveness-install-") as directory:
