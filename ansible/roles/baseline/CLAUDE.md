@@ -18,6 +18,12 @@ but operator posture knobs live under `security_controls.ssh_*`, not `vpn.*`.
 hypervisor firmware. Baseline removes `fwupd` instead of leaving an irrelevant
 daemon able to degrade systemd after a partial package update.
 
+**Legacy SSH ownership migration is a separate transaction** — the opt-in
+recovery installer does not import baseline or edit SSH configuration. Its
+planner preserves full effective policy for known 10/20/50 layouts; the durable
+helper restores unconfirmed changes. Never use a full baseline converge as
+ownership-only migration, and do not treat local tests as staging acceptance.
+
 ## What's done well
 
 - **Sysctl convergence self-heals after interrupted plays** — the role reapplies `/etc/sysctl.d` on every converge, so a play that failed after writing a file but before handlers ran cannot leave runtime values stale indefinitely.

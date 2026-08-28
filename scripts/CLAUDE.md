@@ -72,6 +72,14 @@ shared probe budget, fixed launcher, lock, rollback snapshot and committed recei
 Onboarding publishes its local assignment only after exact receipt reconciliation;
 active evaluator evidence never substitutes controller identity for server state.
 
+**SSH recovery installation has an early privacy guard** — the dedicated
+controller rejects enabled Ansible debug before inventory processing, forwards
+`ANSIBLE_DEBUG=false` to override config defaults, and validates exact aliases
+and clean source before Ansible. It isolates the selected alias from external
+host/group vars, allows only tool/home/locale environment inheritance, and uses
+portable strict SSH options for transfers. Caller fields remain literal data
+through Make and argv; no general site/backup task runs during installation.
+
 ## What's done well
 
 - **`set -euo pipefail` everywhere** — fail-loud is the default.
