@@ -32,3 +32,8 @@ The operator deploy path enforces its own guarantees on every invocation shape: 
 - The inventory-guards agent owns only `scripts/render-inventory.sh`, its existing `tests/unit/test_render_inventory.py` coverage, and the relevant `scripts/CLAUDE.md` guidance in `codex/high-inventory-guards-20260828`.
 - This slice covers steps `OPS-1787496118906369` and `OPS-1787496118906901`: reject unknown cohort profiles and duplicate inventory aliases without replacing the last valid inventory. Its tests use isolated local Terraform output fixtures, not provider or SSH access.
 - The primary agent retains all other source, integration, and live acceptance ownership. The task remains blocked pending the remaining deploy-path work and required acceptance; this slice does not authorize deployment or close the task.
+
+## Tagged-guard implementation ownership — 2026-08-28
+
+- The primary agent owns only the five existing safety pre-task tags in `ansible/playbooks/site.yml` and their real-Ansible local regression coverage in `tests/unit/test_listener_contract.py` on `codex/high-tagged-guards-20260828`.
+- This slice covers `OPS-1787496118906514`; it does not change role defaults, SSH migration, firewall policy, or live runtime. The inventory-guards slice and backup configuration work remain separate, and the overall task stays open.
