@@ -121,7 +121,7 @@ def test_full_stack_scenarios_exercise_controller_owned_convergence_only() -> No
     serialized = yaml.safe_dump(adapter)
     assertions = adapter["tasks"][0]["ansible.builtin.assert"]["that"]
     assert "ansible_play_hosts_all | length == 1" in assertions
-    assert "ansible_connection == 'docker'" in assertions
+    assert "ansible_connection == 'community.docker.docker'" in assertions
     assert "MOLECULE_SCENARIO_DIRECTORY" in serialized
     assert adapter["tasks"][1]["ansible.builtin.set_fact"] == {
         "ssh_transaction_controller_managed": True,

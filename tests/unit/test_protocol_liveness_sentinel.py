@@ -415,9 +415,10 @@ def test_awg_namespace_curl_forces_ipv4_and_resolves_hostname_inside_namespace(
         for line in calls
         if line.startswith("ip netns exec vpn-live-") and " curl " in line
     )
-    assert "--ipv4" in awg_curl.split()
-    assert "--resolve" not in awg_curl
-    assert awg_curl.endswith("https://dual-stack.fixture/")
+    awg_arguments = awg_curl.split()
+    assert "--ipv4" in awg_arguments
+    assert "--resolve" not in awg_arguments
+    assert awg_arguments[-1] == "https://dual-stack.fixture/"
     awg = next(
         item for item in json.loads(result.stdout)["profiles"] if item["profile"] == "p2-amneziawg"
     )

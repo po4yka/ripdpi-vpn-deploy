@@ -1854,10 +1854,10 @@ def _unlink_path_if_present(path: Path) -> bool:
     return True
 
 
-def _capture_cleanup_error(action: Callable[[], None]) -> BaseException | None:
+def _capture_cleanup_error(action: Callable[..., None], *arguments) -> BaseException | None:
     """Finish all owned cleanup steps even when the operator cancels one of them."""
     try:
-        action()
+        action(*arguments)
     except (Exception, KeyboardInterrupt, SystemExit, GeneratorExit) as exc:
         return exc
     return None
@@ -1879,8 +1879,8 @@ def execute_acceptance(
         for case in plan.cases:
             case_evidence.append(runtime.run_case(plan, case, built[case.distribution]))
     finally:
-        cleanup_error = _capture_cleanup_error(lambda: runtime.cleanup(plan))
-        stop_error = _capture_cleanup_error(lambda: runtime.stop_delete(plan))
+        cleanup_error = _capture_cleanup_error(runtime.cleanup, plan)
+        stop_error = _capture_cleanup_error(runtime.stop_delete, plan)
         cleanup_error = cleanup_error or stop_error
 
         def assert_context() -> None:
