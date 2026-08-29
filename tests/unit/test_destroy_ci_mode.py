@@ -62,9 +62,15 @@ def _guard_stub(root: Path, *, fail_command: str = "") -> Path:
         "set -euo pipefail\n"
         'printf \'%s\\n\' "$*" >> "$GUARD_LOG"\n'
         'if [[ "$1" == "${GUARD_FAIL_COMMAND:-}" ]]; then exit 9; fi\n'
-        'if [[ "$1" == reserve-evidence ]]; then\n'
+        'if [[ "$1" == reserve-evidence || "$1" == authorize-reserve-evidence ]]; then\n'
         "  while [[ $# -gt 0 ]]; do\n"
         '    if [[ "$1" == --evidence-output ]]; then shift; printf \'%s\\n\' reserved > "$1"; chmod 600 "$1"; break; fi\n'
+        "    shift\n"
+        "  done\n"
+        "fi\n"
+        'if [[ "$1" == mark-apply-started ]]; then\n'
+        "  while [[ $# -gt 0 ]]; do\n"
+        '    if [[ "$1" == --evidence-output ]]; then shift; printf \'%s\\n\' apply_started > "$1"; chmod 600 "$1"; break; fi\n'
         "    shift\n"
         "  done\n"
         "fi\n"
@@ -108,9 +114,10 @@ def _make_staging_repo(tmp_path: Path) -> Path:
         "    stream.write(json.dumps({'program': os.path.basename(sys.argv[0]), "
         "'argv': sys.argv[1:], 'env': {key: os.environ.get(key) for key in "
         "['ENV', 'PROVIDER', 'STAGING_CLEANUP_MANIFEST', 'STAGING_CLEANUP_STATE', "
-        "'STAGING_CLEANUP_HOSTNAME', 'STAGING_CLEANUP_CREATED_AT', "
+        "'STAGING_CLEANUP_HOSTNAME', "
         "'STAGING_POST_DESTROY_EVIDENCE', 'DEPLOY_SOURCE_REVISION', "
-        "'DEPLOYABLE_SOURCE_DIGEST']}}) + '\\n')\n"
+        "'DEPLOYABLE_SOURCE_DIGEST', 'UPCLOUD_USERNAME', 'UPCLOUD_PASSWORD', "
+        "'UPCLOUD_API_USERNAME', 'UPCLOUD_API_PASSWORD']}}) + '\\n')\n"
     )
     for name in ("staging-cleanup-guard.py", "destroy.sh"):
         path = scripts / name
@@ -125,19 +132,150 @@ def _make_staging_repo(tmp_path: Path) -> Path:
 
 
 def _run_staging_make(
-    root: Path, tmp_path: Path, goal: str, *assignments: str
+    root: Path,
+    tmp_path: Path,
+    goal: str,
+    *assignments: str,
+    extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    for field in (
+        "UPCLOUD_USERNAME",
+        "UPCLOUD_PASSWORD",
+        "UPCLOUD_API_USERNAME",
+        "UPCLOUD_API_PASSWORD",
+    ):
+        env.pop(field, None)
+    supplied_env = extra_env or {}
+    if extra_env is None:
+        env.update(
+            {
+                "UPCLOUD_USERNAME": "staging-test-user",
+                "UPCLOUD_PASSWORD": "staging-test-password",
+            }
+        )
+    env.update(supplied_env)
+    env.update(
+        {
+            "MAKE_STAGING_LOG": str(tmp_path / "make-staging.jsonl"),
+            "MAKE_GIT_SPY": str(tmp_path / "make-git-spy.log"),
+        }
+    )
     return subprocess.run(
         ["make", goal, *assignments],
         cwd=root,
-        env=os.environ
-        | {
-            "MAKE_STAGING_LOG": str(tmp_path / "make-staging.jsonl"),
-            "MAKE_GIT_SPY": str(tmp_path / "make-git-spy.log"),
-        },
+        env=env,
         text=True,
         capture_output=True,
     )
+
+
+@pytest.mark.parametrize("goal", ["staging-cleanup-manifest", "staging-destroy"])
+@pytest.mark.parametrize(
+    "credential",
+    [
+        "UPCLOUD_USERNAME",
+        "UPCLOUD_PASSWORD",
+        "UPCLOUD_API_USERNAME",
+        "UPCLOUD_API_PASSWORD",
+    ],
+)
+def test_staging_make_refuses_command_line_credentials_before_expansion(
+    tmp_path: Path, goal: str, credential: str
+) -> None:
+    root = _make_staging_repo(tmp_path)
+    marker = tmp_path / f"{goal}-{credential}.marker"
+
+    result = _run_staging_make(
+        root,
+        tmp_path,
+        goal,
+        f"{credential}=$(shell touch {marker})",
+    )
+
+    assert result.returncode != 0
+    assert "credentials must come from the environment" in result.stderr
+    assert not marker.exists()
+    assert not (tmp_path / "make-staging.jsonl").exists()
+    assert not (tmp_path / "make-git-spy.log").exists()
+
+
+@pytest.mark.parametrize("goal", ["staging-cleanup-manifest", "staging-destroy"])
+@pytest.mark.parametrize("pair", ["primary", "alias"])
+def test_staging_make_canonicalizes_one_literal_ambient_credential_pair(
+    tmp_path: Path, goal: str, pair: str
+) -> None:
+    root = _make_staging_repo(tmp_path)
+    marker = tmp_path / f"{goal}-{pair}.marker"
+    literal_password = f"$(shell touch {marker}) ' spaced\nsecond-line"
+    credential_env = (
+        {
+            "UPCLOUD_USERNAME": "staging-test-user",
+            "UPCLOUD_PASSWORD": literal_password,
+        }
+        if pair == "primary"
+        else {
+            "UPCLOUD_API_USERNAME": "staging-test-user",
+            "UPCLOUD_API_PASSWORD": literal_password,
+        }
+    )
+
+    result = _run_staging_make(
+        root,
+        tmp_path,
+        goal,
+        "ENV=ci-staging-make",
+        "PROVIDER=upcloud",
+        "STAGING_CLEANUP_MANIFEST=/private/manifest.json",
+        "STAGING_CLEANUP_STATE=/private/state.json",
+        "STAGING_CLEANUP_HOSTNAME=vpn-ci-staging.test",
+        "STAGING_POST_DESTROY_EVIDENCE=/private/evidence.json",
+        extra_env=credential_env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not marker.exists()
+    record = json.loads((tmp_path / "make-staging.jsonl").read_text())
+    assert record["env"]["UPCLOUD_USERNAME"] == "staging-test-user"
+    assert record["env"]["UPCLOUD_PASSWORD"] == literal_password
+    assert record["env"]["UPCLOUD_API_USERNAME"] is None
+    assert record["env"]["UPCLOUD_API_PASSWORD"] is None
+
+
+@pytest.mark.parametrize("goal", ["staging-cleanup-manifest", "staging-destroy"])
+@pytest.mark.parametrize(
+    "credential_env",
+    [
+        {},
+        {"UPCLOUD_USERNAME": "user-only"},
+        {"UPCLOUD_PASSWORD": "password-only"},
+        {"UPCLOUD_API_USERNAME": "alias-user-only"},
+        {"UPCLOUD_API_PASSWORD": "alias-password-only"},
+        {"UPCLOUD_USERNAME": "primary", "UPCLOUD_API_PASSWORD": "cross"},
+        {
+            "UPCLOUD_USERNAME": "primary",
+            "UPCLOUD_PASSWORD": "primary-password",
+            "UPCLOUD_API_USERNAME": "alias",
+            "UPCLOUD_API_PASSWORD": "alias-password",
+        },
+    ],
+)
+def test_staging_make_refuses_missing_partial_cross_or_ambiguous_credentials(
+    tmp_path: Path, goal: str, credential_env: dict[str, str]
+) -> None:
+    root = _make_staging_repo(tmp_path)
+
+    result = _run_staging_make(
+        root,
+        tmp_path,
+        goal,
+        extra_env=credential_env,
+    )
+
+    assert result.returncode != 0
+    assert "requires exactly one complete UpCloud credential pair" in result.stderr
+    assert not (tmp_path / "make-staging.jsonl").exists()
+    assert not (tmp_path / "make-git-spy.log").exists()
 
 
 def _run(
@@ -171,6 +309,8 @@ def _run(
         "EXPECTED_RESOURCE": resource,
         "PLAN_RESOURCE": plan_resource or resource,
         "FAIL_APPLY": str(fail_apply).lower(),
+        "UPCLOUD_USERNAME": "staging-test-user",
+        "UPCLOUD_PASSWORD": "staging-test-password",
     }
     env.update(extra_env or {})
     command = ["bash", str(root / "scripts/destroy.sh")]
@@ -199,6 +339,11 @@ def test_staging_make_captures_labels_before_eager_path_expansion(
     result = subprocess.run(
         ["make", "-n", goal, f"{field}=$(shell touch {marker})"],
         cwd=root,
+        env=os.environ
+        | {
+            "UPCLOUD_USERNAME": "staging-test-user",
+            "UPCLOUD_PASSWORD": "staging-test-password",
+        },
         text=True,
         capture_output=True,
     )
@@ -213,7 +358,6 @@ def test_staging_make_captures_labels_before_eager_path_expansion(
         ("staging-cleanup-manifest", "STAGING_CLEANUP_MANIFEST"),
         ("staging-cleanup-manifest", "STAGING_CLEANUP_STATE"),
         ("staging-cleanup-manifest", "STAGING_CLEANUP_HOSTNAME"),
-        ("staging-cleanup-manifest", "STAGING_CLEANUP_CREATED_AT"),
         ("staging-destroy", "STAGING_CLEANUP_MANIFEST"),
         ("staging-destroy", "STAGING_POST_DESTROY_EVIDENCE"),
     ],
@@ -230,7 +374,6 @@ def test_staging_make_never_executes_operator_field_as_make_or_shell_syntax(
         "STAGING_CLEANUP_MANIFEST": "/private/manifest.json",
         "STAGING_CLEANUP_STATE": "/private/state.json",
         "STAGING_CLEANUP_HOSTNAME": "vpn-ci-staging.test",
-        "STAGING_CLEANUP_CREATED_AT": "2026-08-30T00:00:00Z",
         "STAGING_POST_DESTROY_EVIDENCE": "/private/evidence.json",
     }
     assignments[field] = malicious
@@ -258,7 +401,6 @@ def test_staging_manifest_make_passes_only_literal_operator_fields(tmp_path: Pat
         f"STAGING_CLEANUP_MANIFEST={literal}",
         "STAGING_CLEANUP_STATE=/private/state path",
         "STAGING_CLEANUP_HOSTNAME=vpn-ci-staging.test",
-        "STAGING_CLEANUP_CREATED_AT=2026-08-30T00:00:00Z",
     ]
 
     result = _run_staging_make(
@@ -283,8 +425,6 @@ def test_staging_manifest_make_passes_only_literal_operator_fields(tmp_path: Pat
         "/private/state path",
         "--hostname",
         "vpn-ci-staging.test",
-        "--created-at",
-        "2026-08-30T00:00:00Z",
     ]
     assert record["env"]["STAGING_CLEANUP_MANIFEST"] == literal
     assert record["env"]["DEPLOY_SOURCE_REVISION"] == ""
@@ -340,6 +480,8 @@ def test_staging_make_refuses_mixed_or_repeated_goals_before_any_child(
         | {
             "MAKE_STAGING_LOG": str(tmp_path / "make-staging.jsonl"),
             "MAKE_GIT_SPY": str(tmp_path / "make-git-spy.log"),
+            "UPCLOUD_USERNAME": "staging-test-user",
+            "UPCLOUD_PASSWORD": "staging-test-password",
         },
         text=True,
         capture_output=True,
@@ -616,15 +758,14 @@ def test_staging_destroy_refuses_foreign_account_before_override_or_terraform(
         ],
         extra_env={
             "GUARD_LOG": str(guard_log),
-            "GUARD_FAIL_COMMAND": "verify-upcloud-account",
+            "GUARD_FAIL_COMMAND": "authorize-reserve-evidence",
         },
     )
 
     assert result.returncode == 9
     assert guard_log.read_text().splitlines() == [
-        f"validate-manifest --manifest {manifest} --expected-provider upcloud "
-        f"--expected-environment {env_name}",
-        f"verify-upcloud-account --manifest {manifest} --expected-provider upcloud "
+        f"authorize-reserve-evidence --manifest {manifest} "
+        f"--evidence-output {evidence} --expected-provider upcloud "
         f"--expected-environment {env_name}",
     ]
     assert not evidence.exists()
@@ -843,17 +984,21 @@ def test_staging_destroy_validates_manifest_and_plan_before_apply_then_verifies_
     assert result.returncode == 0, result.stderr
     guard_calls = guard_log.read_text().splitlines()
     target = f"--expected-provider upcloud --expected-environment {env_name}"
-    assert guard_calls[0] == f"validate-manifest --manifest {manifest} {target}"
-    assert guard_calls[1] == f"verify-upcloud-account --manifest {manifest} {target}"
-    assert guard_calls[2] == (
-        f"reserve-evidence --manifest {manifest} --evidence-output {evidence} {target}"
+    assert guard_calls[0] == (
+        f"authorize-reserve-evidence --manifest {manifest} "
+        f"--evidence-output {evidence} {target}"
     )
-    assert guard_calls[3].startswith(
+    assert guard_calls[1].startswith(
         f"validate-plan --manifest {manifest} --plan-view "
     )
-    assert guard_calls[3].endswith(target)
-    assert guard_calls[4].startswith("rewind-plan-fd --fd-number ")
-    assert guard_calls[5] == (
+    assert f"--evidence-output {evidence}" in guard_calls[1]
+    assert guard_calls[1].endswith(target)
+    assert guard_calls[2].startswith("rewind-plan-fd --fd-number ")
+    assert guard_calls[3] == (
+        f"mark-apply-started --manifest {manifest} "
+        f"--evidence-output {evidence} {target}"
+    )
+    assert guard_calls[4] == (
         f"verify-upcloud-absence --manifest {manifest} --evidence-output {evidence} {target}"
     )
     terraform_calls = (stub.parent / "terraform.log").read_text().splitlines()
@@ -1010,7 +1155,7 @@ def test_staging_destroy_keeps_inventory_and_plan_when_provider_absence_is_unver
     assert not (
         root / f"terraform/providers/upcloud/{env_name}.destroy.tfplan"
     ).exists()
-    assert evidence.read_text() == "reserved\n"
+    assert evidence.read_text() == "apply_started\n"
     assert not audit_log.exists()
 
 

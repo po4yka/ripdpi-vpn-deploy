@@ -82,17 +82,6 @@ if [[ ! -f "$TFVARS" ]]; then
   exit 1
 fi
 
-if [[ "$STAGING_GUARDED" == "true" ]]; then
-  "$STAGING_GUARD" validate-manifest \
-    --manifest "$STAGING_MANIFEST" \
-    --expected-provider "$PROVIDER" \
-    --expected-environment "$ENV"
-  "$STAGING_GUARD" verify-upcloud-account \
-    --manifest "$STAGING_MANIFEST" \
-    --expected-provider "$PROVIDER" \
-    --expected-environment "$ENV"
-fi
-
 if [[ "$NON_INTERACTIVE" == "true" && ! "$ENV" =~ ^ci-[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
   echo "--non-interactive is restricted to validated ci-* environments" >&2
   exit 2
@@ -150,7 +139,7 @@ else
 fi
 
 if [[ "$STAGING_GUARDED" == "true" ]]; then
-  "$STAGING_GUARD" reserve-evidence \
+  "$STAGING_GUARD" authorize-reserve-evidence \
     --manifest "$STAGING_MANIFEST" \
     --evidence-output "$POST_DESTROY_EVIDENCE" \
     --expected-provider "$PROVIDER" \
@@ -195,6 +184,7 @@ if [[ "$STAGING_GUARDED" == "true" ]]; then
   "$STAGING_GUARD" validate-plan \
     --manifest "$STAGING_MANIFEST" \
     --plan-view "$PLAN_VIEW" \
+    --evidence-output "$POST_DESTROY_EVIDENCE" \
     --expected-provider "$PROVIDER" \
     --expected-environment "$ENV"
   "$STAGING_GUARD" rewind-plan-fd --fd-number "$PLAN_FD"
@@ -216,6 +206,13 @@ if [[ "$NON_INTERACTIVE" != "true" ]]; then
   fi
 fi
 
+if [[ "$STAGING_GUARDED" == "true" ]]; then
+  "$STAGING_GUARD" mark-apply-started \
+    --manifest "$STAGING_MANIFEST" \
+    --evidence-output "$POST_DESTROY_EVIDENCE" \
+    --expected-provider "$PROVIDER" \
+    --expected-environment "$ENV"
+fi
 APPLY_STARTED=true
 env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" apply "$PLAN_INPUT"
 if [[ -n "$PLAN_FD" ]]; then

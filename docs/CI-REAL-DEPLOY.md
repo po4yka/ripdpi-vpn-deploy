@@ -126,9 +126,12 @@ each file is a regular `0600` file. Do not put that private directory in the
 repository. After the server exists, create the manifest through the canonical
 Make goal directly from the exact local state before running any destructive
 command. The goal authenticates `/1.3/account`, stores the exact API username
-only in private artifacts, and derives target, escalation and hard deadlines at
-36, 44 and 47 hours after `created_at`. Provider credentials remain ambient
-environment-only values; do not pass them as Make variables. This binds the
+only in private artifacts, reads the exact state-bound server through
+`/1.3/server`, and derives creation, target, escalation and hard deadlines from
+the provider's integer `server.created` value at 36, 44 and 47 hours. Provider
+credentials remain one complete ambient `UPCLOUD_USERNAME`/`UPCLOUD_PASSWORD`
+or `UPCLOUD_API_USERNAME`/`UPCLOUD_API_PASSWORD` pair; do not pass them as Make
+variables. This binds the
 exact API principal used for creation and deletion, not a parent billing
 account, and does not claim that provider usernames are immutable identifiers.
 
@@ -145,7 +148,6 @@ PROVIDER=upcloud ENV="$ENV" \
 STAGING_CLEANUP_MANIFEST=/absolute/private/path/cleanup-manifest.json \
 STAGING_CLEANUP_STATE="$STATE_PATH" \
 STAGING_CLEANUP_HOSTNAME=vpn-ci-staging-<run> \
-STAGING_CLEANUP_CREATED_AT='<creation-RFC3339-UTC>' \
 make staging-cleanup-manifest
 ```
 
@@ -156,10 +158,14 @@ bytes; an operator does not type either UUID or account identity into the
 manifest. Every path ancestor is opened without following symlinks, and final
 files are accessed relative to a held parent directory descriptor.
 
-Destroy the staging environment through the guarded path. It validates the
-private manifest and rechecks its authenticated account username before
-reserving evidence, creating the lifecycle override or allowing Terraform to
-refresh provider state. It then validates the complete plan before apply. Only exact deletes of the manifest-bound
+Destroy the staging environment through the guarded path. One authorization
+step validates the same manifest/state inodes and bytes, rechecks its
+authenticated account username, and reserves evidence before creating the
+lifecycle override or allowing Terraform to refresh provider state. Plan
+validation requires that exact reservation. Immediately before apply, the
+controller rechecks the account, reservation, state and exclusive hard
+deadline, then durably changes the same evidence inode to `apply_started`.
+Only exact deletes of the manifest-bound
 server, root storage, server firewall resource and local SSH-port identity are
 accepted. Create, update, replacement, foreign deletion, changed state or an
 expired deadline refuses before apply. The post-destroy evidence path is
@@ -169,6 +175,11 @@ whose environment differs from the command's exact `ENV` refuse without any
 Terraform invocation. An interactive refusal before apply removes only an
 unchanged exact reservation; a started or failed apply retains it for manual
 inspection.
+
+An apply that started before the hard deadline may finish read-only provider
+absence verification after expiry, but evidence is then explicitly
+`verified_after_expiry` / `expired_after_apply`; an expired reserved operation
+cannot begin or query resources.
 
 The binary plan is created under the same private directory with `umask 077`,
 opened once, unlinked, and passed through the same inherited file descriptor to

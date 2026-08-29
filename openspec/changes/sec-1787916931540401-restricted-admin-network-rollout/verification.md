@@ -29,13 +29,13 @@ artifact_evidence: source and installed configuration only; no release binary ar
 | REQ-ADMIN-MIGRATION | SEC-1787917604306451 | 301 affected planner/core/adapter tests plus pinned Debian 13 and Ubuntu 24.04 packaged-main checks include real OpenSSH full effective parity, custom port, unknown-layout, bounded execution, read-set races and four-file crash boundaries | local source and packaged-main checks passed; complete local, hosted and staging pending |
 | REQ-ADMIN-ROLLBACK | SEC-1787917604868749 | Installation/upgrade and earlier fault tests passed; native apply reproduced a readiness contention refusal, so the activation step is reopened pending the corrected positive path | readiness correction and migration/confirm/timeout acceptance pending; guest firewall and real reboot remain pending |
 | REQ-ADMIN-PROMOTION | SEC-1787917605886845 | Exact-node selector, fresh strict SSH, required DNS/VPN probes and external provider rollback evidence | pending |
-| REQ-ADMIN-EVIDENCE | SEC-1788028226822310 | 84 focused tests cover exact authenticated API-principal binding before Terraform, fixed 36/44/47-hour deadlines, ancestor-symlink and inode-replacement refusal, manifest permission/identity/state-digest failures, backup/secondary-IP/additional-resource refusal in state and refreshed plan, exact-environment binding, pre-Terraform evidence reservation/release, private same-inode plan inspection/apply, exact-ID delete-only checks, inventory preservation, categorical audit ordering and bounded authenticated provider-absence outcomes | focused and full local source gates passed; exact hosted CI, staging deletion and account billing observation remain pending |
+| REQ-ADMIN-EVIDENCE | SEC-1788028226822310 | 135 focused tests cover exact authenticated API-principal binding before Terraform, fixed 36/44/47-hour deadlines, ancestor-symlink and inode-replacement refusal, manifest permission/identity/state-digest failures, backup/secondary-IP/additional-resource refusal in state and refreshed plan, exact-environment binding, pre-Terraform evidence reservation/release, private same-inode plan inspection/apply, exact-ID delete-only checks, inventory preservation, categorical audit ordering and bounded authenticated provider-absence outcomes | focused and full local source gates passed; exact hosted CI, staging deletion and account billing observation remain pending |
 | REQ-ADMIN-EVIDENCE | SEC-1787917606418274 | Real isolated staging login, forced disconnect, reboot recovery and repeat rollback before fleet promotion | pending |
 
 ## Gates and remaining boundaries
 
-The corrected UUID-bound staging cleanup source slice passed 84 focused Python
-tests and the complete local `make -j1 check` gate on 2026-08-30: 2311 unit
+The corrected UUID-bound staging cleanup source slice passed 135 focused Python
+tests and the complete local `make -j1 check` gate on 2026-08-30: 2365 unit
 tests passed with one existing skip, all 55 Bats tests passed, all four
 Terraform mock-provider suites passed 87 tests, Conftest passed 45 policy
 tests, and Rust Clippy plus 184 tests passed. `make validate`, strict

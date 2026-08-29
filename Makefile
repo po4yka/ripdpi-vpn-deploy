@@ -10,6 +10,33 @@ override ENV := $(value ENV)
 override PROVIDER := $(value PROVIDER)
 endif
 
+# Staging credentials are ambient capabilities, never Make expressions. Reject
+# every non-environment origin before eager assignments or child-environment
+# construction can expand attacker-controlled Make syntax.
+ifneq ($(filter staging-cleanup-manifest staging-destroy,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error staging cleanup requires exactly one Make goal)
+endif
+ifneq ($(filter-out undefined environment,$(origin UPCLOUD_USERNAME) $(origin UPCLOUD_PASSWORD) $(origin UPCLOUD_API_USERNAME) $(origin UPCLOUD_API_PASSWORD)),)
+$(error staging cleanup credentials must come from the environment)
+endif
+_STAGING_PRIMARY_CREDENTIALS := $(if $(value UPCLOUD_USERNAME),1,0)$(if $(value UPCLOUD_PASSWORD),1,0)
+_STAGING_ALIAS_CREDENTIALS := $(if $(value UPCLOUD_API_USERNAME),1,0)$(if $(value UPCLOUD_API_PASSWORD),1,0)
+ifeq ($(_STAGING_PRIMARY_CREDENTIALS)$(_STAGING_ALIAS_CREDENTIALS),1100)
+override UPCLOUD_USERNAME := $(value UPCLOUD_USERNAME)
+override UPCLOUD_PASSWORD := $(value UPCLOUD_PASSWORD)
+else ifeq ($(_STAGING_PRIMARY_CREDENTIALS)$(_STAGING_ALIAS_CREDENTIALS),0011)
+override UPCLOUD_USERNAME := $(value UPCLOUD_API_USERNAME)
+override UPCLOUD_PASSWORD := $(value UPCLOUD_API_PASSWORD)
+else
+$(error staging cleanup requires exactly one complete UpCloud credential pair)
+endif
+override UPCLOUD_API_USERNAME :=
+override UPCLOUD_API_PASSWORD :=
+export UPCLOUD_USERNAME UPCLOUD_PASSWORD
+unexport UPCLOUD_API_USERNAME UPCLOUD_API_PASSWORD
+endif
+
 HOSTS   ?=
 COHORTS ?=
 SOPS_FILES ?=
@@ -434,10 +461,7 @@ DESTROY_ARGS ?=
 # These staging goals treat caller fields as literal data. Keep them separate
 # from the free-form generic destroy surface and reject mixed goal execution.
 ifneq ($(filter staging-cleanup-manifest staging-destroy,$(MAKECMDGOALS)),)
-ifneq ($(words $(MAKECMDGOALS)),1)
-$(error staging cleanup requires exactly one Make goal)
-endif
-export STAGING_CLEANUP_MANIFEST STAGING_CLEANUP_STATE STAGING_CLEANUP_HOSTNAME STAGING_CLEANUP_CREATED_AT STAGING_POST_DESTROY_EVIDENCE
+export STAGING_CLEANUP_MANIFEST STAGING_CLEANUP_STATE STAGING_CLEANUP_HOSTNAME STAGING_POST_DESTROY_EVIDENCE
 unexport MAKEFLAGS MFLAGS
 MAKEOVERRIDES :=
 endif
@@ -446,7 +470,6 @@ endif
 staging-cleanup-manifest: override STAGING_CLEANUP_MANIFEST := $(value STAGING_CLEANUP_MANIFEST)
 staging-cleanup-manifest: override STAGING_CLEANUP_STATE := $(value STAGING_CLEANUP_STATE)
 staging-cleanup-manifest: override STAGING_CLEANUP_HOSTNAME := $(value STAGING_CLEANUP_HOSTNAME)
-staging-cleanup-manifest: override STAGING_CLEANUP_CREATED_AT := $(value STAGING_CLEANUP_CREATED_AT)
 staging-destroy: override STAGING_CLEANUP_MANIFEST := $(value STAGING_CLEANUP_MANIFEST)
 staging-destroy: override STAGING_POST_DESTROY_EVIDENCE := $(value STAGING_POST_DESTROY_EVIDENCE)
 staging-cleanup-manifest staging-destroy: override DEPLOY_SOURCE_REVISION :=
@@ -459,8 +482,7 @@ staging-cleanup-manifest:
 	  --environment "$${ENV}" \
 	  --workspace "$${ENV}" \
 	  --state "$${STAGING_CLEANUP_STATE}" \
-	  --hostname "$${STAGING_CLEANUP_HOSTNAME}" \
-	  --created-at "$${STAGING_CLEANUP_CREATED_AT}"
+	  --hostname "$${STAGING_CLEANUP_HOSTNAME}"
 
 staging-destroy:
 	@./scripts/destroy.sh --non-interactive \
