@@ -57,13 +57,40 @@ def _full_stack_scenario() -> dict:
 
 
 def _published_variables() -> dict:
-    groups = _published_scenario()["provisioner"]["inventory"]["group_vars"]
+    inventory = _published_scenario()["provisioner"]["inventory"]
+    groups = inventory["group_vars"]
+    hosts = inventory["hosts"]["vpn"]["hosts"]
     return {
         **groups["all"], **groups["vpn"],
+        **hosts["vpn-fullstack-debian13-published"],
         **yaml.safe_load(
             (REPO_ROOT / "ansible/molecule/full-stack/test-secrets.yaml").read_text()
         ),
     }
+
+
+def test_full_stack_scenarios_repeat_convergence_before_verification() -> None:
+    expected = [
+        "dependency", "syntax", "create", "prepare", "converge",
+        "idempotence", "verify", "destroy",
+    ]
+
+    for scenario in (_full_stack_scenario(), _published_scenario()):
+        sequence = scenario["scenario"]["test_sequence"]
+        assert sequence == expected
+
+
+def test_hosted_full_stack_job_runs_both_idempotence_scenarios() -> None:
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
+    steps = workflow["jobs"]["molecule-full-stack"]["steps"]
+    run = next(step["run"] for step in steps
+               if step.get("name") == "molecule full-stack test")
+
+    assert run.count("molecule -c molecule/full-stack/molecule.yml test -s full-stack") == 1
+    assert run.count(
+        "molecule -c molecule/full-stack-published/molecule.yml "
+        "test -s full-stack-published"
+    ) == 1
 
 
 def test_published_requirements_resolve_to_current_checkout_from_documented_cwd() -> None:
@@ -73,6 +100,36 @@ def test_published_requirements_resolve_to_current_checkout_from_documented_cwd(
     # requirements when this repository is itself inside a worktree directory.
     assert resolved == (REPO_ROOT / "requirements.yml").resolve()
     assert resolved.is_file()
+
+
+def test_published_scenario_explicitly_disables_unpublished_xray_fallback() -> None:
+    inventory = _published_scenario()["provisioner"]["inventory"]
+    groups = inventory["group_vars"]
+    hosts = inventory["hosts"]["vpn"]["hosts"]
+
+    assert "xray_fallback_port" not in groups["all"]
+    assert "xray_fallback_port" not in groups["vpn"]
+    assert hosts["vpn-fullstack-debian13-published"]["xray_fallback_port"] == 0
+
+
+def test_published_host_override_beats_repository_all_group_default(tmp_path) -> None:
+    """Prove the scenario override with the same canonical group-vars discovery."""
+    executable = shutil.which("ansible-inventory")
+    assert executable, "installed Ansible is required for inventory precedence proof"
+    scenario = _published_scenario()["provisioner"]["inventory"]
+    host = "vpn-fullstack-debian13-published"
+    inventory = tmp_path / "inventory.yml"
+    inventory.write_text(yaml.safe_dump({"all": {"children": {"vpn": {"hosts": {
+        host: scenario["hosts"]["vpn"]["hosts"][host],
+    }}}}}))
+
+    result = subprocess.run(
+        [executable, "-i", str(inventory), "--playbook-dir",
+         str(REPO_ROOT / "ansible/playbooks"), "--host", host],
+        check=True, capture_output=True, text=True, timeout=15,
+    )
+
+    assert json.loads(result.stdout)["xray_fallback_port"] == 0
 
 
 def test_published_listener_contract_matches_declared_runtime_inputs(tmp_path) -> None:
@@ -166,11 +223,15 @@ def test_published_static_role_defaults_match_declared_manifest(tmp_path) -> Non
     templates.mkdir()
     shutil.copyfile(REPO_ROOT / "ansible/templates/listener-manifest.json.j2",
                     templates / "listener-manifest.json.j2")
-    groups = _published_scenario()["provisioner"]["inventory"]["group_vars"]
+    scenario_inventory = _published_scenario()["provisioner"]["inventory"]
+    groups = scenario_inventory["group_vars"]
+    published_host = scenario_inventory["hosts"]["vpn"]["hosts"][
+        "vpn-fullstack-debian13-published"
+    ]
     inventory = tmp_path / "inventory.yml"
     inventory.write_text(yaml.safe_dump({"all": {
         "vars": groups["all"], "children": {"vpn": {
-            "vars": groups["vpn"], "hosts": {"localhost": {
+            "vars": groups["vpn"], "hosts": {"localhost": {**published_host,
                 "ansible_connection": "local", "ansible_become": False,
                 "ansible_python_interpreter": sys.executable,
             }},

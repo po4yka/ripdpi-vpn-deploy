@@ -27,7 +27,7 @@ artifact_evidence: no build artifacts produced by this change
 | REQ-VERIFY-HOSTCLASS-GATING | TST-1787496118906453 | Local source-task verify predicates and credential-free smoke subscription/all-disabled regressions passed | conditional/task-slice PASS; combined full and live acceptance pending |
 | REQ-DRIFT-FULL-IDENTITY | TST-1787496118906639 | Complete production playbook on local synthetic manifests: matching identity passes; wrong revision with matching digest and wrong digest fail | local source verified; live acceptance pending |
 | REQ-VERIFY-DEPLOYED-LISTENERS | TST-1787496118906882 | Local production-task regressions for configured Hysteria and conditional fallback ports passed; required full gates and live verify remain open | local source verified; acceptance pending |
-| REQ-IDEMPOTENCE-WHERE-DECLARED | TST-1787496118906321 | full-stack idempotence phase output showing second-run changed=0 | pending |
+| REQ-IDEMPOTENCE-WHERE-DECLARED | TST-1787496118906321 | Exact `4580f9927ed808b4f71b8fa5e0e036890f6daaf2`, hosted job `99170632018`: full-stack `ok=136 changed=0`; full-stack-published `ok=135 changed=0` | pass |
 | REQ-SCENARIO-RUNS-ROLE | TST-1787496118906595 | isolated x86_64 QEMU Molecule run: real role converge, idempotence changed=0, verify and destroy | pass |
 | REQ-TESTING-DOCS-REALITY | TST-1787496118906567 | row-by-row matrix audit vs molecule.yml sequences | pending |
 | REQ-SINGLE-SSH-LISTENER | TST-1787496118907256 | verify assertion output on socket-activated image | pending |
@@ -37,6 +37,13 @@ artifact_evidence: no build artifacts produced by this change
 - Local: touched molecule scenarios, `make ci-fast`, `make validate`.
 - Remote CI: green run on the merge SHA including both full-stack variants.
 - Live: one verify + source-drift cycle against live inventory.
+
+## Full-stack idempotence evidence — 2026-08-30
+
+- Step `TST-1787496118906321` is implemented by exact source `4580f9927ed808b4f71b8fa5e0e036890f6daaf2`. Both `ansible/molecule/full-stack/molecule.yml` and `ansible/molecule/full-stack-published/molecule.yml` declare an idempotence phase; the published scenario supplies its listener contract through host variables so Ansible precedence cannot re-enable the repository fallback default.
+- The focused dependency and sequence regressions passed locally, and the exact-head hosted full-stack job `99170632018` completed successfully. The full-stack idempotence recap reported `ok=136 changed=0 unreachable=0 failed=0`; the published variant reported `ok=135 changed=0 unreachable=0 failed=0`. Both phases were recorded as successful. The private mode-0600 downloaded log has SHA-256 `b835d8f5b1846f386f7b173b2813b9bd3b31be31fdae077164902470aed90b89`.
+- The exact head completed 62 hosted checks successfully with one neutral check and no failed or pending checks before this evidence-only update. This proves repeat-converge idempotence in the hosted x86_64 Molecule environments, not live fleet convergence or external protocol traffic.
+- A local ARM/QEMU attempt failed before idempotence because an ordinary Ansible module process crashed in the emulated environment. It is retained as an environment-fidelity limitation and is not credited as product evidence. Documentation parity, the socket-activated single-SSH-listener proof, and live verify/source-drift acceptance remain open.
 
 ## Published scenario prerequisite slice — 2026-08-29
 
