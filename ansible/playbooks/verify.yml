@@ -340,10 +340,11 @@
         fail_msg: Effective sshd port must exactly match the inventory transport port.
 
     - name: Exactly one effective SSH listener exists
-      ansible.builtin.command:
+      ansible.builtin.script:
         cmd: >-
-          python3 {{ playbook_dir }}/../../scripts/verify-ssh-listeners.py
+          {{ playbook_dir }}/../../scripts/verify-ssh-listeners.py
           --sshd-port {{ verify_effective_ssh_ports[0] }}
+        executable: python3
       changed_when: false
       check_mode: false
 

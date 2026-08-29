@@ -334,11 +334,13 @@ def test_verify_playbook_uses_effective_port_and_helper_without_process_grep():
     assert any("ansible_port | default(22)" in condition for condition in conditions)
     helper = next(
         task for task in tasks
-        if "verify-ssh-listeners.py" in task.get("ansible.builtin.command", {}).get("cmd", "")
+        if "verify-ssh-listeners.py" in task.get("ansible.builtin.script", {}).get("cmd", "")
     )
     assert helper["changed_when"] is False
     assert helper["check_mode"] is False
-    assert "--sshd-port {{ verify_effective_ssh_ports[0] }}" in helper["ansible.builtin.command"]["cmd"]
+    assert helper["ansible.builtin.script"]["executable"] == "python3"
+    assert "{{ playbook_dir }}/../../scripts/verify-ssh-listeners.py" in helper["ansible.builtin.script"]["cmd"]
+    assert "--sshd-port {{ verify_effective_ssh_ports[0] }}" in helper["ansible.builtin.script"]["cmd"]
     source = SCRIPT.read_text()
     for forbidden in ("/proc", "pgrep", "ps aux", "ss -l", "netstat"):
         assert forbidden not in source
@@ -361,6 +363,10 @@ def test_verify_producer_and_consumer_execute_in_ansible_check_mode(tmp_path):
         "SSH listener port is unambiguous",
         "Exactly one effective SSH listener exists",
     ]
+    helper = tasks[-1]["ansible.builtin.script"]
+    helper["cmd"] = (
+        f"{SCRIPT} --sshd-port {{{{ verify_effective_ssh_ports[0] }}}}"
+    )
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     sshd_trace = tmp_path / "sshd-called"
@@ -408,6 +414,69 @@ def test_verify_producer_and_consumer_execute_in_ansible_check_mode(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert sshd_trace.exists(), result.stdout + result.stderr
     assert helper_trace.exists(), result.stdout + result.stderr
+
+
+def test_real_ansible_script_transfers_controller_source_to_remote_tmp(tmp_path):
+    executable = shutil.which("ansible-playbook")
+    assert executable, "real Ansible is required for script-transfer regression coverage"
+    controller = tmp_path / "controller"
+    controller.mkdir()
+    source = controller / "verify.py"
+    trace = tmp_path / "executed-path"
+    source.write_text(
+        "import os, pathlib\n"
+        "pathlib.Path(os.environ['TRANSFER_TRACE']).write_text(\n"
+        "    str(pathlib.Path(__file__).resolve())\n"
+        ")\n"
+    )
+    source.chmod(0o755)
+    remote_tmp = tmp_path / "managed" / "ansible-tmp"
+    playbook = controller / "transfer.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "name": "Exercise controller script transfer",
+                    "hosts": "localhost",
+                    "gather_facts": False,
+                    "become": False,
+                    "vars": {
+                        "ansible_python_interpreter": sys.executable,
+                        "ansible_remote_tmp": str(remote_tmp),
+                    },
+                    "tasks": [
+                        {
+                            "name": "Run controller-only script on managed target",
+                            "ansible.builtin.script": {
+                                "cmd": str(source),
+                                "executable": sys.executable,
+                            },
+                            "environment": {"TRANSFER_TRACE": str(trace)},
+                            "changed_when": False,
+                        }
+                    ],
+                }
+            ],
+            sort_keys=False,
+        )
+    )
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\nfact_caching=memory\n")
+    env = {key: value for key, value in os.environ.items() if not key.startswith("ANSIBLE_")}
+    env.update(ANSIBLE_CONFIG=str(config), ANSIBLE_LOCAL_TEMP=str(tmp_path / "ansible-local"))
+    result = subprocess.run(
+        [executable, "-i", "localhost,", "-c", "local", str(playbook)],
+        cwd=controller,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=40,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert trace.exists(), result.stdout + result.stderr
+    executed = Path(trace.read_text())
+    assert executed != source.resolve()
+    assert executed.is_relative_to(remote_tmp)
 
 
 def shlex_quote(value: str) -> str:
