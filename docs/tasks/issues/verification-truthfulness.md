@@ -56,3 +56,13 @@ Verification tooling asserts the state deploy actually produced for every suppor
 
 - The scenario subagent owns only `ansible/molecule/full-stack-published/molecule.yml`, its input/dependency regressions in `tests/unit/test_molecule_dependencies.py`, and this prerequisite refinement of step `TST-1787496118906321`, in `codex/high-published-prerequisites-20260829` from `fc3acc6`.
 - Baseline, SSH, shared full-stack verification, Make, host port mappings, other worktrees and Git delivery remain outside this slice. Fixing scenario inputs does not complete idempotence or the required whole-Molecule/live acceptance; the portfolio remains blocked.
+
+### AWG role scenario slice
+
+- `codex/high-awg-role-molecule-20260828` owns only step `TST-1787496118906595`: the amneziawg default Molecule scenario, adjacent amneziawg unit tests, role rationale, and this step's planning/evidence. Production role tasks, shared CI/Makefile, board/counts, other verification slices, commits and delivery remain with their existing owners.
+- Synthetic local Git repositories and no-TUN tools are fixture inputs, never upstream build or real tunnel evidence. The role itself must produce installed artifacts, build receipts, configuration and service state. The parent task remains blocked pending its other acceptance gates.
+
+### Xray idempotence slice
+
+- After the AWG slice, the same worktree owns step `TST-1787496118907291` as a separate change: Xray's default converge/sequence and the adjacent idempotent-converge regression in `tests/unit/test_config_rollback_backup.py`. Production roles, baseline, full-stack scenarios and shared CI remain outside this ownership.
+- The repeated converge preserves the role-owned runtime symlinks and reports zero changes. Local filesystem replay and a complete isolated x86_64 QEMU-backed Molecule run now cover this step; external traffic, staging and live-host acceptance remain outside that evidence.

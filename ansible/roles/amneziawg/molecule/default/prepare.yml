@@ -1,0 +1,64 @@
+---
+- name: Prepare synthetic AmneziaWG source inputs without installing role outputs
+  hosts: all
+  become: true
+  tasks:
+    - name: Install local source-fixture and process-inspection tools
+      ansible.builtin.apt:
+        name: [git, procps]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    # Debian resolvconf 1.94 debian/postinst only replaces resolv.conf when
+    # this documented debconf boolean is true. Docker owns the mounted file.
+    - name: Keep Docker-owned resolv.conf when the real role installs resolvconf
+      ansible.builtin.debconf:
+        name: resolvconf
+        question: resolvconf/linkify-resolvconf
+        value: "false"
+        vtype: boolean
+
+    - name: Inspect outputs that must be created by the role
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /usr/local/bin/amneziawg-go
+        - /usr/bin/awg
+        - /usr/bin/awg-quick
+        - /opt/src/amneziawg-go/.ripdpi-built-commit
+        - /opt/src/amneziawg-tools/.ripdpi-built-commit
+        - /etc/amneziawg/awg0.conf
+        - /etc/systemd/system/awg-quick@.service
+      register: molecule_awg_before
+
+    - name: Require a clean scenario rather than adopting preinstalled outputs
+      ansible.builtin.assert:
+        that:
+          - molecule_awg_before.results | selectattr('stat.exists') | list | length == 0
+        fail_msg: Destroy the stale AWG scenario container before testing role ownership.
+
+    - name: Create the fixture-owned source directory
+      ansible.builtin.file:
+        path: /opt/molecule-awg-fixture
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Create local Git repositories containing synthetic build inputs
+      ansible.builtin.script:
+        cmd: files/prepare-sources.sh
+        creates: /opt/molecule-awg-fixture/amneziawg-tools/.git/refs/tags/molecule-fixture-v1
+
+    - name: Redirect only the two role source URLs to local fixture repositories
+      ansible.builtin.copy:
+        dest: /opt/molecule-awg-fixture/gitconfig
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          [url "file:///opt/molecule-awg-fixture/amneziawg-go"]
+              insteadOf = https://github.com/amnezia-vpn/amneziawg-go
+          [url "file:///opt/molecule-awg-fixture/amneziawg-tools"]
+              insteadOf = https://github.com/amnezia-vpn/amneziawg-tools

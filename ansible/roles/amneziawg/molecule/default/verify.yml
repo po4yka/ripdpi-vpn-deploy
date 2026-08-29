@@ -1,14 +1,80 @@
 ---
-# Verify amneziawg static-config scenario.
-# No live wg-quick or kernel module assertions — we only check that the
-# rendered interface config carries the correct cohort obfuscation params.
+# Verify real role-owned builds, receipts, configuration and systemd lifecycle
+# using explicitly synthetic local sources and no-TUN tools. Not tunnel proof.
 # Cohort under test: narrow-junk-sequential
 # (jc=4, jmin=10, jmax=50, s1=0, s2=0, h1..h4=1..4).
 
-- name: Verify amneziawg cohort config shape
+- name: Verify AmneziaWG role ownership and cohort configuration
   hosts: all
   become: true
   tasks:
+    - name: Read the two synthetic source repository commits
+      ansible.builtin.command:
+        argv: [git, -C, "/opt/molecule-awg-fixture/{{ item }}", rev-parse, HEAD]
+      loop: [amneziawg-go, amneziawg-tools]
+      register: molecule_awg_fixture_heads
+      changed_when: false
+
+    - name: Read the role-cloned source repository commits
+      ansible.builtin.command:
+        argv: [git, -C, "/opt/src/{{ item }}", rev-parse, HEAD]
+      loop: [amneziawg-go, amneziawg-tools]
+      register: molecule_awg_clone_heads
+      changed_when: false
+
+    - name: Read build receipts written by the real role
+      ansible.builtin.slurp:
+        src: "/opt/src/{{ item }}/.ripdpi-built-commit"
+      loop: [amneziawg-go, amneziawg-tools]
+      register: molecule_awg_receipts
+
+    - name: Require matching fixture pins, cloned commits and build receipts
+      ansible.builtin.assert:
+        that:
+          - molecule_awg_fixture_heads.results[item].stdout | trim == molecule_awg_clone_heads.results[item].stdout | trim
+          - molecule_awg_receipts.results[item].content | b64decode | trim == molecule_awg_clone_heads.results[item].stdout | trim
+      loop: [0, 1]
+
+    - name: Inspect source build outputs and installed binaries
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        checksum_algorithm: sha256
+      loop:
+        - /opt/src/amneziawg-go/amneziawg-go
+        - /usr/local/bin/amneziawg-go
+        - /opt/src/amneziawg-tools/src/wg
+        - /usr/bin/awg
+      register: molecule_awg_binaries
+
+    - name: Require installed binaries to match the role's real make outputs
+      ansible.builtin.assert:
+        that:
+          - molecule_awg_binaries.results | selectattr('stat.isreg', 'defined') | selectattr('stat.isreg') | list | length == 4
+          - molecule_awg_binaries.results[0].stat.checksum == molecule_awg_binaries.results[1].stat.checksum
+          - molecule_awg_binaries.results[2].stat.checksum == molecule_awg_binaries.results[3].stat.checksum
+          - molecule_awg_binaries.results[1].stat.mode == '0755'
+          - molecule_awg_binaries.results[3].stat.mode == '0755'
+
+    - name: Require the role's instance service to remain active
+      ansible.builtin.command:
+        argv: [systemctl, is-active, awg-quick@awg0.service]
+      changed_when: false
+
+    - name: Require the role's instance service to be enabled
+      ansible.builtin.command:
+        argv: [systemctl, is-enabled, awg-quick@awg0.service]
+      changed_when: false
+
+    - name: Read the no-TUN tool's lifecycle record
+      ansible.builtin.slurp:
+        src: /run/molecule-awg-quick.events
+      register: molecule_awg_lifecycle
+
+    - name: Require the actual unit to have executed the installed fixture tool
+      ansible.builtin.assert:
+        that:
+          - (molecule_awg_lifecycle.content | b64decode).splitlines() | last == 'up awg0'
+
     - name: awg0.conf is present in config directory
       ansible.builtin.stat:
         path: /etc/amneziawg/awg0.conf

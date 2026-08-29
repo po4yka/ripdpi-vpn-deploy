@@ -51,6 +51,12 @@ Full-stack molecule sequences MUST include an idempotence phase; per-role scenar
 - **THEN** dependency paths resolve to the current checkout's pinned requirements and its explicit provider listener contract matches the runtime manifest rendered from the scenario inputs
 - **AND** a missing contract or mismatched declared port fails validation before convergence; local input checks alone do not establish second-converge idempotence
 
+#### Scenario: repeat converge of the Xray role scenario
+
+- **WHEN** the default Xray Molecule scenario converges twice using its synthetic release binary
+- **THEN** fixture setup preserves the runtime role's symlinks and the second converge reports zero changes
+- **AND** the explicit idempotence phase executes the real converge without suppressing changed results
+
 ### Requirement: REQ-SCENARIO-RUNS-ROLE — Molecule scenarios MUST exercise role task code
 
 Scenarios validating a role MUST execute the role itself (against stubbed externals) rather than re-implementing its render logic in the converge play.
@@ -59,6 +65,13 @@ Scenarios validating a role MUST execute the role itself (against stubbed extern
 
 - **WHEN** a change breaks amneziawg tasks/main.yml behavior
 - **THEN** the amneziawg molecule scenario fails instead of passing on hand-rendered templates
+
+#### Scenario: synthetic AWG build inputs exercise real role ownership
+
+- **WHEN** the scenario supplies explicitly synthetic local Git sources and no-TUN tools
+- **THEN** the unchanged role clones and verifies the fixture commits, builds and installs the tools, writes its own receipts, renders configuration and converges its systemd units
+- **AND** preparation does not preinstall those outputs, external Git fallback is denied, and the second converge reports zero changes
+- **AND** the evidence is limited to role orchestration, not an upstream build or working AWG tunnel
 
 ### Requirement: REQ-TESTING-DOCS-REALITY — Test documentation MUST match observed sequences
 

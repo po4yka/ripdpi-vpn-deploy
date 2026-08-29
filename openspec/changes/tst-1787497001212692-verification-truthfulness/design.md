@@ -10,9 +10,37 @@ Seven verification-honesty findings share a mechanism: gates assert less than de
 ## Decisions
 
 - Idempotence phases appended to existing sequences rather than a new scenario: the contract applies to the same converge.
-- amneziawg converge rewritten around include_role with the existing binary stubs: keeps the scenario hermetic while executing real task code.
+- amneziawg converge rewritten around include_role with explicit synthetic source/build fixtures and no-TUN tools: executes real task code without claiming an upstream build or tunnel proof.
 - Fallback-listener assertions conditional on fallback_enabled: mirrors deployment conditions, avoids failing hosts that never open those ports.
 - TESTING.md synced by observation (read each molecule.yml), not by intent.
+
+### AWG fixture boundary (step TST-1787496118906595)
+
+Preparation creates two local Git repositories containing synthetic Makefiles and
+no-TUN shell tools. Fixture-owned Git configuration redirects the two exact
+upstream URLs to these repositories; `GIT_ALLOW_PROTOCOL=file` rejects external
+fallback. The configuration exists only inside the isolated scenario container.
+The fixture pins its own resolved commits, not upstream release identities.
+Preparation does not install role binaries, write build receipts, or render role
+templates. The unchanged role performs package installation, cloning, commit
+verification, build/install/receipt writes, configuration, and systemd convergence.
+Verification checks those outputs and the real unit's execution of the fixture
+tool; the ordinary second converge must report no changes. This proves role
+orchestration, not upstream source authenticity, AWG traffic or physical-device
+behavior. Docker's resolver remains container-owned through the package's
+documented debconf setting; the role's apt task is not skipped.
+
+### Xray idempotence boundary (step TST-1787496118907291)
+
+The default scenario retains its synthetic release binary but does not stage a
+second regular file at `/usr/local/bin/xray`: the real runtime role owns that
+symlink. A second converge must preserve both runtime links and release bytes
+with zero changes, including fixture setup. Add the explicit idempotence phase;
+do not suppress changed results, skip production tasks or substitute a success
+declaration for a real repeat. A local replay of the actual filesystem tasks
+captures the regression before implementation; isolated Molecule must still
+verify the whole scenario. This slice does not change production roles, baseline
+or either full-stack scenario and remains separate from AWG delivery.
 
 ## Contracts and ownership
 

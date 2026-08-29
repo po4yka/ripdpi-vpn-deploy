@@ -28,7 +28,7 @@ artifact_evidence: no build artifacts produced by this change
 | REQ-DRIFT-FULL-IDENTITY | TST-1787496118906639 | Complete production playbook on local synthetic manifests: matching identity passes; wrong revision with matching digest and wrong digest fail | local source verified; live acceptance pending |
 | REQ-VERIFY-DEPLOYED-LISTENERS | TST-1787496118906882 | Local production-task regressions for configured Hysteria and conditional fallback ports passed; required full gates and live verify remain open | local source verified; acceptance pending |
 | REQ-IDEMPOTENCE-WHERE-DECLARED | TST-1787496118906321 | full-stack idempotence phase output showing second-run changed=0 | pending |
-| REQ-SCENARIO-RUNS-ROLE | TST-1787496118906595 | rewritten amneziawg converge executing role tasks | pending |
+| REQ-SCENARIO-RUNS-ROLE | TST-1787496118906595 | isolated x86_64 QEMU Molecule run: real role converge, idempotence changed=0, verify and destroy | pass |
 | REQ-TESTING-DOCS-REALITY | TST-1787496118906567 | row-by-row matrix audit vs molecule.yml sequences | pending |
 | REQ-SINGLE-SSH-LISTENER | TST-1787496118907256 | verify assertion output on socket-activated image | pending |
 
@@ -90,3 +90,51 @@ artifact_evidence: no build artifacts produced by this change
 
 - The combined source tree `70c8ed645126c3b4c6c75458cad02f41c2664868` includes main `bdc6b5a9c7f3d47b801341eba5560171ce41b589` and the allowlist, restore-point, source-parity, smoke and host-class fixes. Full `make check` passed validation, Terraform/policy, parsers and MSRV, then stopped with **1810 unit tests passed, one existing placeholder skipped and one failed in 1181.35 seconds**. The failure was an older static hostname test assuming `when` was a string, although the added subscription guard correctly makes it a list; Rust release and Bats were not reached.
 - The two hostname assertions now require the complete original toggle condition as a list member. No runtime source, timeout or acceptance predicate changed. The complete listener and Xray modules passed **72 tests in 54.52 seconds**. A repeated full gate and exact hosted checks remain required before integration; the parent task remains open.
+
+## AWG role scenario slice
+
+Step `TST-1787496118906595` is being implemented in
+`codex/high-awg-role-molecule-20260828`. Required evidence is a failing role-dispatch
+regression before the rewrite, the same regression passing afterward, and the
+isolated default Molecule sequence executing the real role with synthetic local
+Git/build inputs, checking receipts/configuration/service state and second-run
+idempotence.
+
+Observed local RED: `test_amneziawg_scenario_dispatches_real_role_tasks` failed
+because the old converge returned success without reaching an inserted role-task
+failure. After the rewrite the same actual-Ansible test passes. Both adjacent
+test modules passed together: 9 tests in 6.64s with Python 3.12.13 and
+Ansible 2.21.3, including fail-closed checks that both scenarios request the
+pinned image architecture. Scoped Ansible-lint passed all 13 discovered files,
+and ShellCheck passed the new source-fixture script.
+
+The complete isolated scenario then passed on a disposable x86_64 QEMU VM:
+dependency, syntax, create, prepare, converge, idempotence, verify and destroy.
+The first converge reported 32 tasks ok and 15 changed; the idempotence phase
+reported 26 ok and changed=0; verify reported 28 ok and changed=0. The hardened
+`awg-quick@awg0` unit started and the handler restart completed. The VM was
+stopped and deleted with its data, the Docker context was unchanged, and the
+source tree remained unchanged. No upstream AWG build, TUN traffic,
+physical-device, staging or live-host acceptance is claimed; the wider task
+remains open for its other requirements.
+
+## Xray idempotence slice
+
+Step `TST-1787496118907291` follows AWG in the same isolated worktree, with a
+separate delivery diff. The required RED/GREEN regression replays the actual
+scenario filesystem tasks and runtime symlink tasks twice at relocated private
+paths. It does not run package/service tasks or prove the complete scenario.
+Observed local RED: the actual filesystem replay reported `changed=2` on its
+second run (public stub copy followed by runtime link repair). After removing
+the duplicate public copy, the unchanged regression passed with zero changes on
+its second converge and unchanged release bytes. It is included in the 9-test
+local result above. The complete isolated x86_64 QEMU Molecule scenario also
+passed create, converge, idempotence, verify and destroy. Its first converge
+reported 31 ok and 15 changed; the idempotence phase reported 27 ok and
+changed=0; verify reported 10 ok and changed=0. The scenario has no prepare
+playbook by design, so Molecule's missing-prepare warning is expected. This is
+isolated role/service evidence, not external Xray traffic, staging or live-host
+acceptance.
+
+The private mode-0600 combined run log has SHA-256
+`789fee17bc94917707b0260e5f505f2e4b0f6134bf5b88e23def060f71614bd1`.
