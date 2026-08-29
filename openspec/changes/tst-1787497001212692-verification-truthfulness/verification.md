@@ -38,6 +38,15 @@ artifact_evidence: no build artifacts produced by this change
 - Remote CI: green run on the merge SHA including both full-stack variants.
 - Live: one verify + source-drift cycle against live inventory.
 
+## Published scenario prerequisite slice — 2026-08-29
+
+- Scope: only the dependency path and listener-contract inputs needed by step `TST-1787496118906321`, in `codex/high-published-prerequisites-20260829` from `fc3acc6`.
+- Tests-first RED: the entire existing dependency module reported **2 failed, 2 passed in 0.52s**. The published dependency path resolved to a different checkout's requirements, and the provider listener contract was absent (`/private/tmp/ripdpi-published-prerequisites-red.log`).
+- Before choosing the contract, an installed-Ansible regression loaded all 28 actual static site roles with literal `when: false`. Its private localhost inventory uses local connection/no escalation, a closed environment and the shared synthetic secrets. Only the exact manifest pre-task and a debug observation succeed (`ok=2 changed=0`); roles, handlers, services and host connections are not exercised. It confirms `xray_fallback_port` is undefined and the effective fallback is zero, with five active listeners matching the declared inputs.
+- The first version of that observation test compared inactive records too and failed because static role defaults add disabled records. The corrected comparison follows the production validator's enabled-listener boundary, while preserving separate defined/value fallback assertions. Its final hermetic run, with an owned empty collections path rather than ambient Ansible collections, passed **1 test in 1.67s** (`/private/tmp/ripdpi-published-static-defaults-hermetic.log`); the initial test-shape failure is not product RED evidence.
+- The source fix points the dependency at this checkout's `requirements.yml` from the documented `ansible/` CWD and supplies the five-listener provider snapshot. No port, toggle, role or sequence changes. The existing module's final hermetic run passed **5 tests in 1.56s** (`/private/tmp/ripdpi-published-prerequisites-hermetic.log`), including actual template/validator comparison and rejection of a changed runtime port.
+- These are local input/default-visibility checks, not a full site run or Molecule proof. Step `TST-1787496118906321`, full Molecule idempotence, hosted checks and live acceptance remain open; no Docker, provider or live-host operation was performed.
+
 ## Listener-only local regression evidence (2026-08-28)
 
 - Scope: step `TST-1787496118906882` in `codex/high-verify-listeners-20260828`, based on `7da8b74`. No SSH, watchdog, liveness, backup, source-drift, toggle-default, Makefile, or Molecule changes are included. The task and its full/live acceptance remain blocked; this entry does not complete the other host-class gating step.

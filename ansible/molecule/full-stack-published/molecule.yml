@@ -3,8 +3,8 @@
 # ports so an external client (e.g. the RIPDPI Android app running on a
 # Mac-host emulator) can reach the in-container stack.
 #
-# Identical role set and inventory to `full-stack`; only the platform
-# spec differs (added `published_ports`). The converge playbook is
+# Same role set as `full-stack`, with the explicit inventory below and
+# host exposure through `published_ports`. The converge playbook is
 # imported from the same `playbooks/site.yml` via `converge.yml`.
 #
 # CI keeps using `full-stack` — that scenario stays portless to match
@@ -23,7 +23,7 @@
 dependency:
   name: galaxy
   options:
-    requirements-file: ../../../requirements.yml
+    requirements-file: ../requirements.yml
 
 driver:
   name: docker
@@ -73,6 +73,15 @@ provisioner:
         hysteria_log_dir: /var/log/hysteria
         amneziawg_config_dir: /etc/amnezia/amneziawg
         restic_repo_dir: /var/backups/vpn-restic
+        # Explicit provider snapshot for this scenario's preflight inputs.
+        # No xray_fallback_port is declared here; its manifest default is off.
+        terraform_public_listeners_b64_chunks:
+          - "W3sibmFtZSI6InhyYXkiLCJwcm90b2NvbCI6InRjcCIsInBvcnQiOjQ0MywicG9ydF9yYW5nZSI6bnVsbH0seyJuYW1lIjoicHVibGljLXNpdGUtaHR0cCIsInByb3RvY29sIjoidGNw"
+          - "IiwicG9ydCI6ODAsInBvcnRfcmFuZ2UiOm51bGx9LHsibmFtZSI6Im5naW54LXhodHRwIiwicHJvdG9jb2wiOiJ0Y3AiLCJwb3J0Ijo4NDQzLCJwb3J0X3JhbmdlIjpudWxsfSx7Im5h"
+          - "bWUiOiJoeXN0ZXJpYSIsInByb3RvY29sIjoidWRwIiwicG9ydCI6NDQzLCJwb3J0X3JhbmdlIjpudWxsfSx7Im5hbWUiOiJob25leXBvdCIsInByb3RvY29sIjoidGNwIiwicG9ydCI6"
+          - "NDQ0MywicG9ydF9yYW5nZSI6bnVsbH1d"
+        terraform_public_listeners_b64: >-
+          {{ terraform_public_listeners_b64_chunks | join('') }}
       vpn:
         ansible_user: root
         allowed_ssh_cidrs: ["0.0.0.0/0"]
