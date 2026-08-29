@@ -205,9 +205,12 @@ and no path rewrites, defaults, converts or deletes it. The frozen old parser
 must likewise refuse terminal schema-two ownership or baseline state before any
 pointer, journal or activation change.
 
-The eventual role entrypoint must delegate the whole exact-node operation to a
-controller that uses fresh non-multiplexed SSH/SFTP and required DNS/VPN proof
-before remote confirmation. It must cover direct site-playbook callers, stop
-serial rollout on failure, and avoid durable prepare in check mode. Until that
-positive controller and bootstrap integration are delivered, planner/core tests
-do not authorize ordinary deploy or migration on real nodes.
+The role entrypoint delegates the exact-node operation to a controller that uses
+fresh non-multiplexed SSH/SFTP and required DNS/VPN proof before remote
+confirmation. Ordinary deploy first requires the exact installed recovery
+generation, safe state and lock, strict `idle`, `committed` or `rolled_back`
+status, and installed-unit readiness; it never auto-installs that capability.
+The controller covers direct site-playbook callers, stops serial rollout on
+failure, and avoids durable prepare in check mode. Source integration and tests
+still do not authorize migration on real nodes without staged disconnect,
+reboot, rollback and connection proof.

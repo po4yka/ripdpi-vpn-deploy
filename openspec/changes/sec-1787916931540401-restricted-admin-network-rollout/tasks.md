@@ -8,10 +8,12 @@ Deliver restricted ordinary SSH management with policy-preserving legacy migrati
 
 Primary owns the transaction/controller/installation surfaces and integration; delegated planner work is limited to `ansible/roles/baseline/files/sshd_ownership.py` and its dedicated unit tests. Coordinator-owned inventory, site pre-task tags and backup surfaces are excluded. Shared Makefile edits are serialized.
 
-The unpublished baseline-convergence slice uses the same planner/core ownership
-split. It moves all new ownership/baseline plans and state to schema two and
-adds a read-only exact-terminal schema-one boundary. Bootstrap, role/controller
-and fresh-connection integration remain unfinished; no source-only test closes them.
+The baseline-convergence slice uses the same planner/core ownership split. It
+moves all new ownership/baseline plans and state to schema two and adds a
+read-only exact-terminal schema-one boundary. Bootstrap and role/controller
+source integration are implemented with a fail-closed recovery-foundation
+preflight. Fresh staged connection, disconnect, reboot and rollback acceptance
+remain unfinished; no source-only test closes them.
 
 ## Execution
 

@@ -23,6 +23,31 @@ make source-drift      # normally repeated by deploy/verify; useful alone
 make clean
 ```
 
+On a fresh node, or whenever the reviewed recovery generation changes, install
+the recovery foundation for that one exact inventory alias before the first
+ordinary `dry-run` or `deploy`:
+
+```bash
+make install-ssh-recovery ANSIBLE_LIMIT=<exact-inventory-alias> \
+  SSH_RECOVERY_EXCLUSIVE_WINDOW=1
+make dry-run ANSIBLE_LIMIT=<exact-inventory-alias> \
+  DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json"
+make deploy ANSIBLE_LIMIT=<exact-inventory-alias> \
+  DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json" \
+  DEPLOY_PROMOTION_CONFIG_FILE="$HOME/.config/vpn-provision/promotion-configs.json"
+```
+
+Run the installer serially in an exclusive maintenance window. Ordinary
+deployment never installs or repairs this capability implicitly. Before its
+first site-playbook write, the deploy controller uses the same frozen strict
+transport to require the exact local bundle generation, root-owned recovery
+state and lock, a strict `idle`, `committed` or `rolled_back` dispatcher status,
+and successful installed-unit readiness. Missing, stale, nonterminal or unsafe
+recovery state fails closed before Ansible.
+See [RUNBOOK-rollback.md](RUNBOOK-rollback.md#ssh-ownership-recovery-foundation)
+for the installer boundary. A successful source or check-mode preflight is not
+staging, reboot, disconnect, VPN-path or production acceptance.
+
 If `dry-run` shows changes you didn't expect, **stop**. Investigate.
 `deploy` refuses a dirty checkout so the live manifest can name an immutable
 source revision. The parity gate compares both that exact revision and the

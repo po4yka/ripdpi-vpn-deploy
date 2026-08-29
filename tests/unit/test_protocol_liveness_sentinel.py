@@ -398,6 +398,33 @@ def test_awg_probe_command_keeps_hostname_resolution_inside_namespace():
     assert command[-1] == "https://fixture.example/"
 
 
+def test_awg_namespace_curl_forces_ipv4_and_resolves_hostname_inside_namespace(
+    tmp_path: Path,
+) -> None:
+    config, env = _setup(tmp_path)
+    document = json.loads(config.read_text())
+    document["probe_url"] = "https://dual-stack.fixture/"
+    config.write_text(json.dumps(document))
+
+    result = _run(config, env)
+
+    assert result.returncode == 0, result.stderr
+    calls = (tmp_path / "calls.log").read_text().splitlines()
+    awg_curl = next(
+        line
+        for line in calls
+        if line.startswith("ip netns exec vpn-live-") and " curl " in line
+    )
+    assert "--ipv4" in awg_curl.split()
+    assert "--resolve" not in awg_curl
+    assert awg_curl.endswith("https://dual-stack.fixture/")
+    awg = next(
+        item for item in json.loads(result.stdout)["profiles"] if item["profile"] == "p2-amneziawg"
+    )
+    assert awg["target_address_family"] == "ipv4"
+    assert awg["dns_through_tunnel"] is True
+
+
 def test_legacy_sing_box_xhttp_requires_explicit_migration(tmp_path):
     config, env = _setup(tmp_path)
     document = json.loads(config.read_text())
