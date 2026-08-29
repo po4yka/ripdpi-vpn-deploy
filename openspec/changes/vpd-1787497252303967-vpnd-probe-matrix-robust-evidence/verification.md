@@ -3,7 +3,7 @@ task_id: VPD-1787497252303967
 change: vpd-1787497252303967-vpnd-probe-matrix-robust-evidence
 commit_sha: null
 local: required
-local_evidence: "Durability candidate: all 184 Rust tests passed with no failures; all-target/all-feature Clippy passed with warnings denied. Contract validation 5/5 passed. Independent review found and then verified the fix for one signal/control race; no blockers remain. Full repository, hosted and live gates remain pending."
+local_evidence: "Combined candidate f29ca8e72e2c5d9803ce21da0f9b3cab144a3b4d passed make check: 2050 Python tests passed with 1 existing skip, 55 BATS passed, 184 release-profile Rust tests passed, Clippy passed with warnings denied, and all Terraform, policy, cloud-init, render, schema, Ansible and ci-fast gates passed. The isolated profile stopped successfully. A wrapper-only context comparison returned false after the successful make process, while a bounded follow-up start/stop proved the Docker context and config hash unchanged. Hosted, client, staging and live gates remain pending."
 remote_ci: required
 remote_ci_evidence: ""
 dry_run: not_applicable
@@ -26,7 +26,7 @@ artifact_evidence: No release artifact is published; report schema validation is
 |---|---|---|---|
 | REQ-MATRIX-CELL-TIMEOUT-KILL | VPD-1787497252661429 | Actual Cmd → GNU Make → shell → sleep PID-handshake regression fails before the fix and passes after; eight direct/foreground SIGINT/TERM cases exercise probe jobs and doctor captures | Focused local pass; broad gates pending |
 | REQ-MATRIX-CONTROL-TIMEOUT | VPD-1787497252679177 | Actual hanging Make control records Unknown/control_timeout and both cells complete; this test already passes on the base implementation | Existing behavior verified locally; broad gates pending |
-| REQ-MATRIX-DURABILITY | VPD-1787497252698055 | Real CLI fixtures prove mode-0600 atomic per-tick checkpoints, synchronized JSONL, exclusive output locks, SIGINT/SIGTERM partial flush with 130/143, scheduled-wait flush, descendant cleanup, and fail-closed checkpoint errors preserving the prior report | Focused and full Rust local pass; client/hosted/live pending |
+| REQ-MATRIX-DURABILITY | VPD-1787497252698055 | Real CLI fixtures prove mode-0600 atomic per-tick checkpoints, synchronized JSONL, exclusive output locks, SIGINT/SIGTERM partial flush with 130/143, scheduled-wait flush, descendant cleanup, and fail-closed checkpoint errors preserving the prior report | Full local repository pass; client/hosted/live pending |
 | REQ-MATRIX-EVIDENCE-SEMANTICS | VPD-1787497252715025 | No-impairment and gap/recovery tests pass; schema-2 snapshot removes six all-Ok phantom windows, with fields and observations unchanged | Focused local pass; broad gates pending |
 
 ## Bounded runtime evidence — 2026-08-28
@@ -123,5 +123,14 @@ artifact_evidence: No release artifact is published; report schema validation is
 - Independent review found one race where a biased signal could discard an
   already-ready control result. The control future now has priority when both
   branches are ready; the reviewer confirmed the blocker closed and found no
-  further blocker. Client mirror, full repository gate, hosted CI, staging and
-  live traffic acceptance remain separate evidence boundaries.
+  further blocker.
+- The combined candidate `f29ca8e72e2c5d9803ce21da0f9b3cab144a3b4d`
+  then passed the complete repository `make -j1 check`: 2050 Python tests with
+  one existing skip, all 55 BATS tests, all 184 release-profile Rust tests,
+  Clippy with warnings denied, and the Terraform, policy, cloud-init, render,
+  schema, Ansible and `ci-fast` gates. The isolated Colima profile stopped with
+  exit 0. The outer wrapper alone returned nonzero because its context-string
+  comparison reported false after `make` had completed; the Docker config file
+  was not modified, and a bounded follow-up start/stop observed both identical
+  context and identical config hash. This is local repository evidence, not
+  hosted, client, staging or live traffic acceptance.
