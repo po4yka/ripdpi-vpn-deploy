@@ -94,3 +94,12 @@ Production migration MUST require an authorized isolated staging target and obse
 
 - **WHEN** the required target or authenticated administration session is missing
 - **THEN** production enrollment/migration remains blocked and existing access stays unchanged.
+
+#### Scenario: Temporary staging cleanup is authorized
+
+- **WHEN** an authorized isolated staging server is ready for deletion
+- **THEN** cleanup requires a private canonical manifest bound to the exact Terraform workspace and state digest, hostname, server UUID, root-storage UUID, creation time and expiry time.
+- **AND** the manifest provider and environment MUST match the exact destroy command, and a new private evidence inode MUST be reserved before any lifecycle override, plan or provider-changing command.
+- **AND** the controller refuses a symlink, foreign owner, non-private mode, expired deadline, changed state, foreign identifier, or a destroy plan containing any create, update, replacement or deletion outside the exact owned resource set before apply.
+- **AND** the private binary plan inode inspected by the controller MUST be the same unreplaceable inode passed to apply; an ambient umask or worktree pathname MUST NOT expose or substitute it.
+- **AND** cleanup is not accepted until authenticated read-only provider checks report the exact server and root storage absent and replace the reservation content in the same inode; provider authentication failure, forbidden resources, existing resources or ambiguous responses remain failures and never claim that cumulative billing was reversed.

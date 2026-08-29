@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1787916931540401-restricted-admin-network-rollout
 created: 2026-08-28
-updated: 2026-08-28
+updated: 2026-08-30
 related_tasks: []
 ---
 
@@ -26,6 +26,7 @@ Preserve working OpenSSH access while removing confirmed legacy ownership overla
 - Persistent guest recovery handles interruption, timeout and reboot; fresh strict direct and Tailnet SSH proof is required before confirmation. Unknown or corrupted state is retained for explicit recovery, never silently overwritten.
 - Restricted Tailnet administration preserves public emergency access, DNS, routing, unrelated ACL access and VPN traffic. Cloud firewall changes have separately tested external rollback.
 - Local failure tests, pinned-distro validation and exact-source hosted CI pass. Real isolated staging rehearsal and serial fleet acceptance remain required; fixtures and source CI are not live proof.
+- Authorized temporary staging deletion is bound to a private exact-state manifest, server/root-storage UUIDs and a deadline no later than 48 hours; delete-only plan and authenticated provider-absence checks fail closed without claiming cumulative billing reversal.
 
 ## Implementation ownership
 
@@ -39,3 +40,7 @@ Preserve working OpenSSH access while removing confirmed legacy ownership overla
 ## Execution boundaries
 
 Local source implementation can proceed now. No host, provider or policy mutation belongs to the local implementation gate. Staging provisioning waits for the approved existing executor, verified account price/credit and exact-resource cleanup within 48 hours and the approved total cap. Tailnet ACL application needs a separately approved fresh diff. Production promotion requires observed staging recovery and an explicit serial maintenance window.
+
+The UUID-bound cleanup source step is locally testable without creating or
+deleting a server. Passing it does not satisfy the staging rehearsal, provider
+billing review or serial fleet steps.

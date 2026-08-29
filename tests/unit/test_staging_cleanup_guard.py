@@ -1,0 +1,680 @@
+"""Fail-closed contracts for exact-resource staging cleanup."""
+
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+import os
+import stat
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = REPO_ROOT / "scripts/staging-cleanup-guard.py"
+SPEC = importlib.util.spec_from_file_location("staging_cleanup_guard", SCRIPT)
+assert SPEC and SPEC.loader
+guard = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(guard)
+
+SERVER_UUID = "00112233-4455-4677-8899-aabbccddeeff"
+STORAGE_UUID = "ffeeddcc-bbaa-4988-8766-554433221100"
+HOSTNAME = "vpn-ci-staging-20260829-fi-hel1"
+CREATED = datetime(2026, 8, 29, 12, 0, tzinfo=timezone.utc)
+EXPIRY = CREATED + timedelta(hours=47)
+
+
+def _private_file(path: Path, data: bytes) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.write_bytes(data)
+    path.chmod(0o600)
+    return path
+
+
+def _state_view() -> dict[str, object]:
+    return {
+        "version": 4,
+        "terraform_version": "1.14.5",
+        "serial": 3,
+        "lineage": "12345678-1234-4234-8234-123456789abc",
+        "resources": [
+            {
+                "mode": "managed",
+                "type": "terraform_data",
+                "name": "ssh_port",
+                "instances": [
+                    {"schema_version": 0, "attributes": {"id": "local-only"}}
+                ],
+            },
+            {
+                "mode": "managed",
+                "type": "upcloud_server",
+                "name": "vpn",
+                "instances": [
+                    {
+                        "schema_version": 0,
+                        "attributes": {
+                            "id": SERVER_UUID,
+                            "hostname": HOSTNAME,
+                            "template": [{"id": STORAGE_UUID}],
+                            "network_interface": [
+                                {"type": "public", "ip_address_family": "IPv4"},
+                                {"type": "public", "ip_address_family": "IPv6"},
+                                {"type": "utility", "ip_address_family": "IPv4"},
+                            ],
+                        },
+                    }
+                ],
+            },
+            {
+                "mode": "managed",
+                "type": "upcloud_firewall_rules",
+                "name": "vpn",
+                "instances": [
+                    {
+                        "schema_version": 0,
+                        "attributes": {"id": SERVER_UUID, "server_id": SERVER_UUID},
+                    }
+                ],
+            },
+        ],
+    }
+
+
+def _destroy_plan(
+    *, server_uuid: str = SERVER_UUID, storage_uuid: str = STORAGE_UUID
+) -> dict[str, object]:
+    return {
+        "format_version": "1.2",
+        "resource_changes": [
+            {
+                "address": "terraform_data.ssh_port",
+                "mode": "managed",
+                "type": "terraform_data",
+                "name": "ssh_port",
+                "change": {
+                    "actions": ["delete"],
+                    "before": {"id": "local-only"},
+                    "after": None,
+                },
+            },
+            {
+                "address": "upcloud_server.vpn",
+                "mode": "managed",
+                "type": "upcloud_server",
+                "name": "vpn",
+                "change": {
+                    "actions": ["delete"],
+                    "before": {
+                        "id": server_uuid,
+                        "hostname": HOSTNAME,
+                        "template": [{"id": storage_uuid}],
+                        "network_interface": [
+                            {"type": "public", "ip_address_family": "IPv4"},
+                            {"type": "public", "ip_address_family": "IPv6"},
+                            {"type": "utility", "ip_address_family": "IPv4"},
+                        ],
+                    },
+                    "after": None,
+                },
+            },
+            {
+                "address": "upcloud_firewall_rules.vpn",
+                "mode": "managed",
+                "type": "upcloud_firewall_rules",
+                "name": "vpn",
+                "change": {
+                    "actions": ["delete"],
+                    "before": {"id": server_uuid, "server_id": server_uuid},
+                    "after": None,
+                },
+            },
+        ],
+    }
+
+
+def _manifest(
+    tmp_path: Path, *, now: datetime = CREATED
+) -> tuple[Path, dict[str, object]]:
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    state_bytes = guard.canonical_json(_state_view())
+    state_path = _private_file(private / "terraform.tfstate", state_bytes)
+    manifest_path = private / "cleanup-manifest.json"
+    manifest = guard.create_manifest(
+        output_path=manifest_path,
+        provider="upcloud",
+        environment="ci-staging-20260829",
+        workspace="ci-staging-20260829",
+        state_path=state_path,
+        hostname=HOSTNAME,
+        created_at=CREATED,
+        expiry_at=EXPIRY,
+        now=now,
+    )
+    return manifest_path, manifest
+
+
+def test_manifest_is_canonical_private_and_bound_to_exact_state_ids(
+    tmp_path: Path,
+) -> None:
+    manifest_path, manifest = _manifest(tmp_path)
+
+    assert stat.S_IMODE(manifest_path.stat().st_mode) == 0o600
+    assert manifest_path.read_bytes() == guard.canonical_json(manifest)
+    assert manifest["server_uuid"] == SERVER_UUID
+    assert manifest["root_storage_uuid"] == STORAGE_UUID
+    assert manifest["hostname"] == HOSTNAME
+    assert manifest["workspace"] == "ci-staging-20260829"
+    state = manifest["state"]
+    assert (
+        state["sha256"]
+        == hashlib.sha256(guard.canonical_json(_state_view())).hexdigest()
+    )
+
+
+def test_manifest_accepts_owned_state_under_non_writable_repository_directory(
+    tmp_path: Path,
+) -> None:
+    repo_state = tmp_path / "terraform.tfstate.d" / "ci-staging-20260829"
+    repo_state.mkdir(parents=True, mode=0o755)
+    repo_state.chmod(0o755)
+    state_path = _private_file(
+        repo_state / "terraform.tfstate", guard.canonical_json(_state_view())
+    )
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+
+    manifest = guard.create_manifest(
+        output_path=private / "manifest.json",
+        provider="upcloud",
+        environment="ci-staging-20260829",
+        workspace="ci-staging-20260829",
+        state_path=state_path,
+        hostname=HOSTNAME,
+        created_at=CREATED,
+        expiry_at=EXPIRY,
+        now=CREATED,
+    )
+
+    assert manifest["state"]["path"] == str(state_path.absolute())
+
+
+@pytest.mark.parametrize("bad_mode", [0o400, 0o640, 0o644])
+def test_manifest_refuses_non_private_exact_mode(tmp_path: Path, bad_mode: int) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    manifest_path.chmod(bad_mode)
+
+    with pytest.raises(guard.GuardError, match="manifest mode"):
+        guard.load_manifest(manifest_path, now=CREATED)
+
+
+def test_manifest_refuses_symlink(tmp_path: Path) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    target = manifest_path.with_name("real.json")
+    manifest_path.rename(target)
+    manifest_path.symlink_to(target.name)
+
+    with pytest.raises(guard.GuardError, match="manifest.*symlink"):
+        guard.load_manifest(manifest_path, now=CREATED)
+
+
+def test_manifest_refuses_foreign_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    actual_uid = os.getuid()
+    monkeypatch.setattr(guard.os, "getuid", lambda: actual_uid + 1)
+
+    with pytest.raises(guard.GuardError, match="manifest.*owner"):
+        guard.load_manifest(manifest_path, now=CREATED)
+
+
+def test_private_read_rechecks_mode_on_opened_inode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    original_open = guard.os.open
+
+    def open_then_widen(path: object, flags: int, *args: object) -> int:
+        fd = original_open(path, flags, *args)
+        if Path(path) == manifest_path:
+            os.fchmod(fd, 0o644)
+        return fd
+
+    monkeypatch.setattr(guard.os, "open", open_then_widen)
+
+    with pytest.raises(guard.GuardError, match="mode changed while opening"):
+        guard.load_manifest(manifest_path, now=CREATED)
+
+
+def test_manifest_refuses_expired_deadline(tmp_path: Path) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+
+    with pytest.raises(guard.GuardError, match="expired"):
+        guard.load_manifest(manifest_path, now=EXPIRY + timedelta(seconds=1))
+
+
+def test_manifest_refuses_different_destroy_environment(tmp_path: Path) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+
+    with pytest.raises(guard.GuardError, match="environment does not match"):
+        guard.load_manifest(
+            manifest_path,
+            now=CREATED,
+            expected_provider="upcloud",
+            expected_environment="ci-staging-foreign",
+        )
+
+
+def test_manifest_refuses_state_drift(tmp_path: Path) -> None:
+    manifest_path, manifest = _manifest(tmp_path)
+    Path(manifest["state"]["path"]).write_bytes(b"foreign state\n")
+
+    with pytest.raises(guard.GuardError, match="state digest"):
+        guard.load_manifest(manifest_path, now=CREATED)
+
+
+def test_manifest_refuses_creation_window_over_48_hours(tmp_path: Path) -> None:
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    state_path = _private_file(
+        private / "terraform.tfstate", guard.canonical_json(_state_view())
+    )
+
+    with pytest.raises(guard.GuardError, match="48 hours"):
+        guard.create_manifest(
+            output_path=private / "manifest.json",
+            provider="upcloud",
+            environment="ci-staging-too-long",
+            workspace="ci-staging-too-long",
+            state_path=state_path,
+            hostname=HOSTNAME,
+            created_at=CREATED,
+            expiry_at=CREATED + timedelta(hours=48, seconds=1),
+            now=CREATED,
+        )
+
+
+@pytest.mark.parametrize("backup_kind", ["storage", "simple"])
+def test_manifest_refuses_provider_backups_outside_exact_cleanup_scope(
+    tmp_path: Path, backup_kind: str
+) -> None:
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    state = _state_view()
+    server = next(
+        resource
+        for resource in state["resources"]
+        if resource["type"] == "upcloud_server"
+    )["instances"][0]["attributes"]
+    if backup_kind == "storage":
+        server["template"][0]["backup_rule"] = [{"interval": "daily"}]
+    else:
+        server["simple_backup"] = [{"plan": "daily", "time": "2200"}]
+    state_path = _private_file(
+        private / "terraform.tfstate", guard.canonical_json(state)
+    )
+
+    with pytest.raises(guard.GuardError, match="provider backups"):
+        guard.create_manifest(
+            output_path=private / "manifest.json",
+            provider="upcloud",
+            environment="ci-staging-with-backup",
+            workspace="ci-staging-with-backup",
+            state_path=state_path,
+            hostname=HOSTNAME,
+            created_at=CREATED,
+            expiry_at=EXPIRY,
+            now=CREATED,
+        )
+
+
+def test_manifest_refuses_secondary_public_ipv4_outside_exact_cleanup_scope(
+    tmp_path: Path,
+) -> None:
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    state = _state_view()
+    server = next(
+        resource
+        for resource in state["resources"]
+        if resource["type"] == "upcloud_server"
+    )["instances"][0]["attributes"]
+    server["network_interface"].insert(
+        1, {"type": "public", "ip_address_family": "IPv4"}
+    )
+    state_path = _private_file(
+        private / "terraform.tfstate", guard.canonical_json(state)
+    )
+
+    with pytest.raises(guard.GuardError, match="network interfaces exceed"):
+        guard.create_manifest(
+            output_path=private / "manifest.json",
+            provider="upcloud",
+            environment="ci-staging-secondary-ip",
+            workspace="ci-staging-secondary-ip",
+            state_path=state_path,
+            hostname=HOSTNAME,
+            created_at=CREATED,
+            expiry_at=EXPIRY,
+            now=CREATED,
+        )
+
+
+def test_destroy_plan_accepts_only_exact_owned_delete_set(tmp_path: Path) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    plan_path = _private_file(
+        manifest_path.with_name("destroy-plan.json"),
+        guard.canonical_json(_destroy_plan()),
+    )
+
+    summary = guard.validate_destroy_plan(manifest_path, plan_path, now=CREATED)
+
+    assert summary == {
+        "deleted_addresses": [
+            "terraform_data.ssh_port",
+            "upcloud_firewall_rules.vpn",
+            "upcloud_server.vpn",
+        ],
+        "root_storage_uuid": STORAGE_UUID,
+        "server_uuid": SERVER_UUID,
+    }
+
+
+@pytest.mark.parametrize("actions", [["create"], ["update"], ["delete", "create"]])
+def test_destroy_plan_refuses_create_update_or_replace(
+    tmp_path: Path, actions: list[str]
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    plan = _destroy_plan()
+    plan["resource_changes"][0]["change"]["actions"] = actions
+    plan_path = _private_file(
+        manifest_path.with_name("plan.json"), guard.canonical_json(plan)
+    )
+
+    with pytest.raises(guard.GuardError, match="delete-only"):
+        guard.validate_destroy_plan(manifest_path, plan_path, now=CREATED)
+
+
+@pytest.mark.parametrize(
+    ("server_uuid", "storage_uuid", "message"),
+    [
+        ("11111111-2222-4333-8444-555555555555", STORAGE_UUID, "server UUID"),
+        (SERVER_UUID, "11111111-2222-4333-8444-555555555555", "storage UUID"),
+    ],
+)
+def test_destroy_plan_refuses_foreign_ids(
+    tmp_path: Path, server_uuid: str, storage_uuid: str, message: str
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    plan_path = _private_file(
+        manifest_path.with_name("plan.json"),
+        guard.canonical_json(
+            _destroy_plan(server_uuid=server_uuid, storage_uuid=storage_uuid)
+        ),
+    )
+
+    with pytest.raises(guard.GuardError, match=message):
+        guard.validate_destroy_plan(manifest_path, plan_path, now=CREATED)
+
+
+def test_destroy_plan_refuses_foreign_delete_address(tmp_path: Path) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    plan = _destroy_plan()
+    plan["resource_changes"].append(
+        {
+            "address": "upcloud_storage.foreign",
+            "change": {
+                "actions": ["delete"],
+                "before": {"id": STORAGE_UUID},
+                "after": None,
+            },
+        }
+    )
+    plan_path = _private_file(
+        manifest_path.with_name("plan.json"), guard.canonical_json(plan)
+    )
+
+    with pytest.raises(guard.GuardError, match="foreign resource"):
+        guard.validate_destroy_plan(manifest_path, plan_path, now=CREATED)
+
+
+def test_destroy_plan_refuses_refreshed_secondary_public_ipv4(tmp_path: Path) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    plan = _destroy_plan()
+    server = next(
+        item
+        for item in plan["resource_changes"]
+        if item["address"] == "upcloud_server.vpn"
+    )["change"]["before"]
+    server["network_interface"].append({"type": "public", "ip_address_family": "IPv4"})
+    plan_path = _private_file(
+        manifest_path.with_name("plan.json"), guard.canonical_json(plan)
+    )
+
+    with pytest.raises(guard.GuardError, match="network interfaces exceed"):
+        guard.validate_destroy_plan(manifest_path, plan_path, now=CREATED)
+
+
+def _absent_get(path: str) -> tuple[int, dict[str, object]]:
+    if path == "/1.3/account":
+        return 200, {"account": {"credits": 12.34, "username": "redacted"}}
+    if path == f"/1.3/server/{SERVER_UUID}":
+        return 404, {"error": {"error_code": "SERVER_NOT_FOUND"}}
+    if path == f"/1.3/storage/{STORAGE_UUID}":
+        return 404, {"error": {"error_code": "STORAGE_NOT_FOUND"}}
+    raise AssertionError(path)
+
+
+def test_post_destroy_requires_authenticated_exact_provider_absence(
+    tmp_path: Path,
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("post-destroy.json")
+    guard.reserve_evidence(
+        manifest_path,
+        evidence_path,
+        now=CREATED,
+        expected_provider="upcloud",
+        expected_environment="ci-staging-20260829",
+    )
+    reserved_inode = evidence_path.stat().st_ino
+
+    evidence = guard.verify_upcloud_absence(
+        manifest_path,
+        evidence_path,
+        request_json=_absent_get,
+        observed_at=CREATED + timedelta(minutes=30),
+        now=CREATED,
+        expected_provider="upcloud",
+        expected_environment="ci-staging-20260829",
+    )
+
+    assert stat.S_IMODE(evidence_path.stat().st_mode) == 0o600
+    assert evidence_path.stat().st_ino == reserved_inode
+    assert evidence_path.read_bytes() == guard.canonical_json(evidence)
+    assert evidence["server_status"] == "absent"
+    assert evidence["root_storage_status"] == "absent"
+    assert evidence["billing_status"] == "no-active-owned-resources"
+    assert "credits" not in evidence_path.read_text()
+    assert "username" not in evidence_path.read_text()
+
+
+@pytest.mark.parametrize("kind", ["existing", "symlink", "unsafe-parent"])
+def test_evidence_reservation_refuses_unsafe_output_before_cleanup(
+    tmp_path: Path, kind: str
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_parent = manifest_path.parent
+    evidence_path = evidence_parent / "post-destroy.json"
+    if kind == "existing":
+        _private_file(evidence_path, b"existing\n")
+    elif kind == "symlink":
+        target = _private_file(evidence_parent / "target.json", b"target\n")
+        evidence_path.symlink_to(target.name)
+    else:
+        evidence_parent = tmp_path / "unsafe-evidence"
+        evidence_parent.mkdir(mode=0o755)
+        evidence_parent.chmod(0o755)
+        evidence_path = evidence_parent / "post-destroy.json"
+
+    with pytest.raises(guard.GuardError, match="already exists|mode must be 0700"):
+        guard.reserve_evidence(
+            manifest_path,
+            evidence_path,
+            now=CREATED,
+            expected_provider="upcloud",
+            expected_environment="ci-staging-20260829",
+        )
+
+
+def test_evidence_rewrite_rechecks_mode_on_opened_inode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("post-destroy.json")
+    reserved = guard.reserve_evidence(
+        manifest_path,
+        evidence_path,
+        now=CREATED,
+        expected_provider="upcloud",
+        expected_environment="ci-staging-20260829",
+    )
+    original_open = guard.os.open
+
+    def open_then_widen(path: object, flags: int, *args: object) -> int:
+        fd = original_open(path, flags, *args)
+        if Path(path) == evidence_path and flags & os.O_RDWR:
+            os.fchmod(fd, 0o644)
+        return fd
+
+    monkeypatch.setattr(guard.os, "open", open_then_widen)
+
+    with pytest.raises(guard.GuardError, match="mode changed while opening"):
+        guard._rewrite_reserved_evidence(
+            evidence_path,
+            reserved,
+            {"schema_version": guard.SCHEMA_VERSION, "status": "verified"},
+        )
+
+
+def test_pre_apply_evidence_reservation_can_be_released_exactly(tmp_path: Path) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("post-destroy.json")
+    guard.reserve_evidence(
+        manifest_path,
+        evidence_path,
+        now=CREATED,
+        expected_provider="upcloud",
+        expected_environment="ci-staging-20260829",
+    )
+
+    guard.release_evidence(
+        manifest_path,
+        evidence_path,
+        now=CREATED,
+        expected_provider="upcloud",
+        expected_environment="ci-staging-20260829",
+    )
+
+    assert not evidence_path.exists()
+
+
+def test_private_plan_descriptor_rewinds_same_inode(tmp_path: Path) -> None:
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    plan_path = _private_file(private / "destroy.tfplan", b"binary-plan")
+    fd = os.open(plan_path, os.O_RDONLY)
+    try:
+        assert os.read(fd, 64) == b"binary-plan"
+
+        guard.rewind_plan_fd(fd)
+
+        assert os.read(fd, 64) == b"binary-plan"
+    finally:
+        os.close(fd)
+
+
+def test_plan_descriptor_refuses_non_private_inode(tmp_path: Path) -> None:
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    plan_path = _private_file(private / "destroy.tfplan", b"binary-plan")
+    plan_path.chmod(0o644)
+    fd = os.open(plan_path, os.O_RDONLY)
+    try:
+        with pytest.raises(guard.GuardError, match="not a private owned regular file"):
+            guard.rewind_plan_fd(fd)
+    finally:
+        os.close(fd)
+
+
+@pytest.mark.parametrize(
+    ("failed_path", "status", "body", "message"),
+    [
+        (
+            "account",
+            401,
+            {"error": {"error_code": "AUTHENTICATION_FAILED"}},
+            "authentication",
+        ),
+        ("server", 200, {"server": {"uuid": SERVER_UUID}}, "server still exists"),
+        (
+            "server",
+            403,
+            {"error": {"error_code": "SERVER_FORBIDDEN"}},
+            "server absence",
+        ),
+        ("storage", 200, {"storage": {"uuid": STORAGE_UUID}}, "storage still exists"),
+        (
+            "storage",
+            403,
+            {"error": {"error_code": "STORAGE_FORBIDDEN"}},
+            "storage absence",
+        ),
+    ],
+)
+def test_post_destroy_refuses_auth_existing_or_ambiguous_resources(
+    tmp_path: Path,
+    failed_path: str,
+    status: int,
+    body: dict[str, object],
+    message: str,
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("post.json")
+    reserved = guard.reserve_evidence(
+        manifest_path,
+        evidence_path,
+        now=CREATED,
+        expected_provider="upcloud",
+        expected_environment="ci-staging-20260829",
+    )
+
+    def request(path: str) -> tuple[int, dict[str, object]]:
+        if failed_path == "account" and path == "/1.3/account":
+            return status, body
+        if path == "/1.3/account":
+            return 200, {"account": {}}
+        if failed_path == "server" and path.endswith(SERVER_UUID):
+            return status, body
+        if path.endswith(SERVER_UUID):
+            return 404, {"error": {"error_code": "SERVER_NOT_FOUND"}}
+        if failed_path == "storage" and path.endswith(STORAGE_UUID):
+            return status, body
+        return 404, {"error": {"error_code": "STORAGE_NOT_FOUND"}}
+
+    with pytest.raises(guard.GuardError, match=message):
+        guard.verify_upcloud_absence(
+            manifest_path,
+            evidence_path,
+            request_json=request,
+            observed_at=CREATED + timedelta(minutes=30),
+            now=CREATED,
+            expected_provider="upcloud",
+            expected_environment="ci-staging-20260829",
+        )
+
+    assert evidence_path.read_bytes() == guard.canonical_json(reserved)

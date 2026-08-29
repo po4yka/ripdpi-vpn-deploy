@@ -1,21 +1,30 @@
 """Regression coverage for fail-closed CI destruction."""
+
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import stat
 import subprocess
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
+SERVER_UUID = "00112233-4455-4677-8899-aabbccddeeff"
+STORAGE_UUID = "ffeeddcc-bbaa-4988-8766-554433221100"
 
 
 def _test_repo(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     scripts = root / "scripts"
     scripts.mkdir(parents=True)
-    for name in ("check-vultr-control-plane.py", "destroy.sh", "terraform-env.sh"):
+    for name in (
+        "check-vultr-control-plane.py",
+        "destroy.sh",
+        "staging-cleanup-guard.py",
+        "terraform-env.sh",
+    ):
         shutil.copy2(REPO_ROOT / "scripts" / name, scripts / name)
     for provider in ("upcloud", "hetzner", "vultr", "scaleway"):
         (root / f"terraform/providers/{provider}/environments").mkdir(parents=True)
@@ -27,17 +36,50 @@ def _terraform_stub(tmp_path: Path, *, fail_apply: bool = False) -> Path:
     stub.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
-        "printf '%s\\n' \"$*\" >> \"$STUB_LOG\"\n"
-        "while [[ \"${1:-}\" == -chdir=* ]]; do shift; done\n"
-        "if [[ \"${1:-}\" == plan && -n \"${OVERRIDE_PATH:-}\" ]]; then cat \"$OVERRIDE_PATH\" >> \"$STUB_LOG\"; fi\n"
-        "if [[ \"${1:-}\" == show ]]; then printf '{\"resource_changes\":[{\"address\":\"%s\",\"change\":{\"actions\":[\"delete\"]}}]}\\n' \"$PLAN_RESOURCE\"; exit 0; fi\n"
-        "if [[ \"${1:-}\" == apply && \"${FAIL_APPLY:-false}\" == true ]]; then exit 1; fi\n"
+        'printf \'%s\\n\' "$*" >> "$STUB_LOG"\n'
+        'TF_CHDIR=""\n'
+        'while [[ "${1:-}" == -chdir=* ]]; do TF_CHDIR="${1#-chdir=}"; shift; done\n'
+        'if [[ "${1:-}" == plan ]]; then for arg in "$@"; do if [[ "$arg" == -out=* ]]; then PLAN_PATH="${arg#-out=}"; [[ "$PLAN_PATH" == /* ]] || PLAN_PATH="${TF_CHDIR}/${PLAN_PATH}"; printf \'%s\\n\' guarded-plan > "$PLAN_PATH"; PLAN_MODE="$(stat -f %Lp "$PLAN_PATH" 2>/dev/null || stat -c %a "$PLAN_PATH")"; printf \'plan-mode=%s\\n\' "$PLAN_MODE" >> "$STUB_LOG"; if [[ -n "${RACE_PLAN_LOG:-}" ]]; then printf \'%s\\n\' "$PLAN_PATH" > "$RACE_PLAN_LOG"; fi; fi; done; fi\n'
+        'if [[ "${1:-}" == plan && -n "${OVERRIDE_PATH:-}" ]]; then cat "$OVERRIDE_PATH" >> "$STUB_LOG"; fi\n'
+        'if [[ "${1:-}" == show ]]; then if [[ -n "${RACE_PLAN_LOG:-}" ]]; then printf \'%s\\n\' substituted-plan > "$(cat "$RACE_PLAN_LOG")"; fi; printf \'show-plan-content=%s\\n\' "$(cat "$3")" >> "$STUB_LOG"; printf \'{"resource_changes":[{"address":"%s","change":{"actions":["delete"]}}]}\\n\' "$PLAN_RESOURCE"; exit 0; fi\n'
+        'if [[ "${1:-}" == apply ]]; then printf \'apply-plan-content=%s\\n\' "$(cat "$2")" >> "$STUB_LOG"; fi\n'
+        'if [[ "${1:-}" == apply && "${FAIL_APPLY:-false}" == true ]]; then exit 1; fi\n'
     )
     stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
     python = tmp_path / "python3"
     python.write_text("#!/usr/bin/env bash\nexit 0\n")
     python.chmod(python.stat().st_mode | stat.S_IXUSR)
     return stub
+
+
+def _guard_stub(root: Path, *, fail_command: str = "") -> Path:
+    guard = root / "scripts/staging-cleanup-guard.py"
+    guard.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'printf \'%s\\n\' "$*" >> "$GUARD_LOG"\n'
+        'if [[ "$1" == "${GUARD_FAIL_COMMAND:-}" ]]; then exit 9; fi\n'
+        'if [[ "$1" == reserve-evidence ]]; then\n'
+        "  while [[ $# -gt 0 ]]; do\n"
+        '    if [[ "$1" == --evidence-output ]]; then shift; printf \'%s\\n\' reserved > "$1"; chmod 600 "$1"; break; fi\n'
+        "    shift\n"
+        "  done\n"
+        "fi\n"
+        'if [[ "$1" == rewind-plan-fd ]]; then\n'
+        "  shift\n"
+        '  [[ "$1" == --fd-number ]]\n'
+        "  shift\n"
+        "  /usr/bin/python3 -c 'import os,sys; os.lseek(int(sys.argv[1]),0,os.SEEK_SET)' \"$1\"\n"
+        "fi\n"
+        'if [[ "$1" == release-evidence ]]; then\n'
+        "  while [[ $# -gt 0 ]]; do\n"
+        '    if [[ "$1" == --evidence-output ]]; then shift; rm -f "$1"; break; fi\n'
+        "    shift\n"
+        "  done\n"
+        "fi\n"
+    )
+    guard.chmod(0o755)
+    return guard
 
 
 def _run(
@@ -48,6 +90,11 @@ def _run(
     provider: str = "upcloud",
     fail_apply: bool = False,
     plan_resource: str | None = None,
+    destroy_args: list[str] | None = None,
+    extra_env: dict[str, str] | None = None,
+    non_interactive: bool = True,
+    input_text: str | None = None,
+    ambient_umask: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     resource = {
         "upcloud": "upcloud_server.vpn",
@@ -60,24 +107,118 @@ def _run(
         "PROVIDER": provider,
         "ENV": env_name,
         "STUB_LOG": str(stub_dir / "terraform.log"),
-        "OVERRIDE_PATH": str(root / f"terraform/providers/{provider}/_destroy_override.tf"),
+        "OVERRIDE_PATH": str(
+            root / f"terraform/providers/{provider}/_destroy_override.tf"
+        ),
         "EXPECTED_RESOURCE": resource,
         "PLAN_RESOURCE": plan_resource or resource,
         "FAIL_APPLY": str(fail_apply).lower(),
     }
+    env.update(extra_env or {})
+    command = ["bash", str(root / "scripts/destroy.sh")]
+    if non_interactive:
+        command.append("--non-interactive")
+    command.extend(destroy_args or [])
+    if ambient_umask is not None:
+        command = ["bash", "-c", f'umask {ambient_umask}; exec "$@"', "bash", *command]
     return subprocess.run(
-        ["bash", str(root / "scripts/destroy.sh"), "--non-interactive"],
+        command,
         cwd=root,
         env=env,
         text=True,
         capture_output=True,
+        input=input_text,
     )
 
 
-def test_ci_destroy_skips_prompts_and_cleans_inventory_after_apply(tmp_path: Path) -> None:
+def _real_staging_manifest(root: Path, private: Path, environment: str) -> Path:
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o700)
+    state = {
+        "version": 4,
+        "terraform_version": "1.14.5",
+        "serial": 1,
+        "lineage": "12345678-1234-4234-8234-123456789abc",
+        "resources": [
+            {
+                "mode": "managed",
+                "type": "terraform_data",
+                "name": "ssh_port",
+                "instances": [{"attributes": {"id": "local-only"}}],
+            },
+            {
+                "mode": "managed",
+                "type": "upcloud_server",
+                "name": "vpn",
+                "instances": [
+                    {
+                        "attributes": {
+                            "id": SERVER_UUID,
+                            "hostname": "vpn-ci-staging.test",
+                            "template": [{"id": STORAGE_UUID}],
+                            "network_interface": [
+                                {"type": "public", "ip_address_family": "IPv4"},
+                                {"type": "public", "ip_address_family": "IPv6"},
+                                {"type": "utility", "ip_address_family": "IPv4"},
+                            ],
+                        }
+                    }
+                ],
+            },
+            {
+                "mode": "managed",
+                "type": "upcloud_firewall_rules",
+                "name": "vpn",
+                "instances": [
+                    {"attributes": {"id": SERVER_UUID, "server_id": SERVER_UUID}}
+                ],
+            },
+        ],
+    }
+    state_path = private / "terraform.tfstate"
+    state_path.write_text(
+        json.dumps(state, sort_keys=True, separators=(",", ":")) + "\n"
+    )
+    state_path.chmod(0o600)
+    created = datetime.now(timezone.utc).replace(microsecond=0)
+    manifest = private / "manifest.json"
+    result = subprocess.run(
+        [
+            str(root / "scripts/staging-cleanup-guard.py"),
+            "create-manifest",
+            "--output",
+            str(manifest),
+            "--provider",
+            "upcloud",
+            "--environment",
+            environment,
+            "--workspace",
+            environment,
+            "--state",
+            str(state_path),
+            "--hostname",
+            "vpn-ci-staging.test",
+            "--created-at",
+            created.isoformat().replace("+00:00", "Z"),
+            "--expiry-at",
+            (created + timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
+        ],
+        cwd=root,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    return manifest
+
+
+def test_ci_destroy_skips_prompts_and_cleans_inventory_after_apply(
+    tmp_path: Path,
+) -> None:
     root = _test_repo(tmp_path)
     env_name = "ci-123-cleanup"
-    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text('server_name = "vpn-ci.test"\n')
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci.test"\n'
+    )
     inventory = root / "ansible/inventory/generated.ini"
     inventory.parent.mkdir(parents=True)
     inventory.write_text("[vpn]\n")
@@ -95,7 +236,9 @@ def test_ci_destroy_skips_prompts_and_cleans_inventory_after_apply(tmp_path: Pat
 
 def test_noninteractive_destroy_rejects_non_ci_environment(tmp_path: Path) -> None:
     root = _test_repo(tmp_path)
-    (root / "terraform/providers/upcloud/environments/prod.tfvars").write_text('server_name = "vpn-prod.test"\n')
+    (root / "terraform/providers/upcloud/environments/prod.tfvars").write_text(
+        'server_name = "vpn-prod.test"\n'
+    )
     stub = _terraform_stub(tmp_path)
 
     result = _run(root, stub.parent, "prod")
@@ -108,7 +251,9 @@ def test_noninteractive_destroy_rejects_non_ci_environment(tmp_path: Path) -> No
 def test_destroy_refuses_to_run_over_a_stale_override(tmp_path: Path) -> None:
     root = _test_repo(tmp_path)
     env_name = "ci-123-stale"
-    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text('server_name = "vpn-ci.test"\n')
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci.test"\n'
+    )
     stale = root / "terraform/providers/upcloud/_destroy_override.tf"
     stale.write_text("# leftover from a crashed destroy\n")
     stub = _terraform_stub(tmp_path)
@@ -125,7 +270,9 @@ def test_destroy_refuses_to_run_over_a_stale_override(tmp_path: Path) -> None:
 def test_failed_ci_destroy_keeps_inventory_for_diagnosis(tmp_path: Path) -> None:
     root = _test_repo(tmp_path)
     env_name = "ci-123-failure"
-    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text('server_name = "vpn-ci.test"\n')
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci.test"\n'
+    )
     inventory = root / "ansible/inventory/generated.ini"
     inventory.parent.mkdir(parents=True)
     inventory.write_text("[vpn]\n")
@@ -146,16 +293,23 @@ def test_destroy_uses_the_provider_specific_server_resource(tmp_path: Path) -> N
     }.items():
         root = _test_repo(tmp_path / provider)
         env_name = f"ci-123-{provider}"
-        (root / f"terraform/providers/{provider}/environments/{env_name}.tfvars").write_text('server_name = "vpn-ci.test"\n')
+        (
+            root / f"terraform/providers/{provider}/environments/{env_name}.tfvars"
+        ).write_text('server_name = "vpn-ci.test"\n')
         stub = _terraform_stub(tmp_path / provider)
 
         result = _run(root, stub.parent, env_name, provider=provider)
 
         assert result.returncode == 0, result.stderr
-        assert f'resource "{resource.split(".")[0]}" "vpn"' in (stub.parent / "terraform.log").read_text()
+        assert (
+            f'resource "{resource.split(".")[0]}" "vpn"'
+            in (stub.parent / "terraform.log").read_text()
+        )
 
 
-def test_destroy_rejects_unknown_provider_before_writing_override(tmp_path: Path) -> None:
+def test_destroy_rejects_unknown_provider_before_writing_override(
+    tmp_path: Path,
+) -> None:
     root = _test_repo(tmp_path)
     stub = _terraform_stub(tmp_path)
     env = os.environ | {
@@ -176,13 +330,19 @@ def test_destroy_rejects_unknown_provider_before_writing_override(tmp_path: Path
     assert "unsupported PROVIDER for destroy" in result.stderr
 
 
-def test_destroy_refuses_apply_when_plan_lacks_expected_server_address(tmp_path: Path) -> None:
+def test_destroy_refuses_apply_when_plan_lacks_expected_server_address(
+    tmp_path: Path,
+) -> None:
     root = _test_repo(tmp_path)
     env_name = "ci-123-plan-mismatch"
-    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text('server_name = "vpn-ci.test"\n')
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci.test"\n'
+    )
     stub = _terraform_stub(tmp_path)
 
-    result = _run(root, stub.parent, env_name, plan_resource="upcloud_firewall_rules.vpn")
+    result = _run(
+        root, stub.parent, env_name, plan_resource="upcloud_firewall_rules.vpn"
+    )
 
     assert result.returncode != 0
     assert "does not delete expected resource upcloud_server.vpn" in result.stderr
@@ -193,10 +353,345 @@ def test_destroy_refuses_apply_when_plan_lacks_expected_server_address(tmp_path:
     )
 
 
+def test_staging_destroy_requires_uuid_guard_before_override_or_terraform(
+    tmp_path: Path,
+) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-staging-missing-guard"
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci-staging.test"\n'
+    )
+    stub = _terraform_stub(tmp_path)
+
+    result = _run(root, stub.parent, env_name)
+
+    assert result.returncode == 2
+    assert "requires --staging-manifest and --post-destroy-evidence" in result.stderr
+    assert not (root / "terraform/providers/upcloud/_destroy_override.tf").exists()
+    assert not (stub.parent / "terraform.log").exists()
+
+
+def test_interactive_staging_abort_before_authorization_creates_nothing(
+    tmp_path: Path,
+) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-staging-interactive-abort"
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci-staging.test"\n'
+    )
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    manifest = private / "manifest.json"
+    manifest.write_text("{}\n")
+    manifest.chmod(0o600)
+    evidence = private / "post-destroy.json"
+    _guard_stub(root)
+    stub = _terraform_stub(tmp_path)
+
+    result = _run(
+        root,
+        stub.parent,
+        env_name,
+        destroy_args=[
+            "--staging-manifest",
+            str(manifest),
+            "--post-destroy-evidence",
+            str(evidence),
+        ],
+        extra_env={"GUARD_LOG": str(private / "guard.log")},
+        non_interactive=False,
+        input_text="wrong-hostname\n",
+    )
+
+    assert result.returncode == 1
+    assert not evidence.exists()
+    assert not (root / "terraform/providers/upcloud/_destroy_override.tf").exists()
+    assert not (stub.parent / "terraform.log").exists()
+
+
+def test_interactive_staging_abort_after_plan_releases_reservation(
+    tmp_path: Path,
+) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-staging-final-abort"
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci-staging.test"\n'
+    )
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    manifest = private / "manifest.json"
+    manifest.write_text("{}\n")
+    manifest.chmod(0o600)
+    evidence = private / "post-destroy.json"
+    _guard_stub(root)
+    stub = _terraform_stub(tmp_path)
+
+    result = _run(
+        root,
+        stub.parent,
+        env_name,
+        destroy_args=[
+            "--staging-manifest",
+            str(manifest),
+            "--post-destroy-evidence",
+            str(evidence),
+        ],
+        extra_env={"GUARD_LOG": str(private / "guard.log")},
+        non_interactive=False,
+        input_text="vpn-ci-staging.test\nDESTROY\nno\n",
+    )
+
+    assert result.returncode == 1
+    assert not evidence.exists()
+    assert not (root / "terraform/providers/upcloud/_destroy_override.tf").exists()
+    calls = (stub.parent / "terraform.log").read_text().splitlines()
+    assert any(" plan " in f" {line} " for line in calls)
+    assert not any(" apply " in f" {line} " for line in calls)
+
+
+def test_staging_destroy_refuses_cross_environment_manifest_before_override_or_terraform(
+    tmp_path: Path,
+) -> None:
+    root = _test_repo(tmp_path)
+    manifest_env = "ci-staging-one"
+    destroy_env = "ci-staging-two"
+    (
+        root / f"terraform/providers/upcloud/environments/{destroy_env}.tfvars"
+    ).write_text('server_name = "vpn-ci-staging.test"\n')
+    private = tmp_path / "private-real"
+    manifest = _real_staging_manifest(root, private, manifest_env)
+    evidence = private / "post-destroy.json"
+    stub = _terraform_stub(tmp_path)
+    (tmp_path / "python3").unlink()
+
+    result = _run(
+        root,
+        stub.parent,
+        destroy_env,
+        destroy_args=[
+            "--staging-manifest",
+            str(manifest),
+            "--post-destroy-evidence",
+            str(evidence),
+        ],
+    )
+
+    assert result.returncode == 1
+    assert "environment does not match destroy target" in result.stderr
+    assert not evidence.exists()
+    assert not (root / "terraform/providers/upcloud/_destroy_override.tf").exists()
+    assert not (stub.parent / "terraform.log").exists()
+
+
+def test_staging_destroy_refuses_unsafe_evidence_before_override_or_terraform(
+    tmp_path: Path,
+) -> None:
+    for kind in ("existing", "symlink", "unsafe-parent"):
+        case = tmp_path / kind
+        root = _test_repo(case)
+        env_name = f"ci-staging-{kind}"
+        (
+            root / f"terraform/providers/upcloud/environments/{env_name}.tfvars"
+        ).write_text('server_name = "vpn-ci-staging.test"\n')
+        private = case / "private-real"
+        manifest = _real_staging_manifest(root, private, env_name)
+        if kind == "unsafe-parent":
+            evidence_parent = case / "unsafe-evidence"
+            evidence_parent.mkdir(mode=0o755)
+            evidence_parent.chmod(0o755)
+            evidence = evidence_parent / "post-destroy.json"
+        else:
+            evidence = private / "post-destroy.json"
+            if kind == "existing":
+                evidence.write_text("existing\n")
+                evidence.chmod(0o600)
+            else:
+                target = private / "target.json"
+                target.write_text("target\n")
+                target.chmod(0o600)
+                evidence.symlink_to(target.name)
+        stub = _terraform_stub(case)
+        (case / "python3").unlink()
+
+        result = _run(
+            root,
+            stub.parent,
+            env_name,
+            destroy_args=[
+                "--staging-manifest",
+                str(manifest),
+                "--post-destroy-evidence",
+                str(evidence),
+            ],
+        )
+
+        assert result.returncode == 1, (kind, result.stderr)
+        assert not (root / "terraform/providers/upcloud/_destroy_override.tf").exists()
+        assert not (stub.parent / "terraform.log").exists()
+
+
+def test_staging_destroy_validates_manifest_and_plan_before_apply_then_verifies_absence(
+    tmp_path: Path,
+) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-staging-guarded"
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci-staging.test"\n'
+    )
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    manifest = private / "manifest.json"
+    manifest.write_text("{}\n")
+    manifest.chmod(0o600)
+    evidence = private / "post-destroy.json"
+    guard_log = private / "guard.log"
+    race_plan_log = private / "race-plan.log"
+    _guard_stub(root)
+    stub = _terraform_stub(tmp_path)
+
+    result = _run(
+        root,
+        stub.parent,
+        env_name,
+        destroy_args=[
+            "--staging-manifest",
+            str(manifest),
+            "--post-destroy-evidence",
+            str(evidence),
+        ],
+        extra_env={
+            "GUARD_LOG": str(guard_log),
+            "RACE_PLAN_LOG": str(race_plan_log),
+        },
+        ambient_umask="022",
+    )
+
+    assert result.returncode == 0, result.stderr
+    guard_calls = guard_log.read_text().splitlines()
+    target = f"--expected-provider upcloud --expected-environment {env_name}"
+    assert guard_calls[0] == f"validate-manifest --manifest {manifest} {target}"
+    assert guard_calls[1] == (
+        f"reserve-evidence --manifest {manifest} --evidence-output {evidence} {target}"
+    )
+    assert guard_calls[2].startswith(
+        f"validate-plan --manifest {manifest} --plan-view "
+    )
+    assert guard_calls[2].endswith(target)
+    assert guard_calls[3].startswith("rewind-plan-fd --fd-number ")
+    assert guard_calls[4] == (
+        f"verify-upcloud-absence --manifest {manifest} --evidence-output {evidence} {target}"
+    )
+    terraform_calls = (stub.parent / "terraform.log").read_text().splitlines()
+    apply_index = next(
+        i for i, line in enumerate(terraform_calls) if " apply " in f" {line} "
+    )
+    show_call = next(line for line in terraform_calls if " show " in f" {line} ")
+    apply_call = next(line for line in terraform_calls if " apply " in f" {line} ")
+    show_input = show_call.split()[-1]
+    apply_input = apply_call.split()[-1]
+    assert show_input == apply_input
+    assert show_input.startswith("/dev/fd/")
+    assert "plan-mode=600" in terraform_calls
+    assert "show-plan-content=guarded-plan" in terraform_calls
+    assert "apply-plan-content=guarded-plan" in terraform_calls
+    assert not Path(race_plan_log.read_text().strip()).exists()
+    assert evidence.exists()
+    assert apply_index > 0
+
+
+def test_staging_destroy_refuses_apply_when_exact_plan_guard_fails(
+    tmp_path: Path,
+) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-staging-plan-refusal"
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci-staging.test"\n'
+    )
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    manifest = private / "manifest.json"
+    manifest.write_text("{}\n")
+    manifest.chmod(0o600)
+    evidence = private / "post-destroy.json"
+    _guard_stub(root)
+    stub = _terraform_stub(tmp_path)
+
+    result = _run(
+        root,
+        stub.parent,
+        env_name,
+        destroy_args=[
+            "--staging-manifest",
+            str(manifest),
+            "--post-destroy-evidence",
+            str(evidence),
+        ],
+        extra_env={
+            "GUARD_LOG": str(private / "guard.log"),
+            "GUARD_FAIL_COMMAND": "validate-plan",
+        },
+    )
+
+    assert result.returncode == 9
+    assert not evidence.exists()
+    assert not (root / "terraform/providers/upcloud/_destroy_override.tf").exists()
+    assert not any(
+        " apply " in f" {line} "
+        for line in (stub.parent / "terraform.log").read_text().splitlines()
+    )
+
+
+def test_staging_destroy_keeps_inventory_and_plan_when_provider_absence_is_unverified(
+    tmp_path: Path,
+) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-staging-absence-refusal"
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci-staging.test"\n'
+    )
+    inventory = root / "ansible/inventory/generated.ini"
+    inventory.parent.mkdir(parents=True)
+    inventory.write_text("[vpn]\n")
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    manifest = private / "manifest.json"
+    manifest.write_text("{}\n")
+    manifest.chmod(0o600)
+    evidence = private / "post-destroy.json"
+    _guard_stub(root)
+    stub = _terraform_stub(tmp_path)
+
+    result = _run(
+        root,
+        stub.parent,
+        env_name,
+        destroy_args=[
+            "--staging-manifest",
+            str(manifest),
+            "--post-destroy-evidence",
+            str(evidence),
+        ],
+        extra_env={
+            "GUARD_LOG": str(private / "guard.log"),
+            "GUARD_FAIL_COMMAND": "verify-upcloud-absence",
+        },
+    )
+
+    assert result.returncode == 9
+    assert inventory.exists()
+    assert not (
+        root / f"terraform/providers/upcloud/{env_name}.destroy.tfplan"
+    ).exists()
+    assert evidence.read_text() == "reserved\n"
+
+
 def test_ci_workflows_do_not_suppress_destroy_failure_or_cleanup_tfvars_early() -> None:
     for workflow in ("real-vps-deploy.yml", "transport-reachability-matrix.yml"):
         source = (REPO_ROOT / ".github/workflows" / workflow).read_text()
         assert "make destroy DESTROY_ARGS=--non-interactive" in source
         assert "make destroy || true" not in source
-        assert "rm -f \"terraform/providers/upcloud/environments/${CI_ENV}.tfvars\"" in source
+        assert (
+            'rm -f "terraform/providers/upcloud/environments/${CI_ENV}.tfvars"'
+            in source
+        )
         assert "env.CI_ENV != ''" in source
