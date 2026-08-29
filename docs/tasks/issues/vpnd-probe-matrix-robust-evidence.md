@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: vpd-1787497252303967-vpnd-probe-matrix-robust-evidence
 created: 2026-08-23
-updated: 2026-08-27
+updated: 2026-08-29
 related_tasks: []
-status_detail: "Implementation is preserved on codex/complete-high-review but withheld from this main candidate: schema 3 requires the synchronized RIPDPI vendored contract before merge, plus staging/live protocol evidence. All three matching inventory peers remain offline."
+status_detail: Local durability implementation and schema-3 producer are complete; blocked on PR116 full/hosted protected integration, byte-identical RIPDPI mirror, and staging/live probe acceptance.
 ---
 
 ## Goal

@@ -3,6 +3,7 @@
 use serde_json::{json, Value};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -53,6 +54,359 @@ impl Drop for Running {
         let _ = self.0.kill();
         let _ = self.0.wait();
     }
+}
+
+const OK: &str = "printf '%s\\n' '{\"verdict\":\"ok\",\"rtt_ms\":1}'";
+
+fn wait(child: &mut std::process::Child) -> std::process::ExitStatus {
+    let deadline = Instant::now() + Duration::from_secs(8);
+    loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            return status;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "CLI did not finish within bounded test budget"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn wait_for_checkpoint(path: &Path) -> Value {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Ok(bytes) = std::fs::read(path) {
+            if let Ok(report) = serde_json::from_slice::<Value>(&bytes) {
+                if report["controls"]
+                    .as_array()
+                    .is_some_and(|rows| !rows.is_empty())
+                {
+                    return report;
+                }
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "no completed-tick checkpoint before test deadline"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn companion(path: &Path, suffix: &str) -> std::path::PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(suffix);
+    name.into()
+}
+
+fn journal_records(path: &Path) -> Vec<Value> {
+    std::fs::read_to_string(companion(path, ".jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
+fn assert_private(path: &Path) {
+    assert_eq!(
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+        0o600,
+        "{} must remain private",
+        path.display()
+    );
+}
+
+#[test]
+fn normal_run_checkpoints_private_report_and_jsonl_journal() {
+    let fixture = Fixture::new(OK, OK);
+    let output = fixture.root.path().join("report.json");
+    assert!(fixture.command("1s").status().unwrap().success());
+
+    let report: Value = serde_json::from_slice(&std::fs::read(&output).unwrap()).unwrap();
+    assert_eq!(report["schema_version"], 3);
+    assert_eq!(report["completed"], true);
+    assert_eq!(report["interrupted"], false);
+    assert_eq!(report["controls"].as_array().unwrap().len(), 1);
+    assert_eq!(report["cells"].as_array().unwrap().len(), 2);
+
+    let journal = companion(&output, ".jsonl");
+    let lock = companion(&output, ".lock");
+    let records = journal_records(&output);
+    assert!(records.len() >= 3, "initial, tick, and terminal records");
+    assert!(records.iter().all(|record| record["schema_version"] == 3));
+    assert_eq!(records.first().unwrap()["completed"], false);
+    assert_eq!(records.first().unwrap()["interrupted"], false);
+    assert_eq!(records.last().unwrap()["completed"], true);
+    assert_eq!(records.last().unwrap()["interrupted"], false);
+    assert_eq!(
+        records
+            .iter()
+            .filter(|record| !record["control"].is_null())
+            .count(),
+        report["controls"].as_array().unwrap().len()
+    );
+    let journal_cells: Vec<Value> = records
+        .iter()
+        .flat_map(|record| record["cells"].as_array().unwrap().clone())
+        .collect();
+    assert_eq!(&journal_cells, report["cells"].as_array().unwrap());
+    for path in [&output, &journal, &lock] {
+        assert_private(path);
+    }
+}
+
+#[test]
+fn signal_during_scheduled_wait_flushes_prior_ticks_without_synthetic_cells() {
+    let fixture = Fixture::new(OK, OK);
+    let output = fixture.root.path().join("report.json");
+    let mut child = Running(
+        fixture
+            .command("120s")
+            .args(["--poll-interval-seconds", "60"])
+            .spawn()
+            .unwrap(),
+    );
+    let checkpoint = wait_for_checkpoint(&output);
+    let expected_controls = checkpoint["controls"].as_array().unwrap().len();
+    let expected_cells = checkpoint["cells"].as_array().unwrap().len();
+    assert!(Command::new("kill")
+        .args(["-INT", &child.0.id().to_string()])
+        .status()
+        .unwrap()
+        .success());
+    assert_eq!(wait(&mut child.0).code(), Some(130));
+
+    let report: Value = serde_json::from_slice(&std::fs::read(&output).unwrap()).unwrap();
+    assert_eq!(report["completed"], false);
+    assert_eq!(report["interrupted"], true);
+    assert_eq!(
+        report["controls"].as_array().unwrap().len(),
+        expected_controls
+    );
+    assert_eq!(report["cells"].as_array().unwrap().len(), expected_cells);
+    let terminal = journal_records(&output).pop().unwrap();
+    assert_eq!(terminal["completed"], false);
+    assert_eq!(terminal["interrupted"], true);
+    assert!(terminal["control"].is_null());
+    assert!(terminal["cells"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn signals_during_cells_flush_partial_evidence_and_reclaim_descendants() {
+    for (signal, exit_code) in [("INT", 130), ("TERM", 143)] {
+        let fixture = Fixture::new(OK, "sh cell.sh");
+        std::fs::write(
+            fixture.root.path().join("cell.sh"),
+            r#"if [ "$TARGET_ID" = pair-dual ]; then
+    printf '%s\n' '{"verdict":"blocked"}'
+    touch quick-cell-complete
+    exit 0
+fi
+sleep 60 &
+grandchild=$!
+printf '%s\n' "$PPID" "$$" "$grandchild" > slow-cell.pids.tmp
+mv slow-cell.pids.tmp slow-cell.pids
+wait
+"#,
+        )
+        .unwrap();
+        let output = fixture.root.path().join("report.json");
+        let mut child = Running(
+            fixture
+                .command("120s")
+                .args(["--poll-interval-seconds", "60"])
+                .spawn()
+                .unwrap(),
+        );
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !fixture.root.path().join("quick-cell-complete").exists()
+            || !fixture.root.path().join("slow-cell.pids").exists()
+        {
+            assert!(
+                child.0.try_wait().unwrap().is_none(),
+                "CLI exited before both cell boundaries were observed"
+            );
+            assert!(Instant::now() < deadline, "cells never became ready");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let pids = std::fs::read_to_string(fixture.root.path().join("slow-cell.pids")).unwrap();
+        assert!(pids.lines().all(running));
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(Command::new("kill")
+            .args([&format!("-{signal}"), &child.0.id().to_string()])
+            .status()
+            .unwrap()
+            .success());
+        assert_eq!(wait(&mut child.0).code(), Some(exit_code));
+
+        let report: Value = serde_json::from_slice(&std::fs::read(&output).unwrap()).unwrap();
+        assert_eq!(report["schema_version"], 3);
+        assert_eq!(report["completed"], false);
+        assert_eq!(report["interrupted"], true);
+        let cells = report["cells"].as_array().unwrap();
+        assert_eq!(cells.len(), 2);
+        assert_eq!(cells[0]["target_id"], "pair-dual");
+        assert_eq!(cells[0]["verdict"], "blocked");
+        assert_eq!(cells[1]["target_id"], "pair-split");
+        assert_eq!(cells[1]["verdict"], "unknown");
+        assert_eq!(cells[1]["error_kind"], "interrupted");
+
+        let records = journal_records(&output);
+        assert_eq!(records.last().unwrap()["completed"], false);
+        assert_eq!(records.last().unwrap()["interrupted"], true);
+        let journal_cells: Vec<Value> = records
+            .iter()
+            .flat_map(|record| record["cells"].as_array().unwrap().clone())
+            .collect();
+        assert_eq!(&journal_cells, cells);
+        let reaped = Instant::now() + Duration::from_secs(3);
+        while pids.lines().any(running) && Instant::now() < reaped {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            pids.lines().all(|pid| !running(pid)),
+            "probe descendant survived CLI interruption"
+        );
+    }
+}
+
+#[test]
+fn same_output_sessions_are_exclusive_and_lock_survives_reuse() {
+    use std::os::unix::fs::MetadataExt;
+
+    let fixture = Fixture::new(OK, OK);
+    let output = fixture.root.path().join("report.json");
+    let mut first = Running(
+        fixture
+            .command("120s")
+            .args(["--poll-interval-seconds", "60"])
+            .spawn()
+            .unwrap(),
+    );
+    wait_for_checkpoint(&output);
+    let checkpoint = std::fs::read(&output).unwrap();
+    let second = fixture
+        .command("1s")
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+    assert!(!second.status.success());
+    assert!(String::from_utf8_lossy(&second.stderr).contains("already in use"));
+    assert_eq!(std::fs::read(&output).unwrap(), checkpoint);
+
+    let lock = companion(&output, ".lock");
+    let metadata = std::fs::metadata(&lock).unwrap();
+    assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+    assert_eq!(metadata.len(), 0);
+    first.0.kill().unwrap();
+    assert!(!wait(&mut first.0).success());
+    assert!(fixture.command("1s").status().unwrap().success());
+    assert_eq!(std::fs::metadata(&lock).unwrap().ino(), metadata.ino());
+}
+
+#[test]
+fn output_names_with_shared_stems_keep_distinct_companions() {
+    let fixture = Fixture::new(OK, OK);
+    let json_output = fixture.root.path().join("report.json");
+    let text_output = fixture.root.path().join("report.txt");
+    assert!(fixture
+        .command_at("1s", &json_output)
+        .status()
+        .unwrap()
+        .success());
+    assert!(fixture
+        .command_at("1s", &text_output)
+        .status()
+        .unwrap()
+        .success());
+
+    for suffix in [".jsonl", ".lock"] {
+        let json_companion = companion(&json_output, suffix);
+        let text_companion = companion(&text_output, suffix);
+        assert_ne!(json_companion, text_companion);
+        assert!(json_companion.exists());
+        assert!(text_companion.exists());
+    }
+}
+
+#[test]
+fn unsafe_output_locks_and_reserved_suffixes_fail_before_make() {
+    for suffix in ["jsonl", "lock"] {
+        let fixture = Fixture::new("touch invoked", "touch invoked");
+        let output = fixture.root.path().join(format!("report.{suffix}"));
+        assert!(!fixture
+            .command_at("1s", &output)
+            .status()
+            .unwrap()
+            .success());
+        assert!(!fixture.root.path().join("invoked").exists());
+    }
+
+    for case in ["permissive", "nonempty", "symlink"] {
+        let fixture = Fixture::new("touch invoked", "touch invoked");
+        let output = fixture.root.path().join("report.json");
+        let lock = companion(&output, ".lock");
+        match case {
+            "permissive" => {
+                std::fs::write(&lock, b"").unwrap();
+                std::fs::set_permissions(&lock, std::fs::Permissions::from_mode(0o644)).unwrap();
+            }
+            "nonempty" => {
+                std::fs::write(&lock, b"not a lock").unwrap();
+                std::fs::set_permissions(&lock, std::fs::Permissions::from_mode(0o600)).unwrap();
+            }
+            "symlink" => {
+                let target = fixture.root.path().join("lock-target");
+                std::fs::write(&target, b"").unwrap();
+                std::os::unix::fs::symlink(target, &lock).unwrap();
+            }
+            _ => unreachable!(),
+        }
+        assert!(!fixture
+            .command_at("1s", &output)
+            .status()
+            .unwrap()
+            .success());
+        assert!(!fixture.root.path().join("invoked").exists());
+    }
+}
+
+#[test]
+fn failed_interrupted_checkpoint_preserves_last_valid_report_and_exits_one() {
+    let fixture = Fixture::new(OK, OK);
+    let output = fixture.root.path().join("report.json");
+    let mut child = Running(
+        fixture
+            .command("120s")
+            .args(["--poll-interval-seconds", "60"])
+            .spawn()
+            .unwrap(),
+    );
+    wait_for_checkpoint(&output);
+    let checkpoint = std::fs::read(&output).unwrap();
+    let root_mode = std::fs::metadata(fixture.root.path())
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    std::fs::set_permissions(fixture.root.path(), std::fs::Permissions::from_mode(0o500)).unwrap();
+    assert!(Command::new("kill")
+        .args(["-TERM", &child.0.id().to_string()])
+        .status()
+        .unwrap()
+        .success());
+    let status = wait(&mut child.0);
+    std::fs::set_permissions(
+        fixture.root.path(),
+        std::fs::Permissions::from_mode(root_mode),
+    )
+    .unwrap();
+
+    assert_eq!(status.code(), Some(1));
+    assert_eq!(std::fs::read(&output).unwrap(), checkpoint);
+    let terminal = journal_records(&output).pop().unwrap();
+    assert_eq!(terminal["completed"], false);
+    assert_eq!(terminal["interrupted"], true);
 }
 
 // Python's stdlib provides a real controlling PTY without a test dependency or
@@ -181,7 +535,7 @@ fn hanging_control_records_unknown_and_continues_real_make_cells() {
     let report: Value =
         serde_json::from_slice(&std::fs::read(fixture.root.path().join("report.json")).unwrap())
             .unwrap();
-    assert_eq!(report["schema_version"], 2);
+    assert_eq!(report["schema_version"], 3);
     assert_eq!(report["controls"][0]["verdict"], "unknown");
     assert_eq!(report["controls"][0]["error_kind"], "control_timeout");
     assert_eq!(report["cells"].as_array().unwrap().len(), 2);
@@ -266,7 +620,7 @@ fn unrepresentable_next_poll_finishes_with_observed_results() {
             &std::fs::read(fixture.root.path().join("report.json")).unwrap(),
         )
         .unwrap();
-        assert_eq!(report["schema_version"], 2);
+        assert_eq!(report["schema_version"], 3);
         assert_eq!(report["controls"].as_array().unwrap().len(), 1);
         assert_eq!(report["controls"][0]["verdict"], "ok");
         let cells = report["cells"].as_array().unwrap();
@@ -395,6 +749,9 @@ impl Fixture {
         Self { root }
     }
     fn command(&self, duration: &str) -> Command {
+        self.command_at(duration, &self.root.path().join("report.json"))
+    }
+    fn command_at(&self, duration: &str, output: &Path) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_vpnd"));
         command.args([
             "--root",
@@ -407,8 +764,8 @@ impl Fixture {
             "--duration",
             duration,
             "--output",
-            self.root.path().join("report.json").to_str().unwrap(),
         ]);
+        command.arg(output);
         command
             .env_remove("MAKEFLAGS")
             .env_remove("MFLAGS")

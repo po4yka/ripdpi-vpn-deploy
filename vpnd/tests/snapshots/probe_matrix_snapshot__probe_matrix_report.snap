@@ -3,7 +3,9 @@ source: tests/probe_matrix_snapshot.rs
 expression: json
 ---
 {
-  "schema_version": 2,
+  "schema_version": 3,
+  "completed": true,
+  "interrupted": false,
   "vantage": "synthetic",
   "started_at_unix_ms": 1700000000000,
   "finished_at_unix_ms": 1700000600000,

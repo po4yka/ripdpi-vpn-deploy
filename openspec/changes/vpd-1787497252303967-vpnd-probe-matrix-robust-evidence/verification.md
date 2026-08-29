@@ -3,7 +3,7 @@ task_id: VPD-1787497252303967
 change: vpd-1787497252303967-vpnd-probe-matrix-robust-evidence
 commit_sha: null
 local: required
-local_evidence: "Full Rust suite: 177 tests passed, none failed/ignored/filtered; all-target Clippy passed. Independent runtime review found no blocking findings. Full repository, hosted and live gates remain pending."
+local_evidence: "Durability candidate: all 184 Rust tests passed with no failures; all-target/all-feature Clippy passed with warnings denied. Contract validation 5/5 passed. Independent review found and then verified the fix for one signal/control race; no blockers remain. Full repository, hosted and live gates remain pending."
 remote_ci: required
 remote_ci_evidence: ""
 dry_run: not_applicable
@@ -13,7 +13,7 @@ staging_evidence: ""
 live: required
 live_evidence: ""
 client: blocked
-client_evidence: "Schema 3 is withheld from this main candidate until po4yka/RIPDPI synchronizes the vendored probe report schema. Contract-sync run 33079404221 detected the exact mismatch; no gate is bypassed."
+client_evidence: "The RIPDPI owner authorized a narrow byte-for-byte mirror of the frozen producer schema 3. That mirror and its hosted gates remain pending; no client runtime or window semantics change is authorized."
 artifact: not_applicable
 artifact_evidence: No release artifact is published; report schema validation is covered by local and client evidence categories.
 ---
@@ -26,7 +26,7 @@ artifact_evidence: No release artifact is published; report schema validation is
 |---|---|---|---|
 | REQ-MATRIX-CELL-TIMEOUT-KILL | VPD-1787497252661429 | Actual Cmd → GNU Make → shell → sleep PID-handshake regression fails before the fix and passes after; eight direct/foreground SIGINT/TERM cases exercise probe jobs and doctor captures | Focused local pass; broad gates pending |
 | REQ-MATRIX-CONTROL-TIMEOUT | VPD-1787497252679177 | Actual hanging Make control records Unknown/control_timeout and both cells complete; this test already passes on the base implementation | Existing behavior verified locally; broad gates pending |
-| REQ-MATRIX-DURABILITY | VPD-1787497252698055 | Zero/overflow rejection and nonzero signal exit pass locally; partial checkpoint, JSONL and interrupted marker remain unimplemented in this schema-2 slice | Pending |
+| REQ-MATRIX-DURABILITY | VPD-1787497252698055 | Real CLI fixtures prove mode-0600 atomic per-tick checkpoints, synchronized JSONL, exclusive output locks, SIGINT/SIGTERM partial flush with 130/143, scheduled-wait flush, descendant cleanup, and fail-closed checkpoint errors preserving the prior report | Focused and full Rust local pass; client/hosted/live pending |
 | REQ-MATRIX-EVIDENCE-SEMANTICS | VPD-1787497252715025 | No-impairment and gap/recovery tests pass; schema-2 snapshot removes six all-Ok phantom windows, with fields and observations unchanged | Focused local pass; broad gates pending |
 
 ## Bounded runtime evidence — 2026-08-28
@@ -98,5 +98,30 @@ artifact_evidence: No release artifact is published; report schema validation is
   corresponding real process/CLI tests; no blocking findings remained. Runtime,
   test, snapshot and schema files were unchanged during this full validation.
 - Full repository checks, hosted checks and authorized live/client acceptance
-  remain separate. Partial-checkpoint/journal/interrupted-report durability is
-  still outside this schema-2 implementation; the overall task stays open.
+  remain separate. This 2026-08-28 evidence covers only the schema-2 runtime
+  slice; the following section records the later durability phase.
+
+## Durability implementation — 2026-08-29
+
+- Input configuration remains schema 2. Report schema 3 adds only the required
+  `completed` and `interrupted` booleans; the existing single-window onset and
+  recovery semantics are unchanged. JSONL records and atomic reports are mode
+  `0600`, synchronized in journal-before-report order, and serialized by a
+  persistent current-owner regular-file lock.
+- The lifecycle suite now has 13 passing real CLI tests. It covers normal
+  checkpoints, distinct companion paths, active-session exclusion and lock
+  reuse, unsafe/symlink/nonempty locks, reserved output suffixes, SIGINT and
+  SIGTERM during cells, SIGINT during the scheduled wait, completed-cell
+  preservation, descendant cleanup, and report-write failure after a durable
+  journal record. A failed interrupt checkpoint exits 1 instead of falsely
+  claiming 130/143 and leaves the last valid report byte-identical.
+- The complete unfiltered Rust suite passed all 184 tests, and
+  `cargo clippy --locked --all-targets --all-features -- -D warnings` passed in
+  the machine-wide build gate with two jobs. The Python schema contract passed
+  all 5 tests, including valid complete/interrupted states and rejection of the
+  impossible true/true state.
+- Independent review found one race where a biased signal could discard an
+  already-ready control result. The control future now has priority when both
+  branches are ready; the reviewer confirmed the blocker closed and found no
+  further blocker. Client mirror, full repository gate, hosted CI, staging and
+  live traffic acceptance remain separate evidence boundaries.

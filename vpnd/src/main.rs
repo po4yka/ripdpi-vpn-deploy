@@ -12,14 +12,12 @@ async fn main() -> ExitCode {
     let outcome: Result<ExitCode> = async {
         // Interactive commands keep default signal behavior: a synchronous
         // stdin read or prompt would prevent this select from being polled.
-        if !matches!(
-            &cli.command,
-            cli::Command::ProbeMatrix(_) | cli::Command::Doctor(_)
-        ) {
+        if !matches!(&cli.command, cli::Command::Doctor(_)) {
             return execute(cli).await.map(|()| ExitCode::SUCCESS);
         }
-        // These noninteractive dispatches explicitly own capture groups.
-        // Register before polling them so no spawn precedes its signal owner.
+        // Doctor owns captured process groups but has no durable output to
+        // flush. ProbeMatrix installs its listener inside the command so it
+        // can persist an interrupted checkpoint before returning.
         let mut interrupt = signal(SignalKind::interrupt())?;
         let mut terminate = signal(SignalKind::terminate())?;
         tokio::select! {
@@ -34,7 +32,11 @@ async fn main() -> ExitCode {
         Ok(code) => code,
         Err(error) => {
             eprintln!("Error: {error:#}");
-            ExitCode::FAILURE
+            error
+                .downcast_ref::<commands::probe_matrix::Interrupted>()
+                .map_or(ExitCode::FAILURE, |interrupted| {
+                    ExitCode::from(interrupted.exit_code())
+                })
         }
     }
 }
