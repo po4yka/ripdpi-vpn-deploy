@@ -2,6 +2,7 @@
 """Inventory-bound readiness, convergence and source parity for Make deploys."""
 
 import ast
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -15,10 +16,22 @@ import yaml
 
 import fleet_inspection
 from bootstrap_readiness import ReadinessError, cancellation, run_command, wait_for_bootstrap
+from sshd_bundle_source import BundleSourceError, bundle_manifest
+from sshd_contexts import ContextError, bind_contexts
+from sshd_transaction_limits import TRANSACTION_TIMEOUT_SECONDS
 
 
 class DeployError(Exception):
     """Categorical public errors; never include inputs or subprocess output."""
+
+
+def unique_object(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate-key")
+        value[key] = item
+    return value
 
 
 # Ansible's add_all_plugin_dirs scans these subdirs independently of configured
@@ -198,7 +211,22 @@ def inventory_selection(inventory, limit, directory):
             except (ValueError, SyntaxError):
                 values[key] = value
         metadata[name] = values
-    return hosts, memberships, metadata, selected_file
+    return hosts, memberships, metadata, selected_file, rows, global_lines
+
+
+def single_inventory(directory, index, host, memberships):
+    name = host["name"]
+    fields = [name, "ansible_host=" + shlex.quote(host["address"]),
+              "ansible_user=" + shlex.quote(host["user"]), "ansible_port=" + str(host["port"])]
+    if host["transport"] != host["address"] or host["alias"] != host["address"]:
+        fields += ["inspection_transport_host=" + shlex.quote(host["transport"]),
+                   "inspection_host_key_alias=" + shlex.quote(host["alias"])]
+    data = "[vpn]\n" + " ".join(fields) + "\n"
+    for group in memberships[name]:
+        data += "[" + group + "]\n" + name + "\n"
+    data += "[vpn:vars]\nansible_ssh_private_key_file=" + shlex.quote(host["key"]) + "\n"
+    data += "ansible_python_interpreter=/usr/bin/python3\n"
+    return private_file(directory / f"{index}-inventory.ini", data.encode())
 
 
 def portable_ssh_arguments(command):
@@ -231,33 +259,97 @@ def transport_variables(host, command):
             "ansible_become_flags": "-n"}
 
 
-def prepare_playbooks(root, directory, hosts, memberships, metadata, secrets, overrides, commands):
-    files = {}
-    for index, host in enumerate(hosts):
-        paths = []
-        for group in ("all", "vpn", *memberships[host["name"]]):
-            if not re.fullmatch(r"all|vpn|vpn-[a-z0-9][a-z0-9-]*", group):
-                raise DeployError("unsupported canonical cohort")
-            data = read_input(root / "ansible/group_vars" / (group + ".yml"))
-            validate_yaml(data, empty=True)
-            paths.append(str(private_file(directory / f"{index}-{group}.yml", data)))
-        paths.append(str(private_file(directory / f"{index}-metadata.json", json.dumps(metadata[host["name"]]).encode())))
-        paths.append(str(secrets))
-        if overrides:
-            paths.append(str(overrides))
-        paths.append(str(private_file(directory / f"{index}-transport.json",
-                                     json.dumps(transport_variables(host, commands[index])).encode())))
-        files[host["name"]] = paths
-    loader = {"name": "Load canonical deployment inputs for each selected host", "hosts": "vpn",
+def prepare_host_playbooks(root, directory, index, host, memberships, metadata, secrets, overrides,
+                           command, inventory, known_hosts, transaction):
+    paths = []
+    for group in ("all", "vpn", *memberships[host["name"]]):
+        if not re.fullmatch(r"all|vpn|vpn-[a-z0-9][a-z0-9-]*", group):
+            raise DeployError("unsupported canonical cohort")
+        data = read_input(root / "ansible/group_vars" / (group + ".yml"))
+        validate_yaml(data, empty=True)
+        paths.append(str(private_file(directory / f"{index}-{group}.yml", data)))
+    paths.append(str(private_file(directory / f"{index}-metadata.json",
+                                  json.dumps(metadata[host["name"]]).encode())))
+    paths.append(str(secrets))
+    if overrides:
+        paths.append(str(overrides))
+    paths.append(str(private_file(directory / f"{index}-transport.json",
+                                  json.dumps(transport_variables(host, command)).encode())))
+    transaction_vars = dict(transaction, ssh_transaction_inventory_path=str(inventory),
+                            ssh_transaction_known_hosts_path=str(known_hosts))
+    paths.append(str(private_file(directory / f"{index}-ssh-transaction.json",
+                                  json.dumps(transaction_vars, sort_keys=True).encode())))
+    files = {host["name"]: paths}
+    loader = {"name": "Load canonical deployment inputs for the selected host", "hosts": "vpn",
               "gather_facts": False, "become": False, "tags": ["always"],
               "vars": {"deployment_input_files": files}, "tasks": [{
                   "name": "Load ordered canonical variables without ambient host vars",
                   "ansible.builtin.include_vars": {"file": "{{ deployment_input_file }}", "hash_behaviour": "replace"},
                   "loop": "{{ deployment_input_files[inventory_hostname] }}",
                   "loop_control": {"loop_var": "deployment_input_file"}, "no_log": True}]}
-    return {name: private_file(directory / (name + ".json"), json.dumps([
+    return {name: private_file(directory / f"{index}-{name}.json", json.dumps([
         loader, {"import_playbook": str(root / "ansible/playbooks" / (name + ".yml"))}]).encode())
             for name in ("site", "source-drift")}
+
+
+def transaction_inputs(mode, hosts, identity, directory, root, environment):
+    try:
+        raw = read_input(os.environ["DEPLOY_SSH_CONTEXTS_FILE"], private=True, exact_mode=0o600)
+        contexts = json.loads(raw, object_pairs_hook=unique_object)
+    except (KeyError, ValueError, UnicodeError):
+        raise DeployError("SSH contexts unavailable") from None
+    names = {host["name"] for host in hosts}
+    if not isinstance(contexts, dict) or set(contexts) != names:
+        raise DeployError("SSH contexts do not match selection")
+    try:
+        for name in sorted(names):
+            host = next(item for item in hosts if item["name"] == name)
+            bind_contexts(contexts[name], host["address"], host["transport"], host["port"])
+    except ContextError:
+        raise DeployError("SSH contexts invalid") from None
+    generation, _manifest = bundle_manifest()
+    promotions = None
+    if mode == "deploy":
+        try:
+            promotion_raw = read_input(
+                os.environ["DEPLOY_PROMOTION_CONFIG_FILE"], private=True, exact_mode=0o600)
+            promotions = json.loads(promotion_raw, object_pairs_hook=unique_object)
+        except (KeyError, ValueError, UnicodeError):
+            raise DeployError("promotion proof config unavailable") from None
+        if (not isinstance(promotions, dict) or set(promotions) != names
+                or any(not isinstance(config, dict) or not config for config in promotions.values())):
+            raise DeployError("promotion proof configs do not match selection")
+    result = {}
+    promotion_paths = []
+    for host in hosts:
+        alias = host["name"]
+        expected_target = {
+            "inventory_alias": alias,
+            "public_service_address_sha256": hashlib.sha256(host["address"].encode()).hexdigest(),
+            "deployable_digest": identity["DEPLOYABLE_SOURCE_DIGEST"],
+        }
+        promotion = None
+        if promotions is not None:
+            target = promotions[alias].get("target_identity")
+            if (not isinstance(target, dict)
+                    or any(target.get(key) != value for key, value in expected_target.items())):
+                raise DeployError("promotion proof configs do not bind selected targets")
+            promotion = private_file(directory / (alias + "-promotion-config.json"),
+                                     json.dumps(promotions[alias], sort_keys=True).encode())
+            promotion_paths.append(promotion)
+        result[alias] = {
+            "ssh_transaction_controller_managed": True,
+            "ssh_transaction_contexts": contexts[alias],
+            "ssh_transaction_bundle_generation": generation,
+            "ssh_transaction_timeout_seconds": TRANSACTION_TIMEOUT_SECONDS,
+            "ssh_transaction_promotion_config_path": str(promotion) if promotion else None,
+            "ssh_transaction_target_identity": expected_target,
+        }
+    for promotion in promotion_paths:
+        checked([sys.executable, str(root / "scripts/sshd-promotion-proof.py"),
+                 "--validate-config", "--config", str(promotion)],
+                environment=environment, cwd=directory, timeout=30)
+    return result
 
 
 def controller(mode):
@@ -272,7 +364,7 @@ def controller(mode):
         identity = source_identity(root, environment, require_clean=mode == "deploy")
         environment.update(identity)
         validate_discovery_paths(root)
-        hosts, memberships, metadata, inventory = inventory_selection(
+        hosts, memberships, metadata, _inventory, _rows, _global_lines = inventory_selection(
             root / "ansible/inventory/generated.ini", os.environ.get("DEPLOY_LIMIT", ""), directory)
         secret_data = read_input(os.environ["DEPLOY_SECRETS_FILE"], private=True, exact_mode=0o600)
         validate_yaml(secret_data)
@@ -299,7 +391,18 @@ def controller(mode):
                 raise DeployError("duplicate effective transport")
             identities.add(pair)
             commands.append(fleet_inspection.ssh_command(host, known_hosts))
-        playbooks = prepare_playbooks(root, directory, hosts, memberships, metadata, secrets, overrides, commands)
+        transactions = transaction_inputs("deploy" if mode == "deploy" else "check",
+                                          hosts, identity, directory, root, environment)
+        prepared = []
+        for index, (host, command) in enumerate(zip(hosts, commands)):
+            inventory = single_inventory(directory, index, host, memberships)
+            playbooks = prepare_host_playbooks(
+                root, directory, index, host, memberships, metadata, secrets, overrides,
+                command, inventory, known_hosts, transactions[host["name"]])
+            arguments = ["-i", str(inventory)]
+            if overrides:
+                arguments += ["--extra-vars", "@" + str(overrides)]
+            prepared.append((host, command, playbooks, arguments))
         if os.environ.get("DEPLOY_SKIP_PRECHECK", "") != "1":
             # Reclaim precheck secret copies even if their EXIT traps are killed.
             # Keep Ansible's default temp root: nested paths exceed macOS's RPC socket limit.
@@ -309,44 +412,43 @@ def controller(mode):
             checked([sys.executable, str(root / "scripts/spot-check-secrets.py")],
                     environment=precheck_environment, cwd=directory)
             checked([str(root / "scripts/check-certs.sh")], environment=precheck_environment, cwd=directory)
-        for command in commands:
+        for host, command, playbooks, arguments in prepared:
             wait_for_bootstrap(command[:-1], environment=environment)
-        current = source_identity(root, environment, require_clean=mode == "deploy")
-        if current != identity:
-            raise DeployError("source changed during readiness")
-        validate_discovery_paths(root)
-        arguments = ["-i", str(inventory)]
-        if overrides:
-            arguments += ["--extra-vars", "@" + str(overrides)]
-        site = ["ansible-playbook", str(playbooks["site"]), *arguments]
-        if mode == "dry-run":
-            site += ["--check", "--diff"]
-        elif os.environ.get("DEPLOY_TAGS"):
-            site += ["--tags", os.environ["DEPLOY_TAGS"]]
-        checked(site, environment=environment, cwd=directory, timeout=3600, stream=True)
-        if mode == "deploy":
-            checked(["ansible-playbook", str(playbooks["source-drift"]), *arguments],
-                    environment=environment, cwd=directory, timeout=300, stream=True)
-            audit_environment = {**environment, "ENV": os.environ.get("DEPLOY_ENV", "prod"),
-                                 "PROVIDER": os.environ.get("DEPLOY_PROVIDER", "upcloud")}
-            audit_environment.update({key: os.environ[key] for key in ("AGE_KEY", "AUDIT_LOG_FILE", "AUDIT_ACTOR")
-                                      if key in os.environ})
-            try:
-                status, _output = run_command([str(root / "scripts/audit-log.sh"), "append-best-effort",
-                                              "--action", "site-deploy", "--note",
-                                              "playbook=site.yml warp_outbound_role=conditional"],
-                                             environment=audit_environment, cwd=root, timeout=30)
-            except ReadinessError:
-                status = 1
-            if status:
-                print("warning: deployment audit unavailable", file=sys.stderr)
+            current = source_identity(root, environment, require_clean=mode == "deploy")
+            if current != identity:
+                raise DeployError("source changed during readiness")
+            validate_discovery_paths(root)
+            site = ["ansible-playbook", str(playbooks["site"]), *arguments]
+            if mode == "dry-run":
+                site += ["--check", "--diff"]
+            elif os.environ.get("DEPLOY_TAGS"):
+                site += ["--tags", os.environ["DEPLOY_TAGS"]]
+            checked(site, environment=environment, cwd=directory, timeout=3600, stream=True)
+            if mode == "deploy":
+                checked(["ansible-playbook", str(playbooks["source-drift"]), *arguments],
+                        environment=environment, cwd=directory, timeout=300, stream=True)
+                audit_environment = {**environment, "ENV": os.environ.get("DEPLOY_ENV", "prod"),
+                                     "PROVIDER": os.environ.get("DEPLOY_PROVIDER", "upcloud")}
+                audit_environment.update({key: os.environ[key]
+                                          for key in ("AGE_KEY", "AUDIT_LOG_FILE", "AUDIT_ACTOR")
+                                          if key in os.environ})
+                try:
+                    status, _output = run_command(
+                        [str(root / "scripts/audit-log.sh"), "append-best-effort",
+                         "--action", "site-deploy", "--note",
+                         "playbook=site.yml node=" + host["name"] + " warp_outbound_role=conditional"],
+                        environment=audit_environment, cwd=root, timeout=30)
+                except ReadinessError:
+                    status = 1
+                if status:
+                    print("warning: deployment audit unavailable", file=sys.stderr)
 
 
 def main():
     try:
         with cancellation():
             controller(sys.argv[1])
-    except (DeployError, ReadinessError, fleet_inspection.InspectionError) as error:
+    except (DeployError, BundleSourceError, ReadinessError, fleet_inspection.InspectionError) as error:
         print("deploy: " + str(error), file=sys.stderr)
         return 1
     return 0

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import importlib.util
 import io
 import json
@@ -50,11 +51,17 @@ def setup(tmp_path, monkeypatch):
     module = load(ROOT / "scripts/install_liveness_sentinel.py", "installer")
     fixture = load(ROOT / "tests/unit/test_liveness_profiles.py", "profile_fixture")
     values = fixture.inputs()
-    config = {"schema_version": 1, "probe_url": "https://192.0.2.9/health", "expected_status": 204,
+    for document in (values["standard_doc"], values["ripdpi_doc"]):
+        for outbound in document["outbounds"]:
+            if outbound.get("tag", "").startswith(("p0-reality-", "p1-xhttp-", "p2-hysteria2-")):
+                outbound["server"] = "192.0.2.3"
+    config = {"schema_version": 2, "probe_url": "https://192.0.2.9/health", "expected_status": 204,
               "expected_runtime": {"sing_box": "1.14.0", "xray": "26.3.27", "awg": "1.0.0", "awg_toolchain": "d" * 64},
               "policies": [{"id": "fullstack", "required_profiles": values["required_profiles"], "min_failed_vantages": 1}],
               "sentinels": [{"id": "probe-a", "ssh_target": "sentinel-a", "ssh_transport_host": "sentinel-direct",
                              "ssh_host_key_alias": "sentinel-a", "policy": "fullstack", "vantage": "external",
+                             "target": {"inventory_alias": "vpn-p2-fixture", "public_service_address_sha256": hashlib.sha256(b"192.0.2.3").hexdigest(),
+                                        "deployable_digest": "f" * 64, "applied_at": 1_700_000_000},
                              "awg_target": values["awg_binding"]}]}
     path = tmp_path / "liveness.yaml"
     path.write_text(yaml.safe_dump(config))
@@ -105,7 +112,8 @@ def setup(tmp_path, monkeypatch):
                 bundles.append(bundle)
                 metadata = json.loads(base64.b64decode(bundle["files"]["metadata.json"]))
                 state["receipt"] = {"generation_id": bundle["generation_id"], "status": "committed",
-                                    "runner_sha256": metadata["provenance"]["runner_sha256"], "provenance": metadata["provenance"]}
+                                    "runner_sha256": metadata["provenance"]["runner_sha256"], "provenance": metadata["provenance"],
+                                    "target_identity": metadata["target_identity"]}
                 if state["lost_launch"]:
                     raise module.InstallError("fixture-ssh-lost")
                 return b'{"status":"queued"}'
@@ -153,6 +161,15 @@ def test_four_profiles_use_one_decrypt_and_receipt_before_assignment(setup):
     ssh = [c[0] for c in calls if c[0][0] == "ssh"]
     assert all("StrictHostKeyChecking=yes" in c and "BatchMode=yes" in c and "ProxyCommand=none" in c for c in ssh)
     assert not any("scp" == Path(c[0][0]).name for c in calls)
+
+
+def test_public_profile_endpoint_must_match_exact_target_digest(setup):
+    setup["config"]["sentinels"][0]["target"]["public_service_address_sha256"] = "e" * 64
+
+    with pytest.raises(setup["module"].InstallError, match="target-profile-address-mismatch"):
+        setup["install"]()
+
+    assert not any(call[0][0] == "ssh" for call in setup["calls"])
 
 
 @pytest.mark.parametrize("outcome", ["valid", "invalid", "interrupt", "read-error"])
@@ -284,8 +301,8 @@ def test_local_failures_never_contact_ssh_and_clean_plaintext(setup, fault, monk
 @pytest.mark.parametrize("bad", ["malformed", "world-readable", "symlink", "duplicate-client"])
 def test_registry_is_strict_and_blocks_decrypt_and_ssh(setup, bad):
     s = setup
-    content = {"schema_version": 1, "sentinels": {"other": {"client": "sentinel", "ssh_target": "other"}}}
-    s["registry"].write_text("{" if bad == "malformed" else json.dumps(content if bad == "duplicate-client" else {"schema_version": 1, "sentinels": {}}))
+    content = {"schema_version": 2, "sentinels": {"other": {"client": "sentinel", "ssh_target": "other"}}}
+    s["registry"].write_text("{" if bad == "malformed" else json.dumps(content if bad == "duplicate-client" else {"schema_version": 2, "sentinels": {}}))
     s["registry"].chmod(0o644 if bad == "world-readable" else 0o600)
     if bad == "symlink":
         original = s["registry"].with_suffix(".original")
@@ -306,7 +323,16 @@ def test_lost_launch_is_reconciled_only_from_exact_receipt(setup):
 
 def test_unknown_keeps_old_assignment_and_retry_needs_no_plaintext(setup):
     s = setup
-    old = {"schema_version": 1, "sentinels": {"probe-a": {"client": "old-client", "ssh_target": "old-host"}}}
+    provenance = {"controller_revision": "1" * 40, "runner_sha256": "2" * 64,
+                  "client_generation_id": "7f574d16-931e-42b4-a940-853b92f53a14",
+                  "public_profile_digest": "3" * 64, "vantage": "external"}
+    target = {**s["config"]["sentinels"][0]["target"], "required_profiles": sorted(s["values"]["required_profiles"]),
+              "source_revision": provenance["controller_revision"], "runner_sha256": provenance["runner_sha256"],
+              "public_profile_digest": provenance["public_profile_digest"]}
+    old = {"schema_version": 2, "sentinels": {"probe-a": {"client": "old-client", "ssh_target": "old-host",
+           "generation_id": provenance["client_generation_id"], "provenance": provenance,
+           "required_profiles": s["values"]["required_profiles"], "policy": "fullstack", "vantage": "external",
+           "target_identity": target}}}
     s["registry"].write_text(json.dumps(old))
     s["registry"].chmod(0o600)
     s["state"]["unknown"] = True
@@ -377,7 +403,7 @@ def test_shell_is_only_a_python_entrypoint():
 def test_registry_rejects_malformed_entry_fields_before_commands(setup, field):
     s = setup
     value = {"client": "someone", "ssh_target": "other", field: 42}
-    s["registry"].write_text(json.dumps({"schema_version": 1, "sentinels": {"other": value}}))
+    s["registry"].write_text(json.dumps({"schema_version": 2, "sentinels": {"other": value}}))
     s["registry"].chmod(0o600)
     with pytest.raises(s["module"].InstallError):
         s["install"]()
@@ -405,7 +431,7 @@ def test_same_generation_retry_refuses_changed_public_profile(setup):
     with pytest.raises(s["module"].InstallError):
         s["install"]()
     s["state"].update(unknown=False, receipt=None)
-    s["values"]["standard_doc"]["outbounds"][0]["server"] = "192.0.2.44"
+    s["values"]["standard_doc"]["outbounds"][0]["server_port"] = 8443
     before = len(s["bundles"])
     with pytest.raises(s["module"].InstallError, match="conflict"):
         s["install"]()

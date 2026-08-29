@@ -40,6 +40,8 @@ BUNDLE_LIMIT = COMMAND_LIMIT * 2
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 SEMVER = re.compile(r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?\Z")
 PROVENANCE = {"controller_revision", "runner_sha256", "client_generation_id", "public_profile_digest", "vantage"}
+TARGET_IDENTITY = {"inventory_alias", "public_service_address_sha256", "deployable_digest", "applied_at",
+                   "required_profiles", "source_revision", "runner_sha256", "public_profile_digest"}
 
 
 class InstallError(ValueError):
@@ -204,13 +206,33 @@ def _provenance(value):
         raise InstallError("invalid-provenance")
 
 
+def _target_identity(value, provenance, required):
+    if (
+        not isinstance(value, dict)
+        or set(value) != TARGET_IDENTITY
+        or value.get("required_profiles") != sorted(required)
+        or value.get("source_revision") != provenance["controller_revision"]
+        or value.get("runner_sha256") != provenance["runner_sha256"]
+        or value.get("public_profile_digest") != provenance["public_profile_digest"]
+        or type(value.get("applied_at")) is not int
+        or value["applied_at"] < 1
+        or not isinstance(value.get("inventory_alias"), str)
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", value["inventory_alias"]) is None
+        or any(not isinstance(value.get(key), str) or re.fullmatch(r"[0-9a-f]{64}", value[key]) is None
+               for key in ("public_service_address_sha256", "deployable_digest", "runner_sha256", "public_profile_digest"))
+        or not isinstance(value.get("source_revision"), str)
+        or re.fullmatch(r"[0-9a-f]{40}", value["source_revision"]) is None
+    ):
+        raise InstallError("invalid-target-identity")
+
+
 def _state(path, kind):
     if not os.path.lexists(path):
-        return {"schema_version": 1, kind: {}}
+        return {"schema_version": 2, kind: {}}
     doc = _json(_read(path, private=True))
-    if not isinstance(doc, dict) or set(doc) != {"schema_version", kind} or type(doc["schema_version"]) is not int or doc["schema_version"] != 1 or not isinstance(doc[kind], dict):
+    if not isinstance(doc, dict) or set(doc) != {"schema_version", kind} or type(doc["schema_version"]) is not int or doc["schema_version"] != 2 or not isinstance(doc[kind], dict):
         raise InstallError("invalid-registry")
-    allowed = {"client", "ssh_target", "ssh_transport_host", "ssh_host_key_alias", "generation_id", "provenance", "required_profiles", "policy", "vantage"}
+    allowed = {"client", "ssh_target", "ssh_transport_host", "ssh_host_key_alias", "generation_id", "provenance", "required_profiles", "policy", "vantage", "target_identity"}
     clients = []
     for sid, entry in doc[kind].items():
         if not isinstance(sid, str) or not NAME.fullmatch(sid) or not isinstance(entry, dict) or set(entry) - allowed:
@@ -229,11 +251,12 @@ def _state(path, kind):
             profiles = entry["required_profiles"]
             if not isinstance(profiles, list) or not profiles or any(p not in ("p0-reality", "p1-xhttp", "p2-hysteria2", "p2-amneziawg") for p in profiles) or len(profiles) != len(set(profiles)):
                 raise InstallError("invalid-registry")
-        if kind == "pending" and not {"generation_id", "provenance", "required_profiles", "policy", "vantage"} <= entry.keys():
+        if not {"target_identity", "provenance", "required_profiles"} <= entry.keys():
             raise InstallError("invalid-registry")
         if kind == "pending" or "generation_id" in entry or "provenance" in entry:
             _uuid(entry.get("generation_id"))
             _provenance(entry.get("provenance"))
+            _target_identity(entry.get("target_identity"), entry["provenance"], entry["required_profiles"])
     if len(clients) != len(set(clients)):
         raise InstallError("duplicate-client-assignment")
     return doc
@@ -530,7 +553,9 @@ def _receipt(sentinel, pending, environment):
     if not isinstance(response, dict) or set(response) != {"state", "receipt"} or response["state"] != "committed":
         raise InstallError("invalid-remote-receipt")
     value = response["receipt"]
-    expected = {"generation_id": pending["generation_id"], "status": "committed", "runner_sha256": pending["provenance"]["runner_sha256"], "provenance": pending["provenance"]}
+    expected = {"generation_id": pending["generation_id"], "status": "committed",
+                "runner_sha256": pending["provenance"]["runner_sha256"], "provenance": pending["provenance"],
+                "target_identity": pending["target_identity"]}
     if value != expected:
         raise InstallError("remote-receipt-identity-mismatch")
     return value
@@ -582,7 +607,7 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
                 raise InstallError("client-already-assigned")
         previous = pending["pending"].get(sid)
         if previous is not None:
-            if previous["client"] != client or any(previous.get(k) != transport.get(k) for k in ("ssh_target", "ssh_transport_host", "ssh_host_key_alias", "policy", "vantage")) or previous.get("required_profiles") != required:
+            if previous["client"] != client or any(previous.get(k) != transport.get(k) for k in ("ssh_target", "ssh_transport_host", "ssh_host_key_alias", "policy", "vantage")) or previous.get("required_profiles") != required or any(previous["target_identity"].get(k) != sentinel["target"].get(k) for k in sentinel["target"]):
                 raise InstallError("pending-assignment-conflict")
             try:
                 receipt = _receipt(sentinel, previous, environment)
@@ -622,10 +647,20 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
             profiles = build_profiles(*emitted, secrets, client, required, sentinel.get("awg_target"), endpoint, private,
                                       lambda key: _derive(key, env), f"/etc/vpn-liveness/generations/{generation}/profiles",
                                       awg_defaults=defaults, awg_cohort=cohort)
+            profile_servers = {item.get("server") for item in profiles["public_profiles"]
+                               if isinstance(item, dict)}
+            if (len(profile_servers) != 1 or None in profile_servers
+                    or hashlib.sha256(next(iter(profile_servers)).encode()).hexdigest()
+                    != sentinel["target"]["public_service_address_sha256"]):
+                raise InstallError("target-profile-address-mismatch")
             provenance = {"controller_revision": revision, "runner_sha256": hashlib.sha256(runner).hexdigest(),
                           "client_generation_id": generation, "public_profile_digest": profiles["public_profile_digest"], "vantage": sentinel["vantage"]}
             _provenance(provenance)
-            entry = {"client": client, **transport, "required_profiles": required, "generation_id": generation, "provenance": provenance}
+            target_identity = {**sentinel["target"], "required_profiles": sorted(required), "source_revision": revision,
+                               "runner_sha256": provenance["runner_sha256"], "public_profile_digest": profiles["public_profile_digest"]}
+            _target_identity(target_identity, provenance, required)
+            entry = {"client": client, **transport, "required_profiles": required, "generation_id": generation,
+                     "provenance": provenance, "target_identity": target_identity}
             if previous is not None and previous != entry:
                 raise InstallError("pending-source-or-profile-conflict")
             rendered = {name: (data if isinstance(data, str) else json.dumps(data, separators=(",", ":"))).encode() for name, data in profiles["files"].items()}
@@ -638,10 +673,11 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
             if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", user):
                 raise InstallError("unsafe-remote-user")
             _ssh(sentinel, "sudo -n true", environment)
-            runner_config = {"schema_version": 1, "sentinel": sid, "probe_url": config["probe_url"], "expected_status": config["expected_status"],
+            runner_config = {"schema_version": 2, "sentinel": sid, "probe_url": config["probe_url"], "expected_status": config["expected_status"],
                              "timeout_seconds": config.get("probe_timeout_seconds", 15), "degraded_after_ms": config.get("degraded_after_ms", 3000),
-                             "expected_runtime": expected, "provenance": provenance, **profiles["runtime"]}
-            metadata = {"generation_id": generation, "required_profiles": required, "ssh_user": user, "provenance": provenance}
+                             "expected_runtime": expected, "provenance": provenance, "target_identity": target_identity, **profiles["runtime"]}
+            metadata = {"generation_id": generation, "required_profiles": required, "ssh_user": user,
+                        "provenance": provenance, "target_identity": target_identity}
             files = {"runner.py": runner, "config.json": json.dumps(runner_config, sort_keys=True).encode(), "metadata.json": json.dumps(metadata, sort_keys=True).encode(),
                      **{"profiles/" + name: data for name, data in rendered.items()}}
             bundle = json.dumps({"generation_id": generation, "engine": base64.b64encode(engine).decode(),

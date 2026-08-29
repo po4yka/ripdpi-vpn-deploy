@@ -35,6 +35,10 @@ ALIVE = {"ok", "throttled"}
 REMOTE_COMMAND = ["sudo", "-n", "/usr/local/sbin/vpn-protocol-liveness"]
 RUNTIME_KEYS = {"sing_box", "xray", "awg", "awg_toolchain"}
 PROVENANCE_KEYS = {"controller_revision", "runner_sha256", "client_generation_id", "public_profile_digest", "vantage"}
+TARGET_IDENTITY_KEYS = {
+    "inventory_alias", "public_service_address_sha256", "deployable_digest", "applied_at",
+    "required_profiles", "source_revision", "runner_sha256", "public_profile_digest",
+}
 
 
 class ConfigError(ValueError):
@@ -174,7 +178,7 @@ def validate_report(raw: str, sentinel: dict, config: dict, now: int) -> tuple[d
         report = json.loads(raw)
     except (ValueError, TypeError, RecursionError):
         return None, f"{sentinel['id']}: malformed report"
-    if not isinstance(report, dict) or type(report.get("schema_version")) is not int or report["schema_version"] != 1:
+    if not isinstance(report, dict) or type(report.get("schema_version")) is not int or report["schema_version"] != 2:
         return None, f"{sentinel['id']}: unsupported report schema"
     if report.get("sentinel") != sentinel["id"]:
         return None, f"{sentinel['id']}: sentinel identity mismatch"
@@ -198,13 +202,36 @@ def validate_report(raw: str, sentinel: dict, config: dict, now: int) -> tuple[d
         return None, f"{sentinel['id']}: invalid provenance"
     if provenance["vantage"] not in ("external", "filtered") or provenance["vantage"] != sentinel["vantage"]:
         return None, f"{sentinel['id']}: provenance vantage mismatch"
+    policy = next(policy for policy in config["policies"] if policy["id"] == sentinel["policy"])
+    target = report.get("target_identity")
+    required = sorted(policy["required_profiles"])
+    if not isinstance(target, dict) or set(target) != TARGET_IDENTITY_KEYS:
+        return None, f"{sentinel['id']}: invalid target identity"
+    declared = sentinel["target"]
+    if any(target.get(key) != declared[key] for key in declared):
+        return None, f"{sentinel['id']}: target identity mismatch"
+    if (
+        target.get("required_profiles") != required
+        or target.get("source_revision") != provenance["controller_revision"]
+        or target.get("runner_sha256") != provenance["runner_sha256"]
+        or target.get("public_profile_digest") != provenance["public_profile_digest"]
+        or type(target.get("applied_at")) is not int
+        or target["applied_at"] < 1
+        or observed_at < target["applied_at"]
+        or not isinstance(target.get("inventory_alias"), str)
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", target["inventory_alias"]) is None
+        or any(not isinstance(target.get(key), str) or re.fullmatch(r"[0-9a-f]{64}", target[key]) is None
+               for key in ("public_service_address_sha256", "deployable_digest", "runner_sha256", "public_profile_digest"))
+        or not isinstance(target.get("source_revision"), str)
+        or re.fullmatch(r"[0-9a-f]{40}", target["source_revision"]) is None
+    ):
+        return None, f"{sentinel['id']}: invalid target identity"
     runtime = report.get("runtime")
     if (not isinstance(runtime, dict) or set(runtime) - RUNTIME_KEYS
             or any(not isinstance(value, str) or re.fullmatch(
                 r"[0-9a-f]{64}" if key == "awg_toolchain" else r"(?:\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?|missing|unknown)", value) is None
                    for key, value in runtime.items())):
         return None, f"{sentinel['id']}: invalid runtime evidence"
-    policy = next(policy for policy in config["policies"] if policy["id"] == sentinel["policy"])
     for key in sorted(required_runtime(policy)):
         if runtime.get(key) != config["expected_runtime"].get(key) or key not in runtime:
             return None, f"{sentinel['id']}: {key} runtime mismatch"
@@ -224,6 +251,10 @@ def validate_report(raw: str, sentinel: dict, config: dict, now: int) -> tuple[d
             return None, f"{sentinel['id']}: invalid payload transport evidence"
         if family not in (("ipv4", "unknown") if name == "p2-amneziawg" else ("unknown",)):
             return None, f"{sentinel['id']}: invalid target address family evidence"
+        if type(profile.get("dns_through_tunnel")) is not bool or type(profile.get("authenticated_handshake")) is not bool:
+            return None, f"{sentinel['id']}: invalid positive proof evidence"
+        if verdict in ALIVE and (profile["dns_through_tunnel"] is not True or profile["authenticated_handshake"] is not True):
+            return None, f"{sentinel['id']}: missing positive proof evidence"
         if "fresh_handshake" in profile and (name != "p2-amneziawg" or type(profile["fresh_handshake"]) is not bool):
             return None, f"{sentinel['id']}: invalid handshake evidence"
         if name == "p2-amneziawg" and verdict in ALIVE and (family != "ipv4" or profile.get("fresh_handshake") is not True):
@@ -252,9 +283,8 @@ def validate_report(raw: str, sentinel: dict, config: dict, now: int) -> tuple[d
             if verdict != expected_verdict:
                 return None, f"{sentinel['id']}: inconsistent endpoint variant verdict"
         seen.add(name)
-    missing = sorted(set(policy["required_profiles"]) - seen)
-    if missing:
-        return None, f"{sentinel['id']}: missing required profiles: {','.join(missing)}"
+    if seen != set(policy["required_profiles"]):
+        return None, f"{sentinel['id']}: profile set mismatch"
     return report, ""
 
 
@@ -296,11 +326,13 @@ def aggregate(config: dict, reports: dict[str, dict], errors: list[str]) -> dict
             "observed_at": report["observed_at"],
             "runtime": {key: report["runtime"][key] for key in sorted(RUNTIME_KEYS & report["runtime"].keys())},
             "provenance": {key: report["provenance"][key] for key in sorted(PROVENANCE_KEYS)},
-            "deployed_server_identity": {"status": "unknown"},
+            "target_identity": report["target_identity"],
             "profile_observations": {
                 name: {
                     "payload_transport": profile_results[name].get("payload_transport", "unknown"),
                     "target_address_family": profile_results[name].get("target_address_family", "unknown"),
+                    "dns_through_tunnel": profile_results[name]["dns_through_tunnel"],
+                    "authenticated_handshake": profile_results[name]["authenticated_handshake"],
                     **({"fresh_handshake": True} if name == "p2-amneziawg" and profiles[name] in ALIVE
                        and profile_results[name].get("fresh_handshake") is True else {}),
                 } for name in required
@@ -324,7 +356,7 @@ def aggregate(config: dict, reports: dict[str, dict], errors: list[str]) -> dict
     else:
         decision = "healthy"
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "evaluated_at": int(time.time()),
         "decision": decision,
         "candidate_policies": candidates,
@@ -394,7 +426,7 @@ def record_state(payload: dict, config: dict, config_path: Path, state_dir: Path
     }
     atomic_json(state_path, state)
     atomic_json(state_dir / "last-evidence.json", payload)
-    payload.update(state)
+    payload.update({key: value for key, value in state.items() if key != "schema_version"})
 
 
 def main() -> int:

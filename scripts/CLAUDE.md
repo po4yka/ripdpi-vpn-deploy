@@ -16,6 +16,13 @@ stream to a digest-pinned image. APT uses HTTPS with peer/host verification and
 fails on any index error; never add host mounts, plaintext mirrors, trusted
 sources, or disabled TLS checks to make this CI fallback pass.
 
+**Cloud-final restart acceptance is isolated and fail-closed** — the manual
+harness builds digest-pinned Debian and Ubuntu systemd images in its own Colima
+profile, exercises clean and interrupted PID1 restart cases, and deletes the
+profile on every exit. A nonzero guest result never becomes acceptance; only a
+bounded mode-0600 sidecar with categorical state and hashed invocation identity
+may survive cleanup. This is container PID1 evidence, not a provider reboot.
+
 **SOPS gate everywhere** — anything that reads decrypted secrets refuses
 without `VPN_SECRETS_FILE` or the Make-resolved `SECRETS_FILE` produced by
 `make decrypt`. Never assume `/tmp`, and never re-implement decryption.
@@ -168,6 +175,18 @@ to stderr; non-zero exit reads as `error` to orchestrators. Emit `unknown`
   written atomically (tmp+`mv`, `chmod 0600`) like `asn-drift.sh`.
 
 **Protocol liveness is a two-part module** — `vpn-protocol-liveness.py` runs on a managed client-path sentinel and emits only redacted JSON; `protocol-liveness.py` pulls those reports over strict SSH and evaluates quorum. Only a fresh `blocked` result with a successful direct control may contribute to rotation. `unknown`, local dependency errors, authentication errors, stale output, and malformed output inhibit rotation.
+
+**Promotion liveness is exact-node schema two** — every positive report binds
+the exact inventory alias, canonical public-service-address digest, deployed
+manifest digest, required profile set, source, runner and public profile. All
+emitted variants for one sentinel target the same canonical server. The fixed
+promotion proof accepts only exact `ok` profile evidence after the binding
+epoch, including tunneled DNS and authentication plus a fresh AWG handshake;
+its receipt exposes only the safe target subset and observation epoch.
+The same fixed tool's `--validate-config` mode performs full local schema,
+semantic and exact-node cross-link validation without probes or writes; a
+multi-node controller must validate every split private config before the first
+readiness or convergence call.
 
 **Sentinel transport is separate from host identity** — an optional `ssh_transport_host` selects the directly reachable address while the required paired `ssh_host_key_alias` preserves pinned-key verification. This path disables inherited proxy and multiplexing options so a stale alias route cannot make healthy protocol evidence disappear.
 

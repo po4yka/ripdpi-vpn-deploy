@@ -52,7 +52,7 @@ observation is authorized.
 Store the operator configuration at `~/.config/vpn-provision/liveness.yaml` with mode `0600`. Sentinel IDs and policy names must describe technical path signatures, not carriers, operators, or geography.
 
 ```yaml
-schema_version: 1
+schema_version: 2
 probe_url: https://www.gstatic.com/generate_204
 expected_status: 204
 probe_timeout_seconds: 15
@@ -67,28 +67,48 @@ expected_runtime:
   awg: 1.0.0
   awg_toolchain: "<64-character source-input digest from the installed toolchain>"
 policies:
-  - id: fullstack
-    required_profiles: [p0-reality, p1-xhttp, p2-hysteria2, p2-amneziawg]
+  - id: p2-node
+    required_profiles: [p2-hysteria2, p2-amneziawg]
     min_failed_vantages: 2
 sentinels:
   - id: tls-freeze-a
     ssh_target: sentinel-a
     ssh_transport_host: sentinel-direct
     ssh_host_key_alias: sentinel-a
-    policy: fullstack
+    policy: p2-node
     vantage: external
+    target:
+      inventory_alias: vpn-p2-node-a
+      public_service_address_sha256: "<sha256 of the canonical public service address>"
+      deployable_digest: "<deployable_digest from the post-apply node manifest>"
+      applied_at: 1800000000
     awg_target: {provider: vultr, environment: prod, instance: awg0}
   - id: udp-filtered-b
     ssh_target: sentinel-b
-    policy: fullstack
+    policy: p2-node
     vantage: filtered
+    target:
+      inventory_alias: vpn-p2-node-a
+      public_service_address_sha256: "<same canonical public service address digest>"
+      deployable_digest: "<same post-apply deployable_digest>"
+      applied_at: 1800000000
     awg_target: {provider: vultr, environment: prod, instance: awg0}
 ```
 
 The contract is `contract/protocol-liveness.schema.json`. Replace the toolchain
-placeholder with the actual installed source-input digest. Fullstack configuration
-without the Xray pin, explicit AWG provider/environment/instance and vantage is
-rejected; it does not fall back to an older installation format. Each `ssh_target`
+placeholder with the actual installed source-input digest. Each sentinel also
+binds one exact post-apply node: the canonical inventory alias, SHA-256 of the
+canonical public service address UTF-8 bytes without a newline, the deployed
+node manifest's `deployable_digest`, and the publication epoch for that exact
+liveness target binding. Generate
+these values from the same immutable exact-node selection used by deployment;
+do not copy a listener address or timestamp from an earlier run. Every emitted
+profile variant in that sentinel's policy must use the same canonical public
+service address and match its digest; a multi-node aggregate must be split into
+separate exact-node policies. A policy without the runtime pins required by its
+assigned profiles, explicit AWG provider/environment/instance when AWG is
+required, or a vantage is rejected; it does not fall back to an older
+installation format. Each `ssh_target`
 is an operator-controlled OpenSSH alias with an existing host-key pin. Optional
 paired `ssh_transport_host` and `ssh_host_key_alias` preserve that identity on a
 direct transport. Active sentinel commands disable proxy commands, multiplexing,
@@ -135,20 +155,76 @@ plus logical profile count, with 240 seconds for bounded setup and cleanup
 600-second limit; receipt reconciliation has 660 seconds. Runtime files are sealed root-owned (directories/executable runner 0500,
 configuration 0400). The sudo rule permits only the fixed no-argument launcher.
 
-The AWG adapter creates the userspace interface in the host namespace, moves only that interface into a temporary network namespace, and adds the probe address and default route inside the namespace. The userspace UDP socket retains the sentinel's normal underlay while the host routing table remains unchanged. A successful AWG verdict requires both a fresh handshake and the expected IPv4 HTTPS response on port 443. The namespace, interface, and userspace process are removed on success, failure, timeout, or signal. Existing interfaces are never adopted or removed. All curl calls disable curlrc and ambient proxies; SOCKS calls also override NO_PROXY bypass.
+The AWG adapter creates the userspace interface in the host namespace, moves only that interface into a temporary network namespace, and adds the probe address and default route inside the namespace. The userspace UDP socket retains the sentinel's normal underlay while the host routing table remains unchanged. A successful AWG verdict requires in-namespace DNS resolution, a fresh handshake and the expected IPv4 HTTPS response on port 443. The namespace, interface, and userspace process are removed on success, failure, timeout, or signal. Existing interfaces are never adopted or removed. All curl calls disable curlrc and ambient proxies; SOCKS calls also override NO_PROXY bypass.
 
 `make liveness-profile-check` exercises both canonical emitters and the real
 pinned sing-box/Xray parsers. It is mandatory in `make ci-fast` and hosted CI.
 Loopback and parser tests do not establish external four-protocol acceptance.
 Reports separate controller revision, runner hash, client generation, public
-profile digest, runtime versions and declared vantage. Deployed server identity
-remains unknown unless collected separately; the controller SHA is not a server
-SHA. IPv4 HTTPS evidence does not prove UDP payload, IPv6, Android, filtered-path
-quorum, rotation or offsite restore.
+profile digest, runtime versions and declared vantage. Schema two also carries
+the exact inventory alias, public-service-address digest, deployed manifest
+digest, binding-publication epoch and required profile set. The installer cross-links those
+fields to the exact source, runner and public profile before publishing its
+receipt. A positive logical profile includes DNS through that profile and an
+authenticated HTTPS response; AWG additionally requires a fresh handshake.
+The controller revision is still not a server revision by itself. This evidence
+does not prove UDP application payload, IPv6, Android, filtered-path quorum,
+rotation or offsite restore.
 
 ## Decision and promotion behavior
 
 Run `make protocol-liveness LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml` to inspect one redacted evaluation. `ok` and `throttled` prove the profile completed authenticated data-plane traffic; `blocked` contributes to rotation only when the direct control succeeds; `unknown` and `error` inhibit rotation.
+
+For SSH transaction confirmation, materialize a separate same-owner `0600` JSON
+file and invoke the fixed proof directly:
+
+```json
+{
+  "schema_version": 1,
+  "liveness_config": "/absolute/owner-private/liveness.yaml",
+  "expected_sentinels": ["tls-freeze-a", "udp-filtered-b"],
+  "target_identity": {
+    "inventory_alias": "vpn-p2-node-a",
+    "public_service_address_sha256": "<64 lowercase hex>",
+    "deployable_digest": "<64 lowercase hex>",
+    "applied_at": 1800000000,
+    "required_profiles": ["p2-amneziawg", "p2-hysteria2"],
+    "source_revision": "<40 lowercase hex>",
+    "runner_sha256": "<64 lowercase hex>",
+    "public_profile_digest": "<64 lowercase hex>"
+  }
+}
+```
+
+Before any readiness SSH or site convergence, the deployment controller splits
+its private alias mapping and runs
+`scripts/sshd-promotion-proof.py --validate-config --config <per-node-file>`
+for every selected alias. This read-only mode validates the complete liveness
+schema and semantics plus the exact sentinel, target and required-profile
+cross-links. It exits silently with `0` or emits only the categorical
+`configuration-refused` error with `2`; it does not probe, create state or
+publish a receipt. Every selected config must pass before the first node is
+contacted.
+
+`scripts/sshd-promotion-proof.py --config <file>` synchronously runs only the
+fixed evaluator and returns only `inventory_alias`, the public-service-address
+digest, the deployable digest and the earliest accepted observation epoch. It accepts an exact sentinel
+set only when the aggregate is healthy, every required profile is exactly `ok`,
+all observations are at or after `applied_at`, DNS and authenticated handshake
+proofs are true, and AWG has a fresh handshake. `throttled`, stale, missing,
+extra, wrong-target or wrong-source evidence refuses categorically. The tool
+uses the stricter of the liveness freshness policy and a five-minute promotion
+ceiling. It
+does not print raw addresses, child output or credentials. Loopback smoke,
+service status and a current SSH session are not promotion proof. A caller must
+still establish a fresh pinned non-multiplexed SSH session and the remaining
+guest/provider rollback checks before remote confirmation. In particular,
+`applied_at` is the liveness binding publication time, not the current SSH
+transaction time; the controller must separately require the returned
+`observed_at` to be at or after that node's current SSH apply completion.
+For a serial multi-node deployment, the controller owns one private `0600`
+exact-alias-to-singular-config mapping and invokes this singular proof for each
+selected node; the operator does not run a separate deployment command per node.
 
 For monitoring without a warm spare, run `make monitor-protocol-liveness LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml`. It stores the latest redacted evidence beneath `${XDG_STATE_HOME:-~/.local/state}/vpn-deploy/protocol-liveness`, sends ntfy alerts on unhealthy transitions and recovery using `watchdog_secrets`, retries failed delivery, and emits at most one reminder per day while the state is unchanged. Evaluator startup, timeout, and output failures become persisted `unknown` evidence and alerts instead of silently leaving stale state. Notification credentials normally come from an owner-controlled `0600` materialized secrets file; unattended runs materialize it through `decrypt-secrets.sh` and remove it immediately. Explicit `NTFY_TOPIC`/`NTFY_TOKEN` environment overrides are supported for isolated testing and operator-controlled one-shot runs.
 

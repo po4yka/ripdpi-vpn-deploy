@@ -31,9 +31,17 @@ run "server_cloud_init_user_data_is_wired" {
       strcontains(hcloud_server.vpn.user_data, "provisioned_by=cloud-init")
       && strcontains(hcloud_server.vpn.user_data, "build_env=test")
       && strcontains(hcloud_server.vpn.user_data, "ssh-ed25519 AAAATESTKEY test@harness")
-      && strcontains(hcloud_server.vpn.user_data, "Port 2222")
+      && strcontains(hcloud_server.vpn.user_data, "--ssh-port 2222")
+      && one([
+        for item in yamldecode(hcloud_server.vpn.user_data).write_files : item
+        if item.path == "/usr/local/libexec/vpn-bootstrap-sshd-ownership.py"
+      ]).encoding == "b64"
+      && base64decode(one([
+        for item in yamldecode(hcloud_server.vpn.user_data).write_files : item.content
+        if item.path == "/usr/local/libexec/vpn-bootstrap-sshd-ownership.py"
+      ])) == file("${path.module}/../../shared/bootstrap-sshd-ownership.py")
     )
-    error_message = "hcloud_server.user_data must carry the rendered cloud-init bootstrap"
+    error_message = "hcloud_server.user_data must carry the SSH port and exact embedded ownership helper"
   }
 }
 

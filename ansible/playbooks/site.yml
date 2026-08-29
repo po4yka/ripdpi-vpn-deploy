@@ -1,6 +1,8 @@
 ---
 - name: Provision VPN VPS — full stack
   hosts: vpn
+  serial: 1
+  any_errors_fatal: true
   become: true
   gather_facts: true
 
@@ -15,6 +17,14 @@
     - "{{ vpn_secrets_file }}"
 
   pre_tasks:
+    - name: Require exact-node controller ownership before convergence
+      tags: [always]
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+          - ssh_transaction_controller_managed | default(false) | bool
+        fail_msg: site.yml must run through the exact-node deployment controller
+
     - name: Ensure VPN_SECRETS_FILE was provided
       tags: [always]
       ansible.builtin.assert:
@@ -322,3 +332,17 @@
 
     - role: node_manifest
       tags: [manifest]
+
+- name: Publish and prove the SSH baseline after the VPN stack converges
+  hosts: vpn
+  serial: 1
+  any_errors_fatal: true
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: Run the baseline SSH transaction controller
+      ansible.builtin.include_role:
+        name: baseline
+        tasks_from: sshd-transaction
+      tags: [always, baseline]

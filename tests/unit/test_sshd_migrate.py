@@ -43,7 +43,9 @@ def test_recovery_requires_enabled_timer_and_real_ssh_dependencies(adapter, monk
 
 def test_request_is_fixed_shape_and_requires_two_connection_contexts(adapter):
     with pytest.raises(adapter.TransactionError):
-        adapter.validate_request('prepare', {'intent': 'sshd-ownership', 'contexts': [], 'timeout': 180, 'config_root': '/tmp'})
+        adapter.validate_request('prepare', {'intent': 'sshd-ownership', 'contexts': [], 'timeout': 180,
+                                             'check_mode': False, 'bundle_generation': 'a' * 64,
+                                             'config_root': '/tmp'})
     with pytest.raises(adapter.TransactionError):
         adapter.validate_request('prepare', {'intent': 'sshd-ownership', 'contexts': [], 'timeout': 180})
     with pytest.raises(adapter.TransactionError):
@@ -51,14 +53,17 @@ def test_request_is_fixed_shape_and_requires_two_connection_contexts(adapter):
 
 
 def test_prepare_intent_and_candidate_decode_keep_fixed_engine_arguments(adapter):
-    ownership = {'intent': 'sshd-ownership', 'contexts': CONTEXTS, 'timeout': 180}
+    ownership = {'intent': 'sshd-ownership', 'contexts': CONTEXTS, 'timeout': 180,
+                 'check_mode': False, 'bundle_generation': 'a' * 64}
     assert adapter.validate_request('prepare', ownership) == ownership
     hardening = b'X11Forwarding no\nSubsystem sftp internal-sftp\n'
     wire = {'intent': 'sshd-baseline', 'contexts': CONTEXTS, 'timeout': 180,
+            'check_mode': True, 'bundle_generation': 'b' * 64,
             'hardening_b64': base64.b64encode(hardening).decode()}
     original = dict(wire)
     assert adapter.validate_request('prepare', wire) == {
         'intent': 'sshd-baseline', 'contexts': CONTEXTS, 'timeout': 180,
+        'check_mode': True, 'bundle_generation': 'b' * 64,
         'hardening': hardening,
     }
     assert wire == original
@@ -70,7 +75,8 @@ def test_prepare_intent_and_candidate_decode_keep_fixed_engine_arguments(adapter
                                  {'intent': 'sshd-baseline', 'hardening': b'X11Forwarding no\n'}])
 def test_prepare_never_infers_intent_or_accepts_an_alternate_candidate_surface(adapter, extra):
     with pytest.raises(adapter.TransactionError, match='request-invalid'):
-        adapter.validate_request('prepare', {'contexts': CONTEXTS, 'timeout': 180, **extra})
+        adapter.validate_request('prepare', {'contexts': CONTEXTS, 'timeout': 180,
+                                             'check_mode': False, 'bundle_generation': 'a' * 64, **extra})
 
 
 @pytest.mark.parametrize('encoded', [None, 1, '', '!!!!', 'WA', 'WB==', 'WA==\n',
@@ -78,7 +84,18 @@ def test_prepare_never_infers_intent_or_accepts_an_alternate_candidate_surface(a
 def test_prepare_candidate_has_a_bounded_canonical_base64_wire_form(adapter, encoded):
     with pytest.raises(adapter.TransactionError, match='request-invalid'):
         adapter.validate_request('prepare', {'intent': 'sshd-baseline', 'contexts': CONTEXTS,
-                                            'timeout': 180, 'hardening_b64': encoded})
+                                            'timeout': 180, 'check_mode': False,
+                                            'bundle_generation': 'a' * 64, 'hardening_b64': encoded})
+
+
+@pytest.mark.parametrize('field,value', [('check_mode', 0), ('check_mode', 'false'),
+                                         ('bundle_generation', 'x'), ('bundle_generation', 'A' * 64)])
+def test_prepare_requires_typed_check_mode_and_exact_bundle_generation(adapter, field, value):
+    request = {'intent': 'sshd-ownership', 'contexts': CONTEXTS, 'timeout': 180,
+               'check_mode': False, 'bundle_generation': 'a' * 64}
+    request[field] = value
+    with pytest.raises(adapter.TransactionError, match='request-invalid'):
+        adapter.validate_request('prepare', request)
 
 
 def test_unit_design_avoids_boot_reload_deadlock_and_repeated_timer_noop(adapter):

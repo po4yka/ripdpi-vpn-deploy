@@ -27,16 +27,11 @@ packages:
   - jq
 
 write_files:
-  - path: /etc/ssh/sshd_config.d/10-cloud-init-hardening.conf
+  - path: /usr/local/libexec/vpn-bootstrap-sshd-ownership.py
     owner: root:root
-    permissions: "0644"
-    content: |
-      Port ${ssh_port}
-      PasswordAuthentication no
-      KbdInteractiveAuthentication no
-      PermitRootLogin no
-      PubkeyAuthentication yes
-      X11Forwarding no
+    permissions: "0700"
+    encoding: b64
+    content: ${bootstrap_ssh_ownership_b64}
 
   - path: /etc/vpn-build-id
     owner: root:root
@@ -53,6 +48,6 @@ runcmd:
   # unit first (a no-op when it is already active). Keep the marker in the
   # same success chain: external waiters must never observe completion after
   # a failed validation or activation.
-  - [sh, -c, "test -f /var/lib/cloud-init-vpn-bootstrap.done || { install -d -m 0755 /run/sshd && /usr/sbin/sshd -t && systemctl enable --now ssh && systemctl reload ssh && touch /var/lib/cloud-init-vpn-bootstrap.done; }"]
+  - [sh, -c, "test -f /var/lib/cloud-init-vpn-bootstrap.done || { install -d -m 0755 /run/sshd && /usr/bin/python3 -I -B /usr/local/libexec/vpn-bootstrap-sshd-ownership.py --config-dir /etc/ssh --ssh-port ${ssh_port} && /usr/sbin/sshd -t && systemctl enable --now ssh && systemctl reload ssh && touch /var/lib/cloud-init-vpn-bootstrap.done; }"]
 
 final_message: "VPN VPS bootstrap complete after $UPTIME seconds"

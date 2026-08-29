@@ -33,6 +33,7 @@ BASELINE_FILE_GID = 0
 MAX_HARDENING = 8192
 MAX_FILE = 256 * 1024
 MAX_STATE = 4 * 1024 * 1024
+MAX_TRANSACTION_TIMEOUT = 960
 TERMINAL = {'committed', 'rolled_back'}
 STATES = TERMINAL | {'prepared', 'applying', 'applied', 'rolling_back', 'recovery_failed'}
 
@@ -330,7 +331,7 @@ class Transaction:
         self.runtime = runtime
 
     @contextmanager
-    def _locked(self, *, create=False):
+    def _locked(self, *, create=False, create_lock=True):
         try:
             if not os.path.lexists(self.root):
                 if not create:
@@ -340,7 +341,10 @@ class Transaction:
                 _sync(self.root.parent)
             _directory(self.root, private=True)
             _directory(self.config)
-            fd = os.open(self.root / 'transaction.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+            flags = os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK
+            if create_lock:
+                flags |= os.O_CREAT
+            fd = os.open(self.root / 'transaction.lock', flags, 0o600)
         except OSError:
             raise TransactionError('lock-unavailable') from None
         try:
@@ -376,7 +380,8 @@ class Transaction:
             _uuid(value['boot_id'])
             _hex(value['nonce'])
             if (type(value['created']) is not int or type(value['deadline']) is not int
-                    or value['created'] < 0 or not 60 <= value['deadline'] - value['created'] <= 600):
+                    or value['created'] < 0
+                    or not 60 <= value['deadline'] - value['created'] <= MAX_TRANSACTION_TIMEOUT):
                 raise ValueError
             if (type(value['monotonic_created']) is not int or type(value['monotonic_deadline']) is not int
                     or value['monotonic_created'] < 0
@@ -502,7 +507,7 @@ class Transaction:
         if ((intent == 'sshd-ownership' and hardening is not None)
                 or (intent == 'sshd-baseline' and (type(hardening) is not bytes or not 0 < len(hardening) <= MAX_HARDENING))):
             raise TransactionError('candidate-invalid')
-        if type(timeout) is not int or not 60 <= timeout <= 600:
+        if type(timeout) is not int or not 60 <= timeout <= MAX_TRANSACTION_TIMEOUT:
             raise TransactionError('timeout-invalid')
         with self._locked(create=True):
             previous = self._load()
@@ -528,6 +533,31 @@ class Transaction:
             _atomic(self.root / 'initialized', b'1\n')
             self._save(state)
             return self._receipt(state)
+
+    def preview(self, *, intent, contexts, hardening=None):
+        """Validate the current graph and candidate without persistent writes.
+
+        Recovery installation creates the state root and lock.  Preview opens
+        both without O_CREAT so Ansible check mode cannot arm recovery, create
+        a nonce, or leave a transaction artifact behind.
+        """
+        if not isinstance(intent, str) or intent not in {'sshd-ownership', 'sshd-baseline'}:
+            raise TransactionError('intent-invalid')
+        if ((intent == 'sshd-ownership' and hardening is not None)
+                or (intent == 'sshd-baseline' and (type(hardening) is not bytes or not 0 < len(hardening) <= MAX_HARDENING))):
+            raise TransactionError('candidate-invalid')
+        with self._locked(create=False, create_lock=False):
+            previous = self._load()
+            if previous is not None and previous['status'] not in TERMINAL:
+                raise TransactionError('transaction-pending')
+            plan = self.runtime.build_plan(self.config, contexts, intent=intent, hardening=hardening)
+            _plan(plan)
+            if plan['operation'] != intent:
+                raise TransactionError('intent-mismatch')
+            self._graph(plan, 'before')
+            self.runtime.assert_snapshot(plan, self.config)
+            return {'status': 'would-change' if plan['changed'] else 'unchanged',
+                    'snapshot_digest': plan['snapshot_digest']}
 
     def apply(self, generation, nonce):
         with self._locked():

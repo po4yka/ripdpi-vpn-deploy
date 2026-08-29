@@ -17,6 +17,8 @@ AWG_EVIDENCE_INVENTORY ?=
 AWG_EVIDENCE_VARS ?=
 ANSIBLE_LIMIT ?=
 ANSIBLE_EXTRA_VARS_FILE ?=
+DEPLOY_SSH_CONTEXTS_FILE ?=
+DEPLOY_PROMOTION_CONFIG_FILE ?=
 
 TF_ROOT       := terraform/providers/$(PROVIDER)
 TF_ENV        := ./scripts/terraform-env.sh
@@ -66,6 +68,8 @@ help:
 	@echo "  ENV       current: $(ENV)       (prod | staging)"
 	@echo "  ANSIBLE_LIMIT             Optional host/group limit for live Ansible targets"
 	@echo "  ANSIBLE_EXTRA_VARS_FILE   Optional limited same-owner mode-0600 YAML; requires ANSIBLE_LIMIT"
+	@echo "  DEPLOY_SSH_CONTEXTS_FILE  Required mode-0600 JSON mapping: exact alias → 2–8 SSH contexts"
+	@echo "  DEPLOY_PROMOTION_CONFIG_FILE  Deploy-only mode-0600 JSON mapping: exact alias → promotion proof config"
 	@echo ""
 	@echo "── DAY-1 ──────────────────────────────────────────────────────────────"
 	@echo "  check-prereqs              Verify required CLI tools are installed"
@@ -94,8 +98,8 @@ help:
 	@echo "  wait                       Wait for cloud-init to finish"
 	@echo "  pre-deploy-check           spot-check-secrets + check-certs (auto for deploy/verify; SKIP_PRECHECK=1 to bypass)"
 	@echo "  backup-configure          Configure one exact ANSIBLE_LIMIT during an exclusive stopped-backup window; never runs backups or timers"
-	@echo "  dry-run                    ansible-playbook --check --diff"
-	@echo "  deploy                     ansible-playbook site.yml (optional ANSIBLE_LIMIT / ANSIBLE_EXTRA_VARS_FILE)"
+	@echo "  dry-run                    Serial exact-node check; requires DEPLOY_SSH_CONTEXTS_FILE"
+	@echo "  deploy                     Serial exact-node transaction; also requires DEPLOY_PROMOTION_CONFIG_FILE"
 	@echo "  deploy-canary              Deploy ENV=canary through the normal deploy flow"
 	@echo "  os-maintenance             Rolling full OS upgrade + required reboot + verification"
 	@echo "  verify [TAG_ON_SUCCESS=1]  ACTIVE checks; watchdog may restart services (+ optional tag)"
@@ -256,6 +260,8 @@ override SKIP_PRECHECK := $(value SKIP_PRECHECK)
 override SECRETS_FILE := $(if $(filter file default undefined,$(origin SECRETS_FILE)),$(SECRETS_FILE),$(value SECRETS_FILE))
 override ANSIBLE_EXTRA_VARS_FILE := $(if $(filter file default undefined,$(origin ANSIBLE_EXTRA_VARS_FILE)),$(ANSIBLE_EXTRA_VARS_FILE),$(value ANSIBLE_EXTRA_VARS_FILE))
 override INSPECT_KNOWN_HOSTS := $(if $(filter file default undefined,$(origin INSPECT_KNOWN_HOSTS)),$(INSPECT_KNOWN_HOSTS),$(value INSPECT_KNOWN_HOSTS))
+override DEPLOY_SSH_CONTEXTS_FILE := $(value DEPLOY_SSH_CONTEXTS_FILE)
+override DEPLOY_PROMOTION_CONFIG_FILE := $(value DEPLOY_PROMOTION_CONFIG_FILE)
 endif
 deploy dry-run deploy-canary: override DEPLOY_SOURCE_REVISION :=
 deploy dry-run deploy-canary: override DEPLOYABLE_SOURCE_DIGEST :=
@@ -265,6 +271,8 @@ deploy dry-run: export DEPLOY_SKIP_PRECHECK = $(SKIP_PRECHECK)
 deploy dry-run: export DEPLOY_SECRETS_FILE = $(SECRETS_FILE)
 deploy dry-run: export DEPLOY_EXTRA_VARS_FILE = $(ANSIBLE_EXTRA_VARS_FILE)
 deploy dry-run: export DEPLOY_KNOWN_HOSTS = $(INSPECT_KNOWN_HOSTS)
+deploy dry-run: export DEPLOY_SSH_CONTEXTS_FILE := $(DEPLOY_SSH_CONTEXTS_FILE)
+deploy dry-run: export DEPLOY_PROMOTION_CONFIG_FILE := $(DEPLOY_PROMOTION_CONFIG_FILE)
 deploy dry-run: export DEPLOY_ENV = $(ENV)
 deploy dry-run: export DEPLOY_PROVIDER = $(PROVIDER)
 dry-run:

@@ -1,9 +1,10 @@
 locals {
   user_data = templatefile("${path.module}/../../shared/cloud-init.yaml.tftpl", {
-    admin_user           = var.admin_user
-    admin_ssh_public_key = var.admin_ssh_public_key
-    ssh_port             = var.ssh_port
-    build_env            = var.build_env
+    admin_user                  = var.admin_user
+    admin_ssh_public_key        = var.admin_ssh_public_key
+    ssh_port                    = var.ssh_port
+    build_env                   = var.build_env
+    bootstrap_ssh_ownership_b64 = filebase64("${path.module}/../../shared/bootstrap-sshd-ownership.py")
   })
 
   # Tags are intentionally minimal to limit provider-side fingerprinting.

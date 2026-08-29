@@ -183,4 +183,30 @@ does not retain oneshot execution timestamps, and the derived probe does not
 prove the real bundle dispatcher, a pending schema-two journal, sshd reload,
 reboot ordering, staging or host migration.
 
+The unpublished fresh-bootstrap and baseline-template slice passed 133 focused
+tests. It installs a byte-exact stdlib helper through all four provider
+templates, accepts only the canonical top-level drop-in include, rejects every
+active Match and unexpected fragment, validates the six effective SSH values
+with a bounded process-group-cleaning `sshd -T` invocation, and publishes
+10→20→50 in a non-weakening order. Fault tests kill the process after each file
+fsync, replace and directory fsync; every visible prefix remains safe and a
+fresh invocation removes only owned residues and converges. This is process
+crash evidence, not three-file power-loss atomicity or reboot evidence. The
+four provider server mock suites passed 8, 6, 6 and 6 tests; all 102 rendered
+snapshots matched and independent review found no blocking issue.
+
+The exact helper SHA256
+`ff856c50c401e797dd7bfc8b79f4f20538a37ff041cc5ab5968ebe0da98d11b3`
+then passed real OpenSSH parsing in pinned Debian 13 and Ubuntu 24.04 amd64
+containers. The signed distribution package versions were respectively
+`1:10.0p1-7+deb13u4` and `1:9.6p1-3ubuntu13.18`. The containers had no host
+mounts and were disconnected from Docker networking after package installation.
+Both runs proved exact effective port/authentication/X11 values, empty helper
+stdout/stderr, preserved packaged main bytes, exact fragment membership and an
+inode-and-byte-identical repeat. The mode-0600 private result hashes to
+`ff2c5b983149046c189c0e31c360b4c1da76b68883759d181c7f8373976b38e0`;
+the owned profile stopped and Docker context remained unchanged. This remains
+parser/bootstrap evidence only: cloud-final interruption/reboot, ordinary
+baseline transaction wiring, fresh TCP SSH and staging are not proved.
+
 Local source work is authorized. No local test implies staging or live acceptance. Provisioning waits for available approved executor, verified actual cost/credit, exact-resource cleanup and the approved deadline; policy application waits for a fresh separately approved ACL diff. The serial fleet step remains open until observed direct and Tailnet SSH and actual VPN probes all pass.

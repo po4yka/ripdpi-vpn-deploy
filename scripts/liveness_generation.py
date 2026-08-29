@@ -36,6 +36,8 @@ BOOTSTRAP = (
 )
 PROFILES = {"p0-reality", "p1-xhttp", "p2-hysteria2", "p2-amneziawg"}
 PUBLIC_FIELDS = {"controller_revision", "runner_sha256", "client_generation_id", "public_profile_digest", "vantage"}
+TARGET_FIELDS = {"inventory_alias", "public_service_address_sha256", "deployable_digest", "applied_at",
+                 "required_profiles", "source_revision", "runner_sha256", "public_profile_digest"}
 MAX_FILE = 1024 * 1024
 JOB_TIMEOUT_SECONDS = 600
 RECEIPT_TIMEOUT = 660
@@ -208,10 +210,33 @@ def _provenance(value, runner_digest):
         raise GenerationError("provenance-invalid")
 
 
+def _target_identity(value, provenance, required):
+    if (
+        not isinstance(value, dict)
+        or set(value) != TARGET_FIELDS
+        or value.get("required_profiles") != sorted(required)
+        or value.get("source_revision") != provenance["controller_revision"]
+        or value.get("runner_sha256") != provenance["runner_sha256"]
+        or value.get("public_profile_digest") != provenance["public_profile_digest"]
+        or type(value.get("applied_at")) is not int
+        or value["applied_at"] < 1
+        or not isinstance(value.get("inventory_alias"), str)
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", value["inventory_alias"]) is None
+        or any(not isinstance(value.get(key), str) or re.fullmatch(r"[0-9a-f]{64}", value[key]) is None
+               for key in ("public_service_address_sha256", "deployable_digest", "runner_sha256", "public_profile_digest"))
+        or not isinstance(value.get("source_revision"), str)
+        or re.fullmatch(r"[0-9a-f]{40}", value["source_revision"]) is None
+    ):
+        raise GenerationError("target-identity-invalid")
+
+
 def _configuration(root, generation, config, metadata, profile_files):
     required = set(metadata["required_profiles"])
     if not isinstance(config.get("sentinel"), str) or re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}", config["sentinel"]) is None or config.get("provenance") != metadata["provenance"]:
         raise GenerationError("candidate-config-identity")
+    if config.get("schema_version") != 2 or config.get("target_identity") != metadata.get("target_identity"):
+        raise GenerationError("candidate-config-identity")
+    _target_identity(config["target_identity"], metadata["provenance"], metadata["required_profiles"])
     runtime = config.get("expected_runtime")
     required_runtime = set()
     if required & {"p0-reality", "p2-hysteria2"}:
@@ -265,11 +290,12 @@ def _candidate(root, generation, directory):
         raise GenerationError("candidate-json")
     required = metadata.get("required_profiles")
     user = metadata.get("ssh_user")
-    if set(metadata) - {"generation_id", "required_profiles", "ssh_user", "provenance"} or metadata.get("generation_id") != generation or not isinstance(required, list) or not required or any(not isinstance(p, str) or p not in PROFILES for p in required) or len(set(required)) != len(required):
+    if set(metadata) != {"generation_id", "required_profiles", "ssh_user", "provenance", "target_identity"} or metadata.get("generation_id") != generation or not isinstance(required, list) or not required or any(not isinstance(p, str) or p not in PROFILES for p in required) or len(set(required)) != len(required):
         raise GenerationError("candidate-metadata")
     if not isinstance(user, str) or re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", user) is None:
         raise GenerationError("candidate-user")
     _provenance(metadata.get("provenance"), hashlib.sha256(contents["runner.py"]).hexdigest())
+    _target_identity(metadata.get("target_identity"), metadata["provenance"], required)
     _configuration(root, generation, config, metadata, profiles)
     digest = hashlib.sha256()
     for name, content in contents.items():
@@ -394,11 +420,11 @@ def recover_pending(root):
 
 
 def _report_identity(report, config, metadata):
-    if not isinstance(report, dict) or type(report.get("schema_version")) is not int or report["schema_version"] != 1 or report.get("sentinel") != config["sentinel"] or report.get("runtime") != config["expected_runtime"] or report.get("provenance") != metadata["provenance"]:
+    if not isinstance(report, dict) or type(report.get("schema_version")) is not int or report["schema_version"] != 2 or report.get("sentinel") != config["sentinel"] or report.get("runtime") != config["expected_runtime"] or report.get("provenance") != metadata["provenance"] or report.get("target_identity") != metadata["target_identity"]:
         raise GenerationError("probe-identity-invalid")
     observed = report.get("observed_at")
     now = time.time()
-    if type(observed) is not int or not now - 300 <= observed <= now:
+    if type(observed) is not int or not max(now - 300, metadata["target_identity"]["applied_at"]) <= observed <= now:
         raise GenerationError("probe-time-invalid")
 
 
@@ -410,20 +436,28 @@ def _successful(report, config, metadata):
     profiles = report.get("profiles")
     if not isinstance(profiles, list) or any(not isinstance(p, dict) or p.get("profile") not in required for p in profiles):
         raise GenerationError("probe-profiles-invalid")
-    if len(profiles) != len(required) or {p["profile"] for p in profiles} != set(required) or any(p.get("verdict") not in {"ok", "throttled"} for p in profiles):
+    if (len(profiles) != len(required) or {p["profile"] for p in profiles} != set(required)
+            or any(p.get("verdict") not in {"ok", "throttled"}
+                   or p.get("dns_through_tunnel") is not True
+                   or p.get("authenticated_handshake") is not True
+                   or (p["profile"] == "p2-amneziawg" and p.get("fresh_handshake") is not True)
+                   for p in profiles)):
         raise GenerationError("probe-profiles-failed")
 
 
 def public_receipt(receipt):
-    return {k: receipt[k] for k in ("generation_id", "status", "runner_sha256", "provenance")}
+    return {k: receipt[k] for k in ("generation_id", "status", "runner_sha256", "provenance", "target_identity")}
 
 
-def _receipt(root, generation, digest, provenance):
+def _receipt(root, generation, digest, metadata):
     receipt = _json(root / "receipts" / f"{generation}.json")
-    if set(receipt) != {"generation_id", "status", "candidate_digest", "runner_sha256", "provenance"} or receipt.get("generation_id") != generation or receipt.get("candidate_digest") != digest or receipt.get("status") != "committed" or not isinstance(receipt.get("runner_sha256"), str) or re.fullmatch(r"[0-9a-f]{64}", receipt["runner_sha256"]) is None or not isinstance(receipt.get("provenance"), dict) or set(receipt["provenance"]) - PUBLIC_FIELDS:
+    if set(receipt) != {"generation_id", "status", "candidate_digest", "runner_sha256", "provenance", "target_identity"} or receipt.get("generation_id") != generation or receipt.get("candidate_digest") != digest or receipt.get("status") != "committed" or not isinstance(receipt.get("runner_sha256"), str) or re.fullmatch(r"[0-9a-f]{64}", receipt["runner_sha256"]) is None or not isinstance(receipt.get("provenance"), dict) or set(receipt["provenance"]) - PUBLIC_FIELDS:
         raise GenerationError("receipt-invalid")
     _provenance(receipt["provenance"], receipt["runner_sha256"])
-    if receipt["provenance"] != provenance:
+    if receipt["provenance"] != metadata["provenance"]:
+        raise GenerationError("receipt-identity-invalid")
+    _target_identity(receipt["target_identity"], receipt["provenance"], metadata["required_profiles"])
+    if receipt["target_identity"] != metadata["target_identity"]:
         raise GenerationError("receipt-identity-invalid")
     return receipt
 
@@ -436,12 +470,12 @@ def committed_receipt(root, generation_id):
         if current != generation:
             if current is not None:
                 old_metadata, _, old_digest = _candidate(root, current, root / "generations" / current)
-                _receipt(root, current, old_digest, old_metadata["provenance"])
+                _receipt(root, current, old_digest, old_metadata)
             if os.path.lexists(root / "receipts" / f"{generation}.json"):
                 raise GenerationError("generation-not-current")
             raise GenerationError("generation-uncommitted")
         metadata, contents, digest = _candidate(root, generation, root / "generations" / generation)
-        receipt = _receipt(root, generation, digest, metadata["provenance"])
+        receipt = _receipt(root, generation, digest, metadata)
         if receipt["runner_sha256"] != hashlib.sha256(contents["runner.py"]).hexdigest() or receipt["provenance"] != metadata["provenance"]:
             raise GenerationError("receipt-identity-invalid")
         return public_receipt(receipt)
@@ -457,7 +491,7 @@ def install_generation(root, generation_id, staged_dir, probe_callback):
         metadata, contents, digest = _candidate(root, generation, Path(staged_dir))
         receipt_path = root / "receipts" / f"{generation}.json"
         if os.path.lexists(receipt_path):
-            receipt = _receipt(root, generation, digest, metadata["provenance"])
+            receipt = _receipt(root, generation, digest, metadata)
             _, _, installed_digest = _candidate(root, generation, root / "generations" / generation)
             if installed_digest != digest or _current(root) != generation:
                 raise GenerationError("generation-conflict")
@@ -466,7 +500,7 @@ def install_generation(root, generation_id, staged_dir, probe_callback):
         previous = _current(root)
         if previous is not None:
             previous_metadata, _, previous_digest = _candidate(root, previous, root / "generations" / previous)
-            _receipt(root, previous, previous_digest, previous_metadata["provenance"])
+            _receipt(root, previous, previous_digest, previous_metadata)
         snapshots = _snapshot(root)
         destination = root / "generations" / generation
         _parents(destination.parent)
@@ -499,7 +533,7 @@ def install_generation(root, generation_id, staged_dir, probe_callback):
             _activate(root, generation)
             report = probe_callback(destination)
             _successful(report, json.loads(contents["config.json"]), metadata)
-            receipt = {"generation_id": generation, "status": "committed", "candidate_digest": digest, "runner_sha256": hashlib.sha256(contents["runner.py"]).hexdigest(), "provenance": metadata.get("provenance", {})}
+            receipt = {"generation_id": generation, "status": "committed", "candidate_digest": digest, "runner_sha256": hashlib.sha256(contents["runner.py"]).hexdigest(), "provenance": metadata.get("provenance", {}), "target_identity": metadata.get("target_identity")}
             _save(receipt_path, receipt)
             (root / "pending.json").unlink()
             _sync(root)
@@ -529,7 +563,7 @@ def run_current(root, probe_callback):
             raise GenerationError("no-current-generation")
         directory = root / "generations" / generation
         metadata, contents, digest = _candidate(root, generation, directory)
-        _receipt(root, generation, digest, metadata["provenance"])
+        _receipt(root, generation, digest, metadata)
         report = probe_callback(directory)
         _report_identity(report, json.loads(contents["config.json"]), metadata)
         return report

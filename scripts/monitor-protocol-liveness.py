@@ -76,7 +76,8 @@ def evaluate(config: Path, state_dir: Path) -> dict:
         report = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
         raise MonitorError("evaluator returned malformed JSON") from exc
-    if not isinstance(report, dict) or report.get("decision") not in DECISIONS:
+    if (not isinstance(report, dict) or report.get("schema_version") != 2
+            or report.get("decision") not in DECISIONS):
         raise MonitorError("evaluator returned an unsupported decision")
     return report
 
@@ -212,7 +213,7 @@ def main() -> int:
         report = evaluate(args.config, state_dir)
     except MonitorError as exc:
         report = {
-            "schema_version": 1,
+            "schema_version": 2,
             "evaluated_at": now,
             "decision": "unknown",
             "candidate_policies": [],

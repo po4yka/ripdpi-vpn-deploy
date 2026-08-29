@@ -20,6 +20,25 @@ SCHEMA = REPO_ROOT / "contract" / "protocol-liveness.schema.json"
 PROFILES = ["p0-reality", "p1-xhttp", "p2-hysteria2", "p2-amneziawg"]
 
 
+def _static_target(applied_at: int | None = None) -> dict:
+    return {
+        "inventory_alias": "vpn-p2-fixture",
+        "public_service_address_sha256": "e" * 64,
+        "deployable_digest": "f" * 64,
+        "applied_at": 1_700_000_000 if applied_at is None else applied_at,
+    }
+
+
+def _target_identity(applied_at: int | None = None) -> dict:
+    return {
+        **_static_target(applied_at),
+        "required_profiles": sorted(PROFILES),
+        "source_revision": "b" * 40,
+        "runner_sha256": "c" * 64,
+        "public_profile_digest": "d" * 64,
+    }
+
+
 @pytest.fixture(autouse=True)
 def scripts_import_path(monkeypatch):
     monkeypatch.syspath_prepend(str(REPO_ROOT / "scripts"))
@@ -27,7 +46,7 @@ def scripts_import_path(monkeypatch):
 
 def _report(sentinel: str, verdicts: dict[str, str], *, control: str = "ok", age: int = 0) -> dict:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "sentinel": sentinel,
         "observed_at": int(time.time()) - age,
         "control": {"verdict": control, "duration_ms": 20},
@@ -38,6 +57,8 @@ def _report(sentinel: str, verdicts: dict[str, str], *, control: str = "ok", age
                 "duration_ms": 40,
                 "payload_transport": "tcp-https",
                 "target_address_family": "ipv4" if profile == "p2-amneziawg" else "unknown",
+                "dns_through_tunnel": verdict in {"ok", "throttled"},
+                "authenticated_handshake": verdict in {"ok", "throttled"},
                 **({"fresh_handshake": True} if profile == "p2-amneziawg" and verdict in {"ok", "throttled"} else {}),
                 **(
                     {"variants": [{"variant": 1, "verdict": verdict, "duration_ms": 40}]}
@@ -51,6 +72,7 @@ def _report(sentinel: str, verdicts: dict[str, str], *, control: str = "ok", age
         "provenance": {"controller_revision": "b" * 40, "runner_sha256": "c" * 64,
                        "client_generation_id": "7f574d16-931e-42b4-a940-853b92f53a14",
                        "public_profile_digest": "d" * 64, "vantage": "external"},
+        "target_identity": _target_identity(),
     }
 
 
@@ -59,7 +81,7 @@ def _config(tmp_path: Path, *, quorum: int = 2) -> Path:
     path.write_text(
         yaml.safe_dump(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "probe_url": "https://www.gstatic.com/generate_204",
                 "expected_status": 204,
                 "probe_timeout_seconds": 15,
@@ -76,8 +98,8 @@ def _config(tmp_path: Path, *, quorum: int = 2) -> Path:
                     }
                 ],
                 "sentinels": [
-                    {"id": "tls-freeze-a", "ssh_target": "sentinel-a", "policy": "fullstack", "vantage": "external", "awg_target": {"provider": "vultr", "environment": "test", "instance": "awg0"}},
-                    {"id": "udp-filtered-b", "ssh_target": "sentinel-b", "policy": "fullstack", "vantage": "external", "awg_target": {"provider": "vultr", "environment": "test", "instance": "awg0"}},
+                    {"id": "tls-freeze-a", "ssh_target": "sentinel-a", "policy": "fullstack", "vantage": "external", "target": _static_target(), "awg_target": {"provider": "vultr", "environment": "test", "instance": "awg0"}},
+                    {"id": "udp-filtered-b", "ssh_target": "sentinel-b", "policy": "fullstack", "vantage": "external", "target": _static_target(), "awg_target": {"provider": "vultr", "environment": "test", "instance": "awg0"}},
                 ],
             },
             sort_keys=False,
@@ -256,6 +278,7 @@ def test_report_runtime_is_scoped_to_its_sentinel_policy(tmp_path, required, key
     config = yaml.safe_load(_config(tmp_path).read_text())
     config["policies"][0]["required_profiles"] = required
     report = _report("tls-freeze-a", dict.fromkeys(required, "ok"))
+    report["target_identity"]["required_profiles"] = sorted(required)
     report["runtime"] = {key: value for key, value in report["runtime"].items() if key in keys}
     valid, error = module["validate_report"](json.dumps(report), config["sentinels"][0], config, int(time.time()))
     assert valid == report and error == ""
@@ -319,6 +342,28 @@ def test_report_requires_strict_public_provenance(tmp_path, field, value):
     assert "secret-marker" not in error
 
 
+@pytest.mark.parametrize("mutation", ["declared", "source", "profiles", "pre-apply"])
+def test_report_target_identity_is_exact_and_post_apply(tmp_path, mutation):
+    module = runpy.run_path(str(SCRIPT))
+    config = yaml.safe_load(_config(tmp_path).read_text())
+    report = _report("tls-freeze-a", _all("ok"))
+    if mutation == "declared":
+        report["target_identity"]["deployable_digest"] = "0" * 64
+    elif mutation == "source":
+        report["target_identity"]["source_revision"] = "0" * 40
+    elif mutation == "profiles":
+        report["target_identity"]["required_profiles"] = ["p0-reality"]
+    else:
+        applied = report["observed_at"] + 1
+        report["target_identity"]["applied_at"] = applied
+        config["sentinels"][0]["target"]["applied_at"] = applied
+
+    valid, error = module["validate_report"](
+        json.dumps(report), config["sentinels"][0], config, int(time.time()))
+
+    assert valid is None and "target identity" in error
+
+
 @pytest.mark.parametrize("variants,verdict", [(["blocked", "blocked"], "blocked"),
     (["blocked", "ok"], "ok"), (["error", "throttled"], "throttled"),
     (["blocked", "error"], "error"), (["unknown", "blocked"], "unknown")])
@@ -351,12 +396,14 @@ def test_aggregate_whitelists_public_identity_without_claiming_server_source(tmp
     item = payload["evidence"][0]
     assert item["provenance"] == {k: v for k, v in report["provenance"].items() if k != "secret"}
     assert item["runtime"] == {k: v for k, v in report["runtime"].items() if k != "secret"}
-    assert item["deployed_server_identity"] == {"status": "unknown"}
+    assert item["target_identity"] == report["target_identity"]
     assert item["observed_at"] == report["observed_at"]
     assert item["profile_observations"]["p2-amneziawg"] == {
-        "payload_transport": "tcp-https", "target_address_family": "ipv4", "fresh_handshake": True}
+        "payload_transport": "tcp-https", "target_address_family": "ipv4", "dns_through_tunnel": True,
+        "authenticated_handshake": True, "fresh_handshake": True}
     assert item["profile_observations"]["p1-xhttp"] == {
-        "payload_transport": "tcp-https", "target_address_family": "unknown"}
+        "payload_transport": "tcp-https", "target_address_family": "unknown",
+        "dns_through_tunnel": True, "authenticated_handshake": True}
     assert "secret-marker" not in json.dumps(payload)
 
 
@@ -385,12 +432,14 @@ def test_runtime_error_report_does_not_invent_unobserved_transport(tmp_path):
     module = runpy.run_path(str(SCRIPT))
     config = yaml.safe_load(_config(tmp_path).read_text())
     report = _report("tls-freeze-a", _all("error"))
-    report["profiles"] = [{"profile": name, "verdict": "error"} for name in PROFILES]
+    report["profiles"] = [{"profile": name, "verdict": "error", "dns_through_tunnel": False,
+                           "authenticated_handshake": False} for name in PROFILES]
     valid, error = module["validate_report"](json.dumps(report), config["sentinels"][0], config, int(time.time()))
     assert valid == report and error == ""
     payload = module["aggregate"](config, {"tls-freeze-a": report}, [])
     assert payload["decision"] == "unknown"
-    assert all(observed == {"payload_transport": "unknown", "target_address_family": "unknown"}
+    assert all(observed == {"payload_transport": "unknown", "target_address_family": "unknown",
+                            "dns_through_tunnel": False, "authenticated_handshake": False}
                for observed in payload["evidence"][0]["profile_observations"].values())
 
 
@@ -567,11 +616,14 @@ def test_recorded_candidate_streak_resets_on_recovery(tmp_path: Path) -> None:
             str(state_dir),
             evaluated_at=base + index * 120,
         )
-        assert json.loads(result.stdout)["candidate_streak"] == expected
+        payload = json.loads(result.stdout)
+        assert payload["schema_version"] == 2
+        assert payload["candidate_streak"] == expected
 
     recovered = _run(tmp_path, config, healthy, "--state-dir", str(state_dir))
 
     assert json.loads(recovered.stdout)["candidate_streak"] == 0
+    assert json.loads((state_dir / "decision-state.json").read_text())["schema_version"] == 1
     assert stat.S_IMODE((state_dir / "decision-state.json").stat().st_mode) == 0o600
 
 

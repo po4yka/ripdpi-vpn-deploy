@@ -26,9 +26,10 @@ def test_monitor_deadline_outlives_maximum_parallel_collector(monkeypatch, tmp_p
     deadlines = []
     def run(argv, **kwargs):
         deadlines.append(kwargs["timeout"])
-        return subprocess.CompletedProcess(argv, 0, stdout='{"decision":"healthy"}')
+        return subprocess.CompletedProcess(argv, 0, stdout='{"schema_version":2,"decision":"healthy"}')
     monkeypatch.setattr(subprocess, "run", run)
-    assert monitor["evaluate"](tmp_path / "fixture.yaml", tmp_path / "state") == {"decision": "healthy"}
+    assert monitor["evaluate"](tmp_path / "fixture.yaml", tmp_path / "state") == {
+        "schema_version": 2, "decision": "healthy"}
     profiles = sorted(engine["PROFILES"])
     config = {"probe_timeout_seconds": 60, "policies": [{"id": "full", "required_profiles": profiles}]}
     remote = collector["remote_probe_deadline"](config, {"policy": "full"})
@@ -43,7 +44,7 @@ def _executable(path: Path, body: str) -> None:
 @pytest.fixture
 def monitor_env(tmp_path: Path):
     config = tmp_path / "liveness.yaml"
-    config.write_text("schema_version: 1\n")
+    config.write_text("schema_version: 2\n")
     decision = tmp_path / "decision.json"
     evaluator = tmp_path / "protocol-liveness"
     _executable(
@@ -95,7 +96,7 @@ def _decision(path: Path, decision: str) -> None:
     path.write_text(
         json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "evaluated_at": 1_800_000_000,
                 "decision": decision,
                 "candidate_policies": ["vless-user-path"]
@@ -229,3 +230,19 @@ def test_evaluator_failure_alerts_and_persists_redacted_unknown(monitor_env) -> 
     assert len(requests) == 1
     assert "private-monitor-token" not in result.stdout + result.stderr
     assert json.loads((state / "last-evidence.json").read_text())["decision"] == "unknown"
+
+
+def test_monitor_refuses_legacy_evaluator_schema(monitor_env) -> None:
+    env, config, decision, state, _requests = monitor_env
+    _decision(decision, "healthy")
+    payload = json.loads(decision.read_text())
+    payload["schema_version"] = 1
+    decision.write_text(json.dumps(payload))
+
+    result = _run(env, config, state)
+
+    assert result.returncode == 0
+    report = json.loads(result.stdout)
+    assert report["schema_version"] == 2
+    assert report["decision"] == "unknown"
+    assert report["monitoring_errors"] == ["evaluator: evaluator returned an unsupported decision"]

@@ -31,9 +31,17 @@ run "server_cloud_init_user_data_is_wired" {
       strcontains(scaleway_instance_server.vpn.user_data["cloud-init"], "provisioned_by=cloud-init")
       && strcontains(scaleway_instance_server.vpn.user_data["cloud-init"], "build_env=test")
       && strcontains(scaleway_instance_server.vpn.user_data["cloud-init"], "ssh-ed25519 AAAATESTKEY test@harness")
-      && strcontains(scaleway_instance_server.vpn.user_data["cloud-init"], "Port 2222")
+      && strcontains(scaleway_instance_server.vpn.user_data["cloud-init"], "--ssh-port 2222")
+      && one([
+        for item in yamldecode(scaleway_instance_server.vpn.user_data["cloud-init"]).write_files : item
+        if item.path == "/usr/local/libexec/vpn-bootstrap-sshd-ownership.py"
+      ]).encoding == "b64"
+      && base64decode(one([
+        for item in yamldecode(scaleway_instance_server.vpn.user_data["cloud-init"]).write_files : item.content
+        if item.path == "/usr/local/libexec/vpn-bootstrap-sshd-ownership.py"
+      ])) == file("${path.module}/../../shared/bootstrap-sshd-ownership.py")
     )
-    error_message = "scaleway_instance_server user_data must carry the rendered cloud-init bootstrap"
+    error_message = "scaleway_instance_server user_data must carry the SSH port and exact embedded ownership helper"
   }
 }
 
