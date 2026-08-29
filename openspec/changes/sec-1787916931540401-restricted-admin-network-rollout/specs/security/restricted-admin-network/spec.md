@@ -63,6 +63,12 @@ Every SSH or guest-firewall activation MUST save and validate the original bytes
 - **THEN** it uses an explicit separate transaction for main and 20, preserves the bootstrap authentication owners and SFTP, and validates candidate policy before publishing.
 - **AND** interruption restores the exact original bytes, metadata and fragment membership; a newly created 20-file is removed only when it still matches the verified candidate.
 
+#### Scenario: Ordinary deployment requires the recovery foundation
+
+- **WHEN** an ordinary dry-run or deployment targets a selected node
+- **THEN** the controller checks the exact installed recovery generation, canonical root-owned state and lock, strict dispatcher status in `idle`, `committed` or `rolled_back`, and installed-unit readiness over the same frozen strict transport before the first site Ansible invocation.
+- **AND** missing, stale, unsafe or unreadable recovery state refuses without invoking site Ansible or automatically running the explicit recovery installer.
+
 #### Scenario: Recovery generation changes with a terminal receipt
 
 - **WHEN** a recovery engine is upgraded or downgraded with an existing terminal transaction

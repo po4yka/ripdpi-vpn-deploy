@@ -157,10 +157,18 @@ on-disk SSH snapshot. Private evidence was written mode 0600 with SHA256
 The owned container profile stopped successfully and the Docker context stayed
 unchanged.
 
-Bootstrap and ordinary-role integration, fresh remote confirmation, complete
-local and hosted gates and real connection proof remain required before host
-use. Prior PR117 native hashes and acceptance predate this schema-two source
-and are not evidence for it.
+Bootstrap and ordinary-role/controller source integration are now present: the
+deploy controller requires the exact recovery generation, canonical root-owned
+state and lock, strict `idle`, `committed` or `rolled_back` dispatcher status,
+and installed-unit readiness over
+the frozen per-host transport before the first site Ansible invocation. The
+focused controller regression proves readiness → recovery preflight → Ansible
+ordering and proves missing recovery refuses before Ansible; the AWG liveness
+regression proves its namespace curl actually uses IPv4 while retaining DNS in
+that namespace. Fresh remote confirmation, complete final local and hosted
+gates, disconnect/reboot rehearsal and real connection proof remain required
+before host use. Prior PR117 native hashes and acceptance predate this
+schema-two source and are not evidence for it.
 
 The schema-two recovery sandbox prerequisite was fixed in source commit
 `4869edbc83eada009f036365015bb8f3c08e99a5`. Both exact recovery units retain

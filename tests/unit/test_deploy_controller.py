@@ -5,10 +5,12 @@ contacting hosts. Separate parity cases use the installed Ansible locally.
 """
 
 import contextlib
+import ast
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -156,6 +158,40 @@ def calls(workspace):
     return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
 
+def assert_recovery_preflight(entry, address):
+    """Identify the exact read-only recovery gate without relaxing call ordering."""
+    assert entry["program"] == "ssh"
+    assert entry["args"][-2] == address
+    remote = entry["args"][-1]
+    for predicate in (
+        'root=/usr/local/lib/vpn-sshd',
+        'state=/var/lib/vpn-sshd-transaction',
+        '/usr/bin/readlink -f "$root/current/sshd_migrate.py"',
+        '[ "$migrate" = "$root/generations/$generation/sshd_migrate.py" ]',
+        '[ "${#generation}" -eq 64 ]',
+        'case "$generation" in *[!0-9a-f]*) exit 40;; esac',
+        '/usr/bin/sudo -n /usr/bin/test -d "$state"',
+        '/usr/bin/sudo -n /usr/bin/test ! -L "$state"',
+        "stat -c '%u:%g:%a' \"$state\")\" = 0:0:700",
+        '/usr/bin/sudo -n /usr/bin/test -f "$state/transaction.lock"',
+        '/usr/bin/sudo -n /usr/bin/test ! -L "$state/transaction.lock"',
+        "stat -c '%u:%g:%a' \"$state/transaction.lock\")\" = 0:0:600",
+        '"$root/sshd_bundle.py" status',
+        'check-installation',
+        'sys.stdin.buffer.read(4097)',
+    ):
+        assert predicate in remote
+    assert re.search(r'\[ "\$generation" = "[0-9a-f]{64}" \]', remote)
+
+
+def assert_bootstrap_readiness(entry, address):
+    assert entry["program"] == "ssh"
+    assert entry["args"][-2] == address
+    remote = entry["args"][-1]
+    assert "cloud-init status --wait" in remote
+    assert "/var/lib/cloud-init-vpn-bootstrap.done" in remote
+
+
 def test_restore_runtime_secrets_reach_the_first_tagged_deploy(workspace):
     """Real Make/decrypt/controller; only SOPS, checks and transport are fixtures."""
     import hashlib
@@ -213,7 +249,9 @@ with pathlib.Path({str(workspace['calls'])!r}).open('a') as stream:
     observed = calls(workspace)
     assert [entry["program"] for entry in observed] == [
         "sops", "sshd-promotion-proof.py", "validate-secrets.py", "spot-check-secrets.py", "check-certs.sh", "ssh",
-        "ansible-playbook", "ansible-playbook", "audit-log.sh"]
+        "ssh", "ansible-playbook", "ansible-playbook", "audit-log.sh"]
+    assert_bootstrap_readiness(observed[5], "100.64.0.1")
+    assert_recovery_preflight(observed[6], "100.64.0.1")
     consumers = [entry for entry in observed if "secret" in entry]
     snapshot = Path(consumers[0]["secret"])
     assert snapshot != source
@@ -240,13 +278,112 @@ def test_make_waits_for_exact_inventory_subset_before_ansible(workspace, limit, 
     assert result.returncode == 0, result.stderr
     observed = calls(workspace)
     ssh = [entry for entry in observed if entry["program"] == "ssh"]
-    assert [entry["args"][-2] for entry in ssh] == expected
+    assert [entry["args"][-2] for entry in ssh] == [address for address in expected for _ in range(2)]
     serial = [entry for entry in observed if entry["program"] in {"ssh", "ansible-playbook"}]
     assert [entry["program"] for entry in serial] == [item for _ in expected
-                                                       for item in ("ssh", "ansible-playbook")]
+                                                       for item in ("ssh", "ssh", "ansible-playbook")]
+    for index, address in enumerate(expected):
+        readiness, recovery, _ansible = serial[index * 3:(index + 1) * 3]
+        assert_bootstrap_readiness(readiness, address)
+        assert_recovery_preflight(recovery, address)
     play = next(index for index, entry in enumerate(observed) if entry["program"] == "ansible-playbook")
     assert not any(entry["program"] == "ansible-inventory" for entry in observed)
     assert "--check" in observed[play]["args"] and "--diff" in observed[play]["args"]
+
+
+@pytest.mark.parametrize("target", ["deploy", "dry-run"])
+def test_deploy_refuses_missing_recovery_foundation_before_ansible(workspace, target):
+    """A fresh node must use the explicit installer before ordinary site writes."""
+    executable = Path(workspace["env"]["PATH"].split(os.pathsep)[0]) / "ssh"
+    executable.write_text(executable.read_text().replace(
+        "sys.exit(0)",
+        "sys.exit(42 if 'sshd_bundle.py' in sys.argv[-1] and ' status ' in sys.argv[-1] else 0)",
+    ))
+    result = invoke(workspace, target=target, limit="node-one")
+    assert result.returncode != 0 and "SSH recovery foundation unavailable" in result.stderr
+    assert "nonce" not in result.stdout + result.stderr
+    observed = calls(workspace)
+    recovery = [entry for entry in observed if entry["program"] == "ssh"
+                and "sshd_bundle.py" in entry["args"][-1] and " status " in entry["args"][-1]]
+    assert len(recovery) == 1
+    assert not any(entry["program"] in {"ansible-playbook", "audit-log.sh"} for entry in observed)
+
+
+@pytest.mark.parametrize("target", ["deploy", "dry-run"])
+def test_recovery_status_documents_drive_fail_closed_controller_order(workspace, target):
+    terminal = {"generation": "1d34d0a4-6be7-4b09-b169-47e819ef2a0c", "nonce": "a" * 64,
+                "deadline": 123, "snapshot_digest": "b" * 64}
+    cases = (
+        (b'{"status":"idle"}\n', True),
+        (json.dumps({**terminal, "status": "committed"}).encode(), True),
+        (json.dumps({**terminal, "status": "rolled_back"}).encode(), True),
+        (b'{"status":"prepared"}', False),
+        (b'{"status":"applying"}', False),
+        (b'{"status":"applied"}', False),
+        (b'{"status":"unknown"}', False),
+        (b'not-json', False),
+        (b'x' * 4097, False),
+    )
+    executable = Path(workspace["env"]["PATH"].split(os.pathsep)[0]) / "ssh"
+    original = executable.read_text()
+    for payload, accepted in cases:
+        if workspace["calls"].exists():
+            workspace["calls"].unlink()
+        executable.write_text(original.replace("sys.exit(0)", f"""
+if 'sshd_bundle.py' in sys.argv[-1] and ' status ' in sys.argv[-1]:
+    import shlex, subprocess
+    command = shlex.split(sys.argv[-1].split('|', 1)[1])[:5]
+    sys.exit(subprocess.run(command, input={payload!r}).returncode)
+sys.exit(0)
+"""))
+        result = invoke(workspace, target=target, limit="node-one")
+        observed = calls(workspace)
+        if accepted:
+            assert result.returncode == 0, result.stderr
+            assert any(entry["program"] == "ansible-playbook" for entry in observed)
+        else:
+            assert result.returncode != 0
+            assert "SSH recovery foundation unavailable" in result.stderr
+            assert not any(entry["program"] in {"ansible-playbook", "audit-log.sh"} for entry in observed)
+        assert "nonce" not in result.stdout + result.stderr
+
+
+def test_recovery_preflight_parses_bounded_terminal_or_idle_status(workspace):
+    result = invoke(workspace, limit="node-one")
+    assert result.returncode == 0, result.stderr
+    recovery = next(entry for entry in calls(workspace)
+                    if entry["program"] == "ssh" and "sshd_bundle.py" in entry["args"][-1])
+    remote = recovery["args"][-1]
+    assert "sys.stdin.buffer.read(4097)" in remote
+    assert "idle" in remote and "committed" in remote and "rolled_back" in remote
+    assert '"$root/sshd_bundle.py" status >/dev/null' not in remote
+
+
+@pytest.mark.parametrize("payload,accepted", [
+    (b'{"status":"idle"}\n', True),
+    (json.dumps({"generation": "1d34d0a4-6be7-4b09-b169-47e819ef2a0c", "nonce": "a" * 64,
+                 "status": "committed", "deadline": 123, "snapshot_digest": "b" * 64}).encode(), True),
+    (json.dumps({"generation": "1d34d0a4-6be7-4b09-b169-47e819ef2a0c", "nonce": "a" * 64,
+                 "status": "rolled_back", "deadline": 123, "snapshot_digest": "b" * 64}).encode(), True),
+    (b'{"status":"prepared"}', False),
+    (b'{"status":"applying"}', False),
+    (b'{"status":"applied"}', False),
+    (b'{"status":"unknown"}', False),
+    (b'{"status":"idle","status":"idle"}', False),
+    (b'{"generation":7,"nonce":"bad","status":"committed","deadline":true,"snapshot_digest":null}', False),
+    (b'not-json', False),
+    (b'x' * 4097, False),
+])
+def test_recovery_status_validator_accepts_only_strict_terminal_or_idle_schema(payload, accepted):
+    tree = ast.parse((ROOT / "scripts/deploy-controller.py").read_text())
+    validator = next(ast.literal_eval(node.value) for node in tree.body
+                     if isinstance(node, ast.Assign)
+                     and any(isinstance(target, ast.Name) and target.id == "RECOVERY_STATUS_VALIDATOR"
+                             for target in node.targets))
+    result = subprocess.run([sys.executable, "-I", "-B", "-c", validator], input=payload,
+                            capture_output=True, timeout=5)
+    assert (result.returncode == 0) is accepted
+    assert result.stdout == b"" and result.stderr == b""
 
 
 @pytest.mark.parametrize("limit", ["node-*", "vpn:!node-one", "@private-list", "unknown"])
@@ -436,8 +573,9 @@ sys.exit(31 if stage == 'site' and 'node-one ' in inventory else 0)
     result = invoke(workspace, target="deploy")
     assert result.returncode != 0
     serial = [entry for entry in calls(workspace) if entry["program"] in {"ssh", "ansible-playbook"}]
-    assert [entry["program"] for entry in serial] == ["ssh", "ansible-playbook"]
-    assert serial[0]["args"][-2] == "100.64.0.1"
+    assert [entry["program"] for entry in serial] == ["ssh", "ssh", "ansible-playbook"]
+    assert_bootstrap_readiness(serial[0], "100.64.0.1")
+    assert_recovery_preflight(serial[1], "100.64.0.1")
     assert not any("100.64.0.2" in argument for entry in serial for argument in entry["args"])
 
 
@@ -697,7 +835,11 @@ def test_multigoal_make_keeps_source_identity_outside_controller_targets(workspa
     assert [line[0] for line in identities] == ["fixture-before", "fixture-after"]
     assert len(identities[0][1]) == 40 and identities[0][1] == identities[1][1]
     observed = calls(workspace)
-    assert len([entry for entry in observed if entry["program"] == "ssh"]) == 2
+    ssh = [entry for entry in observed if entry["program"] == "ssh"]
+    assert len(ssh) == 4
+    for offset in (0, 2):
+        assert_bootstrap_readiness(ssh[offset], "100.64.0.1")
+        assert_recovery_preflight(ssh[offset + 1], "100.64.0.1")
     assert len([entry for entry in observed if entry["program"] == "ansible-playbook"]) == 3
     assert len([entry for entry in observed if entry["program"] == "audit-log.sh"]) == 1
 

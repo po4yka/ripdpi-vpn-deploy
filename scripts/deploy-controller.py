@@ -43,6 +43,69 @@ AUTOLOAD_DIRS = (
     "strategy_plugins", "terminal_plugins", "test_plugins", "vars_plugins",
 )
 
+RECOVERY_STATUS_VALIDATOR = r"""import json
+import re
+import sys
+
+def reject():
+    raise SystemExit(41)
+
+def unique(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate-key")
+        value[key] = item
+    return value
+
+raw = sys.stdin.buffer.read(4097)
+if not raw or len(raw) > 4096:
+    reject()
+try:
+    value = json.loads(raw, object_pairs_hook=unique)
+except (ValueError, UnicodeError):
+    reject()
+if not isinstance(value, dict) or type(value.get("status")) is not str:
+    reject()
+status = value["status"]
+if status == "idle":
+    if set(value) != {"status"}:
+        reject()
+elif status in {"committed", "rolled_back"}:
+    if set(value) != {"generation", "nonce", "status", "deadline", "snapshot_digest"}:
+        reject()
+    if (type(value["generation"]) is not str
+            or re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", value["generation"]) is None
+            or type(value["nonce"]) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", value["nonce"]) is None
+            or type(value["deadline"]) is not int or value["deadline"] <= 0
+            or type(value["snapshot_digest"]) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", value["snapshot_digest"]) is None):
+        reject()
+else:
+    reject()
+"""
+
+RECOVERY_PREFLIGHT = r"""set -eu
+root=/usr/local/lib/vpn-sshd
+state=/var/lib/vpn-sshd-transaction
+migrate=$(/usr/bin/readlink -f "$root/current/sshd_migrate.py")
+directory=${migrate%/sshd_migrate.py}
+generation=${directory##*/}
+[ "$migrate" = "$root/generations/$generation/sshd_migrate.py" ]
+[ "${#generation}" -eq 64 ]
+case "$generation" in *[!0-9a-f]*) exit 40;; esac
+[ "$generation" = "__EXPECTED_GENERATION__" ]
+/usr/bin/sudo -n /usr/bin/test -d "$state"
+/usr/bin/sudo -n /usr/bin/test ! -L "$state"
+[ "$(/usr/bin/sudo -n /usr/bin/stat -c '%u:%g:%a' "$state")" = 0:0:700 ]
+/usr/bin/sudo -n /usr/bin/test -f "$state/transaction.lock"
+/usr/bin/sudo -n /usr/bin/test ! -L "$state/transaction.lock"
+[ "$(/usr/bin/sudo -n /usr/bin/stat -c '%u:%g:%a' "$state/transaction.lock")" = 0:0:600 ]
+/usr/bin/sudo -n /usr/bin/python3 -I -B "$root/sshd_bundle.py" status 2>/dev/null | /usr/bin/python3 -I -B -c __STATUS_VALIDATOR__ 2>/dev/null
+/usr/bin/sudo -n /usr/bin/python3 -I -B "$migrate" check-installation >/dev/null 2>&1
+"""
+
 
 def validate_discovery_paths(root):
     playbooks = root / "ansible/playbooks"
@@ -135,6 +198,20 @@ def checked(command, *, environment, cwd, timeout=15, capture=False, stream=Fals
     if status:
         raise DeployError("local command failed")
     return output
+
+
+def require_recovery_foundation(command, generation, environment):
+    """Require the exact read-only recovery capability before site convergence."""
+    if re.fullmatch("[0-9a-f]{64}", generation) is None:
+        raise DeployError("SSH recovery foundation unavailable")
+    remote = RECOVERY_PREFLIGHT.replace("__EXPECTED_GENERATION__", generation).replace(
+        "__STATUS_VALIDATOR__", shlex.quote(RECOVERY_STATUS_VALIDATOR))
+    try:
+        status, _output = run_command([*command[:-1], remote], environment=environment, timeout=45)
+    except ReadinessError:
+        raise DeployError("SSH recovery foundation unavailable") from None
+    if status:
+        raise DeployError("SSH recovery foundation unavailable")
 
 
 def source_identity(root, environment, *, require_clean):
@@ -414,6 +491,8 @@ def controller(mode):
             checked([str(root / "scripts/check-certs.sh")], environment=precheck_environment, cwd=directory)
         for host, command, playbooks, arguments in prepared:
             wait_for_bootstrap(command[:-1], environment=environment)
+            require_recovery_foundation(
+                command, transactions[host["name"]]["ssh_transaction_bundle_generation"], environment)
             current = source_identity(root, environment, require_clean=mode == "deploy")
             if current != identity:
                 raise DeployError("source changed during readiness")

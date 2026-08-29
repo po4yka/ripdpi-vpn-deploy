@@ -572,7 +572,7 @@ def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
         started = int(time.time())
         result = curl_probe(
             config,
-            [],
+            ["--ipv4"],
             ["ip", "netns", "exec", namespace],
         )
         handshake = subprocess.run(
