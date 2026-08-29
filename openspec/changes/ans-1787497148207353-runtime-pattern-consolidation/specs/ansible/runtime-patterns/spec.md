@@ -1,12 +1,12 @@
 ## Purpose
 
-Runtime concerns that were previously re-implemented per role converge onto single, contract-tested implementations: release installation with rollback support everywhere, one source-build receipt idiom, a uniform unit sandbox floor, validate-before-restart with liveness waits on every service role, single-sourced listener defaults and shape contracts, one validated nftables policy idiom, checker-owned collision defense, activation-safe scaffolds, and asserted mirror restore layout.
+Runtime concerns that were previously re-implemented per role converge onto single, contract-tested implementations: release installation with rollback support for the six named consumers, one source-build receipt idiom, a uniform sandbox floor for the Ansible-owned units in this change, validate-before-restart with liveness waits on in-scope service roles, single-sourced listener defaults and shape contracts, one validated nftables policy idiom, checker-owned collision defense, activation-safe scaffolds, and asserted mirror restore layout.
 
 ## ADDED Requirements
 
 ### Requirement: REQ-INSTALL-RELEASE-SHARED — Binary release installation MUST use the shared runtime path
 
-Roles installing release binaries MUST use the shared install path providing checksum verification, versioned release directories, a current symlink, and unified arch-slug derivation.
+The `xray-runtime`, `hysteria`, `hysteria-realm`, `snell`, `probe-matrix-target` and `dns-morph-bridge` roles MUST use the shared `runtime-release` role and its `runtime_release_*` contract for checksum verification, versioned release directories, a current symlink, and unified arch-slug derivation.
 
 #### Scenario: new transport role onboarding
 
@@ -22,9 +22,9 @@ Build-from-source tasks MUST record and check build receipts through one impleme
 - **WHEN** amneziawg converges after an upstream commit bump
 - **THEN** the loop-driven descriptor build rebuilds only affected projects and updates receipts once
 
-### Requirement: REQ-UNIT-FLOOR-PARITY — Every shipped service unit MUST carry the sandbox floor
+### Requirement: REQ-UNIT-FLOOR-PARITY — In-scope Ansible service units MUST carry the sandbox floor
 
-All service unit templates MUST include at least the declared hardening floor; inline content blocks are prohibited for units.
+The probe-matrix Xray/MTG templates and the real-vps server-AWG, echo and mode-specific firewall services owned by this change MUST include at least the declared hardening floor. External sentinel and backup/geodata units remain outside this requirement; inline content blocks are prohibited for the in-scope units.
 
 #### Scenario: research-tier listener
 
