@@ -25,12 +25,6 @@
       failed_when: not resolved_dropin.stat.exists or not resolved_dropin.stat.isreg
       when: "'systemd-resolved.service' in ansible_facts.services"
 
-    - name: SSH hardening drop-in present
-      ansible.builtin.stat:
-        path: /etc/ssh/sshd_config.d/20-ansible-hardening.conf
-      register: hardening
-      failed_when: not hardening.stat.exists
-
     - name: sysctl tuning installed
       ansible.builtin.stat:
         path: /etc/sysctl.d/90-vpn.conf
@@ -44,39 +38,14 @@
       changed_when: false
       failed_when: ts.stdout != "enabled"
 
-    # State-level: prove sshd is alive and the hardening drop-in took
-    # effect (PasswordAuthentication=no must appear in the effective
-    # config rendered by sshd -T).
+    # The role still installs and starts OpenSSH. Policy publication is a
+    # separate controller-owned transaction after full stack convergence.
     - name: sshd.service is active
       ansible.builtin.command:
         cmd: systemctl is-active ssh.service
       register: sshd_active
       changed_when: false
       failed_when: sshd_active.stdout != "active"
-
-    - name: Collect effective sshd config
-      ansible.builtin.command:
-        cmd: sshd -T
-      register: sshd_t
-      changed_when: false
-
-    - name: sshd -T applies the hardening drop-in
-      ansible.builtin.assert:
-        that:
-          - "'passwordauthentication no' in sshd_t.stdout | lower"
-          - "'kbdinteractiveauthentication no' in sshd_t.stdout | lower"
-          - "'permitrootlogin no' in sshd_t.stdout | lower"
-          - "'pubkeyauthentication yes' in sshd_t.stdout | lower"
-          - "'x11forwarding no' in sshd_t.stdout | lower"
-          - "'allowtcpforwarding no' in sshd_t.stdout | lower"
-          - "'allowagentforwarding no' in sshd_t.stdout | lower"
-          - "'permittunnel no' in sshd_t.stdout | lower"
-          - "'permituserenvironment no' in sshd_t.stdout | lower"
-          - "'permitemptypasswords no' in sshd_t.stdout | lower"
-          - "'ignorerhosts yes' in sshd_t.stdout | lower"
-          - "'loglevel verbose' in sshd_t.stdout | lower"
-          - "'maxsessions 2' in sshd_t.stdout | lower"
-          - "'maxstartups 10:30:20' in sshd_t.stdout | lower"
 
     - name: Check whether SSH moduli file exists
       ansible.builtin.stat:

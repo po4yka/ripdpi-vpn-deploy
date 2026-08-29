@@ -773,14 +773,20 @@ def _failure_path(output: Path) -> Path:
     return output.with_name(output.name + ".failure.json")
 
 
-def _kill_and_reap(process: subprocess.Popen[bytes]) -> None:
+def _kill_process_group_if_running(process: subprocess.Popen[bytes]) -> bool:
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
-        pass
+        return False
     except OSError as exc:
         if exc.errno != errno.ESRCH:
             raise AcceptanceError("command-cleanup") from exc
+        return False
+    return True
+
+
+def _kill_and_reap(process: subprocess.Popen[bytes]) -> None:
+    _kill_process_group_if_running(process)
     try:
         process.wait(timeout=2)
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -1796,10 +1802,6 @@ class DockerColimaRuntime:
             failure = True
         if self.runtime_root is not None and self.runtime_root.exists():
             shutil.rmtree(self.runtime_root)
-            try:
-                self.runtime_root.parent.rmdir()
-            except OSError:
-                pass
         if failure:
             raise AcceptanceError("profile-cleanup")
 
@@ -1841,10 +1843,24 @@ def _write_evidence(path: Path, evidence: Mapping[str, object]) -> None:
     finally:
         if descriptor >= 0:
             os.close(descriptor)
-        try:
-            temporary.unlink()
-        except FileNotFoundError:
-            pass
+        _unlink_path_if_present(temporary)
+
+
+def _unlink_path_if_present(path: Path) -> bool:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _capture_cleanup_error(action: Callable[[], None]) -> BaseException | None:
+    """Finish all owned cleanup steps even when the operator cancels one of them."""
+    try:
+        action()
+    except (Exception, KeyboardInterrupt, SystemExit, GeneratorExit) as exc:
+        return exc
+    return None
 
 
 def execute_acceptance(
@@ -1855,7 +1871,6 @@ def execute_acceptance(
     runtime.claim(plan)
     built: dict[str, BuiltImage] = {}
     case_evidence: list[Mapping[str, object]] = []
-    primary_error: BaseException | None = None
     try:
         runtime.start(plan)
         runtime.assert_no_host_mounts(plan)
@@ -1863,29 +1878,19 @@ def execute_acceptance(
             built[distribution] = runtime.build(plan, distribution)
         for case in plan.cases:
             case_evidence.append(runtime.run_case(plan, case, built[case.distribution]))
-    except BaseException as exc:
-        primary_error = exc
     finally:
-        cleanup_error: BaseException | None = None
-        try:
-            runtime.cleanup(plan)
-        except BaseException as exc:
-            cleanup_error = exc
-        try:
-            runtime.stop_delete(plan)
-        except BaseException as exc:
-            cleanup_error = cleanup_error or exc
-        try:
+        cleanup_error = _capture_cleanup_error(lambda: runtime.cleanup(plan))
+        stop_error = _capture_cleanup_error(lambda: runtime.stop_delete(plan))
+        cleanup_error = cleanup_error or stop_error
+
+        def assert_context() -> None:
             if runtime.current_context() != context_before:
-                cleanup_error = cleanup_error or AcceptanceError(
-                    "docker-context-changed"
-                )
-        except BaseException as exc:
-            cleanup_error = cleanup_error or exc
+                raise AcceptanceError("docker-context-changed")
+
+        context_error = _capture_cleanup_error(assert_context)
+        cleanup_error = cleanup_error or context_error
         if cleanup_error is not None:
             raise AcceptanceError("acceptance-cleanup") from cleanup_error
-    if primary_error is not None:
-        raise primary_error
     return acceptance_evidence(
         source_sha256=source.helper_sha256,
         platform=plan.platform,

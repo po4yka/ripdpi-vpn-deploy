@@ -410,9 +410,20 @@ def test_evidence_is_explicitly_narrow_and_contains_no_guest_bytes(
 
 
 class _FakeRuntime:
-    def __init__(self, module, *, fail_case: str | None = None) -> None:
+    def __init__(
+        self,
+        module,
+        *,
+        fail_case: str | None = None,
+        case_error: BaseException | None = None,
+        cleanup_error: BaseException | None = None,
+        stop_error: BaseException | None = None,
+    ) -> None:
         self.module = module
         self.fail_case = fail_case
+        self.case_error = case_error
+        self.cleanup_error = cleanup_error
+        self.stop_error = stop_error
         self.events: list[str] = []
         self.context_reads = 0
 
@@ -442,6 +453,8 @@ class _FakeRuntime:
 
     def run_case(self, plan, case, image):
         self.events.append("case:" + case.distribution + ":" + case.mode)
+        if self.case_error is not None:
+            raise self.case_error
         if self.fail_case == case.mode:
             raise RuntimeError("fixture failure")
         result = {
@@ -463,9 +476,13 @@ class _FakeRuntime:
 
     def cleanup(self, plan) -> None:
         self.events.append("cleanup:" + plan.profile)
+        if self.cleanup_error is not None:
+            raise self.cleanup_error
 
     def stop_delete(self, plan) -> None:
         self.events.append("stop-delete:" + plan.profile)
+        if self.stop_error is not None:
+            raise self.stop_error
 
 
 def test_execute_acceptance_serializes_distros_and_always_releases_profile(
@@ -520,6 +537,61 @@ def test_execute_acceptance_cleans_up_after_case_failure(
     runtime = _FakeRuntime(acceptance_module, fail_case="interrupted")
 
     with pytest.raises(RuntimeError, match="fixture failure"):
+        acceptance_module.execute_acceptance(plan, source, runtime)
+
+    assert runtime.events[-3:] == [
+        "cleanup:vpn-cloud-final-ci-20260829",
+        "stop-delete:vpn-cloud-final-ci-20260829",
+        "context",
+    ]
+
+
+def test_execute_acceptance_completes_cleanup_after_cancellation_error(
+    acceptance_module,
+    tmp_path: Path,
+) -> None:
+    root, _helper, _command = _source_fixture(tmp_path / "source")
+    source = acceptance_module.load_source(root, "2222")
+    plan = acceptance_module.build_plan(
+        source=source,
+        source_root=root,
+        fixture_root=FIXTURE_ROOT,
+        profile="vpn-cloud-final-ci-20260829",
+        platform="linux/amd64",
+    )
+    runtime = _FakeRuntime(
+        acceptance_module,
+        cleanup_error=KeyboardInterrupt(),
+        stop_error=SystemExit(2),
+    )
+
+    with pytest.raises(acceptance_module.AcceptanceError, match="acceptance-cleanup") as raised:
+        acceptance_module.execute_acceptance(plan, source, runtime)
+
+    assert isinstance(raised.value.__cause__, KeyboardInterrupt)
+    assert runtime.events[-3:] == [
+        "cleanup:vpn-cloud-final-ci-20260829",
+        "stop-delete:vpn-cloud-final-ci-20260829",
+        "context",
+    ]
+
+
+def test_execute_acceptance_preserves_primary_cancellation_after_cleanup(
+    acceptance_module,
+    tmp_path: Path,
+) -> None:
+    root, _helper, _command = _source_fixture(tmp_path / "source")
+    source = acceptance_module.load_source(root, "2222")
+    plan = acceptance_module.build_plan(
+        source=source,
+        source_root=root,
+        fixture_root=FIXTURE_ROOT,
+        profile="vpn-cloud-final-ci-20260829",
+        platform="linux/amd64",
+    )
+    runtime = _FakeRuntime(acceptance_module, case_error=KeyboardInterrupt())
+
+    with pytest.raises(KeyboardInterrupt):
         acceptance_module.execute_acceptance(plan, source, runtime)
 
     assert runtime.events[-3:] == [

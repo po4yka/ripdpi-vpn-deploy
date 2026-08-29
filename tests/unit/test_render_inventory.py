@@ -65,11 +65,7 @@ case "${{1:-}}" in
     shift
     if [ "${{1:-}}" = "-json" ]; then
       if [ -n "${{2:-}}" ]; then
-        python3 -c "
-import json, sys
-d = json.load(open('${{FIXTURE}}'))
-print(json.dumps(d[sys.argv[1]]['value'], separators=(',', ':')))
-" "${{2}}"
+        jq -c --arg key "${{2}}" '.[$key].value' "${{FIXTURE}}"
       else
         cat "${{FIXTURE}}"
       fi
@@ -77,15 +73,9 @@ print(json.dumps(d[sys.argv[1]]['value'], separators=(',', ':')))
     fi
     if [ "${{1:-}}" = "-raw" ]; then
       key="${{2:-}}"
-      python3 -c "
-import json, sys
-d = json.load(open('${{FIXTURE}}'))
-k = sys.argv[1]
-if k in d:
-    print(d[k]['value'], end='')
-else:
-    sys.exit(1)
-" "$key"
+      jq -jr --arg key "$key" \
+        'if has($key) then .[$key].value else halt_error(1) end' \
+        "${{FIXTURE}}"
       exit 0
     fi
     exit 0
@@ -286,11 +276,21 @@ def test_wait_cloud_init_uses_terraform_ssh_port() -> None:
 def _isolated_wait_script(tmp_path):
     """Run the real wait and remote shell; substitute only TF, SSH and the marker path."""
     import shutil
+    import sys
 
     root = tmp_path / "repo"
     (root / "scripts").mkdir(parents=True)
     shutil.copyfile(WAIT_SCRIPT, root / "scripts/wait-cloud-init.sh")
-    shutil.copyfile(REPO_ROOT / "scripts/bootstrap_readiness.py", root / "scripts/bootstrap_readiness.py")
+    controller = root / "scripts/bootstrap_readiness.py"
+    shutil.copyfile(REPO_ROOT / "scripts/bootstrap_readiness.py", controller)
+    controller.write_text(
+        controller.read_text().replace(
+            "import time\n",
+            'import time\n\nwith open(os.environ["WAIT_CONTROLLER_LOG"], "a", encoding="utf-8") as stream:\n'
+            '    stream.write("controller\\n")\n',
+            1,
+        )
+    )
     _make_stub(root / "scripts", "terraform-env.sh",
                'case "$3" in server_ipv4) printf 192.0.2.1;; '
                'admin_user) printf deploy;; ssh_port) printf 2222;; *) exit 99;; esac')
@@ -304,7 +304,7 @@ def _isolated_wait_script(tmp_path):
                'if [ "$(wc -l < "$WAIT_CLOUD_LOG")" -eq 1 ]; then sleep 30; fi; exit 0; fi; '
                'exit "$WAIT_CLOUD_CODE"')
     ssh = bindir / "ssh"
-    ssh.write_text('''#!/usr/bin/env python3
+    ssh.write_text("#!" + sys.executable + "\n" + '''
 import json, os, subprocess, sys, time
 from pathlib import Path
 with open(os.environ["WAIT_SSH_LOG"], "a") as stream:
@@ -328,22 +328,15 @@ sys.exit(subprocess.run(["bash", "-c", marker_boundary + sys.argv[-1]]).returnco
                    "PROVIDER": "upcloud", "ENV": "test", "ANSIBLE_SSH_PRIVATE_KEY_FILE": "fixture-key",
                    "WAIT_CLOUD_CODE": "0", "WAIT_MARKER": str(tmp_path / "bootstrap.done"),
                    "WAIT_CLOUD_LOG": str(tmp_path / "cloud.log"), "WAIT_SSH_PIDS": str(tmp_path / "pids.json"),
-                   "WAIT_SSH_LOG": str(tmp_path / "ssh.jsonl")}
+                   "WAIT_SSH_LOG": str(tmp_path / "ssh.jsonl"),
+                   "WAIT_CONTROLLER_LOG": str(tmp_path / "controllers.log")}
     return root / "scripts/wait-cloud-init.sh", environment
 
 
 @pytest.mark.parametrize("cloud_code,expected", [(0, None), (1, "cloud-init error"),
                                                  (2, "cloud-init recoverable error")])
 def test_wait_requires_error_free_cloud_init_even_with_marker(tmp_path, cloud_code, expected):
-    import shlex
-    import sys
-
     script, environment = _isolated_wait_script(tmp_path)
-    controller_log = tmp_path / "controllers.log"
-    _make_stub(tmp_path / "bin", "python3",
-               'case "$1" in -|*/bootstrap_readiness.py) printf "controller\\n" >> '
-               + shlex.quote(str(controller_log)) + ';; esac; exec '
-               + shlex.quote(sys.executable) + ' "$@"')
     environment["WAIT_CLOUD_CODE"] = str(cloud_code)
     Path(environment["WAIT_MARKER"]).touch()
     result = subprocess.run(["bash", str(script)], env=environment, capture_output=True, text=True, timeout=10)
@@ -356,7 +349,7 @@ def test_wait_requires_error_free_cloud_init_even_with_marker(tmp_path, cloud_co
     assert all("BatchMode=yes" in call for call in calls)
     assert all(call[call.index("-p") + 1] == "2222" for call in calls)
     assert all("StrictHostKeyChecking=accept-new" in call for call in calls)
-    assert controller_log.read_text().splitlines() == ["controller"]
+    assert Path(environment["WAIT_CONTROLLER_LOG"]).read_text().splitlines() == ["controller"]
 
 
 @pytest.mark.parametrize("cloud_code", [124, 137])

@@ -1,0 +1,23 @@
+---
+# Molecule connects through the Docker inventory plugin, so it cannot execute
+# or prove the production two-transport SSH transaction.  This isolated adapter
+# binds the fixture to exactly one Docker target before the canonical site
+# convergence play runs.  The production transaction remains mandatory and is
+# skipped only by the scenario-level ANSIBLE_SKIP_TAGS setting.
+- name: Bind full-stack Molecule to one isolated Docker target
+  hosts: vpn
+  gather_facts: false
+  become: false
+  any_errors_fatal: true
+  tasks:
+    - name: Require the isolated Molecule controller boundary
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+          - ansible_connection == 'docker'
+          - lookup('env', 'MOLECULE_SCENARIO_DIRECTORY') | length > 0
+        fail_msg: Full-stack fixture requires one Molecule Docker target
+
+    - name: Mark convergence as owned by the isolated fixture adapter
+      ansible.builtin.set_fact:
+        ssh_transaction_controller_managed: true

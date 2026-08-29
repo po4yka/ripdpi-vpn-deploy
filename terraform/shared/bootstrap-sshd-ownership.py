@@ -235,16 +235,28 @@ def _cleanup_residues(directory_fd: int, names: list[str]) -> bool:
     return True
 
 
-def _terminate_and_wait(
-    process: subprocess.Popen[bytes], *, allow_natural_exit_eperm: bool = False
-) -> int:
-    kill_error: OSError | None = None
+def _unlink_if_present(directory_fd: int, name: str) -> bool:
+    try:
+        os.unlink(name, dir_fd=directory_fd)
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _kill_process_group(process: subprocess.Popen[bytes]) -> OSError | None:
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
-        pass
+        return None
     except OSError as error:
-        kill_error = error
+        return error
+    return None
+
+
+def _terminate_and_wait(
+    process: subprocess.Popen[bytes], *, allow_natural_exit_eperm: bool = False
+) -> int:
+    kill_error = _kill_process_group(process)
     try:
         returncode = process.wait(timeout=1)
     except (OSError, subprocess.TimeoutExpired):
@@ -393,10 +405,7 @@ def _write_atomic(
     finally:
         if descriptor >= 0:
             os.close(descriptor)
-        try:
-            os.unlink(temporary, dir_fd=directory_fd)
-        except FileNotFoundError:
-            pass
+        _unlink_if_present(directory_fd, temporary)
 
 
 def _restore(directory_fd: int, name: str, snapshot: dict[str, object]) -> None:
@@ -407,10 +416,7 @@ def _restore(directory_fd: int, name: str, snapshot: dict[str, object]) -> None:
         assert isinstance(data, bytes) and isinstance(mode, int) and isinstance(gid, int)
         _write_atomic(directory_fd, name, data, mode=mode, gid=gid)
     else:
-        try:
-            os.unlink(name, dir_fd=directory_fd)
-        except FileNotFoundError:
-            pass
+        _unlink_if_present(directory_fd, name)
         os.fsync(directory_fd)
 
 

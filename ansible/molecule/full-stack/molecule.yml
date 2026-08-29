@@ -41,6 +41,10 @@ provisioner:
   name: ansible
   env:
     ANSIBLE_ROLES_PATH: ../../roles
+    # The transaction phase proves real public and management SSH transports;
+    # a Docker-connection scenario can only exercise controller-owned stack
+    # convergence.  Controller transaction tests and staging cover that phase.
+    ANSIBLE_SKIP_TAGS: ssh-transaction
     VPN_SECRETS_FILE: ${MOLECULE_SCENARIO_DIRECTORY}/test-secrets.yaml
   inventory:
     # playbooks/site.yml targets `hosts: vpn`, so the test container must

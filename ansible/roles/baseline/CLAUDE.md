@@ -3,9 +3,10 @@
 ## Design decisions
 
 **Sets ground state, not policy** — installs sysctl baseline, time sync
-(`systemd-timesyncd`), SSH hardening drop-in, and IP-forwarding sysctl when
-AmneziaWG is in scope. Doesn't open ports; doesn't install Xray/nginx. Other
-roles layer on top.
+(`systemd-timesyncd`), OpenSSH prerequisites, and IP-forwarding sysctl when
+AmneziaWG is in scope. The controller-owned second site play publishes SSH
+policy only after the VPN stack converges. Doesn't open ports or install
+Xray/nginx; other roles layer on top.
 
 **No reboots from this role** — package upgrades that need a reboot are
 flagged via the `reboot_required` fact and surfaced at the end of `verify.yml`.
@@ -36,9 +37,10 @@ ownership-only migration, and do not treat local tests as staging acceptance.
   forwarding, and only when AmneziaWG is enabled.
 - **Time sync via `systemd-timesyncd`** — installed and enabled. REALITY breaks
   if clocks drift > 90 s; `verify.yml` asserts sync state.
-- **SSH hardening via drop-in** — `templates/sshd_config.d-hardening.conf.j2`
-  is dropped at `/etc/ssh/sshd_config.d/20-ansible-hardening.conf` with
-  `validate: sshd -t -f %s` before activation.
+- **SSH hardening via a recoverable transaction** —
+  `templates/sshd_config.d-hardening.conf.j2` is rendered by Ansible, while the
+  exact-node controller publishes it with durable rollback and fresh transport
+  proof after the VPN stack converges.
 - **SFTP is internal and managed once** — the packaged `Subsystem sftp` line is
   commented before the drop-in declares `internal-sftp`, avoiding duplicate
   Subsystem directives on Debian/Ubuntu while preserving Ansible file transfer.
