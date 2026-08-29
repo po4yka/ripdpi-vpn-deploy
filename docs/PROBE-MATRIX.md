@@ -52,13 +52,46 @@ vpnd --explain probe-matrix --duration 4h --config /absolute/path/probe-matrix.y
 
 Each tick first runs one direct HTTPS control through `make probe-matrix-control`. All cells then run concurrently through `make probe-matrix-cell`. Network failure is `blocked` only when the direct control is healthy; otherwise it is `unknown`. Runtime, version, profile, TLS-validation, authentication, malformed-output, and cleanup failures are `error`.
 
-Ticks are scheduled from the original monotonic start time. A slow sweep does not shift every later tick; `sweep_duration_ms` and `overrun_ms` record when a sweep exceeds its interval.
+Duration must be positive and fit both the seconds representation and the local
+monotonic clock, including in `--explain`. The configured control timeout bounds
+both controls and cells; a timed-out control records `unknown` with
+`control_timeout` and does not prevent the cells from running.
 
-## Report schema version 2
+ProbeMatrix and Doctor explicitly own their captured Make process groups.
+Timeout or cancellation kills those groups, including ordinary shell/probe
+descendants. Doctor uses the noninteractive dispatcher signal owner. ProbeMatrix
+owns its signal handler inside the command so it can flush durable evidence before
+returning 130/143. Other captures
+(Share and Reconverge) keep foreground behavior so blocking token input and
+confirmation prompts retain default signal handling. They do not gain group
+cleanup. Neither do raw helper subprocesses or daemonized descendants after
+successful command completion.
+
+Ticks are scheduled from the original monotonic start time. A slow sweep does not shift every later tick; `sweep_duration_ms` and `overrun_ms` record when a sweep exceeds its interval.
+If the next tick cannot fit the monotonic clock, it is beyond the bounded session
+deadline: finish with the observed results, without panic or a synthetic `unknown`.
+
+## Report schema version 3
 
 Reports default to `vpnd/state/probe-matrix-<unix-ms>.json`, an ignored operator-state directory. The formal schema is `contract/probe-matrix-report.schema.json`.
 
+The report is atomically checkpointed with mode `0600` after every tick. A
+companion `<report>.jsonl` crash journal is appended and synchronized before
+each report checkpoint, while `<report>.lock` prevents concurrent sessions from
+sharing an output. Normal completion is `completed=true, interrupted=false`.
+SIGINT/SIGTERM preserves completed and partial tick evidence as
+`completed=false, interrupted=true` before exit 130/143. An abrupt SIGKILL can
+preserve only newline-terminated journal records already synchronized to disk.
+
 Every cell contains `tick`, `timestamp_unix_ms`, `protocol`, `target_id`, `comparison_set`, `destination_class`, `topology`, `verdict`, optional `rtt_ms`, and optional categorical `error_kind`. It never contains the target endpoint. Windows are keyed by protocol and target. Controls and analyzer observations are top-level arrays.
+
+There is at most one window per protocol/target: onset is its first observed
+`blocked` or `throttled` cell. Series without observed impairment have no window.
+Recovery is the first subsequent `ok` only if no `unknown` or `error` intervenes.
+A null recovery means recovery was **unobserved**, not that impairment continued
+through an indeterminate gap. These timestamps describe discrete observations,
+not exact continuous outage durations. Input configuration remains schema 2;
+the report is schema 3 solely to add explicit completion state.
 
 The analyzer emits:
 

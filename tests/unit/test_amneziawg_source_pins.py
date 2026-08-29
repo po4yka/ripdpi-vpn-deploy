@@ -1,6 +1,9 @@
 """AWG-enabled secret producers must provide immutable source pins."""
 
+import os
 from pathlib import Path
+import shutil
+import subprocess
 
 import yaml
 
@@ -48,10 +51,57 @@ def test_amneziawg_molecule_vars_model_the_immutable_pin_contract():
         (REPO_ROOT / "ansible/roles/amneziawg/molecule/default/converge.yml").read_text()
     )
     vars_ = converge[0]["vars"]
-    assert vars_["amneziawg_go_version"] == AWG_GO_VERSION
-    assert vars_["amneziawg_go_commit"] == AWG_GO_COMMIT
-    assert vars_["amneziawg_tools_version"] == AWG_TOOLS_VERSION
-    assert vars_["amneziawg_tools_commit"] == AWG_TOOLS_COMMIT
+    # The real role checks the resolved local fixture commits. Do not label
+    # synthetic source/build inputs with the unrelated upstream release pins.
+    assert vars_["amneziawg_go_version"] == "molecule-fixture-v1"
+    assert vars_["amneziawg_go_commit"] == "{{ molecule_awg_go_head.stdout | trim }}"
+    assert vars_["amneziawg_tools_version"] == "molecule-fixture-v1"
+    assert vars_["amneziawg_tools_commit"] == "{{ molecule_awg_tools_head.stdout | trim }}"
+    assert converge[0]["environment"]["GIT_ALLOW_PROTOCOL"] == "file"
+    assert converge[0]["environment"]["GIT_CONFIG_GLOBAL"] == "/opt/molecule-awg-fixture/gitconfig"
+
+
+def test_amneziawg_molecule_requests_the_pinned_image_architecture():
+    molecule = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/amneziawg/molecule/default/molecule.yml").read_text()
+    )
+    assert molecule["platforms"][0]["platform"] == "linux/amd64"
+
+
+def test_amneziawg_scenario_dispatches_real_role_tasks(tmp_path):
+    """A role-task fault must reach the scenario's actual converge dispatch.
+
+    This local sentinel checks dispatch only. Container preparation and the
+    full build/config/service lifecycle belong to the actual Molecule run.
+    """
+    executable = shutil.which("ansible-playbook")
+    assert executable, "Ansible is required for the real role-dispatch regression"
+    role = REPO_ROOT / "ansible/roles/amneziawg"
+    copied_role = tmp_path / "roles/amneziawg"
+    shutil.copytree(role, copied_role)
+    tasks_path = copied_role / "tasks/main.yml"
+    tasks = yaml.safe_load(tasks_path.read_text())
+    sentinel = "MOLECULE_AWG_ROLE_DISPATCH_SENTINEL"
+    tasks_path.write_text(yaml.safe_dump([
+        {"name": "Fail before any role mutation", "ansible.builtin.fail": {"msg": sentinel}},
+        *tasks,
+    ], sort_keys=False))
+    converge = yaml.safe_load((role / "molecule/default/converge.yml").read_text())[0]
+    playbook = tmp_path / "dispatch.yml"
+    playbook.write_text(yaml.safe_dump([{
+        "name": "Exercise the scenario role dispatch",
+        "hosts": "localhost", "gather_facts": False, "become": False,
+        "vars": converge.get("vars", {}), "tasks": converge.get("tasks", []),
+    }], sort_keys=False))
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\nretry_files_enabled = False\n")
+    environment = {key: os.environ[key] for key in ("PATH", "HOME", "LANG") if key in os.environ}
+    environment.update(ANSIBLE_CONFIG=str(config), ANSIBLE_ROLES_PATH=str(tmp_path / "roles"),
+                       ANSIBLE_BECOME="false", ANSIBLE_DEBUG="false", ANSIBLE_NOCOLOR="1")
+    result = subprocess.run([executable, "-i", "localhost,", "-c", "local", str(playbook)],
+                            cwd=tmp_path, env=environment, capture_output=True, text=True, timeout=30)
+    assert result.returncode != 0, "converge never executed the failing role task"
+    assert sentinel in result.stdout + result.stderr, result.stdout + result.stderr
 
 
 def test_strict_awg_fixture_includes_immutable_source_pins():

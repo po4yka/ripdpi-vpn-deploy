@@ -4,6 +4,7 @@ use owo_colors::OwoColorize;
 use crate::cli::DoctorArgs;
 use crate::config::Context;
 use crate::docs_bundle;
+use crate::runner::process::CapturePolicy;
 use crate::runner::{make, Cmd};
 use crate::state::Registry;
 
@@ -26,7 +27,8 @@ pub async fn run(ctx: &Context, args: DoctorArgs) -> Result<()> {
     ];
 
     let mut report = String::new();
-    for cmd in &steps {
+    for cmd in steps {
+        let cmd = cmd.capture_policy(CapturePolicy::OwnedProcessGroup);
         let out = cmd.capture(ctx.explain).await?;
         report.push_str(&format!(
             "### {}\n\n```\n{}\n```\n\n",
@@ -136,7 +138,7 @@ async fn write_bundle(ctx: &Context, report: &str, out_path: &std::path::Path) -
     ));
 
     // 5. audit-log via make (already captured in report; include raw)
-    let audit_cmd = make::target(ctx, "audit-log");
+    let audit_cmd = make::target(ctx, "audit-log").capture_policy(CapturePolicy::OwnedProcessGroup);
     let audit_out = audit_cmd
         .capture(false)
         .await

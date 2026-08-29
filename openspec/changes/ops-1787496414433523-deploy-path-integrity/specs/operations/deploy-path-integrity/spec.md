@@ -15,12 +15,33 @@ Secrets-presence assertion, tier guards, listener-contract, and collision pre_ta
 
 ### Requirement: REQ-BOOTSTRAP-GATED-DEPLOY — Convergence MUST NOT start before bootstrap completes
 
-Deploy and dry-run entry points MUST wait for cloud-init completion on every target host before running Ansible.
+Deploy and dry-run entry points MUST wait for successful cloud-init completion and the bootstrap marker on every selected canonical inventory host before running Ansible. Selection MUST use one private immutable inventory snapshot: empty means all vpn hosts; exact aliases, canonical cohort groups and comma unions are supported. Unknown or ambiguous names, empty results and complex Ansible patterns MUST fail before SSH. HOSTS and Terraform outputs MUST NOT widen or redirect this selection.
+
+Every local input, key, known-host file and selected transport MUST be validated before the first SSH operation. Approved host/port overrides MUST apply before readiness. The unchanged strict SSH builder's host identity and frozen transport records MUST govern readiness, convergence and the subsequent source-drift check. A changed or dirty source after waiting MUST prevent mutating convergence. Existing prechecks, check/diff behavior, tag guards and best-effort audit ordering MUST remain effective.
+
+Canonical variable loading MUST preserve per-host cohort membership, runtime metadata and Ansible types/templating/precedence before secrets and approved overrides. Ambient Ansible configuration, host/group variable files, plugins, callbacks, collection paths or Git routing MUST NOT alter the selected authority. Protected transport variables MUST NOT redirect controller-local delegated tasks.
+
+Unsupported plugin discovery directories at playbook/role bases, symlinked role paths and playbook-relative shadow roles MUST be rejected before SSH, including during a dirty-source dry-run. Canonical roles and the explicitly configured trusted collection installation remain available.
 
 #### Scenario: apply followed immediately by deploy
 
 - **WHEN** `make apply && make deploy` runs against fresh nodes
 - **THEN** converge begins only after each node publishes its bootstrap marker
+
+#### Scenario: bounded cohort deployment with an approved transport override
+
+- **WHEN** a cohort limit and approved address/port override select a subset of a multi-host inventory
+- **THEN** readiness and Ansible use the same selected host identities and effective transports, preserve each host's canonical cohort variables, and never contact unselected hosts
+
+#### Scenario: inventory or source changes during readiness
+
+- **WHEN** the original inventory changes after selection or source becomes dirty during a bootstrap wait
+- **THEN** the inventory change cannot affect convergence or source-drift targets, and dirty source prevents mutating convergence
+
+#### Scenario: ambient Ansible authority or a local-input failure
+
+- **WHEN** an ambient host_vars/plugin/environment override is present or any selected key/input is invalid
+- **THEN** ambient authority is excluded, invalid inputs fail before the first SSH operation, and controller-local delegated guards remain local
 
 ### Requirement: REQ-BOUNDED-WAIT — The bootstrap wait MUST be bounded and diagnose error state
 
@@ -78,12 +99,12 @@ Rollback MUST validate the target release binary against the current configurati
 
 ### Requirement: REQ-SMOKE-CLEANUP — Failed probes MUST reclaim transient resources
 
-Smoke-test protocol blocks MUST stop transient services and remove their workdir on every exit path including failures.
+For a reachable host and a continuing controller, smoke-test protocol blocks MUST attempt to stop their own transient services and remove their own workdir on success and failure. Cleanup errors MUST fail the invocation without concealing the original probe failure. An unconfirmed start or stop MUST retain the private workdir claim and configs, require manual recovery, and refuse a subsequent canonical invocation without touching the prior resources. Removal is allowed only before any start or after confirmed client cleanup. An invocation MUST use fresh per-run unit names and atomically claim its workdir before creating clients; a failed claim MUST NOT clean up another invocation. Only an observed successful start authorizes stopping that unit; a failed start, including a foreign-name collision, MUST NOT authorize a stop. Bounded transient runtime limits service lifetime after disconnect, but does not prove workdir cleanup. Before each start, every corresponding smoke listener port MUST be vacant while the claim is held. After listener readiness and after all protocol probes, the invocation MUST confirm its unique client unit is active; a foreign listener response MUST NOT turn observed client death into success. Every curl smoke probe MUST force its configured SOCKS proxy regardless of inherited NO_PROXY or no_proxy values; direct target access MUST NOT count as proxy success. This does not guarantee socket ownership against a concurrent privileged external actor.
 
 #### Scenario: wait_for timeout mid-smoke
 
 - **WHEN** a smoke-test stage times out
-- **THEN** no transient proxy unit remains running and the credential-bearing workdir is removed
+- **THEN** the run stops its confirmed owned client and removes its private workdir, or fails with the private claim retained when cleanup cannot be confirmed; the original probe failure remains visible
 
 ### Requirement: REQ-MAINTENANCE-SERVICE-GATE — Maintenance verification MUST depend only on repo-managed services
 
@@ -96,7 +117,7 @@ Post-maintenance service checks MUST NOT hard-fail on units no Ansible role inst
 
 ### Requirement: REQ-TOGGLE-DEFAULT-PARITY — Playbook inline toggle defaults MUST match the declared surface
 
-Every inline enable_* default in playbooks MUST equal the corresponding default in group_vars/all.yml, enforced by test.
+Every inline enable_* default selecting ordinary transport behavior in deploy, verify, smoke, maintenance and rotation MUST equal the corresponding default in group_vars/all.yml, enforced by test. Explicit cohort boolean values MUST take precedence. Fail-closed configuration prerequisites, including backup-configure's enable_backup assertion, are not transport selectors and MUST retain their rejection of absent required inputs.
 
 #### Scenario: new profile omitting a key
 
@@ -114,7 +135,7 @@ Package-backlog assertions MUST parse simulation output generated under a pinned
 
 ### Requirement: REQ-DECLARED-TOGGLE-SURFACE — Every consumable feature toggle MUST appear in the declared toggle surface
 
-All vpn.enable_* keys consumed by playbooks or roles MUST have documented defaults in group_vars/all.yml.
+All vpn.enable_* keys consumed by playbooks or roles MUST have documented defaults in group_vars/all.yml. Cascade ingress and egress MUST default to false; their declarations MUST NOT authorize exception roles or change the implementation-only governance state.
 
 #### Scenario: operator enables governance-gated topology
 

@@ -235,3 +235,23 @@ run "rejects_listener_with_empty_name" {
 
   expect_failures = [var.public_listeners]
 }
+
+run "rejects_empty_ssh_allowlist" {
+  command = plan
+
+  variables {
+    allowed_ssh_cidrs = []
+  }
+
+  expect_failures = [var.allowed_ssh_cidrs]
+}
+
+run "rejects_invalid_ssh_cidr" {
+  command = plan
+
+  variables {
+    allowed_ssh_cidrs = ["203.0.113.42/32", "not-a-cidr"]
+  }
+
+  expect_failures = [var.allowed_ssh_cidrs]
+}

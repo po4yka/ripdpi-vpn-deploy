@@ -12,8 +12,8 @@ Verification drifts from what deploy actually produces: verify.yml and smoke-tes
 - source-drift adds the missing revision equality to its parity assert.
 - The Hysteria UDP check parameterizes on `hysteria_port`; conditional listener assertions are added for both deployed fallback ports.
 - Full-stack and full-stack-published test sequences include an idempotence phase.
-- The xray scenario gains an idempotence phase or a documented in-file justification.
-- The amneziawg converge runs the actual role (include_role) against stubbed binaries instead of re-implementing the render.
+- The xray scenario gains an idempotence phase and stops rewriting the public runtime symlink with a fixture file on every converge.
+- The amneziawg converge runs the actual role (include_role) against explicitly synthetic local source/build fixtures and no-TUN tools instead of re-implementing the render or preinstalling role outputs.
 - TESTING.md matrix rows match observed sequences; reality-self-steal joins the matrix.
 - A post-converge assertion verifies exactly one SSH listener exists per host (socket/service reconciliation guard).
 
