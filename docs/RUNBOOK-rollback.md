@@ -39,8 +39,11 @@ ssh deploy@<vps> ls /opt/xray/releases
 make rollback-xray ROLLBACK_XRAY_VERSION=v26.3.27
 ```
 
-The playbook validates the existing config against the rolled-back
-binary, restarts, and verifies `is-active`.
+The playbook accepts only a pinned `vMAJOR.MINOR.PATCH` (or unprefixed)
+release with a regular executable binary and refuses the current release.
+It validates the existing config with the target binary **before** changing
+the runtime link, then restarts and verifies `is-active`. Check mode also
+runs this read-only binary validation; it does not change the link or restart.
 
 To make the rollback permanent, also update `xray.version` and
 `xray.linux_*_sha256` in secrets back to the rolled-back version, so

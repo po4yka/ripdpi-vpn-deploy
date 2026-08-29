@@ -11,6 +11,7 @@ driver:
 platforms:
   - name: vpn-awg-debian13
     image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13@sha256:fd0443883979e0879e912231914df2093769d45fcb82af251704b30e2fc5c42e
+    platform: linux/amd64
     pre_build_image: true
     privileged: true
     command: /lib/systemd/systemd
@@ -34,14 +35,15 @@ provisioner:
 verifier:
   name: ansible
 
-# The fixture renders real configuration and target templates without
-# bringing up AWG or requiring TUN. Runtime lifecycle acceptance stays a
-# separate real-node check; the config assertions must still execute here.
+# The real role clones/builds local synthetic inputs and starts its own unit
+# with a no-TUN tool. Receipts/config/service ownership and idempotence are
+# tested; upstream source builds and working tunnels remain separate evidence.
 scenario:
   test_sequence:
     - dependency
     - syntax
     - create
+    - prepare
     - converge
     - idempotence
     - verify

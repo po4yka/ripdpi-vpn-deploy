@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import re
 
+from jinja2 import Environment, StrictUndefined
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -26,6 +28,43 @@ _spec.loader.exec_module(guard)
 
 def test_live_repo_is_clean():
     assert guard.check(REPO_ROOT) == []
+
+
+def test_ordinary_playbook_toggle_defaults_match_declared_surface():
+    defaults = yaml.safe_load((REPO_ROOT / "ansible/group_vars/all.yml").read_text())["vpn"]
+    pattern = re.compile(r"vpn\.(enable_\w+)\s*\|\s*default\(\s*(true|false)\s*\)")
+    environment = Environment(undefined=StrictUndefined, autoescape=True)
+
+    def scalars(value):
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, dict):
+            for item in value.values():
+                yield from scalars(item)
+        elif isinstance(value, list):
+            for item in value:
+                yield from scalars(item)
+
+    failures = []
+    # The backup-configure assertion is a fail-closed prerequisite, not a
+    # transport selector. Its missing-input rejection must not be relaxed.
+    for name in ("site", "verify", "smoke-test", "os-maintenance", "rotate-credentials"):
+        source = yaml.safe_load((REPO_ROOT / f"ansible/playbooks/{name}.yml").read_text())
+        matches = [match for text in scalars(source) for match in pattern.finditer(text)]
+        assert matches, name
+        for match in matches:
+            key = match[1]
+            if key not in defaults:
+                failures.append(f"{name}: undeclared {key}")
+                continue
+            evaluate = environment.compile_expression(match[0])
+            # A cohort's vpn mapping replaces all.yml; an omitted key reaches
+            # the source default, while explicitly true/false must be preserved.
+            if evaluate(vpn={}) is not defaults[key]:
+                failures.append(f"{name}: {match[0]} disagrees with {defaults[key]}")
+            for explicit in (False, True):
+                assert evaluate(vpn={key: explicit}) is explicit, (name, key, explicit)
+    assert failures == []
 
 
 def test_live_manifest_covers_every_role():
@@ -112,6 +151,7 @@ MANIFEST = {
         "split-hop-egress": "research",
         "hysteria-realm": "research",
         "cascade-ingress": "exception",
+        "cascade-egress": "exception",
     },
     "toggle_role_map": {
         "enable_xray_reality": "xray",
@@ -119,6 +159,7 @@ MANIFEST = {
         "enable_split_hop_egress": "split-hop-egress",
         "enable_hysteria_realm": "hysteria-realm",
         "enable_cascade_ingress": "cascade-ingress",
+        "enable_cascade_egress": "cascade-egress",
     },
     "family_profiles": [
         "group_vars/all.yml",
@@ -135,6 +176,7 @@ ALL_OFF = {
     "enable_split_hop_egress": False,
     "enable_hysteria_realm": False,
     "enable_cascade_ingress": False,
+    "enable_cascade_egress": False,
 }
 
 
@@ -258,17 +300,20 @@ def test_bare_exception_group_allowlist_is_forbidden(tmp_path):
 
 
 def test_exception_role_and_allowlist_are_forbidden_in_family_profile(tmp_path):
-    root = _make_repo(tmp_path, extra={
-        "group_vars/vpn-fullstack.yml": {
-            "vpn": {**ALL_OFF, "enable_cascade_ingress": True},
-            "allow_exception_roles": ["cascade-ingress"],
-        },
-    })
-
-    findings = guard.check(root)
-
-    assert any("EXCEPTION role 'cascade-ingress'" in finding and "family profile" in finding for finding in findings)
-    assert any("must not set allow_exception_roles" in finding for finding in findings)
+    for role in ("cascade-ingress", "cascade-egress"):
+        toggle = "enable_" + role.replace("-", "_")
+        for enabled, authorized in ((True, False), (False, True), (True, True)):
+            profile = {"vpn": {**ALL_OFF, toggle: enabled}}
+            if authorized:
+                profile["allow_exception_roles"] = [role]
+            root = _make_repo(tmp_path / f"{role}-{enabled}-{authorized}", extra={
+                "group_vars/vpn-fullstack.yml": profile,
+            })
+            findings = guard.check(root)
+            if enabled:
+                assert any(f"EXCEPTION role '{role}'" in finding and "family profile" in finding for finding in findings)
+            if authorized:
+                assert any("must not set allow_exception_roles" in finding for finding in findings)
 
 
 def test_allowlist_does_not_cover_a_second_research_role(tmp_path):

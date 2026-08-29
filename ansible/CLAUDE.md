@@ -19,7 +19,7 @@ default. `group_vars` only overrides. Reading a role's defaults file tells
 you everything it exposes.
 
 **Live source parity is explicit** — `node_manifest` records the clean source
-revision and deployable digest. `source-drift.yml` compares the live digest
+revision and deployable digest. `source-drift.yml` compares both live values
 with the current checkout; `deploy` and `verify` run that gate automatically.
 
 **Injected fact aliases are disabled** — use `ansible_facts[...]` for gathered
@@ -82,3 +82,5 @@ exercises `site.yml` end-to-end.
 - **Handler queues fire at end-of-play** — a service restart triggered in
   role A doesn't happen until role B is done. Use `meta: flush_handlers` if
   later roles depend on the restart having happened.
+
+- **Smoke cleanup requires ownership** — atomically claim the private workdir, use unique per-run unit names, and stop only clients whose start returned success; failed claims or starts never authorize cleaning another invocation, and an unconfirmed start/stop retains the private claim to block unsafe retries.

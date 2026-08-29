@@ -25,11 +25,39 @@ make clean
 
 If `dry-run` shows changes you didn't expect, **stop**. Investigate.
 `deploy` refuses a dirty checkout so the live manifest can name an immutable
-source revision. Documentation-only commits do not force convergence: the
-parity gate compares a digest of deployable paths rather than the whole tree.
+source revision. The parity gate compares both that exact revision and the
+deployable-path digest. Even a documentation-only commit requires a reviewed
+deploy before live source parity can pass; do not rewrite manifests by hand.
 Don't push. The most common cause is a forgotten edit on a different
 branch, or a role that's accidentally redownloading the binary because
 the version pin moved.
+
+Both commands freeze the canonical `ansible/inventory/generated.ini` once.
+An empty `ANSIBLE_LIMIT` selects every `vpn` host; exact host aliases,
+canonical cohort groups such as `vpn-p1-web`, and comma unions are accepted.
+Globs, intersections, exclusions, external pattern files and unknown names
+are rejected. `HOSTS`, `ENV` and `PROVIDER` do not independently narrow this
+inventory selection. Approved `ANSIBLE_EXTRA_VARS_FILE` inputs still require
+an explicit limit and apply before readiness.
+
+All selected keys, known-host pins and private inputs are checked before any
+SSH operation. The default pin file is `~/.ssh/known_hosts`; override it with
+`INSPECT_KNOWN_HOSTS`. Deployment uses strict host-key checking, no ambient SSH
+config, proxies, agent or multiplexed sessions. It does not enroll keys or
+migrate SSH. The separate Terraform `make wait` command retains its first-boot
+policy. Bootstrap errors and session/deadline failures stop the entire selected
+deployment without printing raw cloud-init output.
+
+Readiness, convergence and the automatic source-drift check use the same
+private inventory and transport snapshots. Canonical all/vpn/cohort variables
+are loaded per host before runtime metadata, secrets and approved overrides;
+ambient host/group variable files, callbacks and plugin paths are excluded.
+Ansible also discovers plugins beside playbooks and roles independently of
+configured paths: custom discovery directories there, symlinked role paths,
+and `ansible/playbooks/roles` shadow roles are unsupported and rejected before
+SSH. Keep extensions in a separately reviewed source change rather than these
+ambient locations. `ANSIBLE_DEBUG` is rejected; normal Ansible check/diff output
+remains visible. A dirty or changed source after waiting prevents deployment.
 
 `infra-v1.0.0` also has a known check-mode-only failure in firewall SSH-port
 discovery. Do not weaken or skip the gate. Confirm the failure matches the
@@ -76,13 +104,13 @@ through a secure channel. Wipe it from your terminal scrollback.
 
 ```bash
 # Just push a config-only change to xray
-ansible-playbook ansible/playbooks/site.yml --tags xray
+make deploy ANSIBLE_TAGS=xray
 
 # Just refresh nftables
-ansible-playbook ansible/playbooks/site.yml --tags firewall
+make deploy ANSIBLE_TAGS=firewall
 
 # Just re-render fallback transports
-ansible-playbook ansible/playbooks/site.yml --tags transport
+make deploy ANSIBLE_TAGS=transport
 ```
 
 The `tags:` field on each role in `playbooks/site.yml` enumerates what's

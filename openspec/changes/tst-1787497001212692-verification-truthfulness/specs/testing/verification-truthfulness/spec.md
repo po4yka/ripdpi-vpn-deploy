@@ -6,7 +6,7 @@ Verification tooling tells the truth: it passes for every supported host class e
 
 ### Requirement: REQ-VERIFY-HOSTCLASS-GATING — Transport verification MUST honor host class
 
-Transport assertions in verify and smoke tooling MUST skip on hosts where site.yml deliberately skips deployment (subscription-only), using the same contract as sibling tasks.
+Transport assertions in verify and smoke tooling MUST skip on hosts where site.yml deliberately skips deployment (subscription-only), using the same contract as sibling tasks. This includes transport configuration validation, service/interface state, listeners and P1 DNS/address prerequisites. Shared bootstrap, manifest, firewall, SSH and sysctl verification MUST remain active on subscription-only hosts. Smoke gating MUST cover transport credential lookup, temporary resource creation and cleanup as well as probes, so a subscription-only host needs no transport credentials and invokes no smoke clients.
 
 #### Scenario: verify on subscription-only host
 
@@ -45,6 +45,18 @@ Full-stack molecule sequences MUST include an idempotence phase; per-role scenar
 - **WHEN** the full-stack scenario converges twice
 - **THEN** the second run reports zero changes or the scenario fails naming the offending task
 
+#### Scenario: published full-stack prerequisites
+
+- **WHEN** the published scenario is invoked from its documented `ansible/` working directory
+- **THEN** dependency paths resolve to the current checkout's pinned requirements and its explicit provider listener contract matches the runtime manifest rendered from the scenario inputs
+- **AND** a missing contract or mismatched declared port fails validation before convergence; local input checks alone do not establish second-converge idempotence
+
+#### Scenario: repeat converge of the Xray role scenario
+
+- **WHEN** the default Xray Molecule scenario converges twice using its synthetic release binary
+- **THEN** fixture setup preserves the runtime role's symlinks and the second converge reports zero changes
+- **AND** the explicit idempotence phase executes the real converge without suppressing changed results
+
 ### Requirement: REQ-SCENARIO-RUNS-ROLE — Molecule scenarios MUST exercise role task code
 
 Scenarios validating a role MUST execute the role itself (against stubbed externals) rather than re-implementing its render logic in the converge play.
@@ -53,6 +65,13 @@ Scenarios validating a role MUST execute the role itself (against stubbed extern
 
 - **WHEN** a change breaks amneziawg tasks/main.yml behavior
 - **THEN** the amneziawg molecule scenario fails instead of passing on hand-rendered templates
+
+#### Scenario: synthetic AWG build inputs exercise real role ownership
+
+- **WHEN** the scenario supplies explicitly synthetic local Git sources and no-TUN tools
+- **THEN** the unchanged role clones and verifies the fixture commits, builds and installs the tools, writes its own receipts, renders configuration and converges its systemd units
+- **AND** preparation does not preinstall those outputs, external Git fallback is denied, and the second converge reports zero changes
+- **AND** the evidence is limited to role orchestration, not an upstream build or working AWG tunnel
 
 ### Requirement: REQ-TESTING-DOCS-REALITY — Test documentation MUST match observed sequences
 

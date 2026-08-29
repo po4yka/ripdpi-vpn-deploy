@@ -43,6 +43,13 @@ hashes committed Git blob IDs and paths under `ansible/`, `scripts/`, and
 `requirements.yml`. Do not hash `git archive` bytes: commit timestamps would
 turn documentation-only commits into false live drift.
 
+**Readiness and convergence share one inventory snapshot** — `deploy-controller.py`
+resolves empty/exact/cohort/comma selections and calls `select_hosts` once.
+Canonical variables load per host with real Ansible; frozen strict transport
+records govern wait, site and source-drift without rereading original inputs.
+`bootstrap_readiness.py` is shared with the Terraform first-boot adapter, whose
+trust policy stays separate. Do not duplicate its deadlines or cancellation loop.
+
 **Bundle topology is host-order independent** — `emit-bundle.sh` aggregates
 split-hop ingress and realm metadata across every `HOSTS` entry. Never infer
 client-facing topology from the first host; conflicting non-null realm IDs
@@ -103,6 +110,11 @@ through Make and argv; no general site/backup task runs during installation.
 
 ## Pitfalls
 
+- **Plugin path environment variables are not a complete isolation boundary** —
+  Ansible also auto-discovers plugin subdirectories at playbook and role bases.
+  Reject unsupported discovery/shadow-role paths before SSH; private cwd and
+  disabled host_group_vars alone do not prevent a legacy vars plugin executing.
+
 - **SSH connection timeout is not a session deadline** — bootstrap waits bound
   each SSH process group locally and each remote status query with GNU timeout.
   Remote deadline retries are distinct from an unresponsive SSH session; cloud-init
@@ -115,7 +127,10 @@ through Make and argv; no general site/backup task runs during installation.
   name, client name, or path uses `"$1"` quoting and `printf '%q'` when
   forwarding to nested shells. Never `eval`.
 - **`mktemp` differs on macOS vs Linux** — operator workstations are both.
-  Use `mktemp -t prefix.XXXXXX` (works on both) rather than the bare form.
+  When a controller owns cleanup, use an explicit template under its `TMPDIR`:
+  macOS `mktemp -t` prefers the Darwin user temp directory over `TMPDIR`.
+  Private precheck copies must remain inside controller cleanup even when a
+  timeout or cancellation kills a child before its shell EXIT trap can run.
 - **`age` keyring location** — `~/.config/sops/age/keys.txt` on Linux,
   `~/Library/Application Support/sops/age/keys.txt` on macOS. The wrapper
   scripts pick correctly via `${SOPS_AGE_KEY_FILE:-…}`; don't hard-code.

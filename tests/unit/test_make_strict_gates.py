@@ -299,8 +299,6 @@ def test_live_ansible_targets_require_a_nonempty_generated_inventory():
     assert 'test -s "$(ANSIBLE_DIR)/inventory/generated.ini"' in guard
     assert 'document.get("vpn", {}).get("hosts", [])' in guard
     for target in (
-        "dry-run",
-        "deploy",
         "verify",
         "security-verify",
         "xray-diagnostics",
@@ -309,6 +307,8 @@ def test_live_ansible_targets_require_a_nonempty_generated_inventory():
             line for line in makefile.splitlines() if line.startswith(f"{target}:")
         )
         assert "require-inventory" in declaration
+    for target in ("dry-run", "deploy"):
+        assert f"{target}:\n\t@python3 scripts/deploy-controller.py {target}" in makefile
 
 
 def test_xray_diagnostics_rejects_unsafe_extra_vars_files():
@@ -323,8 +323,6 @@ def test_xray_diagnostics_rejects_unsafe_extra_vars_files():
     assert "stat.S_IMODE(s.st_mode) == 0o600" in target
 
     for live_target in (
-        "dry-run",
-        "deploy",
         "verify",
         "security-verify",
         "xray-diagnostics",
@@ -333,6 +331,9 @@ def test_xray_diagnostics_rejects_unsafe_extra_vars_files():
             line for line in makefile.splitlines() if line.startswith(f"{live_target}:")
         )
         assert "validate-ansible-extra-vars" in declaration
+    controller = (root / "scripts/deploy-controller.py").read_text()
+    assert '"scripts/validate-ansible-extra-vars.py"' in controller
+    assert "exact_mode=0o600" in controller
 
 
 def test_live_ansible_targets_forward_limit_and_extra_vars():
@@ -340,8 +341,6 @@ def test_live_ansible_targets_forward_limit_and_extra_vars():
     makefile = (root / "Makefile").read_text()
 
     for target_name, following in (
-        ("dry-run", "deploy:"),
-        ("deploy", "deploy-canary:"),
         ("verify", "security-verify:"),
         ("security-verify", "security-audit:"),
         ("xray-diagnostics", "awg-evidence-provision:"),
@@ -349,6 +348,8 @@ def test_live_ansible_targets_forward_limit_and_extra_vars():
         target = makefile.split(f"{target_name}:", 1)[1].split(f"\n\n{following}", 1)[0]
         assert "ANSIBLE_LIMIT" in target
         assert "ANSIBLE_EXTRA_VARS_FILE" in target
+    assert "deploy dry-run: export DEPLOY_LIMIT = $(ANSIBLE_LIMIT)" in makefile
+    assert "deploy dry-run: export DEPLOY_EXTRA_VARS_FILE = $(ANSIBLE_EXTRA_VARS_FILE)" in makefile
 
 
 def test_partial_verify_cannot_create_a_fleet_known_good_tag():

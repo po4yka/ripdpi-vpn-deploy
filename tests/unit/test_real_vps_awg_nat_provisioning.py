@@ -1835,18 +1835,17 @@ def test_makefile_exposes_sops_gated_awg_evidence_entrypoint() -> None:
 
 def test_makefile_deploy_supports_safe_limit_and_extra_vars() -> None:
     makefile = (ROOT / "Makefile").read_text()
-    target = makefile.split(
-        "deploy: require-clean-source require-inventory "
-        "validate-ansible-extra-vars pre-deploy-check",
-        1,
-    )[1].split("\n\n", 1)[0]
+    target = makefile.split("\ndeploy:\n", 1)[1].split("\n\n", 1)[0]
+    controller = (ROOT / "scripts/deploy-controller.py").read_text()
     extra_vars_preflight = makefile.split("validate-ansible-extra-vars:", 1)[1].split(
         "\n\n", 1
     )[0]
 
-    assert "VPN_SECRETS_FILE=$(SECRETS_FILE)" in target
-    assert '--limit "$(ANSIBLE_LIMIT)"' in target
-    assert '--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)"' in target
+    assert "scripts/deploy-controller.py deploy" in target
+    assert "deploy dry-run: export DEPLOY_LIMIT = $(ANSIBLE_LIMIT)" in makefile
+    assert "deploy dry-run: export DEPLOY_EXTRA_VARS_FILE = $(ANSIBLE_EXTRA_VARS_FILE)" in makefile
+    assert 'environment["VPN_SECRETS_FILE"] = str(secrets)' in controller
+    assert '"--extra-vars", "@" + str(overrides)' in controller
     assert "stat.S_IMODE(s.st_mode) == 0o600" in extra_vars_preflight
     assert "not os.path.islink(p)" in extra_vars_preflight
     assert "ANSIBLE_EXTRA_VARS_FILE requires ANSIBLE_LIMIT" in extra_vars_preflight

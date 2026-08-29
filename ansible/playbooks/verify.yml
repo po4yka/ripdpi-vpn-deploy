@@ -109,7 +109,35 @@
           ss -lnt | awk '{print $4}' | grep -q ':{{ xray_port | default(443) }}$'
         executable: /bin/bash
       changed_when: false
-      when: vpn.enable_xray_reality | default(true)
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_xray_reality | default(true)
+
+    - name: Xray fallback TCP listener active
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          ss -lnt | awk '{print $4}' | grep -q ':{{ xray_fallback_port | default(2053) }}$'
+        executable: /bin/bash
+      changed_when: false
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_xray_reality | default(true)
+        - (xray.cohorts | default([])) | length == 0
+        - xray_fallback_port | default(0) | int > 0
+        - xray_fallback_port | default(0) | int != xray_port | default(443) | int
+
+    - name: nginx-xhttp fallback TCP listener active
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          ss -lnt | awk '{print $4}' | grep -q ':{{ nginx_xhttp_fallback_port | default(2083) }}$'
+        executable: /bin/bash
+      changed_when: false
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_nginx_xhttp | default(true)
+        - nginx_xhttp.fallback_enabled | default(false)
 
     - name: Run authenticated watchdog REALITY round trips
       ansible.builtin.shell:
@@ -136,13 +164,17 @@
           ss -lnt | awk '{print $4}' | grep -q ':{{ nginx_xhttp_public_port | default(8443) }}$'
         executable: /bin/bash
       changed_when: false
-      when: vpn.enable_nginx_xhttp | default(true)
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_nginx_xhttp | default(true)
 
     - name: nginx -t
       ansible.builtin.command:
         cmd: nginx -t
       changed_when: false
-      when: vpn.enable_nginx_xhttp | default(true)
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_nginx_xhttp | default(true)
 
     - name: P1 public hostname resolves to its service address
       ansible.builtin.command:
@@ -160,7 +192,9 @@
           )
         )
       no_log: true
-      when: vpn.enable_nginx_xhttp | default(true)
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_nginx_xhttp | default(true)
 
     - name: P1 public IPv6 service address is available
       ansible.builtin.assert:
@@ -168,7 +202,9 @@
           - server_ipv6 is defined
           - server_ipv6 | length > 0
         fail_msg: P1 requires a provider-assigned public IPv6 address.
-      when: vpn.enable_nginx_xhttp | default(true)
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_nginx_xhttp | default(true)
 
     - name: P1 public hostname exposes its IPv6 service address
       ansible.builtin.command:
@@ -191,7 +227,9 @@
         server_ipv6 is not defined or
         nginx_xhttp_verify_ipv6_resolution.rc != 0
       no_log: true
-      when: vpn.enable_nginx_xhttp | default(true)
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_nginx_xhttp | default(true)
 
     - name: Hysteria service active
       ansible.builtin.command:
@@ -199,13 +237,17 @@
       register: hy_status
       changed_when: false
       failed_when: hy_status.stdout != "active"
-      when: vpn.enable_hysteria | default(false)
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_hysteria | default(true)
 
     - name: Snell configuration is valid
       ansible.builtin.command:
         cmd: /usr/local/bin/sing-box-snell check -c /etc/snell/config.json
       changed_when: false
-      when: vpn.enable_snell | default(false)
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_snell | default(false)
 
     - name: Snell service active
       ansible.builtin.command:
@@ -213,7 +255,9 @@
       register: snell_status
       changed_when: false
       failed_when: snell_status.stdout != "active"
-      when: vpn.enable_snell | default(false)
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_snell | default(false)
 
     - name: Snell TCP listeners active
       ansible.builtin.shell:
@@ -224,22 +268,28 @@
       changed_when: false
       loop: "{{ snell.variants | default([]) }}"
       loop_control: {label: "{{ item.id }}"}
-      when: vpn.enable_snell | default(false)
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_snell | default(false)
 
-    - name: UDP/443 listening
+    - name: Hysteria UDP listener active
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          ss -lnu | awk '{print $4}' | grep -q ':443$'
+          ss -lnu | awk '{print $4}' | grep -q ':{{ hysteria_port | default(443) }}$'
         executable: /bin/bash
       changed_when: false
-      when: vpn.enable_hysteria | default(false)
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_hysteria | default(true)
 
     - name: AmneziaWG interface up
       ansible.builtin.command:
         cmd: awg show awg0
       changed_when: false
-      when: vpn.enable_amneziawg | default(false)
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_amneziawg | default(true)
 
     - name: SSH password auth disabled
       ansible.builtin.command:

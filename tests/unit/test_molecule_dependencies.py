@@ -1,8 +1,18 @@
-"""Fail-closed checks for Molecule's offline dependency contract."""
+"""Fail-closed checks for Molecule's offline dependencies and scenario inputs."""
 
+import base64
+import importlib.util
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import yaml
+
+from template_render import render_template
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -32,3 +42,145 @@ def test_molecule_driver_collection_is_pinned_before_scenarios_run() -> None:
     }
 
     assert collections["community.docker"] == "5.2.0"
+
+
+def _published_scenario() -> dict:
+    return yaml.safe_load(
+        (REPO_ROOT / "ansible/molecule/full-stack-published/molecule.yml").read_text()
+    )
+
+
+def _published_variables() -> dict:
+    groups = _published_scenario()["provisioner"]["inventory"]["group_vars"]
+    return {
+        **groups["all"], **groups["vpn"],
+        **yaml.safe_load(
+            (REPO_ROOT / "ansible/molecule/full-stack/test-secrets.yaml").read_text()
+        ),
+    }
+
+
+def test_published_requirements_resolve_to_current_checkout_from_documented_cwd() -> None:
+    requirements = _published_scenario()["dependency"]["options"]["requirements-file"]
+    resolved = (REPO_ROOT / "ansible" / requirements).resolve()
+    # Checking only existence can accidentally accept a different checkout's
+    # requirements when this repository is itself inside a worktree directory.
+    assert resolved == (REPO_ROOT / "requirements.yml").resolve()
+    assert resolved.is_file()
+
+
+def test_published_listener_contract_matches_declared_runtime_inputs(tmp_path) -> None:
+    """Exercise the real renderer/validator, not role execution or live ports."""
+    variables = _published_variables()
+    # Do not use merge_render_vars(): its unrelated group_vars/all.yml inputs
+    # can hide missing variables in Molecule's isolated inventory.
+    assert "terraform_public_listeners_b64" in variables
+    encoded_template = tmp_path / "provider-contract.j2"
+    encoded_template.write_text(variables["terraform_public_listeners_b64"])
+    expected = json.loads(base64.b64decode(
+        render_template(encoded_template, variables).strip(), validate=True,
+    ))
+    assert expected
+    template = REPO_ROOT / "ansible/templates/listener-manifest.json.j2"
+    actual = json.loads(render_template(template, variables))
+    spec = importlib.util.spec_from_file_location(
+        "molecule_listener_contract", REPO_ROOT / "scripts/check-listener-contract.py",
+    )
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    assert validator.check({"expected": expected, "actual": actual}) == []
+
+    # A stale contract must not accept a changed scenario listener.
+    variables["nginx_xhttp_public_port"] += 1
+    changed = json.loads(render_template(template, variables))
+    assert validator.check({"expected": expected, "actual": changed})
+
+
+def test_published_enabled_roles_have_public_service_address() -> None:
+    variables = _published_variables()
+    assert variables["vpn"]["enable_nginx_xhttp"] is True
+    assert variables["vpn"]["enable_watchdog"] is True
+    assert variables["vpn_service_address"] == "203.0.113.10"
+
+
+def test_published_static_role_defaults_match_declared_manifest(tmp_path) -> None:
+    """Load actual static defaults, but never execute roles or contact hosts."""
+    executable = shutil.which("ansible-playbook")
+    assert executable, "installed Ansible is required for static role-default proof"
+    source = yaml.safe_load((REPO_ROOT / "ansible/playbooks/site.yml").read_text())[0]
+    manifest_tasks = [task for task in source["pre_tasks"]
+                      if task["name"] == "Build effective public listener manifest"]
+    assert len(manifest_tasks) == 1
+    roles = [{**role, "when": False} for role in source["roles"]]
+    assert roles and all(role["when"] is False for role in roles)
+    playbooks = tmp_path / "ansible/playbooks"
+    playbooks.mkdir(parents=True)
+    templates = playbooks.parent / "templates"
+    templates.mkdir()
+    shutil.copyfile(REPO_ROOT / "ansible/templates/listener-manifest.json.j2",
+                    templates / "listener-manifest.json.j2")
+    groups = _published_scenario()["provisioner"]["inventory"]["group_vars"]
+    inventory = tmp_path / "inventory.yml"
+    inventory.write_text(yaml.safe_dump({"all": {
+        "vars": groups["all"], "children": {"vpn": {
+            "vars": groups["vpn"], "hosts": {"localhost": {
+                "ansible_connection": "local", "ansible_become": False,
+                "ansible_python_interpreter": sys.executable,
+            }},
+        }},
+    }}))
+    play = {
+        "name": "Observe published inputs without role execution",
+        "hosts": "localhost", "gather_facts": False, "become": False,
+        "vars_files": [str(REPO_ROOT / "ansible/molecule/full-stack/test-secrets.yaml")],
+        "pre_tasks": manifest_tasks, "roles": roles,
+        "tasks": [{"name": "Observe static role defaults", "tags": ["published-inputs"],
+                   "ansible.builtin.debug": {"msg": "{{ {'fallback_defined': "
+                       "xray_fallback_port is defined, 'fallback_port': "
+                       "xray_fallback_port | default(0) | int, "
+                       "'manifest': public_listener_manifest} }}"}}],
+    }
+    # The only executable source task is the manifest set_fact. Every static
+    # role has a literal false condition; no fixture handler or notify exists.
+    assert set(play) == {"name", "hosts", "gather_facts", "become", "vars_files",
+                         "pre_tasks", "roles", "tasks"}
+    playbook = playbooks / "inputs.yml"
+    playbook.write_text(yaml.safe_dump([play], sort_keys=False))
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\nfact_caching=memory\ncallback_result_format=json\n")
+    collections = tmp_path / "collections"
+    collections.mkdir()
+    env = {name: os.environ[name] for name in ("PATH", "HOME", "LANG") if name in os.environ}
+    env.update({
+        "ANSIBLE_CONFIG": str(config), "ANSIBLE_HOME": str(tmp_path / "ansible-home"),
+        "ANSIBLE_ROLES_PATH": str(REPO_ROOT / "ansible/roles"),
+        "ANSIBLE_COLLECTIONS_PATH": str(collections),
+        "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
+        "ANSIBLE_NOCOLOR": "1", "ANSIBLE_BECOME": "false",
+        "ANSIBLE_LOAD_CALLBACK_PLUGINS": "false", "ANSIBLE_STDOUT_CALLBACK": "default",
+    })
+    result = subprocess.run(
+        [executable, "-i", str(inventory), str(playbook), "--tags", "published-inputs"],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=30,
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert re.search(r"localhost\s+: ok=2\s+changed=0\s+unreachable=0\s+failed=0", output), output
+    observations = []
+    for match in re.finditer(r"ok: \[localhost\] => (\{)", result.stdout):
+        value, _ = json.JSONDecoder().raw_decode(result.stdout[match.start(1):])
+        if isinstance(value.get("msg"), dict) and "fallback_defined" in value["msg"]:
+            observations.append(value["msg"])
+    assert len(observations) == 1, output
+    variables = _published_variables()
+    observed = observations[0]
+    assert observed["fallback_defined"] is ("xray_fallback_port" in variables)
+    assert observed["fallback_port"] == variables.get("xray_fallback_port", 0)
+    expected = json.loads(render_template(
+        REPO_ROOT / "ansible/templates/listener-manifest.json.j2", variables,
+    ))
+    # The production validator compares enabled listeners. Static defaults may
+    # add disabled records (for example Snell variants) without exposing ports.
+    assert [item for item in observed["manifest"] if item["enabled"]] == [
+        item for item in expected if item["enabled"]
+    ]

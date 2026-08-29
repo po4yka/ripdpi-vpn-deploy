@@ -74,7 +74,7 @@ teardown() {
   assert_output --partial "Path B"
 }
 
-@test "path-b: decrypts secrets before the first site playbook" {
+@test "path-b: lists decrypt before the first tagged deploy" {
   run sh "${SCRIPT}" --dry-run --env prod --provider upcloud --path-b
   assert_success
 
@@ -86,13 +86,8 @@ teardown() {
   [ "$decrypt_line" -lt "$playbook_line" ]
   assert_output --partial 'ANSIBLE_TAGS="baseline,firewall,backup" make deploy'
 
-  run make -n -C "$REPO_ROOT" deploy ENV=prod RUNTIME_DIR=/tmp/restore-test \
-    SECRETS_FILE=/tmp/restore-test/vpn-prod.secrets.yaml \
-    ANSIBLE_TAGS=baseline,firewall,backup
-  assert_success
-  assert_output --partial 'VPN_SECRETS_FILE=/tmp/restore-test/vpn-prod.secrets.yaml'
-  assert_output --partial 'ansible-playbook ansible/playbooks/site.yml'
-  assert_output --partial '--tags "baseline,firewall,backup"'
+  # The actual Make/decrypt/controller sequence is covered by
+  # test_restore_runtime_secrets_reach_the_first_tagged_deploy in pytest.
 }
 
 @test "path-b: STUB_LOG is empty (no destructive stub calls)" {

@@ -13,6 +13,18 @@ When a cell exceeds its timeout the spawned subprocess MUST be terminated rather
 - **WHEN** a cell's make invocation blocks past control.timeout_seconds
 - **THEN** no process from that cell remains running when the next tick starts
 
+#### Scenario: CLI interrupted during a captured invocation
+
+- **WHEN** SIGINT or SIGTERM reaches the CLI directly or its foreground process group while ProbeMatrix or Doctor runs an explicitly group-owned capture
+- **THEN** scoped dispatch cancellation drops the captured work and all nested cell jobs, terminates their owned process groups, and exits with 130 or 143
+- **AND** this cancellation alone does not claim that a partial report was persisted
+
+#### Scenario: Interactive commands keep foreground signal behavior
+
+- **WHEN** Share waits for token stdin or Reconverge waits for confirmation after an inventory capture
+- **THEN** their dispatch does not install ProbeMatrix/Doctor signal listeners or isolate captured process groups
+- **AND** SIGINT/SIGTERM can still terminate them without waiting for further operator input
+
 ### Requirement: REQ-MATRIX-CONTROL-TIMEOUT — Bounded control probe
 
 The per-tick control invocation MUST be bounded by the same timeout budget as cells; expiry records an Unknown control verdict and continues the run.
@@ -21,6 +33,11 @@ The per-tick control invocation MUST be bounded by the same timeout budget as ce
 
 - **WHEN** the control make invocation hangs past its timeout
 - **THEN** the tick proceeds with an Unknown control verdict instead of stalling indefinitely
+
+#### Scenario: Next poll cannot fit the monotonic clock
+
+- **WHEN** a positive CLI/configuration poll interval makes the next scheduled tick unrepresentable
+- **THEN** the bounded session ends with its already observed control/cell results instead of panicking or recording a synthetic Unknown
 
 ### Requirement: REQ-MATRIX-DURABILITY — Interruptible runs preserve evidence
 
@@ -36,6 +53,11 @@ The matrix MUST checkpoint accumulated results at least once per tick, MUST flus
 - **WHEN** --duration 0 is passed
 - **THEN** configuration validation fails before any probe runs
 
+#### Scenario: Unrepresentable duration requested
+
+- **WHEN** duration multiplication or the monotonic deadline would overflow
+- **THEN** validation fails before any probe runs instead of saturating or panicking
+
 ### Requirement: REQ-MATRIX-EVIDENCE-SEMANTICS — Windows reflect filtering only
 
 Impairment windows MUST open only on Blocked or Throttled protocol verdicts; local orchestration failures (Unknown/Error) MUST NOT open or extend windows and remain visible through Indeterminate observations.
@@ -44,3 +66,9 @@ Impairment windows MUST open only on Blocked or Throttled protocol verdicts; loc
 
 - **WHEN** one tick's cell fails locally while every real probe verdict is Ok
 - **THEN** no impairment window is reported for that pair
+
+#### Scenario: Indeterminate evidence between impairment and success
+
+- **WHEN** Blocked/Throttled is followed by Unknown/Error and then Ok
+- **THEN** the earlier window has null recovery, meaning recovery was unobserved rather than impairment continuing through the gap
+- **AND** the unchanged schema-2 summary retains at most one record for that protocol/target pair without asserting a continuous outage duration
