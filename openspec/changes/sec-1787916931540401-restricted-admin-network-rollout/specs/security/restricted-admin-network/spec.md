@@ -24,12 +24,13 @@ Tailnet policy and guest firewall MUST restrict management to explicitly approve
 
 ### Requirement: REQ-ADMIN-MIGRATION — Ownership migration preserves effective SSH policy
 
-The explicit migration MUST stage the complete included configuration, change only confirmed duplicate managed directives in the known 10/20/50 fragments, and preserve effective settings for global and actual connection contexts. It MUST reject unknown values, unsafe paths, unsupported Include/Match layouts or unresolved ownership conflicts before writes. Algorithm hardening MUST be a separate reviewed transaction. The initial planner MUST reject Match blocks, nested or alternate Includes, and any unknown occurrence of an owned directive before activation; it MUST compare the complete global output and explicit direct/Tailnet connection-context outputs with bounded sshd invocations. It MUST preserve all unrelated bytes and snapshot the complete read graph to detect concurrent drift.
+The explicit migration MUST stage the complete included configuration, own the exact ordered `sshd_config` plus known 10/20/50 paths, and preserve effective settings for global and actual connection contexts after every apply prefix and reverse rollback suffix. It MAY normalize only the exact recognized packaged-main `KbdInteractiveAuthentication no` and `X11Forwarding yes` defaults when they are already shadowed by the canonical fragments. It MUST preserve packaged SFTP, metadata and unrelated bytes. It MUST reject unknown values, unsafe paths, unsupported Include/Match layouts or unresolved ownership conflicts before writes. Algorithm hardening MUST be a separate reviewed transaction. The initial planner MUST reject Match blocks, nested or alternate Includes, and any unknown, duplicate or unshadowed occurrence of an owned directive before activation; it MUST compare the complete global output and explicit direct/Tailnet connection-context outputs with bounded sshd invocations. It MUST snapshot the complete read graph to detect concurrent drift.
 
 #### Scenario: Migrate the known legacy fragments
 
-- **WHEN** legacy matching directives occur in 10, 20 and 50
+- **WHEN** recognized packaged-main defaults and legacy matching directives occur in main, 10, 20 and 50
 - **THEN** the candidate has one owner per managed scalar directive and identical effective authentication, user, port, algorithms, key paths and forwarding policy.
+- **AND** every ordered publication boundary preserves that policy while packaged SFTP, unrelated bytes and metadata remain unchanged.
 
 #### Scenario: Unexpected configuration
 
@@ -55,6 +56,20 @@ Every SSH or guest-firewall activation MUST save and validate the original bytes
 - **WHEN** a periodic worker encounters the transaction lock during activation readiness
 - **THEN** its deferred exit 75 is not accepted as execution proof; activation obtains one fresh completed successful worker execution outside the lock and revalidates that proof, the prepared state, lease, snapshot and recovery capability under the lock before writing.
 - **AND** only an unambiguous later contention with that same lock interval may be distinguished from a real failure; stale or absent proof, unknown execution ordering, expired state and capability drift refuse activation without writes.
+
+#### Scenario: Ordinary baseline follows ownership migration
+
+- **WHEN** baseline installs its desired SSH configuration on a valid single-owner graph
+- **THEN** it uses an explicit separate transaction for main and 20, preserves the bootstrap authentication owners and SFTP, and validates candidate policy before publishing.
+- **AND** interruption restores the exact original bytes, metadata and fragment membership; a newly created 20-file is removed only when it still matches the verified candidate.
+
+#### Scenario: Recovery generation changes with a terminal receipt
+
+- **WHEN** a recovery engine is upgraded or downgraded with an existing terminal transaction
+- **THEN** both engines must parse the unchanged receipt before publication; an engine that cannot read a baseline intent refuses before changing current, journal or state.
+- **AND** the current engine reads only an exact canonical three-fragment schema-one ownership receipt in `committed` or `rolled_back` state for status and recovery no-op; `prepare` is the sole transition, archives those exact bytes and then creates a distinct schema-two transaction without rewriting the historical receipt.
+- **AND** `apply`, `confirm` and `rollback`, plus every nonterminal, unknown or noncanonical schema-one state, refuse.
+- **AND** the frozen schema-one engine refuses terminal schema-two ownership or baseline receipts, including `rolled_back`, before pointer, journal or activation changes.
 
 ### Requirement: REQ-ADMIN-PROMOTION — Promotion uses independent proof and serial scope
 

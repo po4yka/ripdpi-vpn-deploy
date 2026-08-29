@@ -22,7 +22,7 @@ Preserve working OpenSSH access while removing confirmed legacy ownership overla
 
 ## Acceptance criteria
 
-- Known legacy 10/20/50 fragments migrate through a dedicated entrypoint with full effective SSH policy equality and no algorithm, key, port or authentication change.
+- Recognized packaged-main defaults and known legacy 10/20/50 fragments migrate through a dedicated four-file entrypoint with full effective SSH policy equality and no algorithm, key, port or authentication change.
 - Persistent guest recovery handles interruption, timeout and reboot; fresh strict direct and Tailnet SSH proof is required before confirmation. Unknown or corrupted state is retained for explicit recovery, never silently overwritten.
 - Restricted Tailnet administration preserves public emergency access, DNS, routing, unrelated ACL access and VPN traffic. Cloud firewall changes have separately tested external rollback.
 - Local failure tests, pinned-distro validation and exact-source hosted CI pass. Real isolated staging rehearsal and serial fleet acceptance remain required; fixtures and source CI are not live proof.
@@ -33,6 +33,8 @@ Preserve working OpenSSH access while removing confirmed legacy ownership overla
 - The coordinator owns inventory guards, the five existing site pre-task `always` tags, and the backup configuration entrypoint. Do not edit those lanes; coordinate shared Makefile edits before publication.
 - Reuse the separate single-owner SSH policy task without importing algorithm changes or unrelated branch history. That task remains responsible for algorithm pins and its own acceptance.
 - The readiness correction delegates only `sshd_migrate.py`, `sshd_transaction.py` and their two existing unit-test files to the implementation worker. Primary retains planning, task state, test-count documentation and integration; the independent reviewer remains read-only. Bundle trust-root, units, controllers and other teams' files are excluded.
+- The separate baseline-convergence worktree assigns only `sshd_ownership.py` and its existing test file to the planner worker. Primary owns core/adapter integration, actual parser upgrade tests, baseline/bootstrap/controller integration and shared-file coordination. PR118 remains frozen; no node actions or parallel fixed-port test runs belong to this source slice.
+- The transaction worker owned the schema-two core/adapter and historical-reader tests; the planner worker owned only `sshd_ownership.py` and its existing test file. Primary retains documentation, integration and all live acceptance ownership.
 
 ## Execution boundaries
 

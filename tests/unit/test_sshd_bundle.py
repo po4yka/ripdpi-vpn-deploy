@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import copy
 from contextlib import contextmanager
 import importlib.util
 import json
@@ -59,9 +60,11 @@ def setup(module, tmp_path):
     return module.Bundle(root, state, units, runtime), runtime
 
 
-def stage(bundle, revision='one'):
+def stage(bundle, revision='one', *, transaction_source=None):
     contents = {name: (FILES / name).read_bytes() for name in
                 ('sshd_migrate.py', 'sshd_transaction.py', 'sshd_ownership.py')}
+    if transaction_source is not None:
+        contents['sshd_transaction.py'] = transaction_source
     contents['sshd_migrate.py'] += f'\n# fixture revision {revision}\n'.encode()
     contents.update({'units/' + name: (TEMPLATES / name).read_bytes() for name in UNITS})
     manifest = {'schema_version': 1, 'files': {name: hashlib.sha256(data).hexdigest() for name, data in contents.items()}}
@@ -396,6 +399,164 @@ def test_actual_generation_state_parser_refuses_corruption_without_activation(mo
         bundle.publish(second)
     assert len(calls) == 7
     assert os.readlink(bundle.root / 'current') == 'generations/' + first
+
+
+# Exercise real, distinct state parsers without requiring Git history in a
+# shallow checkout. This immutable fixture is the exact ownership-only engine
+# from 5f78b5e0bcddcb49099de3647b04fb11cea9a1ff, not a compatibility runtime.
+from test_sshd_transaction import engine, fixture, baseline_fixture, Runtime as TransactionRuntime, prepare_baseline
+
+
+def ownership_engine_source():
+    source = (ROOT / 'tests/fixtures/sshd-ownership-engine-v1.py.txt').read_bytes()
+    assert hashlib.sha256(source).hexdigest() == 'de81ff15006992bc7fe5eba96826925ba70d75d6bc435c8533ce34e0808b6d84'
+    return source
+
+
+def ownership_v1_plan(module, current):
+    plan = copy.deepcopy(current)
+    plan['schema_version'] = 1
+    plan['files'].pop('sshd_config')
+    plan['snapshot_digest'] = module._digest({key: value for key, value in plan.items()
+                                               if key != 'snapshot_digest'})
+    return plan
+
+
+def actual_parser_runtime(module, bundle, monkeypatch):
+    monkeypatch.setattr(module, 'STATE', bundle.state)
+    runtime = module.Runtime()
+    commands = []
+    monkeypatch.setattr(runtime, 'command', lambda args: commands.append(args))
+    bundle.runtime = runtime
+    return runtime, commands
+
+
+@pytest.mark.parametrize('terminal', ['committed', 'rolled_back'])
+def test_baseline_engine_upgrade_reads_exact_terminal_ownership_state(module, setup, fixture, monkeypatch, terminal):
+    bundle, _ = setup
+    runtime, _ = actual_parser_runtime(module, bundle, monkeypatch)
+    first = stage(bundle, 'ownership-only', transaction_source=ownership_engine_source())
+    bundle.publish(first)
+    old_path = bundle.root / 'generations' / first / 'sshd_transaction.py'
+    spec = importlib.util.spec_from_file_location('old_ownership_engine', old_path)
+    old = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(old)
+
+    class OldRuntime(TransactionRuntime):
+        def build_plan(self, config, contexts):
+            return self.plan
+
+        def assert_effective(self, plan, config):
+            self.calls.append('effective')
+
+    tx = old.Transaction(fixture[0], bundle.state, OldRuntime(ownership_v1_plan(old, fixture[2])))
+    receipt = tx.prepare(contexts=[], timeout=120)
+    tx.apply(receipt['generation'], receipt['nonce'])
+    if terminal == 'committed':
+        expected = tx.confirm(receipt['generation'], receipt['nonce'], receipt['snapshot_digest'])
+    else:
+        expected = tx.rollback(receipt['generation'], receipt['nonce'])
+    before = (bundle.state / 'transaction.json').read_bytes()
+    assert runtime.status(old_path.parent) == expected
+    second = stage(bundle, 'baseline-capable')
+    assert bundle.publish(second)['status'] == 'installed'
+    assert runtime.status(bundle.root / 'generations' / second) == expected
+    assert (bundle.state / 'transaction.json').read_bytes() == before
+    assert os.readlink(bundle.root / 'current') == 'generations/' + second
+
+
+def test_terminal_v1_upgrade_interruption_keeps_receipt_and_same_generation_retry_finishes(
+        module, setup, fixture, monkeypatch):
+    bundle, _ = setup
+    runtime, _ = actual_parser_runtime(module, bundle, monkeypatch)
+    first = stage(bundle, 'ownership-only', transaction_source=ownership_engine_source())
+    bundle.publish(first)
+    old_path = bundle.root / 'generations' / first / 'sshd_transaction.py'
+    spec = importlib.util.spec_from_file_location('interrupted_old_ownership_engine', old_path)
+    old = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(old)
+
+    class OldRuntime(TransactionRuntime):
+        def build_plan(self, config, contexts):
+            return self.plan
+
+        def assert_effective(self, plan, config):
+            self.calls.append('effective')
+
+    tx = old.Transaction(fixture[0], bundle.state, OldRuntime(ownership_v1_plan(old, fixture[2])))
+    receipt = tx.prepare(contexts=[], timeout=120)
+    tx.apply(receipt['generation'], receipt['nonce'])
+    tx.confirm(receipt['generation'], receipt['nonce'], receipt['snapshot_digest'])
+    before = (bundle.state / 'transaction.json').read_bytes()
+    second = stage(bundle, 'schema-two')
+    activate = runtime.activate
+
+    def interrupted(directory):
+        activate(directory)
+        raise SystemExit('injected parser upgrade interruption')
+
+    monkeypatch.setattr(runtime, 'activate', interrupted)
+    with pytest.raises(SystemExit):
+        bundle.publish(second)
+    assert (bundle.state / 'transaction.json').read_bytes() == before
+    assert (bundle.root / 'install.json').exists()
+    monkeypatch.setattr(runtime, 'activate', activate)
+    assert bundle.publish(second)['status'] == 'installed'
+    assert (bundle.state / 'transaction.json').read_bytes() == before
+    assert not (bundle.root / 'install.json').exists()
+
+
+@pytest.mark.parametrize('terminal', ['committed', 'rolled_back'])
+def test_ownership_only_downgrade_refuses_terminal_baseline_before_pointer_or_journal(module, setup, engine, baseline_fixture, monkeypatch, terminal):
+    bundle, _ = setup
+    runtime, commands = actual_parser_runtime(module, bundle, monkeypatch)
+    first = stage(bundle, 'baseline-capable')
+    bundle.publish(first)
+    case, transaction_runtime, _ = baseline_fixture()
+    tx = engine.Transaction(case[0], bundle.state, transaction_runtime)
+    receipt = prepare_baseline(tx)
+    tx.apply(receipt['generation'], receipt['nonce'])
+    if terminal == 'committed':
+        tx.confirm(receipt['generation'], receipt['nonce'], receipt['snapshot_digest'])
+    else:
+        tx.rollback(receipt['generation'], receipt['nonce'])
+    assert runtime.status(bundle.root / 'generations' / first)['status'] == terminal
+    before = (bundle.state / 'transaction.json').read_bytes()
+    activated = len(commands)
+    second = stage(bundle, 'ownership-only', transaction_source=ownership_engine_source())
+    with pytest.raises(module.BundleError, match='state-unreadable'):
+        bundle.publish(second)
+    assert len(commands) == activated
+    assert (bundle.state / 'transaction.json').read_bytes() == before
+    assert os.readlink(bundle.root / 'current') == 'generations/' + first
+    assert not (bundle.root / 'install.json').exists()
+    assert (bundle.root / 'staging' / second).is_dir()
+
+
+@pytest.mark.parametrize('terminal', ['committed', 'rolled_back'])
+def test_v1_engine_downgrade_refuses_terminal_v2_ownership_before_publication(
+        module, setup, engine, fixture, monkeypatch, terminal):
+    bundle, _ = setup
+    runtime, commands = actual_parser_runtime(module, bundle, monkeypatch)
+    first = stage(bundle, 'schema-two')
+    bundle.publish(first)
+    tx = engine.Transaction(fixture[0], bundle.state, TransactionRuntime(fixture[2]))
+    receipt = tx.prepare(intent='sshd-ownership', contexts=[], timeout=120)
+    tx.apply(receipt['generation'], receipt['nonce'])
+    if terminal == 'committed':
+        tx.confirm(receipt['generation'], receipt['nonce'], receipt['snapshot_digest'])
+    else:
+        tx.rollback(receipt['generation'], receipt['nonce'])
+    before = (bundle.state / 'transaction.json').read_bytes()
+    activated = len(commands)
+    second = stage(bundle, 'ownership-v1', transaction_source=ownership_engine_source())
+
+    with pytest.raises(module.BundleError, match='state-unreadable'):
+        bundle.publish(second)
+    assert len(commands) == activated
+    assert (bundle.state / 'transaction.json').read_bytes() == before
+    assert os.readlink(bundle.root / 'current') == 'generations/' + first
+    assert not (bundle.root / 'install.json').exists()
 
 
 def test_activation_output_is_bounded_with_real_local_child(module):

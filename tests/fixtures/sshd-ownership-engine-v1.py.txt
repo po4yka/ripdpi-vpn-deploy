@@ -27,10 +27,6 @@ CONFIG_ROOT = Path('/etc/ssh')
 STATE_ROOT = Path('/var/lib/vpn-sshd-transaction')
 OWNED = tuple('sshd_config.d/' + name for name in (
     '10-cloud-init-hardening.conf', '20-ansible-hardening.conf', '50-cloud-init.conf'))
-OWNERSHIP_OWNED = ('sshd_config', *OWNED)
-BASELINE_OWNED = ('sshd_config', OWNED[1])
-BASELINE_FILE_GID = 0
-MAX_HARDENING = 8192
 MAX_FILE = 256 * 1024
 MAX_STATE = 4 * 1024 * 1024
 TERMINAL = {'committed', 'rolled_back'}
@@ -161,8 +157,7 @@ def _context(value):
         raise ValueError
 
 
-def _historical_plan(plan):
-    """Validate only the exact ownership-only plan emitted by schema v1."""
+def _plan(plan):
     try:
         if (set(plan) != {'schema_version', 'operation', 'changed', 'read_set', 'include_inventory', 'files', 'effective', 'snapshot_digest'}
                 or type(plan['schema_version']) is not int or plan['schema_version'] != 1
@@ -177,100 +172,14 @@ def _historical_plan(plan):
                 raise ValueError
             for value in pair.values():
                 _record(value)
-            if any(pair['before'][key] != pair['after'][key]
-                   for key in ('exists', 'mode', 'uid', 'gid')):
+            # The planner only removes scalar lines; it never creates/deletes files
+            # or changes metadata. Missing cloud-init 50 remains missing.
+            if any(pair['before'][k] != pair['after'][k] for k in ('exists', 'mode', 'uid', 'gid')):
                 raise ValueError
             if name != OWNED[2] and not pair['before']['exists']:
                 raise ValueError
         reads = plan['read_set']
         if not isinstance(reads, list) or not 3 <= len(reads) <= 65:
-            raise ValueError
-        names = []
-        for item in reads:
-            if set(item) != {'relative_path', 'sha256', 'size', 'mode', 'uid', 'gid', 'dev', 'ino'}:
-                raise ValueError
-            name = item['relative_path']
-            if name != 'sshd_config' and re.fullmatch(r'sshd_config\.d/[A-Za-z0-9_.-]+\.conf', name) is None:
-                raise ValueError
-            _hex(item['sha256'])
-            if any(type(item[key]) is not int or item[key] < 0
-                   for key in ('size', 'mode', 'uid', 'gid', 'dev', 'ino')):
-                raise ValueError
-            if (item['size'] > MAX_FILE or item['mode'] > 0o777
-                    or item['mode'] & 0o022 or item['uid'] != os.geteuid()):
-                raise ValueError
-            if name in plan['files']:
-                before = plan['files'][name]['before']
-                if (not before['exists'] or any(item[key] != before[key]
-                                                for key in ('sha256', 'mode', 'uid', 'gid'))):
-                    raise ValueError
-            names.append(name)
-        if len(set(names)) != len(names) or 'sshd_config' not in names:
-            raise ValueError
-        if any(pair['before']['exists'] != (name in names)
-               for name, pair in plan['files'].items()):
-            raise ValueError
-        inventory = [{'relative_directory': 'sshd_config.d',
-                      'matched_names': sorted(Path(name).name for name in names
-                                              if name != 'sshd_config')}]
-        if plan['include_inventory'] != inventory:
-            raise ValueError
-        if not isinstance(plan['effective'], list) or not 2 <= len(plan['effective']) <= 9:
-            raise ValueError
-        for index, item in enumerate(plan['effective']):
-            if set(item) != {'context', 'before_sha256', 'after_sha256'}:
-                raise ValueError
-            if index:
-                _context(item['context'])
-            _hex(item['before_sha256'])
-            if item['before_sha256'] != item['after_sha256']:
-                raise ValueError
-        if (plan['effective'][0]['context'] is not None
-                or len({_digest(item['context']) for item in plan['effective']}) != len(plan['effective'])
-                or len(_json(plan)) > MAX_STATE // 2):
-            raise ValueError
-    except (ValueError, TypeError, KeyError, AttributeError):
-        raise TransactionError('state-invalid') from None
-
-
-def _plan(plan):
-    try:
-        operation = plan['operation']
-        owned = {'sshd-ownership': OWNERSHIP_OWNED, 'sshd-baseline': BASELINE_OWNED}[operation]
-        if (set(plan) != {'schema_version', 'operation', 'changed', 'read_set', 'include_inventory', 'files', 'effective', 'snapshot_digest'}
-                or type(plan['schema_version']) is not int or plan['schema_version'] != 2
-                or type(plan['changed']) is not bool or set(plan['files']) != set(owned)):
-            raise ValueError
-        _hex(plan['snapshot_digest'])
-        if _digest({k: v for k, v in plan.items() if k != 'snapshot_digest'}) != plan['snapshot_digest']:
-            raise ValueError
-        for name, pair in plan['files'].items():
-            if set(pair) != {'before', 'after'}:
-                raise ValueError
-            for value in pair.values():
-                _record(value)
-            before, after = pair['before'], pair['after']
-            if operation == 'sshd-ownership':
-                # Ownership-only migration never creates/deletes files or
-                # changes metadata. Missing cloud-init 50 remains missing.
-                if any(before[k] != after[k] for k in ('exists', 'mode', 'uid', 'gid')):
-                    raise ValueError
-                if name != OWNED[2] and not before['exists']:
-                    raise ValueError
-            else:
-                if not after['exists'] or (name == 'sshd_config' and not before['exists']):
-                    raise ValueError
-                if before['exists']:
-                    if any(before[k] != after[k] for k in ('mode', 'uid', 'gid')):
-                        raise ValueError
-                elif (name != OWNED[1] or after['mode'] != 0o644
-                      or after['uid'] != os.geteuid() or after['gid'] != BASELINE_FILE_GID):
-                    raise ValueError
-                if name == OWNED[1] and not 0 < len(_record(after)) <= MAX_HARDENING:
-                    raise ValueError
-        reads = plan['read_set']
-        minimum_reads = 2 if operation == 'sshd-baseline' else 3
-        if not isinstance(reads, list) or not minimum_reads <= len(reads) <= 65:
             raise ValueError
         names = []
         for item in reads:
@@ -291,8 +200,6 @@ def _plan(plan):
             names.append(name)
         if len(set(names)) != len(names) or 'sshd_config' not in names:
             raise ValueError
-        if operation == 'sshd-baseline' and OWNED[0] not in names:
-            raise ValueError
         if any(pair['before']['exists'] != (name in names) for name, pair in plan['files'].items()):
             raise ValueError
         inventory = [{'relative_directory': 'sshd_config.d', 'matched_names': sorted(Path(n).name for n in names if n != 'sshd_config')}]
@@ -306,8 +213,7 @@ def _plan(plan):
             if index:
                 _context(item['context'])
             _hex(item['before_sha256'])
-            _hex(item['after_sha256'])
-            if operation == 'sshd-ownership' and item['before_sha256'] != item['after_sha256']:
+            if item['before_sha256'] != item['after_sha256']:
                 raise ValueError
         if (plan['effective'][0]['context'] is not None
                 or len({_digest(item['context']) for item in plan['effective']}) != len(plan['effective'])):
@@ -366,11 +272,10 @@ class Transaction:
                 raise TransactionError('state-orphaned')
             return None
         try:
-            encoded = _read(path, private=True, limit=MAX_STATE)[0]
-            value = json.loads(encoded)
+            value = json.loads(_read(path, private=True, limit=MAX_STATE)[0])
             if set(value) != {'schema_version', 'generation', 'nonce', 'created', 'deadline', 'monotonic_created', 'monotonic_deadline', 'boot_id', 'status', 'plan', 'checksum'}:
                 raise ValueError
-            if type(value['schema_version']) is not int or value['status'] not in STATES:
+            if value['schema_version'] != 1 or value['status'] not in STATES:
                 raise ValueError
             _uuid(value['generation'])
             _uuid(value['boot_id'])
@@ -384,16 +289,7 @@ class Transaction:
                 raise ValueError
             if _digest({k: v for k, v in value.items() if k != 'checksum'}) != value['checksum']:
                 raise ValueError
-            if value['schema_version'] == 1:
-                if value['status'] not in TERMINAL:
-                    raise TransactionError('historical-state-pending')
-                _historical_plan(value['plan'])
-                if encoded != _json(value):
-                    raise ValueError
-            elif value['schema_version'] == 2:
-                _plan(value['plan'])
-            else:
-                raise ValueError
+            _plan(value['plan'])
             return value
         except (ValueError, TypeError, KeyError, AttributeError):
             raise TransactionError('state-invalid') from None
@@ -404,22 +300,6 @@ class Transaction:
         if len(content) > MAX_STATE:
             raise TransactionError('state-too-large')
         _atomic(self.root / 'transaction.json', content)
-
-    def _archive(self, state):
-        source = _read(self.root / 'transaction.json', private=True, limit=MAX_STATE)[0]
-        if source != _json(state):
-            raise TransactionError('state-invalid')
-        destination = self.root / (state['generation'] + '.json')
-        if os.path.lexists(destination):
-            if _read(destination, private=True, limit=MAX_STATE)[0] != source:
-                raise TransactionError('state-invalid')
-            return
-        _atomic(destination, source)
-
-    @staticmethod
-    def _mutable(state):
-        if state is not None and state['schema_version'] == 1:
-            raise TransactionError('historical-state-terminal')
 
     @staticmethod
     def _receipt(state):
@@ -453,26 +333,14 @@ class Transaction:
     def _graph(self, plan, phase):
         """Preflight ALL paths before restore; partial restore must not hide drift."""
         _plan(plan)
-        if phase not in {'before', 'after', 'mixed'}:
-            raise TransactionError('phase-invalid')
         directory = self.config / 'sshd_config.d'
         _directory(directory)
         names = sorted(p.name for p in directory.glob('*.conf') if not p.name.startswith('.'))
-        before_names = set(plan['include_inventory'][0]['matched_names'])
-        after_names = set(before_names)
-        for name, pair in plan['files'].items():
-            if name == 'sshd_config':
-                continue
-            if pair['after']['exists']:
-                after_names.add(Path(name).name)
-            else:
-                after_names.discard(Path(name).name)
-        permitted = [before_names, after_names] if phase == 'mixed' else [before_names if phase == 'before' else after_names]
-        if set(names) not in permitted:
+        if names != plan['include_inventory'][0]['matched_names']:
             raise TransactionError('configuration-drift')
         for item in plan['read_set']:
             name = item['relative_path']
-            if name in plan['files']:
+            if name in OWNED:
                 continue
             data, info = _read(self.config / name)
             current = dict(sha256=_hash(data), mode=stat.S_IMODE(info.st_mode), uid=info.st_uid, gid=info.st_gid,
@@ -485,7 +353,7 @@ class Transaction:
                 raise TransactionError('configuration-drift')
 
     def _publish(self, name, value):
-        if name not in {*OWNERSHIP_OWNED, *BASELINE_OWNED}:
+        if name not in OWNED:
             raise TransactionError('path-not-owned')
         content = _record(value)
         path = self.config / name
@@ -496,31 +364,24 @@ class Transaction:
         else:
             _atomic(path, content, value['mode'], value['uid'], value['gid'])
 
-    def prepare(self, *, intent, contexts, hardening=None, timeout=180):
-        if not isinstance(intent, str) or intent not in {'sshd-ownership', 'sshd-baseline'}:
-            raise TransactionError('intent-invalid')
-        if ((intent == 'sshd-ownership' and hardening is not None)
-                or (intent == 'sshd-baseline' and (type(hardening) is not bytes or not 0 < len(hardening) <= MAX_HARDENING))):
-            raise TransactionError('candidate-invalid')
+    def prepare(self, *, contexts, timeout=180):
         if type(timeout) is not int or not 60 <= timeout <= 600:
             raise TransactionError('timeout-invalid')
         with self._locked(create=True):
             previous = self._load()
             if previous is not None and previous['status'] not in TERMINAL:
                 raise TransactionError('transaction-pending')
-            plan = self.runtime.build_plan(self.config, contexts, intent=intent, hardening=hardening)
+            plan = self.runtime.build_plan(self.config, contexts)
             _plan(plan)
-            if plan['operation'] != intent:
-                raise TransactionError('intent-mismatch')
             self._graph(plan, 'before')
             self.runtime.assert_snapshot(plan, self.config)
             if not plan['changed']:
                 return {'status': 'unchanged'}
             if previous is not None:
-                self._archive(previous)
+                _atomic(self.root / (previous['generation'] + '.json'), _json(previous))
             now = int(self.runtime.clock())
             monotonic = int(self.runtime.monotonic())
-            state = dict(schema_version=2, generation=str(uuid4()), nonce=secrets.token_hex(32),
+            state = dict(schema_version=1, generation=str(uuid4()), nonce=secrets.token_hex(32),
                          created=now, deadline=now + timeout, monotonic_created=monotonic,
                          monotonic_deadline=monotonic + timeout, boot_id=self.runtime.boot_id(), status='prepared', plan=plan)
             # Write marker first: a crash before state save is an explicit orphan,
@@ -532,7 +393,6 @@ class Transaction:
     def apply(self, generation, nonce):
         with self._locked():
             state = self._load()
-            self._mutable(state)
             self._identity(state, generation, nonce)
             self._live(state)
             if state['status'] == 'applied':
@@ -562,16 +422,13 @@ class Transaction:
             state['status'] = 'applying'
             self._save(state)
             try:
-                owned = {'sshd-ownership': OWNERSHIP_OWNED,
-                         'sshd-baseline': BASELINE_OWNED}[state['plan']['operation']]
-                for name in owned:
-                    pair = state['plan']['files'][name]
+                for name, pair in state['plan']['files'].items():
                     self._live(state)
                     self._graph(state['plan'], 'mixed')
                     if pair['before'] != pair['after']:
                         self._publish(name, pair['after'])
                 self._graph(state['plan'], 'after')
-                self.runtime.assert_effective(state['plan'], self.config, phase='after')
+                self.runtime.assert_effective(state['plan'], self.config)
                 self._live(state)
                 self.runtime.reload()
                 self._live(state)
@@ -587,15 +444,12 @@ class Transaction:
             self._graph(state['plan'], 'mixed')
             state['status'] = 'rolling_back'
             self._save(state)
-            owned = {'sshd-ownership': OWNERSHIP_OWNED,
-                     'sshd-baseline': BASELINE_OWNED}[state['plan']['operation']]
-            for name in reversed(owned):
-                pair = state['plan']['files'][name]
+            for name, pair in state['plan']['files'].items():
                 self._graph(state['plan'], 'mixed')
                 if self._current(name) != pair['before']:
                     self._publish(name, pair['before'])
             self._graph(state['plan'], 'before')
-            self.runtime.assert_effective(state['plan'], self.config, phase='before')
+            self.runtime.assert_effective(state['plan'], self.config)
             if not boot:
                 self.runtime.reload()
             state['status'] = 'rolled_back'
@@ -611,7 +465,6 @@ class Transaction:
     def confirm(self, generation, nonce, snapshot_digest):
         with self._locked():
             state = self._load()
-            self._mutable(state)
             self._identity(state, generation, nonce)
             if snapshot_digest != state['plan']['snapshot_digest']:
                 raise TransactionError('identity-mismatch')
@@ -622,7 +475,7 @@ class Transaction:
             if state['status'] != 'applied':
                 raise TransactionError('state-not-applied')
             self._graph(state['plan'], 'after')
-            self.runtime.assert_effective(state['plan'], self.config, phase='after')
+            self.runtime.assert_effective(state['plan'], self.config)
             self._live(state)
             # Recovery remains installed/enabled; a durable terminal record makes
             # timer callbacks no-ops. Never cancel recovery before this fsync.
@@ -633,7 +486,6 @@ class Transaction:
     def rollback(self, generation, nonce):
         with self._locked():
             state = self._load()
-            self._mutable(state)
             self._identity(state, generation, nonce)
             if state['status'] == 'rolled_back':
                 return self._receipt(state)
