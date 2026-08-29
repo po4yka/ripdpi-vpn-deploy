@@ -43,8 +43,9 @@ Selecting a transport tag must not bypass prerequisites for baseline/firewall.
 
 **SSH listener verification uses effective state** — `security-verify.yml`
 derives the single active port from `sshd -T` and passes it to the live
-firewall verifier. Port 22 has no special-case exemption when sshd uses a
-custom listener.
+firewall verifier. `verify.yml` also reconciles that port with bounded
+`ssh.service`/`ssh.socket` state; it never infers ownership from process scans.
+Port 22 has no special-case exemption when sshd uses a custom listener.
 
 **`molecule` for testing roles, full-stack for site.yml** — `molecule-test
 ROLE=<name>` runs in a Docker container per role. `molecule-full-stack`
