@@ -1,8 +1,5 @@
 {% set ssh_controls = security_controls | default({}) -%}
-PasswordAuthentication no
-KbdInteractiveAuthentication no
-PermitRootLogin no
-PubkeyAuthentication yes
+# Managed by the vpn SSH baseline transaction; authentication stays in 10-cloud-init-hardening.conf.
 X11Forwarding no
 AllowTcpForwarding {{ 'yes' if (ssh_controls.ssh_allow_tcp_forwarding | default(false)) else 'no' }}
 {% if ssh_controls.ssh_strict | default(true) %}

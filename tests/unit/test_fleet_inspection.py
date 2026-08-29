@@ -81,6 +81,25 @@ def test_ssh_isolated_from_user_configuration_and_keeps_identity(tmp_path):
     assert command[-2:] == ["100.64.0.2", "sudo -n /usr/bin/python3 -I -B -S -"]
 
 
+def test_sftp_uses_the_same_pinned_identity_without_multiplexing(tmp_path):
+    m = module()
+    host = m.select_hosts(inventory(
+        tmp_path, "inspection_transport_host=100.64.0.2 inspection_host_key_alias=192.0.2.1"), ["node-a"])[0]
+    known = tmp_path / "known_hosts"
+    known.write_text("test-only-pin")
+    ssh = m.ssh_command(host, known)
+    sftp = m.sftp_command(host, known)
+    for option in ("StrictHostKeyChecking=yes", "ControlPath=none", "ControlMaster=no",
+                   "ControlPersist=no", "ProxyCommand=none", "ProxyJump=none",
+                   "IdentityAgent=none", "HostKeyAlias=[192.0.2.1]:2222"):
+        assert option in ssh and option in sftp
+    assert sftp[:3] == ["sftp", "-F", "/dev/null"]
+    assert sftp[sftp.index("-P") + 1] == "2222"
+    assert "User=deploy" in sftp
+    assert sftp[-1] == "100.64.0.2"
+    assert "-b" in sftp and sftp[sftp.index("-b") + 1] == "-"
+
+
 def test_private_file_read_is_bounded_and_rejects_links_and_fifo(tmp_path):
     m = module()
     root = tmp_path / "root"

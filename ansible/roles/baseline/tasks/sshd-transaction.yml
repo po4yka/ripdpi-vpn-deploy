@@ -1,0 +1,47 @@
+---
+- name: Require the controller-owned exact-node SSH transaction inputs
+  ansible.builtin.assert:
+    that:
+      - ssh_transaction_controller_managed | default(false) | bool
+      - ssh_transaction_inventory_path is defined
+      - ssh_transaction_known_hosts_path is defined
+      - ssh_transaction_contexts is defined
+      - ssh_transaction_bundle_generation is match('^[0-9a-f]{64}$')
+      - ssh_transaction_target_identity is defined
+      - ansible_play_hosts_all | length == 1
+    fail_msg: SSH baseline convergence requires the exact-node deployment controller
+  no_log: true
+  tags: [always, baseline]
+
+- name: Run the exact-node recoverable SSH baseline transaction
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "{{ playbook_dir }}/../../scripts/sshd-baseline-controller.py"
+    stdin: >-
+      {{
+        {
+          'schema_version': 1,
+          'mode': ('check' if ansible_check_mode else 'deploy'),
+          'inventory_alias': inventory_hostname,
+          'inventory_path': ssh_transaction_inventory_path,
+          'known_hosts_path': ssh_transaction_known_hosts_path,
+          'contexts': ssh_transaction_contexts,
+          'hardening_b64': (lookup('template', role_path ~ '/templates/sshd_config.d-hardening.conf.j2') | b64encode),
+          'bundle_generation': ssh_transaction_bundle_generation,
+          'timeout_seconds': ssh_transaction_timeout_seconds | default(180),
+          'promotion_config_path': (none if ansible_check_mode else ssh_transaction_promotion_config_path),
+          'target_identity': ssh_transaction_target_identity
+        } | to_json
+      }}
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: (ssh_transaction_result.stdout | from_json).status == 'committed'
+  failed_when: >-
+    ssh_transaction_result.rc != 0 or
+    (ssh_transaction_result.stdout | from_json).status not in ['unchanged', 'would-change', 'committed']
+  register: ssh_transaction_result
+  no_log: true
+  diff: false
+  tags: [always, baseline]

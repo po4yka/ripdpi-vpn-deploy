@@ -428,10 +428,10 @@ def select_hosts(inventory_path, selected):
     return result
 
 
-def ssh_command(host, known_hosts_path):
+def _strict_connection_options(host, known_hosts_path):
     known_hosts = _local_file(known_hosts_path)
     alias = host["alias"] if host["port"] == 22 else "[" + host["alias"] + "]:" + str(host["port"])
-    options = ["BatchMode=yes", "StrictHostKeyChecking=yes", "UpdateHostKeys=no", "IdentitiesOnly=yes",
+    return ["BatchMode=yes", "StrictHostKeyChecking=yes", "UpdateHostKeys=no", "IdentitiesOnly=yes",
                "ControlPath=none", "ControlMaster=no", "ControlPersist=no", "ProxyCommand=none", "ProxyJump=none",
                "ClearAllForwardings=yes", "PermitLocalCommand=no", "RemoteCommand=none", "IdentityAgent=none",
                "ForwardAgent=no", "ForwardX11=no", "GlobalKnownHostsFile=/dev/null", "VerifyHostKeyDNS=no",
@@ -439,11 +439,26 @@ def ssh_command(host, known_hosts_path):
                "PasswordAuthentication=no", "KbdInteractiveAuthentication=no", "GSSAPIAuthentication=no",
                "PreferredAuthentications=publickey",
                "UserKnownHostsFile=" + known_hosts, "HostKeyAlias=" + alias]
-    command = ["ssh", "-F", "/dev/null"]
+
+
+def _with_options(program, options):
+    command = [program, "-F", "/dev/null"]
     for option in options:
         command.extend(["-o", option])
+    return command
+
+
+def ssh_command(host, known_hosts_path):
+    options = _strict_connection_options(host, known_hosts_path)
+    command = _with_options("ssh", options)
     return command + ["-i", host["key"], "-l", host["user"], "-p", str(host["port"]),
                       host["transport"], "sudo -n /usr/bin/python3 -I -B -S -"]
+
+
+def sftp_command(host, known_hosts_path):
+    options = [*_strict_connection_options(host, known_hosts_path), "User=" + host["user"]]
+    return _with_options("sftp", options) + ["-b", "-", "-i", host["key"], "-P", str(host["port"]),
+                                              host["transport"]]
 
 
 def _keys(value, keys):

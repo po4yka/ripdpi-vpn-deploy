@@ -24,7 +24,7 @@ def _exe(path: Path, body: str) -> None:
 
 def _setup(tmp_path: Path) -> tuple[dict[str, str], Path, Path]:
     config = tmp_path / "liveness.yaml"
-    config.write_text("schema_version: 1\n")
+    config.write_text("schema_version: 2\n")
     decision = tmp_path / "decision.json"
     evaluator = tmp_path / "protocol-liveness"
     _exe(evaluator, "#!/usr/bin/env bash\ncat \"$FAKE_DECISION\"\n")
@@ -52,7 +52,7 @@ def _decision(path: Path, decision: str, streak: int) -> None:
     path.write_text(
         json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "decision": decision,
                 "candidate_streak": streak,
                 "failure_threshold": 3,
@@ -87,6 +87,20 @@ def test_otp_is_issued_only_after_sustained_quorum_failure(tmp_path: Path) -> No
     assert result.returncode == 0
     assert otp.stat().st_mode & 0o777 == 0o600
     assert "make promote-spare OTP=" in result.stdout
+    assert not blue_green_log.exists()
+
+
+def test_watcher_refuses_legacy_liveness_decision_schema(tmp_path: Path) -> None:
+    env, decision, blue_green_log = _setup(tmp_path)
+    _decision(decision, "rotation_candidate", 3)
+    payload = json.loads(decision.read_text())
+    payload["schema_version"] = 1
+    decision.write_text(json.dumps(payload))
+
+    result = _run(WATCHER, env)
+
+    assert result.returncode != 0
+    assert not (Path(env["VPN_SPARE_STATE_DIR"]) / "pending-otp").exists()
     assert not blue_green_log.exists()
 
 
@@ -131,6 +145,22 @@ def test_promotion_accepts_only_the_bound_current_candidate(tmp_path: Path) -> N
 
     assert result.returncode == 0, result.stderr
     assert blue_green_log.read_text() == "called\n"
+
+
+def test_promotion_refuses_legacy_liveness_decision_schema(tmp_path: Path) -> None:
+    env, decision, blue_green_log = _setup(tmp_path)
+    _decision(decision, "rotation_candidate", 3)
+    _run(WATCHER, env)
+    otp_file = Path(env["VPN_SPARE_STATE_DIR"]) / "pending-otp"
+    otp = otp_file.read_text().split("\t", 1)[0]
+    payload = json.loads(decision.read_text())
+    payload["schema_version"] = 1
+    decision.write_text(json.dumps(payload))
+
+    result = _run(PROMOTE, env, otp)
+
+    assert result.returncode != 0
+    assert not blue_green_log.exists()
 
 
 def test_existing_otp_is_not_rebound_to_a_changed_policy(tmp_path: Path) -> None:

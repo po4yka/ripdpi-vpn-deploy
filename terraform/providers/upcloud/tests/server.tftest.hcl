@@ -39,8 +39,18 @@ run "server_cloud_init_uses_configured_ssh_port" {
   }
 
   assert {
-    condition     = strcontains(upcloud_server.vpn.user_data, "Port 2222")
-    error_message = "cloud-init must configure the same SSH port as the provider firewall"
+    condition = (
+      strcontains(upcloud_server.vpn.user_data, "--ssh-port 2222")
+      && one([
+        for item in yamldecode(upcloud_server.vpn.user_data).write_files : item
+        if item.path == "/usr/local/libexec/vpn-bootstrap-sshd-ownership.py"
+      ]).encoding == "b64"
+      && base64decode(one([
+        for item in yamldecode(upcloud_server.vpn.user_data).write_files : item.content
+        if item.path == "/usr/local/libexec/vpn-bootstrap-sshd-ownership.py"
+      ])) == file("${path.module}/../../shared/bootstrap-sshd-ownership.py")
+    )
+    error_message = "cloud-init must pass the provider SSH port to the exact embedded ownership helper"
   }
 }
 

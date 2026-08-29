@@ -24,7 +24,7 @@
 
 @test "operator cron installs standalone protocol monitor without warm spare" {
   config="$BATS_TEST_TMPDIR/liveness.yaml"
-  printf '%s\n' 'schema_version: 1' > "$config"
+  printf '%s\n' 'schema_version: 2' > "$config"
 
   run env \
     LIVENESS_CONFIG="$config" \

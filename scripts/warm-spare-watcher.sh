@@ -57,7 +57,7 @@ if [[ -n "${LIVENESS_CONFIG:-}" ]]; then
   [[ -f "$LIVENESS_CONFIG" ]] || { echo "warm-spare: liveness config not found: $LIVENESS_CONFIG" >&2; exit 1; }
   protocol_liveness="${PROTOCOL_LIVENESS:-${REPO_ROOT}/scripts/protocol-liveness.py}"
   decision_json="$("$protocol_liveness" --config "$LIVENESS_CONFIG" --state-dir "$STATE_DIR/liveness")"
-  IFS=$'\t' read -r decision streak threshold otp_ttl policies < <(DECISION_JSON="$decision_json" python3 -c 'import json,os; d=json.loads(os.environ["DECISION_JSON"]); print("\t".join(map(str, [d["decision"], d["candidate_streak"], d["failure_threshold"], d["otp_ttl_seconds"], ",".join(d["candidate_policies"])])))')
+  IFS=$'\t' read -r decision streak threshold otp_ttl policies < <(DECISION_JSON="$decision_json" python3 -c 'import json,os,sys; d=json.loads(os.environ["DECISION_JSON"]); sys.exit(2) if d.get("schema_version") != 2 else None; print("\t".join(map(str, [d["decision"], d["candidate_streak"], d["failure_threshold"], d["otp_ttl_seconds"], ",".join(d["candidate_policies"])])))')
   otp_file="${STATE_DIR}/pending-otp"
   context_file="${STATE_DIR}/pending-otp-context.json"
   evidence="$(DECISION_JSON="$decision_json" python3 -c 'import json,os; d=json.loads(os.environ["DECISION_JSON"]); rows=[e["sentinel"]+":"+",".join(k+"="+v for k,v in sorted(e["profiles"].items())) for e in d.get("evidence",[])]; print("; ".join(rows) or "none")')"

@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 MODULE = Path(__file__).resolve().parents[2] / 'ansible/roles/baseline/files/sshd_transaction.py'
+LIMITS = Path(__file__).resolve().parents[2] / 'scripts/sshd_transaction_limits.py'
 NAMES = ('10-cloud-init-hardening.conf', '20-ansible-hardening.conf', '50-cloud-init.conf')
 
 
@@ -20,6 +21,13 @@ def engine():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_remote_engine_timeout_matches_the_controller_budget(engine):
+    spec = importlib.util.spec_from_file_location('sshd_transaction_limits', LIMITS)
+    limits = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(limits)
+    assert engine.MAX_TRANSACTION_TIMEOUT == limits.TRANSACTION_TIMEOUT_SECONDS == 960
 
 
 def record(path, data=None):
@@ -677,6 +685,37 @@ def baseline_fixture(engine, fixture, monkeypatch):
 
 def prepare_baseline(tx):
     return tx.prepare(intent='sshd-baseline', contexts=[], hardening=BASELINE_HARDENING, timeout=120)
+
+
+def test_baseline_preview_requires_preinstalled_state_root_and_creates_nothing(engine, baseline_fixture):
+    case, _runtime, tx = baseline_fixture()
+    with pytest.raises(engine.TransactionError, match='state-missing'):
+        tx.preview(intent='sshd-baseline', contexts=[], hardening=BASELINE_HARDENING)
+    assert not case[1].exists()
+
+
+def test_baseline_preview_opens_existing_lock_without_durable_state(engine, baseline_fixture):
+    case, runtime, tx = baseline_fixture()
+    state = case[1]
+    state.mkdir(mode=0o700)
+    lock = state / 'transaction.lock'
+    lock.touch(mode=0o600)
+    before = {path.name: (path.read_bytes(), path.stat().st_mode & 0o777)
+              for path in state.iterdir()}
+    result = tx.preview(intent='sshd-baseline', contexts=[], hardening=BASELINE_HARDENING)
+    assert result == {'status': 'would-change', 'snapshot_digest': case[2]['snapshot_digest']}
+    assert {path.name: (path.read_bytes(), path.stat().st_mode & 0o777)
+            for path in state.iterdir()} == before
+    assert runtime.calls == ['snapshot']
+
+
+def test_baseline_preview_refuses_a_nonterminal_transaction_without_mutation(engine, baseline_fixture):
+    case, _runtime, tx = baseline_fixture()
+    prepare_baseline(tx)
+    before = {path.name: path.read_bytes() for path in case[1].iterdir() if path.is_file()}
+    with pytest.raises(engine.TransactionError, match='transaction-pending'):
+        tx.preview(intent='sshd-baseline', contexts=[], hardening=BASELINE_HARDENING)
+    assert {path.name: path.read_bytes() for path in case[1].iterdir() if path.is_file()} == before
 
 
 @pytest.mark.parametrize('missing_20', [False, True])

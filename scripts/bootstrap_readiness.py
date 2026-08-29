@@ -6,6 +6,7 @@ import selectors
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 
@@ -46,19 +47,32 @@ def cancellation():
             signal.signal(sig, handler)
 
 
-def run_command(command, *, timeout, environment=None, cwd=None, capture=False, stream=False):
+def run_command(command, *, timeout, environment=None, cwd=None, capture=False, stream=False,
+                input_data=None, defer_cancellation=False):
     """Bound the owned process group, including spawn-window cancellation.
 
     Bootstrap discards output. Small local metadata queries use bounded capture.
     Ansible can stream its ordinary reviewed output with debugging disabled.
     """
-    check_cancelled()
+    if not defer_cancellation:
+        check_cancelled()
+    if input_data is not None and (type(input_data) is not bytes or len(input_data) > 65536):
+        raise ReadinessError("command input invalid")
     output = bytearray()
     target = subprocess.PIPE if capture else (None if stream else subprocess.DEVNULL)
+    input_stream = None
     try:
-        child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=target, stderr=target,
+        if input_data is not None:
+            # Anonymous private backing avoids pipe-capacity deadlocks while
+            # keeping transaction nonces out of argv, environment and logs.
+            input_stream = tempfile.TemporaryFile()
+            input_stream.write(input_data)
+            input_stream.seek(0)
+        child = subprocess.Popen(command, stdin=input_stream or subprocess.DEVNULL, stdout=target, stderr=target,
                                  env=environment, cwd=cwd, start_new_session=True)
     except OSError:
+        if input_stream is not None:
+            input_stream.close()
         raise ReadinessError("command unavailable") from None
     try:
         deadline = time.monotonic() + timeout
@@ -69,7 +83,8 @@ def run_command(command, *, timeout, environment=None, cwd=None, capture=False, 
                     selector.register(pipe, selectors.EVENT_READ)
             total = 0
             while True:
-                check_cancelled()
+                if not defer_cancellation:
+                    check_cancelled()
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise ReadinessError("session timeout")
@@ -97,6 +112,8 @@ def run_command(command, *, timeout, environment=None, cwd=None, capture=False, 
             # The owned process group has already exited; nothing remains to kill.
             pass
         child.wait()
+        if input_stream is not None:
+            input_stream.close()
         if capture:
             child.stdout.close()
             child.stderr.close()

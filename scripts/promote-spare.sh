@@ -61,7 +61,8 @@ import json, os, pathlib
 current = json.loads(os.environ["CURRENT_JSON"])
 context = json.loads(pathlib.Path(os.environ["CONTEXT_FILE"]).read_text())
 valid = (
-    current.get("decision") == "rotation_candidate"
+    current.get("schema_version") == 2
+    and current.get("decision") == "rotation_candidate"
     and current.get("config_sha256") == context.get("config_sha256")
     and current.get("candidate_policies") == context.get("candidate_policies")
     and context.get("provider") == os.environ["PROVIDER_VALUE"]

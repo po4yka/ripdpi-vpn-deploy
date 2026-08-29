@@ -48,6 +48,47 @@ migrate SSH. The separate Terraform `make wait` command retains its first-boot
 policy. Bootstrap errors and session/deadline failures stop the entire selected
 deployment without printing raw cloud-init output.
 
+Both `dry-run` and `deploy` require `DEPLOY_SSH_CONTEXTS_FILE`, a same-owner
+mode-`0600` JSON mapping whose keys exactly equal the selected inventory aliases.
+Each value contains 2–8 distinct socket-owner contexts captured for that node:
+
+```json
+{
+  "vpn-p0-node-a": [
+    {"user":"deploy","host":"operator-a","addr":"198.51.100.10","laddr":"192.0.2.10","lport":2222},
+    {"user":"deploy","host":"operator-a","addr":"100.64.0.10","laddr":"100.64.0.20","lport":2222}
+  ]
+}
+```
+
+Every context must use the effective SSH port, and its `laddr` set must equal
+the node's literal public and management IP addresses exactly. A missing,
+hostname-only, duplicated or unrelated management transport refuses locally;
+the controller never degrades confirmation to the public path alone.
+
+`deploy` additionally requires `DEPLOY_PROMOTION_CONFIG_FILE`, another
+same-owner mode-`0600` JSON mapping with the same exact alias set. Each value is
+the singular schema documented in
+[PROTOCOL-LIVENESS.md](PROTOCOL-LIVENESS.md#decision-and-promotion-behavior).
+The controller writes private per-node copies and validates every copy locally
+before the first readiness or SSH operation; it then runs the exact-node proof
+only after that node's new SSH configuration is reachable over both public and
+management transports. A failed proof, stale receipt, or identity mismatch
+rolls back that node and stops the fleet. Example operator shape:
+
+```bash
+make dry-run ANSIBLE_LIMIT=vpn-p0-node-a \
+  DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json"
+
+make deploy ANSIBLE_LIMIT=vpn-p0-node-a \
+  DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json" \
+  DEPLOY_PROMOTION_CONFIG_FILE="$HOME/.config/vpn-provision/promotion-configs.json"
+```
+
+Do not put addresses, identities, probe receipts, or credentials on the command
+line. The two mapping files are operator inputs and must remain outside the
+repository. A successful local config preflight is not live VPN evidence.
+
 Readiness, convergence and the automatic source-drift check use the same
 private inventory and transport snapshots. Canonical all/vpn/cohort variables
 are loaded per host before runtime metadata, secrets and approved overrides;

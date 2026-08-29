@@ -35,6 +35,60 @@ AUTH_ERROR = re.compile(r"auth|credential|invalid user|rejected|bad certificate"
 AWG_TOOLCHAIN_BASE = Path("/opt/ripdpi-real-vps-awg-nat/toolchains")
 AWG_TOOLCHAIN_UID = 0
 AWG_TOOLCHAIN_GID = 0
+TARGET_IDENTITY_KEYS = {
+    "inventory_alias", "public_service_address_sha256", "deployable_digest", "applied_at",
+    "required_profiles", "source_revision", "runner_sha256", "public_profile_digest",
+}
+
+
+def validate_target_identity(config: dict) -> None:
+    target = config.get("target_identity")
+    provenance = config.get("provenance")
+    profiles = sorted({profile for runtime in ("sing_box", "xray")
+                       for profile in (config.get(runtime) or {}).get("profiles", {})}
+                      | ({"p2-amneziawg"} if "amneziawg" in config else set()))
+    if (
+        config.get("schema_version") != 2
+        or not isinstance(target, dict)
+        or set(target) != TARGET_IDENTITY_KEYS
+        or not isinstance(provenance, dict)
+        or target.get("required_profiles") != profiles
+        or target.get("source_revision") != provenance.get("controller_revision")
+        or target.get("runner_sha256") != provenance.get("runner_sha256")
+        or target.get("public_profile_digest") != provenance.get("public_profile_digest")
+        or type(target.get("applied_at")) is not int
+        or target["applied_at"] < 1
+        or not isinstance(target.get("inventory_alias"), str)
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", target["inventory_alias"]) is None
+        or any(not isinstance(target.get(key), str) or re.fullmatch(r"[0-9a-f]{64}", target[key]) is None
+               for key in ("public_service_address_sha256", "deployable_digest", "runner_sha256", "public_profile_digest"))
+        or not isinstance(target.get("source_revision"), str)
+        or re.fullmatch(r"[0-9a-f]{40}", target["source_revision"]) is None
+    ):
+        raise ValueError("target identity invalid")
+
+
+def validate_sing_box(config: dict) -> None:
+    settings = config.get("sing_box")
+    if settings is None:
+        return
+    if not isinstance(settings, dict):
+        raise ValueError("sing-box settings invalid")
+    profiles = settings.get("profiles")
+    if (
+        not isinstance(settings.get("config"), str)
+        or not Path(settings["config"]).is_absolute()
+        or not isinstance(profiles, dict)
+        or any(profile not in {"p0-reality", "p1-xhttp", "p2-hysteria2"} for profile in profiles)
+        or any(
+            not isinstance(ports, list)
+            or not ports
+            or any(type(port) is not int or not 1 <= port <= 65535 for port in ports)
+            or len(set(ports)) != len(ports)
+            for ports in profiles.values()
+        )
+    ):
+        raise ValueError("sing-box settings invalid")
 
 
 def verify_awg_toolchain(expected_id: str) -> dict:
@@ -258,7 +312,8 @@ def parallel_curl_probes(config: dict, extras: list[list[str]]) -> list[dict]:
 
 
 def process_result(profile: str, result: dict) -> dict:
-    return {"profile": profile, "payload_transport": "unknown", "target_address_family": "unknown", **result}
+    return {"profile": profile, "payload_transport": "unknown", "target_address_family": "unknown",
+            "dns_through_tunnel": False, "authenticated_handshake": False, **result}
 
 
 def stop_process(process: subprocess.Popen[str] | None) -> None:
@@ -378,6 +433,14 @@ def probe_runtime_profiles(runtime: str, settings: dict, config: dict, control_a
                 config,
                 [["--socks5-hostname", f"127.0.0.1:{port}"] for port in ports],
             )
+            variants = [
+                {
+                    **result,
+                    "dns_through_tunnel": result["verdict"] in {"ok", "throttled"},
+                    "authenticated_handshake": result["verdict"] in {"ok", "throttled"},
+                }
+                for result in variants
+            ]
             for index, result in enumerate(variants):
                 if not control_alive and result["verdict"] == "blocked":
                     variants[index] = {
@@ -455,9 +518,6 @@ def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
     cleanup_failed = False
     try:
         parsed = awg_probe_url(config)
-        target_ip = socket.getaddrinfo(parsed.hostname, 443, family=socket.AF_INET, type=socket.SOCK_STREAM)[0][4][0]
-        if ipaddress.ip_address(target_ip).version != 4:
-            raise ValueError("AWG target is not IPv4")
         address_family = "ipv4"
         existing = subprocess.run(["ip", "link", "show", interface], timeout=2, check=False, capture_output=True)
         if existing.returncode != 1:
@@ -512,7 +572,7 @@ def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
         started = int(time.time())
         result = curl_probe(
             config,
-            ["--resolve", f"{parsed.hostname}:443:{target_ip}"],
+            [],
             ["ip", "netns", "exec", namespace],
         )
         handshake = subprocess.run(
@@ -529,6 +589,8 @@ def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
             result = {**result, "verdict": "error", "error_kind": "no_fresh_handshake"}
         elif result["verdict"] in {"ok", "throttled"}:
             result["fresh_handshake"] = True
+            result["dns_through_tunnel"] = True
+            result["authenticated_handshake"] = True
         if not control_alive and result["verdict"] == "blocked":
             result = {**result, "verdict": "unknown", "duration_ms": None, "error_kind": "control_unavailable"}
     except (OSError, subprocess.SubprocessError, RuntimeError, ValueError) as exc:
@@ -566,7 +628,7 @@ def error_profiles(config: dict, error_kind: str) -> list[dict]:
     if "amneziawg" in config:
         profiles.append("p2-amneziawg")
     return [
-        {"profile": profile, "verdict": "error", "duration_ms": None, "error_kind": error_kind}
+        process_result(profile, {"verdict": "error", "duration_ms": None, "error_kind": error_kind})
         for profile in profiles
     ]
 
@@ -579,6 +641,12 @@ def main() -> int:
         config = json.loads(args.config.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         print(f"vpn-protocol-liveness: invalid config: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        validate_sing_box(config)
+    except (AttributeError, TypeError, ValueError):
+        print("vpn-protocol-liveness: invalid sing-box profiles", file=sys.stderr)
         return 2
 
     if "p1-xhttp" in (config.get("sing_box") or {}).get("profiles", {}):
@@ -597,6 +665,12 @@ def main() -> int:
                 or not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?", expected_xray)):
             print("vpn-protocol-liveness: invalid xray profile or expected_runtime.xray pin", file=sys.stderr)
             return 2
+
+    try:
+        validate_target_identity(config)
+    except (ValueError, TypeError):
+        print("vpn-protocol-liveness: invalid target identity", file=sys.stderr)
+        return 2
 
     toolchain = None
     if "amneziawg" in config:
@@ -636,13 +710,14 @@ def main() -> int:
             if "amneziawg" in config:
                 profiles.append(probe_awg(config, control_alive, toolchain))
         payload = {
-            "schema_version": 1,
+            "schema_version": 2,
             "sentinel": config["sentinel"],
             "observed_at": int(time.time()),
             "control": control,
             "profiles": profiles,
             "runtime": runtime,
             "provenance": config["provenance"],
+            "target_identity": config["target_identity"],
         }
         print(json.dumps(payload, sort_keys=True))
     return 0

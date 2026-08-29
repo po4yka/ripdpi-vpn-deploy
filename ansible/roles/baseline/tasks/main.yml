@@ -85,24 +85,9 @@
     group: root
     mode: "0755"
 
-- name: Disable packaged SFTP subsystem before managed drop-in
-  ansible.builtin.lineinfile:
-    path: /etc/ssh/sshd_config
-    regexp: '^(\s*Subsystem\s+sftp\s+.*)$'
-    line: '# \1'
-    backrefs: true
-    validate: "sshd -t -f %s"
-  notify: Reload ssh
-
-- name: Drop SSH hardening config
-  ansible.builtin.template:
-    src: sshd_config.d-hardening.conf.j2
-    dest: /etc/ssh/sshd_config.d/20-ansible-hardening.conf
-    owner: root
-    group: root
-    mode: "0644"
-    validate: "sshd -t -f %s"
-  notify: Reload ssh
+# Main and the managed 20-file are published together only by the second,
+# controller-owned site play.  Direct writes here would bypass durable
+# schema-two recovery and could confirm before the VPN stack is probeable.
 
 - name: Prune weak SSH Diffie-Hellman moduli
   ansible.builtin.include_tasks: ssh_moduli.yml

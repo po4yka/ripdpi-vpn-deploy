@@ -43,17 +43,22 @@ def candidate(root, generation=None):
     runner = "# fixture runner only\n"
     provenance = {"controller_revision": "a" * 40, "runner_sha256": hashlib.sha256(runner.encode()).hexdigest(),
                   "client_generation_id": str(uuid4()), "public_profile_digest": "b" * 64, "vantage": "external"}
+    target_identity = {"inventory_alias": "vpn-p0-fixture", "public_service_address_sha256": "c" * 64,
+                       "deployable_digest": "d" * 64, "applied_at": 1_700_000_000,
+                       "required_profiles": ["p0-reality", "p1-xhttp"], "source_revision": "a" * 40,
+                       "runner_sha256": provenance["runner_sha256"], "public_profile_digest": "b" * 64}
     files = {
         "runner.py": runner,
-        "config.json": json.dumps({"sentinel": "fixture-sentinel", "expected_runtime": {"sing_box": "1.12.0", "xray": "25.8.3"},
+        "config.json": json.dumps({"schema_version": 2, "sentinel": "fixture-sentinel", "expected_runtime": {"sing_box": "1.12.0", "xray": "25.8.3"},
                                    "sing_box": {"config": str(root / "generations" / generation / "profiles/sing-box.json"), "profiles": {"p0-reality": [18080]}},
                                    "xray": {"config": str(root / "generations" / generation / "profiles/xray.json"), "profiles": {"p1-xhttp": [18180]}},
-                                   "provenance": provenance}),
+                                   "provenance": provenance, "target_identity": target_identity}),
         "metadata.json": json.dumps({
             "generation_id": generation,
             "required_profiles": ["p0-reality", "p1-xhttp"],
             "ssh_user": "deploy",
             "provenance": provenance,
+            "target_identity": target_identity,
         }),
         "profiles/sing-box.json": '{"fixture": true}\n',
         "profiles/xray.json": '{"fixture": true}\n',
@@ -68,12 +73,13 @@ def candidate(root, generation=None):
 def healthy(directory):
     config = json.loads((directory / "config.json").read_text())
     return {
-        "schema_version": 1, "sentinel": config["sentinel"], "runtime": config["expected_runtime"],
+        "schema_version": 2, "sentinel": config["sentinel"], "runtime": config["expected_runtime"],
         "provenance": config["provenance"], "observed_at": int(time.time()),
+        "target_identity": config["target_identity"],
         "control": {"verdict": "ok"},
         "profiles": [
-            {"profile": "p0-reality", "verdict": "ok"},
-            {"profile": "p1-xhttp", "verdict": "ok"},
+            {"profile": "p0-reality", "verdict": "ok", "dns_through_tunnel": True, "authenticated_handshake": True},
+            {"profile": "p1-xhttp", "verdict": "ok", "dns_through_tunnel": True, "authenticated_handshake": True},
         ],
     }
 
@@ -130,14 +136,18 @@ def test_awg_generation_requires_immutable_toolchain_pin(engine, root, toolchain
     metadata_path = stage / "metadata.json"
     metadata = json.loads(metadata_path.read_text())
     metadata["required_profiles"].append("p2-amneziawg")
+    metadata["target_identity"]["required_profiles"] = sorted(metadata["required_profiles"])
     metadata_path.write_text(json.dumps(metadata))
+    config["target_identity"] = metadata["target_identity"]
+    config_path.write_text(json.dumps(config))
     profile = stage / "profiles/awg.conf"
     profile.write_text("fixture only\n")
     profile.chmod(0o600)
 
     def probe(directory):
         report = healthy(directory)
-        report["profiles"].append({"profile": "p2-amneziawg", "verdict": "ok"})
+        report["profiles"].append({"profile": "p2-amneziawg", "verdict": "ok", "dns_through_tunnel": True,
+                                   "authenticated_handshake": True, "fresh_handshake": True})
         return report
 
     if toolchain == "c" * 64:
@@ -423,7 +433,7 @@ def test_initial_report_must_bind_generation_identity_runtime_and_time(engine, r
         elif field == "observed_at":
             report[field] = 1
         elif field == "schema_version":
-            report[field] = 2
+            report[field] = 1
         elif field in {"runtime", "provenance"}:
             report[field] = {}
         else:
@@ -493,12 +503,16 @@ def test_missing_receipt_does_not_hide_corrupt_current(engine, root):
 
 
 @pytest.mark.parametrize("action", ["retry", "run", "receipt"])
-def test_receipt_public_identity_must_match_installed_candidate(engine, root, action):
+@pytest.mark.parametrize("mutation", ["provenance", "target"])
+def test_receipt_public_identity_must_match_installed_candidate(engine, root, action, mutation):
     generation, stage = candidate(root)
     engine.install_generation(root, generation, stage, healthy)
     path = root / "receipts" / f"{generation}.json"
     receipt = json.loads(path.read_text())
-    receipt["provenance"]["public_profile_digest"] = "c" * 64
+    if mutation == "provenance":
+        receipt["provenance"]["public_profile_digest"] = "c" * 64
+    else:
+        receipt["target_identity"]["deployable_digest"] = "e" * 64
     path.write_text(json.dumps(receipt))
     with pytest.raises(engine.GenerationError):
         if action == "retry":

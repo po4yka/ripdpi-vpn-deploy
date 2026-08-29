@@ -5,6 +5,7 @@ contacting hosts. Separate parity cases use the installed Ansible locally.
 """
 
 import contextlib
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -33,13 +34,25 @@ def workspace(tmp_path):
     root = tmp_path.resolve() / "repo"
     root.mkdir()
     (root / "Makefile").write_bytes((ROOT / "Makefile").read_bytes())
-    for name in ("fleet_inspection.py", "deploy-source-identity.sh",
+    for name in ("fleet_inspection.py", "deploy-source-identity.sh", "sshd_bundle_source.py", "sshd_contexts.py",
+                 "sshd_transaction_limits.py",
                  "validate-ansible-extra-vars.py", "deploy-controller.py", "bootstrap_readiness.py"):
         source = ROOT / "scripts" / name
         if source.exists():
             target = root / "scripts" / name
             target.parent.mkdir(exist_ok=True)
             shutil.copy2(source, target)
+    for name in ("sshd_migrate.py", "sshd_transaction.py", "sshd_ownership.py"):
+        source = ROOT / "ansible/roles/baseline/files" / name
+        target = root / "ansible/roles/baseline/files" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    for name in ("vpn-sshd-boot-recover.service", "vpn-sshd-recover.service",
+                 "vpn-sshd-recover.timer"):
+        source = ROOT / "ansible/roles/baseline/templates" / name
+        target = root / "ansible/roles/baseline/templates" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
     write(root / "ansible/ansible.cfg", "[defaults]\ninventory=inventory/generated.ini\n")
     write(root / "ansible/group_vars/all.yml", "vpn: {enable_xray_reality: true}\n")
     write(root / "ansible/group_vars/vpn.yml", "{}\n")
@@ -53,11 +66,22 @@ def workspace(tmp_path):
     known_hosts = write(home / ".ssh/known_hosts", "synthetic-host-pin\n")
     inventory = write(root / "ansible/inventory/generated.ini",
                       "[vpn]\n"
-                      "node-one ansible_host=192.0.2.1 ansible_user=deploy ansible_port=2222 provider=upcloud env=prod\n"
-                      "node-two ansible_host=192.0.2.2 ansible_user=deploy ansible_port=22 provider=vultr env=prod\n"
+                      "node-one ansible_host=192.0.2.1 ansible_user=deploy ansible_port=2222 provider=upcloud env=prod "
+                      "inspection_transport_host=100.64.0.1 inspection_host_key_alias=192.0.2.1\n"
+                      "node-two ansible_host=192.0.2.2 ansible_user=deploy ansible_port=22 provider=vultr env=prod "
+                      "inspection_transport_host=100.64.0.2 inspection_host_key_alias=192.0.2.2\n"
                       "[vpn-p0]\nnode-one\n[vpn-p1p2]\nnode-two\n"
                       f"[vpn:vars]\nansible_ssh_private_key_file={key}\nansible_python_interpreter=/usr/bin/python3\n")
     secrets = write(tmp_path.resolve() / "secrets.yaml", "fixture_secret: synthetic-private-value\n")
+    context_pairs = {}
+    for name, public, management, port in (
+            ("node-one", "192.0.2.1", "100.64.0.1", 2222),
+            ("node-two", "192.0.2.2", "100.64.0.2", 22)):
+        context = {"user": "deploy", "host": name, "addr": "198.51.100.44",
+                   "laddr": public, "lport": port}
+        context_pairs[name] = [context, {**context, "addr": "100.64.0.44", "laddr": management}]
+    contexts = write(tmp_path.resolve() / "ssh-contexts.json", "{}\n")
+    promotion = write(tmp_path.resolve() / "promotion.json", "{}\n")
     calls = tmp_path.resolve() / "calls.jsonl"
     binary = tmp_path.resolve() / "bin"
     binary.mkdir()
@@ -75,21 +99,52 @@ sys.exit(0)
         write(binary / name, program, 0o700)
     for name in ("validate-secrets.py", "spot-check-secrets.py", "check-certs.sh", "audit-log.sh"):
         write(root / "scripts" / name, program, 0o700)
+    write(root / "scripts/sshd-promotion-proof.py", program.replace(
+        "sys.exit(0)", """
+if pathlib.Path(sys.argv[0]).name == 'sshd-promotion-proof.py':
+    config = json.loads(pathlib.Path(sys.argv[sys.argv.index('--config') + 1]).read_text())
+    sys.exit(2 if config.get('fixture') == 'reject' else 0)
+sys.exit(0)
+"""), 0o700)
     write(root / ".gitignore", "ansible/inventory/\n__pycache__/\n")
     environment = {k: v for k, v in os.environ.items()
                    if not k.startswith(("ANSIBLE_", "GIT_", "DEPLOY_", "BACKUP_"))
                    and k not in ("SKIP_PRECHECK", "MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES", "HOSTS", "COHORTS")}
     environment.update(HOME=str(home), PATH=str(binary) + os.pathsep + os.environ["PATH"],
-                       INSPECT_KNOWN_HOSTS=str(known_hosts))
+                       INSPECT_KNOWN_HOSTS=str(known_hosts),
+                       DEPLOY_SSH_CONTEXTS_FILE=str(contexts),
+                       DEPLOY_PROMOTION_CONFIG_FILE=str(promotion))
     for command in (["git", "init", "-q"], ["git", "config", "user.name", "Deploy fixture"],
                     ["git", "config", "user.email", "fixture@example.invalid"],
                     ["git", "add", "."], ["git", "-c", "commit.gpgsign=false", "commit", "-qm", "test: fixture source"]):
         subprocess.run(command, cwd=root, env=environment, check=True, capture_output=True)
+    source_digest = subprocess.run([str(root / "scripts/deploy-source-identity.sh"), "--digest"],
+                                   cwd=root, env=environment, text=True,
+                                   capture_output=True, check=True).stdout.strip()
     return {"root": root, "home": home, "inventory": inventory, "key": key,
-            "known_hosts": known_hosts, "secrets": secrets, "calls": calls, "env": environment}
+            "context_pairs": context_pairs,
+            "contexts": contexts, "known_hosts": known_hosts, "secrets": secrets,
+            "calls": calls, "env": environment, "source_digest": source_digest}
 
 
-def invoke(workspace, target="dry-run", limit="", **values):
+def set_contexts(workspace, limit, context_pairs=None):
+    selected = ({"node-one"} if limit in {"node-one", "vpn-p0"}
+                else {"node-two"} if limit in {"node-two", "vpn-p1p2"}
+                else {"node-one", "node-two"})
+    pairs = context_pairs or workspace["context_pairs"]
+    workspace["contexts"].write_text(json.dumps({name: pairs[name] for name in sorted(selected)}) + "\n")
+    digest = workspace["source_digest"]
+    addresses = {"node-one": "192.0.2.1", "node-two": "192.0.2.2"}
+    Path(workspace["env"]["DEPLOY_PROMOTION_CONFIG_FILE"]).write_text(json.dumps({
+        name: {"schema_version": 1, "fixture": name, "target_identity": {
+            "inventory_alias": name,
+            "public_service_address_sha256": hashlib.sha256(addresses[name].encode()).hexdigest(),
+            "deployable_digest": digest,
+        }} for name in sorted(selected)}) + "\n")
+
+
+def invoke(workspace, target="dry-run", limit="", context_pairs=None, **values):
+    set_contexts(workspace, limit, context_pairs)
     arguments = {"ANSIBLE_LIMIT": limit, "SECRETS_FILE": str(workspace["secrets"]), **values}
     return subprocess.run(["make", target, *(f"{key}={value}" for key, value in arguments.items())],
                           cwd=workspace["root"], env=workspace["env"], text=True,
@@ -144,6 +199,7 @@ with pathlib.Path({str(workspace['calls'])!r}).open('a') as stream:
     common = ["ENV=prod", "RUNTIME_DIR=" + str(runtime)]
     deploy = ["make", "deploy", *common, "ANSIBLE_LIMIT=node-one",
               "ANSIBLE_TAGS=baseline,firewall,backup"]
+    set_contexts(workspace, "node-one")
 
     missing = subprocess.run(deploy, cwd=root, env=environment, capture_output=True, text=True, timeout=25)
     assert missing.returncode != 0
@@ -156,7 +212,7 @@ with pathlib.Path({str(workspace['calls'])!r}).open('a') as stream:
     assert result.returncode == 0, result.stderr
     observed = calls(workspace)
     assert [entry["program"] for entry in observed] == [
-        "sops", "validate-secrets.py", "spot-check-secrets.py", "check-certs.sh", "ssh",
+        "sops", "sshd-promotion-proof.py", "validate-secrets.py", "spot-check-secrets.py", "check-certs.sh", "ssh",
         "ansible-playbook", "ansible-playbook", "audit-log.sh"]
     consumers = [entry for entry in observed if "secret" in entry]
     snapshot = Path(consumers[0]["secret"])
@@ -174,10 +230,10 @@ with pathlib.Path({str(workspace['calls'])!r}).open('a') as stream:
 
 
 @pytest.mark.parametrize("limit,expected", [
-    ("", ["192.0.2.1", "192.0.2.2"]),
-    ("node-one", ["192.0.2.1"]),
-    ("vpn-p1p2", ["192.0.2.2"]),
-    ("vpn-p0,node-two", ["192.0.2.1", "192.0.2.2"]),
+    ("", ["100.64.0.1", "100.64.0.2"]),
+    ("node-one", ["100.64.0.1"]),
+    ("vpn-p1p2", ["100.64.0.2"]),
+    ("vpn-p0,node-two", ["100.64.0.1", "100.64.0.2"]),
 ])
 def test_make_waits_for_exact_inventory_subset_before_ansible(workspace, limit, expected):
     result = invoke(workspace, limit=limit)
@@ -185,8 +241,10 @@ def test_make_waits_for_exact_inventory_subset_before_ansible(workspace, limit, 
     observed = calls(workspace)
     ssh = [entry for entry in observed if entry["program"] == "ssh"]
     assert [entry["args"][-2] for entry in ssh] == expected
+    serial = [entry for entry in observed if entry["program"] in {"ssh", "ansible-playbook"}]
+    assert [entry["program"] for entry in serial] == [item for _ in expected
+                                                       for item in ("ssh", "ansible-playbook")]
     play = next(index for index, entry in enumerate(observed) if entry["program"] == "ansible-playbook")
-    assert all(entry["program"] != "ssh" for entry in observed[play:])
     assert not any(entry["program"] == "ansible-inventory" for entry in observed)
     assert "--check" in observed[play]["args"] and "--diff" in observed[play]["args"]
 
@@ -243,10 +301,15 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     assert [json.loads(line) for line in record.read_text().splitlines()] == [["node-one", "node-two"]]
 
 
-@pytest.mark.parametrize("field", ["ANSIBLE_LIMIT", "SECRETS_FILE", "ANSIBLE_EXTRA_VARS_FILE", "INSPECT_KNOWN_HOSTS"])
-def test_make_inputs_do_not_expand_make_functions(workspace, field):
+@pytest.mark.parametrize("field,target", [
+    ("ANSIBLE_LIMIT", "dry-run"), ("SECRETS_FILE", "dry-run"),
+    ("ANSIBLE_EXTRA_VARS_FILE", "dry-run"), ("INSPECT_KNOWN_HOSTS", "dry-run"),
+    ("DEPLOY_SSH_CONTEXTS_FILE", "dry-run"), ("DEPLOY_PROMOTION_CONFIG_FILE", "deploy"),
+])
+def test_make_inputs_do_not_expand_make_functions(workspace, field, target):
     marker = workspace["root"].parent / "expanded"
-    result = invoke(workspace, **{field: "$(shell touch " + str(marker) + ")"})
+    result = invoke(workspace, target=target, limit="node-one",
+                    **{field: "$(shell touch " + str(marker) + ")"})
     assert result.returncode != 0
     assert not marker.exists()
     assert not any(entry["program"] in ("ssh", "ansible-playbook") for entry in calls(workspace))
@@ -293,6 +356,112 @@ def test_every_local_input_is_validated_before_first_ssh(workspace, fault):
     assert not any(entry["program"] in ("ssh", "ansible-playbook") for entry in calls(workspace))
 
 
+@pytest.mark.parametrize("fault", ["contexts-mode", "contexts-selection", "contexts-value",
+                                    "contexts-port", "contexts-duplicate",
+                                    "promotion-mode", "promotion-selection", "promotion-duplicate"])
+def test_transaction_inputs_are_validated_before_first_ssh(workspace, fault):
+    target = "deploy" if fault.startswith("promotion-") else "dry-run"
+    set_contexts(workspace, "node-one")
+    if fault == "contexts-mode":
+        workspace["contexts"].chmod(0o640)
+    elif fault == "contexts-selection":
+        workspace["contexts"].write_text(json.dumps({
+            "node-two": workspace["context_pairs"]["node-two"]}) + "\n")
+    elif fault == "contexts-value":
+        invalid = [dict(item) for item in workspace["context_pairs"]["node-one"]]
+        invalid[1]["lport"] = True
+        workspace["contexts"].write_text(json.dumps({"node-one": invalid}) + "\n")
+    elif fault == "contexts-port":
+        invalid = [dict(item, lport=22) for item in workspace["context_pairs"]["node-one"]]
+        workspace["contexts"].write_text(json.dumps({"node-one": invalid}) + "\n")
+    elif fault == "contexts-duplicate":
+        pair = json.dumps(workspace["context_pairs"]["node-one"])
+        workspace["contexts"].write_text('{"node-one":' + pair + ',"node-one":' + pair + '}\n')
+    elif fault == "promotion-mode":
+        Path(workspace["env"]["DEPLOY_PROMOTION_CONFIG_FILE"]).chmod(0o640)
+    elif fault == "promotion-selection":
+        Path(workspace["env"]["DEPLOY_PROMOTION_CONFIG_FILE"]).write_text(json.dumps({
+            "node-two": {"schema_version": 1, "fixture": "node-two"}}) + "\n")
+    else:
+        promotion = Path(workspace["env"]["DEPLOY_PROMOTION_CONFIG_FILE"])
+        promotion.write_text(promotion.read_text().replace(
+            '"fixture": "node-one"', '"fixture": "node-one", "fixture": "reject"'))
+    result = subprocess.run(["make", target, "ANSIBLE_LIMIT=node-one",
+                             "SECRETS_FILE=" + str(workspace["secrets"])],
+                            cwd=workspace["root"], env=workspace["env"],
+                            text=True, capture_output=True, timeout=25)
+    assert result.returncode != 0
+    assert not any(entry["program"] in {"ssh", "ansible-playbook"} for entry in calls(workspace))
+
+
+def test_swapped_valid_promotion_configs_refuse_before_validation_or_ssh(workspace):
+    set_contexts(workspace, "")
+    promotion = Path(workspace["env"]["DEPLOY_PROMOTION_CONFIG_FILE"])
+    value = json.loads(promotion.read_text())
+    value["node-one"]["target_identity"], value["node-two"]["target_identity"] = (
+        value["node-two"]["target_identity"], value["node-one"]["target_identity"])
+    promotion.write_text(json.dumps(value) + "\n")
+    result = subprocess.run(["make", "deploy", "SECRETS_FILE=" + str(workspace["secrets"])],
+                            cwd=workspace["root"], env=workspace["env"],
+                            text=True, capture_output=True, timeout=25)
+    assert result.returncode != 0
+    assert calls(workspace) == []
+
+
+def test_all_promotion_configs_are_validated_before_first_ssh(workspace):
+    set_contexts(workspace, "")
+    promotion = Path(workspace["env"]["DEPLOY_PROMOTION_CONFIG_FILE"])
+    value = json.loads(promotion.read_text())
+    value["node-two"]["fixture"] = "reject"
+    promotion.write_text(json.dumps(value) + "\n")
+    result = subprocess.run(["make", "deploy", "SECRETS_FILE=" + str(workspace["secrets"])],
+                            cwd=workspace["root"], env=workspace["env"],
+                            text=True, capture_output=True, timeout=25)
+    assert result.returncode != 0
+    observed = calls(workspace)
+    assert [entry["program"] for entry in observed] == [
+        "sshd-promotion-proof.py", "sshd-promotion-proof.py"]
+    assert not any(entry["program"] in {"ssh", "ansible-playbook"} for entry in observed)
+
+
+def test_first_failed_node_stops_before_second_node_readiness(workspace):
+    binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
+    recorder = binary / "ansible-playbook"
+    recorder.write_text(recorder.read_text().replace("sys.exit(0)", """
+document = json.loads(pathlib.Path(sys.argv[1]).read_text())
+stage = pathlib.Path(document[-1]['import_playbook']).stem
+inventory = pathlib.Path(sys.argv[sys.argv.index('-i') + 1]).read_text()
+sys.exit(31 if stage == 'site' and 'node-one ' in inventory else 0)
+"""))
+    result = invoke(workspace, target="deploy")
+    assert result.returncode != 0
+    serial = [entry for entry in calls(workspace) if entry["program"] in {"ssh", "ansible-playbook"}]
+    assert [entry["program"] for entry in serial] == ["ssh", "ansible-playbook"]
+    assert serial[0]["args"][-2] == "100.64.0.1"
+    assert not any("100.64.0.2" in argument for entry in serial for argument in entry["args"])
+
+
+def test_per_node_wrapper_contains_exact_transaction_identity(workspace):
+    record = workspace["root"].parent / "transaction.json"
+    executable = Path(workspace["env"]["PATH"].split(os.pathsep)[0]) / "ansible-playbook"
+    write(executable, f"""#!{sys.executable}
+import json, pathlib, sys
+document = json.loads(pathlib.Path(sys.argv[1]).read_text())
+files = document[0]['vars']['deployment_input_files']['node-one']
+transaction = json.loads(pathlib.Path(next(path for path in files if path.endswith('-ssh-transaction.json'))).read_text())
+pathlib.Path({str(record)!r}).write_text(json.dumps(transaction))
+""", 0o700)
+    result = invoke(workspace, limit="node-one")
+    assert result.returncode == 0, result.stderr
+    observed = json.loads(record.read_text())
+    assert observed["ssh_transaction_controller_managed"] is True
+    assert observed["ssh_transaction_promotion_config_path"] is None
+    assert observed["ssh_transaction_target_identity"]["inventory_alias"] == "node-one"
+    assert len(observed["ssh_transaction_bundle_generation"]) == 64
+    assert Path(observed["ssh_transaction_inventory_path"]).name == "0-inventory.ini"
+    assert Path(observed["ssh_transaction_known_hosts_path"]).name == "known_hosts"
+
+
 def test_private_read_only_ssh_key_remains_usable(workspace):
     workspace["key"].chmod(0o400)
     result = invoke(workspace, limit="node-one")
@@ -304,6 +473,11 @@ def commit_fixture(workspace):
     subprocess.run(["git", "add", "."], cwd=workspace["root"], env=workspace["env"], check=True, capture_output=True)
     subprocess.run(["git", "-c", "commit.gpgsign=false", "commit", "-qm", "test: configure fixture"],
                    cwd=workspace["root"], env=workspace["env"], check=True, capture_output=True)
+    environment = {key: value for key, value in workspace["env"].items() if not key.startswith("GIT_")}
+    workspace["source_digest"] = subprocess.run(
+        [str(workspace["root"] / "scripts/deploy-source-identity.sh"), "--digest"],
+        cwd=workspace["root"], env=environment, text=True,
+        capture_output=True, check=True).stdout.strip()
 
 
 @pytest.mark.parametrize("dirty_source", [False, True])
@@ -321,7 +495,7 @@ def test_deploy_freezes_inventory_and_rechecks_source_before_convergence(workspa
     program = recorder.read_text()
     recorder.write_text(program.replace("sys.exit(0)", f"""
 inventory = pathlib.Path(sys.argv[sys.argv.index('-i') + 1])
-assert inventory.name == 'selected.ini'
+assert inventory.name == '0-inventory.ini'
 assert inventory.stat().st_mode & 0o777 == 0o600
 document = json.loads(pathlib.Path(sys.argv[1]).read_text())
 with pathlib.Path({str(workspace['calls'])!r}).open('a') as stream:
@@ -351,7 +525,9 @@ def test_deploy_failure_never_records_success_audit(workspace, failed_stage):
     binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
     recorder = binary / "ansible-playbook"
     recorder.write_text(recorder.read_text().replace("sys.exit(0)",
-                        f"sys.exit(31 if pathlib.Path(sys.argv[1]).stem == {failed_stage!r} else 0)"))
+                        f"document = json.loads(pathlib.Path(sys.argv[1]).read_text())\n"
+                        f"stage = pathlib.Path(document[-1]['import_playbook']).stem\n"
+                        f"sys.exit(31 if stage == {failed_stage!r} else 0)"))
     result = invoke(workspace, target="deploy", limit="node-one")
     assert result.returncode != 0
     observed = calls(workspace)
@@ -388,6 +564,7 @@ record.with_suffix('.tmp').write_text(json.dumps({{
 record.with_suffix('.tmp').replace(record)
 time.sleep(60)
 """, 0o700)
+    set_contexts(workspace, "node-one")
     process = subprocess.Popen(["make", "dry-run", "ANSIBLE_LIMIT=node-one",
                                 "SECRETS_FILE=" + str(workspace["secrets"])],
                                cwd=root, env=workspace["env"], text=True,
@@ -511,6 +688,7 @@ def test_multigoal_make_keeps_source_identity_outside_controller_targets(workspa
         stream.write("\nfixture-before fixture-after:\n"
                      f"\t@printf '%s %s\\n' \"$@\" \"$${{DEPLOY_SOURCE_REVISION}}\" >> '{identity_record}'\n")
     commit_fixture(workspace)
+    set_contexts(workspace, "node-one")
     result = subprocess.run(["make", "fixture-before", "dry-run", "deploy", "fixture-after",
                              "ANSIBLE_LIMIT=node-one", "SECRETS_FILE=" + str(workspace["secrets"])],
                             cwd=root, env=workspace["env"], text=True, capture_output=True, timeout=25)
@@ -533,7 +711,8 @@ def test_frozen_transport_is_portable_and_retains_original_host_key_identity(wor
 import json, pathlib, shlex, subprocess, sys
 loader = json.loads(pathlib.Path(sys.argv[1]).read_text())[0]
 files = loader['vars']['deployment_input_files']['node-one']
-transport = json.loads(pathlib.Path(files[-1]).read_text())
+transport_path = next(path for path in files if path.endswith('-transport.json'))
+transport = json.loads(pathlib.Path(transport_path).read_text())
 options = shlex.split(transport['ansible_ssh_args'])
 assert all(options[index] in ('-F', '-o') for index in range(0, len(options), 2))
 result = subprocess.run(['/usr/bin/ssh', '-G', *options, transport['ansible_host']],
@@ -541,7 +720,11 @@ result = subprocess.run(['/usr/bin/ssh', '-G', *options, transport['ansible_host
 config = dict(line.split(' ', 1) for line in result.stdout.splitlines())
 pathlib.Path({str(record)!r}).write_text(json.dumps({{'config': config, 'transport': transport}}))
 """, 0o700)
-    result = invoke(workspace, limit="node-one", ANSIBLE_EXTRA_VARS_FILE=str(overrides))
+    context = {"user": "deploy", "host": "node-one", "addr": "198.51.100.44",
+               "laddr": "192.0.2.1", "lport": 2022}
+    result = invoke(workspace, limit="node-one",
+                    context_pairs={"node-one": [context, {**context, "laddr": "198.51.100.8"}]},
+                    ANSIBLE_EXTRA_VARS_FILE=str(overrides))
     assert result.returncode == 0, result.stderr
     observed = json.loads(record.read_text())
     config, transport = observed["config"], observed["transport"]
@@ -571,6 +754,7 @@ record.with_suffix('.tmp').write_text(json.dumps([os.getpid(), child.pid]))
 record.with_suffix('.tmp').replace(record)
 time.sleep(60)
 """, 0o700)
+    set_contexts(workspace, "node-one")
     process = subprocess.Popen(["make", "dry-run", "ANSIBLE_LIMIT=node-one",
                                 "SECRETS_FILE=" + str(workspace["secrets"])],
                                cwd=workspace["root"], env=workspace["env"],
@@ -650,11 +834,19 @@ def test_real_ansible_preserves_profiles_types_secrets_and_local_delegation(work
     assert baseline.returncode == 0, baseline.stderr + baseline.stdout
     expected = {path.name: json.loads(path.read_text()) for path in root.parent.glob("actual-*.json")}
     assert len(expected) == (1 if override else 2)
+    if not override:
+        expected["actual-node-one.json"]["address"] = "100.64.0.1"
+        expected["actual-node-two.json"]["address"] = "100.64.0.2"
     for path in root.parent.glob("actual-*.json"):
         path.unlink()
     write(root / "ansible/playbooks/host_vars/node-one.yml",
           "fixture_secret: hostile-sibling-host-vars\nvpn: {enable_hysteria: hostile}\n")
-    candidate = invoke(workspace, limit="node-one" if override else "",
+    context_pairs = None
+    if override:
+        context = {"user": "deploy", "host": "node-one", "addr": "198.51.100.44",
+                   "laddr": "192.0.2.1", "lport": 2022}
+        context_pairs = {"node-one": [context, {**context, "laddr": "198.51.100.8"}]}
+    candidate = invoke(workspace, limit="node-one" if override else "", context_pairs=context_pairs,
                        **({"ANSIBLE_EXTRA_VARS_FILE": str(overrides)} if overrides else {}))
     assert candidate.returncode == 0, candidate.stderr + candidate.stdout
     assert {path.name: json.loads(path.read_text()) for path in root.parent.glob("actual-*.json")} == expected

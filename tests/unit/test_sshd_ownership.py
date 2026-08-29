@@ -11,10 +11,13 @@ import tempfile
 import time
 
 import pytest
+import yaml
+from jinja2 import Environment, StrictUndefined
 
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "ansible/roles/baseline/files/sshd_ownership.py"
+HARDENING_TEMPLATE = ROOT / "ansible/roles/baseline/templates/sshd_config.d-hardening.conf.j2"
 CONTEXTS = [
     {"user": "deploy", "host": "controller.example", "addr": "198.51.100.2", "laddr": "192.0.2.10", "lport": 2222},
     {"user": "deploy", "host": "controller.example", "addr": "100.64.0.2", "laddr": "100.64.0.3", "lport": 2222},
@@ -25,9 +28,95 @@ CLOUD = "sshd_config.d/50-cloud-init.conf"
 PACKAGED_SFTP = b"Subsystem sftp /usr/lib/openssh/sftp-server\n"
 PACKAGED_MAIN_DEFAULTS = (b"KbdInteractiveAuthentication no\nX11Forwarding yes\n" + PACKAGED_SFTP)
 OWNERSHIP_FILES = ("sshd_config", BOOT, MANAGED, CLOUD)
+AUTHENTICATION_DIRECTIVES = (
+    b"passwordauthentication ", b"kbdinteractiveauthentication ",
+    b"permitrootlogin ", b"pubkeyauthentication ",
+)
 BASELINE_HARDENING = (b"X11Forwarding no\nAllowTcpForwarding no\nAllowAgentForwarding no\n"
                       b"AllowUsers deploy\nClientAliveInterval 60\n"
                       b"Subsystem sftp internal-sftp -f AUTHPRIV -l INFO\n")
+
+
+def test_site_requires_exact_node_then_runs_transaction_after_stack():
+    plays = yaml.safe_load((ROOT / "ansible/playbooks/site.yml").read_text())
+    assert len(plays) == 2
+    converge, transaction = plays
+    assert converge["serial"] == transaction["serial"] == 1
+    assert converge["any_errors_fatal"] is transaction["any_errors_fatal"] is True
+    first = converge["pre_tasks"][0]
+    assert "ansible_play_hosts_all | length == 1" in first["ansible.builtin.assert"]["that"]
+    assert "ssh_transaction_controller_managed | default(false) | bool" in first["ansible.builtin.assert"]["that"]
+    task = transaction["tasks"][0]
+    assert task["ansible.builtin.include_role"] == {"name": "baseline", "tasks_from": "sshd-transaction"}
+
+
+def test_baseline_main_cannot_publish_or_reload_sshd_policy():
+    tasks = yaml.safe_load((ROOT / "ansible/roles/baseline/tasks/main.yml").read_text())
+    owned = {"/etc/ssh/sshd_config", "/etc/ssh/sshd_config.d/20-ansible-hardening.conf",
+             "/etc/ssh/sshd_config.d/10-cloud-init-hardening.conf",
+             "/etc/ssh/sshd_config.d/50-cloud-init.conf"}
+    for task in tasks:
+        for module in ("ansible.builtin.copy", "ansible.builtin.template", "ansible.builtin.lineinfile",
+                       "ansible.builtin.file"):
+            parameters = task.get(module)
+            if isinstance(parameters, dict):
+                assert parameters.get("dest", parameters.get("path")) not in owned
+        notify = task.get("notify", [])
+        assert "Reload ssh" not in ([notify] if isinstance(notify, str) else notify)
+
+
+def test_transaction_role_uses_controller_preview_during_ansible_check():
+    tasks = yaml.safe_load((ROOT / "ansible/roles/baseline/tasks/sshd-transaction.yml").read_text())
+    assert tasks[0]["ansible.builtin.assert"]["that"][-1] == "ansible_play_hosts_all | length == 1"
+    command = tasks[1]
+    assert command["delegate_to"] == "localhost" and command["become"] is False
+    assert command["check_mode"] is False and command["diff"] is False and command["no_log"] is True
+    stdin = command["ansible.builtin.command"]["stdin"]
+    assert "('check' if ansible_check_mode else 'deploy')" in stdin
+    assert "sshd-baseline-controller.py" in command["ansible.builtin.command"]["argv"][1]
+
+
+def test_real_ansible_check_invokes_read_only_transaction_preview(tmp_path):
+    root = tmp_path / "repo"
+    role = root / "ansible/roles/baseline"
+    (role / "tasks").mkdir(parents=True)
+    (role / "templates").mkdir()
+    (root / "ansible/playbooks").mkdir()
+    (root / "scripts").mkdir()
+    (role / "tasks/main.yml").write_bytes(
+        (ROOT / "ansible/roles/baseline/tasks/sshd-transaction.yml").read_bytes())
+    (role / "templates/sshd_config.d-hardening.conf.j2").write_text("X11Forwarding no\n")
+    record = root / "request.json"
+    (root / "scripts/sshd-baseline-controller.py").write_text(
+        "#!/usr/bin/env python3\nimport json, pathlib, sys\n"
+        f"pathlib.Path({str(record)!r}).write_text(json.dumps(json.load(sys.stdin)))\n"
+        "print(json.dumps({'status': 'would-change'}))\n")
+    (root / "scripts/sshd-baseline-controller.py").chmod(0o700)
+    contexts = [dict(CONTEXTS[0]), dict(CONTEXTS[1])]
+    variables = {
+        "ssh_transaction_controller_managed": True,
+        "ssh_transaction_inventory_path": str(root / "inventory.ini"),
+        "ssh_transaction_known_hosts_path": str(root / "known_hosts"),
+        "ssh_transaction_contexts": contexts,
+        "ssh_transaction_bundle_generation": "a" * 64,
+        "ssh_transaction_promotion_config_path": None,
+        "ssh_transaction_target_identity": {
+            "inventory_alias": "node-one", "public_service_address_sha256": "b" * 64,
+            "deployable_digest": "c" * 64},
+    }
+    playbook = [{"hosts": "vpn", "gather_facts": False, "become": False,
+                 "roles": [{"role": "baseline"}], "vars": variables}]
+    (root / "ansible/playbooks/check.yml").write_text(yaml.safe_dump(playbook))
+    (root / "inventory.ini").write_text("[vpn]\nnode-one ansible_connection=local\n")
+    result = subprocess.run([
+        "ansible-playbook", "-i", str(root / "inventory.ini"),
+        str(root / "ansible/playbooks/check.yml"), "--check"],
+        cwd=root, text=True, capture_output=True, timeout=30,
+        env={**os.environ, "ANSIBLE_ROLES_PATH": str(root / "ansible/roles"), "ANSIBLE_DEBUG": "false"})
+    assert result.returncode == 0, result.stdout + result.stderr
+    request = json.loads(record.read_text())
+    assert request["mode"] == "check"
+    assert request["promotion_config_path"] is None
 
 
 @pytest.fixture
@@ -420,6 +509,20 @@ def test_baseline_plan_preserves_bootstrap_and_stages_complete_sftp_handoff(plan
     assert repeated["changed"] is False
     for relative in (BOOT, CLOUD):
         assert configuration_records(config)[relative] == originals[relative]
+
+
+def test_rendered_baseline_candidate_never_reclaims_bootstrap_authentication(planner, baseline_config):
+    rendered = Environment(undefined=StrictUndefined).from_string(
+        HARDENING_TEMPLATE.read_text()).render(
+            security_controls={"ssh_strict": True}, ansible_user="deploy").encode()
+    lowered = rendered.lower()
+    for directive in AUTHENTICATION_DIRECTIVES:
+        assert directive not in lowered
+    assert lowered.count(b"x11forwarding no\n") == 1
+    plan = planner.build_baseline_plan(
+        baseline_config, contexts=CONTEXTS, hardening=rendered)
+    assert plan["operation"] == "sshd-baseline"
+    assert base64.b64decode(plan["files"][MANAGED]["after"]["data_b64"]) == rendered
 
 
 def test_baseline_without_internal_sftp_preserves_packaged_owner(planner, baseline_config):

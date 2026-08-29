@@ -245,10 +245,20 @@ signal.pause()
     config.write_text(
         json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "sentinel": "tls-freeze-a",
                 "provenance": {"controller_revision": "a" * 40, "runner_sha256": hashlib.sha256(SCRIPT.read_bytes()).hexdigest(),
                                "client_generation_id": str(uuid4()), "public_profile_digest": "b" * 64, "vantage": "external"},
+                "target_identity": {
+                    "inventory_alias": "vpn-p2-fixture",
+                    "public_service_address_sha256": "c" * 64,
+                    "deployable_digest": "d" * 64,
+                    "applied_at": int(time.time()) - 10,
+                    "required_profiles": ["p0-reality", "p1-xhttp", "p2-amneziawg", "p2-hysteria2"],
+                    "source_revision": "a" * 40,
+                    "runner_sha256": hashlib.sha256(SCRIPT.read_bytes()).hexdigest(),
+                    "public_profile_digest": "b" * 64,
+                },
                 "probe_url": "https://www.gstatic.com/generate_204",
                 "expected_status": 204,
                 "timeout_seconds": 15,
@@ -314,9 +324,13 @@ def test_sentinel_reports_authenticated_data_plane_success_without_secrets(
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
+    assert payload["schema_version"] == 2
+    assert payload["target_identity"] == json.loads(config.read_text())["target_identity"]
     assert payload["provenance"] == json.loads(config.read_text())["provenance"]
     for profile in payload["profiles"]:
         assert profile["payload_transport"] == "tcp-https"
+        assert profile["dns_through_tunnel"] is True
+        assert profile["authenticated_handshake"] is True
         if profile["profile"] == "p2-amneziawg":
             assert profile["target_address_family"] == "ipv4"
             assert profile["fresh_handshake"] is True
@@ -332,6 +346,7 @@ def test_sentinel_reports_authenticated_data_plane_success_without_secrets(
     }
     assert "DO_NOT_LEAK" not in result.stdout + result.stderr
     calls = (tmp_path / "calls.log").read_text()
+    assert "--resolve" not in calls
     assert calls.count("sing-box run") == 1
     assert payload["runtime"]["xray"] == "26.3.27"
     assert payload["runtime"]["awg_toolchain"] == json.loads(config.read_text())["expected_runtime"]["awg_toolchain"]
@@ -369,17 +384,18 @@ def test_existing_loopback_listener_cannot_supply_runtime_success(monkeypatch):
         assert result[0]["target_address_family"] == "unknown"
 
 
-def test_awg_dns_failure_does_not_claim_observed_ipv4_or_https(monkeypatch):
+def test_awg_probe_command_keeps_hostname_resolution_inside_namespace():
     spec = importlib.util.spec_from_file_location("sentinel_dns", SCRIPT)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    def failure(*_a, **_k):
-        raise socket.gaierror("fixture DNS failure")
-    monkeypatch.setattr(module.socket, "getaddrinfo", failure)
-    result = module.probe_awg({"probe_url": "https://fixture.example/", "amneziawg": {"config": "/fixture", "address": "10.66.66.2/32"}}, True, {})
-    assert result["verdict"] == "error"
-    assert result["payload_transport"] == "unknown"
-    assert result["target_address_family"] == "unknown"
+    command = module.curl_command(
+        {"probe_url": "https://fixture.example/", "timeout_seconds": 1},
+        [],
+        ["ip", "netns", "exec", "vpn-live-fixture"],
+    )
+    assert command[:4] == ["ip", "netns", "exec", "vpn-live-fixture"]
+    assert "--resolve" not in command
+    assert command[-1] == "https://fixture.example/"
 
 
 def test_legacy_sing_box_xhttp_requires_explicit_migration(tmp_path):
@@ -390,6 +406,23 @@ def test_legacy_sing_box_xhttp_requires_explicit_migration(tmp_path):
     result = _run(config, env)
     assert result.returncode == 2
     assert "p1-xhttp requires xray" in result.stderr
+    assert not (tmp_path / "calls.log").exists()
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    ["not-an-object", {"config": "relative.json", "profiles": {}}, {"config": "/tmp/sing-box.json", "profiles": []}],
+)
+def test_malformed_sing_box_config_is_rejected_without_probe_or_traceback(tmp_path, invalid):
+    config, env = _setup(tmp_path)
+    document = json.loads(config.read_text())
+    document["sing_box"] = invalid
+    config.write_text(json.dumps(document))
+
+    result = _run(config, env)
+
+    assert result.returncode == 2
+    assert result.stderr.strip() == "vpn-protocol-liveness: invalid sing-box profiles"
     assert not (tmp_path / "calls.log").exists()
 
 
@@ -472,6 +505,7 @@ def test_absent_awg_config_needs_no_awg_toolchain_or_runtime(tmp_path):
     del document["amneziawg"]
     del document["expected_runtime"]["awg"]
     del document["expected_runtime"]["awg_toolchain"]
+    document["target_identity"]["required_profiles"].remove("p2-amneziawg")
     config.write_text(json.dumps(document))
     result = _run(config, env)
     payload = json.loads(result.stdout)
@@ -632,6 +666,8 @@ def test_awg_namespace_is_removed_after_probe_failure(tmp_path: Path) -> None:
     )
     calls = (tmp_path / "calls.log").read_text()
     assert awg["verdict"] == "blocked", awg
+    assert awg["dns_through_tunnel"] is False
+    assert awg["authenticated_handshake"] is False
     assert "netns delete vpn-live-" in calls
     awg_pid = (tmp_path / "awg.pid").read_text().strip()
     assert subprocess.run(["ps", "-p", awg_pid], capture_output=True).returncode != 0

@@ -287,7 +287,7 @@ class Runtime:
 
 
 def validate_request(action, request):
-    fields = {'prepare': {'intent', 'contexts', 'timeout'}, 'apply': {'generation', 'nonce'},
+    fields = {'prepare': {'intent', 'contexts', 'timeout', 'check_mode', 'bundle_generation'}, 'apply': {'generation', 'nonce'},
               'confirm': {'generation', 'nonce', 'snapshot_digest'}, 'rollback': {'generation', 'nonce'}}
     try:
         if action == 'prepare':
@@ -298,6 +298,9 @@ def validate_request(action, request):
         if not isinstance(request, dict) or set(request) != fields[action]:
             raise ValueError
         if action == 'prepare':
+            if type(request['check_mode']) is not bool:
+                raise ValueError
+            transaction._hex(request['bundle_generation'])
             if not isinstance(request['contexts'], list) or not 2 <= len(request['contexts']) <= 8:
                 raise ValueError
             for context in request['contexts']:
@@ -365,7 +368,18 @@ def main():
             result = engine.status() if args.action == 'status' else engine.recover(boot=args.action == 'boot-recover')
         else:
             request = validate_request(args.action, _request())
-            result = getattr(engine, args.action)(**request)
+            if args.action == 'prepare':
+                expected = request.pop('bundle_generation')
+                check_mode = request.pop('check_mode')
+                if _validate_installation().name != expected:
+                    raise TransactionError('recovery-generation-stale')
+                if check_mode:
+                    request.pop('timeout')
+                    result = engine.preview(**request)
+                else:
+                    result = engine.prepare(**request)
+            else:
+                result = getattr(engine, args.action)(**request)
         # systemd recovery must not put an active transaction nonce in the journal.
         if args.action in {'recover', 'boot-recover'}:
             result = {'status': result['status']}
