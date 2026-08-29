@@ -151,7 +151,7 @@ def _stop_container(name: str, process: subprocess.Popen[bytes]) -> bool:
             check=False,
         ).returncode == 0
     except (OSError, subprocess.TimeoutExpired):
-        pass
+        removed = False  # The bounded inspect below must confirm uncertain cleanup.
     process.kill()
     try:
         process.wait(timeout=5)
