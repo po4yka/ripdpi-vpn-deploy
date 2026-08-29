@@ -487,9 +487,8 @@ cloud-init-schema:
 	  if command -v cloud-init >/dev/null 2>&1; then \
 	    cloud-init schema --config-file "$$rendered"; \
 	  elif command -v docker >/dev/null 2>&1; then \
-	    docker run --rm -i "$(CLOUD_INIT_IMAGE)" sh -eu -c \
-	      'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq cloud-init >/dev/null && cloud-init schema --config-file /dev/stdin' \
-	      < "$$rendered"; \
+	    python3 scripts/cloud-init-schema-container.py \
+	      --image "$(CLOUD_INIT_IMAGE)" --config "$$rendered" --timeout 240; \
 	  else \
 	    echo "missing: cloud-init (or docker fallback)" >&2; \
 	    exit 1; \
