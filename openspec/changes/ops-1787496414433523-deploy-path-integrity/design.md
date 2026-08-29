@@ -18,7 +18,8 @@ Thirteen deploy-path findings from the audit (2026-08-23) share a theme: the saf
 - SSH allowlist enforced in both Terraform validation and site.yml assert: plan-time failure plus defense in depth for hand-rendered inventories.
 - Rotation .prev via copy before template write: reuses the exact contract rollback-config already consumes; no new artifact format.
 - Rollback ordering fix is reorder-only plus a no-op guard; no new validation machinery.
-- Toggle-default parity enforced by pytest sweep instead of convention: drift becomes a red test.
+- Toggle-default parity for ordinary transport selection is enforced by a pytest sweep of source expressions, including missing-key and explicit boolean behavior. Existing cohorts replace the `vpn` mapping rather than deep-merging it, so omitted keys use inline defaults; explicit cohort values must remain authoritative. The fail-closed `backup-configure.yml` prerequisite is not a transport selector and is excluded without changing its guard.
+- Cascade defaults are explicitly false with a governance pointer. Tests require disabled values, not textual absence, while retaining exception-tier, per-host authorization and implementation-only guards.
 
 ## Contracts and ownership
 

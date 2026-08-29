@@ -239,7 +239,7 @@
       failed_when: hy_status.stdout != "active"
       when:
         - not (vpn_subscription_only | default(false))
-        - vpn.enable_hysteria | default(false)
+        - vpn.enable_hysteria | default(true)
 
     - name: Snell configuration is valid
       ansible.builtin.command:
@@ -281,7 +281,7 @@
       changed_when: false
       when:
         - not (vpn_subscription_only | default(false))
-        - vpn.enable_hysteria | default(false)
+        - vpn.enable_hysteria | default(true)
 
     - name: AmneziaWG interface up
       ansible.builtin.command:
@@ -289,7 +289,7 @@
       changed_when: false
       when:
         - not (vpn_subscription_only | default(false))
-        - vpn.enable_amneziawg | default(false)
+        - vpn.enable_amneziawg | default(true)
 
     - name: SSH password auth disabled
       ansible.builtin.command:

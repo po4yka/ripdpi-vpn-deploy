@@ -313,17 +313,19 @@ def test_verify_listener_tasks_skip_subscription_only_hosts(tmp_path, match):
 
 @pytest.mark.parametrize("match, variables", [
     ("ss -lnu", {"vpn": {"enable_hysteria": False}}),
-    ("ss -lnu", {"vpn": {}}),
     ("xray_fallback_port", {"vpn": {"enable_xray_reality": False}, "xray_fallback_port": 2443}),
-    ("xray_fallback_port", {"vpn": {}, "xray": {"cohorts": [{"name": "explicit", "port": 443}]},
+    ("xray_fallback_port", {"vpn": {"enable_xray_reality": False},
+                            "xray": {"cohorts": [{"name": "explicit", "port": 443}]},
                             "xray_fallback_port": 2443}),
-    ("xray_fallback_port", {"vpn": {}, "xray_fallback_port": 0}),
-    ("xray_fallback_port", {"vpn": {}, "xray_fallback_port": 2443, "xray_port": 2443}),
-    ("xray_fallback_port", {"vpn": {}}),
+    ("xray_fallback_port", {"vpn": {"enable_xray_reality": False}, "xray_fallback_port": 0}),
+    ("xray_fallback_port", {"vpn": {"enable_xray_reality": False},
+                            "xray_fallback_port": 2443, "xray_port": 2443}),
+    ("xray_fallback_port", {"vpn": {"enable_xray_reality": False}}),
     ("nginx_xhttp_fallback_port", {"vpn": {"enable_nginx_xhttp": False},
                                    "nginx_xhttp": {"fallback_enabled": True}}),
-    ("nginx_xhttp_fallback_port", {"vpn": {}, "nginx_xhttp": {"fallback_enabled": False}}),
-    ("nginx_xhttp_fallback_port", {"vpn": {}, "nginx_xhttp": {}}),
+    ("nginx_xhttp_fallback_port", {"vpn": {"enable_nginx_xhttp": False},
+                                    "nginx_xhttp": {"fallback_enabled": False}}),
+    ("nginx_xhttp_fallback_port", {"vpn": {"enable_nginx_xhttp": False}, "nginx_xhttp": {}}),
 ])
 def test_verify_does_not_require_undeployed_listener(tmp_path, match, variables):
     result, inspected = _run_listener_task(tmp_path, match, variables, "tcp", None)

@@ -18,7 +18,7 @@ The audit found the operator deploy path can bypass its own safety rails or leav
 - Xray rollback validates the target binary against the current config BEFORE flipping `/opt/xray/current`, and refuses no-op rollbacks.
 - Smoke-test protocol blocks wrap in block/rescue/always to stop transient units and remove the workdir on failure.
 - The os-maintenance service list drops the externally managed unit from the unconditional base list.
-- Playbook inline toggle defaults align with `group_vars/all.yml` everywhere.
+- Ordinary transport-selection defaults in playbooks align with `group_vars/all.yml`; fail-closed configuration prerequisites remain unchanged.
 - The apt simulation gate runs under `LC_ALL=C`.
 - `enable_cascade_ingress`/`enable_cascade_egress` join the declared toggle surface in `all.yml`.
 

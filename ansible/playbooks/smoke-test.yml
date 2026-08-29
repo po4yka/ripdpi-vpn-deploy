@@ -40,7 +40,7 @@
         - not (vpn_subscription_only | default(false))
         - >-
           (vpn.enable_xray_reality | default(true)) or
-          (vpn.enable_hysteria | default(false)) or
+          (vpn.enable_hysteria | default(true)) or
           (vpn.enable_snell | default(false))
       block:
         - name: Claim the smoke workdir without adopting existing resources
@@ -196,7 +196,7 @@
                     smoketest_cleanup_confirmed: true
 
             - name: Smoke-test Hysteria
-              when: vpn.enable_hysteria | default(false)
+              when: vpn.enable_hysteria | default(true)
               block:
                 - name: Render Hysteria client config
                   ansible.builtin.copy:

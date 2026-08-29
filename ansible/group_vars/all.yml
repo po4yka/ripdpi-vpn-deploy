@@ -79,6 +79,10 @@ vpn:
   enable_probe_matrix_target: false # opt-in RESEARCH five-protocol target;
                                     # never part of a family deploy.
   enable_snell: false          # RESEARCH; staging-only Snell v4/v6 evaluation
+  # EXCEPTION only; role-tiers.yml retains implementation-only governance.
+  # Declaring these defaults does not grant per-host exception authorization.
+  enable_cascade_ingress: false
+  enable_cascade_egress: false
 
   # When enable_warp_outbound is true AND this list is non-empty, the
   # xray config gains a SOCKS outbound tagged "warp-out" and routing
