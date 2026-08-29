@@ -1,19 +1,19 @@
 ---
 task_id: VPD-1787497252303967
 change: vpd-1787497252303967-vpnd-probe-matrix-robust-evidence
-commit_sha: null
-local: required
-local_evidence: "Combined candidate f29ca8e72e2c5d9803ce21da0f9b3cab144a3b4d passed make check: 2050 Python tests passed with 1 existing skip, 55 BATS passed, 184 release-profile Rust tests passed, Clippy passed with warnings denied, and all Terraform, policy, cloud-init, render, schema, Ansible and ci-fast gates passed. The isolated profile stopped successfully. A wrapper-only context comparison returned false after the successful make process, while a bounded follow-up start/stop proved the Docker context and config hash unchanged. Hosted, client, staging and live gates remain pending."
-remote_ci: required
-remote_ci_evidence: ""
+commit_sha: "ef688f2a785173913e6e22c42a4843f1c97451bb"
+local: "passed"
+local_evidence: "Combined candidate f29ca8e72e2c5d9803ce21da0f9b3cab144a3b4d passed make check: 2050 Python tests passed with 1 existing skip, 55 BATS passed, 184 release-profile Rust tests passed, Clippy passed with warnings denied, and all Terraform, policy, cloud-init, render, schema, Ansible and ci-fast gates passed. The isolated profile stopped successfully. A wrapper-only context comparison returned false after the successful make process, while a bounded follow-up start/stop proved the Docker context and config hash unchanged. Staging and live gates remain pending."
+remote_ci: "passed"
+remote_ci_evidence: "PR #116 exact ef688f2a785173913e6e22c42a4843f1c97451bb: CI run 33244798098 passed all 51 jobs; CodeQL run 33244798079 passed; PR rollup reached 64 successful checks and one neutral report. Contract-sync run 33244798075 initially failed against client schema 2, then its failed job passed after the exact schema 3 mirror reached RIPDPI main."
 dry_run: not_applicable
 dry_run_evidence: no Terraform surface
 staging: required
 staging_evidence: ""
 live: required
 live_evidence: ""
-client: blocked
-client_evidence: "The RIPDPI owner authorized a narrow byte-for-byte mirror of the frozen producer schema 3. That mirror and its hosted gates remain pending; no client runtime or window semantics change is authorized."
+client: "passed"
+client_evidence: "RIPDPI PR #460 mirrored the schema byte-for-byte without runtime, network-exposure or schema-2 window changes. Tested PR head 10f209b1a8f6c51f7c85ae9bde54467c2798f986 passed 47 checks with 18 expected skips and CodeQL. Protected rebase integration produced client main ec7f670cdd97277d468496338dafbe3eb69ddefb; exact-main CI run 33247910603 passed 44 jobs with 17 expected skips, and CodeQL 33247910600, Secret Scan 33247910597 and fleet-fixtures 33247910592 passed."
 artifact: not_applicable
 artifact_evidence: No release artifact is published; report schema validation is covered by local and client evidence categories.
 ---
@@ -26,7 +26,7 @@ artifact_evidence: No release artifact is published; report schema validation is
 |---|---|---|---|
 | REQ-MATRIX-CELL-TIMEOUT-KILL | VPD-1787497252661429 | Actual Cmd → GNU Make → shell → sleep PID-handshake regression fails before the fix and passes after; eight direct/foreground SIGINT/TERM cases exercise probe jobs and doctor captures | Focused local pass; broad gates pending |
 | REQ-MATRIX-CONTROL-TIMEOUT | VPD-1787497252679177 | Actual hanging Make control records Unknown/control_timeout and both cells complete; this test already passes on the base implementation | Existing behavior verified locally; broad gates pending |
-| REQ-MATRIX-DURABILITY | VPD-1787497252698055 | Real CLI fixtures prove mode-0600 atomic per-tick checkpoints, synchronized JSONL, exclusive output locks, SIGINT/SIGTERM partial flush with 130/143, scheduled-wait flush, descendant cleanup, and fail-closed checkpoint errors preserving the prior report | Full local repository pass; client/hosted/live pending |
+| REQ-MATRIX-DURABILITY | VPD-1787497252698055 | Real CLI fixtures prove mode-0600 atomic per-tick checkpoints, synchronized JSONL, exclusive output locks, SIGINT/SIGTERM partial flush with 130/143, scheduled-wait flush, descendant cleanup, and fail-closed checkpoint errors preserving the prior report | Local, hosted and client contract pass; staging/live pending |
 | REQ-MATRIX-EVIDENCE-SEMANTICS | VPD-1787497252715025 | No-impairment and gap/recovery tests pass; schema-2 snapshot removes six all-Ok phantom windows, with fields and observations unchanged | Focused local pass; broad gates pending |
 
 ## Bounded runtime evidence — 2026-08-28
@@ -134,3 +134,18 @@ artifact_evidence: No release artifact is published; report schema validation is
   was not modified, and a bounded follow-up start/stop observed both identical
   context and identical config hash. This is local repository evidence, not
   hosted, client, staging or live traffic acceptance.
+- PR #116 exact head `ef688f2a785173913e6e22c42a4843f1c97451bb`
+  passed CI run `33244798098` (51/51), CodeQL run `33244798079`,
+  and all other required checks. The PR rollup reached 64 successful checks and
+  one neutral report after contract-sync run `33244798075` compared against the
+  integrated client mirror.
+- RIPDPI PR #460 exact head
+  `10f209b1a8f6c51f7c85ae9bde54467c2798f986` passed 47 hosted checks with
+  18 expected skips and CodeQL, then entered protected main as
+  `ec7f670cdd97277d468496338dafbe3eb69ddefb`. Exact client-main CI run
+  `33247910603` passed all 44 executed jobs with 17 expected skips; CodeQL,
+  Secret Scan and fleet-fixtures also passed. The vendored schema SHA-256 is
+  `1504d756decd4de5f13dc468d9a56ffa6bfbef9fd89051a2a0f76a15acee029a`,
+  byte-identical to this producer candidate. No client runtime, exposure or
+  schema-2 window behavior changed. Staging and live traffic acceptance remain
+  separate and pending.
