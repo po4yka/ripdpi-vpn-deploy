@@ -266,14 +266,17 @@ def test_recovery_unit_identity_matches_shipped_source(adapter):
         assert hashlib.sha256(path.read_bytes()).hexdigest() == expected
 
 
-def test_units_dispatch_immutable_bundle_and_grant_only_stable_lock_write(adapter):
+def test_units_dispatch_immutable_bundle_and_grant_complete_transaction_roots(adapter):
     for name in ('vpn-sshd-boot-recover.service', 'vpn-sshd-recover.service'):
         unit = (ROOT / 'ansible/roles/baseline/templates' / name).read_text()
         assert '/usr/local/lib/vpn-sshd/sshd_bundle.py' in unit
         assert 'ProtectSystem=strict' in unit
         writes = next(line for line in unit.splitlines() if line.startswith('ReadWritePaths='))
-        assert '/usr/local/lib/vpn-sshd/bundle.lock' in writes.split()
-        assert '/usr/local/lib/vpn-sshd' not in writes.split()
+        writable_paths = writes.partition('=')[2].split()
+        assert '/etc/ssh' in writable_paths
+        assert '/etc/ssh/sshd_config.d' not in writable_paths
+        assert '/usr/local/lib/vpn-sshd/bundle.lock' in writable_paths
+        assert '/usr/local/lib/vpn-sshd' not in writable_paths
 
 
 def test_installation_uses_one_publisher_not_sequential_live_modules(adapter):
