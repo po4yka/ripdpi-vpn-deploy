@@ -32,6 +32,7 @@ Preserve working OpenSSH access while removing confirmed legacy ownership overla
 - Primary owns this isolated branch, planning, SSH transaction helper, operator entrypoint and integration. Delegated work is limited to the SSH planner/tests and the atomic recovery-bundle installer, its adapter, units, playbook and dedicated tests after strict planning validation. Primary owns transaction core, operator wrapper/Makefile and integration; independent review is read-only.
 - The coordinator owns inventory guards, the five existing site pre-task `always` tags, and the backup configuration entrypoint. Do not edit those lanes; coordinate shared Makefile edits before publication.
 - Reuse the separate single-owner SSH policy task without importing algorithm changes or unrelated branch history. That task remains responsible for algorithm pins and its own acceptance.
+- The readiness correction delegates only `sshd_migrate.py`, `sshd_transaction.py` and their two existing unit-test files to the implementation worker. Primary retains planning, task state, test-count documentation and integration; the independent reviewer remains read-only. Bundle trust-root, units, controllers and other teams' files are excluded.
 
 ## Execution boundaries
 

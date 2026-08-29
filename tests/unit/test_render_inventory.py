@@ -335,7 +335,15 @@ sys.exit(subprocess.run(["bash", "-c", marker_boundary + sys.argv[-1]]).returnco
 @pytest.mark.parametrize("cloud_code,expected", [(0, None), (1, "cloud-init error"),
                                                  (2, "cloud-init recoverable error")])
 def test_wait_requires_error_free_cloud_init_even_with_marker(tmp_path, cloud_code, expected):
+    import shlex
+    import sys
+
     script, environment = _isolated_wait_script(tmp_path)
+    controller_log = tmp_path / "controllers.log"
+    _make_stub(tmp_path / "bin", "python3",
+               'case "$1" in -|*/bootstrap_readiness.py) printf "controller\\n" >> '
+               + shlex.quote(str(controller_log)) + ';; esac; exec '
+               + shlex.quote(sys.executable) + ' "$@"')
     environment["WAIT_CLOUD_CODE"] = str(cloud_code)
     Path(environment["WAIT_MARKER"]).touch()
     result = subprocess.run(["bash", str(script)], env=environment, capture_output=True, text=True, timeout=10)
@@ -348,6 +356,7 @@ def test_wait_requires_error_free_cloud_init_even_with_marker(tmp_path, cloud_co
     assert all("BatchMode=yes" in call for call in calls)
     assert all(call[call.index("-p") + 1] == "2222" for call in calls)
     assert all("StrictHostKeyChecking=accept-new" in call for call in calls)
+    assert controller_log.read_text().splitlines() == ["controller"]
 
 
 @pytest.mark.parametrize("cloud_code", [124, 137])

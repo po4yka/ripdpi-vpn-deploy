@@ -1,8 +1,13 @@
 """ci-fast and validate must not silently reduce their promised coverage."""
 
 from pathlib import Path
+import io
+import json
 import os
+import shutil
 import subprocess
+import sys
+import tarfile
 
 import pytest
 
@@ -40,9 +45,199 @@ def test_cloud_init_schema_has_a_pinned_container_fallback():
     assert "CLOUD_INIT_IMAGE ?= ubuntu:24.04@sha256:" in makefile
     assert "command -v cloud-init" in target
     assert "command -v docker" in target
-    assert "cloud-init schema --config-file /dev/stdin" in target
+    assert "scripts/cloud-init-schema-container.py" in target
     assert "missing: cloud-init (or docker fallback)" in target
     assert "set -eu" in target
+
+
+def _run_cloud_init_schema_fallback(
+    tmp_path: Path,
+    docker_exit: int = 0,
+    *,
+    make_arguments: tuple[str, ...] = (),
+    extra_env: dict[str, str] | None = None,
+):
+    root = Path(__file__).resolve().parents[2]
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    docker = tools / "docker"
+    docker.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, pathlib, sys\n"
+        "capture = pathlib.Path(os.environ['FAKE_DOCKER_CAPTURE'])\n"
+        "capture.write_bytes(sys.stdin.buffer.read())\n"
+        "capture.with_suffix('.argv.json').write_text(json.dumps(sys.argv[1:]))\n"
+        "raise SystemExit(int(os.environ.get('FAKE_DOCKER_EXIT', '0')))\n"
+    )
+    docker.chmod(0o755)
+    capture = tmp_path / "docker-input.tar"
+    for name, source in (
+        ("python3", sys.executable),
+        ("mktemp", shutil.which("mktemp")),
+        ("rm", shutil.which("rm")),
+    ):
+        assert source is not None
+        (tools / name).symlink_to(source)
+    make = shutil.which("make")
+    assert make is not None
+    completed = subprocess.run(
+        [make, "--no-print-directory", "cloud-init-schema", *make_arguments],
+        cwd=root,
+        env={
+            **os.environ,
+            "PATH": str(tools),
+            "TMPDIR": str(tmp_path),
+            "FAKE_DOCKER_CAPTURE": str(capture),
+            "FAKE_DOCKER_EXIT": str(docker_exit),
+            **(extra_env or {}),
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return root, completed, capture
+
+
+def test_cloud_init_schema_container_receives_exact_yaml_and_strict_https(tmp_path):
+    root, completed, capture = _run_cloud_init_schema_fallback(tmp_path)
+    assert completed.returncode == 0, completed.stderr
+
+    expected = subprocess.run(
+        ["python3", "scripts/render-cloud-init-ci.py"],
+        cwd=root,
+        capture_output=True,
+        check=True,
+    ).stdout
+    with tarfile.open(fileobj=io.BytesIO(capture.read_bytes()), mode="r:") as archive:
+        assert archive.getnames() == ["ca.pem", "cloud-config.yaml"]
+        ca_info = archive.getmember("ca.pem")
+        config_info = archive.getmember("cloud-config.yaml")
+        assert ca_info.isfile() and ca_info.mode == 0o600
+        assert config_info.isfile() and config_info.mode == 0o600
+        assert archive.extractfile(config_info).read() == expected
+        assert b"BEGIN CERTIFICATE" in archive.extractfile(ca_info).read()
+
+    argv = json.loads(capture.with_suffix(".argv.json").read_text())
+    assert argv[:3] == ["run", "--rm", "-i"]
+    assert argv[3] == "--name"
+    assert argv[4].startswith("vpn-cloud-init-schema-")
+    assert "--network=bridge" in argv
+    assert any(arg.startswith("--tmpfs=/run/cloud-init-schema:") for arg in argv)
+    command = argv[-1]
+    assert "https://ports.ubuntu.com/ubuntu-ports/" in command
+    assert "https://archive.ubuntu.com/ubuntu/" in command
+    assert "https://security.ubuntu.com/ubuntu/" in command
+    assert 'install -d -m 0755 "$ca_dir"' in command
+    assert 'install -m 0644 "$work/ca.pem" "$ca"' in command
+    assert "Acquire::https::CAInfo=/run/cloud-init-schema-public/ca.pem" in command
+    assert "Acquire::https::Verify-Peer=true" in command
+    assert "Acquire::https::Verify-Host=true" in command
+    assert "APT::Update::Error-Mode=any" in command
+    assert 'set -- "$@" "$source"' in command
+    assert "grep -qE" in command
+    assert "if test \"$status\" -ne 1" in command
+    assert "trusted=yes" not in command
+    assert "Verify-Peer=false" not in command
+    assert "Verify-Host=false" not in command
+
+
+def test_cloud_init_schema_propagates_container_failure(tmp_path):
+    _root, completed, _capture = _run_cloud_init_schema_fallback(
+        tmp_path, docker_exit=42
+    )
+    assert completed.returncode != 0
+
+
+def test_cloud_init_schema_refuses_an_unpinned_container_image(tmp_path):
+    _root, completed, capture = _run_cloud_init_schema_fallback(
+        tmp_path, make_arguments=("CLOUD_INIT_IMAGE=ubuntu:24.04",)
+    )
+    assert completed.returncode != 0
+    assert "requires a digest-pinned image" in completed.stderr
+    assert not capture.exists()
+
+
+def test_cloud_init_schema_refuses_a_missing_ca_bundle_before_docker(tmp_path):
+    modules = tmp_path / "modules"
+    modules.mkdir()
+    (modules / "certifi.py").write_text(
+        "def where():\n    return '/definitely/missing/cloud-init-ca.pem'\n"
+    )
+    _root, completed, capture = _run_cloud_init_schema_fallback(
+        tmp_path, extra_env={"PYTHONPATH": str(modules)}
+    )
+    assert completed.returncode != 0
+    assert "refused its input" in completed.stderr
+    assert not capture.exists()
+
+
+def test_cloud_init_schema_reports_the_conditional_certifi_prerequisite(tmp_path):
+    modules = tmp_path / "modules"
+    modules.mkdir()
+    (modules / "certifi.py").write_text(
+        "raise ModuleNotFoundError('synthetic missing certifi')\n"
+    )
+    _root, completed, capture = _run_cloud_init_schema_fallback(
+        tmp_path, extra_env={"PYTHONPATH": str(modules)}
+    )
+    assert completed.returncode != 0
+    assert "requires pinned certifi from requirements.txt" in completed.stderr
+    assert not capture.exists()
+
+
+def test_cloud_init_schema_timeout_removes_the_named_container(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    calls = tmp_path / "calls"
+    marker = tmp_path / "container-running"
+    docker = tools / "docker"
+    docker.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, pathlib, sys, time\n"
+        "calls = pathlib.Path(os.environ['FAKE_DOCKER_CALLS'])\n"
+        "with calls.open('a') as stream: stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "marker = pathlib.Path(os.environ['FAKE_DOCKER_MARKER'])\n"
+        "if sys.argv[1] == 'run':\n"
+        "    marker.write_text('running')\n"
+        "    time.sleep(30)\n"
+        "elif sys.argv[1] == 'rm':\n"
+        "    marker.unlink(missing_ok=True)\n"
+        "else:\n"
+        "    raise SystemExit(1)\n"
+    )
+    docker.chmod(0o755)
+    config = tmp_path / "cloud-config.yaml"
+    config.write_text("#cloud-config\n")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(root / "scripts/cloud-init-schema-container.py"),
+            "--image",
+            "ubuntu:24.04@sha256:" + "a" * 64,
+            "--config",
+            str(config),
+            "--timeout",
+            "1",
+        ],
+        env={
+            **os.environ,
+            "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}",
+            "FAKE_DOCKER_CALLS": str(calls),
+            "FAKE_DOCKER_MARKER": str(marker),
+        },
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert completed.returncode == 124
+    assert "timed out and was stopped" in completed.stderr
+    assert not marker.exists()
+    recorded = [json.loads(line) for line in calls.read_text().splitlines()]
+    assert recorded[0][:4] == ["run", "--rm", "-i", "--name"]
+    container_name = recorded[0][4]
+    assert container_name.startswith("vpn-cloud-init-schema-")
+    assert recorded[1] == ["rm", "--force", "--volumes", container_name]
 
 
 def test_inventory_uses_the_local_fleet_profile_when_present():

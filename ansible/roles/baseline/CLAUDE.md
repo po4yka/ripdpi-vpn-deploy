@@ -50,6 +50,9 @@ ownership-only migration, and do not treat local tests as staging acceptance.
 
 ## Pitfalls
 
+- **Activation must not invalidate its own recovery proof** — run one fresh
+  recovery execution outside the transaction lock, then fence its result after
+  reacquiring the lock. Cached success or busy status alone is never readiness.
 - **Does not install `chrony` or `unattended-upgrades`** — time sync is
   `systemd-timesyncd` (distro default on Debian 13/Ubuntu 24.04). Unattended
   upgrades are not configured by this role; operators add them separately.

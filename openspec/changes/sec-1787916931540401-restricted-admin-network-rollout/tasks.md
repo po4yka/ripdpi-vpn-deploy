@@ -11,7 +11,7 @@ Primary owns the transaction/controller/installation surfaces and integration; d
 ## Execution
 
 - [x] SEC-1787917604306451 Implement the bounded legacy SSH ownership planner and full effective-policy regression tests #feature !high @item:SEC-1787916931540401
-- [x] SEC-1787917604868749 Implement durable fixed-path SSH activation and recovery with interruption and reboot reconciliation tests #feature !high @item:SEC-1787916931540401
+- [ ] SEC-1787917604868749 Implement durable fixed-path SSH activation and recovery with interruption and reboot reconciliation tests #feature !high @item:SEC-1787916931540401
 - [ ] SEC-1787917605386179 Install restricted opt-in Tailnet management without changing DNS routes or SSH identity #feature !high @item:SEC-1787916931540401
 - [ ] SEC-1787917605886845 Implement exact-node strict connection promotion and owned guest and provider network rollback #feature !high @item:SEC-1787916931540401
 - [ ] SEC-1787917606418274 Rehearse migration and recovery on the authorized isolated staging node using real SSH #feature !high @item:SEC-1787916931540401

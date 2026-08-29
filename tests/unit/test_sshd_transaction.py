@@ -76,8 +76,14 @@ class Runtime:
         if self.fail_effective:
             raise RuntimeError('fixture effective failure')
 
-    def recovery_ready(self):
-        return self.ready
+    def activation_recovery(self):
+        return object() if self.ready else None
+
+    def activation_fence(self, proof, acquired):
+        return proof is not None and self.ready
+
+    def activation_clock(self):
+        return self.now * 1000000
 
     def reload(self):
         self.calls.append('reload')
@@ -369,3 +375,83 @@ def test_invalid_effective_context_with_consistent_checksums_never_writes(engine
     with pytest.raises(engine.TransactionError, match='state-invalid'):
         tx.recover()
     assert_contents(fixture, 'after')
+
+
+def test_apply_obtains_fresh_recovery_outside_lock_and_fences_after_relocking(engine, fixture):
+    tx, runtime, receipt = transaction(engine, fixture)
+    runtime.ready = False  # Previous periodic execution deferred with busy.
+    proof = object()
+    events = []
+    def fresh():
+        # A real second flock succeeds only after apply releases its first lock.
+        assert tx.status()['status'] == 'prepared'
+        events.append('fresh-zero')
+        return proof
+    def fence(observed, acquired):
+        assert observed is proof and acquired == 1000000000
+        with pytest.raises(engine.TransactionError, match='busy'):
+            tx.status()
+        events.append('locked-fence')
+        return True
+    runtime.activation_recovery = fresh
+    runtime.activation_clock = lambda: 1000000000
+    runtime.activation_fence = fence
+    assert tx.apply(receipt['generation'], receipt['nonce'])['status'] == 'applied'
+    assert events == ['fresh-zero', 'locked-fence']
+    assert_contents(fixture, 'after')
+
+
+@pytest.mark.parametrize('fault', ['expiry', 'boot', 'rollback', 'replacement', 'missing-state',
+                                  'same-identity-state-change', 'main-drift', 'metadata-drift', 'capability'])
+def test_apply_rechecks_every_boundary_after_unlocked_fresh_execution(engine, fixture, monkeypatch, fault):
+    tx, runtime, receipt = transaction(engine, fixture)
+    observed = {}
+    config, state_root, _ = fixture
+    def snapshot():
+        return {str(path.relative_to(config)):(path.read_bytes(), path.stat().st_mode & 0o777)
+                for path in config.rglob('*') if path.is_file()}
+    def fresh():
+        assert tx.status()['status'] == 'prepared'
+        if fault == 'expiry':
+            runtime.now += 121
+            assert tx.recover()['status'] == 'rolled_back'
+        elif fault == 'boot':
+            runtime.boot = '00000000-0000-4000-8000-000000000002'
+        elif fault in {'rollback', 'replacement'}:
+            tx.rollback(receipt['generation'], receipt['nonce'])
+            if fault == 'replacement':
+                assert tx.prepare(contexts=[], timeout=120)['generation'] != receipt['generation']
+        elif fault == 'missing-state':
+            (state_root / 'transaction.json').unlink()
+        elif fault == 'same-identity-state-change':
+            value = json.loads((state_root / 'transaction.json').read_text())
+            value['deadline'] += 1;value['monotonic_deadline'] += 1
+            value['checksum'] = engine._digest({key:item for key,item in value.items() if key != 'checksum'})
+            (state_root / 'transaction.json').write_text(json.dumps(value))
+        elif fault == 'main-drift':
+            (config / 'sshd_config').write_bytes(b'# foreign edit during unlocked phase\n')
+        elif fault == 'metadata-drift':
+            (config / 'sshd_config.d' / NAMES[0]).chmod(0o600)
+        else:
+            runtime.ready = False
+        observed.update(snapshot())
+        return object()
+    runtime.activation_recovery = fresh
+    def forbidden(*args):
+        pytest.fail('invalid activation wrote SSH configuration')
+    monkeypatch.setattr(tx, '_publish', forbidden)
+    with pytest.raises(engine.TransactionError):
+        tx.apply(receipt['generation'], receipt['nonce'])
+    assert observed and snapshot() == observed
+
+
+def test_expiry_during_final_fence_refuses_before_first_write(engine, fixture):
+    tx, runtime, receipt = transaction(engine, fixture)
+    def slow_fence(proof, acquired):
+        runtime.now += 121
+        return True
+    runtime.activation_fence = slow_fence
+    with pytest.raises(engine.TransactionError, match='expired'):
+        tx.apply(receipt['generation'], receipt['nonce'])
+    assert_contents(fixture, 'before')
+    assert tx.status()['status'] == 'prepared'

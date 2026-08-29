@@ -4,10 +4,17 @@
 
 **Shell + Python, no compiled binaries** — every script must be readable on
 a fresh box without a build step. Most are bash; the rare ones with non-trivial
-data shaping are Python and use only stdlib + `PyYAML` / `Jinja2`.
+data shaping are Python and use only stdlib + pinned `PyYAML`, `Jinja2`, or
+`certifi` from `requirements.txt`.
 
 **One file per operator verb** — `bootstrap-secrets.sh`, `rotate-secrets.sh`,
 `fleet-rotate.sh`. The Makefile wraps these with `make <target>` shorthand.
+
+**Container schema checks keep inputs mount-free** — the cloud-init fallback
+passes rendered YAML and the pinned public CA bundle through a private tar
+stream to a digest-pinned image. APT uses HTTPS with peer/host verification and
+fails on any index error; never add host mounts, plaintext mirrors, trusted
+sources, or disabled TLS checks to make this CI fallback pass.
 
 **SOPS gate everywhere** — anything that reads decrypted secrets refuses
 without `VPN_SECRETS_FILE` or the Make-resolved `SECRETS_FILE` produced by
