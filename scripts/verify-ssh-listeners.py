@@ -104,13 +104,14 @@ def _properties(
     category: str,
     *,
     required: frozenset[str] | None = None,
+    repeated: frozenset[str] = frozenset(),
 ) -> dict[str, str]:
     values: dict[str, str] = {}
     for line in output.splitlines():
         key, separator, value = line.partition("=")
-        if not separator or key not in allowed or key in values:
+        if not separator or key not in allowed or (key in values and key not in repeated):
             raise VerificationError(category)
-        values[key] = value
+        values[key] = f"{values[key]} {value}".strip() if key in values else value
     if not (required or allowed).issubset(values):
         raise VerificationError(category)
     return values
@@ -139,6 +140,7 @@ def _socket_state(output: str) -> tuple[str, str]:
         properties,
         "invalid ssh.socket state",
         required=frozenset({"LoadState", "ActiveState"}),
+        repeated=frozenset({"Listen"}),
     )
     load_state = values["LoadState"]
     active_state = values["ActiveState"]

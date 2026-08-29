@@ -186,6 +186,54 @@ def test_active_socket_without_a_unique_valid_stream_listener_fails(listen):
         module.verify(22, run=query)
 
 
+def test_repeated_listen_properties_cover_ipv4_and_ipv6_on_one_port():
+    module = load_module()
+    socket = (
+        "LoadState=loaded\n"
+        "ActiveState=active\n"
+        "Listen=[::]:2222 (Stream)\n"
+        "Listen=0.0.0.0:2222 (Stream)\n"
+        "Triggers=ssh.service\n"
+        "Accept=no\n"
+    )
+    query, _ = query_fixture(unit_output("loaded", "inactive"), socket)
+    module.verify(2222, run=query)
+
+
+@pytest.mark.parametrize(
+    ("socket", "message"),
+    [
+        (
+            "LoadState=loaded\n"
+            "ActiveState=active\n"
+            "Listen=[::]:22 (Stream)\n"
+            "Listen=[::]:22 (Stream)\n"
+            "Triggers=ssh.service\n"
+            "Accept=no\n",
+            "active ssh.socket has no valid Stream listener",
+        ),
+        (
+            "LoadState=loaded\n"
+            "ActiveState=active\n"
+            "Listen=[::]:22 (Stream)\n"
+            "Listen=0.0.0.0:2222 (Stream)\n"
+            "Triggers=ssh.service\n"
+            "Accept=no\n",
+            "expected tcp/22 only; service=inactive socket=active "
+            "effective=[tcp/22,tcp/2222]",
+        ),
+    ],
+)
+def test_repeated_listen_properties_reject_duplicate_or_multi_port(socket, message):
+    module = load_module()
+    query, _ = query_fixture(unit_output("loaded", "inactive"), socket)
+    with pytest.raises(
+        module.VerificationError,
+        match=f"^{re.escape(message)}$",
+    ):
+        module.verify(22, run=query)
+
+
 @pytest.mark.parametrize(
     ("unit", "output", "message"),
     [
