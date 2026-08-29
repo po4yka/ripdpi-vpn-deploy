@@ -99,6 +99,12 @@ def test_published_requirements_resolve_to_current_checkout_from_documented_cwd(
     assert resolved.is_file()
 
 
+def test_published_scenario_explicitly_disables_unpublished_xray_fallback() -> None:
+    variables = _published_variables()
+
+    assert variables["xray_fallback_port"] == 0
+
+
 def test_published_listener_contract_matches_declared_runtime_inputs(tmp_path) -> None:
     """Exercise the real renderer/validator, not role execution or live ports."""
     variables = _published_variables()
