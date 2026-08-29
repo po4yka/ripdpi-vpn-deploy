@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
-import json
 import os
 import stat
 from datetime import datetime, timedelta, timezone
@@ -21,9 +20,15 @@ SPEC.loader.exec_module(guard)
 
 SERVER_UUID = "00112233-4455-4677-8899-aabbccddeeff"
 STORAGE_UUID = "ffeeddcc-bbaa-4988-8766-554433221100"
+ACCOUNT_USERNAME = "staging-owner"
 HOSTNAME = "vpn-ci-staging-20260829-fi-hel1"
 CREATED = datetime(2026, 8, 29, 12, 0, tzinfo=timezone.utc)
 EXPIRY = CREATED + timedelta(hours=47)
+
+
+def _account_get(path: str) -> tuple[int, dict[str, object]]:
+    assert path == "/1.3/account"
+    return 200, {"account": {"username": ACCOUNT_USERNAME, "credits": 12.34}}
 
 
 def _private_file(path: Path, data: bytes) -> Path:
@@ -151,7 +156,7 @@ def _manifest(
         state_path=state_path,
         hostname=HOSTNAME,
         created_at=CREATED,
-        expiry_at=EXPIRY,
+        request_json=_account_get,
         now=now,
     )
     return manifest_path, manifest
@@ -166,13 +171,59 @@ def test_manifest_is_canonical_private_and_bound_to_exact_state_ids(
     assert manifest_path.read_bytes() == guard.canonical_json(manifest)
     assert manifest["server_uuid"] == SERVER_UUID
     assert manifest["root_storage_uuid"] == STORAGE_UUID
+    assert manifest["provider_account_username"] == ACCOUNT_USERNAME
     assert manifest["hostname"] == HOSTNAME
     assert manifest["workspace"] == "ci-staging-20260829"
+    assert manifest["target_at"] == "2026-08-31T00:00:00Z"
+    assert manifest["escalation_at"] == "2026-08-31T08:00:00Z"
+    assert manifest["expiry_at"] == "2026-08-31T11:00:00Z"
     state = manifest["state"]
     assert (
         state["sha256"]
         == hashlib.sha256(guard.canonical_json(_state_view())).hexdigest()
     )
+
+
+def test_create_manifest_cli_authenticates_without_printing_account_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    state_path = _private_file(
+        private / "terraform.tfstate", guard.canonical_json(_state_view())
+    )
+    output = private / "manifest.json"
+    created = datetime.now(timezone.utc).replace(microsecond=0)
+    monkeypatch.setenv("UPCLOUD_USERNAME", "secret-api-user")
+    monkeypatch.setenv("UPCLOUD_PASSWORD", "secret-api-password")
+    monkeypatch.setattr(guard, "_upcloud_request", lambda *_args, **_kwargs: _account_get)
+
+    result = guard.main(
+        [
+            "create-manifest",
+            "--output",
+            str(output),
+            "--provider",
+            "upcloud",
+            "--environment",
+            "ci-staging-cli",
+            "--workspace",
+            "ci-staging-cli",
+            "--state",
+            str(state_path),
+            "--hostname",
+            HOSTNAME,
+            "--created-at",
+            created.isoformat().replace("+00:00", "Z"),
+        ]
+    )
+
+    assert result == 0
+    output_text = capsys.readouterr().out
+    assert output_text == "staging cleanup manifest created\n"
+    assert ACCOUNT_USERNAME not in output_text
 
 
 def test_manifest_accepts_owned_state_under_non_writable_repository_directory(
@@ -195,7 +246,7 @@ def test_manifest_accepts_owned_state_under_non_writable_repository_directory(
         state_path=state_path,
         hostname=HOSTNAME,
         created_at=CREATED,
-        expiry_at=EXPIRY,
+        request_json=_account_get,
         now=CREATED,
     )
 
@@ -238,9 +289,11 @@ def test_private_read_rechecks_mode_on_opened_inode(
     manifest_path, _ = _manifest(tmp_path)
     original_open = guard.os.open
 
-    def open_then_widen(path: object, flags: int, *args: object) -> int:
-        fd = original_open(path, flags, *args)
-        if Path(path) == manifest_path:
+    def open_then_widen(
+        path: object, flags: int, *args: object, **kwargs: object
+    ) -> int:
+        fd = original_open(path, flags, *args, **kwargs)
+        if path == manifest_path.name:
             os.fchmod(fd, 0o644)
         return fd
 
@@ -255,6 +308,70 @@ def test_manifest_refuses_expired_deadline(tmp_path: Path) -> None:
 
     with pytest.raises(guard.GuardError, match="expired"):
         guard.load_manifest(manifest_path, now=EXPIRY + timedelta(seconds=1))
+
+
+def test_manifest_refuses_noncanonical_cleanup_schedule(tmp_path: Path) -> None:
+    manifest_path, manifest = _manifest(tmp_path)
+    manifest["target_at"] = "2026-08-31T00:00:01Z"
+    manifest["escalation_at"] = "2026-08-31T08:00:00Z"
+    manifest_path.write_bytes(guard.canonical_json(manifest))
+
+    with pytest.raises(guard.GuardError, match="cleanup schedule"):
+        guard.load_manifest(manifest_path, now=CREATED)
+
+
+@pytest.mark.parametrize("kind", ["manifest", "state", "evidence"])
+def test_private_paths_refuse_symlinked_higher_ancestor(
+    tmp_path: Path, kind: str
+) -> None:
+    real_root = tmp_path / "real-root"
+    private = real_root / "private"
+    private.mkdir(parents=True, mode=0o700)
+    alias = tmp_path / "alias"
+    alias.symlink_to(real_root, target_is_directory=True)
+    state_path = _private_file(
+        private / "terraform.tfstate", guard.canonical_json(_state_view())
+    )
+    manifest_path = private / "manifest.json"
+
+    if kind == "state":
+        with pytest.raises(guard.GuardError, match="ancestor.*symlink"):
+            guard.create_manifest(
+                output_path=manifest_path,
+                provider="upcloud",
+                environment="ci-staging-ancestor",
+                workspace="ci-staging-ancestor",
+                state_path=alias / "private/terraform.tfstate",
+                hostname=HOSTNAME,
+                created_at=CREATED,
+                request_json=_account_get,
+                now=CREATED,
+            )
+        return
+
+    guard.create_manifest(
+        output_path=manifest_path,
+        provider="upcloud",
+        environment="ci-staging-ancestor",
+        workspace="ci-staging-ancestor",
+        state_path=state_path,
+        hostname=HOSTNAME,
+        created_at=CREATED,
+        request_json=_account_get,
+        now=CREATED,
+    )
+    if kind == "manifest":
+        with pytest.raises(guard.GuardError, match="ancestor.*symlink"):
+            guard.load_manifest(alias / "private/manifest.json", now=CREATED)
+    else:
+        with pytest.raises(guard.GuardError, match="ancestor.*symlink"):
+            guard.reserve_evidence(
+                manifest_path,
+                alias / "private/post-destroy.json",
+                now=CREATED,
+                expected_provider="upcloud",
+                expected_environment="ci-staging-ancestor",
+            )
 
 
 def test_manifest_refuses_different_destroy_environment(tmp_path: Path) -> None:
@@ -277,23 +394,33 @@ def test_manifest_refuses_state_drift(tmp_path: Path) -> None:
         guard.load_manifest(manifest_path, now=CREATED)
 
 
-def test_manifest_refuses_creation_window_over_48_hours(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "username",
+    ["abc", "x" * 65, "owner\nname", " owner", "ownér"],
+)
+def test_manifest_refuses_malformed_authenticated_account_identity(
+    tmp_path: Path, username: str
+) -> None:
     private = tmp_path / "private"
     private.mkdir(mode=0o700)
     state_path = _private_file(
         private / "terraform.tfstate", guard.canonical_json(_state_view())
     )
 
-    with pytest.raises(guard.GuardError, match="48 hours"):
+    def malformed_account(path: str) -> tuple[int, dict[str, object]]:
+        assert path == "/1.3/account"
+        return 200, {"account": {"username": username}}
+
+    with pytest.raises(guard.GuardError, match="account identity"):
         guard.create_manifest(
             output_path=private / "manifest.json",
             provider="upcloud",
-            environment="ci-staging-too-long",
-            workspace="ci-staging-too-long",
+            environment="ci-staging-account",
+            workspace="ci-staging-account",
             state_path=state_path,
             hostname=HOSTNAME,
             created_at=CREATED,
-            expiry_at=CREATED + timedelta(hours=48, seconds=1),
+            request_json=malformed_account,
             now=CREATED,
         )
 
@@ -327,7 +454,7 @@ def test_manifest_refuses_provider_backups_outside_exact_cleanup_scope(
             state_path=state_path,
             hostname=HOSTNAME,
             created_at=CREATED,
-            expiry_at=EXPIRY,
+            request_json=_account_get,
             now=CREATED,
         )
 
@@ -359,7 +486,7 @@ def test_manifest_refuses_secondary_public_ipv4_outside_exact_cleanup_scope(
             state_path=state_path,
             hostname=HOSTNAME,
             created_at=CREATED,
-            expiry_at=EXPIRY,
+            request_json=_account_get,
             now=CREATED,
         )
 
@@ -461,7 +588,7 @@ def test_destroy_plan_refuses_refreshed_secondary_public_ipv4(tmp_path: Path) ->
 
 def _absent_get(path: str) -> tuple[int, dict[str, object]]:
     if path == "/1.3/account":
-        return 200, {"account": {"credits": 12.34, "username": "redacted"}}
+        return 200, {"account": {"credits": 12.34, "username": ACCOUNT_USERNAME}}
     if path == f"/1.3/server/{SERVER_UUID}":
         return 404, {"error": {"error_code": "SERVER_NOT_FOUND"}}
     if path == f"/1.3/storage/{STORAGE_UUID}":
@@ -499,8 +626,42 @@ def test_post_destroy_requires_authenticated_exact_provider_absence(
     assert evidence["server_status"] == "absent"
     assert evidence["root_storage_status"] == "absent"
     assert evidence["billing_status"] == "no-active-owned-resources"
+    assert evidence["provider_account_username"] == ACCOUNT_USERNAME
     assert "credits" not in evidence_path.read_text()
-    assert "username" not in evidence_path.read_text()
+
+
+def test_post_destroy_refuses_authenticated_foreign_account(tmp_path: Path) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("post-destroy.json")
+    reserved = guard.reserve_evidence(
+        manifest_path,
+        evidence_path,
+        now=CREATED,
+        expected_provider="upcloud",
+        expected_environment="ci-staging-20260829",
+    )
+
+    requested: list[str] = []
+
+    def foreign_account(path: str) -> tuple[int, dict[str, object]]:
+        requested.append(path)
+        if path == "/1.3/account":
+            return 200, {"account": {"username": "different-valid-account"}}
+        return _absent_get(path)
+
+    with pytest.raises(guard.GuardError, match="account identity"):
+        guard.verify_upcloud_absence(
+            manifest_path,
+            evidence_path,
+            request_json=foreign_account,
+            observed_at=CREATED + timedelta(minutes=30),
+            now=CREATED,
+            expected_provider="upcloud",
+            expected_environment="ci-staging-20260829",
+        )
+
+    assert evidence_path.read_bytes() == guard.canonical_json(reserved)
+    assert requested == ["/1.3/account"]
 
 
 @pytest.mark.parametrize("kind", ["existing", "symlink", "unsafe-parent"])
@@ -545,9 +706,11 @@ def test_evidence_rewrite_rechecks_mode_on_opened_inode(
     )
     original_open = guard.os.open
 
-    def open_then_widen(path: object, flags: int, *args: object) -> int:
-        fd = original_open(path, flags, *args)
-        if Path(path) == evidence_path and flags & os.O_RDWR:
+    def open_then_widen(
+        path: object, flags: int, *args: object, **kwargs: object
+    ) -> int:
+        fd = original_open(path, flags, *args, **kwargs)
+        if path == evidence_path.name and flags & os.O_RDWR:
             os.fchmod(fd, 0o644)
         return fd
 
@@ -581,6 +744,93 @@ def test_pre_apply_evidence_reservation_can_be_released_exactly(tmp_path: Path) 
     )
 
     assert not evidence_path.exists()
+
+
+def test_evidence_release_refuses_replaced_path_after_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("post-destroy.json")
+    guard.reserve_evidence(
+        manifest_path,
+        evidence_path,
+        now=CREATED,
+        expected_provider="upcloud",
+        expected_environment="ci-staging-20260829",
+    )
+    original_rename = guard.os.rename
+    replacement = guard.canonical_json(
+        {"schema_version": guard.SCHEMA_VERSION, "status": "foreign"}
+    )
+    replaced = False
+
+    def replace_then_rename(
+        source: object, target: object, *args: object, **kwargs: object
+    ) -> None:
+        nonlocal replaced
+        if source == evidence_path.name and not replaced:
+            replaced = True
+            held = evidence_path.with_name("held-reservation.json")
+            evidence_path.rename(held)
+            _private_file(evidence_path, replacement)
+        original_rename(source, target, *args, **kwargs)
+
+    monkeypatch.setattr(guard.os, "rename", replace_then_rename)
+
+    with pytest.raises(guard.GuardError, match="changed before release"):
+        guard.release_evidence(
+            manifest_path,
+            evidence_path,
+            now=CREATED,
+            expected_provider="upcloud",
+            expected_environment="ci-staging-20260829",
+        )
+
+    assert evidence_path.read_bytes() == replacement
+
+
+def test_evidence_release_retains_expected_inode_when_replacement_appears_after_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("post-destroy.json")
+    guard.reserve_evidence(
+        manifest_path,
+        evidence_path,
+        now=CREATED,
+        expected_provider="upcloud",
+        expected_environment="ci-staging-20260829",
+    )
+    replacement = guard.canonical_json(
+        {"schema_version": guard.SCHEMA_VERSION, "status": "foreign"}
+    )
+    original_stat = guard.os.stat
+    inserted = False
+
+    def stat_after_rename(
+        path: object, *args: object, **kwargs: object
+    ) -> os.stat_result:
+        nonlocal inserted
+        if path == evidence_path.name and kwargs.get("dir_fd") is not None and not inserted:
+            inserted = True
+            _private_file(evidence_path, replacement)
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(guard.os, "stat", stat_after_rename)
+
+    with pytest.raises(guard.GuardError, match="requires manual recovery"):
+        guard.release_evidence(
+            manifest_path,
+            evidence_path,
+            now=CREATED,
+            expected_provider="upcloud",
+            expected_environment="ci-staging-20260829",
+        )
+
+    assert evidence_path.read_bytes() == replacement
+    recovery = list(evidence_path.parent.glob(".post-destroy.json.release-*"))
+    assert len(recovery) == 1
+    assert stat.S_IMODE(recovery[0].stat().st_mode) == 0o600
 
 
 def test_private_plan_descriptor_rewinds_same_inode(tmp_path: Path) -> None:
@@ -618,7 +868,7 @@ def test_plan_descriptor_refuses_non_private_inode(tmp_path: Path) -> None:
             "account",
             401,
             {"error": {"error_code": "AUTHENTICATION_FAILED"}},
-            "authentication",
+            "account identity",
         ),
         ("server", 200, {"server": {"uuid": SERVER_UUID}}, "server still exists"),
         (
@@ -657,7 +907,7 @@ def test_post_destroy_refuses_auth_existing_or_ambiguous_resources(
         if failed_path == "account" and path == "/1.3/account":
             return status, body
         if path == "/1.3/account":
-            return 200, {"account": {}}
+            return 200, {"account": {"username": ACCOUNT_USERNAME}}
         if failed_path == "server" and path.endswith(SERVER_UUID):
             return status, body
         if path.endswith(SERVER_UUID):

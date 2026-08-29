@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import shutil
 import stat
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SERVER_UUID = "00112233-4455-4677-8899-aabbccddeeff"
@@ -39,7 +42,7 @@ def _terraform_stub(tmp_path: Path, *, fail_apply: bool = False) -> Path:
         'printf \'%s\\n\' "$*" >> "$STUB_LOG"\n'
         'TF_CHDIR=""\n'
         'while [[ "${1:-}" == -chdir=* ]]; do TF_CHDIR="${1#-chdir=}"; shift; done\n'
-        'if [[ "${1:-}" == plan ]]; then for arg in "$@"; do if [[ "$arg" == -out=* ]]; then PLAN_PATH="${arg#-out=}"; [[ "$PLAN_PATH" == /* ]] || PLAN_PATH="${TF_CHDIR}/${PLAN_PATH}"; printf \'%s\\n\' guarded-plan > "$PLAN_PATH"; PLAN_MODE="$(stat -f %Lp "$PLAN_PATH" 2>/dev/null || stat -c %a "$PLAN_PATH")"; printf \'plan-mode=%s\\n\' "$PLAN_MODE" >> "$STUB_LOG"; if [[ -n "${RACE_PLAN_LOG:-}" ]]; then printf \'%s\\n\' "$PLAN_PATH" > "$RACE_PLAN_LOG"; fi; fi; done; fi\n'
+        'if [[ "${1:-}" == plan ]]; then for arg in "$@"; do if [[ "$arg" == -out=* ]]; then PLAN_PATH="${arg#-out=}"; [[ "$PLAN_PATH" == /* ]] || PLAN_PATH="${TF_CHDIR}/${PLAN_PATH}"; printf \'%s\\n\' guarded-plan > "$PLAN_PATH"; PLAN_MODE="$(/usr/bin/python3 -c \'import os,stat,sys; print(format(stat.S_IMODE(os.stat(sys.argv[1]).st_mode), "o"))\' "$PLAN_PATH")"; printf \'plan-mode=%s\\n\' "$PLAN_MODE" >> "$STUB_LOG"; if [[ -n "${RACE_PLAN_LOG:-}" ]]; then printf \'%s\\n\' "$PLAN_PATH" > "$RACE_PLAN_LOG"; fi; fi; done; fi\n'
         'if [[ "${1:-}" == plan && -n "${OVERRIDE_PATH:-}" ]]; then cat "$OVERRIDE_PATH" >> "$STUB_LOG"; fi\n'
         'if [[ "${1:-}" == show ]]; then if [[ -n "${RACE_PLAN_LOG:-}" ]]; then printf \'%s\\n\' substituted-plan > "$(cat "$RACE_PLAN_LOG")"; fi; printf \'show-plan-content=%s\\n\' "$(cat "$3")" >> "$STUB_LOG"; printf \'{"resource_changes":[{"address":"%s","change":{"actions":["delete"]}}]}\\n\' "$PLAN_RESOURCE"; exit 0; fi\n'
         'if [[ "${1:-}" == apply ]]; then printf \'apply-plan-content=%s\\n\' "$(cat "$2")" >> "$STUB_LOG"; fi\n'
@@ -80,6 +83,61 @@ def _guard_stub(root: Path, *, fail_command: str = "") -> Path:
     )
     guard.chmod(0o755)
     return guard
+
+
+def _audit_stub(root: Path) -> Path:
+    audit = root / "scripts/audit-log.sh"
+    audit.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "printf '%s\\n' \"$*\" >> \"$AUDIT_LOG_STUB\"\n"
+    )
+    audit.chmod(0o755)
+    return audit
+
+
+def _make_staging_repo(tmp_path: Path) -> Path:
+    root = tmp_path / "make-repo"
+    scripts = root / "scripts"
+    scripts.mkdir(parents=True)
+    shutil.copy2(REPO_ROOT / "Makefile", root / "Makefile")
+    logger = (
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        "with open(os.environ['MAKE_STAGING_LOG'], 'a') as stream:\n"
+        "    stream.write(json.dumps({'program': os.path.basename(sys.argv[0]), "
+        "'argv': sys.argv[1:], 'env': {key: os.environ.get(key) for key in "
+        "['ENV', 'PROVIDER', 'STAGING_CLEANUP_MANIFEST', 'STAGING_CLEANUP_STATE', "
+        "'STAGING_CLEANUP_HOSTNAME', 'STAGING_CLEANUP_CREATED_AT', "
+        "'STAGING_POST_DESTROY_EVIDENCE', 'DEPLOY_SOURCE_REVISION', "
+        "'DEPLOYABLE_SOURCE_DIGEST']}}) + '\\n')\n"
+    )
+    for name in ("staging-cleanup-guard.py", "destroy.sh"):
+        path = scripts / name
+        path.write_text(logger)
+        path.chmod(0o755)
+    identity = scripts / "deploy-source-identity.sh"
+    identity.write_text(
+        "#!/usr/bin/env bash\nprintf '%s\\n' called >> \"$MAKE_GIT_SPY\"\n"
+    )
+    identity.chmod(0o755)
+    return root
+
+
+def _run_staging_make(
+    root: Path, tmp_path: Path, goal: str, *assignments: str
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["make", goal, *assignments],
+        cwd=root,
+        env=os.environ
+        | {
+            "MAKE_STAGING_LOG": str(tmp_path / "make-staging.jsonl"),
+            "MAKE_GIT_SPY": str(tmp_path / "make-git-spy.log"),
+        },
+        text=True,
+        capture_output=True,
+    )
 
 
 def _run(
@@ -129,6 +187,168 @@ def _run(
         capture_output=True,
         input=input_text,
     )
+
+
+@pytest.mark.parametrize("goal", ["staging-cleanup-manifest", "staging-destroy"])
+@pytest.mark.parametrize("field", ["ENV", "PROVIDER"])
+def test_staging_make_captures_labels_before_eager_path_expansion(
+    tmp_path: Path, goal: str, field: str
+) -> None:
+    root = _make_staging_repo(tmp_path)
+    marker = tmp_path / f"{goal}-{field}.marker"
+    result = subprocess.run(
+        ["make", "-n", goal, f"{field}=$(shell touch {marker})"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+    )
+
+    assert not marker.exists(), result.stderr
+    assert str(marker) not in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("goal", "field"),
+    [
+        ("staging-cleanup-manifest", "STAGING_CLEANUP_MANIFEST"),
+        ("staging-cleanup-manifest", "STAGING_CLEANUP_STATE"),
+        ("staging-cleanup-manifest", "STAGING_CLEANUP_HOSTNAME"),
+        ("staging-cleanup-manifest", "STAGING_CLEANUP_CREATED_AT"),
+        ("staging-destroy", "STAGING_CLEANUP_MANIFEST"),
+        ("staging-destroy", "STAGING_POST_DESTROY_EVIDENCE"),
+    ],
+)
+def test_staging_make_never_executes_operator_field_as_make_or_shell_syntax(
+    tmp_path: Path, goal: str, field: str
+) -> None:
+    root = _make_staging_repo(tmp_path)
+    marker = tmp_path / f"{field}.marker"
+    malicious = f"$(shell touch {marker}) ' quoted $() value\nsecond-line"
+    assignments = {
+        "ENV": "ci-staging-make",
+        "PROVIDER": "upcloud",
+        "STAGING_CLEANUP_MANIFEST": "/private/manifest.json",
+        "STAGING_CLEANUP_STATE": "/private/state.json",
+        "STAGING_CLEANUP_HOSTNAME": "vpn-ci-staging.test",
+        "STAGING_CLEANUP_CREATED_AT": "2026-08-30T00:00:00Z",
+        "STAGING_POST_DESTROY_EVIDENCE": "/private/evidence.json",
+    }
+    assignments[field] = malicious
+
+    result = _run_staging_make(
+        root,
+        tmp_path,
+        goal,
+        *(f"{name}={value}" for name, value in assignments.items()),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not marker.exists()
+    record = json.loads((tmp_path / "make-staging.jsonl").read_text())
+    assert record["env"][field] == malicious
+
+
+def test_staging_manifest_make_passes_only_literal_operator_fields(tmp_path: Path) -> None:
+    root = _make_staging_repo(tmp_path)
+    marker = tmp_path / "manifest-field.marker"
+    literal = f"$(shell touch {marker}) ' spaced value"
+    assignments = [
+        "ENV=ci-staging-make",
+        "PROVIDER=upcloud",
+        f"STAGING_CLEANUP_MANIFEST={literal}",
+        "STAGING_CLEANUP_STATE=/private/state path",
+        "STAGING_CLEANUP_HOSTNAME=vpn-ci-staging.test",
+        "STAGING_CLEANUP_CREATED_AT=2026-08-30T00:00:00Z",
+    ]
+
+    result = _run_staging_make(
+        root, tmp_path, "staging-cleanup-manifest", *assignments
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not marker.exists()
+    record = json.loads((tmp_path / "make-staging.jsonl").read_text())
+    assert record["program"] == "staging-cleanup-guard.py"
+    assert record["argv"] == [
+        "create-manifest",
+        "--output",
+        literal,
+        "--provider",
+        "upcloud",
+        "--environment",
+        "ci-staging-make",
+        "--workspace",
+        "ci-staging-make",
+        "--state",
+        "/private/state path",
+        "--hostname",
+        "vpn-ci-staging.test",
+        "--created-at",
+        "2026-08-30T00:00:00Z",
+    ]
+    assert record["env"]["STAGING_CLEANUP_MANIFEST"] == literal
+    assert record["env"]["DEPLOY_SOURCE_REVISION"] == ""
+    assert record["env"]["DEPLOYABLE_SOURCE_DIGEST"] == ""
+    assert not (tmp_path / "make-git-spy.log").exists()
+
+
+def test_staging_destroy_make_ignores_free_form_destroy_args(tmp_path: Path) -> None:
+    root = _make_staging_repo(tmp_path)
+    marker = tmp_path / "destroy-field.marker"
+    manifest = f"$(shell touch {marker}) manifest path"
+    result = _run_staging_make(
+        root,
+        tmp_path,
+        "staging-destroy",
+        "ENV=ci-staging-make",
+        "PROVIDER=upcloud",
+        f"STAGING_CLEANUP_MANIFEST={manifest}",
+        "STAGING_POST_DESTROY_EVIDENCE=/private/evidence path",
+        "DESTROY_ARGS=$(shell touch should-not-run) --foreign",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not marker.exists()
+    record = json.loads((tmp_path / "make-staging.jsonl").read_text())
+    assert record["argv"] == [
+        "--non-interactive",
+        "--staging-manifest",
+        manifest,
+        "--post-destroy-evidence",
+        "/private/evidence path",
+    ]
+    assert "--foreign" not in record["argv"]
+    assert not (tmp_path / "make-git-spy.log").exists()
+
+
+@pytest.mark.parametrize(
+    "goals",
+    [
+        ["staging-destroy", "help"],
+        ["staging-cleanup-manifest", "staging-destroy"],
+        ["staging-destroy", "staging-destroy"],
+    ],
+)
+def test_staging_make_refuses_mixed_or_repeated_goals_before_any_child(
+    tmp_path: Path, goals: list[str]
+) -> None:
+    root = _make_staging_repo(tmp_path)
+    result = subprocess.run(
+        ["make", *goals],
+        cwd=root,
+        env=os.environ
+        | {
+            "MAKE_STAGING_LOG": str(tmp_path / "make-staging.jsonl"),
+            "MAKE_GIT_SPY": str(tmp_path / "make-git-spy.log"),
+        },
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode != 0
+    assert "requires exactly one Make goal" in result.stderr
+    assert not (tmp_path / "make-staging.jsonl").exists()
+    assert not (tmp_path / "make-git-spy.log").exists()
 
 
 def _real_staging_manifest(root: Path, private: Path, environment: str) -> Path:
@@ -182,32 +402,27 @@ def _real_staging_manifest(root: Path, private: Path, environment: str) -> Path:
     state_path.chmod(0o600)
     created = datetime.now(timezone.utc).replace(microsecond=0)
     manifest = private / "manifest.json"
-    result = subprocess.run(
-        [
-            str(root / "scripts/staging-cleanup-guard.py"),
-            "create-manifest",
-            "--output",
-            str(manifest),
-            "--provider",
-            "upcloud",
-            "--environment",
-            environment,
-            "--workspace",
-            environment,
-            "--state",
-            str(state_path),
-            "--hostname",
-            "vpn-ci-staging.test",
-            "--created-at",
-            created.isoformat().replace("+00:00", "Z"),
-            "--expiry-at",
-            (created + timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
-        ],
-        cwd=root,
-        text=True,
-        capture_output=True,
-    )
-    assert result.returncode == 0, result.stderr
+    state_bytes = state_path.read_bytes()
+    payload = {
+        "schema_version": 2,
+        "provider": "upcloud",
+        "environment": environment,
+        "workspace": environment,
+        "state": {
+            "path": str(state_path.absolute()),
+            "sha256": hashlib.sha256(state_bytes).hexdigest(),
+        },
+        "hostname": "vpn-ci-staging.test",
+        "provider_account_username": "staging-owner",
+        "server_uuid": SERVER_UUID,
+        "root_storage_uuid": STORAGE_UUID,
+        "created_at": created.isoformat().replace("+00:00", "Z"),
+        "target_at": (created + timedelta(hours=36)).isoformat().replace("+00:00", "Z"),
+        "escalation_at": (created + timedelta(hours=44)).isoformat().replace("+00:00", "Z"),
+        "expiry_at": (created + timedelta(hours=47)).isoformat().replace("+00:00", "Z"),
+    }
+    manifest.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+    manifest.chmod(0o600)
     return manifest
 
 
@@ -371,6 +586,52 @@ def test_staging_destroy_requires_uuid_guard_before_override_or_terraform(
     assert not (stub.parent / "terraform.log").exists()
 
 
+def test_staging_destroy_refuses_foreign_account_before_override_or_terraform(
+    tmp_path: Path,
+) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-staging-foreign-account"
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci-staging.test"\n'
+    )
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    manifest = private / "manifest.json"
+    manifest.write_bytes(b"{}\n")
+    manifest.chmod(0o600)
+    evidence = private / "evidence.json"
+    guard_log = private / "guard.log"
+    _guard_stub(root)
+    stub = _terraform_stub(tmp_path)
+
+    result = _run(
+        root,
+        stub.parent,
+        env_name,
+        destroy_args=[
+            "--staging-manifest",
+            str(manifest),
+            "--post-destroy-evidence",
+            str(evidence),
+        ],
+        extra_env={
+            "GUARD_LOG": str(guard_log),
+            "GUARD_FAIL_COMMAND": "verify-upcloud-account",
+        },
+    )
+
+    assert result.returncode == 9
+    assert guard_log.read_text().splitlines() == [
+        f"validate-manifest --manifest {manifest} --expected-provider upcloud "
+        f"--expected-environment {env_name}",
+        f"verify-upcloud-account --manifest {manifest} --expected-provider upcloud "
+        f"--expected-environment {env_name}",
+    ]
+    assert not evidence.exists()
+    assert not (root / "terraform/providers/upcloud/_destroy_override.tf").exists()
+    assert not (stub.parent / "terraform.log").exists()
+
+
 def test_interactive_staging_abort_before_authorization_creates_nothing(
     tmp_path: Path,
 ) -> None:
@@ -424,7 +685,9 @@ def test_interactive_staging_abort_after_plan_releases_reservation(
     manifest.chmod(0o600)
     evidence = private / "post-destroy.json"
     _guard_stub(root)
+    _audit_stub(root)
     stub = _terraform_stub(tmp_path)
+    audit_log = private / "audit.log"
 
     result = _run(
         root,
@@ -436,7 +699,10 @@ def test_interactive_staging_abort_after_plan_releases_reservation(
             "--post-destroy-evidence",
             str(evidence),
         ],
-        extra_env={"GUARD_LOG": str(private / "guard.log")},
+        extra_env={
+            "GUARD_LOG": str(private / "guard.log"),
+            "AUDIT_LOG_STUB": str(audit_log),
+        },
         non_interactive=False,
         input_text="vpn-ci-staging.test\nDESTROY\nno\n",
     )
@@ -447,6 +713,7 @@ def test_interactive_staging_abort_after_plan_releases_reservation(
     calls = (stub.parent / "terraform.log").read_text().splitlines()
     assert any(" plan " in f" {line} " for line in calls)
     assert not any(" apply " in f" {line} " for line in calls)
+    assert not audit_log.exists()
 
 
 def test_staging_destroy_refuses_cross_environment_manifest_before_override_or_terraform(
@@ -544,9 +811,15 @@ def test_staging_destroy_validates_manifest_and_plan_before_apply_then_verifies_
     manifest.write_text("{}\n")
     manifest.chmod(0o600)
     evidence = private / "post-destroy.json"
+    inventory = root / "ansible/inventory/generated.ini"
+    inventory.parent.mkdir(parents=True)
+    inventory.write_text("[vpn]\nvpn-p0 ansible_host=192.0.2.10\n")
+    inventory_before = inventory.read_bytes()
     guard_log = private / "guard.log"
+    audit_log = private / "audit.log"
     race_plan_log = private / "race-plan.log"
     _guard_stub(root)
+    _audit_stub(root)
     stub = _terraform_stub(tmp_path)
 
     result = _run(
@@ -561,6 +834,7 @@ def test_staging_destroy_validates_manifest_and_plan_before_apply_then_verifies_
         ],
         extra_env={
             "GUARD_LOG": str(guard_log),
+            "AUDIT_LOG_STUB": str(audit_log),
             "RACE_PLAN_LOG": str(race_plan_log),
         },
         ambient_umask="022",
@@ -570,15 +844,16 @@ def test_staging_destroy_validates_manifest_and_plan_before_apply_then_verifies_
     guard_calls = guard_log.read_text().splitlines()
     target = f"--expected-provider upcloud --expected-environment {env_name}"
     assert guard_calls[0] == f"validate-manifest --manifest {manifest} {target}"
-    assert guard_calls[1] == (
+    assert guard_calls[1] == f"verify-upcloud-account --manifest {manifest} {target}"
+    assert guard_calls[2] == (
         f"reserve-evidence --manifest {manifest} --evidence-output {evidence} {target}"
     )
-    assert guard_calls[2].startswith(
+    assert guard_calls[3].startswith(
         f"validate-plan --manifest {manifest} --plan-view "
     )
-    assert guard_calls[2].endswith(target)
-    assert guard_calls[3].startswith("rewind-plan-fd --fd-number ")
-    assert guard_calls[4] == (
+    assert guard_calls[3].endswith(target)
+    assert guard_calls[4].startswith("rewind-plan-fd --fd-number ")
+    assert guard_calls[5] == (
         f"verify-upcloud-absence --manifest {manifest} --evidence-output {evidence} {target}"
     )
     terraform_calls = (stub.parent / "terraform.log").read_text().splitlines()
@@ -596,6 +871,14 @@ def test_staging_destroy_validates_manifest_and_plan_before_apply_then_verifies_
     assert "apply-plan-content=guarded-plan" in terraform_calls
     assert not Path(race_plan_log.read_text().strip()).exists()
     assert evidence.exists()
+    assert inventory.read_bytes() == inventory_before
+    audit_call = audit_log.read_text().strip()
+    assert audit_call == (
+        f"append-best-effort --action staging-destroy --env {env_name} "
+        "--provider upcloud --note exact-owned-resources-absent"
+    )
+    assert SERVER_UUID not in audit_call
+    assert STORAGE_UUID not in audit_call
     assert apply_index > 0
 
 
@@ -614,7 +897,9 @@ def test_staging_destroy_refuses_apply_when_exact_plan_guard_fails(
     manifest.chmod(0o600)
     evidence = private / "post-destroy.json"
     _guard_stub(root)
+    _audit_stub(root)
     stub = _terraform_stub(tmp_path)
+    audit_log = private / "audit.log"
 
     result = _run(
         root,
@@ -629,6 +914,7 @@ def test_staging_destroy_refuses_apply_when_exact_plan_guard_fails(
         extra_env={
             "GUARD_LOG": str(private / "guard.log"),
             "GUARD_FAIL_COMMAND": "validate-plan",
+            "AUDIT_LOG_STUB": str(audit_log),
         },
     )
 
@@ -639,6 +925,45 @@ def test_staging_destroy_refuses_apply_when_exact_plan_guard_fails(
         " apply " in f" {line} "
         for line in (stub.parent / "terraform.log").read_text().splitlines()
     )
+    assert not audit_log.exists()
+
+
+def test_staging_destroy_does_not_audit_failed_apply(tmp_path: Path) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-staging-apply-failure"
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci-staging.test"\n'
+    )
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    manifest = private / "manifest.json"
+    manifest.write_text("{}\n")
+    manifest.chmod(0o600)
+    evidence = private / "post-destroy.json"
+    audit_log = private / "audit.log"
+    _guard_stub(root)
+    _audit_stub(root)
+    stub = _terraform_stub(tmp_path, fail_apply=True)
+
+    result = _run(
+        root,
+        stub.parent,
+        env_name,
+        fail_apply=True,
+        destroy_args=[
+            "--staging-manifest",
+            str(manifest),
+            "--post-destroy-evidence",
+            str(evidence),
+        ],
+        extra_env={
+            "GUARD_LOG": str(private / "guard.log"),
+            "AUDIT_LOG_STUB": str(audit_log),
+        },
+    )
+
+    assert result.returncode != 0
+    assert not audit_log.exists()
 
 
 def test_staging_destroy_keeps_inventory_and_plan_when_provider_absence_is_unverified(
@@ -659,7 +984,9 @@ def test_staging_destroy_keeps_inventory_and_plan_when_provider_absence_is_unver
     manifest.chmod(0o600)
     evidence = private / "post-destroy.json"
     _guard_stub(root)
+    _audit_stub(root)
     stub = _terraform_stub(tmp_path)
+    audit_log = private / "audit.log"
 
     result = _run(
         root,
@@ -674,6 +1001,7 @@ def test_staging_destroy_keeps_inventory_and_plan_when_provider_absence_is_unver
         extra_env={
             "GUARD_LOG": str(private / "guard.log"),
             "GUARD_FAIL_COMMAND": "verify-upcloud-absence",
+            "AUDIT_LOG_STUB": str(audit_log),
         },
     )
 
@@ -683,6 +1011,7 @@ def test_staging_destroy_keeps_inventory_and_plan_when_provider_absence_is_unver
         root / f"terraform/providers/upcloud/{env_name}.destroy.tfplan"
     ).exists()
     assert evidence.read_text() == "reserved\n"
+    assert not audit_log.exists()
 
 
 def test_ci_workflows_do_not_suppress_destroy_failure_or_cleanup_tfvars_early() -> None:

@@ -6,9 +6,11 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 import ssl
 import stat
 import sys
@@ -18,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MAX_JSON_BYTES = 16 * 1024 * 1024
 MAX_STATE_BYTES = 64 * 1024 * 1024
 MAX_API_BYTES = 64 * 1024
@@ -29,6 +31,11 @@ UUID_RE = re.compile(
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{0,62}$")
 ENV_RE = re.compile(r"^ci-staging-[A-Za-z0-9][A-Za-z0-9-]{0,47}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+ACCOUNT_USERNAME_RE = re.compile(r"^[!-~]{4,64}$")
+TARGET_AFTER = timedelta(hours=36)
+ESCALATION_AFTER = timedelta(hours=44)
+EXPIRY_AFTER = timedelta(hours=47)
+OPEN_SUPPORTS_DIR_FD = os.open in os.supports_dir_fd
 ALLOWED_DESTROY_ADDRESSES = {
     "terraform_data.ssh_port",
     "upcloud_server.vpn",
@@ -38,6 +45,9 @@ ALLOWED_DESTROY_ADDRESSES = {
 
 class GuardError(ValueError):
     """A categorical cleanup refusal safe to show to an operator."""
+
+
+JsonRequest = Callable[[str], tuple[int, dict[str, Any]]]
 
 
 def canonical_json(value: Any) -> bytes:
@@ -68,20 +78,51 @@ def _format_time(value: datetime) -> str:
     )
 
 
-def _private_directory(path: Path, label: str, *, exact_mode: bool = True) -> None:
+def _open_private_parent(
+    path: Path, label: str, *, exact_mode: bool = True
+) -> tuple[int, str]:
+    if not path.is_absolute() or path.name in ("", ".", ".."):
+        raise GuardError(f"{label} path is not an absolute file path")
+    if not hasattr(os, "O_NOFOLLOW") or not OPEN_SUPPORTS_DIR_FD:
+        raise GuardError(f"{label} platform lacks no-follow directory traversal")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
     try:
-        info = path.lstat()
-    except FileNotFoundError as exc:
-        raise GuardError(f"{label} directory is missing") from exc
-    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
-        raise GuardError(f"{label} directory is not a real directory")
+        directory_fd = os.open(path.anchor, flags)
+    except OSError as exc:
+        raise GuardError(f"{label} ancestor path is unavailable") from exc
+    try:
+        for component in path.parent.parts[1:]:
+            try:
+                next_fd = os.open(component, flags, dir_fd=directory_fd)
+            except OSError as exc:
+                raise GuardError(
+                    f"{label} ancestor path is missing, non-directory, or symlink"
+                ) from exc
+            os.close(directory_fd)
+            directory_fd = next_fd
+        info = os.fstat(directory_fd)
+        if not stat.S_ISDIR(info.st_mode):
+            raise GuardError(f"{label} parent is not a directory")
+    except BaseException:
+        os.close(directory_fd)
+        raise
     if info.st_uid != os.getuid():
-        raise GuardError(f"{label} directory owner is not current user")
+        os.close(directory_fd)
+        raise GuardError(f"{label} parent owner is not current user")
     mode = stat.S_IMODE(info.st_mode)
     if exact_mode and mode != 0o700:
-        raise GuardError(f"{label} directory mode must be 0700")
+        os.close(directory_fd)
+        raise GuardError(f"{label} parent mode must be 0700")
     if not exact_mode and mode & 0o022:
-        raise GuardError(f"{label} directory is writable by group or others")
+        os.close(directory_fd)
+        raise GuardError(f"{label} parent is writable by group or others")
+    return directory_fd, path.name
 
 
 def _private_read(
@@ -91,78 +132,134 @@ def _private_read(
     max_bytes: int,
     exact_parent_mode: bool = True,
 ) -> bytes:
-    _private_directory(path.parent, f"{label} parent", exact_mode=exact_parent_mode)
+    parent_fd, name = _open_private_parent(
+        path, label, exact_mode=exact_parent_mode
+    )
     try:
-        info = path.lstat()
-    except FileNotFoundError as exc:
-        raise GuardError(f"{label} is missing") from exc
-    if stat.S_ISLNK(info.st_mode):
-        raise GuardError(f"{label} is a symlink")
-    if not stat.S_ISREG(info.st_mode):
-        raise GuardError(f"{label} is not a regular file")
-    if info.st_uid != os.getuid():
-        raise GuardError(f"{label} owner is not current user")
-    if stat.S_IMODE(info.st_mode) != 0o600:
-        raise GuardError(f"{label} mode must be 0600")
-    if info.st_size > max_bytes:
-        raise GuardError(f"{label} exceeds size limit")
-    flags = os.O_RDONLY
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    fd = os.open(path, flags)
-    try:
-        opened = os.fstat(fd)
-        if opened.st_dev != info.st_dev or opened.st_ino != info.st_ino:
-            raise GuardError(f"{label} changed while opening")
-        if opened.st_uid != os.getuid() or stat.S_IMODE(opened.st_mode) != 0o600:
-            raise GuardError(f"{label} ownership or mode changed while opening")
-        chunks: list[bytes] = []
-        remaining = max_bytes + 1
-        while remaining:
-            chunk = os.read(fd, min(1024 * 1024, remaining))
-            if not chunk:
-                break
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        data = b"".join(chunks)
-        if len(data) > max_bytes:
+        try:
+            info = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError as exc:
+            raise GuardError(f"{label} is missing") from exc
+        if stat.S_ISLNK(info.st_mode):
+            raise GuardError(f"{label} is a symlink")
+        if not stat.S_ISREG(info.st_mode):
+            raise GuardError(f"{label} is not a regular file")
+        if info.st_uid != os.getuid():
+            raise GuardError(f"{label} owner is not current user")
+        if stat.S_IMODE(info.st_mode) != 0o600:
+            raise GuardError(f"{label} mode must be 0600")
+        if info.st_size > max_bytes:
             raise GuardError(f"{label} exceeds size limit")
-        return data
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(name, flags, dir_fd=parent_fd)
+        opened = os.fstat(fd)
+        try:
+            if opened.st_dev != info.st_dev or opened.st_ino != info.st_ino:
+                raise GuardError(f"{label} changed while opening")
+            if (
+                opened.st_uid != os.getuid()
+                or stat.S_IMODE(opened.st_mode) != 0o600
+            ):
+                raise GuardError(f"{label} ownership or mode changed while opening")
+            chunks: list[bytes] = []
+            remaining = max_bytes + 1
+            while remaining:
+                chunk = os.read(fd, min(1024 * 1024, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            data = b"".join(chunks)
+            if len(data) > max_bytes:
+                raise GuardError(f"{label} exceeds size limit")
+            return data
+        finally:
+            os.close(fd)
     finally:
-        os.close(fd)
+        os.close(parent_fd)
+
+
+def _unlink_matching_entry(
+    parent_fd: int, name: str, expected: os.stat_result, label: str
+) -> None:
+    tombstone = f".{name}.release-{secrets.token_hex(16)}"
+    try:
+        os.rename(
+            name,
+            tombstone,
+            src_dir_fd=parent_fd,
+            dst_dir_fd=parent_fd,
+        )
+    except OSError as exc:
+        raise GuardError(f"{label} changed before release") from exc
+    try:
+        moved = os.stat(tombstone, dir_fd=parent_fd, follow_symlinks=False)
+    except OSError as exc:
+        raise GuardError(f"{label} release requires manual recovery") from exc
+    if moved.st_dev != expected.st_dev or moved.st_ino != expected.st_ino:
+        try:
+            os.link(
+                tombstone,
+                name,
+                src_dir_fd=parent_fd,
+                dst_dir_fd=parent_fd,
+                follow_symlinks=False,
+            )
+            os.unlink(tombstone, dir_fd=parent_fd)
+        except OSError as exc:
+            raise GuardError(f"{label} changed and requires manual recovery") from exc
+        raise GuardError(f"{label} changed before release")
+    try:
+        os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise GuardError(f"{label} release requires manual recovery") from exc
+    else:
+        raise GuardError(f"{label} changed and requires manual recovery")
+    try:
+        os.unlink(tombstone, dir_fd=parent_fd)
+        os.fsync(parent_fd)
+    except OSError as exc:
+        raise GuardError(f"{label} release requires manual recovery") from exc
 
 
 def _private_write_new(path: Path, data: bytes, label: str) -> None:
-    _private_directory(path.parent, label)
+    parent_fd, name = _open_private_parent(path, label)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
+    flags |= os.O_NOFOLLOW
     try:
-        fd = os.open(path, flags, 0o600)
-    except FileExistsError as exc:
-        raise GuardError(f"{label} already exists") from exc
-    try:
-        os.fchmod(fd, 0o600)
-        view = memoryview(data)
-        while view:
-            written = os.write(fd, view)
-            if written <= 0:
-                raise GuardError(f"{label} write failed")
-            view = view[written:]
-        os.fsync(fd)
-    except BaseException:
         try:
-            path.unlink()
-        except FileNotFoundError:
-            pass
-        raise
+            fd = os.open(name, flags, 0o600, dir_fd=parent_fd)
+        except FileExistsError as exc:
+            raise GuardError(f"{label} already exists") from exc
+        except OSError as exc:
+            raise GuardError(f"{label} could not be created privately") from exc
+        try:
+            try:
+                os.fchmod(fd, 0o600)
+                view = memoryview(data)
+                while view:
+                    written = os.write(fd, view)
+                    if written <= 0:
+                        raise GuardError(f"{label} write failed")
+                    view = view[written:]
+                os.fsync(fd)
+            except BaseException:
+                try:
+                    _unlink_matching_entry(parent_fd, name, os.fstat(fd), label)
+                except GuardError as exc:
+                    raise GuardError(
+                        f"{label} write failed and cleanup requires manual recovery"
+                    ) from exc
+                raise
+        finally:
+            os.close(fd)
+        os.fsync(parent_fd)
     finally:
-        os.close(fd)
-    directory_fd = os.open(path.parent, os.O_RDONLY)
-    try:
-        os.fsync(directory_fd)
-    finally:
-        os.close(directory_fd)
+        os.close(parent_fd)
 
 
 def _json_object(data: bytes, label: str) -> dict[str, Any]:
@@ -272,6 +369,19 @@ def _extract_state_identity(
     return server_uuid, storage_uuid
 
 
+def _authenticated_account_username(request_json: JsonRequest) -> str:
+    status, payload = request_json("/1.3/account")
+    account = payload.get("account")
+    username = account.get("username") if isinstance(account, dict) else None
+    if (
+        status != 200
+        or not isinstance(username, str)
+        or not ACCOUNT_USERNAME_RE.fullmatch(username)
+    ):
+        raise GuardError("provider account identity could not be verified")
+    return username
+
+
 def create_manifest(
     *,
     output_path: Path,
@@ -281,12 +391,11 @@ def create_manifest(
     state_path: Path,
     hostname: str,
     created_at: str | datetime,
-    expiry_at: str | datetime,
+    request_json: JsonRequest,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     current = _parse_time(now or datetime.now(timezone.utc), "current time")
     created = _parse_time(created_at, "created_at")
-    expiry = _parse_time(expiry_at, "expiry_at")
     if provider != "upcloud":
         raise GuardError("staging cleanup currently supports only upcloud")
     if not ENV_RE.fullmatch(environment) or workspace != environment:
@@ -295,10 +404,12 @@ def create_manifest(
         raise GuardError("hostname is invalid")
     if created > current + timedelta(minutes=5):
         raise GuardError("created_at is in the future")
-    if expiry <= created or expiry - created > timedelta(hours=48):
-        raise GuardError("cleanup expiry must be within 48 hours of creation")
+    target = created + TARGET_AFTER
+    escalation = created + ESCALATION_AFTER
+    expiry = created + EXPIRY_AFTER
     if current > expiry:
         raise GuardError("cleanup manifest is expired")
+    provider_account_username = _authenticated_account_username(request_json)
     state_path = state_path.absolute()
     state_bytes = _private_read(
         state_path,
@@ -318,9 +429,12 @@ def create_manifest(
             "sha256": hashlib.sha256(state_bytes).hexdigest(),
         },
         "hostname": hostname,
+        "provider_account_username": provider_account_username,
         "server_uuid": server_uuid,
         "root_storage_uuid": storage_uuid,
         "created_at": _format_time(created),
+        "target_at": _format_time(target),
+        "escalation_at": _format_time(escalation),
         "expiry_at": _format_time(expiry),
     }
     _private_write_new(output_path.absolute(), canonical_json(manifest), "manifest")
@@ -335,9 +449,12 @@ def _validate_manifest_shape(manifest: dict[str, Any], *, now: datetime) -> None
         "workspace",
         "state",
         "hostname",
+        "provider_account_username",
         "server_uuid",
         "root_storage_uuid",
         "created_at",
+        "target_at",
+        "escalation_at",
         "expiry_at",
     }
     if set(manifest) != expected or manifest.get("schema_version") != SCHEMA_VERSION:
@@ -352,12 +469,25 @@ def _validate_manifest_shape(manifest: dict[str, Any], *, now: datetime) -> None
     hostname = manifest.get("hostname")
     if not isinstance(hostname, str) or not NAME_RE.fullmatch(hostname):
         raise GuardError("manifest hostname is invalid")
+    account_username = manifest.get("provider_account_username")
+    if not isinstance(account_username, str) or not ACCOUNT_USERNAME_RE.fullmatch(
+        account_username
+    ):
+        raise GuardError("manifest provider account identity is invalid")
     _uuid(manifest.get("server_uuid"), "manifest server UUID")
     _uuid(manifest.get("root_storage_uuid"), "manifest root storage UUID")
     created = _parse_time(manifest.get("created_at"), "manifest created_at")
+    target = _parse_time(manifest.get("target_at"), "manifest target_at")
+    escalation = _parse_time(
+        manifest.get("escalation_at"), "manifest escalation_at"
+    )
     expiry = _parse_time(manifest.get("expiry_at"), "manifest expiry_at")
-    if expiry <= created or expiry - created > timedelta(hours=48):
-        raise GuardError("manifest expiry exceeds 48 hours")
+    if (
+        target != created + TARGET_AFTER
+        or escalation != created + ESCALATION_AFTER
+        or expiry != created + EXPIRY_AFTER
+    ):
+        raise GuardError("manifest cleanup schedule is not canonical")
     if now > expiry:
         raise GuardError("cleanup manifest is expired")
     state_info = manifest.get("state")
@@ -479,9 +609,6 @@ def validate_destroy_plan(
     }
 
 
-JsonRequest = Callable[[str], tuple[int, dict[str, Any]]]
-
-
 def _error_code(body: dict[str, Any]) -> str | None:
     error = body.get("error")
     return error.get("error_code") if isinstance(error, dict) else None
@@ -499,6 +626,7 @@ def _reserved_evidence(manifest: dict[str, Any], manifest_path: Path) -> dict[st
         "status": "reserved",
         "provider": manifest["provider"],
         "environment": manifest["environment"],
+        "provider_account_username": manifest["provider_account_username"],
         "manifest_sha256": _manifest_digest(manifest_path),
         "server_uuid": manifest["server_uuid"],
         "root_storage_uuid": manifest["root_storage_uuid"],
@@ -541,22 +669,36 @@ def release_evidence(
         expected_environment=expected_environment,
     )
     expected = canonical_json(_reserved_evidence(manifest, manifest_path))
-    actual = _private_read(
-        evidence_path.absolute(),
-        "provider evidence reservation",
-        max_bytes=MAX_JSON_BYTES,
-    )
-    if actual != expected:
-        raise GuardError("provider evidence reservation does not match manifest")
     path = evidence_path.absolute()
-    before = path.lstat()
-    parent_fd = os.open(path.parent, os.O_RDONLY)
+    parent_fd, name = _open_private_parent(path, "provider evidence reservation")
     try:
-        current = path.lstat()
-        if current.st_dev != before.st_dev or current.st_ino != before.st_ino:
-            raise GuardError("provider evidence reservation changed before release")
-        path.unlink()
-        os.fsync(parent_fd)
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            fd = os.open(name, flags, dir_fd=parent_fd)
+        except OSError as exc:
+            raise GuardError("provider evidence reservation is unavailable") from exc
+        try:
+            opened = os.fstat(fd)
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or opened.st_uid != os.getuid()
+                or stat.S_IMODE(opened.st_mode) != 0o600
+            ):
+                raise GuardError(
+                    "provider evidence reservation ownership or mode changed"
+                )
+            actual = os.read(fd, len(expected) + 1)
+            if actual != expected:
+                raise GuardError(
+                    "provider evidence reservation does not match manifest"
+                )
+            _unlink_matching_entry(
+                parent_fd, name, opened, "provider evidence reservation"
+            )
+        finally:
+            os.close(fd)
     finally:
         os.close(parent_fd)
 
@@ -584,43 +726,80 @@ def _rewrite_reserved_evidence(
     path: Path, reserved: dict[str, Any], evidence: dict[str, Any]
 ) -> None:
     path = path.absolute()
-    _private_directory(path.parent, "provider evidence")
-    try:
-        before = path.lstat()
-    except FileNotFoundError as exc:
-        raise GuardError("provider evidence reservation is missing") from exc
-    if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
-        raise GuardError("provider evidence reservation is not a regular file")
-    if before.st_uid != os.getuid() or stat.S_IMODE(before.st_mode) != 0o600:
-        raise GuardError("provider evidence reservation ownership or mode changed")
+    parent_fd, name = _open_private_parent(path, "provider evidence")
     flags = os.O_RDWR
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
-    fd = os.open(path, flags)
     try:
-        opened = os.fstat(fd)
-        if opened.st_dev != before.st_dev or opened.st_ino != before.st_ino:
-            raise GuardError("provider evidence reservation changed while opening")
-        if opened.st_uid != os.getuid() or stat.S_IMODE(opened.st_mode) != 0o600:
-            raise GuardError(
-                "provider evidence reservation ownership or mode changed while opening"
-            )
-        expected = canonical_json(reserved)
-        actual = os.read(fd, len(expected) + 1)
-        if actual != expected:
-            raise GuardError("provider evidence reservation content changed")
-        final = canonical_json(evidence)
-        os.lseek(fd, 0, os.SEEK_SET)
-        view = memoryview(final)
-        while view:
-            written = os.write(fd, view)
-            if written <= 0:
-                raise GuardError("provider evidence write failed")
-            view = view[written:]
-        os.ftruncate(fd, len(final))
-        os.fsync(fd)
+        try:
+            fd = os.open(name, flags, dir_fd=parent_fd)
+        except OSError as exc:
+            raise GuardError("provider evidence reservation is unavailable") from exc
+        try:
+            opened = os.fstat(fd)
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or opened.st_uid != os.getuid()
+                or stat.S_IMODE(opened.st_mode) != 0o600
+            ):
+                raise GuardError(
+                    "provider evidence reservation ownership or mode changed while opening"
+                )
+            expected = canonical_json(reserved)
+            actual = os.read(fd, len(expected) + 1)
+            if actual != expected:
+                raise GuardError("provider evidence reservation content changed")
+            current = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+            if current.st_dev != opened.st_dev or current.st_ino != opened.st_ino:
+                raise GuardError("provider evidence reservation changed while opening")
+            final = canonical_json(evidence)
+            os.lseek(fd, 0, os.SEEK_SET)
+            view = memoryview(final)
+            while view:
+                written = os.write(fd, view)
+                if written <= 0:
+                    raise GuardError("provider evidence write failed")
+                view = view[written:]
+            os.ftruncate(fd, len(final))
+            os.fsync(fd)
+            current = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+            if current.st_dev != opened.st_dev or current.st_ino != opened.st_ino:
+                raise GuardError(
+                    "provider evidence path changed during verified write"
+                )
+            os.fsync(parent_fd)
+        finally:
+            os.close(fd)
     finally:
-        os.close(fd)
+        os.close(parent_fd)
+
+
+def _require_account_matches(
+    manifest: dict[str, Any], request_json: JsonRequest
+) -> None:
+    authenticated_username = _authenticated_account_username(request_json)
+    if not hmac.compare_digest(
+        authenticated_username.encode("ascii"),
+        manifest["provider_account_username"].encode("ascii"),
+    ):
+        raise GuardError("provider account identity does not match manifest")
+
+
+def verify_upcloud_account(
+    manifest_path: Path,
+    *,
+    request_json: JsonRequest,
+    now: datetime | None = None,
+    expected_provider: str | None = None,
+    expected_environment: str | None = None,
+) -> None:
+    manifest = load_manifest(
+        manifest_path,
+        now=now,
+        expected_provider=expected_provider,
+        expected_environment=expected_environment,
+    )
+    _require_account_matches(manifest, request_json)
 
 
 def verify_upcloud_absence(
@@ -648,9 +827,7 @@ def verify_upcloud_absence(
     )
     if reserved_bytes != canonical_json(reserved):
         raise GuardError("provider evidence reservation does not match manifest")
-    account_status, account = request_json("/1.3/account")
-    if account_status != 200 or not isinstance(account.get("account"), dict):
-        raise GuardError("provider authentication could not be verified")
+    _require_account_matches(manifest, request_json)
     server_status, server = request_json(f"/1.3/server/{manifest['server_uuid']}")
     if server_status == 200:
         raise GuardError("server still exists")
@@ -669,6 +846,7 @@ def verify_upcloud_absence(
         "status": "verified",
         "provider": "upcloud",
         "environment": manifest["environment"],
+        "provider_account_username": manifest["provider_account_username"],
         "manifest_sha256": reserved["manifest_sha256"],
         "observed_at": _format_time(observed),
         "server_uuid": manifest["server_uuid"],
@@ -735,7 +913,6 @@ def _parser() -> argparse.ArgumentParser:
     create.add_argument("--state", type=Path, required=True)
     create.add_argument("--hostname", required=True)
     create.add_argument("--created-at", required=True)
-    create.add_argument("--expiry-at", required=True)
     check = sub.add_parser("validate-manifest")
     check.add_argument("--manifest", type=Path, required=True)
     check.add_argument("--expected-provider", required=True)
@@ -750,6 +927,10 @@ def _parser() -> argparse.ArgumentParser:
     release.add_argument("--evidence-output", type=Path, required=True)
     release.add_argument("--expected-provider", required=True)
     release.add_argument("--expected-environment", required=True)
+    account = sub.add_parser("verify-upcloud-account")
+    account.add_argument("--manifest", type=Path, required=True)
+    account.add_argument("--expected-provider", required=True)
+    account.add_argument("--expected-environment", required=True)
     rewind = sub.add_parser("rewind-plan-fd")
     rewind.add_argument("--fd-number", type=int, required=True)
     plan = sub.add_parser("validate-plan")
@@ -769,6 +950,10 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     now = datetime.now(timezone.utc)
     if args.command == "create-manifest":
+        username = os.environ.get("UPCLOUD_USERNAME", "")
+        password = os.environ.get("UPCLOUD_PASSWORD", "")
+        if not username or not password:
+            raise GuardError("provider authentication is unavailable")
         create_manifest(
             output_path=args.output,
             provider=args.provider,
@@ -777,7 +962,7 @@ def main(argv: list[str] | None = None) -> int:
             state_path=args.state,
             hostname=args.hostname,
             created_at=args.created_at,
-            expiry_at=args.expiry_at,
+            request_json=_upcloud_request(username, password),
             now=now,
         )
         print("staging cleanup manifest created")
@@ -828,6 +1013,16 @@ def main(argv: list[str] | None = None) -> int:
     password = os.environ.get("UPCLOUD_PASSWORD", "")
     if not username or not password:
         raise GuardError("provider authentication is unavailable")
+    if args.command == "verify-upcloud-account":
+        verify_upcloud_account(
+            args.manifest,
+            request_json=_upcloud_request(username, password),
+            now=now,
+            expected_provider=args.expected_provider,
+            expected_environment=args.expected_environment,
+        )
+        print("staging provider account verified")
+        return 0
     verify_upcloud_absence(
         args.manifest,
         args.evidence_output,

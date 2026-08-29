@@ -87,6 +87,10 @@ if [[ "$STAGING_GUARDED" == "true" ]]; then
     --manifest "$STAGING_MANIFEST" \
     --expected-provider "$PROVIDER" \
     --expected-environment "$ENV"
+  "$STAGING_GUARD" verify-upcloud-account \
+    --manifest "$STAGING_MANIFEST" \
+    --expected-provider "$PROVIDER" \
+    --expected-environment "$ENV"
 fi
 
 if [[ "$NON_INTERACTIVE" == "true" && ! "$ENV" =~ ^ci-[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
@@ -224,6 +228,12 @@ if [[ "$STAGING_GUARDED" == "true" ]]; then
     --evidence-output "$POST_DESTROY_EVIDENCE" \
     --expected-provider "$PROVIDER" \
     --expected-environment "$ENV"
+  env ENV="$ENV" PROVIDER="$PROVIDER" \
+    "${REPO_ROOT}/scripts/audit-log.sh" append-best-effort \
+      --action staging-destroy \
+      --env "$ENV" \
+      --provider "$PROVIDER" \
+      --note exact-owned-resources-absent
 fi
 
 if [[ "$STAGING_GUARDED" != "true" ]]; then
@@ -231,7 +241,7 @@ if [[ "$STAGING_GUARDED" != "true" ]]; then
 fi
 
 # Clean inventory and ask if they want a state backup
-if [[ -f "$INV" ]]; then
+if [[ "$STAGING_GUARDED" != "true" && -f "$INV" ]]; then
   rm -f "$INV"
   echo "removed $INV"
 fi
