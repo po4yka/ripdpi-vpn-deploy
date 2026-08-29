@@ -4,6 +4,7 @@ SSH/Ansible executables in the orchestration fixture record calls instead of
 contacting hosts. Separate parity cases use the installed Ansible locally.
 """
 
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -594,10 +595,8 @@ time.sleep(60)
     finally:
         for group in {process.pid, *(json.loads(pids.read_text())[:1] if pids.exists() else [])}:
             assert group != os.getpgrp()
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 os.killpg(group, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
         process.communicate()
 
 

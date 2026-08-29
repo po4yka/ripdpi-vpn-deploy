@@ -33,7 +33,7 @@ def test_live_repo_is_clean():
 def test_ordinary_playbook_toggle_defaults_match_declared_surface():
     defaults = yaml.safe_load((REPO_ROOT / "ansible/group_vars/all.yml").read_text())["vpn"]
     pattern = re.compile(r"vpn\.(enable_\w+)\s*\|\s*default\(\s*(true|false)\s*\)")
-    environment = Environment(undefined=StrictUndefined)
+    environment = Environment(undefined=StrictUndefined, autoescape=True)
 
     def scalars(value):
         if isinstance(value, str):
