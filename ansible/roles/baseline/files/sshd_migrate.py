@@ -43,7 +43,7 @@ ownership = _module('sshd_ownership')
 TransactionError = transaction.TransactionError
 MAX_OUTPUT = 65536
 COMMAND_TIMEOUT = 10
-UNIT_HASHES = {'vpn-sshd-boot-recover.service': 'f000d66c64bdeaf2148d3053f569e587a9b9d4dda3b42502d16261d12a67946d', 'vpn-sshd-recover.service': '6f6f66d895f463b50af1bd34ac90100edad0015a764a791dcc1b0d56f1f7121b', 'vpn-sshd-recover.timer': '8f25882b7f60d9795acfb90dead7c037590693f879d58fc424be164224125c6d'}
+UNIT_HASHES = {'vpn-sshd-boot-recover.service': '5f07bd2996019322098e1804304500621d6b5881c7cb25ff1e6f235d9371fbc1', 'vpn-sshd-recover.service': '1a062b87b2eb4ca361f29f5c022dcb5608d1840896ceb6ed87a989d8dc85e6dd', 'vpn-sshd-recover.timer': '8f25882b7f60d9795acfb90dead7c037590693f879d58fc424be164224125c6d'}
 
 
 def _command(arguments, *, deadline=None):

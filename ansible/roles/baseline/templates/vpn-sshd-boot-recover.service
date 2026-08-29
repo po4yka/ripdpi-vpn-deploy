@@ -17,7 +17,7 @@ Environment=TMPDIR=/run/vpn-sshd-validation
 NoNewPrivileges=true
 ProtectHome=read-only
 ProtectSystem=strict
-ReadWritePaths=/etc/ssh/sshd_config.d /var/lib/vpn-sshd-transaction /run/vpn-sshd-validation /usr/local/lib/vpn-sshd/bundle.lock
+ReadWritePaths=/etc/ssh /var/lib/vpn-sshd-transaction /run/vpn-sshd-validation /usr/local/lib/vpn-sshd/bundle.lock
 
 [Install]
 RequiredBy=ssh.service ssh.socket
