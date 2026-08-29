@@ -18,8 +18,11 @@ Ten duplication clusters and two scaffold hazards, quantified with per-site cita
 
 ## Contracts and ownership
 
-- New internal role owned here: install_release surface and contract tests.
-- Consumer migrations owned here per proposal Impact list; watchdog/xray share the P0 template ownership boundary.
+- New internal role owned here: `ansible/roles/runtime-release` with a `runtime_release_*` surface and contract tests.
+- Release consumer migrations are limited to the six roles named by
+  `REQ-INSTALL-RELEASE-SHARED` and the two migration steps. Other roles in the
+  proposal Impact list participate only in their corresponding concerns;
+  watchdog/xray share the P0 template ownership boundary.
 - Excluded by cross-change ownership: backup/geodata units (SEC change), TESTING.md idempotence rows (TST change).
 
 ## Risks / Trade-offs

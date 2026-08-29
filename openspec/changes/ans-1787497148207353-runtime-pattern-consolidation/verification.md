@@ -24,9 +24,11 @@ artifact_evidence: null
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-INSTALL-RELEASE-SHARED | ANS-1787496118906923 | runtime path unit tests + six consumer molecule scenarios green post-migration | pending |
+| REQ-INSTALL-RELEASE-SHARED | ANS-1787496118906923 | runtime-release role contract tests, including refusal and upgrade/rollback semantics | pending |
+| REQ-INSTALL-RELEASE-SHARED | ANS-1787496118907057 | xray-runtime, hysteria, hysteria-realm and snell post-migration Molecule results | pending |
+| REQ-INSTALL-RELEASE-SHARED | ANS-1787496118906866 | probe-matrix-target and dns-morph-bridge post-migration Molecule results | pending |
 | REQ-BUILD-RECEIPT-IDIOM | ANS-1787496118907179 | amneziawg rebuild-decision case with bumped descriptor | pending |
-| REQ-UNIT-FLOOR-PARITY | ANS-1787496118907152 | floor-directive contract test across all unit templates | pending |
+| REQ-UNIT-FLOOR-PARITY | ANS-1787496118907152 | floor-directive contract test across the named Ansible-owned unit templates | pending |
 | REQ-LIFECYCLE-GATE | ANS-1787496118907351 | negative-render molecule cases failing at validation for all four formats | pending |
 | REQ-SINGLE-SOURCED-DEFAULTS | ANS-1787496118907135 | literal-duplication grep test over roles + manifest; port-change drill | pending |
 | REQ-NFT-POLICY-IDIOM | ANS-1787496118907278 | split-hop policy file nft -c validation in molecule | pending |
