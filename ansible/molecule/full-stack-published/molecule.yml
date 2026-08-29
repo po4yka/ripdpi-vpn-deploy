@@ -117,6 +117,16 @@ provisioner:
 verifier:
   name: ansible
 
-# Default test_sequence omitted on purpose: this scenario is invoked
-# via `converge` from the sibling wrapper so the container stays up.
-# Use `molecule destroy -s full-stack-published` to tear down.
+# Explicit tests repeat the same converge and require Molecule's changed=0
+# idempotence assertion. Direct `converge` still leaves the container up for
+# the external client harness until an explicit destroy.
+scenario:
+  test_sequence:
+    - dependency
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
