@@ -84,6 +84,8 @@ provisioner:
           {{ terraform_public_listeners_b64_chunks | join('') }}
       vpn:
         ansible_user: root
+        # Synthetic provider-assigned public IPv4 used by enabled role preflights.
+        vpn_service_address: 203.0.113.10
         allowed_ssh_cidrs: ["0.0.0.0/0"]
         vpn:
           enable_xray_reality: true

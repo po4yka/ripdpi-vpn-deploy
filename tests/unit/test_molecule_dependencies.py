@@ -96,6 +96,13 @@ def test_published_listener_contract_matches_declared_runtime_inputs(tmp_path) -
     assert validator.check({"expected": expected, "actual": changed})
 
 
+def test_published_enabled_roles_have_public_service_address() -> None:
+    variables = _published_variables()
+    assert variables["vpn"]["enable_nginx_xhttp"] is True
+    assert variables["vpn"]["enable_watchdog"] is True
+    assert variables["vpn_service_address"] == "203.0.113.10"
+
+
 def test_published_static_role_defaults_match_declared_manifest(tmp_path) -> None:
     """Load actual static defaults, but never execute roles or contact hosts."""
     executable = shutil.which("ansible-playbook")
