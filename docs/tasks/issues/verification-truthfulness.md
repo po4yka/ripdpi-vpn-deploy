@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: tst-1787497001212692-verification-truthfulness
 created: 2026-08-23
-updated: 2026-08-27
+updated: 2026-08-30
 related_tasks: []
-status_detail: Implementation remains on codex/complete-high-review at 37f3a6a50b21e294e5da6048a491d91568cd4627, not main. Recovery restored direct SSH. Read-only P0/P2 manifests still identify an older source revision; exact-source deployment and authorized live verification remain open. Watchdog verification was not invoked because it can restart services.
+status_detail: Seven of ten execution steps are complete. Full-stack and published idempotence passed on exact 4580f9927ed808b4f71b8fa5e0e036890f6daaf2 with changed=0. Remaining blockers are TESTING.md sequence parity, socket-activated single-SSH-listener acceptance, and authorized live verify/source-drift acceptance against the deployed exact revision.
 ---
 
 ## Goal
