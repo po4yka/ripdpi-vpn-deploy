@@ -45,6 +45,12 @@ Full-stack molecule sequences MUST include an idempotence phase; per-role scenar
 - **WHEN** the full-stack scenario converges twice
 - **THEN** the second run reports zero changes or the scenario fails naming the offending task
 
+#### Scenario: published full-stack prerequisites
+
+- **WHEN** the published scenario is invoked from its documented `ansible/` working directory
+- **THEN** dependency paths resolve to the current checkout's pinned requirements and its explicit provider listener contract matches the runtime manifest rendered from the scenario inputs
+- **AND** a missing contract or mismatched declared port fails validation before convergence; local input checks alone do not establish second-converge idempotence
+
 ### Requirement: REQ-SCENARIO-RUNS-ROLE — Molecule scenarios MUST exercise role task code
 
 Scenarios validating a role MUST execute the role itself (against stubbed externals) rather than re-implementing its render logic in the converge play.

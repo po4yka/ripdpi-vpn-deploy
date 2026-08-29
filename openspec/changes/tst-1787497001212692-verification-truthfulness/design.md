@@ -32,6 +32,13 @@ Seven verification-honesty findings share a mechanism: gates assert less than de
 - Rollback: revert commits independently.
 - Gates: touched molecule scenarios, live-inventory verify cycle, `make ci-fast`, `make validate`.
 
+## Published scenario prerequisites — 2026-08-29
+
+- Before step `TST-1787496118906321` can exercise repeat convergence, the published scenario must resolve Galaxy requirements to this checkout's pinned root file from its documented `ansible/` working directory and supply the provider listener contract consumed by site preflight.
+- The contract describes the scenario's actual toggles, ports and shared synthetic secrets. Local tests use the canonical template renderer and listener validator with only those inputs; they must not inject unrelated group-vars defaults that Molecule does not load. A changed declared port must fail the comparison.
+- A separate installed-Ansible regression loads all actual site roles with literal false conditions and runs only the source manifest pre-task plus an observation. It checks static-default visibility against the declared active listener surface without executing role tasks. This scenario leaves the Xray fallback undefined/off; it does not inherit the separate group-vars value of 2053.
+- This bounded prerequisite slice preserves the published port mappings, role set and sequence. It does not run roles, prove idempotence or replace full Molecule acceptance; baseline/SSH changes require separate coordination.
+
 ## Smoke host-class slice — 2026-08-28
 
 - A single outer smoke transport block gates protocol credentials, local facts, resource preflight/claim, clients and cleanup on `not vpn_subscription_only` plus an enabled supported transport. Subscription-only and all-disabled hosts require no transport credentials and perform no smoke-client or workdir operation; the existing secrets-file entrypoint requirement remains.

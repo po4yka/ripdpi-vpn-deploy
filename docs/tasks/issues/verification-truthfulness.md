@@ -51,3 +51,8 @@ Verification tooling asserts the state deploy actually produced for every suppor
 
 - The Ansible subagent owns only subscription-only predicates in verify.yml, corresponding source-task regressions in test_listener_contract.py, and this step's existing planning/evidence on codex/high-verify-hostclass-20260828 from a823ed2. Step TST-1787496118906453 covers the eleven currently unguarded transport tasks, not just the older six-group inventory.
 - Other source, SSH/watchdog execution, source drift, Molecule, toggle defaults, generated counts/board and Git delivery remain with the primary agent. No host operation or portfolio close is part of this slice.
+
+## Published scenario prerequisites ownership — 2026-08-29
+
+- The scenario subagent owns only `ansible/molecule/full-stack-published/molecule.yml`, its input/dependency regressions in `tests/unit/test_molecule_dependencies.py`, and this prerequisite refinement of step `TST-1787496118906321`, in `codex/high-published-prerequisites-20260829` from `fc3acc6`.
+- Baseline, SSH, shared full-stack verification, Make, host port mappings, other worktrees and Git delivery remain outside this slice. Fixing scenario inputs does not complete idempotence or the required whole-Molecule/live acceptance; the portfolio remains blocked.
