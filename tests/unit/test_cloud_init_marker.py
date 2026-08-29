@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from collections.abc import Iterator
 import errno
 import importlib.util
 import os
@@ -10,6 +11,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -74,14 +76,22 @@ def bootstrap_owner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
 
 
 @pytest.fixture
-def ssh_config(tmp_path: Path) -> Path:
-    config = tmp_path / "etc" / "ssh"
-    fragments = config / "sshd_config.d"
-    fragments.mkdir(parents=True)
-    main = config / "sshd_config"
-    main.write_bytes(b"# packaged main\nInclude /etc/ssh/sshd_config.d/*.conf\n")
-    main.chmod(0o644)
-    return config
+def ssh_config() -> Iterator[Path]:
+    # The production helper intentionally rejects writable ancestors such as
+    # /tmp.  Anchor its filesystem tests below HOME so Linux pytest tmp roots
+    # do not turn that fail-closed check into a platform-dependent failure.
+    with tempfile.TemporaryDirectory(
+        prefix=".bootstrap-sshd-test-", dir=Path.home()
+    ) as directory:
+        root = Path(directory)
+        root.chmod(0o700)
+        config = root / "etc" / "ssh"
+        fragments = config / "sshd_config.d"
+        fragments.mkdir(parents=True)
+        main = config / "sshd_config"
+        main.write_bytes(b"# packaged main\nInclude /etc/ssh/sshd_config.d/*.conf\n")
+        main.chmod(0o644)
+        yield config
 
 
 def _records(config: Path) -> dict[str, tuple[bytes, int, int]]:
@@ -676,6 +686,48 @@ def test_effective_runner_always_terminates_its_owned_process_group(
     assert not sentinel.exists()
 
 
+def _publish_boundary_child_status(
+    bootstrap_owner,
+    ssh_config: Path,
+    *,
+    boundary: str,
+    target: str,
+    port: str,
+) -> int:
+    child = os.fork()
+    if child == 0:
+        try:
+            def terminate(phase: str, name: str) -> None:
+                if (phase, name) == (boundary, target):
+                    os.kill(os.getpid(), signal.SIGKILL)
+
+            bootstrap_owner.PUBLISH_BOUNDARY_HOOK = terminate
+            bootstrap_owner.normalize(ssh_config, port)
+        except Exception:
+            # A pre-boundary refusal must terminate this fork.  Letting it
+            # return into pytest would duplicate the remainder of the suite.
+            os._exit(92)
+        os._exit(91)
+    waited, status = os.waitpid(child, 0)
+    assert waited == child
+    return status
+
+
+def test_publish_boundary_child_contains_a_preboundary_refusal(
+    bootstrap_owner, ssh_config: Path,
+) -> None:
+    status = _publish_boundary_child_status(
+        bootstrap_owner,
+        ssh_config,
+        boundary="file-fsync",
+        target=BOOT,
+        port="invalid",
+    )
+
+    assert os.WIFEXITED(status)
+    assert os.WEXITSTATUS(status) == 92
+
+
 @pytest.mark.parametrize("target", [BOOT, MANAGED, CLOUD])
 @pytest.mark.parametrize("boundary", ["file-fsync", "replace", "directory-fsync"])
 def test_process_death_at_every_publish_boundary_is_nonweakening_and_converges(
@@ -686,17 +738,14 @@ def test_process_death_at_every_publish_boundary_is_nonweakening_and_converges(
     cloud.write_bytes(b"# cloud\nPasswordAuthentication no\n")
     cloud.chmod(0o644)
 
-    child = os.fork()
-    if child == 0:
-        def terminate(phase: str, name: str) -> None:
-            if (phase, name) == (boundary, target):
-                os.kill(os.getpid(), signal.SIGKILL)
+    status = _publish_boundary_child_status(
+        bootstrap_owner,
+        ssh_config,
+        boundary=boundary,
+        target=target,
+        port="22",
+    )
 
-        bootstrap_owner.PUBLISH_BOUNDARY_HOOK = terminate
-        bootstrap_owner.normalize(ssh_config, "22")
-        os._exit(91)
-    waited, status = os.waitpid(child, 0)
-    assert waited == child
     assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
 
     boot = fragments / BOOT
