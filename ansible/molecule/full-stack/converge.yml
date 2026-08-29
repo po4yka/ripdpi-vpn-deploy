@@ -1,3 +1,6 @@
 ---
+- name: Bind the isolated full-stack controller adapter
+  ansible.builtin.import_playbook: ../controller-converge-adapter.yml
+
 - name: Converge — full site.yml against a docker container
   ansible.builtin.import_playbook: ../../playbooks/site.yml

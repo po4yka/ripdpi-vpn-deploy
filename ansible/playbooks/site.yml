@@ -339,6 +339,11 @@
   any_errors_fatal: true
   gather_facts: false
   become: false
+  # This phase requires real public and management SSH transports.  Docker
+  # full-stack scenarios exercise the preceding convergence phase and skip
+  # this tag; the transaction itself is covered by controller tests and the
+  # mandatory staging/live acceptance path.
+  tags: [ssh-transaction]
 
   tasks:
     - name: Run the baseline SSH transaction controller

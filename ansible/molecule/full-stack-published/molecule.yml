@@ -50,6 +50,9 @@ provisioner:
   name: ansible
   env:
     ANSIBLE_ROLES_PATH: ../../roles
+    # This Docker-connection fixture cannot prove the out-of-container SSH
+    # transaction.  It exercises the controller-owned convergence phase only.
+    ANSIBLE_SKIP_TAGS: ssh-transaction
     # Reuse the sibling scenario's test-secrets file so the two scenarios
     # share a single source of truth for synthetic keys/certs/shas.
     VPN_SECRETS_FILE: ${MOLECULE_SCENARIO_DIRECTORY}/../full-stack/test-secrets.yaml

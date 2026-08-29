@@ -512,7 +512,7 @@ def test_baseline_plan_preserves_bootstrap_and_stages_complete_sftp_handoff(plan
 
 
 def test_rendered_baseline_candidate_never_reclaims_bootstrap_authentication(planner, baseline_config):
-    rendered = Environment(undefined=StrictUndefined).from_string(
+    rendered = Environment(autoescape=True, undefined=StrictUndefined).from_string(
         HARDENING_TEMPLATE.read_text()).render(
             security_controls={"ssh_strict": True}, ansible_user="deploy").encode()
     lowered = rendered.lower()

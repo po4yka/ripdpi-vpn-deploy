@@ -50,6 +50,12 @@ def _published_scenario() -> dict:
     )
 
 
+def _full_stack_scenario() -> dict:
+    return yaml.safe_load(
+        (REPO_ROOT / "ansible/molecule/full-stack/molecule.yml").read_text()
+    )
+
+
 def _published_variables() -> dict:
     groups = _published_scenario()["provisioner"]["inventory"]["group_vars"]
     return {
@@ -101,6 +107,47 @@ def test_published_enabled_roles_have_public_service_address() -> None:
     assert variables["vpn"]["enable_nginx_xhttp"] is True
     assert variables["vpn"]["enable_watchdog"] is True
     assert variables["vpn_service_address"] == "203.0.113.10"
+
+
+def test_full_stack_scenarios_exercise_controller_owned_convergence_only() -> None:
+    """Molecule cannot prove the out-of-container SSH transaction."""
+    site = yaml.safe_load((REPO_ROOT / "ansible/playbooks/site.yml").read_text())
+    transaction = site[1]
+    assert transaction["tags"] == ["ssh-transaction"]
+
+    adapter = yaml.safe_load(
+        (REPO_ROOT / "ansible/molecule/controller-converge-adapter.yml").read_text()
+    )[0]
+    serialized = yaml.safe_dump(adapter)
+    assertions = adapter["tasks"][0]["ansible.builtin.assert"]["that"]
+    assert "ansible_play_hosts_all | length == 1" in assertions
+    assert "ansible_connection == 'docker'" in assertions
+    assert "MOLECULE_SCENARIO_DIRECTORY" in serialized
+    assert adapter["tasks"][1]["ansible.builtin.set_fact"] == {
+        "ssh_transaction_controller_managed": True,
+    }
+
+    for slug, scenario in (("full-stack", _full_stack_scenario()),
+                           ("full-stack-published", _published_scenario())):
+        environment = scenario["provisioner"]["env"]
+        variables = scenario["provisioner"]["inventory"]["group_vars"]["vpn"]
+        assert environment["ANSIBLE_SKIP_TAGS"] == "ssh-transaction"
+        assert "ssh_transaction_controller_managed" not in variables
+        converge = yaml.safe_load(
+            (REPO_ROOT / f"ansible/molecule/{slug}/converge.yml").read_text()
+        )
+        assert [item["ansible.builtin.import_playbook"] for item in converge] == [
+            "../controller-converge-adapter.yml", "../../playbooks/site.yml",
+        ]
+
+
+def test_baseline_role_scenario_does_not_claim_transactional_ssh_publication() -> None:
+    verify = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/baseline/molecule/default/verify.yml").read_text()
+    )[0]
+    serialized = yaml.safe_dump(verify)
+    assert "20-ansible-hardening.conf" not in serialized
+    assert "sshd -T" not in serialized
 
 
 def test_published_static_role_defaults_match_declared_manifest(tmp_path) -> None:

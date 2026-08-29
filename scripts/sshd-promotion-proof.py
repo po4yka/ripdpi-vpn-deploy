@@ -33,6 +33,23 @@ class ProofError(Exception):
     """Categorical refusal that never includes private input or child output."""
 
 
+def _best_effort_terminate(process: subprocess.Popen[bytes]) -> tuple[bool, bool]:
+    """Attempt both cleanup steps; the caller already maps either outcome to refusal."""
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except OSError:
+        killed = False
+    else:
+        killed = True
+    try:
+        process.wait(timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        reaped = False
+    else:
+        reaped = True
+    return killed, reaped
+
+
 def unique_object(pairs: list[tuple[str, object]]) -> dict:
     value = {}
     for key, item in pairs:
@@ -174,14 +191,7 @@ def evaluate(liveness: bytes) -> dict:
         try:
             output, _ = process.communicate(timeout=EVALUATOR_TIMEOUT)
         except (OSError, subprocess.TimeoutExpired):
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except OSError:
-                pass
-            try:
-                process.wait(timeout=5)
-            except (OSError, subprocess.TimeoutExpired):
-                pass
+            _best_effort_terminate(process)
             raise ProofError("proof-refused") from None
         if process.returncode != 0 or len(output) > MAX_OUTPUT:
             raise ProofError("proof-refused")
