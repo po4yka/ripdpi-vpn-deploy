@@ -1,6 +1,7 @@
 """Installed adapter command boundaries; no production systemd calls."""
 from __future__ import annotations
 
+import base64
 import importlib.util
 from pathlib import Path
 import sys
@@ -42,11 +43,42 @@ def test_recovery_requires_enabled_timer_and_real_ssh_dependencies(adapter, monk
 
 def test_request_is_fixed_shape_and_requires_two_connection_contexts(adapter):
     with pytest.raises(adapter.TransactionError):
-        adapter.validate_request('prepare', {'contexts': [], 'timeout': 180, 'config_root': '/tmp'})
+        adapter.validate_request('prepare', {'intent': 'sshd-ownership', 'contexts': [], 'timeout': 180, 'config_root': '/tmp'})
     with pytest.raises(adapter.TransactionError):
-        adapter.validate_request('prepare', {'contexts': [], 'timeout': 180})
+        adapter.validate_request('prepare', {'intent': 'sshd-ownership', 'contexts': [], 'timeout': 180})
     with pytest.raises(adapter.TransactionError):
         adapter.validate_request('apply', {'generation': 'x', 'nonce': 'y', 'command': 'true'})
+
+
+def test_prepare_intent_and_candidate_decode_keep_fixed_engine_arguments(adapter):
+    ownership = {'intent': 'sshd-ownership', 'contexts': CONTEXTS, 'timeout': 180}
+    assert adapter.validate_request('prepare', ownership) == ownership
+    hardening = b'X11Forwarding no\nSubsystem sftp internal-sftp\n'
+    wire = {'intent': 'sshd-baseline', 'contexts': CONTEXTS, 'timeout': 180,
+            'hardening_b64': base64.b64encode(hardening).decode()}
+    original = dict(wire)
+    assert adapter.validate_request('prepare', wire) == {
+        'intent': 'sshd-baseline', 'contexts': CONTEXTS, 'timeout': 180,
+        'hardening': hardening,
+    }
+    assert wire == original
+
+
+@pytest.mark.parametrize('extra', [{}, {'intent': None}, {'intent': 'unknown'},
+                                 {'intent': 'sshd-ownership', 'hardening_b64': 'WA=='},
+                                 {'intent': 'sshd-baseline'},
+                                 {'intent': 'sshd-baseline', 'hardening': b'X11Forwarding no\n'}])
+def test_prepare_never_infers_intent_or_accepts_an_alternate_candidate_surface(adapter, extra):
+    with pytest.raises(adapter.TransactionError, match='request-invalid'):
+        adapter.validate_request('prepare', {'contexts': CONTEXTS, 'timeout': 180, **extra})
+
+
+@pytest.mark.parametrize('encoded', [None, 1, '', '!!!!', 'WA', 'WB==', 'WA==\n',
+                                   base64.b64encode(b'X' * 8193).decode()])
+def test_prepare_candidate_has_a_bounded_canonical_base64_wire_form(adapter, encoded):
+    with pytest.raises(adapter.TransactionError, match='request-invalid'):
+        adapter.validate_request('prepare', {'intent': 'sshd-baseline', 'contexts': CONTEXTS,
+                                            'timeout': 180, 'hardening_b64': encoded})
 
 
 def test_unit_design_avoids_boot_reload_deadlock_and_repeated_timer_noop(adapter):
@@ -176,11 +208,17 @@ def test_installer_has_exact_host_guard_without_importing_baseline_or_site(adapt
 
 
 # Reuse the real OpenSSH fixture; only service/reboot callbacks are simulated.
-from test_sshd_ownership import config, CONTEXTS
+from test_sshd_ownership import config, baseline_config, CONTEXTS, BASELINE_HARDENING
 
 
-def test_real_planner_transaction_and_installed_policy_round_trip(adapter, config, monkeypatch):
+@pytest.mark.parametrize('configuration,intent,terminal', [
+    ('config', 'sshd-ownership', 'rolled_back'),
+    ('baseline_config', 'sshd-baseline', 'rolled_back'),
+    ('baseline_config', 'sshd-baseline', 'committed'),
+])
+def test_real_planner_transaction_and_installed_policy_round_trip(adapter, request, monkeypatch, configuration, intent, terminal):
     import os
+    config = request.getfixturevalue(configuration)
     monkeypatch.setattr(adapter.ownership, 'OWNER_UID', os.geteuid())
     class LocalRuntime(adapter.Runtime):
         def __init__(self):
@@ -205,15 +243,20 @@ def test_real_planner_transaction_and_installed_policy_round_trip(adapter, confi
     with tempfile.TemporaryDirectory(prefix='.sshd-state-', dir=config.parent) as state:
         root = Path(state)
         engine = adapter.transaction.Transaction(config, root, runtime)
-        before = {path: path.read_bytes() for path in (config/'sshd_config.d').iterdir()}
-        receipt = engine.prepare(contexts=CONTEXTS, timeout=120)
+        before = {path: path.read_bytes() for path in [config/'sshd_config', *(config/'sshd_config.d').iterdir()]}
+        candidate = {'hardening': BASELINE_HARDENING} if intent == 'sshd-baseline' else {}
+        receipt = engine.prepare(intent=intent, contexts=CONTEXTS, timeout=120, **candidate)
         assert receipt['status'] == 'prepared'
         engine.apply(receipt['generation'], receipt['nonce'])
         assert b'PasswordAuthentication' not in (config/'sshd_config.d/20-ansible-hardening.conf').read_bytes()
+        after = {path: path.read_bytes() for path in before}
+        assert after != before
+        if terminal == 'committed':
+            assert engine.confirm(receipt['generation'], receipt['nonce'], receipt['snapshot_digest'])['status'] == terminal
         runtime.now += 121
-        assert engine.recover()['status'] == 'rolled_back'
-        assert {path: path.read_bytes() for path in before} == before
-        assert runtime.reloads == 2
+        assert engine.recover()['status'] == terminal
+        assert {path: path.read_bytes() for path in before} == (before if terminal == 'rolled_back' else after)
+        assert runtime.reloads == (2 if terminal == 'rolled_back' else 1)
 
 
 def test_recovery_unit_identity_matches_shipped_source(adapter):
@@ -475,7 +518,7 @@ def test_real_planner_apply_survives_periodic_race_after_second_flock(adapter, c
     actual_fence = runtime.activation_fence
     with tempfile.TemporaryDirectory(prefix='.sshd-race-state-', dir=config.parent) as state:
         engine = adapter.transaction.Transaction(config, Path(state), runtime)
-        receipt = engine.prepare(contexts=CONTEXTS, timeout=120)
+        receipt = engine.prepare(intent='sshd-ownership', contexts=CONTEXTS, timeout=120)
         def raced_fence(proof, acquired):
             # Prove this is the real second flock, not an invented lock timestamp.
             with pytest.raises(adapter.TransactionError, match='busy'):

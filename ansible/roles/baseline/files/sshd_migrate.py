@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import importlib.util
 import json
 import os
@@ -107,14 +108,18 @@ def _validate_installation():
 
 
 class Runtime:
-    def build_plan(self, config, contexts):
-        return ownership.build_plan(config, contexts=contexts)
+    def build_plan(self, config, contexts, *, intent, hardening):
+        if intent == 'sshd-ownership' and hardening is None:
+            return ownership.build_plan(config, contexts=contexts)
+        if intent == 'sshd-baseline' and type(hardening) is bytes:
+            return ownership.build_baseline_plan(config, contexts=contexts, hardening=hardening)
+        raise TransactionError('intent-invalid')
 
     def assert_snapshot(self, plan, config):
         ownership.assert_snapshot(plan, config)
 
-    def assert_effective(self, plan, config):
-        ownership.assert_effective(plan, config)
+    def assert_effective(self, plan, config, *, phase):
+        ownership.assert_effective(plan, config, phase=phase)
 
     def clock(self):
         return int(time.time())
@@ -282,9 +287,14 @@ class Runtime:
 
 
 def validate_request(action, request):
-    fields = {'prepare': {'contexts', 'timeout'}, 'apply': {'generation', 'nonce'},
+    fields = {'prepare': {'intent', 'contexts', 'timeout'}, 'apply': {'generation', 'nonce'},
               'confirm': {'generation', 'nonce', 'snapshot_digest'}, 'rollback': {'generation', 'nonce'}}
     try:
+        if action == 'prepare':
+            if not isinstance(request, dict) or request.get('intent') not in {'sshd-ownership', 'sshd-baseline'}:
+                raise ValueError
+            if request['intent'] == 'sshd-baseline':
+                fields['prepare'].add('hardening_b64')
         if not isinstance(request, dict) or set(request) != fields[action]:
             raise ValueError
         if action == 'prepare':
@@ -296,6 +306,14 @@ def validate_request(action, request):
                 raise ValueError
             if type(request['timeout']) is not int or not 60 <= request['timeout'] <= 600:
                 raise ValueError
+            if request['intent'] == 'sshd-baseline':
+                encoded = request['hardening_b64']
+                if not isinstance(encoded, str) or len(encoded) > 10924:
+                    raise ValueError
+                hardening = base64.b64decode(encoded, validate=True)
+                if not 0 < len(hardening) <= 8192 or base64.b64encode(hardening).decode() != encoded:
+                    raise ValueError
+                return {key: value for key, value in request.items() if key != 'hardening_b64'} | {'hardening': hardening}
         else:
             transaction._uuid(request['generation'])
             transaction._hex(request['nonce'])

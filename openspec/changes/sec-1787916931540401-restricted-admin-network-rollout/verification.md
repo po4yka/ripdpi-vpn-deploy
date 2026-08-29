@@ -26,7 +26,7 @@ artifact_evidence: source and installed configuration only; no release binary ar
 |---|---|---|---|
 | REQ-ADMIN-ISOLATION | SEC-1787917605386179 | Opt-in management configuration tests and staged resolver, routing and host-key comparisons | pending |
 | REQ-ADMIN-SCOPE | SEC-1787917605386179 | Reviewed full ACL diff and positive/negative policy and connection tests | pending |
-| REQ-ADMIN-MIGRATION | SEC-1787917604306451 | 45 planner regressions include real OpenSSH full effective parity, custom port, unknown-layout, bounded execution and read-set races | local source passed; hosted and staging pending |
+| REQ-ADMIN-MIGRATION | SEC-1787917604306451 | 301 affected planner/core/adapter tests plus pinned Debian 13 and Ubuntu 24.04 packaged-main checks include real OpenSSH full effective parity, custom port, unknown-layout, bounded execution, read-set races and four-file crash boundaries | local source and packaged-main checks passed; complete local, hosted and staging pending |
 | REQ-ADMIN-ROLLBACK | SEC-1787917604868749 | Installation/upgrade and earlier fault tests passed; native apply reproduced a readiness contention refusal, so the activation step is reopened pending the corrected positive path | readiness correction and migration/confirm/timeout acceptance pending; guest firewall and real reboot remain pending |
 | REQ-ADMIN-PROMOTION | SEC-1787917605886845 | Exact-node selector, fresh strict SSH, required DNS/VPN probes and external provider rollback evidence | pending |
 | REQ-ADMIN-EVIDENCE | SEC-1787917606418274 | Real isolated staging login, forced disconnect, reboot recovery and repeat rollback before fleet promotion | pending |
@@ -112,5 +112,54 @@ directives, and fresh bootstrap ownership has not yet been aligned. Do not
 perform a real-node ownership migration until that separate source change is
 delivered. Tailnet configuration, guest/provider network transactions,
 staging and serial production acceptance remain unfinished.
+
+The unpublished baseline-convergence slice passed all four affected SSH test
+modules together: 301 tests in 14.81 seconds. Tests first exposed schema-one
+plans, acceptance of nonterminal historical state, rejection of the real
+packaged-main ownership defaults and the missing fourth-write crash boundary.
+The resulting schema-two ownership operation
+owns `main→10→20→50`; full effective policy is identical after every publish
+prefix and reverse rollback suffix, while packaged SFTP, unrelated bytes and
+metadata remain unchanged. Baseline owns only main+20, preserves algorithm sets,
+supports a verified absent 20 and validates explicit before/after phases.
+
+The current parser accepts only the exact canonical original three-fragment
+schema-one ownership receipt in committed or rolled-back state for status and
+recovery no-op. `prepare` alone may archive those exact bytes before creating a
+distinct schema-two transaction; it never rewrites the historical receipt.
+Apply, confirm and rollback categorically refuse schema one, as do
+pending/applied/unknown and noncanonical historical states. Frozen/current parser
+tests cover committed and rolled-back upgrade, publication interruption/retry,
+and frozen-parser downgrade refusal for terminal schema-two ownership and
+baseline receipts before pointer, journal, state or activation changes. The
+frozen source fixture remains byte-identical; this is source/parser evidence,
+not a historical live-node upgrade.
+
+Pinned packaged-main checks passed against planner source
+`974371576baf2df810ac38a0758be19c656637b9138fba8d2cb0813c1e17a686`.
+The Debian 13 image index was
+`sha256:fd0443883979e0879e912231914df2093769d45fcb82af251704b30e2fc5c42e`;
+OpenSSH server was `1:10.0p1-7+deb13u4` and the 3424-byte packaged main file
+hashed to `f1805313ad346bdb80dff4a560a080edfca9a998f620b64da2a1aba6bcf6782e`.
+The Ubuntu 24.04 image index was
+`sha256:48e1ab7caa1e28148148576cd2f15e46fcd9d44601125bbce7f3056306f40cf1`;
+OpenSSH server was `1:9.6p1-3ubuntu13.18` and the 3517-byte packaged main file
+hashed to `64325541513d33ea1d2ccd19c77750d458e67e7967fd2e7ef81d92f0aa2ffe21`.
+
+Both ephemeral amd64 containers installed the distribution package through
+the signed APT path, then disconnected their network before the proof. They had
+no host mounts. Ubuntu required the normal `/run/sshd` boot precondition because
+systemd was not PID 1. Real `sshd -t` and contextual `sshd -T` verified schema
+two, exact `main→10→20→50` ownership, all four candidate writes, every publish
+prefix and reverse rollback suffix, preserved packaged SFTP and an unchanged
+on-disk SSH snapshot. Private evidence was written mode 0600 with SHA256
+`8b5b45770e042144c6fc46cf1c4b151cd7797e2c3b627c46bebc09cfe0f7b302`.
+The owned container profile stopped successfully and the Docker context stayed
+unchanged.
+
+Bootstrap and ordinary-role integration, fresh remote confirmation, complete
+local and hosted gates and real connection proof remain required before host
+use. Prior PR117 native hashes and acceptance predate this schema-two source
+and are not evidence for it.
 
 Local source work is authorized. No local test implies staging or live acceptance. Provisioning waits for available approved executor, verified actual cost/credit, exact-resource cleanup and the approved deadline; policy application waits for a fresh separately approved ACL diff. The serial fleet step remains open until observed direct and Tailnet SSH and actual VPN probes all pass.

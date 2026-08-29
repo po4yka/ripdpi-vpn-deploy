@@ -22,6 +22,12 @@ CONTEXTS = [
 BOOT = "sshd_config.d/10-cloud-init-hardening.conf"
 MANAGED = "sshd_config.d/20-ansible-hardening.conf"
 CLOUD = "sshd_config.d/50-cloud-init.conf"
+PACKAGED_SFTP = b"Subsystem sftp /usr/lib/openssh/sftp-server\n"
+PACKAGED_MAIN_DEFAULTS = (b"KbdInteractiveAuthentication no\nX11Forwarding yes\n" + PACKAGED_SFTP)
+OWNERSHIP_FILES = ("sshd_config", BOOT, MANAGED, CLOUD)
+BASELINE_HARDENING = (b"X11Forwarding no\nAllowTcpForwarding no\nAllowAgentForwarding no\n"
+                      b"AllowUsers deploy\nClientAliveInterval 60\n"
+                      b"Subsystem sftp internal-sftp -f AUTHPRIV -l INFO\n")
 
 
 @pytest.fixture
@@ -51,18 +57,19 @@ def config():
 
 
 def test_known_legacy_migration_preserves_full_policy_without_writes(planner, config):
-    originals = {p: p.read_bytes() for p in (config / "sshd_config.d").iterdir()}
+    originals = configuration_records(config)
     plan = planner.build_plan(config, contexts=CONTEXTS)
+    assert plan["schema_version"] == 2
     assert plan["changed"] is True
-    assert set(plan["files"]) == {BOOT, MANAGED, CLOUD}
-    assert base64.b64decode(plan["files"][BOOT]["after"]["data_b64"]) == originals[config / BOOT].replace(b"X11Forwarding no\n", b"")
+    assert tuple(plan["files"]) == OWNERSHIP_FILES
+    assert base64.b64decode(plan["files"][BOOT]["after"]["data_b64"]) == originals[BOOT][0].replace(b"X11Forwarding no\n", b"")
     candidate = base64.b64decode(plan["files"][MANAGED]["after"]["data_b64"])
     assert b"PasswordAuthentication" not in candidate
     assert b"Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com\n" in candidate
     assert base64.b64decode(plan["files"][CLOUD]["after"]["data_b64"]) == b"# generated\n"
     assert [entry["context"] for entry in plan["effective"]] == [None, *CONTEXTS]
     assert all(entry["before_sha256"] == entry["after_sha256"] for entry in plan["effective"])
-    assert {p: p.read_bytes() for p in originals} == originals
+    assert configuration_records(config) == originals
     planner.assert_snapshot(plan, config)
 
 
@@ -70,7 +77,7 @@ def test_installed_candidate_is_effective_and_second_plan_is_noop(planner, confi
     plan = planner.build_plan(config, contexts=CONTEXTS)
     for relative, item in plan["files"].items():
         (config / relative).write_bytes(base64.b64decode(item["after"]["data_b64"]))
-    planner.assert_effective(plan, config)
+    planner.assert_effective(plan, config, phase="after")
     with pytest.raises(planner.OwnershipError, match="snapshot-changed"):
         planner.assert_snapshot(plan, config)
     repeated = planner.build_plan(config, contexts=CONTEXTS)
@@ -88,6 +95,61 @@ def test_absent_cloud_file_and_x11_transfer_preserve_other_bytes(planner, config
     candidate = base64.b64decode(plan["files"][MANAGED]["after"]["data_b64"])
     assert candidate.endswith(b"X11Forwarding no\n")
     assert b"Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com\n" in candidate
+
+
+@pytest.fixture
+def packaged_config(config):
+    main = config / "sshd_config"
+    main.write_bytes(main.read_bytes() + PACKAGED_MAIN_DEFAULTS)
+    return config
+
+
+def test_packaged_main_is_normalized_only_when_every_publish_boundary_preserves_policy(planner, packaged_config):
+    originals = configuration_records(packaged_config)
+    plan = planner.build_plan(packaged_config, contexts=CONTEXTS)
+    assert plan["schema_version"] == 2
+    assert tuple(plan["files"]) == OWNERSHIP_FILES
+    expected = originals["sshd_config"][0].replace(
+        b"KbdInteractiveAuthentication no\nX11Forwarding yes\n",
+        b"# normalized-shadowed KbdInteractiveAuthentication no\n"
+        b"# normalized-shadowed X11Forwarding yes\n",
+    )
+    main = plan["files"]["sshd_config"]
+    assert base64.b64decode(main["after"]["data_b64"]) == expected
+    assert {key: main["after"][key] for key in ("mode", "uid", "gid")} == {
+        key: main["before"][key] for key in ("mode", "uid", "gid")}
+    assert PACKAGED_SFTP in base64.b64decode(main["after"]["data_b64"])
+    assert all(entry["before_sha256"] == entry["after_sha256"] for entry in plan["effective"])
+    assert configuration_records(packaged_config) == originals
+
+    # The core publishes this exact tuple and rolls it back in reverse. Every
+    # prefix is therefore both an apply boundary and a reverse rollback suffix.
+    planner.assert_effective(plan, packaged_config, phase="before")
+    for relative in OWNERSHIP_FILES:
+        pair = plan["files"][relative]
+        (packaged_config / relative).write_bytes(base64.b64decode(pair["after"]["data_b64"]))
+        (packaged_config / relative).chmod(pair["after"]["mode"])
+        planner.assert_effective(plan, packaged_config, phase="before")
+
+
+@pytest.mark.parametrize("fault", ["kbd-value", "x11-value", "owned-main", "duplicate", "unshadowed"])
+def test_packaged_main_unknown_or_unshadowed_ownership_refuses_without_writes(planner, packaged_config, fault):
+    main = packaged_config / "sshd_config"
+    if fault == "kbd-value":
+        main.write_bytes(main.read_bytes().replace(b"KbdInteractiveAuthentication no", b"KbdInteractiveAuthentication yes"))
+    elif fault == "x11-value":
+        main.write_bytes(main.read_bytes().replace(b"X11Forwarding yes", b"X11Forwarding no"))
+    elif fault == "owned-main":
+        main.write_bytes(main.read_bytes() + b"PasswordAuthentication no\n")
+    elif fault == "duplicate":
+        main.write_bytes(main.read_bytes() + b"X11Forwarding yes\n")
+    else:
+        include = f"Include {packaged_config}/sshd_config.d/*.conf\n".encode()
+        main.write_bytes(main.read_bytes().replace(include, b"").replace(PACKAGED_MAIN_DEFAULTS, PACKAGED_MAIN_DEFAULTS + include))
+    originals = configuration_records(packaged_config)
+    with pytest.raises(planner.OwnershipError):
+        planner.build_plan(packaged_config, contexts=CONTEXTS)
+    assert configuration_records(packaged_config) == originals
 
 
 @pytest.mark.parametrize("fault", ["main", "unrelated", "membership", "inode", "mode", "absent-cloud"])
@@ -190,7 +252,7 @@ def test_installed_full_output_change_is_rejected(planner, config):
     path = config / "sshd_config.d/90-unrelated.conf"
     path.write_text(path.read_text() + "PrintMotd no\n")
     with pytest.raises(planner.OwnershipError, match="effective-policy-changed"):
-        planner.assert_effective(plan, config)
+        planner.assert_effective(plan, config, phase="after")
 
 
 def test_real_parser_failure_does_not_echo_values(planner, config):
@@ -223,14 +285,16 @@ def test_tampered_plan_is_rejected(planner, config):
     plan["effective"][0]["after_sha256"] = "0" * 64
     for operation in (planner.assert_snapshot, planner.assert_effective):
         with pytest.raises(planner.OwnershipError, match="invalid-plan"):
-            operation(plan, config)
+            operation(plan, config, **({"phase": "after"} if operation is planner.assert_effective else {}))
 
 
-@pytest.mark.parametrize("fault", ["bool-version", "missing-read-set"])
+@pytest.mark.parametrize("fault", ["bool-version", "legacy-version", "missing-read-set"])
 def test_even_rehashed_malformed_plan_is_categorical(planner, config, fault):
     plan = planner.build_plan(config, contexts=CONTEXTS)
     if fault == "bool-version":
         plan["schema_version"] = True
+    elif fault == "legacy-version":
+        plan["schema_version"] = 1
     else:
         del plan["read_set"]
     del plan["snapshot_digest"]
@@ -302,3 +366,146 @@ def test_nonmatching_directory_entries_are_also_bounded(planner, config):
         (config / "sshd_config.d" / f".ignored-{number}").touch()
     with pytest.raises(planner.OwnershipError, match="unsupported-membership"):
         planner.build_plan(config, contexts=CONTEXTS)
+
+
+@pytest.fixture
+def baseline_config(config):
+    boot = config / BOOT
+    boot.write_bytes(boot.read_bytes().replace(b"X11Forwarding no\n", b""))
+    (config / MANAGED).write_bytes(b"# first-boot runtime owner\nX11Forwarding no\n")
+    (config / CLOUD).write_bytes(b"# generated authentication normalized at bootstrap\n")
+    main = config / "sshd_config"
+    main.write_bytes(main.read_bytes() + PACKAGED_SFTP)
+    return config
+
+
+def configuration_records(config):
+    paths = [config / "sshd_config", *(config / "sshd_config.d").iterdir()]
+    return {str(path.relative_to(config)): (path.read_bytes(), path.stat().st_mode,
+            path.stat().st_uid, path.stat().st_gid) for path in paths}
+
+
+@pytest.mark.parametrize("missing_managed", [False, True], ids=["seeded20", "absent20"])
+def test_baseline_plan_preserves_bootstrap_and_stages_complete_sftp_handoff(planner, baseline_config, missing_managed):
+    config = baseline_config
+    if missing_managed:
+        (config / MANAGED).unlink()
+    originals = configuration_records(config)
+    plan = planner.build_baseline_plan(config, contexts=CONTEXTS, hardening=BASELINE_HARDENING)
+    assert configuration_records(config) == originals
+    assert plan["operation"] == "sshd-baseline"
+    assert plan["schema_version"] == 2
+    assert set(plan["files"]) == {"sshd_config", MANAGED}
+    assert plan["changed"] is True
+    assert plan["files"][MANAGED]["before"]["exists"] is not missing_managed
+    assert base64.b64decode(plan["files"][MANAGED]["after"]["data_b64"]) == BASELINE_HARDENING
+    assert base64.b64decode(plan["files"]["sshd_config"]["after"]["data_b64"]) == originals["sshd_config"][0].replace(PACKAGED_SFTP, b"# " + PACKAGED_SFTP)
+    if missing_managed:
+        assert plan["files"][MANAGED]["before"] == {"exists": False, "data_b64": None,
+            "sha256": None, "mode": None, "uid": None, "gid": None}
+        assert {key: plan["files"][MANAGED]["after"][key] for key in ("mode", "uid", "gid")} == {"mode": 0o644, "uid": os.geteuid(), "gid": 0}
+    assert any(entry["before_sha256"] != entry["after_sha256"] for entry in plan["effective"])
+    planner.assert_snapshot(plan, config)
+    planner.assert_effective(plan, config, phase="before")
+    with pytest.raises(planner.OwnershipError, match="effective-policy-changed"):
+        planner.assert_effective(plan, config, phase="after")
+    # Fixture installation exercises the real parser; it is not transaction proof.
+    for relative, pair in plan["files"].items():
+        (config / relative).write_bytes(base64.b64decode(pair["after"]["data_b64"]))
+        (config / relative).chmod(pair["after"]["mode"])
+    planner.assert_effective(plan, config, phase="after")
+    with pytest.raises(planner.OwnershipError, match="effective-policy-changed"):
+        planner.assert_effective(plan, config, phase="before")
+    repeated = planner.build_baseline_plan(config, contexts=CONTEXTS, hardening=BASELINE_HARDENING)
+    assert repeated["changed"] is False
+    for relative in (BOOT, CLOUD):
+        assert configuration_records(config)[relative] == originals[relative]
+
+
+def test_baseline_without_internal_sftp_preserves_packaged_owner(planner, baseline_config):
+    original = (baseline_config / "sshd_config").read_bytes()
+    hardening = BASELINE_HARDENING.split(b"Subsystem sftp", 1)[0]
+    plan = planner.build_baseline_plan(baseline_config, contexts=CONTEXTS, hardening=hardening)
+    assert base64.b64decode(plan["files"]["sshd_config"]["after"]["data_b64"]) == original
+
+
+@pytest.mark.parametrize("relative, extra", [
+    (BOOT, b"X11Forwarding no\n"), (CLOUD, b"PasswordAuthentication no\n"),
+    (MANAGED, b"PasswordAuthentication no\n"),
+    ("sshd_config.d/90-unrelated.conf", b"AllowTcpForwarding no\n"),
+    ("sshd_config", b"Subsystem sftp /usr/lib/openssh/sftp-server\n"),
+])
+def test_baseline_refuses_legacy_or_duplicate_owners_without_writes(planner, baseline_config, relative, extra):
+    path = baseline_config / relative
+    path.write_bytes(path.read_bytes() + extra)
+    originals = configuration_records(baseline_config)
+    with pytest.raises(planner.OwnershipError):
+        planner.build_baseline_plan(baseline_config, contexts=CONTEXTS, hardening=BASELINE_HARDENING)
+    assert configuration_records(baseline_config) == originals
+
+
+@pytest.mark.parametrize("extra", [
+    b"Include /etc/ssh/other.conf\n", b"Match User deploy\n", b"PasswordAuthentication no\n",
+    b"Port 2222\n", b"AuthorizedKeysCommand /bin/true\n", b"X11Forwarding no\n",
+    b"Subsystem other /bin/true\n",
+])
+def test_baseline_candidate_cannot_take_unauthorized_ownership(planner, baseline_config, extra):
+    originals = configuration_records(baseline_config)
+    with pytest.raises(planner.OwnershipError):
+        planner.build_baseline_plan(baseline_config, contexts=CONTEXTS, hardening=BASELINE_HARDENING + extra)
+    assert configuration_records(baseline_config) == originals
+
+
+@pytest.mark.parametrize("subsystem", [b"sftp /bin/true", b"sftp internal-sftp -d /tmp", b"sftp internal-sftp -p read"])
+def test_baseline_rejects_noncanonical_subsystem_commands(planner, baseline_config, subsystem):
+    hardening = BASELINE_HARDENING.split(b"Subsystem sftp", 1)[0] + b"Subsystem " + subsystem + b"\n"
+    with pytest.raises(planner.OwnershipError):
+        planner.build_baseline_plan(baseline_config, contexts=CONTEXTS, hardening=hardening)
+
+
+def test_baseline_never_removes_the_only_sftp_owner(planner, baseline_config):
+    main = baseline_config / "sshd_config"
+    main.write_bytes(main.read_bytes().replace(PACKAGED_SFTP, b""))
+    with pytest.raises(planner.OwnershipError):
+        planner.build_baseline_plan(baseline_config, contexts=CONTEXTS,
+                                    hardening=BASELINE_HARDENING.split(b"Subsystem sftp", 1)[0])
+
+
+@pytest.mark.parametrize("old_pin", [True, False], ids=["remove-existing-pin", "add-new-pin"])
+def test_baseline_cannot_change_effective_algorithms(planner, baseline_config, old_pin):
+    pin = b"Ciphers aes256-gcm@openssh.com\n"
+    if old_pin:
+        managed = baseline_config / MANAGED
+        managed.write_bytes(managed.read_bytes() + pin)
+    originals = configuration_records(baseline_config)
+    hardening = BASELINE_HARDENING if old_pin else BASELINE_HARDENING + pin
+    with pytest.raises(planner.OwnershipError, match="algorithm-policy-changed"):
+        planner.build_baseline_plan(baseline_config, contexts=CONTEXTS, hardening=hardening)
+    assert configuration_records(baseline_config) == originals
+
+
+@pytest.mark.parametrize("hardening", [
+    b"", None, "X11Forwarding no\n", bytearray(BASELINE_HARDENING),
+    BASELINE_HARDENING + b"#" + b"x" * (8193 - len(BASELINE_HARDENING) - 2) + b"\n",
+    BASELINE_HARDENING + b"# non-ascii \xff\n", BASELINE_HARDENING + b"# nul \x00\n",
+], ids=["empty", "none", "text", "bytearray", "oversize", "non-ascii", "nul"])
+def test_baseline_hardening_input_is_bounded_ascii_bytes(planner, baseline_config, hardening):
+    originals = configuration_records(baseline_config)
+    with pytest.raises(planner.OwnershipError):
+        planner.build_baseline_plan(baseline_config, contexts=CONTEXTS, hardening=hardening)
+    assert configuration_records(baseline_config) == originals
+
+
+def test_baseline_accepts_canonical_candidate_at_exact_input_limit(planner, baseline_config):
+    hardening = BASELINE_HARDENING + b"#" + b"x" * (8192 - len(BASELINE_HARDENING) - 2) + b"\n"
+    plan = planner.build_baseline_plan(baseline_config, contexts=CONTEXTS, hardening=hardening)
+    assert base64.b64decode(plan["files"][MANAGED]["after"]["data_b64"]) == hardening
+
+
+def test_effective_phase_is_required_and_not_coerced(planner, config):
+    plan = planner.build_plan(config, contexts=CONTEXTS)
+    with pytest.raises(TypeError):
+        planner.assert_effective(plan, config)
+    for phase in (None, "mixed", "BEFORE"):
+        with pytest.raises(planner.OwnershipError, match="invalid-phase"):
+            planner.assert_effective(plan, config, phase=phase)
