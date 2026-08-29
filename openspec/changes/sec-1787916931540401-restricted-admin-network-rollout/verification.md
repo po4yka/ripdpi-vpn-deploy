@@ -162,4 +162,25 @@ local and hosted gates and real connection proof remain required before host
 use. Prior PR117 native hashes and acceptance predate this schema-two source
 and are not evidence for it.
 
+The schema-two recovery sandbox prerequisite was fixed in source commit
+`4869edbc83eada009f036365015bb8f3c08e99a5`. Both exact recovery units retain
+`ProtectSystem=strict` but now grant the `/etc/ssh` directory write required by
+their transaction's atomic temporary-file publication of both the main config
+and drop-ins; the immutable transaction allowlist still rejects every other SSH
+path. The two adapter/bundle modules passed 139 tests, configured pre-commit
+hooks passed, unit hashes matched independently, and independent review found
+no blocker.
+
+A local ARM systemd proof ran those exact unit bytes with only `ExecStart`
+replaced by a bounded atomic-operation probe. Both services successfully
+replaced the main file and a drop-in inode while preserving bytes and metadata,
+removed their temporary drop-in, and were denied writes to `/etc` outside the
+exception and to a sibling of the one writable bundle lock. The owned profile
+stopped and Docker context was unchanged. The private mode-0600 result hashes to
+`a5a4be3196e16221085c2163426bb8f99c396ed5b286ad4d6fec46534a3556af`.
+This proves the exact units' mount-namespace semantics only: the Colima guest
+does not retain oneshot execution timestamps, and the derived probe does not
+prove the real bundle dispatcher, a pending schema-two journal, sshd reload,
+reboot ordering, staging or host migration.
+
 Local source work is authorized. No local test implies staging or live acceptance. Provisioning waits for available approved executor, verified actual cost/credit, exact-resource cleanup and the approved deadline; policy application waits for a fresh separately approved ACL diff. The serial fleet step remains open until observed direct and Tailnet SSH and actual VPN probes all pass.
