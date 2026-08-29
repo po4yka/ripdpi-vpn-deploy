@@ -66,6 +66,30 @@ def _published_variables() -> dict:
     }
 
 
+def test_full_stack_scenarios_repeat_convergence_before_verification() -> None:
+    expected = [
+        "dependency", "syntax", "create", "prepare", "converge",
+        "idempotence", "verify", "destroy",
+    ]
+
+    for scenario in (_full_stack_scenario(), _published_scenario()):
+        sequence = scenario["scenario"]["test_sequence"]
+        assert sequence == expected
+
+
+def test_hosted_full_stack_job_runs_both_idempotence_scenarios() -> None:
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
+    steps = workflow["jobs"]["molecule-full-stack"]["steps"]
+    run = next(step["run"] for step in steps
+               if step.get("name") == "molecule full-stack test")
+
+    assert run.count("molecule -c molecule/full-stack/molecule.yml test -s full-stack") == 1
+    assert run.count(
+        "molecule -c molecule/full-stack-published/molecule.yml "
+        "test -s full-stack-published"
+    ) == 1
+
+
 def test_published_requirements_resolve_to_current_checkout_from_documented_cwd() -> None:
     requirements = _published_scenario()["dependency"]["options"]["requirements-file"]
     resolved = (REPO_ROOT / "ansible" / requirements).resolve()

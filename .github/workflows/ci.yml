@@ -627,6 +627,7 @@ jobs:
           DEPLOYABLE_SOURCE_DIGEST="$(../scripts/deploy-source-identity.sh --digest)"
           export DEPLOYABLE_SOURCE_DIGEST
           molecule -c molecule/full-stack/molecule.yml test -s full-stack
+          molecule -c molecule/full-stack-published/molecule.yml test -s full-stack-published
         env:
           PY_COLORS: "1"
           ANSIBLE_FORCE_COLOR: "1"
