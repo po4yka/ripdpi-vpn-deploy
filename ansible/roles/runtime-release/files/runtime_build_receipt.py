@@ -1712,6 +1712,26 @@ def _cleanup_committed_output(output: dict) -> None:
     )
 
 
+def _classify_committed_locked(
+    directory: int, receipt_name: str, project: str, journal: dict
+) -> tuple[bool, bool]:
+    """Classify durable success from receipt and live bytes, never exceptions."""
+    if _read_receipt(directory, receipt_name) != journal["next_receipt"]:
+        return False, False
+    outputs: list[dict] = []
+    try:
+        for item in journal["outputs"]:
+            outputs.append(_preflight_committed_output(item))
+    finally:
+        _close_recovery_outputs(outputs)
+    entry = _transaction_entry(directory, project)
+    if entry is None:
+        return True, False
+    if entry[0] != journal:
+        raise UnsafeState("cleanup-journal-receipt-ambiguous")
+    return True, True
+
+
 def _remove_transaction_journal(
     directory: int, project: str, source_name: str, identity: dict
 ) -> None:
@@ -1757,8 +1777,12 @@ def _reconcile_transaction_locked(
         _remove_transaction_journal(directory, project, source_name, journal_identity)
         return state, False
     except OSError:
-        if state == "committed" and _transaction_entry(directory, project) is not None:
-            return state, True
+        if state == "committed":
+            observed, pending = _classify_committed_locked(
+                directory, receipt_name, project, journal
+            )
+            if observed:
+                return state, pending
         raise
     finally:
         _close_recovery_outputs(outputs)
@@ -1771,6 +1795,10 @@ def _close_publication_descriptors(publications: list[dict]) -> None:
             os.close(item["parent"])
         except OSError as error:
             cleanup_error = cleanup_error or error
+            try:
+                os.close(item["parent"])
+            except OSError:
+                pass
     if cleanup_error is not None:
         raise cleanup_error
 
@@ -1874,7 +1902,10 @@ def converge(receipt_root: Path, document: object) -> dict:
             _remove_directory_contents(stage_directory)
             _write_receipt_document(directory, receipt_name, next_receipt)
         except BaseException as primary:
-            _close_publication_descriptors(publications)
+            try:
+                _close_publication_descriptors(publications)
+            except OSError:
+                pass
             publications = []
             try:
                 outcome, pending = _reconcile_transaction_locked(
@@ -1893,7 +1924,10 @@ def converge(receipt_root: Path, document: object) -> dict:
             else:
                 raise primary
         else:
-            _close_publication_descriptors(publications)
+            try:
+                _close_publication_descriptors(publications)
+            except OSError:
+                pass  # Receipt/live classification below is authoritative.
             publications = []
             outcome, pending = _reconcile_transaction_locked(
                 directory, receipt_name, descriptor["name"]
@@ -1935,8 +1969,9 @@ def converge(receipt_root: Path, document: object) -> dict:
                 cleanup_error = cleanup_error or error
         if cleanup_error is not None and committed_result is None:
             raise cleanup_error
-        if cleanup_error is not None and committed_result is not None:
-            committed_result["cleanup_pending"] = True
+        # Once receipt and live identities classify as committed, lock/descriptor
+        # finalization errors are not durable recovery debt. cleanup_pending is
+        # emitted only by the readable-WAL classifier above.
 
 
 def _parser() -> argparse.ArgumentParser:
