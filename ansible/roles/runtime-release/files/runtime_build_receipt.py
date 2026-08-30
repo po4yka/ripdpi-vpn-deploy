@@ -856,23 +856,30 @@ def _prepare_publications(
 def _discard_publications(
     publications: list[dict], *, preserve_backups: bool = False
 ) -> None:
+    cleanup_incomplete = False
     for item in publications:
-        keys = ("temporary",) if preserve_backups else ("temporary", "backup")
-        removed = False
-        for key in keys:
-            name = item.get(key)
-            if name:
-                try:
-                    os.unlink(name, dir_fd=item["parent"])
-                    removed = True
-                except FileNotFoundError:
-                    pass  # The publication or rollback may already have consumed it.
-        if removed:
-            os.fsync(item["parent"])
         try:
-            os.close(item["parent"])
+            keys = ("temporary",) if preserve_backups else ("temporary", "backup")
+            removed = False
+            for key in keys:
+                name = item.get(key)
+                if name:
+                    try:
+                        os.unlink(name, dir_fd=item["parent"])
+                        removed = True
+                    except FileNotFoundError:
+                        pass  # A prior publication or rollback may have consumed it.
+            if removed:
+                os.fsync(item["parent"])
         except OSError:
-            pass  # Cleanup is idempotent when a prior failure closed the descriptor.
+            cleanup_incomplete = True
+        finally:
+            try:
+                os.close(item["parent"])
+            except OSError:
+                pass  # Cleanup is idempotent when a prior failure closed the descriptor.
+    if cleanup_incomplete:
+        raise UnsafeState("publication-cleanup-incomplete")
 
 
 def _publish_outputs(publications: list[dict]) -> None:
@@ -958,6 +965,8 @@ def converge(receipt_root: Path, document: object) -> dict:
     publications: list[dict] = []
     preserve_backups = False
     previous_receipt: dict | None = None
+    committed = False
+    result: dict | None = None
     try:
         previous_receipt = _read_receipt(directory, receipt_name)
         current = inspect(receipt_root, document)
@@ -970,6 +979,7 @@ def converge(receipt_root: Path, document: object) -> dict:
         try:
             _publish_outputs(publications)
             result = _record_locked(directory, receipt_name, descriptor)
+            committed = True
         except Exception:
             try:
                 _rollback_publications(publications)
@@ -996,7 +1006,10 @@ def converge(receipt_root: Path, document: object) -> dict:
             raise
         completed_publications = publications
         publications = []
-        _discard_publications(completed_publications)
+        try:
+            _discard_publications(completed_publications)
+        except UnsafeState:
+            result["cleanup_pending"] = True
         return result
     finally:
         cleanup_error: Exception | None = None
@@ -1015,7 +1028,10 @@ def converge(receipt_root: Path, document: object) -> dict:
             os.close(lock)
             os.close(directory)
         if cleanup_error is not None:
-            raise cleanup_error
+            if committed and result is not None:
+                result["cleanup_pending"] = True
+            else:
+                raise cleanup_error
 
 
 def _parser() -> argparse.ArgumentParser:

@@ -123,6 +123,13 @@
           path: /usr/local/bin/caddy-naive
           expected_sha256: "{{ naive.xcaddy_sha256 }}"
 
+- name: Queue caddy-naive restart after source publication
+  ansible.builtin.debug:
+    msg: Source-built caddy-naive changed; restart is required.
+  when: naive.build_with_xcaddy | bool
+  changed_when: runtime_build_changed | bool
+  notify: Restart caddy-naive
+
 - name: Verify operator-supplied caddy-naive binary when source build is disabled
   when: not (naive.build_with_xcaddy | bool)
   block:

@@ -61,6 +61,18 @@ xray_version="$(python3 -c "
 import yaml; d=yaml.safe_load(open('$EXAMPLE')) or {}
 print((d.get('xray') or {}).get('version') or 'v26.3.27')
 ")"
+xray_source_commit="$(python3 -c "
+import yaml; d=yaml.safe_load(open('$EXAMPLE')) or {}
+value=(d.get('xray') or {}).get('source_commit')
+assert value, 'example xray.source_commit is required'
+print(value)
+")"
+xray_source_binary_sha256="$(python3 -c "
+import yaml; d=yaml.safe_load(open('$EXAMPLE')) or {}
+value=(d.get('xray') or {}).get('source_binary_sha256')
+assert value, 'example xray.source_binary_sha256 is required'
+print(value)
+")"
 hys_version="$(python3 -c "
 import yaml; d=yaml.safe_load(open('$EXAMPLE')) or {}
 print((d.get('hysteria') or {}).get('version') or 'v2.9.0')
@@ -158,6 +170,8 @@ xray:
   version: "${xray_version}"
   linux_amd64_sha256: "${xray_sha}"
   linux_arm64_sha256: "${xray_sha}"
+  source_commit: "${xray_source_commit}"
+  source_binary_sha256: "${xray_source_binary_sha256}"
   reality_private_key: "${reality_priv}"
   reality_public_key:  "${reality_pub}"
   target: "${REALITY_TARGET}"

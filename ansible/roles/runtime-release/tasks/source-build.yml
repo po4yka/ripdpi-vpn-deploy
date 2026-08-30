@@ -161,7 +161,24 @@
                 (_runtime_build_inspection_payload.rebuild_required | bool)
                 if ansible_check_mode
                 else ((_runtime_build_convergence.stdout | from_json).changed | bool)
+              ),
+              'cleanup_pending': (
+                false
+                if ansible_check_mode
+                else (
+                  (_runtime_build_convergence.stdout | from_json)
+                  .cleanup_pending | default(false) | bool
+                )
               )
             }
           })
       }}
+
+- name: Report committed runtime source-build cleanup debt
+  ansible.builtin.debug:
+    msg: Runtime source-build publication committed; private cleanup remains pending.
+  when:
+    - not ansible_check_mode
+    - >-
+      (_runtime_build_convergence.stdout | from_json)
+      .cleanup_pending | default(false) | bool

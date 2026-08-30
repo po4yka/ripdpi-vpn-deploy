@@ -148,6 +148,8 @@ EOF
   [ "$(grep -Fc '    - name: "laptop"' "$encrypted")" -eq 2 ]
   [ "$(grep -Fc 'server_name: "vpn.example.com"' "$encrypted")" -eq 2 ]
   [ "$(grep -Fc '  peers: []' "$encrypted")" -eq 1 ]
+  [ "$(grep -Fc '  source_commit:' "$encrypted")" -eq 1 ]
+  [ "$(grep -Fc '  source_binary_sha256:' "$encrypted")" -eq 1 ]
 }
 
 @test "bootstrap honors a repo-local provisioning directory" {

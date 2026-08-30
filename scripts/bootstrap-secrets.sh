@@ -239,6 +239,8 @@ xray:
   version: "v26.3.27"
   linux_amd64_sha256: "REPLACE_WITH_RELEASE_SHA256"
   linux_arm64_sha256: "REPLACE_WITH_RELEASE_SHA256"
+  source_commit: "REPLACE_WITH_40_OR_64_HEX_COMMIT"
+  source_binary_sha256: "REPLACE_WITH_RELEASE_SHA256"
 
   reality_private_key: "${REALITY_PRIV}"
   reality_public_key: "${REALITY_PUB}"
