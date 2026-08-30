@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import threading
 from concurrent.futures import ThreadPoolExecutor
 import zipfile
 from pathlib import Path
@@ -899,6 +900,112 @@ def test_helper_serializes_same_version_different_pins_without_cross_blessing(
     )
 
 
+def test_helper_reports_only_one_changed_for_same_pin_concurrent_transactions(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    helper = _activator_module()
+    (tmp_path / "bin").mkdir()
+    artifact = tmp_path / "fixture"
+    artifact.write_text("#!/bin/sh\necho same-pin\n")
+
+    install_root = tmp_path / "install"
+    public_link = tmp_path / "bin" / "runtime-fixture"
+    install_root.mkdir(mode=0o755)
+    (install_root / "releases").mkdir(mode=0o755)
+    owner = getpass.getuser()
+    group = grp.getgrgid(os.getgid()).gr_name
+    artifact_name = "runtime-release-runtime-fixture-v1-amd64-fixture"
+    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    prepared = [
+        helper.prepare_staging(
+            install_root,
+            install_root / ".runtime-release-staging",
+            artifact_name,
+            None,
+            "runtime-fixture",
+            "v1",
+            digest,
+            "binary",
+            owner=owner,
+            group=group,
+        )
+        for _ in range(2)
+    ]
+    transactions = [Path(item["transaction_dir"]) for item in prepared]
+    staged_candidates = [Path(item["artifact_path"]) for item in prepared]
+    for staged_candidate in staged_candidates:
+        shutil.copyfile(artifact, staged_candidate)
+        staged_candidate.chmod(0o700)
+
+    assert len(set(transactions)) == 2
+    assert all(staged_candidate.is_file() for staged_candidate in staged_candidates)
+    barrier = threading.Barrier(2)
+    opened_transactions: list[Path] = []
+    real_open_staged_candidate = helper._open_staged_candidate
+
+    def record_open_staged_candidate(*args, **kwargs):
+        opened_transactions.append(Path(args[2]))
+        return real_open_staged_candidate(*args, **kwargs)
+
+    monkeypatch.setattr(helper, "_open_staged_candidate", record_open_staged_candidate)
+
+    def activate_controller(index: int) -> dict[str, object]:
+        # Both controllers carry stale requires_artifact=True from preparation
+        # before either is allowed to acquire the host-local activation lock.
+        barrier.wait(timeout=10)
+        return helper.activate(
+            install_root,
+            "v1",
+            "runtime-fixture",
+            public_link,
+            check=False,
+            artifact_sha256=digest,
+            candidate_sha256=digest,
+            artifact_type="binary",
+            arch_key="amd64",
+            arch_slug="amd64",
+            owner=owner,
+            group=group,
+            staged_candidate=staged_candidates[index],
+            staging_dir=install_root / ".runtime-release-staging",
+            transaction_dir=transactions[index],
+            artifact_name=artifact_name,
+            requires_artifact=True,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(activate_controller, index) for index in range(2)]
+        results = [future.result(timeout=30) for future in futures]
+
+    changes = [bool(result["changed"]) for result in results]
+    assert sorted(changes) == [False, True]
+    winner = changes.index(True)
+    assert opened_transactions == [transactions[winner]]
+    receipt = json.loads(
+        (install_root / "releases/v1/.runtime-release.json").read_text()
+    )
+    assert receipt["artifact_sha256"] == digest
+    assert receipt["binary_sha256"] == digest
+    assert (install_root / "current").readlink() == install_root / "releases/v1"
+    assert public_link.readlink() == install_root / "current/runtime-fixture"
+    for transaction in transactions:
+        helper.cleanup_staging(
+            install_root,
+            install_root / ".runtime-release-staging",
+            transaction,
+            artifact_name,
+            None,
+            "runtime-fixture",
+            "v1",
+            digest,
+            "binary",
+            owner=owner,
+            group=group,
+        )
+    assert list((install_root / ".runtime-release-staging").iterdir()) == []
+
+
 def test_helper_forced_losing_pin_cannot_replace_committed_candidate(
     tmp_path: Path,
 ) -> None:
@@ -960,6 +1067,7 @@ def test_helper_adopts_only_byte_identical_legacy_candidate(tmp_path: Path) -> N
 
     adopted = _run_helper_fixture(tmp_path, "v1", artifact)
     assert adopted.returncode == 0, adopted.stdout + adopted.stderr
+    assert "changed=1" in adopted.stdout
     assert receipt.is_file()
 
     receipt.unlink()
@@ -969,6 +1077,84 @@ def test_helper_adopts_only_byte_identical_legacy_candidate(tmp_path: Path) -> N
     refused = _run_helper_fixture(tmp_path, "v1", artifact)
     assert refused.returncode != 0
     assert not receipt.exists()
+
+
+def test_helper_adopts_legacy_receipt_without_opening_stale_stage(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "bin").mkdir()
+    artifact = tmp_path / "fixture"
+    artifact.write_text("#!/bin/sh\necho legacy\n")
+    installed = _run_helper_fixture(tmp_path, "v1", artifact)
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+
+    helper = _activator_module()
+    root = tmp_path / "install"
+    receipt = root / "releases/v1/.runtime-release.json"
+    receipt.unlink()
+    owner = getpass.getuser()
+    group = grp.getgrgid(os.getgid()).gr_name
+    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    artifact_name = "runtime-release-runtime-fixture-v1-amd64-fixture"
+    prepared = helper.prepare_staging(
+        root,
+        root / ".runtime-release-staging",
+        artifact_name,
+        None,
+        "runtime-fixture",
+        "v1",
+        digest,
+        "binary",
+        owner=owner,
+        group=group,
+    )
+    staged_candidate = Path(prepared["artifact_path"])
+    shutil.copyfile(artifact, staged_candidate)
+    staged_candidate.chmod(0o700)
+    opened: list[Path] = []
+    real_open_staged_candidate = helper._open_staged_candidate
+
+    def record_open_staged_candidate(*args, **kwargs):
+        opened.append(Path(args[2]))
+        return real_open_staged_candidate(*args, **kwargs)
+
+    monkeypatch.setattr(helper, "_open_staged_candidate", record_open_staged_candidate)
+    result = helper.activate(
+        root,
+        "v1",
+        "runtime-fixture",
+        tmp_path / "bin/runtime-fixture",
+        check=False,
+        artifact_sha256=digest,
+        candidate_sha256=digest,
+        artifact_type="binary",
+        arch_key="amd64",
+        arch_slug="amd64",
+        owner=owner,
+        group=group,
+        staged_candidate=staged_candidate,
+        staging_dir=root / ".runtime-release-staging",
+        transaction_dir=Path(prepared["transaction_dir"]),
+        artifact_name=artifact_name,
+        requires_artifact=True,
+    )
+
+    assert result == {"status": "committed", "changed": True}
+    assert opened == []
+    helper.cleanup_staging(
+        root,
+        root / ".runtime-release-staging",
+        Path(prepared["transaction_dir"]),
+        artifact_name,
+        None,
+        "runtime-fixture",
+        "v1",
+        digest,
+        "binary",
+        owner=owner,
+        group=group,
+    )
 
 
 def test_helper_check_mode_predicts_legacy_receipt_adoption_without_writes(
