@@ -327,9 +327,12 @@ def _activation_layout(tmp_path: Path) -> tuple[Path, Path]:
     root = tmp_path / "install"
     public = tmp_path / "bin" / "runtime-fixture"
     public.parent.mkdir(parents=True)
+    public.parent.chmod(0o755)
     for version in ("v0", "v1", "v2"):
         release = root / "releases" / version
         release.mkdir(parents=True)
+        for directory in (root, root / "releases", release):
+            directory.chmod(0o755)
         binary = release / "runtime-fixture"
         binary.write_text(f"#!/bin/sh\necho {version}\n")
         binary.chmod(0o755)
@@ -337,6 +340,26 @@ def _activation_layout(tmp_path: Path) -> tuple[Path, Path]:
     (root / "previous").symlink_to(root / "releases" / "v2")
     public.symlink_to(root / "current" / "runtime-fixture")
     return root, public
+
+
+def test_activation_layout_has_explicit_modes_under_restrictive_umask(
+    tmp_path: Path,
+) -> None:
+    previous_umask = os.umask(0o077)
+    try:
+        root, public = _activation_layout(tmp_path)
+    finally:
+        os.umask(previous_umask)
+
+    for directory in (
+        root,
+        root / "releases",
+        root / "releases" / "v0",
+        root / "releases" / "v1",
+        root / "releases" / "v2",
+        public.parent,
+    ):
+        assert directory.stat().st_mode & 0o777 == 0o755
 
 
 def _link_snapshot(root: Path, public: Path) -> dict[str, str | None]:
@@ -694,6 +717,8 @@ def _run_helper_fixture(
     (root / "releases").mkdir(exist_ok=True)
     for directory in (root, root / "releases"):
         directory.chmod(0o755)
+    if public.parent.exists() and not public.parent.is_symlink():
+        public.parent.chmod(0o755)
 
     stage_name = (
         f"stage-runtime-fixture-{version}-amd64" if artifact_type == "archive" else None
@@ -799,7 +824,6 @@ def test_helper_install_upgrade_and_activation_failure_rollback(tmp_path: Path) 
     assert public.resolve().read_text() == first.read_text()
     receipt = tmp_path / "install" / "releases" / "v1" / ".runtime-release.json"
     assert receipt.is_file()
-
     upgraded = _run_helper_fixture(tmp_path, "v2", second)
     assert upgraded.returncode == 0, upgraded.stdout + upgraded.stderr
     assert current.readlink() == tmp_path / "install" / "releases" / "v2"
@@ -821,6 +845,60 @@ def test_helper_install_upgrade_and_activation_failure_rollback(tmp_path: Path) 
         tmp_path / "install" / "releases" / "v1"
     )
     assert (tmp_path / "install" / "releases" / "v3" / "runtime-fixture").exists()
+
+
+def test_helper_creates_exact_release_mode_under_restrictive_umask(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "bin").mkdir()
+    artifact = tmp_path / "fixture"
+    artifact.write_text("#!/bin/sh\necho restrictive-umask\n")
+
+    previous_umask = os.umask(0o077)
+    try:
+        installed = _run_helper_fixture(tmp_path, "v1", artifact)
+    finally:
+        os.umask(previous_umask)
+
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+    release = tmp_path / "install" / "releases" / "v1"
+    assert release.stat().st_mode & 0o777 == 0o755
+
+
+def test_owned_release_directory_closes_both_guards_on_contract_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _activator_module()
+    root, _ = _activation_layout(tmp_path)
+    root_guard = helper._open_directory(root)
+    opened_descriptors: list[int] = []
+    real_open_child = helper._open_child_directory
+    real_require = helper._require_directory_contract
+
+    def record_open_child(parent, name):
+        guard = real_open_child(parent, name)
+        opened_descriptors.append(guard.descriptor)
+        return guard
+
+    def fail_release_contract(guard, uid, gid, label):
+        if label == "release":
+            raise helper.UnsafeState("injected-release-contract-failure")
+        return real_require(guard, uid, gid, label)
+
+    monkeypatch.setattr(helper, "_open_child_directory", record_open_child)
+    monkeypatch.setattr(helper, "_require_directory_contract", fail_release_contract)
+    try:
+        with pytest.raises(
+            helper.UnsafeState, match="injected-release-contract-failure"
+        ):
+            helper._owned_release_directory(root_guard, "v1", os.getuid(), os.getgid())
+    finally:
+        root_guard.close()
+
+    assert len(opened_descriptors) == 2
+    for descriptor in opened_descriptors:
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
 
 
 def test_helper_refuses_same_version_pin_or_binary_drift(tmp_path: Path) -> None:
@@ -912,7 +990,10 @@ def test_helper_reports_only_one_changed_for_same_pin_concurrent_transactions(
     install_root = tmp_path / "install"
     public_link = tmp_path / "bin" / "runtime-fixture"
     install_root.mkdir(mode=0o755)
+    install_root.chmod(0o755)
     (install_root / "releases").mkdir(mode=0o755)
+    (install_root / "releases").chmod(0o755)
+    public_link.parent.chmod(0o755)
     owner = getpass.getuser()
     group = grp.getgrgid(os.getgid()).gr_name
     artifact_name = "runtime-release-runtime-fixture-v1-amd64-fixture"
@@ -1188,6 +1269,7 @@ def test_helper_uses_distinct_owned_transactions_and_cleans_each_one(
     helper = _activator_module()
     root = tmp_path / "install"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)
     owner = getpass.getuser()
     group = grp.getgrgid(os.getgid()).gr_name
     kwargs = {
@@ -1248,6 +1330,7 @@ def test_failed_download_transaction_cleanup_allows_unchanged_retry(
     helper = _activator_module()
     root = tmp_path / "install"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)
     owner = getpass.getuser()
     group = grp.getgrgid(os.getgid()).gr_name
     kwargs = {"owner": owner, "group": group}
@@ -1310,6 +1393,7 @@ def test_failed_archive_transaction_cleanup_removes_only_receipt_owned_nodes(
     helper = _activator_module()
     root = tmp_path / "install"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)
     owner = getpass.getuser()
     group = grp.getgrgid(os.getgid()).gr_name
     prepared = helper.prepare_staging(
@@ -1353,6 +1437,7 @@ def test_helper_cli_reports_and_cleans_exact_transaction(
     helper = _activator_module()
     root = tmp_path / "install"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)
     owner = getpass.getuser()
     group = grp.getgrgid(os.getgid()).gr_name
     common = [
@@ -1407,6 +1492,7 @@ def test_helper_refuses_writable_install_ancestor_before_staging_write(
     unsafe_parent.chmod(0o777)
     root = unsafe_parent / "install"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)
     owner = getpass.getuser()
     group = grp.getgrgid(os.getgid()).gr_name
 
@@ -1435,6 +1521,7 @@ def test_helper_refuses_symlinked_install_ancestor_before_staging_write(
     trusted_parent.mkdir(mode=0o700)
     real_root = trusted_parent / "install"
     real_root.mkdir(mode=0o755)
+    real_root.chmod(0o755)
     aliased_parent = tmp_path / "aliased-parent"
     aliased_parent.symlink_to(trusted_parent, target_is_directory=True)
     root = aliased_parent / "install"
@@ -1464,6 +1551,7 @@ def test_check_mode_staging_preflight_refuses_symlink_without_writes(
     helper = _activator_module()
     root = tmp_path / "install"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)
     external = tmp_path / "external-staging"
     external.mkdir(mode=0o700)
     marker = external / "operator-owned"
@@ -1493,11 +1581,13 @@ def test_check_mode_staging_preflight_refuses_unsafe_final_node_without_writes(
     helper = _activator_module()
     root = tmp_path / "install"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)
     staging = root / ".runtime-release-staging"
     if kind == "regular":
         staging.write_text("operator-owned\n")
     else:
         staging.mkdir(mode=0o755)
+        staging.chmod(0o755)
     before = staging.lstat()
 
     with pytest.raises(helper.UnsafeState, match="unsafe-staging-directory"):
@@ -1522,6 +1612,7 @@ def test_check_mode_staging_preflight_accepts_absent_leaf_without_creating_it(
     helper = _activator_module()
     root = tmp_path / "install"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)
     staging = root / ".runtime-release-staging"
 
     result = helper.validate_staging_root(
@@ -1544,6 +1635,7 @@ def test_check_mode_staging_preflight_refuses_writable_ancestor_without_writes(
     unsafe_parent.chmod(0o777)
     root = unsafe_parent / "install"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)
     staging = root / ".runtime-release-staging"
 
     with pytest.raises(helper.UnsafeState, match="unsafe-storage-ancestor"):
@@ -1565,6 +1657,7 @@ def test_pre_download_validation_refuses_replaced_ancestor_without_writing(
     trusted_parent.mkdir(mode=0o700)
     root = trusted_parent / "install"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)
     owner = getpass.getuser()
     group = grp.getgrgid(os.getgid()).gr_name
     prepared = helper.prepare_staging(
@@ -1697,6 +1790,7 @@ def test_helper_refuses_symlinked_trusted_staging_namespace_without_external_wri
     """Root must never follow a runtime-controlled staging namespace redirect."""
     root = tmp_path / "install"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)
     (tmp_path / "bin").mkdir()
     external = tmp_path / "external"
     external.mkdir()
@@ -1719,6 +1813,7 @@ def test_helper_does_not_reuse_precreated_legacy_staging_artifact(
     """A foreign legacy name cannot collide with a unique transaction path."""
     root = tmp_path / "install"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)
     staging = root / ".runtime-release-staging"
     staging.mkdir(mode=0o700)
     (tmp_path / "bin").mkdir()
@@ -1742,6 +1837,7 @@ def test_helper_does_not_reuse_precreated_legacy_archive_stage(
     """A foreign legacy stage cannot collide with a unique transaction path."""
     root = tmp_path / "install"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)
     staging = root / ".runtime-release-staging"
     staging.mkdir(mode=0o700)
     (tmp_path / "bin").mkdir()
@@ -1777,6 +1873,7 @@ def test_cleanup_retains_replaced_transaction_nodes_for_explicit_recovery(
     helper = _activator_module()
     root = tmp_path / "install"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)
     owner = getpass.getuser()
     group = grp.getgrgid(os.getgid()).gr_name
     preparation = helper.prepare_staging(

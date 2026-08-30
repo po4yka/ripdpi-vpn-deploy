@@ -1070,6 +1070,7 @@ def _owned_release_directory(
 ) -> tuple[_DirectoryGuard, _DirectoryGuard]:
     """Return verified releases/version descriptors, creating only the version leaf."""
     releases = _open_child_directory(root, "releases")
+    release: _DirectoryGuard | None = None
     try:
         _require_directory_contract(root, uid, gid, "install-root")
         _require_directory_contract(releases, uid, gid, "releases")
@@ -1078,13 +1079,19 @@ def _owned_release_directory(
         except FileNotFoundError:
             _revalidate_directory(releases)
             os.mkdir(version, 0o755, dir_fd=releases.descriptor)
+            created_release: _DirectoryGuard | None = None
             try:
-                os.chown(
-                    version, uid, gid, dir_fd=releases.descriptor, follow_symlinks=False
-                )
+                created_release = _open_child_directory(releases, version)
+                os.fchmod(created_release.descriptor, 0o755)
+                os.fchown(created_release.descriptor, uid, gid)
+                os.fsync(created_release.descriptor)
+                created_release.close()
+                created_release = None
                 _fsync_directory(releases)
                 release = _open_child_directory(releases, version)
             except Exception:
+                if created_release is not None:
+                    created_release.close()
                 try:
                     os.rmdir(version, dir_fd=releases.descriptor)
                 except OSError:
@@ -1093,6 +1100,8 @@ def _owned_release_directory(
         _require_directory_contract(release, uid, gid, "release")
         return releases, release
     except Exception:
+        if release is not None:
+            release.close()
         releases.close()
         raise
 
