@@ -579,10 +579,9 @@ def prepare_staging(
                 try:
                     os.fchmod(receipt, 0o600)
                     os.fchown(receipt, uid, gid)
-                    os.write(
-                        receipt,
-                        (json.dumps(payload, sort_keys=True) + "\n").encode(),
-                    )
+                    encoded = (json.dumps(payload, sort_keys=True) + "\n").encode()
+                    if os.write(receipt, encoded) != len(encoded):
+                        raise UnsafeState("transaction-receipt-write-incomplete")
                     os.fsync(receipt)
                 finally:
                     os.close(receipt)
