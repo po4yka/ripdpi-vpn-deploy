@@ -25,8 +25,7 @@ def _make_stub(bin_dir: Path, name: str, body: str) -> None:
     path.chmod(path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
 
-@pytest.fixture
-def monitor_env(tmp_path: Path) -> dict[str, str]:
+def _monitor_environment(tmp_path: Path, ambient: dict[str, str]) -> dict[str, str]:
     fixture = tmp_path / "prod.sops.yaml"
     fixture.write_text(
         json.dumps(
@@ -63,6 +62,7 @@ printf '%s STREAM target\\n' 203.0.113.7 203.0.113.8""",
     )
     _make_stub(bin_dir, "dig", "exit 0")
     _make_stub(bin_dir, "host", "exit 0")
+    _make_stub(bin_dir, "timeout", 'shift; exec "$@"')
     _make_stub(
         bin_dir,
         "whois",
@@ -127,17 +127,38 @@ printf '204'""",
     ):
         _make_stub(bin_dir, forbidden, f'echo {forbidden} >> "$FORBIDDEN_LOG"; exit 99')
 
-    env = os.environ.copy()
+    env = ambient.copy()
+    for variable in (
+        "ALERT_FAIL",
+        "DNS_EMPTY",
+        "FAIL_H2",
+        "FAIL_HTTP_IP",
+        "FAIL_SAN",
+        "FAIL_TLS_IP",
+        "FAIL_VERIFY",
+        "SOPS_FAIL",
+        "WHOIS_ASN",
+        "WHOIS_FAIL",
+        "WHOIS_PREFIX_1",
+        "WHOIS_PREFIX_2",
+        "WILDCARD_SAN",
+    ):
+        env.pop(variable, None)
     env.update(
         {
             "PATH": f"{bin_dir}:{env['PATH']}",
             "HOME": str(tmp_path / "home"),
             "XDG_STATE_HOME": str(tmp_path / "state"),
             "TMPDIR": str(tmp_dir),
+            "VPN_SECRETS_FILE": "",
             "SOPS_FILE": str(fixture),
             "SOPS_FIXTURE": str(fixture),
             "VANTAGE": "filtered-cohort-a",
             "ENV": "prod",
+            "PROBE_TIMEOUT": "12",
+            "NTFY_URL": "https://ntfy.fixture.invalid",
+            "NTFY_TOPIC": "private-alert-topic",
+            "NTFY_TOKEN": "private-alert-token",
             "ALERT_LOG": str(alert_log),
             "FORBIDDEN_LOG": str(forbidden_log),
             "SOPS_LOG": str(sops_log),
@@ -146,6 +167,11 @@ printf '204'""",
     )
     (tmp_path / "home").mkdir()
     return env
+
+
+@pytest.fixture
+def monitor_env(tmp_path: Path) -> dict[str, str]:
+    return _monitor_environment(tmp_path, os.environ)
 
 
 def _run(env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
@@ -176,6 +202,39 @@ def _set_day(env: dict[str, str], day: int) -> None:
     env["_MONITOR_CAPTURED_AT"] = f"2026-07-{day:02d}T04:00:00+00:00"
 
 
+def test_fixture_ignores_poisoned_ambient_controller_inputs(tmp_path: Path) -> None:
+    ambient_secrets = tmp_path / "ambient-secrets.json"
+    ambient_secrets.write_text('{"ambient":"credential-boundary"}\n')
+    ambient = os.environ.copy()
+    ambient.update(
+        {
+            "VPN_SECRETS_FILE": str(ambient_secrets),
+            "PROBE_TIMEOUT": "invalid-ambient-timeout",
+            "NTFY_URL": "https://ambient-alert.invalid",
+            "NTFY_TOPIC": "ambient-private-topic",
+            "NTFY_TOKEN": "ambient-private-token",
+        }
+    )
+    env = _monitor_environment(tmp_path, ambient)
+
+    baseline = _report(_run(env))
+    assert baseline["verdict"] == "ok", baseline
+    assert baseline["baseline_created"] is True, baseline
+
+    env["FAIL_TLS_IP"] = IPS[0]
+    _set_day(env, 11)
+    assert _report(_run(env))["consecutive_unhealthy"] == 1
+    _set_day(env, 12)
+    assert _report(_run(env))["alert_event"] == "alert"
+
+    evidence = "\n".join([Path(env["SOPS_LOG"]).read_text(), *_alerts(env)])
+    assert str(ambient_secrets) not in evidence
+    assert "ambient-alert.invalid" not in evidence
+    assert "ambient-private-topic" not in evidence
+    assert "ambient-private-token" not in evidence
+    assert env["SOPS_FIXTURE"] in evidence
+
+
 def test_healthy_first_run_creates_redacted_baseline(monitor_env):
     fixture_before = Path(monitor_env["SOPS_FIXTURE"]).read_bytes()
     result = _run(monitor_env)
@@ -192,7 +251,13 @@ def test_healthy_first_run_creates_redacted_baseline(monitor_env):
 
     state_blob = _state_path(monitor_env).read_text()
     output_blob = result.stdout + result.stderr + state_blob
-    for secret in [TARGET, *SERVER_NAMES, "PRIVATE-ORG", "private-alert-topic", "private-alert-token"]:
+    for secret in [
+        TARGET,
+        *SERVER_NAMES,
+        "PRIVATE-ORG",
+        "private-alert-topic",
+        "private-alert-token",
+    ]:
         assert secret not in output_blob
     assert not _alerts(monitor_env)
     assert not Path(monitor_env["FORBIDDEN_LOG"]).exists()
@@ -205,7 +270,11 @@ def test_healthy_first_run_creates_redacted_baseline(monitor_env):
 
 
 def test_two_strikes_alert_daily_then_recovery(monitor_env):
-    assert _run(monitor_env).returncode == 0
+    baseline_result = _run(monitor_env)
+    baseline = _report(baseline_result)
+    assert baseline_result.returncode == 0, baseline
+    assert baseline["verdict"] == "ok", baseline
+    assert baseline["baseline_created"] is True, baseline
 
     monitor_env["FAIL_TLS_IP"] = IPS[1]
     _set_day(monitor_env, 11)
