@@ -1,0 +1,18 @@
+---
+- name: Run Hysteria predictive convergence globally in check mode
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Run Hysteria check-mode playbook with Molecule inventory
+      ansible.builtin.command:
+        argv:
+          - ansible-playbook
+          - --check
+          - --inventory
+          - "{{ lookup('env', 'MOLECULE_INVENTORY_FILE') }}"
+          - "{{ lookup('env', 'MOLECULE_SCENARIO_DIRECTORY') }}/check-mode.yml"
+      environment:
+        ANSIBLE_ROLES_PATH: "{{ lookup('env', 'MOLECULE_SCENARIO_DIRECTORY') }}/../../.."
+      changed_when: false

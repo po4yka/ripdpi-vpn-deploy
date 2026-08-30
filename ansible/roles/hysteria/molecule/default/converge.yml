@@ -1,5 +1,5 @@
 ---
-- name: Converge hysteria role (template-only, stub binary)
+- name: Converge Hysteria role with deterministic runtime-release artifacts
   hosts: all
   become: true
   vars:
@@ -8,9 +8,13 @@
     hysteria_log_dir: /var/log/hysteria
     hysteria_port: 443
     public_site_canonical_url: "https://vpn.example.test"
+    hysteria_release_urls:
+      amd64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.2
+      arm64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.2-arm64
     hysteria:
       version: "v2.8.2"
-      linux_amd64_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      linux_amd64_sha256: "ff2fe5e3c9d0cc3ce2b219580faca6767b2ebe8de43511157b12edbe57ac88fc"
+      linux_arm64_sha256: "33cdb04ed03021bf9b67c34e2b15e385b72b596ee72fa481fc897f7fe51579bc"
       cert_pem: |
         -----BEGIN CERTIFICATE-----
         STUB_CERT_FOR_MOLECULE
@@ -29,14 +33,15 @@
         - name: bob
           password: stub-pw-2
   pre_tasks:
-    - name: Stub hysteria binary in release dir
+    - name: Create deterministic Hysteria fixture artifacts
       ansible.builtin.file:
-        path: "{{ hysteria_install_root }}/releases/{{ hysteria.version }}"
+        path: /var/tmp/hysteria-molecule
         state: directory
         mode: "0755"
-    - name: Drop stub hysteria binary
+
+    - name: Write deterministic Hysteria v2.8.2 artifact
       ansible.builtin.copy:
-        dest: "{{ hysteria_install_root }}/releases/{{ hysteria.version }}/hysteria"
+        dest: /var/tmp/hysteria-molecule/hysteria-v2.8.2
         owner: root
         group: root
         mode: "0755"
@@ -49,12 +54,98 @@
               wait $!
             done
           fi
+          printf '%s\n' 'v2.8.2'
           exit 0
-    # Note: do NOT stub /usr/local/bin/hysteria here. The role's
-    # `Link hysteria into local bin` task creates that path as a symlink
-    # to {{ hysteria_install_root }}/current/hysteria. Pre-staging it as
-    # a regular file makes the role's symlink task non-idempotent (it
-    # converts file→link on every run).
+
+    - name: Write deterministic Hysteria v2.8.3 artifact
+      ansible.builtin.copy:
+        dest: /var/tmp/hysteria-molecule/hysteria-v2.8.3
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          if [ "$1" = "server" ]; then
+            trap 'exit 0' TERM INT
+            while true; do
+              sleep 3600 &
+              wait $!
+            done
+          fi
+          printf '%s\n' 'v2.8.3'
+          exit 0
+
+    - name: Write deterministic Hysteria v2.8.2 arm64 artifact
+      ansible.builtin.copy:
+        dest: /var/tmp/hysteria-molecule/hysteria-v2.8.2-arm64
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          if [ "$1" = "server" ]; then
+            trap 'exit 0' TERM INT
+            while true; do
+              sleep 3600 &
+              wait $!
+            done
+          fi
+          printf '%s\n' 'v2.8.2-arm64'
+          exit 0
+
+    - name: Write deterministic Hysteria v2.8.3 arm64 artifact
+      ansible.builtin.copy:
+        dest: /var/tmp/hysteria-molecule/hysteria-v2.8.3-arm64
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          if [ "$1" = "server" ]; then
+            trap 'exit 0' TERM INT
+            while true; do
+              sleep 3600 &
+              wait $!
+            done
+          fi
+          printf '%s\n' 'v2.8.3-arm64'
+          exit 0
+
+    - name: Write deterministic Hysteria v2.8.4 artifact
+      ansible.builtin.copy:
+        dest: /var/tmp/hysteria-molecule/hysteria-v2.8.4
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          if [ "$1" = "server" ]; then
+            trap 'exit 0' TERM INT
+            while true; do
+              sleep 3600 &
+              wait $!
+            done
+          fi
+          printf '%s\n' 'v2.8.4'
+          exit 0
+
+    - name: Write deterministic Hysteria v2.8.4 arm64 artifact
+      ansible.builtin.copy:
+        dest: /var/tmp/hysteria-molecule/hysteria-v2.8.4-arm64
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          if [ "$1" = "server" ]; then
+            trap 'exit 0' TERM INT
+            while true; do
+              sleep 3600 &
+              wait $!
+            done
+          fi
+          printf '%s\n' 'v2.8.4-arm64'
+          exit 0
 
     - name: Pre-create system user (the role itself does this; molecule pre_tasks short-circuit get_url)
       ansible.builtin.user:
@@ -68,6 +159,3 @@
   # resolves correctly.
   roles:
     - role: hysteria
-      vars:
-        hysteria_arch: "amd64"
-        hysteria_sha256: "0000000000000000000000000000000000000000000000000000000000000000"

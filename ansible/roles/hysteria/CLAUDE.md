@@ -10,8 +10,9 @@ sing-box carries each credential as `name:password` in its password field.
 once in `config.yaml`; per-client tuning is in the client config emitted by
 `scripts/emit-singbox.sh`. Don't try to per-client throttle on the server.
 
-**Pinned binary** — Hysteria version pinned in `defaults/main.yml`; checksum
-verified.
+**Pinned binary** — Hysteria version and architecture checksums are pinned;
+the role delegates verified candidate publication and `current`/public/previous
+rollback links to `runtime-release`.
 
 **Masquerade follows an owned site** — `hysteria.masquerade_url` is required in production secrets and must be an HTTPS origin controlled by the operator. This keeps QUIC probes on the same public identity without coupling the UDP-only role to nginx state.
 

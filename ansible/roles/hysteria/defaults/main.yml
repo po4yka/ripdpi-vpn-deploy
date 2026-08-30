@@ -14,3 +14,10 @@ hysteria:
   masquerade_type: "proxy"
   # Override with an operator-owned HTTPS site; production secrets require it.
   masquerade_url: "https://vpn.example.com"
+
+# These remain role-owned rather than secret inputs: versions and digest pins
+# come from the Hysteria contract above, while Molecule can supply deterministic
+# local artifacts through this narrow consumer seam.
+hysteria_release_urls:
+  amd64: "https://github.com/apernet/hysteria/releases/download/app/{{ hysteria.version }}/hysteria-linux-amd64"
+  arm64: "https://github.com/apernet/hysteria/releases/download/app/{{ hysteria.version }}/hysteria-linux-arm64"
