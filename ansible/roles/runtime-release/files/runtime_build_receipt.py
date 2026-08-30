@@ -529,7 +529,9 @@ def _write_all(descriptor: int, payload: bytes) -> None:
         view = view[written:]
 
 
-def _atomic_write(directory: int, name: str, payload: bytes) -> None:
+def _atomic_write(
+    directory: int, name: str, payload: bytes, *, mode: int = 0o644
+) -> None:
     temporary = f".{name}.{os.getpid()}.{uuid.uuid4().hex}"
     descriptor = os.open(
         temporary,
@@ -540,7 +542,7 @@ def _atomic_write(directory: int, name: str, payload: bytes) -> None:
     try:
         _write_all(descriptor, payload)
         os.fsync(descriptor)
-        os.fchmod(descriptor, 0o644)
+        os.fchmod(descriptor, mode)
         os.fsync(descriptor)
     except Exception:
         os.close(descriptor)
@@ -561,11 +563,15 @@ def _atomic_write(directory: int, name: str, payload: bytes) -> None:
         raise
 
 
-def _record_locked(directory: int, receipt_name: str, descriptor: dict) -> dict:
+def _receipt_payload(descriptor: dict) -> dict:
     outputs, reason = _output_digests(descriptor)
     if reason is not None or outputs is None:
         raise UnsafeState(reason or "missing-output")
-    payload = {**_expected_identity(descriptor), "outputs": outputs}
+    return {**_expected_identity(descriptor), "outputs": outputs}
+
+
+def _record_locked(directory: int, receipt_name: str, descriptor: dict) -> dict:
+    payload = _receipt_payload(descriptor)
     encoded = (
         json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
     ).encode()
@@ -576,6 +582,159 @@ def _record_locked(directory: int, receipt_name: str, descriptor: dict) -> dict:
         return {"schema_version": SCHEMA_VERSION, "changed": False}
     _atomic_write(directory, receipt_name, encoded)
     return {"schema_version": SCHEMA_VERSION, "changed": True}
+
+
+def _cleanup_marker_name(project: str) -> str:
+    return f".{project}.cleanup.json"
+
+
+def _read_cleanup_marker(directory: int, project: str) -> dict | None:
+    name = _cleanup_marker_name(project)
+    try:
+        metadata = os.stat(name, dir_fd=directory, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or metadata.st_nlink != 1
+        or stat.S_IMODE(metadata.st_mode) != 0o600
+        or metadata.st_size > MAX_RECEIPT_BYTES
+    ):
+        raise UnsafeState("unsafe-cleanup-marker")
+    descriptor = os.open(name, _file_flags(), dir_fd=directory)
+    try:
+        opened = os.fstat(descriptor)
+        if (opened.st_dev, opened.st_ino) != (metadata.st_dev, metadata.st_ino):
+            raise UnsafeState("cleanup-marker-replaced")
+        raw = bytearray()
+        while len(raw) <= MAX_RECEIPT_BYTES:
+            chunk = os.read(descriptor, min(8192, MAX_RECEIPT_BYTES + 1 - len(raw)))
+            if not chunk:
+                break
+            raw.extend(chunk)
+        if len(raw) > MAX_RECEIPT_BYTES:
+            raise UnsafeState("oversize-cleanup-marker")
+    finally:
+        os.close(descriptor)
+    try:
+        marker = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise UnsafeState("invalid-cleanup-marker") from error
+    if (
+        not isinstance(marker, dict)
+        or set(marker) != {"schema_version", "project", "receipt", "backups"}
+        or marker["schema_version"] != SCHEMA_VERSION
+        or marker["project"] != project
+        or not isinstance(marker["receipt"], dict)
+        or not isinstance(marker["backups"], list)
+        or len(marker["backups"]) > 16
+    ):
+        raise UnsafeState("invalid-cleanup-marker")
+    receipt_outputs = marker["receipt"].get("outputs")
+    if not isinstance(receipt_outputs, list):
+        raise UnsafeState("invalid-cleanup-marker")
+    receipt_paths = {
+        output.get("path") for output in receipt_outputs if isinstance(output, dict)
+    }
+    backup_paths: set[str] = set()
+    for backup in marker["backups"]:
+        if (
+            not isinstance(backup, dict)
+            or set(backup) != {"path", "name", "inode"}
+            or not isinstance(backup["path"], str)
+            or not Path(backup["path"]).is_absolute()
+            or str(Path(backup["path"])) != backup["path"]
+            or backup["path"] not in receipt_paths
+            or backup["path"] in backup_paths
+            or not isinstance(backup["name"], str)
+            or "/" in backup["name"]
+            or not backup["name"].startswith(
+                f".{Path(backup['path']).name}.runtime-backup."
+            )
+            or not isinstance(backup["inode"], list)
+            or len(backup["inode"]) != 2
+            or any(not isinstance(value, int) or value < 0 for value in backup["inode"])
+        ):
+            raise UnsafeState("invalid-cleanup-marker")
+        backup_paths.add(backup["path"])
+    return marker
+
+
+def _write_cleanup_marker(
+    directory: int,
+    descriptor: dict,
+    receipt: dict,
+    publications: list[dict],
+) -> str:
+    backups = []
+    for item in publications:
+        if item["backup"] is not None:
+            metadata = os.stat(
+                item["backup"], dir_fd=item["parent"], follow_symlinks=False
+            )
+            backups.append(
+                {
+                    "path": item["path"],
+                    "name": item["backup"],
+                    "inode": [metadata.st_dev, metadata.st_ino],
+                }
+            )
+    marker = {
+        "schema_version": SCHEMA_VERSION,
+        "project": descriptor["name"],
+        "receipt": receipt,
+        "backups": backups,
+    }
+    encoded = (
+        json.dumps(marker, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+    if len(encoded) > MAX_RECEIPT_BYTES:
+        raise UnsafeState("oversize-cleanup-marker")
+    name = _cleanup_marker_name(descriptor["name"])
+    _atomic_write(directory, name, encoded, mode=0o600)
+    return name
+
+
+def _remove_cleanup_marker(directory: int, name: str) -> None:
+    try:
+        os.unlink(name, dir_fd=directory)
+    except FileNotFoundError:
+        return
+    os.fsync(directory)
+
+
+def _retry_committed_cleanup(directory: int, receipt_name: str, project: str) -> bool:
+    marker = _read_cleanup_marker(directory, project)
+    if marker is None:
+        return True
+    if _read_receipt(directory, receipt_name) != marker["receipt"]:
+        raise UnsafeState("cleanup-marker-receipt-mismatch")
+    try:
+        for backup in marker["backups"]:
+            path = Path(backup["path"])
+            parent = _open_directory(path.parent, os.geteuid())
+            try:
+                try:
+                    metadata = os.stat(
+                        backup["name"], dir_fd=parent, follow_symlinks=False
+                    )
+                except FileNotFoundError:
+                    continue
+                if (
+                    not stat.S_ISREG(metadata.st_mode)
+                    or metadata.st_uid != os.geteuid()
+                    or [metadata.st_dev, metadata.st_ino] != backup["inode"]
+                ):
+                    raise UnsafeState("cleanup-backup-replaced")
+                os.unlink(backup["name"], dir_fd=parent)
+                os.fsync(parent)
+            finally:
+                os.close(parent)
+        _remove_cleanup_marker(directory, _cleanup_marker_name(project))
+        return True
+    except (OSError, UnsafeState):
+        return False
 
 
 def _open_project_lock(directory: int, project: str) -> int:
@@ -840,6 +999,7 @@ def _prepare_publications(
             publications.append(
                 {
                     "parent": parent,
+                    "path": str(path),
                     "name": path.name,
                     "temporary": temporary,
                     "existing": existing,
@@ -967,7 +1127,17 @@ def converge(receipt_root: Path, document: object) -> dict:
     previous_receipt: dict | None = None
     committed = False
     result: dict | None = None
+    cleanup_marker: str | None = None
     try:
+        if not _retry_committed_cleanup(directory, receipt_name, descriptor["name"]):
+            pending = inspect(receipt_root, document)
+            if pending["rebuild_required"]:
+                raise UnsafeState("prior-cleanup-pending")
+            return {
+                "schema_version": SCHEMA_VERSION,
+                "changed": False,
+                "cleanup_pending": True,
+            }
         previous_receipt = _read_receipt(directory, receipt_name)
         current = inspect(receipt_root, document)
         if not current["rebuild_required"]:
@@ -978,6 +1148,13 @@ def converge(receipt_root: Path, document: object) -> dict:
         publications = _prepare_publications(descriptor, _stage_root, stage_directory)
         try:
             _publish_outputs(publications)
+            _remove_directory_contents(stage_directory)
+            cleanup_marker = _write_cleanup_marker(
+                directory,
+                descriptor,
+                _receipt_payload(descriptor),
+                publications,
+            )
             result = _record_locked(directory, receipt_name, descriptor)
             committed = True
         except Exception:
@@ -1001,15 +1178,28 @@ def converge(receipt_root: Path, document: object) -> dict:
                         + "\n"
                     ).encode()
                     _atomic_write(directory, receipt_name, encoded)
+                if cleanup_marker is not None:
+                    _remove_cleanup_marker(directory, cleanup_marker)
+                    cleanup_marker = None
             except Exception as error:
                 raise UnsafeState("receipt-rollback-uncertain") from error
             raise
         completed_publications = publications
         publications = []
+        for item in completed_publications:
+            try:
+                os.close(item["parent"])
+            except OSError:
+                result["cleanup_pending"] = True
         try:
-            _discard_publications(completed_publications)
-        except UnsafeState:
+            os.close(stage_directory)
+        except OSError:
             result["cleanup_pending"] = True
+        stage_directory = None
+        if not _retry_committed_cleanup(directory, receipt_name, descriptor["name"]):
+            result["cleanup_pending"] = True
+        else:
+            cleanup_marker = None
         return result
     finally:
         cleanup_error: Exception | None = None
@@ -1024,9 +1214,18 @@ def converge(receipt_root: Path, document: object) -> dict:
         except Exception as error:
             cleanup_error = error
         finally:
-            fcntl.flock(lock, fcntl.LOCK_UN)
-            os.close(lock)
-            os.close(directory)
+            try:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+            except OSError as error:
+                cleanup_error = cleanup_error or error
+            try:
+                os.close(lock)
+            except OSError as error:
+                cleanup_error = cleanup_error or error
+            try:
+                os.close(directory)
+            except OSError as error:
+                cleanup_error = cleanup_error or error
         if cleanup_error is not None:
             if committed and result is not None:
                 result["cleanup_pending"] = True

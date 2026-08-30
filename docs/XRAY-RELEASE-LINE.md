@@ -167,9 +167,10 @@ Trade-offs:
     role)
   * `xray.source_binary_sha256` is the mandatory integrity check on the
     produced binary; `xray.linux_*_sha256` continues to pin prebuilt archives
-  * closes the "release tag silently re-cut with different bytes"
-    risk, because the build inputs are the git tag + the Go toolchain
-    version, both of which are independently pinned
+  * closes the "release tag silently re-cut with different bytes" risk by
+    pinning the exact Git commit and verifying the resulting binary; the build
+    currently uses the distribution Go package and does not claim an
+    independently pinned toolchain
 
 When to flip it on: cohorts where supply-chain attestation is part of
 the threat model (high-risk operators, audited deployments). Default

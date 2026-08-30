@@ -36,6 +36,9 @@
 #   REALITY_SERVER_NAME  TLS server name for REALITY
 #   WATCHDOG_CANARY_URL  owned HTTPS endpoint returning exactly 204; optional
 #                        only for workflows that explicitly disable watchdog
+# Optional source-build pair (both or neither; exact lowercase hex only):
+#   XRAY_SOURCE_COMMIT          reviewed 40-64 character source commit
+#   XRAY_SOURCE_BINARY_SHA256   expected 64-character built-binary digest
 set -euo pipefail
 
 OUT="${OUT:?OUT path is required}"
@@ -44,6 +47,19 @@ CLIENT_NAME="${CLIENT_NAME:-ci-test}"
 REALITY_TARGET="${REALITY_TARGET:?REALITY_TARGET is required}"
 REALITY_SERVER_NAME="${REALITY_SERVER_NAME:?REALITY_SERVER_NAME is required}"
 WATCHDOG_CANARY_URL="${WATCHDOG_CANARY_URL:-https://canary.invalid/healthz}"
+XRAY_SOURCE_COMMIT="${XRAY_SOURCE_COMMIT:-}"
+XRAY_SOURCE_BINARY_SHA256="${XRAY_SOURCE_BINARY_SHA256:-}"
+
+if [[ -n "$XRAY_SOURCE_COMMIT" || -n "$XRAY_SOURCE_BINARY_SHA256" ]]; then
+  [[ "$XRAY_SOURCE_COMMIT" =~ ^[0-9a-f]{40,64}$ ]] || {
+    echo "ci-bootstrap-secrets: invalid XRAY_SOURCE_COMMIT" >&2; exit 2; }
+  [[ "$XRAY_SOURCE_BINARY_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "ci-bootstrap-secrets: invalid XRAY_SOURCE_BINARY_SHA256" >&2; exit 2; }
+  xray_source_fields="  source_commit: \"${XRAY_SOURCE_COMMIT}\"
+  source_binary_sha256: \"${XRAY_SOURCE_BINARY_SHA256}\""
+else
+  xray_source_fields=""
+fi
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EXAMPLE="${REPO_ROOT}/secrets/prod.secrets.example.yaml"
@@ -60,18 +76,6 @@ done
 xray_version="$(python3 -c "
 import yaml; d=yaml.safe_load(open('$EXAMPLE')) or {}
 print((d.get('xray') or {}).get('version') or 'v26.3.27')
-")"
-xray_source_commit="$(python3 -c "
-import yaml; d=yaml.safe_load(open('$EXAMPLE')) or {}
-value=(d.get('xray') or {}).get('source_commit')
-assert value, 'example xray.source_commit is required'
-print(value)
-")"
-xray_source_binary_sha256="$(python3 -c "
-import yaml; d=yaml.safe_load(open('$EXAMPLE')) or {}
-value=(d.get('xray') or {}).get('source_binary_sha256')
-assert value, 'example xray.source_binary_sha256 is required'
-print(value)
 ")"
 hys_version="$(python3 -c "
 import yaml; d=yaml.safe_load(open('$EXAMPLE')) or {}
@@ -170,8 +174,7 @@ xray:
   version: "${xray_version}"
   linux_amd64_sha256: "${xray_sha}"
   linux_arm64_sha256: "${xray_sha}"
-  source_commit: "${xray_source_commit}"
-  source_binary_sha256: "${xray_source_binary_sha256}"
+${xray_source_fields}
   reality_private_key: "${reality_priv}"
   reality_public_key:  "${reality_pub}"
   target: "${REALITY_TARGET}"
