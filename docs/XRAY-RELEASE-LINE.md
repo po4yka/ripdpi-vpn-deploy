@@ -156,17 +156,19 @@ VLESS Encryption over REALITY has additional client-compatibility and evidence g
 Set `vpn.build_xray_from_source: true` in group_vars to switch the
 xray role from "download a prebuilt release asset" to "git clone the
 pinned commit and run `go build` on the VPS". Before enabling it, replace
-the generated `xray.source_commit` and `xray.source_binary_sha256`
-placeholders with the exact reviewed commit and the expected digest of the
-resulting binary. The release `xray.version` remains the installation identity.
+the generated `xray.source_commit`, `xray.source_linux_amd64_sha256`, and
+`xray.source_linux_arm64_sha256` placeholders with the exact reviewed commit
+and the expected native digest for each supported architecture. The release
+`xray.version` remains the installation identity.
 
 Trade-offs:
 
   * slower first deploy (~2-5 minutes for `go build`)
   * requires Go on the VPS (`apt install golang-go`, installed by the
     role)
-  * `xray.source_binary_sha256` is the mandatory integrity check on the
-    produced binary; `xray.linux_*_sha256` continues to pin prebuilt archives
+  * `xray.source_linux_{amd64,arm64}_sha256` are the mandatory integrity checks
+    on the native produced binaries; `xray.linux_*_sha256` continues to pin
+    prebuilt archives
   * closes the "release tag silently re-cut with different bytes" risk by
     pinning the exact Git commit and verifying the resulting binary; the build
     currently uses the distribution Go package and does not claim an

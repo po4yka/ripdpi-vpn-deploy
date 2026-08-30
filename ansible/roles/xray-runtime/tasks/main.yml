@@ -1,11 +1,17 @@
 ---
+- name: Select pinned Xray source digest
+  ansible.builtin.set_fact:
+    xray_runtime_source_sha256: >-
+      {{ xray.source_linux_amd64_sha256 if ansible_facts['architecture'] == 'x86_64' else xray.source_linux_arm64_sha256 }}
+  when: xray_runtime_build_from_source | bool
+
 - name: Assert pinned Xray runtime inputs
   ansible.builtin.assert:
     that:
       - xray.version | default('') | length > 0
       - (xray.linux_amd64_sha256 if ansible_facts['architecture'] == 'x86_64' else xray.linux_arm64_sha256) | default('') | length > 0
       - not (xray_runtime_build_from_source | bool) or xray.source_commit | default('') is match('^[0-9a-f]{40,64}$')
-      - not (xray_runtime_build_from_source | bool) or xray.source_binary_sha256 | default('') is match('^[0-9a-f]{64}$')
+      - not (xray_runtime_build_from_source | bool) or xray_runtime_source_sha256 | default('') is match('^[0-9a-f]{64}$')
     fail_msg: Xray version, artifact checksum, and exact source pins are required.
 
 - name: Set Xray runtime archive facts
@@ -92,7 +98,7 @@
         - name: installed
           staged_path: /var/lib/ripdpi/runtime-build-staging/xray-core/xray
           path: "{{ xray_install_dir }}/releases/{{ xray.version }}/xray"
-          expected_sha256: "{{ xray.source_binary_sha256 }}"
+          expected_sha256: "{{ xray_runtime_source_sha256 }}"
   when: xray_runtime_build_from_source | bool
 
 - name: Download pinned Xray archive
@@ -144,6 +150,9 @@
         (_xray_runtime_current.changed | bool)
         or (
           (xray_runtime_build_from_source | bool)
-          and (runtime_build_changed | default(false) | bool)
+          and (
+            (runtime_build_results | default({})).get('xray-core', {}).get('changed', false)
+            | bool
+          )
         )
       }}

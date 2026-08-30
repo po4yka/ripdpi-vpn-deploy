@@ -29,10 +29,8 @@ vpn:
   # Trade-offs:
   #   * slower first deploy (adds ~2-5 min of `go build`)
   #   * requires Go on the VPS (apt-installable on Debian 13)
-  #   * still need xray.linux_*_sha256 in secrets — the role compares
-  #     the freshly-built binary against the pin (when set), so a
-  #     bytewise-reproducible upstream change is caught at restart
-  #     time
+  #   * xray.source_linux_{amd64,arm64}_sha256 pin the native source-built
+  #     outputs; xray.linux_*_sha256 continue to pin prebuilt archives
   build_xray_from_source: false
   enable_policy_ratelimit: false   # opt-in; daemon tails xray access.log,
                                   # adds offending IPs to an nftables
