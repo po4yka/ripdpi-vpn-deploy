@@ -321,6 +321,7 @@ def _atomic_link(
         try:
             os.unlink(temporary, dir_fd=directory.descriptor)
         except FileNotFoundError:
+            # A successful replace consumes the transaction-owned temporary link.
             pass
 
 
@@ -507,6 +508,7 @@ def prepare_staging(
                 os.mkdir(staging_dir.name, 0o700, dir_fd=root.descriptor)
                 created_staging = True
             except FileExistsError:
+                # A racing controller created the shared staging root; validate it below.
                 pass
             try:
                 if created_staging:
@@ -524,6 +526,7 @@ def prepare_staging(
                     try:
                         os.rmdir(staging_dir.name, dir_fd=root.descriptor)
                     except OSError:
+                        # Retain a raced, replaced, or non-empty node for fail-closed review.
                         pass
                 raise
         except OSError as error:
@@ -616,12 +619,14 @@ def prepare_staging(
                             else:
                                 os.unlink(child, dir_fd=transaction.descriptor)
                         except OSError:
+                            # Preserve the primary setup failure and leave uncertain nodes.
                             pass
                     transaction.close()
                     transaction = None
                 try:
                     os.rmdir(transaction_name, dir_fd=staging.descriptor)
                 except OSError:
+                    # A non-empty or replaced transaction is retained for recovery.
                     pass
                 raise
             finally:
@@ -1037,19 +1042,20 @@ def _atomic_receipt(
     descriptor = os.open(
         temporary,
         os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-        0o644,
+        0o600,
         dir_fd=release.descriptor,
     )
     try:
-        os.fchmod(descriptor, 0o644)
-        os.fchown(descriptor, uid, gid)
-        os.write(
-            descriptor, (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode()
-        )
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-    try:
+        try:
+            os.fchmod(descriptor, 0o644)
+            os.fchown(descriptor, uid, gid)
+            os.write(
+                descriptor,
+                (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode(),
+            )
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
         _revalidate_directory(release)
         os.replace(
             temporary,
@@ -1062,6 +1068,7 @@ def _atomic_receipt(
         try:
             os.unlink(temporary, dir_fd=release.descriptor)
         except FileNotFoundError:
+            # A successful replace consumed the private receipt temporary.
             pass
 
 
@@ -1095,6 +1102,7 @@ def _owned_release_directory(
                 try:
                     os.rmdir(version, dir_fd=releases.descriptor)
                 except OSError:
+                    # Retain a raced, replaced, or non-empty release for validation.
                     pass
                 raise
         _require_directory_contract(release, uid, gid, "release")
@@ -1134,7 +1142,7 @@ def _atomic_install_candidate(
         destination = os.open(
             temporary,
             os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-            0o755,
+            0o700,
             dir_fd=release.descriptor,
         )
         try:
@@ -1164,6 +1172,7 @@ def _atomic_install_candidate(
         try:
             os.unlink(temporary, dir_fd=release.descriptor)
         except FileNotFoundError:
+            # A successful replace consumed the private candidate temporary.
             pass
 
 
@@ -1560,8 +1569,6 @@ def activate(
                 releases.close()
         changed = desired != before or publication_changed
         try:
-            if root_directory is None:
-                raise UnsafeState("missing-install-root")
             _set_link_state(
                 install_root / "current",
                 desired["current"],
@@ -1599,7 +1606,7 @@ def activate(
         except Exception as activation_error:
             if public_directory is None:
                 try:
-                    if root_directory is None or before["public"] is not None:
+                    if before["public"] is not None:
                         raise UnsafeState("missing-public-link-parent")
                     _set_link_state(
                         install_root / "current",
@@ -1640,8 +1647,6 @@ def activate(
                     ) from compensation_error
                 raise ActivationFailed("activation-failed") from activation_error
             try:
-                if root_directory is None:
-                    raise UnsafeState("missing-install-root")
                 _restore_snapshot(
                     install_root,
                     public_link,
