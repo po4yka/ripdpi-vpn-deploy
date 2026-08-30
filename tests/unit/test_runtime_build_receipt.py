@@ -941,6 +941,184 @@ def test_receipt_failure_rolls_back_live_output(
     assert not (receipt_root / "fixture-runtime.json").exists()
 
 
+@pytest.mark.parametrize(
+    "interrupt",
+    [KeyboardInterrupt(), SystemExit(73)],
+    ids=["keyboard-interrupt", "system-exit"],
+)
+def test_interrupt_after_durable_journal_reconciles_before_propagation(
+    trusted_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt: BaseException,
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    before = output.stat()
+    real_write = helper._write_transaction_journal
+
+    def write_then_interrupt(directory: int, journal: dict) -> dict:
+        real_write(directory, journal)
+        raise interrupt
+
+    monkeypatch.setattr(helper, "_write_transaction_journal", write_then_interrupt)
+    with pytest.raises(type(interrupt)) as caught:
+        helper.converge(receipt_root, _descriptor(output))
+
+    assert caught.value is interrupt
+    if isinstance(interrupt, SystemExit):
+        assert caught.value.code == 73
+    after = output.stat()
+    assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+    assert output.read_bytes() == b"runtime-v1\n"
+    assert not (receipt_root / "fixture-runtime.json").exists()
+    assert not (receipt_root / ".fixture-runtime.transaction.json").exists()
+    assert not list(output.parent.glob(".*.runtime-*"))
+    stage = receipt_root.parent / "runtime-build-staging" / "fixture-runtime"
+    assert stage.is_dir()
+    assert list(stage.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "interrupt",
+    [KeyboardInterrupt(), SystemExit(73)],
+    ids=["keyboard-interrupt", "system-exit"],
+)
+def test_interrupt_and_descriptor_close_failure_still_reconcile_durable_journal(
+    trusted_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt: BaseException,
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    before = output.stat()
+    real_write = helper._write_transaction_journal
+    real_close = helper._close_publication_descriptors
+
+    def write_then_interrupt(directory: int, journal: dict) -> dict:
+        real_write(directory, journal)
+        raise interrupt
+
+    def close_then_fail(publications: list[dict]) -> None:
+        real_close(publications)
+        raise OSError("injected-publication-close-ambiguity")
+
+    monkeypatch.setattr(helper, "_write_transaction_journal", write_then_interrupt)
+    monkeypatch.setattr(helper, "_close_publication_descriptors", close_then_fail)
+    with pytest.raises(type(interrupt)) as caught:
+        helper.converge(receipt_root, _descriptor(output))
+
+    assert caught.value is interrupt
+    if isinstance(interrupt, SystemExit):
+        assert caught.value.code == 73
+    after = output.stat()
+    assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+    assert output.read_bytes() == b"runtime-v1\n"
+    assert not (receipt_root / "fixture-runtime.json").exists()
+    assert not (receipt_root / ".fixture-runtime.transaction.json").exists()
+    assert not list(output.parent.glob(".*.runtime-*"))
+    stage = receipt_root.parent / "runtime-build-staging" / "fixture-runtime"
+    assert stage.is_dir()
+    assert list(stage.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "interrupt",
+    [KeyboardInterrupt(), SystemExit(73)],
+    ids=["keyboard-interrupt", "system-exit"],
+)
+def test_interrupt_after_receipt_publication_reports_committed_change(
+    trusted_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt: BaseException,
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    descriptor = _descriptor(output)
+    real_write = helper._write_receipt_document
+
+    def write_then_interrupt(directory: int, receipt_name: str, receipt: dict) -> None:
+        real_write(directory, receipt_name, receipt)
+        raise interrupt
+
+    monkeypatch.setattr(helper, "_write_receipt_document", write_then_interrupt)
+
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": True,
+    }
+    assert helper.inspect(receipt_root, descriptor)["reason"] == "current"
+    assert not (receipt_root / ".fixture-runtime.transaction.json").exists()
+    monkeypatch.undo()
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": False,
+    }
+
+
+def test_backup_cleanup_failure_preserves_primary_error(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    first = trusted_root / "first"
+    second = trusted_root / "second"
+    for path in (first, second):
+        path.write_bytes(b"previous\n")
+        path.chmod(0o755)
+    parent = os.open(trusted_root, helper._directory_flags())
+    publications = []
+    try:
+        for path in (first, second):
+            publications.append(
+                {
+                    "parent": parent,
+                    "name": path.name,
+                    "backup": f".{path.name}.runtime-backup.fixture",
+                    "before": helper._read_identity_at(parent, path.name),
+                }
+            )
+        real_link = helper.os.link
+        calls = 0
+
+        def fail_second_link(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("injected-primary-backup-failure")
+            return real_link(*args, **kwargs)
+
+        def fail_cleanup(*_args, **_kwargs) -> None:
+            raise OSError("injected-secondary-cleanup-failure")
+
+        monkeypatch.setattr(helper.os, "link", fail_second_link)
+        monkeypatch.setattr(helper, "_quarantine_remove", fail_cleanup)
+
+        with pytest.raises(OSError, match="injected-primary-backup-failure"):
+            helper._create_backups(publications)
+    finally:
+        os.close(parent)
+
+
+def test_recovery_descriptor_close_ambiguity_is_non_authoritative(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    descriptor = os.open(trusted_root, helper._directory_flags())
+    real_close = helper.os.close
+    failed = False
+
+    def close_then_fail(file_descriptor: int) -> None:
+        nonlocal failed
+        real_close(file_descriptor)
+        if not failed:
+            failed = True
+            raise OSError("injected-recovery-close-ambiguity")
+
+    monkeypatch.setattr(helper.os, "close", close_then_fail)
+    helper._close_recovery_outputs([{"parent": descriptor}])
+    with pytest.raises(OSError):
+        os.fstat(descriptor)
+
+
 @pytest.mark.parametrize("kind", ["regular", "symlink"])
 def test_preexisting_transaction_journal_is_preserved_without_live_mutation(
     trusted_root: Path, kind: str
