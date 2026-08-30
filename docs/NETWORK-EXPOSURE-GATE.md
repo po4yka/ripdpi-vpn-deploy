@@ -44,21 +44,37 @@ and noncanonical CIDRs fail before a policy plan is emitted.
 
 ## Review without applying
 
-Store a private operator variables file outside Git with `network_exposure_gate`
-set to `mode: log_only`, and set `artifact`, `trusted_key`, `trusted_key_sha256`,
-and the expected `source_id`. The artifact must be an owner-controlled private
-regular file; the public key must be owner-controlled and not writable by others.
-The remaining fields default to `promotion_approved: false`, `promotion_digest: ''`,
-and `authorized_hosts: []`.
+Store a private operator JSON file outside Git. It has exactly the controller
+fields below; no Ansible variable wrapper or YAML input is accepted. The file
+must be owned by the invoking user, be a regular non-symlink file, and have mode
+`0600`. The artifact must be an owner-controlled private regular file; the public
+key must be owner-controlled and not writable by others.
 
-```bash
-make network-exposure-review NETWORK_EXPOSURE_CONFIG=/absolute/path/review-vars.yml
+```json
+{
+  "mode": "log_only",
+  "artifact": "/absolute/path/reviewed-artifact.json",
+  "trusted_key": "/absolute/path/trusted-public-key.pem",
+  "trusted_key_sha256": "<64 lowercase hex characters>",
+  "source_id": "<expected technical source ID>",
+  "promotion": {
+    "approved": false,
+    "digest": "",
+    "authorized_hosts": []
+  }
+}
 ```
 
-This entry point runs only the controller gate. It does not render, reload, or
-change the managed firewall. Summaries contain only validation state, source ID,
-directional counts, and content/artifact digests. The internal normalized plan is
-an Ansible-only interface protected by `no_log`; do not use it for operator output.
+```bash
+make network-exposure-review NETWORK_EXPOSURE_CONFIG=/absolute/path/review.json ANSIBLE_LIMIT=vpn-p0
+```
+
+`ANSIBLE_LIMIT` must be a comma-separated list of exact inventory aliases; broad
+groups and patterns are refused. This entry point runs only the controller gate.
+It does not render, reload, or change the managed firewall. Summaries contain only
+validation state, source ID, directional counts, and content/artifact digests. The
+internal normalized plan is an Ansible-only interface protected by `no_log`; do
+not use it for operator output.
 
 A normal `make dry-run` uses Ansible check mode. A full site **deployment** still
 converges the baseline firewall; `log_only` supplies an empty enforcement plan,

@@ -1,6 +1,26 @@
 PROVIDER ?= upcloud
 ENV      ?= prod
 
+# This target accepts operator paths and aliases.  Keep them literal before
+# included Makefiles, exported variables, or eager source-identity recipes can
+# evaluate command-line Make syntax.
+ifneq ($(filter network-exposure-review,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error network exposure review requires exactly one Make goal)
+endif
+override NETWORK_EXPOSURE_CONFIG := $(value NETWORK_EXPOSURE_CONFIG)
+override ANSIBLE_LIMIT := $(value ANSIBLE_LIMIT)
+ifneq ($(findstring $$,$(value NETWORK_EXPOSURE_CONFIG)$(value ANSIBLE_LIMIT)),)
+$(error network exposure review inputs must be literal values)
+endif
+ifneq ($(findstring ",$(value NETWORK_EXPOSURE_CONFIG)$(value ANSIBLE_LIMIT)),)
+$(error network exposure review inputs must be literal values)
+endif
+ifneq ($(findstring ',$(value NETWORK_EXPOSURE_CONFIG)$(value ANSIBLE_LIMIT)),)
+$(error network exposure review inputs must be literal values)
+endif
+endif
+
 -include .fleet.mk
 
 # Capture deployment labels before the eager Terraform path assignments below.
@@ -254,10 +274,13 @@ apply:
 inventory:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" ./scripts/render-inventory.sh
 
-network-exposure-review: require-inventory
-	@test -n "$$NETWORK_EXPOSURE_CONFIG" && test -f "$$NETWORK_EXPOSURE_CONFIG" || { echo "NETWORK_EXPOSURE_CONFIG must name an operator-owned configuration file" >&2; exit 2; }
-	ansible-playbook $(ANSIBLE_DIR)/playbooks/network-exposure-review.yml \
-	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)")
+network-exposure-review:
+	@exec /usr/bin/env -i \
+	  PATH="$$PATH" HOME="$$HOME" \
+	  LANG="$${LANG:-C}" LC_ALL="$${LC_ALL:-}" LC_CTYPE="$${LC_CTYPE:-}" TZ="$${TZ:-UTC}" \
+	  PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 \
+	  NETWORK_EXPOSURE_CONFIG='$(NETWORK_EXPOSURE_CONFIG)' ANSIBLE_LIMIT='$(ANSIBLE_LIMIT)' \
+	  python3 ./scripts/network-exposure-review-controller.py
 
 wait:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/wait-cloud-init.sh
