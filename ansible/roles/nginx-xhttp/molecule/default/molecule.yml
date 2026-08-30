@@ -10,7 +10,7 @@ driver:
 
 platforms:
   - name: vpn-nginx-debian13
-    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13@sha256:fd0443883979e0879e912231914df2093769d45fcb82af251704b30e2fc5c42e
+    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13@sha256:ad92a972bfd235e4577bf6b56e9ab82d5ab259d6a3e627f6ebfab7c2b2bfeb7e
     pre_build_image: true
     privileged: true
     command: /lib/systemd/systemd
