@@ -75,11 +75,10 @@
       {{ ['runtime-release', runtime_release_binary_name, runtime_release_version,
           runtime_release_arch_slugs[_runtime_release_arch_key],
           runtime_release_artifact_filename] | join('-') }}
-
-- name: Derive trusted runtime release artifact path
-  ansible.builtin.set_fact:
-    _runtime_release_artifact_path: >-
-      {{ runtime_release_download_dir }}/{{ _runtime_release_artifact_name }}
+    _runtime_release_stage_name: >-
+      {{ ('stage-' ~ runtime_release_binary_name ~ '-' ~ runtime_release_version ~
+          '-' ~ runtime_release_arch_slugs[_runtime_release_arch_key])
+         if runtime_release_artifact_type == 'archive' else '' }}
 
 - name: Inspect pinned runtime release candidate
   ansible.builtin.stat:
@@ -198,9 +197,6 @@
     _runtime_release_needs_artifact: >-
       {{ not (_runtime_release_candidate.stat.exists | default(false)) or
       not (_runtime_release_receipt_stat.stat.exists | default(false)) }}
-    _runtime_release_stage_dir: >-
-      {{ runtime_release_download_dir }}/stage-{{ runtime_release_binary_name
-      }}-{{ runtime_release_version }}-{{ runtime_release_arch_slug }}
 
 - name: Preflight runtime release activation layout
   ansible.builtin.command:
@@ -215,6 +211,10 @@
       - "{{ runtime_release_binary_name }}"
       - --public-link
       - "{{ runtime_release_public_link }}"
+      - --owner
+      - "{{ runtime_release_storage_owner }}"
+      - --group
+      - "{{ runtime_release_storage_group }}"
       - --check
     stdin: >-
       {{ lookup('ansible.builtin.file',
@@ -223,6 +223,40 @@
     expand_argument_vars: false
   changed_when: false
   when: not ansible_check_mode
+
+- name: Reset runtime release transaction ownership
+  ansible.builtin.set_fact:
+    _runtime_release_transaction_dir: ""
+    _runtime_release_artifact_path: ""
+    _runtime_release_stage_dir: ""
+    _runtime_release_staged_candidate_path: ""
+    _runtime_release_staging_preparation: {}
+    _runtime_release_staging_prepared: false
+
+- name: Validate runtime release staging namespace in check mode
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - '-'
+      - --install-root
+      - "{{ runtime_release_install_root }}"
+      - --staging-dir
+      - "{{ runtime_release_download_dir }}"
+      - --owner
+      - "{{ runtime_release_storage_owner }}"
+      - --group
+      - "{{ runtime_release_storage_group }}"
+      - --validate-staging-root
+    stdin: >-
+      {{ lookup('ansible.builtin.file',
+                role_path ~ '/files/runtime_release_activate.py') }}
+    stdin_add_newline: false
+    expand_argument_vars: false
+  changed_when: false
+  check_mode: false
+  when:
+    - _runtime_release_needs_artifact
+    - ansible_check_mode
 
 - name: Ensure runtime release directories
   ansible.builtin.file:
@@ -235,150 +269,288 @@
     - "{{ runtime_release_install_root }}"
     - "{{ runtime_release_install_root }}/releases"
 
-- name: Prepare trusted runtime release staging namespace
-  ansible.builtin.command:
-    argv:
-      - /usr/bin/python3
-      - '-'
-      - --install-root
-      - "{{ runtime_release_install_root }}"
-      - --staging-dir
-      - "{{ runtime_release_download_dir }}"
-      - --binary-name
-      - "{{ _runtime_release_artifact_name }}"
-      - --stage-name
-      - "stage-{{ runtime_release_binary_name }}-{{ runtime_release_version }}-{{ runtime_release_arch_slug }}"
-      - --owner
-      - "{{ runtime_release_storage_owner }}"
-      - --group
-      - "{{ runtime_release_storage_group }}"
-      - --prepare-staging
-    stdin: >-
-      {{ lookup('ansible.builtin.file',
-                role_path ~ '/files/runtime_release_activate.py') }}
-    stdin_add_newline: false
-    expand_argument_vars: false
-  changed_when: false
-  when:
-    - _runtime_release_needs_artifact
-    - not ansible_check_mode
+- name: Publish one receipt-owned runtime release transaction
+  block:
+    - name: Prepare trusted runtime release transaction
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - '-'
+          - --install-root
+          - "{{ runtime_release_install_root }}"
+          - --staging-dir
+          - "{{ runtime_release_download_dir }}"
+          - --version
+          - "{{ runtime_release_version }}"
+          - --binary-name
+          - "{{ runtime_release_binary_name }}"
+          - --artifact-name
+          - "{{ _runtime_release_artifact_name }}"
+          - --artifact-sha256
+          - "{{ _runtime_release_checksum }}"
+          - --artifact-type
+          - "{{ runtime_release_artifact_type }}"
+          - --stage-name
+          - "{{ _runtime_release_stage_name }}"
+          - --owner
+          - "{{ runtime_release_storage_owner }}"
+          - --group
+          - "{{ runtime_release_storage_group }}"
+          - --prepare-staging
+        stdin: >-
+          {{ lookup('ansible.builtin.file',
+                    role_path ~ '/files/runtime_release_activate.py') }}
+        stdin_add_newline: false
+        expand_argument_vars: false
+      register: _runtime_release_staging_preparation
+      changed_when: false
+      when:
+        - _runtime_release_needs_artifact
+        - not ansible_check_mode
 
-- name: Download pinned runtime release artifact
-  ansible.builtin.get_url:
-    url: "{{ _runtime_release_url }}"
-    dest: "{{ _runtime_release_artifact_path }}"
-    checksum: "sha256:{{ _runtime_release_checksum }}"
-    owner: "{{ runtime_release_storage_owner }}"
-    group: "{{ runtime_release_storage_group }}"
-    mode: "{{ '0700' if runtime_release_artifact_type == 'binary' else '0600' }}"
-  when:
-    - _runtime_release_needs_artifact
-    - not ansible_check_mode
+    - name: Select trusted runtime release transaction paths
+      ansible.builtin.set_fact:
+        _runtime_release_transaction_dir: >-
+          {{ (_runtime_release_staging_preparation.stdout | from_json).transaction_dir }}
+        _runtime_release_artifact_path: >-
+          {{ (_runtime_release_staging_preparation.stdout | from_json).artifact_path }}
+        _runtime_release_stage_dir: >-
+          {{ (_runtime_release_staging_preparation.stdout | from_json).stage_dir }}
+        _runtime_release_staging_prepared: true
+      when:
+        - _runtime_release_needs_artifact
+        - not ansible_check_mode
 
-- name: Extract pinned archive into trusted staging
-  ansible.builtin.unarchive:
-    src: "{{ _runtime_release_artifact_path }}"
-    dest: "{{ _runtime_release_stage_dir }}"
-    remote_src: true
-    include:
-      - "{{ runtime_release_archive_member }}"
-    extra_opts: >-
-      {{ ['--strip-components=' ~ (runtime_release_archive_strip_components | string)]
-         if (runtime_release_archive_strip_components | int > 0) else omit }}
-    owner: "{{ runtime_release_storage_owner }}"
-    group: "{{ runtime_release_storage_group }}"
-  when:
-    - runtime_release_artifact_type == 'archive'
-    - _runtime_release_needs_artifact
-    - not ansible_check_mode
+    - name: Revalidate trusted runtime release transaction before download
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - '-'
+          - --install-root
+          - "{{ runtime_release_install_root }}"
+          - --staging-dir
+          - "{{ runtime_release_download_dir }}"
+          - --transaction-dir
+          - "{{ _runtime_release_transaction_dir }}"
+          - --version
+          - "{{ runtime_release_version }}"
+          - --binary-name
+          - "{{ runtime_release_binary_name }}"
+          - --artifact-name
+          - "{{ _runtime_release_artifact_name }}"
+          - --artifact-sha256
+          - "{{ _runtime_release_checksum }}"
+          - --artifact-type
+          - "{{ runtime_release_artifact_type }}"
+          - --stage-name
+          - "{{ _runtime_release_stage_name }}"
+          - --phase
+          - prepared
+          - --owner
+          - "{{ runtime_release_storage_owner }}"
+          - --group
+          - "{{ runtime_release_storage_group }}"
+          - --validate-staging
+        stdin: >-
+          {{ lookup('ansible.builtin.file',
+                    role_path ~ '/files/runtime_release_activate.py') }}
+        stdin_add_newline: false
+        expand_argument_vars: false
+      changed_when: false
+      when:
+        - _runtime_release_needs_artifact
+        - not ansible_check_mode
 
-- name: Select staged runtime release candidate path
-  ansible.builtin.set_fact:
-    _runtime_release_staged_candidate_path: >-
-      {{ (_runtime_release_artifact_path if runtime_release_artifact_type == 'binary'
-          else _runtime_release_stage_dir ~ '/' ~ runtime_release_binary_name)
-         if _runtime_release_needs_artifact
-         else runtime_release_install_root ~ '/releases/' ~ runtime_release_version ~
-              '/' ~ runtime_release_binary_name }}
+    - name: Download pinned runtime release artifact
+      ansible.builtin.get_url:
+        url: "{{ _runtime_release_url }}"
+        dest: "{{ _runtime_release_artifact_path }}"
+        checksum: "sha256:{{ _runtime_release_checksum }}"
+        owner: "{{ runtime_release_storage_owner }}"
+        group: "{{ runtime_release_storage_group }}"
+        mode: "{{ '0700' if runtime_release_artifact_type == 'binary' else '0600' }}"
+      when:
+        - _runtime_release_needs_artifact
+        - not ansible_check_mode
 
-- name: Inspect staged runtime release candidate
-  ansible.builtin.stat:
-    path: "{{ _runtime_release_staged_candidate_path }}"
-    follow: false
-    checksum_algorithm: sha256
-  register: _runtime_release_verified_candidate
+    - name: Revalidate downloaded runtime release artifact before extraction
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - '-'
+          - --install-root
+          - "{{ runtime_release_install_root }}"
+          - --staging-dir
+          - "{{ runtime_release_download_dir }}"
+          - --transaction-dir
+          - "{{ _runtime_release_transaction_dir }}"
+          - --version
+          - "{{ runtime_release_version }}"
+          - --binary-name
+          - "{{ runtime_release_binary_name }}"
+          - --artifact-name
+          - "{{ _runtime_release_artifact_name }}"
+          - --artifact-sha256
+          - "{{ _runtime_release_checksum }}"
+          - --artifact-type
+          - "{{ runtime_release_artifact_type }}"
+          - --stage-name
+          - "{{ _runtime_release_stage_name }}"
+          - --phase
+          - downloaded
+          - --owner
+          - "{{ runtime_release_storage_owner }}"
+          - --group
+          - "{{ runtime_release_storage_group }}"
+          - --validate-staging
+        stdin: >-
+          {{ lookup('ansible.builtin.file',
+                    role_path ~ '/files/runtime_release_activate.py') }}
+        stdin_add_newline: false
+        expand_argument_vars: false
+      changed_when: false
+      when:
+        - _runtime_release_needs_artifact
+        - not ansible_check_mode
 
-- name: Verify staged runtime release candidate
-  ansible.builtin.assert:
-    that:
-      - _runtime_release_verified_candidate.stat.exists
-      - _runtime_release_verified_candidate.stat.isreg
-      - _runtime_release_verified_candidate.stat.executable
-      - _runtime_release_verified_candidate.stat.nlink == 1
-      - >-
-        runtime_release_artifact_type != 'binary' or
-        _runtime_release_verified_candidate.stat.checksum == _runtime_release_checksum
-    fail_msg: >-
-      The checksum-verified artifact did not produce the expected executable
-      {{ runtime_release_binary_name }}; active links remain unchanged.
-  when: >-
-    not ansible_check_mode or
-    (_runtime_release_receipt_stat.stat.exists | default(false))
+    - name: Extract pinned archive into trusted staging
+      ansible.builtin.unarchive:
+        src: "{{ _runtime_release_artifact_path }}"
+        dest: "{{ _runtime_release_stage_dir }}"
+        remote_src: true
+        include:
+          - "{{ runtime_release_archive_member }}"
+        extra_opts: >-
+          {{ ['--strip-components=' ~ (runtime_release_archive_strip_components | string)]
+             if (runtime_release_archive_strip_components | int > 0) else omit }}
+        owner: "{{ runtime_release_storage_owner }}"
+        group: "{{ runtime_release_storage_group }}"
+      when:
+        - runtime_release_artifact_type == 'archive'
+        - _runtime_release_needs_artifact
+        - not ansible_check_mode
 
-- name: Activate runtime release under host-local lock
-  ansible.builtin.command:
-    argv:
-      - /usr/bin/python3
-      - '-'
-      - --install-root
-      - "{{ runtime_release_install_root }}"
-      - --version
-      - "{{ runtime_release_version }}"
-      - --binary-name
-      - "{{ runtime_release_binary_name }}"
-      - --public-link
-      - "{{ runtime_release_public_link }}"
-      - --artifact-sha256
-      - "{{ _runtime_release_checksum }}"
-      - --candidate-sha256
-      - "{{ _runtime_release_verified_candidate.stat.checksum | default('') }}"
-      - --staged-candidate
-      - "{{ _runtime_release_staged_candidate_path }}"
-      - --artifact-type
-      - "{{ runtime_release_artifact_type }}"
-      - --arch-key
-      - "{{ _runtime_release_arch_key }}"
-      - --arch-slug
-      - "{{ runtime_release_arch_slug }}"
-      - --owner
-      - "{{ runtime_release_storage_owner }}"
-      - --group
-      - "{{ runtime_release_storage_group }}"
-      - "{{ '--check' if ansible_check_mode else '--apply' }}"
-    stdin: >-
-      {{ lookup('ansible.builtin.file',
-                role_path ~ '/files/runtime_release_activate.py') }}
-    stdin_add_newline: false
-    expand_argument_vars: false
-  register: _runtime_release_activation
-  changed_when: (_runtime_release_activation.stdout | from_json).changed
-  check_mode: false
+    - name: Select staged runtime release candidate path
+      ansible.builtin.set_fact:
+        _runtime_release_staged_candidate_path: >-
+          {{ (_runtime_release_artifact_path if runtime_release_artifact_type == 'binary'
+              else _runtime_release_stage_dir ~ '/' ~ runtime_release_binary_name)
+             if (_runtime_release_needs_artifact and not ansible_check_mode)
+             else runtime_release_install_root ~ '/releases/' ~ runtime_release_version ~
+                  '/' ~ runtime_release_binary_name }}
 
-- name: Remove trusted runtime release staging directory
-  ansible.builtin.file:
-    path: "{{ _runtime_release_stage_dir }}"
-    state: absent
-  when:
-    - _runtime_release_needs_artifact
-    - not ansible_check_mode
+    - name: Inspect staged runtime release candidate
+      ansible.builtin.stat:
+        path: "{{ _runtime_release_staged_candidate_path }}"
+        follow: false
+        checksum_algorithm: sha256
+      register: _runtime_release_verified_candidate
 
-- name: Remove downloaded runtime release artifact
-  ansible.builtin.file:
-    path: "{{ _runtime_release_artifact_path }}"
-    state: absent
-  when:
-    - _runtime_release_needs_artifact
-    - not ansible_check_mode
+    - name: Verify staged runtime release candidate
+      ansible.builtin.assert:
+        that:
+          - _runtime_release_verified_candidate.stat.exists
+          - _runtime_release_verified_candidate.stat.isreg
+          - _runtime_release_verified_candidate.stat.executable
+          - _runtime_release_verified_candidate.stat.nlink == 1
+          - >-
+            runtime_release_artifact_type != 'binary' or
+            _runtime_release_verified_candidate.stat.checksum == _runtime_release_checksum
+        fail_msg: >-
+          The checksum-verified artifact did not produce the expected executable
+          {{ runtime_release_binary_name }}; active links remain unchanged.
+      when: >-
+        not ansible_check_mode or
+        (_runtime_release_receipt_stat.stat.exists | default(false))
+
+    - name: Activate runtime release under host-local lock
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - '-'
+          - --install-root
+          - "{{ runtime_release_install_root }}"
+          - --version
+          - "{{ runtime_release_version }}"
+          - --binary-name
+          - "{{ runtime_release_binary_name }}"
+          - --public-link
+          - "{{ runtime_release_public_link }}"
+          - --artifact-sha256
+          - "{{ _runtime_release_checksum }}"
+          - --candidate-sha256
+          - "{{ _runtime_release_verified_candidate.stat.checksum | default('') }}"
+          - --staged-candidate
+          - "{{ _runtime_release_staged_candidate_path }}"
+          - --staging-dir
+          - "{{ runtime_release_download_dir }}"
+          - --transaction-dir
+          - "{{ _runtime_release_transaction_dir | default('') }}"
+          - --artifact-name
+          - "{{ _runtime_release_artifact_name }}"
+          - --stage-name
+          - "{{ _runtime_release_stage_name }}"
+          - --artifact-type
+          - "{{ runtime_release_artifact_type }}"
+          - --arch-key
+          - "{{ _runtime_release_arch_key }}"
+          - --arch-slug
+          - "{{ runtime_release_arch_slug }}"
+          - --owner
+          - "{{ runtime_release_storage_owner }}"
+          - --group
+          - "{{ runtime_release_storage_group }}"
+          - --requires-artifact
+          - "{{ _runtime_release_needs_artifact | bool | lower }}"
+          - "{{ '--check' if ansible_check_mode else '--apply' }}"
+        stdin: >-
+          {{ lookup('ansible.builtin.file',
+                    role_path ~ '/files/runtime_release_activate.py') }}
+        stdin_add_newline: false
+        expand_argument_vars: false
+      register: _runtime_release_activation
+      changed_when: (_runtime_release_activation.stdout | from_json).changed
+      check_mode: false
+  always:
+    - name: Clean trusted runtime release transaction
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - '-'
+          - --install-root
+          - "{{ runtime_release_install_root }}"
+          - --staging-dir
+          - "{{ runtime_release_download_dir }}"
+          - --transaction-dir
+          - "{{ _runtime_release_transaction_dir }}"
+          - --version
+          - "{{ runtime_release_version }}"
+          - --binary-name
+          - "{{ runtime_release_binary_name }}"
+          - --artifact-name
+          - "{{ _runtime_release_artifact_name }}"
+          - --artifact-sha256
+          - "{{ _runtime_release_checksum }}"
+          - --artifact-type
+          - "{{ runtime_release_artifact_type }}"
+          - --stage-name
+          - "{{ _runtime_release_stage_name }}"
+          - --owner
+          - "{{ runtime_release_storage_owner }}"
+          - --group
+          - "{{ runtime_release_storage_group }}"
+          - --cleanup-staging
+        stdin: >-
+          {{ lookup('ansible.builtin.file',
+                    role_path ~ '/files/runtime_release_activate.py') }}
+        stdin_add_newline: false
+        expand_argument_vars: false
+      changed_when: false
+      when:
+        - _runtime_release_needs_artifact
+        - not ansible_check_mode
+        - _runtime_release_staging_prepared | bool
+        - _runtime_release_transaction_dir | length > 0
 
 - name: Publish runtime release change state
   ansible.builtin.set_fact:

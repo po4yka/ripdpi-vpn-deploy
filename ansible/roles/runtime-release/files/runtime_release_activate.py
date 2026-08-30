@@ -17,8 +17,8 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
-
 SAFE_NAME = re.compile(r"^[A-Za-z0-9._+-]+$")
+TRANSACTION_RECEIPT = ".runtime-release-transaction.json"
 
 
 class UnsafeState(RuntimeError):
@@ -48,7 +48,13 @@ class _DirectoryGuard:
 
 
 def _identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
-    return (info.st_dev, info.st_ino, info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode))
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_uid,
+        info.st_gid,
+        stat.S_IMODE(info.st_mode),
+    )
 
 
 def _open_directory(path: Path) -> _DirectoryGuard:
@@ -71,6 +77,41 @@ def _open_directory(path: Path) -> _DirectoryGuard:
     except Exception:
         os.close(descriptor)
         raise
+
+
+def _validate_storage_ancestors(path: Path, uid: int, *, allow_missing: bool) -> None:
+    """Require every existing path component to be owned and non-writable."""
+    _validate_absolute(path)
+    descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        root_info = os.fstat(descriptor)
+        if root_info.st_uid != 0 or stat.S_IMODE(root_info.st_mode) & 0o022:
+            raise UnsafeState("unsafe-storage-ancestor")
+        for component in path.parts[1:]:
+            try:
+                next_descriptor = os.open(
+                    component,
+                    os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0),
+                    dir_fd=descriptor,
+                )
+            except FileNotFoundError:
+                if allow_missing:
+                    return
+                raise UnsafeState("missing-storage-ancestor")
+            info = os.fstat(next_descriptor)
+            if (
+                not stat.S_ISDIR(info.st_mode)
+                or info.st_uid not in {0, uid}
+                or stat.S_IMODE(info.st_mode) & 0o022
+            ):
+                os.close(next_descriptor)
+                raise UnsafeState("unsafe-storage-ancestor")
+            os.close(descriptor)
+            descriptor = next_descriptor
+    except OSError as error:
+        raise UnsafeState("unsafe-storage-ancestor") from error
+    finally:
+        os.close(descriptor)
 
 
 def _revalidate_directory(guard: _DirectoryGuard) -> None:
@@ -422,14 +463,23 @@ def prepare_staging(
     staging_dir: Path,
     artifact_name: str,
     stage_name: str | None,
+    candidate_name: str,
+    version: str,
+    artifact_sha256: str,
+    artifact_type: str,
     *,
     owner: str,
     group: str,
-) -> None:
-    """Create an immutable staging namespace before root writes artifacts into it."""
+) -> dict[str, object]:
+    """Create one receipt-owned staging transaction for a single controller."""
     _validate_absolute(install_root)
     _validate_absolute(staging_dir)
     _validate_name(artifact_name)
+    _validate_name(candidate_name)
+    _validate_name(version)
+    _validate_digest(artifact_sha256)
+    if artifact_type not in {"binary", "archive"}:
+        raise UnsafeState("unsafe-artifact-type")
     if staging_dir.parent != install_root:
         raise UnsafeState("unsafe-staging-directory")
     _validate_name(staging_dir.name)
@@ -437,28 +487,36 @@ def prepare_staging(
         _validate_name(stage_name)
     uid = pwd.getpwnam(owner).pw_uid
     gid = grp.getgrnam(group).gr_gid
+    _validate_storage_ancestors(install_root, uid, allow_missing=False)
     root = _open_directory(install_root)
     try:
         _require_directory_contract(root, uid, gid, "install-root")
         try:
             staging = _open_child_directory(root, staging_dir.name)
         except FileNotFoundError:
-            os.mkdir(staging_dir.name, 0o700, dir_fd=root.descriptor)
+            created_staging = False
             try:
-                os.chown(
-                    staging_dir.name,
-                    uid,
-                    gid,
-                    dir_fd=root.descriptor,
-                    follow_symlinks=False,
-                )
-                _fsync_directory(root)
+                os.mkdir(staging_dir.name, 0o700, dir_fd=root.descriptor)
+                created_staging = True
+            except FileExistsError:
+                pass
+            try:
+                if created_staging:
+                    os.chown(
+                        staging_dir.name,
+                        uid,
+                        gid,
+                        dir_fd=root.descriptor,
+                        follow_symlinks=False,
+                    )
+                    _fsync_directory(root)
                 staging = _open_child_directory(root, staging_dir.name)
             except Exception:
-                try:
-                    os.rmdir(staging_dir.name, dir_fd=root.descriptor)
-                except OSError:
-                    pass
+                if created_staging:
+                    try:
+                        os.rmdir(staging_dir.name, dir_fd=root.descriptor)
+                    except OSError:
+                        pass
                 raise
         except OSError as error:
             raise UnsafeState("unsafe-staging-directory") from error
@@ -471,34 +529,440 @@ def prepare_staging(
                 or stat.S_IMODE(info.st_mode) != 0o700
             ):
                 raise UnsafeState("unsafe-staging-directory")
-            for name in (artifact_name, stage_name):
-                if name is None:
-                    continue
+            transaction_name = f"transaction-{uuid.uuid4().hex}"
+            os.mkdir(transaction_name, 0o700, dir_fd=staging.descriptor)
+            transaction: _DirectoryGuard | None = None
+            try:
+                os.chown(
+                    transaction_name,
+                    uid,
+                    gid,
+                    dir_fd=staging.descriptor,
+                    follow_symlinks=False,
+                )
+                _fsync_directory(staging)
+                transaction = _open_child_directory(staging, transaction_name)
+                transaction_info = os.fstat(transaction.descriptor)
+                if (
+                    transaction_info.st_uid != uid
+                    or transaction_info.st_gid != gid
+                    or stat.S_IMODE(transaction_info.st_mode) != 0o700
+                ):
+                    raise UnsafeState("unsafe-staging-transaction")
+                payload = {
+                    "schema_version": 1,
+                    "transaction": transaction_name,
+                    "artifact_name": artifact_name,
+                    "stage_name": stage_name,
+                    "candidate_name": candidate_name,
+                    "version": version,
+                    "artifact_sha256": artifact_sha256,
+                    "artifact_type": artifact_type,
+                }
+                receipt = os.open(
+                    TRANSACTION_RECEIPT,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o600,
+                    dir_fd=transaction.descriptor,
+                )
                 try:
-                    os.stat(name, dir_fd=staging.descriptor, follow_symlinks=False)
-                except FileNotFoundError:
-                    continue
-                raise UnsafeState("staging-node-exists")
-            if stage_name is not None:
-                os.mkdir(stage_name, 0o700, dir_fd=staging.descriptor)
-                try:
+                    os.fchmod(receipt, 0o600)
+                    os.fchown(receipt, uid, gid)
+                    os.write(
+                        receipt,
+                        (json.dumps(payload, sort_keys=True) + "\n").encode(),
+                    )
+                    os.fsync(receipt)
+                finally:
+                    os.close(receipt)
+                if stage_name is not None:
+                    os.mkdir(stage_name, 0o700, dir_fd=transaction.descriptor)
                     os.chown(
                         stage_name,
                         uid,
                         gid,
-                        dir_fd=staging.descriptor,
+                        dir_fd=transaction.descriptor,
                         follow_symlinks=False,
                     )
-                    _fsync_directory(staging)
-                except Exception:
-                    try:
-                        os.rmdir(stage_name, dir_fd=staging.descriptor)
-                    except OSError:
-                        pass
-                    raise
+                _fsync_directory(transaction)
+                transaction_path = staging_dir / transaction_name
+                return {
+                    "status": "prepared",
+                    "changed": False,
+                    "transaction_dir": str(transaction_path),
+                    "artifact_path": str(transaction_path / artifact_name),
+                    "stage_dir": (
+                        str(transaction_path / stage_name)
+                        if stage_name is not None
+                        else None
+                    ),
+                }
+            except Exception:
+                if transaction is not None:
+                    for child in (stage_name, TRANSACTION_RECEIPT):
+                        if child is None:
+                            continue
+                        try:
+                            if child == stage_name:
+                                os.rmdir(child, dir_fd=transaction.descriptor)
+                            else:
+                                os.unlink(child, dir_fd=transaction.descriptor)
+                        except OSError:
+                            pass
+                    transaction.close()
+                    transaction = None
+                try:
+                    os.rmdir(transaction_name, dir_fd=staging.descriptor)
+                except OSError:
+                    pass
+                raise
+            finally:
+                if transaction is not None:
+                    transaction.close()
         finally:
             staging.close()
     finally:
+        root.close()
+
+
+def _transaction_payload(
+    transaction_name: str,
+    artifact_name: str,
+    stage_name: str | None,
+    candidate_name: str,
+    version: str,
+    artifact_sha256: str,
+    artifact_type: str,
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "transaction": transaction_name,
+        "artifact_name": artifact_name,
+        "stage_name": stage_name,
+        "candidate_name": candidate_name,
+        "version": version,
+        "artifact_sha256": artifact_sha256,
+        "artifact_type": artifact_type,
+    }
+
+
+def _read_transaction_receipt(
+    transaction: _DirectoryGuard, uid: int, gid: int
+) -> dict[str, object]:
+    descriptor = os.open(
+        TRANSACTION_RECEIPT,
+        os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+        dir_fd=transaction.descriptor,
+    )
+    try:
+        info = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_nlink != 1
+            or info.st_uid != uid
+            or info.st_gid != gid
+            or stat.S_IMODE(info.st_mode) != 0o600
+        ):
+            raise UnsafeState("unsafe-staging-receipt")
+        raw = os.read(descriptor, 4096)
+        if os.read(descriptor, 1):
+            raise UnsafeState("oversize-staging-receipt")
+        return json.loads(raw.decode())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise UnsafeState("invalid-staging-receipt") from error
+    finally:
+        os.close(descriptor)
+
+
+def _open_transaction(
+    install_root: Path,
+    staging_dir: Path,
+    transaction_dir: Path,
+    uid: int,
+    gid: int,
+) -> tuple[_DirectoryGuard, _DirectoryGuard, _DirectoryGuard]:
+    _validate_absolute(transaction_dir)
+    if staging_dir.parent != install_root or transaction_dir.parent != staging_dir:
+        raise UnsafeState("unsafe-staging-transaction")
+    _validate_name(staging_dir.name)
+    _validate_name(transaction_dir.name)
+    _validate_storage_ancestors(transaction_dir, uid, allow_missing=False)
+    root = _open_directory(install_root)
+    try:
+        _require_directory_contract(root, uid, gid, "install-root")
+        staging = _open_child_directory(root, staging_dir.name)
+        try:
+            staging_info = os.fstat(staging.descriptor)
+            if (
+                staging_info.st_uid != uid
+                or staging_info.st_gid != gid
+                or stat.S_IMODE(staging_info.st_mode) != 0o700
+            ):
+                raise UnsafeState("unsafe-staging-directory")
+            transaction = _open_child_directory(staging, transaction_dir.name)
+            transaction_info = os.fstat(transaction.descriptor)
+            if (
+                transaction_info.st_uid != uid
+                or transaction_info.st_gid != gid
+                or stat.S_IMODE(transaction_info.st_mode) != 0o700
+            ):
+                transaction.close()
+                raise UnsafeState("unsafe-staging-transaction")
+            return root, staging, transaction
+        except Exception:
+            staging.close()
+            raise
+    except Exception:
+        root.close()
+        raise
+
+
+def validate_staging_root(
+    install_root: Path,
+    staging_dir: Path,
+    *,
+    owner: str,
+    group: str,
+) -> dict[str, object]:
+    """Validate the existing staging namespace without creating any node."""
+    _validate_absolute(install_root)
+    _validate_absolute(staging_dir)
+    if staging_dir.parent != install_root:
+        raise UnsafeState("unsafe-staging-directory")
+    _validate_name(staging_dir.name)
+    uid = pwd.getpwnam(owner).pw_uid
+    gid = grp.getgrnam(group).gr_gid
+    _validate_storage_ancestors(install_root, uid, allow_missing=True)
+    try:
+        root = _open_directory(install_root)
+    except FileNotFoundError:
+        return {"status": "validated", "changed": False}
+    try:
+        _require_directory_contract(root, uid, gid, "install-root")
+        try:
+            staging = _open_child_directory(root, staging_dir.name)
+        except FileNotFoundError:
+            return {"status": "validated", "changed": False}
+        except OSError as error:
+            raise UnsafeState("unsafe-staging-directory") from error
+        try:
+            info = os.fstat(staging.descriptor)
+            if (
+                info.st_uid != uid
+                or info.st_gid != gid
+                or stat.S_IMODE(info.st_mode) != 0o700
+            ):
+                raise UnsafeState("unsafe-staging-directory")
+        finally:
+            staging.close()
+    finally:
+        root.close()
+    return {"status": "validated", "changed": False}
+
+
+def validate_staging(
+    install_root: Path,
+    staging_dir: Path,
+    transaction_dir: Path,
+    artifact_name: str,
+    stage_name: str | None,
+    candidate_name: str,
+    version: str,
+    artifact_sha256: str,
+    artifact_type: str,
+    phase: str,
+    *,
+    owner: str,
+    group: str,
+) -> dict[str, object]:
+    """Revalidate a receipt-owned transaction immediately before path writes."""
+    for name in (artifact_name, candidate_name, version):
+        _validate_name(name)
+    _validate_digest(artifact_sha256)
+    if artifact_type not in {"binary", "archive"} or phase not in {
+        "prepared",
+        "downloaded",
+    }:
+        raise UnsafeState("unsafe-staging-validation")
+    if stage_name is not None:
+        _validate_name(stage_name)
+    uid = pwd.getpwnam(owner).pw_uid
+    gid = grp.getgrnam(group).gr_gid
+    root, staging, transaction = _open_transaction(
+        install_root, staging_dir, transaction_dir, uid, gid
+    )
+    try:
+        expected = _transaction_payload(
+            transaction_dir.name,
+            artifact_name,
+            stage_name,
+            candidate_name,
+            version,
+            artifact_sha256,
+            artifact_type,
+        )
+        if _read_transaction_receipt(transaction, uid, gid) != expected:
+            raise UnsafeState("staging-receipt-mismatch")
+        allowed = {TRANSACTION_RECEIPT}
+        if phase == "downloaded":
+            allowed.add(artifact_name)
+        if stage_name is not None:
+            allowed.add(stage_name)
+        if set(os.listdir(transaction.descriptor)) != allowed:
+            raise UnsafeState("unexpected-staging-node")
+        if stage_name is not None:
+            stage = _open_child_directory(transaction, stage_name)
+            try:
+                stage_info = os.fstat(stage.descriptor)
+                if (
+                    stage_info.st_uid != uid
+                    or stage_info.st_gid != gid
+                    or stat.S_IMODE(stage_info.st_mode) != 0o700
+                    or os.listdir(stage.descriptor)
+                ):
+                    raise UnsafeState("unsafe-staging-stage")
+            finally:
+                stage.close()
+        if phase == "downloaded":
+            descriptor = os.open(
+                artifact_name,
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=transaction.descriptor,
+            )
+            try:
+                info = os.fstat(descriptor)
+                expected_mode = 0o700 if artifact_type == "binary" else 0o600
+                if (
+                    not stat.S_ISREG(info.st_mode)
+                    or info.st_nlink != 1
+                    or info.st_uid != uid
+                    or info.st_gid != gid
+                    or stat.S_IMODE(info.st_mode) != expected_mode
+                ):
+                    raise UnsafeState("unsafe-staging-artifact")
+                digest = hashlib.sha256()
+                while True:
+                    chunk = os.read(descriptor, 128 * 1024)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+                if digest.hexdigest() != artifact_sha256:
+                    raise UnsafeState("staging-artifact-digest-mismatch")
+            finally:
+                os.close(descriptor)
+        return {"status": "validated", "changed": False}
+    finally:
+        transaction.close()
+        staging.close()
+        root.close()
+
+
+def cleanup_staging(
+    install_root: Path,
+    staging_dir: Path,
+    transaction_dir: Path,
+    artifact_name: str,
+    stage_name: str | None,
+    candidate_name: str,
+    version: str,
+    artifact_sha256: str,
+    artifact_type: str,
+    *,
+    owner: str,
+    group: str,
+) -> dict[str, object]:
+    """Remove only nodes bound by one exact staging transaction receipt."""
+    for name in (artifact_name, candidate_name):
+        _validate_name(name)
+    _validate_name(version)
+    _validate_digest(artifact_sha256)
+    if artifact_type not in {"binary", "archive"}:
+        raise UnsafeState("unsafe-artifact-type")
+    if stage_name is not None:
+        _validate_name(stage_name)
+    uid = pwd.getpwnam(owner).pw_uid
+    gid = grp.getgrnam(group).gr_gid
+    root, staging, transaction = _open_transaction(
+        install_root, staging_dir, transaction_dir, uid, gid
+    )
+    try:
+        expected = _transaction_payload(
+            transaction_dir.name,
+            artifact_name,
+            stage_name,
+            candidate_name,
+            version,
+            artifact_sha256,
+            artifact_type,
+        )
+        if _read_transaction_receipt(transaction, uid, gid) != expected:
+            raise UnsafeState("staging-receipt-mismatch")
+        allowed = {TRANSACTION_RECEIPT, artifact_name}
+        if stage_name is not None:
+            allowed.add(stage_name)
+        if set(os.listdir(transaction.descriptor)) - allowed:
+            raise UnsafeState("unexpected-staging-node")
+        try:
+            artifact_info = os.stat(
+                artifact_name,
+                dir_fd=transaction.descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            pass
+        else:
+            if (
+                not stat.S_ISREG(artifact_info.st_mode)
+                or artifact_info.st_nlink != 1
+                or artifact_info.st_uid != uid
+                or artifact_info.st_gid != gid
+                or stat.S_IMODE(artifact_info.st_mode) not in {0o600, 0o700}
+            ):
+                raise UnsafeState("unsafe-staging-artifact")
+            os.unlink(artifact_name, dir_fd=transaction.descriptor)
+        if stage_name is not None:
+            stage = _open_child_directory(transaction, stage_name)
+            try:
+                stage_info = os.fstat(stage.descriptor)
+                if (
+                    stage_info.st_uid != uid
+                    or stage_info.st_gid != gid
+                    or stat.S_IMODE(stage_info.st_mode) != 0o700
+                    or set(os.listdir(stage.descriptor)) - {candidate_name}
+                ):
+                    raise UnsafeState("unsafe-staging-stage")
+                try:
+                    candidate_info = os.stat(
+                        candidate_name,
+                        dir_fd=stage.descriptor,
+                        follow_symlinks=False,
+                    )
+                except FileNotFoundError:
+                    pass
+                else:
+                    if (
+                        not stat.S_ISREG(candidate_info.st_mode)
+                        or candidate_info.st_nlink != 1
+                        or candidate_info.st_uid != uid
+                        or candidate_info.st_gid != gid
+                    ):
+                        raise UnsafeState("unsafe-staged-candidate")
+                    os.unlink(candidate_name, dir_fd=stage.descriptor)
+                _fsync_directory(stage)
+            finally:
+                stage.close()
+            os.rmdir(stage_name, dir_fd=transaction.descriptor)
+        os.unlink(TRANSACTION_RECEIPT, dir_fd=transaction.descriptor)
+        _fsync_directory(transaction)
+        transaction.close()
+        transaction = None
+        os.rmdir(transaction_dir.name, dir_fd=staging.descriptor)
+        _fsync_directory(staging)
+        return {"status": "cleaned", "changed": False}
+    finally:
+        if transaction is not None:
+            transaction.close()
+        staging.close()
         root.close()
 
 
@@ -571,7 +1035,9 @@ def _atomic_receipt(
     try:
         os.fchmod(descriptor, 0o644)
         os.fchown(descriptor, uid, gid)
-        os.write(descriptor, (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode())
+        os.write(
+            descriptor, (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode()
+        )
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
@@ -605,7 +1071,9 @@ def _owned_release_directory(
             _revalidate_directory(releases)
             os.mkdir(version, 0o755, dir_fd=releases.descriptor)
             try:
-                os.chown(version, uid, gid, dir_fd=releases.descriptor, follow_symlinks=False)
+                os.chown(
+                    version, uid, gid, dir_fd=releases.descriptor, follow_symlinks=False
+                )
                 _fsync_directory(releases)
                 release = _open_child_directory(releases, version)
             except Exception:
@@ -624,7 +1092,7 @@ def _owned_release_directory(
 def _atomic_install_candidate(
     release: _DirectoryGuard,
     binary_name: str,
-    staged_candidate: Path,
+    source: int,
     expected_digest: str,
     uid: int,
     gid: int,
@@ -636,7 +1104,6 @@ def _atomic_install_candidate(
     else:
         raise UnsafeState("candidate-appeared-during-install")
 
-    source = os.open(staged_candidate, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
     temporary = f".runtime-release-candidate-{os.getpid()}-{uuid.uuid4().hex}"
     try:
         source_info = os.fstat(source)
@@ -646,6 +1113,7 @@ def _atomic_install_candidate(
             or not source_info.st_mode & stat.S_IXUSR
         ):
             raise UnsafeState("unsafe-staged-candidate")
+        os.lseek(source, 0, os.SEEK_SET)
         destination = os.open(
             temporary,
             os.O_WRONLY | os.O_CREAT | os.O_EXCL,
@@ -676,7 +1144,6 @@ def _atomic_install_candidate(
         )
         _fsync_directory(release)
     finally:
-        os.close(source)
         try:
             os.unlink(temporary, dir_fd=release.descriptor)
         except FileNotFoundError:
@@ -694,7 +1161,7 @@ def _validate_or_publish_receipt(
     arch_slug: str,
     owner: str,
     group: str,
-    staged_candidate: Path | None,
+    staged_candidate: int | None,
 ) -> None:
     _validate_digest(artifact_sha256)
     _validate_digest(candidate_sha256)
@@ -768,6 +1235,93 @@ def _validate_or_publish_receipt(
         releases.close()
 
 
+def _open_staged_candidate(
+    install_root: Path,
+    staging_dir: Path,
+    transaction_dir: Path,
+    staged_candidate: Path,
+    artifact_name: str,
+    stage_name: str | None,
+    binary_name: str,
+    version: str,
+    artifact_sha256: str,
+    artifact_type: str,
+    candidate_sha256: str,
+    uid: int,
+    gid: int,
+) -> int:
+    """Open the receipt-bound candidate without following any path component."""
+    root, staging, transaction = _open_transaction(
+        install_root, staging_dir, transaction_dir, uid, gid
+    )
+    candidate_parent: _DirectoryGuard | None = None
+    try:
+        expected = _transaction_payload(
+            transaction_dir.name,
+            artifact_name,
+            stage_name,
+            binary_name,
+            version,
+            artifact_sha256,
+            artifact_type,
+        )
+        if _read_transaction_receipt(transaction, uid, gid) != expected:
+            raise UnsafeState("staging-receipt-mismatch")
+        if artifact_type == "binary":
+            expected_path = transaction_dir / artifact_name
+            candidate_parent = transaction
+            candidate_name = artifact_name
+        else:
+            if stage_name is None:
+                raise UnsafeState("missing-staging-stage")
+            expected_path = transaction_dir / stage_name / binary_name
+            candidate_parent = _open_child_directory(transaction, stage_name)
+            stage_info = os.fstat(candidate_parent.descriptor)
+            if (
+                stage_info.st_uid != uid
+                or stage_info.st_gid != gid
+                or stat.S_IMODE(stage_info.st_mode) != 0o700
+            ):
+                raise UnsafeState("unsafe-staging-stage")
+            candidate_name = binary_name
+        if staged_candidate != expected_path:
+            raise UnsafeState("staged-candidate-outside-transaction")
+        descriptor = os.open(
+            candidate_name,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=candidate_parent.descriptor,
+        )
+        try:
+            info = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_nlink != 1
+                or info.st_uid != uid
+                or info.st_gid != gid
+                or not info.st_mode & stat.S_IXUSR
+            ):
+                raise UnsafeState("unsafe-staged-candidate")
+            digest = hashlib.sha256()
+            while True:
+                chunk = os.read(descriptor, 128 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+            if digest.hexdigest() != candidate_sha256:
+                raise UnsafeState("staged-candidate-digest-mismatch")
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            return descriptor
+        except Exception:
+            os.close(descriptor)
+            raise
+    finally:
+        if candidate_parent is not None and candidate_parent is not transaction:
+            candidate_parent.close()
+        transaction.close()
+        staging.close()
+        root.close()
+
+
 def activate(
     install_root: Path,
     version: str,
@@ -783,6 +1337,11 @@ def activate(
     owner: str | None = None,
     group: str | None = None,
     staged_candidate: Path | None = None,
+    staging_dir: Path | None = None,
+    transaction_dir: Path | None = None,
+    artifact_name: str | None = None,
+    stage_name: str | None = None,
+    requires_artifact: bool = False,
 ) -> dict[str, object]:
     _validate_absolute(install_root)
     _validate_absolute(public_link)
@@ -790,6 +1349,14 @@ def activate(
     _validate_name(binary_name)
     if public_link == install_root or install_root in public_link.parents:
         raise UnsafeState("public-link-inside-install-root")
+    if (owner is None) != (group is None):
+        raise UnsafeState("incomplete-storage-identity")
+    if owner is not None:
+        _validate_storage_ancestors(
+            install_root,
+            pwd.getpwnam(owner).pw_uid,
+            allow_missing=check,
+        )
 
     public_directory: _DirectoryGuard | None = None
     root_directory: _DirectoryGuard | None = None
@@ -872,7 +1439,7 @@ def activate(
                 else before["previous"]
             ),
         }
-        changed = desired != before
+        changed = desired != before or requires_artifact
         if check:
             return {"status": "predicted", "changed": changed}
 
@@ -885,24 +1452,53 @@ def activate(
             owner,
             group,
         )
+        staged_descriptor: int | None = None
         if any(value is not None for value in receipt_inputs):
             if any(value is None for value in receipt_inputs):
                 raise UnsafeState("incomplete-receipt-input")
             if root_directory is None:
                 raise UnsafeState("missing-install-root")
-            _validate_or_publish_receipt(
-                root_directory,
-                version,
-                binary_name,
-                artifact_sha256,
-                candidate_sha256,
-                artifact_type,
-                arch_key,
-                arch_slug,
-                owner,
-                group,
-                staged_candidate,
-            )
+            if requires_artifact:
+                transaction_inputs = (
+                    staging_dir,
+                    transaction_dir,
+                    artifact_name,
+                    staged_candidate,
+                )
+                if any(value is None for value in transaction_inputs):
+                    raise UnsafeState("incomplete-staging-transaction-input")
+                staged_descriptor = _open_staged_candidate(
+                    install_root,
+                    staging_dir,
+                    transaction_dir,
+                    staged_candidate,
+                    artifact_name,
+                    stage_name,
+                    binary_name,
+                    version,
+                    artifact_sha256,
+                    artifact_type,
+                    candidate_sha256,
+                    storage_uid,
+                    storage_gid,
+                )
+            try:
+                _validate_or_publish_receipt(
+                    root_directory,
+                    version,
+                    binary_name,
+                    artifact_sha256,
+                    candidate_sha256,
+                    artifact_type,
+                    arch_key,
+                    arch_slug,
+                    owner,
+                    group,
+                    staged_descriptor,
+                )
+            finally:
+                if staged_descriptor is not None:
+                    os.close(staged_descriptor)
         else:
             if root_directory is None:
                 raise UnsafeState("missing-install-root")
@@ -971,20 +1567,27 @@ def activate(
                         binary_name=binary_name,
                         public=False,
                     )
-                    if _snapshot_link(
-                        install_root / "current",
-                        parent=root_directory,
-                        root=install_root,
-                        binary_name=binary_name,
-                    ) != before["current"] or _snapshot_link(
-                        install_root / "previous",
-                        parent=root_directory,
-                        root=install_root,
-                        binary_name=binary_name,
-                    ) != before["previous"]:
+                    if (
+                        _snapshot_link(
+                            install_root / "current",
+                            parent=root_directory,
+                            root=install_root,
+                            binary_name=binary_name,
+                        )
+                        != before["current"]
+                        or _snapshot_link(
+                            install_root / "previous",
+                            parent=root_directory,
+                            root=install_root,
+                            binary_name=binary_name,
+                        )
+                        != before["previous"]
+                    ):
                         raise OSError("compensation-postcheck-failed")
                 except Exception as compensation_error:
-                    raise CompensationIncomplete("compensation-incomplete") from compensation_error
+                    raise CompensationIncomplete(
+                        "compensation-incomplete"
+                    ) from compensation_error
                 raise ActivationFailed("activation-failed") from activation_error
             try:
                 if root_directory is None:
@@ -998,7 +1601,9 @@ def activate(
                     public_directory,
                 )
             except Exception as compensation_error:
-                raise CompensationIncomplete("compensation-incomplete") from compensation_error
+                raise CompensationIncomplete(
+                    "compensation-incomplete"
+                ) from compensation_error
             raise ActivationFailed("activation-failed") from activation_error
         return {"status": "committed", "changed": changed}
     finally:
@@ -1025,36 +1630,102 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--group")
     parser.add_argument("--staged-candidate", type=Path)
     parser.add_argument("--staging-dir", type=Path)
+    parser.add_argument("--transaction-dir", type=Path)
+    parser.add_argument("--artifact-name")
     parser.add_argument("--stage-name")
+    parser.add_argument("--phase", choices=("prepared", "downloaded"))
+    parser.add_argument(
+        "--requires-artifact", choices=("true", "false"), default="false"
+    )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--apply", action="store_true")
     mode.add_argument("--prepare-staging", action="store_true")
+    mode.add_argument("--cleanup-staging", action="store_true")
+    mode.add_argument("--validate-staging", action="store_true")
+    mode.add_argument("--validate-staging-root", action="store_true")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     try:
         args = _parser().parse_args(argv)
+        if args.stage_name == "":
+            args.stage_name = None
+        if args.transaction_dir is not None and str(args.transaction_dir) == ".":
+            args.transaction_dir = None
         if args.prepare_staging:
             if (
                 args.staging_dir is None
+                or args.artifact_name is None
                 or args.binary_name is None
+                or args.version is None
+                or args.artifact_sha256 is None
+                or args.artifact_type is None
                 or args.owner is None
                 or args.group is None
             ):
                 raise UnsafeState("incomplete-staging-input")
-            prepare_staging(
+            result = prepare_staging(
                 args.install_root,
                 args.staging_dir,
-                args.binary_name,
+                args.artifact_name,
                 args.stage_name,
+                args.binary_name,
+                args.version,
+                args.artifact_sha256,
+                args.artifact_type,
                 owner=args.owner,
                 group=args.group,
             )
-            result = {"status": "prepared", "changed": False}
+        elif args.validate_staging_root:
+            if args.staging_dir is None or args.owner is None or args.group is None:
+                raise UnsafeState("incomplete-staging-input")
+            result = validate_staging_root(
+                args.install_root,
+                args.staging_dir,
+                owner=args.owner,
+                group=args.group,
+            )
+        elif args.cleanup_staging or args.validate_staging:
+            if (
+                args.staging_dir is None
+                or args.transaction_dir is None
+                or args.artifact_name is None
+                or args.binary_name is None
+                or args.version is None
+                or args.artifact_sha256 is None
+                or args.artifact_type is None
+                or args.owner is None
+                or args.group is None
+                or (args.validate_staging and args.phase is None)
+            ):
+                raise UnsafeState("incomplete-staging-input")
+            operation = validate_staging if args.validate_staging else cleanup_staging
+            operation_args = [
+                args.install_root,
+                args.staging_dir,
+                args.transaction_dir,
+                args.artifact_name,
+                args.stage_name,
+                args.binary_name,
+                args.version,
+                args.artifact_sha256,
+                args.artifact_type,
+            ]
+            if args.validate_staging:
+                operation_args.append(args.phase)
+            result = operation(
+                *operation_args,
+                owner=args.owner,
+                group=args.group,
+            )
         else:
-            if args.version is None or args.binary_name is None or args.public_link is None:
+            if (
+                args.version is None
+                or args.binary_name is None
+                or args.public_link is None
+            ):
                 raise UnsafeState("incomplete-activation-input")
             result = activate(
                 args.install_root,
@@ -1070,6 +1741,11 @@ def main(argv: list[str] | None = None) -> int:
                 owner=args.owner,
                 group=args.group,
                 staged_candidate=args.staged_candidate,
+                staging_dir=args.staging_dir,
+                transaction_dir=args.transaction_dir,
+                artifact_name=args.artifact_name,
+                stage_name=args.stage_name,
+                requires_artifact=args.requires_artifact == "true",
             )
     except CompensationIncomplete:
         print(json.dumps({"status": "compensation_incomplete", "changed": False}))
