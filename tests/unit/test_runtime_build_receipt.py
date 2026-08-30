@@ -1217,6 +1217,54 @@ def test_post_commit_cleanup_failure_reports_pending_success(
     assert list(stage.iterdir()) == []
 
 
+def test_committed_recovery_notifies_before_any_fallible_stage_work(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    descriptor = _descriptor(output)
+    real_unlink = helper.os.unlink
+    failed = False
+
+    def fail_backup_cleanup(path, *args, **kwargs):
+        nonlocal failed
+        if ".runtime-backup." in str(path) and not failed:
+            failed = True
+            raise OSError("injected-post-commit-backup-cleanup-failure")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(helper.os, "unlink", fail_backup_cleanup)
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": True,
+        "cleanup_pending": True,
+    }
+    monkeypatch.undo()
+
+    real_prepare_stage = helper._prepare_stage
+    prepare_called = False
+
+    def fail_after_real_recovered_stage_close(*args, **kwargs):
+        nonlocal prepare_called
+        prepare_called = True
+        stage_path, stage_fd = real_prepare_stage(*args, **kwargs)
+        helper.os.close(stage_fd)
+        raise OSError("injected-recovered-stage-close-failure")
+
+    monkeypatch.setattr(helper, "_prepare_stage", fail_after_real_recovered_stage_close)
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": True,
+    }
+    assert prepare_called is False
+
+    monkeypatch.undo()
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": False,
+    }
+
+
 def test_cleanup_pending_is_not_reported_without_a_readable_durable_journal(
     trusted_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
