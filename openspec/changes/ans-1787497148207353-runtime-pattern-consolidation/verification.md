@@ -3,7 +3,7 @@ task_id: ANS-1787497148207353
 change: ans-1787497148207353-runtime-pattern-consolidation
 commit_sha: null
 local: required
-local_evidence: runtime-release contract module 64 PASS under the build-gate restrictive umask; isolated native root-Ansible acceptance result SHA256 178a77612b70ac51a7dc88879fa56c39d244e88a82c76429457cacb42cbfb7a4
+local_evidence: runtime-release contract module 64 PASS under the build-gate restrictive umask; isolated native root-Ansible acceptance result SHA256 84d3d356c1c0ebdb47f43aceb0d57f32aeb194449e1a06b85670174b65dbe033
 remote_ci: required
 remote_ci_evidence: null
 dry_run: required
@@ -24,7 +24,7 @@ artifact_evidence: receipt-owned binary and archive release fixtures validated w
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-INSTALL-RELEASE-SHARED | ANS-1787496118906923 | 64 contract tests under restrictive umask; isolated native root-Ansible binary/archive install, idempotence, upgrade links, failure-to-retry cleanup, exactly-one same-pin publication, and foreign-replacement retention on source commit `02a18ce8815c318357ce84a0c790e3d0241487f5` | local/native pass; hosted integration pending |
+| REQ-INSTALL-RELEASE-SHARED | ANS-1787496118906923 | 64 contract tests under restrictive umask; isolated native root-Ansible binary/archive install, idempotence, upgrade links, failure-to-retry cleanup, exactly-one same-pin publication, and foreign-replacement retention on source commit `da42d7530c64961c7399ff0179a65f1f18dc46f9` under restrictive `umask 077` | local/native pass; hosted integration pending |
 | REQ-INSTALL-RELEASE-SHARED | ANS-1787496118907057 | xray-runtime, hysteria, hysteria-realm and snell post-migration Molecule results | pending |
 | REQ-INSTALL-RELEASE-SHARED | ANS-1787496118906866 | probe-matrix-target and dns-morph-bridge post-migration Molecule results | pending |
 | REQ-BUILD-RECEIPT-IDIOM | ANS-1787496118907179 | amneziawg rebuild-decision case with bumped descriptor | pending |
