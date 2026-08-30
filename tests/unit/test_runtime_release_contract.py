@@ -1,5 +1,7 @@
 """Contract tests for the inert shared runtime release installer role."""
 
+import base64
+import copy
 import getpass
 import grp
 import hashlib
@@ -191,6 +193,46 @@ def test_release_receipt_binds_existing_candidate_to_pin_and_binary_digest() -> 
     assert "Publish immutable runtime release receipt" not in [
         task["name"] for task in _tasks()
     ]
+
+
+def test_receipt_observation_unconditionally_refreshes_candidate_before_validation() -> (
+    None
+):
+    names = [task["name"] for task in _tasks()]
+    candidate = _task("Inspect pinned runtime release candidate")
+    receipt = _task("Inspect runtime release receipt")
+    refresh = _task(
+        "Refresh pinned runtime release candidate after receipt observation"
+    )
+    validation = _task("Validate existing runtime release receipt before writing")
+
+    assert names.index(candidate["name"]) < names.index(receipt["name"])
+    assert names.index(receipt["name"]) < names.index(refresh["name"])
+    assert names.index(refresh["name"]) < names.index(validation["name"])
+    assert refresh["ansible.builtin.stat"] == {
+        "path": candidate["ansible.builtin.stat"]["path"],
+        "follow": False,
+        "checksum_algorithm": "sha256",
+    }
+    assert refresh["register"] == "_runtime_release_candidate"
+    assert "when" not in refresh
+
+
+def test_receipt_without_candidate_still_refuses_before_transaction_preparation() -> (
+    None
+):
+    refresh = _task(
+        "Refresh pinned runtime release candidate after receipt observation"
+    )
+    validation = _task("Validate existing runtime release receipt before writing")
+    assertions = yaml.safe_dump(validation["ansible.builtin.assert"]["that"])
+    names = [task["name"] for task in _tasks()]
+
+    assert "when" not in refresh
+    assert "(_runtime_release_candidate.stat.exists | default(false))" in assertions
+    assert names.index(validation["name"]) < names.index(
+        "Prepare trusted runtime release transaction"
+    )
 
 
 def test_binary_and_archive_candidates_are_staged_outside_the_live_release_tree() -> (
@@ -720,6 +762,250 @@ def _run_role(
         text=True,
         timeout=30,
     )
+
+
+_PUBLISH_CONVERGED_RELEASE = """
+import base64
+import hashlib
+import importlib.util
+import json
+import os
+import shutil
+import sys
+from pathlib import Path
+
+helper_path = Path(sys.argv[1])
+root = Path(sys.argv[2])
+source = Path(sys.argv[3])
+public = Path(sys.argv[4])
+marker = Path(sys.argv[5])
+version = sys.argv[6]
+binary_name = sys.argv[7]
+artifact_sha256 = sys.argv[8]
+arch_slug = sys.argv[9]
+owner = sys.argv[10]
+group = sys.argv[11]
+artifact_name = "fixture-artifact"
+staging = root / ".runtime-release-staging"
+root.mkdir(parents=True, exist_ok=True)
+os.chmod(root, 0o755)
+(root / "releases").mkdir(exist_ok=True)
+os.chmod(root / "releases", 0o755)
+public.parent.mkdir(parents=True, exist_ok=True)
+os.chmod(public.parent, 0o755)
+
+spec = importlib.util.spec_from_file_location("fixture_runtime_release", helper_path)
+helper = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(helper)
+prepared = helper.prepare_staging(
+    root, staging, artifact_name, None, binary_name, version, artifact_sha256,
+    "binary", owner=owner, group=group,
+)
+transaction = Path(prepared["transaction_dir"])
+artifact_path = Path(prepared["artifact_path"])
+try:
+    shutil.copyfile(source, artifact_path)
+    os.chmod(artifact_path, 0o700)
+    candidate_sha256 = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
+    published = helper.activate(
+        root, version, binary_name, public, check=False,
+        artifact_sha256=artifact_sha256, candidate_sha256=candidate_sha256,
+        artifact_type="binary", arch_key="amd64", arch_slug=arch_slug,
+        owner=owner, group=group, staged_candidate=artifact_path,
+        staging_dir=staging, transaction_dir=transaction, artifact_name=artifact_name,
+        requires_artifact=True,
+    )
+    assert published == {"status": "committed", "changed": True}
+finally:
+    helper.cleanup_staging(
+        root, staging, transaction, artifact_name, None, binary_name, version,
+        artifact_sha256, "binary", owner=owner, group=group,
+    )
+
+candidate = root / "releases" / version / binary_name
+receipt = candidate.parent / ".runtime-release.json"
+current = root / "current"
+marker.write_text(json.dumps({
+    "candidate_bytes": base64.b64encode(candidate.read_bytes()).decode(),
+    "candidate_inode": candidate.stat().st_ino,
+    "receipt_bytes": base64.b64encode(receipt.read_bytes()).decode(),
+    "receipt_inode": receipt.stat().st_ino,
+    "current_inode": current.lstat().st_ino,
+    "current_target": os.readlink(current),
+    "public_inode": public.lstat().st_ino,
+    "public_target": os.readlink(public),
+}, sort_keys=True))
+"""
+
+
+def _run_runtime_release_full_role(
+    tmp_path: Path,
+    artifact: Path,
+    *,
+    publish_between_stats: bool = False,
+    orphan_receipt: bool = False,
+) -> tuple[subprocess.CompletedProcess[str], Path, Path, Path, Path]:
+    """Run the complete live post-contract role slice with local fixture identity."""
+    tmp_path = tmp_path.resolve()
+    artifact = artifact.resolve()
+    owner = getpass.getuser()
+    group = grp.getgrgid(os.getgid()).gr_name
+    root = tmp_path / "install"
+    public = tmp_path / "bin" / "runtime-fixture"
+    marker = tmp_path / "publisher-marker.json"
+    checksum = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    version = "v1"
+    binary_name = "runtime-fixture"
+    candidate = root / "releases" / version / binary_name
+    receipt = candidate.parent / ".runtime-release.json"
+    unavailable_url = (tmp_path / "unavailable-artifact").as_uri()
+    roles_root = tmp_path / "roles"
+    copied_role = roles_root / "runtime-release"
+    shutil.copytree(ROLE, copied_role)
+    copied_tasks = copied_role / "tasks" / "main.yml"
+    live_tasks = _raw_tasks()
+    names = [task["name"] for task in live_tasks]
+    start = names.index("Select pinned runtime release artifact")
+    end = names.index("Publish runtime release change state")
+    tasks = copy.deepcopy(live_tasks[start : end + 1])
+    if publish_between_stats:
+        candidate_index = next(
+            index
+            for index, task in enumerate(tasks)
+            if task["name"] == "Inspect pinned runtime release candidate"
+        )
+        tasks.insert(
+            candidate_index + 1,
+            {
+                "name": "Fixture peer publishes converged release between stats",
+                "ansible.builtin.command": {
+                    "argv": [
+                        "{{ ansible_python_interpreter }}",
+                        "-",
+                        "{{ role_path }}/files/runtime_release_activate.py",
+                        "{{ runtime_release_install_root }}",
+                        str(artifact),
+                        "{{ runtime_release_public_link }}",
+                        str(marker),
+                        "{{ runtime_release_version }}",
+                        "{{ runtime_release_binary_name }}",
+                        "{{ _runtime_release_checksum }}",
+                        "{{ runtime_release_arch_slug }}",
+                        "{{ runtime_release_storage_owner }}",
+                        "{{ runtime_release_storage_group }}",
+                    ],
+                    "stdin": _PUBLISH_CONVERGED_RELEASE,
+                    "stdin_add_newline": False,
+                    "expand_argument_vars": False,
+                },
+                "changed_when": False,
+            },
+        )
+    copied_tasks.write_text(yaml.safe_dump(tasks, sort_keys=False))
+    assert (copied_role / "files" / "runtime_release_activate.py").read_bytes() == (
+        ACTIVATOR.read_bytes()
+    )
+
+    if orphan_receipt:
+        receipt.parent.mkdir(parents=True)
+        for directory in (root, root / "releases", receipt.parent):
+            directory.chmod(0o755)
+        receipt.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "version": version,
+                    "arch_key": "amd64",
+                    "arch_slug": "amd64",
+                    "binary_name": binary_name,
+                    "artifact_sha256": checksum,
+                    "binary_sha256": checksum,
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        receipt.chmod(0o644)
+        marker.write_text(
+            json.dumps(
+                {
+                    "receipt_inode": receipt.stat().st_ino,
+                    "receipt_bytes": base64.b64encode(receipt.read_bytes()).decode(),
+                },
+                sort_keys=True,
+            )
+        )
+
+    variables = {
+        "ansible_facts": {"architecture": "x86_64"},
+        "ansible_python_interpreter": sys.executable,
+        "_runtime_release_arch_key": "amd64",
+        "runtime_release_version": version,
+        "runtime_release_install_root": str(root),
+        "runtime_release_binary_name": binary_name,
+        "runtime_release_public_link": str(public),
+        "runtime_release_urls": {
+            "amd64": unavailable_url,
+            "arm64": unavailable_url,
+        },
+        "runtime_release_sha256": {"amd64": checksum, "arm64": checksum},
+        "runtime_release_artifact_filename": "fixture-artifact",
+        "runtime_release_artifact_type": "binary",
+        "runtime_release_archive_member": "",
+        "runtime_release_archive_strip_components": 0,
+        "runtime_release_download_dir": str(root / ".runtime-release-staging"),
+        "runtime_release_storage_owner": owner,
+        "runtime_release_storage_group": group,
+    }
+    play = {
+        "name": "Exercise complete runtime release role from exact copied tasks",
+        "hosts": "localhost",
+        "connection": "local",
+        "gather_facts": False,
+        "vars": variables,
+        "roles": ["runtime-release"],
+    }
+    if publish_between_stats:
+        play["tasks"] = [
+            {
+                "name": "Fixture asserts full role converged without B transaction",
+                "ansible.builtin.assert": {
+                    "that": [
+                        "not (runtime_release_changed | bool)",
+                        "not (_runtime_release_needs_artifact | bool)",
+                        "not (_runtime_release_staging_prepared | bool)",
+                    ]
+                },
+            }
+        ]
+    playbook = tmp_path / "full-role.yml"
+    playbook.write_text(yaml.safe_dump([play], sort_keys=False))
+    config = tmp_path / "ansible-full-role.cfg"
+    config.write_text("[defaults]\nfact_caching=memory\ninject_facts_as_vars=false\n")
+    environment = {
+        key: os.environ[key] for key in ("PATH", "HOME", "LANG") if key in os.environ
+    }
+    environment.update(
+        {
+            "ANSIBLE_CONFIG": str(config),
+            "ANSIBLE_HOME": str(tmp_path / "ansible-home"),
+            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
+            "ANSIBLE_ROLES_PATH": str(roles_root),
+            "ANSIBLE_NOCOLOR": "1",
+        }
+    )
+    executable = shutil.which("ansible-playbook")
+    assert executable, "installed Ansible is required for the runtime-release proof"
+    result = subprocess.run(
+        [executable, "-i", "localhost,", str(playbook)],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return result, candidate, receipt, public, marker
 
 
 def _run_helper_fixture(
@@ -2086,6 +2372,62 @@ def test_real_role_check_mode_refuses_non_root_fixture_without_writes(
     assert predicted.returncode != 0
     assert not (tmp_path / "install").exists()
     assert not (tmp_path / "install" / ".downloads").exists()
+
+
+def test_installed_ansible_full_role_refreshes_peer_release_without_transaction(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "fixture"
+    artifact.write_text("#!/bin/sh\necho converged-peer\n")
+
+    result, candidate, receipt, public, marker = _run_runtime_release_full_role(
+        tmp_path,
+        artifact,
+        publish_between_stats=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    published = json.loads(marker.read_text())
+    assert base64.b64decode(published["candidate_bytes"]) == candidate.read_bytes()
+    assert published["candidate_inode"] == candidate.stat().st_ino
+    assert base64.b64decode(published["receipt_bytes"]) == receipt.read_bytes()
+    assert published["receipt_inode"] == receipt.stat().st_ino
+    root = candidate.parents[2]
+    current = root / "current"
+    assert published["current_inode"] == current.lstat().st_ino
+    assert published["current_target"] == os.readlink(current)
+    assert published["public_inode"] == public.lstat().st_ino
+    assert published["public_target"] == os.readlink(public)
+    staging = root / ".runtime-release-staging"
+    assert not staging.exists() or list(staging.iterdir()) == []
+
+
+def test_installed_ansible_full_role_refuses_orphan_receipt_before_transaction(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "fixture"
+    artifact.write_text("#!/bin/sh\necho orphan-receipt\n")
+
+    result, candidate, receipt, public, marker = _run_runtime_release_full_role(
+        tmp_path,
+        artifact,
+        orphan_receipt=True,
+    )
+
+    before = json.loads(marker.read_text())
+    assert result.returncode != 0
+    assert "Existing runtime release candidate does not match" in (
+        result.stdout + result.stderr
+    )
+    assert marker.exists()
+    assert not candidate.exists()
+    assert receipt.stat().st_ino == before["receipt_inode"]
+    assert base64.b64encode(receipt.read_bytes()).decode() == before["receipt_bytes"]
+    root = candidate.parents[2]
+    assert not (root / ".runtime-release-staging").exists()
+    assert not os.path.lexists(root / "current")
+    assert not os.path.lexists(public)
+    assert not public.parent.exists()
 
 
 def test_helper_check_mode_predicts_existing_release_without_link_writes(
