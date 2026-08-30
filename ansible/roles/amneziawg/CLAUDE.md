@@ -18,9 +18,11 @@ Reused keys break replay protection.
 
 **Source refs require matching immutable commits** — the secrets example and
 both bootstrap generators emit each source tag with its resolved commit SHA.
-The role verifies the checkout still resolves to that SHA before building.
-Build receipts bind the installed binaries to those resolved commits, so
-check mode reports only actionable binary drift and never runs a compiler.
+Each resolved commit gets a distinct, non-updating checkout path, so concurrent
+controllers with different pins cannot mutate another build's source tree. The
+role verifies the checkout still resolves to that SHA before building. Build
+receipts bind the installed binaries to those resolved commits, so check mode
+reports only actionable binary drift and never runs a compiler.
 
 **Molecule runs the real role** — preparation supplies local synthetic Git
 repositories, not installed binaries or receipts. File-only Git transport

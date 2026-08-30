@@ -6,7 +6,8 @@ This role owns installation of the SHA256-pinned Xray release and the `/usr/loca
 
 The optional source path requires an exact checkout commit and a distinct
 source-built binary SHA256, then records both with the canonical Go recipe in
-the shared runtime-build receipt. Compilation targets the private transaction
+the shared runtime-build receipt. Its checkout path is keyed by that commit and
+never updated in place, while compilation targets the private transaction
 stage; the helper publishes only verified bytes. The existing
 `vpn.build_xray_from_source` boolean remains the selection input.
 
