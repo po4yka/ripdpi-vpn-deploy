@@ -67,7 +67,7 @@ def test_runtime_release_defaults_are_a_complete_prefixed_api() -> None:
         "runtime_release_arch_slugs": {"amd64": "amd64", "arm64": "arm64"},
         "runtime_release_artifact_filename": "artifact",
         "runtime_release_artifact_type": "binary",
-        "runtime_release_archive_member": "",
+        "runtime_release_archive_members": {"amd64": "", "arm64": ""},
         "runtime_release_archive_strip_components": 0,
         "runtime_release_download_dir": (
             "{{ runtime_release_install_root }}/.runtime-release-staging"
@@ -80,9 +80,10 @@ def test_runtime_release_defaults_are_a_complete_prefixed_api() -> None:
 def test_preflight_and_architecture_selection_happen_before_writes() -> None:
     tasks = _tasks()
     names = [task["name"] for task in tasks]
-    assert names[:3] == [
+    assert names[:4] == [
         "Derive canonical runtime release architecture",
         "Refuse unsupported runtime release architecture",
+        "Select architecture-specific runtime release archive member",
         "Validate runtime release contract before writing",
     ]
     assert names.index(
@@ -102,6 +103,12 @@ def test_preflight_and_architecture_selection_happen_before_writes() -> None:
     )
     assert selected["_runtime_release_checksum"] == (
         "{{ runtime_release_sha256[_runtime_release_arch_key] | lower }}"
+    )
+    archive_member = _task(
+        "Select architecture-specific runtime release archive member"
+    )["ansible.builtin.set_fact"]
+    assert archive_member["_runtime_release_archive_member"] == (
+        "{{ runtime_release_archive_members[_runtime_release_arch_key] | default('') }}"
     )
     assert selected["runtime_release_arch_slug"] == (
         "{{ runtime_release_arch_slugs[_runtime_release_arch_key] }}"
@@ -123,7 +130,8 @@ def test_contract_refuses_unpinned_or_unsafe_paths_and_artifact_shapes() -> None
         "runtime_release_sha256[_runtime_release_arch_key]",
     ):
         assert expected in serialized
-    assert "runtime_release_archive_member.split('/')" in serialized
+    assert "_runtime_release_archive_member.split('/')" in serialized
+    assert "runtime_release_archive_members is mapping" in serialized
     assert "[runtime_release_binary_name]" in serialized
     assert "runtime_release_archive_strip_components | int >= 0" in serialized
     assert "runtime_release_archive_strip_components | int <= 4" in serialized
@@ -245,7 +253,7 @@ def test_binary_and_archive_candidates_are_staged_outside_the_live_release_tree(
     archive = _task("Extract pinned archive into trusted staging")
     archive_module = archive["ansible.builtin.unarchive"]
     assert archive_module["dest"] == "{{ _runtime_release_stage_dir }}"
-    assert archive_module["include"] == ["{{ runtime_release_archive_member }}"]
+    assert archive_module["include"] == ["{{ _runtime_release_archive_member }}"]
     assert "runtime_release_archive_strip_components" in archive_module["extra_opts"]
 
     activation = _task("Activate runtime release under host-local lock")
@@ -677,7 +685,9 @@ def _run_role(
     uppercase_checksum: bool = False,
     artifact_type: str = "binary",
     archive_member: str = "",
+    archive_members: dict[str, str] | None = None,
     archive_strip_components: int = 0,
+    architecture: str = "x86_64",
     install_root: Path | None = None,
     run_label: str = "",
     storage_owner: str = "root",
@@ -699,7 +709,7 @@ def _run_role(
         checksum = checksum.upper()
     root = install_root or (tmp_path / "install")
     variables = {
-        "ansible_facts": {"architecture": "x86_64"},
+        "ansible_facts": {"architecture": architecture},
         "ansible_python_interpreter": sys.executable,
         "runtime_release_version": version,
         "runtime_release_install_root": str(root),
@@ -714,7 +724,11 @@ def _run_role(
         "runtime_release_sha256": {"amd64": checksum, "arm64": checksum},
         "runtime_release_artifact_filename": artifact.name,
         "runtime_release_artifact_type": artifact_type,
-        "runtime_release_archive_member": archive_member,
+        "runtime_release_archive_members": (
+            archive_members
+            if archive_members is not None
+            else {"amd64": archive_member, "arm64": archive_member}
+        ),
         "runtime_release_archive_strip_components": archive_strip_components,
         "runtime_release_download_dir": str(root / ".runtime-release-staging"),
         "runtime_release_storage_owner": storage_owner,
@@ -756,6 +770,121 @@ def _run_role(
         command.append("--check")
     return subprocess.run(
         command,
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
+def _run_archive_member_role_slice(
+    tmp_path: Path,
+    artifact: Path,
+    archive_members: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    """Run the live preflight and extraction tasks without root-only ownership."""
+    bsdtar = shutil.which("bsdtar")
+    if bsdtar is None:
+        pytest.skip("bsdtar is required for the local nested-tar regression")
+    stage = tmp_path / "stage"
+    stage.mkdir(mode=0o755)
+    tool_dir = tmp_path / "tar-tool"
+    tool_dir.mkdir(mode=0o755)
+    tar = tool_dir / "tar"
+    tar.write_text(
+        f"#!{sys.executable}\n"
+        "import os\n"
+        "import sys\n"
+        "if sys.argv[1:] == ['--version']:\n"
+        "    print('tar (GNU tar) fixture')\n"
+        "    raise SystemExit(0)\n"
+        f"argv = [{bsdtar!r}, *(arg for arg in sys.argv[1:] "
+        "if arg not in {'--show-transformed-names', '--show-stored-names'})]\n"
+        "if '--diff' in argv:\n"
+        "    argv = [arg for arg in argv if arg != '--diff']\n"
+        "    argv.insert(1, '--extract')\n"
+        "os.execv(argv[0], argv)\n"
+    )
+    tar.chmod(0o755)
+    selected_tasks = [
+        copy.deepcopy(_raw_tasks()[0]),
+        copy.deepcopy(_raw_tasks()[1]),
+        copy.deepcopy(_raw_tasks()[2]),
+        copy.deepcopy(_raw_tasks()[3]),
+        copy.deepcopy(_task("Extract pinned archive into trusted staging")),
+    ]
+    extraction = selected_tasks[-1]["ansible.builtin.unarchive"]
+    extraction.pop("owner")
+    extraction.pop("group")
+    executable = shutil.which("ansible-playbook")
+    assert executable, "installed Ansible is required for the runtime-release proof"
+    config = tmp_path / "archive-members.cfg"
+    config.write_text("[defaults]\nfact_caching=memory\ninject_facts_as_vars=false\n")
+    playbook = tmp_path / "archive-members.yml"
+    checksum = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "name": "Exercise live runtime release archive selection",
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "vars": {
+                        "ansible_facts": {"architecture": "aarch64"},
+                        "ansible_python_interpreter": sys.executable,
+                        "runtime_release_version": "v1",
+                        "runtime_release_install_root": str(tmp_path / "install"),
+                        "runtime_release_binary_name": "runtime-fixture",
+                        "runtime_release_public_link": str(
+                            tmp_path / "bin" / "runtime-fixture"
+                        ),
+                        "runtime_release_urls": {
+                            "amd64": artifact.as_uri(),
+                            "arm64": artifact.as_uri(),
+                        },
+                        "runtime_release_sha256": {
+                            "amd64": checksum,
+                            "arm64": checksum,
+                        },
+                        "runtime_release_arch_slugs": {
+                            "amd64": "amd64",
+                            "arm64": "arm64",
+                        },
+                        "runtime_release_artifact_filename": artifact.name,
+                        "runtime_release_artifact_type": "archive",
+                        "runtime_release_archive_members": archive_members,
+                        "runtime_release_archive_strip_components": 1,
+                        "runtime_release_download_dir": str(
+                            tmp_path / "install" / ".runtime-release-staging"
+                        ),
+                        "runtime_release_storage_owner": "root",
+                        "runtime_release_storage_group": "root",
+                        "_runtime_release_artifact_path": str(artifact),
+                        "_runtime_release_stage_dir": str(stage),
+                        "_runtime_release_needs_artifact": True,
+                    },
+                    "tasks": selected_tasks,
+                }
+            ],
+            sort_keys=False,
+        )
+    )
+    environment = {
+        key: os.environ[key] for key in ("HOME", "LANG") if key in os.environ
+    }
+    environment.update(
+        {
+            "PATH": f"{tool_dir}:{os.environ['PATH']}",
+            "ANSIBLE_CONFIG": str(config),
+            "ANSIBLE_HOME": str(tmp_path / "ansible-home"),
+            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
+            "ANSIBLE_NOCOLOR": "1",
+        }
+    )
+    return subprocess.run(
+        [executable, "-i", "localhost,", str(playbook)],
         cwd=tmp_path,
         env=environment,
         capture_output=True,
@@ -952,7 +1081,7 @@ def _run_runtime_release_full_role(
         "runtime_release_sha256": {"amd64": checksum, "arm64": checksum},
         "runtime_release_artifact_filename": "fixture-artifact",
         "runtime_release_artifact_type": "binary",
-        "runtime_release_archive_member": "",
+        "runtime_release_archive_members": {"amd64": "", "arm64": ""},
         "runtime_release_archive_strip_components": 0,
         "runtime_release_download_dir": str(root / ".runtime-release-staging"),
         "runtime_release_storage_owner": owner,
@@ -2692,6 +2821,94 @@ def test_real_role_refuses_archive_symlink_member_without_activation(
     assert outside.read_text() == "operator-owned\n"
     assert not (tmp_path / "install" / "current").exists()
     assert not (tmp_path / "install/releases/v1/.runtime-release.json").exists()
+
+
+def test_real_role_selects_the_aarch64_archive_member_without_amd64_fallback(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "fixture.tar"
+    with tarfile.open(artifact, "w") as archive:
+        for member, payload in (
+            ("amd64/runtime-fixture", b"amd64 payload\n"),
+            ("arm64/runtime-fixture", b"arm64 payload\n"),
+        ):
+            entry = tarfile.TarInfo(member)
+            entry.mode = 0o755
+            entry.size = len(payload)
+            archive.addfile(entry, __import__("io").BytesIO(payload))
+
+    preflight = _run_role(
+        tmp_path,
+        "v1",
+        artifact,
+        check=True,
+        artifact_type="archive",
+        archive_members={
+            "amd64": "../unsafe-amd64/runtime-fixture",
+            "arm64": "arm64/runtime-fixture",
+        },
+        archive_strip_components=1,
+        architecture="aarch64",
+    )
+
+    assert preflight.returncode != 0
+    assert "Validate runtime release contract before writing" in preflight.stdout
+    assert '"msg": "All assertions passed"' in preflight.stdout
+    assert not (tmp_path / "install").exists()
+
+    extracted = _run_archive_member_role_slice(
+        tmp_path,
+        artifact,
+        {
+            "amd64": "amd64/runtime-fixture",
+            "arm64": "arm64/runtime-fixture",
+        },
+    )
+
+    assert extracted.returncode == 0, extracted.stdout + extracted.stderr
+    selected_payload = tmp_path / "stage" / "runtime-fixture"
+    assert selected_payload.exists()
+    assert selected_payload.read_bytes() == b"arm64 payload\n"
+    assert not (tmp_path / "stage" / "amd64").exists()
+
+
+@pytest.mark.parametrize(
+    "selected_member",
+    [
+        "../runtime-fixture",
+        "./runtime-fixture",
+        "/runtime-fixture",
+        "arm64/not-runtime-fixture",
+    ],
+)
+def test_real_role_refuses_unsafe_selected_aarch64_archive_member_before_writes(
+    tmp_path: Path,
+    selected_member: str,
+) -> None:
+    artifact = tmp_path / "fixture.tar"
+    artifact.write_bytes(b"not-read-before-contract-validation\n")
+    public = tmp_path / "bin" / "runtime-fixture"
+
+    refused = _run_role(
+        tmp_path,
+        "v1",
+        artifact,
+        check=True,
+        public_link=public,
+        artifact_type="archive",
+        archive_members={
+            "amd64": "amd64/runtime-fixture",
+            "arm64": selected_member,
+        },
+        archive_strip_components=1,
+        architecture="aarch64",
+    )
+
+    assert refused.returncode != 0
+    assert "Validate runtime release contract before writing" in refused.stdout
+    assert "Preflight runtime release activation layout" not in refused.stdout
+    assert not (tmp_path / "install").exists()
+    assert not public.exists()
 
 
 def test_real_role_refuses_archive_hardlink_member_without_activation(
