@@ -29,8 +29,8 @@ artifact_evidence: no build artifacts produced by this change
 | REQ-VERIFY-DEPLOYED-LISTENERS | TST-1787496118906882 | Local production-task regressions for configured Hysteria and conditional fallback ports passed; required full gates and live verify remain open | local source verified; acceptance pending |
 | REQ-IDEMPOTENCE-WHERE-DECLARED | TST-1787496118906321 | Exact `4580f9927ed808b4f71b8fa5e0e036890f6daaf2`, hosted job `99170632018`: full-stack `ok=136 changed=0`; full-stack-published `ok=135 changed=0` | pass |
 | REQ-SCENARIO-RUNS-ROLE | TST-1787496118906595 | isolated x86_64 QEMU Molecule run: real role converge, idempotence changed=0, verify and destroy | pass |
-| REQ-TESTING-DOCS-REALITY | TST-1787496118906567 | row-by-row matrix audit vs molecule.yml sequences | pending |
-| REQ-SINGLE-SSH-LISTENER | TST-1787496118907256 | verify assertion output on socket-activated image | pending |
+| REQ-TESTING-DOCS-REALITY | TST-1787496118906567 | Row-by-row matrix audit against every declared Molecule sequence and the required hosted workflow matrix | pass |
+| REQ-SINGLE-SSH-LISTENER | TST-1787496118907256 | Exact production task slice on socket-activated Ubuntu 24.04 systemd/OpenSSH, including real keyscan activation | pass |
 
 ## Gates
 
@@ -43,7 +43,15 @@ artifact_evidence: no build artifacts produced by this change
 - Step `TST-1787496118906321` is implemented by exact source `4580f9927ed808b4f71b8fa5e0e036890f6daaf2`. Both `ansible/molecule/full-stack/molecule.yml` and `ansible/molecule/full-stack-published/molecule.yml` declare an idempotence phase; the published scenario supplies its listener contract through host variables so Ansible precedence cannot re-enable the repository fallback default.
 - The focused dependency and sequence regressions passed locally, and the exact-head hosted full-stack job `99170632018` completed successfully. The full-stack idempotence recap reported `ok=136 changed=0 unreachable=0 failed=0`; the published variant reported `ok=135 changed=0 unreachable=0 failed=0`. Both phases were recorded as successful. The private mode-0600 downloaded log has SHA-256 `b835d8f5b1846f386f7b173b2813b9bd3b31be31fdae077164902470aed90b89`.
 - The exact head completed 62 hosted checks successfully with one neutral check and no failed or pending checks before this evidence-only update. This proves repeat-converge idempotence in the hosted x86_64 Molecule environments, not live fleet convergence or external protocol traffic.
-- A local ARM/QEMU attempt failed before idempotence because an ordinary Ansible module process crashed in the emulated environment. It is retained as an environment-fidelity limitation and is not credited as product evidence. Documentation parity, the socket-activated single-SSH-listener proof, and live verify/source-drift acceptance remain open.
+- A local ARM/QEMU attempt failed before idempotence because an ordinary Ansible module process crashed in the emulated environment. It is retained as an environment-fidelity limitation and is not credited as product evidence. Live verify/source-drift acceptance remains open.
+
+## Documentation parity and single-listener evidence — 2026-08-30
+
+- The coverage matrix was compared to every role's declared Molecule sequence and both required hosted full-stack jobs. It now records the missing `reality-self-steal` scenario, the actual geodata/naive/warp-outbound sequences, and the hosted-only full-stack boundary. The executable governance regression rejects a missing role row, sequence drift, and asymmetric required-workflow coverage.
+- Exact source `b9858085df8073f725670e2acfa0f0bb9cda41da` runs the production `verify.yml` task slice through real Ansible against Ubuntu 24.04 arm64 with systemd 255 and OpenSSH 9.6p1. Normal mode, check mode, real `ssh-keyscan` socket activation, and a second verification after activation all passed. The systemd `Listen=` output contained both IPv4 and IPv6 records for the one configured port; the helper accepted the repeated property while preserving one effective `tcp/22222` listener. Multi-port and wrong-port configurations failed closed at the preceding exact inventory-port assertion.
+- The isolated container used digest-pinned `ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90`, had no mounts, published ports, or privileged mode, and was disconnected from the network before the proof. The commit-pinned helper hash was `039f8e3af78bcc47e0dc6e4cb07c5f62f385811d7a8693ec554db4e38611052c`; the production playbook hash was `0494bb7bdb2fa696b7f503613068c331386ca0b21cdc7953f3f101102186b76c`. The mode-0600 result JSON SHA-256 is `a584703f7180dce9d6f1c1c8407bd536a1edf72ba2d5d4ca25a2b314cacb21ea`.
+- Two earlier runs are retained as harness failures rather than product evidence: the first lost `/run/sshd` after stopping `ssh.service`; the second expected a helper-specific negative message even though the production port-unambiguity assertion runs first. Both wrappers removed the exact labelled container, stopped the owned Colima profile, and restored the Docker context/config. The reviewed final harness corrected only those test preconditions and expectations.
+- Local affected tests passed: `92 passed in 34.69s`; `py_compile`, `git diff --check`, and configured exact-file pre-commit passed. This proves the source and isolated native boundary, not current fleet state. The final live verify/source-drift cycle remains open under `TST-1787496118906996`.
 
 ## Published scenario prerequisite slice — 2026-08-29
 
