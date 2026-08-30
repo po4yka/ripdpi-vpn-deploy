@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Inspect and atomically record source-build identities and installed bytes."""
+"""Inspect and transactionally publish source-build identities and installed bytes.
+
+All authorized writers use the per-project lock. Receipt and output parents are
+validated as owner-only and non-writable by group or world. A malicious process
+running as the same UID (including root in production) is part of the trusted
+computing base: portable POSIX does not provide compare-and-unlink by inode.
+Detectable pathname substitutions still fail closed and retain recovery evidence.
+"""
 
 from __future__ import annotations
 
@@ -19,6 +26,7 @@ from pathlib import Path
 
 SCHEMA_VERSION = 1
 MAX_RECEIPT_BYTES = 64 * 1024
+MAX_JOURNAL_BYTES = 256 * 1024
 LOCK_TIMEOUT_SECONDS = 300.0
 LOCK_POLL_SECONDS = 0.1
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
@@ -530,7 +538,12 @@ def _write_all(descriptor: int, payload: bytes) -> None:
 
 
 def _atomic_write(
-    directory: int, name: str, payload: bytes, *, mode: int = 0o644
+    directory: int,
+    name: str,
+    payload: bytes,
+    *,
+    mode: int = 0o644,
+    publication: dict | None = None,
 ) -> None:
     temporary = f".{name}.{os.getpid()}.{uuid.uuid4().hex}"
     descriptor = os.open(
@@ -551,9 +564,12 @@ def _atomic_write(
         except FileNotFoundError:
             pass  # A concurrent cleanup may already have removed this private name.
         raise
+    published = os.fstat(descriptor)
     os.close(descriptor)
     try:
         os.replace(temporary, name, src_dir_fd=directory, dst_dir_fd=directory)
+        if publication is not None:
+            publication["inode"] = (published.st_dev, published.st_ino)
         os.fsync(directory)
     except Exception:
         try:
@@ -584,12 +600,233 @@ def _record_locked(directory: int, receipt_name: str, descriptor: dict) -> dict:
     return {"schema_version": SCHEMA_VERSION, "changed": True}
 
 
-def _cleanup_marker_name(project: str) -> str:
-    return f".{project}.cleanup.json"
+def _transaction_journal_name(project: str) -> str:
+    return f".{project}.transaction.json"
 
 
-def _read_cleanup_marker(directory: int, project: str) -> dict | None:
-    name = _cleanup_marker_name(project)
+def _file_identity(descriptor: int) -> dict:
+    metadata = os.fstat(descriptor)
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or metadata.st_mode & 0o022
+    ):
+        raise UnsafeState("unsafe-transaction-file")
+    os.lseek(descriptor, 0, os.SEEK_SET)
+    digest = _sha256_descriptor(descriptor)
+    os.lseek(descriptor, 0, os.SEEK_SET)
+    return {
+        "device": metadata.st_dev,
+        "inode": metadata.st_ino,
+        "mode": stat.S_IMODE(metadata.st_mode),
+        "uid": metadata.st_uid,
+        "gid": metadata.st_gid,
+        "links": metadata.st_nlink,
+        "sha256": digest,
+    }
+
+
+def _read_identity_at(directory: int, name: str) -> dict | None:
+    try:
+        metadata = os.stat(name, dir_fd=directory, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(metadata.st_mode):
+        raise UnsafeState("unsafe-transaction-file")
+    try:
+        descriptor = os.open(name, _file_flags(), dir_fd=directory)
+    except OSError as error:
+        raise UnsafeState("unsafe-transaction-file") from error
+    try:
+        opened = os.fstat(descriptor)
+        if (opened.st_dev, opened.st_ino) != (metadata.st_dev, metadata.st_ino):
+            raise UnsafeState("transaction-file-replaced")
+        return _file_identity(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _identity_matches(actual: dict | None, expected: dict, *, inode: bool) -> bool:
+    if actual is None:
+        return False
+    expected_inode = expected.get("inode")
+    if inode:
+        if isinstance(expected_inode, list):
+            if [actual.get("device"), actual.get("inode")] != expected_inode:
+                return False
+        elif actual.get("device") != expected.get("device") or actual.get(
+            "inode"
+        ) != expected.get("inode"):
+            return False
+    return all(
+        actual.get(key) == expected.get(key)
+        for key in ("mode", "sha256")
+        if key in expected
+    ) and all(
+        actual.get(key) == expected.get(key)
+        for key in ("uid", "gid")
+        if key in expected
+    )
+
+
+def _validate_journal_file_identity(value: object) -> dict:
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"inode", "sha256", "mode"}
+        or not isinstance(value["inode"], list)
+        or len(value["inode"]) != 2
+        or any(not isinstance(item, int) or item < 0 for item in value["inode"])
+        or not isinstance(value["sha256"], str)
+        or SHA256_RE.fullmatch(value["sha256"]) is None
+        or not isinstance(value["mode"], int)
+        or isinstance(value["mode"], bool)
+        or not 0 <= value["mode"] <= 0o7777
+    ):
+        raise UnsafeState("invalid-transaction-identity")
+    return value
+
+
+def _validate_journal_receipt(
+    value: object, project: str, *, nullable: bool
+) -> dict | None:
+    if value is None and nullable:
+        return None
+    if not isinstance(value, dict) or set(value) != {
+        "schema_version",
+        "name",
+        "source",
+        "recipe_sha256",
+        "outputs",
+    }:
+        raise UnsafeState("invalid-transaction-receipt")
+    if (
+        value["schema_version"] != SCHEMA_VERSION
+        or value["name"] != project
+        or _normalize_source(value["source"]) != value["source"]
+        or not isinstance(value["recipe_sha256"], str)
+        or SHA256_RE.fullmatch(value["recipe_sha256"]) is None
+        or not isinstance(value["outputs"], list)
+        or not 1 <= len(value["outputs"]) <= 16
+    ):
+        raise UnsafeState("invalid-transaction-receipt")
+    names: set[str] = set()
+    paths: set[str] = set()
+    for output in value["outputs"]:
+        if (
+            not isinstance(output, dict)
+            or set(output)
+            not in (
+                {"name", "path", "sha256"},
+                {"name", "path", "expected_sha256", "sha256"},
+            )
+            or not isinstance(output.get("name"), str)
+            or NAME_RE.fullmatch(output["name"]) is None
+            or output["name"] in names
+            or not isinstance(output.get("path"), str)
+            or not Path(output["path"]).is_absolute()
+            or str(Path(output["path"])) != output["path"]
+            or output["path"] in paths
+            or not isinstance(output.get("sha256"), str)
+            or SHA256_RE.fullmatch(output["sha256"]) is None
+            or (
+                "expected_sha256" in output
+                and (
+                    not isinstance(output["expected_sha256"], str)
+                    or SHA256_RE.fullmatch(output["expected_sha256"]) is None
+                )
+            )
+        ):
+            raise UnsafeState("invalid-transaction-receipt")
+        names.add(output["name"])
+        paths.add(output["path"])
+    return value
+
+
+def _validate_transaction_journal(document: object) -> dict:
+    if not isinstance(document, dict) or set(document) != {
+        "journal_schema_version",
+        "transaction_id",
+        "project",
+        "previous_receipt",
+        "next_receipt",
+        "outputs",
+    }:
+        raise UnsafeState("invalid-transaction-journal")
+    project = document["project"]
+    transaction_id = document["transaction_id"]
+    if (
+        document["journal_schema_version"] != 1
+        or not isinstance(project, str)
+        or NAME_RE.fullmatch(project) is None
+        or not isinstance(transaction_id, str)
+        or re.fullmatch(r"[0-9a-f]{32}", transaction_id) is None
+    ):
+        raise UnsafeState("invalid-transaction-journal")
+    _validate_journal_receipt(document["previous_receipt"], project, nullable=True)
+    next_receipt = _validate_journal_receipt(
+        document["next_receipt"], project, nullable=False
+    )
+    outputs = document["outputs"]
+    if not isinstance(outputs, list) or not 1 <= len(outputs) <= 16:
+        raise UnsafeState("invalid-transaction-journal")
+    if [
+        (item.get("name"), item.get("path"))
+        for item in outputs
+        if isinstance(item, dict)
+    ] != [(item["name"], item["path"]) for item in next_receipt["outputs"]]:
+        raise UnsafeState("invalid-transaction-journal")
+    for output, receipt_output in zip(outputs, next_receipt["outputs"], strict=True):
+        if not isinstance(output, dict) or set(output) != {
+            "name",
+            "path",
+            "before",
+            "after",
+        }:
+            raise UnsafeState("invalid-transaction-journal")
+        path = output["path"]
+        name = output["name"]
+        before = output["before"]
+        after = output["after"]
+        if (
+            not isinstance(name, str)
+            or NAME_RE.fullmatch(name) is None
+            or not isinstance(path, str)
+            or not Path(path).is_absolute()
+            or str(Path(path)) != path
+            or not isinstance(before, dict)
+            or not isinstance(after, dict)
+            or set(after) != {"inode", "sha256", "mode", "temporary_name"}
+            or after["temporary_name"]
+            != f".{Path(path).name}.runtime-build.{transaction_id}"
+            or receipt_output["sha256"] != after.get("sha256")
+        ):
+            raise UnsafeState("invalid-transaction-journal")
+        _validate_journal_file_identity(
+            {key: after[key] for key in ("inode", "sha256", "mode")}
+        )
+        if before == {"state": "absent"}:
+            continue
+        if set(before) != {"state", "inode", "sha256", "mode", "backup"}:
+            raise UnsafeState("invalid-transaction-journal")
+        if before["state"] != "present" or not isinstance(before["backup"], dict):
+            raise UnsafeState("invalid-transaction-journal")
+        _validate_journal_file_identity(
+            {key: before[key] for key in ("inode", "sha256", "mode")}
+        )
+        backup = before["backup"]
+        if (
+            set(backup) != {"name", "inode"}
+            or backup["name"] != f".{Path(path).name}.runtime-backup.{transaction_id}"
+            or backup["inode"] != before["inode"]
+        ):
+            raise UnsafeState("invalid-transaction-journal")
+    return document
+
+
+def _read_transaction_journal(
+    directory: int, project: str, *, name: str | None = None
+) -> tuple[dict, dict] | None:
+    name = name or _transaction_journal_name(project)
     try:
         metadata = os.stat(name, dir_fd=directory, follow_symlinks=False)
     except FileNotFoundError:
@@ -597,144 +834,182 @@ def _read_cleanup_marker(directory: int, project: str) -> dict | None:
     if (
         not stat.S_ISREG(metadata.st_mode)
         or metadata.st_uid != os.geteuid()
-        or metadata.st_nlink != 1
+        or metadata.st_nlink not in {1, 2, 3}
         or stat.S_IMODE(metadata.st_mode) != 0o600
-        or metadata.st_size > MAX_RECEIPT_BYTES
+        or metadata.st_size > MAX_JOURNAL_BYTES
     ):
-        raise UnsafeState("unsafe-cleanup-marker")
-    descriptor = os.open(name, _file_flags(), dir_fd=directory)
+        raise UnsafeState("unsafe-transaction-journal")
+    try:
+        descriptor = os.open(name, _file_flags(), dir_fd=directory)
+    except OSError as error:
+        raise UnsafeState("unsafe-transaction-journal") from error
     try:
         opened = os.fstat(descriptor)
         if (opened.st_dev, opened.st_ino) != (metadata.st_dev, metadata.st_ino):
-            raise UnsafeState("cleanup-marker-replaced")
+            raise UnsafeState("transaction-journal-replaced")
         raw = bytearray()
-        while len(raw) <= MAX_RECEIPT_BYTES:
-            chunk = os.read(descriptor, min(8192, MAX_RECEIPT_BYTES + 1 - len(raw)))
+        while len(raw) <= MAX_JOURNAL_BYTES:
+            chunk = os.read(descriptor, min(8192, MAX_JOURNAL_BYTES + 1 - len(raw)))
             if not chunk:
                 break
             raw.extend(chunk)
-        if len(raw) > MAX_RECEIPT_BYTES:
-            raise UnsafeState("oversize-cleanup-marker")
+        if len(raw) > MAX_JOURNAL_BYTES:
+            raise UnsafeState("oversize-transaction-journal")
+        identity = _file_identity(descriptor)
     finally:
         os.close(descriptor)
     try:
-        marker = json.loads(raw)
+        document = json.loads(raw)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise UnsafeState("invalid-cleanup-marker") from error
-    if (
-        not isinstance(marker, dict)
-        or set(marker) != {"schema_version", "project", "receipt", "backups"}
-        or marker["schema_version"] != SCHEMA_VERSION
-        or marker["project"] != project
-        or not isinstance(marker["receipt"], dict)
-        or not isinstance(marker["backups"], list)
-        or len(marker["backups"]) > 16
-    ):
-        raise UnsafeState("invalid-cleanup-marker")
-    receipt_outputs = marker["receipt"].get("outputs")
-    if not isinstance(receipt_outputs, list):
-        raise UnsafeState("invalid-cleanup-marker")
-    receipt_paths = {
-        output.get("path") for output in receipt_outputs if isinstance(output, dict)
-    }
-    backup_paths: set[str] = set()
-    for backup in marker["backups"]:
-        if (
-            not isinstance(backup, dict)
-            or set(backup) != {"path", "name", "inode"}
-            or not isinstance(backup["path"], str)
-            or not Path(backup["path"]).is_absolute()
-            or str(Path(backup["path"])) != backup["path"]
-            or backup["path"] not in receipt_paths
-            or backup["path"] in backup_paths
-            or not isinstance(backup["name"], str)
-            or "/" in backup["name"]
-            or not backup["name"].startswith(
-                f".{Path(backup['path']).name}.runtime-backup."
-            )
-            or not isinstance(backup["inode"], list)
-            or len(backup["inode"]) != 2
-            or any(not isinstance(value, int) or value < 0 for value in backup["inode"])
+        raise UnsafeState("invalid-transaction-journal") from error
+    canonical = (
+        json.dumps(document, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+    )
+    if bytes(raw) != canonical:
+        raise UnsafeState("noncanonical-transaction-journal")
+    journal = _validate_transaction_journal(document)
+    if journal["project"] != project:
+        raise UnsafeState("invalid-transaction-journal")
+    return journal, identity
+
+
+def _quarantine_remove(
+    directory: int, name: str, expected: dict, label: str, *, missing_ok: bool
+) -> bool:
+    tombstone = f".{name}.quarantine"
+    current = _read_identity_at(directory, name)
+    quarantined = _read_identity_at(directory, tombstone)
+    if current is not None and quarantined is not None:
+        if not (
+            _identity_matches(current, expected, inode=True)
+            and _identity_matches(quarantined, expected, inode=True)
+            and current["device"] == quarantined["device"]
+            and current["inode"] == quarantined["inode"]
         ):
-            raise UnsafeState("invalid-cleanup-marker")
-        backup_paths.add(backup["path"])
-    return marker
-
-
-def _write_cleanup_marker(
-    directory: int,
-    descriptor: dict,
-    receipt: dict,
-    publications: list[dict],
-) -> str:
-    backups = []
-    for item in publications:
-        if item["backup"] is not None:
-            metadata = os.stat(
-                item["backup"], dir_fd=item["parent"], follow_symlinks=False
-            )
-            backups.append(
-                {
-                    "path": item["path"],
-                    "name": item["backup"],
-                    "inode": [metadata.st_dev, metadata.st_ino],
-                }
-            )
-    marker = {
-        "schema_version": SCHEMA_VERSION,
-        "project": descriptor["name"],
-        "receipt": receipt,
-        "backups": backups,
-    }
-    encoded = (
-        json.dumps(marker, sort_keys=True, separators=(",", ":")) + "\n"
-    ).encode()
-    if len(encoded) > MAX_RECEIPT_BYTES:
-        raise UnsafeState("oversize-cleanup-marker")
-    name = _cleanup_marker_name(descriptor["name"])
-    _atomic_write(directory, name, encoded, mode=0o600)
-    return name
-
-
-def _remove_cleanup_marker(directory: int, name: str) -> None:
-    try:
+            raise UnsafeState(f"{label}-manual-recovery")
+        if not _identity_matches(
+            _read_identity_at(directory, name), expected, inode=True
+        ):
+            raise UnsafeState(f"{label}-replaced")
         os.unlink(name, dir_fd=directory)
-    except FileNotFoundError:
-        return
-    os.fsync(directory)
-
-
-def _retry_committed_cleanup(directory: int, receipt_name: str, project: str) -> bool:
-    marker = _read_cleanup_marker(directory, project)
-    if marker is None:
-        return True
-    if _read_receipt(directory, receipt_name) != marker["receipt"]:
-        raise UnsafeState("cleanup-marker-receipt-mismatch")
+        os.fsync(directory)
+        current = None
+    if current is None and quarantined is None:
+        if missing_ok:
+            return False
+        raise UnsafeState(f"{label}-missing")
+    if quarantined is None:
+        if not _identity_matches(current, expected, inode=True):
+            raise UnsafeState(f"{label}-replaced")
+        try:
+            os.link(
+                name,
+                tombstone,
+                src_dir_fd=directory,
+                dst_dir_fd=directory,
+                follow_symlinks=False,
+            )
+        except FileExistsError as error:
+            raise UnsafeState(f"{label}-manual-recovery") from error
+        except OSError as error:
+            raise UnsafeState(f"{label}-replaced") from error
+        quarantined = _read_identity_at(directory, tombstone)
+        if not _identity_matches(quarantined, expected, inode=True):
+            raise UnsafeState(f"{label}-manual-recovery")
+        if not _identity_matches(
+            _read_identity_at(directory, name), expected, inode=True
+        ):
+            raise UnsafeState(f"{label}-replaced")
+        os.unlink(name, dir_fd=directory)
+        os.fsync(directory)
+    if not _identity_matches(quarantined, expected, inode=True):
+        raise UnsafeState(f"{label}-replaced")
     try:
-        for backup in marker["backups"]:
-            path = Path(backup["path"])
-            parent = _open_directory(path.parent, os.geteuid())
-            try:
-                try:
-                    metadata = os.stat(
-                        backup["name"], dir_fd=parent, follow_symlinks=False
-                    )
-                except FileNotFoundError:
-                    continue
-                if (
-                    not stat.S_ISREG(metadata.st_mode)
-                    or metadata.st_uid != os.geteuid()
-                    or [metadata.st_dev, metadata.st_ino] != backup["inode"]
-                ):
-                    raise UnsafeState("cleanup-backup-replaced")
-                os.unlink(backup["name"], dir_fd=parent)
-                os.fsync(parent)
-            finally:
-                os.close(parent)
-        _remove_cleanup_marker(directory, _cleanup_marker_name(project))
+        os.stat(name, dir_fd=directory, follow_symlinks=False)
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        raise UnsafeState(f"{label}-manual-recovery") from error
+    else:
+        raise UnsafeState(f"{label}-manual-recovery")
+    try:
+        if not _identity_matches(
+            _read_identity_at(directory, tombstone), expected, inode=True
+        ):
+            raise UnsafeState(f"{label}-replaced")
+        os.unlink(tombstone, dir_fd=directory)
+        os.fsync(directory)
+    except OSError:
+        try:
+            if _read_identity_at(directory, tombstone) is not None:
+                os.rename(tombstone, name, src_dir_fd=directory, dst_dir_fd=directory)
+                os.fsync(directory)
+        except OSError as restore_error:
+            raise UnsafeState(f"{label}-manual-recovery") from restore_error
+        raise
+    try:
+        os.stat(name, dir_fd=directory, follow_symlinks=False)
+    except FileNotFoundError:
         return True
-    except (OSError, UnsafeState):
-        return False
+    except OSError as error:
+        raise UnsafeState(f"{label}-manual-recovery") from error
+    raise UnsafeState(f"{label}-manual-recovery")
+
+
+def _write_transaction_journal(directory: int, journal: dict) -> dict:
+    encoded = (
+        json.dumps(journal, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+    )
+    if len(encoded) > MAX_JOURNAL_BYTES:
+        raise UnsafeState("oversize-transaction-journal")
+    name = _transaction_journal_name(journal["project"])
+    temporary = f".{journal['project']}.transaction.{journal['transaction_id']}.new"
+    descriptor: int | None = None
+    identity: dict | None = None
+    try:
+        descriptor = os.open(
+            temporary,
+            os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+            dir_fd=directory,
+        )
+        _write_all(descriptor, encoded)
+        os.fsync(descriptor)
+        os.fchmod(descriptor, 0o600)
+        os.fsync(descriptor)
+        identity = _file_identity(descriptor)
+        os.link(
+            temporary,
+            name,
+            src_dir_fd=directory,
+            dst_dir_fd=directory,
+            follow_symlinks=False,
+        )
+        published = _read_identity_at(directory, name)
+        if not _identity_matches(published, identity, inode=True):
+            raise UnsafeState("transaction-journal-publication-replaced")
+        _quarantine_remove(
+            directory,
+            temporary,
+            identity,
+            "transaction-journal-temporary",
+            missing_ok=False,
+        )
+        os.fsync(directory)
+        return identity
+    except FileExistsError as error:
+        if identity is not None:
+            _quarantine_remove(
+                directory,
+                temporary,
+                identity,
+                "transaction-journal-temporary",
+                missing_ok=True,
+            )
+        raise UnsafeState("transaction-journal-exists") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
 
 
 def _open_project_lock(directory: int, project: str) -> int:
@@ -929,14 +1204,18 @@ def _copy_descriptor(source: int, destination: int) -> None:
 
 
 def _prepare_publications(
-    descriptor: dict, stage_root: Path, stage_directory: int
+    descriptor: dict,
+    stage_root: Path,
+    stage_directory: int,
+    transaction_id: str,
 ) -> list[dict]:
     publications: list[dict] = []
     try:
         for output in descriptor["outputs"]:
             parent: int | None = None
-            existing: dict | None = None
-            temporary: str | None = None
+            prepared: dict | None = None
+            temporary = f".{Path(output['path']).name}.runtime-build.{transaction_id}"
+            backup = f".{Path(output['path']).name}.runtime-backup.{transaction_id}"
             staged_relative = Path(output["staged_path"]).relative_to(
                 stage_root / descriptor["name"]
             )
@@ -944,67 +1223,63 @@ def _prepare_publications(
                 stage_directory, staged_relative, os.geteuid()
             )
             try:
-                digest = _sha256_descriptor(staged)
+                staged_identity = _file_identity(staged)
                 expected = output.get("expected_sha256")
-                if expected is not None and digest != expected:
+                if expected is not None and staged_identity["sha256"] != expected:
                     raise UnsafeState("output-checksum-mismatch")
-
                 path = Path(output["path"])
                 parent = _open_directory(path.parent, os.geteuid())
                 try:
-                    metadata = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
-                except FileNotFoundError:
-                    metadata = None
-                if metadata is not None:
-                    current = _open_output_at(parent, path.name, os.geteuid(), metadata)
+                    current = _read_identity_at(parent, path.name)
+                    if current is not None and current["uid"] != os.geteuid():
+                        raise UnsafeState("unsafe-output-owner")
+                    target = os.open(
+                        temporary,
+                        os.O_RDWR
+                        | os.O_CREAT
+                        | os.O_EXCL
+                        | getattr(os, "O_NOFOLLOW", 0),
+                        0o600,
+                        dir_fd=parent,
+                    )
                     try:
-                        existing = {
-                            "inode": (metadata.st_dev, metadata.st_ino),
-                            "mode": stat.S_IMODE(metadata.st_mode),
-                        }
+                        _copy_descriptor(staged, target)
+                        os.fsync(target)
+                        os.fchmod(target, staged_identity["mode"])
+                        os.fsync(target)
+                        prepared = _file_identity(target)
                     finally:
-                        os.close(current)
-
-                temporary = (
-                    f".{path.name}.runtime-build.{os.getpid()}.{uuid.uuid4().hex}"
-                )
-                target = os.open(
-                    temporary,
-                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-                    0o600,
-                    dir_fd=parent,
-                )
-                try:
-                    _copy_descriptor(staged, target)
-                    os.fsync(target)
-                    os.fchmod(target, stat.S_IMODE(os.fstat(staged).st_mode))
-                    os.fsync(target)
+                        os.close(target)
+                    if not _identity_matches(prepared, staged_identity, inode=False):
+                        raise UnsafeState("prepared-output-mismatch")
+                    os.fsync(parent)
                 except Exception:
-                    os.close(target)
-                    os.unlink(temporary, dir_fd=parent)
+                    if prepared is not None:
+                        _quarantine_remove(
+                            parent,
+                            temporary,
+                            prepared,
+                            "transaction-temporary",
+                            missing_ok=True,
+                        )
                     raise
-                os.close(target)
             except Exception:
-                if temporary is not None and parent is not None:
-                    try:
-                        os.unlink(temporary, dir_fd=parent)
-                    except FileNotFoundError:
-                        pass  # Earlier cleanup may already have consumed the temp file.
                 if parent is not None:
                     os.close(parent)
                 raise
             finally:
                 os.close(staged)
-            assert parent is not None and temporary is not None
+            assert parent is not None
             publications.append(
                 {
                     "parent": parent,
+                    "output_name": output["name"],
                     "path": str(path),
                     "name": path.name,
                     "temporary": temporary,
-                    "existing": existing,
-                    "published_inode": None,
-                    "backup": None,
+                    "backup": backup if current is not None else None,
+                    "before": current,
+                    "after": prepared,
                 }
             )
         return publications
@@ -1013,123 +1288,521 @@ def _prepare_publications(
         raise
 
 
+def _create_backups(publications: list[dict]) -> None:
+    created: list[dict] = []
+    try:
+        for item in publications:
+            before = item["before"]
+            if before is None:
+                continue
+            parent = item["parent"]
+            current = _read_identity_at(parent, item["name"])
+            if not _identity_matches(current, before, inode=True):
+                raise UnsafeState("output-replaced-before-backup")
+            os.link(
+                item["name"],
+                item["backup"],
+                src_dir_fd=parent,
+                dst_dir_fd=parent,
+                follow_symlinks=False,
+            )
+            backup = _read_identity_at(parent, item["backup"])
+            if not _identity_matches(backup, before, inode=True):
+                raise UnsafeState("output-replaced-before-backup")
+            os.fsync(parent)
+            created.append(item)
+    except Exception:
+        for item in reversed(created):
+            try:
+                _quarantine_remove(
+                    item["parent"],
+                    item["backup"],
+                    item["before"],
+                    "transaction-backup",
+                    missing_ok=True,
+                )
+            except Exception:
+                pass
+        raise
+
+
+def _planned_receipt(descriptor: dict, publications: list[dict]) -> dict:
+    by_path = {item["path"]: item for item in publications}
+    return {
+        **_expected_identity(descriptor),
+        "outputs": [
+            {
+                **{key: value for key, value in output.items() if key != "staged_path"},
+                "sha256": by_path[output["path"]]["after"]["sha256"],
+            }
+            for output in descriptor["outputs"]
+        ],
+    }
+
+
+def _transaction_journal(
+    descriptor: dict,
+    transaction_id: str,
+    previous_receipt: dict | None,
+    next_receipt: dict,
+    publications: list[dict],
+) -> dict:
+    outputs = []
+    for item in publications:
+        before = item["before"]
+        outputs.append(
+            {
+                "name": item["output_name"],
+                "path": item["path"],
+                "before": (
+                    {"state": "absent"}
+                    if before is None
+                    else {
+                        "state": "present",
+                        "inode": [before["device"], before["inode"]],
+                        "sha256": before["sha256"],
+                        "mode": before["mode"],
+                        "backup": {
+                            "name": item["backup"],
+                            "inode": [before["device"], before["inode"]],
+                        },
+                    }
+                ),
+                "after": {
+                    "inode": [item["after"]["device"], item["after"]["inode"]],
+                    "sha256": item["after"]["sha256"],
+                    "mode": item["after"]["mode"],
+                    "temporary_name": item["temporary"],
+                },
+            }
+        )
+    return {
+        "journal_schema_version": 1,
+        "transaction_id": transaction_id,
+        "project": descriptor["name"],
+        "previous_receipt": previous_receipt,
+        "next_receipt": next_receipt,
+        "outputs": outputs,
+    }
+
+
 def _discard_publications(
     publications: list[dict], *, preserve_backups: bool = False
 ) -> None:
-    cleanup_incomplete = False
+    cleanup_error: Exception | None = None
     for item in publications:
         try:
-            keys = ("temporary",) if preserve_backups else ("temporary", "backup")
-            removed = False
-            for key in keys:
-                name = item.get(key)
-                if name:
-                    try:
-                        os.unlink(name, dir_fd=item["parent"])
-                        removed = True
-                    except FileNotFoundError:
-                        pass  # A prior publication or rollback may have consumed it.
-            if removed:
-                os.fsync(item["parent"])
-        except OSError:
-            cleanup_incomplete = True
+            try:
+                _quarantine_remove(
+                    item["parent"],
+                    item["temporary"],
+                    item["after"],
+                    "transaction-temporary",
+                    missing_ok=True,
+                )
+            except Exception as error:
+                cleanup_error = cleanup_error or error
+            if not preserve_backups and item["backup"] is not None:
+                try:
+                    _quarantine_remove(
+                        item["parent"],
+                        item["backup"],
+                        item["before"],
+                        "transaction-backup",
+                        missing_ok=True,
+                    )
+                except Exception as error:
+                    cleanup_error = cleanup_error or error
         finally:
             try:
                 os.close(item["parent"])
-            except OSError:
-                pass  # Cleanup is idempotent when a prior failure closed the descriptor.
-    if cleanup_incomplete:
-        raise UnsafeState("publication-cleanup-incomplete")
+            except OSError as error:
+                cleanup_error = cleanup_error or error
+    if cleanup_error is not None:
+        raise UnsafeState("publication-cleanup-incomplete") from cleanup_error
 
 
 def _publish_outputs(publications: list[dict]) -> None:
     for item in publications:
         parent = item["parent"]
-        name = item["name"]
-        existing = item["existing"]
-        try:
-            current = os.stat(name, dir_fd=parent, follow_symlinks=False)
-        except FileNotFoundError:
-            current = None
-        if existing is None:
+        current = _read_identity_at(parent, item["name"])
+        before = item["before"]
+        if before is None:
             if current is not None:
                 raise UnsafeState("output-replaced-before-publication")
-        elif current is None or (current.st_dev, current.st_ino) != existing["inode"]:
+        elif not _identity_matches(current, before, inode=True):
             raise UnsafeState("output-replaced-before-publication")
-
-        if existing is not None:
-            backup = f".{name}.runtime-backup.{os.getpid()}.{uuid.uuid4().hex}"
-            try:
-                os.link(
-                    name,
-                    backup,
-                    src_dir_fd=parent,
-                    dst_dir_fd=parent,
-                    follow_symlinks=False,
-                )
-                linked = os.stat(backup, dir_fd=parent, follow_symlinks=False)
-                if (linked.st_dev, linked.st_ino) != existing["inode"]:
-                    raise UnsafeState("output-replaced-before-backup")
-                os.fsync(parent)
-            except Exception:
-                try:
-                    os.unlink(backup, dir_fd=parent)
-                except FileNotFoundError:
-                    pass  # The failed link operation may not have created a backup.
-                raise
-            item["backup"] = backup
-
-        prepared = os.stat(item["temporary"], dir_fd=parent, follow_symlinks=False)
-        prepared_inode = (prepared.st_dev, prepared.st_ino)
-        os.replace(item["temporary"], name, src_dir_fd=parent, dst_dir_fd=parent)
-        item["temporary"] = None
-        item["published_inode"] = prepared_inode
-        published = os.stat(name, dir_fd=parent, follow_symlinks=False)
-        if (published.st_dev, published.st_ino) != prepared_inode:
+        temporary = _read_identity_at(parent, item["temporary"])
+        if not _identity_matches(temporary, item["after"], inode=True):
+            raise UnsafeState("prepared-output-replaced")
+        if before is not None:
+            backup = _read_identity_at(parent, item["backup"])
+            if not _identity_matches(backup, before, inode=True):
+                raise UnsafeState("backup-replaced-before-publication")
+        os.replace(
+            item["temporary"],
+            item["name"],
+            src_dir_fd=parent,
+            dst_dir_fd=parent,
+        )
+        published = _read_identity_at(parent, item["name"])
+        if not _identity_matches(published, item["after"], inode=True):
             raise UnsafeState("output-replaced-after-publication")
         os.fsync(parent)
 
 
-def _rollback_publications(publications: list[dict]) -> None:
-    uncertain = False
-    for item in reversed(publications):
-        published_inode = item.get("published_inode")
-        if published_inode is None:
+def _journal_before_identity(output: dict) -> dict | None:
+    before = output["before"]
+    if before["state"] == "absent":
+        return None
+    return {
+        "device": before["inode"][0],
+        "inode": before["inode"][1],
+        "mode": before["mode"],
+        "uid": os.geteuid(),
+        "sha256": before["sha256"],
+    }
+
+
+def _journal_after_identity(output: dict) -> dict:
+    after = output["after"]
+    return {
+        "device": after["inode"][0],
+        "inode": after["inode"][1],
+        "mode": after["mode"],
+        "uid": os.geteuid(),
+        "sha256": after["sha256"],
+    }
+
+
+def _transaction_entry(directory: int, project: str) -> tuple[dict, dict, str] | None:
+    canonical_name = _transaction_journal_name(project)
+    tombstone_name = f".{canonical_name}.quarantine"
+    canonical = _read_transaction_journal(directory, project, name=canonical_name)
+    tombstone = _read_transaction_journal(directory, project, name=tombstone_name)
+    if canonical is not None and tombstone is not None:
+        if canonical[0] != tombstone[0] or not _identity_matches(
+            canonical[1], tombstone[1], inode=True
+        ):
+            raise UnsafeState("transaction-journal-ambiguous")
+        selected = canonical
+    elif canonical is not None:
+        selected = canonical
+    elif tombstone is not None:
+        selected = tombstone
+    else:
+        return None
+    journal, identity = selected
+    temporary = f".{project}.transaction.{journal['transaction_id']}.new"
+    temporary_tombstone = f".{temporary}.quarantine"
+    known_links = 0
+    for known_name in (
+        canonical_name,
+        tombstone_name,
+        temporary,
+        temporary_tombstone,
+    ):
+        known = _read_identity_at(directory, known_name)
+        if known is None:
             continue
-        parent = item["parent"]
-        name = item["name"]
-        try:
-            current = os.stat(name, dir_fd=parent, follow_symlinks=False)
-        except FileNotFoundError:
-            current = None
-        if current is None or (current.st_dev, current.st_ino) != published_inode:
-            uncertain = True
-            continue
-        if item["backup"] is None:
-            os.unlink(name, dir_fd=parent)
+        if not _identity_matches(known, identity, inode=True):
+            raise UnsafeState("transaction-journal-link-replaced")
+        known_links += 1
+    if identity["links"] != known_links:
+        raise UnsafeState("unsafe-transaction-journal-links")
+    if _read_identity_at(directory, temporary) is not None:
+        _quarantine_remove(
+            directory,
+            temporary,
+            identity,
+            "transaction-journal-temporary",
+            missing_ok=False,
+        )
+    return journal, identity, canonical_name
+
+
+def _output_parent(output: dict) -> tuple[int, str]:
+    path = Path(output["path"])
+    return _open_directory(path.parent, os.geteuid()), path.name
+
+
+def _preflight_precommit_output(output: dict) -> dict:
+    parent, name = _output_parent(output)
+    try:
+        before = _journal_before_identity(output)
+        after = _journal_after_identity(output)
+        live = _read_identity_at(parent, name)
+        temporary = _read_identity_at(parent, output["after"]["temporary_name"])
+        if temporary is not None and not _identity_matches(
+            temporary, after, inode=True
+        ):
+            raise UnsafeState("transaction-temporary-replaced")
+        backup_name = None if before is None else output["before"]["backup"]["name"]
+        backup = None if backup_name is None else _read_identity_at(parent, backup_name)
+        if backup is not None and not _identity_matches(backup, before, inode=True):
+            raise UnsafeState("transaction-backup-replaced")
+        rollback_name = f"{output['after']['temporary_name']}.rollback"
+        rollback = _read_identity_at(parent, rollback_name)
+        if rollback is not None and not _identity_matches(rollback, after, inode=True):
+            raise UnsafeState("transaction-rollback-node-replaced")
+        if before is None:
+            if live is None:
+                state = "previous"
+            elif _identity_matches(live, after, inode=True):
+                state = "published"
+            else:
+                raise UnsafeState("transaction-live-ambiguous")
+        elif _identity_matches(live, before, inode=True):
+            state = "previous"
+        elif _identity_matches(live, after, inode=True):
+            if backup is None:
+                raise UnsafeState("transaction-backup-missing")
+            state = "published"
+        elif live is None and rollback is not None and backup is not None:
+            state = "published-quarantined"
         else:
-            os.replace(item["backup"], name, src_dir_fd=parent, dst_dir_fd=parent)
-            item["backup"] = None
+            raise UnsafeState("transaction-live-ambiguous")
+        return {
+            "parent": parent,
+            "name": name,
+            "before": before,
+            "after": after,
+            "temporary_name": output["after"]["temporary_name"],
+            "temporary": temporary,
+            "backup": backup,
+            "backup_name": backup_name,
+            "rollback": rollback,
+            "rollback_name": rollback_name,
+            "state": state,
+        }
+    except Exception:
+        os.close(parent)
+        raise
+
+
+def _preflight_committed_output(output: dict) -> dict:
+    parent, name = _output_parent(output)
+    try:
+        before = _journal_before_identity(output)
+        after = _journal_after_identity(output)
+        live = _read_identity_at(parent, name)
+        if not _identity_matches(live, after, inode=True):
+            raise UnsafeState("committed-output-mismatch")
+        temporary = _read_identity_at(parent, output["after"]["temporary_name"])
+        if temporary is not None and not _identity_matches(
+            temporary, after, inode=True
+        ):
+            raise UnsafeState("transaction-temporary-replaced")
+        backup_name = None if before is None else output["before"]["backup"]["name"]
+        backup = None if backup_name is None else _read_identity_at(parent, backup_name)
+        if backup is not None and not _identity_matches(backup, before, inode=True):
+            raise UnsafeState("transaction-backup-replaced")
+        rollback_name = f"{output['after']['temporary_name']}.rollback"
+        if _read_identity_at(parent, rollback_name) is not None:
+            raise UnsafeState("transaction-rollback-node-ambiguous")
+        return {
+            "parent": parent,
+            "name": name,
+            "before": before,
+            "after": after,
+            "temporary_name": output["after"]["temporary_name"],
+            "temporary": temporary,
+            "backup": backup,
+            "backup_name": backup_name,
+        }
+    except Exception:
+        os.close(parent)
+        raise
+
+
+def _close_recovery_outputs(outputs: list[dict]) -> None:
+    for output in outputs:
+        try:
+            os.close(output["parent"])
+        except OSError:
+            pass
+
+
+def _rollback_output(output: dict) -> None:
+    parent = output["parent"]
+    name = output["name"]
+    before = output["before"]
+    after = output["after"]
+    rollback_name = output["rollback_name"]
+    live = _read_identity_at(parent, name)
+    rollback = _read_identity_at(parent, rollback_name)
+    if _identity_matches(live, after, inode=True):
+        if rollback is not None:
+            raise UnsafeState("transaction-rollback-node-ambiguous")
+        os.rename(name, rollback_name, src_dir_fd=parent, dst_dir_fd=parent)
+        rollback = _read_identity_at(parent, rollback_name)
+        if not _identity_matches(rollback, after, inode=True):
+            raise UnsafeState("transaction-rollback-node-replaced")
+        if _read_identity_at(parent, name) is not None:
+            raise UnsafeState("transaction-live-ambiguous")
         os.fsync(parent)
-    if uncertain:
-        raise UnsafeState("publication-rollback-uncertain")
+        live = None
+    elif live is None and rollback is not None:
+        if not _identity_matches(rollback, after, inode=True):
+            raise UnsafeState("transaction-rollback-node-replaced")
+    if before is not None and live is None:
+        backup = _read_identity_at(parent, output["backup_name"])
+        if not _identity_matches(backup, before, inode=True):
+            raise UnsafeState("transaction-backup-missing")
+        try:
+            os.link(
+                output["backup_name"],
+                name,
+                src_dir_fd=parent,
+                dst_dir_fd=parent,
+                follow_symlinks=False,
+            )
+        except OSError as error:
+            raise UnsafeState("transaction-live-ambiguous") from error
+        restored = _read_identity_at(parent, name)
+        if not _identity_matches(restored, before, inode=True):
+            raise UnsafeState("transaction-rollback-uncertain")
+        os.fsync(parent)
+    if output["backup_name"] is not None:
+        _quarantine_remove(
+            parent,
+            output["backup_name"],
+            before,
+            "transaction-backup",
+            missing_ok=True,
+        )
+    _quarantine_remove(
+        parent,
+        output["temporary_name"],
+        after,
+        "transaction-temporary",
+        missing_ok=True,
+    )
+    _quarantine_remove(
+        parent,
+        rollback_name,
+        after,
+        "transaction-rollback-node",
+        missing_ok=True,
+    )
+    final = _read_identity_at(parent, name)
+    if before is None:
+        if final is not None:
+            raise UnsafeState("transaction-rollback-uncertain")
+    elif not _identity_matches(final, before, inode=True):
+        raise UnsafeState("transaction-rollback-uncertain")
+
+
+def _cleanup_committed_output(output: dict) -> None:
+    parent = output["parent"]
+    if output["backup_name"] is not None:
+        _quarantine_remove(
+            parent,
+            output["backup_name"],
+            output["before"],
+            "transaction-backup",
+            missing_ok=True,
+        )
+    _quarantine_remove(
+        parent,
+        output["temporary_name"],
+        output["after"],
+        "transaction-temporary",
+        missing_ok=True,
+    )
+
+
+def _remove_transaction_journal(
+    directory: int, project: str, source_name: str, identity: dict
+) -> None:
+    _quarantine_remove(
+        directory,
+        source_name,
+        identity,
+        "transaction-journal",
+        missing_ok=False,
+    )
+
+
+def _reconcile_transaction_locked(
+    directory: int, receipt_name: str, project: str
+) -> tuple[str, bool]:
+    entry = _transaction_entry(directory, project)
+    if entry is None:
+        return "none", False
+    journal, journal_identity, source_name = entry
+    receipt = _read_receipt(directory, receipt_name)
+    outputs: list[dict] = []
+    if receipt == journal["next_receipt"]:
+        state = "committed"
+        preflight = _preflight_committed_output
+    elif receipt == journal["previous_receipt"]:
+        state = "precommit"
+        preflight = _preflight_precommit_output
+    else:
+        raise UnsafeState("cleanup-journal-receipt-ambiguous")
+    try:
+        for item in journal["outputs"]:
+            outputs.append(preflight(item))
+        if state == "committed":
+            for output in outputs:
+                _cleanup_committed_output(output)
+            if _read_receipt(directory, receipt_name) != journal["next_receipt"]:
+                raise UnsafeState("cleanup-journal-receipt-ambiguous")
+        else:
+            for output in reversed(outputs):
+                _rollback_output(output)
+            if _read_receipt(directory, receipt_name) != journal["previous_receipt"]:
+                raise UnsafeState("cleanup-journal-receipt-ambiguous")
+        _remove_transaction_journal(directory, project, source_name, journal_identity)
+        return state, False
+    except OSError:
+        if state == "committed" and _transaction_entry(directory, project) is not None:
+            return state, True
+        raise
+    finally:
+        _close_recovery_outputs(outputs)
+
+
+def _close_publication_descriptors(publications: list[dict]) -> None:
+    cleanup_error: OSError | None = None
+    for item in publications:
+        try:
+            os.close(item["parent"])
+        except OSError as error:
+            cleanup_error = cleanup_error or error
+    if cleanup_error is not None:
+        raise cleanup_error
+
+
+def _write_receipt_document(directory: int, receipt_name: str, receipt: dict) -> None:
+    encoded = (
+        json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+    )
+    if len(encoded) > MAX_RECEIPT_BYTES:
+        raise UnsafeState("oversize-receipt")
+    _atomic_write(directory, receipt_name, encoded)
 
 
 def converge(receipt_root: Path, document: object) -> dict:
     receipt_root = Path(receipt_root)
     stage_root = receipt_root.parent / "runtime-build-staging"
     descriptor = _normalize_descriptor(document, stage_root=stage_root)
-    directory, receipt_name = _receipt_path(Path(receipt_root), descriptor)
+    directory, receipt_name = _receipt_path(receipt_root, descriptor)
     lock = _open_project_lock(directory, descriptor["name"])
     stage_directory: int | None = None
     publications: list[dict] = []
-    preserve_backups = False
-    previous_receipt: dict | None = None
-    committed = False
-    result: dict | None = None
-    cleanup_marker: str | None = None
+    journal_active = False
+    journal_identity: dict | None = None
+    committed_result: dict | None = None
     try:
-        if not _retry_committed_cleanup(directory, receipt_name, descriptor["name"]):
+        recovered, cleanup_pending = _reconcile_transaction_locked(
+            directory, receipt_name, descriptor["name"]
+        )
+        if recovered != "none":
+            _stage_path, recovered_stage = _prepare_stage(receipt_root, descriptor)
+            os.close(recovered_stage)
+        if cleanup_pending:
             pending = inspect(receipt_root, document)
             if pending["rebuild_required"]:
                 raise UnsafeState("prior-cleanup-pending")
@@ -1142,70 +1815,104 @@ def converge(receipt_root: Path, document: object) -> dict:
         current = inspect(receipt_root, document)
         if not current["rebuild_required"]:
             return {"schema_version": SCHEMA_VERSION, "changed": False}
-        _stage_root, stage_directory = _prepare_stage(receipt_root, descriptor)
+
+        stage_path, stage_directory = _prepare_stage(receipt_root, descriptor)
         _run_build_steps(descriptor)
-        _require_directory_identity(_stage_root / descriptor["name"], stage_directory)
-        publications = _prepare_publications(descriptor, _stage_root, stage_directory)
+        _require_directory_identity(stage_path / descriptor["name"], stage_directory)
+        transaction_id = uuid.uuid4().hex
+        publications = _prepare_publications(
+            descriptor, stage_path, stage_directory, transaction_id
+        )
+        _create_backups(publications)
+        next_receipt = _planned_receipt(descriptor, publications)
+        journal = _transaction_journal(
+            descriptor,
+            transaction_id,
+            previous_receipt,
+            next_receipt,
+            publications,
+        )
         try:
+            journal_identity = _write_transaction_journal(directory, journal)
+            journal_active = True
+        except BaseException as primary:
+            try:
+                entry = _read_transaction_journal(directory, descriptor["name"])
+                journal_active = entry is not None and entry[0] == journal
+            except Exception:
+                journal_active = False
+            if journal_active:
+                _close_publication_descriptors(publications)
+                publications = []
+                try:
+                    outcome, pending = _reconcile_transaction_locked(
+                        directory, receipt_name, descriptor["name"]
+                    )
+                except UnsafeState as recovery_error:
+                    raise recovery_error from primary
+                except Exception as recovery_error:
+                    raise UnsafeState(
+                        "transaction-recovery-uncertain"
+                    ) from recovery_error
+                if outcome == "committed":
+                    return {
+                        "schema_version": SCHEMA_VERSION,
+                        "changed": True,
+                        **({"cleanup_pending": True} if pending else {}),
+                    }
+            raise primary
+
+        try:
+            entry = _transaction_entry(directory, descriptor["name"])
+            if (
+                entry is None
+                or entry[0] != journal
+                or not _identity_matches(entry[1], journal_identity, inode=True)
+            ):
+                raise UnsafeState("transaction-journal-replaced")
             _publish_outputs(publications)
             _remove_directory_contents(stage_directory)
-            cleanup_marker = _write_cleanup_marker(
-                directory,
-                descriptor,
-                _receipt_payload(descriptor),
-                publications,
-            )
-            result = _record_locked(directory, receipt_name, descriptor)
-            committed = True
-        except Exception:
+            _write_receipt_document(directory, receipt_name, next_receipt)
+        except BaseException as primary:
+            _close_publication_descriptors(publications)
+            publications = []
             try:
-                _rollback_publications(publications)
-            except Exception:
-                preserve_backups = True
-                raise
-            try:
-                if previous_receipt is None:
-                    try:
-                        os.unlink(receipt_name, dir_fd=directory)
-                        os.fsync(directory)
-                    except FileNotFoundError:
-                        pass  # Absence is the required pre-transaction receipt state.
-                else:
-                    encoded = (
-                        json.dumps(
-                            previous_receipt, sort_keys=True, separators=(",", ":")
-                        )
-                        + "\n"
-                    ).encode()
-                    _atomic_write(directory, receipt_name, encoded)
-                if cleanup_marker is not None:
-                    _remove_cleanup_marker(directory, cleanup_marker)
-                    cleanup_marker = None
-            except Exception as error:
-                raise UnsafeState("receipt-rollback-uncertain") from error
-            raise
-        completed_publications = publications
-        publications = []
-        for item in completed_publications:
-            try:
-                os.close(item["parent"])
-            except OSError:
-                result["cleanup_pending"] = True
-        try:
-            os.close(stage_directory)
-        except OSError:
-            result["cleanup_pending"] = True
-        stage_directory = None
-        if not _retry_committed_cleanup(directory, receipt_name, descriptor["name"]):
-            result["cleanup_pending"] = True
+                outcome, pending = _reconcile_transaction_locked(
+                    directory, receipt_name, descriptor["name"]
+                )
+            except UnsafeState as recovery_error:
+                raise recovery_error from primary
+            except Exception as recovery_error:
+                raise UnsafeState("transaction-recovery-uncertain") from recovery_error
+            if outcome == "committed":
+                committed_result = {
+                    "schema_version": SCHEMA_VERSION,
+                    "changed": True,
+                    **({"cleanup_pending": True} if pending else {}),
+                }
+            else:
+                raise primary
         else:
-            cleanup_marker = None
-        return result
+            _close_publication_descriptors(publications)
+            publications = []
+            outcome, pending = _reconcile_transaction_locked(
+                directory, receipt_name, descriptor["name"]
+            )
+            if outcome != "committed":
+                raise UnsafeState("transaction-commit-not-observed")
+            committed_result = {
+                "schema_version": SCHEMA_VERSION,
+                "changed": True,
+                **({"cleanup_pending": True} if pending else {}),
+            }
+        journal_active = _transaction_entry(directory, descriptor["name"]) is not None
+        assert committed_result is not None
+        return committed_result
     finally:
         cleanup_error: Exception | None = None
         try:
             if publications:
-                _discard_publications(publications, preserve_backups=preserve_backups)
+                _discard_publications(publications, preserve_backups=journal_active)
             if stage_directory is not None:
                 try:
                     _remove_directory_contents(stage_directory)
@@ -1226,11 +1933,10 @@ def converge(receipt_root: Path, document: object) -> dict:
                 os.close(directory)
             except OSError as error:
                 cleanup_error = cleanup_error or error
-        if cleanup_error is not None:
-            if committed and result is not None:
-                result["cleanup_pending"] = True
-            else:
-                raise cleanup_error
+        if cleanup_error is not None and committed_result is None:
+            raise cleanup_error
+        if cleanup_error is not None and committed_result is not None:
+            committed_result["cleanup_pending"] = True
 
 
 def _parser() -> argparse.ArgumentParser:

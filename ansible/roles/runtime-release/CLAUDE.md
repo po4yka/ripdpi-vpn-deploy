@@ -29,6 +29,12 @@ executable and optional digest, then atomically publishes all live outputs with
 compensation before recording one typed receipt. Consumer roles own their build
 commands, not locking, publication, receipt parsing, or drift classification.
 
+**The receipt is the source-build commit point** — before any live replacement,
+the helper fsyncs private output nodes, exact backups, and an immutable
+create-if-absent write-ahead journal. Recovery classifies the receipt as the
+exact previous or next document, then performs only rollback or committed
+cleanup. A third receipt state refuses without mutating any inode.
+
 ## What's done well
 
 - **Fail-closed input surface** — empty pins, unsupported architectures,
@@ -77,6 +83,13 @@ commands, not locking, publication, receipt parsing, or drift classification.
   staged/live paths. It does not sandbox an intentionally malicious argv, so
   descriptors must remain repository-authored role inputs.
 - **Post-commit cleanup is recovery debt, not rollback** — staging is emptied
-  through its retained directory descriptor before the receipt commit. A
-  private durable marker binds remaining backup inodes to that receipt; cleanup
-  failure returns `cleanup_pending`, and later convergence retries under lock.
+  through its retained directory descriptor before the receipt commit. The
+  immutable private journal binds previous/next receipts and exact before/after
+  output inodes; cleanup failure returns `cleanup_pending` only while that
+  journal remains readable, and later convergence retries under the same lock.
+- **The host UID is a trust boundary** — the project lock serializes every
+  authorized writer, and receipt/output parents reject group/world writes. A
+  malicious process with that exact UID (root on managed hosts) can still race
+  POSIX pathname deletion and is outside the threat model; portable `unlinkat`
+  has no expected-inode compare-and-delete operation. Detectable substitutions
+  are preserved as manual-recovery evidence rather than removed.

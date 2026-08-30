@@ -115,6 +115,149 @@ def _prepare_layout(root: Path) -> tuple[Path, Path]:
     return receipt_root, output
 
 
+def _two_output_layout(root: Path) -> tuple[Path, Path, Path, Path, Path]:
+    receipt_root = root / "receipts"
+    output_root = root / "bin"
+    input_root = root / "inputs"
+    receipt_root.mkdir(mode=0o755)
+    output_root.mkdir(mode=0o755)
+    input_root.mkdir(mode=0o755)
+    first = output_root / "fixture-runtime"
+    second = output_root / "fixture-helper"
+    first_seed = input_root / "next-runtime"
+    second_seed = input_root / "next-helper"
+    first.write_bytes(b"previous-runtime\n")
+    first.chmod(0o755)
+    first_seed.write_bytes(b"next-runtime\n")
+    first_seed.chmod(0o755)
+    second_seed.write_bytes(b"next-helper\n")
+    second_seed.chmod(0o755)
+    return receipt_root, first, second, first_seed, second_seed
+
+
+def _two_output_descriptor(
+    receipt_root: Path,
+    first: Path,
+    second: Path,
+    first_seed: Path,
+    second_seed: Path,
+) -> dict:
+    stage = receipt_root.parent / "runtime-build-staging" / "fixture-runtime"
+    return {
+        "schema_version": 1,
+        "name": "fixture-runtime",
+        "source": {
+            "repository": "fixture://runtime",
+            "revision": "b" * 40,
+        },
+        "steps": [
+            {
+                "argv": ["/bin/cp", str(first_seed), str(stage / "binary")],
+                "chdir": str(first_seed.parent),
+                "environment": {},
+                "timeout_seconds": 30,
+            },
+            {
+                "argv": ["/bin/cp", str(second_seed), str(stage / "helper")],
+                "chdir": str(second_seed.parent),
+                "environment": {},
+                "timeout_seconds": 30,
+            },
+        ],
+        "outputs": [
+            {
+                "name": "binary",
+                "staged_path": str(stage / "binary"),
+                "path": str(first),
+            },
+            {
+                "name": "helper",
+                "staged_path": str(stage / "helper"),
+                "path": str(second),
+            },
+        ],
+    }
+
+
+def _crash_converge(
+    receipt_root: Path, descriptor: dict, boundary: str
+) -> subprocess.CompletedProcess[str]:
+    program = r"""
+import importlib.util
+import json
+import os
+import pathlib
+import sys
+
+helper_path = pathlib.Path(sys.argv[1])
+receipt_root = pathlib.Path(sys.argv[2])
+descriptor = json.loads(sys.argv[3])
+boundary = sys.argv[4]
+spec = importlib.util.spec_from_file_location("runtime_build_receipt_crash", helper_path)
+helper = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(helper)
+
+if boundary == "journal-link":
+    real_link = helper.os.link
+    journal_name = f".{descriptor['name']}.transaction.json"
+    def crash_after_journal_link(src, dst, *args, **kwargs):
+        result = real_link(src, dst, *args, **kwargs)
+        if dst == journal_name:
+            os._exit(91)
+        return result
+    helper.os.link = crash_after_journal_link
+elif boundary == "journal":
+    real = helper._write_transaction_journal
+    def crash_after_journal(directory, journal):
+        result = real(directory, journal)
+        os._exit(91)
+    helper._write_transaction_journal = crash_after_journal
+else:
+    live_names = [pathlib.Path(item["path"]).name for item in descriptor["outputs"]]
+    receipt_name = f"{descriptor['name']}.json"
+    real = helper.os.replace
+    replaced = 0
+    def crash_after_replace(src, dst, *args, **kwargs):
+        global replaced
+        result = real(src, dst, *args, **kwargs)
+        if dst in live_names:
+            replaced += 1
+            if boundary == "rollback-live-1" and replaced == 1:
+                raise OSError("force-precommit-reconcile")
+            if boundary == f"live-{replaced}":
+                os._exit(91)
+        elif dst == receipt_name and boundary == "receipt":
+            os._exit(91)
+        return result
+    helper.os.replace = crash_after_replace
+    if boundary == "rollback-live-1":
+        real_rename = helper.os.rename
+        def crash_after_rollback_rename(src, dst, *args, **kwargs):
+            result = real_rename(src, dst, *args, **kwargs)
+            if src == live_names[0] and str(dst).endswith(".rollback"):
+                os._exit(91)
+            return result
+        helper.os.rename = crash_after_rollback_rename
+
+helper.converge(receipt_root, descriptor)
+raise SystemExit(90)
+"""
+    return subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            program,
+            str(HELPER),
+            str(receipt_root),
+            json.dumps(descriptor, sort_keys=True),
+            boundary,
+        ],
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+
 def test_missing_receipt_requires_rebuild_without_writing(trusted_root: Path) -> None:
     helper = _helper_module()
     receipt_root, output = _prepare_layout(trusted_root)
@@ -790,12 +933,244 @@ def test_receipt_failure_rolls_back_live_output(
     def fail_receipt(*_args, **_kwargs):
         raise OSError("injected-receipt-failure")
 
-    monkeypatch.setattr(helper, "_record_locked", fail_receipt)
+    monkeypatch.setattr(helper, "_write_receipt_document", fail_receipt)
     with pytest.raises(OSError, match="injected-receipt-failure"):
         helper.converge(receipt_root, descriptor)
 
     assert output.read_bytes() == b"runtime-v1\n"
     assert not (receipt_root / "fixture-runtime.json").exists()
+
+
+@pytest.mark.parametrize("kind", ["regular", "symlink"])
+def test_preexisting_transaction_journal_is_preserved_without_live_mutation(
+    trusted_root: Path, kind: str
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    before = output.stat()
+    journal = receipt_root / ".fixture-runtime.transaction.json"
+    foreign = trusted_root / "foreign-journal"
+    foreign.write_bytes(b"foreign\n")
+    foreign.chmod(0o600)
+    if kind == "regular":
+        journal.write_bytes(b'{"foreign":"journal"}\n')
+        journal.chmod(0o600)
+    else:
+        journal.symlink_to(foreign)
+    journal_before = journal.lstat()
+
+    with pytest.raises(helper.UnsafeState):
+        helper.converge(receipt_root, _descriptor(output))
+
+    after = output.stat()
+    assert output.read_bytes() == b"runtime-v1\n"
+    assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+    assert (journal.lstat().st_dev, journal.lstat().st_ino) == (
+        journal_before.st_dev,
+        journal_before.st_ino,
+    )
+    assert not (receipt_root / "fixture-runtime.json").exists()
+
+
+def test_transaction_journal_link_race_preserves_foreign_entry(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    before = output.stat()
+    journal = receipt_root / ".fixture-runtime.transaction.json"
+    foreign = b'{"foreign":"race-winner"}\n'
+    real_link = helper.os.link
+    inserted = False
+
+    def insert_before_link(source, destination, *args, **kwargs):
+        nonlocal inserted
+        if destination == journal.name and not inserted:
+            inserted = True
+            journal.write_bytes(foreign)
+            journal.chmod(0o600)
+        return real_link(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr(helper.os, "link", insert_before_link)
+    with pytest.raises(helper.UnsafeState, match="transaction-journal-exists"):
+        helper.converge(receipt_root, _descriptor(output))
+
+    after = output.stat()
+    assert output.read_bytes() == b"runtime-v1\n"
+    assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+    assert journal.read_bytes() == foreign
+    assert not (receipt_root / "fixture-runtime.json").exists()
+    assert not list(output.parent.glob(".fixture-runtime.runtime-*"))
+
+
+def test_receipt_replace_before_directory_sync_is_committed_not_rolled_back(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    original_descriptor = _descriptor(output)
+    assert helper.converge(receipt_root, original_descriptor)["changed"] is True
+    original = output.stat()
+    updated = _descriptor(output, revision="b" * 40)
+    receipt = receipt_root / "fixture-runtime.json"
+    journal = receipt_root / ".fixture-runtime.transaction.json"
+    root_inode = (receipt_root.stat().st_dev, receipt_root.stat().st_ino)
+    real_fsync = helper.os.fsync
+    failed = False
+
+    def fail_after_receipt_replace(file_descriptor: int) -> None:
+        nonlocal failed
+        metadata = helper.os.fstat(file_descriptor)
+        if (
+            not failed
+            and stat.S_ISDIR(metadata.st_mode)
+            and (metadata.st_dev, metadata.st_ino) == root_inode
+            and journal.exists()
+            and json.loads(receipt.read_bytes())["source"]["revision"] == "b" * 40
+        ):
+            failed = True
+            raise OSError("injected-receipt-directory-sync-failure")
+        real_fsync(file_descriptor)
+
+    monkeypatch.setattr(helper.os, "fsync", fail_after_receipt_replace)
+    assert helper.converge(receipt_root, updated) == {
+        "schema_version": 1,
+        "changed": True,
+    }
+
+    committed = output.stat()
+    assert (committed.st_dev, committed.st_ino) != (original.st_dev, original.st_ino)
+    assert helper.inspect(receipt_root, updated)["reason"] == "current"
+    assert not journal.exists()
+    assert not list(output.parent.glob(".fixture-runtime.runtime-*"))
+
+
+def test_receipt_failure_before_replace_classifies_previous_and_rolls_back(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    original = _descriptor(output)
+    assert helper.converge(receipt_root, original)["changed"] is True
+    previous_receipt = (receipt_root / "fixture-runtime.json").read_bytes()
+    previous_output = output.stat()
+    updated = _descriptor(output, revision="b" * 40)
+
+    def fail_before_receipt_replace(*_args, **_kwargs) -> None:
+        raise OSError("injected-receipt-file-sync-failure")
+
+    monkeypatch.setattr(helper, "_write_receipt_document", fail_before_receipt_replace)
+
+    with pytest.raises(OSError, match="injected-receipt-file-sync-failure"):
+        helper.converge(receipt_root, updated)
+
+    restored = output.stat()
+    assert (restored.st_dev, restored.st_ino) == (
+        previous_output.st_dev,
+        previous_output.st_ino,
+    )
+    assert (receipt_root / "fixture-runtime.json").read_bytes() == previous_receipt
+    assert not (receipt_root / ".fixture-runtime.transaction.json").exists()
+
+
+def test_foreign_receipt_after_journal_refuses_without_rollback(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    before = output.stat()
+    receipt = receipt_root / "fixture-runtime.json"
+    journal = receipt_root / ".fixture-runtime.transaction.json"
+
+    def publish_foreign_receipt(
+        directory: int, receipt_name: str, _receipt: dict
+    ) -> None:
+        foreign = {
+            "schema_version": 1,
+            "name": "fixture-runtime",
+            "source": {"repository": "fixture://foreign", "revision": "c" * 40},
+            "recipe_sha256": "d" * 64,
+            "outputs": [
+                {
+                    "name": "binary",
+                    "path": str(output),
+                    "sha256": "e" * 64,
+                }
+            ],
+        }
+        helper._atomic_write(
+            directory,
+            receipt_name,
+            json.dumps(foreign, sort_keys=True, separators=(",", ":")).encode() + b"\n",
+        )
+        raise OSError("injected-foreign-receipt")
+
+    monkeypatch.setattr(helper, "_write_receipt_document", publish_foreign_receipt)
+    with pytest.raises(helper.UnsafeState, match="cleanup-journal-receipt-ambiguous"):
+        helper.converge(receipt_root, _descriptor(output))
+
+    published = output.stat()
+    assert (published.st_dev, published.st_ino) != (before.st_dev, before.st_ino)
+    assert receipt.is_file()
+    assert journal.is_file()
+
+
+@pytest.mark.parametrize(
+    "boundary",
+    [
+        "journal-link",
+        "journal",
+        "live-1",
+        "live-2",
+        "receipt",
+        "rollback-live-1",
+    ],
+)
+def test_fresh_process_recovers_two_output_transaction_after_real_crash(
+    trusted_root: Path, boundary: str
+) -> None:
+    helper = _helper_module()
+    receipt_root, first, second, first_seed, second_seed = _two_output_layout(
+        trusted_root
+    )
+    descriptor = _two_output_descriptor(
+        receipt_root, first, second, first_seed, second_seed
+    )
+
+    crashed = _crash_converge(receipt_root, descriptor, boundary)
+
+    assert crashed.returncode == 91
+    assert crashed.stdout == ""
+    assert crashed.stderr == ""
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(HELPER),
+            "converge",
+            "--receipt-root",
+            str(receipt_root),
+        ],
+        input=json.dumps(descriptor),
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["changed"] in {False, True}
+    assert first.read_bytes() == b"next-runtime\n"
+    assert second.read_bytes() == b"next-helper\n"
+    assert helper.inspect(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "rebuild_required": False,
+        "reason": "current",
+    }
+    assert not (receipt_root / ".fixture-runtime.transaction.json").exists()
+    assert not (receipt_root / "..fixture-runtime.transaction.json.quarantine").exists()
+    assert not list(first.parent.glob(".*.runtime-*"))
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": False,
+    }
 
 
 def test_post_commit_cleanup_failure_reports_pending_success(
@@ -823,7 +1198,7 @@ def test_post_commit_cleanup_failure_reports_pending_success(
         "cleanup_pending": True,
     }
     assert helper.inspect(receipt_root, descriptor)["reason"] == "current"
-    marker = receipt_root / ".fixture-runtime.cleanup.json"
+    marker = receipt_root / ".fixture-runtime.transaction.json"
     assert marker.is_file()
     assert stat.S_IMODE(marker.stat().st_mode) == 0o600
 
@@ -836,6 +1211,276 @@ def test_post_commit_cleanup_failure_reports_pending_success(
     stage = receipt_root.parent / "runtime-build-staging" / "fixture-runtime"
     assert stage.is_dir()
     assert list(stage.iterdir()) == []
+
+
+def test_cleanup_pending_is_not_reported_without_a_readable_durable_journal(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    journal = receipt_root / ".fixture-runtime.transaction.json"
+    real_unlink = helper.os.unlink
+    failed = False
+
+    def corrupt_journal_then_fail_cleanup(path, *args, **kwargs):
+        nonlocal failed
+        if ".runtime-backup." in str(path) and not failed:
+            failed = True
+            journal.write_bytes(b"not-json\n")
+            journal.chmod(0o600)
+            raise OSError("injected-cleanup-failure-with-lost-journal")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(helper.os, "unlink", corrupt_journal_then_fail_cleanup)
+
+    with pytest.raises(helper.UnsafeState, match="transaction-journal"):
+        helper.converge(receipt_root, _descriptor(output))
+
+    assert journal.read_bytes() == b"not-json\n"
+    assert helper.inspect(receipt_root, _descriptor(output))["reason"] == "current"
+
+
+def test_committed_cleanup_reports_pending_when_only_wal_quarantine_is_readable(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    descriptor = _descriptor(output)
+    canonical = receipt_root / ".fixture-runtime.transaction.json"
+    quarantine = receipt_root / "..fixture-runtime.transaction.json.quarantine"
+    root_inode = (receipt_root.stat().st_dev, receipt_root.stat().st_ino)
+    real_fsync = helper.os.fsync
+    failed = False
+
+    def fail_after_wal_canonical_unlink(file_descriptor: int) -> None:
+        nonlocal failed
+        metadata = helper.os.fstat(file_descriptor)
+        if (
+            not failed
+            and stat.S_ISDIR(metadata.st_mode)
+            and (metadata.st_dev, metadata.st_ino) == root_inode
+            and not canonical.exists()
+            and quarantine.exists()
+            and (receipt_root / "fixture-runtime.json").exists()
+        ):
+            failed = True
+            raise OSError("injected-wal-quarantine-directory-sync-failure")
+        real_fsync(file_descriptor)
+
+    monkeypatch.setattr(helper.os, "fsync", fail_after_wal_canonical_unlink)
+
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": True,
+        "cleanup_pending": True,
+    }
+    assert quarantine.is_file()
+    assert not canonical.exists()
+
+    monkeypatch.undo()
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": False,
+    }
+    assert not quarantine.exists()
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["write", "file-fsync", "chmod", "fstat", "close", "link", "dir-fsync", "unlink"],
+)
+def test_wal_publication_syscall_failure_recovers_without_live_mutation(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    descriptor = _descriptor(output)
+    before = output.stat()
+    active = False
+    failed = False
+    real_writer = helper._write_transaction_journal
+
+    def tracked_writer(directory: int, journal: dict) -> dict:
+        nonlocal active
+        active = True
+        try:
+            return real_writer(directory, journal)
+        finally:
+            active = False
+
+    monkeypatch.setattr(helper, "_write_transaction_journal", tracked_writer)
+
+    def install(name: str) -> None:
+        real = getattr(helper.os, name)
+
+        def injected(*args, **kwargs):
+            nonlocal failed
+            if active and not failed:
+                if fault == "dir-fsync" and name == "fsync":
+                    if not stat.S_ISDIR(helper.os.fstat(args[0]).st_mode):
+                        return real(*args, **kwargs)
+                elif fault == "file-fsync" and name == "fsync":
+                    if stat.S_ISDIR(helper.os.fstat(args[0]).st_mode):
+                        return real(*args, **kwargs)
+                failed = True
+                if name == "close":
+                    real(*args, **kwargs)
+                raise OSError(f"injected-wal-{fault}-failure")
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(helper.os, name, injected)
+
+    install(
+        {
+            "write": "write",
+            "file-fsync": "fsync",
+            "chmod": "fchmod",
+            "fstat": "fstat",
+            "close": "close",
+            "link": "link",
+            "dir-fsync": "fsync",
+            "unlink": "unlink",
+        }[fault]
+    )
+
+    with pytest.raises((OSError, helper.UnsafeState)):
+        helper.converge(receipt_root, descriptor)
+
+    after = output.stat()
+    assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+    assert output.read_bytes() == b"runtime-v1\n"
+    assert not (receipt_root / "fixture-runtime.json").exists()
+
+    monkeypatch.undo()
+    assert helper.converge(receipt_root, descriptor)["changed"] is True
+    assert helper.inspect(receipt_root, descriptor)["reason"] == "current"
+
+
+def test_committed_cleanup_detects_backup_replacement_before_quarantine(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    foreign = b"foreign-backup\n"
+    retained = output.parent / "retained-owned-backup"
+    real_cleanup = helper._cleanup_committed_output
+    replaced = False
+
+    def replace_before_cleanup(item: dict) -> None:
+        nonlocal replaced
+        if not replaced and item["backup_name"] is not None:
+            backup = output.parent / item["backup_name"]
+            backup.rename(retained)
+            backup.write_bytes(foreign)
+            backup.chmod(0o755)
+            replaced = True
+        real_cleanup(item)
+
+    monkeypatch.setattr(helper, "_cleanup_committed_output", replace_before_cleanup)
+
+    with pytest.raises(helper.UnsafeState, match="transaction-backup-replaced"):
+        helper.converge(receipt_root, _descriptor(output))
+
+    backup_names = list(output.parent.glob(".*.runtime-backup.*"))
+    assert len(backup_names) == 1
+    assert backup_names[0].read_bytes() == foreign
+    assert retained.read_bytes() == b"runtime-v1\n"
+    assert (receipt_root / ".fixture-runtime.transaction.json").is_file()
+    assert helper.inspect(receipt_root, _descriptor(output))["reason"] == "current"
+
+
+def test_journal_cleanup_detects_replacement_at_validation_boundary(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    canonical = receipt_root / ".fixture-runtime.transaction.json"
+    retained = receipt_root / "retained-owned-journal"
+    foreign = b"foreign-journal\n"
+    real_remove = helper._remove_transaction_journal
+    replaced = False
+
+    def replace_before_remove(
+        directory: int, project: str, source_name: str, identity: dict
+    ) -> None:
+        nonlocal replaced
+        if not replaced:
+            canonical.rename(retained)
+            canonical.write_bytes(foreign)
+            canonical.chmod(0o600)
+            replaced = True
+        real_remove(directory, project, source_name, identity)
+
+    monkeypatch.setattr(helper, "_remove_transaction_journal", replace_before_remove)
+
+    with pytest.raises(helper.UnsafeState, match="transaction-journal-replaced"):
+        helper.converge(receipt_root, _descriptor(output))
+
+    assert canonical.read_bytes() == foreign
+    assert retained.is_file()
+    assert helper.inspect(receipt_root, _descriptor(output))["reason"] == "current"
+
+
+def test_backup_quarantine_exclusive_claim_refuses_foreign_tombstone(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    foreign = b"foreign-quarantine\n"
+    real_link = helper.os.link
+    inserted: Path | None = None
+
+    def insert_foreign_before_claim(source, destination, *args, **kwargs):
+        nonlocal inserted
+        if ".runtime-backup." in str(destination) and str(destination).endswith(
+            ".quarantine"
+        ):
+            inserted = output.parent / str(destination)
+            inserted.write_bytes(foreign)
+            inserted.chmod(0o600)
+        return real_link(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr(helper.os, "link", insert_foreign_before_claim)
+
+    with pytest.raises(helper.UnsafeState, match="transaction-backup-manual-recovery"):
+        helper.converge(receipt_root, _descriptor(output))
+
+    assert inserted is not None
+    assert inserted.read_bytes() == foreign
+    assert (receipt_root / ".fixture-runtime.transaction.json").is_file()
+    assert helper.inspect(receipt_root, _descriptor(output))["reason"] == "current"
+
+
+def test_backup_quarantine_detects_replacement_at_final_recheck(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    foreign = b"foreign-before-unlink\n"
+    real_read = helper._read_identity_at
+    real_unlink = helper.os.unlink
+    tombstone_reads = 0
+    replaced: Path | None = None
+
+    def replace_on_final_recheck(directory: int, name: str):
+        nonlocal tombstone_reads, replaced
+        if ".runtime-backup." in name and name.endswith(".quarantine"):
+            tombstone_reads += 1
+            if tombstone_reads == 3:
+                replaced = output.parent / name
+                real_unlink(name, dir_fd=directory)
+                replaced.write_bytes(foreign)
+                replaced.chmod(0o600)
+        return real_read(directory, name)
+
+    monkeypatch.setattr(helper, "_read_identity_at", replace_on_final_recheck)
+
+    with pytest.raises(helper.UnsafeState, match="transaction-backup-replaced"):
+        helper.converge(receipt_root, _descriptor(output))
+
+    assert replaced is not None
+    assert replaced.read_bytes() == foreign
+    assert (receipt_root / ".fixture-runtime.transaction.json").is_file()
 
 
 def test_stage_cleanup_failure_rolls_back_before_receipt_commit(
@@ -863,6 +1508,87 @@ def test_stage_cleanup_failure_rolls_back_before_receipt_commit(
 
     assert output.read_bytes() == b"runtime-v1\n"
     assert not (receipt_root / "fixture-runtime.json").exists()
+
+
+def test_transaction_journal_replacement_after_publish_refuses_before_live_write(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    before = output.stat()
+    canonical = receipt_root / ".fixture-runtime.transaction.json"
+    retained = receipt_root / "retained-owned-journal"
+    foreign = b'{"foreign":true}\n'
+    real_write = helper._write_transaction_journal
+
+    def replace_after_write(directory: int, journal: dict) -> dict:
+        identity = real_write(directory, journal)
+        canonical.rename(retained)
+        canonical.write_bytes(foreign)
+        canonical.chmod(0o600)
+        return identity
+
+    monkeypatch.setattr(helper, "_write_transaction_journal", replace_after_write)
+
+    with pytest.raises(helper.UnsafeState, match="transaction-journal"):
+        helper.converge(receipt_root, _descriptor(output))
+
+    after = output.stat()
+    assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+    assert output.read_bytes() == b"runtime-v1\n"
+    assert canonical.read_bytes() == foreign
+    assert retained.is_file()
+    assert not (receipt_root / "fixture-runtime.json").exists()
+
+
+def test_two_output_second_preflight_failure_closes_first_descriptor_without_writes(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, first, second, first_seed, second_seed = _two_output_layout(
+        trusted_root
+    )
+    descriptor = _two_output_descriptor(
+        receipt_root, first, second, first_seed, second_seed
+    )
+    crashed = _crash_converge(receipt_root, descriptor, "journal")
+    assert crashed.returncode == 91
+    before = {
+        path.name: (path.lstat().st_dev, path.lstat().st_ino)
+        for path in first.parent.iterdir()
+    }
+    real_preflight = helper._preflight_precommit_output
+    calls = 0
+    first_parent: int | None = None
+
+    def fail_second(output: dict) -> dict:
+        nonlocal calls, first_parent
+        calls += 1
+        if calls == 2:
+            raise helper.UnsafeState("injected-second-preflight-failure")
+        result = real_preflight(output)
+        first_parent = result["parent"]
+        return result
+
+    monkeypatch.setattr(helper, "_preflight_precommit_output", fail_second)
+    directory = os.open(receipt_root, os.O_RDONLY)
+    try:
+        with pytest.raises(
+            helper.UnsafeState, match="injected-second-preflight-failure"
+        ):
+            helper._reconcile_transaction_locked(
+                directory, "fixture-runtime.json", "fixture-runtime"
+            )
+    finally:
+        os.close(directory)
+
+    assert first_parent is not None
+    with pytest.raises(OSError):
+        os.fstat(first_parent)
+    assert {
+        path.name: (path.lstat().st_dev, path.lstat().st_ino)
+        for path in first.parent.iterdir()
+    } == before
     assert not (receipt_root / ".fixture-runtime.cleanup.json").exists()
 
 
@@ -1052,26 +1778,24 @@ def test_live_output_inode_replacement_refuses_before_publication(
     receipt_root, output = _prepare_layout(trusted_root)
     descriptor = _descriptor(output)
     original = output.with_name("original-runtime")
-    real_open = helper._open_output_at
-    replaced = False
+    real_write_journal = helper._write_transaction_journal
 
-    def replace_then_open(parent, name, uid, expected=None):
-        nonlocal replaced
-        if expected is not None and not replaced:
-            output.rename(original)
-            output.write_bytes(b"substituted\n")
-            output.chmod(0o755)
-            replaced = True
-        return real_open(parent, name, uid, expected)
+    def journal_then_replace(directory: int, journal: dict) -> dict:
+        identity = real_write_journal(directory, journal)
+        output.rename(original)
+        output.write_bytes(b"substituted\n")
+        output.chmod(0o755)
+        return identity
 
-    monkeypatch.setattr(helper, "_open_output_at", replace_then_open)
+    monkeypatch.setattr(helper, "_write_transaction_journal", journal_then_replace)
 
-    with pytest.raises(helper.UnsafeState, match="output-replaced"):
+    with pytest.raises(helper.UnsafeState, match="transaction-live-ambiguous"):
         helper.converge(receipt_root, descriptor)
 
     assert output.read_bytes() == b"substituted\n"
     assert original.read_bytes() == b"runtime-v1\n"
     assert not (receipt_root / "fixture-runtime.json").exists()
+    assert (receipt_root / ".fixture-runtime.transaction.json").is_file()
 
 
 def test_project_lock_has_a_bounded_acquisition_deadline(
