@@ -1137,6 +1137,63 @@ def test_candidate_cleanup_covers_post_write_normalization_failure(
     assert list(release_path.glob(".runtime-release-candidate-*")) == []
 
 
+def test_candidate_short_write_refuses_cleans_up_and_retry_succeeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _activator_module()
+    root, _ = _activation_layout(tmp_path)
+    release_path = root / "releases" / "v1"
+    release = helper._open_directory(release_path)
+    source_path = tmp_path / "candidate"
+    source_path.write_text("#!/bin/sh\necho candidate\n")
+    source_path.chmod(0o700)
+    source = os.open(source_path, os.O_RDONLY)
+    digest = hashlib.sha256(source_path.read_bytes()).hexdigest()
+    real_write = helper.os.write
+    short_write_calls = 0
+
+    def short_write(descriptor: int, data: bytes) -> int:
+        nonlocal short_write_calls
+        short_write_calls += 1
+        written = real_write(descriptor, data[:-1])
+        assert written == len(data) - 1
+        return written
+
+    monkeypatch.setattr(helper.os, "write", short_write)
+    try:
+        with pytest.raises(helper.UnsafeState, match="candidate-write-incomplete"):
+            helper._atomic_install_candidate(
+                release,
+                "new-runtime-fixture",
+                source,
+                digest,
+                os.getuid(),
+                os.getgid(),
+            )
+
+        assert short_write_calls == 1
+        assert not (release_path / "new-runtime-fixture").exists()
+        assert list(release_path.glob(".runtime-release-candidate-*")) == []
+
+        monkeypatch.setattr(helper.os, "write", real_write)
+        os.lseek(source, 0, os.SEEK_SET)
+        helper._atomic_install_candidate(
+            release,
+            "new-runtime-fixture",
+            source,
+            digest,
+            os.getuid(),
+            os.getgid(),
+        )
+    finally:
+        os.close(source)
+        release.close()
+
+    candidate = release_path / "new-runtime-fixture"
+    assert candidate.read_bytes() == source_path.read_bytes()
+    assert candidate.stat().st_mode & 0o777 == 0o755
+
+
 def test_owned_release_directory_closes_both_guards_on_contract_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
