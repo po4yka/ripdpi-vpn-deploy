@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from enum import Enum
 import fcntl
 import grp
 import hashlib
@@ -31,6 +32,13 @@ class ActivationFailed(RuntimeError):
 
 class CompensationIncomplete(RuntimeError):
     """Activation failed and exact restoration could not be confirmed."""
+
+
+class _PublicationOutcome(Enum):
+    ALREADY_PUBLISHED = "already_published"
+    RECEIPT_CREATED = "receipt_created"
+    CANDIDATE_AND_RECEIPT_CREATED = "candidate_and_receipt_created"
+    NEEDS_STAGED_CANDIDATE = "needs_staged_candidate"
 
 
 class _DirectoryGuard:
@@ -1162,7 +1170,7 @@ def _validate_or_publish_receipt(
     owner: str,
     group: str,
     staged_candidate: int | None,
-) -> None:
+) -> _PublicationOutcome:
     _validate_digest(artifact_sha256)
     _validate_digest(candidate_sha256)
     _validate_name(arch_key)
@@ -1175,12 +1183,22 @@ def _validate_or_publish_receipt(
     uid = pwd.getpwnam(owner).pw_uid
     gid = grp.getgrnam(group).gr_gid
     releases, release = _owned_release_directory(root, version, uid, gid)
+    candidate_installed = False
+    receipt_created = False
     try:
         try:
             os.stat(binary_name, dir_fd=release.descriptor, follow_symlinks=False)
         except FileNotFoundError:
             if staged_candidate is None:
-                raise UnsafeState("missing-staged-candidate")
+                try:
+                    os.stat(
+                        ".runtime-release.json",
+                        dir_fd=release.descriptor,
+                        follow_symlinks=False,
+                    )
+                except FileNotFoundError:
+                    return _PublicationOutcome.NEEDS_STAGED_CANDIDATE
+                raise UnsafeState("receipt-without-candidate")
             _atomic_install_candidate(
                 release,
                 binary_name,
@@ -1189,6 +1207,7 @@ def _validate_or_publish_receipt(
                 uid,
                 gid,
             )
+            candidate_installed = True
         actual_candidate_digest = _candidate_digest(
             release, binary_name, uid=uid, gid=gid
         )
@@ -1204,6 +1223,7 @@ def _validate_or_publish_receipt(
             )
         except FileNotFoundError:
             _atomic_receipt(release, expected, uid, gid)
+            receipt_created = True
             info = os.stat(
                 ".runtime-release.json",
                 dir_fd=release.descriptor,
@@ -1230,6 +1250,11 @@ def _validate_or_publish_receipt(
             os.close(descriptor)
         if observed != expected:
             raise UnsafeState("receipt-mismatch")
+        if candidate_installed:
+            return _PublicationOutcome.CANDIDATE_AND_RECEIPT_CREATED
+        if receipt_created:
+            return _PublicationOutcome.RECEIPT_CREATED
+        return _PublicationOutcome.ALREADY_PUBLISHED
     finally:
         release.close()
         releases.close()
@@ -1452,13 +1477,28 @@ def activate(
             owner,
             group,
         )
-        staged_descriptor: int | None = None
+        publication_changed = False
         if any(value is not None for value in receipt_inputs):
             if any(value is None for value in receipt_inputs):
                 raise UnsafeState("incomplete-receipt-input")
             if root_directory is None:
                 raise UnsafeState("missing-install-root")
-            if requires_artifact:
+            outcome = _validate_or_publish_receipt(
+                root_directory,
+                version,
+                binary_name,
+                artifact_sha256,
+                candidate_sha256,
+                artifact_type,
+                arch_key,
+                arch_slug,
+                owner,
+                group,
+                None,
+            )
+            if outcome is _PublicationOutcome.NEEDS_STAGED_CANDIDATE:
+                if not requires_artifact:
+                    raise UnsafeState("missing-staged-candidate")
                 transaction_inputs = (
                     staging_dir,
                     transaction_dir,
@@ -1482,23 +1522,23 @@ def activate(
                     storage_uid,
                     storage_gid,
                 )
-            try:
-                _validate_or_publish_receipt(
-                    root_directory,
-                    version,
-                    binary_name,
-                    artifact_sha256,
-                    candidate_sha256,
-                    artifact_type,
-                    arch_key,
-                    arch_slug,
-                    owner,
-                    group,
-                    staged_descriptor,
-                )
-            finally:
-                if staged_descriptor is not None:
+                try:
+                    outcome = _validate_or_publish_receipt(
+                        root_directory,
+                        version,
+                        binary_name,
+                        artifact_sha256,
+                        candidate_sha256,
+                        artifact_type,
+                        arch_key,
+                        arch_slug,
+                        owner,
+                        group,
+                        staged_descriptor,
+                    )
+                finally:
                     os.close(staged_descriptor)
+            publication_changed = outcome is not _PublicationOutcome.ALREADY_PUBLISHED
         else:
             if root_directory is None:
                 raise UnsafeState("missing-install-root")
@@ -1509,6 +1549,7 @@ def activate(
             finally:
                 release_directory.close()
                 releases.close()
+        changed = desired != before or publication_changed
         try:
             if root_directory is None:
                 raise UnsafeState("missing-install-root")
