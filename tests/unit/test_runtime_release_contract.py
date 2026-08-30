@@ -11,9 +11,11 @@ import stat
 import subprocess
 import sys
 import tarfile
+import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import zipfile
+from collections.abc import Iterator
 from pathlib import Path
 
 import yaml
@@ -321,6 +323,31 @@ def _activator_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.fixture
+def tmp_path() -> Iterator[Path]:
+    """Provide a production-valid root without trusting the global temp ancestry."""
+    trusted_root = Path(
+        tempfile.mkdtemp(prefix=".ripdpi-runtime-release-pytest-", dir=Path.home())
+    )
+    trusted_root.chmod(0o700)
+    original = trusted_root.lstat()
+    try:
+        helper = _activator_module()
+        helper._validate_storage_ancestors(
+            trusted_root, os.getuid(), allow_missing=False
+        )
+        yield trusted_root
+    finally:
+        if os.path.lexists(trusted_root):
+            current = trusted_root.lstat()
+            assert (current.st_dev, current.st_ino) == (
+                original.st_dev,
+                original.st_ino,
+            )
+            shutil.rmtree(trusted_root)
+        assert not os.path.lexists(trusted_root)
 
 
 def _activation_layout(tmp_path: Path) -> tuple[Path, Path]:
