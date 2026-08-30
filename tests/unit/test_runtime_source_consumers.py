@@ -256,6 +256,12 @@ def test_source_build_role_uses_fixed_staging_and_fresh_check_prerequisites() ->
     ]["ansible.builtin.command"]["argv"]
     inspect = by_name["Inspect runtime source-build receipt and outputs"]
     converge = by_name["Converge runtime source build under the project lock"]
+    assert converge["changed_when"] == (
+        "(_runtime_build_convergence.stdout | from_json).changed | bool"
+    )
+    assert "(_runtime_build_convergence.stdout | from_json).changed | bool" in (
+        publish["ansible.builtin.set_fact"]["runtime_build_changed"]
+    )
 
     assert validate[-2:] == ["--stage-root", "{{ runtime_build_stage_root }}"]
     assert inspect["ansible.builtin.command"]["argv"][-2:] == [

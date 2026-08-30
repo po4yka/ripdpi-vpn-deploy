@@ -87,6 +87,12 @@ cleanup. A third receipt state refuses without mutating any inode.
   immutable private journal binds previous/next receipts and exact before/after
   output inodes; cleanup failure returns `cleanup_pending` only while that
   journal remains readable, and later convergence retries under the same lock.
+- **Readable committed journals notify at least once** — a retry that recovers
+  an exact next receipt and all published output identities reports
+  `changed=true`, so handlers still run when the original helper died before
+  Ansible received its result. A process death after the journal was fully
+  removed but before stdout is acknowledged cannot be distinguished from a
+  completed prior run and is an accepted process-death boundary.
 - **The host UID is a trust boundary** — the project lock serializes every
   authorized writer, and receipt/output parents reject group/world writes. A
   malicious process with that exact UID (root on managed hosts) can still race
