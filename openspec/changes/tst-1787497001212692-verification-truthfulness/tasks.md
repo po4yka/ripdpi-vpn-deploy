@@ -20,8 +20,8 @@ Verification passes exactly when deployed state matches intent: subscription-onl
 - [x] TST-1787496118906321 Append an idempotence phase to full-stack and full-stack-published test sequences and make them pass (fix any revealed non-idempotent tasks) #bug !high @item:TST-1787497001212692
 - [x] TST-1787496118907291 Add an idempotence phase to the xray molecule sequence and verify repeat converge preserves role-owned runtime symlinks with zero changes #bug !low @item:TST-1787497001212692
 - [x] TST-1787496118906595 Rewrite the amneziawg converge to execute the role via include_role against synthetic local Git/build inputs and no-TUN tools, verifying role-owned outputs and idempotence #bug !high @item:TST-1787497001212692
-- [ ] TST-1787496118906567 Sync docs/TESTING.md rows with observed sequences (geodata/naive/warp-outbound syntax-only claims), add the missing reality-self-steal row, correct the amneziawg description #docs !low @item:TST-1787497001212692
-- [ ] TST-1787496118907256 Add a verify assertion that exactly one SSH listener exists per host (effective-config parse), guarding the socket/service reconciliation surface #bug !low @item:TST-1787497001212692
+- [x] TST-1787496118906567 Sync docs/TESTING.md rows with observed sequences (geodata/naive/warp-outbound syntax-only claims), add the missing reality-self-steal row, correct the amneziawg description #docs !low @item:TST-1787497001212692
+- [x] TST-1787496118907256 Add a verify assertion that exactly one SSH listener exists per host (effective-config parse), guarding the socket/service reconciliation surface #bug !low @item:TST-1787497001212692
 - [ ] TST-1787496118906996 Run named gates: touched molecule scenarios including both full-stack variants, make ci-fast, make validate, one live-inventory verify + source-drift cycle #test !high @item:TST-1787497001212692
 
 ## Verification
