@@ -436,6 +436,16 @@ def _expected_identity(descriptor: dict) -> dict:
     }
 
 
+def _receipt_matches_descriptor(receipt: dict, descriptor: dict) -> bool:
+    return {
+        **receipt,
+        "outputs": [
+            {key: value for key, value in output.items() if key != "sha256"}
+            for output in receipt["outputs"]
+        ],
+    } == _expected_identity(descriptor)
+
+
 def _output_digests(descriptor: dict) -> tuple[list[dict[str, str]] | None, str | None]:
     outputs: list[dict[str, str]] = []
     for output in descriptor["outputs"]:
@@ -1746,10 +1756,10 @@ def _remove_transaction_journal(
 
 def _reconcile_transaction_locked(
     directory: int, receipt_name: str, project: str
-) -> tuple[str, bool]:
+) -> tuple[str, bool, dict | None]:
     entry = _transaction_entry(directory, project)
     if entry is None:
-        return "none", False
+        return "none", False, None
     journal, journal_identity, source_name = entry
     receipt = _read_receipt(directory, receipt_name)
     outputs: list[dict] = []
@@ -1775,14 +1785,14 @@ def _reconcile_transaction_locked(
             if _read_receipt(directory, receipt_name) != journal["previous_receipt"]:
                 raise UnsafeState("cleanup-journal-receipt-ambiguous")
         _remove_transaction_journal(directory, project, source_name, journal_identity)
-        return state, False
+        return state, False, journal["next_receipt"]
     except OSError:
         if state == "committed":
             observed, pending = _classify_committed_locked(
                 directory, receipt_name, project, journal
             )
             if observed:
-                return state, pending
+                return state, pending, journal["next_receipt"]
         raise
     finally:
         _close_recovery_outputs(outputs)
@@ -1824,17 +1834,19 @@ def converge(receipt_root: Path, document: object) -> dict:
     journal_identity: dict | None = None
     committed_result: dict | None = None
     try:
-        recovered, cleanup_pending = _reconcile_transaction_locked(
+        recovered, cleanup_pending, recovered_receipt = _reconcile_transaction_locked(
             directory, receipt_name, descriptor["name"]
         )
-        if recovered == "committed":
+        if recovered == "committed" and _receipt_matches_descriptor(
+            recovered_receipt, descriptor
+        ):
             return {
                 "schema_version": SCHEMA_VERSION,
                 "changed": True,
                 **({"cleanup_pending": True} if cleanup_pending else {}),
             }
         if cleanup_pending:
-            raise UnsafeState("invalid-precommit-cleanup-debt")
+            raise UnsafeState("committed-recovery-cleanup-pending")
         if recovered != "none":
             _stage_path, recovered_stage = _prepare_stage(receipt_root, descriptor)
             os.close(recovered_stage)
@@ -1872,8 +1884,10 @@ def converge(receipt_root: Path, document: object) -> dict:
                 _close_publication_descriptors(publications)
                 publications = []
                 try:
-                    outcome, pending = _reconcile_transaction_locked(
-                        directory, receipt_name, descriptor["name"]
+                    outcome, pending, _recovered_receipt = (
+                        _reconcile_transaction_locked(
+                            directory, receipt_name, descriptor["name"]
+                        )
                     )
                 except UnsafeState as recovery_error:
                     raise recovery_error from primary
@@ -1907,7 +1921,7 @@ def converge(receipt_root: Path, document: object) -> dict:
                 pass
             publications = []
             try:
-                outcome, pending = _reconcile_transaction_locked(
+                outcome, pending, _recovered_receipt = _reconcile_transaction_locked(
                     directory, receipt_name, descriptor["name"]
                 )
             except UnsafeState as recovery_error:
@@ -1928,7 +1942,7 @@ def converge(receipt_root: Path, document: object) -> dict:
             except OSError:
                 pass  # Receipt/live classification below is authoritative.
             publications = []
-            outcome, pending = _reconcile_transaction_locked(
+            outcome, pending, _recovered_receipt = _reconcile_transaction_locked(
                 directory, receipt_name, descriptor["name"]
             )
             if outcome != "committed":

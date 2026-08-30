@@ -1265,6 +1265,63 @@ def test_committed_recovery_notifies_before_any_fallible_stage_work(
     }
 
 
+def test_committed_recovery_for_prior_descriptor_converges_requested_revision(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    original = _descriptor(output)
+    real_unlink = helper.os.unlink
+    failed = False
+
+    def fail_backup_cleanup(path, *args, **kwargs):
+        nonlocal failed
+        if ".runtime-backup." in str(path) and not failed:
+            failed = True
+            raise OSError("injected-post-commit-backup-cleanup-failure")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(helper.os, "unlink", fail_backup_cleanup)
+    assert helper.converge(receipt_root, original) == {
+        "schema_version": 1,
+        "changed": True,
+        "cleanup_pending": True,
+    }
+    monkeypatch.undo()
+
+    seed = trusted_root / "runtime-v2"
+    seed.write_bytes(b"runtime-v2\n")
+    seed.chmod(0o755)
+    staged = _staged_path(output)
+    updated = _descriptor(
+        output,
+        revision="b" * 40,
+        steps=[
+            {
+                "argv": ["/bin/cp", str(seed), str(staged)],
+                "chdir": str(seed.parent),
+                "environment": {},
+                "timeout_seconds": 30,
+            }
+        ],
+    )
+
+    assert helper.converge(receipt_root, updated) == {
+        "schema_version": 1,
+        "changed": True,
+    }
+    assert output.read_bytes() == b"runtime-v2\n"
+    assert helper.inspect(receipt_root, updated) == {
+        "schema_version": 1,
+        "rebuild_required": False,
+        "reason": "current",
+    }
+    assert helper.converge(receipt_root, updated) == {
+        "schema_version": 1,
+        "changed": False,
+    }
+
+
 def test_cleanup_pending_is_not_reported_without_a_readable_durable_journal(
     trusted_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
