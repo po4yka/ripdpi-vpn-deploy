@@ -1596,6 +1596,51 @@ def test_helper_uses_distinct_owned_transactions_and_cleans_each_one(
     assert list((root / ".runtime-release-staging").iterdir()) == []
 
 
+@pytest.mark.parametrize("truncation", ["newline", "invalid-json"])
+def test_prepare_staging_refuses_short_transaction_receipt_write_and_cleans_up(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    truncation: str,
+) -> None:
+    helper = _activator_module()
+    root = tmp_path / "install"
+    root.mkdir(mode=0o755)
+    root.chmod(0o755)
+    owner = getpass.getuser()
+    group = grp.getgrgid(os.getgid()).gr_name
+    real_write = helper.os.write
+    observed_mode: int | None = None
+
+    def short_write(descriptor: int, data: bytes) -> int:
+        nonlocal observed_mode
+        observed_mode = stat.S_IMODE(os.fstat(descriptor).st_mode)
+        length = len(data) - 1 if truncation == "newline" else len(data) // 2
+        return real_write(descriptor, data[:length])
+
+    monkeypatch.setattr(helper.os, "write", short_write)
+
+    with pytest.raises(helper.UnsafeState) as raised:
+        helper.prepare_staging(
+            root,
+            root / ".runtime-release-staging",
+            "artifact-secret-name",
+            None,
+            "runtime-fixture",
+            "v1",
+            "0" * 64,
+            "binary",
+            owner=owner,
+            group=group,
+        )
+
+    assert str(raised.value) == "transaction-receipt-write-incomplete"
+    assert "artifact-secret-name" not in str(raised.value)
+    assert observed_mode == 0o600
+    staging = root / ".runtime-release-staging"
+    assert staging.is_dir()
+    assert list(staging.iterdir()) == []
+
+
 def test_failed_download_transaction_cleanup_allows_unchanged_retry(
     tmp_path: Path,
 ) -> None:
