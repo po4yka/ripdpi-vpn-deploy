@@ -1,0 +1,109 @@
+---
+- name: Predict Hysteria runtime release upgrade without mutation
+  hosts: all
+  become: true
+  vars:
+    hysteria_install_root: /opt/hysteria
+    hysteria_config_dir: /etc/hysteria
+    hysteria_log_dir: /var/log/hysteria
+    hysteria_port: 443
+    public_site_canonical_url: "https://vpn.example.test"
+    hysteria_release_urls:
+      amd64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.4
+      arm64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.4-arm64
+    hysteria:
+      version: v2.8.4
+      linux_amd64_sha256: a94b3a4cbb14183ae933de5c5e2478da95b1d000d1c7d0d50102dba0882eee46
+      linux_arm64_sha256: 398f21663faa504a8e00518b298b4a4fd418a3ba61d5e33a4d87a25b05a4d2a0
+      cert_pem: |
+        -----BEGIN CERTIFICATE-----
+        STUB_CERT_FOR_MOLECULE
+        -----END CERTIFICATE-----
+      key_pem: |
+        -----BEGIN PRIVATE KEY-----
+        STUB_KEY_FOR_MOLECULE
+        -----END PRIVATE KEY-----
+      bandwidth_up: "100 mbps"
+      bandwidth_down: "200 mbps"
+      masquerade_url: "https://vpn.example.test"
+      salamander_enabled: false
+      clients:
+        - name: alice
+          password: stub-pw-1
+        - name: bob
+          password: stub-pw-2
+  tasks:
+    - name: Inspect Hysteria state before global check mode
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - /opt/hysteria/current
+        - /opt/hysteria/previous
+        - /usr/local/bin/hysteria
+        - /opt/hysteria/releases/v2.8.4/hysteria
+        - /opt/hysteria/releases/v2.8.4/.runtime-release.json
+      register: check_mode_before_paths
+      check_mode: false
+
+    - name: Read active Hysteria process before global check mode
+      ansible.builtin.command:
+        cmd: systemctl show --property=MainPID --value hysteria-server.service
+      register: check_mode_before_pid
+      changed_when: false
+      check_mode: false
+
+    - name: Read Hysteria version before global check mode
+      ansible.builtin.command:
+        cmd: /usr/local/bin/hysteria
+      register: check_mode_before_version
+      changed_when: false
+      check_mode: false
+
+    - name: Include Hysteria role predictively
+      ansible.builtin.include_role:
+        name: hysteria
+
+    - name: Flush Hysteria handlers under global check mode
+      ansible.builtin.meta: flush_handlers
+
+    - name: Inspect Hysteria state after global check mode
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - /opt/hysteria/current
+        - /opt/hysteria/previous
+        - /usr/local/bin/hysteria
+        - /opt/hysteria/releases/v2.8.4/hysteria
+        - /opt/hysteria/releases/v2.8.4/.runtime-release.json
+      register: check_mode_after_paths
+      check_mode: false
+
+    - name: Read active Hysteria process after global check mode
+      ansible.builtin.command:
+        cmd: systemctl show --property=MainPID --value hysteria-server.service
+      register: check_mode_after_pid
+      changed_when: false
+      check_mode: false
+
+    - name: Read Hysteria version after global check mode
+      ansible.builtin.command:
+        cmd: /usr/local/bin/hysteria
+      register: check_mode_after_version
+      changed_when: false
+      check_mode: false
+
+    - name: Assert global check mode predicted a release without writes or restart
+      ansible.builtin.assert:
+        that:
+          - runtime_release_changed | bool
+          - check_mode_after_paths.results[0].stat.lnk_source == check_mode_before_paths.results[0].stat.lnk_source
+          - check_mode_after_paths.results[1].stat.lnk_source == check_mode_before_paths.results[1].stat.lnk_source
+          - check_mode_after_paths.results[2].stat.lnk_source == check_mode_before_paths.results[2].stat.lnk_source
+          - not check_mode_before_paths.results[3].stat.exists
+          - not check_mode_before_paths.results[4].stat.exists
+          - not check_mode_after_paths.results[3].stat.exists
+          - not check_mode_after_paths.results[4].stat.exists
+          - check_mode_after_pid.stdout == check_mode_before_pid.stdout
+          - check_mode_after_version.stdout == check_mode_before_version.stdout

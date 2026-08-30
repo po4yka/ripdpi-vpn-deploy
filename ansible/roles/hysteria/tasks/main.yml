@@ -1,6 +1,7 @@
 ---
-# P2 transport: Hysteria2 over QUIC/HTTP3 on UDP/443. Pinned release with
-# symlink rollback, validate-before-restart pattern.
+# P2 transport: Hysteria2 over QUIC/HTTP3 on UDP/443. Pinned release activation
+# is delegated to runtime-release so current/public/previous links and receipts
+# share one serialized transaction.
 
 - name: Pre-flight — hysteria version must be pinned
   ansible.builtin.assert:
@@ -38,72 +39,37 @@
       mode: "0750"
       owner: root
       group: hysteria
-    - path: "{{ hysteria_install_root }}/releases"
-      mode: "0755"
     - path: "{{ hysteria_log_dir }}"
       mode: "0750"
       owner: hysteria
       group: hysteria
 
-- name: Set architecture-specific Hysteria archive facts
-  ansible.builtin.set_fact:
-    hysteria_arch: "{{ 'amd64' if ansible_facts['architecture'] == 'x86_64' else 'arm64' }}"
-    hysteria_sha256: >-
-      {{ (hysteria.linux_amd64_sha256 if ansible_facts['architecture'] == 'x86_64'
-          else hysteria.linux_arm64_sha256 | default('')) }}
+- name: Install pinned Hysteria release through runtime-release
+  ansible.builtin.include_role:
+    name: runtime-release
+  vars:
+    runtime_release_version: "{{ hysteria.version }}"
+    runtime_release_install_root: "{{ hysteria_install_root }}"
+    runtime_release_binary_name: hysteria
+    runtime_release_public_link: /usr/local/bin/hysteria
+    runtime_release_urls:
+      amd64: "{{ hysteria_release_urls.amd64 }}"
+      arm64: "{{ hysteria_release_urls.arm64 }}"
+    runtime_release_sha256:
+      amd64: "{{ hysteria.linux_amd64_sha256 | default('') }}"
+      arm64: "{{ hysteria.linux_arm64_sha256 | default('') }}"
+    runtime_release_arch_slugs:
+      amd64: amd64
+      arm64: arm64
+    runtime_release_artifact_filename: hysteria
+    runtime_release_artifact_type: binary
 
-- name: SHA256 for current architecture is set
-  ansible.builtin.assert:
-    that:
-      - hysteria_sha256 | length > 0
-    fail_msg: "Add hysteria.linux_{{ hysteria_arch }}_sha256 to your secrets file."
-
-- name: Check whether the pinned Hysteria release is already on disk
-  ansible.builtin.stat:
-    path: "{{ hysteria_install_root }}/releases/{{ hysteria.version }}/hysteria"
-  register: hysteria_release_binary
-
-- name: Download pinned Hysteria release
-  ansible.builtin.get_url:
-    url: "https://github.com/apernet/hysteria/releases/download/app/{{ hysteria.version }}/hysteria-linux-{{ hysteria_arch }}"
-    dest: "/tmp/hysteria-{{ hysteria.version }}-linux-{{ hysteria_arch }}"
-    checksum: "sha256:{{ hysteria_sha256 }}"
-    mode: "0644"
-  when: not hysteria_release_binary.stat.exists
-
-- name: Create release directory
-  ansible.builtin.file:
-    path: "{{ hysteria_install_root }}/releases/{{ hysteria.version }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-  when: not hysteria_release_binary.stat.exists
-
-- name: Install hysteria binary into release directory
-  ansible.builtin.copy:
-    src: "/tmp/hysteria-{{ hysteria.version }}-linux-{{ hysteria_arch }}"
-    dest: "{{ hysteria_install_root }}/releases/{{ hysteria.version }}/hysteria"
-    remote_src: true
-    owner: root
-    group: root
-    mode: "0755"
-  when: not hysteria_release_binary.stat.exists
-
-- name: Point current symlink at pinned release
-  ansible.builtin.file:
-    src: "{{ hysteria_install_root }}/releases/{{ hysteria.version }}"
-    dest: "{{ hysteria_install_root }}/current"
-    state: link
-    force: true
+- name: Notify Hysteria restart after runtime release activation
+  ansible.builtin.debug:
+    msg: Hysteria runtime release activation changed={{ runtime_release_changed | bool }}
+  changed_when: runtime_release_changed | bool
   notify: Restart hysteria
-
-- name: Link hysteria into local bin
-  ansible.builtin.file:
-    src: "{{ hysteria_install_root }}/current/hysteria"
-    dest: /usr/local/bin/hysteria
-    state: link
-    force: true
+  when: not ansible_check_mode
 
 - name: Drop TLS material
   ansible.builtin.copy:

@@ -2,6 +2,36 @@
 - name: Verify hysteria role
   hosts: all
   become: true
+  vars:
+    hysteria_install_root: /opt/hysteria
+    hysteria_config_dir: /etc/hysteria
+    hysteria_log_dir: /var/log/hysteria
+    hysteria_port: 443
+    public_site_canonical_url: "https://vpn.example.test"
+    hysteria_release_urls:
+      amd64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.2
+      arm64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.2-arm64
+    hysteria:
+      version: v2.8.2
+      linux_amd64_sha256: ff2fe5e3c9d0cc3ce2b219580faca6767b2ebe8de43511157b12edbe57ac88fc
+      linux_arm64_sha256: 33cdb04ed03021bf9b67c34e2b15e385b72b596ee72fa481fc897f7fe51579bc
+      cert_pem: |
+        -----BEGIN CERTIFICATE-----
+        STUB_CERT_FOR_MOLECULE
+        -----END CERTIFICATE-----
+      key_pem: |
+        -----BEGIN PRIVATE KEY-----
+        STUB_KEY_FOR_MOLECULE
+        -----END PRIVATE KEY-----
+      bandwidth_up: "100 mbps"
+      bandwidth_down: "200 mbps"
+      masquerade_url: "https://vpn.example.test"
+      salamander_enabled: false
+      clients:
+        - name: alice
+          password: stub-pw-1
+        - name: bob
+          password: stub-pw-2
   tasks:
     - name: config.yaml exists
       ansible.builtin.stat:
@@ -21,6 +51,107 @@
         path: /etc/systemd/system/hysteria-server.service
       register: unit
       failed_when: not unit.stat.exists
+
+    - name: Inspect runtime-release current/public/previous links and receipt
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - /opt/hysteria/current
+        - /usr/local/bin/hysteria
+        - /opt/hysteria/releases/v2.8.2/.runtime-release.json
+      register: runtime_release_paths
+
+    - name: Assert runtime-release current/public/previous links and receipt
+      ansible.builtin.assert:
+        that:
+          - runtime_release_paths.results[0].stat.islnk
+          - runtime_release_paths.results[0].stat.lnk_source == '/opt/hysteria/releases/v2.8.2'
+          - runtime_release_paths.results[1].stat.islnk
+          - runtime_release_paths.results[1].stat.lnk_source == '/opt/hysteria/current/hysteria'
+          - runtime_release_paths.results[2].stat.isreg
+          - runtime_release_paths.results[2].stat.mode == '0644'
+
+    - name: Re-converge identical Hysteria runtime release
+      ansible.builtin.include_role:
+        name: hysteria
+
+    - name: Assert identical runtime release is idempotent
+      ansible.builtin.assert:
+        that:
+          - not (runtime_release_changed | bool)
+
+    - name: Upgrade Hysteria through runtime-release
+      ansible.builtin.include_role:
+        name: hysteria
+      vars:
+        hysteria_release_urls:
+          amd64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.3
+          arm64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.3-arm64
+        hysteria:
+          version: v2.8.3
+          linux_amd64_sha256: f61dc01abae6cb72404aae6582b86e0958bb0bc3119012c606772351d6c37fbd
+          linux_arm64_sha256: 29fa1c48937c356daf098f17a7512e8df2af29015ca7188f0cd0d9124fd24276
+          cert_pem: |
+            -----BEGIN CERTIFICATE-----
+            STUB_CERT_FOR_MOLECULE
+            -----END CERTIFICATE-----
+          key_pem: |
+            -----BEGIN PRIVATE KEY-----
+            STUB_KEY_FOR_MOLECULE
+            -----END PRIVATE KEY-----
+          bandwidth_up: "100 mbps"
+          bandwidth_down: "200 mbps"
+          masquerade_url: "https://vpn.example.test"
+          salamander_enabled: false
+          clients:
+            - name: alice
+              password: stub-pw-1
+            - name: bob
+              password: stub-pw-2
+
+    - name: Flush upgraded Hysteria runtime-release handler
+      ansible.builtin.meta: flush_handlers
+
+    - name: Read upgraded Hysteria fixture version
+      ansible.builtin.command:
+        cmd: /usr/local/bin/hysteria
+      register: upgraded_hysteria_version
+      changed_when: false
+
+    - name: Read upgraded Hysteria service state
+      ansible.builtin.command:
+        cmd: systemctl is-active hysteria-server.service
+      register: upgraded_hysteria_service
+      changed_when: false
+
+    - name: Assert upgraded fixture version and active Hysteria service
+      ansible.builtin.assert:
+        that:
+          - upgraded_hysteria_version.stdout == 'v2.8.3'
+          - upgraded_hysteria_service.stdout == 'active'
+
+    - name: Inspect upgraded runtime-release links and receipts
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - /opt/hysteria/current
+        - /opt/hysteria/previous
+        - /usr/local/bin/hysteria
+        - /opt/hysteria/releases/v2.8.2/.runtime-release.json
+        - /opt/hysteria/releases/v2.8.3/.runtime-release.json
+      register: upgraded_runtime_release_paths
+
+    - name: Assert upgraded runtime-release links and receipts
+      ansible.builtin.assert:
+        that:
+          - runtime_release_changed | bool
+          - upgraded_runtime_release_paths.results[0].stat.lnk_source == '/opt/hysteria/releases/v2.8.3'
+          - upgraded_runtime_release_paths.results[1].stat.lnk_source == '/opt/hysteria/releases/v2.8.2'
+          - upgraded_runtime_release_paths.results[2].stat.lnk_source == '/opt/hysteria/current/hysteria'
+          - upgraded_runtime_release_paths.results[3].stat.mode == '0644'
+          - upgraded_runtime_release_paths.results[4].stat.mode == '0644'
 
     - name: config references both clients
       ansible.builtin.shell:
