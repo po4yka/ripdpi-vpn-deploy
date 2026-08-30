@@ -1332,7 +1332,7 @@ def _create_backups(publications: list[dict]) -> None:
                     missing_ok=True,
                 )
             except Exception:
-                pass
+                pass  # Preserve the primary backup-creation error.
         raise
 
 
@@ -1630,7 +1630,7 @@ def _close_recovery_outputs(outputs: list[dict]) -> None:
         try:
             os.close(output["parent"])
         except OSError:
-            pass
+            pass  # Descriptor state is already ambiguous after close failed.
 
 
 def _rollback_output(output: dict) -> None:
@@ -1808,7 +1808,7 @@ def _close_publication_descriptors(publications: list[dict]) -> None:
             try:
                 os.close(item["parent"])
             except OSError:
-                pass
+                pass  # The first close error remains authoritative.
     if cleanup_error is not None:
         raise cleanup_error
 
@@ -1874,14 +1874,18 @@ def converge(receipt_root: Path, document: object) -> dict:
         try:
             journal_identity = _write_transaction_journal(directory, journal)
             journal_active = True
-        except BaseException as primary:
+        # Interrupts still reconcile a durable WAL; precommit outcomes re-raise them.
+        except (Exception, KeyboardInterrupt, SystemExit) as primary:
             try:
                 entry = _read_transaction_journal(directory, descriptor["name"])
                 journal_active = entry is not None and entry[0] == journal
             except Exception:
                 journal_active = False
             if journal_active:
-                _close_publication_descriptors(publications)
+                try:
+                    _close_publication_descriptors(publications)
+                except OSError:
+                    pass  # Durable-WAL reconciliation below is authoritative.
                 publications = []
                 try:
                     outcome, pending, _recovered_receipt = (
@@ -1914,11 +1918,12 @@ def converge(receipt_root: Path, document: object) -> dict:
             _publish_outputs(publications)
             _remove_directory_contents(stage_directory)
             _write_receipt_document(directory, receipt_name, next_receipt)
-        except BaseException as primary:
+        # Interrupts after publication use the receipt as the commit authority.
+        except (Exception, KeyboardInterrupt, SystemExit) as primary:
             try:
                 _close_publication_descriptors(publications)
             except OSError:
-                pass
+                pass  # Receipt/live reconciliation below is authoritative.
             publications = []
             try:
                 outcome, pending, _recovered_receipt = _reconcile_transaction_locked(
