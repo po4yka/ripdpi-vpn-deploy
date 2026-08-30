@@ -784,29 +784,38 @@ def _run_archive_member_role_slice(
     archive_members: dict[str, str],
 ) -> subprocess.CompletedProcess[str]:
     """Run the live preflight and extraction tasks without root-only ownership."""
-    bsdtar = shutil.which("bsdtar")
-    if bsdtar is None:
-        pytest.skip("bsdtar is required for the local nested-tar regression")
+    system_tar = shutil.which("tar")
+    assert system_tar, "tar is required for the nested archive-member regression"
+    tar_version = subprocess.run(
+        [system_tar, "--version"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=True,
+    ).stdout
     stage = tmp_path / "stage"
     stage.mkdir(mode=0o755)
-    tool_dir = tmp_path / "tar-tool"
-    tool_dir.mkdir(mode=0o755)
-    tar = tool_dir / "tar"
-    tar.write_text(
-        f"#!{sys.executable}\n"
-        "import os\n"
-        "import sys\n"
-        "if sys.argv[1:] == ['--version']:\n"
-        "    print('tar (GNU tar) fixture')\n"
-        "    raise SystemExit(0)\n"
-        f"argv = [{bsdtar!r}, *(arg for arg in sys.argv[1:] "
-        "if arg not in {'--show-transformed-names', '--show-stored-names'})]\n"
-        "if '--diff' in argv:\n"
-        "    argv = [arg for arg in argv if arg != '--diff']\n"
-        "    argv.insert(1, '--extract')\n"
-        "os.execv(argv[0], argv)\n"
-    )
-    tar.chmod(0o755)
+    tar_path = os.environ["PATH"]
+    if "GNU tar" not in tar_version:
+        tool_dir = tmp_path / "tar-tool"
+        tool_dir.mkdir(mode=0o755)
+        tar = tool_dir / "tar"
+        tar.write_text(
+            f"#!{sys.executable}\n"
+            "import os\n"
+            "import sys\n"
+            "if sys.argv[1:] == ['--version']:\n"
+            "    print('tar (GNU tar) fixture')\n"
+            "    raise SystemExit(0)\n"
+            f"argv = [{system_tar!r}, *(arg for arg in sys.argv[1:] "
+            "if arg not in {'--show-transformed-names', '--show-stored-names'})]\n"
+            "if '--diff' in argv:\n"
+            "    argv = [arg for arg in argv if arg != '--diff']\n"
+            "    argv.insert(1, '--extract')\n"
+            "os.execv(argv[0], argv)\n"
+        )
+        tar.chmod(0o755)
+        tar_path = f"{tool_dir}:{tar_path}"
     selected_tasks = [
         copy.deepcopy(_raw_tasks()[0]),
         copy.deepcopy(_raw_tasks()[1]),
@@ -876,7 +885,7 @@ def _run_archive_member_role_slice(
     }
     environment.update(
         {
-            "PATH": f"{tool_dir}:{os.environ['PATH']}",
+            "PATH": tar_path,
             "ANSIBLE_CONFIG": str(config),
             "ANSIBLE_HOME": str(tmp_path / "ansible-home"),
             "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
