@@ -866,30 +866,94 @@ def test_helper_creates_exact_release_mode_under_restrictive_umask(
     assert release.stat().st_mode & 0o777 == 0o755
 
 
-def test_receipt_is_private_until_publication_and_failed_setup_is_reclaimed(
+def test_receipt_is_private_until_write_and_ownership_are_complete(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     helper = _activator_module()
     root, _ = _activation_layout(tmp_path)
     release = helper._open_directory(root / "releases" / "v1")
-    observed_initial_modes: list[int] = []
+    payload = {"schema_version": 1}
+    encoded = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode()
+    events: list[str] = []
+    real_write = helper.os.write
+    real_fchown = helper.os.fchown
+    real_fchmod = helper.os.fchmod
+    real_fsync = helper.os.fsync
 
-    def fail_after_observing_mode(descriptor: int, _mode: int) -> None:
-        observed_initial_modes.append(stat.S_IMODE(os.fstat(descriptor).st_mode))
+    def observe_write(descriptor: int, data: bytes) -> int:
+        assert stat.S_IMODE(os.fstat(descriptor).st_mode) == 0o600
+        events.append("write")
+        return real_write(descriptor, data)
+
+    def observe_chown(descriptor: int, uid: int, gid: int) -> None:
+        info = os.fstat(descriptor)
+        assert stat.S_IMODE(info.st_mode) == 0o600
+        assert info.st_size == len(encoded)
+        events.append("chown")
+        real_fchown(descriptor, uid, gid)
+
+    def observe_chmod(descriptor: int, mode: int) -> None:
+        assert events == ["write", "chown"]
+        assert stat.S_IMODE(os.fstat(descriptor).st_mode) == 0o600
+        assert mode == 0o644
+        events.append("chmod")
+        real_fchmod(descriptor, mode)
+
+    def observe_fsync(descriptor: int) -> None:
+        if stat.S_ISREG(os.fstat(descriptor).st_mode):
+            assert events == ["write", "chown", "chmod"]
+            assert stat.S_IMODE(os.fstat(descriptor).st_mode) == 0o644
+            events.append("fsync")
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(helper.os, "write", observe_write)
+    monkeypatch.setattr(helper.os, "fchown", observe_chown)
+    monkeypatch.setattr(helper.os, "fchmod", observe_chmod)
+    monkeypatch.setattr(helper.os, "fsync", observe_fsync)
+    previous_umask = os.umask(0)
+    try:
+        helper._atomic_receipt(release, payload, os.getuid(), os.getgid())
+    finally:
+        os.umask(previous_umask)
+        release.close()
+
+    receipt = root / "releases" / "v1" / ".runtime-release.json"
+    assert events == ["write", "chown", "chmod", "fsync"]
+    assert receipt.read_bytes() == encoded
+    assert receipt.stat().st_mode & 0o777 == 0o644
+
+
+def test_receipt_cleanup_covers_post_write_normalization_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _activator_module()
+    root, _ = _activation_layout(tmp_path)
+    release = helper._open_directory(root / "releases" / "v1")
+    write_completed = False
+    real_write = helper.os.write
+
+    def observe_write(descriptor: int, data: bytes) -> int:
+        nonlocal write_completed
+        written = real_write(descriptor, data)
+        write_completed = True
+        return written
+
+    def fail_final_mode(_descriptor: int, mode: int) -> None:
+        assert write_completed
+        assert mode == 0o644
         raise OSError("injected receipt normalization failure")
 
-    monkeypatch.setattr(helper.os, "fchmod", fail_after_observing_mode)
-    previous_umask = os.umask(0)
+    monkeypatch.setattr(helper.os, "write", observe_write)
+    monkeypatch.setattr(helper.os, "fchmod", fail_final_mode)
     try:
         with pytest.raises(OSError, match="receipt normalization"):
             helper._atomic_receipt(
                 release, {"schema_version": 1}, os.getuid(), os.getgid()
             )
     finally:
-        os.umask(previous_umask)
         release.close()
 
-    assert observed_initial_modes == [0o600]
+    assert write_completed
     assert list((root / "releases" / "v1").glob(".runtime-release-receipt-*")) == []
 
 
@@ -904,14 +968,45 @@ def test_candidate_is_private_until_digest_and_ownership_are_verified(
     source_path.chmod(0o700)
     source = os.open(source_path, os.O_RDONLY)
     digest = hashlib.sha256(source_path.read_bytes()).hexdigest()
-    observed_initial_modes: list[int] = []
+    payload_size = source_path.stat().st_size
+    events: list[str] = []
+    real_write = helper.os.write
+    real_fchown = helper.os.fchown
     real_fchmod = helper.os.fchmod
+    real_fsync = helper.os.fsync
 
-    def observe_initial_mode(descriptor: int, mode: int) -> None:
-        observed_initial_modes.append(stat.S_IMODE(os.fstat(descriptor).st_mode))
+    def observe_write(descriptor: int, data: bytes) -> int:
+        assert stat.S_IMODE(os.fstat(descriptor).st_mode) == 0o700
+        if not events:
+            events.append("write")
+        return real_write(descriptor, data)
+
+    def observe_chown(descriptor: int, uid: int, gid: int) -> None:
+        info = os.fstat(descriptor)
+        assert stat.S_IMODE(info.st_mode) == 0o700
+        assert info.st_size == payload_size
+        assert events == ["write"]
+        events.append("chown")
+        real_fchown(descriptor, uid, gid)
+
+    def observe_final_mode(descriptor: int, mode: int) -> None:
+        assert events == ["write", "chown"]
+        assert stat.S_IMODE(os.fstat(descriptor).st_mode) == 0o700
+        assert mode == 0o755
+        events.append("chmod")
         real_fchmod(descriptor, mode)
 
-    monkeypatch.setattr(helper.os, "fchmod", observe_initial_mode)
+    def observe_fsync(descriptor: int) -> None:
+        if stat.S_ISREG(os.fstat(descriptor).st_mode):
+            assert events == ["write", "chown", "chmod"]
+            assert stat.S_IMODE(os.fstat(descriptor).st_mode) == 0o755
+            events.append("fsync")
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(helper.os, "write", observe_write)
+    monkeypatch.setattr(helper.os, "fchown", observe_chown)
+    monkeypatch.setattr(helper.os, "fchmod", observe_final_mode)
+    monkeypatch.setattr(helper.os, "fsync", observe_fsync)
     previous_umask = os.umask(0)
     try:
         helper._atomic_install_candidate(
@@ -927,10 +1022,56 @@ def test_candidate_is_private_until_digest_and_ownership_are_verified(
         os.close(source)
         release.close()
 
-    assert observed_initial_modes == [0o700]
+    assert events == ["write", "chown", "chmod", "fsync"]
     assert (
         root / "releases" / "v1" / "new-runtime-fixture"
     ).stat().st_mode & 0o777 == 0o755
+
+
+def test_candidate_cleanup_covers_post_write_normalization_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _activator_module()
+    root, _ = _activation_layout(tmp_path)
+    release_path = root / "releases" / "v1"
+    release = helper._open_directory(release_path)
+    source_path = tmp_path / "candidate"
+    source_path.write_text("#!/bin/sh\necho candidate\n")
+    source_path.chmod(0o700)
+    source = os.open(source_path, os.O_RDONLY)
+    digest = hashlib.sha256(source_path.read_bytes()).hexdigest()
+    ownership_normalized = False
+    real_fchown = helper.os.fchown
+
+    def observe_chown(descriptor: int, uid: int, gid: int) -> None:
+        nonlocal ownership_normalized
+        real_fchown(descriptor, uid, gid)
+        ownership_normalized = True
+
+    def fail_final_mode(_descriptor: int, mode: int) -> None:
+        assert ownership_normalized
+        assert mode == 0o755
+        raise OSError("injected candidate normalization failure")
+
+    monkeypatch.setattr(helper.os, "fchown", observe_chown)
+    monkeypatch.setattr(helper.os, "fchmod", fail_final_mode)
+    try:
+        with pytest.raises(OSError, match="candidate normalization"):
+            helper._atomic_install_candidate(
+                release,
+                "new-runtime-fixture",
+                source,
+                digest,
+                os.getuid(),
+                os.getgid(),
+            )
+    finally:
+        os.close(source)
+        release.close()
+
+    assert ownership_normalized
+    assert not (release_path / "new-runtime-fixture").exists()
+    assert list(release_path.glob(".runtime-release-candidate-*")) == []
 
 
 def test_owned_release_directory_closes_both_guards_on_contract_failure(
