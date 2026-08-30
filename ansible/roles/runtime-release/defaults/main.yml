@@ -1,0 +1,24 @@
+---
+# Internal shared installer. Consumers must override every identity/source field.
+runtime_release_version: ""
+runtime_release_install_root: ""
+runtime_release_binary_name: ""
+runtime_release_public_link: ""
+runtime_release_urls:
+  amd64: ""
+  arm64: ""
+runtime_release_sha256:
+  amd64: ""
+  arm64: ""
+runtime_release_arch_slugs:
+  amd64: amd64
+  arm64: arm64
+runtime_release_artifact_filename: artifact
+runtime_release_artifact_type: binary
+runtime_release_archive_member: ""
+runtime_release_archive_strip_components: 0
+# Root-owned no-follow staging namespace. Runtime identities never write here.
+runtime_release_download_dir: "{{ runtime_release_install_root }}/.runtime-release-staging"
+# Immutable release directories, candidates, receipts, and staging are root-owned.
+runtime_release_storage_owner: root
+runtime_release_storage_group: root
