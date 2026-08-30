@@ -321,7 +321,7 @@ def _atomic_link(
         try:
             os.unlink(temporary, dir_fd=directory.descriptor)
         except FileNotFoundError:
-            # A successful replace consumes the transaction-owned temporary link.
+            # A successful replace or external cleanup race consumed the temporary.
             pass
 
 
@@ -1047,12 +1047,11 @@ def _atomic_receipt(
     )
     try:
         try:
-            os.fchmod(descriptor, 0o644)
+            encoded = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode()
+            if os.write(descriptor, encoded) != len(encoded):
+                raise OSError("receipt-write-incomplete")
             os.fchown(descriptor, uid, gid)
-            os.write(
-                descriptor,
-                (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode(),
-            )
+            os.fchmod(descriptor, 0o644)
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
@@ -1068,7 +1067,7 @@ def _atomic_receipt(
         try:
             os.unlink(temporary, dir_fd=release.descriptor)
         except FileNotFoundError:
-            # A successful replace consumed the private receipt temporary.
+            # A successful replace or external cleanup race consumed the temporary.
             pass
 
 
@@ -1151,12 +1150,13 @@ def _atomic_install_candidate(
                 chunk = os.read(source, 128 * 1024)
                 if not chunk:
                     break
-                os.write(destination, chunk)
+                if os.write(destination, chunk) != len(chunk):
+                    raise UnsafeState("candidate-write-incomplete")
                 digest.update(chunk)
             if digest.hexdigest() != expected_digest:
                 raise UnsafeState("staged-candidate-digest-mismatch")
-            os.fchmod(destination, 0o755)
             os.fchown(destination, uid, gid)
+            os.fchmod(destination, 0o755)
             os.fsync(destination)
         finally:
             os.close(destination)
@@ -1172,7 +1172,7 @@ def _atomic_install_candidate(
         try:
             os.unlink(temporary, dir_fd=release.descriptor)
         except FileNotFoundError:
-            # A successful replace consumed the private candidate temporary.
+            # A successful replace or external cleanup race consumed the temporary.
             pass
 
 
