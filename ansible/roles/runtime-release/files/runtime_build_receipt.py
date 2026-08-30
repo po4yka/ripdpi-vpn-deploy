@@ -35,6 +35,7 @@ NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SOURCE_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 ENV_KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]{0,63}$")
+HELPER_OWNED_BUILD_ENVIRONMENT = frozenset({"HOME", "XDG_CACHE_HOME", "GOCACHE"})
 
 
 class UnsafeState(RuntimeError):
@@ -262,6 +263,8 @@ def _normalize_steps(value: object) -> list[dict]:
                 or "\0" in env_value
             ):
                 raise UnsafeState("invalid-build-environment")
+            if key in HELPER_OWNED_BUILD_ENVIRONMENT:
+                raise UnsafeState("reserved-build-environment")
             normalized_environment[key] = env_value
         if (
             isinstance(timeout_seconds, bool)
@@ -1242,8 +1245,8 @@ def _run_build_steps(descriptor: dict, base_environment: dict[str, str]) -> None
             environment = {
                 "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
                 "LANG": "C.UTF-8",
-                **base_environment,
                 **step["environment"],
+                **base_environment,
             }
             process: subprocess.Popen | None = None
             try:

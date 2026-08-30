@@ -82,10 +82,12 @@ cleanup. A third receipt state refuses without mutating any inode.
   environment and validates absolute executables, working directories, and
   staged/live paths. It does not sandbox an intentionally malicious argv, so
   descriptors must remain repository-authored role inputs.
-- **Build cancellation owns the whole process group** — SIGINT, SIGTERM,
-  timeouts, direct exceptions, and a leader that exits with descendants all
-  terminate and reap the private build session before the project lock is
-  released. A daemonized compiler child can never outlive its transaction.
+- **Build cancellation owns the foreground process group** — SIGINT, SIGTERM,
+  timeouts, direct exceptions, and a leader that exits with same-group children
+  terminate and reap that private session before the project lock is released.
+  Repository-authored build commands must stay foreground: `setsid`, `setpgrp`,
+  double-fork, and daemon modes escape portable process-group containment and
+  are outside this helper's trusted-command contract.
 - **Post-commit cleanup is recovery debt, not rollback** — staging is emptied
   through its retained directory descriptor before the receipt commit. The
   immutable private journal binds previous/next receipts and exact before/after

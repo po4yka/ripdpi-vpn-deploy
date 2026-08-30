@@ -773,6 +773,21 @@ def test_build_environment_has_private_deterministic_home_and_go_cache(
     }
 
 
+@pytest.mark.parametrize("reserved_key", ["HOME", "XDG_CACHE_HOME", "GOCACHE"])
+def test_descriptor_cannot_override_helper_owned_build_environment(
+    trusted_root: Path, reserved_key: str
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    descriptor = _descriptor(output)
+    descriptor["steps"][0]["environment"] = {reserved_key: "/tmp/poisoned"}
+
+    with pytest.raises(helper.UnsafeState, match="reserved-build-environment"):
+        helper.converge(receipt_root, descriptor)
+
+    assert not (receipt_root / "fixture-runtime.json").exists()
+
+
 def test_expected_output_digest_is_verified_before_receipt_publication(
     trusted_root: Path,
 ) -> None:
@@ -2300,6 +2315,48 @@ def test_successful_leader_cannot_leave_a_build_descendant_running(
 
     assert not marker.exists()
     assert not (receipt_root / "fixture-runtime.json").exists()
+
+
+def test_re_sessioned_descendant_is_outside_foreground_group_contract(
+    trusted_root: Path,
+) -> None:
+    helper = _helper_module()
+    escaped_pid_path = trusted_root / "escaped-session-pid"
+    leader = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import pathlib,subprocess,sys,time;"
+                "child=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)'],"
+                "start_new_session=True);"
+                "pathlib.Path(sys.argv[1]).write_text(str(child.pid));"
+                "time.sleep(30)"
+            ),
+            str(escaped_pid_path),
+        ],
+        start_new_session=True,
+    )
+    deadline = time.monotonic() + 5
+    while not escaped_pid_path.exists() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert escaped_pid_path.is_file()
+    escaped_pid = int(escaped_pid_path.read_text())
+
+    try:
+        helper._terminate_process_group(leader)
+        assert leader.poll() is not None
+        os.kill(escaped_pid, 0)
+    finally:
+        try:
+            os.kill(escaped_pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass  # The detached test process may already have exited.
+        try:
+            leader.kill()
+        except ProcessLookupError:
+            pass  # Foreground process-group cleanup already reaped the leader.
+        leader.wait(timeout=5)
 
 
 def test_cancellation_observed_after_spawn_reaps_before_lock_release(
