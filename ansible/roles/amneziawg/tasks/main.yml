@@ -39,14 +39,14 @@
 - name: Clone amneziawg-go
   ansible.builtin.git:
     repo: https://github.com/amnezia-vpn/amneziawg-go
-    dest: /opt/src/amneziawg-go
+    dest: "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
     version: "{{ amneziawg_go_version }}"
-    update: true
+    update: false
 
 - name: Resolve the amneziawg-go checked-out commit
   ansible.builtin.command:
     cmd: git rev-parse HEAD
-    chdir: /opt/src/amneziawg-go
+    chdir: "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
   register: _awg_go_head
   check_mode: false
   changed_when: false
@@ -66,14 +66,14 @@
 - name: Clone amneziawg-tools
   ansible.builtin.git:
     repo: https://github.com/amnezia-vpn/amneziawg-tools
-    dest: /opt/src/amneziawg-tools
+    dest: "/opt/src/amneziawg-tools-{{ amneziawg_tools_commit }}"
     version: "{{ amneziawg_tools_version }}"
-    update: true
+    update: false
 
 - name: Resolve the amneziawg-tools checked-out commit
   ansible.builtin.command:
     cmd: git rev-parse HEAD
-    chdir: /opt/src/amneziawg-tools
+    chdir: "/opt/src/amneziawg-tools-{{ amneziawg_tools_commit }}"
   register: _awg_tools_head
   check_mode: false
   changed_when: false
@@ -101,16 +101,16 @@
           commit: "{{ amneziawg_go_commit }}"
         steps:
           - argv: [/usr/bin/make]
-            chdir: /opt/src/amneziawg-go
+            chdir: "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
             environment: {}
             timeout_seconds: 1800
           - argv:
               - /usr/bin/install
               - -m
               - "0755"
-              - /opt/src/amneziawg-go/amneziawg-go
+              - "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}/amneziawg-go"
               - /var/lib/ripdpi/runtime-build-staging/amneziawg-go/amneziawg-go
-            chdir: /opt/src/amneziawg-go
+            chdir: "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
             environment: {}
             timeout_seconds: 60
         outputs:
@@ -125,7 +125,7 @@
           commit: "{{ amneziawg_tools_commit }}"
         steps:
           - argv: [/usr/bin/make]
-            chdir: /opt/src/amneziawg-tools/src
+            chdir: "/opt/src/amneziawg-tools-{{ amneziawg_tools_commit }}/src"
             environment: {}
             timeout_seconds: 1800
           - argv:
@@ -133,7 +133,7 @@
               - install
               - DESTDIR=/var/lib/ripdpi/runtime-build-staging/amneziawg-tools/root
               - WITH_WGQUICK=yes
-            chdir: /opt/src/amneziawg-tools/src
+            chdir: "/opt/src/amneziawg-tools-{{ amneziawg_tools_commit }}/src"
             environment: {}
             timeout_seconds: 300
         outputs:

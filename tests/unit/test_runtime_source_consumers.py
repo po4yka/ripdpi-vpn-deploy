@@ -105,10 +105,47 @@ def test_xray_source_build_uses_resolved_commit_and_shared_receipt() -> None:
     assert "Inspect source-built Xray checksum" not in source
     clone = _task("xray-runtime", "Clone pinned Xray source")
     assert clone["ansible.builtin.git"]["version"] == "{{ xray.source_commit }}"
+    assert clone["ansible.builtin.git"]["dest"] == (
+        "/opt/src/xray-core-{{ xray.source_commit }}"
+    )
+    assert clone["ansible.builtin.git"]["update"] is False
+    assert all(
+        step["chdir"] == "/opt/src/xray-core-{{ xray.source_commit }}"
+        for step in descriptor["steps"]
+    )
     assert all(
         "{{ xray_install_dir }}" not in argument
         for step in descriptor["steps"]
         for argument in step["argv"]
+    )
+
+
+def test_amneziawg_checkouts_are_immutable_per_exact_commit() -> None:
+    tasks = _tasks("amneziawg")
+    by_name = {task["name"]: task for task in tasks}
+    go_clone = by_name["Clone amneziawg-go"]["ansible.builtin.git"]
+    tools_clone = by_name["Clone amneziawg-tools"]["ansible.builtin.git"]
+    descriptors = by_name["Define pinned AmneziaWG source-build descriptors"][
+        "ansible.builtin.set_fact"
+    ]["_amneziawg_build_descriptors"]
+
+    assert go_clone["dest"] == "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
+    assert tools_clone["dest"] == (
+        "/opt/src/amneziawg-tools-{{ amneziawg_tools_commit }}"
+    )
+    assert go_clone["update"] is False
+    assert tools_clone["update"] is False
+    assert all(
+        step["chdir"].startswith(
+            "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
+        )
+        for step in descriptors[0]["steps"]
+    )
+    assert all(
+        step["chdir"].startswith(
+            "/opt/src/amneziawg-tools-{{ amneziawg_tools_commit }}"
+        )
+        for step in descriptors[1]["steps"]
     )
 
 

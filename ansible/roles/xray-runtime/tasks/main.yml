@@ -36,15 +36,15 @@
 - name: Clone pinned Xray source
   ansible.builtin.git:
     repo: https://github.com/XTLS/Xray-core
-    dest: /opt/src/xray-core
+    dest: "/opt/src/xray-core-{{ xray.source_commit }}"
     version: "{{ xray.source_commit }}"
-    update: true
+    update: false
   when: xray_runtime_build_from_source | bool
 
 - name: Resolve pinned Xray source commit
   ansible.builtin.command:
     argv: [/usr/bin/git, rev-parse, HEAD]
-    chdir: /opt/src/xray-core
+    chdir: "/opt/src/xray-core-{{ xray.source_commit }}"
   register: _xray_runtime_source_head
   check_mode: false
   changed_when: false
@@ -83,7 +83,7 @@
             - -o
             - /var/lib/ripdpi/runtime-build-staging/xray-core/xray
             - ./main
-          chdir: /opt/src/xray-core
+          chdir: "/opt/src/xray-core-{{ xray.source_commit }}"
           environment:
             CGO_ENABLED: "0"
             GOFLAGS: -trimpath

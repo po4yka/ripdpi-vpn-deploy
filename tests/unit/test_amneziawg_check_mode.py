@@ -21,14 +21,20 @@ def test_commit_resolution_is_normal_mode_attestation_only():
     assert all(task.get("changed_when") is False for task in resolve_tasks)
 
 
-def test_pinned_source_bumps_refresh_checkout_before_commit_attestation():
+def test_pinned_source_bumps_use_distinct_immutable_checkouts_before_attestation():
     tasks = yaml.safe_load(
         (ROOT / "ansible/roles/amneziawg/tasks/main.yml").read_text()
     )
     clones = [task for task in tasks if task["name"].startswith("Clone amneziawg-")]
 
     assert len(clones) == 2
-    assert all(task["ansible.builtin.git"]["update"] is True for task in clones)
+    assert all(task["ansible.builtin.git"]["update"] is False for task in clones)
+    assert clones[0]["ansible.builtin.git"]["dest"].endswith(
+        "-{{ amneziawg_go_commit }}"
+    )
+    assert clones[1]["ansible.builtin.git"]["dest"].endswith(
+        "-{{ amneziawg_tools_commit }}"
+    )
 
 
 def test_build_receipts_make_check_mode_commit_aware_without_building():
