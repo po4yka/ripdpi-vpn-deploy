@@ -14,7 +14,7 @@ openspec_change: tst-1787497001212692-verification-truthfulness
 created: 2026-08-23
 updated: 2026-08-30
 related_tasks: []
-status_detail: Seven of ten execution steps are complete. Full-stack and published idempotence passed on exact 4580f9927ed808b4f71b8fa5e0e036890f6daaf2 with changed=0. Remaining blockers are TESTING.md sequence parity, socket-activated single-SSH-listener acceptance, and authorized live verify/source-drift acceptance against the deployed exact revision.
+status_detail: Nine of ten execution steps are complete. Full-stack and published idempotence passed on exact 4580f9927ed808b4f71b8fa5e0e036890f6daaf2 with changed=0; documentation parity and socket-activated single-SSH-listener acceptance passed on exact b9858085df8073f725670e2acfa0f0bb9cda41da. The remaining blocker is an authorized live verify/source-drift cycle against the deployed exact revision.
 ---
 
 ## Goal
