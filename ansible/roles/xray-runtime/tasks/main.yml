@@ -139,4 +139,11 @@
 
 - name: Publish Xray runtime change state
   ansible.builtin.set_fact:
-    xray_runtime_changed: "{{ _xray_runtime_current.changed }}"
+    xray_runtime_changed: >-
+      {{
+        (_xray_runtime_current.changed | bool)
+        or (
+          (xray_runtime_build_from_source | bool)
+          and (runtime_build_changed | default(false) | bool)
+        )
+      }}

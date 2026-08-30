@@ -798,6 +798,44 @@ def test_receipt_failure_rolls_back_live_output(
     assert not (receipt_root / "fixture-runtime.json").exists()
 
 
+@pytest.mark.parametrize("boundary", ["backup", "stage"])
+def test_post_commit_cleanup_failure_reports_pending_success(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    descriptor = _descriptor(output)
+
+    if boundary == "backup":
+        real_unlink = helper.os.unlink
+
+        def fail_backup_cleanup(path, *args, **kwargs):
+            if ".runtime-backup." in str(path):
+                raise OSError("injected-post-commit-backup-cleanup-failure")
+            return real_unlink(path, *args, **kwargs)
+
+        monkeypatch.setattr(helper.os, "unlink", fail_backup_cleanup)
+    else:
+        real_remove = helper._remove_directory_contents
+        calls = 0
+
+        def fail_final_stage_cleanup(directory: int) -> None:
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("injected-post-commit-stage-cleanup-failure")
+            real_remove(directory)
+
+        monkeypatch.setattr(helper, "_remove_directory_contents", fail_final_stage_cleanup)
+
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": True,
+        "cleanup_pending": True,
+    }
+    assert helper.inspect(receipt_root, descriptor)["reason"] == "current"
+
+
 def test_existing_output_descriptor_is_closed_before_publication(
     trusted_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
