@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -863,6 +864,73 @@ def test_helper_creates_exact_release_mode_under_restrictive_umask(
     assert installed.returncode == 0, installed.stdout + installed.stderr
     release = tmp_path / "install" / "releases" / "v1"
     assert release.stat().st_mode & 0o777 == 0o755
+
+
+def test_receipt_is_private_until_publication_and_failed_setup_is_reclaimed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _activator_module()
+    root, _ = _activation_layout(tmp_path)
+    release = helper._open_directory(root / "releases" / "v1")
+    observed_initial_modes: list[int] = []
+
+    def fail_after_observing_mode(descriptor: int, _mode: int) -> None:
+        observed_initial_modes.append(stat.S_IMODE(os.fstat(descriptor).st_mode))
+        raise OSError("injected receipt normalization failure")
+
+    monkeypatch.setattr(helper.os, "fchmod", fail_after_observing_mode)
+    previous_umask = os.umask(0)
+    try:
+        with pytest.raises(OSError, match="receipt normalization"):
+            helper._atomic_receipt(
+                release, {"schema_version": 1}, os.getuid(), os.getgid()
+            )
+    finally:
+        os.umask(previous_umask)
+        release.close()
+
+    assert observed_initial_modes == [0o600]
+    assert list((root / "releases" / "v1").glob(".runtime-release-receipt-*")) == []
+
+
+def test_candidate_is_private_until_digest_and_ownership_are_verified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _activator_module()
+    root, _ = _activation_layout(tmp_path)
+    release = helper._open_directory(root / "releases" / "v1")
+    source_path = tmp_path / "candidate"
+    source_path.write_text("#!/bin/sh\necho candidate\n")
+    source_path.chmod(0o700)
+    source = os.open(source_path, os.O_RDONLY)
+    digest = hashlib.sha256(source_path.read_bytes()).hexdigest()
+    observed_initial_modes: list[int] = []
+    real_fchmod = helper.os.fchmod
+
+    def observe_initial_mode(descriptor: int, mode: int) -> None:
+        observed_initial_modes.append(stat.S_IMODE(os.fstat(descriptor).st_mode))
+        real_fchmod(descriptor, mode)
+
+    monkeypatch.setattr(helper.os, "fchmod", observe_initial_mode)
+    previous_umask = os.umask(0)
+    try:
+        helper._atomic_install_candidate(
+            release,
+            "new-runtime-fixture",
+            source,
+            digest,
+            os.getuid(),
+            os.getgid(),
+        )
+    finally:
+        os.umask(previous_umask)
+        os.close(source)
+        release.close()
+
+    assert observed_initial_modes == [0o700]
+    assert (
+        root / "releases" / "v1" / "new-runtime-fixture"
+    ).stat().st_mode & 0o777 == 0o755
 
 
 def test_owned_release_directory_closes_both_guards_on_contract_failure(
