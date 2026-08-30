@@ -1,9 +1,9 @@
 ---
 task_id: ANS-1787497148207353
 change: ans-1787497148207353-runtime-pattern-consolidation
-commit_sha: null
+commit_sha: "841c19268f83f21971683bc78791a002f600fc1f"
 local: required
-local_evidence: runtime-release contract module 64 PASS under the build-gate restrictive umask; isolated native root-Ansible acceptance result SHA256 84d3d356c1c0ebdb47f43aceb0d57f32aeb194449e1a06b85670174b65dbe033
+local_evidence: "Exact source 841c19268f83f21971683bc78791a002f600fc1f passed the canonical build-gate make -j1 check: 2487 Python tests plus 1 existing skip, 55 BATS, 184 Rust release tests and Clippy, 87 Terraform mocks, 45 Conftest policies, and ci-fast; log SHA256 745b471b937c85dbb2bb51218ce39ba55e0fde0761af6a494084e3dceb99e2cb. Runtime-release contract module 71 PASS under restrictive umask. Isolated native root-Ansible acceptance on exact runtime source 680a40fb5623d291b4975cb9543f58ec9d4bc9fe produced result SHA256 c28fd725a1dfcd4ae70a3c5062fd6b073dc26fed14e1316412ee05de1c046583 with cleanup, profile stop, Docker context, and config equality confirmed."
 remote_ci: required
 remote_ci_evidence: null
 dry_run: required
@@ -24,7 +24,7 @@ artifact_evidence: receipt-owned binary and archive release fixtures validated w
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-INSTALL-RELEASE-SHARED | ANS-1787496118906923 | 64 contract tests under restrictive umask; isolated native root-Ansible binary/archive install, idempotence, upgrade links, failure-to-retry cleanup, exactly-one same-pin publication, and foreign-replacement retention on source commit `da42d7530c64961c7399ff0179a65f1f18dc46f9` under restrictive `umask 077` | local/native pass; hosted integration pending |
+| REQ-INSTALL-RELEASE-SHARED | ANS-1787496118906923 | 71 contract tests under restrictive umask; isolated native root-Ansible binary/archive install, idempotence, upgrade links, failure-to-retry cleanup, exactly-one same-pin publication, and foreign-replacement retention on source commit `680a40fb5623d291b4975cb9543f58ec9d4bc9fe` with result SHA256 `c28fd725a1dfcd4ae70a3c5062fd6b073dc26fed14e1316412ee05de1c046583`; canonical full gate on exact combined source `841c19268f83f21971683bc78791a002f600fc1f` | local/native pass; hosted integration pending |
 | REQ-INSTALL-RELEASE-SHARED | ANS-1787496118907057 | xray-runtime, hysteria, hysteria-realm and snell post-migration Molecule results | pending |
 | REQ-INSTALL-RELEASE-SHARED | ANS-1787496118906866 | probe-matrix-target and dns-morph-bridge post-migration Molecule results | pending |
 | REQ-BUILD-RECEIPT-IDIOM | ANS-1787496118907179 | amneziawg rebuild-decision case with bumped descriptor | pending |
