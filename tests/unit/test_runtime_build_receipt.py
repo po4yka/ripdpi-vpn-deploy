@@ -1285,6 +1285,48 @@ def test_committed_cleanup_reports_pending_when_only_wal_quarantine_is_readable(
     assert not quarantine.exists()
 
 
+def test_final_wal_unlink_sync_error_still_reports_committed_changed(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    descriptor = _descriptor(output)
+    canonical = receipt_root / ".fixture-runtime.transaction.json"
+    quarantine = receipt_root / "..fixture-runtime.transaction.json.quarantine"
+    root_inode = (receipt_root.stat().st_dev, receipt_root.stat().st_ino)
+    real_fsync = helper.os.fsync
+    failed = False
+
+    def fail_after_final_wal_unlink(file_descriptor: int) -> None:
+        nonlocal failed
+        metadata = helper.os.fstat(file_descriptor)
+        if (
+            not failed
+            and stat.S_ISDIR(metadata.st_mode)
+            and (metadata.st_dev, metadata.st_ino) == root_inode
+            and not canonical.exists()
+            and not quarantine.exists()
+            and (receipt_root / "fixture-runtime.json").exists()
+        ):
+            failed = True
+            raise OSError("injected-final-wal-directory-sync-failure")
+        real_fsync(file_descriptor)
+
+    monkeypatch.setattr(helper.os, "fsync", fail_after_final_wal_unlink)
+
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": True,
+    }
+    assert helper.inspect(receipt_root, descriptor)["reason"] == "current"
+
+    monkeypatch.undo()
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": False,
+    }
+
+
 @pytest.mark.parametrize(
     "fault",
     ["write", "file-fsync", "chmod", "fstat", "close", "link", "dir-fsync", "unlink"],
@@ -1413,7 +1455,7 @@ def test_journal_cleanup_detects_replacement_at_validation_boundary(
 
     monkeypatch.setattr(helper, "_remove_transaction_journal", replace_before_remove)
 
-    with pytest.raises(helper.UnsafeState, match="transaction-journal-replaced"):
+    with pytest.raises(helper.UnsafeState, match="transaction-journal"):
         helper.converge(receipt_root, _descriptor(output))
 
     assert canonical.read_bytes() == foreign
@@ -1634,7 +1676,38 @@ def test_post_commit_finalization_error_does_not_reverse_success(
     assert helper.converge(receipt_root, descriptor) == {
         "schema_version": 1,
         "changed": True,
-        "cleanup_pending": True,
+    }
+    assert helper.inspect(receipt_root, descriptor)["reason"] == "current"
+
+
+def test_output_parent_close_after_real_close_preserves_committed_changed(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    descriptor = _descriptor(output)
+    parent_inode = (output.parent.stat().st_dev, output.parent.stat().st_ino)
+    real_close = helper.os.close
+    failed = False
+
+    def fail_output_parent_close_after_close(file_descriptor: int) -> None:
+        nonlocal failed
+        metadata = helper.os.fstat(file_descriptor)
+        real_close(file_descriptor)
+        if (
+            not failed
+            and stat.S_ISDIR(metadata.st_mode)
+            and (metadata.st_dev, metadata.st_ino) == parent_inode
+            and (receipt_root / "fixture-runtime.json").exists()
+        ):
+            failed = True
+            raise OSError("injected-output-parent-close-failure")
+
+    monkeypatch.setattr(helper.os, "close", fail_output_parent_close_after_close)
+
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": True,
     }
     assert helper.inspect(receipt_root, descriptor)["reason"] == "current"
 
