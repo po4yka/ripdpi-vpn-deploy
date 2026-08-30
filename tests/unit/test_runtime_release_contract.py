@@ -15,7 +15,7 @@ import zipfile
 from pathlib import Path
 
 import yaml
-
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible" / "roles" / "runtime-release"
@@ -24,8 +24,22 @@ TASKS = ROLE / "tasks" / "main.yml"
 ACTIVATOR = ROLE / "files" / "runtime_release_activate.py"
 
 
-def _tasks() -> list[dict]:
+def _raw_tasks() -> list[dict]:
     return yaml.safe_load(TASKS.read_text())
+
+
+def _tasks() -> list[dict]:
+    flattened: list[dict] = []
+
+    def visit(tasks: list[dict]) -> None:
+        for task in tasks:
+            flattened.append(task)
+            for section in ("block", "rescue", "always"):
+                if section in task:
+                    visit(task[section])
+
+    visit(_raw_tasks())
+    return flattened
 
 
 def _task(name: str) -> dict:
@@ -64,9 +78,9 @@ def test_preflight_and_architecture_selection_happen_before_writes() -> None:
         "Refuse unsupported runtime release architecture",
         "Validate runtime release contract before writing",
     ]
-    assert names.index("Validate runtime release contract before writing") < names.index(
-        "Ensure runtime release directories"
-    )
+    assert names.index(
+        "Validate runtime release contract before writing"
+    ) < names.index("Ensure runtime release directories")
 
     architecture = tasks[0]["ansible.builtin.set_fact"]
     serialized = yaml.safe_dump(architecture)
@@ -174,7 +188,9 @@ def test_release_receipt_binds_existing_candidate_to_pin_and_binary_digest() -> 
     ]
 
 
-def test_binary_and_archive_candidates_are_staged_outside_the_live_release_tree() -> None:
+def test_binary_and_archive_candidates_are_staged_outside_the_live_release_tree() -> (
+    None
+):
     names = [task["name"] for task in _tasks()]
     assert "Install pinned binary artifact into versioned release" not in names
     assert "Extract pinned archive into versioned release" not in names
@@ -188,7 +204,58 @@ def test_binary_and_archive_candidates_are_staged_outside_the_live_release_tree(
     activation = _task("Activate runtime release under host-local lock")
     assert "--staged-candidate" in activation["ansible.builtin.command"]["argv"]
     assert names.index("Activate runtime release under host-local lock") < names.index(
-        "Remove downloaded runtime release artifact"
+        "Clean trusted runtime release transaction"
+    )
+
+
+def test_staging_is_unique_and_cleanup_runs_for_every_transaction_outcome() -> None:
+    reset = _task("Reset runtime release transaction ownership")
+    assert reset["ansible.builtin.set_fact"] == {
+        "_runtime_release_transaction_dir": "",
+        "_runtime_release_artifact_path": "",
+        "_runtime_release_stage_dir": "",
+        "_runtime_release_staged_candidate_path": "",
+        "_runtime_release_staging_preparation": {},
+        "_runtime_release_staging_prepared": False,
+    }
+    prepare = _task("Prepare trusted runtime release transaction")
+    assert prepare["register"] == "_runtime_release_staging_preparation"
+    assert "--prepare-staging" in prepare["ansible.builtin.command"]["argv"]
+
+    derive = _task("Select trusted runtime release transaction paths")
+    derived = derive["ansible.builtin.set_fact"]
+    assert "transaction_dir" in derived["_runtime_release_transaction_dir"]
+    assert "artifact_path" in derived["_runtime_release_artifact_path"]
+    assert "stage_dir" in derived["_runtime_release_stage_dir"]
+
+    cleanup = _task("Clean trusted runtime release transaction")
+    assert cleanup["ansible.builtin.command"]["argv"][-1] == "--cleanup-staging"
+    assert cleanup["when"] == [
+        "_runtime_release_needs_artifact",
+        "not ansible_check_mode",
+        "_runtime_release_staging_prepared | bool",
+        "_runtime_release_transaction_dir | length > 0",
+    ]
+    transaction = next(
+        task for task in _raw_tasks() if "block" in task and "always" in task
+    )
+    assert cleanup in transaction["always"]
+
+
+def test_check_mode_predicts_candidate_or_receipt_publication_work() -> None:
+    staging = _task("Validate runtime release staging namespace in check mode")
+    assert staging["ansible.builtin.command"]["argv"][-1] == "--validate-staging-root"
+    assert staging["changed_when"] is False
+    assert staging["check_mode"] is False
+    assert staging["when"] == [
+        "_runtime_release_needs_artifact",
+        "ansible_check_mode",
+    ]
+    activation = _task("Activate runtime release under host-local lock")
+    argv = activation["ansible.builtin.command"]["argv"]
+    assert "--requires-artifact" in argv
+    assert activation["changed_when"] == (
+        "(_runtime_release_activation.stdout | from_json).changed"
     )
 
 
@@ -198,7 +265,10 @@ def test_candidate_permissions_are_published_only_by_the_locked_helper() -> None
     assert "src_dir_fd=release.descriptor" in source
     assert "dst_dir_fd=release.descriptor" in source
     assert "os.fchmod(destination, 0o755)" in source
-    assert "Normalize installed runtime release candidate permissions" not in TASKS.read_text()
+    assert (
+        "Normalize installed runtime release candidate permissions"
+        not in TASKS.read_text()
+    )
 
 
 def test_activation_uses_one_locked_helper_with_argv_and_categorical_json() -> None:
@@ -206,15 +276,21 @@ def test_activation_uses_one_locked_helper_with_argv_and_categorical_json() -> N
     assert preflight["ansible.builtin.command"]["argv"][-1] == "--check"
     assert preflight["changed_when"] is False
     assert preflight["when"] == "not ansible_check_mode"
+    assert "--owner" in preflight["ansible.builtin.command"]["argv"]
+    assert "--group" in preflight["ansible.builtin.command"]["argv"]
 
     activation = _task("Activate runtime release under host-local lock")
     command = activation["ansible.builtin.command"]
     assert command["argv"][:2] == ["/usr/bin/python3", "-"]
     assert command["argv"][2:10] == [
-        "--install-root", "{{ runtime_release_install_root }}",
-        "--version", "{{ runtime_release_version }}",
-        "--binary-name", "{{ runtime_release_binary_name }}",
-        "--public-link", "{{ runtime_release_public_link }}",
+        "--install-root",
+        "{{ runtime_release_install_root }}",
+        "--version",
+        "{{ runtime_release_version }}",
+        "--binary-name",
+        "{{ runtime_release_binary_name }}",
+        "--public-link",
+        "{{ runtime_release_public_link }}",
     ]
     assert command["argv"][-1] == "{{ '--check' if ansible_check_mode else '--apply' }}"
     assert "runtime_release_activate.py" in command["stdin"]
@@ -263,21 +339,31 @@ def _activation_layout(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def _link_snapshot(root: Path, public: Path) -> dict[str, str | None]:
-    paths = {"current": root / "current", "previous": root / "previous", "public": public}
+    paths = {
+        "current": root / "current",
+        "previous": root / "previous",
+        "public": public,
+    }
     return {
         name: os.readlink(path) if path.is_symlink() else None
         for name, path in paths.items()
     }
 
 
-def _trusted_staging_paths(root: Path, version: str, artifact: Path) -> tuple[Path, Path]:
+def _trusted_staging_paths(
+    root: Path, version: str, artifact: Path
+) -> tuple[Path, Path]:
     staging = root / ".runtime-release-staging"
-    artifact_node = staging / f"runtime-release-runtime-fixture-{version}-amd64-{artifact.name}"
+    artifact_node = (
+        staging / f"runtime-release-runtime-fixture-{version}-amd64-{artifact.name}"
+    )
     stage = staging / f"stage-runtime-fixture-{version}-amd64"
     return artifact_node, stage
 
 
-def test_locked_helper_check_mode_predicts_old_current_without_mutation(tmp_path: Path) -> None:
+def test_locked_helper_check_mode_predicts_old_current_without_mutation(
+    tmp_path: Path,
+) -> None:
     helper = _activator_module()
     root, public = _activation_layout(tmp_path)
     before = _link_snapshot(root, public)
@@ -288,7 +374,9 @@ def test_locked_helper_check_mode_predicts_old_current_without_mutation(tmp_path
     assert _link_snapshot(root, public) == before
 
 
-def test_locked_helper_rejects_traversing_current_and_previous_targets(tmp_path: Path) -> None:
+def test_locked_helper_rejects_traversing_current_and_previous_targets(
+    tmp_path: Path,
+) -> None:
     helper = _activator_module()
     for link_name in ("current", "previous"):
         root, public = _activation_layout(tmp_path / link_name)
@@ -336,7 +424,9 @@ def test_locked_helper_compensates_each_publish_and_postcheck_failure(
         with __import__("pytest").raises(helper.ActivationFailed):
             helper.activate(root, "v1", "runtime-fixture", public, check=False)
         if failure_at <= 3:
-            assert injected_publish_failure, f"publish position {failure_at} was not exercised"
+            assert (
+                injected_publish_failure
+            ), f"publish position {failure_at} was not exercised"
         else:
             assert verify_calls == 1
         assert _link_snapshot(root, public) == before
@@ -344,21 +434,36 @@ def test_locked_helper_compensates_each_publish_and_postcheck_failure(
         monkeypatch.setattr(helper, "_verify_desired", real_verify)
 
 
-def test_locked_helper_serializes_concurrent_controller_activation(tmp_path: Path) -> None:
+def test_locked_helper_serializes_concurrent_controller_activation(
+    tmp_path: Path,
+) -> None:
     root, public = _activation_layout(tmp_path)
     commands = []
     for version in ("v1", "v2"):
-        commands.append([
-            sys.executable, str(ACTIVATOR),
-            "--install-root", str(root),
-            "--version", version,
-            "--binary-name", "runtime-fixture",
-            "--public-link", str(public),
-            "--apply",
-        ])
-    processes = [subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                 for command in commands]
-    results = [process.communicate(timeout=10) + (process.returncode,) for process in processes]
+        commands.append(
+            [
+                sys.executable,
+                str(ACTIVATOR),
+                "--install-root",
+                str(root),
+                "--version",
+                version,
+                "--binary-name",
+                "runtime-fixture",
+                "--public-link",
+                str(public),
+                "--apply",
+            ]
+        )
+    processes = [
+        subprocess.Popen(
+            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        for command in commands
+    ]
+    results = [
+        process.communicate(timeout=10) + (process.returncode,) for process in processes
+    ]
     assert all(result[2] == 0 for result in results), results
     assert all(json.loads(result[0])["status"] == "committed" for result in results)
 
@@ -456,7 +561,9 @@ def _run_role(
         public_link = public_link.resolve()
     tmp_path.mkdir(parents=True, exist_ok=True)
     executable = shutil.which("ansible-playbook")
-    assert executable, "installed Ansible is required for the runtime-release behavior proof"
+    assert (
+        executable
+    ), "installed Ansible is required for the runtime-release behavior proof"
     checksum = __import__("hashlib").sha256(artifact.read_bytes()).hexdigest()
     if uppercase_checksum:
         checksum = checksum.upper()
@@ -470,7 +577,10 @@ def _run_role(
         "runtime_release_public_link": str(
             public_link or (tmp_path / "bin" / "runtime-fixture")
         ),
-        "runtime_release_urls": {"amd64": artifact.as_uri(), "arm64": artifact.as_uri()},
+        "runtime_release_urls": {
+            "amd64": artifact.as_uri(),
+            "arm64": artifact.as_uri(),
+        },
         "runtime_release_sha256": {"amd64": checksum, "arm64": checksum},
         "runtime_release_artifact_filename": artifact.name,
         "runtime_release_artifact_type": artifact_type,
@@ -481,29 +591,36 @@ def _run_role(
         "runtime_release_storage_group": storage_group,
     }
     playbook = tmp_path / f"install-{version}-{run_label}.yml"
-    playbook.write_text(yaml.safe_dump([{
-        "name": "Exercise runtime release contract",
-        "hosts": "localhost",
-        "connection": "local",
-        "gather_facts": False,
-        "become": False,
-        "vars": variables,
-        "roles": ["runtime-release"],
-    }], sort_keys=False))
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "name": "Exercise runtime release contract",
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "become": False,
+                    "vars": variables,
+                    "roles": ["runtime-release"],
+                }
+            ],
+            sort_keys=False,
+        )
+    )
     config = tmp_path / f"ansible-{run_label}.cfg"
     config.write_text("[defaults]\nfact_caching=memory\ninject_facts_as_vars=false\n")
     environment = {
-        key: os.environ[key]
-        for key in ("PATH", "HOME", "LANG")
-        if key in os.environ
+        key: os.environ[key] for key in ("PATH", "HOME", "LANG") if key in os.environ
     }
-    environment.update({
-        "ANSIBLE_CONFIG": str(config),
-        "ANSIBLE_HOME": str(tmp_path / "ansible-home"),
-        "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
-        "ANSIBLE_ROLES_PATH": str(ROOT / "ansible" / "roles"),
-        "ANSIBLE_NOCOLOR": "1",
-    })
+    environment.update(
+        {
+            "ANSIBLE_CONFIG": str(config),
+            "ANSIBLE_HOME": str(tmp_path / "ansible-home"),
+            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
+            "ANSIBLE_ROLES_PATH": str(ROOT / "ansible" / "roles"),
+            "ANSIBLE_NOCOLOR": "1",
+        }
+    )
     command = [executable, "-i", "localhost,", str(playbook)]
     if check:
         command.append("--check")
@@ -545,7 +662,9 @@ def _run_helper_fixture(
     # Do not resolve the final public component: after the first activation it
     # is deliberately a symlink into install_root.
     root = Path(os.path.abspath(install_root or (tmp_path / "install")))
-    public = Path(os.path.abspath(public_link or (tmp_path / "bin" / "runtime-fixture")))
+    public = Path(
+        os.path.abspath(public_link or (tmp_path / "bin" / "runtime-fixture"))
+    )
     owner = getpass.getuser()
     group = grp.getgrgid(os.getgid()).gr_name
     artifact_digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
@@ -553,8 +672,17 @@ def _run_helper_fixture(
         artifact_digest = artifact_digest.upper()
 
     if check:
+        receipt = root / "releases" / version / ".runtime-release.json"
+        candidate = root / "releases" / version / "runtime-fixture"
         try:
-            result = helper.activate(root, version, "runtime-fixture", public, check=True)
+            result = helper.activate(
+                root,
+                version,
+                "runtime-fixture",
+                public,
+                check=True,
+                requires_artifact=not candidate.exists() or not receipt.exists(),
+            )
         except Exception as error:
             return subprocess.CompletedProcess([], 1, "", f"{error}\n")
         return subprocess.CompletedProcess(
@@ -571,31 +699,42 @@ def _run_helper_fixture(
     )
     artifact_name = f"runtime-release-runtime-fixture-{version}-amd64-{artifact.name}"
     staging_prepared = False
+    transaction_dir: Path | None = None
     staged_candidate: Path | None = None
+    receipt = root / "releases" / version / ".runtime-release.json"
+    installed_candidate = root / "releases" / version / "runtime-fixture"
+    needs_artifact = not installed_candidate.exists() or not receipt.exists()
     try:
-        helper.prepare_staging(
-            root,
-            root / ".runtime-release-staging",
-            artifact_name,
-            stage_name,
-            owner=owner,
-            group=group,
-        )
-        staging_prepared = True
-        staging = root / ".runtime-release-staging"
-        if artifact_type == "binary":
-            staged_candidate = staging / artifact_name
-            shutil.copyfile(artifact, staged_candidate)
-        elif artifact_type == "archive":
-            if not archive_member:
-                raise helper.UnsafeState("missing-archive-member")
-            stage = staging / stage_name
-            staged_candidate = stage / "runtime-fixture"
-            with zipfile.ZipFile(artifact) as archive:
-                staged_candidate.write_bytes(archive.read(archive_member))
+        if needs_artifact:
+            preparation = helper.prepare_staging(
+                root,
+                root / ".runtime-release-staging",
+                artifact_name,
+                stage_name,
+                "runtime-fixture",
+                version,
+                artifact_digest.lower(),
+                artifact_type,
+                owner=owner,
+                group=group,
+            )
+            staging_prepared = True
+            transaction_dir = Path(preparation["transaction_dir"])
+            if artifact_type == "binary":
+                staged_candidate = Path(preparation["artifact_path"])
+                shutil.copyfile(artifact, staged_candidate)
+            elif artifact_type == "archive":
+                if not archive_member:
+                    raise helper.UnsafeState("missing-archive-member")
+                stage = Path(preparation["stage_dir"])
+                staged_candidate = stage / "runtime-fixture"
+                with zipfile.ZipFile(artifact) as archive:
+                    staged_candidate.write_bytes(archive.read(archive_member))
+            else:
+                raise helper.UnsafeState("unsafe-artifact-type")
+            staged_candidate.chmod(0o700 if artifact_type == "binary" else 0o755)
         else:
-            raise helper.UnsafeState("unsafe-artifact-type")
-        staged_candidate.chmod(0o755)
+            staged_candidate = installed_candidate
         candidate_digest = hashlib.sha256(staged_candidate.read_bytes()).hexdigest()
         result = helper.activate(
             root,
@@ -611,6 +750,11 @@ def _run_helper_fixture(
             owner=owner,
             group=group,
             staged_candidate=staged_candidate,
+            staging_dir=(root / ".runtime-release-staging") if needs_artifact else None,
+            transaction_dir=transaction_dir,
+            artifact_name=artifact_name if needs_artifact else None,
+            stage_name=stage_name if needs_artifact else None,
+            requires_artifact=needs_artifact,
         )
     except Exception as error:
         outcome = subprocess.CompletedProcess([], 1, "", f"{error}\n")
@@ -619,16 +763,20 @@ def _run_helper_fixture(
             [], 0, f"changed={int(bool(result['changed']))}\n", ""
         )
     finally:
-        if staging_prepared and staged_candidate is not None:
-            try:
-                staged_candidate.unlink()
-            except FileNotFoundError:
-                pass
-            if stage_name is not None:
-                try:
-                    staged_candidate.parent.rmdir()
-                except OSError:
-                    pass
+        if staging_prepared and transaction_dir is not None:
+            helper.cleanup_staging(
+                root,
+                root / ".runtime-release-staging",
+                transaction_dir,
+                artifact_name,
+                stage_name,
+                "runtime-fixture",
+                version,
+                artifact_digest.lower(),
+                artifact_type,
+                owner=owner,
+                group=group,
+            )
     return outcome
 
 
@@ -692,7 +840,7 @@ def test_helper_refuses_same_version_pin_or_binary_drift(tmp_path: Path) -> None
     binary.write_text("#!/bin/sh\necho tampered\n")
     tampered = _run_helper_fixture(tmp_path, "v1", artifact)
     assert tampered.returncode != 0
-    assert "candidate-digest-mismatch" in (tampered.stdout + tampered.stderr)
+    assert "binary-pin-mismatch" in (tampered.stdout + tampered.stderr)
 
 
 def test_helper_serializes_same_version_different_pins_without_cross_blessing(
@@ -707,22 +855,22 @@ def test_helper_serializes_same_version_different_pins_without_cross_blessing(
     install_root = tmp_path / "install"
     with ThreadPoolExecutor(max_workers=2) as executor:
         first_future = executor.submit(
-                _run_helper_fixture,
+            _run_helper_fixture,
             tmp_path / "first-controller",
             "v1",
-                first,
-                install_root=install_root,
-                public_link=tmp_path / "bin" / "runtime-fixture",
-                run_label="first",
+            first,
+            install_root=install_root,
+            public_link=tmp_path / "bin" / "runtime-fixture",
+            run_label="first",
         )
         second_future = executor.submit(
-                _run_helper_fixture,
+            _run_helper_fixture,
             tmp_path / "second-controller",
             "v1",
-                second,
-                install_root=install_root,
-                public_link=tmp_path / "bin" / "runtime-fixture",
-                run_label="second",
+            second,
+            install_root=install_root,
+            public_link=tmp_path / "bin" / "runtime-fixture",
+            run_label="second",
         )
         first_process = first_future.result(timeout=30)
         second_process = second_future.result(timeout=30)
@@ -733,8 +881,7 @@ def test_helper_serializes_same_version_different_pins_without_cross_blessing(
         if process.returncode == 0
     ]
     assert len(successes) == 1, [
-        process.stdout + process.stderr
-        for process in (first_process, second_process)
+        process.stdout + process.stderr for process in (first_process, second_process)
     ]
     receipt = json.loads(
         (tmp_path / "install/releases/v1/.runtime-release.json").read_text()
@@ -744,9 +891,12 @@ def test_helper_serializes_same_version_different_pins_without_cross_blessing(
         hashlib.sha256(second.read_bytes()).hexdigest(),
     }
     assert receipt["artifact_sha256"] in expected
-    assert receipt["binary_sha256"] == hashlib.sha256(
-        (tmp_path / "install/releases/v1/runtime-fixture").read_bytes()
-    ).hexdigest()
+    assert (
+        receipt["binary_sha256"]
+        == hashlib.sha256(
+            (tmp_path / "install/releases/v1/runtime-fixture").read_bytes()
+        ).hexdigest()
+    )
 
 
 def test_helper_forced_losing_pin_cannot_replace_committed_candidate(
@@ -821,13 +971,466 @@ def test_helper_adopts_only_byte_identical_legacy_candidate(tmp_path: Path) -> N
     assert not receipt.exists()
 
 
-def test_real_role_check_mode_predicts_fresh_install_without_writes(tmp_path: Path) -> None:
+def test_helper_check_mode_predicts_legacy_receipt_adoption_without_writes(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "bin").mkdir()
+    artifact = tmp_path / "fixture"
+    artifact.write_text("#!/bin/sh\necho original\n")
+    installed = _run_helper_fixture(tmp_path, "v1", artifact)
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+    receipt = tmp_path / "install/releases/v1/.runtime-release.json"
+    receipt.unlink()
+    before_links = _link_snapshot(
+        tmp_path / "install", tmp_path / "bin/runtime-fixture"
+    )
+
+    predicted = _run_helper_fixture(tmp_path, "v1", artifact, check=True)
+
+    assert predicted.returncode == 0, predicted.stdout + predicted.stderr
+    assert "changed=1" in predicted.stdout
+    assert not receipt.exists()
+    assert (
+        _link_snapshot(tmp_path / "install", tmp_path / "bin/runtime-fixture")
+        == before_links
+    )
+
+
+def test_helper_uses_distinct_owned_transactions_and_cleans_each_one(
+    tmp_path: Path,
+) -> None:
+    helper = _activator_module()
+    root = tmp_path / "install"
+    root.mkdir(mode=0o755)
+    owner = getpass.getuser()
+    group = grp.getgrgid(os.getgid()).gr_name
+    kwargs = {
+        "owner": owner,
+        "group": group,
+    }
+
+    first = helper.prepare_staging(
+        root,
+        root / ".runtime-release-staging",
+        "artifact",
+        "stage",
+        "runtime-fixture",
+        "v1",
+        "0" * 64,
+        "archive",
+        **kwargs,
+    )
+    second = helper.prepare_staging(
+        root,
+        root / ".runtime-release-staging",
+        "artifact",
+        "stage",
+        "runtime-fixture",
+        "v1",
+        "0" * 64,
+        "archive",
+        **kwargs,
+    )
+
+    assert first["transaction_dir"] != second["transaction_dir"]
+    for prepared in (first, second):
+        transaction = Path(prepared["transaction_dir"])
+        assert transaction.is_dir()
+        assert (transaction / ".runtime-release-transaction.json").is_file()
+        Path(prepared["artifact_path"]).write_text("artifact\n")
+        Path(prepared["artifact_path"]).chmod(0o600)
+        (Path(prepared["stage_dir"]) / "runtime-fixture").write_text("binary\n")
+        helper.cleanup_staging(
+            root,
+            root / ".runtime-release-staging",
+            transaction,
+            "artifact",
+            "stage",
+            "runtime-fixture",
+            "v1",
+            "0" * 64,
+            "archive",
+            **kwargs,
+        )
+        assert not transaction.exists()
+    assert list((root / ".runtime-release-staging").iterdir()) == []
+
+
+def test_failed_download_transaction_cleanup_allows_unchanged_retry(
+    tmp_path: Path,
+) -> None:
+    helper = _activator_module()
+    root = tmp_path / "install"
+    root.mkdir(mode=0o755)
+    owner = getpass.getuser()
+    group = grp.getgrgid(os.getgid()).gr_name
+    kwargs = {"owner": owner, "group": group}
+
+    failed = helper.prepare_staging(
+        root,
+        root / ".runtime-release-staging",
+        "artifact",
+        None,
+        "runtime-fixture",
+        "v1",
+        "0" * 64,
+        "binary",
+        **kwargs,
+    )
+    helper.cleanup_staging(
+        root,
+        root / ".runtime-release-staging",
+        Path(failed["transaction_dir"]),
+        "artifact",
+        None,
+        "runtime-fixture",
+        "v1",
+        "0" * 64,
+        "binary",
+        **kwargs,
+    )
+
+    retry = helper.prepare_staging(
+        root,
+        root / ".runtime-release-staging",
+        "artifact",
+        None,
+        "runtime-fixture",
+        "v1",
+        "0" * 64,
+        "binary",
+        **kwargs,
+    )
+
+    assert retry["transaction_dir"] != failed["transaction_dir"]
+    assert Path(retry["transaction_dir"]).is_dir()
+    helper.cleanup_staging(
+        root,
+        root / ".runtime-release-staging",
+        Path(retry["transaction_dir"]),
+        "artifact",
+        None,
+        "runtime-fixture",
+        "v1",
+        "0" * 64,
+        "binary",
+        **kwargs,
+    )
+
+
+def test_failed_archive_transaction_cleanup_removes_only_receipt_owned_nodes(
+    tmp_path: Path,
+) -> None:
+    helper = _activator_module()
+    root = tmp_path / "install"
+    root.mkdir(mode=0o755)
+    owner = getpass.getuser()
+    group = grp.getgrgid(os.getgid()).gr_name
+    prepared = helper.prepare_staging(
+        root,
+        root / ".runtime-release-staging",
+        "artifact.tar",
+        "stage",
+        "runtime-fixture",
+        "v1",
+        "1" * 64,
+        "archive",
+        owner=owner,
+        group=group,
+    )
+    artifact = Path(prepared["artifact_path"])
+    artifact.write_text("partial archive\n")
+    artifact.chmod(0o600)
+    candidate = Path(prepared["stage_dir"]) / "runtime-fixture"
+    candidate.write_text("partial candidate\n")
+
+    helper.cleanup_staging(
+        root,
+        root / ".runtime-release-staging",
+        Path(prepared["transaction_dir"]),
+        "artifact.tar",
+        "stage",
+        "runtime-fixture",
+        "v1",
+        "1" * 64,
+        "archive",
+        owner=owner,
+        group=group,
+    )
+
+    assert not Path(prepared["transaction_dir"]).exists()
+
+
+def test_helper_cli_reports_and_cleans_exact_transaction(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    helper = _activator_module()
+    root = tmp_path / "install"
+    root.mkdir(mode=0o755)
+    owner = getpass.getuser()
+    group = grp.getgrgid(os.getgid()).gr_name
+    common = [
+        "--install-root",
+        str(root),
+        "--staging-dir",
+        str(root / ".runtime-release-staging"),
+        "--version",
+        "v1",
+        "--binary-name",
+        "runtime-fixture",
+        "--artifact-name",
+        "artifact",
+        "--artifact-sha256",
+        "0" * 64,
+        "--artifact-type",
+        "binary",
+        "--stage-name",
+        "",
+        "--owner",
+        owner,
+        "--group",
+        group,
+    ]
+
+    assert helper.main([*common, "--prepare-staging"]) == 0
+    prepared = json.loads(capsys.readouterr().out)
+    transaction = Path(prepared["transaction_dir"])
+    assert transaction.is_dir()
+
+    assert (
+        helper.main(
+            [
+                *common,
+                "--transaction-dir",
+                str(transaction),
+                "--cleanup-staging",
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["status"] == "cleaned"
+    assert not transaction.exists()
+
+
+def test_helper_refuses_writable_install_ancestor_before_staging_write(
+    tmp_path: Path,
+) -> None:
+    helper = _activator_module()
+    unsafe_parent = tmp_path / "unsafe-parent"
+    unsafe_parent.mkdir(mode=0o777)
+    unsafe_parent.chmod(0o777)
+    root = unsafe_parent / "install"
+    root.mkdir(mode=0o755)
+    owner = getpass.getuser()
+    group = grp.getgrgid(os.getgid()).gr_name
+
+    with pytest.raises(helper.UnsafeState, match="unsafe-storage-ancestor"):
+        helper.prepare_staging(
+            root,
+            root / ".runtime-release-staging",
+            "artifact",
+            None,
+            "runtime-fixture",
+            "v1",
+            "0" * 64,
+            "binary",
+            owner=owner,
+            group=group,
+        )
+
+    assert not (root / ".runtime-release-staging").exists()
+
+
+def test_helper_refuses_symlinked_install_ancestor_before_staging_write(
+    tmp_path: Path,
+) -> None:
+    helper = _activator_module()
+    trusted_parent = tmp_path / "trusted-parent"
+    trusted_parent.mkdir(mode=0o700)
+    real_root = trusted_parent / "install"
+    real_root.mkdir(mode=0o755)
+    aliased_parent = tmp_path / "aliased-parent"
+    aliased_parent.symlink_to(trusted_parent, target_is_directory=True)
+    root = aliased_parent / "install"
+    owner = getpass.getuser()
+    group = grp.getgrgid(os.getgid()).gr_name
+
+    with pytest.raises(helper.UnsafeState, match="unsafe-storage-ancestor"):
+        helper.prepare_staging(
+            root,
+            root / ".runtime-release-staging",
+            "artifact",
+            None,
+            "runtime-fixture",
+            "v1",
+            "0" * 64,
+            "binary",
+            owner=owner,
+            group=group,
+        )
+
+    assert not (real_root / ".runtime-release-staging").exists()
+
+
+def test_check_mode_staging_preflight_refuses_symlink_without_writes(
+    tmp_path: Path,
+) -> None:
+    helper = _activator_module()
+    root = tmp_path / "install"
+    root.mkdir(mode=0o755)
+    external = tmp_path / "external-staging"
+    external.mkdir(mode=0o700)
+    marker = external / "operator-owned"
+    marker.write_text("preserve\n")
+    staging = root / ".runtime-release-staging"
+    staging.symlink_to(external, target_is_directory=True)
+    before = marker.read_bytes()
+
+    with pytest.raises(helper.UnsafeState, match="unsafe-staging-directory"):
+        helper.validate_staging_root(
+            root,
+            staging,
+            owner=getpass.getuser(),
+            group=grp.getgrgid(os.getgid()).gr_name,
+        )
+
+    assert staging.is_symlink()
+    assert marker.read_bytes() == before
+    assert set(external.iterdir()) == {marker}
+
+
+@pytest.mark.parametrize("kind", ["regular", "wrong-mode"])
+def test_check_mode_staging_preflight_refuses_unsafe_final_node_without_writes(
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    helper = _activator_module()
+    root = tmp_path / "install"
+    root.mkdir(mode=0o755)
+    staging = root / ".runtime-release-staging"
+    if kind == "regular":
+        staging.write_text("operator-owned\n")
+    else:
+        staging.mkdir(mode=0o755)
+    before = staging.lstat()
+
+    with pytest.raises(helper.UnsafeState, match="unsafe-staging-directory"):
+        helper.validate_staging_root(
+            root,
+            staging,
+            owner=getpass.getuser(),
+            group=grp.getgrgid(os.getgid()).gr_name,
+        )
+
+    after = staging.lstat()
+    assert (after.st_dev, after.st_ino, after.st_mode) == (
+        before.st_dev,
+        before.st_ino,
+        before.st_mode,
+    )
+
+
+def test_check_mode_staging_preflight_accepts_absent_leaf_without_creating_it(
+    tmp_path: Path,
+) -> None:
+    helper = _activator_module()
+    root = tmp_path / "install"
+    root.mkdir(mode=0o755)
+    staging = root / ".runtime-release-staging"
+
+    result = helper.validate_staging_root(
+        root,
+        staging,
+        owner=getpass.getuser(),
+        group=grp.getgrgid(os.getgid()).gr_name,
+    )
+
+    assert result == {"status": "validated", "changed": False}
+    assert not staging.exists()
+
+
+def test_check_mode_staging_preflight_refuses_writable_ancestor_without_writes(
+    tmp_path: Path,
+) -> None:
+    helper = _activator_module()
+    unsafe_parent = tmp_path / "unsafe-parent"
+    unsafe_parent.mkdir(mode=0o777)
+    unsafe_parent.chmod(0o777)
+    root = unsafe_parent / "install"
+    root.mkdir(mode=0o755)
+    staging = root / ".runtime-release-staging"
+
+    with pytest.raises(helper.UnsafeState, match="unsafe-storage-ancestor"):
+        helper.validate_staging_root(
+            root,
+            staging,
+            owner=getpass.getuser(),
+            group=grp.getgrgid(os.getgid()).gr_name,
+        )
+
+    assert not staging.exists()
+
+
+def test_pre_download_validation_refuses_replaced_ancestor_without_writing(
+    tmp_path: Path,
+) -> None:
+    helper = _activator_module()
+    trusted_parent = tmp_path / "trusted-parent"
+    trusted_parent.mkdir(mode=0o700)
+    root = trusted_parent / "install"
+    root.mkdir(mode=0o755)
+    owner = getpass.getuser()
+    group = grp.getgrgid(os.getgid()).gr_name
+    prepared = helper.prepare_staging(
+        root,
+        root / ".runtime-release-staging",
+        "artifact",
+        None,
+        "runtime-fixture",
+        "v1",
+        "0" * 64,
+        "binary",
+        owner=owner,
+        group=group,
+    )
+    displaced = tmp_path / "displaced-parent"
+    trusted_parent.rename(displaced)
+    attacker = tmp_path / "attacker-parent"
+    attacker.mkdir(mode=0o777)
+    attacker.chmod(0o777)
+    marker = attacker / "operator-owned"
+    marker.write_text("preserve\n")
+    trusted_parent.symlink_to(attacker, target_is_directory=True)
+
+    with pytest.raises(helper.UnsafeState, match="unsafe-storage-ancestor"):
+        helper.validate_staging(
+            root,
+            root / ".runtime-release-staging",
+            Path(prepared["transaction_dir"]),
+            "artifact",
+            None,
+            "runtime-fixture",
+            "v1",
+            "0" * 64,
+            "binary",
+            "prepared",
+            owner=owner,
+            group=group,
+        )
+
+    assert marker.read_text() == "preserve\n"
+    assert not (attacker / "install/.runtime-release-staging").exists()
+
+
+def test_real_role_check_mode_refuses_non_root_fixture_without_writes(
+    tmp_path: Path,
+) -> None:
     (tmp_path / "bin").mkdir()
     artifact = tmp_path / "fixture"
     artifact.write_text("#!/bin/sh\necho check\n")
 
     predicted = _run_role(tmp_path, "v-check", artifact, check=True)
-    assert predicted.returncode == 0, predicted.stdout + predicted.stderr
+    assert predicted.returncode != 0
     assert not (tmp_path / "install").exists()
     assert not (tmp_path / "install" / ".downloads").exists()
 
@@ -877,7 +1480,9 @@ def test_real_role_rejects_unmanaged_public_file_before_writing(tmp_path: Path) 
     assert not (tmp_path / "install").exists()
 
 
-def test_real_role_rejects_non_root_storage_override_before_writes(tmp_path: Path) -> None:
+def test_real_role_rejects_non_root_storage_override_before_writes(
+    tmp_path: Path,
+) -> None:
     """Consumer storage overrides cannot reopen a root-write staging path."""
     (tmp_path / "bin").mkdir()
     artifact = tmp_path / "fixture"
@@ -894,7 +1499,9 @@ def test_real_role_rejects_non_root_storage_override_before_writes(tmp_path: Pat
     )
 
     assert refused.returncode != 0
-    assert "runtime_release_storage_owner == 'root'" in (refused.stdout + refused.stderr)
+    assert "runtime_release_storage_owner == 'root'" in (
+        refused.stdout + refused.stderr
+    )
     assert not (tmp_path / "install").exists()
 
 
@@ -920,10 +1527,10 @@ def test_helper_refuses_symlinked_trusted_staging_namespace_without_external_wri
     assert not (external / "runtime-release-runtime-fixture-v1-amd64-fixture").exists()
 
 
-def test_helper_refuses_precreated_staging_artifact_without_external_write(
+def test_helper_does_not_reuse_precreated_legacy_staging_artifact(
     tmp_path: Path,
 ) -> None:
-    """A deterministic artifact name is refused instead of following its symlink."""
+    """A foreign legacy name cannot collide with a unique transaction path."""
     root = tmp_path / "install"
     root.mkdir(mode=0o755)
     staging = root / ".runtime-release-staging"
@@ -936,17 +1543,17 @@ def test_helper_refuses_precreated_staging_artifact_without_external_write(
     artifact_node, _ = _trusted_staging_paths(root, "v1", artifact)
     artifact_node.symlink_to(external)
 
-    refused = _run_helper_fixture(tmp_path, "v1", artifact, install_root=root)
+    installed = _run_helper_fixture(tmp_path, "v1", artifact, install_root=root)
 
-    assert refused.returncode != 0
+    assert installed.returncode == 0, installed.stdout + installed.stderr
     assert external.read_text() == "operator-owned\n"
     assert artifact_node.is_symlink()
 
 
-def test_helper_refuses_precreated_archive_stage_without_external_write(
+def test_helper_does_not_reuse_precreated_legacy_archive_stage(
     tmp_path: Path,
 ) -> None:
-    """Archive extraction never follows a deterministic stage directory redirect."""
+    """A foreign legacy stage cannot collide with a unique transaction path."""
     root = tmp_path / "install"
     root.mkdir(mode=0o755)
     staging = root / ".runtime-release-staging"
@@ -964,7 +1571,7 @@ def test_helper_refuses_precreated_archive_stage_without_external_write(
     _, stage = _trusted_staging_paths(root, "v1", artifact)
     stage.symlink_to(external, target_is_directory=True)
 
-    refused = _run_helper_fixture(
+    installed = _run_helper_fixture(
         tmp_path,
         "v1",
         artifact,
@@ -973,12 +1580,59 @@ def test_helper_refuses_precreated_archive_stage_without_external_write(
         archive_member="runtime-fixture",
     )
 
-    assert refused.returncode != 0
+    assert installed.returncode == 0, installed.stdout + installed.stderr
     assert marker.read_text() == "preserve\n"
     assert stage.is_symlink()
 
 
-def test_helper_accepts_uppercase_pin_and_stores_canonical_receipt(tmp_path: Path) -> None:
+def test_cleanup_retains_replaced_transaction_nodes_for_explicit_recovery(
+    tmp_path: Path,
+) -> None:
+    helper = _activator_module()
+    root = tmp_path / "install"
+    root.mkdir(mode=0o755)
+    owner = getpass.getuser()
+    group = grp.getgrgid(os.getgid()).gr_name
+    preparation = helper.prepare_staging(
+        root,
+        root / ".runtime-release-staging",
+        "artifact",
+        None,
+        "runtime-fixture",
+        "v1",
+        "0" * 64,
+        "binary",
+        owner=owner,
+        group=group,
+    )
+    transaction = Path(preparation["transaction_dir"])
+    external = tmp_path / "operator-owned"
+    external.write_text("preserve\n")
+    Path(preparation["artifact_path"]).symlink_to(external)
+
+    with pytest.raises(helper.UnsafeState, match="unsafe-staging-artifact"):
+        helper.cleanup_staging(
+            root,
+            root / ".runtime-release-staging",
+            transaction,
+            "artifact",
+            None,
+            "runtime-fixture",
+            "v1",
+            "0" * 64,
+            "binary",
+            owner=owner,
+            group=group,
+        )
+
+    assert transaction.is_dir()
+    assert Path(preparation["artifact_path"]).is_symlink()
+    assert external.read_text() == "preserve\n"
+
+
+def test_helper_accepts_uppercase_pin_and_stores_canonical_receipt(
+    tmp_path: Path,
+) -> None:
     (tmp_path / "bin").mkdir()
     artifact = tmp_path / "fixture"
     artifact.write_text("#!/bin/sh\necho uppercase\n")
@@ -1024,7 +1678,7 @@ def test_real_role_refuses_archive_symlink_member_without_activation(
     with zipfile.ZipFile(artifact, "w") as archive:
         link = zipfile.ZipInfo("runtime-fixture")
         link.create_system = 3
-        link.external_attr = (0o120777 << 16)
+        link.external_attr = 0o120777 << 16
         archive.writestr(link, str(outside))
 
     refused = _run_role(
@@ -1049,7 +1703,9 @@ def test_real_role_refuses_archive_hardlink_member_without_activation(
     with tarfile.open(artifact, "w") as archive:
         payload = tarfile.TarInfo("payload")
         payload.size = len(b"#!/bin/sh\necho hardlink\n")
-        archive.addfile(payload, __import__("io").BytesIO(b"#!/bin/sh\necho hardlink\n"))
+        archive.addfile(
+            payload, __import__("io").BytesIO(b"#!/bin/sh\necho hardlink\n")
+        )
         link = tarfile.TarInfo("runtime-fixture")
         link.type = tarfile.LNKTYPE
         link.linkname = "payload"
@@ -1253,7 +1909,9 @@ def test_locked_helper_refuses_install_root_replacement_after_lock_without_attac
             attacker.rename(root)
 
     monkeypatch.setattr(helper.fcntl, "flock", replace_root_after_lock)
-    with __import__("pytest").raises(helper.UnsafeState, match="directory-identity-changed"):
+    with __import__("pytest").raises(
+        helper.UnsafeState, match="directory-identity-changed"
+    ):
         helper.activate(root, "v1", "runtime-fixture", public, check=False)
 
     assert swapped
@@ -1271,7 +1929,9 @@ def test_locked_helper_refuses_untrusted_public_parent_before_activation(
     before = _link_snapshot(root, public)
     public.parent.chmod(0o777)
 
-    with __import__("pytest").raises(helper.UnsafeState, match="unsafe-public-link-parent-directory"):
+    with __import__("pytest").raises(
+        helper.UnsafeState, match="unsafe-public-link-parent-directory"
+    ):
         helper.activate(root, "v1", "runtime-fixture", public, check=False)
 
     assert _link_snapshot(root, public) == before
@@ -1296,7 +1956,9 @@ def test_locked_helper_refuses_same_name_swap_before_public_unlink(
             public.write_text("attacker-owned\n")
         return real_revalidate(path, expected, **kwargs)
 
-    monkeypatch.setattr(helper, "_revalidate_link_node", replace_public_before_revalidate)
+    monkeypatch.setattr(
+        helper, "_revalidate_link_node", replace_public_before_revalidate
+    )
     try:
         with __import__("pytest").raises(helper.UnsafeState, match="link-node-changed"):
             helper._set_link_state(
