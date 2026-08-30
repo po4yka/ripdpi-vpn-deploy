@@ -11,7 +11,7 @@ One shared implementation exists for each duplicated runtime concern, consumers 
 
 ## Execution
 
-- [ ] ANS-1787496118906923 Introduce the shared runtime-release role: stat-guarded checksum download, releases/<version> directory, current symlink, /usr/local/bin link, single arch-slug derivation; unit tests pin its `runtime_release_*` contract #chore !high @item:ANS-1787497148207353
+- [x] ANS-1787496118906923 Introduce the shared runtime-release role: stat-guarded checksum download, releases/<version> directory, current symlink, /usr/local/bin link, single arch-slug derivation; unit tests pin its `runtime_release_*` contract #chore !high @item:ANS-1787497148207353
 - [ ] ANS-1787496118907057 Migrate xray-runtime, hysteria, hysteria-realm, snell onto runtime-release preserving their existing pins and molecule outcomes #chore !high @item:ANS-1787497148207353 @blocked_by:ANS-1787496118906923
 - [ ] ANS-1787496118906866 Migrate probe-matrix-target and dns-morph-bridge onto runtime-release granting them release-dir + rollback symlink for the first time #chore !low @item:ANS-1787497148207353 @blocked_by:ANS-1787496118906923
 - [ ] ANS-1787496118907179 Collapse the amneziawg dual source-build blocks into one loop over project descriptors with shared receipt handling; naive/xray-runtime source-build idioms adopt the same receipt helper #chore !low @item:ANS-1787497148207353
