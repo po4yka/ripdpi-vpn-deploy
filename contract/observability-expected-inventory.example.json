@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "generation": "inventory-v1",
+  "max_future_seconds": 30,
+  "targets": [
+    {
+      "target": "vpn-p0",
+      "role": "edge",
+      "lifecycle": "enabled",
+      "ever_seen": true,
+      "required_families": ["vpn_watchdog_collection_success"]
+    }
+  ]
+}
