@@ -447,6 +447,11 @@ def _atomic_write(path: Path, payload: bytes) -> None:
             dst_dir_fd=parent_descriptor,
         )
         temporary = None
+        published_parent_path, published_parent = _directory_chain(parent_path)
+        if published_parent_path != parent_path or not _same_node(
+            opened_parent, published_parent
+        ):
+            raise ContractError("output parent changed")
         published = _target_metadata(parent_descriptor, path.name)
         if published is None or published.st_uid != os.geteuid():
             raise ContractError("published output is invalid")

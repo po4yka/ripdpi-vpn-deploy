@@ -620,6 +620,77 @@ def test_atomic_output_fences_parent_replacement_and_preserves_both_namespaces(
     assert not list(moved.glob(".observability.prom.*"))
 
 
+def test_atomic_output_refuses_parent_replacement_during_relative_replace(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest, inventory, evidence = _documents()
+    parent = tmp_path / "textfile"
+    parent.mkdir(mode=0o700)
+    output = parent / "observability.prom"
+    output.write_text("last-known-good\n", encoding="utf-8")
+    moved = tmp_path / "textfile-original"
+    real_replace = os.replace
+    replaced = False
+
+    def replace_parent_during_relative_replace(
+        source: str,
+        destination: str,
+        *,
+        src_dir_fd: int,
+        dst_dir_fd: int,
+    ) -> None:
+        nonlocal replaced
+        parent.rename(moved)
+        parent.mkdir(mode=0o700)
+        replaced = True
+        real_replace(
+            source,
+            destination,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
+
+    module = _module()
+    monkeypatch.setattr(module.os, "replace", replace_parent_during_relative_replace)
+    paths = []
+    for name, value in (
+        ("manifest.json", manifest),
+        ("inventory.json", inventory),
+        ("evidence.json", evidence),
+    ):
+        path = tmp_path / name
+        path.write_text(json.dumps(value), encoding="utf-8")
+        paths.append(path)
+
+    rc = module.main(
+        [
+            "render",
+            "--manifest",
+            str(paths[0]),
+            "--inventory",
+            str(paths[1]),
+            "--evidence",
+            str(paths[2]),
+            "--output",
+            str(output),
+            "--now",
+            "1700000060",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert replaced is True
+    assert rc == 2
+    assert captured.out == ""
+    assert captured.err == "observability-contract: validation failed\n"
+    assert not output.exists()
+    assert "last-known-good" not in (moved / "observability.prom").read_text()
+    assert not list(parent.glob(".observability.prom.*"))
+    assert not list(moved.glob(".observability.prom.*"))
+
+
 def test_runtime_has_no_network_or_subprocess_imports() -> None:
     source = SCRIPT.read_text(encoding="utf-8")
     tree = ast.parse(source)
