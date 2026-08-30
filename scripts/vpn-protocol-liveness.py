@@ -192,12 +192,17 @@ def command_version(command: list[str]) -> str:
 
 
 def xray_version() -> str:
-    try:
-        result = subprocess.run(["xray", "version"], text=True, capture_output=True, timeout=5, check=False)
-    except (OSError, subprocess.TimeoutExpired):
-        return "missing"
-    banner = re.search(r"(?m)^Xray\s+(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)(?:\s|$)", result.stdout)
-    return banner.group(1) if result.returncode == 0 and banner else "unknown"
+    for attempt in range(2):
+        try:
+            result = subprocess.run(["xray", "version"], text=True, capture_output=True, timeout=5, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            if attempt == 0:
+                time.sleep(0.1)
+                continue
+            return "missing"
+        banner = re.search(r"(?m)^Xray\s+(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)(?:\s|$)", result.stdout)
+        return banner.group(1) if result.returncode == 0 and banner else "unknown"
+    return "missing"
 
 
 def classify_curl(result: subprocess.CompletedProcess[str], config: dict) -> dict:

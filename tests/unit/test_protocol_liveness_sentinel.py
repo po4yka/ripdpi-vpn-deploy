@@ -142,12 +142,15 @@ signal.pause()
     _write_executable(
         bin_dir / "xray",
         f"""#!/usr/bin/env python3
-import json, os, pathlib, signal, socket, sys
-with pathlib.Path(os.environ["CALL_LOG"]).open("a") as log:
-    log.write("xray " + " ".join(sys.argv[1:]) + "\\n")
+import os, sys
 if sys.argv[1:] == ["version"]:
+    with open(os.environ["CALL_LOG"], "a", encoding="utf-8") as log:
+        log.write("xray version\\n")
     print("Xray 26.3.27 (Xray, Penetrates Everything.)")
     raise SystemExit(0)
+import json, pathlib, signal, socket
+with pathlib.Path(os.environ["CALL_LOG"]).open("a") as log:
+    log.write("xray " + " ".join(sys.argv[1:]) + "\\n")
 if "-test" in sys.argv:
     if {xray_parser_fails!r}:
         print("invalid profile DO_NOT_LEAK", file=sys.stderr)
@@ -366,6 +369,38 @@ def test_runtime_version_requires_successful_stdout(monkeypatch, code, stdout, s
     spec.loader.exec_module(module)
     monkeypatch.setattr(module.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a[0], code, stdout, stderr))
     assert module.command_version(["fixture", "version"]) == "unknown"
+
+
+@pytest.mark.parametrize(
+    ("responses", "expected", "calls"),
+    [
+        ([OSError("transient launch failure"), subprocess.CompletedProcess(["xray", "version"], 0, "Xray 26.3.27\n", "")], "26.3.27", 2),
+        ([subprocess.TimeoutExpired(["xray", "version"], 5), subprocess.CompletedProcess(["xray", "version"], 0, "Xray 26.3.27\n", "")], "26.3.27", 2),
+        ([OSError("first launch failure"), subprocess.TimeoutExpired(["xray", "version"], 5)], "missing", 2),
+        ([subprocess.CompletedProcess(["xray", "version"], 0, "unrelated 26.3.27\n", "")], "unknown", 1),
+        ([subprocess.CompletedProcess(["xray", "version"], 1, "Xray 26.3.27\n", "")], "unknown", 1),
+    ],
+)
+def test_xray_version_retries_only_transient_launch_failures(monkeypatch, responses, expected, calls):
+    spec = importlib.util.spec_from_file_location("sentinel_xray_version", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    remaining = iter(responses)
+    observed = []
+
+    def run(*args, **kwargs):
+        observed.append((args, kwargs))
+        response = next(remaining)
+        if isinstance(response, BaseException):
+            raise response
+        return response
+
+    monkeypatch.setattr(module.subprocess, "run", run)
+    monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
+
+    assert module.xray_version() == expected
+    assert len(observed) == calls
+    assert all(call[0][0] == ["xray", "version"] and call[1]["timeout"] == 5 for call in observed)
 
 
 def test_existing_loopback_listener_cannot_supply_runtime_success(monkeypatch):
@@ -601,6 +636,7 @@ def test_xray_endpoint_variants_require_healthy_control_for_blocking(tmp_path, b
     config.write_text(json.dumps(document))
     payload = json.loads(_run(config, env).stdout)
     p1 = next(p for p in payload["profiles"] if p["profile"] == "p1-xhttp")
+    assert payload["runtime"] == document["expected_runtime"]
     assert p1["verdict"] == expected
     assert len(p1["variants"]) == 2
     assert [v["variant"] for v in p1["variants"]] == [1, 2]
