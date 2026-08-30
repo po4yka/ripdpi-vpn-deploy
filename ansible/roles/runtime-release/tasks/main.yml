@@ -14,6 +14,11 @@
       runtime-release does not support architecture
       {{ ansible_facts['architecture'] | default('unknown') }}.
 
+- name: Select architecture-specific runtime release archive member
+  ansible.builtin.set_fact:
+    _runtime_release_archive_member: >-
+      {{ runtime_release_archive_members[_runtime_release_arch_key] | default('') }}
+
 - name: Validate runtime release contract before writing
   ansible.builtin.assert:
     that:
@@ -46,19 +51,20 @@
       - runtime_release_urls[_runtime_release_arch_key] is match('^https://|^file://')
       - runtime_release_sha256[_runtime_release_arch_key] | default('') is match('^[0-9a-fA-F]{64}$')
       - runtime_release_arch_slugs[_runtime_release_arch_key] | default('') is match('^[A-Za-z0-9._+-]+$')
+      - runtime_release_archive_members is mapping
       - >-
         runtime_release_artifact_type == 'binary' or
-        runtime_release_archive_member is match('^[A-Za-z0-9._+/\-]+$')
-      - not runtime_release_archive_member.startswith('/')
-      - "'/../' not in runtime_release_archive_member ~ '/'"
-      - "'/./' not in runtime_release_archive_member ~ '/'"
-      - "'//' not in runtime_release_archive_member"
+        _runtime_release_archive_member is match('^[A-Za-z0-9._+/\-]+$')
+      - not _runtime_release_archive_member.startswith('/')
+      - "'/../' not in '/' ~ _runtime_release_archive_member ~ '/'"
+      - "'/./' not in '/' ~ _runtime_release_archive_member ~ '/'"
+      - "'//' not in _runtime_release_archive_member"
       - runtime_release_archive_strip_components is integer
       - runtime_release_archive_strip_components | int >= 0
       - runtime_release_archive_strip_components | int <= 4
       - >-
         runtime_release_artifact_type == 'binary' or
-        runtime_release_archive_member.split('/')[runtime_release_archive_strip_components | int:] ==
+        _runtime_release_archive_member.split('/')[runtime_release_archive_strip_components | int:] ==
         [runtime_release_binary_name]
       - runtime_release_storage_owner == 'root'
       - runtime_release_storage_group == 'root'
@@ -428,7 +434,7 @@
         dest: "{{ _runtime_release_stage_dir }}"
         remote_src: true
         include:
-          - "{{ runtime_release_archive_member }}"
+          - "{{ _runtime_release_archive_member }}"
         extra_opts: >-
           {{ ['--strip-components=' ~ (runtime_release_archive_strip_components | string)]
              if (runtime_release_archive_strip_components | int > 0) else omit }}

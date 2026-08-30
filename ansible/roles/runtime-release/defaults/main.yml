@@ -15,7 +15,9 @@ runtime_release_arch_slugs:
   arm64: arm64
 runtime_release_artifact_filename: artifact
 runtime_release_artifact_type: binary
-runtime_release_archive_member: ""
+runtime_release_archive_members:
+  amd64: ""
+  arm64: ""
 runtime_release_archive_strip_components: 0
 # Root-owned no-follow staging namespace. Runtime identities never write here.
 runtime_release_download_dir: "{{ runtime_release_install_root }}/.runtime-release-staging"

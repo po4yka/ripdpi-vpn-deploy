@@ -8,7 +8,8 @@ it; it never appears directly in `site.yml`.
 
 **Canonical architecture key** — gathered `x86_64`/`amd64` and
 `aarch64`/`arm64` facts collapse to `amd64` or `arm64`. Consumers provide URLs,
-checksums, and any upstream-specific filename slug under those two keys.
+checksums, archive members, and any upstream-specific filename slug under those
+two keys.
 
 **Candidate publication and activation share one host-local lock** — the role
 downloads and extracts into a private per-pin staging area. The helper then
@@ -47,9 +48,10 @@ runtime identity never controls a pathname that root later writes through.
   replacement and directory sync is atomic, and ordinary failures are
   compensated under the same lock; sudden host loss between replacements can
   still leave a mixed set for an operator to diagnose.
-- **Archive extraction names one member** — consumers provide an exact archive
-  member and at most four stripped path components. The remaining path must be
-  exactly `runtime_release_binary_name`; unrelated members are never extracted.
+- **Archive extraction selects one architecture-bound member** — consumers
+  provide exact `amd64` and `arm64` members plus at most four stripped path
+  components. The selected remaining path must be exactly
+  `runtime_release_binary_name`; unrelated members are never extracted.
 - **Existing release directories are immutable by receipt** — matching receipt
   and binary digests skip download/extraction. A changed pin or binary refuses
   before writes; version bumps, never in-place replacement, are the update path.
