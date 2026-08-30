@@ -798,35 +798,112 @@ def test_receipt_failure_rolls_back_live_output(
     assert not (receipt_root / "fixture-runtime.json").exists()
 
 
-@pytest.mark.parametrize("boundary", ["backup", "stage"])
 def test_post_commit_cleanup_failure_reports_pending_success(
-    trusted_root: Path, monkeypatch: pytest.MonkeyPatch, boundary: str
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     helper = _helper_module()
     receipt_root, output = _prepare_layout(trusted_root)
     descriptor = _descriptor(output)
 
-    if boundary == "backup":
-        real_unlink = helper.os.unlink
+    real_unlink = helper.os.unlink
+    failed = False
 
-        def fail_backup_cleanup(path, *args, **kwargs):
-            if ".runtime-backup." in str(path):
-                raise OSError("injected-post-commit-backup-cleanup-failure")
-            return real_unlink(path, *args, **kwargs)
+    def fail_backup_cleanup(path, *args, **kwargs):
+        nonlocal failed
+        if ".runtime-backup." in str(path) and not failed:
+            failed = True
+            raise OSError("injected-post-commit-backup-cleanup-failure")
+        return real_unlink(path, *args, **kwargs)
 
-        monkeypatch.setattr(helper.os, "unlink", fail_backup_cleanup)
+    monkeypatch.setattr(helper.os, "unlink", fail_backup_cleanup)
+
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": True,
+        "cleanup_pending": True,
+    }
+    assert helper.inspect(receipt_root, descriptor)["reason"] == "current"
+    marker = receipt_root / ".fixture-runtime.cleanup.json"
+    assert marker.is_file()
+    assert stat.S_IMODE(marker.stat().st_mode) == 0o600
+
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": False,
+    }
+    assert not marker.exists()
+    assert not list(output.parent.glob(f".{output.name}.runtime-backup.*"))
+    stage = receipt_root.parent / "runtime-build-staging" / "fixture-runtime"
+    assert stage.is_dir()
+    assert list(stage.iterdir()) == []
+
+
+def test_stage_cleanup_failure_rolls_back_before_receipt_commit(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    descriptor = _descriptor(output)
+    real_remove = helper._remove_directory_contents
+    calls = 0
+
+    def fail_precommit_stage_cleanup(directory: int) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected-precommit-stage-cleanup-failure")
+        real_remove(directory)
+
+    monkeypatch.setattr(
+        helper, "_remove_directory_contents", fail_precommit_stage_cleanup
+    )
+
+    with pytest.raises(OSError, match="injected-precommit-stage-cleanup-failure"):
+        helper.converge(receipt_root, descriptor)
+
+    assert output.read_bytes() == b"runtime-v1\n"
+    assert not (receipt_root / "fixture-runtime.json").exists()
+    assert not (receipt_root / ".fixture-runtime.cleanup.json").exists()
+
+
+@pytest.mark.parametrize("boundary", ["unlock", "directory-close"])
+def test_post_commit_finalization_error_does_not_reverse_success(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    descriptor = _descriptor(output)
+    failed = False
+
+    if boundary == "unlock":
+        real_flock = helper.fcntl.flock
+
+        def fail_unlock(fd: int, operation: int) -> None:
+            nonlocal failed
+            if operation == helper.fcntl.LOCK_UN and not failed:
+                failed = True
+                raise OSError("injected-unlock-failure")
+            real_flock(fd, operation)
+
+        monkeypatch.setattr(helper.fcntl, "flock", fail_unlock)
     else:
-        real_remove = helper._remove_directory_contents
-        calls = 0
+        real_close = helper.os.close
+        receipt_inode = (receipt_root.stat().st_dev, receipt_root.stat().st_ino)
 
-        def fail_final_stage_cleanup(directory: int) -> None:
-            nonlocal calls
-            calls += 1
-            if calls == 2:
-                raise OSError("injected-post-commit-stage-cleanup-failure")
-            real_remove(directory)
+        def fail_directory_close(fd: int) -> None:
+            nonlocal failed
+            metadata = helper.os.fstat(fd)
+            real_close(fd)
+            if (
+                stat.S_ISDIR(metadata.st_mode)
+                and (metadata.st_dev, metadata.st_ino) == receipt_inode
+                and (receipt_root / "fixture-runtime.json").exists()
+                and not failed
+            ):
+                failed = True
+                raise OSError("injected-directory-close-failure")
 
-        monkeypatch.setattr(helper, "_remove_directory_contents", fail_final_stage_cleanup)
+        monkeypatch.setattr(helper.os, "close", fail_directory_close)
 
     assert helper.converge(receipt_root, descriptor) == {
         "schema_version": 1,

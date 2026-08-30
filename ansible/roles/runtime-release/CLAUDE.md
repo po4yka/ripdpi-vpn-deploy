@@ -76,7 +76,7 @@ commands, not locking, publication, receipt parsing, or drift classification.
   environment and validates absolute executables, working directories, and
   staged/live paths. It does not sandbox an intentionally malicious argv, so
   descriptors must remain repository-authored role inputs.
-- **Post-commit cleanup is recovery debt, not rollback** — once live outputs and
-  their receipt are durable, failure to remove private staging or backup names
-  returns `cleanup_pending` and keeps convergence successful. Consumers expose
-  that categorical state; operators must clear the private residue separately.
+- **Post-commit cleanup is recovery debt, not rollback** — staging is emptied
+  through its retained directory descriptor before the receipt commit. A
+  private durable marker binds remaining backup inodes to that receipt; cleanup
+  failure returns `cleanup_pending`, and later convergence retries under lock.

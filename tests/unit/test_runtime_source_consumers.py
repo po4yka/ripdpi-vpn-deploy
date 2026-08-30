@@ -123,15 +123,18 @@ def test_xray_source_build_uses_resolved_commit_and_shared_receipt() -> None:
         for argument in step["argv"]
     )
     publish = _task("xray-runtime", "Publish Xray runtime change state")
-    assert "_xray_runtime_current.changed" in publish["ansible.builtin.set_fact"][
-        "xray_runtime_changed"
-    ]
-    assert "runtime_build_changed | default(false)" in publish[
-        "ansible.builtin.set_fact"
-    ]["xray_runtime_changed"]
-    assert "xray_runtime_build_from_source" in publish["ansible.builtin.set_fact"][
-        "xray_runtime_changed"
-    ]
+    assert (
+        "_xray_runtime_current.changed"
+        in publish["ansible.builtin.set_fact"]["xray_runtime_changed"]
+    )
+    assert (
+        "runtime_build_changed | default(false)"
+        in publish["ansible.builtin.set_fact"]["xray_runtime_changed"]
+    )
+    assert (
+        "xray_runtime_build_from_source"
+        in publish["ansible.builtin.set_fact"]["xray_runtime_changed"]
+    )
 
 
 def test_amneziawg_checkouts_are_immutable_per_exact_commit() -> None:
@@ -150,9 +153,7 @@ def test_amneziawg_checkouts_are_immutable_per_exact_commit() -> None:
     assert go_clone["update"] is False
     assert tools_clone["update"] is False
     assert all(
-        step["chdir"].startswith(
-            "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
-        )
+        step["chdir"].startswith("/opt/src/amneziawg-go-{{ amneziawg_go_commit }}")
         for step in descriptors[0]["steps"]
     )
     assert all(
@@ -180,9 +181,50 @@ def test_xray_source_pins_are_separate_optional_secret_fields() -> None:
         assert "source_commit:" in bootstrap
         assert "source_binary_sha256:" in bootstrap
 
+    ci_bootstrap = (ROOT / "scripts/ci-bootstrap-secrets.sh").read_text()
+    assert 'XRAY_SOURCE_COMMIT="${XRAY_SOURCE_COMMIT:-}"' in ci_bootstrap
+    assert 'XRAY_SOURCE_BINARY_SHA256="${XRAY_SOURCE_BINARY_SHA256:-}"' in ci_bootstrap
+    assert "^[0-9a-f]{40,64}$" in ci_bootstrap
+    assert "^[0-9a-f]{64}$" in ci_bootstrap
+    assert "example xray.source_commit" not in ci_bootstrap
+
     operator_docs = (ROOT / "docs/XRAY-RELEASE-LINE.md").read_text()
     assert "xray.source_commit" in operator_docs
     assert "xray.source_binary_sha256" in operator_docs
+
+
+def test_ci_bootstrap_refuses_partial_or_malformed_xray_source_pins(
+    tmp_path: Path,
+) -> None:
+    script = ROOT / "scripts/ci-bootstrap-secrets.sh"
+    base_environment = {
+        "PATH": os.environ["PATH"],
+        "OUT": str(tmp_path / "secrets.yaml"),
+        "SERVER_NAME": "ci.example.test",
+        "REALITY_TARGET": "origin.example.test:443",
+        "REALITY_SERVER_NAME": "origin.example.test",
+    }
+    cases = [
+        {"XRAY_SOURCE_COMMIT": "a" * 40},
+        {"XRAY_SOURCE_BINARY_SHA256": "b" * 64},
+        {
+            "XRAY_SOURCE_COMMIT": "A" * 40,
+            "XRAY_SOURCE_BINARY_SHA256": "b" * 64,
+        },
+    ]
+
+    for source_environment in cases:
+        result = subprocess.run(
+            ["bash", str(script)],
+            env={**base_environment, **source_environment},
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+
+        assert result.returncode == 2
+        assert result.stderr.startswith("ci-bootstrap-secrets: invalid XRAY_SOURCE_")
+        assert not (tmp_path / "secrets.yaml").exists()
 
 
 def test_source_build_role_uses_fixed_staging_and_fresh_check_prerequisites() -> None:
@@ -245,80 +287,101 @@ def test_source_build_controller_validation_uses_running_ansible_python() -> Non
 def test_source_publication_changes_drive_service_restart_state(tmp_path: Path) -> None:
     executable = shutil.which("ansible-playbook")
     assert executable, "installed Ansible is required for the restart-state proof"
-    restart_marker = tmp_path / "naive-restarted"
     naive_task = _task("naive", "Queue caddy-naive restart after source publication")
     xray_task = _task("xray-runtime", "Publish Xray runtime change state")
-    tasks_path = tmp_path / "source-publication-tasks.yml"
-    tasks_path.write_text(yaml.safe_dump([naive_task, xray_task], sort_keys=False))
-    playbook = tmp_path / "source-publication-playbook.yml"
-    playbook.write_text(
-        yaml.safe_dump(
-            [
-                {
-                    "name": "Exercise source publication restart propagation",
-                    "hosts": "localhost",
-                    "connection": "local",
-                    "gather_facts": False,
-                    "vars": {
-                        "naive": {"build_with_xcaddy": True},
-                        "runtime_build_changed": True,
-                        "xray_runtime_build_from_source": True,
-                        "_xray_runtime_current": {"changed": False},
-                    },
-                    "handlers": [
-                        {
-                            "name": "Restart caddy-naive",
-                            "ansible.builtin.copy": {
-                                "content": "restarted\n",
-                                "dest": str(restart_marker),
-                                "mode": "0600",
-                            },
-                        }
-                    ],
-                    "tasks": [
-                        {"ansible.builtin.include_tasks": str(tasks_path)},
-                        {"ansible.builtin.meta": "flush_handlers"},
-                        {
-                            "name": "Require source publication restart state",
-                            "ansible.builtin.assert": {
-                                "that": [
-                                    "xray_runtime_changed | bool",
-                                    f"lookup('ansible.builtin.file', '{restart_marker}') == 'restarted'",
-                                ]
-                            },
+    cases = [
+        ("source-changed", True, True, True, False, True),
+        ("source-idempotent", True, False, True, False, False),
+        ("prebuilt-stale-source-fact", False, True, False, False, False),
+        ("prebuilt-link-changed", False, True, False, True, True),
+    ]
+
+    for (
+        name,
+        naive_source_enabled,
+        runtime_build_changed,
+        xray_source_enabled,
+        xray_link_changed,
+        expected_xray_changed,
+    ) in cases:
+        case_root = tmp_path / name
+        case_root.mkdir()
+        restart_marker = case_root / "naive-restarted"
+        tasks_path = case_root / "source-publication-tasks.yml"
+        tasks_path.write_text(yaml.safe_dump([naive_task, xray_task], sort_keys=False))
+        playbook = case_root / "source-publication-playbook.yml"
+        playbook.write_text(
+            yaml.safe_dump(
+                [
+                    {
+                        "name": "Exercise source publication restart propagation",
+                        "hosts": "localhost",
+                        "connection": "local",
+                        "gather_facts": False,
+                        "vars": {
+                            "naive": {"build_with_xcaddy": naive_source_enabled},
+                            "runtime_build_changed": runtime_build_changed,
+                            "xray_runtime_build_from_source": xray_source_enabled,
+                            "_xray_runtime_current": {"changed": xray_link_changed},
+                            "expected_xray_changed": expected_xray_changed,
                         },
-                    ],
-                }
-            ],
-            sort_keys=False,
+                        "handlers": [
+                            {
+                                "name": "Restart caddy-naive",
+                                "ansible.builtin.copy": {
+                                    "content": "restarted\n",
+                                    "dest": str(restart_marker),
+                                    "mode": "0600",
+                                },
+                            }
+                        ],
+                        "tasks": [
+                            {"ansible.builtin.include_tasks": str(tasks_path)},
+                            {"ansible.builtin.meta": "flush_handlers"},
+                            {
+                                "name": "Require Xray publication restart state",
+                                "ansible.builtin.assert": {
+                                    "that": [
+                                        "(xray_runtime_changed | bool) == (expected_xray_changed | bool)"
+                                    ]
+                                },
+                            },
+                        ],
+                    }
+                ],
+                sort_keys=False,
+            )
         )
-    )
-    config = tmp_path / "ansible.cfg"
-    config.write_text("[defaults]\ninject_facts_as_vars=false\n")
-    environment = {
-        key: os.environ[key] for key in ("PATH", "HOME", "LANG") if key in os.environ
-    }
-    environment.update(
-        {
-            "ANSIBLE_CONFIG": str(config),
-            "ANSIBLE_DEBUG": "false",
-            "ANSIBLE_HOME": str(tmp_path / "ansible-home"),
-            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
-            "ANSIBLE_NOCOLOR": "1",
+        config = case_root / "ansible.cfg"
+        config.write_text("[defaults]\ninject_facts_as_vars=false\n")
+        environment = {
+            key: os.environ[key]
+            for key in ("PATH", "HOME", "LANG")
+            if key in os.environ
         }
-    )
+        environment.update(
+            {
+                "ANSIBLE_CONFIG": str(config),
+                "ANSIBLE_DEBUG": "false",
+                "ANSIBLE_HOME": str(case_root / "ansible-home"),
+                "ANSIBLE_LOCAL_TEMP": str(case_root / "ansible-local"),
+                "ANSIBLE_NOCOLOR": "1",
+            }
+        )
 
-    result = subprocess.run(
-        [executable, "-i", "localhost,", str(playbook)],
-        cwd=tmp_path,
-        env=environment,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+        result = subprocess.run(
+            [executable, "-i", "localhost,", str(playbook)],
+            cwd=case_root,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
 
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert restart_marker.read_text() == "restarted\n"
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert restart_marker.exists() is (
+            naive_source_enabled and runtime_build_changed
+        )
 
 
 def test_fresh_source_build_check_predicts_change_without_running_recipe(
