@@ -448,6 +448,32 @@ def test_duplicate_semantic_identity_refuses_without_replacing_output(
     assert output.read_text() == "last-known-good\n"
 
 
+@pytest.mark.parametrize(
+    "reserved_name",
+    ["vpn_observability_expected_target", "vpn_observability_evidence_state"],
+)
+def test_manifest_refuses_internal_metric_family_collision_without_replacing_output(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    reserved_name: str,
+) -> None:
+    manifest, inventory, evidence = _documents()
+    manifest["families"][0]["name"] = reserved_name
+    inventory["targets"][0]["required_families"] = [reserved_name]
+    evidence["targets"][0]["samples"][0]["family"] = reserved_name
+    output = tmp_path / "observability.prom"
+    output.write_text("last-known-good\n", encoding="utf-8")
+
+    rc, stdout, stderr, output = _invoke(
+        tmp_path, capsys, manifest, inventory, evidence, output=output
+    )
+
+    assert rc == 2
+    assert stdout == ""
+    assert stderr == "observability-contract: validation failed\n"
+    assert output.read_text(encoding="utf-8") == "last-known-good\n"
+
+
 def test_empty_expected_inventory_refuses_and_preserves_last_known_good(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

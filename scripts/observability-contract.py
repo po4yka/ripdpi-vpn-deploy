@@ -40,6 +40,16 @@ FORBIDDEN_LABEL = re.compile(
     re.IGNORECASE,
 )
 ALLOWED_LABELS = frozenset({"node", "role", "profile", "policy", "severity", "vantage"})
+INTERNAL_FAMILIES = {
+    "vpn_observability_expected_target": {
+        "type": "gauge",
+        "labels": ("role", "target"),
+    },
+    "vpn_observability_evidence_state": {
+        "type": "gauge",
+        "labels": ("role", "state", "target"),
+    },
+}
 SCHEMAS = {
     "manifest": "observability-metric-manifest.schema.json",
     "inventory": "observability-expected-inventory.schema.json",
@@ -154,6 +164,8 @@ def _validate_semantics(
         ):
             raise ContractError("required family has no label allowlist")
     for family in families.values():
+        if family["name"] in INTERNAL_FAMILIES:
+            raise ContractError("reserved metric family")
         if SECRET_IDENTIFIER.search(family["name"]):
             raise ContractError("unsafe metric family")
         if any(FORBIDDEN_LABEL.search(label) for label in family["labels"]):
@@ -171,6 +183,12 @@ def _labels(labels: dict[str, str]) -> str:
         safe = value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
         escaped.append(f'{name}="{safe}"')
     return "{" + ",".join(escaped) + "}"
+
+
+def _internal_labels(name: str, labels: dict[str, str]) -> dict[str, str]:
+    if tuple(sorted(labels)) != INTERNAL_FAMILIES[name]["labels"]:
+        raise ContractError("invalid internal metric labels")
+    return labels
 
 
 def _number(value: int | float) -> str:
@@ -294,16 +312,21 @@ def _render(
         ]
 
     lines = [
-        "# TYPE vpn_observability_expected_target gauge",
-        "# TYPE vpn_observability_evidence_state gauge",
+        f"# TYPE {name} {specification['type']}"
+        for name, specification in INTERNAL_FAMILIES.items()
     ]
     states: dict[str, int] = {}
     emitted = 0
     producer_samples: list[tuple[str, dict[str, str], int | float]] = []
     for target, state, samples in results:
-        identity = {"role": target["role"], "target": target["target"]}
+        identity = _internal_labels(
+            "vpn_observability_expected_target",
+            {"role": target["role"], "target": target["target"]},
+        )
         lines.append(f"vpn_observability_expected_target{_labels(identity)} 1")
-        state_labels = {**identity, "state": state}
+        state_labels = _internal_labels(
+            "vpn_observability_evidence_state", {**identity, "state": state}
+        )
         lines.append(f"vpn_observability_evidence_state{_labels(state_labels)} 1")
         emitted += 2
         states[state] = states.get(state, 0) + 1
