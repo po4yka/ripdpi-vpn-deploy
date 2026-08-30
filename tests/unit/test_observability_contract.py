@@ -1,18 +1,47 @@
 from __future__ import annotations
 
-import importlib.util
 import ast
+from collections.abc import Iterator
+from contextlib import contextmanager
 import copy
+import importlib.util
 import json
 import os
-import stat
 from pathlib import Path
+import stat
+import tempfile
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "observability-contract.py"
 CONTRACT = ROOT / "contract"
+
+
+@contextmanager
+def _trusted_temp_root() -> Iterator[Path]:
+    root: Path | None = None
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix="ripdpi-observability-test-", dir=Path.home().resolve(strict=True)
+        ) as value:
+            root = Path(value)
+            root.chmod(0o700)
+            for ancestor in (root, *root.parents):
+                metadata = os.lstat(ancestor)
+                assert stat.S_ISDIR(metadata.st_mode)
+                assert metadata.st_uid in {0, os.geteuid()}
+                assert metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH) == 0
+            yield root
+    finally:
+        if root is not None:
+            assert not root.exists()
+
+
+@pytest.fixture
+def tmp_path() -> Iterator[Path]:
+    with _trusted_temp_root() as root:
+        yield root
 
 
 def _module():
