@@ -24,8 +24,8 @@ all: wg
 wg: fixture-wg
 	install -m 0755 fixture-wg wg
 install: wg
-	install -m 0755 wg /usr/bin/awg
-	install -m 0755 fixture-awg-quick /usr/bin/awg-quick
+	install -D -m 0755 wg "$(DESTDIR)/usr/bin/awg"
+	install -D -m 0755 fixture-awg-quick "$(DESTDIR)/usr/bin/awg-quick"
 EOF
 cat > "$fixture/amneziawg-tools/src/fixture-wg" <<'EOF'
 #!/bin/sh

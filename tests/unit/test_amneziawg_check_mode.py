@@ -4,39 +4,78 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_commit_resolution_runs_during_check_mode():
-    tasks = yaml.safe_load((ROOT / "ansible/roles/amneziawg/tasks/main.yml").read_text())
-    resolve_tasks = [task for task in tasks if task["name"].startswith("Resolve the amneziawg-")]
+def test_commit_resolution_is_normal_mode_attestation_only():
+    tasks = yaml.safe_load(
+        (ROOT / "ansible/roles/amneziawg/tasks/main.yml").read_text()
+    )
+    resolve_tasks = [
+        task for task in tasks if task["name"].startswith("Resolve the amneziawg-")
+    ]
 
     assert len(resolve_tasks) == 2
     assert all(task.get("check_mode") is False for task in resolve_tasks)
+    assert all(task.get("when") == "not ansible_check_mode" for task in resolve_tasks)
     assert all(task.get("changed_when") is False for task in resolve_tasks)
 
 
+def test_pinned_source_bumps_refresh_checkout_before_commit_attestation():
+    tasks = yaml.safe_load(
+        (ROOT / "ansible/roles/amneziawg/tasks/main.yml").read_text()
+    )
+    clones = [task for task in tasks if task["name"].startswith("Clone amneziawg-")]
+
+    assert len(clones) == 2
+    assert all(task["ansible.builtin.git"]["update"] is True for task in clones)
+
+
 def test_build_receipts_make_check_mode_commit_aware_without_building():
-    tasks = yaml.safe_load((ROOT / "ansible/roles/amneziawg/tasks/main.yml").read_text())
+    tasks = yaml.safe_load(
+        (ROOT / "ansible/roles/amneziawg/tasks/main.yml").read_text()
+    )
     by_name = {task["name"]: task for task in tasks}
 
-    for component, fact in (
-        ("amneziawg-go", "_awg_go_rebuild_required"),
-        ("amneziawg-tools", "_awg_tools_rebuild_required"),
-    ):
-        report = by_name[f"Report {component} build drift"]
-        build = by_name[f"Build {component}"]
-        receipt = by_name[f"Record {component} built commit"]
+    define = by_name["Define pinned AmneziaWG source-build descriptors"]
+    converge = by_name["Converge pinned AmneziaWG source builds"]
+    descriptors = define["ansible.builtin.set_fact"]["_amneziawg_build_descriptors"]
 
-        assert report["when"] == "ansible_check_mode"
-        assert report["changed_when"] == fact
-        assert "not ansible_check_mode" in build["when"]
-        assert fact in build["when"]
-        assert "creates" not in build.get("args", {})
-        assert "not ansible_check_mode" in receipt["when"]
-        assert fact in receipt["when"]
+    assert [descriptor["name"] for descriptor in descriptors] == [
+        "amneziawg-go",
+        "amneziawg-tools",
+    ]
+    assert descriptors[0]["source"]["commit"] == "{{ amneziawg_go_commit }}"
+    assert descriptors[1]["source"]["commit"] == "{{ amneziawg_tools_commit }}"
+    assert descriptors[0]["outputs"] == [
+        {
+            "name": "installed",
+            "staged_path": "/var/lib/ripdpi/runtime-build-staging/amneziawg-go/amneziawg-go",
+            "path": "/usr/local/bin/amneziawg-go",
+        },
+    ]
+    assert descriptors[1]["outputs"] == [
+        {
+            "name": "awg",
+            "staged_path": "/var/lib/ripdpi/runtime-build-staging/amneziawg-tools/root/usr/bin/awg",
+            "path": "/usr/bin/awg",
+        },
+        {
+            "name": "awg-quick",
+            "staged_path": "/var/lib/ripdpi/runtime-build-staging/amneziawg-tools/root/usr/bin/awg-quick",
+            "path": "/usr/bin/awg-quick",
+        },
+    ]
+    assert "WITH_WGQUICK=yes" in descriptors[1]["steps"][1]["argv"]
+    assert converge["ansible.builtin.include_role"] == {
+        "name": "runtime-release",
+        "tasks_from": "source-build",
+        "defaults_from": "source-build",
+    }
+    assert converge["loop"] == "{{ _amneziawg_build_descriptors }}"
+    assert converge["vars"] == {"runtime_build_descriptor": "{{ item }}"}
 
     source = (ROOT / "ansible/roles/amneziawg/tasks/main.yml").read_text()
-    assert "/opt/src/amneziawg-tools/src/wg" in source
-    assert "/opt/src/amneziawg-tools/src/awg" not in source
+    assert ".ripdpi-built-commit" not in source
+    assert "_awg_go_rebuild_required" not in source
+    assert "_awg_tools_rebuild_required" not in source

@@ -24,16 +24,41 @@
 
     - name: Read build receipts written by the real role
       ansible.builtin.slurp:
-        src: "/opt/src/{{ item }}/.ripdpi-built-commit"
+        src: "/var/lib/ripdpi/runtime-build-receipts/{{ item }}.json"
       loop: [amneziawg-go, amneziawg-tools]
       register: molecule_awg_receipts
 
-    - name: Require matching fixture pins, cloned commits and build receipts
+    - name: Decode build receipts written by the real role
+      ansible.builtin.set_fact:
+        molecule_awg_receipt_payloads: >-
+          {{
+            molecule_awg_receipts.results
+            | map(attribute='content')
+            | map('b64decode')
+            | map('from_json')
+            | list
+          }}
+
+    - name: Require matching fixture pins, cloned commits and typed receipts
       ansible.builtin.assert:
         that:
           - molecule_awg_fixture_heads.results[item].stdout | trim == molecule_awg_clone_heads.results[item].stdout | trim
-          - molecule_awg_receipts.results[item].content | b64decode | trim == molecule_awg_clone_heads.results[item].stdout | trim
+          - molecule_awg_receipt_payloads[item].schema_version == 1
+          - molecule_awg_receipt_payloads[item].source.commit == molecule_awg_clone_heads.results[item].stdout | trim
+          - molecule_awg_receipt_payloads[item].source.ref == 'molecule-fixture-v1'
+          - molecule_awg_receipt_payloads[item].outputs | length == (1 if item == 0 else 2)
       loop: [0, 1]
+
+    - name: Require old per-checkout receipt files to remain retired
+      ansible.builtin.stat:
+        path: "/opt/src/{{ item }}/.ripdpi-built-commit"
+      loop: [amneziawg-go, amneziawg-tools]
+      register: molecule_awg_legacy_receipts
+
+    - name: Confirm no legacy receipt was recreated
+      ansible.builtin.assert:
+        that:
+          - molecule_awg_legacy_receipts.results | selectattr('stat.exists') | list | length == 0
 
     - name: Inspect source build outputs and installed binaries
       ansible.builtin.stat:
@@ -44,16 +69,20 @@
         - /usr/local/bin/amneziawg-go
         - /opt/src/amneziawg-tools/src/wg
         - /usr/bin/awg
+        - /opt/molecule-awg-fixture/amneziawg-tools/src/fixture-awg-quick
+        - /usr/bin/awg-quick
       register: molecule_awg_binaries
 
     - name: Require installed binaries to match the role's real make outputs
       ansible.builtin.assert:
         that:
-          - molecule_awg_binaries.results | selectattr('stat.isreg', 'defined') | selectattr('stat.isreg') | list | length == 4
+          - molecule_awg_binaries.results | selectattr('stat.isreg', 'defined') | selectattr('stat.isreg') | list | length == 6
           - molecule_awg_binaries.results[0].stat.checksum == molecule_awg_binaries.results[1].stat.checksum
           - molecule_awg_binaries.results[2].stat.checksum == molecule_awg_binaries.results[3].stat.checksum
+          - molecule_awg_binaries.results[4].stat.checksum == molecule_awg_binaries.results[5].stat.checksum
           - molecule_awg_binaries.results[1].stat.mode == '0755'
           - molecule_awg_binaries.results[3].stat.mode == '0755'
+          - molecule_awg_binaries.results[5].stat.mode == '0755'
 
     - name: Require the role's instance service to remain active
       ansible.builtin.command:

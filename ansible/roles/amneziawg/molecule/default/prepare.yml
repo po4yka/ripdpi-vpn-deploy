@@ -26,8 +26,8 @@
         - /usr/local/bin/amneziawg-go
         - /usr/bin/awg
         - /usr/bin/awg-quick
-        - /opt/src/amneziawg-go/.ripdpi-built-commit
-        - /opt/src/amneziawg-tools/.ripdpi-built-commit
+        - /var/lib/ripdpi/runtime-build-receipts/amneziawg-go.json
+        - /var/lib/ripdpi/runtime-build-receipts/amneziawg-tools.json
         - /etc/amneziawg/awg0.conf
         - /etc/systemd/system/awg-quick@.service
       register: molecule_awg_before
