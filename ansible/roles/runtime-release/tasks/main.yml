@@ -1,0 +1,387 @@
+---
+- name: Derive canonical runtime release architecture
+  ansible.builtin.set_fact:
+    _runtime_release_arch_key: >-
+      {{ {'x86_64': 'amd64', 'amd64': 'amd64',
+          'aarch64': 'arm64', 'arm64': 'arm64'}
+         .get(ansible_facts['architecture'] | default(''), '') }}
+
+- name: Refuse unsupported runtime release architecture
+  ansible.builtin.assert:
+    that:
+      - _runtime_release_arch_key | length > 0
+    fail_msg: >-
+      runtime-release does not support architecture
+      {{ ansible_facts['architecture'] | default('unknown') }}.
+
+- name: Validate runtime release contract before writing
+  ansible.builtin.assert:
+    that:
+      - runtime_release_version is match('^[A-Za-z0-9._+-]+$')
+      - runtime_release_binary_name is match('^[A-Za-z0-9._+-]+$')
+      - runtime_release_artifact_filename is match('^[A-Za-z0-9._+-]+$')
+      - runtime_release_version not in ['.', '..']
+      - runtime_release_binary_name not in ['.', '..']
+      - runtime_release_artifact_filename not in ['.', '..']
+      - runtime_release_install_root is match('^/[A-Za-z0-9._/+\-]+$')
+      - runtime_release_public_link is match('^/[A-Za-z0-9._/+\-]+$')
+      - runtime_release_download_dir is match('^/[A-Za-z0-9._/+\-]+$')
+      - runtime_release_install_root | length > 1
+      - >-
+        runtime_release_download_dir ==
+        runtime_release_install_root ~ '/.runtime-release-staging'
+      - runtime_release_public_link != runtime_release_install_root
+      - not runtime_release_public_link.startswith(runtime_release_install_root ~ '/')
+      - "'/../' not in runtime_release_install_root ~ '/'"
+      - "'/../' not in runtime_release_public_link ~ '/'"
+      - "'/../' not in runtime_release_download_dir ~ '/'"
+      - "'/./' not in runtime_release_install_root ~ '/'"
+      - "'/./' not in runtime_release_public_link ~ '/'"
+      - "'/./' not in runtime_release_download_dir ~ '/'"
+      - "'//' not in runtime_release_install_root"
+      - "'//' not in runtime_release_public_link"
+      - "'//' not in runtime_release_download_dir"
+      - runtime_release_artifact_type in ['binary', 'archive']
+      - runtime_release_urls[_runtime_release_arch_key] | default('') | length > 0
+      - runtime_release_urls[_runtime_release_arch_key] is match('^https://|^file://')
+      - runtime_release_sha256[_runtime_release_arch_key] | default('') is match('^[0-9a-fA-F]{64}$')
+      - runtime_release_arch_slugs[_runtime_release_arch_key] | default('') is match('^[A-Za-z0-9._+-]+$')
+      - >-
+        runtime_release_artifact_type == 'binary' or
+        runtime_release_archive_member is match('^[A-Za-z0-9._+/\-]+$')
+      - not runtime_release_archive_member.startswith('/')
+      - "'/../' not in runtime_release_archive_member ~ '/'"
+      - "'/./' not in runtime_release_archive_member ~ '/'"
+      - "'//' not in runtime_release_archive_member"
+      - runtime_release_archive_strip_components is integer
+      - runtime_release_archive_strip_components | int >= 0
+      - runtime_release_archive_strip_components | int <= 4
+      - >-
+        runtime_release_artifact_type == 'binary' or
+        runtime_release_archive_member.split('/')[runtime_release_archive_strip_components | int:] ==
+        [runtime_release_binary_name]
+      - runtime_release_storage_owner == 'root'
+      - runtime_release_storage_group == 'root'
+    fail_msg: >-
+      runtime-release requires safe absolute paths, a supported artifact type,
+      and a pinned URL, SHA256 and artifact slug for the host architecture.
+
+- name: Select pinned runtime release artifact
+  ansible.builtin.set_fact:
+    _runtime_release_url: "{{ runtime_release_urls[_runtime_release_arch_key] }}"
+    _runtime_release_checksum: "{{ runtime_release_sha256[_runtime_release_arch_key] | lower }}"
+    runtime_release_arch_slug: "{{ runtime_release_arch_slugs[_runtime_release_arch_key] }}"
+    _runtime_release_artifact_name: >-
+      {{ ['runtime-release', runtime_release_binary_name, runtime_release_version,
+          runtime_release_arch_slugs[_runtime_release_arch_key],
+          runtime_release_artifact_filename] | join('-') }}
+
+- name: Derive trusted runtime release artifact path
+  ansible.builtin.set_fact:
+    _runtime_release_artifact_path: >-
+      {{ runtime_release_download_dir }}/{{ _runtime_release_artifact_name }}
+
+- name: Inspect pinned runtime release candidate
+  ansible.builtin.stat:
+    path: >-
+      {{ runtime_release_install_root }}/releases/{{ runtime_release_version
+      }}/{{ runtime_release_binary_name }}
+    follow: false
+    checksum_algorithm: sha256
+  register: _runtime_release_candidate
+
+- name: Inspect runtime release receipt
+  ansible.builtin.stat:
+    path: >-
+      {{ runtime_release_install_root }}/releases/{{ runtime_release_version
+      }}/.runtime-release.json
+    follow: false
+  register: _runtime_release_receipt_stat
+
+- name: Refuse unsafe runtime release receipt node
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (_runtime_release_receipt_stat.stat.exists | default(false)) or
+        (_runtime_release_receipt_stat.stat.isreg | default(false))
+      - not (_runtime_release_receipt_stat.stat.islnk | default(false))
+      - >-
+        not (_runtime_release_receipt_stat.stat.exists | default(false)) or
+        _runtime_release_receipt_stat.stat.pw_name == runtime_release_storage_owner
+      - >-
+        not (_runtime_release_receipt_stat.stat.exists | default(false)) or
+        _runtime_release_receipt_stat.stat.gr_name == runtime_release_storage_group
+      - >-
+        not (_runtime_release_receipt_stat.stat.exists | default(false)) or
+        _runtime_release_receipt_stat.stat.mode == '0644'
+      - >-
+        not (_runtime_release_receipt_stat.stat.exists | default(false)) or
+        _runtime_release_receipt_stat.stat.nlink == 1
+    fail_msg: Runtime release receipt must be an owned regular file.
+
+- name: Read existing runtime release receipt
+  ansible.builtin.slurp:
+    src: >-
+      {{ runtime_release_install_root }}/releases/{{ runtime_release_version
+      }}/.runtime-release.json
+  register: _runtime_release_receipt_raw
+  when: _runtime_release_receipt_stat.stat.exists | default(false)
+  no_log: true
+
+- name: Parse existing runtime release receipt
+  ansible.builtin.set_fact:
+    _runtime_release_receipt: >-
+      {{ ((_runtime_release_receipt_raw.content | b64decode | from_json)
+          if (_runtime_release_receipt_stat.stat.exists | default(false)) else {}) }}
+  no_log: true
+
+- name: Validate existing runtime release receipt before writing
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (_runtime_release_receipt_stat.stat.exists | default(false)) or
+        (_runtime_release_candidate.stat.exists | default(false))
+      - >-
+        not (_runtime_release_candidate.stat.exists | default(false)) or
+        (_runtime_release_candidate.stat.isreg | default(false))
+      - not (_runtime_release_candidate.stat.islnk | default(false))
+      - >-
+        not (_runtime_release_candidate.stat.exists | default(false)) or
+        (_runtime_release_candidate.stat.executable | default(false))
+      - >-
+        not (_runtime_release_candidate.stat.exists | default(false)) or
+        _runtime_release_candidate.stat.nlink == 1
+      - >-
+        not (_runtime_release_candidate.stat.exists | default(false)) or
+        _runtime_release_candidate.stat.pw_name == runtime_release_storage_owner
+      - >-
+        not (_runtime_release_candidate.stat.exists | default(false)) or
+        _runtime_release_candidate.stat.gr_name == runtime_release_storage_group
+      - >-
+        not (_runtime_release_candidate.stat.exists | default(false)) or
+        _runtime_release_candidate.stat.mode == '0755'
+      - >-
+        not (_runtime_release_receipt_stat.stat.exists | default(false)) or
+        (_runtime_release_receipt.keys() | list | sort ==
+         ['arch_key', 'arch_slug', 'artifact_sha256', 'binary_name',
+          'binary_sha256', 'schema_version', 'version'])
+      - >-
+        not (_runtime_release_receipt_stat.stat.exists | default(false)) or
+        _runtime_release_receipt.schema_version == 1
+      - >-
+        not (_runtime_release_receipt_stat.stat.exists | default(false)) or
+        _runtime_release_receipt.version == runtime_release_version
+      - >-
+        not (_runtime_release_receipt_stat.stat.exists | default(false)) or
+        _runtime_release_receipt.arch_key == _runtime_release_arch_key
+      - >-
+        not (_runtime_release_receipt_stat.stat.exists | default(false)) or
+        _runtime_release_receipt.arch_slug == runtime_release_arch_slug
+      - >-
+        not (_runtime_release_receipt_stat.stat.exists | default(false)) or
+        _runtime_release_receipt.binary_name == runtime_release_binary_name
+      - >-
+        not (_runtime_release_receipt_stat.stat.exists | default(false)) or
+        _runtime_release_receipt.artifact_sha256 == _runtime_release_checksum
+      - >-
+        not (_runtime_release_receipt_stat.stat.exists | default(false)) or
+        (_runtime_release_candidate.stat.isreg | default(false))
+      - >-
+        not (_runtime_release_receipt_stat.stat.exists | default(false)) or
+        _runtime_release_receipt.binary_sha256 == _runtime_release_candidate.stat.checksum
+    fail_msg: >-
+      Existing runtime release candidate does not match its immutable receipt
+      and configured pin; refusing before any write or activation.
+
+- name: Determine runtime release installation state
+  ansible.builtin.set_fact:
+    _runtime_release_needs_artifact: >-
+      {{ not (_runtime_release_candidate.stat.exists | default(false)) or
+      not (_runtime_release_receipt_stat.stat.exists | default(false)) }}
+    _runtime_release_stage_dir: >-
+      {{ runtime_release_download_dir }}/stage-{{ runtime_release_binary_name
+      }}-{{ runtime_release_version }}-{{ runtime_release_arch_slug }}
+
+- name: Preflight runtime release activation layout
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - '-'
+      - --install-root
+      - "{{ runtime_release_install_root }}"
+      - --version
+      - "{{ runtime_release_version }}"
+      - --binary-name
+      - "{{ runtime_release_binary_name }}"
+      - --public-link
+      - "{{ runtime_release_public_link }}"
+      - --check
+    stdin: >-
+      {{ lookup('ansible.builtin.file',
+                role_path ~ '/files/runtime_release_activate.py') }}
+    stdin_add_newline: false
+    expand_argument_vars: false
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Ensure runtime release directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ runtime_release_storage_owner }}"
+    group: "{{ runtime_release_storage_group }}"
+    mode: "0755"
+  loop:
+    - "{{ runtime_release_install_root }}"
+    - "{{ runtime_release_install_root }}/releases"
+
+- name: Prepare trusted runtime release staging namespace
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - '-'
+      - --install-root
+      - "{{ runtime_release_install_root }}"
+      - --staging-dir
+      - "{{ runtime_release_download_dir }}"
+      - --binary-name
+      - "{{ _runtime_release_artifact_name }}"
+      - --stage-name
+      - "stage-{{ runtime_release_binary_name }}-{{ runtime_release_version }}-{{ runtime_release_arch_slug }}"
+      - --owner
+      - "{{ runtime_release_storage_owner }}"
+      - --group
+      - "{{ runtime_release_storage_group }}"
+      - --prepare-staging
+    stdin: >-
+      {{ lookup('ansible.builtin.file',
+                role_path ~ '/files/runtime_release_activate.py') }}
+    stdin_add_newline: false
+    expand_argument_vars: false
+  changed_when: false
+  when:
+    - _runtime_release_needs_artifact
+    - not ansible_check_mode
+
+- name: Download pinned runtime release artifact
+  ansible.builtin.get_url:
+    url: "{{ _runtime_release_url }}"
+    dest: "{{ _runtime_release_artifact_path }}"
+    checksum: "sha256:{{ _runtime_release_checksum }}"
+    owner: "{{ runtime_release_storage_owner }}"
+    group: "{{ runtime_release_storage_group }}"
+    mode: "{{ '0700' if runtime_release_artifact_type == 'binary' else '0600' }}"
+  when:
+    - _runtime_release_needs_artifact
+    - not ansible_check_mode
+
+- name: Extract pinned archive into trusted staging
+  ansible.builtin.unarchive:
+    src: "{{ _runtime_release_artifact_path }}"
+    dest: "{{ _runtime_release_stage_dir }}"
+    remote_src: true
+    include:
+      - "{{ runtime_release_archive_member }}"
+    extra_opts: >-
+      {{ ['--strip-components=' ~ (runtime_release_archive_strip_components | string)]
+         if (runtime_release_archive_strip_components | int > 0) else omit }}
+    owner: "{{ runtime_release_storage_owner }}"
+    group: "{{ runtime_release_storage_group }}"
+  when:
+    - runtime_release_artifact_type == 'archive'
+    - _runtime_release_needs_artifact
+    - not ansible_check_mode
+
+- name: Select staged runtime release candidate path
+  ansible.builtin.set_fact:
+    _runtime_release_staged_candidate_path: >-
+      {{ (_runtime_release_artifact_path if runtime_release_artifact_type == 'binary'
+          else _runtime_release_stage_dir ~ '/' ~ runtime_release_binary_name)
+         if _runtime_release_needs_artifact
+         else runtime_release_install_root ~ '/releases/' ~ runtime_release_version ~
+              '/' ~ runtime_release_binary_name }}
+
+- name: Inspect staged runtime release candidate
+  ansible.builtin.stat:
+    path: "{{ _runtime_release_staged_candidate_path }}"
+    follow: false
+    checksum_algorithm: sha256
+  register: _runtime_release_verified_candidate
+
+- name: Verify staged runtime release candidate
+  ansible.builtin.assert:
+    that:
+      - _runtime_release_verified_candidate.stat.exists
+      - _runtime_release_verified_candidate.stat.isreg
+      - _runtime_release_verified_candidate.stat.executable
+      - _runtime_release_verified_candidate.stat.nlink == 1
+      - >-
+        runtime_release_artifact_type != 'binary' or
+        _runtime_release_verified_candidate.stat.checksum == _runtime_release_checksum
+    fail_msg: >-
+      The checksum-verified artifact did not produce the expected executable
+      {{ runtime_release_binary_name }}; active links remain unchanged.
+  when: >-
+    not ansible_check_mode or
+    (_runtime_release_receipt_stat.stat.exists | default(false))
+
+- name: Activate runtime release under host-local lock
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - '-'
+      - --install-root
+      - "{{ runtime_release_install_root }}"
+      - --version
+      - "{{ runtime_release_version }}"
+      - --binary-name
+      - "{{ runtime_release_binary_name }}"
+      - --public-link
+      - "{{ runtime_release_public_link }}"
+      - --artifact-sha256
+      - "{{ _runtime_release_checksum }}"
+      - --candidate-sha256
+      - "{{ _runtime_release_verified_candidate.stat.checksum | default('') }}"
+      - --staged-candidate
+      - "{{ _runtime_release_staged_candidate_path }}"
+      - --artifact-type
+      - "{{ runtime_release_artifact_type }}"
+      - --arch-key
+      - "{{ _runtime_release_arch_key }}"
+      - --arch-slug
+      - "{{ runtime_release_arch_slug }}"
+      - --owner
+      - "{{ runtime_release_storage_owner }}"
+      - --group
+      - "{{ runtime_release_storage_group }}"
+      - "{{ '--check' if ansible_check_mode else '--apply' }}"
+    stdin: >-
+      {{ lookup('ansible.builtin.file',
+                role_path ~ '/files/runtime_release_activate.py') }}
+    stdin_add_newline: false
+    expand_argument_vars: false
+  register: _runtime_release_activation
+  changed_when: (_runtime_release_activation.stdout | from_json).changed
+  check_mode: false
+
+- name: Remove trusted runtime release staging directory
+  ansible.builtin.file:
+    path: "{{ _runtime_release_stage_dir }}"
+    state: absent
+  when:
+    - _runtime_release_needs_artifact
+    - not ansible_check_mode
+
+- name: Remove downloaded runtime release artifact
+  ansible.builtin.file:
+    path: "{{ _runtime_release_artifact_path }}"
+    state: absent
+  when:
+    - _runtime_release_needs_artifact
+    - not ansible_check_mode
+
+- name: Publish runtime release change state
+  ansible.builtin.set_fact:
+    runtime_release_changed: >-
+      {{ (_runtime_release_activation.stdout | from_json).changed }}
+    runtime_release_arch_slug: "{{ runtime_release_arch_slug }}"

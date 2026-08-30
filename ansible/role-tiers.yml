@@ -43,6 +43,7 @@ tiers:
   backup: core              # restic+age recovery path
   node_manifest: core       # machine-readable enabled surfaces/recovery summary
   xray-runtime: core        # shared pinned Xray binary installation; no listener
+  runtime-release: core     # inert shared pinned runtime installer; no listener
 
   # TACTICAL — opt-in, situational, default-off
   policy-ratelimit: tactical # routing-blackhole abuse limiter (see README)

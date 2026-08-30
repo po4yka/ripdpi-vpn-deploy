@@ -89,9 +89,9 @@ ansible/roles/{amneziawg,backup,baseline,cdn-front,
               cascade-egress,cascade-ingress,dns-morph-bridge,firewall,geodata,honeypot,
               hysteria,hysteria-realm,intrusion_prevention,monitoring,naive,node_manifest,
               nginx-xhttp,policy-ratelimit,package_updates,real-vps-awg-nat,reality-self-steal,
-              security_audit,split-hop-egress,
+              runtime-release,security_audit,split-hop-egress,
               split-hop-ingress,probe-matrix-target,snell,subscription-host,
-              warp-outbound,watchdog,xray,xray-runtime}/  — 31 roles
+              warp-outbound,watchdog,xray,xray-runtime}/  — 32 roles
 terraform/                                           — provider-root strategy
 terraform/providers/{hetzner,scaleway,upcloud,vultr}/ — per-provider quirks
 terraform/shared/                                    — cloud-init contract
