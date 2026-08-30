@@ -17,8 +17,18 @@
 
     - name: Read the role-cloned source repository commits
       ansible.builtin.command:
-        argv: [git, -C, "/opt/src/{{ item }}", rev-parse, HEAD]
-      loop: [amneziawg-go, amneziawg-tools]
+        argv:
+          - git
+          - -C
+          - >-
+            /opt/src/{{ item.name }}-{{
+              molecule_awg_fixture_heads.results[item.index].stdout | trim
+            }}
+          - rev-parse
+          - HEAD
+      loop:
+        - {name: amneziawg-go, index: 0}
+        - {name: amneziawg-tools, index: 1}
       register: molecule_awg_clone_heads
       changed_when: false
 
@@ -51,8 +61,13 @@
 
     - name: Require old per-checkout receipt files to remain retired
       ansible.builtin.stat:
-        path: "/opt/src/{{ item }}/.ripdpi-built-commit"
-      loop: [amneziawg-go, amneziawg-tools]
+        path: >-
+          /opt/src/{{ item.name }}-{{
+            molecule_awg_fixture_heads.results[item.index].stdout | trim
+          }}/.ripdpi-built-commit
+      loop:
+        - {name: amneziawg-go, index: 0}
+        - {name: amneziawg-tools, index: 1}
       register: molecule_awg_legacy_receipts
 
     - name: Confirm no legacy receipt was recreated
@@ -65,9 +80,15 @@
         path: "{{ item }}"
         checksum_algorithm: sha256
       loop:
-        - /opt/src/amneziawg-go/amneziawg-go
+        - >-
+          /opt/src/amneziawg-go-{{
+            molecule_awg_fixture_heads.results[0].stdout | trim
+          }}/amneziawg-go
         - /usr/local/bin/amneziawg-go
-        - /opt/src/amneziawg-tools/src/wg
+        - >-
+          /opt/src/amneziawg-tools-{{
+            molecule_awg_fixture_heads.results[1].stdout | trim
+          }}/src/wg
         - /usr/bin/awg
         - /opt/molecule-awg-fixture/amneziawg-tools/src/fixture-awg-quick
         - /usr/bin/awg-quick

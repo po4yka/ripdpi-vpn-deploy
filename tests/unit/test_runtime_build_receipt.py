@@ -474,12 +474,12 @@ with counter.open('a') as stream:
     )
 
     results: list[dict] = []
-    failures: list[BaseException] = []
+    failures: list[Exception] = []
 
     def run() -> None:
         try:
             results.append(helper.converge(receipt_root, descriptor))
-        except BaseException as error:  # test thread preserves the exact failure
+        except Exception as error:  # test thread preserves the exact failure
             failures.append(error)
 
     threads = [threading.Thread(target=run) for _ in range(2)]
@@ -796,6 +796,38 @@ def test_receipt_failure_rolls_back_live_output(
 
     assert output.read_bytes() == b"runtime-v1\n"
     assert not (receipt_root / "fixture-runtime.json").exists()
+
+
+def test_existing_output_descriptor_is_closed_before_publication(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    descriptor = _descriptor(output)
+    opened: set[int] = set()
+    real_open_output = helper._open_output_at
+    real_close = helper.os.close
+    real_publish = helper._publish_outputs
+
+    def track_open(*args, **kwargs):
+        file_descriptor = real_open_output(*args, **kwargs)
+        opened.add(file_descriptor)
+        return file_descriptor
+
+    def track_close(file_descriptor: int) -> None:
+        opened.discard(file_descriptor)
+        real_close(file_descriptor)
+
+    def require_closed(publications: list[dict]) -> None:
+        assert not opened
+        real_publish(publications)
+
+    monkeypatch.setattr(helper, "_open_output_at", track_open)
+    monkeypatch.setattr(helper.os, "close", track_close)
+    monkeypatch.setattr(helper, "_publish_outputs", require_closed)
+
+    assert helper.converge(receipt_root, descriptor)["changed"] is True
+    assert not opened
 
 
 def test_build_executes_from_retained_validated_directory_descriptor(
