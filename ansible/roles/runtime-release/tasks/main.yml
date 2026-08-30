@@ -97,6 +97,15 @@
     follow: false
   register: _runtime_release_receipt_stat
 
+- name: Refresh pinned runtime release candidate after receipt observation
+  ansible.builtin.stat:
+    path: >-
+      {{ runtime_release_install_root }}/releases/{{ runtime_release_version
+      }}/{{ runtime_release_binary_name }}
+    follow: false
+    checksum_algorithm: sha256
+  register: _runtime_release_candidate
+
 - name: Refuse unsafe runtime release receipt node
   ansible.builtin.assert:
     that:
