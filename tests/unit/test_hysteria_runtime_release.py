@@ -151,6 +151,21 @@ def test_hysteria_molecule_runs_check_mode_in_a_global_ansible_process() -> None
     assert variables["hysteria"]["linux_arm64_sha256"] == (
         "398f21663faa504a8e00518b298b4a4fd418a3ba61d5e33a4d87a25b05a4d2a0"
     )
+    state_assertion = next(
+        task
+        for task in check_mode["tasks"]
+        if task["name"]
+        == "Assert global check mode predicted a release without writes or restart"
+    )
+    clauses = state_assertion["ansible.builtin.assert"]["that"]
+    assert any(
+        "results[1].stat.exists ==" in clause
+        for clause in clauses
+    )
+    assert any(
+        "not check_mode_before_paths.results[1].stat.exists or" in clause
+        for clause in clauses
+    )
     converge = yaml.safe_load(CONVERGE.read_text(encoding="utf-8"))[0]
     artifacts = {
         task["ansible.builtin.copy"]["dest"]: task["ansible.builtin.copy"]["content"]

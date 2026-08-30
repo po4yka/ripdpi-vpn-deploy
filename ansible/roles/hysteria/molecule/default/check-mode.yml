@@ -99,7 +99,11 @@
         that:
           - runtime_release_changed | bool
           - check_mode_after_paths.results[0].stat.lnk_source == check_mode_before_paths.results[0].stat.lnk_source
-          - check_mode_after_paths.results[1].stat.lnk_source == check_mode_before_paths.results[1].stat.lnk_source
+          - check_mode_after_paths.results[1].stat.exists == check_mode_before_paths.results[1].stat.exists
+          - >-
+            not check_mode_before_paths.results[1].stat.exists or
+            check_mode_after_paths.results[1].stat.lnk_source ==
+            check_mode_before_paths.results[1].stat.lnk_source
           - check_mode_after_paths.results[2].stat.lnk_source == check_mode_before_paths.results[2].stat.lnk_source
           - not check_mode_before_paths.results[3].stat.exists
           - not check_mode_before_paths.results[4].stat.exists
