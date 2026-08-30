@@ -798,11 +798,13 @@ def _prepare_publications(
                     metadata = None
                 if metadata is not None:
                     current = _open_output_at(parent, path.name, os.geteuid(), metadata)
-                    existing = {
-                        "inode": (metadata.st_dev, metadata.st_ino),
-                        "mode": stat.S_IMODE(metadata.st_mode),
-                        "descriptor": current,
-                    }
+                    try:
+                        existing = {
+                            "inode": (metadata.st_dev, metadata.st_ino),
+                            "mode": stat.S_IMODE(metadata.st_mode),
+                        }
+                    finally:
+                        os.close(current)
 
                 temporary = (
                     f".{path.name}.runtime-build.{os.getpid()}.{uuid.uuid4().hex}"
@@ -829,9 +831,6 @@ def _prepare_publications(
                         os.unlink(temporary, dir_fd=parent)
                     except FileNotFoundError:
                         pass  # Earlier cleanup may already have consumed the temp file.
-                if existing is not None and existing.get("descriptor") is not None:
-                    os.close(existing["descriptor"])
-                    existing["descriptor"] = None
                 if parent is not None:
                     os.close(parent)
                 raise
@@ -858,10 +857,6 @@ def _discard_publications(
     publications: list[dict], *, preserve_backups: bool = False
 ) -> None:
     for item in publications:
-        existing = item.get("existing")
-        if existing is not None and existing.get("descriptor") is not None:
-            os.close(existing["descriptor"])
-            existing["descriptor"] = None
         keys = ("temporary",) if preserve_backups else ("temporary", "backup")
         removed = False
         for key in keys:
@@ -915,8 +910,6 @@ def _publish_outputs(publications: list[dict]) -> None:
                 except FileNotFoundError:
                     pass  # The failed link operation may not have created a backup.
                 raise
-            os.close(existing["descriptor"])
-            existing["descriptor"] = None
             item["backup"] = backup
 
         prepared = os.stat(item["temporary"], dir_fd=parent, follow_symlinks=False)

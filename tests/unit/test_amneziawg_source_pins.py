@@ -68,6 +68,46 @@ def test_amneziawg_molecule_requests_the_pinned_image_architecture():
     assert molecule["platforms"][0]["platform"] == "linux/amd64"
 
 
+def test_amneziawg_molecule_verifies_the_exact_commit_keyed_checkouts():
+    verify = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/amneziawg/molecule/default/verify.yml").read_text()
+    )
+    tasks = verify[0]["tasks"]
+    clone = next(
+        task
+        for task in tasks
+        if task["name"] == "Read the role-cloned source repository commits"
+    )
+    clone_path = " ".join(clone["ansible.builtin.command"]["argv"][2].split())
+    inspect = next(
+        task
+        for task in tasks
+        if task["name"] == "Inspect source build outputs and installed binaries"
+    )
+    paths = [" ".join(path.split()) for path in inspect["loop"]]
+
+    assert clone["loop"] == [
+        {"name": "amneziawg-go", "index": 0},
+        {"name": "amneziawg-tools", "index": 1},
+    ]
+    assert clone_path == (
+        "/opt/src/{{ item.name }}-{{ "
+        "molecule_awg_fixture_heads.results[item.index].stdout | trim }}"
+    )
+    assert "/opt/src/amneziawg-go/amneziawg-go" not in paths
+    assert "/opt/src/amneziawg-tools/src/wg" not in paths
+    assert paths[0] == (
+        "/opt/src/amneziawg-go-{{ "
+        "molecule_awg_fixture_heads.results[0].stdout | trim "
+        "}}/amneziawg-go"
+    )
+    assert paths[2] == (
+        "/opt/src/amneziawg-tools-{{ "
+        "molecule_awg_fixture_heads.results[1].stdout | trim "
+        "}}/src/wg"
+    )
+
+
 def test_amneziawg_scenario_dispatches_real_role_tasks(tmp_path):
     """A role-task fault must reach the scenario's actual converge dispatch.
 
