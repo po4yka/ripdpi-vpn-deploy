@@ -97,8 +97,6 @@
           chdir: /opt/src
           environment:
             GOPATH: /var/lib/ripdpi/runtime-build-staging/caddy-naive/gopath
-            GOCACHE: /var/lib/ripdpi/runtime-build-staging/caddy-naive/gocache
-            HOME: /root
             GOFLAGS: -mod=readonly
           timeout_seconds: 1800
         - argv:
@@ -112,8 +110,6 @@
           chdir: /opt/src
           environment:
             GOPATH: /var/lib/ripdpi/runtime-build-staging/caddy-naive/gopath
-            GOCACHE: /var/lib/ripdpi/runtime-build-staging/caddy-naive/gocache
-            HOME: /root
             CGO_ENABLED: "0"
             GOFLAGS: -mod=readonly
           timeout_seconds: 1800

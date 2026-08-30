@@ -50,9 +50,7 @@ def test_naive_build_uses_compound_identity_and_pinned_output_receipt() -> None:
     assert "_caddy_naive_stat.stat.checksum" not in source
     assert "/root/.cache/go-build" not in source
     assert all(
-        step["environment"]["GOCACHE"].startswith(
-            "/var/lib/ripdpi/runtime-build-staging/caddy-naive/"
-        )
+        {"HOME", "XDG_CACHE_HOME", "GOCACHE"}.isdisjoint(step["environment"])
         for step in descriptor["steps"]
     )
     assert all(
