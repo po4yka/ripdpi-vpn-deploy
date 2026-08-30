@@ -118,6 +118,28 @@ def test_hysteria_molecule_verifies_runtime_release_upgrade_and_rollback_links()
     assert "Assert upgraded fixture version and active Hysteria service" in task_names
     assert "Assert upgraded runtime-release links and receipts" in task_names
 
+    initial_assertion = next(
+        task
+        for task in verify["tasks"]
+        if task["name"]
+        == "Assert runtime-release current/public/previous links and receipt"
+    )
+    upgraded_assertion = next(
+        task
+        for task in verify["tasks"]
+        if task["name"] == "Assert upgraded runtime-release links and receipts"
+    )
+    initial_clauses = initial_assertion["ansible.builtin.assert"]["that"]
+    upgraded_clauses = upgraded_assertion["ansible.builtin.assert"]["that"]
+    assert any(
+        "results[1].stat.lnk_target == '/opt/hysteria/current/hysteria'" in clause
+        for clause in initial_clauses
+    )
+    assert any(
+        "results[2].stat.lnk_target == '/opt/hysteria/current/hysteria'" in clause
+        for clause in upgraded_clauses
+    )
+
 
 def test_hysteria_molecule_runs_check_mode_in_a_global_ansible_process() -> None:
     molecule = yaml.safe_load(MOLECULE.read_text(encoding="utf-8"))

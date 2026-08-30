@@ -68,7 +68,7 @@
           - runtime_release_paths.results[0].stat.islnk
           - runtime_release_paths.results[0].stat.lnk_source == '/opt/hysteria/releases/v2.8.2'
           - runtime_release_paths.results[1].stat.islnk
-          - runtime_release_paths.results[1].stat.lnk_source == '/opt/hysteria/current/hysteria'
+          - runtime_release_paths.results[1].stat.lnk_target == '/opt/hysteria/current/hysteria'
           - runtime_release_paths.results[2].stat.isreg
           - runtime_release_paths.results[2].stat.mode == '0644'
 
@@ -149,7 +149,7 @@
           - runtime_release_changed | bool
           - upgraded_runtime_release_paths.results[0].stat.lnk_source == '/opt/hysteria/releases/v2.8.3'
           - upgraded_runtime_release_paths.results[1].stat.lnk_source == '/opt/hysteria/releases/v2.8.2'
-          - upgraded_runtime_release_paths.results[2].stat.lnk_source == '/opt/hysteria/current/hysteria'
+          - upgraded_runtime_release_paths.results[2].stat.lnk_target == '/opt/hysteria/current/hysteria'
           - upgraded_runtime_release_paths.results[3].stat.mode == '0644'
           - upgraded_runtime_release_paths.results[4].stat.mode == '0644'
 
