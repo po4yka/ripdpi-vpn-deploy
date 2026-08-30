@@ -26,6 +26,27 @@ class VerificationError(Exception):
     """A categorical, safe-to-print verification refusal."""
 
 
+def _terminate_failed_query(process: subprocess.Popen[bytes]) -> None:
+    """Kill and reap a query process group after a bounded failure."""
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        # The child exited between the completion check and the group signal.
+        pass
+    except OSError:
+        if process.poll() is None:
+            process.kill()
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            # The already-SIGKILLed group was not reaped in the bounded window.
+            pass
+
+
 def run_bounded(
     command: Sequence[str], *, timeout: float = SYSTEMCTL_TIMEOUT_SECONDS
 ) -> str:
@@ -79,21 +100,7 @@ def run_bounded(
     finally:
         selector.close()
         if process is not None and not completed:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            except OSError:
-                if process.poll() is None:
-                    process.kill()
-            try:
-                process.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                try:
-                    process.wait(timeout=1)
-                except subprocess.SubprocessError:
-                    pass
+            _terminate_failed_query(process)
         if process is not None and process.stdout is not None:
             process.stdout.close()
 

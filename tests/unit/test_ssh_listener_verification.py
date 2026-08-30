@@ -346,6 +346,56 @@ def test_bounded_query_kills_descendants_that_inherit_stdout(tmp_path):
     assert not survived.exists()
 
 
+def test_failed_query_cleanup_accepts_process_exit_before_group_signal(monkeypatch):
+    module = load_module()
+
+    class ExitedProcess:
+        pid = 4242
+
+        def wait(self, *, timeout):
+            assert timeout == 1
+            return 7
+
+        def poll(self):
+            return 7
+
+        def kill(self):
+            pytest.fail("an already-exited process must not be killed again")
+
+    def already_exited(_pid, _signal):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(module.os, "killpg", already_exited)
+    module._terminate_failed_query(ExitedProcess())
+
+
+def test_failed_query_cleanup_bounds_second_wait_after_sigkill(monkeypatch):
+    module = load_module()
+    waits = 0
+    kills = 0
+
+    class UnreapedProcess:
+        pid = 4242
+
+        def wait(self, *, timeout):
+            nonlocal waits
+            assert timeout == 1
+            waits += 1
+            raise subprocess.TimeoutExpired("systemctl", timeout)
+
+        def poll(self):
+            return None
+
+        def kill(self):
+            nonlocal kills
+            kills += 1
+
+    monkeypatch.setattr(module.os, "killpg", lambda *_args: None)
+    module._terminate_failed_query(UnreapedProcess())
+    assert waits == 2
+    assert kills == 1
+
+
 def test_cli_rejects_invalid_expected_port_without_querying(monkeypatch, capsys):
     module = load_module()
     monkeypatch.setattr(
