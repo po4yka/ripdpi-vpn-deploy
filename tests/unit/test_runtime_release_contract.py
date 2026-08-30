@@ -14,6 +14,7 @@ import tarfile
 import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 import zipfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -325,15 +326,16 @@ def _activator_module():
     return module
 
 
-@pytest.fixture
-def tmp_path() -> Iterator[Path]:
+@contextmanager
+def _trusted_temporary_path() -> Iterator[Path]:
     """Provide a production-valid root without trusting the global temp ancestry."""
     trusted_root = Path(
         tempfile.mkdtemp(prefix=".ripdpi-runtime-release-pytest-", dir=Path.home())
     )
-    trusted_root.chmod(0o700)
-    original = trusted_root.lstat()
+    original: os.stat_result | None = None
     try:
+        original = trusted_root.lstat()
+        trusted_root.chmod(0o700)
         helper = _activator_module()
         helper._validate_storage_ancestors(
             trusted_root, os.getuid(), allow_missing=False
@@ -341,6 +343,7 @@ def tmp_path() -> Iterator[Path]:
         yield trusted_root
     finally:
         if os.path.lexists(trusted_root):
+            assert original is not None
             current = trusted_root.lstat()
             assert (current.st_dev, current.st_ino) == (
                 original.st_dev,
@@ -348,6 +351,39 @@ def tmp_path() -> Iterator[Path]:
             )
             shutil.rmtree(trusted_root)
         assert not os.path.lexists(trusted_root)
+
+
+@pytest.fixture
+def tmp_path() -> Iterator[Path]:
+    with _trusted_temporary_path() as trusted_root:
+        yield trusted_root
+
+
+def test_trusted_temporary_path_is_reclaimed_when_validation_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created: list[Path] = []
+    real_mkdtemp = tempfile.mkdtemp
+
+    def record_mkdtemp(*args, **kwargs) -> str:
+        path = real_mkdtemp(*args, **kwargs)
+        created.append(Path(path))
+        return path
+
+    class RejectingHelper:
+        @staticmethod
+        def _validate_storage_ancestors(*_args, **_kwargs) -> None:
+            raise RuntimeError("injected ancestor validation failure")
+
+    monkeypatch.setattr(tempfile, "mkdtemp", record_mkdtemp)
+    monkeypatch.setitem(globals(), "_activator_module", lambda: RejectingHelper())
+
+    with pytest.raises(RuntimeError, match="ancestor validation failure"):
+        with _trusted_temporary_path():
+            pytest.fail("validation failure must prevent fixture publication")
+
+    assert len(created) == 1
+    assert not os.path.lexists(created[0])
 
 
 def _activation_layout(tmp_path: Path) -> tuple[Path, Path]:
