@@ -227,7 +227,10 @@ def test_snapshot_setup_failure_removes_owned_directory(tmp_path, monkeypatch, f
     assert all(not Path(directory.name).exists() for directory in directories)
 
 
-@pytest.mark.parametrize("assignment", ["NETWORK_EXPOSURE_CONFIG", "ANSIBLE_LIMIT"])
+@pytest.mark.parametrize("assignment", [
+    "NETWORK_EXPOSURE_CONFIG", "ANSIBLE_LIMIT", "ENV", "PROVIDER", "HOME",
+    "DEPLOY_SOURCE_REVISION", "DEPLOYABLE_SOURCE_DIGEST",
+])
 def test_make_rejects_literal_make_shell_before_recipe_side_effect(tmp_path, assignment):
     marker = tmp_path / "marker"
     hostile = "$(shell touch " + str(marker) + ")"
@@ -238,7 +241,90 @@ def test_make_rejects_literal_make_shell_before_recipe_side_effect(tmp_path, ass
                             cwd=ROOT, capture_output=True, text=True, timeout=20)
     assert result.returncode != 0
     assert not marker.exists()
-    assert "literal values" in result.stderr
+    expected = ("literal values" if assignment in {"NETWORK_EXPOSURE_CONFIG", "ANSIBLE_LIMIT"}
+                else "accepts command-line values only")
+    assert expected in result.stderr
+
+
+def test_make_privacy_gate_precedes_source_identity_git(tmp_path):
+    path = _make_fixture(tmp_path)
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    marker = tmp_path / "git-called"
+    real_git = subprocess.run(["sh", "-c", "command -v git"], capture_output=True,
+                              text=True, check=True).stdout.strip()
+    (binary / "git").write_text(
+        f"#!/bin/sh\nprintf called > '{marker}'\nexec '{real_git}' \"$@\"\n")
+    (binary / "git").chmod(0o700)
+    result = subprocess.run([
+        "make", "-f", str(ROOT / "Makefile"), "network-exposure-review",
+        "NETWORK_EXPOSURE_CONFIG=" + str(path), "ANSIBLE_LIMIT=vpn-p0", "ENV=$(shell false)",
+    ], cwd=tmp_path, env={"PATH": str(binary) + os.pathsep + os.environ["PATH"],
+                         "HOME": os.environ["HOME"]}, capture_output=True, text=True, timeout=20)
+    assert result.returncode != 0
+    assert "accepts command-line values only" in result.stderr
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize("assignment,value", [
+    ("ENV", "prod"),
+    ("PROVIDER", "upcloud"),
+    ("HOME", "/tmp/operator-home"),
+    ("DEPLOY_SOURCE_REVISION", "a" * 40),
+    ("DEPLOYABLE_SOURCE_DIGEST", "b" * 64),
+    ("PATH", "attacker-path"),
+    ("SHELL", "attacker-shell"),
+])
+def test_make_rejects_irrelevant_command_line_inputs_before_git_or_controller(
+        tmp_path, assignment, value):
+    path = _make_fixture(tmp_path)
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    git_marker = tmp_path / "git-called"
+    controller_marker = tmp_path / "controller-called"
+    real_git = subprocess.run(["sh", "-c", "command -v git"], capture_output=True,
+                              text=True, check=True).stdout.strip()
+    (binary / "git").write_text(
+        f"#!/bin/sh\nprintf called > '{git_marker}'\nexec '{real_git}' \"$@\"\n")
+    (binary / "git").chmod(0o700)
+    controller = tmp_path / "scripts" / "network-exposure-review-controller.py"
+    controller.write_text(
+        "from pathlib import Path\n"
+        f"Path({str(controller_marker)!r}).touch()\n"
+    )
+    if assignment == "PATH":
+        value = str(binary)
+    elif assignment == "SHELL":
+        shell = tmp_path / "attacker-shell"
+        shell.write_text(f"#!/bin/sh\ntouch '{controller_marker}'\nexec /bin/sh \"$@\"\n")
+        shell.chmod(0o700)
+        value = str(shell)
+    result = subprocess.run([
+        "make", "-f", str(ROOT / "Makefile"), "network-exposure-review",
+        "NETWORK_EXPOSURE_CONFIG=" + str(path), "ANSIBLE_LIMIT=vpn-p0",
+        assignment + "=" + value,
+    ], cwd=tmp_path, env={"PATH": str(binary) + os.pathsep + os.environ["PATH"],
+                         "HOME": os.environ["HOME"]}, capture_output=True, text=True, timeout=20)
+    assert result.returncode != 0
+    assert "accepts command-line values only" in result.stderr
+    assert not git_marker.exists()
+    assert not controller_marker.exists()
+
+
+def test_make_accepts_environment_home_and_repository_environment_defaults(tmp_path):
+    path = _make_fixture(tmp_path)
+    result = subprocess.run(
+        ["make", "-f", str(ROOT / "Makefile"), "network-exposure-review",
+         "NETWORK_EXPOSURE_CONFIG=" + str(path), "ANSIBLE_LIMIT=vpn-p0"],
+        cwd=tmp_path,
+        env={"PATH": os.environ["PATH"], "HOME": os.environ["HOME"],
+             "ENV": "prod", "PROVIDER": "upcloud"},
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["source_id"] == "reviewed-source"
 
 
 @pytest.mark.parametrize("assignment,value", [("NETWORK_EXPOSURE_CONFIG", "'quoted'"), ("ANSIBLE_LIMIT", "$(touch nope)")])

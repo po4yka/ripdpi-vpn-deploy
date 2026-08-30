@@ -8,15 +8,28 @@ ifneq ($(filter network-exposure-review,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error network exposure review requires exactly one Make goal)
 endif
+_NETWORK_EXPOSURE_ALLOWED_COMMAND_VARIABLES := NETWORK_EXPOSURE_CONFIG ANSIBLE_LIMIT
+_NETWORK_EXPOSURE_COMMAND_VARIABLES := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
+_NETWORK_EXPOSURE_FORBIDDEN_COMMAND_VARIABLES := $(filter-out $(_NETWORK_EXPOSURE_ALLOWED_COMMAND_VARIABLES),$(_NETWORK_EXPOSURE_COMMAND_VARIABLES))
+ifneq ($(strip $(_NETWORK_EXPOSURE_FORBIDDEN_COMMAND_VARIABLES)),)
+$(error network exposure review accepts command-line values only for NETWORK_EXPOSURE_CONFIG and ANSIBLE_LIMIT)
+endif
+_NETWORK_EXPOSURE_LITERAL_INPUTS := $(value NETWORK_EXPOSURE_CONFIG)$(value ANSIBLE_LIMIT)$(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)
 override NETWORK_EXPOSURE_CONFIG := $(value NETWORK_EXPOSURE_CONFIG)
 override ANSIBLE_LIMIT := $(value ANSIBLE_LIMIT)
-ifneq ($(findstring $$,$(value NETWORK_EXPOSURE_CONFIG)$(value ANSIBLE_LIMIT)),)
+override ENV := $(value ENV)
+override PROVIDER := $(value PROVIDER)
+override HOME := $(value HOME)
+override DEPLOY_SOURCE_REVISION :=
+override DEPLOYABLE_SOURCE_DIGEST :=
+MAKEOVERRIDES :=
+ifneq ($(findstring $$,$(_NETWORK_EXPOSURE_LITERAL_INPUTS)),)
 $(error network exposure review inputs must be literal values)
 endif
-ifneq ($(findstring ",$(value NETWORK_EXPOSURE_CONFIG)$(value ANSIBLE_LIMIT)),)
+ifneq ($(findstring ",$(_NETWORK_EXPOSURE_LITERAL_INPUTS)),)
 $(error network exposure review inputs must be literal values)
 endif
-ifneq ($(findstring ',$(value NETWORK_EXPOSURE_CONFIG)$(value ANSIBLE_LIMIT)),)
+ifneq ($(findstring ',$(_NETWORK_EXPOSURE_LITERAL_INPUTS)),)
 $(error network exposure review inputs must be literal values)
 endif
 endif

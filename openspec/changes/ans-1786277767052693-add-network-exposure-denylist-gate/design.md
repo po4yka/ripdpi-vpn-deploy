@@ -14,6 +14,7 @@ Portfolio task `ANS-1786277767052693` owns this change. The repository already h
 
 - A dedicated Ansible role owns validation, plan construction, and mode selection; the existing firewall role remains the sole runtime firewall renderer.
 - Input is an operator-reviewed artifact outside Git. Repository-owned schema and placeholder fixtures describe shape only. Metadata includes schema version, repository-local source ID, creation/expiry, content digest, review identity, signature metadata, and separate directional intents.
+- The existing `ANSIBLE_EXTRA_VARS_FILE` is the sole deployment carrier. Its closed typed mapping references owner-controlled mode-`0600` artifact and key files; the deploy controller snapshots and fences those inputs before SSH, validates every exact selected alias locally, and rewrites only snapshot paths into the per-host canonical variable loader.
 - The role validates before template rendering and passes a typed, normalized plan to the firewall integration. Disabled mode passes no plan and therefore preserves the existing render.
 - Modes are `disabled`, `log_only`, `canary`, and `enforce`. Defaults select `disabled`; every other mode requires an explicit reviewed artifact and configuration.
 - Refresh is a manual-reviewed artifact replacement. No timer, remote fetch, or implicit apply path is introduced.
@@ -26,6 +27,7 @@ Portfolio task `ANS-1786277767052693` owns this change. The repository already h
 - SOPS+age continues to own secret material; the feed is non-secret but may still be supplied outside Git because it is deployable policy.
 - `vpnd`, if changed, may invoke and present the canonical Make/Ansible dry-run only; it cannot implement policy or fetch data.
 - Shared `ansible/group_vars/`, the site playbook, and firewall templates are serialized single-writer paths.
+- External `host_vars`, sibling `group_vars`, ambient Ansible plugins, and unrestricted extra vars are not policy authority.
 
 ## Risks / Trade-offs
 

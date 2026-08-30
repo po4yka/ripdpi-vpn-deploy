@@ -76,6 +76,44 @@ validation state, source ID, directional counts, and content/artifact digests. T
 internal normalized plan is an Ansible-only interface protected by `no_log`; do
 not use it for operator output.
 
+## Dry-run and selected-host deployment
+
+The supported Ansible input is the existing private `ANSIBLE_EXTRA_VARS_FILE`.
+It must be an owner-controlled, regular non-symlink file with mode `0600` and
+an explicit `ANSIBLE_LIMIT`. The nested mapping is typed and closed; arbitrary
+Ansible variables are not accepted:
+
+```yaml
+network_exposure_gate:
+  mode: log_only
+  artifact: /absolute/private/path/reviewed-artifact.json
+  trusted_key: /absolute/private/path/trusted-public-key.pem
+  trusted_key_sha256: <64 lowercase hex characters>
+  source_id: reviewed-source
+  promotion_approved: false
+  promotion_digest: ""
+  authorized_hosts: []
+```
+
+The controller validates the override schema, requires the artifact and key to
+be owner-controlled mode-`0600` files, snapshots all three inputs into its
+private runtime directory, validates every selected inventory alias locally,
+and fences the original file identities before the first SSH or Ansible call.
+Only the private snapshot paths enter the per-host variable loader. External
+`host_vars`, sibling `group_vars`, ambient plugins, and unrestricted command-line
+extra vars cannot supply this policy.
+
+```bash
+make dry-run \
+  ANSIBLE_LIMIT=<exact-host-alias> \
+  ANSIBLE_EXTRA_VARS_FILE=/absolute/private/path/network-exposure.yml
+```
+
+For `canary` or `enforce`, `authorized_hosts` must equal the exact selected
+inventory aliases. The controller refuses broader or different authorization
+before any transport. Run the same command as `make deploy` only after the
+separate staging and promotion evidence required below is approved.
+
 A normal `make dry-run` uses Ansible check mode. A full site **deployment** still
 converges the baseline firewall; `log_only` supplies an empty enforcement plan,
 not a bypass of baseline drift repair. Disabled/log-only renders are byte-identical
