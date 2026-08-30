@@ -51,6 +51,10 @@ def _documents() -> tuple[dict, dict, dict]:
     evidence = {
         "schema_version": 1,
         "generation": "evidence-v1",
+        "manifest_generation": manifest["generation"],
+        "manifest_source_id": manifest["source_id"],
+        "inventory_generation": inventory["generation"],
+        "inventory_source_id": inventory["source_id"],
         "targets": [
             {
                 "target": "vpn-p0",
@@ -102,6 +106,7 @@ def _invoke(
     evidence: dict,
     *,
     now: int = 1_700_000_060,
+    output: Path | None = None,
 ) -> tuple[int, str, str, Path]:
     paths = []
     for name, value in (
@@ -112,7 +117,7 @@ def _invoke(
         path = tmp_path / name
         path.write_text(json.dumps(value), encoding="utf-8")
         paths.append(path)
-    output = tmp_path / "observability.prom"
+    output = tmp_path / "observability.prom" if output is None else output
     result = _module().main(
         [
             "render",
@@ -199,8 +204,11 @@ def test_unlisted_family_label_or_series_overflow_is_malformed_and_dropped(
         sample["labels"]["destination"] = "bounded-alias"
     else:
         manifest["families"][0]["max_series"] = 1
+        manifest["families"][0]["labels"].append("profile")
+        inventory["targets"][0]["label_values"]["profile"] = ["primary", "secondary"]
+        sample["labels"]["profile"] = "primary"
         duplicate = copy.deepcopy(sample)
-        duplicate["labels"]["role"] = "secondary"
+        duplicate["labels"]["profile"] = "secondary"
         evidence["targets"][0]["samples"].append(duplicate)
 
     rc, stdout, stderr, output = _invoke(
@@ -219,8 +227,11 @@ def test_family_type_is_emitted_once_for_multiple_series(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     manifest, inventory, evidence = _documents()
+    manifest["families"][0]["labels"].append("profile")
+    inventory["targets"][0]["label_values"]["profile"] = ["primary", "secondary"]
+    evidence["targets"][0]["samples"][0]["labels"]["profile"] = "primary"
     second = copy.deepcopy(evidence["targets"][0]["samples"][0])
-    second["labels"]["role"] = "secondary"
+    second["labels"]["profile"] = "secondary"
     evidence["targets"][0]["samples"].append(second)
 
     rc, _, _, output = _invoke(tmp_path, capsys, manifest, inventory, evidence)
@@ -234,8 +245,11 @@ def test_duplicate_series_across_targets_is_malformed_and_not_published(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     manifest, inventory, evidence = _documents()
+    manifest["families"][0]["labels"] = ["role"]
+    evidence["targets"][0]["samples"][0]["labels"] = {"role": "edge"}
     second_target = copy.deepcopy(inventory["targets"][0])
     second_target["target"] = "vpn-p1"
+    second_target["label_values"]["node"] = ["vpn-p1"]
     inventory["targets"].append(second_target)
     second_observation = copy.deepcopy(evidence["targets"][0])
     second_observation["target"] = "vpn-p1"
@@ -246,6 +260,28 @@ def test_duplicate_series_across_targets_is_malformed_and_not_published(
     assert rc == 0
     assert json.loads(stdout)["states"] == {"malformed": 2}
     assert "vpn_watchdog_collection_success" not in output.read_text()
+
+
+def test_technical_label_value_must_be_explicitly_allowlisted(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest, inventory, evidence = _documents()
+    manifest["families"][0]["labels"].append("profile")
+    inventory["targets"][0]["label_values"]["profile"] = ["primary"]
+    evidence["targets"][0]["samples"][0]["labels"]["profile"] = "secondary"
+
+    rc, stdout, _, output = _invoke(tmp_path, capsys, manifest, inventory, evidence)
+
+    assert rc == 0
+    assert json.loads(stdout)["states"] == {"malformed": 1}
+    assert "vpn_watchdog_collection_success" not in output.read_text()
+
+    inventory["targets"][0]["label_values"]["profile"].append("secondary")
+    rc, stdout, _, output = _invoke(tmp_path, capsys, manifest, inventory, evidence)
+    assert rc == 0
+    assert json.loads(stdout)["states"] == {"fresh": 1}
+    assert 'profile="secondary"' in output.read_text()
 
 
 def test_secret_endpoint_identity_and_path_shaped_values_are_redacted(
@@ -269,6 +305,34 @@ def test_secret_endpoint_identity_and_path_shaped_values_are_redacted(
         combined = stdout + stderr + output.read_text(encoding="utf-8")
         assert secret not in combined
         assert json.loads(stdout)["states"] == {"malformed": 1}
+
+
+def test_short_opaque_identity_is_rejected_even_when_inventory_attempts_to_allow_it(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    corpus = json.loads(
+        (ROOT / "tests/fixtures/observability/secret-shaped-values.json").read_text()
+    )
+    for index, secret in enumerate(corpus["short_opaque_values"]):
+        case = tmp_path / str(index)
+        case.mkdir()
+        manifest, inventory, evidence = _documents()
+        inventory["targets"][0]["role"] = secret
+        inventory["targets"][0]["label_values"]["role"] = [secret]
+        evidence["targets"][0]["samples"][0]["labels"]["role"] = secret
+
+        rc, stdout, stderr, output = _invoke(
+            case, capsys, manifest, inventory, evidence
+        )
+
+        combined = stdout + stderr
+        if output.exists():
+            combined += output.read_text(encoding="utf-8")
+        assert rc == 2
+        assert stdout == ""
+        assert stderr == "observability-contract: validation failed\n"
+        assert secret not in combined
 
 
 def test_render_is_deterministic_atomic_and_owner_only(
@@ -355,7 +419,74 @@ def test_duplicate_semantic_identity_refuses_without_replacing_output(
     assert output.read_text() == "last-known-good\n"
 
 
-@pytest.mark.parametrize("violation", ["family", "label"])
+def test_empty_expected_inventory_refuses_and_preserves_last_known_good(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest, inventory, evidence = _documents()
+    inventory["targets"] = []
+    evidence["targets"] = []
+    output = tmp_path / "observability.prom"
+    output.write_text("last-known-good\n", encoding="utf-8")
+
+    rc, stdout, stderr, output = _invoke(
+        tmp_path, capsys, manifest, inventory, evidence, output=output
+    )
+
+    assert rc == 2
+    assert stdout == ""
+    assert stderr == "observability-contract: validation failed\n"
+    assert output.read_text(encoding="utf-8") == "last-known-good\n"
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        "manifest_generation",
+        "manifest_source_id",
+        "inventory_generation",
+        "inventory_source_id",
+    ],
+)
+def test_evidence_binding_mismatch_is_malformed_and_drops_producer_samples(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    binding: str,
+) -> None:
+    manifest, inventory, evidence = _documents()
+    evidence[binding] = "wrong-source-v1"
+
+    rc, stdout, stderr, output = _invoke(
+        tmp_path, capsys, manifest, inventory, evidence
+    )
+
+    assert rc == 0
+    assert stderr == ""
+    assert json.loads(stdout)["states"] == {"malformed": 1}
+    exposition = output.read_text(encoding="utf-8")
+    assert "vpn_watchdog_collection_success" not in exposition
+    assert 'state="malformed"' in exposition
+
+
+def test_evidence_binding_mismatch_precedes_lifecycle_classification(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest, inventory, evidence = _documents()
+    inventory["targets"][0]["lifecycle"] = "disabled"
+    evidence["manifest_source_id"] = "wrong-source-v1"
+
+    rc, stdout, stderr, output = _invoke(
+        tmp_path, capsys, manifest, inventory, evidence
+    )
+
+    assert rc == 0
+    assert stderr == ""
+    assert json.loads(stdout)["states"] == {"malformed": 1}
+    assert "vpn_watchdog_collection_success" not in output.read_text()
+
+
+@pytest.mark.parametrize("violation", ["family", "label", "unknown_label"])
 def test_manifest_refuses_secret_or_destination_shaped_output_identifiers(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -368,9 +499,12 @@ def test_manifest_refuses_secret_or_destination_shaped_output_identifiers(
         inventory["targets"][0]["required_families"] = ["vpn_secret_token"]
         evidence["targets"][0]["samples"][0]["family"] = "vpn_secret_token"
         assert old_name != "vpn_secret_token"
-    else:
+    elif violation == "label":
         manifest["families"][0]["labels"].append("destination")
         evidence["targets"][0]["samples"][0]["labels"]["destination"] = "sink"
+    else:
+        manifest["families"][0]["labels"] = ["cohort"]
+        evidence["targets"][0]["samples"][0]["labels"] = {"cohort": "baseline"}
 
     rc, stdout, stderr, output = _invoke(
         tmp_path, capsys, manifest, inventory, evidence
@@ -380,6 +514,110 @@ def test_manifest_refuses_secret_or_destination_shaped_output_identifiers(
     assert stdout == ""
     assert stderr == "observability-contract: validation failed\n"
     assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    "unsafe",
+    ["world_writable", "group_writable", "ancestor_symlink", "target_symlink"],
+)
+def test_atomic_output_refuses_unsafe_paths_and_preserves_last_known_good(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    unsafe: str,
+) -> None:
+    manifest, inventory, evidence = _documents()
+    safe = tmp_path / "safe"
+    safe.mkdir(mode=0o700)
+    if unsafe in {"world_writable", "group_writable"}:
+        parent = safe / "writable"
+        parent.mkdir(mode=0o700)
+        parent.chmod(0o777 if unsafe == "world_writable" else 0o770)
+        output = parent / "observability.prom"
+        output.write_text("last-known-good\n", encoding="utf-8")
+    elif unsafe == "ancestor_symlink":
+        real = safe / "real"
+        real.mkdir(mode=0o700)
+        output = real / "observability.prom"
+        output.write_text("last-known-good\n", encoding="utf-8")
+        linked = safe / "linked"
+        linked.symlink_to(real, target_is_directory=True)
+        output = linked / "observability.prom"
+    else:
+        parent = safe / "textfile"
+        parent.mkdir(mode=0o700)
+        real = parent / "last-known-good.prom"
+        real.write_text("last-known-good\n", encoding="utf-8")
+        output = parent / "observability.prom"
+        output.symlink_to(real.name)
+
+    rc, stdout, stderr, _ = _invoke(
+        tmp_path, capsys, manifest, inventory, evidence, output=output
+    )
+
+    assert rc == 2
+    assert stdout == ""
+    assert stderr == "observability-contract: validation failed\n"
+    assert output.read_text(encoding="utf-8") == "last-known-good\n"
+
+
+def test_atomic_output_fences_parent_replacement_and_preserves_both_namespaces(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest, inventory, evidence = _documents()
+    parent = tmp_path / "textfile"
+    parent.mkdir(mode=0o700)
+    output = parent / "observability.prom"
+    output.write_text("last-known-good\n", encoding="utf-8")
+    moved = tmp_path / "textfile-original"
+    real_fsync = os.fsync
+    replaced = False
+
+    def replace_parent_on_temp_fsync(descriptor: int) -> None:
+        nonlocal replaced
+        if not replaced and stat.S_ISREG(os.fstat(descriptor).st_mode):
+            parent.rename(moved)
+            parent.mkdir(mode=0o700)
+            replaced = True
+        real_fsync(descriptor)
+
+    module = _module()
+    monkeypatch.setattr(module.os, "fsync", replace_parent_on_temp_fsync)
+    paths = []
+    for name, value in (
+        ("manifest.json", manifest),
+        ("inventory.json", inventory),
+        ("evidence.json", evidence),
+    ):
+        path = tmp_path / name
+        path.write_text(json.dumps(value), encoding="utf-8")
+        paths.append(path)
+
+    rc = module.main(
+        [
+            "render",
+            "--manifest",
+            str(paths[0]),
+            "--inventory",
+            str(paths[1]),
+            "--evidence",
+            str(paths[2]),
+            "--output",
+            str(output),
+            "--now",
+            "1700000060",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert replaced is True
+    assert rc == 2
+    assert captured.out == ""
+    assert captured.err == "observability-contract: validation failed\n"
+    assert not output.exists()
+    assert (moved / "observability.prom").read_text() == "last-known-good\n"
+    assert not list(moved.glob(".observability.prom.*"))
 
 
 def test_runtime_has_no_network_or_subprocess_imports() -> None:

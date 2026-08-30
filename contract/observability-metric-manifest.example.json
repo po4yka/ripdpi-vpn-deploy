@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "generation": "manifest-v1",
+  "source_id": "manifest-source-v1",
   "families": [
     {
       "name": "vpn_watchdog_collection_success",

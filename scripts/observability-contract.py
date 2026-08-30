@@ -12,7 +12,6 @@ from pathlib import Path
 import re
 import stat
 import sys
-import tempfile
 import time
 from typing import Any
 
@@ -30,6 +29,8 @@ TOKEN = re.compile(
     r"(?:token|secret|password|private|credential|^gh[opusr]_)", re.IGNORECASE
 )
 LONG_OPAQUE = re.compile(r"^(?:[0-9a-f]{24,}|[A-Za-z0-9_+=/-]{32,})$")
+SHORT_HEX = re.compile(r"^[0-9a-f]{16,23}$", re.IGNORECASE)
+COMPACT_OPAQUE = re.compile(r"^[a-z0-9]{16,}$")
 SECRET_IDENTIFIER = re.compile(
     r"(?:^|_)(?:token|secret|password|credential|private_key|key)(?:_|$)",
     re.IGNORECASE,
@@ -38,6 +39,7 @@ FORBIDDEN_LABEL = re.compile(
     r"(?:^|_)(?:ip|address|endpoint|domain|sni|uuid|short_id|password|token|chat_id|client|user|username|destination|path|args|command|log)(?:_|$)",
     re.IGNORECASE,
 )
+ALLOWED_LABELS = frozenset({"node", "role", "profile", "policy", "severity", "vantage"})
 SCHEMAS = {
     "manifest": "observability-metric-manifest.schema.json",
     "inventory": "observability-expected-inventory.schema.json",
@@ -105,6 +107,8 @@ def _forbidden_value(value: str) -> bool:
         or UUID.fullmatch(value) is not None
         or TOKEN.search(value) is not None
         or LONG_OPAQUE.fullmatch(value) is not None
+        or SHORT_HEX.fullmatch(value) is not None
+        or COMPACT_OPAQUE.fullmatch(value) is not None
     )
 
 
@@ -131,13 +135,31 @@ def _validate_semantics(
     for target in targets.values():
         if _forbidden_value(target["target"]) or _forbidden_value(target["role"]):
             raise ContractError("unsafe inventory identity")
+        label_values = target["label_values"]
+        if label_values["node"] != [target["target"]] or label_values["role"] != [
+            target["role"]
+        ]:
+            raise ContractError("inventory identity allowlist mismatch")
+        if any(
+            _forbidden_value(value)
+            for values in label_values.values()
+            for value in values
+        ):
+            raise ContractError("unsafe inventory label value")
         if any(name not in families for name in target["required_families"]):
             raise ContractError("unknown required family")
+        if any(
+            not set(families[name]["labels"]).issubset(label_values)
+            for name in target["required_families"]
+        ):
+            raise ContractError("required family has no label allowlist")
     for family in families.values():
         if SECRET_IDENTIFIER.search(family["name"]):
             raise ContractError("unsafe metric family")
         if any(FORBIDDEN_LABEL.search(label) for label in family["labels"]):
             raise ContractError("unsafe metric label")
+        if not set(family["labels"]).issubset(ALLOWED_LABELS):
+            raise ContractError("unknown metric label")
         if family["stale_after_seconds"] < family["cadence_seconds"]:
             raise ContractError("staleness precedes cadence")
     return families, targets, observations
@@ -163,7 +185,10 @@ def _evaluate_target(
     families: dict[str, dict[str, Any]],
     now: int,
     max_future: int,
+    binding_valid: bool,
 ) -> tuple[str, list[tuple[str, dict[str, str], int | float]]]:
+    if not binding_valid:
+        return "malformed", []
     lifecycle = target["lifecycle"]
     if lifecycle != "enabled":
         return lifecycle, []
@@ -187,6 +212,11 @@ def _evaluate_target(
         if set(labels) != set(family["labels"]):
             return "malformed", []
         if any(_forbidden_value(value) for value in labels.values()):
+            return "malformed", []
+        if any(
+            value not in target["label_values"].get(name, [])
+            for name, value in labels.items()
+        ):
             return "malformed", []
         label_key = tuple(sorted(labels.items()))
         series_key = (sample["family"], label_key)
@@ -220,6 +250,12 @@ def _render(
     now: int,
 ) -> tuple[bytes, dict[str, int], int]:
     families, targets, observations = _validate_semantics(manifest, inventory, evidence)
+    binding_valid = (
+        evidence["manifest_generation"] == manifest["generation"]
+        and evidence["manifest_source_id"] == manifest["source_id"]
+        and evidence["inventory_generation"] == inventory["generation"]
+        and evidence["inventory_source_id"] == inventory["source_id"]
+    )
     results: list[
         tuple[dict[str, Any], str, list[tuple[str, dict[str, str], int | float]]]
     ] = []
@@ -233,6 +269,7 @@ def _render(
             families,
             now,
             inventory["max_future_seconds"],
+            binding_valid,
         )
         for family_name, labels, _value in samples:
             keys = global_series.setdefault(family_name, set())
@@ -285,16 +322,108 @@ def _render(
     return ("\n".join(lines) + "\n").encode("utf-8"), states, emitted
 
 
+def _trusted_directory(metadata: os.stat_result) -> bool:
+    return (
+        stat.S_ISDIR(metadata.st_mode)
+        and metadata.st_uid in {0, os.geteuid()}
+        and metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH) == 0
+    )
+
+
+def _trusted_output(metadata: os.stat_result) -> bool:
+    return (
+        stat.S_ISREG(metadata.st_mode)
+        and metadata.st_uid in {0, os.geteuid()}
+        and metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH) == 0
+        and metadata.st_nlink == 1
+    )
+
+
+def _directory_chain(path: Path) -> tuple[Path, os.stat_result]:
+    absolute = Path(os.path.abspath(os.fspath(path)))
+    current = Path(absolute.anchor)
+    try:
+        metadata = os.lstat(current)
+        if not _trusted_directory(metadata):
+            raise ContractError("unsafe output ancestry")
+        for component in absolute.parts[1:]:
+            current /= component
+            metadata = os.lstat(current)
+            if not _trusted_directory(metadata):
+                raise ContractError("unsafe output ancestry")
+    except OSError as exc:
+        raise ContractError("output parent is unavailable") from exc
+    return absolute, metadata
+
+
+def _same_node(left: os.stat_result, right: os.stat_result) -> bool:
+    return (left.st_dev, left.st_ino) == (right.st_dev, right.st_ino)
+
+
+def _target_metadata(parent_descriptor: int, name: str) -> os.stat_result | None:
+    try:
+        metadata = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    if not _trusted_output(metadata):
+        raise ContractError("unsafe output target")
+    return metadata
+
+
+def _revalidate_target(
+    parent_descriptor: int, name: str, previous: os.stat_result | None
+) -> None:
+    current = _target_metadata(parent_descriptor, name)
+    if (previous is None) != (current is None):
+        raise ContractError("output target changed")
+    if (
+        previous is not None
+        and current is not None
+        and not _same_node(previous, current)
+    ):
+        raise ContractError("output target changed")
+
+
+def _create_temporary(parent_descriptor: int, target_name: str) -> tuple[int, str]:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    for _attempt in range(32):
+        name = f".{target_name}.{os.urandom(12).hex()}"
+        try:
+            descriptor = os.open(name, flags, 0o600, dir_fd=parent_descriptor)
+        except FileExistsError:
+            continue
+        try:
+            os.fchmod(descriptor, 0o600)
+        except OSError:
+            os.close(descriptor)
+            try:
+                os.unlink(name, dir_fd=parent_descriptor)
+            except FileNotFoundError:
+                pass
+            raise
+        return descriptor, name
+    raise ContractError("temporary output is unavailable")
+
+
 def _atomic_write(path: Path, payload: bytes) -> None:
-    if not path.parent.is_dir():
-        raise ContractError("output parent is unavailable")
+    if path.name in {"", ".", ".."}:
+        raise ContractError("invalid output name")
+    parent_path, expected_parent = _directory_chain(path.parent)
+    parent_descriptor = -1
     descriptor = -1
     temporary: str | None = None
     try:
-        descriptor, temporary = tempfile.mkstemp(
-            prefix=f".{path.name}.", dir=path.parent
-        )
-        os.fchmod(descriptor, 0o600)
+        parent_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        parent_flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        parent_descriptor = os.open(parent_path, parent_flags)
+        opened_parent = os.fstat(parent_descriptor)
+        if not _trusted_directory(opened_parent) or not _same_node(
+            expected_parent, opened_parent
+        ):
+            raise ContractError("output parent changed")
+        previous = _target_metadata(parent_descriptor, path.name)
+        descriptor, temporary = _create_temporary(parent_descriptor, path.name)
         offset = 0
         while offset < len(payload):
             written = os.write(descriptor, payload[offset:])
@@ -304,23 +433,38 @@ def _atomic_write(path: Path, payload: bytes) -> None:
         os.fsync(descriptor)
         os.close(descriptor)
         descriptor = -1
-        os.replace(temporary, path)
+
+        current_parent_path, current_parent = _directory_chain(parent_path)
+        if current_parent_path != parent_path or not _same_node(
+            opened_parent, current_parent
+        ):
+            raise ContractError("output parent changed")
+        _revalidate_target(parent_descriptor, path.name, previous)
+        os.replace(
+            temporary,
+            path.name,
+            src_dir_fd=parent_descriptor,
+            dst_dir_fd=parent_descriptor,
+        )
         temporary = None
-        directory = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+        published = _target_metadata(parent_descriptor, path.name)
+        if published is None or published.st_uid != os.geteuid():
+            raise ContractError("published output is invalid")
+        if stat.S_IMODE(published.st_mode) != 0o600:
+            raise ContractError("published output is invalid")
+        os.fsync(parent_descriptor)
     except OSError as exc:
         raise ContractError("publication failed") from exc
     finally:
         if descriptor >= 0:
             os.close(descriptor)
-        if temporary is not None:
+        if temporary is not None and parent_descriptor >= 0:
             try:
-                os.unlink(temporary)
+                os.unlink(temporary, dir_fd=parent_descriptor)
             except FileNotFoundError:
                 pass
+        if parent_descriptor >= 0:
+            os.close(parent_descriptor)
 
 
 def _parser() -> argparse.ArgumentParser:

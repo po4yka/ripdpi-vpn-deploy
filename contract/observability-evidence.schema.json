@@ -4,10 +4,22 @@
   "title": "RIPDPI observability evidence",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "generation", "targets"],
+  "required": [
+    "schema_version",
+    "generation",
+    "manifest_generation",
+    "manifest_source_id",
+    "inventory_generation",
+    "inventory_source_id",
+    "targets"
+  ],
   "properties": {
     "schema_version": {"const": 1},
     "generation": {"$ref": "#/$defs/alias"},
+    "manifest_generation": {"$ref": "#/$defs/alias"},
+    "manifest_source_id": {"$ref": "#/$defs/alias"},
+    "inventory_generation": {"$ref": "#/$defs/alias"},
+    "inventory_source_id": {"$ref": "#/$defs/alias"},
     "targets": {
       "type": "array",
       "maxItems": 256,
