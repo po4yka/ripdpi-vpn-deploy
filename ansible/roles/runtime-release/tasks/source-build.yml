@@ -1,0 +1,167 @@
+---
+- name: Validate runtime source-build descriptor before writing
+  ansible.builtin.assert:
+    that:
+      - runtime_build_descriptor is mapping
+      - runtime_build_descriptor.keys() | list | sort == ['name', 'outputs', 'schema_version', 'source', 'steps']
+      - runtime_build_descriptor.schema_version == 1
+      - runtime_build_descriptor.name is string
+      - runtime_build_descriptor.name is match('^[a-z0-9][a-z0-9._-]{0,63}$')
+      - runtime_build_descriptor.source is mapping
+      - runtime_build_descriptor.source | length > 0
+      - runtime_build_descriptor.steps is sequence
+      - runtime_build_descriptor.steps is not string
+      - runtime_build_descriptor.steps | length > 0
+      - runtime_build_descriptor.outputs is sequence
+      - runtime_build_descriptor.outputs is not string
+      - runtime_build_descriptor.outputs | length > 0
+      - runtime_build_receipt_root == '/var/lib/ripdpi/runtime-build-receipts'
+      - runtime_build_stage_root == '/var/lib/ripdpi/runtime-build-staging'
+      - runtime_build_helper_path == '/usr/local/libexec/ripdpi/runtime-build-receipt.py'
+    fail_msg: Runtime source-build descriptor or fixed receipt paths are invalid.
+
+- name: Deep-validate runtime source-build descriptor on the controller
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "{{ role_path }}/files/runtime_build_receipt.py"
+      - validate
+      - --stage-root
+      - "{{ runtime_build_stage_root }}"
+    stdin: "{{ runtime_build_descriptor | to_json }}"
+    stdin_add_newline: false
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+
+- name: Ensure runtime source-build helper directory
+  ansible.builtin.file:
+    path: /usr/local/libexec/ripdpi
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install runtime source-build receipt helper
+  ansible.builtin.copy:
+    src: runtime_build_receipt.py
+    dest: "{{ runtime_build_helper_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  register: _runtime_build_helper_copy
+
+- name: Ensure runtime source-build receipt directory
+  ansible.builtin.file:
+    path: "{{ runtime_build_receipt_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  register: _runtime_build_receipt_directory
+
+- name: Ensure runtime source-build staging directory
+  ansible.builtin.file:
+    path: "{{ runtime_build_stage_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  register: _runtime_build_stage_directory
+
+- name: Inspect runtime source-build receipt and outputs
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - "{{ runtime_build_helper_path }}"
+      - inspect
+      - --receipt-root
+      - "{{ runtime_build_receipt_root }}"
+      - --stage-root
+      - "{{ runtime_build_stage_root }}"
+    stdin: "{{ runtime_build_descriptor | to_json }}"
+    stdin_add_newline: false
+  register: _runtime_build_inspection
+  check_mode: false
+  changed_when: false
+  when: >-
+    not (
+      ansible_check_mode
+      and (
+        _runtime_build_helper_copy.changed
+        or _runtime_build_receipt_directory.changed
+        or _runtime_build_stage_directory.changed
+      )
+    )
+
+- name: Predict runtime source-build change before helper publication
+  ansible.builtin.set_fact:
+    _runtime_build_inspection_payload:
+      schema_version: 1
+      rebuild_required: true
+      reason: prerequisite-update
+  when:
+    - ansible_check_mode
+    - >-
+      _runtime_build_helper_copy.changed
+      or _runtime_build_receipt_directory.changed
+      or _runtime_build_stage_directory.changed
+
+- name: Decode runtime source-build inspection
+  ansible.builtin.set_fact:
+    _runtime_build_inspection_payload: >-
+      {{ _runtime_build_inspection.stdout | from_json }}
+  when: >-
+    not (
+      ansible_check_mode
+      and (
+        _runtime_build_helper_copy.changed
+        or _runtime_build_receipt_directory.changed
+        or _runtime_build_stage_directory.changed
+      )
+    )
+
+- name: Report runtime source-build drift in check mode
+  ansible.builtin.debug:
+    msg: Runtime source-build outputs require convergence.
+  when: ansible_check_mode
+  changed_when: _runtime_build_inspection_payload.rebuild_required | bool
+
+- name: Converge runtime source build under the project lock
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - "{{ runtime_build_helper_path }}"
+      - converge
+      - --receipt-root
+      - "{{ runtime_build_receipt_root }}"
+      - --stage-root
+      - "{{ runtime_build_stage_root }}"
+    stdin: "{{ runtime_build_descriptor | to_json }}"
+    stdin_add_newline: false
+  register: _runtime_build_convergence
+  changed_when: (_runtime_build_convergence.stdout | from_json).changed | bool
+  when: not ansible_check_mode
+
+- name: Publish runtime source-build change state
+  ansible.builtin.set_fact:
+    runtime_build_changed: >-
+      {{
+        (_runtime_build_inspection_payload.rebuild_required | bool)
+        if ansible_check_mode
+        else ((_runtime_build_convergence.stdout | from_json).changed | bool)
+      }}
+    runtime_build_results: >-
+      {{
+        (runtime_build_results | default({}))
+        | combine({
+            runtime_build_descriptor.name: {
+              'changed': (
+                (_runtime_build_inspection_payload.rebuild_required | bool)
+                if ansible_check_mode
+                else ((_runtime_build_convergence.stdout | from_json).changed | bool)
+              )
+            }
+          })
+      }}

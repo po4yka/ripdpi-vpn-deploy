@@ -1,0 +1,5 @@
+---
+runtime_build_descriptor: {}
+runtime_build_receipt_root: /var/lib/ripdpi/runtime-build-receipts
+runtime_build_stage_root: /var/lib/ripdpi/runtime-build-staging
+runtime_build_helper_path: /usr/local/libexec/ripdpi/runtime-build-receipt.py
