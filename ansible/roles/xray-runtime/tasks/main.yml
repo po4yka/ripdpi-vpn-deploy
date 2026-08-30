@@ -4,7 +4,9 @@
     that:
       - xray.version | default('') | length > 0
       - (xray.linux_amd64_sha256 if ansible_facts['architecture'] == 'x86_64' else xray.linux_arm64_sha256) | default('') | length > 0
-    fail_msg: Xray version and architecture checksum are required.
+      - not (xray_runtime_build_from_source | bool) or xray.source_commit | default('') is match('^[0-9a-f]{40,64}$')
+      - not (xray_runtime_build_from_source | bool) or xray.source_binary_sha256 | default('') is match('^[0-9a-f]{64}$')
+    fail_msg: Xray version, artifact checksum, and exact source pins are required.
 
 - name: Set Xray runtime archive facts
   ansible.builtin.set_fact:
@@ -35,49 +37,63 @@
   ansible.builtin.git:
     repo: https://github.com/XTLS/Xray-core
     dest: /opt/src/xray-core
-    version: "{{ xray.version }}"
-    depth: 1
-    update: false
-  when:
-    - xray_runtime_build_from_source | bool
-    - not _xray_runtime_binary.stat.exists
+    version: "{{ xray.source_commit }}"
+    update: true
+  when: xray_runtime_build_from_source | bool
 
-- name: Build pinned Xray source
+- name: Resolve pinned Xray source commit
   ansible.builtin.command:
-    argv:
-      - go
-      - build
-      - -trimpath
-      - -ldflags=-s -w
-      - -o
-      - "{{ xray_install_dir }}/releases/{{ xray.version }}/xray"
-      - ./main
+    argv: [/usr/bin/git, rev-parse, HEAD]
     chdir: /opt/src/xray-core
-    creates: "{{ xray_install_dir }}/releases/{{ xray.version }}/xray"
-  environment:
-    CGO_ENABLED: "0"
-    GOFLAGS: -trimpath
+  register: _xray_runtime_source_head
+  check_mode: false
+  changed_when: false
   when:
     - xray_runtime_build_from_source | bool
-    - not _xray_runtime_binary.stat.exists
+    - not ansible_check_mode
 
-- name: Inspect source-built Xray checksum
-  ansible.builtin.stat:
-    path: "{{ xray_install_dir }}/releases/{{ xray.version }}/xray"
-    checksum_algorithm: sha256
-  register: _xray_runtime_source_binary
-  when:
-    - xray_runtime_build_from_source | bool
-    - xray_runtime_sha256 != 'REPLACE_WITH_RELEASE_SHA256'
-
-- name: Verify source-built Xray checksum pin
+- name: Verify Xray source resolved to the pinned commit
   ansible.builtin.assert:
     that:
-      - _xray_runtime_source_binary.stat.checksum == xray_runtime_sha256
-    fail_msg: Source-built Xray binary does not match the configured SHA256.
+      - _xray_runtime_source_head.stdout | trim == xray.source_commit
+    fail_msg: Xray source checkout does not match xray.source_commit.
   when:
     - xray_runtime_build_from_source | bool
-    - xray_runtime_sha256 != 'REPLACE_WITH_RELEASE_SHA256'
+    - not ansible_check_mode
+
+- name: Converge pinned Xray source build
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: source-build
+    defaults_from: source-build
+  vars:
+    runtime_build_descriptor:
+      schema_version: 1
+      name: xray-core
+      source:
+        repository: https://github.com/XTLS/Xray-core
+        version: "{{ xray.version }}"
+        commit: "{{ xray.source_commit }}"
+      steps:
+        - argv:
+            - /usr/bin/go
+            - build
+            - -trimpath
+            - -ldflags=-s -w
+            - -o
+            - /var/lib/ripdpi/runtime-build-staging/xray-core/xray
+            - ./main
+          chdir: /opt/src/xray-core
+          environment:
+            CGO_ENABLED: "0"
+            GOFLAGS: -trimpath
+          timeout_seconds: 1800
+      outputs:
+        - name: installed
+          staged_path: /var/lib/ripdpi/runtime-build-staging/xray-core/xray
+          path: "{{ xray_install_dir }}/releases/{{ xray.version }}/xray"
+          expected_sha256: "{{ xray.source_binary_sha256 }}"
+  when: xray_runtime_build_from_source | bool
 
 - name: Download pinned Xray archive
   ansible.builtin.get_url:

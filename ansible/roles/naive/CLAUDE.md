@@ -11,6 +11,11 @@ assert blocks deployment if `vpn.enable_nginx_xhttp` is also true. The role
 runs caddy-naive standalone with its own cert (from SOPS) on port 443 —
 there is no shared listener.
 
+**Source identity is compound** — xcaddy, Caddy, and the forwardproxy module
+pin form one shared runtime-build receipt. The receipt also binds the expected
+installed binary SHA256; changing one pin rebuilds in a private project stage
+and publishes only after the expected digest passes.
+
 ## What's done well
 
 - **Pinned binary + version** — pinned per `docs/CLIENT-NOTES.md` because

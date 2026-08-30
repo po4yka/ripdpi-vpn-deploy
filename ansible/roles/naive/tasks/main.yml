@@ -66,73 +66,86 @@
       <!DOCTYPE html><html><head><title>It works</title></head>
       <body><h1>It works</h1></body></html>
 
-- name: Check whether caddy-naive binary already exists
-  ansible.builtin.stat:
-    path: /usr/local/bin/caddy-naive
-  register: caddy_naive_bin
+- name: Ensure trusted caddy-naive build workspace
+  ansible.builtin.file:
+    path: /opt/src
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: naive.build_with_xcaddy | bool
 
-- name: Install xcaddy (transient — only when building)
-  when: not caddy_naive_bin.stat.exists
+- name: Converge pinned caddy-naive source build
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: source-build
+    defaults_from: source-build
+  when: naive.build_with_xcaddy | bool
+  vars:
+    runtime_build_descriptor:
+      schema_version: 1
+      name: caddy-naive
+      source:
+        xcaddy_version: "{{ naive.xcaddy_version }}"
+        caddy_version: "{{ naive.caddy_version }}"
+        forwardproxy_module: "{{ naive.forwardproxy_module }}"
+      steps:
+        - argv:
+            - /usr/bin/go
+            - install
+            - "github.com/caddyserver/xcaddy/cmd/xcaddy@{{ naive.xcaddy_version }}"
+          chdir: /opt/src
+          environment:
+            GOPATH: /var/lib/ripdpi/runtime-build-staging/caddy-naive/gopath
+            GOCACHE: /var/lib/ripdpi/runtime-build-staging/caddy-naive/gocache
+            HOME: /root
+            GOFLAGS: -mod=readonly
+          timeout_seconds: 1800
+        - argv:
+            - /var/lib/ripdpi/runtime-build-staging/caddy-naive/gopath/bin/xcaddy
+            - build
+            - "{{ naive.caddy_version }}"
+            - --with
+            - "{{ naive.forwardproxy_module }}"
+            - --output
+            - /var/lib/ripdpi/runtime-build-staging/caddy-naive/installed
+          chdir: /opt/src
+          environment:
+            GOPATH: /var/lib/ripdpi/runtime-build-staging/caddy-naive/gopath
+            GOCACHE: /var/lib/ripdpi/runtime-build-staging/caddy-naive/gocache
+            HOME: /root
+            CGO_ENABLED: "0"
+            GOFLAGS: -mod=readonly
+          timeout_seconds: 1800
+      outputs:
+        - name: installed
+          staged_path: /var/lib/ripdpi/runtime-build-staging/caddy-naive/installed
+          path: /usr/local/bin/caddy-naive
+          expected_sha256: "{{ naive.xcaddy_sha256 }}"
+
+- name: Verify operator-supplied caddy-naive binary when source build is disabled
+  when: not (naive.build_with_xcaddy | bool)
   block:
-    - name: go install xcaddy
-      ansible.builtin.command:
-        argv:
-          - go
-          - install
-          - "github.com/caddyserver/xcaddy/cmd/xcaddy@{{ naive.xcaddy_version }}"
-      environment:
-        GOPATH: /tmp/gopath
-        HOME: /tmp
-        GOFLAGS: "-mod=readonly"
-      changed_when: true
-
-    - name: xcaddy build caddy-naive
-      ansible.builtin.command:
-        argv:
-          - /tmp/gopath/bin/xcaddy
-          - build
-          - "{{ naive.caddy_version }}"
-          - "--with"
-          - "{{ naive.forwardproxy_module }}"
-          - "--output"
-          - /usr/local/bin/caddy-naive
-      environment:
-        GOPATH: /tmp/gopath
-        HOME: /tmp
-        CGO_ENABLED: "0"
-        GOFLAGS: "-mod=readonly"
-      changed_when: true
-
-    - name: Verify caddy-naive binary sha256
+    - name: Inspect operator-supplied caddy-naive binary
       ansible.builtin.stat:
         path: /usr/local/bin/caddy-naive
         checksum_algorithm: sha256
-      register: _caddy_naive_stat
+      register: _caddy_naive_supplied
 
-    - name: Assert caddy-naive matches pinned sha256
+    - name: Require pinned operator-supplied caddy-naive binary
       ansible.builtin.assert:
         that:
-          - _caddy_naive_stat.stat.checksum == naive.xcaddy_sha256
-        fail_msg: >-
-          caddy-naive binary sha256 mismatch: got
-          {{ _caddy_naive_stat.stat.checksum }} but naive.xcaddy_sha256 pins
-          {{ naive.xcaddy_sha256 }}. Supply-chain substitution possible — review
-          xcaddy/forwardproxy source and update the pin only when trusted.
+          - _caddy_naive_supplied.stat.exists
+          - _caddy_naive_supplied.stat.isreg
+          - _caddy_naive_supplied.stat.checksum == naive.xcaddy_sha256
+        fail_msg: Operator-supplied caddy-naive binary is missing or does not match its pin.
 
-    - name: Set perms on caddy-naive
-      ansible.builtin.file:
-        path: /usr/local/bin/caddy-naive
-        owner: root
-        group: root
-        mode: "0755"
-
-    - name: Remove transient build dirs
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - /tmp/gopath
-        - /root/.cache/go-build
+- name: Set caddy-naive binary permissions
+  ansible.builtin.file:
+    path: /usr/local/bin/caddy-naive
+    owner: root
+    group: root
+    mode: "0755"
 
 - name: Read caddy-naive capabilities
   ansible.builtin.command:

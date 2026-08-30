@@ -4,8 +4,8 @@
 #   1. Caddyfile is present at expected path (/etc/naive/Caddyfile).
 #   2. Caddyfile contains expected NaiveProxy upstream (forward_proxy) block.
 #   3. xcaddy version matches the pinned value from defaults/main.yml.
-#   4. caddy-naive binary is present (placed by pre_tasks stub, not live build).
-# Live xcaddy build is skipped — caddy-naive stub was placed in converge.yml.
+#   4. the digest-bound operator-supplied fixture remains executable.
+# Live xcaddy build is outside this scenario and requires separate evidence.
 
 - name: Verify naive role
   hosts: all

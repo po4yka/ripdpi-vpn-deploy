@@ -33,9 +33,9 @@ provisioner:
 verifier:
   name: ansible
 
-# The naive role builds Caddy with xcaddy from source — that needs Go
-# and network. converge.yml stubs out caddy-naive so the role tasks
-# succeed; verify.yml asserts Caddyfile shape without a live build.
+# The source-build path needs Go and network. This scenario instead binds an
+# explicitly supplied synthetic binary to its digest with source builds
+# disabled, then verifies the surrounding role contract.
 scenario:
   test_sequence:
     - dependency

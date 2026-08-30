@@ -1,8 +1,7 @@
 ---
-# Converge naive role with a stub caddy-naive binary.
-# The live xcaddy build (needs Go + network) is skipped via the
-# `caddy_naive_bin.stat.exists` guard in tasks/main.yml — we pre-place
-# the binary in pre_tasks so the role sees it and skips the build block.
+# Converge naive with a digest-bound, operator-supplied synthetic binary.
+# The source build remains disabled explicitly; the role must validate these
+# bytes rather than infer source-build state from mere file existence.
 - name: Converge naive role
   hosts: all
   become: true
@@ -10,8 +9,6 @@
     vpn:
       enable_naive: true
       enable_nginx_xhttp: false
-    naive:
-      xcaddy_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
     naive_secrets:
       server_name: "vpn.example.com"
       username: "u-test"
@@ -49,7 +46,7 @@
         group: root
         mode: "0755"
 
-    - name: Stub caddy-naive binary (skips the live xcaddy build)
+    - name: Install operator-supplied caddy-naive fixture
       ansible.builtin.copy:
         dest: /usr/local/bin/caddy-naive
         owner: root
@@ -62,6 +59,23 @@
             run|validate|version) echo "caddy-naive stub v{{ naive.caddy_version | default('v2.11.2') }}"; exit 0 ;;
             *) exit 0 ;;
           esac
+
+    - name: Inspect pinned caddy-naive fixture digest
+      ansible.builtin.stat:
+        path: /usr/local/bin/caddy-naive
+        checksum_algorithm: sha256
+      register: _molecule_caddy_naive
+
+    - name: Bind the disabled-build fixture to its exact digest
+      ansible.builtin.set_fact:
+        naive: >-
+          {{
+            naive
+            | combine({
+                'build_with_xcaddy': false,
+                'xcaddy_sha256': _molecule_caddy_naive.stat.checksum
+              })
+          }}
 
   roles:
     - role: naive
