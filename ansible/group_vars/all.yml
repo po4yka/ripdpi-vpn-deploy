@@ -227,3 +227,14 @@ amneziawg_config_dir: /etc/amnezia/amneziawg
 
 # Backup
 restic_repo_dir: /var/backups/vpn-restic   # local-first; remote sync is opt-in
+
+# Reviewed operator-owned policy; no feed is loaded or applied by default.
+network_exposure_gate:
+  mode: disabled
+  artifact: ""
+  trusted_key: ""
+  trusted_key_sha256: ""
+  source_id: ""
+  promotion_approved: false
+  promotion_digest: ""
+  authorized_hosts: []

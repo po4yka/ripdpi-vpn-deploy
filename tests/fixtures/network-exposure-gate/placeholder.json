@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "source_id": "reviewed-placeholder",
+  "created_at": "<CREATED_AT>",
+  "expires_at": "<EXPIRES_AT>",
+  "review": {
+    "approved": false,
+    "reviewer": "reviewer-placeholder",
+    "review_id": "review-placeholder"
+  },
+  "content_sha256": "<CONTENT_DIGEST>",
+  "policy": {
+    "ingress": [
+      "<REVIEWED_PREFIX>"
+    ],
+    "host_egress": [],
+    "forwarded": []
+  },
+  "signature": {
+    "algorithm": "rsa-sha256",
+    "value": "<DETACHED_SIGNATURE>"
+  }
+}

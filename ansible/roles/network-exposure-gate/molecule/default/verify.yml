@@ -1,0 +1,141 @@
+---
+- name: Verify signed exposure policy and explicit rollback
+  hosts: all
+  become: true
+  vars_files:
+    - "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/exposure-fixture/vars.json"
+  vars:
+    allowed_ssh_cidrs: "{{ exposure_test_ssh_cidrs }}"
+    vpn:
+      enable_amneziawg: false
+      enable_xray_reality: false
+      enable_hysteria: false
+    public_listener_contract: []
+  tasks:
+    - name: Capture disabled firewall bytes
+      ansible.builtin.stat:
+        path: /etc/nftables.conf
+        checksum_algorithm: sha256
+      register: exposure_disabled
+
+    - name: Configure log-only review
+      ansible.builtin.set_fact:
+        network_exposure_gate: "{{ exposure_fixture_config | combine({'mode': 'log_only'}) }}"
+      no_log: true
+
+    - name: Review the real signed artifact without applying the firewall
+      ansible.builtin.include_role:
+        name: network-exposure-gate
+
+    - name: Capture post-review firewall bytes
+      ansible.builtin.stat:
+        path: /etc/nftables.conf
+        checksum_algorithm: sha256
+      register: exposure_reviewed
+
+    - name: Require log-only parity and an empty enforcement plan
+      ansible.builtin.assert:
+        that:
+          - exposure_reviewed.stat.checksum == exposure_disabled.stat.checksum
+          - _network_exposure_plan == {}
+          - _network_exposure_summary.validation == 'valid'
+
+    - name: Configure the explicitly approved canary fixture
+      ansible.builtin.set_fact:
+        network_exposure_gate: "{{ exposure_fixture_config }}"
+      no_log: true
+
+    - name: Exercise the canonical firewall check-mode path
+      ansible.builtin.include_role:
+        name: firewall
+        apply:
+          check_mode: true
+
+    - name: Require check-mode to leave managed bytes unchanged
+      ansible.builtin.stat:
+        path: /etc/nftables.conf
+        checksum_algorithm: sha256
+      register: exposure_checked
+      failed_when: exposure_checked.stat.checksum != exposure_disabled.stat.checksum
+
+    - name: Apply the signed canary through the canonical firewall
+      ansible.builtin.include_role:
+        name: firewall
+
+    - name: Read actual kernel rules after canary promotion
+      ansible.builtin.command: nft -j list table inet filter
+      register: exposure_rules
+      changed_when: false
+      no_log: true
+
+    - name: Require all three independently selected directional rules
+      ansible.builtin.assert:
+        that:
+          - "'exposure-ingress' in exposure_rules.stdout"
+          - "'exposure-host-egress' in exposure_rules.stdout"
+          - "'exposure-forwarded' in exposure_rules.stdout"
+      no_log: true
+
+    - name: Reapply the same artifact to prove idempotence
+      ansible.builtin.include_role:
+        name: firewall
+
+    - name: Require no repeated firewall publication
+      ansible.builtin.assert:
+        that:
+          - not _firewall_nftables_config.changed
+
+    - name: Capture the accepted canary config
+      ansible.builtin.stat:
+        path: /etc/nftables.conf
+        checksum_algorithm: sha256
+      register: exposure_canary
+
+    - name: Configure an expired but correctly signed artifact
+      ansible.builtin.set_fact:
+        network_exposure_gate: "{{ exposure_fixture_config | combine({'artifact': exposure_expired_artifact}) }}"
+      no_log: true
+
+    - name: Prove invalid input fails before firewall mutation
+      block:
+        - name: Attempt the expired canonical firewall application
+          ansible.builtin.include_role:
+            name: firewall
+        - name: Reject an incorrectly accepted expired artifact
+          ansible.builtin.fail:
+            msg: Expired artifact was accepted
+      rescue:
+        - name: Require the failure to come from the validation boundary
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Refuse unvalidated network exposure policy'
+
+    - name: Require rejection to preserve the last accepted config
+      ansible.builtin.stat:
+        path: /etc/nftables.conf
+        checksum_algorithm: sha256
+      register: exposure_rejected
+      failed_when: exposure_rejected.stat.checksum != exposure_canary.stat.checksum
+
+    - name: Explicitly roll back the gate to disabled
+      ansible.builtin.set_fact:
+        network_exposure_gate:
+          mode: disabled
+
+    - name: Reapply the canonical disabled firewall
+      ansible.builtin.include_role:
+        name: firewall
+
+    - name: Require rollback byte parity
+      ansible.builtin.stat:
+        path: /etc/nftables.conf
+        checksum_algorithm: sha256
+      register: exposure_rollback
+      failed_when: exposure_rollback.stat.checksum != exposure_disabled.stat.checksum
+
+    - name: Require feature-owned runtime rules to be absent after rollback
+      ansible.builtin.command: nft -j list table inet filter
+      register: exposure_rollback_rules
+      changed_when: false
+      failed_when: "'exposure-' in exposure_rollback_rules.stdout"
+      no_log: true

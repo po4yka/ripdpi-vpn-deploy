@@ -249,6 +249,7 @@ jobs:
       matrix:
         role:
           - baseline
+          - network-exposure-gate
           - firewall
           - xray
           - hysteria

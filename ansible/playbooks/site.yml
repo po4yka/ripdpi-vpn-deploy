@@ -25,6 +25,11 @@
           - ssh_transaction_controller_managed | default(false) | bool
         fail_msg: site.yml must run through the exact-node deployment controller
 
+    - name: Validate reviewed network exposure policy before host changes
+      ansible.builtin.import_role:
+        name: network-exposure-gate
+      tags: [always]
+
     - name: Ensure VPN_SECRETS_FILE was provided
       tags: [always]
       ansible.builtin.assert:

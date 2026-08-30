@@ -46,6 +46,7 @@ ANSIBLE_LIMIT ?=
 ANSIBLE_EXTRA_VARS_FILE ?=
 DEPLOY_SSH_CONTEXTS_FILE ?=
 DEPLOY_PROMOTION_CONFIG_FILE ?=
+NETWORK_EXPOSURE_CONFIG ?=
 
 TF_ROOT       := terraform/providers/$(PROVIDER)
 TF_ENV        := ./scripts/terraform-env.sh
@@ -61,6 +62,7 @@ DEPLOY_SOURCE_REVISION ?= $(shell ./scripts/deploy-source-identity.sh --revision
 DEPLOYABLE_SOURCE_DIGEST ?= $(shell ./scripts/deploy-source-identity.sh --digest 2>/dev/null)
 
 export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
+export NETWORK_EXPOSURE_CONFIG
 export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CONFIG DEPLOY_SOURCE_REVISION DEPLOYABLE_SOURCE_DIGEST
 INSPECT_HOSTS ?=
 INSPECT_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini
@@ -68,7 +70,7 @@ INSPECT_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
 export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 
 .PHONY: help init validate plan apply inventory wait decrypt require-inventory require-clean-source validate-ansible-extra-vars dry-run deploy backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
-        pre-deploy-check \
+        pre-deploy-check network-exposure-review \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
         molecule-test smoke-test validate-target monitor-reality-target probe-sni-survival scan-targets blue-green \
@@ -212,6 +214,7 @@ help:
 	@echo "  vpnd-msrv                  cargo check --locked with Rust 1.88.0"
 	@echo "  tf-policy                  terraform test + conftest OPA policy check for all providers"
 	@echo "  tf-policy-verify           Run pinned Conftest policy tests without provider credentials"
+	@echo "  network-exposure-review    Validate signed policy without changing managed hosts"
 	@echo "  molecule-test ROLE=<name>  Run one role's molecule scenario"
 	@echo "  molecule-full-stack        site.yml end-to-end inside a Docker container"
 
@@ -250,6 +253,11 @@ apply:
 
 inventory:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" ./scripts/render-inventory.sh
+
+network-exposure-review: require-inventory
+	@test -n "$$NETWORK_EXPOSURE_CONFIG" && test -f "$$NETWORK_EXPOSURE_CONFIG" || { echo "NETWORK_EXPOSURE_CONFIG must name an operator-owned configuration file" >&2; exit 2; }
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/network-exposure-review.yml \
+	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)")
 
 wait:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/wait-cloud-init.sh

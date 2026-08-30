@@ -33,6 +33,11 @@ runtime state.
 the excess-packet drop. NDP uses hop-limit 255; only router advertisements
 require a link-local source, since neighbor discovery includes DAD from `::`.
 
+**Reviewed exposure is validated before mutation** — `network-exposure-gate`
+revalidates signed controller artifacts for direct role calls as well as site
+deploys. Only an explicitly promoted plan adds directional rules; empty plans
+preserve baseline bytes. The rule-bearing render is no_log with diff disabled.
+
 ## What's done well
 
 - **Cleanup limited to known ports** — when toggling features (disabling
