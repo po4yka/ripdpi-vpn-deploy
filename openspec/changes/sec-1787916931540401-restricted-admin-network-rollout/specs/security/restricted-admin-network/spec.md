@@ -94,3 +94,15 @@ Production migration MUST require an authorized isolated staging target and obse
 
 - **WHEN** the required target or authenticated administration session is missing
 - **THEN** production enrollment/migration remains blocked and existing access stays unchanged.
+
+#### Scenario: Temporary staging cleanup is authorized
+
+- **WHEN** an authorized isolated staging server is ready for deletion
+- **THEN** cleanup requires a private canonical manifest bound to the authenticated provider API username, exact Terraform workspace and state digest, hostname, server UUID, root-storage UUID, authenticated provider `server.created` time and exact target/escalation/hard deadlines at 36, 44 and 47 hours.
+- **AND** the manifest provider and environment MUST match the exact destroy command, and a new private evidence inode MUST be reserved before any lifecycle override, plan or provider-changing command.
+- **AND** one authorization/reservation step MUST bind the same manifest and state inodes and bytes to the authenticated API username before provider refresh or plan; plan validation MUST require that exact reservation, and an immediate pre-apply transition MUST recheck the account, reservation, state and exclusive hard deadline before recording `apply_started` and invoking Terraform apply.
+- **AND** the controller refuses a symlink in any path component, foreign owner, non-private mode, noncanonical or expired deadline, changed state, foreign identifier, or a destroy plan containing any create, update, replacement or deletion outside the exact owned resource set before apply.
+- **AND** the private binary plan inode inspected by the controller MUST be the same unreplaceable inode passed to apply; an ambient umask or worktree pathname MUST NOT expose or substitute it.
+- **AND** cleanup is not accepted until the authenticated API username exactly matches the manifest before resource lookup and read-only provider checks report the exact server and root storage absent in the same reserved inode; provider mismatch, authentication failure, forbidden resources, existing resources or ambiguous responses remain failures and never claim that cumulative billing was reversed.
+- **AND** successful guarded cleanup preserves the existing generated fleet inventory and emits only a categorical redacted audit event after exact provider absence; abort, apply failure or ambiguous absence emits no success audit.
+- **AND** only an operation with durable `apply_started_at` strictly before the hard deadline MAY complete read-only absence verification after expiry, and such evidence MUST say `verified_after_expiry` and `expired_after_apply`; a reserved-only or at-deadline operation MUST refuse before resource lookup or apply.

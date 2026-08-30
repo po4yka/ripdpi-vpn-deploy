@@ -5,9 +5,36 @@ ENV      ?= prod
 
 # Capture deployment labels before the eager Terraform path assignments below.
 # The included fleet file remains trusted executable Make configuration.
-ifneq ($(filter deploy dry-run deploy-canary backup-configure install-ssh-recovery,$(MAKECMDGOALS)),)
+ifneq ($(filter deploy dry-run deploy-canary backup-configure install-ssh-recovery staging-cleanup-manifest staging-destroy,$(MAKECMDGOALS)),)
 override ENV := $(value ENV)
 override PROVIDER := $(value PROVIDER)
+endif
+
+# Staging credentials are ambient capabilities, never Make expressions. Reject
+# every non-environment origin before eager assignments or child-environment
+# construction can expand attacker-controlled Make syntax.
+ifneq ($(filter staging-cleanup-manifest staging-destroy,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error staging cleanup requires exactly one Make goal)
+endif
+ifneq ($(filter-out undefined environment,$(origin UPCLOUD_USERNAME) $(origin UPCLOUD_PASSWORD) $(origin UPCLOUD_API_USERNAME) $(origin UPCLOUD_API_PASSWORD)),)
+$(error staging cleanup credentials must come from the environment)
+endif
+_STAGING_PRIMARY_CREDENTIALS := $(if $(value UPCLOUD_USERNAME),1,0)$(if $(value UPCLOUD_PASSWORD),1,0)
+_STAGING_ALIAS_CREDENTIALS := $(if $(value UPCLOUD_API_USERNAME),1,0)$(if $(value UPCLOUD_API_PASSWORD),1,0)
+ifeq ($(_STAGING_PRIMARY_CREDENTIALS)$(_STAGING_ALIAS_CREDENTIALS),1100)
+override UPCLOUD_USERNAME := $(value UPCLOUD_USERNAME)
+override UPCLOUD_PASSWORD := $(value UPCLOUD_PASSWORD)
+else ifeq ($(_STAGING_PRIMARY_CREDENTIALS)$(_STAGING_ALIAS_CREDENTIALS),0011)
+override UPCLOUD_USERNAME := $(value UPCLOUD_API_USERNAME)
+override UPCLOUD_PASSWORD := $(value UPCLOUD_API_PASSWORD)
+else
+$(error staging cleanup requires exactly one complete UpCloud credential pair)
+endif
+override UPCLOUD_API_USERNAME :=
+override UPCLOUD_API_PASSWORD :=
+export UPCLOUD_USERNAME UPCLOUD_PASSWORD
+unexport UPCLOUD_API_USERNAME UPCLOUD_API_PASSWORD
 endif
 
 HOSTS   ?=
@@ -106,6 +133,8 @@ help:
 	@echo "  inspect INSPECT_HOSTS=…    Passive SSH observation of exact comma-separated inventory names"
 	@echo "  source-drift               Require live deployable digest to match the clean checkout"
 	@echo "  security-verify            Host hardening checks (SSH/sysctl/firewall/services)"
+	@echo "  staging-cleanup-manifest   Bind one ci-staging UpCloud state to a private cleanup manifest"
+	@echo "  staging-destroy            Destroy only the exact manifest-bound staging resources"
 	@echo "  awg-evidence-provision     Provision the three-host AWG evidence lane (after decrypt)"
 	@echo "  smoke-test                 End-to-end traffic test through every enabled profile"
 	@echo "  clean                      shred $(SECRETS_FILE)"
@@ -428,6 +457,37 @@ rotate-credentials:
 	  --note "playbook=rotate-credentials.yml secrets_file=$(notdir $(SECRETS_FILE))"
 
 DESTROY_ARGS ?=
+
+# These staging goals treat caller fields as literal data. Keep them separate
+# from the free-form generic destroy surface and reject mixed goal execution.
+ifneq ($(filter staging-cleanup-manifest staging-destroy,$(MAKECMDGOALS)),)
+export STAGING_CLEANUP_MANIFEST STAGING_CLEANUP_STATE STAGING_CLEANUP_HOSTNAME STAGING_POST_DESTROY_EVIDENCE
+unexport MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+endif
+
+.PHONY: staging-cleanup-manifest staging-destroy
+staging-cleanup-manifest: override STAGING_CLEANUP_MANIFEST := $(value STAGING_CLEANUP_MANIFEST)
+staging-cleanup-manifest: override STAGING_CLEANUP_STATE := $(value STAGING_CLEANUP_STATE)
+staging-cleanup-manifest: override STAGING_CLEANUP_HOSTNAME := $(value STAGING_CLEANUP_HOSTNAME)
+staging-destroy: override STAGING_CLEANUP_MANIFEST := $(value STAGING_CLEANUP_MANIFEST)
+staging-destroy: override STAGING_POST_DESTROY_EVIDENCE := $(value STAGING_POST_DESTROY_EVIDENCE)
+staging-cleanup-manifest staging-destroy: override DEPLOY_SOURCE_REVISION :=
+staging-cleanup-manifest staging-destroy: override DEPLOYABLE_SOURCE_DIGEST :=
+
+staging-cleanup-manifest:
+	@./scripts/staging-cleanup-guard.py create-manifest \
+	  --output "$${STAGING_CLEANUP_MANIFEST}" \
+	  --provider "$${PROVIDER}" \
+	  --environment "$${ENV}" \
+	  --workspace "$${ENV}" \
+	  --state "$${STAGING_CLEANUP_STATE}" \
+	  --hostname "$${STAGING_CLEANUP_HOSTNAME}"
+
+staging-destroy:
+	@./scripts/destroy.sh --non-interactive \
+	  --staging-manifest "$${STAGING_CLEANUP_MANIFEST}" \
+	  --post-destroy-evidence "$${STAGING_POST_DESTROY_EVIDENCE}"
 
 destroy:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/destroy.sh $(DESTROY_ARGS)

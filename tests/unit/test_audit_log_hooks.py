@@ -96,6 +96,7 @@ def test_lifecycle_hooks_call_best_effort_append():
         "scripts/new-client.sh": "--action new-client",
         "scripts/rotate-secrets.sh": "--action rotate-secrets",
         "scripts/fleet-rotate.sh": "--action fleet-rotate-step",
+        "scripts/destroy.sh": "--action staging-destroy",
         "Makefile": "--action rotate-credentials",
     }
 

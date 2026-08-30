@@ -115,6 +115,102 @@ per-run tfvars even if `destroy` failed, so the next run starts
 from a clean slate. Operators verifying after a failed run should
 re-check UpCloud billing once a quarter.
 
+### UUID-bound operator staging cleanup
+
+Authorized operator staging uses an environment named `ci-staging-*` and is
+stricter than the recurring CI workflow. Use a dedicated worktree so its local
+Terraform workspace state is isolated. Keep the state file mode `0600` under a
+same-owner directory that is not group/other writable. Keep the cleanup
+manifest and post-destroy evidence in one operator-owned `0700` directory;
+each file is a regular `0600` file. Do not put that private directory in the
+repository. After the server exists, create the manifest through the canonical
+Make goal directly from the exact local state before running any destructive
+command. The goal authenticates `/1.3/account`, stores the exact API username
+only in private artifacts, reads the exact state-bound server through
+`/1.3/server`, and derives creation, target, escalation and hard deadlines from
+the provider's integer `server.created` value at 36, 44 and 47 hours. Provider
+credentials remain one complete ambient `UPCLOUD_USERNAME`/`UPCLOUD_PASSWORD`
+or `UPCLOUD_API_USERNAME`/`UPCLOUD_API_PASSWORD` pair; do not pass them as Make
+variables. This binds the
+exact API principal used for creation and deletion, not a parent billing
+account, and does not claim that provider usernames are immutable identifiers.
+
+The private staging tfvars must explicitly keep `enable_backups=false` and
+`additional_public_ip=false`. The guard refuses a server state with a provider
+backup rule, more than one public IPv4 interface, any nested additional IP, or
+any additional Terraform resource outside the exact owned cleanup set.
+
+```bash
+ENV=ci-staging-<run>
+STATE_PATH="$PWD/terraform/providers/upcloud/terraform.tfstate.d/${ENV}/terraform.tfstate"
+umask 077
+PROVIDER=upcloud ENV="$ENV" \
+STAGING_CLEANUP_MANIFEST=/absolute/private/path/cleanup-manifest.json \
+STAGING_CLEANUP_STATE="$STATE_PATH" \
+STAGING_CLEANUP_HOSTNAME=vpn-ci-staging-<run> \
+make staging-cleanup-manifest
+```
+
+The exact state must contain only `upcloud_server.vpn`, its
+`upcloud_firewall_rules.vpn` resource and `terraform_data.ssh_port`. The guard
+extracts both owned UUIDs and calculates the state digest from those same state
+bytes; an operator does not type either UUID or account identity into the
+manifest. Every path ancestor is opened without following symlinks, and final
+files are accessed relative to a held parent directory descriptor.
+
+Destroy the staging environment through the guarded path. One authorization
+step validates the same manifest/state inodes and bytes, rechecks its
+authenticated account username, and reserves evidence before creating the
+lifecycle override or allowing Terraform to refresh provider state. Plan
+validation requires that exact reservation. Immediately before apply, the
+controller rechecks the account, reservation, state and exclusive hard
+deadline, then durably changes the same evidence inode to `apply_started`.
+Only exact deletes of the manifest-bound
+server, root storage, server firewall resource and local SSH-port identity are
+accepted. Create, update, replacement, foreign deletion, changed state or an
+expired deadline refuses before apply. The post-destroy evidence path is
+reserved as a new `0600` inode before the lifecycle override or Terraform plan
+is created. Existing paths, symlinks in any ancestor, unsafe parent permissions and a manifest
+whose environment differs from the command's exact `ENV` refuse without any
+Terraform invocation. An interactive refusal before apply removes only an
+unchanged exact reservation; a started or failed apply retains it for manual
+inspection.
+
+An apply that started before the hard deadline may finish read-only provider
+absence verification after expiry, but evidence is then explicitly
+`verified_after_expiry` / `expired_after_apply`; an expired reserved operation
+cannot begin or query resources.
+
+The binary plan is created under the same private directory with `umask 077`,
+opened once, unlinked, and passed through the same inherited file descriptor to
+both `terraform show` and `terraform apply`. The applied inode is therefore the
+one whose JSON view passed the guard; no worktree pathname remains available
+for substitution or disclosure between validation and apply.
+
+```bash
+PROVIDER=upcloud ENV=ci-staging-<run> \
+STAGING_CLEANUP_MANIFEST=/absolute/private/path/cleanup-manifest.json \
+STAGING_POST_DESTROY_EVIDENCE=/absolute/private/path/post-destroy.json \
+make staging-destroy
+```
+
+After apply, the command verifies the authenticated account username matches
+the private manifest before any resource GET, then performs bounded read-only
+UpCloud GETs and replaces the reservation content in the same inode.
+Success requires the exact server and root storage to return their typed
+not-found responses; authentication failure, forbidden resources, an existing
+resource or an ambiguous response keeps cleanup failed and preserves the
+reservation and Terraform state for diagnosis. The staging path preserves the
+shared generated inventory byte-for-byte; generic CI destroy keeps its existing
+inventory cleanup behavior. A categorical redacted audit record is appended
+only after exact provider absence succeeds. The unlinked binary
+plan is never republished after apply. The categorical
+`billing_status=no-active-owned-resources` means those exact chargeable
+resources are absent. It does not rewrite, reverse or predict cumulative invoice
+entries. Retain manifest and evidence in encrypted operator storage until the
+account billing view has been reviewed, then remove the temporary state and
+credentials through their separately approved cleanup path.
+
 ## What this does NOT test
 
   * Strict pre-deploy secret hygiene (`validate-secrets --strict`,
