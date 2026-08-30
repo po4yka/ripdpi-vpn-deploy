@@ -1156,7 +1156,7 @@ def test_fresh_process_recovers_two_output_transaction_after_real_crash(
         timeout=30,
     )
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)["changed"] in {False, True}
+    assert json.loads(result.stdout)["changed"] is True
     assert first.read_bytes() == b"next-runtime\n"
     assert second.read_bytes() == b"next-helper\n"
     assert helper.inspect(receipt_root, descriptor) == {
@@ -1202,6 +1202,10 @@ def test_post_commit_cleanup_failure_reports_pending_success(
     assert marker.is_file()
     assert stat.S_IMODE(marker.stat().st_mode) == 0o600
 
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": True,
+    }
     assert helper.converge(receipt_root, descriptor) == {
         "schema_version": 1,
         "changed": False,
@@ -1278,6 +1282,10 @@ def test_committed_cleanup_reports_pending_when_only_wal_quarantine_is_readable(
     assert not canonical.exists()
 
     monkeypatch.undo()
+    assert helper.converge(receipt_root, descriptor) == {
+        "schema_version": 1,
+        "changed": True,
+    }
     assert helper.converge(receipt_root, descriptor) == {
         "schema_version": 1,
         "changed": False,

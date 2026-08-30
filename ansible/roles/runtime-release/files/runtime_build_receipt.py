@@ -1830,15 +1830,17 @@ def converge(receipt_root: Path, document: object) -> dict:
         if recovered != "none":
             _stage_path, recovered_stage = _prepare_stage(receipt_root, descriptor)
             os.close(recovered_stage)
-        if cleanup_pending:
+        if recovered == "committed":
             pending = inspect(receipt_root, document)
             if pending["rebuild_required"]:
-                raise UnsafeState("prior-cleanup-pending")
+                raise UnsafeState("committed-recovery-output-mismatch")
             return {
                 "schema_version": SCHEMA_VERSION,
-                "changed": False,
-                "cleanup_pending": True,
+                "changed": True,
+                **({"cleanup_pending": True} if cleanup_pending else {}),
             }
+        if cleanup_pending:
+            raise UnsafeState("invalid-precommit-cleanup-debt")
         previous_receipt = _read_receipt(directory, receipt_name)
         current = inspect(receipt_root, document)
         if not current["rebuild_required"]:
