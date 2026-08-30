@@ -22,12 +22,14 @@ import subprocess
 import sys
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 SCHEMA_VERSION = 1
 MAX_RECEIPT_BYTES = 64 * 1024
 MAX_JOURNAL_BYTES = 256 * 1024
 LOCK_TIMEOUT_SECONDS = 300.0
+_BUILD_CANCELLED_SIGNAL = 0
 LOCK_POLL_SECONDS = 0.1
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -1139,26 +1141,77 @@ def _require_directory_identity(path: Path, expected: int) -> None:
         os.close(current)
 
 
+def _process_group_exists(process_group: int) -> bool:
+    try:
+        os.killpg(process_group, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def _terminate_process_group(process: subprocess.Popen) -> None:
-    if process.poll() is not None:
-        return
+    process_group = process.pid
     try:
-        os.killpg(process.pid, signal.SIGTERM)
+        os.killpg(process_group, signal.SIGTERM)
     except ProcessLookupError:
-        return
+        pass
+
+    deadline = time.monotonic() + 2
+    while _process_group_exists(process_group) and time.monotonic() < deadline:
+        process.poll()
+        time.sleep(0.05)
+
+    if _process_group_exists(process_group):
+        try:
+            os.killpg(process_group, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    if process.poll() is None:
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired as error:
+            raise UnsafeState("build-process-cleanup-failed") from error
+
+    deadline = time.monotonic() + 2
+    while _process_group_exists(process_group) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    if _process_group_exists(process_group):
+        raise UnsafeState("build-process-cleanup-failed")
+
+
+@contextmanager
+def _build_cancellation() -> object:
+    global _BUILD_CANCELLED_SIGNAL
+    previous_handlers: dict[signal.Signals, object] = {}
+
+    def request_cancellation(signum: int, _frame: object) -> None:
+        global _BUILD_CANCELLED_SIGNAL
+        _BUILD_CANCELLED_SIGNAL = signum
+
+    _BUILD_CANCELLED_SIGNAL = 0
+    for handled_signal in (signal.SIGINT, signal.SIGTERM):
+        try:
+            previous_handlers[handled_signal] = signal.getsignal(handled_signal)
+            signal.signal(handled_signal, request_cancellation)
+        except ValueError:
+            # Direct unit callers may exercise convergence from worker threads;
+            # only the CLI main thread owns process-signal cancellation.
+            previous_handlers.clear()
+            break
     try:
-        process.wait(timeout=2)
-        return
-    except subprocess.TimeoutExpired:
-        pass  # Escalate the still-live process group from TERM to KILL.
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        return
-    try:
-        process.wait(timeout=2)
-    except subprocess.TimeoutExpired as error:
-        raise UnsafeState("build-process-cleanup-failed") from error
+        yield
+    finally:
+        for handled_signal, previous_handler in previous_handlers.items():
+            signal.signal(handled_signal, previous_handler)
+        _BUILD_CANCELLED_SIGNAL = 0
+
+
+def _raise_if_build_cancelled() -> None:
+    if _BUILD_CANCELLED_SIGNAL:
+        raise SystemExit(128 + _BUILD_CANCELLED_SIGNAL)
 
 
 def _retained_cwd_options(directory: int) -> dict:
@@ -1170,38 +1223,70 @@ def _retained_cwd_options(directory: int) -> dict:
     return {"cwd": None, "preexec_fn": lambda: os.fchdir(directory)}
 
 
-def _run_build_steps(descriptor: dict) -> None:
-    for step in descriptor["steps"]:
-        directory = _open_directory(Path(step["chdir"]), os.geteuid())
-        environment = {
-            "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-            "LANG": "C.UTF-8",
-            **step["environment"],
-        }
-        try:
-            process = subprocess.Popen(
-                step["argv"],
-                env=environment,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                pass_fds=(directory,),
-                start_new_session=True,
-                **_retained_cwd_options(directory),
-            )
-        except OSError as error:
-            os.close(directory)
-            raise UnsafeState("build-step-failed") from error
-        try:
+def _prepare_build_environment(stage_directory: int, project_path: Path) -> dict:
+    names = (".build-home", ".build-cache", ".go-build-cache")
+    for name in names:
+        os.mkdir(name, mode=0o700, dir_fd=stage_directory)
+    return {
+        "HOME": str(project_path / names[0]),
+        "XDG_CACHE_HOME": str(project_path / names[1]),
+        "GOCACHE": str(project_path / names[2]),
+    }
+
+
+def _run_build_steps(descriptor: dict, base_environment: dict[str, str]) -> None:
+    with _build_cancellation():
+        for step in descriptor["steps"]:
+            _raise_if_build_cancelled()
+            directory = _open_directory(Path(step["chdir"]), os.geteuid())
+            environment = {
+                "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "LANG": "C.UTF-8",
+                **base_environment,
+                **step["environment"],
+            }
+            process: subprocess.Popen | None = None
             try:
-                returncode = process.wait(timeout=step["timeout_seconds"])
-            except subprocess.TimeoutExpired as error:
-                _terminate_process_group(process)
-                raise UnsafeState("build-step-failed") from error
-        finally:
-            os.close(directory)
-        if returncode != 0:
-            raise UnsafeState("build-step-failed")
+                process = subprocess.Popen(
+                    step["argv"],
+                    env=environment,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    pass_fds=(directory,),
+                    start_new_session=True,
+                    **_retained_cwd_options(directory),
+                )
+                _raise_if_build_cancelled()
+                deadline = time.monotonic() + step["timeout_seconds"]
+                while True:
+                    _raise_if_build_cancelled()
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise UnsafeState("build-step-failed")
+                    try:
+                        returncode = process.wait(timeout=min(0.1, remaining))
+                        break
+                    except subprocess.TimeoutExpired:
+                        continue
+                if returncode != 0:
+                    raise UnsafeState("build-step-failed")
+                if _process_group_exists(process.pid):
+                    raise UnsafeState("build-step-failed")
+            except (Exception, KeyboardInterrupt, SystemExit) as primary_error:
+                if process is not None:
+                    try:
+                        _terminate_process_group(process)
+                    except Exception as cleanup_error:
+                        raise UnsafeState(
+                            "build-process-cleanup-failed"
+                        ) from primary_error
+                elif isinstance(primary_error, OSError):
+                    raise UnsafeState("build-step-failed") from primary_error
+                raise
+            finally:
+                os.close(directory)
+        _raise_if_build_cancelled()
 
 
 def _copy_descriptor(source: int, destination: int) -> None:
@@ -1856,7 +1941,10 @@ def converge(receipt_root: Path, document: object) -> dict:
             return {"schema_version": SCHEMA_VERSION, "changed": False}
 
         stage_path, stage_directory = _prepare_stage(receipt_root, descriptor)
-        _run_build_steps(descriptor)
+        build_environment = _prepare_build_environment(
+            stage_directory, stage_path / descriptor["name"]
+        )
+        _run_build_steps(descriptor, build_environment)
         _require_directory_identity(stage_path / descriptor["name"], stage_directory)
         transaction_id = uuid.uuid4().hex
         publications = _prepare_publications(

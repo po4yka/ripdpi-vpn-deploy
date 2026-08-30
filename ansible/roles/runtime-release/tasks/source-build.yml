@@ -158,9 +158,17 @@
         | combine({
             runtime_build_descriptor.name: {
               'changed': (
-                (_runtime_build_inspection_payload.rebuild_required | bool)
-                if ansible_check_mode
-                else ((_runtime_build_convergence.stdout | from_json).changed | bool)
+                (
+                  (runtime_build_results | default({}))
+                  .get(runtime_build_descriptor.name, {})
+                  .get('changed', false)
+                  | bool
+                )
+                or (
+                  (_runtime_build_inspection_payload.rebuild_required | bool)
+                  if ansible_check_mode
+                  else ((_runtime_build_convergence.stdout | from_json).changed | bool)
+                )
               ),
               'cleanup_pending': (
                 false

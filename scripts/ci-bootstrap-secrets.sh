@@ -36,9 +36,10 @@
 #   REALITY_SERVER_NAME  TLS server name for REALITY
 #   WATCHDOG_CANARY_URL  owned HTTPS endpoint returning exactly 204; optional
 #                        only for workflows that explicitly disable watchdog
-# Optional source-build pair (both or neither; exact lowercase hex only):
-#   XRAY_SOURCE_COMMIT          reviewed 40-64 character source commit
-#   XRAY_SOURCE_BINARY_SHA256   expected 64-character built-binary digest
+# Optional source-build triple (all or none; exact lowercase hex only):
+#   XRAY_SOURCE_COMMIT                reviewed 40-64 character source commit
+#   XRAY_SOURCE_LINUX_AMD64_SHA256    expected amd64 built-binary digest
+#   XRAY_SOURCE_LINUX_ARM64_SHA256    expected arm64 built-binary digest
 set -euo pipefail
 
 OUT="${OUT:?OUT path is required}"
@@ -48,15 +49,19 @@ REALITY_TARGET="${REALITY_TARGET:?REALITY_TARGET is required}"
 REALITY_SERVER_NAME="${REALITY_SERVER_NAME:?REALITY_SERVER_NAME is required}"
 WATCHDOG_CANARY_URL="${WATCHDOG_CANARY_URL:-https://canary.invalid/healthz}"
 XRAY_SOURCE_COMMIT="${XRAY_SOURCE_COMMIT:-}"
-XRAY_SOURCE_BINARY_SHA256="${XRAY_SOURCE_BINARY_SHA256:-}"
+XRAY_SOURCE_LINUX_AMD64_SHA256="${XRAY_SOURCE_LINUX_AMD64_SHA256:-}"
+XRAY_SOURCE_LINUX_ARM64_SHA256="${XRAY_SOURCE_LINUX_ARM64_SHA256:-}"
 
-if [[ -n "$XRAY_SOURCE_COMMIT" || -n "$XRAY_SOURCE_BINARY_SHA256" ]]; then
+if [[ -n "$XRAY_SOURCE_COMMIT" || -n "$XRAY_SOURCE_LINUX_AMD64_SHA256" || -n "$XRAY_SOURCE_LINUX_ARM64_SHA256" ]]; then
   [[ "$XRAY_SOURCE_COMMIT" =~ ^[0-9a-f]{40,64}$ ]] || {
     echo "ci-bootstrap-secrets: invalid XRAY_SOURCE_COMMIT" >&2; exit 2; }
-  [[ "$XRAY_SOURCE_BINARY_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
-    echo "ci-bootstrap-secrets: invalid XRAY_SOURCE_BINARY_SHA256" >&2; exit 2; }
+  [[ "$XRAY_SOURCE_LINUX_AMD64_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "ci-bootstrap-secrets: invalid XRAY_SOURCE_LINUX_AMD64_SHA256" >&2; exit 2; }
+  [[ "$XRAY_SOURCE_LINUX_ARM64_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "ci-bootstrap-secrets: invalid XRAY_SOURCE_LINUX_ARM64_SHA256" >&2; exit 2; }
   xray_source_fields="  source_commit: \"${XRAY_SOURCE_COMMIT}\"
-  source_binary_sha256: \"${XRAY_SOURCE_BINARY_SHA256}\""
+  source_linux_amd64_sha256: \"${XRAY_SOURCE_LINUX_AMD64_SHA256}\"
+  source_linux_arm64_sha256: \"${XRAY_SOURCE_LINUX_ARM64_SHA256}\""
 else
   xray_source_fields=""
 fi

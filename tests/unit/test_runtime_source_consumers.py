@@ -1,5 +1,6 @@
 """Source-building roles must consume the shared typed receipt contract."""
 
+import json
 import os
 import shutil
 import subprocess
@@ -67,6 +68,7 @@ def test_naive_build_uses_compound_identity_and_pinned_output_receipt() -> None:
 
 
 def test_xray_source_build_uses_resolved_commit_and_shared_receipt() -> None:
+    select_digest = _task("xray-runtime", "Select pinned Xray source digest")
     resolve = _task("xray-runtime", "Resolve pinned Xray source commit")
     converge = _task("xray-runtime", "Converge pinned Xray source build")
     descriptor = converge["vars"]["runtime_build_descriptor"]
@@ -88,9 +90,14 @@ def test_xray_source_build_uses_resolved_commit_and_shared_receipt() -> None:
             "name": "installed",
             "staged_path": "/var/lib/ripdpi/runtime-build-staging/xray-core/xray",
             "path": "{{ xray_install_dir }}/releases/{{ xray.version }}/xray",
-            "expected_sha256": "{{ xray.source_binary_sha256 }}",
+            "expected_sha256": "{{ xray_runtime_source_sha256 }}",
         }
     ]
+    assert select_digest["ansible.builtin.set_fact"]["xray_runtime_source_sha256"] == (
+        "{{ xray.source_linux_amd64_sha256 if "
+        "ansible_facts['architecture'] == 'x86_64' else "
+        "xray.source_linux_arm64_sha256 }}"
+    )
     assert converge["ansible.builtin.include_role"] == {
         "name": "runtime-release",
         "tasks_from": "source-build",
@@ -128,7 +135,7 @@ def test_xray_source_build_uses_resolved_commit_and_shared_receipt() -> None:
         in publish["ansible.builtin.set_fact"]["xray_runtime_changed"]
     )
     assert (
-        "runtime_build_changed | default(false)"
+        "runtime_build_results | default({})"
         in publish["ansible.builtin.set_fact"]["xray_runtime_changed"]
     )
     assert (
@@ -172,25 +179,56 @@ def test_xray_source_pins_are_separate_optional_secret_fields() -> None:
     assert xray_properties["source_commit"]["pattern"] == (
         "^([0-9a-f]{40,64}|REPLACE_WITH_[A-Z0-9_]+)$"
     )
-    assert xray_properties["source_binary_sha256"] == {"$ref": "#/$defs/sha256_hex"}
+    assert xray_properties["source_linux_amd64_sha256"] == {
+        "$ref": "#/$defs/sha256_hex"
+    }
+    assert xray_properties["source_linux_arm64_sha256"] == {
+        "$ref": "#/$defs/sha256_hex"
+    }
+    assert "source_binary_sha256" not in xray_properties
+    assert schema["properties"]["xray"]["dependentRequired"] == {
+        "source_commit": [
+            "source_linux_amd64_sha256",
+            "source_linux_arm64_sha256",
+        ],
+        "source_linux_amd64_sha256": [
+            "source_commit",
+            "source_linux_arm64_sha256",
+        ],
+        "source_linux_arm64_sha256": [
+            "source_commit",
+            "source_linux_amd64_sha256",
+        ],
+    }
     assert example["xray"]["source_commit"].startswith("REPLACE_WITH_")
-    assert example["xray"]["source_binary_sha256"].startswith("REPLACE_WITH_")
+    assert example["xray"]["source_linux_amd64_sha256"].startswith("REPLACE_WITH_")
+    assert example["xray"]["source_linux_arm64_sha256"].startswith("REPLACE_WITH_")
 
     for path in ("scripts/bootstrap-secrets.sh", "scripts/ci-bootstrap-secrets.sh"):
         bootstrap = (ROOT / path).read_text()
         assert "source_commit:" in bootstrap
-        assert "source_binary_sha256:" in bootstrap
+        assert "source_linux_amd64_sha256:" in bootstrap
+        assert "source_linux_arm64_sha256:" in bootstrap
+        assert "source_binary_sha256:" not in bootstrap
 
     ci_bootstrap = (ROOT / "scripts/ci-bootstrap-secrets.sh").read_text()
     assert 'XRAY_SOURCE_COMMIT="${XRAY_SOURCE_COMMIT:-}"' in ci_bootstrap
-    assert 'XRAY_SOURCE_BINARY_SHA256="${XRAY_SOURCE_BINARY_SHA256:-}"' in ci_bootstrap
+    assert (
+        'XRAY_SOURCE_LINUX_AMD64_SHA256="${XRAY_SOURCE_LINUX_AMD64_SHA256:-}"'
+        in ci_bootstrap
+    )
+    assert (
+        'XRAY_SOURCE_LINUX_ARM64_SHA256="${XRAY_SOURCE_LINUX_ARM64_SHA256:-}"'
+        in ci_bootstrap
+    )
     assert "^[0-9a-f]{40,64}$" in ci_bootstrap
     assert "^[0-9a-f]{64}$" in ci_bootstrap
     assert "example xray.source_commit" not in ci_bootstrap
 
     operator_docs = (ROOT / "docs/XRAY-RELEASE-LINE.md").read_text()
     assert "xray.source_commit" in operator_docs
-    assert "xray.source_binary_sha256" in operator_docs
+    assert "xray.source_linux_amd64_sha256" in operator_docs
+    assert "xray.source_linux_arm64_sha256" in operator_docs
 
 
 def test_ci_bootstrap_refuses_partial_or_malformed_xray_source_pins(
@@ -206,10 +244,22 @@ def test_ci_bootstrap_refuses_partial_or_malformed_xray_source_pins(
     }
     cases = [
         {"XRAY_SOURCE_COMMIT": "a" * 40},
-        {"XRAY_SOURCE_BINARY_SHA256": "b" * 64},
+        {
+            "XRAY_SOURCE_LINUX_AMD64_SHA256": "b" * 64,
+            "XRAY_SOURCE_LINUX_ARM64_SHA256": "c" * 64,
+        },
         {
             "XRAY_SOURCE_COMMIT": "A" * 40,
-            "XRAY_SOURCE_BINARY_SHA256": "b" * 64,
+            "XRAY_SOURCE_LINUX_AMD64_SHA256": "b" * 64,
+            "XRAY_SOURCE_LINUX_ARM64_SHA256": "c" * 64,
+        },
+        {
+            "XRAY_SOURCE_COMMIT": "a" * 40,
+            "XRAY_SOURCE_LINUX_AMD64_SHA256": "b" * 64,
+        },
+        {
+            "XRAY_SOURCE_COMMIT": "a" * 40,
+            "XRAY_SOURCE_LINUX_ARM64_SHA256": "c" * 64,
         },
     ]
 
@@ -262,6 +312,9 @@ def test_source_build_role_uses_fixed_staging_and_fresh_check_prerequisites() ->
     assert "(_runtime_build_convergence.stdout | from_json).changed | bool" in (
         publish["ansible.builtin.set_fact"]["runtime_build_changed"]
     )
+    assert "runtime_build_results | default({})" in (
+        publish["ansible.builtin.set_fact"]["runtime_build_results"]
+    )
 
     assert validate[-2:] == ["--stage-root", "{{ runtime_build_stage_root }}"]
     assert inspect["ansible.builtin.command"]["argv"][-2:] == [
@@ -273,6 +326,95 @@ def test_source_build_role_uses_fixed_staging_and_fresh_check_prerequisites() ->
         "{{ runtime_build_stage_root }}",
     ]
     assert "_runtime_build_stage_directory.changed" in inspect["when"]
+
+
+def test_source_build_changed_state_latches_across_repeated_consumers(
+    tmp_path: Path,
+) -> None:
+    executable = shutil.which("ansible-playbook")
+    assert executable, "installed Ansible is required for the change-latch proof"
+    tasks = yaml.safe_load(
+        (ROOT / "ansible/roles/runtime-release/tasks/source-build.yml").read_text()
+    )
+    publish = next(
+        task
+        for task in tasks
+        if task["name"] == "Publish runtime source-build change state"
+    )
+    tasks_path = tmp_path / "publish-change.yml"
+    tasks_path.write_text(yaml.safe_dump([publish], sort_keys=False))
+    playbook = tmp_path / "change-latch.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "name": "Exercise repeated source-build consumers",
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "vars": {
+                        "runtime_build_descriptor": {"name": "xray-core"},
+                        "_runtime_build_inspection_payload": {"rebuild_required": True},
+                        "_runtime_build_convergence": {
+                            "stdout": json.dumps(
+                                {"changed": True, "cleanup_pending": True}
+                            )
+                        },
+                    },
+                    "tasks": [
+                        {"ansible.builtin.include_tasks": str(tasks_path)},
+                        {
+                            "ansible.builtin.set_fact": {
+                                "_runtime_build_convergence": {
+                                    "stdout": json.dumps({"changed": False})
+                                }
+                            }
+                        },
+                        {"ansible.builtin.include_tasks": str(tasks_path)},
+                        {
+                            "ansible.builtin.set_fact": {
+                                "runtime_build_descriptor": {"name": "caddy-naive"}
+                            }
+                        },
+                        {"ansible.builtin.include_tasks": str(tasks_path)},
+                        {
+                            "ansible.builtin.assert": {
+                                "that": [
+                                    "not (runtime_build_changed | bool)",
+                                    "runtime_build_results['xray-core'].changed | bool",
+                                    "not (runtime_build_results['xray-core'].cleanup_pending | bool)",
+                                    "not (runtime_build_results['caddy-naive'].changed | bool)",
+                                ]
+                            }
+                        },
+                    ],
+                }
+            ],
+            sort_keys=False,
+        )
+    )
+    environment = {
+        key: os.environ[key] for key in ("PATH", "HOME", "LANG") if key in os.environ
+    }
+    environment.update(
+        {
+            "ANSIBLE_DEBUG": "false",
+            "ANSIBLE_HOME": str(tmp_path / "ansible-home"),
+            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
+            "ANSIBLE_NOCOLOR": "1",
+        }
+    )
+
+    result = subprocess.run(
+        [executable, "-i", "localhost,", str(playbook)],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_source_build_controller_validation_uses_running_ansible_python() -> None:
@@ -327,6 +469,9 @@ def test_source_publication_changes_drive_service_restart_state(tmp_path: Path) 
                         "vars": {
                             "naive": {"build_with_xcaddy": naive_source_enabled},
                             "runtime_build_changed": runtime_build_changed,
+                            "runtime_build_results": {
+                                "xray-core": {"changed": runtime_build_changed}
+                            },
                             "xray_runtime_build_from_source": xray_source_enabled,
                             "_xray_runtime_current": {"changed": xray_link_changed},
                             "expected_xray_changed": expected_xray_changed,

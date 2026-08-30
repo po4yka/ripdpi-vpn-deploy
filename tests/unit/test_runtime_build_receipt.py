@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import errno
 import importlib.util
 import json
 import os
+import signal
 import shutil
 import stat
 import subprocess
@@ -729,6 +731,48 @@ def test_failed_build_does_not_publish_receipt(trusted_root: Path) -> None:
     assert not (receipt_root / "fixture-runtime.json").exists()
 
 
+def test_build_environment_has_private_deterministic_home_and_go_cache(
+    trusted_root: Path,
+) -> None:
+    helper = _helper_module()
+    receipt_root = trusted_root / "receipts"
+    output_root = trusted_root / "bin"
+    receipt_root.mkdir(mode=0o755)
+    output_root.mkdir(mode=0o755)
+    output = output_root / "fixture-runtime"
+    builder = trusted_root / "capture-build-environment.py"
+    builder.write_text(
+        "import json,os,pathlib,sys\n"
+        "path=pathlib.Path(sys.argv[1])\n"
+        "path.write_text(json.dumps({key:os.environ[key] for key in "
+        "('HOME','XDG_CACHE_HOME','GOCACHE')},sort_keys=True))\n"
+        "path.chmod(0o755)\n"
+    )
+    descriptor = _descriptor(
+        output,
+        steps=[
+            {
+                "argv": [
+                    sys.executable,
+                    str(builder),
+                    str(_staged_path(output)),
+                ],
+                "chdir": str(trusted_root),
+                "environment": {},
+                "timeout_seconds": 10,
+            }
+        ],
+    )
+
+    assert helper.converge(receipt_root, descriptor)["changed"] is True
+    project = trusted_root / "runtime-build-staging" / "fixture-runtime"
+    assert json.loads(output.read_text()) == {
+        "GOCACHE": str(project / ".go-build-cache"),
+        "HOME": str(project / ".build-home"),
+        "XDG_CACHE_HOME": str(project / ".build-cache"),
+    }
+
+
 def test_expected_output_digest_is_verified_before_receipt_publication(
     trusted_root: Path,
 ) -> None:
@@ -1113,10 +1157,18 @@ def test_recovery_descriptor_close_ambiguity_is_non_authoritative(
             failed = True
             raise OSError("injected-recovery-close-ambiguity")
 
-    monkeypatch.setattr(helper.os, "close", close_then_fail)
-    helper._close_recovery_outputs([{"parent": descriptor}])
-    with pytest.raises(OSError):
-        os.fstat(descriptor)
+    try:
+        monkeypatch.setattr(helper.os, "close", close_then_fail)
+        helper._close_recovery_outputs([{"parent": descriptor}])
+        with pytest.raises(OSError) as closed:
+            os.fstat(descriptor)
+        assert closed.value.errno == errno.EBADF
+    finally:
+        monkeypatch.undo()
+        try:
+            os.close(descriptor)
+        except OSError as error:
+            assert error.errno == errno.EBADF
 
 
 @pytest.mark.parametrize("kind", ["regular", "symlink"])
@@ -2090,8 +2142,10 @@ def test_replaced_stage_directory_refuses_before_live_publication(
     moved = project.with_name("validated-stage")
     real_run = helper._run_build_steps
 
-    def build_then_replace(build_descriptor: dict) -> None:
-        real_run(build_descriptor)
+    def build_then_replace(
+        build_descriptor: dict, build_environment: dict[str, str]
+    ) -> None:
+        real_run(build_descriptor, build_environment)
         project.rename(moved)
         project.mkdir(mode=0o700)
 
@@ -2212,6 +2266,154 @@ def test_build_timeout_terminates_the_whole_child_process_group(
 
     assert not marker.exists()
     assert not (receipt_root / "fixture-runtime.json").exists()
+
+
+def test_successful_leader_cannot_leave_a_build_descendant_running(
+    trusted_root: Path,
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    marker = trusted_root / "escaped-after-leader"
+    builder = trusted_root / "spawn-and-exit.py"
+    builder.write_text(
+        "import subprocess,sys\n"
+        "subprocess.Popen([sys.executable,'-c',"
+        "'import pathlib,signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);"
+        "time.sleep(3);pathlib.Path(r\\\"'"
+        '+sys.argv[1]+\'\\").write_text(\\"escaped\\")\'])\n'
+    )
+    descriptor = _descriptor(
+        output,
+        steps=[
+            {
+                "argv": [sys.executable, str(builder), str(marker)],
+                "chdir": str(trusted_root),
+                "environment": {},
+                "timeout_seconds": 10,
+            }
+        ],
+    )
+
+    with pytest.raises(helper.UnsafeState, match="build-step-failed"):
+        helper.converge(receipt_root, descriptor)
+    time.sleep(1.2)
+
+    assert not marker.exists()
+    assert not (receipt_root / "fixture-runtime.json").exists()
+
+
+def test_cancellation_observed_after_spawn_reaps_before_lock_release(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    marker = trusted_root / "escaped-spawn-window"
+    builder = trusted_root / "spawn-window-builder.py"
+    builder.write_text(
+        "import pathlib,signal,sys,time\n"
+        "signal.signal(signal.SIGTERM,signal.SIG_IGN)\n"
+        "time.sleep(3)\n"
+        "pathlib.Path(sys.argv[1]).write_text('escaped')\n"
+    )
+    descriptor = _descriptor(
+        output,
+        steps=[
+            {
+                "argv": [sys.executable, str(builder), str(marker)],
+                "chdir": str(trusted_root),
+                "environment": {},
+                "timeout_seconds": 10,
+            }
+        ],
+    )
+    real_popen = helper.subprocess.Popen
+
+    def spawn_then_cancel(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        helper._BUILD_CANCELLED_SIGNAL = signal.SIGTERM
+        return process
+
+    monkeypatch.setattr(helper.subprocess, "Popen", spawn_then_cancel)
+    with pytest.raises(SystemExit) as cancelled:
+        helper.converge(receipt_root, descriptor)
+    time.sleep(1.2)
+
+    assert cancelled.value.code == 128 + signal.SIGTERM
+    assert not marker.exists()
+    assert not (receipt_root / "fixture-runtime.json").exists()
+    monkeypatch.undo()
+    assert helper.converge(receipt_root, _descriptor(output))["changed"] is True
+
+
+@pytest.mark.parametrize(
+    ("interrupt_signal", "expected_returncode"),
+    [(signal.SIGINT, 128 + signal.SIGINT), (signal.SIGTERM, 128 + signal.SIGTERM)],
+    ids=["sigint", "sigterm"],
+)
+def test_cli_interrupt_terminates_and_reaps_the_build_process_group(
+    trusted_root: Path, interrupt_signal: signal.Signals, expected_returncode: int
+) -> None:
+    receipt_root, output = _prepare_layout(trusted_root)
+    ready = trusted_root / "build-ready"
+    escaped = trusted_root / "escaped-child"
+    builder = trusted_root / "spawn-interrupt-child.py"
+    builder.write_text(
+        "import os,pathlib,subprocess,sys,time\n"
+        "pathlib.Path(sys.argv[1]).write_text(str(os.getpid()))\n"
+        "subprocess.Popen([sys.executable,'-c',"
+        "'import pathlib,signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);"
+        "time.sleep(3);pathlib.Path(r\\\"'"
+        '+sys.argv[2]+\'\\").write_text(\\"escaped\\")\'])\n'
+        "time.sleep(30)\n"
+    )
+    descriptor = _descriptor(
+        output,
+        steps=[
+            {
+                "argv": [sys.executable, str(builder), str(ready), str(escaped)],
+                "chdir": str(trusted_root),
+                "environment": {},
+                "timeout_seconds": 30,
+            }
+        ],
+    )
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            str(HELPER),
+            "converge",
+            "--receipt-root",
+            str(receipt_root),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert process.stdin is not None
+    process.stdin.write(json.dumps(descriptor))
+    process.stdin.close()
+    process.stdin = None
+    deadline = time.monotonic() + 5
+    while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert ready.is_file()
+    process_group = int(ready.read_text())
+
+    try:
+        process.send_signal(interrupt_signal)
+        stdout, stderr = process.communicate(timeout=5)
+        time.sleep(1.2)
+
+        assert process.returncode == expected_returncode, stderr
+        assert stdout == ""
+        assert not escaped.exists()
+        assert not (receipt_root / "fixture-runtime.json").exists()
+    finally:
+        try:
+            os.killpg(process_group, signal.SIGKILL)
+        except ProcessLookupError:
+            pass  # The production cleanup should already have removed the group.
 
 
 @pytest.mark.parametrize("value", ["", "A" * 64, "0" * 63, "0" * 65])

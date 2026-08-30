@@ -82,6 +82,10 @@ cleanup. A third receipt state refuses without mutating any inode.
   environment and validates absolute executables, working directories, and
   staged/live paths. It does not sandbox an intentionally malicious argv, so
   descriptors must remain repository-authored role inputs.
+- **Build cancellation owns the whole process group** — SIGINT, SIGTERM,
+  timeouts, direct exceptions, and a leader that exits with descendants all
+  terminate and reap the private build session before the project lock is
+  released. A daemonized compiler child can never outlive its transaction.
 - **Post-commit cleanup is recovery debt, not rollback** — staging is emptied
   through its retained directory descriptor before the receipt commit. The
   immutable private journal binds previous/next receipts and exact before/after
