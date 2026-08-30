@@ -9,7 +9,11 @@ The audit quantified structural duplication that makes every future change a mul
 ## What Changes
 
 - A shared `runtime-release` role with a `runtime_release_*` API provides one fetch-verify-install path (release dir, current symlink, arch-slug derivation); the six consumer roles migrate onto it.
-- The amneziawg source-build block collapses to a loop over project descriptors; receipt handling becomes the single build-verification idiom.
+- The amneziawg source-build block collapses to a loop over project descriptors;
+  receipt handling becomes the single build-verification idiom. The shared
+  helper owns a fixed private stage, bounded per-project serialization,
+  all-output digest validation, compensating live publication, and receipt
+  durability; Naive and Xray source consumers adopt the same transaction.
 - Remaining unhardened Ansible-owned unit templates (the probe-matrix pair plus real-vps server, echo and mode-specific firewall services) reach the sandbox floor; the external sentinel and backup/geodata units remain with their existing owners.
 - hysteria, hysteria-realm, naive, and dns-morph-bridge gain template validators; restart-only roles gain post-restart liveness waits matching the xray pattern.
 - Port defaults become single-sourced in group_vars/all.yml; role defaults and the listener manifest reference them instead of duplicating literals; cohort branching is expressed once.

@@ -22,6 +22,13 @@ release directories, candidates, receipts, and public publication parents are
 all owned by `root:root`. The role rejects consumer overrides, so an untrusted
 runtime identity never controls a pathname that root later writes through.
 
+**Source builds publish from a private transaction** — source consumers provide
+a stable project identity, canonical recipe, and staged-to-live output map. The
+helper builds below a fixed root-only project directory, verifies every staged
+executable and optional digest, then atomically publishes all live outputs with
+compensation before recording one typed receipt. Consumer roles own their build
+commands, not locking, publication, receipt parsing, or drift classification.
+
 ## What's done well
 
 - **Fail-closed input surface** — empty pins, unsupported architectures,
@@ -61,3 +68,11 @@ runtime identity never controls a pathname that root later writes through.
 - **Fresh check mode is predictive** — it validates inputs and ownership but
   cannot download into a simulated directory. It reports the planned change and
   leaves activation untouched; normal convergence supplies the byte proof.
+- **Source-build receipts use a fixed namespace** — the central receipt root,
+  staging root, and per-project lock names are not consumer inputs. A consumer
+  may describe source identity, commands, staged files, and live outputs, but
+  cannot redirect root-owned state outside its private project transaction.
+- **Consumer commands remain trusted role code** — the helper strips inherited
+  environment and validates absolute executables, working directories, and
+  staged/live paths. It does not sandbox an intentionally malicious argv, so
+  descriptors must remain repository-authored role inputs.

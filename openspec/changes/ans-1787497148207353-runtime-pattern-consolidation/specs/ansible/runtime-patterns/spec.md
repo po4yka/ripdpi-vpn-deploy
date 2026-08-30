@@ -15,12 +15,40 @@ The `xray-runtime`, `hysteria`, `hysteria-realm`, `snell`, `probe-matrix-target`
 
 ### Requirement: REQ-BUILD-RECEIPT-IDIOM — Source builds MUST verify through the shared receipt idiom
 
-Build-from-source tasks MUST record and check build receipts through one implementation rather than per-role idioms or in-file copies.
+Build-from-source tasks MUST record and check build receipts through one
+implementation rather than per-role idioms or in-file copies. Each descriptor
+MUST bind an immutable source identity, canonical recipe, private staged output
+paths and every runtime-critical live output. Where a consumer has an approved
+binary digest, the descriptor MUST bind that digest independently of release
+archive checksums.
+
+The shared implementation MUST serialize each project under a bounded lock,
+execute from retained validated source-directory descriptors, discard inherited
+controller environment, validate every staged output before publication, and
+publish all live outputs as one compensating transaction. A build, validation,
+publication, or receipt failure MUST leave the previously active bytes intact
+and MUST NOT publish a current receipt. Check mode MUST predict drift without
+executing a build or requiring a checkout that check mode only predicts.
 
 #### Scenario: amneziawg rebuild decision
 
 - **WHEN** amneziawg converges after an upstream commit bump
 - **THEN** the loop-driven descriptor build rebuilds only affected projects and updates receipts once
+
+#### Scenario: staged output fails its approved digest
+
+- **WHEN** a source recipe completes but one staged executable differs from its approved digest
+- **THEN** no live output or receipt changes and a corrected retry starts from a clean private stage
+
+#### Scenario: multi-output publication fails
+
+- **WHEN** publication fails after one of several staged outputs was installed
+- **THEN** the helper restores the exact prior live inode and bytes for every output before refusing
+
+#### Scenario: fresh check mode
+
+- **WHEN** helper, receipt namespace, staging namespace, or source checkout is absent during `--check`
+- **THEN** the role reports the planned source-build change without creating prerequisites or executing the recipe
 
 ### Requirement: REQ-UNIT-FLOOR-PARITY — In-scope Ansible service units MUST carry the sandbox floor
 
