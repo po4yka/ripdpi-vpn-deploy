@@ -61,7 +61,7 @@ def _guard_stub(root: Path, *, fail_command: str = "") -> Path:
     guard.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
-        'printf \'%s\\n\' "$*" >> "$GUARD_LOG"\n'
+        '{ printf \'%q\' "$1"; for arg in "${@:2}"; do printf \' %q\' "$arg"; done; printf \'\\n\'; } >> "$GUARD_LOG"\n'
         'if [[ "$1" == "${GUARD_FAIL_COMMAND:-}" ]]; then exit 9; fi\n'
         'if [[ "$1" == reserve-evidence || "$1" == authorize-reserve-evidence ]]; then\n'
         "  while [[ $# -gt 0 ]]; do\n"
@@ -1071,9 +1071,9 @@ def test_staging_destroy_physicalizes_symlinked_tmpdir_before_plan_validation(
     evidence = private / "post-destroy.json"
     guard_log = private / "guard.log"
     audit_log = private / "audit.log"
-    physical_tmp = tmp_path / "physical-tmp"
+    physical_tmp = tmp_path / "physical tmp"
     physical_tmp.mkdir(mode=0o700)
-    symlinked_tmp = tmp_path / "symlinked-tmp"
+    symlinked_tmp = tmp_path / "symlinked tmp"
     symlinked_tmp.symlink_to(physical_tmp, target_is_directory=True)
     _guard_stub(root)
     _audit_stub(root)
