@@ -26,6 +26,11 @@ resource "upcloud_server" "vpn" {
   zone     = var.zone
   plan     = var.plan
 
+  # UpCloud's Public & Utility firewall is stateless. Keep it disabled on a
+  # fresh node until cloud-init and Ansible have installed and verified the
+  # guest stateful firewall; promotion is then an explicit in-place update.
+  firewall = var.enable_provider_firewall
+
   cpu = null
   mem = null
 

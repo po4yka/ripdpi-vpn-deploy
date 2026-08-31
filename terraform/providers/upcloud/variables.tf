@@ -155,6 +155,35 @@ variable "enable_ipv6" {
   description = "Allocate and expose a public IPv6 address."
 }
 
+variable "enable_provider_firewall" {
+  type        = bool
+  default     = false
+  description = "Activate the UpCloud stateless Public & Utility firewall after the exact node has passed guest-firewall and strict-SSH verification."
+}
+
+variable "provider_return_ephemeral_ports" {
+  type = object({
+    start = number
+    end   = number
+  })
+  default = {
+    start = 32768
+    end   = 60999
+  }
+  description = "Linux client ephemeral port range accepted for inbound TCP/UDP return traffic by the stateless provider firewall."
+
+  validation {
+    condition = (
+      floor(var.provider_return_ephemeral_ports.start) == var.provider_return_ephemeral_ports.start &&
+      floor(var.provider_return_ephemeral_ports.end) == var.provider_return_ephemeral_ports.end &&
+      var.provider_return_ephemeral_ports.start >= 1024 &&
+      var.provider_return_ephemeral_ports.end <= 65535 &&
+      var.provider_return_ephemeral_ports.start <= var.provider_return_ephemeral_ports.end
+    )
+    error_message = "provider_return_ephemeral_ports must be an ordered integer range within 1024..65535."
+  }
+}
+
 variable "enable_backups" {
   type        = bool
   default     = true

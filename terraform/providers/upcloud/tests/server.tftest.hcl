@@ -31,6 +31,28 @@ run "server_metadata_is_enabled" {
   }
 }
 
+run "provider_firewall_is_disabled_until_explicit_promotion" {
+  command = plan
+
+  assert {
+    condition     = upcloud_server.vpn.firewall == false
+    error_message = "fresh nodes must keep the stateless provider firewall disabled until guest-firewall verification"
+  }
+}
+
+run "provider_firewall_can_be_enabled_in_place_after_verification" {
+  command = plan
+
+  variables {
+    enable_provider_firewall = true
+  }
+
+  assert {
+    condition     = upcloud_server.vpn.firewall == true
+    error_message = "enable_provider_firewall=true must activate the already-managed provider ruleset"
+  }
+}
+
 run "server_cloud_init_uses_configured_ssh_port" {
   command = plan
 

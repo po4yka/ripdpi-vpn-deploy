@@ -204,6 +204,149 @@ run "firewall_default_deny_terminates_both_chains" {
 }
 
 # ---------------------------------------------------------------------------
+# UpCloud Public & Utility firewall is stateless. Server-initiated flows need
+# their inbound return half before the terminal drops; the guest stateful
+# firewall remains responsible for rejecting unsolicited packets.
+# ---------------------------------------------------------------------------
+run "firewall_allows_dual_stack_tcp_udp_return_path" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for family in ["IPv4", "IPv6"] : alltrue([
+        for protocol in ["tcp", "udp"] : length([
+          for r in upcloud_firewall_rules.vpn.firewall_rule : r
+          if r.comment == "${upper(protocol)} return ${family}"
+          && r.family == family
+          && r.protocol == protocol
+          && r.destination_port_start == "32768"
+          && r.destination_port_end == "60999"
+          && r.action == "accept"
+          && r.direction == "in"
+        ]) == 1
+      ])
+    ])
+    error_message = "stateless return rules must accept TCP/UDP to 32768-60999 on IPv4 and IPv6"
+  }
+}
+
+run "firewall_uses_configured_return_port_range" {
+  command = plan
+
+  variables {
+    provider_return_ephemeral_ports = {
+      start = 40000
+      end   = 45000
+    }
+  }
+
+  assert {
+    condition = alltrue([
+      for r in upcloud_firewall_rules.vpn.firewall_rule :
+      r.destination_port_start == "40000" && r.destination_port_end == "45000"
+      if strcontains(r.comment, " return ")
+    ])
+    error_message = "every generic return rule must use provider_return_ephemeral_ports"
+  }
+}
+
+run "firewall_allows_exact_dhcp_bootstrap_replies" {
+  command = plan
+
+  assert {
+    condition = length([
+      for r in upcloud_firewall_rules.vpn.firewall_rule : r
+      if r.comment == "DHCPv4 reply"
+      && r.family == "IPv4"
+      && r.protocol == "udp"
+      && r.source_port_start == "67"
+      && r.source_port_end == "67"
+      && r.destination_port_start == "68"
+      && r.destination_port_end == "68"
+      ]) == 1 && length([
+      for r in upcloud_firewall_rules.vpn.firewall_rule : r
+      if r.comment == "DHCPv6 reply"
+      && r.family == "IPv6"
+      && r.protocol == "udp"
+      && r.source_port_start == "547"
+      && r.source_port_end == "547"
+      && r.destination_port_start == "546"
+      && r.destination_port_end == "546"
+    ]) == 1
+    error_message = "DHCPv4 and DHCPv6 server-to-client replies must remain available during bootstrap"
+  }
+}
+
+run "firewall_explicitly_allows_outbound_traffic" {
+  command = plan
+
+  assert {
+    condition = length([
+      for r in upcloud_firewall_rules.vpn.firewall_rule : r
+      if r.comment == "default allow outbound"
+      && r.action == "accept"
+      && r.direction == "out"
+    ]) == 1
+    error_message = "stateless provider filtering must explicitly preserve the outbound half of server-initiated flows"
+  }
+}
+
+run "firewall_return_rules_precede_terminal_drops" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      index([for r in upcloud_firewall_rules.vpn.firewall_rule : r.comment], "TCP return IPv4") < index([for r in upcloud_firewall_rules.vpn.firewall_rule : r.comment], "default deny inbound"),
+      index([for r in upcloud_firewall_rules.vpn.firewall_rule : r.comment], "UDP return IPv4") < index([for r in upcloud_firewall_rules.vpn.firewall_rule : r.comment], "default deny inbound"),
+      index([for r in upcloud_firewall_rules.vpn.firewall_rule : r.comment], "TCP return IPv6") < index([for r in upcloud_firewall_rules.vpn.firewall_rule : r.comment], "default deny inbound v6"),
+      index([for r in upcloud_firewall_rules.vpn.firewall_rule : r.comment], "UDP return IPv6") < index([for r in upcloud_firewall_rules.vpn.firewall_rule : r.comment], "default deny inbound v6"),
+      index([for r in upcloud_firewall_rules.vpn.firewall_rule : r.comment], "DHCPv4 reply") < index([for r in upcloud_firewall_rules.vpn.firewall_rule : r.comment], "default deny inbound"),
+      index([for r in upcloud_firewall_rules.vpn.firewall_rule : r.comment], "DHCPv6 reply") < index([for r in upcloud_firewall_rules.vpn.firewall_rule : r.comment], "default deny inbound v6"),
+    ])
+    error_message = "every stateless return/bootstrap allow must appear before its family terminal drop"
+  }
+}
+
+run "rejects_privileged_return_port_range" {
+  command = plan
+
+  variables {
+    provider_return_ephemeral_ports = {
+      start = 1023
+      end   = 60999
+    }
+  }
+
+  expect_failures = [var.provider_return_ephemeral_ports]
+}
+
+run "rejects_reversed_return_port_range" {
+  command = plan
+
+  variables {
+    provider_return_ephemeral_ports = {
+      start = 60999
+      end   = 32768
+    }
+  }
+
+  expect_failures = [var.provider_return_ephemeral_ports]
+}
+
+run "rejects_return_port_above_65535" {
+  command = plan
+
+  variables {
+    provider_return_ephemeral_ports = {
+      start = 32768
+      end   = 65536
+    }
+  }
+
+  expect_failures = [var.provider_return_ephemeral_ports]
+}
+
+# ---------------------------------------------------------------------------
 # Validation contract: nginx_xhttp_public_port must be a real port.
 # ---------------------------------------------------------------------------
 run "rejects_invalid_xhttp_port_high" {

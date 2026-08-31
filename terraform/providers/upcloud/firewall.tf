@@ -55,6 +55,54 @@ resource "upcloud_firewall_rules" "vpn" {
     }
   }
 
+  # Public & Utility firewall rules are stateless: replies to connections
+  # initiated by this server arrive as ordinary inbound packets. Restrict the
+  # provider allow to the configured Linux client range; the guest nftables
+  # state machine still rejects unsolicited traffic to these ports.
+  dynamic "firewall_rule" {
+    for_each = {
+      "00-ipv4-tcp" = { family = "IPv4", protocol = "tcp" }
+      "01-ipv4-udp" = { family = "IPv4", protocol = "udp" }
+      "02-ipv6-tcp" = { family = "IPv6", protocol = "tcp" }
+      "03-ipv6-udp" = { family = "IPv6", protocol = "udp" }
+    }
+    content {
+      action                 = "accept"
+      direction              = "in"
+      family                 = firewall_rule.value.family
+      protocol               = firewall_rule.value.protocol
+      destination_port_start = tostring(var.provider_return_ephemeral_ports.start)
+      destination_port_end   = tostring(var.provider_return_ephemeral_ports.end)
+      comment                = "${upper(firewall_rule.value.protocol)} return ${firewall_rule.value.family}"
+    }
+  }
+
+  # DHCP replies use fixed client ports outside the Linux ephemeral range and
+  # are required before cloud-init can rely on public/utility networking.
+  firewall_rule {
+    action                 = "accept"
+    direction              = "in"
+    family                 = "IPv4"
+    protocol               = "udp"
+    source_port_start      = "67"
+    source_port_end        = "67"
+    destination_port_start = "68"
+    destination_port_end   = "68"
+    comment                = "DHCPv4 reply"
+  }
+
+  firewall_rule {
+    action                 = "accept"
+    direction              = "in"
+    family                 = "IPv6"
+    protocol               = "udp"
+    source_port_start      = "547"
+    source_port_end        = "547"
+    destination_port_start = "546"
+    destination_port_end   = "546"
+    comment                = "DHCPv6 reply"
+  }
+
   # Default deny inbound
   firewall_rule {
     action    = "drop"
@@ -68,6 +116,15 @@ resource "upcloud_firewall_rules" "vpn" {
     direction = "in"
     family    = "IPv6"
     comment   = "default deny inbound v6"
+  }
+
+  # Keep outbound permissive at the provider edge. Guest nftables owns egress
+  # policy; spelling this default out avoids depending on an account/UI default
+  # when the stateless ruleset is activated.
+  firewall_rule {
+    action    = "accept"
+    direction = "out"
+    comment   = "default allow outbound"
   }
 
   lifecycle {

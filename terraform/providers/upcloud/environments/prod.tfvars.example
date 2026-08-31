@@ -20,6 +20,9 @@ allowed_ssh_cidrs = [
 ]
 
 enable_hysteria = true
+# UpCloud's Public & Utility firewall is stateless. Leave disabled on a fresh
+# node; enable only after guest nftables and strict SSH have been verified.
+enable_provider_firewall = false
 # Provider-edge contract. Keep this exact list synchronized with the enabled
 # Ansible public listeners; deploy fails closed if they diverge.
 public_listeners = [

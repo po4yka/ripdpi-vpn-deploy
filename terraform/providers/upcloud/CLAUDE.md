@@ -19,6 +19,12 @@ toggle. Blue-green moves follow the disposable-node path instead.
 The provider schema may otherwise leave the family unknown during planning,
 which makes interface-count policy and IPv6-disable tests ambiguous.
 
+**Two-phase provider firewall** — UpCloud Public & Utility filtering is
+stateless. Terraform manages the full ruleset from the first apply, but the
+server-level firewall flag defaults off until guest nftables and strict SSH are
+verified. Promotion is an explicit in-place update with dual-stack TCP/UDP
+return rules limited to the host ephemeral range.
+
 ## What's done well
 
 - **Inputs are typed** — every variable has a `type` and `validation` block
@@ -44,3 +50,7 @@ which makes interface-count policy and IPv6-disable tests ambiguous.
   network delivers inbound UDP. After deploy, verify externally with
   `make burn-check` (QUIC probe); on-host `nft`/`ss` ACCEPT is not evidence.
   See `docs/PROVIDER-NOTES.md` → "UDP/443 edge reachability".
+- **Return rule ≠ established-state proof** — the provider accepts packets to
+  the configured ephemeral range because it cannot track flows. Never activate
+  it before guest nftables is verified, and keep the Terraform range equal to
+  the live kernel `ip_local_port_range`.
