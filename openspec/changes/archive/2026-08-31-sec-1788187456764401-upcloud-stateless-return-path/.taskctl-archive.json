@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-08-31T19:04:10Z",
+  "change": "sec-1788187456764401-upcloud-stateless-return-path",
+  "commit_sha": "e6425945067013391163f304d5e32be1e0d47e44",
+  "outcome": "review",
+  "schema": 1,
+  "task_id": "SEC-1788187456764401"
+}
