@@ -15,6 +15,9 @@ ssh_port             = 22
 allowed_ssh_cidrs = ["203.0.113.42/32"]
 
 enable_hysteria = true
+# Phase 1 is always false. Change to true only after this exact staging node
+# passes guest-firewall, SSH and outbound acceptance.
+enable_provider_firewall = false
 public_listeners = [
   { name = "xray", protocol = "tcp", port = 443 },
   { name = "xray-fallback", protocol = "tcp", port = 2053 },
