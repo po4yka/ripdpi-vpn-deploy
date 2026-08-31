@@ -1,0 +1,66 @@
+---
+- name: Validate network exposure mode
+  ansible.builtin.assert:
+    that:
+      - network_exposure_gate.mode | default('disabled') in ['disabled', 'log_only', 'canary', 'enforce']
+    fail_msg: "network_exposure_gate.mode must be disabled, log_only, canary, or enforce."
+
+- name: Clear the prior in-memory network exposure plan
+  ansible.builtin.set_fact:
+    _network_exposure_plan: {}
+    _network_exposure_summary:
+      validation: disabled
+      counts: {ingress: 0, host_egress: 0, forwarded: 0}
+  no_log: true
+
+- name: Validate the reviewed controller artifact without remote mutation
+  when: network_exposure_gate.mode | default('disabled') != 'disabled'
+  block:
+    - name: Verify signature trust review expiry and promotion
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ role_path }}/../../../scripts/network-exposure-gate.py"
+          - --mode
+          - "{{ network_exposure_gate.mode }}"
+          - --artifact
+          - "{{ network_exposure_gate.artifact | default('') }}"
+          - --trusted-key
+          - "{{ network_exposure_gate.trusted_key | default('') }}"
+          - --trusted-key-sha256
+          - "{{ network_exposure_gate.trusted_key_sha256 | default('') }}"
+          - --source-id
+          - "{{ network_exposure_gate.source_id | default('') }}"
+          - --promotion-approved
+          - "{{ (network_exposure_gate.promotion_approved | default(false) | bool) | ternary('true', 'false') }}"
+          - --promotion-digest
+          - "{{ network_exposure_gate.promotion_digest | default('') }}"
+          - --inventory-host
+          - "{{ inventory_hostname }}"
+          - --authorized-hosts-json
+          - "{{ network_exposure_gate.authorized_hosts | default([]) | to_json }}"
+          - --internal-plan
+      delegate_to: localhost
+      become: false
+      check_mode: false
+      changed_when: false
+      no_log: true
+      register: _network_exposure_validation
+
+    - name: Retain only verified normalized policy for the firewall renderer
+      ansible.builtin.set_fact:
+        _network_exposure_plan: "{{ (_network_exposure_validation.stdout | from_json).plan }}"
+        _network_exposure_summary: "{{ (_network_exposure_validation.stdout | from_json).summary }}"
+      no_log: true
+
+  rescue:
+    - name: Refuse unvalidated network exposure policy
+      ansible.builtin.fail:
+        msg: >-
+          Network exposure validation failed; no policy was rendered or applied.
+          Use the redacted controller validator to identify the category.
+
+- name: Report redacted network exposure validation evidence
+  ansible.builtin.debug:
+    var: _network_exposure_summary
+  when: network_exposure_gate.mode | default('disabled') != 'disabled'

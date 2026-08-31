@@ -142,7 +142,7 @@ def validate_yaml(data, *, empty=False):
         raise DeployError("YAML input must be a mapping")
 
 
-def read_input(path, *, private=False, exact_mode=None):
+def read_input(path, *, private=False, exact_mode=None, limit=fleet_inspection.LIMIT):
     """Allow trusted macOS directory aliases, but never follow the final file."""
     original = Path(path).expanduser().absolute()
     try:
@@ -167,12 +167,37 @@ def read_input(path, *, private=False, exact_mode=None):
                     raise DeployError("input changed during validation")
             finally:
                 os.close(canonical)
-            data = stream.read(fleet_inspection.LIMIT + 1)
-            if not data or len(data) > fleet_inspection.LIMIT:
+            data = stream.read(limit + 1)
+            if not data or len(data) > limit:
                 raise DeployError("empty or oversized input")
             return data
     except (OSError, fleet_inspection.InspectionError):
         raise DeployError("unreadable or unsafe input") from None
+
+
+def read_fenced_input(path, *, private=False, exact_mode=None, limit=fleet_inspection.LIMIT):
+    original = Path(path).expanduser().absolute()
+    data = read_input(original, private=private, exact_mode=exact_mode, limit=limit)
+    try:
+        info = original.lstat()
+    except OSError:
+        raise DeployError("unreadable or unsafe input") from None
+    fingerprint = (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_nlink,
+                   info.st_size, hashlib.sha256(data).digest())
+    return data, (original, private, exact_mode, limit, fingerprint)
+
+
+def verify_input_fence(fence):
+    path, private, exact_mode, limit, expected = fence
+    data = read_input(path, private=private, exact_mode=exact_mode, limit=limit)
+    try:
+        info = path.lstat()
+    except OSError:
+        raise DeployError("input changed during validation") from None
+    actual = (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_nlink,
+              info.st_size, hashlib.sha256(data).digest())
+    if actual != expected:
+        raise DeployError("input changed during validation")
 
 
 def execution_environment(root, directory):
@@ -429,6 +454,41 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment):
     return result
 
 
+def prepare_network_exposure_inputs(root, directory, values, hosts, environment):
+    config = values.get("network_exposure_gate")
+    if config is None or config["mode"] == "disabled":
+        return values, []
+    selected = sorted(host["name"] for host in hosts)
+    if config["mode"] in {"canary", "enforce"} and sorted(config["authorized_hosts"]) != selected:
+        raise DeployError("network exposure promotion does not match selection")
+    artifact_data, artifact_fence = read_fenced_input(
+        config["artifact"], private=True, exact_mode=0o600, limit=4 * 1024 * 1024)
+    key_data, key_fence = read_fenced_input(
+        config["trusted_key"], private=True, exact_mode=0o600)
+    artifact = private_file(directory / "network-exposure-artifact.json", artifact_data)
+    trusted_key = private_file(directory / "network-exposure-trusted-key.pem", key_data)
+    normalized = dict(config, artifact=str(artifact), trusted_key=str(trusted_key))
+    result = dict(values, network_exposure_gate=normalized)
+    for host in selected:
+        command = [sys.executable, str(root / "scripts/network-exposure-gate.py"),
+                   "--mode", normalized["mode"], "--artifact", normalized["artifact"],
+                   "--trusted-key", normalized["trusted_key"], "--trusted-key-sha256",
+                   normalized["trusted_key_sha256"], "--source-id", normalized["source_id"],
+                   "--promotion-approved", str(normalized["promotion_approved"]).lower(),
+                   "--promotion-digest", normalized["promotion_digest"], "--inventory-host", host,
+                   "--authorized-hosts-json", json.dumps(
+                       normalized["authorized_hosts"], separators=(",", ":")), "--internal-plan"]
+        output = checked(command, environment=environment, cwd=directory, timeout=20, capture=True)
+        try:
+            document = json.loads(output, object_pairs_hook=unique_object)
+        except (UnicodeError, ValueError):
+            raise DeployError("network exposure validation failed") from None
+        if (not isinstance(document, dict) or set(document) != {"summary", "plan"}
+                or not isinstance(document["summary"], dict) or not isinstance(document["plan"], dict)):
+            raise DeployError("network exposure validation failed")
+    return result, [artifact_fence, key_fence]
+
+
 def controller(mode):
     if os.environ.get("ANSIBLE_DEBUG", "false").lower() not in ("false", "0", "no", "off"):
         raise DeployError("Ansible debug is not supported")
@@ -447,15 +507,22 @@ def controller(mode):
         validate_yaml(secret_data)
         secrets = private_file(directory / "secrets.yaml", secret_data)
         environment["VPN_SECRETS_FILE"] = str(secrets)
-        overrides, override_values = None, {}
+        overrides, override_values, input_fences = None, {}, []
         if os.environ.get("DEPLOY_EXTRA_VARS_FILE"):
             if not os.environ.get("DEPLOY_LIMIT"):
                 raise DeployError("extra vars require an explicit inventory selection")
-            overrides = private_file(directory / "overrides.yaml", read_input(
-                os.environ["DEPLOY_EXTRA_VARS_FILE"], private=True, exact_mode=0o600))
-            checked([sys.executable, str(root / "scripts/validate-ansible-extra-vars.py"), str(overrides)],
+            override_data, override_fence = read_fenced_input(
+                os.environ["DEPLOY_EXTRA_VARS_FILE"], private=True, exact_mode=0o600)
+            source_overrides = private_file(directory / "source-overrides.yml", override_data)
+            checked([sys.executable, str(root / "scripts/validate-ansible-extra-vars.py"), str(source_overrides)],
                     environment=environment, cwd=directory)
-            override_values = yaml.safe_load(overrides.read_text())
+            override_values = yaml.safe_load(source_overrides.read_text())
+            override_values, exposure_fences = prepare_network_exposure_inputs(
+                root, directory, override_values, hosts, environment)
+            input_fences = [override_fence, *exposure_fences]
+            normalized = (yaml.safe_dump(override_values, sort_keys=True).encode()
+                          if "network_exposure_gate" in override_values else override_data)
+            overrides = private_file(directory / "operator-overrides.yml", normalized)
         known_hosts = private_file(directory / "known_hosts", read_input(os.environ.get(
             "DEPLOY_KNOWN_HOSTS", str(Path.home() / ".ssh/known_hosts"))))
         commands, identities = [], set()
@@ -489,6 +556,8 @@ def controller(mode):
             checked([sys.executable, str(root / "scripts/spot-check-secrets.py")],
                     environment=precheck_environment, cwd=directory)
             checked([str(root / "scripts/check-certs.sh")], environment=precheck_environment, cwd=directory)
+        for fence in input_fences:
+            verify_input_fence(fence)
         for host, command, playbooks, arguments in prepared:
             wait_for_bootstrap(command[:-1], environment=environment)
             require_recovery_foundation(

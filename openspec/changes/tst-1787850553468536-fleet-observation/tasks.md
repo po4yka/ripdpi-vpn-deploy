@@ -34,5 +34,5 @@ independent review, and actual external traffic for all four transports. Heavy
 checks use `build-gate --`. Hosted CI and live/client acceptance are separate
 evidence categories. No installation or scheduling is implied by planning PASS.
 - [x] TST-1787851685101244 Fix restore cleanup ownership with existing-target and failed-restore regressions #bug !high @item:TST-1787850553468536
-- [ ] TST-1787916690652478 Implement a configuration-only offsite backup command with quiescence and real regression tests #feature !high @item:TST-1787850553468536
+- [x] TST-1787916690652478 Implement a configuration-only offsite backup command with quiescence and real regression tests #feature !high @item:TST-1787850553468536
 - [ ] TST-1787916691156561 Verify approved initial offsite copy and isolated remote restore without retention pruning #feature !high @item:TST-1787850553468536

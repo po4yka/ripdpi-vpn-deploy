@@ -1,11 +1,11 @@
 ---
 task_id: TST-1787850553468536
 change: tst-1787850553468536-fleet-observation
-commit_sha: null
+commit_sha: 5f32a28b2fb3b789493e9b691c0ec8a9b26331bf
 local: passed
 local_evidence: "Final configuration candidate based on main 7da8b74: serialized build-gate -- make check exited 0. Python: 1524 passed, 1 skipped in 486.86 seconds. Bats: 55 passed. Rust: 169 release tests and strict release Clippy passed. Task/OpenSpec, four-provider Terraform validation/mocks, Conftest policy, cloud-init schema, production Ansible lint/syntax, gitleaks, render/snapshots, secret/bundle schemas and real pinned liveness parsers passed."
-remote_ci: required
-remote_ci_evidence: null
+remote_ci: passed
+remote_ci_evidence: "Exact-main CI 33357404456 passed 51/51 on 5f32a28b2fb3b789493e9b691c0ec8a9b26331bf, including molecule (backup) job 99382076199, pytest, and required contract gates."
 dry_run: required
 dry_run_evidence: null
 staging: required
@@ -28,8 +28,8 @@ artifact_evidence: null
 | REQ-OBS-SSH | TST-1787850885266502 | Same suite: isolated SSH options, identity/port pins, explicit subset and malformed inventory rejection | Local regression passed; no new host-key trust |
 | REQ-OBS-EVIDENCE | TST-1787850885266502 | Same suite: no-follow/FIFO/size guards, stale/future markers, malformed manifest and redacted projection | Local regression passed; unknown remains unknown |
 | REQ-OBS-RESTORE | TST-1787851685101244 | `test_backup_restore_drill_contract.py`: 22 tests, including existing target/symlink preservation, cleanup and atomic marker failures | Local regression passed; no new restore or offsite proof |
-| REQ-OBS-BACKUP-CONFIG | TST-1787916690652478 | 79 configuration/integrity cases; real restic 0.16.4/0.18.0 config decryption, private intake, literal Make data, exact target and Ansible debug-redaction regressions | Local positive path passed; exact-source Linux systemd/package validation pending |
-| REQ-OBS-BACKUP-QUIESCENCE | TST-1787916690652478 | Filesystem idempotence, disabled/inactive/no-job checks, exclusive lock, persistent recovery, each publication and postcheck rollback, incomplete rollback retention | Local failure-path regressions passed; Linux unit non-execution validation pending |
+| REQ-OBS-BACKUP-CONFIG | TST-1787916690652478 | Source commit `2009b6f694e326fa1f6d99333da497544b115cdd`; real restic config decryption, private intake, literal Make data, exact target, debug redaction, and exact-main CI `33357404456` | Local and hosted source validation passed; no target configuration run |
+| REQ-OBS-BACKUP-QUIESCENCE | TST-1787916690652478 | Disabled/inactive/no-job checks, exclusive lock, persistent recovery, three-file rollback, incomplete-rollback retention, and Linux `molecule (backup)` job `99382076199` | Linux systemd/package/idempotence and non-execution validation passed; no backup, prune, sync, timer start, or restore ran |
 | REQ-OBS-OFFSITE-PROOF | TST-1787916691156561 | Approved initial copy followed by actual remote-only isolated restore | Pending production-owner execution; configuration tests are not remote proof |
 | REQ-OBS-PATH | TST-1787850896670736 | Sentinel and matrix tests use real loopback HTTPS with curlrc/proxy/NO_PROXY poisoning | Local loopback passed; not external VPN traffic |
 | REQ-OBS-XHTTP | TST-1787850897343789 | `check-liveness-profile-compatibility.py`: canonical emitters and real sing-box 1.13.16 / Xray 26.3.27 parsers passed; materializer suite 54 passed | Local parser evidence; no external traffic claim |
@@ -64,11 +64,10 @@ artifact_evidence: null
   redacted report to exact source. Unit fixtures cannot stand in for that proof.
 - Offsite destination is not configured. Existing local restore results, if
   obtained separately, do not close the offsite-backup requirement.
-- The local backup Molecule attempt failed in unchanged seed-copy tasks before
-  role convergence: the pinned amd64 guest Python segfaulted on arm64 Colima.
-  Automatic destroy passed. The new Linux configuration phase did not execute;
-  hosted Linux Molecule must supply that evidence. No production configuration,
-  initial offsite copy, or remote restore was performed by this source change.
+- The earlier arm64-Colima backup Molecule attempt failed before role
+  convergence. Exact-main hosted Linux Molecule subsequently passed and closes
+  only the configuration source gate. No production configuration, initial
+  offsite copy, retention action, or remote restore was performed.
 
 ## Independent review
 

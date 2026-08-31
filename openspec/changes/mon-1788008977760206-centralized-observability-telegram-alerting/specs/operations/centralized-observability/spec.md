@@ -85,8 +85,10 @@ labels, types, units, producer ownership, expected cadence, and staleness. It
 MUST exclude UUIDs, keys, short IDs, passwords, bot tokens, chat IDs, IP
 addresses, public camouflage targets, domains, client/user names, destinations,
 raw log lines, process arguments, and secrets-derived hashes. Labels MUST use
-bounded technical node, role, profile, policy, severity, and vantage aliases;
-unbounded values MUST be rejected before remote write.
+bounded technical node, role, profile, policy, severity, and vantage aliases.
+Renderer-owned evidence-state metrics MAY additionally use the finite
+contract-declared state enum; unbounded values MUST be rejected before remote
+write.
 
 #### Scenario: A producer emits a forbidden label or excessive cardinality
 

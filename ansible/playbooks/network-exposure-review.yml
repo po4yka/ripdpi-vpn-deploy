@@ -1,0 +1,10 @@
+---
+- name: Retire host-side network exposure review execution
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Require the controller-only operator surface
+      ansible.builtin.fail:
+        msg: "Use make network-exposure-review; this playbook never contacts managed hosts."

@@ -30,6 +30,14 @@ The deployment system MUST validate feed metadata and policy intent before rende
 - **WHEN** the role renders its policy plan
 - **THEN** no ingress, host-originated egress, or forwarded-traffic decision outside that explicit direction MAY be inferred
 
+#### Scenario: External deployment inputs are bound before transport
+
+- **GIVEN** a typed private override, reviewed artifact, and pinned key for an exact inventory selection
+- **WHEN** an operator requests check mode, canary, or enforcement
+- **THEN** the controller MUST validate, snapshot, and fence every input before SSH or Ansible
+- **AND** only the private snapshots MAY reach the selected hosts' canonical variable loaders
+- **AND** ambient host variables, group variables, plugins, or arbitrary extra vars MUST NOT supply policy authority
+
 ### Requirement: REQ-ANS-1786277767052693-003 — Repository fixtures are non-deployable
 
 The repository MUST contain only placeholder feed fixtures and MUST reject committed address ranges, ready-to-load firewall payloads, or provider policy rules in the feature-owned paths.
@@ -49,6 +57,12 @@ Dry-run and log-only modes MUST report only aggregate counts, repository-local s
 - **GIVEN** a valid reviewed artifact and log-only policy
 - **WHEN** an operator runs the documented dry-run command
 - **THEN** output MUST be sufficient to review the policy while omitting address values, host inventory, credentials, and ready-to-apply commands
+
+#### Scenario: Unsafe external input never reaches transport
+
+- **GIVEN** a missing, replaced, linked, writable, malformed, or selection-mismatched override, artifact, or key
+- **WHEN** an operator invokes the canonical controller
+- **THEN** the operation MUST fail before SSH, Ansible, or a success audit
 
 ### Requirement: REQ-ANS-1786277767052693-005 — Promotion and rollback are explicit
 
