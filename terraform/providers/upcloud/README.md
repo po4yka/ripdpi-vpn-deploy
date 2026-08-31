@@ -3,8 +3,9 @@
 Terraform root for a single UpCloud VPS running the provider-neutral
 Ansible stack.
 
-Credentials come from `UPCLOUD_USERNAME` and `UPCLOUD_PASSWORD`; do not
-place provider tokens in tfvars. The root exports the same
+Credentials come from the ambient `UPCLOUD_TOKEN` or one complete
+`UPCLOUD_USERNAME`/`UPCLOUD_PASSWORD` pair; never place credentials in tfvars.
+Use a narrowly scoped token for operator staging. The root exports the same
 inventory-facing outputs as `providers/hetzner/` and `providers/vultr/`:
 
 - `server_ipv4`
@@ -20,7 +21,7 @@ Example:
 cp terraform/providers/upcloud/environments/prod.tfvars.example \
    terraform/providers/upcloud/environments/prod.tfvars
 $EDITOR terraform/providers/upcloud/environments/prod.tfvars
-UPCLOUD_USERNAME=... UPCLOUD_PASSWORD=... make PROVIDER=upcloud ENV=prod init plan
+UPCLOUD_TOKEN=... make PROVIDER=upcloud ENV=prod init plan
 ```
 
 See `terraform/providers/upcloud/CLAUDE.md` for design decisions and pitfalls.

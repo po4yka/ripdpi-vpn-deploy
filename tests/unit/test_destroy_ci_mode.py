@@ -96,7 +96,7 @@ def _audit_stub(root: Path) -> Path:
     audit.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
-        "printf '%s\\n' \"$*\" >> \"$AUDIT_LOG_STUB\"\n"
+        'printf \'%s\\n\' "$*" >> "$AUDIT_LOG_STUB"\n'
     )
     audit.chmod(0o755)
     return audit
@@ -117,7 +117,7 @@ def _make_staging_repo(tmp_path: Path) -> Path:
         "'STAGING_CLEANUP_HOSTNAME', "
         "'STAGING_POST_DESTROY_EVIDENCE', 'DEPLOY_SOURCE_REVISION', "
         "'DEPLOYABLE_SOURCE_DIGEST', 'UPCLOUD_USERNAME', 'UPCLOUD_PASSWORD', "
-        "'UPCLOUD_API_USERNAME', 'UPCLOUD_API_PASSWORD']}}) + '\\n')\n"
+        "'UPCLOUD_API_USERNAME', 'UPCLOUD_API_PASSWORD', 'UPCLOUD_TOKEN']}}) + '\\n')\n"
     )
     for name in ("staging-cleanup-guard.py", "destroy.sh"):
         path = scripts / name
@@ -144,6 +144,7 @@ def _run_staging_make(
         "UPCLOUD_PASSWORD",
         "UPCLOUD_API_USERNAME",
         "UPCLOUD_API_PASSWORD",
+        "UPCLOUD_TOKEN",
     ):
         env.pop(field, None)
     supplied_env = extra_env or {}
@@ -178,6 +179,7 @@ def _run_staging_make(
         "UPCLOUD_PASSWORD",
         "UPCLOUD_API_USERNAME",
         "UPCLOUD_API_PASSWORD",
+        "UPCLOUD_TOKEN",
     ],
 )
 def test_staging_make_refuses_command_line_credentials_before_expansion(
@@ -201,23 +203,27 @@ def test_staging_make_refuses_command_line_credentials_before_expansion(
 
 
 @pytest.mark.parametrize("goal", ["staging-cleanup-manifest", "staging-destroy"])
-@pytest.mark.parametrize("pair", ["primary", "alias"])
-def test_staging_make_canonicalizes_one_literal_ambient_credential_pair(
-    tmp_path: Path, goal: str, pair: str
+@pytest.mark.parametrize("mode", ["primary", "alias", "token"])
+def test_staging_make_canonicalizes_one_literal_ambient_credential_mode(
+    tmp_path: Path, goal: str, mode: str
 ) -> None:
     root = _make_staging_repo(tmp_path)
-    marker = tmp_path / f"{goal}-{pair}.marker"
-    literal_password = f"$(shell touch {marker}) ' spaced\nsecond-line"
+    marker = tmp_path / f"{goal}-{mode}.marker"
+    literal_secret = f"uct_$(shell touch {marker})_'spaced\nsecond-line_123456"
     credential_env = (
         {
             "UPCLOUD_USERNAME": "staging-test-user",
-            "UPCLOUD_PASSWORD": literal_password,
+            "UPCLOUD_PASSWORD": literal_secret,
         }
-        if pair == "primary"
-        else {
-            "UPCLOUD_API_USERNAME": "staging-test-user",
-            "UPCLOUD_API_PASSWORD": literal_password,
-        }
+        if mode == "primary"
+        else (
+            {
+                "UPCLOUD_API_USERNAME": "staging-test-user",
+                "UPCLOUD_API_PASSWORD": literal_secret,
+            }
+            if mode == "alias"
+            else {"UPCLOUD_TOKEN": literal_secret}
+        )
     )
 
     result = _run_staging_make(
@@ -236,10 +242,17 @@ def test_staging_make_canonicalizes_one_literal_ambient_credential_pair(
     assert result.returncode == 0, result.stderr
     assert not marker.exists()
     record = json.loads((tmp_path / "make-staging.jsonl").read_text())
-    assert record["env"]["UPCLOUD_USERNAME"] == "staging-test-user"
-    assert record["env"]["UPCLOUD_PASSWORD"] == literal_password
+    assert record["env"]["UPCLOUD_USERNAME"] == (
+        None if mode == "token" else "staging-test-user"
+    )
+    assert record["env"]["UPCLOUD_PASSWORD"] == (
+        None if mode == "token" else literal_secret
+    )
     assert record["env"]["UPCLOUD_API_USERNAME"] is None
     assert record["env"]["UPCLOUD_API_PASSWORD"] is None
+    assert record["env"]["UPCLOUD_TOKEN"] == (
+        literal_secret if mode == "token" else None
+    )
 
 
 @pytest.mark.parametrize("goal", ["staging-cleanup-manifest", "staging-destroy"])
@@ -258,6 +271,16 @@ def test_staging_make_canonicalizes_one_literal_ambient_credential_pair(
             "UPCLOUD_API_USERNAME": "alias",
             "UPCLOUD_API_PASSWORD": "alias-password",
         },
+        {
+            "UPCLOUD_USERNAME": "primary",
+            "UPCLOUD_PASSWORD": "primary-password",
+            "UPCLOUD_TOKEN": "uct_ambiguous_token_123456",
+        },
+        {
+            "UPCLOUD_API_USERNAME": "alias",
+            "UPCLOUD_API_PASSWORD": "alias-password",
+            "UPCLOUD_TOKEN": "uct_ambiguous_token_123456",
+        },
     ],
 )
 def test_staging_make_refuses_missing_partial_cross_or_ambiguous_credentials(
@@ -273,7 +296,7 @@ def test_staging_make_refuses_missing_partial_cross_or_ambiguous_credentials(
     )
 
     assert result.returncode != 0
-    assert "requires exactly one complete UpCloud credential pair" in result.stderr
+    assert "requires exactly one UpCloud credential mode" in result.stderr
     assert not (tmp_path / "make-staging.jsonl").exists()
     assert not (tmp_path / "make-git-spy.log").exists()
 
@@ -391,7 +414,9 @@ def test_staging_make_never_executes_operator_field_as_make_or_shell_syntax(
     assert record["env"][field] == malicious
 
 
-def test_staging_manifest_make_passes_only_literal_operator_fields(tmp_path: Path) -> None:
+def test_staging_manifest_make_passes_only_literal_operator_fields(
+    tmp_path: Path,
+) -> None:
     root = _make_staging_repo(tmp_path)
     marker = tmp_path / "manifest-field.marker"
     literal = f"$(shell touch {marker}) ' spaced value"
@@ -403,9 +428,7 @@ def test_staging_manifest_make_passes_only_literal_operator_fields(tmp_path: Pat
         "STAGING_CLEANUP_HOSTNAME=vpn-ci-staging.test",
     ]
 
-    result = _run_staging_make(
-        root, tmp_path, "staging-cleanup-manifest", *assignments
-    )
+    result = _run_staging_make(root, tmp_path, "staging-cleanup-manifest", *assignments)
 
     assert result.returncode == 0, result.stderr
     assert not marker.exists()
@@ -560,10 +583,14 @@ def _real_staging_manifest(root: Path, private: Path, environment: str) -> Path:
         "root_storage_uuid": STORAGE_UUID,
         "created_at": created.isoformat().replace("+00:00", "Z"),
         "target_at": (created + timedelta(hours=36)).isoformat().replace("+00:00", "Z"),
-        "escalation_at": (created + timedelta(hours=44)).isoformat().replace("+00:00", "Z"),
+        "escalation_at": (created + timedelta(hours=44))
+        .isoformat()
+        .replace("+00:00", "Z"),
         "expiry_at": (created + timedelta(hours=47)).isoformat().replace("+00:00", "Z"),
     }
-    manifest.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+    manifest.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+    )
     manifest.chmod(0o600)
     return manifest
 
