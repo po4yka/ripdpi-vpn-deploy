@@ -129,9 +129,11 @@ command. The goal authenticates `/1.3/account`, stores the exact API username
 only in private artifacts, reads the exact state-bound server through
 `/1.3/server`, and derives creation, target, escalation and hard deadlines from
 the provider's integer `server.created` value at 36, 44 and 47 hours. Provider
-credentials remain one complete ambient `UPCLOUD_USERNAME`/`UPCLOUD_PASSWORD`
-or `UPCLOUD_API_USERNAME`/`UPCLOUD_API_PASSWORD` pair; do not pass them as Make
-variables. This binds the
+credentials remain one ambient `UPCLOUD_TOKEN` (preferred) or one complete
+`UPCLOUD_USERNAME`/`UPCLOUD_PASSWORD` or
+`UPCLOUD_API_USERNAME`/`UPCLOUD_API_PASSWORD` pair; do not pass them as Make
+variables or store them in tfvars. The guard canonicalizes exactly one mode and
+never emits the authorization value. This binds the
 exact API principal used for creation and deletion, not a parent billing
 account, and does not claim that provider usernames are immutable identifiers.
 

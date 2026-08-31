@@ -17,23 +17,29 @@ ifneq ($(filter staging-cleanup-manifest staging-destroy,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error staging cleanup requires exactly one Make goal)
 endif
-ifneq ($(filter-out undefined environment,$(origin UPCLOUD_USERNAME) $(origin UPCLOUD_PASSWORD) $(origin UPCLOUD_API_USERNAME) $(origin UPCLOUD_API_PASSWORD)),)
+ifneq ($(filter-out undefined environment,$(origin UPCLOUD_USERNAME) $(origin UPCLOUD_PASSWORD) $(origin UPCLOUD_API_USERNAME) $(origin UPCLOUD_API_PASSWORD) $(origin UPCLOUD_TOKEN)),)
 $(error staging cleanup credentials must come from the environment)
 endif
 _STAGING_PRIMARY_CREDENTIALS := $(if $(value UPCLOUD_USERNAME),1,0)$(if $(value UPCLOUD_PASSWORD),1,0)
 _STAGING_ALIAS_CREDENTIALS := $(if $(value UPCLOUD_API_USERNAME),1,0)$(if $(value UPCLOUD_API_PASSWORD),1,0)
-ifeq ($(_STAGING_PRIMARY_CREDENTIALS)$(_STAGING_ALIAS_CREDENTIALS),1100)
+_STAGING_TOKEN_CREDENTIAL := $(if $(value UPCLOUD_TOKEN),1,0)
+ifeq ($(_STAGING_PRIMARY_CREDENTIALS)$(_STAGING_ALIAS_CREDENTIALS)$(_STAGING_TOKEN_CREDENTIAL),11000)
 override UPCLOUD_USERNAME := $(value UPCLOUD_USERNAME)
 override UPCLOUD_PASSWORD := $(value UPCLOUD_PASSWORD)
-else ifeq ($(_STAGING_PRIMARY_CREDENTIALS)$(_STAGING_ALIAS_CREDENTIALS),0011)
+export UPCLOUD_USERNAME UPCLOUD_PASSWORD
+unexport UPCLOUD_TOKEN
+else ifeq ($(_STAGING_PRIMARY_CREDENTIALS)$(_STAGING_ALIAS_CREDENTIALS)$(_STAGING_TOKEN_CREDENTIAL),00110)
 override UPCLOUD_USERNAME := $(value UPCLOUD_API_USERNAME)
 override UPCLOUD_PASSWORD := $(value UPCLOUD_API_PASSWORD)
-else
-$(error staging cleanup requires exactly one complete UpCloud credential pair)
-endif
-override UPCLOUD_API_USERNAME :=
-override UPCLOUD_API_PASSWORD :=
 export UPCLOUD_USERNAME UPCLOUD_PASSWORD
+unexport UPCLOUD_TOKEN
+else ifeq ($(_STAGING_PRIMARY_CREDENTIALS)$(_STAGING_ALIAS_CREDENTIALS)$(_STAGING_TOKEN_CREDENTIAL),00001)
+override UPCLOUD_TOKEN := $(value UPCLOUD_TOKEN)
+export UPCLOUD_TOKEN
+unexport UPCLOUD_USERNAME UPCLOUD_PASSWORD
+else
+$(error staging cleanup requires exactly one UpCloud credential mode)
+endif
 unexport UPCLOUD_API_USERNAME UPCLOUD_API_PASSWORD
 endif
 

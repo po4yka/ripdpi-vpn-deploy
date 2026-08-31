@@ -3,18 +3,19 @@
 
 Operator usage is intentionally limited to the canonical Make targets::
 
-    export UPCLOUD_USERNAME=... UPCLOUD_PASSWORD=...
+    export UPCLOUD_TOKEN=...
     PROVIDER=upcloud ENV=ci-staging-... make staging-cleanup-manifest \
         STAGING_CLEANUP_STATE=... STAGING_CLEANUP_HOSTNAME=... \
         STAGING_CLEANUP_MANIFEST=...
     PROVIDER=upcloud ENV=ci-staging-... make staging-destroy \
         STAGING_CLEANUP_MANIFEST=... STAGING_POST_DESTROY_EVIDENCE=...
 
-The ``UPCLOUD_API_USERNAME``/``UPCLOUD_API_PASSWORD`` pair is also accepted,
-but exactly one complete pair must come from the inherited environment. Never
-pass credentials as Make command-line variables. Direct subcommands below are
-internal controller interfaces; their paths must live in owned 0700 directories
-and their private files must be regular mode-0600 files.
+The ``UPCLOUD_USERNAME``/``UPCLOUD_PASSWORD`` and
+``UPCLOUD_API_USERNAME``/``UPCLOUD_API_PASSWORD`` pairs remain supported, but
+exactly one token or complete pair must come from the inherited environment.
+Never pass credentials as Make command-line variables. Direct subcommands below
+are internal controller interfaces; their paths must live in owned 0700
+directories and their private files must be regular mode-0600 files.
 """
 
 from __future__ import annotations
@@ -67,9 +68,9 @@ class GuardError(ValueError):
 JsonRequest = Callable[[str], tuple[int, dict[str, Any]]]
 
 
-def _provider_credentials(
+def _provider_authorization(
     environment: Mapping[str, str] = os.environ,
-) -> tuple[str, str]:
+) -> str:
     primary = (
         environment.get("UPCLOUD_USERNAME", ""),
         environment.get("UPCLOUD_PASSWORD", ""),
@@ -80,15 +81,22 @@ def _provider_credentials(
     )
     primary_complete = all(primary)
     alias_complete = all(alias)
+    bearer = environment.get("UPCLOUD_TOKEN", "")
+    bearer_valid = bool(re.fullmatch(r"[!-~]{16,4096}", bearer))
     if (
-        primary_complete == alias_complete
+        sum((primary_complete, alias_complete, bearer_valid)) != 1
         or any(primary) != primary_complete
         or any(alias) != alias_complete
+        or (bool(bearer) != bearer_valid)
     ):
         raise GuardError(
-            "provider authentication requires one complete UpCloud credential pair"
+            "provider authentication requires one valid UpCloud credential mode"
         )
-    return primary if primary_complete else alias
+    if bearer_valid:
+        return f"Bearer {bearer}"
+    username, password = primary if primary_complete else alias
+    encoded = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
+    return f"Basic {encoded}"
 
 
 def canonical_json(value: Any) -> bytes:
@@ -173,9 +181,7 @@ def _private_read(
     max_bytes: int,
     exact_parent_mode: bool = True,
 ) -> bytes:
-    parent_fd, name = _open_private_parent(
-        path, label, exact_mode=exact_parent_mode
-    )
+    parent_fd, name = _open_private_parent(path, label, exact_mode=exact_parent_mode)
     try:
         try:
             info = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
@@ -199,10 +205,7 @@ def _private_read(
         try:
             if opened.st_dev != info.st_dev or opened.st_ino != info.st_ino:
                 raise GuardError(f"{label} changed while opening")
-            if (
-                opened.st_uid != os.getuid()
-                or stat.S_IMODE(opened.st_mode) != 0o600
-            ):
+            if opened.st_uid != os.getuid() or stat.S_IMODE(opened.st_mode) != 0o600:
                 raise GuardError(f"{label} ownership or mode changed while opening")
             chunks: list[bytes] = []
             remaining = max_bytes + 1
@@ -544,9 +547,11 @@ def create_manifest(
     escalation = created + ESCALATION_AFTER
     expiry = created + EXPIRY_AFTER
     completion = _parse_time(
-        clock()
-        if clock is not None
-        else (current if now is not None else datetime.now(timezone.utc)),
+        (
+            clock()
+            if clock is not None
+            else (current if now is not None else datetime.now(timezone.utc))
+        ),
         "current time",
     )
     if completion >= expiry:
@@ -612,9 +617,7 @@ def _validate_manifest_shape(
     _uuid(manifest.get("root_storage_uuid"), "manifest root storage UUID")
     created = _parse_time(manifest.get("created_at"), "manifest created_at")
     target = _parse_time(manifest.get("target_at"), "manifest target_at")
-    escalation = _parse_time(
-        manifest.get("escalation_at"), "manifest escalation_at"
-    )
+    escalation = _parse_time(manifest.get("escalation_at"), "manifest escalation_at")
     expiry = _parse_time(manifest.get("expiry_at"), "manifest expiry_at")
     if (
         target != created + TARGET_AFTER
@@ -791,9 +794,7 @@ def _reservation_identity(reserved: dict[str, Any]) -> tuple[int, int]:
     return device, inode
 
 
-def _write_reservation(
-    evidence_path: Path, reserved: dict[str, Any]
-) -> dict[str, Any]:
+def _write_reservation(evidence_path: Path, reserved: dict[str, Any]) -> dict[str, Any]:
     identity = _private_write_new(
         evidence_path.absolute(), canonical_json(reserved), "provider evidence"
     )
@@ -912,7 +913,11 @@ def authorize_reserve_evidence(
     if confirmed != manifest:
         raise GuardError("manifest changed during provider authorization")
     completion = _parse_time(
-        clock() if clock is not None else (current if now is not None else datetime.now(timezone.utc)),
+        (
+            clock()
+            if clock is not None
+            else (current if now is not None else datetime.now(timezone.utc))
+        ),
         "current time",
     )
     if completion >= _parse_time(manifest["expiry_at"], "manifest expiry_at"):
@@ -1045,9 +1050,7 @@ def _rewrite_reserved_evidence(
             os.fsync(fd)
             current = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
             if current.st_dev != opened.st_dev or current.st_ino != opened.st_ino:
-                raise GuardError(
-                    "provider evidence path changed during verified write"
-                )
+                raise GuardError("provider evidence path changed during verified write")
             os.fsync(parent_fd)
         finally:
             os.close(fd)
@@ -1145,14 +1148,14 @@ def mark_apply_started(
     if confirmed_reservation != reserved:
         raise GuardError("provider evidence reservation changed during authorization")
     after_authorization = _parse_time(
-        clock()
-        if clock is not None
-        else (current if now is not None else datetime.now(timezone.utc)),
+        (
+            clock()
+            if clock is not None
+            else (current if now is not None else datetime.now(timezone.utc))
+        ),
         "current time",
     )
-    if after_authorization >= _parse_time(
-        manifest["expiry_at"], "manifest expiry_at"
-    ):
+    if after_authorization >= _parse_time(manifest["expiry_at"], "manifest expiry_at"):
         raise GuardError("cleanup manifest is expired")
     started = dict(reserved)
     started["status"] = "apply_started"
@@ -1198,9 +1201,13 @@ def verify_upcloud_absence(
     if storage_status != 404 or _error_code(storage) != "STORAGE_NOT_FOUND":
         raise GuardError("storage absence is ambiguous")
     observed = _parse_time(
-        clock()
-        if clock is not None
-        else (observed_at if observed_at is not None else datetime.now(timezone.utc)),
+        (
+            clock()
+            if clock is not None
+            else (
+                observed_at if observed_at is not None else datetime.now(timezone.utc)
+            )
+        ),
         "observed_at",
     )
     expiry = _parse_time(manifest["expiry_at"], "manifest expiry_at")
@@ -1226,10 +1233,7 @@ def verify_upcloud_absence(
     return evidence
 
 
-def _upcloud_request(
-    username: str, password: str, *, timeout: float = 15.0
-) -> JsonRequest:
-    token = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
+def _upcloud_request(authorization: str, *, timeout: float = 15.0) -> JsonRequest:
     context = ssl.create_default_context()
 
     class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -1248,7 +1252,7 @@ def _upcloud_request(
             raise GuardError("provider request path is invalid")
         req = urllib.request.Request(
             API_ROOT + path,
-            headers={"Authorization": f"Basic {token}", "Accept": "application/json"},
+            headers={"Authorization": authorization, "Accept": "application/json"},
             method="GET",
         )
         try:
@@ -1322,7 +1326,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     now = datetime.now(timezone.utc)
     if args.command == "create-manifest":
-        username, password = _provider_credentials()
+        authorization = _provider_authorization()
         create_manifest(
             output_path=args.output,
             provider=args.provider,
@@ -1330,7 +1334,7 @@ def main(argv: list[str] | None = None) -> int:
             workspace=args.workspace,
             state_path=args.state,
             hostname=args.hostname,
-            request_json=_upcloud_request(username, password),
+            request_json=_upcloud_request(authorization),
         )
         print("staging cleanup manifest created")
         return 0
@@ -1367,12 +1371,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "rewind-plan-fd":
         rewind_plan_fd(args.fd_number)
         return 0
-    username, password = _provider_credentials()
+    authorization = _provider_authorization()
     if args.command == "authorize-reserve-evidence":
         authorize_reserve_evidence(
             args.manifest,
             args.evidence_output,
-            request_json=_upcloud_request(username, password),
+            request_json=_upcloud_request(authorization),
             expected_provider=args.expected_provider,
             expected_environment=args.expected_environment,
         )
@@ -1382,7 +1386,7 @@ def main(argv: list[str] | None = None) -> int:
         mark_apply_started(
             args.manifest,
             args.evidence_output,
-            request_json=_upcloud_request(username, password),
+            request_json=_upcloud_request(authorization),
             expected_provider=args.expected_provider,
             expected_environment=args.expected_environment,
         )
@@ -1391,7 +1395,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "verify-upcloud-account":
         verify_upcloud_account(
             args.manifest,
-            request_json=_upcloud_request(username, password),
+            request_json=_upcloud_request(authorization),
             now=now,
             expected_provider=args.expected_provider,
             expected_environment=args.expected_environment,
@@ -1401,7 +1405,7 @@ def main(argv: list[str] | None = None) -> int:
     verify_upcloud_absence(
         args.manifest,
         args.evidence_output,
-        request_json=_upcloud_request(username, password),
+        request_json=_upcloud_request(authorization),
         expected_provider=args.expected_provider,
         expected_environment=args.expected_environment,
     )
