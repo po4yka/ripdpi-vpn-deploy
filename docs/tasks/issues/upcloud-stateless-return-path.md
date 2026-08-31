@@ -2,7 +2,7 @@
 id: SEC-1788187456764401
 title: Preserve return traffic through the UpCloud stateless firewall
 kind: bug
-status: doing
+status: done
 area: security
 priority: critical
 risk: high
@@ -14,6 +14,10 @@ openspec_change: sec-1788187456764401-upcloud-stateless-return-path
 created: 2026-08-31
 updated: 2026-08-31
 related_tasks: []
+status_detail: Source merged on exact main 64e87ef with CI 33427148788, CodeQL 33427148522, and Scorecard 33427148588 successful; isolated staging acceptance and guarded provider cleanup complete.
+closed_at: "2026-08-31T19:04:10Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Exact main 64e87ef CI 33427148788 SUCCESS 51/51 with CodeQL and Scorecard SUCCESS; isolated UpCloud staging proved required listeners and IPv4/IPv6 return traffic before and after firewall activation; guarded destroy removed the exact owned server, root storage, and firewall resources; provider absence and empty Terraform state verified; production unchanged.
 ---
 
 ## Goal
