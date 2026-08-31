@@ -1108,6 +1108,57 @@ def test_staging_destroy_physicalizes_symlinked_tmpdir_before_plan_validation(
     assert symlinked_tmp not in plan_view.parents
 
 
+def test_staging_destroy_neutralizes_cdpath_for_relative_tmpdir(
+    tmp_path: Path,
+) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-staging-relative-tmpdir"
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci-staging.test"\n'
+    )
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    manifest = private / "manifest.json"
+    manifest.write_text("{}\n")
+    manifest.chmod(0o600)
+    evidence = private / "post-destroy.json"
+    guard_log = private / "guard.log"
+    audit_log = private / "audit.log"
+    relative_tmp = root / "relative-tmp"
+    relative_tmp.mkdir(mode=0o700)
+    _guard_stub(root)
+    _audit_stub(root)
+    stub = _terraform_stub(tmp_path)
+
+    result = _run(
+        root,
+        stub.parent,
+        env_name,
+        destroy_args=[
+            "--staging-manifest",
+            str(manifest),
+            "--post-destroy-evidence",
+            str(evidence),
+        ],
+        extra_env={
+            "CDPATH": ".",
+            "GUARD_LOG": str(guard_log),
+            "AUDIT_LOG_STUB": str(audit_log),
+            "TMPDIR": "relative-tmp",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    validate_call = next(
+        shlex.split(line)
+        for line in guard_log.read_text().splitlines()
+        if line.startswith("validate-plan ")
+    )
+    plan_view = Path(validate_call[validate_call.index("--plan-view") + 1])
+    assert plan_view.is_absolute()
+    assert plan_view.parent.parent == relative_tmp
+
+
 def test_staging_destroy_refuses_apply_when_exact_plan_guard_fails(
     tmp_path: Path,
 ) -> None:

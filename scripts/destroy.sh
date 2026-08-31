@@ -146,7 +146,7 @@ if [[ "$STAGING_GUARDED" == "true" ]]; then
     --expected-environment "$ENV"
   STAGING_EVIDENCE_RESERVED=true
   PRIVATE_PLAN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/vpn-staging-cleanup.XXXXXX")"
-  PRIVATE_PLAN_DIR="$(cd "$PRIVATE_PLAN_DIR" && pwd -P)"
+  PRIVATE_PLAN_DIR="$(CDPATH='' cd -- "$PRIVATE_PLAN_DIR" && pwd -P)"
   chmod 0700 "$PRIVATE_PLAN_DIR"
   umask 077
   PLAN_PATH="${PRIVATE_PLAN_DIR}/destroy.tfplan"

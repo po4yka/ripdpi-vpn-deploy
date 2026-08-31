@@ -5,7 +5,7 @@ commit_sha: "96242a81960ebe4c943856e86dc6086d42620350"
 local: passed
 local_evidence: "Exact main ae0af37 source full: Python 2617 PASS + 1 existing skip, BATS 55, Terraform 97, Conftest 45, Rust and Clippy, ci-fast OK; guarded-destroy follow-up 96242a8: 148 focused unit tests and configured hooks PASS."
 remote_ci: passed
-remote_ci_evidence: "Exact main ae0af37 CI 33413847757 SUCCESS 51/51, CodeQL 33413847458 SUCCESS, Scorecard 33413847276 SUCCESS; guarded-destroy follow-up exact-head CI is required before protected integration."
+remote_ci_evidence: "Exact main ae0af37 CI 33413847757 SUCCESS 51/51, CodeQL 33413847458 SUCCESS, Scorecard 33413847276 SUCCESS; guarded-destroy follow-up exact 74fc1bf CI 33420983482 and CodeQL 33420983044 SUCCESS."
 dry_run: passed
 dry_run_evidence: "Saved isolated plans showed only the canonical three-resource create, then a single server firewall false-to-true update with no create/delete/replace, then 0 add / 0 change / 3 destroy for the exact owned resources."
 staging: passed
@@ -24,7 +24,7 @@ artifact_evidence: "Private mode-0600 evidence index SHA256 35298ad3f5c711994a50
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-UPF-ACTIVATION | SEC-1788187699228713 | Exact source tests and isolated false-to-true activation plan/apply | pass |
-| REQ-UPF-RETURN | SEC-1788187699228713 | Required listeners plus outbound IPv4 and IPv6 TCP/UDP passed after activation | pass |
-| REQ-UPF-BOUNDARY | SEC-1788187712724429 | Strict SSH and unchanged terminal deny exposure passed before and after activation | pass |
-| REQ-UPF-STAGING | SEC-1788187714043182 | Isolated acceptance, exact guarded destroy, provider absence, and empty state verified | pass |
+| REQ-UPF-ACTIVATION | SEC-1788187699228713 | Exact source tests and isolated false-to-true activation plan/apply | passed |
+| REQ-UPF-RETURN | SEC-1788187699228713 | Required listeners plus outbound IPv4 and IPv6 TCP/UDP passed after activation | passed |
+| REQ-UPF-BOUNDARY | SEC-1788187712724429 | Strict SSH and unchanged terminal deny exposure passed before and after activation | passed |
+| REQ-UPF-STAGING | SEC-1788187714043182 | Isolated acceptance, exact guarded destroy, provider absence, and empty state verified | passed |
