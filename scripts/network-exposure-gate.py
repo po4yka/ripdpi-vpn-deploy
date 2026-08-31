@@ -85,9 +85,10 @@ def parse_rfc3339(value):
         # RFC 3339 admits year zero, which is older than every value used by
         # this gate but is outside datetime's supported range.
         return datetime.min.replace(tzinfo=timezone.utc)
-    leap_second = re.search(r':60(?=(?:[.,][0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$)', normalized)
+    leap_second = re.search(r':60(?:[.,][0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$', normalized)
     if leap_second is not None:
-        normalized = normalized[:leap_second.start()] + ':59' + normalized[leap_second.end():]
+        replacement = leap_second.group().replace(':60', ':59', 1)
+        normalized = normalized[:leap_second.start()] + replacement
     parsed = datetime.fromisoformat(normalized.replace('Z', '+00:00'))
     try:
         return parsed + (timedelta(seconds=1) if leap_second is not None else timedelta())
