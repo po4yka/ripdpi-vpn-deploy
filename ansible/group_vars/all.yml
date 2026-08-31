@@ -21,6 +21,7 @@ vpn:
   enable_watchdog: true           # local probe + ntfy/Pushover alerts
   enable_backup: true
   enable_subscription_host: false # opt-in; not in v1 default deploy
+  enable_tailnet_management: false # opt-in ordinary OpenSSH over a restricted Tailnet
 
   # Build xray-core from source on the VPS instead of downloading a
   # release asset. Closes the threat "GitHub release tag silently

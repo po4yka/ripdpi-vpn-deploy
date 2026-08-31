@@ -1,0 +1,144 @@
+---
+- name: Validate exact approved Tailnet management sources before host writes
+  ansible.builtin.command:
+    cmd: >-
+      python3 {{ role_path }}/../../../scripts/tailnet-management-controller.py
+      validate-sources
+    stdin: "{{ tailnet_management.approved_sources | to_json }}"
+  delegate_to: localhost
+  become: false
+  changed_when: false
+
+- name: Validate pinned Tailscale package inputs
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] in ['Debian', 'Ubuntu']
+      - ansible_facts['distribution_release'] is match('^[a-z][a-z0-9-]{1,31}$')
+      - tailnet_management.package_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+      - tailnet_management.repository_gpg_sha256 is match('^[0-9a-f]{64}$')
+    fail_msg: >-
+      Tailnet management requires Debian or Ubuntu plus an exact stable
+      Tailscale package version and repository-key SHA256 pin.
+  when: tailnet_management.install_package | bool
+
+- name: Select official Tailscale repository family
+  ansible.builtin.set_fact:
+    _tailnet_repository_family: >-
+      {{ 'ubuntu' if ansible_facts['distribution'] == 'Ubuntu' else 'debian' }}
+  when: tailnet_management.install_package | bool
+
+- name: Install signed-repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - iproute2
+      - nftables
+      - openssh-server
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: tailnet_management.install_package | bool
+
+- name: Install pinned Tailscale repository key
+  ansible.builtin.get_url:
+    url: >-
+      https://pkgs.tailscale.com/stable/{{ _tailnet_repository_family
+      }}/{{ ansible_facts['distribution_release'] }}.noarmor.gpg
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    owner: root
+    group: root
+    mode: "0644"
+    checksum: "sha256:{{ tailnet_management.repository_gpg_sha256 }}"
+  when: tailnet_management.install_package | bool
+
+- name: Install pinned Tailscale stable apt source
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/tailscale.list
+    owner: root
+    group: root
+    mode: "0644"
+    content: >-
+      deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg]
+      https://pkgs.tailscale.com/stable/{{ _tailnet_repository_family }}
+      {{ ansible_facts['distribution_release'] }} main
+  when: tailnet_management.install_package | bool
+
+- name: Pin the exact Tailscale package release
+  ansible.builtin.copy:
+    dest: /etc/apt/preferences.d/tailscale
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Package: tailscale
+      Pin: version {{ tailnet_management.package_version }}
+      Pin-Priority: 1001
+  when: tailnet_management.install_package | bool
+
+- name: Install exact stable Tailscale package
+  ansible.builtin.apt:
+    name: "tailscale={{ tailnet_management.package_version }}"
+    state: present
+    update_cache: true
+    allow_downgrade: false
+  when: tailnet_management.install_package | bool
+
+- name: Ensure the Tailnet controller directory
+  ansible.builtin.file:
+    path: /usr/local/lib/vpn-tailnet
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the bounded Tailnet management controller
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../scripts/tailnet-management-controller.py"
+    dest: /usr/local/lib/vpn-tailnet/tailnet-management-controller.py
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Enable and start the Tailscale daemon
+  ansible.builtin.systemd_service:
+    name: tailscaled.service
+    enabled: true
+    state: started
+  when: tailnet_management.install_package | bool
+
+- name: Inspect installed Tailnet controller state
+  ansible.builtin.stat:
+    path: /usr/local/lib/vpn-tailnet/tailnet-management-controller.py
+    follow: false
+    get_attributes: false
+    get_checksum: false
+    get_mime: false
+  register: _tailnet_management_controller
+  check_mode: false
+
+- name: Enroll or verify ordinary OpenSSH Tailnet management
+  ansible.builtin.command:
+    cmd: >-
+      /usr/bin/python3 /usr/local/lib/vpn-tailnet/tailnet-management-controller.py
+      {{ 'check' if ansible_check_mode else 'configure' }}
+    stdin: >-
+      {{ '' if ansible_check_mode else lookup('env', 'TAILSCALE_AUTH_KEY') }}
+  check_mode: false
+  environment:
+    PATH: /usr/sbin:/usr/bin:/sbin:/bin
+  register: _tailnet_management_result
+  changed_when: >-
+    _tailnet_management_result.rc == 0 and
+    ((_tailnet_management_result.stdout | from_json).changed | bool)
+  when: >-
+    not ansible_check_mode or
+    (_tailnet_management_controller.stat.exists | default(false))
+  no_log: true
+
+- name: Predict first Tailnet enrollment in check mode
+  ansible.builtin.debug:
+    msg: Tailnet enrollment is pending; no enrollment capability was consumed.
+  changed_when: true
+  when:
+    - ansible_check_mode
+    - not (_tailnet_management_controller.stat.exists | default(false))

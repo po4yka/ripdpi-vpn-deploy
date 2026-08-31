@@ -217,6 +217,17 @@ def execution_environment(root, directory):
     return environment
 
 
+def tailnet_site_environment(environment, host_count, mode):
+    """Forward a validated one-node enrollment capability only to site.yml."""
+    credential = os.environ.get("TAILSCALE_AUTH_KEY")
+    if credential is None or mode != "deploy":
+        return environment
+    if (host_count != 1 or re.fullmatch(r"tskey-auth-[A-Za-z0-9_-]{8,480}", credential)
+            is None):
+        raise DeployError("Tailnet enrollment credential invalid")
+    return {**environment, "TAILSCALE_AUTH_KEY": credential}
+
+
 def checked(command, *, environment, cwd, timeout=15, capture=False, stream=False):
     status, output = run_command(command, environment=environment, cwd=cwd, timeout=timeout,
                                  capture=capture, stream=stream)
@@ -537,6 +548,7 @@ def controller(mode):
             commands.append(fleet_inspection.ssh_command(host, known_hosts))
         transactions = transaction_inputs("deploy" if mode == "deploy" else "check",
                                           hosts, identity, directory, root, environment)
+        site_environment = tailnet_site_environment(environment, len(hosts), mode)
         prepared = []
         for index, (host, command) in enumerate(zip(hosts, commands)):
             inventory = single_inventory(directory, index, host, memberships)
@@ -571,7 +583,7 @@ def controller(mode):
                 site += ["--check", "--diff"]
             elif os.environ.get("DEPLOY_TAGS"):
                 site += ["--tags", os.environ["DEPLOY_TAGS"]]
-            checked(site, environment=environment, cwd=directory, timeout=3600, stream=True)
+            checked(site, environment=site_environment, cwd=directory, timeout=3600, stream=True)
             if mode == "deploy":
                 checked(["ansible-playbook", str(playbooks["source-drift"]), *arguments],
                         environment=environment, cwd=directory, timeout=300, stream=True)

@@ -24,8 +24,8 @@ artifact_evidence: source and installed configuration only; no release binary ar
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-ADMIN-ISOLATION | SEC-1787917605386179 | Opt-in management configuration tests and staged resolver, routing and host-key comparisons | pending |
-| REQ-ADMIN-SCOPE | SEC-1787917605386179 | Reviewed full ACL diff and positive/negative policy and connection tests | pending |
+| REQ-ADMIN-ISOLATION | SEC-1787917605386179 | Opt-in controller snapshots resolver bytes, canonical default routes and full `sshd -T`; unit and Molecule tests cover exact disabled DNS/routes/exit-node/Tailscale-SSH/netfilter preferences, rollback and unchanged repeat | local source and synthetic Molecule passed; real staged resolver, routing, host-key and dual-path SSH comparisons pending |
+| REQ-ADMIN-SCOPE | SEC-1787917605386179 | Exact canonical Tailnet source validation and guest nftables render on the existing effective SSH port; full Tailnet policy review plus approved/unapproved device connection tests | local guest-source policy passed; complete ACL diff and positive/negative live policy tests pending |
 | REQ-ADMIN-MIGRATION | SEC-1787917604306451 | 301 affected planner/core/adapter tests plus pinned Debian 13 and Ubuntu 24.04 packaged-main checks include real OpenSSH full effective parity, custom port, unknown-layout, bounded execution, read-set races and four-file crash boundaries | local source and packaged-main checks passed; complete local, hosted and staging pending |
 | REQ-ADMIN-ROLLBACK | SEC-1787917604868749 | Installation/upgrade and earlier fault tests passed; native apply reproduced a readiness contention refusal, so the activation step is reopened pending the corrected positive path | readiness correction and migration/confirm/timeout acceptance pending; guest firewall and real reboot remain pending |
 | REQ-ADMIN-PROMOTION | SEC-1787917605886845 | Exact-node selector, fresh strict SSH, required DNS/VPN probes and external provider rollback evidence | pending |
@@ -33,6 +33,28 @@ artifact_evidence: source and installed configuration only; no release binary ar
 | REQ-ADMIN-EVIDENCE | SEC-1787917606418274 | Real isolated staging login, forced disconnect, reboot recovery and repeat rollback before fleet promotion | pending |
 
 ## Gates and remaining boundaries
+
+The restricted Tailnet management source candidate passed 92 deploy-controller
+tests plus all 26 Tailnet role/controller tests. The tests cover environment-only one-node enrollment, Make command-line expansion
+refusal, forwarding the capability only to the selected `site.yml` process,
+read-only check mode, exact IPv4/IPv6 Tailnet sources and fail-closed preference,
+resolver, route, sshd-policy and nftables checks. Production-profile
+`ansible-lint`, Python compilation, yamllint and diff checks passed. One isolated
+Molecule cycle completed syntax, create, prepare, converge, idempotence, verify
+and destroy with a pinned x86-only Debian 13 image under the owned ARM profile.
+It verified the exact enrollment flags, absence of key material in recorded
+argv, removal of the mode-0600 auth file and an unchanged second converge. The
+wrapper recorded command and stop rc 0, stopped profile, unchanged global
+Docker context and unchanged profile configuration; the mode-0600 log digest
+was `1a4ffb05a09d7f25292df3f5f01076374fa71725811af7d8f1f2c45b0119be5d`.
+
+This evidence is source/container proof only. The Molecule Tailscale and
+nftables commands are fixtures because nested x86 emulation cannot access a
+real Tailnet control plane or host netlink namespace. No Tailnet ACL, host,
+provider, DNS, route, SSH identity or VPN data-plane mutation occurred. Exact
+hosted CI, a reviewed complete ACL policy, approved and unapproved device tests,
+fresh direct and Tailnet SSH with the same pinned host identity, resolver/route
+comparisons, emergency access and VPN traffic remain required.
 
 The corrected UUID-bound staging cleanup source slice passed 135 focused Python
 tests and the complete local `make -j1 check` gate on 2026-08-30: 2365 unit
