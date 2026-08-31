@@ -79,6 +79,69 @@ def test_valid_signed_review_has_redacted_summary_and_no_enforcement_plan(signed
     assert json.loads(internal.stdout)['plan'] == {}
 
 
+def test_schema_accepted_lowercase_rfc3339_timestamps_are_parsed(signed_artifact):
+    def lowercase_timestamps(value):
+        value['created_at'] = value['created_at'].replace('T', 't').replace('+00:00', 'z')
+        value['expires_at'] = value['expires_at'].replace('T', 't').replace('+00:00', 'z')
+
+    signed_artifact['write'](lowercase_timestamps)
+
+    result = invoke(signed_artifact)
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)['validation'] == 'valid'
+
+
+def test_schema_accepted_rfc3339_leap_seconds_are_parsed(signed_artifact):
+    now = datetime.now(timezone.utc)
+
+    def leap_second_timestamps(value):
+        value['created_at'] = (now - timedelta(minutes=2)).strftime('%Y-%m-%dT%H:%M:60Z')
+        value['expires_at'] = (now + timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:60Z')
+
+    signed_artifact['write'](leap_second_timestamps)
+
+    result = invoke(signed_artifact)
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)['validation'] == 'valid'
+
+
+def test_schema_accepted_year_zero_is_treated_as_ancient(signed_artifact):
+    signed_artifact['write'](
+        lambda value: value.update(created_at='0000-01-01T00:00:00Z')
+    )
+
+    result = invoke(signed_artifact)
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)['validation'] == 'valid'
+
+
+def test_schema_accepted_maximum_leap_second_is_treated_as_latest(signed_artifact):
+    signed_artifact['write'](
+        lambda value: value.update(expires_at='9999-12-31T23:59:60Z')
+    )
+
+    result = invoke(signed_artifact)
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)['validation'] == 'valid'
+
+
+def test_unknown_rfc3339_offset_fails_closed(signed_artifact):
+    def unknown_offset(value):
+        value['created_at'] = value['created_at'].replace('+00:00', '-00:00')
+
+    signed_artifact['write'](unknown_offset)
+
+    result = invoke(signed_artifact)
+
+    assert result.returncode != 0
+    assert result.stdout == ''
+    assert 'network exposure validation failed' in result.stderr
+
+
 @pytest.mark.parametrize('case', ['expired', 'future', 'unsigned', 'unreviewed', 'wrong-digest',
                                  'tampered', 'unknown-key', 'unknown-source', 'bad-cidr', 'extra-field'])
 def test_invalid_inputs_fail_without_policy_output(signed_artifact, case):

@@ -359,6 +359,87 @@ def test_unlisted_family_label_or_series_overflow_is_malformed_and_dropped(
     assert "vpn_watchdog_collection_success" not in exposition
 
 
+@pytest.mark.parametrize("value", [10**400, -(10**400)])
+def test_unrepresentable_metric_number_is_malformed_and_dropped(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    value: int,
+) -> None:
+    manifest, inventory, evidence = _documents()
+    evidence["targets"][0]["samples"][0]["value"] = value
+
+    rc, stdout, stderr, output = _invoke(
+        tmp_path, capsys, manifest, inventory, evidence
+    )
+
+    assert rc == 0
+    assert stderr == ""
+    assert json.loads(stdout)["states"] == {"malformed": 1}
+    assert "vpn_watchdog_collection_success" not in output.read_text()
+
+
+def test_negative_counter_is_malformed_and_dropped(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest, inventory, evidence = _documents()
+    manifest["families"][0]["type"] = "counter"
+    evidence["targets"][0]["samples"][0]["value"] = -1
+
+    rc, stdout, stderr, output = _invoke(
+        tmp_path, capsys, manifest, inventory, evidence
+    )
+
+    assert rc == 0
+    assert stderr == ""
+    assert json.loads(stdout)["states"] == {"malformed": 1}
+    assert "vpn_watchdog_collection_success" not in output.read_text()
+
+
+def test_negative_gauge_remains_valid(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest, inventory, evidence = _documents()
+    evidence["targets"][0]["samples"][0]["value"] = -1
+
+    rc, stdout, stderr, output = _invoke(
+        tmp_path, capsys, manifest, inventory, evidence
+    )
+
+    assert rc == 0
+    assert stderr == ""
+    assert json.loads(stdout)["states"] == {"fresh": 1}
+    assert "vpn_watchdog_collection_success{node=\"vpn-p0\",role=\"edge\"} -1" in output.read_text()
+
+
+def test_optional_emitted_family_uses_its_own_staleness_window(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest, inventory, evidence = _documents()
+    optional = copy.deepcopy(manifest["families"][0])
+    optional["name"] = "vpn_watchdog_optional_total"
+    optional["type"] = "counter"
+    optional["cadence_seconds"] = 10
+    optional["stale_after_seconds"] = 30
+    manifest["families"].append(optional)
+    sample = copy.deepcopy(evidence["targets"][0]["samples"][0])
+    sample["family"] = optional["name"]
+    evidence["targets"][0]["samples"].append(sample)
+
+    rc, stdout, stderr, output = _invoke(
+        tmp_path, capsys, manifest, inventory, evidence, now=1_700_000_060
+    )
+
+    assert rc == 0
+    assert stderr == ""
+    assert json.loads(stdout)["states"] == {"stale": 1}
+    exposition = output.read_text()
+    assert "vpn_watchdog_optional_total" not in exposition
+    assert "vpn_watchdog_collection_success" not in exposition
+
+
 def test_family_type_is_emitted_once_for_multiple_series(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

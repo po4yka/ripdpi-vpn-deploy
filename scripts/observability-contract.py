@@ -296,7 +296,11 @@ def _internal_labels(name: str, labels: dict[str, str]) -> dict[str, str]:
 
 
 def _number(value: int | float) -> str:
-    if isinstance(value, bool) or not math.isfinite(float(value)):
+    try:
+        numeric = float(value)
+    except (OverflowError, TypeError, ValueError) as error:
+        raise ContractError("invalid metric number") from error
+    if isinstance(value, bool) or not math.isfinite(numeric):
         raise ContractError("invalid metric number")
     return format(value, ".17g")
 
@@ -353,13 +357,17 @@ def _evaluate_target(
             _number(sample["value"])
         except ContractError:
             return "malformed", []
+        if family["type"] == "counter" and sample["value"] < 0:
+            return "malformed", []
         seen_families.add(sample["family"])
         valid_samples.append((sample["family"], labels, sample["value"]))
 
     required = set(target["required_families"])
     if not required.issubset(seen_families):
         return "malformed", []
-    stale_after = min(families[name]["stale_after_seconds"] for name in required)
+    stale_after = min(
+        families[name]["stale_after_seconds"] for name in seen_families
+    )
     if now - observed_at > stale_after:
         return "stale", []
     return "fresh", valid_samples
@@ -524,6 +532,7 @@ def _create_temporary(parent_descriptor: int, target_name: str) -> tuple[int, st
             try:
                 os.unlink(name, dir_fd=parent_descriptor)
             except FileNotFoundError:
+                # A concurrent cleanup may have removed our unpublished temp file.
                 pass
             raise
         return descriptor, name
@@ -591,6 +600,7 @@ def _atomic_write(path: Path, payload: bytes) -> None:
             try:
                 os.unlink(temporary, dir_fd=parent_descriptor)
             except FileNotFoundError:
+                # The temporary output may already be absent after a failed publish.
                 pass
         if parent_descriptor >= 0:
             os.close(parent_descriptor)

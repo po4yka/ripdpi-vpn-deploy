@@ -66,7 +66,7 @@ def _fence_config(path, expected):
 
 def _parse_config(raw):
     try:
-        value = json.loads(raw, object_pairs_hook=lambda pairs: _unique_object(pairs))
+        value = json.loads(raw, object_pairs_hook=_unique_object)
     except (TypeError, ValueError, json.JSONDecodeError) as error:
         raise ReviewError("invalid-config") from error
     if not isinstance(value, dict) or set(value) != CONFIG_KEYS:
@@ -131,7 +131,7 @@ def review(environment, *, runner=subprocess.run):
     if not config_path:
         raise ReviewError("config-required")
     raw, fingerprint = _read_config(config_path)
-    config = _parse_config(raw)
+    _parse_config(raw)
     aliases = _exact_aliases(environment.get("ANSIBLE_LIMIT", ""))
     # Resolve the exact canonical records once.  This validates the same strict
     # inventory transport contract without starting an SSH or Ansible process.

@@ -14,7 +14,7 @@ import stat
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import jsonschema
 from referencing import Registry, Resource
@@ -77,6 +77,24 @@ def validate_schema(artifact):
         raise InvalidArtifact('schema-or-review')
 
 
+def parse_rfc3339(value):
+    normalized = value.upper()
+    if normalized.endswith('-00:00'):
+        raise InvalidArtifact('stale-or-future')
+    if normalized.startswith('0000-'):
+        # RFC 3339 admits year zero, which is older than every value used by
+        # this gate but is outside datetime's supported range.
+        return datetime.min.replace(tzinfo=timezone.utc)
+    leap_second = re.search(r':60(?=(?:[.,][0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$)', normalized)
+    if leap_second is not None:
+        normalized = normalized[:leap_second.start()] + ':59' + normalized[leap_second.end():]
+    parsed = datetime.fromisoformat(normalized.replace('Z', '+00:00'))
+    try:
+        return parsed + (timedelta(seconds=1) if leap_second is not None else timedelta())
+    except OverflowError:
+        return datetime.max.replace(tzinfo=timezone.utc)
+
+
 def validate(args):
     if args.mode == 'disabled':
         return {'validation': 'disabled', 'counts': {direction: 0 for direction in DIRECTIONS}}, {}
@@ -85,8 +103,8 @@ def validate(args):
     validate_schema(artifact)
     if artifact['source_id'] != args.source_id:
         raise InvalidArtifact('untrusted-source')
-    created = datetime.fromisoformat(artifact['created_at'].replace('Z', '+00:00'))
-    expires = datetime.fromisoformat(artifact['expires_at'].replace('Z', '+00:00'))
+    created = parse_rfc3339(artifact['created_at'])
+    expires = parse_rfc3339(artifact['expires_at'])
     now = datetime.now(timezone.utc)
     if not created <= now < expires or expires <= created:
         raise InvalidArtifact('stale-or-future')
