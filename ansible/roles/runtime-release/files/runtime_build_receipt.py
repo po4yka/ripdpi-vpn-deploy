@@ -1159,6 +1159,7 @@ def _terminate_process_group(process: subprocess.Popen) -> None:
     try:
         os.killpg(process_group, signal.SIGTERM)
     except ProcessLookupError:
+        # The group exited after the caller observed the build failure.
         pass
 
     deadline = time.monotonic() + 2
@@ -1170,6 +1171,7 @@ def _terminate_process_group(process: subprocess.Popen) -> None:
         try:
             os.killpg(process_group, signal.SIGKILL)
         except ProcessLookupError:
+            # The group exited between the final existence probe and escalation.
             pass
 
     if process.poll() is None:
