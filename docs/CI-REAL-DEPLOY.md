@@ -129,11 +129,24 @@ command. The goal authenticates `/1.3/account`, stores the exact API username
 only in private artifacts, reads the exact state-bound server through
 `/1.3/server`, and derives creation, target, escalation and hard deadlines from
 the provider's integer `server.created` value at 36, 44 and 47 hours. Provider
-credentials remain one complete ambient `UPCLOUD_USERNAME`/`UPCLOUD_PASSWORD`
-or `UPCLOUD_API_USERNAME`/`UPCLOUD_API_PASSWORD` pair; do not pass them as Make
-variables. This binds the
+credentials remain one ambient `UPCLOUD_TOKEN` (preferred) or one complete
+`UPCLOUD_USERNAME`/`UPCLOUD_PASSWORD` or
+`UPCLOUD_API_USERNAME`/`UPCLOUD_API_PASSWORD` pair; do not pass them as Make
+variables or store them in tfvars. The guard canonicalizes exactly one mode and
+never emits the authorization value. This binds the
 exact API principal used for creation and deletion, not a parent billing
 account, and does not claim that provider usernames are immutable identifiers.
+
+Before creating that manifest, promote the UpCloud provider firewall in two
+phases. The private tfvars starts with `enable_provider_firewall=false`; apply,
+wait for cloud-init, deploy the guest stateful firewall, and verify strict SSH,
+DNS, outbound TCP/UDP and every required public listener. Confirm the live
+kernel ephemeral range equals `provider_return_ephemeral_ports` (the repository
+default is `32768..60999`). Then set `enable_provider_firewall=true`, inspect a
+plan that updates only the same server's firewall flag, apply it, and repeat the
+same acceptance. A server/storage/network replacement or any failed probe is a
+stop condition. Roll back by setting the flag false on that exact node and
+rechecking strict SSH; guarded cleanup is still required.
 
 The private staging tfvars must explicitly keep `enable_backups=false` and
 `additional_public_ip=false`. The guard refuses a server state with a provider

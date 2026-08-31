@@ -3,8 +3,9 @@
 Terraform root for a single UpCloud VPS running the provider-neutral
 Ansible stack.
 
-Credentials come from `UPCLOUD_USERNAME` and `UPCLOUD_PASSWORD`; do not
-place provider tokens in tfvars. The root exports the same
+Credentials come from the ambient `UPCLOUD_TOKEN` or one complete
+`UPCLOUD_USERNAME`/`UPCLOUD_PASSWORD` pair; never place credentials in tfvars.
+Use a narrowly scoped token for operator staging. The root exports the same
 inventory-facing outputs as `providers/hetzner/` and `providers/vultr/`:
 
 - `server_ipv4`
@@ -20,10 +21,26 @@ Example:
 cp terraform/providers/upcloud/environments/prod.tfvars.example \
    terraform/providers/upcloud/environments/prod.tfvars
 $EDITOR terraform/providers/upcloud/environments/prod.tfvars
-UPCLOUD_USERNAME=... UPCLOUD_PASSWORD=... make PROVIDER=upcloud ENV=prod init plan
+UPCLOUD_TOKEN=... make PROVIDER=upcloud ENV=prod init plan
 ```
 
 See `terraform/providers/upcloud/CLAUDE.md` for design decisions and pitfalls.
+
+## Stateless provider-firewall promotion
+
+The UpCloud Public & Utility firewall does not track connections. A fresh node
+therefore uses `enable_provider_firewall = false` while Terraform still manages
+the complete future ruleset. After cloud-init and Ansible have installed the
+guest stateful firewall, verify strict SSH, DNS, outbound TCP/UDP and the public
+listeners, then set `enable_provider_firewall = true`. The promotion plan must
+be an in-place update of the same server; any replacement is a stop condition.
+
+Return packets are accepted only into
+`provider_return_ephemeral_ports` (default `32768..60999`) for TCP and UDP over
+both address families, plus exact DHCP client ports. The provider range is not
+a stateful allowlist: guest nftables remains the enforcement layer for
+unsolicited packets. Outbound provider traffic is explicitly accepted; guest
+nftables continues to own egress policy.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
@@ -32,6 +49,13 @@ See `terraform/providers/upcloud/CLAUDE.md` for design decisions and pitfalls.
 | ---- | ------- |
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.15, < 2.0 |
 | <a name="requirement_upcloud"></a> [upcloud](#requirement\_upcloud) | ~> 5.36 |
+
+## Providers
+
+| Name | Version |
+| ---- | ------- |
+| <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
+| <a name="provider_upcloud"></a> [upcloud](#provider\_upcloud) | 5.43.0 |
 
 ## Modules
 
@@ -57,9 +81,11 @@ No modules.
 | <a name="input_enable_backups"></a> [enable\_backups](#input\_enable\_backups) | Enable provider-side server backups (daily, 7-day retention). | `bool` | `true` | no |
 | <a name="input_enable_hysteria"></a> [enable\_hysteria](#input\_enable\_hysteria) | Include the Hysteria2 UDP/443 listener in the legacy default set. Explicit public\_listeners ignore this toggle; add hysteria there directly. | `bool` | `true` | no |
 | <a name="input_enable_ipv6"></a> [enable\_ipv6](#input\_enable\_ipv6) | Allocate and expose a public IPv6 address. | `bool` | `true` | no |
+| <a name="input_enable_provider_firewall"></a> [enable\_provider\_firewall](#input\_enable\_provider\_firewall) | Activate the UpCloud stateless Public & Utility firewall after the exact node has passed guest-firewall and strict-SSH verification. | `bool` | `false` | no |
 | <a name="input_labels"></a> [labels](#input\_labels) | Provider-specific resource tags/labels. | `map(string)` | `{}` | no |
 | <a name="input_nginx_xhttp_public_port"></a> [nginx\_xhttp\_public\_port](#input\_nginx\_xhttp\_public\_port) | Public TCP port for nginx-xhttp. Keep this in sync with Ansible nginx\_xhttp\_public\_port. | `number` | `8443` | no |
 | <a name="input_plan"></a> [plan](#input\_plan) | UpCloud plan slug, e.g. 1xCPU-2GB or DEV-2xCPU-4GB. | `string` | n/a | yes |
+| <a name="input_provider_return_ephemeral_ports"></a> [provider\_return\_ephemeral\_ports](#input\_provider\_return\_ephemeral\_ports) | Linux client ephemeral port range accepted for inbound TCP/UDP return traffic by the stateless provider firewall. | <pre>object({<br/>    start = number<br/>    end   = number<br/>  })</pre> | <pre>{<br/>  "end": 60999,<br/>  "start": 32768<br/>}</pre> | no |
 | <a name="input_public_listeners"></a> [public\_listeners](#input\_public\_listeners) | Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port\_range for each entry. | <pre>list(object({<br/>    name       = string<br/>    protocol   = string<br/>    port       = optional(number)<br/>    port_range = optional(string)<br/>  }))</pre> | `[]` | no |
 | <a name="input_server_name"></a> [server\_name](#input\_server\_name) | Hostname / Terraform name of the VPS. | `string` | n/a | yes |
 | <a name="input_ssh_port"></a> [ssh\_port](#input\_ssh\_port) | Effective SSH listener port configured by cloud-init and opened at the provider edge. | `number` | `22` | no |

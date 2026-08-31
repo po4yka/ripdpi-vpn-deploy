@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-08-31
+goal: SEC-1788187456764401 Preserve return traffic through the UpCloud stateless
+  firewall

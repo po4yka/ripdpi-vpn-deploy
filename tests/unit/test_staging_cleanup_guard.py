@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import importlib.util
 import os
@@ -35,6 +36,20 @@ def _creation_get(path: str) -> tuple[int, dict[str, object]]:
                 "uuid": SERVER_UUID,
                 "hostname": HOSTNAME,
                 "created": int(CREATED.timestamp()),
+            }
+        }
+    raise AssertionError(path)
+
+
+def _fresh_creation_get(path: str) -> tuple[int, dict[str, object]]:
+    if path == "/1.3/account":
+        return 200, {"account": {"username": ACCOUNT_USERNAME}}
+    if path == f"/1.3/server/{SERVER_UUID}":
+        return 200, {
+            "server": {
+                "uuid": SERVER_UUID,
+                "hostname": HOSTNAME,
+                "created": int(datetime.now(timezone.utc).timestamp()),
             }
         }
     raise AssertionError(path)
@@ -236,8 +251,16 @@ def test_manifest_schedule_is_derived_from_provider_creation_not_invocation_time
         {"uuid": SERVER_UUID, "hostname": HOSTNAME, "created": "1788004800"},
         {"uuid": SERVER_UUID, "hostname": HOSTNAME, "created": True},
         {"uuid": SERVER_UUID, "hostname": HOSTNAME, "created": 0},
-        {"uuid": STORAGE_UUID, "hostname": HOSTNAME, "created": int(CREATED.timestamp())},
-        {"uuid": SERVER_UUID, "hostname": "foreign.test", "created": int(CREATED.timestamp())},
+        {
+            "uuid": STORAGE_UUID,
+            "hostname": HOSTNAME,
+            "created": int(CREATED.timestamp()),
+        },
+        {
+            "uuid": SERVER_UUID,
+            "hostname": "foreign.test",
+            "created": int(CREATED.timestamp()),
+        },
         {
             "uuid": SERVER_UUID,
             "hostname": HOSTNAME,
@@ -287,7 +310,7 @@ def test_create_manifest_cli_authenticates_without_printing_account_identity(
     monkeypatch.setenv("UPCLOUD_USERNAME", "secret-api-user")
     monkeypatch.setenv("UPCLOUD_PASSWORD", "secret-api-password")
     monkeypatch.setattr(
-        guard, "_upcloud_request", lambda *_args, **_kwargs: _creation_get
+        guard, "_upcloud_request", lambda *_args, **_kwargs: _fresh_creation_get
     )
 
     result = guard.main(
@@ -327,11 +350,11 @@ def test_create_manifest_cli_accepts_only_one_complete_api_alias_pair(
     monkeypatch.delenv("UPCLOUD_PASSWORD", raising=False)
     monkeypatch.setenv("UPCLOUD_API_USERNAME", "secret-api-user")
     monkeypatch.setenv("UPCLOUD_API_PASSWORD", "secret-api-password")
-    observed: list[tuple[str, str]] = []
+    observed: list[str] = []
 
-    def request_factory(username: str, password: str) -> guard.JsonRequest:
-        observed.append((username, password))
-        return _creation_get
+    def request_factory(authorization: str) -> guard.JsonRequest:
+        observed.append(authorization)
+        return _fresh_creation_get
 
     monkeypatch.setattr(guard, "_upcloud_request", request_factory)
 
@@ -354,7 +377,55 @@ def test_create_manifest_cli_accepts_only_one_complete_api_alias_pair(
     )
 
     assert result == 0
-    assert observed == [("secret-api-user", "secret-api-password")]
+    expected = base64.b64encode(b"secret-api-user:secret-api-password").decode("ascii")
+    assert observed == [f"Basic {expected}"]
+
+
+def test_create_manifest_cli_accepts_one_literal_bearer_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    state_path = _private_file(
+        private / "terraform.tfstate", guard.canonical_json(_state_view())
+    )
+    for name in (
+        "UPCLOUD_USERNAME",
+        "UPCLOUD_PASSWORD",
+        "UPCLOUD_API_USERNAME",
+        "UPCLOUD_API_PASSWORD",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("UPCLOUD_TOKEN", "uct_test_bearer_token_123456")
+    observed: list[str] = []
+
+    def request_factory(authorization: str) -> guard.JsonRequest:
+        observed.append(authorization)
+        return _fresh_creation_get
+
+    monkeypatch.setattr(guard, "_upcloud_request", request_factory)
+
+    result = guard.main(
+        [
+            "create-manifest",
+            "--output",
+            str(private / "manifest.json"),
+            "--provider",
+            "upcloud",
+            "--environment",
+            "ci-staging-token",
+            "--workspace",
+            "ci-staging-token",
+            "--state",
+            str(state_path),
+            "--hostname",
+            HOSTNAME,
+        ]
+    )
+
+    assert result == 0
+    assert observed == ["Bearer uct_test_bearer_token_123456"]
 
 
 @pytest.mark.parametrize(
@@ -368,6 +439,13 @@ def test_create_manifest_cli_accepts_only_one_complete_api_alias_pair(
             "UPCLOUD_API_USERNAME": "alias",
             "UPCLOUD_API_PASSWORD": "alias-password",
         },
+        {
+            "UPCLOUD_USERNAME": "primary",
+            "UPCLOUD_PASSWORD": "primary-password",
+            "UPCLOUD_TOKEN": "uct_ambiguous_token_123456",
+        },
+        {"UPCLOUD_TOKEN": "short"},
+        {"UPCLOUD_TOKEN": "uct_invalid\nheader_value_123456"},
     ],
 )
 def test_create_manifest_cli_refuses_partial_or_ambiguous_credential_pairs(
@@ -385,12 +463,13 @@ def test_create_manifest_cli_refuses_partial_or_ambiguous_credential_pairs(
         "UPCLOUD_PASSWORD",
         "UPCLOUD_API_USERNAME",
         "UPCLOUD_API_PASSWORD",
+        "UPCLOUD_TOKEN",
     ):
         monkeypatch.delenv(name, raising=False)
     for name, value in credentials.items():
         monkeypatch.setenv(name, value)
 
-    with pytest.raises(guard.GuardError, match="one complete UpCloud credential pair"):
+    with pytest.raises(guard.GuardError, match="one valid UpCloud credential mode"):
         guard.main(
             [
                 "create-manifest",
@@ -541,9 +620,10 @@ def test_authorize_reservation_binds_account_and_manifest_before_plan(
         expected_environment="ci-staging-20260829",
     )
 
-    assert reserved["manifest_sha256"] == hashlib.sha256(
-        guard.canonical_json(manifest)
-    ).hexdigest()
+    assert (
+        reserved["manifest_sha256"]
+        == hashlib.sha256(guard.canonical_json(manifest)).hexdigest()
+    )
     assert evidence_path.read_bytes() == guard.canonical_json(reserved)
 
 
@@ -1394,7 +1474,11 @@ def test_evidence_release_retains_expected_inode_when_replacement_appears_after_
         path: object, *args: object, **kwargs: object
     ) -> os.stat_result:
         nonlocal inserted
-        if path == evidence_path.name and kwargs.get("dir_fd") is not None and not inserted:
+        if (
+            path == evidence_path.name
+            and kwargs.get("dir_fd") is not None
+            and not inserted
+        ):
             try:
                 return original_stat(path, *args, **kwargs)
             except FileNotFoundError:
