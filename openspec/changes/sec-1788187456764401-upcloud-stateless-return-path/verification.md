@@ -4,8 +4,8 @@ change: sec-1788187456764401-upcloud-stateless-return-path
 commit_sha: "96242a81960ebe4c943856e86dc6086d42620350"
 local: passed
 local_evidence: "Exact main ae0af37 source full: Python 2617 PASS + 1 existing skip, BATS 55, Terraform 97, Conftest 45, Rust and Clippy, ci-fast OK; guarded-destroy follow-up 96242a8: 148 focused unit tests and configured hooks PASS."
-remote_ci: passed
-remote_ci_evidence: "Exact main ae0af37 CI 33413847757 SUCCESS 51/51, CodeQL 33413847458 SUCCESS, Scorecard 33413847276 SUCCESS; guarded-destroy follow-up exact 74fc1bf CI 33420983482 and CodeQL 33420983044 SUCCESS."
+remote_ci: required
+remote_ci_evidence: "Exact main ae0af37 CI 33413847757 SUCCESS 51/51, CodeQL 33413847458 SUCCESS, Scorecard 33413847276 SUCCESS; exact CI for the portable guarded-destroy follow-up is pending."
 dry_run: passed
 dry_run_evidence: "Saved isolated plans showed only the canonical three-resource create, then a single server firewall false-to-true update with no create/delete/replace, then 0 add / 0 change / 3 destroy for the exact owned resources."
 staging: passed
