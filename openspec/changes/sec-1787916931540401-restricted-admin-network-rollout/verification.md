@@ -34,7 +34,7 @@ artifact_evidence: source and installed configuration only; no release binary ar
 
 ## Gates and remaining boundaries
 
-The restricted Tailnet management source candidate passed 92 deploy-controller
+The restricted Tailnet management source candidate passed 101 deploy-controller
 tests plus all 26 Tailnet role/controller tests. The tests cover environment-only one-node enrollment, Make command-line expansion
 refusal, forwarding the capability only to the selected `site.yml` process,
 read-only check mode, exact IPv4/IPv6 Tailnet sources and fail-closed preference,
@@ -47,6 +47,14 @@ argv, removal of the mode-0600 auth file and an unchanged second converge. The
 wrapper recorded command and stop rc 0, stopped profile, unchanged global
 Docker context and unchanged profile configuration; the mode-0600 log digest
 was `1a4ffb05a09d7f25292df3f5f01076374fa71725811af7d8f1f2c45b0119be5d`.
+
+The exact source commit `d8388f4` then passed the canonical local
+`make -j1 check` gate: 2804 Python unit tests passed with one existing skip,
+all 55 Bats tests passed, all four Terraform mock-provider suites and 45
+Conftest policy tests passed, and all 184 Rust tests plus Clippy passed. The
+owned profile stopped successfully; the global Docker context and profile
+configuration hash were unchanged. The subsequent evidence-only descendant
+changes no production or test behavior; exact hosted CI remains required.
 
 This evidence is source/container proof only. The Molecule Tailscale and
 nftables commands are fixtures because nested x86 emulation cannot access a
