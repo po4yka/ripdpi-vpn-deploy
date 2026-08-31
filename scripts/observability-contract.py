@@ -87,6 +87,15 @@ class ContractError(Exception):
     """A redacted observability contract failure."""
 
 
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate key")
+        value[key] = item
+    return value
+
+
 def validate_document(schema: dict[str, Any], document: Any) -> None:
     try:
         import jsonschema
@@ -97,16 +106,74 @@ def validate_document(schema: dict[str, Any], document: Any) -> None:
         raise ContractError("document does not match its schema")
 
 
-def _load_json(path: Path) -> Any:
-    flags = os.O_RDONLY
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    descriptor = -1
+def _trusted_input_directory(metadata: os.stat_result) -> bool:
+    return (
+        stat.S_ISDIR(metadata.st_mode)
+        and metadata.st_uid in {0, os.geteuid()}
+        and metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH) == 0
+    )
+
+
+def _open_trusted_input(path: Path) -> int:
+    absolute = Path(os.path.abspath(os.fspath(path)))
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    directory_flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    file_flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
+    file_flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    parent_descriptor = -1
+    try:
+        parent_descriptor = os.open(absolute.anchor, directory_flags)
+        if not _trusted_input_directory(os.fstat(parent_descriptor)):
+            raise ContractError("invalid input")
+        for component in absolute.parts[1:-1]:
+            child_descriptor = os.open(
+                component, directory_flags, dir_fd=parent_descriptor
+            )
+            os.close(parent_descriptor)
+            parent_descriptor = child_descriptor
+            if not _trusted_input_directory(os.fstat(parent_descriptor)):
+                raise ContractError("invalid input")
+        descriptor = os.open(absolute.name, file_flags, dir_fd=parent_descriptor)
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid not in {0, os.geteuid()}
+            or metadata.st_nlink != 1
+            or metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+            or metadata.st_size > MAX_INPUT_BYTES
+        ):
+            os.close(descriptor)
+            raise ContractError("invalid input")
+        return descriptor
+    except OSError as exc:
+        raise ContractError("invalid input") from exc
+    finally:
+        if parent_descriptor >= 0:
+            os.close(parent_descriptor)
+
+
+def _open_bounded_repository_file(path: Path) -> int:
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     try:
         descriptor = os.open(path, flags)
         metadata = os.fstat(descriptor)
         if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_INPUT_BYTES:
+            os.close(descriptor)
             raise ContractError("invalid input")
+        return descriptor
+    except OSError as exc:
+        raise ContractError("invalid input") from exc
+
+
+def _load_json(path: Path, *, external: bool = True) -> Any:
+    descriptor = -1
+    try:
+        descriptor = (
+            _open_trusted_input(path)
+            if external
+            else _open_bounded_repository_file(path)
+        )
         raw = b""
         while len(raw) <= MAX_INPUT_BYTES:
             chunk = os.read(descriptor, min(65536, MAX_INPUT_BYTES + 1 - len(raw)))
@@ -117,6 +184,7 @@ def _load_json(path: Path) -> Any:
             raise ContractError("invalid input")
         return json.loads(
             raw.decode("utf-8"),
+            object_pairs_hook=_unique_object,
             parse_constant=lambda _value: (_ for _ in ()).throw(ValueError()),
         )
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
@@ -127,7 +195,7 @@ def _load_json(path: Path) -> Any:
 
 
 def _schema(name: str) -> dict[str, Any]:
-    value = _load_json(CONTRACT_ROOT / SCHEMAS[name])
+    value = _load_json(CONTRACT_ROOT / SCHEMAS[name], external=False)
     if not isinstance(value, dict):
         raise ContractError("invalid schema")
     return value

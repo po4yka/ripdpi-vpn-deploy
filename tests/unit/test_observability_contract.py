@@ -166,6 +166,114 @@ def _invoke(
     return result, captured.out, captured.err, output
 
 
+def _invoke_paths(
+    paths: list[Path],
+    output: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> tuple[int, str, str]:
+    result = _module().main(
+        [
+            "render",
+            "--manifest",
+            str(paths[0]),
+            "--inventory",
+            str(paths[1]),
+            "--evidence",
+            str(paths[2]),
+            "--output",
+            str(output),
+            "--now",
+            "1700000060",
+        ]
+    )
+    captured = capsys.readouterr()
+    return result, captured.out, captured.err
+
+
+@pytest.mark.parametrize("document_index", range(3))
+def test_contract_inputs_reject_duplicate_json_keys(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    document_index: int,
+) -> None:
+    paths: list[Path] = []
+    for name, value in zip(
+        ("manifest.json", "inventory.json", "evidence.json"),
+        _documents(),
+        strict=True,
+    ):
+        path = tmp_path / name
+        raw = json.dumps(value)
+        if len(paths) == document_index:
+            raw = raw.replace(
+                '"schema_version": 1',
+                '"schema_version": 1, "schema_version": 1',
+                1,
+            )
+        path.write_text(raw, encoding="utf-8")
+        paths.append(path)
+
+    output = tmp_path / "observability.prom"
+    rc, stdout, stderr = _invoke_paths(paths, output, capsys)
+
+    assert rc == 2
+    assert stdout == ""
+    assert stderr == "observability-contract: validation failed\n"
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("document_index", range(3))
+@pytest.mark.parametrize(
+    "unsafe", ["writable_file", "hard_link", "writable_ancestor", "symlink_ancestor"]
+)
+def test_contract_inputs_reject_untrusted_files_and_ancestry(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    document_index: int,
+    unsafe: str,
+) -> None:
+    documents = _documents()
+    trusted = tmp_path / "trusted"
+    trusted.mkdir(mode=0o700)
+    paths: list[Path] = []
+    for index, (name, value) in enumerate(
+        zip(
+            ("manifest.json", "inventory.json", "evidence.json"),
+            documents,
+            strict=True,
+        )
+    ):
+        parent = trusted
+        if index == document_index and unsafe in {
+            "writable_ancestor",
+            "symlink_ancestor",
+        }:
+            real_parent = trusted / f"real-{index}"
+            real_parent.mkdir(mode=0o700)
+            if unsafe == "writable_ancestor":
+                real_parent.chmod(0o770)
+                parent = real_parent
+            else:
+                linked_parent = trusted / f"linked-{index}"
+                linked_parent.symlink_to(real_parent, target_is_directory=True)
+                parent = linked_parent
+        path = parent / name
+        path.write_text(json.dumps(value), encoding="utf-8")
+        if index == document_index and unsafe == "writable_file":
+            path.chmod(0o664)
+        if index == document_index and unsafe == "hard_link":
+            os.link(path, trusted / f"second-link-{index}")
+        paths.append(path)
+
+    output = tmp_path / "observability.prom"
+    rc, stdout, stderr = _invoke_paths(paths, output, capsys)
+
+    assert rc == 2
+    assert stdout == ""
+    assert stderr == "observability-contract: validation failed\n"
+    assert not output.exists()
+
+
 @pytest.mark.parametrize(
     ("lifecycle", "ever_seen", "evidence_change", "now", "expected"),
     [
