@@ -120,6 +120,15 @@ table inet filter {
 {% if ssh_v6_cidrs %}
     tcp dport {{ ssh_port }} ip6 saddr { {{ ssh_v6_cidrs | join(", ") }} } accept
 {% endif %}
+{%- if vpn.enable_tailnet_management | default(false) %}
+{% for source in tailnet_management.approved_sources | default([]) %}
+{% if ':' in source %}
+    iifname "tailscale0" tcp dport {{ ssh_port }} ip6 saddr {{ source }} accept
+{% else %}
+    iifname "tailscale0" tcp dport {{ ssh_port }} ip saddr {{ source }} accept
+{% endif %}
+{% endfor %}
+{% endif %}
 
 {% for listener in public_listener_contract | default([]) %}
 {% set listener_target = listener.port if listener.port is not none else listener.port_range %}

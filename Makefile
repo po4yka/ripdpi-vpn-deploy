@@ -76,6 +76,18 @@ endif
 unexport UPCLOUD_API_USERNAME UPCLOUD_API_PASSWORD
 endif
 
+# Tailnet enrollment is an ambient one-node capability. Reject command-line
+# Make data before it can enter implicit exports or recipe expansion.
+ifneq ($(filter deploy dry-run deploy-canary,$(MAKECMDGOALS)),)
+ifneq ($(filter-out undefined environment,$(origin TAILSCALE_AUTH_KEY)),)
+$(error Tailnet enrollment credentials must come from the environment)
+endif
+ifneq ($(origin TAILSCALE_AUTH_KEY),undefined)
+override TAILSCALE_AUTH_KEY := $(value TAILSCALE_AUTH_KEY)
+export TAILSCALE_AUTH_KEY
+endif
+endif
+
 HOSTS   ?=
 COHORTS ?=
 SOPS_FILES ?=

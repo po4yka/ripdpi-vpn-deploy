@@ -205,6 +205,18 @@
       changed_when: false
       tags: [always]
 
+    - name: Guard — validate exact Tailnet management source addresses
+      ansible.builtin.command:
+        cmd: >-
+          python3 {{ playbook_dir }}/../../scripts/tailnet-management-controller.py
+          validate-sources
+        stdin: "{{ tailnet_management.approved_sources | default([]) | to_json }}"
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      when: vpn.enable_tailnet_management | default(false)
+      tags: [always, tailnet-management]
+
     - name: Guard — block public listener collisions before convergence
       ansible.builtin.command:
         cmd: "python3 {{ playbook_dir }}/../../scripts/check-listener-collisions.py"
@@ -229,6 +241,10 @@
 
     - role: firewall
       tags: [firewall, always]
+
+    - role: tailnet-management
+      when: vpn.enable_tailnet_management | default(false)
+      tags: [tailnet-management, security]
 
     - role: intrusion_prevention
       when: (security_controls | default({})).fail2ban | default(false)
