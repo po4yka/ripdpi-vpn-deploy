@@ -40,7 +40,12 @@ def _read_config(path):
         raise ReviewError("unsafe-config") from error
     try:
         info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.getuid()
+            or info.st_nlink != 1
+            or stat.S_IMODE(info.st_mode) != 0o600
+        ):
             raise ReviewError("unsafe-config")
         data = os.read(fd, MAX_CONFIG + 1)
         if len(data) > MAX_CONFIG:

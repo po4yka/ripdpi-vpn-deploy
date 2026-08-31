@@ -83,12 +83,14 @@ def test_invalid_inputs_never_resolve_inventory_or_start_validator(tmp_path, mon
     assert called == []
 
 
-@pytest.mark.parametrize("mutation", ["symlink", "writable"])
+@pytest.mark.parametrize("mutation", ["hardlink", "symlink", "writable"])
 def test_unsafe_config_refuses_before_local_or_child_work(tmp_path, monkeypatch, mutation):
     controller = load_controller()
     path = tmp_path / "config.json"
     config(path)
-    if mutation == "symlink":
+    if mutation == "hardlink":
+        os.link(path, tmp_path / "linked-config.json")
+    elif mutation == "symlink":
         target = tmp_path / "target.json"
         config(target)
         path.unlink()

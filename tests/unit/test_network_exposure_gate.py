@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import ipaddress
 import json
+import os
 import secrets
 import subprocess
 import sys
@@ -183,6 +184,20 @@ def test_signature_is_verified_not_just_present(signed_artifact):
     assert result.returncode != 0
     assert result.stdout == ''
     assert 'signature-or-key' in result.stderr
+
+
+@pytest.mark.parametrize('input_name', ['artifact', 'public'])
+def test_hard_linked_trust_inputs_fail_closed_without_policy_output(signed_artifact, tmp_path, input_name):
+    linked_path = tmp_path / f'linked-{input_name}'
+    os.link(signed_artifact[input_name], linked_path)
+    result = invoke(signed_artifact)
+    assert result.returncode != 0
+    assert result.stdout == ''
+    assert 'unsafe-file' in result.stderr
+    assert str(signed_artifact[input_name]) not in result.stderr
+    for ranges in signed_artifact['data']['policy'].values():
+        for prefix in ranges:
+            assert prefix not in result.stderr
 
 
 def test_fixture_policy_rejects_runtime_ranges_and_loadable_rules(tmp_path):

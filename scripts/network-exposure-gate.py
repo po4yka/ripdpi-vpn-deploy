@@ -46,7 +46,12 @@ def read_owned(path, *, private):
     with os.fdopen(fd, 'rb') as handle:
         metadata = os.fstat(handle.fileno())
         forbidden_mode = 0o077 if private else 0o022
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid not in {0, os.getuid()} or metadata.st_mode & forbidden_mode:
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid not in {0, os.getuid()}
+            or metadata.st_nlink != 1
+            or metadata.st_mode & forbidden_mode
+        ):
             raise InvalidArtifact('unsafe-file')
         if metadata.st_size > 4 * 1024 * 1024:
             raise InvalidArtifact('oversized-file')

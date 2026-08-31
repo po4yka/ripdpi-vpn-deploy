@@ -40,14 +40,40 @@ FORBIDDEN_LABEL = re.compile(
     re.IGNORECASE,
 )
 ALLOWED_LABELS = frozenset({"node", "role", "profile", "policy", "severity", "vantage"})
+EVIDENCE_STATES = frozenset(
+    {
+        "fresh",
+        "stale",
+        "absent",
+        "never-seen",
+        "future",
+        "malformed",
+        "disabled",
+        "retired",
+    }
+)
 INTERNAL_FAMILIES = {
     "vpn_observability_expected_target": {
+        "name": "vpn_observability_expected_target",
+        "owner": "observability_contract",
         "type": "gauge",
-        "labels": ("role", "target"),
+        "unit": None,
+        "labels": ["node", "role"],
+        "max_series": 256,
+        "cadence_seconds": 60,
+        "stale_after_seconds": 180,
+        "alert_use": True,
     },
     "vpn_observability_evidence_state": {
+        "name": "vpn_observability_evidence_state",
+        "owner": "observability_contract",
         "type": "gauge",
-        "labels": ("role", "state", "target"),
+        "unit": None,
+        "labels": ["node", "role", "state"],
+        "max_series": 256,
+        "cadence_seconds": 60,
+        "stale_after_seconds": 180,
+        "alert_use": True,
     },
 }
 SCHEMAS = {
@@ -142,6 +168,11 @@ def _validate_semantics(
     observations = _unique(evidence["targets"], "target")
     if set(observations) - set(targets):
         raise ContractError("unexpected evidence target")
+    if any(
+        families.get(name) != specification
+        for name, specification in INTERNAL_FAMILIES.items()
+    ):
+        raise ContractError("invalid internal metric family")
     for target in targets.values():
         if _forbidden_value(target["target"]) or _forbidden_value(target["role"]):
             raise ContractError("unsafe inventory identity")
@@ -156,7 +187,10 @@ def _validate_semantics(
             for value in values
         ):
             raise ContractError("unsafe inventory label value")
-        if any(name not in families for name in target["required_families"]):
+        if any(
+            name not in families or name in INTERNAL_FAMILIES
+            for name in target["required_families"]
+        ):
             raise ContractError("unknown required family")
         if any(
             not set(families[name]["labels"]).issubset(label_values)
@@ -165,7 +199,7 @@ def _validate_semantics(
             raise ContractError("required family has no label allowlist")
     for family in families.values():
         if family["name"] in INTERNAL_FAMILIES:
-            raise ContractError("reserved metric family")
+            continue
         if SECRET_IDENTIFIER.search(family["name"]):
             raise ContractError("unsafe metric family")
         if any(FORBIDDEN_LABEL.search(label) for label in family["labels"]):
@@ -186,8 +220,10 @@ def _labels(labels: dict[str, str]) -> str:
 
 
 def _internal_labels(name: str, labels: dict[str, str]) -> dict[str, str]:
-    if tuple(sorted(labels)) != INTERNAL_FAMILIES[name]["labels"]:
+    if tuple(sorted(labels)) != tuple(INTERNAL_FAMILIES[name]["labels"]):
         raise ContractError("invalid internal metric labels")
+    if "state" in labels and labels["state"] not in EVIDENCE_STATES:
+        raise ContractError("invalid internal metric state")
     return labels
 
 
@@ -224,7 +260,7 @@ def _evaluate_target(
     seen_families: set[str] = set()
     for sample in observation["samples"]:
         family = families.get(sample["family"])
-        if family is None:
+        if family is None or sample["family"] in INTERNAL_FAMILIES:
             return "malformed", []
         labels = sample["labels"]
         if set(labels) != set(family["labels"]):
@@ -311,17 +347,14 @@ def _render(
             for target, state, samples in results
         ]
 
-    lines = [
-        f"# TYPE {name} {specification['type']}"
-        for name, specification in INTERNAL_FAMILIES.items()
-    ]
+    lines = [f"# TYPE {name} {families[name]['type']}" for name in INTERNAL_FAMILIES]
     states: dict[str, int] = {}
     emitted = 0
     producer_samples: list[tuple[str, dict[str, str], int | float]] = []
     for target, state, samples in results:
         identity = _internal_labels(
             "vpn_observability_expected_target",
-            {"role": target["role"], "target": target["target"]},
+            {"node": target["target"], "role": target["role"]},
         )
         lines.append(f"vpn_observability_expected_target{_labels(identity)} 1")
         state_labels = _internal_labels(

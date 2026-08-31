@@ -210,11 +210,11 @@ def test_render_classifies_every_inventory_and_freshness_state(
     assert summary["targets"] == 1
     exposition = output.read_text(encoding="utf-8")
     assert (
-        f'vpn_observability_evidence_state{{role="edge",state="{expected}",target="vpn-p0"}} 1'
+        f'vpn_observability_evidence_state{{node="vpn-p0",role="edge",state="{expected}"}} 1'
         in exposition
     )
     assert (
-        'vpn_observability_expected_target{role="edge",target="vpn-p0"} 1' in exposition
+        'vpn_observability_expected_target{node="vpn-p0",role="edge"} 1' in exposition
     )
     assert ("vpn_watchdog_collection_success" in exposition) is (expected == "fresh")
 
@@ -448,19 +448,59 @@ def test_duplicate_semantic_identity_refuses_without_replacing_output(
     assert output.read_text() == "last-known-good\n"
 
 
+def test_manifest_declares_every_renderer_owned_family_with_bounded_labels() -> None:
+    manifest = json.loads(
+        (CONTRACT / "observability-metric-manifest.example.json").read_text()
+    )
+    families = {family["name"]: family for family in manifest["families"]}
+
+    assert families["vpn_observability_expected_target"] == {
+        "name": "vpn_observability_expected_target",
+        "owner": "observability_contract",
+        "type": "gauge",
+        "unit": None,
+        "labels": ["node", "role"],
+        "max_series": 256,
+        "cadence_seconds": 60,
+        "stale_after_seconds": 180,
+        "alert_use": True,
+    }
+    assert families["vpn_observability_evidence_state"] == {
+        "name": "vpn_observability_evidence_state",
+        "owner": "observability_contract",
+        "type": "gauge",
+        "unit": None,
+        "labels": ["node", "role", "state"],
+        "max_series": 256,
+        "cadence_seconds": 60,
+        "stale_after_seconds": 180,
+        "alert_use": True,
+    }
+
+
 @pytest.mark.parametrize(
-    "reserved_name",
-    ["vpn_observability_expected_target", "vpn_observability_evidence_state"],
+    ("mutation", "reserved_name"),
+    [
+        ("missing", "vpn_observability_expected_target"),
+        ("changed-labels", "vpn_observability_evidence_state"),
+    ],
 )
-def test_manifest_refuses_internal_metric_family_collision_without_replacing_output(
+def test_manifest_requires_exact_internal_metric_declarations_without_replacing_output(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    mutation: str,
     reserved_name: str,
 ) -> None:
     manifest, inventory, evidence = _documents()
-    manifest["families"][0]["name"] = reserved_name
-    inventory["targets"][0]["required_families"] = [reserved_name]
-    evidence["targets"][0]["samples"][0]["family"] = reserved_name
+    if mutation == "missing":
+        manifest["families"] = [
+            family for family in manifest["families"] if family["name"] != reserved_name
+        ]
+    else:
+        family = next(
+            family for family in manifest["families"] if family["name"] == reserved_name
+        )
+        family["labels"] = ["node", "role"]
     output = tmp_path / "observability.prom"
     output.write_text("last-known-good\n", encoding="utf-8")
 
@@ -472,6 +512,33 @@ def test_manifest_refuses_internal_metric_family_collision_without_replacing_out
     assert stdout == ""
     assert stderr == "observability-contract: validation failed\n"
     assert output.read_text(encoding="utf-8") == "last-known-good\n"
+
+
+def test_every_emitted_metric_family_and_label_is_manifest_declared(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    manifest, inventory, evidence = _documents()
+
+    rc, _stdout, _stderr, output = _invoke(
+        tmp_path, capsys, manifest, inventory, evidence
+    )
+
+    assert rc == 0
+    declarations = {
+        family["name"]: set(family["labels"]) for family in manifest["families"]
+    }
+    for line in output.read_text(encoding="utf-8").splitlines():
+        if line.startswith("#"):
+            continue
+        head = line.split(" ", 1)[0]
+        family_name, _, encoded_labels = head.partition("{")
+        label_names = {
+            item.split("=", 1)[0]
+            for item in encoded_labels.removesuffix("}").split(",")
+            if item
+        }
+        assert family_name in declarations
+        assert label_names == declarations[family_name]
 
 
 def test_empty_expected_inventory_refuses_and_preserves_last_known_good(
