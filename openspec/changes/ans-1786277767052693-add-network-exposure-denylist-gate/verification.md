@@ -1,9 +1,9 @@
 ---
 task_id: ANS-1786277767052693
 change: ans-1786277767052693-add-network-exposure-denylist-gate
-commit_sha: 729f262588973c51650042dcffa405ac523354b1
+commit_sha: 40d7198a8be98f4198a3c7ab185c9953ec436b0d
 local: passed
-local_evidence: "Canonical make -j1 check passed on the exact source tree: 2729 Python tests passed with one existing skip, 55 BATS passed, 184 Rust tests and release Clippy passed, plus Terraform 87, Conftest 45, cloud-init, schema, render, security, and liveness gates. Log SHA256 ecdac36313e37515abc5e407748ebcba444650116f648e460054b6027cb2c907."
+local_evidence: "Canonical make -j1 check passed after integrating current deploy main: 2741 Python tests passed with one existing skip, 55 BATS passed, 184 Rust tests and release Clippy passed, plus Terraform 87, Conftest 45, cloud-init, schema, render, security, and real pinned liveness gates. Log SHA256 5ea58a09970566da6f69b53f7d57373419227cabd735b88c5e4f029cb2e1d42b."
 remote_ci: required
 remote_ci_evidence: null
 dry_run: passed
