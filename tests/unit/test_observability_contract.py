@@ -70,6 +70,26 @@ def test_repository_examples_validate_against_versioned_schemas() -> None:
     jsonschema.Draft202012Validator.check_schema(evidence_schema)
 
 
+def test_metric_manifest_schema_bounds_cardinality_at_evidence_state_maximum() -> None:
+    module = _module()
+    schema = json.loads(
+        (CONTRACT / "observability-metric-manifest.schema.json").read_text()
+    )
+    manifest = json.loads(
+        (CONTRACT / "observability-metric-manifest.example.json").read_text()
+    )
+    evidence_state = next(
+        family
+        for family in manifest["families"]
+        if family["name"] == "vpn_observability_evidence_state"
+    )
+
+    module.validate_document(schema, manifest)
+    evidence_state["max_series"] = 2049
+    with pytest.raises(module.ContractError, match="document does not match its schema"):
+        module.validate_document(schema, manifest)
+
+
 def _documents() -> tuple[dict, dict, dict]:
     manifest = json.loads(
         (CONTRACT / "observability-metric-manifest.example.json").read_text()
@@ -378,6 +398,23 @@ def test_unrepresentable_metric_number_is_malformed_and_dropped(
     assert "vpn_watchdog_collection_success" not in output.read_text()
 
 
+def test_integer_that_cannot_round_trip_through_prometheus_is_malformed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest, inventory, evidence = _documents()
+    evidence["targets"][0]["samples"][0]["value"] = 9_007_199_254_740_993
+
+    rc, stdout, stderr, output = _invoke(
+        tmp_path, capsys, manifest, inventory, evidence
+    )
+
+    assert rc == 0
+    assert stderr == ""
+    assert json.loads(stdout)["states"] == {"malformed": 1}
+    assert "900719925474099" not in output.read_text()
+
+
 def test_negative_counter_is_malformed_and_dropped(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -583,7 +620,9 @@ def test_render_is_deterministic_atomic_and_owner_only(
 
     module = _module()
     monkeypatch.setattr(
-        module.os, "replace", lambda *_: (_ for _ in ()).throw(OSError())
+        module.os,
+        "replace",
+        lambda *_, **__: (_ for _ in ()).throw(OSError()),
     )
     paths = [
         tmp_path / name for name in ("manifest.json", "inventory.json", "evidence.json")
@@ -612,7 +651,7 @@ def test_render_is_deterministic_atomic_and_owner_only(
 
 
 @pytest.mark.parametrize("duplicate", ["family", "target", "evidence"])
-def test_duplicate_semantic_identity_refuses_without_replacing_output(
+def test_duplicate_semantic_identity_refuses_and_withdraws_output(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     duplicate: str,
@@ -634,7 +673,7 @@ def test_duplicate_semantic_identity_refuses_without_replacing_output(
     assert rc == 2
     assert stdout == ""
     assert stderr == "observability-contract: validation failed\n"
-    assert output.read_text() == "last-known-good\n"
+    assert output.read_bytes() == b""
 
 
 def test_manifest_declares_every_renderer_owned_family_with_bounded_labels() -> None:
@@ -660,11 +699,56 @@ def test_manifest_declares_every_renderer_owned_family_with_bounded_labels() -> 
         "type": "gauge",
         "unit": None,
         "labels": ["node", "role", "state"],
-        "max_series": 256,
+        "max_series": 2048,
         "cadence_seconds": 60,
         "stale_after_seconds": 180,
         "alert_use": True,
     }
+    assert families["vpn_observability_evidence_state"]["max_series"] == (
+        256 * len(_module().EVIDENCE_STATES)
+    )
+
+
+def test_validation_failure_withdraws_previous_fresh_output(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest, inventory, evidence = _documents()
+    rc, _, _, output = _invoke(tmp_path, capsys, manifest, inventory, evidence)
+    assert rc == 0
+    assert 'state="fresh"' in output.read_text()
+    manifest["families"].append(copy.deepcopy(manifest["families"][0]))
+
+    rc, stdout, stderr, output = _invoke(
+        tmp_path, capsys, manifest, inventory, evidence, output=output
+    )
+
+    assert rc == 2
+    assert stdout == ""
+    assert stderr == "observability-contract: validation failed\n"
+    assert output.read_bytes() == b""
+
+
+def test_validation_failure_refuses_to_withdraw_unsafe_preexisting_output(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest, inventory, evidence = _documents()
+    manifest["families"].append(copy.deepcopy(manifest["families"][0]))
+    unsafe_parent = tmp_path / "unsafe"
+    unsafe_parent.mkdir(mode=0o700)
+    unsafe_parent.chmod(0o777)
+    output = unsafe_parent / "observability.prom"
+    output.write_text("last-known-good\n", encoding="utf-8")
+
+    rc, stdout, stderr, output = _invoke(
+        tmp_path, capsys, manifest, inventory, evidence, output=output
+    )
+
+    assert rc == 2
+    assert stdout == ""
+    assert stderr == "observability-contract: validation failed\n"
+    assert output.read_text(encoding="utf-8") == "last-known-good\n"
 
 
 @pytest.mark.parametrize(
@@ -674,7 +758,7 @@ def test_manifest_declares_every_renderer_owned_family_with_bounded_labels() -> 
         ("changed-labels", "vpn_observability_evidence_state"),
     ],
 )
-def test_manifest_requires_exact_internal_metric_declarations_without_replacing_output(
+def test_manifest_requires_exact_internal_metric_declarations_and_withdraws_output(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     mutation: str,
@@ -700,7 +784,7 @@ def test_manifest_requires_exact_internal_metric_declarations_without_replacing_
     assert rc == 2
     assert stdout == ""
     assert stderr == "observability-contract: validation failed\n"
-    assert output.read_text(encoding="utf-8") == "last-known-good\n"
+    assert output.read_bytes() == b""
 
 
 def test_every_emitted_metric_family_and_label_is_manifest_declared(
@@ -730,7 +814,7 @@ def test_every_emitted_metric_family_and_label_is_manifest_declared(
         assert label_names == declarations[family_name]
 
 
-def test_empty_expected_inventory_refuses_and_preserves_last_known_good(
+def test_empty_expected_inventory_refuses_and_withdraws_output(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -747,7 +831,7 @@ def test_empty_expected_inventory_refuses_and_preserves_last_known_good(
     assert rc == 2
     assert stdout == ""
     assert stderr == "observability-contract: validation failed\n"
-    assert output.read_text(encoding="utf-8") == "last-known-good\n"
+    assert output.read_bytes() == b""
 
 
 @pytest.mark.parametrize(

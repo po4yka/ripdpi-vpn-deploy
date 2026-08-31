@@ -70,7 +70,7 @@ INTERNAL_FAMILIES = {
         "type": "gauge",
         "unit": None,
         "labels": ["node", "role", "state"],
-        "max_series": 256,
+        "max_series": 2048,
         "cadence_seconds": 60,
         "stale_after_seconds": 180,
         "alert_use": True,
@@ -296,12 +296,18 @@ def _internal_labels(name: str, labels: dict[str, str]) -> dict[str, str]:
 
 
 def _number(value: int | float) -> str:
+    if isinstance(value, bool):
+        raise ContractError("invalid metric number")
     try:
         numeric = float(value)
     except (OverflowError, TypeError, ValueError) as error:
         raise ContractError("invalid metric number") from error
-    if isinstance(value, bool) or not math.isfinite(numeric):
+    if not math.isfinite(numeric):
         raise ContractError("invalid metric number")
+    if isinstance(value, int):
+        if int(numeric) != value:
+            raise ContractError("invalid metric number")
+        return str(value)
     return format(value, ".17g")
 
 
@@ -539,7 +545,9 @@ def _create_temporary(parent_descriptor: int, target_name: str) -> tuple[int, st
     raise ContractError("temporary output is unavailable")
 
 
-def _atomic_write(path: Path, payload: bytes) -> None:
+def _atomic_write(
+    path: Path, payload: bytes, *, require_existing: bool = False
+) -> None:
     if path.name in {"", ".", ".."}:
         raise ContractError("invalid output name")
     parent_path, expected_parent = _directory_chain(path.parent)
@@ -556,6 +564,8 @@ def _atomic_write(path: Path, payload: bytes) -> None:
         ):
             raise ContractError("output parent changed")
         previous = _target_metadata(parent_descriptor, path.name)
+        if require_existing and previous is None:
+            return
         descriptor, temporary = _create_temporary(parent_descriptor, path.name)
         offset = 0
         while offset < len(payload):
@@ -641,6 +651,11 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(summary, sort_keys=True, separators=(",", ":")))
         return 0
     except (ContractError, OSError, TypeError, ValueError, KeyError):
+        try:
+            _atomic_write(args.output, b"", require_existing=True)
+        except (ContractError, OSError):
+            # An unsafe or unavailable output path cannot be withdrawn safely.
+            pass
         print("observability-contract: validation failed", file=sys.stderr)
         return 2
 
