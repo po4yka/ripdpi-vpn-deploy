@@ -1,0 +1,20 @@
+[Unit]
+Description=Recover an expired Tailnet firewall transaction
+After=nftables.service
+ConditionPathExists=/var/lib/vpn-tailnet-network/transaction.lock
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/vpn-tailnet-network/tailnet-network-guest.py recover
+SuccessExitStatus=75
+StandardInput=null
+StandardOutput=null
+StandardError=null
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/nftables.d /var/lib/vpn-tailnet-network
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+RestrictSUIDSGID=yes
+LockPersonality=yes

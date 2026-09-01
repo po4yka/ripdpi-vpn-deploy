@@ -1,0 +1,13 @@
+[Unit]
+Description=Periodic Tailnet firewall transaction recovery
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=30s
+RandomizedDelaySec=5s
+AccuracySec=1s
+Persistent=true
+Unit=vpn-tailnet-network-recover.service
+
+[Install]
+WantedBy=timers.target

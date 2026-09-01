@@ -23,6 +23,11 @@ destroy table inet nat
 
 
 table inet filter {
+  # This transaction-owned fragment may declare only the two typed SSH source
+  # sets below.  It is validated before this complete candidate is installed.
+
+  include "/etc/nftables.d/vpn-tailnet-ssh-sets.nft"
+
 
 
 
