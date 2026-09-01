@@ -1,15 +1,29 @@
 """Static receiver-contract regression tests for the observability control plane."""
 
 from pathlib import Path
+import io
 import os
 import subprocess
 
+import pytest
 import yaml
 
 from scripts.template_render import render_template
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible/roles/observability_control_plane"
+
+
+def _fixture_client_namespace() -> dict[str, object]:
+    prepare = yaml.safe_load((ROLE / "molecule/enabled/prepare.yml").read_text())
+    client = next(
+        task
+        for task in prepare[0]["tasks"]
+        if task["name"] == "Install bounded direct mTLS fixture client"
+    )
+    namespace: dict[str, object] = {"__name__": "fixture_client"}
+    exec(client["ansible.builtin.copy"]["content"], namespace)
+    return namespace
 
 
 def _values() -> dict:
@@ -281,7 +295,7 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
 
     assert "except ssl.SSLError:\n                  return 60" in prepare
     assert (
-        "except (OSError, http.client.HTTPException):\n                  return 2"
+        "except (OSError, http.client.HTTPException, ValueError):\n                  return 2"
         in prepare
     )
 
@@ -323,15 +337,17 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     assert 'parser.add_argument("--body-size", type=int)' in content
     assert "def send_declared_length_request" not in content
     assert "connection.sock.sendall(request)" not in content
-    assert "class BoundedBody:" in content
     assert "MAX_BODY_SIZE = 8 * 1024 * 1024 + 1" in content
     assert "args.body_size > MAX_BODY_SIZE" in content
-    assert "Content-Length" in content
-    assert 'body = BoundedBody(args.body_size)' in content
+    assert "def send_expect_continue_request" in content
+    assert '"Expect: 100-continue"' in content
+    assert '"Content-Length: {}".format(args.body_size)' in content
+    assert "def read_response_status" in content
+    assert "BoundedBody" not in content
     assert "except ssl.SSLError:" in content
     assert "connection.request(" in content
-    assert "response = connection.getresponse()" in content
-    assert "body=body" in content
+    assert "status = connection.getresponse().status" in content
+    assert 'body=args.body.encode("utf-8")' in content
     assert "urllib" not in content
 
     oversized = next(
@@ -352,3 +368,15 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     assert "oversized_request.rc != 60" not in verify_text
     converge = (ROLE / "molecule/enabled/converge.yml").read_text()
     assert "request_body_limit: 8m" in converge
+
+
+def test_enabled_fixture_parses_413_before_a_request_body_is_sent() -> None:
+    namespace = _fixture_client_namespace()
+    read_response_status = namespace["read_response_status"]
+
+    assert callable(read_response_status)
+    assert read_response_status(
+        io.BytesIO(b"HTTP/1.1 413 Request Entity Too Large\r\nConnection: close\r\n\r\n")
+    ) == 413
+    with pytest.raises(ValueError, match="interim response"):
+        read_response_status(io.BytesIO(b"HTTP/1.1 100 Continue\r\n\r\n"))

@@ -86,7 +86,6 @@
           DIRECT_ADDRESS = "127.0.0.1"
           DIRECT_PORT = 9443
           MAX_BODY_SIZE = 8 * 1024 * 1024 + 1
-          BODY_CHUNK_SIZE = 64 * 1024
 
 
           class DirectHTTPSConnection(http.client.HTTPSConnection):
@@ -97,20 +96,45 @@
                   )
 
 
-          class BoundedBody:
-              def __init__(self, size):
-                  self.remaining = size
+          def read_response_status(response):
+              status_line = response.readline(4096)
+              if not status_line.endswith(b"\r\n"):
+                  raise ValueError("missing HTTP response status line")
+              try:
+                  version, status, _reason = status_line.decode("ascii").rstrip("\r\n").split(" ", 2)
+              except (UnicodeDecodeError, ValueError) as error:
+                  raise ValueError("malformed HTTP response status line") from error
+              if version not in ("HTTP/1.0", "HTTP/1.1") or not status.isdecimal():
+                  raise ValueError("malformed HTTP response status line")
+              while True:
+                  header = response.readline(4096)
+                  if header == b"\r\n":
+                      break
+                  if not header.endswith(b"\r\n") or b":" not in header:
+                      raise ValueError("malformed HTTP response headers")
+              if status == "100":
+                  raise ValueError("interim response")
+              return int(status)
 
-              def read(self, amount=-1):
-                  if self.remaining <= 0:
-                      return b""
-                  size = min(
-                      self.remaining,
-                      BODY_CHUNK_SIZE,
-                      BODY_CHUNK_SIZE if amount is None or amount < 0 else amount,
-                  )
-                  self.remaining -= size
-                  return b"x" * size
+
+          def send_expect_continue_request(args, context):
+              raw = socket.create_connection((DIRECT_ADDRESS, DIRECT_PORT), timeout=5)
+              sock = context.wrap_socket(raw, server_hostname=args.server_name)
+              try:
+                  request = "\r\n".join((
+                      "{} {} HTTP/1.1".format(args.method, args.path),
+                      "Host: {}".format(args.server_name),
+                      "Content-Length: {}".format(args.body_size),
+                      "Expect: 100-continue",
+                      "Connection: close",
+                      "",
+                      "",
+                  )).encode("ascii")
+                  sock.sendall(request)
+                  with sock.makefile("rb") as response:
+                      return read_response_status(response)
+              finally:
+                  sock.close()
 
 
           def main():
@@ -127,33 +151,31 @@
               if args.body_size is not None:
                   if args.body or args.body_size <= 0 or args.body_size > MAX_BODY_SIZE:
                       return 2
-                  body = BoundedBody(args.body_size)
-              else:
-                  body = args.body.encode("utf-8")
-              headers = {"Host": args.server_name}
-              if args.body_size is not None:
-                  headers["Content-Length"] = str(args.body_size)
               context = ssl.create_default_context(cafile=args.ca)
               context.load_cert_chain(certfile=args.cert, keyfile=args.key)
-              connection = DirectHTTPSConnection(
-                  args.server_name, timeout=5, context=context
-              )
               try:
-                  connection.request(
-                      args.method,
-                      args.path,
-                      body=body,
-                      headers=headers,
-                  )
-                  response = connection.getresponse()
-                  print(response.status)
+                  if args.body_size is not None:
+                      status = send_expect_continue_request(args, context)
+                  else:
+                      connection = DirectHTTPSConnection(
+                          args.server_name, timeout=5, context=context
+                      )
+                      try:
+                          connection.request(
+                              args.method,
+                              args.path,
+                              body=args.body.encode("utf-8"),
+                              headers={"Host": args.server_name},
+                          )
+                          status = connection.getresponse().status
+                      finally:
+                          connection.close()
+                  print(status)
                   return 0
               except ssl.SSLError:
                   return 60
-              except (OSError, http.client.HTTPException):
+              except (OSError, http.client.HTTPException, ValueError):
                   return 2
-              finally:
-                  connection.close()
 
 
           if __name__ == "__main__":
