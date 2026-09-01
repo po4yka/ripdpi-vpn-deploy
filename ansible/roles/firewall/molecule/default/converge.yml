@@ -133,6 +133,10 @@
         name: firewall
       vars:
         vpn: "{{ _firewall_tailnet_enabled_vpn }}"
+        tailnet_management:
+          approved_sources:
+            - "100.64.10.20"
+            - "fd7a:115c:a1e0::1234"
 
     - name: Repeat the role in check mode with UFW preinstalled
       check_mode: true
@@ -142,6 +146,10 @@
             name: firewall
           vars:
             vpn: "{{ _firewall_tailnet_enabled_vpn }}"
+            tailnet_management:
+              approved_sources:
+                - "100.64.10.20"
+                - "fd7a:115c:a1e0::1234"
 
     - name: Dry-run still probes the installed UFW state
       ansible.builtin.assert:

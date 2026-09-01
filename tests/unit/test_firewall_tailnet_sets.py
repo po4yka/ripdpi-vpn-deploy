@@ -207,6 +207,24 @@ def test_molecule_task_level_check_mode_sets_the_explicit_role_contract() -> Non
     assert "_firewall_task_check_mode" in expression
 
 
+def test_molecule_tailnet_converge_binds_sources_to_the_installed_fragment() -> None:
+    converge = yaml.safe_load((ROLE / "molecule/default/converge.yml").read_text())
+    post_tasks = converge[0]["post_tasks"]
+    include = next(
+        task
+        for task in post_tasks
+        if task["name"] == "Converge the real Tailnet-enabled firewall branch"
+    )
+    check_block = next(
+        task for task in post_tasks if task["name"] == "Repeat the role in check mode with UFW preinstalled"
+    )
+    check_include = check_block["block"][0]
+    expected = {"approved_sources": ["100.64.10.20", "fd7a:115c:a1e0::1234"]}
+
+    assert include["vars"]["tailnet_management"] == expected
+    assert check_include["vars"]["tailnet_management"] == expected
+
+
 def test_tailnet_include_cannot_create_a_separate_table_bypass() -> None:
     rendered = _render()
 
