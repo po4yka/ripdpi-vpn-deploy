@@ -17,6 +17,8 @@
           mode: "0755"
         - path: /var/lib/node_exporter/textfile
           mode: "3775"
+        - path: /run/observability-agent-fixture
+          mode: "0700"
 
     - name: Create node exporter fixture group
       ansible.builtin.group:
@@ -30,6 +32,25 @@
         append: true
         system: true
         shell: /usr/sbin/nologin
+
+    - name: Create observability agent fixture group
+      ansible.builtin.group:
+        name: observability-agent
+        system: true
+
+    - name: Create observability agent fixture account
+      ansible.builtin.user:
+        name: observability-agent
+        group: observability-agent
+        system: true
+        shell: /usr/sbin/nologin
+
+    - name: Set credential diagnostic runtime directory authority
+      ansible.builtin.file:
+        path: /run/observability-agent-fixture
+        owner: observability-agent
+        group: observability-agent
+        mode: "0700"
 
     - name: Set node exporter fixture directory authority
       ansible.builtin.file:
@@ -62,6 +83,12 @@
           - "2"
           - -subj
           - /CN=observability-fixture-ca
+          - -addext
+          - basicConstraints=critical,CA:TRUE
+          - -addext
+          - keyUsage=critical,keyCertSign,cRLSign
+          - -addext
+          - subjectKeyIdentifier=hash
           - -keyout
           - /var/lib/observability-fixture/ca.key
           - -out
@@ -77,9 +104,20 @@
         content: "{{ item.content }}"
       loop:
         - name: server.ext
-          content: "subjectAltName=DNS:ingest.fixture.test\nextendedKeyUsage=serverAuth\n"
+          content: |
+            basicConstraints=critical,CA:FALSE
+            keyUsage=critical,digitalSignature,keyEncipherment
+            extendedKeyUsage=serverAuth
+            subjectAltName=DNS:ingest.fixture.test
+            subjectKeyIdentifier=hash
+            authorityKeyIdentifier=keyid,issuer
         - name: client.ext
-          content: "extendedKeyUsage=clientAuth\n"
+          content: |
+            basicConstraints=critical,CA:FALSE
+            keyUsage=critical,digitalSignature
+            extendedKeyUsage=clientAuth
+            subjectKeyIdentifier=hash
+            authorityKeyIdentifier=keyid,issuer
 
     - name: Generate fixture server key and request
       ansible.builtin.command:
@@ -299,6 +337,7 @@
           ca_file = os.path.join(credentials, "receiver-ca.crt")
           cert_file = os.path.join(credentials, "client.crt")
           key_file = os.path.join(credentials, "client.key")
+          result_file = "/run/observability-agent-fixture/credential-probe.json"
 
           try:
               context = ssl.create_default_context(cafile=ca_file)
@@ -360,7 +399,24 @@
               except (OSError, ssl.SSLError):
                   pass
 
-          print(json.dumps(RESULT, sort_keys=True))
+          encoded = (json.dumps(RESULT, sort_keys=True) + "\n").encode("ascii")
+          temporary = result_file + ".tmp"
+          descriptor = os.open(
+              temporary,
+              os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+              0o600,
+          )
+          try:
+              written = 0
+              while written < len(encoded):
+                  count = os.write(descriptor, encoded[written:])
+                  if count < 1:
+                      raise OSError("diagnostic result write failed")
+                  written += count
+              os.fsync(descriptor)
+          finally:
+              os.close(descriptor)
+          os.replace(temporary, result_file)
 
     - name: Install observability fixture units
       ansible.builtin.copy:

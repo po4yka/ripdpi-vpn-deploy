@@ -383,6 +383,11 @@ def test_enabled_molecule_uses_exact_systemd_credentials_for_fail_only_probe() -
     verify = (ROLE / "molecule" / "enabled" / "verify.yml").read_text(encoding="utf-8")
 
     assert "observability-agent-credential-probe.py" in prepare
+    assert "/run/observability-agent-fixture/credential-probe.json" in prepare
+    assert "os.O_WRONLY | os.O_CREAT | os.O_EXCL" in prepare
+    assert "0o600" in prepare
+    assert "os.fsync(descriptor)" in prepare
+    assert "if count < 1:" in prepare
     for field in (
         '"ca_cert_key_loaded": False',
         '"cert_key_match": False',
@@ -400,7 +405,52 @@ def test_enabled_molecule_uses_exact_systemd_credentials_for_fail_only_probe() -
     assert "WorkingDirectory=%d" in verify
     assert "observability-agent-credential-probe.py" in verify
     assert "all(type(value) is bool for value in candidate.values())" in verify
+    assert "/run/observability-agent-fixture/credential-probe.json" in verify
+    assert "os.O_RDONLY | os.O_NOFOLLOW" in verify
+    assert "stat.S_IMODE(metadata.st_mode) != 0o600" in verify
     assert "Remove credential diagnostic unit" in verify
+    assert "Remove credential diagnostic runtime artifacts" in verify
+    assert "credential-probe.json{{ item }}" in verify
+
+
+def test_enabled_fixture_certificates_are_explicitly_valid_for_strict_mtls() -> None:
+    prepare = (ROLE / "molecule" / "enabled" / "prepare.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "basicConstraints=critical,CA:TRUE" in prepare
+    assert "keyUsage=critical,keyCertSign,cRLSign" in prepare
+    assert prepare.count("basicConstraints=critical,CA:FALSE") == 2
+    assert "keyUsage=critical,digitalSignature,keyEncipherment" in prepare
+    assert "keyUsage=critical,digitalSignature" in prepare
+    assert "extendedKeyUsage=serverAuth" in prepare
+    assert "extendedKeyUsage=clientAuth" in prepare
+    assert "subjectAltName=DNS:ingest.fixture.test" in prepare
+
+
+def test_enabled_fixture_creates_diagnostic_account_before_runtime_ownership() -> None:
+    prepare = yaml.safe_load(
+        (ROLE / "molecule" / "enabled" / "prepare.yml").read_text(encoding="utf-8")
+    )[0]["tasks"]
+    by_name = {task["name"]: task for task in prepare}
+    names = [task["name"] for task in prepare]
+
+    assert by_name["Create observability agent fixture group"][
+        "ansible.builtin.group"
+    ] == {"name": "observability-agent", "system": True}
+    assert by_name["Create observability agent fixture account"][
+        "ansible.builtin.user"
+    ] == {
+        "name": "observability-agent",
+        "group": "observability-agent",
+        "system": True,
+        "shell": "/usr/sbin/nologin",
+    }
+    assert (
+        names.index("Create observability agent fixture group")
+        < names.index("Create observability agent fixture account")
+        < names.index("Set credential diagnostic runtime directory authority")
+    )
 
 
 def test_enabled_receiver_records_only_categorical_failure_phases() -> None:

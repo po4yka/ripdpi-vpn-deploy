@@ -149,6 +149,16 @@
     - name: Diagnose systemd credential transport only after missing arrival
       when: observability_remote_write_arrival.rc != 0
       block:
+        - name: Remove prior credential diagnostic result
+          ansible.builtin.file:
+            path: "/run/observability-agent-fixture/credential-probe.json{{ item }}"
+            state: absent
+          loop:
+            - ""
+            - .tmp
+          changed_when: false
+          failed_when: false
+
         - name: Install exact credential diagnostic unit
           ansible.builtin.command:
             argv:
@@ -214,6 +224,8 @@
               - -c
               - |
                 import json
+                import os
+                import stat
                 import subprocess
 
                 expected = {
@@ -224,34 +236,30 @@
                 }
                 fallback = {'probe_unavailable': True}
                 try:
-                    result = subprocess.run(
-                        [
-                            '/usr/bin/journalctl',
-                            '--unit=observability-agent-credential-probe.service',
-                            '--no-pager',
-                            '--output=cat',
-                            '--lines=10',
-                        ],
-                        check=False,
-                        capture_output=True,
-                        text=True,
-                        timeout=5,
+                    descriptor = os.open(
+                        '/run/observability-agent-fixture/credential-probe.json',
+                        os.O_RDONLY | os.O_NOFOLLOW,
                     )
-                    for line in reversed(result.stdout.splitlines()):
-                        try:
-                            candidate = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
+                    try:
+                        metadata = os.fstat(descriptor)
                         if (
-                            isinstance(candidate, dict)
-                            and set(candidate) == expected
-                            and all(type(value) is bool for value in candidate.values())
+                            not stat.S_ISREG(metadata.st_mode)
+                            or stat.S_IMODE(metadata.st_mode) != 0o600
+                            or metadata.st_size > 512
                         ):
-                            print(json.dumps(candidate, sort_keys=True))
-                            break
+                            raise OSError('unsafe diagnostic result')
+                        candidate = json.loads(os.read(descriptor, 512))
+                    finally:
+                        os.close(descriptor)
+                    if (
+                        isinstance(candidate, dict)
+                        and set(candidate) == expected
+                        and all(type(value) is bool for value in candidate.values())
+                    ):
+                        print(json.dumps(candidate, sort_keys=True))
                     else:
                         print(json.dumps(fallback, sort_keys=True))
-                except (OSError, subprocess.TimeoutExpired):
+                except (OSError, json.JSONDecodeError):
                     print(json.dumps(fallback, sort_keys=True))
           register: observability_credential_transport_probe
           changed_when: false
@@ -262,6 +270,16 @@
           ansible.builtin.file:
             path: /etc/systemd/system/observability-agent-credential-probe.service
             state: absent
+          changed_when: false
+          failed_when: false
+
+        - name: Remove credential diagnostic runtime artifacts
+          ansible.builtin.file:
+            path: "/run/observability-agent-fixture/credential-probe.json{{ item }}"
+            state: absent
+          loop:
+            - ""
+            - .tmp
           changed_when: false
           failed_when: false
 
