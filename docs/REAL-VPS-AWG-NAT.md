@@ -1,21 +1,25 @@
 # Real-VPS AWG/NAT evidence sentinel
 
-The recurring lane uses three independent execution boundaries: an
+The recurring lane uses three persistent independent execution boundaries: an
 owner-controlled TCP and UDP echo host, a VPS with a dedicated `awg-evidence0`
 interface, and an off-fleet Linux sentinel on the external consumer uplink. It
 validates direct controls, initial AWG traffic, service restart, peer reload,
 rejection of the old key, recovery with the new key, interface counters, and
 the named NAT counter.
 
-The retired Raspberry Pi is not required. For the approved one-shot acceptance
-run, the sentinel may be a disposable systemd-capable Linux VM inside an
-isolated profile on the operator-owned Mac, provided its traffic exits through
-the current consumer uplink. Record the exact VM/runtime identity privately,
-use dedicated client material, and remove only that profile's owned resources
-after evidence capture. This proves the observed consumer-uplink path; it does
-not prove independent physical hardware, recurring uptime, filtered-path quorum,
-or Android behavior. A recurring lane still needs a separately approved
-persistent external Linux sentinel.
+The retired Raspberry Pi is not required. The approved one-shot acceptance run
+may instead use a disposable systemd-capable Linux VM inside an isolated profile
+on the operator-owned Mac, provided its traffic exits through the current
+consumer uplink. That disposable lane must not invoke `awg-evidence-provision`
+or this recurring role: use the separate `make install-liveness-sentinel`
+onboarding described in [PROTOCOL-LIVENESS.md](PROTOCOL-LIVENESS.md), so removing
+the VM cannot strand this role's persistent echo service, AWG peer, firewall or
+forced-command key. Record the exact VM/runtime identity privately, use dedicated
+client material, and remove only that profile's owned resources after evidence
+capture. This proves the observed consumer-uplink path; it does not prove
+independent physical hardware, recurring uptime, filtered-path quorum, or
+Android behavior. A recurring lane still needs a separately approved persistent
+external Linux sentinel.
 
 This is an explicit standalone research-role exception to the repository's
 normal `group_vars/all.yml` toggle plus `site.yml` wiring. The role itself must
@@ -70,11 +74,11 @@ once on an operator-owned machine; never reuse a production peer.
 
 The supported local topology maps the echo to Linux/systemd/nft host
 `vpn-p1-scaleway-pl-waw-1` in `vpn-p1-web`, the dedicated AWG interface to
-`vpn-p2-vultr-ams` in `vpn-p2-udp`, and the one-shot sentinel to the approved
-disposable Linux VM on the operator Mac's consumer uplink. The macOS host itself
-is not the sentinel: the selected VM must provide Linux, systemd and the network
-namespace capabilities enforced by the role, use an isolated non-default
-profile, and retain no host mounts or published ports. The inventory hostnames
+`vpn-p2-vultr-ams` in `vpn-p2-udp`, and the recurring sentinel to a separately
+approved persistent off-fleet Linux/systemd host. Do not render the disposable
+one-shot VM into `awg_evidence_sentinel` or run this provisioning play against
+it; onboard that VM through `make install-liveness-sentinel` instead. The
+inventory hostnames
 come from provider state; cohort groups come from the matching `COHORTS` entries
 during inventory rendering. A macOS machine is not a supported echo host.
 The non-secret inventory has exactly one host in each group:

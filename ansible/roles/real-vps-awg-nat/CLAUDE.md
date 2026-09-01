@@ -9,11 +9,13 @@ only its dedicated client and forced-command SSH private keys.
 
 **Standalone research-role exception** — this role intentionally has no
 `vpn.enable_*` toggle and is never included by `site.yml`. It targets an
-off-fleet Linux sentinel plus two separately inventoried evidence hosts;
+off-fleet persistent Linux sentinel plus two separately inventoried evidence hosts;
 putting it in the family deploy would collapse trust boundaries and distribute
 sentinel-only keys to production inventory. A disposable systemd-capable Linux
-VM on the operator Mac's consumer uplink is allowed only for approved one-shot
-acceptance, not as physical-independence or recurring-uptime evidence. Its only entrypoint is
+VM on the operator Mac's consumer uplink must not invoke this role: one-shot
+acceptance uses the separate `install-liveness-sentinel` path because this role
+deliberately leaves recurring echo, peer and forced-command state installed.
+Its only entrypoint is
 `provision-real-vps-awg-nat.yml`, and `ansible/role-tiers.yml` classifies it as
 research. That playbook loads private input only from the root-readable SOPS
 material named by `VPN_SECRETS_FILE`; placement metadata remains in a separate
@@ -48,6 +50,7 @@ root-only variables file, and only then publishes source SHA/digest state.
   `make clean` must remove decrypted SOPS material after provisioning.
 - Exit 75 means an unavailable prerequisite/control path. A failed exact-source
   apply, restart, reload, or malformed transaction exits as product failure.
-- A local disposable sentinel must use a non-default isolated VM profile,
+- A local disposable sentinel belongs to the separate protocol-liveness lane,
+  not this recurring role. It must use a non-default isolated VM profile,
   dedicated identities, no host mounts or published ports, and exact cleanup.
   Record its consumer-uplink vantage without claiming a persistent physical host.
