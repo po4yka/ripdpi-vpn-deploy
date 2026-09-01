@@ -163,7 +163,9 @@ def _live_executor(socket_path: Path, target_digest: str):
         return False
 
 
-def _remove_verified_stale_executor(root: Path, socket_path: Path, target_digest: str):
+def _remove_verified_stale_executor(
+    root: Path, socket_path: Path, target_digest: str, *, socket_required=True
+):
     """Only unlink a dead, same-target daemon socket with its private pid record."""
     pid_path = root / "daemon.json"
     fd = private(pid_path)
@@ -187,10 +189,11 @@ def _remove_verified_stale_executor(root: Path, socket_path: Path, target_digest
         raise ControllerError("executor-stale-refused") from None
     else:
         raise ControllerError("executor-unreachable")
-    info = socket_path.lstat()
-    if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.geteuid():
-        raise ControllerError("executor-stale-refused")
-    socket_path.unlink()
+    if socket_required:
+        info = socket_path.lstat()
+        if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.geteuid():
+            raise ControllerError("executor-stale-refused")
+        socket_path.unlink()
     pid_path.unlink()
 
 
@@ -268,6 +271,12 @@ def run(config):
         if sock.exists() or sock.is_symlink():
             if not _live_executor(sock, target_digest):
                 _remove_verified_stale_executor(root, sock, target_digest)
+        elif (root / "daemon.json").exists():
+            # A process can die after durable PID identity write but before
+            # socket bind.  Reuse the same verified stale-artifact cleanup.
+            _remove_verified_stale_executor(
+                root, sock, target_digest, socket_required=False
+            )
         if not sock.exists():
             process = subprocess.Popen(
                 [

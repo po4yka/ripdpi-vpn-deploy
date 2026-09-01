@@ -169,6 +169,35 @@ def test_canonical_wrong_identity_never_reconciles_provider(tmp_path, monkeypatc
     assert value.adapter.calls == []
 
 
+def test_partial_transition_is_refused_without_overwriting_armed_receipt(
+    tmp_path, monkeypatch
+):
+    m = mod()
+    value = executor(m, tmp_path)
+    monkeypatch.setattr(m.time, "time", lambda: 1_000)
+    armed = value.guard("arm", request())
+    with pytest.raises(m.ExecutorError, match="receipt-refused"):
+        value.guard("mark-applied", {"state": "armed"})
+    assert value.store.get() == armed
+
+
+def test_expired_armed_false_readback_terminalizes_without_provider_apply(
+    tmp_path, monkeypatch
+):
+    m = mod()
+    value = executor(m, tmp_path)
+    monkeypatch.setattr(m.time, "time", lambda: 1_000)
+    value.target.value = {
+        "server_uuid": request()["server_uuid"],
+        "environment": "prod",
+    }
+    value.guard("arm", request())
+    value._readback = lambda *_: {"firewall": False}
+    monkeypatch.setattr(m.time, "time", lambda: 2_001)
+    assert value.reconcile() == {"state": "executed"}
+    assert value.adapter.calls == [] and value.store.get()["state"] == "executed"
+
+
 def test_controller_guest_rpc_is_fixed_strict_command_and_dry_run_disables_apply(
     monkeypatch, tmp_path
 ):

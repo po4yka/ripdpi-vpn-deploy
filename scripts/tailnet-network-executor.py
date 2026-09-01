@@ -447,20 +447,20 @@ class Executor:
                 raise ExecutorError("receipt-foreign")
             if action == "inspect":
                 return current
-            if (
-                action == "mark-applied"
-                and current["state"] == "armed"
-                and type(request.get("provider_applied_at")) is int
-            ):
+            if action == "mark-applied" and current["state"] == "armed":
+                if set(request) != (set(current) - {"state"}) | {"provider_applied_at"}:
+                    raise ExecutorError("receipt-refused")
                 value = {**request, "state": "provider-applied"}
+                self._valid_current(value)
                 self.store.put(value)
                 return value
-            if (
-                action == "commit"
-                and current["state"] == "provider-applied"
-                and type(request.get("promotion_observed_at")) is int
-            ):
+            if action == "commit" and current["state"] == "provider-applied":
+                if set(request) != (set(current) - {"state"}) | {
+                    "promotion_observed_at"
+                }:
+                    raise ExecutorError("receipt-refused")
                 value = {**request, "state": "committed-cleanup-debt"}
+                self._valid_current(value)
                 self.store.put(value)
                 return value
             if action == "release" and current["state"] == "committed-cleanup-debt":
@@ -514,6 +514,28 @@ class Executor:
             and current.get("state") in {"armed", "provider-applied"}
             and current.get("expires_at", 0) <= int(time.time())
         ):
+            if current["state"] == "armed":
+                identity = {
+                    "server_uuid": self.target.value["server_uuid"],
+                    "environment": self.target.value["environment"],
+                    "provider_target_sha256": self.target.digest,
+                }
+                observed = self._readback("readback", identity)
+                if observed["firewall"] is False:
+                    value = {
+                        **current,
+                        "state": "executed",
+                        "executed_at": int(time.time()),
+                    }
+                    self._valid_current(value)
+                    lock = self.store._locked()
+                    try:
+                        self.store.put(value)
+                    finally:
+                        os.close(lock)
+                    return {"state": "executed"}
+                if observed["firewall"] is not True:
+                    raise ExecutorError("provider-readback-invalid")
             # A missed deadline is unsafe: perform the independent false apply.
             request = {**current, "_deadline_reconcile": True}
             return self.guard("execute", request)
