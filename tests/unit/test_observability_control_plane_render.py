@@ -3,7 +3,10 @@
 from pathlib import Path
 import io
 import os
+import socket
+import ssl
 import subprocess
+import threading
 
 import pytest
 import yaml
@@ -339,8 +342,15 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     assert "connection.sock.sendall(request)" not in content
     assert "MAX_BODY_SIZE = 8 * 1024 * 1024 + 1" in content
     assert "args.body_size > MAX_BODY_SIZE" in content
-    assert "def send_expect_continue_request" in content
-    assert '"Expect: 100-continue"' in content
+    assert "def send_streaming_request" in content
+    assert "threading.Thread(target=read_response, daemon=True)" in content
+    assert "while remaining and not completed.is_set()" in content
+    assert "if send_error is not None and status != 413" in content
+    assert "deadline = time.monotonic() + response_timeout" in content
+    assert "sock.shutdown(socket.SHUT_RDWR)" in content
+    assert "reader.join(timeout=0.1)" in content
+    assert "ssl.SSLEOFError" in content
+    assert '"Expect: 100-continue"' not in content
     assert '"Content-Length: {}".format(args.body_size)' in content
     assert "def read_response_status" in content
     assert "BoundedBody" not in content
@@ -375,8 +385,208 @@ def test_enabled_fixture_parses_413_before_a_request_body_is_sent() -> None:
     read_response_status = namespace["read_response_status"]
 
     assert callable(read_response_status)
-    assert read_response_status(
-        io.BytesIO(b"HTTP/1.1 413 Request Entity Too Large\r\nConnection: close\r\n\r\n")
-    ) == 413
+    assert (
+        read_response_status(
+            io.BytesIO(
+                b"HTTP/1.1 413 Request Entity Too Large\r\nConnection: close\r\n\r\n"
+            )
+        )
+        == 413
+    )
     with pytest.raises(ValueError, match="interim response"):
         read_response_status(io.BytesIO(b"HTTP/1.1 100 Continue\r\n\r\n"))
+
+
+def _fixture_request(size: int) -> bytes:
+    return (
+        b"POST /remote-write/v1/nodes/fixture HTTP/1.1\r\n"
+        b"Host: ingest.fixture.test\r\n" + f"Content-Length: {size}\r\n\r\n".encode()
+    )
+
+
+def _read_headers(connection: socket.socket) -> bytes:
+    received = b""
+    while b"\r\n\r\n" not in received:
+        received += connection.recv(4096)
+    return received.split(b"\r\n\r\n", 1)[1]
+
+
+def test_enabled_fixture_accepts_413_returned_during_streaming_upload() -> None:
+    namespace = _fixture_client_namespace()
+    send_streaming_request = namespace["send_streaming_request"]
+    client, server = socket.socketpair()
+    response = b"HTTP/1.1 413 Request Entity Too Large\r\nConnection: close\r\n\r\n"
+
+    def reject_after_headers() -> None:
+        try:
+            _read_headers(server)
+            server.sendall(response)
+            server.shutdown(socket.SHUT_WR)
+        finally:
+            server.close()
+
+    thread = threading.Thread(target=reject_after_headers)
+    thread.start()
+    try:
+        assert send_streaming_request(client, _fixture_request(65537), 65537) == 413
+    finally:
+        client.close()
+        thread.join(timeout=1)
+
+
+def test_enabled_fixture_accepts_413_returned_after_streaming_body() -> None:
+    namespace = _fixture_client_namespace()
+    send_streaming_request = namespace["send_streaming_request"]
+    client, server = socket.socketpair()
+    body_size = 65537
+    response = b"HTTP/1.1 413 Request Entity Too Large\r\nConnection: close\r\n\r\n"
+
+    def reject_after_body() -> None:
+        try:
+            received = _read_headers(server)
+            while len(received) < body_size:
+                received += server.recv(body_size - len(received))
+            server.sendall(response)
+        finally:
+            server.close()
+
+    thread = threading.Thread(target=reject_after_body)
+    thread.start()
+    try:
+        assert (
+            send_streaming_request(client, _fixture_request(body_size), body_size)
+            == 413
+        )
+    finally:
+        client.close()
+        thread.join(timeout=1)
+
+
+def test_enabled_fixture_refuses_a_streaming_upload_without_response() -> None:
+    namespace = _fixture_client_namespace()
+    send_streaming_request = namespace["send_streaming_request"]
+    readers: list[threading.Thread] = []
+
+    class TrackingThread(threading.Thread):
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            super().__init__(*args, **kwargs)
+            readers.append(self)
+
+    class TrackingThreading:
+        Event = staticmethod(threading.Event)
+        Thread = TrackingThread
+
+    namespace["threading"] = TrackingThreading
+    client, server = socket.socketpair()
+    hold_open = threading.Event()
+
+    def receive_without_response() -> None:
+        try:
+            _read_headers(server)
+            server.recv(1)
+            hold_open.wait(1)
+        finally:
+            server.close()
+
+    thread = threading.Thread(target=receive_without_response)
+    thread.start()
+    try:
+        with pytest.raises(TimeoutError, match="response timeout"):
+            send_streaming_request(
+                client, _fixture_request(1), 1, response_timeout=0.01
+            )
+    finally:
+        hold_open.set()
+        client.close()
+        thread.join(timeout=1)
+    assert readers and all(not reader.is_alive() for reader in readers)
+
+
+def test_enabled_fixture_accepts_413_from_an_abrupt_tls_peer_close(
+    tmp_path: Path,
+) -> None:
+    namespace = _fixture_client_namespace()
+    send_streaming_request = namespace["send_streaming_request"]
+    certificate = tmp_path / "certificate.pem"
+    private_key = tmp_path / "private-key.pem"
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-days",
+            "1",
+            "-subj",
+            "/CN=fixture.test",
+            "-keyout",
+            str(private_key),
+            "-out",
+            str(certificate),
+        ],
+        capture_output=True,
+        check=True,
+    )
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    server_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server_context.load_cert_chain(certificate, private_key)
+    client_context = ssl.create_default_context()
+    client_context.check_hostname = False
+    client_context.verify_mode = ssl.CERT_NONE
+    response = b"HTTP/1.1 413 Request Entity Too Large\r\nConnection: close\r\n\r\n"
+    response_sent = threading.Event()
+
+    def reject_and_close_tls() -> None:
+        connection, _ = listener.accept()
+        tls_connection = server_context.wrap_socket(connection, server_side=True)
+        try:
+            _read_headers(tls_connection)
+            tls_connection.sendall(response)
+            response_sent.set()
+            tls_connection.close()
+        finally:
+            listener.close()
+
+    thread = threading.Thread(target=reject_and_close_tls)
+    thread.start()
+    raw = socket.create_connection(listener.getsockname(), timeout=1)
+    client = client_context.wrap_socket(raw, server_hostname="fixture.test")
+
+    class PeerClosedTLSSocket:
+        def __init__(self, delegate: ssl.SSLSocket) -> None:
+            self.delegate = delegate
+            self.send_calls = 0
+
+        def sendall(self, data: bytes) -> None:
+            self.send_calls += 1
+            if self.send_calls == 2:
+                assert response_sent.wait(1)
+                raise ssl.SSLEOFError("peer closed during body upload")
+            self.delegate.sendall(data)
+
+        def makefile(self, *args: object, **kwargs: object) -> object:
+            return self.delegate.makefile(*args, **kwargs)
+
+        def settimeout(self, timeout: float) -> None:
+            self.delegate.settimeout(timeout)
+
+        def shutdown(self, how: int) -> None:
+            self.delegate.shutdown(how)
+
+        def close(self) -> None:
+            self.delegate.close()
+
+    peer_closed_client = PeerClosedTLSSocket(client)
+    try:
+        assert (
+            send_streaming_request(peer_closed_client, _fixture_request(65537), 65537)
+            == 413
+        )
+        assert peer_closed_client.send_calls == 2
+    finally:
+        client.close()
+        thread.join(timeout=1)
