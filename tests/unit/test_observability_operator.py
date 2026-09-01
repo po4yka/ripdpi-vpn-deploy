@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import stat
 import subprocess
 import sys
@@ -136,6 +138,18 @@ def _run(
     )
 
 
+def _operator_module() -> object:
+    sys.path.insert(0, str(SCRIPT.parent))
+    try:
+        spec = importlib.util.spec_from_file_location("observability_operator", SCRIPT)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        sys.path.pop(0)
+
+
 def _calls(operator: dict[str, object]) -> list[dict[str, object]]:
     path = operator["log"]
     assert isinstance(path, Path)
@@ -195,6 +209,51 @@ def test_render_is_one_role_check_mode_for_one_exact_host(
     assert call["environment"]["ANSIBLE_HOME"].endswith("/ansible-home")
     assert str(operator["secrets"]) not in result.stdout + result.stderr
     assert "fixture-secret-value" not in result.stdout + result.stderr
+
+
+def test_isolated_child_environment_supports_builtin_lookup_and_selected_role(
+    tmp_path: Path,
+) -> None:
+    module = _operator_module()
+    child = tmp_path / "operator-child"
+    child.mkdir(mode=0o700)
+    secrets = _write(child / "secrets.yml", "observability_secrets: {}\n")
+    inventory = _write(
+        child / "inventory.ini",
+        "[vpn]\nnode-a ansible_host=127.0.0.1 ansible_user=deploy ansible_port=22\n",
+    )
+    playbook = _write(
+        child / "playbook.yml",
+        module._playbook("control-plane", "node-a"),
+    )
+    environment = module._environment(secrets)
+    environment["ANSIBLE_HOME"] = str(child / "ansible-home")
+    executable = shutil.which("ansible-playbook")
+    assert executable is not None
+
+    result = subprocess.run(
+        [
+            executable,
+            str(playbook),
+            "-i",
+            str(inventory),
+            "--limit",
+            "node-a",
+            "--syntax-check",
+        ],
+        cwd=ROOT,
+        env=environment,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert stat.S_IMODE(inventory.stat().st_mode) == 0o600
+    assert "VPN_SECRETS_FILE" in playbook.read_text(encoding="utf-8")
+    assert "role: observability_control_plane" in playbook.read_text(encoding="utf-8")
+    assert result.returncode == 0, result.stderr
+    assert f"playbook: {playbook}" in result.stdout
 
 
 def test_validate_uses_syntax_check_without_contacting_the_host(
