@@ -16,6 +16,8 @@ TSDB capacity, and pipeline status use the existing bounded evidence families.
 The protocol-liveness adapter consumes only the canonical evaluator's published
 redacted evidence. It maps that evidence to bounded one-hot metrics and never
 executes probes or recomputes sentinel, variant, profile, or quorum semantics.
+It is separately opt-in and owns only its adapter, units, timer, and one
+textfile; disable preserves the canonical evaluator evidence.
 
 ## What's done well
 

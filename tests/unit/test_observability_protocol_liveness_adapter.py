@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible/roles/observability_control_plane"
@@ -224,3 +225,66 @@ def test_adapter_template_consumes_only_published_evidence() -> None:
     assert "--evidence" in service
     assert "protocol-liveness.py" not in service
     assert "vpn-protocol-liveness" not in service
+
+
+def test_role_wires_the_adapter_only_when_the_explicit_opt_in_is_enabled() -> None:
+    defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
+    protocol = defaults["observability_control_plane"]["protocol_liveness"]
+    assert protocol["enabled"] is False
+    assert (
+        protocol["evidence_path"]
+        == protocol["evidence_directory"] + "/last-evidence.json"
+    )
+    assert (
+        protocol["output_path"]
+        == protocol["output_directory"] + "/protocol-liveness.prom"
+    )
+
+    enable = yaml.safe_load((ROLE / "tasks/enable.yml").read_text())
+    install = next(
+        task for task in enable if task["name"] == "Install protocol-liveness adapter"
+    )
+    timer = next(
+        task
+        for task in enable
+        if task["name"] == "Enable protocol-liveness adapter timer"
+    )
+    assert (
+        install["when"]
+        == "observability_control_plane.protocol_liveness.enabled | bool"
+    )
+    assert timer["ansible.builtin.systemd_service"]["enabled"] is True
+    assert timer["ansible.builtin.systemd_service"]["state"] == "started"
+
+    disable = yaml.safe_load((ROLE / "tasks/disable.yml").read_text())
+    removal = next(
+        task
+        for task in disable
+        if task["name"] == "Remove protocol-liveness adapter owned surfaces"
+    )
+    assert (
+        "/usr/local/libexec/observability-protocol-liveness-adapter.py"
+        in removal["loop"]
+    )
+    assert (
+        "{{ observability_control_plane.protocol_liveness.output_path }}"
+        in removal["loop"]
+    )
+    assert all("evidence" not in path for path in removal["loop"])
+
+
+def test_enabled_and_disabled_molecule_scenarios_prove_adapter_lifecycle() -> None:
+    enabled_converge = yaml.safe_load(
+        (ROLE / "molecule/enabled/converge.yml").read_text()
+    )
+    config = enabled_converge[0]["pre_tasks"][-1]["ansible.builtin.set_fact"][
+        "observability_control_plane"
+    ]
+    assert config["protocol_liveness"]["enabled"] is True
+    enabled_verify = (ROLE / "molecule/enabled/verify.yml").read_text()
+    assert "observability-protocol-liveness-adapter.timer" in enabled_verify
+    assert "protocol-liveness.prom" in enabled_verify
+
+    disabled_verify = (ROLE / "molecule/default/verify.yml").read_text()
+    assert "observability-protocol-liveness-adapter.service" in disabled_verify
+    assert "protocol-liveness.prom" in disabled_verify

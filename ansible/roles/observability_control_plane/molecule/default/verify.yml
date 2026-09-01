@@ -14,3 +14,14 @@
         path: /etc/observability-control-plane
       register: control_config
       failed_when: control_config.stat.exists
+
+    - name: Protocol-liveness adapter owned surfaces remain absent
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/systemd/system/observability-protocol-liveness-adapter.service
+        - /etc/systemd/system/observability-protocol-liveness-adapter.timer
+        - /usr/local/libexec/observability-protocol-liveness-adapter.py
+        - /var/lib/node_exporter/textfile/protocol-liveness.prom
+      register: protocol_adapter_surfaces
+      failed_when: protocol_adapter_surfaces.stat.exists

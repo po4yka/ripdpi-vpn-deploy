@@ -11,6 +11,27 @@
     - not ansible_check_mode
     - "'observability-prometheus.service' in ansible_facts.services"
 
+- name: Stop and disable protocol-liveness adapter units
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop:
+    - observability-protocol-liveness-adapter.service
+    - observability-protocol-liveness-adapter.timer
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Remove protocol-liveness adapter owned surfaces
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/observability-protocol-liveness-adapter.service
+    - /etc/systemd/system/observability-protocol-liveness-adapter.timer
+    - /usr/local/libexec/observability-protocol-liveness-adapter.py
+    - "{{ observability_control_plane.protocol_liveness.output_path }}"
+
 - name: Remove control-plane units and ingress only
   ansible.builtin.file:
     path: "{{ item }}"

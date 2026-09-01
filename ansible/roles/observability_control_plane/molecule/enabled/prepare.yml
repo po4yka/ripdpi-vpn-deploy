@@ -11,6 +11,31 @@
         group: root
         mode: '0700'
 
+    - name: Create canonical protocol-liveness publisher and textfile paths
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - path: /var/lib/vpn-protocol-liveness
+          mode: '0700'
+        - path: /var/lib/node_exporter/textfile
+          mode: '0755'
+
+    - name: Publish canonical protocol-liveness fixture evidence
+      ansible.builtin.copy:
+        dest: /var/lib/vpn-protocol-liveness/last-evidence.json
+        owner: root
+        group: root
+        mode: '0600'
+        content: >-
+          {{ {"candidate_policies": [], "decision": "healthy",
+          "evaluated_at": ansible_date_time.epoch | int, "evidence": [],
+          "failed_vantages": {}, "monitoring_errors": [], "schema_version": 2}
+          | to_json }}
+
     - name: Create local pinned archive and mTLS fixture
       ansible.builtin.shell: |
         set -eu

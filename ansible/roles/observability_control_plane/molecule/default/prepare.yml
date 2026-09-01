@@ -3,6 +3,14 @@
   hosts: all
   become: true
   tasks:
+    - name: Create textfile directory for adapter cleanup fixture
+      ansible.builtin.file:
+        path: /var/lib/node_exporter/textfile
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
     - name: Create historical TSDB directory owned outside disable lifecycle
       ansible.builtin.file:
         path: /var/lib/observability-prometheus
@@ -18,3 +26,11 @@
         owner: root
         group: root
         mode: "0600"
+
+    - name: Seed adapter owned output for convergent disable cleanup
+      ansible.builtin.copy:
+        dest: /var/lib/node_exporter/textfile/protocol-liveness.prom
+        content: stale
+        owner: root
+        group: root
+        mode: '0644'

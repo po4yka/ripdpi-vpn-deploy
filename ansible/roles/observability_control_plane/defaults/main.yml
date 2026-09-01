@@ -40,3 +40,14 @@ observability_control_plane:
     observed_source_revision: ""
     expected_deployable_digest: ""
     observed_deployable_digest: ""
+  protocol_liveness:
+    # This adapter is inert until canonical evaluator evidence and the
+    # node_exporter textfile collector are explicitly supplied on the control
+    # plane. It adapts that evidence; it never schedules or evaluates probes.
+    enabled: false
+    evidence_directory: /var/lib/vpn-protocol-liveness
+    evidence_path: /var/lib/vpn-protocol-liveness/last-evidence.json
+    output_directory: /var/lib/node_exporter/textfile
+    output_path: /var/lib/node_exporter/textfile/protocol-liveness.prom
+    stale_after_seconds: 180
+    max_future_seconds: 60

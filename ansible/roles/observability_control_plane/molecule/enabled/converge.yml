@@ -60,6 +60,14 @@
           ingest_identities:
             - node_id: vpn-p0
               client_cert_pem: "{{ (control_plane_fixture_tls.results[4].content | b64decode) }}"
+          protocol_liveness:
+            enabled: true
+            evidence_directory: /var/lib/vpn-protocol-liveness
+            evidence_path: /var/lib/vpn-protocol-liveness/last-evidence.json
+            output_directory: /var/lib/node_exporter/textfile
+            output_path: /var/lib/node_exporter/textfile/protocol-liveness.prom
+            stale_after_seconds: 180
+            max_future_seconds: 60
       no_log: true
   roles:
     - role: observability_control_plane

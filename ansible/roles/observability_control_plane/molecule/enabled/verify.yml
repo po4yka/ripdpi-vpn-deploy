@@ -29,6 +29,21 @@
       delay: 1
       until: get_request.stdout == '405'
 
+    - name: Assert protocol-liveness adapter timer is enabled and active
+      ansible.builtin.command:
+        argv: [systemctl, is-active, --quiet, observability-protocol-liveness-adapter.timer]
+      changed_when: false
+
+    - name: Run protocol-liveness adapter once against canonical evidence
+      ansible.builtin.command:
+        argv: [systemctl, start, observability-protocol-liveness-adapter.service]
+      changed_when: false
+
+    - name: Assert protocol-liveness adapter published the bounded textfile
+      ansible.builtin.command:
+        argv: [grep, -F, 'vpn_observability_evidence_state', /var/lib/node_exporter/textfile/protocol-liveness.prom]
+      changed_when: false
+
     - name: Assert remote-write receiver rejects a missing or wrong SNI
       ansible.builtin.command:
         argv:
