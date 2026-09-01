@@ -28,6 +28,24 @@ MAX = 65536
 IO_TIMEOUT = 5
 
 
+def daemon_identity(target_digest: str, terraform_digest: str, token: str):
+    """Bind a daemon to the reviewed Terraform and its non-secret authority."""
+    if (
+        p.HEX.fullmatch(target_digest) is None
+        or p.HEX.fullmatch(terraform_digest) is None
+        or not isinstance(token, str)
+        or not token
+    ):
+        raise ExecutorError("daemon-identity-refused")
+    return {
+        "provider_target_sha256": target_digest,
+        "terraform_sha256": terraform_digest,
+        "provider_capability_sha256": hashlib.sha256(
+            b"tailnet-network-executor-capability-v1\0" + token.encode("utf-8")
+        ).hexdigest(),
+    }
+
+
 def _promotion():
     spec = importlib.util.spec_from_file_location(
         "tailnet_network_promotion", PROMOTION
@@ -292,6 +310,9 @@ class Executor:
         if not token:
             self.close()
             raise ExecutorError("provider-credentials-unavailable")
+        self.daemon_identity = daemon_identity(
+            self.target.digest, self.trusted.digest, token
+        )
         self.adapter.environment_map = {
             **self.adapter.environment_map,
             "UPCLOUD_TOKEN": token,
@@ -632,9 +653,9 @@ def serve(args):
     try:
         executor.store.write_pid(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "pid": os.getpid(),
-                "provider_target_sha256": executor.target.digest,
+                **executor.daemon_identity,
             }
         )
         listener.bind(str(path))
@@ -670,7 +691,13 @@ def serve(args):
                     try:
                         request = json.loads(bytes(chunks))
                         if request.get("action") == "ping":
-                            result = {"provider_target_sha256": executor.target.digest}
+                            current = executor.store.get()
+                            result = {
+                                "identity": executor.daemon_identity,
+                                "receipt_state": (
+                                    current.get("state") if current is not None else None
+                                ),
+                            }
                         else:
                             result = executor.guard(request["action"], request["value"])
                             terminal = request.get("action") in {

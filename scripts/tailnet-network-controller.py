@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import base64
 import fcntl
+import hashlib
 import importlib.util
 import json
 import os
@@ -21,6 +22,27 @@ PROMOTION_PATH = ROOT / "scripts" / "tailnet-network-promotion.py"
 EXECUTOR = ROOT / "scripts" / "tailnet-network-executor.py"
 GUEST_HELPER = "/usr/local/lib/vpn-tailnet-network/tailnet-network-guest.py"
 MAX = 65536
+
+
+def executor_identity(target_digest: str, terraform_digest: str, token: str):
+    """Return the non-secret authority a controller must match before reuse."""
+    if (
+        p.HEX.fullmatch(target_digest) is None
+        or p.HEX.fullmatch(terraform_digest) is None
+        or not isinstance(token, str)
+        or not token
+    ):
+        raise ControllerError("executor-identity-refused")
+    return {
+        "provider_target_sha256": target_digest,
+        "terraform_sha256": terraform_digest,
+        # This is an in-memory/0600 daemon capability binding, never a
+        # promotion receipt.  It prevents a later credential from arming an
+        # executor that inherited a prior controller's provider authority.
+        "provider_capability_sha256": hashlib.sha256(
+            b"tailnet-network-executor-capability-v1\0" + token.encode("utf-8")
+        ).hexdigest(),
+    }
 
 
 def module():
@@ -176,18 +198,49 @@ def provider_transaction_lock(root: Path):
     return fd
 
 
-def _live_executor(socket_path: Path, target_digest: str):
+def _live_executor(socket_path: Path, identity: dict, *, allow_unarmed=False):
     try:
         value = guard(socket_path)("ping", {})
-        return value == {"provider_target_sha256": target_digest}
+        return (
+            isinstance(value, dict)
+            and set(value) == {"identity", "receipt_state"}
+            and value["identity"] == identity
+            and value["receipt_state"]
+            in (
+                {"armed", "forward-started", "provider-applied", "committed-cleanup-debt"}
+                | ({None} if allow_unarmed else set())
+            )
+        )
     except p.PromotionError:
         return False
 
 
+def _wait_for_spawned_executor(process, socket_path: Path, identity: dict):
+    """Accept only the just-spawned daemon's exact unarmed handshake."""
+    for _ in range(50):
+        if socket_path.exists():
+            if _live_executor(socket_path, identity, allow_unarmed=True):
+                return
+            # The socket can belong to another controller or a stale daemon;
+            # never continue into arm based on path existence alone.
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+            raise ControllerError("executor-identity-refused")
+        if process.poll() is not None:
+            raise ControllerError("executor-unavailable")
+        time.sleep(0.1)
+    raise ControllerError("executor-unavailable")
+
+
 def _remove_verified_stale_executor(
-    root: Path, socket_path: Path, target_digest: str, *, socket_required=True
+    root: Path, socket_path: Path, identity: dict, *, socket_required=True
 ):
-    """Only unlink a dead, same-target daemon socket with its private pid record."""
+    """Only unlink a dead daemon with the exact trusted invocation identity."""
     pid_path = root / "daemon.json"
     fd = private(pid_path)
     try:
@@ -196,10 +249,11 @@ def _remove_verified_stale_executor(
         os.close(fd)
     if (
         not isinstance(value, dict)
-        or set(value) != {"schema_version", "pid", "provider_target_sha256"}
-        or value.get("schema_version") != 1
+        or set(value)
+        != {"schema_version", "pid", *identity}
+        or value.get("schema_version") != 2
         or type(value.get("pid")) is not int
-        or value.get("provider_target_sha256") != target_digest
+        or any(value.get(key) != item for key, item in identity.items())
     ):
         raise ControllerError("executor-stale-refused")
     try:
@@ -269,6 +323,7 @@ def run(config):
         validated_target = p.ProviderTarget(fds[0], fds[1])
         validated_tf = p.TrustedTerraform(fds[2], config["terraform_sha256"])
         target_digest = validated_target.digest
+        terraform_digest = validated_tf.digest
         validated_target.close()
         validated_tf.close()
         fds = []
@@ -289,14 +344,18 @@ def run(config):
     private_directory(root)
     sock = root / "executor.sock"
     if config["mode"] == "apply":
+        token = os.environ.get("UPCLOUD_TOKEN")
+        if not token:
+            raise ControllerError("provider-credentials-unavailable")
+        identity = executor_identity(target_digest, terraform_digest, token)
         if sock.exists() or sock.is_symlink():
-            if not _live_executor(sock, target_digest):
-                _remove_verified_stale_executor(root, sock, target_digest)
+            if not _live_executor(sock, identity):
+                _remove_verified_stale_executor(root, sock, identity)
         elif (root / "daemon.json").exists():
             # A process can die after durable PID identity write but before
             # socket bind.  Reuse the same verified stale-artifact cleanup.
             _remove_verified_stale_executor(
-                root, sock, target_digest, socket_required=False
+                root, sock, identity, socket_required=False
             )
         if not sock.exists():
             process = subprocess.Popen(
@@ -322,14 +381,7 @@ def run(config):
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
-            for _ in range(50):
-                if sock.exists():
-                    break
-                if process.poll() is not None:
-                    raise ControllerError("executor-unavailable")
-                time.sleep(0.1)
-            else:
-                raise ControllerError("executor-unavailable")
+            _wait_for_spawned_executor(process, sock, identity)
     adapter = p.TerraformAdapter(
         p.ProviderTarget(private(target), private(state)),
         trusted_terraform=p.TrustedTerraform(
@@ -340,9 +392,6 @@ def run(config):
         allow_apply=config["mode"] == "apply",
     )
     if config["mode"] == "apply":
-        token = os.environ.get("UPCLOUD_TOKEN")
-        if not token:
-            raise ControllerError("provider-credentials-unavailable")
         adapter.environment_map = {**adapter.environment_map, "UPCLOUD_TOKEN": token}
 
     def return_path(action, identity):

@@ -342,6 +342,11 @@ def test_deadline_terminalization_exits_daemon_and_removes_socket_pid(
         def __init__(self, *_args):
             self.store = Store()
             self.target = type("Target", (), {"digest": "a" * 64})()
+            self.daemon_identity = {
+                "provider_target_sha256": "a" * 64,
+                "terraform_sha256": "b" * 64,
+                "provider_capability_sha256": "c" * 64,
+            }
 
         def reconcile(self):
             return {"state": "executed"}
@@ -498,10 +503,15 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
     controller = importlib.util.module_from_spec(spec)
     assert spec.loader
     spec.loader.exec_module(controller)
+    identity = controller.executor_identity(
+        __import__("hashlib").sha256(target_path.read_bytes()).hexdigest(),
+        __import__("hashlib").sha256(binary.read_bytes()).hexdigest(),
+        "test-token",
+    )
     controller._remove_verified_stale_executor(
         root,
         sock,
-        __import__("hashlib").sha256(target_path.read_bytes()).hexdigest(),
+        identity,
         socket_required=False,
     )
     assert not (root / "daemon.json").exists()
@@ -525,8 +535,8 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
             client.sendall(b'{"action":"ping","value":{}}')
             client.shutdown(socket.SHUT_WR)
             assert (
-                json.loads(client.recv(4096))["ok"]["provider_target_sha256"]
-                == __import__("hashlib").sha256(target_path.read_bytes()).hexdigest()
+                json.loads(client.recv(4096))["ok"]
+                == {"identity": identity, "receipt_state": None}
             )
         assert process.poll() is None
         stuck.close()
@@ -534,3 +544,92 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
         process.terminate()
         process.wait(timeout=5)
         shutil.rmtree(runtime)
+
+
+def test_controller_two_invocations_reject_unarmed_or_changed_executor(
+    monkeypatch, tmp_path
+):
+    """An unarmed daemon cannot outlive the exact Terraform/capability authority."""
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_identity", controller_path
+    )
+    controller = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(controller)
+    first = controller.executor_identity("a" * 64, "b" * 64, "first-token")
+    changed_terraform = controller.executor_identity(
+        "a" * 64, "c" * 64, "first-token"
+    )
+    changed_capability = controller.executor_identity(
+        "a" * 64, "b" * 64, "second-token"
+    )
+    assert first["provider_capability_sha256"] != changed_capability[
+        "provider_capability_sha256"
+    ]
+
+    def ping(_socket):
+        return lambda *_args: {"identity": first, "receipt_state": None}
+
+    monkeypatch.setattr(controller, "guard", ping)
+    assert not controller._live_executor(Path("/private/executor.sock"), first)
+
+    # A first controller can die after spawning but before arming.  The next
+    # invocation must reject that live orphan rather than borrowing its
+    # provider capability.
+    daemon = tmp_path / "daemon.json"
+    daemon.write_text(
+        json.dumps({"schema_version": 2, "pid": os.getpid(), **first}) + "\n"
+    )
+    daemon.chmod(0o600)
+    with pytest.raises(controller.ControllerError, match="executor-unreachable"):
+        controller._remove_verified_stale_executor(
+            tmp_path, tmp_path / "executor.sock", first, socket_required=False
+        )
+
+    def armed_ping(_socket):
+        return lambda *_args: {"identity": first, "receipt_state": "armed"}
+
+    monkeypatch.setattr(controller, "guard", armed_ping)
+    assert controller._live_executor(Path("/private/executor.sock"), first)
+    assert not controller._live_executor(Path("/private/executor.sock"), changed_terraform)
+    assert not controller._live_executor(Path("/private/executor.sock"), changed_capability)
+
+
+def test_spawn_wait_revalidates_identity_before_second_controller_can_arm(
+    monkeypatch, tmp_path
+):
+    """A socket created by controller A cannot be accepted by controller B."""
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_spawn_identity", controller_path
+    )
+    controller = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(controller)
+    first = controller.executor_identity("a" * 64, "b" * 64, "first-token")
+    second = controller.executor_identity("a" * 64, "b" * 64, "second-token")
+    socket_path = tmp_path / "executor.sock"
+    socket_path.write_text("not-a-socket")
+
+    class Process:
+        terminated = False
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, **_kwargs):
+            return 0
+
+    process = Process()
+
+    def first_daemon(_socket):
+        return lambda *_args: {"identity": first, "receipt_state": None}
+
+    monkeypatch.setattr(controller, "guard", first_daemon)
+    with pytest.raises(controller.ControllerError, match="executor-identity-refused"):
+        controller._wait_for_spawned_executor(process, socket_path, second)
+    assert process.terminated
