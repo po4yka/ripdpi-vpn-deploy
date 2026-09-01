@@ -58,7 +58,8 @@ def test_ingress_is_only_the_bounded_authenticated_write_path() -> None:
         'location ~ "^/remote-write/v1/nodes/',
         "if ($request_method != POST) { return 405; }",
         "if ($observability_remote_write_node != $1) { return 403; }",
-        "proxy_pass http://127.0.0.1:9090/api/v1/write;",
+        "rewrite ^ /api/v1/write break;",
+        "proxy_pass http://127.0.0.1:9090;",
         "X-Prometheus-Remote-Write-Version $http_x_prometheus_remote_write_version;",
         "location / { return 404; }",
     ):

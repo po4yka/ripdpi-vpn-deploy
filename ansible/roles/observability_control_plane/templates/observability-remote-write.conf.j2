@@ -37,7 +37,8 @@ server {
         if ($observability_remote_write_node != $1) { return 403; }
         limit_conn observability_remote_write_conn {{ observability_control_plane.request_concurrency }};
         limit_req zone=observability_remote_write_rate burst={{ observability_control_plane.request_rate_burst }} nodelay;
-        proxy_pass http://{{ observability_control_plane.prometheus_listen }}/api/v1/write;
+        rewrite ^ /api/v1/write break;
+        proxy_pass http://{{ observability_control_plane.prometheus_listen }};
         proxy_http_version 1.1;
         proxy_set_header Host "";
         proxy_set_header X-Forwarded-For "";
