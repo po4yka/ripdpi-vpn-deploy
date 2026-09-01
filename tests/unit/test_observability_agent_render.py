@@ -140,10 +140,7 @@ def test_scrapes_have_explicit_sample_and_label_bounds() -> None:
     assert "node_device_allowlist" not in template
     assert "node_mountpoint_allowlist" not in template
     assert "self_metric_name_allowlist" not in template
-    assert (
-        "^(node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*"
-        in template
-    )
+    assert "^(node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*" in template
     assert "node_load(1|5|15)" in template
     assert "^(__name__|job|cpu|mode|device|fstype|mountpoint)$" in template
 
@@ -354,8 +351,38 @@ def test_enabled_scenario_proves_idempotence_queue_age_and_authenticated_drain()
         "'pending': maximum('prometheus_remote_storage_samples_pending')",
         "'highest': maximum('prometheus_remote_storage_queue_highest_timestamp_seconds')",
         "'highest_sent': maximum('prometheus_remote_storage_queue_highest_sent_timestamp_seconds')",
+        "'request_headers': events.count('headers')",
+        "'length_rejected': events.count('length_rejected')",
+        "'short_body': events.count('short_body')",
+        "'handler_error': events.count('handler_error')",
+        "'tls_handshake_rejected': events.count('tls_handshake_rejected')",
     ):
         assert field in arrival
+    assert "failed_when: false" in arrival
+    assert "Classify bounded remote-write transport failure" in verify
+    assert "Report bounded remote-write transport category" in verify
+    assert "Refuse missing authenticated remote-write arrival" in verify
+    assert "failed to send batch|non-recoverable error" in verify
+    assert "observability_remote_write_arrival.stdout" in verify
+    assert "observability_remote_write_failure_category.stdout" in verify
+    assert "'sender_path_signal': bool(" in verify
+
+
+def test_enabled_receiver_records_only_categorical_failure_phases() -> None:
+    prepare = (ROLE / "molecule" / "enabled" / "prepare.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'record_event("headers")' in prepare
+    assert 'record_event("length_rejected")' in prepare
+    assert 'record_event("short_body")' in prepare
+    assert 'record_event("accepted")' in prepare
+    assert 'record_event("handler_error")' in prepare
+    assert 'record_event("tls_handshake_rejected")' in prepare
+    assert "class Server(http.server.ThreadingHTTPServer)" in prepare
+    assert "except ssl.SSLError:" in prepare
+    assert 'json.dumps({"phase": phase})' in prepare
+    assert "if len(body) != length" in prepare
 
 
 def test_site_uses_the_role_contract_as_the_single_enablement_flag() -> None:

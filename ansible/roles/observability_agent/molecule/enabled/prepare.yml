@@ -170,24 +170,55 @@
           import ssl
 
           LOG = "/var/lib/observability-fixture/receiver.log"
+          EVENTS = "/var/lib/observability-fixture/receiver-events.log"
+
+          def record_event(phase):
+              with open(EVENTS, "a", encoding="utf-8") as handle:
+                  handle.write(json.dumps({"phase": phase}) + "\n")
 
           class Handler(http.server.BaseHTTPRequestHandler):
               def do_POST(self):
-                  length = int(self.headers.get("Content-Length", "0"))
-                  if length < 1 or length > 8 * 1024 * 1024:
-                      self.send_error(413)
-                      return
-                  self.rfile.read(length)
-                  subject = dict(item[0] for item in self.connection.getpeercert()["subject"])
-                  with open(LOG, "a", encoding="utf-8") as handle:
-                      handle.write(json.dumps({"path": self.path, "cn": subject.get("commonName")}) + "\n")
-                  self.send_response(200)
-                  self.end_headers()
+                  record_event("headers")
+                  try:
+                      length = int(self.headers.get("Content-Length", "0"))
+                      if length < 1 or length > 8 * 1024 * 1024:
+                          record_event("length_rejected")
+                          self.send_error(413)
+                          return
+                      body = self.rfile.read(length)
+                      if len(body) != length:
+                          record_event("short_body")
+                          self.send_error(400)
+                          return
+                      subject = dict(
+                          item[0] for item in self.connection.getpeercert()["subject"]
+                      )
+                      with open(LOG, "a", encoding="utf-8") as handle:
+                          handle.write(
+                              json.dumps({
+                                  "path": self.path,
+                                  "cn": subject.get("commonName"),
+                              }) + "\n"
+                          )
+                      record_event("accepted")
+                      self.send_response(200)
+                      self.end_headers()
+                  except Exception:
+                      record_event("handler_error")
+                      raise
 
               def log_message(self, *_args):
                   return
 
-          server = http.server.ThreadingHTTPServer(("127.0.0.1", 19443), Handler)
+          class Server(http.server.ThreadingHTTPServer):
+              def get_request(self):
+                  try:
+                      return super().get_request()
+                  except ssl.SSLError:
+                      record_event("tls_handshake_rejected")
+                      raise
+
+          server = Server(("127.0.0.1", 19443), Handler)
           context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
           context.verify_mode = ssl.CERT_REQUIRED
           context.load_verify_locations("/var/lib/observability-fixture/ca.crt")

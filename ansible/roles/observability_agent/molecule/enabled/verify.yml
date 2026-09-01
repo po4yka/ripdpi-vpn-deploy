@@ -26,6 +26,13 @@
 
             p = pathlib.Path('/var/lib/observability-fixture/receiver.log')
             rows = [json.loads(x) for x in p.read_text().splitlines()] if p.exists() else []
+            events_path = pathlib.Path(
+                '/var/lib/observability-fixture/receiver-events.log'
+            )
+            events = [
+                json.loads(x).get('phase')
+                for x in events_path.read_text().splitlines()
+            ] if events_path.exists() else []
             arrived = any(
                 row == {
                     'path': '/remote-write/v1/nodes/node-fixture',
@@ -56,13 +63,81 @@
                 'pending': maximum('prometheus_remote_storage_samples_pending'),
                 'highest': maximum('prometheus_remote_storage_queue_highest_timestamp_seconds'),
                 'highest_sent': maximum('prometheus_remote_storage_queue_highest_sent_timestamp_seconds'),
+                'request_headers': events.count('headers'),
+                'length_rejected': events.count('length_rejected'),
+                'short_body': events.count('short_body'),
+                'handler_error': events.count('handler_error'),
+                'tls_handshake_rejected': events.count('tls_handshake_rejected'),
             }, sort_keys=True))
             sys.exit(0 if arrived else 1)
       register: observability_remote_write_arrival
       changed_when: false
+      failed_when: false
       retries: 30
       delay: 1
       until: observability_remote_write_arrival.rc == 0
+
+    - name: Classify bounded remote-write transport failure
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+            import json
+            import re
+            import subprocess
+
+            result = subprocess.run(
+                [
+                    '/usr/bin/journalctl',
+                    '--unit=observability-agent.service',
+                    '--no-pager',
+                    '--output=cat',
+                    '--lines=80',
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            journal = result.stdout.lower()
+            categories = {
+                'tls': bool(re.search(r'certificate|x509|tls|handshake', journal)),
+                'sender_path_signal': bool(
+                    re.search(r'permission denied|no such file', journal)
+                ),
+                'connect': bool(
+                    re.search(r'connection refused|connect:|dial tcp', journal)
+                ),
+                'http': bool(re.search(r'http status|server returned', journal)),
+                'remote_error': bool(
+                    re.search(r'failed to send batch|non-recoverable error', journal)
+                ),
+            }
+            print(json.dumps(categories, sort_keys=True))
+      register: observability_remote_write_failure_category
+      changed_when: false
+      failed_when: false
+      when: observability_remote_write_arrival.rc != 0
+
+    - name: Report bounded remote-write transport category
+      ansible.builtin.debug:
+        msg: >-
+          {{ observability_remote_write_failure_category.stdout
+             | default('{"journal_unavailable": true}', true)
+             | from_json }}
+      when: observability_remote_write_arrival.rc != 0
+
+    - name: Refuse missing authenticated remote-write arrival
+      ansible.builtin.assert:
+        that:
+          - observability_remote_write_arrival.rc == 0
+        fail_msg: >-
+          Authenticated remote-write did not arrive; bounded categorical
+          evidence: arrival={{ observability_remote_write_arrival.stdout
+          | default('{}', true) }} transport={{
+          observability_remote_write_failure_category.stdout
+          | default('{"journal_unavailable": true}', true) }}.
 
     - name: Run schema-2 manifest adapter now
       ansible.builtin.systemd_service:
