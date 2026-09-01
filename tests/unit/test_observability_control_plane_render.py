@@ -188,6 +188,124 @@ def test_enabled_molecule_archive_matches_runtime_release_strip_contract() -> No
     )
 
 
+def test_enabled_fixture_declares_a_strictly_verifiable_mtls_certificate_chain() -> (
+    None
+):
+    prepare = (ROLE / "molecule/enabled/prepare.yml").read_text()
+
+    assert "basicConstraints=critical,CA:TRUE" in prepare
+    assert "keyUsage=critical,keyCertSign,cRLSign" in prepare
+    assert "basicConstraints=critical,CA:FALSE" in prepare
+    assert "keyUsage=critical,digitalSignature,keyEncipherment" in prepare
+    assert "extendedKeyUsage=serverAuth" in prepare
+    assert "extendedKeyUsage=clientAuth" in prepare
+    assert "authorityKeyIdentifier=keyid,issuer" in prepare
+    assert "subjectKeyIdentifier=hash" in prepare
+    assert "openssl verify -x509_strict -purpose sslserver" in prepare
+    assert "openssl verify -x509_strict -purpose sslclient" in prepare
+
+
+def test_enabled_fixture_certificate_extensions_pass_strict_openssl_verification(
+    tmp_path: Path,
+) -> None:
+    def openssl(*arguments: str) -> None:
+        subprocess.run(
+            ["openssl", *arguments],
+            cwd=tmp_path,
+            capture_output=True,
+            check=True,
+        )
+
+    ca = tmp_path / "ca.crt"
+    ca_key = tmp_path / "ca.key"
+    openssl(
+        "req",
+        "-x509",
+        "-newkey",
+        "rsa:2048",
+        "-nodes",
+        "-days",
+        "1",
+        "-subj",
+        "/CN=fixture-ca",
+        "-addext",
+        "basicConstraints=critical,CA:TRUE",
+        "-addext",
+        "keyUsage=critical,keyCertSign,cRLSign",
+        "-addext",
+        "subjectKeyIdentifier=hash",
+        "-keyout",
+        str(ca_key),
+        "-out",
+        str(ca),
+    )
+    for name, subject, purpose, extension in (
+        (
+            "server",
+            "/CN=ingest.fixture.test",
+            "sslserver",
+            "extendedKeyUsage=serverAuth\n"
+            "subjectAltName=DNS:ingest.fixture.test,DNS:control.fixture.test\n",
+        ),
+        (
+            "client",
+            "/CN=vpn-p0",
+            "sslclient",
+            "extendedKeyUsage=clientAuth\n",
+        ),
+    ):
+        key = tmp_path / f"{name}.key"
+        request = tmp_path / f"{name}.csr"
+        certificate = tmp_path / f"{name}.crt"
+        extensions = tmp_path / f"{name}.ext"
+        extensions.write_text(
+            "basicConstraints=critical,CA:FALSE\n"
+            "keyUsage=critical,digitalSignature,keyEncipherment\n"
+            f"{extension}"
+            "authorityKeyIdentifier=keyid,issuer\n"
+            "subjectKeyIdentifier=hash\n",
+            encoding="utf-8",
+        )
+        openssl(
+            "req",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-subj",
+            subject,
+            "-keyout",
+            str(key),
+            "-out",
+            str(request),
+        )
+        openssl(
+            "x509",
+            "-req",
+            "-days",
+            "1",
+            "-CA",
+            str(ca),
+            "-CAkey",
+            str(ca_key),
+            "-CAcreateserial",
+            "-in",
+            str(request),
+            "-out",
+            str(certificate),
+            "-extfile",
+            str(extensions),
+        )
+        openssl(
+            "verify",
+            "-x509_strict",
+            "-purpose",
+            purpose,
+            "-CAfile",
+            str(ca),
+            str(certificate),
+        )
+
+
 def test_disabled_molecule_seeds_retained_tsdb_once_before_idempotence() -> None:
     converge = (ROLE / "molecule/default/converge.yml").read_text()
     prepare = (ROLE / "molecule/default/prepare.yml").read_text()

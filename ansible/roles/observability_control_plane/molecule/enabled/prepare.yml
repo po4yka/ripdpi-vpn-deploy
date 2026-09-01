@@ -42,20 +42,42 @@
         commonName = supplied
         EOF
         openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=fixture-ca \
+          -addext 'basicConstraints=critical,CA:TRUE' \
+          -addext 'keyUsage=critical,keyCertSign,cRLSign' \
+          -addext 'subjectKeyIdentifier=hash' \
           -keyout "$fixture/tls/ca.key" -out "$fixture/tls/ca.crt"
         openssl req -newkey rsa:2048 -nodes -subj /CN=ingest.fixture.test \
           -keyout "$fixture/tls/server.key" -out "$fixture/tls/server.csr"
-        printf 'subjectAltName=DNS:ingest.fixture.test,DNS:control.fixture.test\n' > "$fixture/server.ext"
+        cat > "$fixture/server.ext" <<'EOF'
+        basicConstraints=critical,CA:FALSE
+        keyUsage=critical,digitalSignature,keyEncipherment
+        extendedKeyUsage=serverAuth
+        subjectAltName=DNS:ingest.fixture.test,DNS:control.fixture.test
+        authorityKeyIdentifier=keyid,issuer
+        subjectKeyIdentifier=hash
+        EOF
         openssl x509 -req -days 1 -CA "$fixture/tls/ca.crt" -CAkey "$fixture/tls/ca.key" \
           -CAcreateserial -in "$fixture/tls/server.csr" -out "$fixture/tls/server.crt" -extfile "$fixture/server.ext"
         for identity in vpn-p0 vpn-p1; do
           openssl req -newkey rsa:2048 -nodes -subj "/CN=$identity" \
             -keyout "$fixture/tls/client-$identity.key" -out "$fixture/tls/client-$identity.csr"
-          printf 'extendedKeyUsage=clientAuth\n' > "$fixture/client.ext"
+          cat > "$fixture/client.ext" <<'EOF'
+        basicConstraints=critical,CA:FALSE
+        keyUsage=critical,digitalSignature,keyEncipherment
+        extendedKeyUsage=clientAuth
+        authorityKeyIdentifier=keyid,issuer
+        subjectKeyIdentifier=hash
+        EOF
           openssl x509 -req -days 1 -CA "$fixture/tls/ca.crt" -CAkey "$fixture/tls/ca.key" \
             -CAcreateserial -in "$fixture/tls/client-$identity.csr" -out "$fixture/tls/client-$identity.crt" -extfile "$fixture/client.ext"
         done
         openssl ca -batch -config "$fixture/ca/openssl.cnf" -gencrl -out "$fixture/tls/ca.crl"
+        openssl verify -x509_strict -purpose sslserver -CAfile "$fixture/tls/ca.crt" \
+          "$fixture/tls/server.crt"
+        for identity in vpn-p0 vpn-p1; do
+          openssl verify -x509_strict -purpose sslclient -CAfile "$fixture/tls/ca.crt" \
+            "$fixture/tls/client-$identity.crt"
+        done
         cat > "$fixture/prometheus" <<'EOF'
         #!/usr/bin/env python3
         import http.server
