@@ -67,6 +67,11 @@ def test_tailnet_operator_scripts_have_one_job_and_install_durable_recovery() ->
     assert "RestrictAddressFamilies=AF_UNIX AF_NETLINK" in service
     assert "RuntimeDirectory=vpn-tailnet-management" in service
     assert "RuntimeDirectoryMode=0700" in service
+    assert "RuntimeDirectoryPreserve=yes" in service
+    assert "Before=ssh.service ssh.socket" in service
+    assert "RequiredBy=ssh.service ssh.socket" in service
+    assert "ConditionPathExists=" not in service
+    assert "SuccessExitStatus=" not in service
     assert (
         "ReadWritePaths=/var/lib/vpn-tailnet-management /run/vpn-tailnet-management"
         in service
@@ -169,6 +174,8 @@ class FakeRunner:
         stopped: bool = False,
         volatile_routes: bool = False,
         login_failure_after_enrollment: bool = False,
+        recovery_status: int = 0,
+        recovery_recheck_status: int | None = None,
     ) -> None:
         self.root = root
         self.drift = drift
@@ -177,6 +184,9 @@ class FakeRunner:
         self.stopped = stopped
         self.volatile_routes = volatile_routes
         self.login_failure_after_enrollment = login_failure_after_enrollment
+        self.recovery_status = recovery_status
+        self.recovery_recheck_status = recovery_recheck_status
+        self.recovery_show_calls = 0
         self.route_reads = 0
         self.running = False
         self.calls: list[list[str]] = []
@@ -292,6 +302,28 @@ class FakeRunner:
             ["is-active", "vpn-tailnet-recover.timer"],
         ):
             pass
+        elif argv[0].endswith("systemctl") and command == [
+            "start",
+            "vpn-tailnet-recover.service",
+        ]:
+            pass
+        elif argv[0].endswith("systemctl") and command == [
+            "show",
+            "vpn-tailnet-recover.service",
+            "--property=Result,ExecMainCode,ExecMainStatus",
+            "--no-pager",
+        ]:
+            self.recovery_show_calls += 1
+            status = (
+                self.recovery_recheck_status
+                if self.recovery_show_calls > 1
+                and self.recovery_recheck_status is not None
+                else self.recovery_status
+            )
+            stdout = (
+                "Result=success\nExecMainCode=exited\n"
+                f"ExecMainStatus={status}\n"
+            )
         else:
             raise AssertionError(argv)
         return subprocess.CompletedProcess(argv, 0, stdout, "")
@@ -642,6 +674,51 @@ def test_confirmation_rechecks_receipt_limit_before_replacement(
     assert receipt.read_bytes() == armed
 
 
+def test_confirmation_directory_fsync_ambiguity_retains_recovery_evidence(
+    tmp_path, monkeypatch
+) -> None:
+    controller = _load_controller()
+    paths = _paths(controller, tmp_path)
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner = FakeRunner(tmp_path)
+    original_fsync = controller._fsync_directory
+    failures = 0
+
+    def fail_confirmation_and_recovery_fsync(path):
+        nonlocal failures
+        receipt = tmp_path / "transaction.json"
+        if failures < 2 and receipt.exists():
+            value = json.loads(receipt.read_text())
+            if value["phase"] == "confirmed":
+                failures += 1
+                raise OSError("fixture confirmation directory fsync failure")
+        return original_fsync(path)
+
+    monkeypatch.setattr(
+        controller, "_fsync_directory", fail_confirmation_and_recovery_fsync
+    )
+    with pytest.raises(controller.Refusal, match="tailnet-rollback-uncertain"):
+        controller.configure(
+            paths=paths,
+            runner=runner,
+            auth_key="tskey-auth-fixture_1234",
+        )
+
+    assert failures == 2
+    assert runner.running is True
+    receipt = tmp_path / "transaction.json"
+    assert receipt.exists()
+    assert json.loads(receipt.read_text())["phase"] == "confirmed"
+
+    monkeypatch.setattr(controller, "_fsync_directory", original_fsync)
+    assert controller.recover(paths=paths, runner=runner) == {
+        "status": "confirmed",
+        "changed": True,
+    }
+    assert not receipt.exists()
+    assert runner.running is True
+
+
 def test_interrupted_transaction_link_is_reconciled_before_recovery(tmp_path) -> None:
     controller = _load_controller()
     paths = _paths(controller, tmp_path)
@@ -754,6 +831,39 @@ def test_missing_key_refuses_before_login(tmp_path) -> None:
             paths=_paths(controller, tmp_path), runner=runner, auth_key=""
         )
 
+    assert not any(call[1:2] == ["login"] for call in runner.calls)
+
+
+def test_recovery_worker_must_execute_before_arming(tmp_path) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner = FakeRunner(tmp_path, recovery_status=75)
+
+    with pytest.raises(controller.Refusal, match="tailnet-recovery-unavailable"):
+        controller.configure(
+            paths=_paths(controller, tmp_path),
+            runner=runner,
+            auth_key="tskey-auth-fixture_1234",
+        )
+
+    assert not (tmp_path / "transaction.json").exists()
+    assert not any(call[1:2] == ["login"] for call in runner.calls)
+
+
+def test_recovery_worker_proof_is_revalidated_under_transaction_lock(tmp_path) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner = FakeRunner(tmp_path, recovery_recheck_status=75)
+
+    with pytest.raises(controller.Refusal, match="tailnet-recovery-unavailable"):
+        controller.configure(
+            paths=_paths(controller, tmp_path),
+            runner=runner,
+            auth_key="tskey-auth-fixture_1234",
+        )
+
+    assert runner.recovery_show_calls == 2
+    assert not (tmp_path / "transaction.json").exists()
     assert not any(call[1:2] == ["login"] for call in runner.calls)
 
 
@@ -900,6 +1010,8 @@ def test_role_never_puts_auth_key_in_command_or_inventory() -> None:
     )
     assert "check_mode: false" in tasks
     assert "Predict first Tailnet enrollment in check mode" in tasks
+    assert "_tailnet_enrollment_required" in tasks
+    assert "if (not ansible_check_mode and _tailnet_enrollment_required" in tasks
 
 
 def test_role_pins_the_official_signed_stable_package_source() -> None:
@@ -979,6 +1091,12 @@ def test_role_preflights_existing_tailnet_before_every_host_write() -> None:
     )
     assert "not ansible_check_mode" in daemon["when"]
     assert timer["when"] == "not ansible_check_mode"
+    boot_gate = next(
+        task
+        for task in tasks
+        if task["name"] == "Enable the boot Tailnet recovery gate"
+    )
+    assert boot_gate["ansible.builtin.systemd_service"]["enabled"] is True
     ownership = next(
         task
         for task in tasks

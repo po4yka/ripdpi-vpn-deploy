@@ -30,6 +30,8 @@ class PortSelector:
 
 @dataclass(frozen=True)
 class FirewallAcceptRule:
+    position: int
+    verdict: str
     selector: PortSelector | None
     source_restricted: bool
     input_restricted: bool
@@ -169,13 +171,22 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
         raise ValueError("nftables JSON output is missing nftables array")
 
     accepted: list[FirewallAcceptRule] = []
-    for item in objects:
+    for position, item in enumerate(objects):
         rule = item.get("rule") if isinstance(item, dict) else None
         expressions = rule.get("expr") if isinstance(rule, dict) else None
-        if not isinstance(expressions, list) or not any(
-            isinstance(expr, dict) and "accept" in expr for expr in expressions
-        ):
+        if not isinstance(expressions, list):
             continue
+        verdicts = [
+            verdict
+            for verdict in ("accept", "drop")
+            if any(
+                isinstance(expression, dict) and verdict in expression
+                for expression in expressions
+            )
+        ]
+        if len(verdicts) != 1:
+            continue
+        verdict = verdicts[0]
 
         protocol: str | None = None
         selector_value: object | None = None
@@ -193,7 +204,7 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
                 unknown_predicate = True
                 continue
             if "match" not in expression:
-                if set(expression) - {"accept", "counter"}:
+                if set(expression) - {"accept", "drop", "counter"}:
                     unknown_predicate = True
                 continue
             match = expression["match"]
@@ -253,6 +264,8 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
             selector = _dport_selector(protocol, selector_value)
         accepted.append(
             FirewallAcceptRule(
+                position=position,
+                verdict=verdict,
                 selector=selector,
                 source_restricted=source_restricted,
                 input_restricted=input_restricted,
@@ -329,8 +342,21 @@ def _violations(
     conforming: dict[PortSelector, int] = {selector: 0 for selector in expected}
     ssh = PortSelector("tcp", ssh_port, ssh_port)
     tailnet_seen = {source: 0 for source in tailnet_sources}
+    tailnet_accept_positions: list[int] = []
+    tailnet_drop_positions: list[int] = []
+    public_ssh_positions: list[int] = []
     for rule in firewall:
         selector = rule.selector
+        if rule.verdict == "drop":
+            if (
+                selector == ssh
+                and not rule.source_restricted
+                and rule.input_restricted
+                and rule.input_interfaces == frozenset({"tailscale0"})
+                and not rule.unknown_predicate
+            ):
+                tailnet_drop_positions.append(rule.position)
+            continue
         if selector is None:
             if rule.loopback_only or rule.established_only:
                 continue
@@ -349,6 +375,7 @@ def _violations(
             )
             if tailnet_rule:
                 tailnet_seen[next(iter(rule.source_addresses))] += 1
+                tailnet_accept_positions.append(rule.position)
                 continue
             if (
                 not rule.source_restricted
@@ -356,6 +383,8 @@ def _violations(
                 or rule.unknown_predicate
             ):
                 violations.append(f"unexpected unrestricted firewall {ssh.label}")
+            else:
+                public_ssh_positions.append(rule.position)
             continue
         if selector not in expected:
             violations.append(f"unexpected firewall {selector.label}")
@@ -382,6 +411,14 @@ def _violations(
             violations.append("missing Tailnet SSH source rule")
         elif count > 1:
             violations.append("duplicate Tailnet SSH source rule")
+    if len(tailnet_drop_positions) != 1:
+        violations.append("invalid Tailnet SSH drop ordering")
+    else:
+        drop_position = tailnet_drop_positions[0]
+        if any(position >= drop_position for position in tailnet_accept_positions) or any(
+            position <= drop_position for position in public_ssh_positions
+        ):
+            violations.append("invalid Tailnet SSH drop ordering")
     for selector in sorted(expected):
         for port in range(selector.start, selector.end + 1):
             if (selector.protocol, port) in sockets:

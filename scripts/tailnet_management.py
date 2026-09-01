@@ -376,12 +376,7 @@ def _mark_transaction_confirmed(paths: CommandPaths) -> None:
             # Preserve the confirmation failure. The canonical receipt is
             # re-read below and remains the only authority for commit status.
             pass
-        try:
-            current, _ = _read_transaction(paths)
-        except (FileNotFoundError, Refusal):
-            raise Refusal("tailnet-recovery-confirm-uncertain") from error
-        if current != value:
-            raise Refusal("tailnet-recovery-confirm-uncertain") from error
+        raise Refusal("tailnet-recovery-confirm-uncertain") from error
 
 
 def _remove_transaction(paths: CommandPaths, *, phase: str) -> None:
@@ -729,7 +724,7 @@ def _postconditions(
         raise Refusal("tailnet-resolver-drift")
 
 
-def _require_recovery_ready(paths: CommandPaths, runner: Runner) -> None:
+def _require_recovery_scheduler(paths: CommandPaths, runner: Runner) -> None:
     runner(
         [paths.systemctl, "is-enabled", "vpn-tailnet-recover.timer"],
         timeout=COMMAND_TIMEOUT_SECONDS,
@@ -740,6 +735,45 @@ def _require_recovery_ready(paths: CommandPaths, runner: Runner) -> None:
     )
 
 
+def _require_recovery_service_success(paths: CommandPaths, runner: Runner) -> None:
+    status = runner(
+        [
+            paths.systemctl,
+            "show",
+            "vpn-tailnet-recover.service",
+            "--property=Result,ExecMainCode,ExecMainStatus",
+            "--no-pager",
+        ],
+        timeout=COMMAND_TIMEOUT_SECONDS,
+    ).stdout
+    fields = {}
+    for line in status.splitlines():
+        key, separator, value = line.partition("=")
+        if not separator or key in fields:
+            raise Refusal("tailnet-recovery-unavailable")
+        fields[key] = value
+    if fields != {
+        "Result": "success",
+        "ExecMainCode": "exited",
+        "ExecMainStatus": "0",
+    }:
+        raise Refusal("tailnet-recovery-unavailable")
+
+
+def _require_recovery_ready(paths: CommandPaths, runner: Runner) -> None:
+    _require_recovery_scheduler(paths, runner)
+    runner(
+        [paths.systemctl, "start", "vpn-tailnet-recover.service"],
+        timeout=COMMAND_TIMEOUT_SECONDS,
+    )
+    _require_recovery_service_success(paths, runner)
+
+
+def _revalidate_recovery_ready(paths: CommandPaths, runner: Runner) -> None:
+    _require_recovery_scheduler(paths, runner)
+    _require_recovery_service_success(paths, runner)
+
+
 def _recover_locked(*, paths: CommandPaths, runner: Runner) -> dict[str, object]:
     try:
         transaction, before = _read_transaction(paths)
@@ -747,6 +781,14 @@ def _recover_locked(*, paths: CommandPaths, runner: Runner) -> dict[str, object]
         return {"status": "idle", "changed": False}
     _remove_recovery_auth_file(paths, transaction)
     if transaction["phase"] == "confirmed":
+        try:
+            # A previous confirmation replace may have reached the namespace
+            # while its directory fsync failed. Establish that confirmed name
+            # durably before cleanup; otherwise a reboot could resurrect the
+            # armed receipt and authorize an incorrect logout.
+            _fsync_directory(paths.state_directory)
+        except OSError as error:
+            raise Refusal("tailnet-recovery-confirm-uncertain") from error
         _remove_transaction(paths, phase="confirmed")
         return {"status": "confirmed", "changed": True}
     state = _status(paths, runner)
@@ -773,6 +815,7 @@ def recover(*, paths: CommandPaths, runner: Runner = _run) -> dict[str, object]:
 def configure(
     *, paths: CommandPaths, runner: Runner = _run, auth_key: str
 ) -> dict[str, object]:
+    _require_recovery_ready(paths, runner)
     with _transaction_lock(paths, blocking=True):
         try:
             recovered = _recover_locked(paths=paths, runner=runner)
@@ -791,8 +834,9 @@ def configure(
         auth_name = f"{AUTH_FILE_PREFIX}{secrets.token_hex(16)}"
         auth_path = None
         primary_error: BaseException | None = None
+        confirmation_durable = False
         try:
-            _require_recovery_ready(paths, runner)
+            _revalidate_recovery_ready(paths, runner)
             _write_transaction(
                 paths,
                 backend_state=state,
@@ -821,6 +865,7 @@ def configure(
             auth_path = None
             _postconditions(paths=paths, runner=runner, before=before)
             _mark_transaction_confirmed(paths)
+            confirmation_durable = True
             _remove_transaction(paths, phase="confirmed")
             return {"status": "configured", "changed": True}
         except (Exception, KeyboardInterrupt, SystemExit) as error:
@@ -831,6 +876,8 @@ def configure(
                 raise Refusal("tailnet-rollback-uncertain") from cleanup_error
             auth_path = None
             if outcome["status"] == "confirmed":
+                if not confirmation_durable:
+                    raise Refusal("tailnet-recovery-confirm-uncertain") from error
                 return {"status": "configured", "changed": True}
             if isinstance(error, Refusal):
                 raise

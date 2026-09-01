@@ -12,12 +12,20 @@ firewall role owns exact `tailscale0` SSH source rules.
 **Ephemeral enrollment capability** — `TAILSCALE_AUTH_KEY` is accepted only on
 Ansible stdin, written to a root-owned mode-0600 file in the dedicated
 `/run/vpn-tailnet-management` directory, and removed after the bounded login
-attempt. The recovery unit owns the same volatile runtime directory. The key
-never belongs in inventory or SOPS.
+attempt. The recovery unit preserves the same volatile runtime directory across
+timer runs so a busy recovery cannot remove another controller's key. The key
+never belongs in inventory or SOPS, and an already enrolled host receives empty
+stdin even when an ambient key still exists.
 
 **Durable unconfirmed enrollment recovery** — a private transaction is fsynced
-before `tailscale login`; a persistent systemd timer serializes on the same
-lock and logs out any unconfirmed enrollment after controller loss or reboot.
+before `tailscale login`; the controller first executes the sandboxed worker as
+a readiness proof. A persistent timer serializes on the same lock, while a
+required boot unit reconciles after `tailscaled` and before the ordinary SSH
+listener starts. Lock contention is a boot-gate failure, not a successful
+recovery exit. The fresh worker result is revalidated under the controller lock
+immediately before the receipt is armed. Any confirmation-directory fsync
+ambiguity reports failure rather than treating page-cache bytes as a durable
+commit.
 
 ## What's done well
 

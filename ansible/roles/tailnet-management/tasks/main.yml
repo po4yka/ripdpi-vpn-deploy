@@ -137,14 +137,19 @@
       validated existing Tailscale command.
   when: not (tailnet_management_install_package | bool)
 
+- name: Record whether Tailnet enrollment capability is required
+  ansible.builtin.set_fact:
+    _tailnet_enrollment_required: >-
+      {{ not (
+        _tailnet_existing_cli_candidates | length == 1 and
+        (_tailnet_existing_status.stdout | from_json).BackendState == 'Running'
+      ) }}
+
 - name: Require enrollment capability before host writes
   ansible.builtin.assert:
     that:
       - >-
-        (
-          _tailnet_existing_cli_candidates | length == 1 and
-          (_tailnet_existing_status.stdout | from_json).BackendState == 'Running'
-        ) or (
+        not (_tailnet_enrollment_required | bool) or (
           lookup('env', 'TAILSCALE_AUTH_KEY')
           is match('^tskey-auth-[A-Za-z0-9_-]{8,480}$')
         )
@@ -279,6 +284,13 @@
     - tailnet_management_install_package | bool
     - not ansible_check_mode
 
+- name: Enable the boot Tailnet recovery gate
+  ansible.builtin.systemd_service:
+    name: vpn-tailnet-recover.service
+    enabled: true
+    daemon_reload: "{{ _tailnet_recovery_units.changed }}"
+  when: not ansible_check_mode
+
 - name: Arm persistent Tailnet recovery before enrollment
   ansible.builtin.systemd_service:
     name: vpn-tailnet-recover.timer
@@ -303,7 +315,9 @@
       /usr/bin/python3 /usr/local/lib/vpn-tailnet/{{
       'tailnet-check.py' if ansible_check_mode else 'tailnet-configure.py' }}
     stdin: >-
-      {{ '' if ansible_check_mode else lookup('env', 'TAILSCALE_AUTH_KEY') }}
+      {{ lookup('env', 'TAILSCALE_AUTH_KEY')
+         if (not ansible_check_mode and _tailnet_enrollment_required | bool)
+         else '' }}
   check_mode: false
   environment:
     PATH: /usr/sbin:/usr/bin:/sbin:/bin
