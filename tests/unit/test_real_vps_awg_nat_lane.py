@@ -687,7 +687,94 @@ def test_local_launcher_archives_exact_sha_and_validates_before_publish() -> Non
     assert "--allow-non-pass" in launcher
     assert 'quarantine="$quarantine_dir/invalid-' in launcher
     assert "run_status == 0 && validate_status == 0" in launcher
+    assert "validate-client-runtime" in launcher
+    assert 'PATH="$(dirname "$client_binary"):$PATH"' in launcher
+    assert launcher.count("--expected-client-source-sha") == 2
+    assert launcher.count("--expected-client-artifact-sha256") == 2
     assert "GITHUB_" not in launcher
+
+
+def test_runtime_client_identity_binds_actual_toolchain_binary(tmp_path: Path) -> None:
+    toolchain = tmp_path / "toolchains" / ("a" * 64)
+    binary_dir = toolchain / "bin"
+    binary_dir.mkdir(parents=True, mode=0o700)
+    binary = binary_dir / "amneziawg-go"
+    binary.write_bytes(b"exact-awg-runtime")
+    binary.chmod(0o700)
+    artifact_sha = lane.sha256_bytes(binary.read_bytes())
+    source_sha = "b" * 40
+    manifest = {
+        "schemaVersion": 1,
+        "inputs": {
+            "goBundleSha256": "c" * 64,
+            "goCommit": source_sha,
+            "toolsBundleSha256": "d" * 64,
+            "toolsCommit": "e" * 40,
+            "vendorSha256": "f" * 64,
+        },
+        "binaries": {
+            "amneziawg-go": artifact_sha,
+            "awg": "1" * 64,
+            "awg-quick": "2" * 64,
+        },
+        "treeSha256": "3" * 64,
+    }
+    manifest_path = toolchain / "manifest.json"
+    manifest_path.write_bytes(lane.canonical_json_bytes(manifest))
+    manifest_path.chmod(0o600)
+    identity_path = tmp_path / "client-identity.json"
+    identity_path.write_bytes(
+        lane.canonical_json_bytes(
+            {
+                "artifactSha256": artifact_sha,
+                "ripdpiSourceSha": source_sha,
+                "version": lane.CLIENT_IDENTITY_VERSION,
+            }
+        )
+    )
+    identity_path.chmod(0o600)
+
+    assert lane.validate_runtime_client_identity(identity_path, binary) == {
+        "artifactSha256": artifact_sha,
+        "ripdpiSourceSha": source_sha,
+    }
+
+    identity_path.write_bytes(
+        lane.canonical_json_bytes(
+            {
+                "artifactSha256": "4" * 64,
+                "ripdpiSourceSha": source_sha,
+                "version": lane.CLIENT_IDENTITY_VERSION,
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="artifact identity mismatch"):
+        lane.validate_runtime_client_identity(identity_path, binary)
+
+    identity_path.write_bytes(
+        lane.canonical_json_bytes(
+            {
+                "artifactSha256": artifact_sha,
+                "ripdpiSourceSha": "5" * 40,
+                "version": lane.CLIENT_IDENTITY_VERSION,
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="source identity mismatch"):
+        lane.validate_runtime_client_identity(identity_path, binary)
+
+    identity_path.write_bytes(
+        lane.canonical_json_bytes(
+            {
+                "artifactSha256": artifact_sha,
+                "ripdpiSourceSha": source_sha,
+                "version": lane.CLIENT_IDENTITY_VERSION,
+            }
+        )
+    )
+    binary.write_bytes(b"replaced-runtime")
+    with pytest.raises(ValueError, match="artifact digest mismatch"):
+        lane.validate_runtime_client_identity(identity_path, binary)
 
 
 def test_preflight_failures_are_redacted_nonpass_evidence_without_latest_mutation() -> (

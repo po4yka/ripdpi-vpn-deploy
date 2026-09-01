@@ -48,9 +48,10 @@ root-only variables file, and only then publishes source SHA/digest state.
   and the next prepare discard those uncommitted staging files before acting.
 - The offline bundle must be built from a clean committed HEAD and supplied as
   a private Ansible variable; a moving branch or remote checkout is rejected.
-- Sentinel provisioning must install the exact RIPDPI source and artifact
-  digests beside the private runner config. A hand-written descriptor is not a
-  supported activation path and the timer fails closed without this binding.
+- Sentinel provisioning binds the client source to the pinned `amneziawg-go`
+  commit and its artifact digest to the immutable toolchain manifest. Every
+  run re-hashes the resolved binary and validates that manifest before evidence
+  collection; a hand-written descriptor is not a supported activation path.
 - An existing recurring timer is disabled before generation inputs change and
   remains disabled after any failed converge. Provisioning waits for the shared
   lane lock; only the exact-source installer re-enables the completed generation.

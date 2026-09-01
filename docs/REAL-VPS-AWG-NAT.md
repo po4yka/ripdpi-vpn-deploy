@@ -187,7 +187,11 @@ The non-secret placement vars must also bind the exact client under test with
 `real_vps_awg_nat_client_source_sha` (40 lowercase hex) and
 `real_vps_awg_nat_client_artifact_sha256` (64 lowercase hex). Sentinel
 provisioning validates both, rejects all-zero placeholders, and installs the
-root-owned mode-`0600` descriptor consumed by every scheduled run.
+root-owned mode-`0600` descriptor consumed by every scheduled run. The source
+value must equal the pinned `amneziawg-go` commit, and the artifact value must
+equal the installed immutable toolchain manifest. Each invocation resolves and
+hashes the executable it will launch, validates those bindings, and supplies
+both values to structural and PASS-manifest validation.
 
 ## Offline exact-source installation
 

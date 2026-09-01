@@ -631,7 +631,9 @@ def test_activation_failure_preserves_previous_complete_toolchain(
         assert module.digest(module.COMMAND_DIR / name) == binaries[name]
 
 
-@pytest.mark.parametrize("kind", ["private", "writable", "symlink", "foreign_uid", "foreign_gid"])
+@pytest.mark.parametrize(
+    "kind", ["private", "writable", "symlink", "foreign_uid", "foreign_gid"]
+)
 def test_activation_rejects_unsafe_existing_command_directory_without_mutation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
@@ -654,7 +656,10 @@ def test_activation_rejects_unsafe_existing_command_directory_without_mutation(
         module.activate_toolchain(tmp_path / "not-used", {})
     after = target.stat()
     assert (after.st_mode, after.st_uid, after.st_gid, after.st_ino) == (
-        before.st_mode, before.st_uid, before.st_gid, before.st_ino
+        before.st_mode,
+        before.st_uid,
+        before.st_gid,
+        before.st_ino,
     )
     assert (target / "sentinel").read_text() == "must remain unchanged"
     assert command_dir.is_symlink() == (kind == "symlink")
@@ -759,12 +764,13 @@ def test_sentinel_provisions_exact_client_identity_before_activation() -> None:
         == "Validate private sentinel material and exact source contract"
     )
     assertions = "\n".join(validation["ansible.builtin.assert"]["that"])
+    assert "real_vps_awg_nat_client_source_sha is match('^[0-9a-f]{40}$')" in assertions
     assert (
-        "real_vps_awg_nat_client_source_sha is match('^[0-9a-f]{40}$')"
+        "real_vps_awg_nat_client_artifact_sha256 is match('^[0-9a-f]{64}$')"
         in assertions
     )
     assert (
-        "real_vps_awg_nat_client_artifact_sha256 is match('^[0-9a-f]{64}$')"
+        "real_vps_awg_nat_client_source_sha == real_vps_awg_nat_awg_go_commit"
         in assertions
     )
     assert assertions.count("'" + "0" * 40 + "'") == 1
@@ -823,6 +829,16 @@ def test_sentinel_provisions_exact_client_identity_before_activation() -> None:
         "/bin/true",
     ]
     assert tasks[wait_index]["changed_when"] is False
+    provenance = next(
+        task
+        for task in tasks
+        if task["name"] == "Validate installed AWG binary provenance"
+    )
+    provenance_assertions = "\n".join(provenance["ansible.builtin.assert"]["that"])
+    assert (
+        "_evidence_awg_toolchain_manifest.binaries['amneziawg-go'] == "
+        "real_vps_awg_nat_client_artifact_sha256"
+    ) in provenance_assertions
     assert not any(
         task.get("ansible.builtin.systemd_service", {}).get("enabled") is True
         for task in tasks[:install_index]
@@ -1958,7 +1974,10 @@ def test_makefile_deploy_supports_safe_limit_and_extra_vars() -> None:
 
     assert "scripts/deploy-controller.py deploy" in target
     assert "deploy dry-run: export DEPLOY_LIMIT = $(ANSIBLE_LIMIT)" in makefile
-    assert "deploy dry-run: export DEPLOY_EXTRA_VARS_FILE = $(ANSIBLE_EXTRA_VARS_FILE)" in makefile
+    assert (
+        "deploy dry-run: export DEPLOY_EXTRA_VARS_FILE = $(ANSIBLE_EXTRA_VARS_FILE)"
+        in makefile
+    )
     assert 'environment["VPN_SECRETS_FILE"] = str(secrets)' in controller
     assert '"--extra-vars", "@" + str(overrides)' in controller
     assert "stat.S_IMODE(s.st_mode) == 0o600" in extra_vars_preflight

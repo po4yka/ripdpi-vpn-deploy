@@ -9,6 +9,7 @@ set -euo pipefail
 
 RUNNER="/usr/local/libexec/ripdpi-real-vps-awg-nat"
 CONFIG="/etc/ripdpi/real-vps-awg-nat-local.json"
+CLIENT_IDENTITY="/etc/ripdpi/real-vps-awg-client-identity.json"
 ENTRYPOINT="scripts/run-real-vps-awg-nat-local.sh"
 LOCK_DIR="/run/lock/ripdpi-real-vps-awg-nat"
 
@@ -66,6 +67,29 @@ if ! source_sha="$(git -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')"; the
 fi
 [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]] || preflight_fail PREFLIGHT_SOURCE_UNSAFE
 git -C "$REPO_ROOT" diff-index --quiet HEAD -- || preflight_fail PREFLIGHT_SOURCE_UNSAFE
+if ! client_binary="$(readlink -f "$(command -v amneziawg-go)")"; then
+  preflight_fail PREFLIGHT_RUNNER_INVALID
+fi
+if ! client_identity_json="$(
+  "$RUNNER" validate-client-runtime \
+    --identity "$CLIENT_IDENTITY" \
+    --binary "$client_binary"
+)"; then
+  preflight_fail PREFLIGHT_RUNNER_INVALID
+fi
+if ! client_identity_values="$(
+  printf '%s\n' "$client_identity_json" | python3 -c \
+    'import json,sys; value=json.load(sys.stdin); print(value["ripdpiSourceSha"], value["artifactSha256"])'
+)"; then
+  preflight_fail PREFLIGHT_RUNNER_INVALID
+fi
+read -r client_source_sha client_artifact_sha256 <<< "$client_identity_values"
+[[ "$client_source_sha" =~ ^[0-9a-f]{40}$ ]] || preflight_fail PREFLIGHT_RUNNER_INVALID
+[[ "$client_artifact_sha256" =~ ^[0-9a-f]{64}$ ]] || preflight_fail PREFLIGHT_RUNNER_INVALID
+# The runner's command lookup and exec now resolve the same immutable directory
+# that was validated above; the lane lock serializes authorized toolchain swaps.
+PATH="$(dirname "$client_binary"):$PATH"
+export PATH
 
 # A preflight refusal leaves an existing last known PASS intact.
 rm -f -- "$evidence_dir/latest.json" "$evidence_dir/.latest.json.tmp"
@@ -110,6 +134,8 @@ if [[ -f "$manifest" ]]; then
     --expected-executor local_systemd \
     --expected-invocation-id "$invocation_id" \
     --expected-invocation-attempt "$invocation_attempt" \
+    --expected-client-source-sha "$client_source_sha" \
+    --expected-client-artifact-sha256 "$client_artifact_sha256" \
     --allow-non-pass
   structural_status=$?
   set -e
@@ -125,7 +151,9 @@ if [[ -f "$manifest" ]]; then
       --expected-source-archive-sha256 "$archive_sha256" \
       --expected-executor local_systemd \
       --expected-invocation-id "$invocation_id" \
-      --expected-invocation-attempt "$invocation_attempt"
+      --expected-invocation-attempt "$invocation_attempt" \
+      --expected-client-source-sha "$client_source_sha" \
+      --expected-client-artifact-sha256 "$client_artifact_sha256"
     validate_status=$?
     set -e
     if (( run_status == 0 && validate_status == 0 )); then

@@ -340,6 +340,65 @@ def client_identity_descriptor(path_value: Any) -> dict[str, str]:
     return {"ripdpiSourceSha": source_sha, "artifactSha256": artifact_sha256}
 
 
+def validate_runtime_client_identity(
+    identity_path: Path, binary_path: Path
+) -> dict[str, str]:
+    """Bind the reported identity to the immutable toolchain binary in use."""
+    identity = client_identity_descriptor(str(identity_path))
+    binary = _secure_path(str(binary_path), executable=True)
+    if binary.name != "amneziawg-go":
+        raise ValueError("client runtime binary is invalid")
+    manifest_path = binary.parent.parent / "manifest.json"
+    manifest_file = _secure_path(str(manifest_path), executable=False)
+    raw = manifest_file.read_bytes()
+    if not 0 < len(raw) <= 64 * 1024:
+        raise ValueError("client runtime manifest is invalid")
+    try:
+        manifest = json.loads(raw)
+    except (ValueError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("client runtime manifest is invalid") from exc
+    if raw != canonical_json_bytes(manifest) or not isinstance(manifest, dict):
+        raise ValueError("client runtime manifest is invalid")
+    require_fields(
+        manifest,
+        {"schemaVersion", "inputs", "binaries", "treeSha256"},
+        "client runtime manifest",
+    )
+    if manifest["schemaVersion"] != 1:
+        raise ValueError("client runtime manifest is invalid")
+    inputs = manifest["inputs"]
+    binaries = manifest["binaries"]
+    if not isinstance(inputs, dict) or not isinstance(binaries, dict):
+        raise ValueError("client runtime manifest is invalid")
+    require_fields(
+        inputs,
+        {
+            "goBundleSha256",
+            "goCommit",
+            "toolsBundleSha256",
+            "toolsCommit",
+            "vendorSha256",
+        },
+        "client runtime inputs",
+    )
+    require_fields(
+        binaries,
+        {"amneziawg-go", "awg", "awg-quick"},
+        "client runtime binaries",
+    )
+    source_sha = require_sha(inputs["goCommit"], SHA1_RE, "client runtime source")
+    artifact_sha256 = require_sha(
+        binaries["amneziawg-go"], SHA256_RE, "client runtime artifact"
+    )
+    if sha256_bytes(binary.read_bytes()) != artifact_sha256:
+        raise ValueError("client runtime artifact digest mismatch")
+    if identity["ripdpiSourceSha"] != source_sha:
+        raise ValueError("client runtime source identity mismatch")
+    if identity["artifactSha256"] != artifact_sha256:
+        raise ValueError("client runtime artifact identity mismatch")
+    return identity
+
+
 def provenance_from_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     return {
         "executor": metadata["executor"],
@@ -1730,10 +1789,21 @@ def main(argv: list[str] | None = None) -> int:
     validate.add_argument("--expected-client-source-sha")
     validate.add_argument("--expected-client-artifact-sha256")
     validate.add_argument("--allow-non-pass", action="store_true")
+    runtime_identity = subparsers.add_parser("validate-client-runtime")
+    runtime_identity.add_argument("--identity", type=Path, required=True)
+    runtime_identity.add_argument("--binary", type=Path, required=True)
     subparsers.add_parser("probe-child")
     args = parser.parse_args(argv)
     if args.command == "probe-child":
         return probe_child()
+    if args.command == "validate-client-runtime":
+        try:
+            identity = validate_runtime_client_identity(args.identity, args.binary)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"real-VPS AWG/NAT client identity invalid: {exc}", file=sys.stderr)
+            return 1
+        sys.stdout.buffer.write(canonical_json_bytes(identity))
+        return 0
     if args.command == "validate":
         try:
             expected_invocation_id = args.expected_invocation_id
