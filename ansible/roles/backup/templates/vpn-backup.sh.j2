@@ -95,7 +95,10 @@ try:
     encoded = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
     view = memoryview(encoded)
     while view:
-        view = view[os.write(temporary_fd, view):]
+        written = os.write(temporary_fd, view)
+        if written <= 0:
+            raise OSError("short backup status write")
+        view = view[written:]
     os.fchmod(temporary_fd, 0o600)
     os.fsync(temporary_fd)
     os.close(temporary_fd)

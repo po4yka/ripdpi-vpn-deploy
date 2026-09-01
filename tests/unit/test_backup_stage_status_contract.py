@@ -170,3 +170,5 @@ def test_template_uses_fd_backed_atomic_replacement_and_does_not_change_backup_c
     assert "os.replace(" in script
     assert "os.fsync(" in script
     assert "O_EXCL" in script
+    assert "written = os.write(temporary_fd, view)" in script
+    assert "if written <= 0:" in script
