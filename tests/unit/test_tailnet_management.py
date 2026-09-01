@@ -65,6 +65,13 @@ def test_tailnet_operator_scripts_have_one_job_and_install_durable_recovery() ->
     )
     assert "Persistent=true" in timer
     assert "RestrictAddressFamilies=AF_UNIX AF_NETLINK" in service
+    assert "RuntimeDirectory=vpn-tailnet-management" in service
+    assert "RuntimeDirectoryMode=0700" in service
+    assert (
+        "ReadWritePaths=/var/lib/vpn-tailnet-management /run/vpn-tailnet-management"
+        in service
+    )
+    assert 'auth_directory=Path("/run/vpn-tailnet-management")' in SCRIPT.read_text()
     assert "enabled: true" in tasks and "vpn-tailnet-recover.timer" in tasks
 
 
@@ -93,13 +100,24 @@ def test_firewall_allows_only_exact_approved_tailnet_sources() -> None:
         'iifname "tailscale0" tcp dport 22022 ' "ip6 saddr fd7a:115c:a1e0::1234 accept"
     ) in rendered
     assert 'iifname "tailscale0" accept' not in rendered
-    assert (
-        'iifname != "tailscale0" tcp dport 22022 ip saddr { 0.0.0.0/0 } accept'
-        in rendered
+    tailnet_drop = 'iifname "tailscale0" tcp dport 22022 drop'
+    public_v4 = "tcp dport 22022 ip saddr { 0.0.0.0/0 } accept"
+    public_v6 = "tcp dport 22022 ip6 saddr { ::/0 } accept"
+    assert rendered.index("ip saddr 100.64.10.20 accept") < rendered.index(tailnet_drop)
+    assert rendered.index(tailnet_drop) < rendered.index(public_v4)
+    assert rendered.index(tailnet_drop) < rendered.index(public_v6)
+    assert 'iifname != "tailscale0"' not in rendered
+
+    disabled = merge_render_vars()
+    disabled["vpn"] = {**disabled["vpn"], "enable_tailnet_management": False}
+    disabled["allowed_ssh_cidrs"] = ["0.0.0.0/0", "::/0"]
+    disabled["firewall_effective_ssh_ports"] = [22022]
+    disabled["public_listener_contract"] = []
+    disabled_rendered = render_template(
+        ROOT / "ansible/roles/firewall/templates/nftables.conf.j2", disabled
     )
-    assert (
-        'iifname != "tailscale0" tcp dport 22022 ip6 saddr { ::/0 } accept' in rendered
-    )
+    assert tailnet_drop in disabled_rendered
+    assert 'iifname "tailscale0" tcp dport 22022 ip saddr' not in disabled_rendered
 
     firewall_tasks = yaml.safe_load(
         (ROOT / "ansible/roles/firewall/tasks/main.yml").read_text()
@@ -209,6 +227,18 @@ class FakeRunner:
             stdout = "100.64.1.9\n"
         elif command == ["ip", "-6"]:
             stdout = "fd7a:115c:a1e0::9\n"
+        elif argv[0].endswith("ip") and command == [
+            "-json",
+            "address",
+            "show",
+            "dev",
+            "tailscale0",
+        ]:
+            addresses = [] if self.drift == "tailnet-interface" else [
+                {"local": "100.64.1.9"},
+                {"local": "fd7a:115c:a1e0::9"},
+            ]
+            stdout = json.dumps([{"ifname": "tailscale0", "addr_info": addresses}])
         elif argv[0].endswith("sshd") and command == ["-T"]:
             stdout = "port 22022\nhostkey /etc/ssh/ssh_host_ed25519_key\n"
             if self.drift == "sshd" and self.running:
@@ -612,6 +642,37 @@ def test_confirmation_rechecks_receipt_limit_before_replacement(
     assert receipt.read_bytes() == armed
 
 
+def test_interrupted_transaction_link_is_reconciled_before_recovery(tmp_path) -> None:
+    controller = _load_controller()
+    paths = _paths(controller, tmp_path)
+    snapshot = controller.SystemSnapshot(
+        resolver=b"resolver",
+        routes=b"routes",
+        sshd=b"sshd",
+        resolver_mode=0o644,
+        resolver_uid=os.geteuid(),
+        resolver_gid=os.getegid(),
+    )
+    controller._write_transaction(
+        paths,
+        backend_state="NeedsLogin",
+        snapshot=snapshot,
+        auth_file="vpn-tailnet-auth-0123456789abcdef0123456789abcdef",
+    )
+    receipt = tmp_path / "transaction.json"
+    value = json.loads(receipt.read_text())
+    interrupted = tmp_path / f".transaction.json.{value['nonce']}"
+    os.link(receipt, interrupted)
+    assert receipt.stat().st_nlink == 2
+
+    recovered, recovered_snapshot = controller._read_transaction(paths)
+
+    assert recovered == value
+    assert recovered_snapshot == snapshot
+    assert receipt.stat().st_nlink == 1
+    assert not interrupted.exists()
+
+
 def test_armed_receipt_unlink_fsync_failure_remains_uncertain(
     tmp_path, monkeypatch
 ) -> None:
@@ -788,6 +849,22 @@ def test_existing_mismatched_tailnet_refuses_without_mutation(tmp_path) -> None:
         )
 
     assert not any(call[1:2] in (["login"], ["logout"]) for call in runner.calls)
+
+
+def test_missing_tailscale0_addresses_rolls_back_enrollment(tmp_path) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner = FakeRunner(tmp_path, drift="tailnet-interface")
+
+    with pytest.raises(controller.Refusal, match="tailnet-address-invalid"):
+        controller.configure(
+            paths=_paths(controller, tmp_path),
+            runner=runner,
+            auth_key="tskey-auth-fixture_1234",
+        )
+
+    assert runner.running is False
+    assert not (tmp_path / "transaction.json").exists()
 
 
 def test_auth_file_cleanup_failure_is_not_hidden(tmp_path, monkeypatch) -> None:

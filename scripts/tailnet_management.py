@@ -268,7 +268,7 @@ def _read_transaction(paths: CommandPaths) -> tuple[dict, SystemSnapshot]:
             not stat.S_ISREG(metadata.st_mode)
             or metadata.st_uid != os.geteuid()
             or stat.S_IMODE(metadata.st_mode) != 0o600
-            or metadata.st_nlink != 1
+            or metadata.st_nlink not in {1, 2}
             or metadata.st_size > RECOVERY_STATE_MAX_BYTES
         ):
             raise Refusal("tailnet-recovery-state-invalid")
@@ -316,7 +316,31 @@ def _read_transaction(paths: CommandPaths) -> tuple[dict, SystemSnapshot]:
         or payload != _canonical_bytes(value)
     ):
         raise Refusal("tailnet-recovery-state-invalid")
-    return value, _parse_snapshot(value["snapshot"])
+    snapshot = _parse_snapshot(value["snapshot"])
+    if metadata.st_nlink == 2:
+        interrupted = paths.state_directory / f".{TRANSACTION_NAME}.{value['nonce']}"
+        try:
+            interrupted_metadata = interrupted.stat(follow_symlinks=False)
+            if (
+                not stat.S_ISREG(interrupted_metadata.st_mode)
+                or (interrupted_metadata.st_dev, interrupted_metadata.st_ino)
+                != (metadata.st_dev, metadata.st_ino)
+                or interrupted_metadata.st_uid != os.geteuid()
+                or stat.S_IMODE(interrupted_metadata.st_mode) != 0o600
+            ):
+                raise Refusal("tailnet-recovery-state-invalid")
+            interrupted.unlink()
+            _fsync_directory(paths.state_directory)
+            canonical_metadata = path.stat(follow_symlinks=False)
+            if (
+                (canonical_metadata.st_dev, canonical_metadata.st_ino)
+                != (metadata.st_dev, metadata.st_ino)
+                or canonical_metadata.st_nlink != 1
+            ):
+                raise Refusal("tailnet-recovery-state-invalid")
+        except OSError as error:
+            raise Refusal("tailnet-recovery-state-invalid") from error
+    return value, snapshot
 
 
 def _mark_transaction_confirmed(paths: CommandPaths) -> None:
@@ -546,6 +570,7 @@ def _require_no_tailscale_firewall(paths: CommandPaths, runner: Runner) -> None:
 
 
 def _require_tailnet_addresses(paths: CommandPaths, runner: Runner) -> None:
+    reported = set()
     for flag, network in (("-4", TAILNET_V4), ("-6", TAILNET_V6)):
         raw = runner(
             [paths.tailscale, "ip", flag], timeout=COMMAND_TIMEOUT_SECONDS
@@ -556,6 +581,32 @@ def _require_tailnet_addresses(paths: CommandPaths, runner: Runner) -> None:
             raise Refusal("tailnet-address-invalid") from error
         if address not in network:
             raise Refusal("tailnet-address-invalid")
+        reported.add(address)
+    document = _bounded_json(
+        runner(
+            [paths.ip, "-json", "address", "show", "dev", "tailscale0"],
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        ).stdout,
+        reason="tailnet-address-invalid",
+    )
+    if (
+        not isinstance(document, list)
+        or len(document) != 1
+        or not isinstance(document[0], dict)
+        or document[0].get("ifname") != "tailscale0"
+        or not isinstance(document[0].get("addr_info"), list)
+    ):
+        raise Refusal("tailnet-address-invalid")
+    assigned = set()
+    try:
+        for item in document[0]["addr_info"]:
+            if not isinstance(item, dict) or not isinstance(item.get("local"), str):
+                raise ValueError
+            assigned.add(ipaddress.ip_address(item["local"]))
+    except ValueError as error:
+        raise Refusal("tailnet-address-invalid") from error
+    if not reported <= assigned:
+        raise Refusal("tailnet-address-invalid")
 
 
 def _validate_auth_directory(path: Path) -> None:
@@ -836,7 +887,7 @@ def _production_paths() -> CommandPaths:
         ip=_resolve_command("/usr/sbin/ip", "/usr/bin/ip"),
         nft=_resolve_command("/usr/sbin/nft", "/usr/bin/nft"),
         resolv_conf=Path("/etc/resolv.conf"),
-        auth_directory=Path("/run"),
+        auth_directory=Path("/run/vpn-tailnet-management"),
         state_directory=Path("/var/lib/vpn-tailnet-management"),
         systemctl=_resolve_command("/usr/bin/systemctl", "/bin/systemctl"),
     )
