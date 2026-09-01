@@ -146,6 +146,131 @@
              | from_json }}
       when: observability_remote_write_arrival.rc != 0
 
+    - name: Diagnose systemd credential transport only after missing arrival
+      when: observability_remote_write_arrival.rc != 0
+      block:
+        - name: Install exact credential diagnostic unit
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/python3
+              - -c
+              - |
+                import pathlib
+                import sys
+
+                source = pathlib.Path('/etc/systemd/system/observability-agent.service')
+                target = pathlib.Path(
+                    '/etc/systemd/system/observability-agent-credential-probe.service'
+                )
+                required = {
+                    'client.crt',
+                    'client.key',
+                    'receiver-ca.crt',
+                    'prometheus.yml',
+                }
+                credentials = [
+                    line for line in source.read_text(encoding='utf-8').splitlines()
+                    if line.startswith('LoadCredential=')
+                ]
+                names = {
+                    line.removeprefix('LoadCredential=').split(':', 1)[0]
+                    for line in credentials
+                }
+                if len(credentials) != 4 or names != required:
+                    sys.exit(1)
+                target.write_text(
+                    '\n'.join([
+                        '[Service]',
+                        'Type=oneshot',
+                        'User=observability-agent',
+                        'Group=observability-agent',
+                        'WorkingDirectory=%d',
+                        *credentials,
+                        'ExecStart=/usr/local/libexec/'
+                        'observability-agent-credential-probe.py',
+                        '',
+                    ]),
+                    encoding='utf-8',
+                )
+                target.chmod(0o644)
+          changed_when: false
+          failed_when: false
+          no_log: true
+
+        - name: Run exact systemd credential diagnostic unit
+          ansible.builtin.systemd_service:
+            name: observability-agent-credential-probe.service
+            state: started
+            daemon_reload: true
+          register: observability_credential_probe_start
+          changed_when: false
+          failed_when: false
+          no_log: true
+
+        - name: Read categorical systemd credential diagnostic result
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/python3
+              - -c
+              - |
+                import json
+                import subprocess
+
+                expected = {
+                    'ca_cert_key_loaded',
+                    'cert_key_match',
+                    'sslclient_verify',
+                    'tls_handshake',
+                }
+                fallback = {'probe_unavailable': True}
+                try:
+                    result = subprocess.run(
+                        [
+                            '/usr/bin/journalctl',
+                            '--unit=observability-agent-credential-probe.service',
+                            '--no-pager',
+                            '--output=cat',
+                            '--lines=10',
+                        ],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    for line in reversed(result.stdout.splitlines()):
+                        try:
+                            candidate = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if (
+                            isinstance(candidate, dict)
+                            and set(candidate) == expected
+                            and all(type(value) is bool for value in candidate.values())
+                        ):
+                            print(json.dumps(candidate, sort_keys=True))
+                            break
+                    else:
+                        print(json.dumps(fallback, sort_keys=True))
+                except (OSError, subprocess.TimeoutExpired):
+                    print(json.dumps(fallback, sort_keys=True))
+          register: observability_credential_transport_probe
+          changed_when: false
+          failed_when: false
+
+      always:
+        - name: Remove credential diagnostic unit
+          ansible.builtin.file:
+            path: /etc/systemd/system/observability-agent-credential-probe.service
+            state: absent
+          changed_when: false
+          failed_when: false
+
+        - name: Reload systemd after credential diagnostic cleanup
+          ansible.builtin.systemd_service:
+            daemon_reload: true
+          changed_when: false
+          failed_when: false
+
     - name: Refuse missing authenticated remote-write arrival
       ansible.builtin.assert:
         that:
@@ -155,7 +280,9 @@
           evidence: arrival={{ observability_remote_write_arrival.stdout
           | default('{}', true) }} transport={{
           observability_remote_write_failure_category.stdout
-          | default('{"journal_unavailable": true}', true) }}.
+          | default('{"journal_unavailable": true}', true) }} credential_transport={{
+          observability_credential_transport_probe.stdout
+          | default('{"probe_unavailable": true}', true) }}.
 
     - name: Run schema-2 manifest adapter now
       ansible.builtin.systemd_service:

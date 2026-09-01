@@ -370,6 +370,37 @@ def test_enabled_scenario_proves_idempotence_queue_age_and_authenticated_drain()
     assert "observability_remote_write_arrival.stdout" in verify
     assert "observability_remote_write_failure_category.stdout" in verify
     assert "'sender_path_signal': bool(" in verify
+    assert "Diagnose systemd credential transport only after missing arrival" in verify
+    assert "observability-agent-credential-probe.service" in verify
+    assert "observability_credential_transport_probe.stdout" in verify
+    assert "when: observability_remote_write_arrival.rc != 0" in verify
+
+
+def test_enabled_molecule_uses_exact_systemd_credentials_for_fail_only_probe() -> None:
+    prepare = (ROLE / "molecule" / "enabled" / "prepare.yml").read_text(
+        encoding="utf-8"
+    )
+    verify = (ROLE / "molecule" / "enabled" / "verify.yml").read_text(encoding="utf-8")
+
+    assert "observability-agent-credential-probe.py" in prepare
+    for field in (
+        '"ca_cert_key_loaded": False',
+        '"cert_key_match": False',
+        '"sslclient_verify": False',
+        '"tls_handshake": False',
+    ):
+        assert field in prepare
+    assert "str(error)" not in prepare
+    assert "stderr=subprocess.DEVNULL" in prepare
+    assert "LoadCredential=" in verify
+    for name in ("client.crt", "client.key", "receiver-ca.crt", "prometheus.yml"):
+        assert f"'{name}'" in verify
+    assert "User=observability-agent" in verify
+    assert "Group=observability-agent" in verify
+    assert "WorkingDirectory=%d" in verify
+    assert "observability-agent-credential-probe.py" in verify
+    assert "all(type(value) is bool for value in candidate.values())" in verify
+    assert "Remove credential diagnostic unit" in verify
 
 
 def test_enabled_receiver_records_only_categorical_failure_phases() -> None:
