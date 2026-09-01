@@ -32,9 +32,14 @@ AUTHENTICATION_DIRECTIVES = (
     b"passwordauthentication ", b"kbdinteractiveauthentication ",
     b"permitrootlogin ", b"pubkeyauthentication ",
 )
+CANONICAL_ALGORITHMS = (
+    b"Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com\n"
+    b"MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com\n"
+    b"KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512\n"
+)
 BASELINE_HARDENING = (b"X11Forwarding no\nAllowTcpForwarding no\nAllowAgentForwarding no\n"
                       b"AllowUsers deploy\nClientAliveInterval 60\n"
-                      b"Subsystem sftp internal-sftp -f AUTHPRIV -l INFO\n")
+                      b"Subsystem sftp internal-sftp -f AUTHPRIV -l INFO\n" + CANONICAL_ALGORITHMS)
 
 
 def test_site_requires_exact_node_then_runs_transaction_after_stack():
@@ -63,6 +68,35 @@ def test_baseline_main_cannot_publish_or_reload_sshd_policy():
                 assert parameters.get("dest", parameters.get("path")) not in owned
         notify = task.get("notify", [])
         assert "Reload ssh" not in ([notify] if isinstance(notify, str) else notify)
+
+
+def test_verify_requires_exact_effective_canonical_algorithm_lines():
+    play = yaml.safe_load((ROOT / "ansible/playbooks/verify.yml").read_text())[0]
+    task = next(task for task in play["tasks"] if task["name"] == "SSH canonical algorithms are applied")
+    assert task["ansible.builtin.assert"]["that"] == [
+        "_ssh_ciphers in sshd_t.stdout_lines",
+        "_ssh_macs in sshd_t.stdout_lines",
+        "_ssh_kex in sshd_t.stdout_lines",
+    ]
+    variables = task["vars"]
+    assert variables["_ssh_ciphers"] == "ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com"
+    assert variables["_ssh_macs"] == "macs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com"
+    assert "curve25519-sha256@libssh.org" in variables["_ssh_kex"]
+    assert "diffie-hellman-group18-sha512" in variables["_ssh_kex"]
+
+
+def test_baseline_molecule_only_checks_sshd_algorithm_compatibility():
+    verify = yaml.safe_load(
+        (ROOT / "ansible/roles/baseline/molecule/default/verify.yml").read_text()
+    )[0]
+    task = next(
+        task for task in verify["tasks"] if task["name"] == "SSH supports effective algorithm reporting"
+    )
+    conditions = task["ansible.builtin.assert"]["that"]
+    assert all("^" + name + " " in condition for name, condition in zip(
+        ("ciphers", "macs", "kexalgorithms"), conditions
+    ))
+    assert "chacha20-poly1305" not in yaml.safe_dump(verify)
 
 
 def test_transaction_role_uses_controller_preview_during_ansible_check():
@@ -519,6 +553,8 @@ def test_rendered_baseline_candidate_never_reclaims_bootstrap_authentication(pla
     for directive in AUTHENTICATION_DIRECTIVES:
         assert directive not in lowered
     assert lowered.count(b"x11forwarding no\n") == 1
+    for directive in CANONICAL_ALGORITHMS.splitlines():
+        assert directive in rendered.splitlines()
     plan = planner.build_baseline_plan(
         baseline_config, contexts=CONTEXTS, hardening=rendered)
     assert plan["operation"] == "sshd-baseline"
@@ -527,7 +563,7 @@ def test_rendered_baseline_candidate_never_reclaims_bootstrap_authentication(pla
 
 def test_baseline_without_internal_sftp_preserves_packaged_owner(planner, baseline_config):
     original = (baseline_config / "sshd_config").read_bytes()
-    hardening = BASELINE_HARDENING.split(b"Subsystem sftp", 1)[0]
+    hardening = BASELINE_HARDENING.replace(b"Subsystem sftp internal-sftp -f AUTHPRIV -l INFO\n", b"")
     plan = planner.build_baseline_plan(baseline_config, contexts=CONTEXTS, hardening=hardening)
     assert base64.b64decode(plan["files"]["sshd_config"]["after"]["data_b64"]) == original
 
@@ -574,16 +610,61 @@ def test_baseline_never_removes_the_only_sftp_owner(planner, baseline_config):
                                     hardening=BASELINE_HARDENING.split(b"Subsystem sftp", 1)[0])
 
 
-@pytest.mark.parametrize("old_pin", [True, False], ids=["remove-existing-pin", "add-new-pin"])
-def test_baseline_cannot_change_effective_algorithms(planner, baseline_config, old_pin):
-    pin = b"Ciphers aes256-gcm@openssh.com\n"
-    if old_pin:
-        managed = baseline_config / MANAGED
-        managed.write_bytes(managed.read_bytes() + pin)
+def test_baseline_promotes_provider_defaults_to_the_exact_canonical_algorithms(planner, baseline_config):
+    plan = planner.build_baseline_plan(baseline_config, contexts=CONTEXTS, hardening=BASELINE_HARDENING)
+    assert plan["changed"] is True
+    for entry in plan["effective"]:
+        assert entry["context"] in (None, *CONTEXTS)
+        assert entry["before_sha256"] != entry["after_sha256"]
+
+    for relative, pair in plan["files"].items():
+        (baseline_config / relative).write_bytes(base64.b64decode(pair["after"]["data_b64"]))
+    repeated = planner.build_baseline_plan(baseline_config, contexts=CONTEXTS, hardening=BASELINE_HARDENING)
+    assert repeated["changed"] is False
+
+
+def test_baseline_refuses_noncanonical_effective_context_algorithm_policy(planner, baseline_config, monkeypatch):
+    original = planner._effective_outputs
+
+    def altered(captures, replacements, contexts):
+        outputs = original(captures, replacements, contexts)
+        if replacements:
+            outputs[-1] = outputs[-1].replace(
+                b"ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com",
+                b"ciphers aes256-gcm@openssh.com",
+            )
+        return outputs
+
+    monkeypatch.setattr(planner, "_effective_outputs", altered)
+    with pytest.raises(planner.OwnershipError, match="algorithm-policy-changed"):
+        planner.build_baseline_plan(baseline_config, contexts=CONTEXTS, hardening=BASELINE_HARDENING)
+
+
+@pytest.mark.parametrize("hardening", [
+    BASELINE_HARDENING.replace(b",aes128-gcm@openssh.com", b""),
+    BASELINE_HARDENING.replace(b"hmac-sha2-256-etm@openssh.com", b"hmac-sha1"),
+    BASELINE_HARDENING.replace(
+        b"KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512\n",
+        b"",
+    ),
+])
+def test_baseline_refuses_partial_or_custom_algorithm_policy(planner, baseline_config, hardening):
     originals = configuration_records(baseline_config)
-    hardening = BASELINE_HARDENING if old_pin else BASELINE_HARDENING + pin
     with pytest.raises(planner.OwnershipError, match="algorithm-policy-changed"):
         planner.build_baseline_plan(baseline_config, contexts=CONTEXTS, hardening=hardening)
+    assert configuration_records(baseline_config) == originals
+
+
+@pytest.mark.parametrize("existing", [
+    b"Ciphers aes256-gcm@openssh.com\n",
+    CANONICAL_ALGORITHMS.replace(b"hmac-sha2-256-etm@openssh.com", b"hmac-sha1"),
+])
+def test_baseline_refuses_existing_partial_or_custom_algorithm_policy(planner, baseline_config, existing):
+    managed = baseline_config / MANAGED
+    managed.write_bytes(managed.read_bytes() + existing)
+    originals = configuration_records(baseline_config)
+    with pytest.raises(planner.OwnershipError, match="algorithm-policy-changed"):
+        planner.build_baseline_plan(baseline_config, contexts=CONTEXTS, hardening=BASELINE_HARDENING)
     assert configuration_records(baseline_config) == originals
 
 

@@ -41,6 +41,9 @@ ownership-only migration, and do not treat local tests as staging acceptance.
   `templates/sshd_config.d-hardening.conf.j2` is rendered by Ansible, while the
   exact-node controller publishes it with durable rollback and fresh transport
   proof after the VPN stack converges.
+- **SSH algorithms are pinned as runtime policy** — the controller accepts only
+  provider defaults or the exact managed Ciphers, MACs, and KexAlgorithms
+  allowlists, validating global and requested contextual effective policy.
 - **SFTP is internal and managed once** — the packaged `Subsystem sftp` line is
   commented before the drop-in declares `internal-sftp`, avoiding duplicate
   Subsystem directives on Debian/Ubuntu while preserving Ansible file transfer.
