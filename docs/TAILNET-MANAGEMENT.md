@@ -25,6 +25,14 @@ opens only those sources on `tailscale0` and the effective existing sshd port.
 An empty, duplicate, noncanonical or out-of-range list refuses locally before
 the first host write.
 
+The current production inventory profiles `vpn-p0-self-steal`, `vpn-p1-web`
+and `vpn-p2-udp` explicitly enable this role. Their one reviewed controller
+address per family is shared from `group_vars/all.yml`; the global VPN toggle
+remains false, so every other cohort stays inert unless it opts in separately.
+Changing the controller device or Tailnet addresses requires updating the
+saved Tailnet ACL and these exact sources together, then repeating staging and
+serial live acceptance.
+
 Review the complete Tailnet ACL or grants document separately. An additive
 narrow rule does not neutralize an existing broad grant. Applying that policy
 is an external authorization change and requires its own fresh diff and
@@ -104,6 +112,12 @@ host identity, direct emergency access, resolver/routing behavior on a VPS, or
 unchanged VPN paths. Those require the authorized isolated staging sequence and
 then a separately approved serial fleet window. Do not remove public recovery
 access on the strength of source or container tests.
+
+An offline boot inspection on the pre-rollout P0 node found no Tailscale
+binary, service, recovery unit or state. That is a clean missing-foundation
+boundary, not a daemon boot failure: rebooting alone cannot create this
+management path. Install and enrollment must use the canonical one-node deploy
+flow above; do not install ad hoc through the provider console.
 
 The package defaults pin Tailscale stable `1.102.3` and the official repository
 key digest. Updating either pin requires reviewing the official stable package
