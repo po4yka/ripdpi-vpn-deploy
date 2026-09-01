@@ -85,7 +85,7 @@ def _exclusive_locks(paths: tuple[Path, ...]):
                     fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except BlockingIOError:
                     raise ExecutorError("deonboard-busy") from None
-            except BaseException:
+            except (Exception, KeyboardInterrupt, SystemExit):
                 os.close(descriptor)
                 raise
             descriptors.append(descriptor)
@@ -150,6 +150,8 @@ def _write_new(path: Path, value: dict[str, Any]) -> None:
                 ):
                     path.unlink()
             except FileNotFoundError:
+                # A failed writer may have been interrupted after an exact
+                # cleanup already removed its owned partial file.
                 pass
     parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
@@ -656,6 +658,11 @@ def load_bound_executor(
     return binding
 
 
+def binding_digest(binding_path: Path) -> str:
+    """Return the digest of one canonical private executor binding."""
+    return hashlib.sha256(_read_private(binding_path)[1]).hexdigest()
+
+
 def executor_command(profile: str, command: str) -> tuple[str, ...]:
     _profile(profile)
     if not isinstance(command, str) or not command or "\x00" in command:
@@ -700,7 +707,9 @@ def verify_report_binding(
         raise ExecutorError("binding-report")
     return {
         "kind": "colima-systemd",
-        "executor_id": binding["executor_id"],
+        "executor_id_sha256": hashlib.sha256(
+            binding["executor_id"].encode("ascii")
+        ).hexdigest(),
         "manifest_sha256": binding["executor_manifest_sha256"],
     }
 
@@ -847,11 +856,13 @@ def _deonboard_locked(
             suffix=sops_file.suffix or ".yaml",
             dir=sops_file.parent,
         )
-        os.close(temporary_fd)
         temporary = Path(temporary_name)
         try:
-            temporary.write_bytes(encrypted)
-            temporary.chmod(0o600)
+            with os.fdopen(temporary_fd, "wb") as handle:
+                os.fchmod(handle.fileno(), 0o600)
+                handle.write(encrypted)
+                handle.flush()
+                os.fsync(handle.fileno())
             for path in paths:
                 runner(
                     ("sops", "unset", "--idempotent", str(temporary), path), timeout=30
@@ -1071,6 +1082,8 @@ def _run_command(
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
+                # The owned process group can exit between TERM and the
+                # bounded KILL fallback; there is nothing left to reclaim.
                 pass
             process.wait()
         if isinstance(primary, subprocess.TimeoutExpired):
@@ -1135,7 +1148,32 @@ def main() -> int:
                 home=Path.home(),
                 runner=_run_command,
             )
-        print(json.dumps(result, sort_keys=True))
+        if args.command == "prepare":
+            public = {
+                "schema_version": 1,
+                "status": "prepared",
+                "profile": result["profile"],
+                "executor_id_sha256": hashlib.sha256(
+                    result["executor_id"].encode("ascii")
+                ).hexdigest(),
+                "manifest_sha256": hashlib.sha256(
+                    _read_private(args.manifest)[1]
+                ).hexdigest(),
+            }
+        elif args.command == "verify-binding":
+            public = {"schema_version": 1, "status": "verified", **result}
+        else:
+            public = {
+                key: result[key]
+                for key in (
+                    "schema_version",
+                    "status",
+                    "sentinel_sha256",
+                    "client_sha256",
+                    "target_absence_sha256",
+                )
+            }
+        print(json.dumps(public, sort_keys=True))
         return 0
     except ExecutorError as exc:
         print(f"disposable-liveness-executor: {exc}", file=sys.stderr)

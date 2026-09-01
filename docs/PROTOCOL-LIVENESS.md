@@ -164,9 +164,10 @@ alias is not an alternate route for this execution.
 `protocol-liveness-disposable` revalidates the live profile and private binding,
 then accepts the report only when its generation, provenance and target identity
 match that binding byte-for-byte. The public report schema stays unchanged; the
-redacted aggregate adds only executor kind, UUID and manifest digest from the
-private cross-link. This proves one consumer-uplink observation, not a second
-physical vantage, recurring uptime, filtered-path quorum, or Android behavior.
+redacted aggregate adds only executor kind, executor-identity digest and manifest
+digest from the private cross-link. This proves one consumer-uplink observation,
+not a second physical vantage, recurring uptime, filtered-path quorum, or Android
+behavior.
 
 Finally, `deonboard-disposable-liveness` requires the exact mode-0600 guarded
 destroy evidence whose manifest digest is already bound and whose provider result
