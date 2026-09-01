@@ -6,6 +6,9 @@ import copy
 import importlib.util
 import json
 import os
+import re
+import shlex
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -321,6 +324,22 @@ def test_client_identity_descriptor_missing_or_symlink_fails_closed(
         lane.load_config(config_path)
 
 
+def test_loaded_client_identity_is_retained_in_preflight_failure(
+    tmp_path: Path,
+) -> None:
+    config_path, source_archive = write_private_runner_config(tmp_path)
+    manifest = run_with_private_config(
+        config_path, source_archive, tmp_path / "out.json"
+    )
+
+    assert manifest["classification"] == "INFRA_UNAVAILABLE"
+    assert manifest["reasonCode"] == "PREREQUISITE_MISSING"
+    assert manifest["clientIdentity"] == {
+        "ripdpiSourceSha": "d" * 40,
+        "artifactSha256": "e" * 64,
+    }
+
+
 def test_client_identity_descriptor_rejects_placeholder_digests(tmp_path: Path) -> None:
     config_path, _source_archive = write_private_runner_config(tmp_path)
     descriptor = config_path.parent / lane.CLIENT_IDENTITY_DESCRIPTOR_NAME
@@ -599,6 +618,78 @@ def test_local_launcher_archives_exact_sha_and_validates_before_publish() -> Non
     assert 'quarantine="$quarantine_dir/invalid-' in launcher
     assert "run_status == 0 && validate_status == 0" in launcher
     assert "GITHUB_" not in launcher
+
+
+def test_preflight_failures_are_redacted_nonpass_evidence_without_latest_mutation() -> (
+    None
+):
+    manifest = lane.failure_manifest(metadata(), "4" * 64, "PREFLIGHT_CONFIG_INVALID")
+    lane.validate_manifest(
+        manifest,
+        expected_source_sha="1" * 40,
+        now=manifest["generatedAtEpoch"],
+    )
+
+    launcher = (REPO_ROOT / "scripts" / "run-real-vps-awg-nat-local.sh").read_text()
+    assert "emit_preflight_failure" in launcher
+    assert "preflight_fail()" in launcher
+    for category in (
+        "PREFLIGHT_TOOL_MISSING",
+        "PREFLIGHT_LOCK_BUSY",
+        "PREFLIGHT_CONFIG_INVALID",
+        "PREFLIGHT_RUNNER_INVALID",
+        "PREFLIGHT_SOURCE_UNSAFE",
+        "PREFLIGHT_SOURCE_MISMATCH",
+    ):
+        assert category in launcher
+    assert launcher.index('rm -f -- "$evidence_dir/latest.json"') > launcher.index(
+        'git -C "$REPO_ROOT" diff-index --quiet HEAD'
+    )
+    assert "preflight_fail PREFLIGHT_LOCK_BUSY" in launcher
+    assert "preflight_fail PREFLIGHT_CONFIG_INVALID" in launcher
+    assert "preflight_fail PREFLIGHT_RUNNER_INVALID" in launcher
+    assert "preflight_fail PREFLIGHT_SOURCE_UNSAFE" in launcher
+
+
+def test_preflight_emitter_writes_canonical_redacted_manifest_without_latest_update(
+    tmp_path: Path,
+) -> None:
+    launcher = (REPO_ROOT / "scripts" / "run-real-vps-awg-nat-local.sh").read_text()
+    match = re.search(
+        r"emit_preflight_failure\(\) \{.*?\n\}\n\npreflight_fail", launcher, re.DOTALL
+    )
+    assert match is not None
+    emitter = match.group(0).removesuffix("\n\npreflight_fail")
+    evidence_dir = tmp_path / "evidence"
+    harness = f"""
+set -euo pipefail
+evidence_dir={shlex.quote(str(evidence_dir))}
+quarantine_dir={shlex.quote(str(tmp_path / "quarantine"))}
+preflight_epoch=2000000000
+mkdir -p "$evidence_dir"
+printf prior > "$evidence_dir/latest.json"
+{emitter}
+emit_preflight_failure PREFLIGHT_CONFIG_INVALID
+"""
+    completed = subprocess.run(["bash", "-c", harness], capture_output=True, text=True)
+    assert completed.returncode == 0, completed.stderr
+    assert (evidence_dir / "latest.json").read_text() == "prior"
+    records = list(evidence_dir.glob("preflight-*.json"))
+    assert len(records) == 1
+    raw = records[0].read_bytes()
+    manifest = json.loads(raw)
+    assert raw == lane.canonical_json_bytes(manifest)
+    lane.validate_manifest(
+        manifest,
+        expected_source_sha="0" * 40,
+        now=2_000_000_000,
+    )
+    assert manifest["classification"] == "INFRA_UNAVAILABLE"
+    assert manifest["reasonCode"] == "PREFLIGHT_CONFIG_INVALID"
+    assert manifest["clientIdentity"] == {
+        "ripdpiSourceSha": "0" * 40,
+        "artifactSha256": "0" * 64,
+    }
 
 
 def test_local_installer_pins_root_owned_source_and_fixed_units() -> None:

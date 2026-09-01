@@ -14,33 +14,59 @@ ENTRYPOINT="scripts/run-real-vps-awg-nat-local.sh"
 LOCK_DIR="/run/lock/ripdpi-real-vps-awg-nat"
 
 umask 077
-for tool in awk cmp find flock git install python3 readlink sha256sum stat; do
-  command -v "$tool" >/dev/null 2>&1 || { echo "missing prerequisite: $tool" >&2; exit 75; }
-done
-[[ -d "$LOCK_DIR" ]] || { echo "shared lane lock directory is missing" >&2; exit 75; }
-[[ "$(stat -c '%u:%a' "$LOCK_DIR")" == "0:700" ]] || { echo "shared lane lock directory is unsafe" >&2; exit 75; }
-exec 9>"$LOCK_DIR/lane.lock"
-flock -n 9 || { echo "real-VPS AWG/NAT lane is already running or being installed" >&2; exit 75; }
-
 evidence_dir="$STATE_DIRECTORY/evidence"
 quarantine_dir="$STATE_DIRECTORY/quarantine"
-install -d -m 0700 "$evidence_dir" "$quarantine_dir"
+preflight_epoch="$(date -u +%s 2>/dev/null || printf '1')"
+[[ "$preflight_epoch" =~ ^[1-9][0-9]*$ ]] || preflight_epoch=1
+
+# This record contains fixed categories and placeholders only: it is written
+# before the installed Python runner and its source checkout are trusted.
+emit_preflight_failure() {
+  local reason="$1"
+  local invocation_id="local-preflight-${preflight_epoch}-$$"
+  local temporary="$evidence_dir/.preflight-${preflight_epoch}-${reason}-$$.tmp"
+  local evidence="$evidence_dir/preflight-${preflight_epoch}-${reason}-$$.json"
+  mkdir -p "$evidence_dir" "$quarantine_dir" 2>/dev/null || return 0
+  chmod 0700 "$evidence_dir" "$quarantine_dir" 2>/dev/null || return 0
+  printf '%s\n' \
+    "{\"captureDigests\":[],\"classification\":\"INFRA_UNAVAILABLE\",\"cleanup\":{\"capturesRemoved\":true,\"clientStopped\":true,\"scratchRemoved\":true,\"serverTransactionFinalized\":true},\"clientIdentity\":{\"artifactSha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"ripdpiSourceSha\":\"0000000000000000000000000000000000000000\"},\"finishedAtEpoch\":${preflight_epoch},\"generatedAtEpoch\":${preflight_epoch},\"phases\":[],\"privateLogSha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"producerDigests\":{\"rotationHookSha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"runnerSha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"serverControlHookSha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"serverDeployHookSha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"provenance\":{\"entrypointPath\":\"scripts/run-real-vps-awg-nat-local.sh\",\"executor\":\"local_systemd\",\"invocationAttempt\":1,\"invocationId\":\"${invocation_id}\",\"sourceArchiveSha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"reasonCode\":\"${reason}\",\"rotation\":{\"committed\":false,\"newKeyMatched\":false,\"oldKeyRejected\":false,\"prepared\":false,\"rolledBack\":false},\"runnerIdSha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"serverDeployment\":{\"archiveMatched\":false,\"receiptSha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"sourceCurrent\":false},\"sourceSha\":\"0000000000000000000000000000000000000000\",\"startedAtEpoch\":${preflight_epoch},\"version\":\"real_vps_awg_nat_evidence_v2\"}" \
+    > "$temporary" 2>/dev/null || return 0
+  chmod 0600 "$temporary" 2>/dev/null || { rm -f -- "$temporary"; return 0; }
+  mv -f -- "$temporary" "$evidence" 2>/dev/null || rm -f -- "$temporary"
+}
+
+preflight_fail() {
+  emit_preflight_failure "$1"
+  exit 75
+}
+
+for tool in awk cmp find flock git install python3 readlink sha256sum stat; do
+  command -v "$tool" >/dev/null 2>&1 || preflight_fail PREFLIGHT_TOOL_MISSING
+done
+[[ -d "$LOCK_DIR" ]] || preflight_fail PREFLIGHT_LOCK_BUSY
+[[ "$(stat -c '%u:%a' "$LOCK_DIR")" == "0:700" ]] || preflight_fail PREFLIGHT_LOCK_BUSY
+exec 9>"$LOCK_DIR/lane.lock" || preflight_fail PREFLIGHT_LOCK_BUSY
+flock -n 9 || preflight_fail PREFLIGHT_LOCK_BUSY
+
+install -d -m 0700 "$evidence_dir" "$quarantine_dir" || preflight_fail PREFLIGHT_CONFIG_INVALID
+[[ -x "$RUNNER" ]] || preflight_fail PREFLIGHT_RUNNER_INVALID
+[[ -f "$CONFIG" && ! -L "$CONFIG" ]] || preflight_fail PREFLIGHT_CONFIG_INVALID
+[[ -d "$REPO_ROOT/.git" ]] || preflight_fail PREFLIGHT_SOURCE_UNSAFE
+[[ "$(stat -c '%u' "$REPO_ROOT" "$REPO_ROOT/.git")" == $'0\n0' ]] || preflight_fail PREFLIGHT_SOURCE_UNSAFE
+[[ -z "$(find "$REPO_ROOT" "$REPO_ROOT/.git" -maxdepth 0 -perm /022 -print -quit)" ]] || preflight_fail PREFLIGHT_SOURCE_UNSAFE
+cmp -s "$RUNNER" "$REPO_ROOT/scripts/real-vps-awg-nat.py" || preflight_fail PREFLIGHT_SOURCE_MISMATCH
+cmp -s "$0" "$REPO_ROOT/$ENTRYPOINT" || preflight_fail PREFLIGHT_SOURCE_MISMATCH
+cmp -s /etc/systemd/system/ripdpi-real-vps-awg-nat.service "$REPO_ROOT/scripts/systemd/ripdpi-real-vps-awg-nat.service" || preflight_fail PREFLIGHT_SOURCE_MISMATCH
+cmp -s /etc/systemd/system/ripdpi-real-vps-awg-nat.timer "$REPO_ROOT/scripts/systemd/ripdpi-real-vps-awg-nat.timer" || preflight_fail PREFLIGHT_SOURCE_MISMATCH
+cmp -s /usr/lib/tmpfiles.d/ripdpi-real-vps-awg-nat.conf "$REPO_ROOT/scripts/tmpfiles.d/ripdpi-real-vps-awg-nat.conf" || preflight_fail PREFLIGHT_SOURCE_MISMATCH
+if ! source_sha="$(git -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')"; then
+  preflight_fail PREFLIGHT_SOURCE_UNSAFE
+fi
+[[ "$source_sha" =~ ^[0-9a-f]{40}$ ]] || preflight_fail PREFLIGHT_SOURCE_UNSAFE
+git -C "$REPO_ROOT" diff-index --quiet HEAD -- || preflight_fail PREFLIGHT_SOURCE_UNSAFE
+
+# A preflight refusal leaves an existing last known PASS intact.
 rm -f -- "$evidence_dir/latest.json" "$evidence_dir/.latest.json.tmp"
-
-[[ -x "$RUNNER" ]] || { echo "installed lane runner is missing" >&2; exit 75; }
-[[ -f "$CONFIG" && ! -L "$CONFIG" ]] || { echo "private runner config is missing" >&2; exit 75; }
-[[ -d "$REPO_ROOT/.git" ]] || { echo "root-owned source checkout is missing" >&2; exit 75; }
-[[ "$(stat -c '%u' "$REPO_ROOT" "$REPO_ROOT/.git")" == $'0\n0' ]] || { echo "source checkout is not root-owned" >&2; exit 75; }
-[[ -z "$(find "$REPO_ROOT" "$REPO_ROOT/.git" -maxdepth 0 -perm /022 -print -quit)" ]] || { echo "source checkout is group/other writable" >&2; exit 75; }
-cmp -s "$RUNNER" "$REPO_ROOT/scripts/real-vps-awg-nat.py" || { echo "installed runner does not match checked-out source" >&2; exit 75; }
-cmp -s "$0" "$REPO_ROOT/$ENTRYPOINT" || { echo "installed launcher does not match checked-out source" >&2; exit 75; }
-cmp -s /etc/systemd/system/ripdpi-real-vps-awg-nat.service "$REPO_ROOT/scripts/systemd/ripdpi-real-vps-awg-nat.service" || { echo "installed service does not match checked-out source" >&2; exit 75; }
-cmp -s /etc/systemd/system/ripdpi-real-vps-awg-nat.timer "$REPO_ROOT/scripts/systemd/ripdpi-real-vps-awg-nat.timer" || { echo "installed timer does not match checked-out source" >&2; exit 75; }
-cmp -s /usr/lib/tmpfiles.d/ripdpi-real-vps-awg-nat.conf "$REPO_ROOT/scripts/tmpfiles.d/ripdpi-real-vps-awg-nat.conf" || { echo "installed tmpfiles policy does not match checked-out source" >&2; exit 75; }
-
-source_sha="$(git -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')"
-[[ "$source_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid checked-out source SHA" >&2; exit 75; }
-git -C "$REPO_ROOT" diff-index --quiet HEAD -- || { echo "root-owned source checkout has tracked changes" >&2; exit 75; }
 
 work="$RUNTIME_DIRECTORY/run"
 rm -rf -- "$work"

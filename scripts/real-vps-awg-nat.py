@@ -76,6 +76,12 @@ REASON_CODES = {
     "INTERRUPTED",
     "CLEANUP_FAILED",
     "RUNNER_EXCEPTION",
+    "PREFLIGHT_TOOL_MISSING",
+    "PREFLIGHT_LOCK_BUSY",
+    "PREFLIGHT_CONFIG_INVALID",
+    "PREFLIGHT_RUNNER_INVALID",
+    "PREFLIGHT_SOURCE_UNSAFE",
+    "PREFLIGHT_SOURCE_MISMATCH",
 }
 CONFIG_FIELDS = {
     "version",
@@ -1779,7 +1785,10 @@ def main(argv: list[str] | None = None) -> int:
         ]
         if os.geteuid() != 0 or missing or source_archive_sha256 == "0" * 64:
             manifest = failure_manifest(
-                metadata, producer_sha, reason_code="PREREQUISITE_MISSING"
+                metadata,
+                producer_sha,
+                reason_code="PREREQUISITE_MISSING",
+                client_identity=config["clientIdentity"],
             )
         else:
             try:
