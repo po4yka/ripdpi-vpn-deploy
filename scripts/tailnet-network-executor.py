@@ -177,6 +177,7 @@ class ReceiptStore:
             "provider-applied",
             "committed-cleanup-debt",
             "executed",
+            "released",
         }:
             raise ExecutorError("receipt-refused")
         return value
@@ -323,7 +324,30 @@ class Executor:
             fields.add("provider_applied_at")
         if state == "committed-cleanup-debt":
             fields.add("promotion_observed_at")
-        if state == "executed" and set(value) == {"state"}:
+        if state in {"executed", "released"}:
+            marker = "executed_at" if state == "executed" else "released_at"
+            if (
+                set(value) != base | {marker}
+                or not isinstance(value.get("server_uuid"), str)
+                or p.UUID.fullmatch(value["server_uuid"]) is None
+                or not isinstance(value.get("environment"), str)
+                or p.NAME.fullmatch(value["environment"]) is None
+                or not all(
+                    isinstance(value.get(key), str)
+                    and p.HEX.fullmatch(value[key]) is not None
+                    for key in (
+                        "provider_target_sha256",
+                        "forward_plan_sha256",
+                        "guest_nonce",
+                        "guest_snapshot_digest",
+                    )
+                )
+                or type(value.get("guest_deadline")) is not int
+                or type(value.get("expires_at")) is not int
+                or value["expires_at"] != value["guest_deadline"]
+                or type(value.get(marker)) is not int
+            ):
+                raise ExecutorError("receipt-refused")
             return value
         if (
             state not in {"armed", "provider-applied", "committed-cleanup-debt"}
@@ -384,16 +408,20 @@ class Executor:
                 }
                 if (
                     set(request) != fields
-                    or current is not None
                     or request["provider_target_sha256"] != self.target.digest
                     or request["guest_deadline"] <= int(time.time())
                 ):
                     raise ExecutorError("arm-refused")
+                if current is not None:
+                    if current["state"] not in {"executed", "released"}:
+                        raise ExecutorError("arm-refused")
+                    self.store.clear()
                 value = {
                     **request,
                     "expires_at": request["guest_deadline"],
                     "state": "armed",
                 }
+                self._valid_current(value)
                 self.store.put(value)
                 return value
             if action == "inspect-current":
@@ -436,8 +464,18 @@ class Executor:
                 self.store.put(value)
                 return value
             if action == "release" and current["state"] == "committed-cleanup-debt":
-                self.store.clear()
+                value = {
+                    **current,
+                    "state": "released",
+                    "released_at": int(time.time()),
+                }
+                value.pop("provider_applied_at")
+                value.pop("promotion_observed_at")
+                self._valid_current(value)
+                self.store.put(value)
                 return {"state": "released"}
+            if action == "execute" and current["state"] == "executed":
+                return {"state": "executed"}
             if (
                 action == "execute"
                 and current["state"] in {"armed", "provider-applied"}
@@ -454,7 +492,14 @@ class Executor:
                     self.adapter.apply("rollback", plan)
                 finally:
                     plan.close()
-                self.store.put({"state": "executed"})
+                value = {
+                    **current,
+                    "state": "executed",
+                    "executed_at": int(time.time()),
+                }
+                value.pop("provider_applied_at", None)
+                self._valid_current(value)
+                self.store.put(value)
                 return {"state": "executed"}
             raise ExecutorError("transition-refused")
         finally:
@@ -517,12 +562,17 @@ def serve(args):
                         if not chunk:
                             break
                         chunks.extend(chunk)
+                    terminal = False
                     try:
                         request = json.loads(bytes(chunks))
                         if request.get("action") == "ping":
                             result = {"provider_target_sha256": executor.target.digest}
                         else:
                             result = executor.guard(request["action"], request["value"])
+                            terminal = request.get("action") in {
+                                "execute",
+                                "release",
+                            } and result.get("state") in {"executed", "released"}
                         response = canonical({"ok": result})
                     except (
                         ExecutorError,
@@ -537,6 +587,8 @@ def serve(args):
                         connection.sendall(response)
                     except (BrokenPipeError, ConnectionError, socket.timeout):
                         pass
+                    if terminal:
+                        break
             except (OSError, socket.timeout):
                 # A hostile or partial client must not prevent deadline recovery.
                 continue

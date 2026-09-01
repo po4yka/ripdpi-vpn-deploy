@@ -75,6 +75,14 @@ def test_crash_after_provider_apply_reconciles_to_independent_false_apply(
     monkeypatch.setattr(m.time, "time", lambda: 2_001)
     assert value.reconcile() == {"state": "executed"}
     assert value.adapter.calls == [("plan", "rollback"), ("apply", "rollback")]
+    assert value.guard("execute", value.store.get()) == {"state": "executed"}
+    next_request = {
+        **request(),
+        "forward_plan_sha256": "e" * 64,
+        "guest_deadline": 3_000,
+    }
+    monkeypatch.setattr(m.time, "time", lambda: 2_100)
+    assert value.guard("arm", next_request)["state"] == "armed"
 
 
 def test_release_prevents_deadline_rollback_and_restart_reads_canonical_receipt(
