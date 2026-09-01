@@ -216,3 +216,20 @@ def test_enabled_receiver_waits_for_the_exact_get_refusal_before_red_path_checks
     assert names.index(readiness["name"]) < names.index(
         "Assert remote-write receiver rejects a CN path mismatch"
     )
+
+
+def test_enabled_receiver_curl_checks_ignore_ambient_proxy_and_curlrc() -> None:
+    verify = yaml.safe_load((ROLE / "molecule/enabled/verify.yml").read_text())
+    curl_tasks = [
+        task
+        for task in verify[0]["tasks"]
+        if task.get("ansible.builtin.command", {}).get("argv", [None])[0]
+        in {"curl", "/usr/bin/curl"}
+    ]
+
+    assert len(curl_tasks) == 5
+    for task in curl_tasks:
+        command = task["ansible.builtin.command"]["argv"]
+        assert command[:2] == ["/usr/bin/curl", "--disable"]
+        assert command[command.index("--noproxy") + 1] == "*"
+        assert command[command.index("--max-time") + 1] == "5"

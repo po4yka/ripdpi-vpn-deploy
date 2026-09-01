@@ -65,5 +65,45 @@
       memory_max: 512M
       tasks_max: 64
       nofile_limit: 65536
-  roles:
-    - role: observability_agent
+  tasks:
+    - name: Exercise the real observability agent role
+      block:
+        - name: Converge observability agent
+          ansible.builtin.include_role:
+            name: observability_agent
+      rescue:
+        - name: Read bounded observability agent failure properties
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/systemctl
+              - show
+              - observability-agent.service
+              - --property=Result
+              - --property=ExecMainCode
+              - --property=ExecMainStatus
+              - --property=ExecStartPre
+          register: observability_agent_failure_properties
+          changed_when: false
+          failed_when: false
+
+        - name: Read bounded observability agent fixture journal
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/journalctl
+              - --unit=observability-agent.service
+              - --no-pager
+              - --output=cat
+              - --lines=20
+          register: observability_agent_failure_journal
+          changed_when: false
+          failed_when: false
+
+        - name: Report bounded observability agent fixture failure
+          ansible.builtin.debug:
+            msg:
+              properties: "{{ observability_agent_failure_properties.stdout_lines }}"
+              journal: "{{ observability_agent_failure_journal.stdout_lines }}"
+
+        - name: Refuse failed observability agent fixture convergence
+          ansible.builtin.fail:
+            msg: Observability agent fixture convergence failed; bounded diagnostics precede this refusal.

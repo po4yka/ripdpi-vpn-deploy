@@ -11,7 +11,12 @@
     - name: Assert remote-write receiver rejects a missing or wrong SNI
       ansible.builtin.command:
         argv:
-          - curl
+          - /usr/bin/curl
+          - --disable
+          - --noproxy
+          - '*'
+          - --max-time
+          - "5"
           - --fail
           - --silent
           - --cacert
@@ -31,6 +36,7 @@
       ansible.builtin.command:
         argv:
           - /usr/bin/curl
+          - --disable
           - --noproxy
           - '*'
           - --max-time
@@ -59,7 +65,12 @@
     - name: Assert remote-write receiver rejects a CN path mismatch
       ansible.builtin.command:
         argv:
-          - curl
+          - /usr/bin/curl
+          - --disable
+          - --noproxy
+          - '*'
+          - --max-time
+          - "5"
           - --silent
           - --output
           - /dev/null
@@ -81,7 +92,12 @@
     - name: Assert remote-write receiver rejects an oversized request
       ansible.builtin.command:
         argv:
-          - curl
+          - /usr/bin/curl
+          - --disable
+          - --noproxy
+          - '*'
+          - --max-time
+          - "5"
           - --silent
           - --output
           - /dev/null
@@ -107,7 +123,12 @@
     - name: Assert valid mTLS remote write reaches only loopback Prometheus
       ansible.builtin.command:
         argv:
-          - curl
+          - /usr/bin/curl
+          - --disable
+          - --noproxy
+          - '*'
+          - --max-time
+          - "5"
           - --fail
           - --silent
           - --request

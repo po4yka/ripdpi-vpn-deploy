@@ -314,6 +314,26 @@ def test_molecule_scenarios_execute_the_named_role_and_seed_disable_state_once()
     enabled_converge = (ROLE / "molecule/enabled/converge.yml").read_text()
 
     assert "- role: observability_agent" in default_converge
-    assert "- role: observability_agent" in enabled_converge
+    assert "name: observability_agent" in enabled_converge
     assert "Create synthetic agent-owned state" not in default_converge
     assert "Create synthetic agent-owned state" in default_prepare
+
+
+def test_enabled_molecule_preserves_bounded_failure_diagnostics() -> None:
+    converge = yaml.safe_load(
+        (ROLE / "molecule" / "enabled" / "converge.yml").read_text()
+    )[0]
+    exercise = converge["tasks"][0]
+    outer = exercise["block"]
+    rescue = exercise["rescue"]
+
+    assert outer[0]["ansible.builtin.include_role"] == {"name": "observability_agent"}
+    by_name = {task["name"]: task for task in rescue}
+    journal = by_name["Read bounded observability agent fixture journal"][
+        "ansible.builtin.command"
+    ]["argv"]
+    assert journal[0] == "/usr/bin/journalctl"
+    assert journal[journal.index("--lines=20")] == "--lines=20"
+    assert rescue[-1]["ansible.builtin.fail"]["msg"].startswith(
+        "Observability agent fixture convergence failed"
+    )
