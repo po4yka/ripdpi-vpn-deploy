@@ -8,6 +8,7 @@ adapter alone grants no Terraform apply authority.
 
 from __future__ import annotations
 
+from contextlib import suppress
 import hashlib
 import json
 import os
@@ -352,6 +353,7 @@ class TerraformConfigSnapshot:
 
     @staticmethod
     def _safe_source_file(path: Path):
+        fd = None
         try:
             fd = os.open(
                 path,
@@ -367,10 +369,9 @@ class TerraformConfigSnapshot:
                 raise ValueError
             return fd, info
         except (OSError, ValueError):
-            try:
-                os.close(fd)
-            except (OSError, UnboundLocalError):
-                pass
+            if fd is not None:
+                with suppress(OSError):
+                    os.close(fd)
             raise PromotionError("terraform-snapshot-invalid") from None
 
     @classmethod
@@ -495,6 +496,7 @@ class TerraformConfigSnapshot:
         return cls(destination, manifest["sha256"])
 
     def _load_manifest(self):
+        fd = None
         try:
             fd = os.open(
                 self.root / self.MANIFEST,
@@ -505,10 +507,9 @@ class TerraformConfigSnapshot:
         except OSError:
             raise PromotionError("terraform-snapshot-invalid") from None
         finally:
-            try:
-                os.close(fd)
-            except (OSError, UnboundLocalError):
-                pass
+            if fd is not None:
+                with suppress(OSError):
+                    os.close(fd)
         try:
             value = json.loads(raw)
             payload = value["payload"]
@@ -565,6 +566,7 @@ class TerraformConfigSnapshot:
             raise PromotionError("terraform-snapshot-invalid") from None
         expected = {self.MANIFEST}
         for item in manifest["payload"]["files"]:
+            fd = None
             try:
                 if (
                     set(item) != {"path", "sha256", "mode"}
@@ -583,6 +585,7 @@ class TerraformConfigSnapshot:
                 info = os.fstat(fd)
                 digest = TrustedTerraform._digest(fd)
                 os.close(fd)
+                fd = None
                 if (
                     not stat.S_ISREG(info.st_mode)
                     or info.st_uid != os.geteuid()
@@ -592,10 +595,9 @@ class TerraformConfigSnapshot:
                 ):
                     raise ValueError
             except (KeyError, OSError, TypeError, ValueError):
-                try:
-                    os.close(fd)
-                except (OSError, UnboundLocalError):
-                    pass
+                if fd is not None:
+                    with suppress(OSError):
+                        os.close(fd)
                 raise PromotionError("terraform-snapshot-invalid") from None
         actual = set()
         for directory, names, files in os.walk(self.root, followlinks=False):

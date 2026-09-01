@@ -1,7 +1,7 @@
 """Unit coverage for the import-only provider/guest promotion core."""
 
 from __future__ import annotations
-import fcntl, hashlib, importlib.util, json, os
+import ast, fcntl, hashlib, importlib.util, json, os
 from pathlib import Path
 import pytest
 
@@ -351,6 +351,49 @@ def test_terraform_snapshot_refuses_tamper_symlink_or_unmanifested_input(
         path.symlink_to(source / "scripts/terraform-env.sh")
     with pytest.raises(m.PromotionError, match="terraform-snapshot-invalid"):
         snapshot.verify()
+
+
+def test_terraform_snapshot_cleanup_has_no_empty_exception_handlers():
+    tree = ast.parse(SCRIPT.read_text())
+    snapshot_class = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "TerraformConfigSnapshot"
+    )
+    empty_handlers = [
+        handler
+        for node in ast.walk(snapshot_class)
+        if isinstance(node, ast.Try)
+        for handler in node.handlers
+        if len(handler.body) == 1 and isinstance(handler.body[0], ast.Pass)
+    ]
+    assert empty_handlers == []
+
+
+def test_safe_source_close_failure_preserves_canonical_error(tmp_path, monkeypatch):
+    m = mod()
+    unsafe = tmp_path / "unsafe"
+    unsafe.write_text("fixture")
+    unsafe.chmod(0o622)
+    real_close = os.close
+    observed_fds = []
+
+    def fail_close(fd):
+        observed_fds.append(fd)
+        raise OSError("sensitive fixture detail")
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(m.os, "close", fail_close)
+            with pytest.raises(
+                m.PromotionError, match="^terraform-snapshot-invalid$"
+            ):
+                m.TerraformConfigSnapshot._safe_source_file(unsafe)
+    finally:
+        for fd in observed_fds:
+            real_close(fd)
+
+    assert len(observed_fds) == 1
 
 
 def test_promotion_proof_is_a_single_explicit_dependency():
