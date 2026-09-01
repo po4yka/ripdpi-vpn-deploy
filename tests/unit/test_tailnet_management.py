@@ -432,6 +432,10 @@ def test_process_death_after_login_is_recovered_from_durable_state(tmp_path) -> 
     assert (tmp_path / "tailnet-running").exists()
     transaction = tmp_path / "transaction.json"
     assert transaction.exists() and transaction.stat().st_mode & 0o777 == 0o600
+    receipt = json.loads(transaction.read_text())
+    auth_files = list(tmp_path.glob("vpn-tailnet-auth-*"))
+    assert [path.name for path in auth_files] == [receipt["auth_file"]]
+    assert auth_files[0].read_bytes() == b"tskey-auth-fixture_1234\n"
 
     result = controller.recover(
         paths=_paths(controller, tmp_path), runner=PersistentRunner(tmp_path)
@@ -440,6 +444,7 @@ def test_process_death_after_login_is_recovered_from_durable_state(tmp_path) -> 
     assert result == {"status": "rolled_back", "changed": True}
     assert not transaction.exists()
     assert not (tmp_path / "tailnet-running").exists()
+    assert not list(tmp_path.glob("vpn-tailnet-auth-*"))
     assert controller.recover(
         paths=_paths(controller, tmp_path), runner=PersistentRunner(tmp_path)
     ) == {"status": "idle", "changed": False}
@@ -498,7 +503,12 @@ def test_recovery_receipt_uses_one_serialized_write_and_read_bound(tmp_path) -> 
         resolver_gid=os.getegid(),
     )
 
-    controller._write_transaction(paths, backend_state="NeedsLogin", snapshot=snapshot)
+    controller._write_transaction(
+        paths,
+        backend_state="NeedsLogin",
+        snapshot=snapshot,
+        auth_file="vpn-tailnet-auth-0123456789abcdef0123456789abcdef",
+    )
 
     _receipt, recovered = controller._read_transaction(paths)
     assert recovered == snapshot
@@ -521,6 +531,7 @@ def test_oversized_recovery_receipt_refuses_before_publication(tmp_path) -> None
             _paths(controller, tmp_path),
             backend_state="NeedsLogin",
             snapshot=snapshot,
+            auth_file="vpn-tailnet-auth-0123456789abcdef0123456789abcdef",
         )
 
     assert not (tmp_path / "transaction.json").exists()
@@ -537,6 +548,7 @@ def test_stopped_state_during_armed_recovery_retains_evidence_without_logout(
         paths,
         backend_state="NeedsLogin",
         snapshot=controller._snapshot(paths, runner),
+        auth_file="vpn-tailnet-auth-0123456789abcdef0123456789abcdef",
     )
 
     with pytest.raises(controller.Refusal, match="tailnet-rollback-uncertain"):
