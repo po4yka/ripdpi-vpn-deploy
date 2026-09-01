@@ -1,0 +1,12 @@
+[Unit]
+Description=Run independent observability dead-man once per pulse interval
+
+[Timer]
+OnBootSec=60s
+OnUnitActiveSec={{ observability_deadman.pulse_interval_seconds }}s
+RandomizedDelaySec=0
+Persistent=true
+Unit=observability-deadman-tick.service
+
+[Install]
+WantedBy=timers.target

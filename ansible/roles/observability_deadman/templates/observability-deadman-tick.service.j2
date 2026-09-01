@@ -1,0 +1,31 @@
+[Unit]
+Description=Evaluate independent observability dead-man and secondary route
+After=observability-deadman.service
+
+[Service]
+Type=oneshot
+User={{ observability_deadman.service_user }}
+Group={{ observability_deadman.service_group }}
+LoadCredential=pulse-token:{{ observability_deadman.pulse_credential_path }}
+LoadCredential=telegram-bot-token:{{ observability_deadman.telegram_credential_path }}
+ExecStart=/usr/local/libexec/observability-deadman.py tick --config {{ observability_deadman.config_root }}/deadman-current.json --state {{ observability_deadman.state_dir }}/state.json
+TimeoutStartSec=15s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectClock=true
+LockPersonality=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths={{ observability_deadman.state_dir }}
+ReadOnlyPaths={{ observability_deadman.config_root }} /usr/local/libexec/observability-deadman.py
+MemoryMax=64M
+TasksMax=16
+LimitNOFILE=1024
