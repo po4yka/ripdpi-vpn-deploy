@@ -1,0 +1,12 @@
+---
+- name: Prepare observability-agent disable scenario
+  hosts: all
+  become: true
+  tasks:
+    - name: Create existing monitoring textfile directory
+      ansible.builtin.file:
+        path: /var/lib/node_exporter/textfile
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"

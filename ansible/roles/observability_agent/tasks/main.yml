@@ -1,0 +1,208 @@
+---
+- name: Disable observability agent when feature is disabled
+  when: not (observability_agent.enabled | default(false) | bool)
+  block:
+    - name: Stop and disable observability agent owned units
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: false
+        state: stopped
+      loop:
+        - observability-agent.service
+        - observability-agent-adapter.timer
+      failed_when: false
+
+    - name: Remove observability agent owned runtime state
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/observability-agent.service
+        - /etc/systemd/system/observability-agent-adapter.service
+        - /etc/systemd/system/observability-agent-adapter.timer
+        - /usr/local/libexec/observability-agent-adapter.py
+        - "{{ observability_agent.config_dir }}"
+        - "{{ observability_agent.credential_dir }}"
+        - "{{ observability_agent.wal_dir }}"
+        - "{{ observability_agent.install_root }}"
+        - /usr/local/bin/prometheus-observability-agent
+        - "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/observability-agent.prom"
+      notify: Reload observability agent systemd
+
+- name: Configure observability agent when feature is enabled
+  when: observability_agent.enabled | default(false) | bool
+  block:
+    - name: Assert observability agent contract and exact runtime pins
+      ansible.builtin.assert:
+        that:
+          - observability_contract.schema_version | default(0) | int == 1
+          - observability_contract.credential_mode | default('') == 'systemd'
+          - observability_agent.version | default('') | length > 0
+          - observability_agent.node_id | default('') is match('^[a-z][a-z0-9_-]{0,63}$')
+          - observability_agent.environment | default('') is match('^[a-z][a-z0-9_-]{0,63}$')
+          - observability_agent.receiver_origin | default('') is match('^https://[^/?#]+$')
+          - observability_agent.receiver_sni | default('') is match('^[A-Za-z0-9.-]{1,253}$')
+          - observability_agent.release_urls.amd64 | default('') is match('^https://')
+          - observability_agent.release_urls.arm64 | default('') is match('^https://')
+          - observability_agent.linux_amd64_sha256 | default('') is match('^[0-9a-f]{64}$')
+          - observability_agent.linux_arm64_sha256 | default('') is match('^[0-9a-f]{64}$')
+          - observability_agent.wal_max_size | default('') is match('^[1-9][0-9]{0,3}(?:MB|GB)$')
+          - observability_agent.wal_max_time | default('') is match('^[1-9][0-9]*(?:m|h)$')
+        fail_msg: >-
+          Observability agent requires schema-1 systemd credentials, exact Prometheus
+          archive pins, technical node identity, HTTPS receiver origin, separate SNI,
+          and bounded WAL values.
+
+    - name: Select exact node mTLS sender authority
+      ansible.builtin.set_fact:
+        _observability_agent_senders: >-
+          {{ (observability_secrets.senders | default([]))
+             | selectattr('node_id', 'equalto', observability_agent.node_id) | list }}
+      no_log: true
+
+    - name: Assert exactly one node mTLS identity exists
+      ansible.builtin.assert:
+        that:
+          - _observability_agent_senders | length == 1
+          - observability_secrets.receiver_ca_pem | default('') | length > 0
+          - _observability_agent_senders[0].certificate_pem | default('') | length > 0
+          - _observability_agent_senders[0].private_key_pem | default('') | length > 0
+        fail_msg: Observability sender credentials must contain exactly one identity for this node.
+      no_log: true
+
+    - name: Create observability agent runtime account
+      ansible.builtin.user:
+        name: observability-agent
+        system: true
+        shell: /usr/sbin/nologin
+        home: /var/lib/observability-agent
+        create_home: false
+
+    - name: Create observability agent private directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner | default('root') }}"
+        group: "{{ item.group | default('root') }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - path: "{{ observability_agent.config_dir }}"
+          mode: "0755"
+        - path: "{{ observability_agent.credential_dir }}"
+          mode: "0700"
+        - path: "{{ observability_agent.wal_dir }}"
+          owner: observability-agent
+          group: observability-agent
+          mode: "0700"
+
+    - name: Install pinned observability agent through runtime-release
+      ansible.builtin.include_role:
+        name: runtime-release
+      vars:
+        runtime_release_version: "{{ observability_agent.version }}"
+        runtime_release_install_root: "{{ observability_agent.install_root }}"
+        runtime_release_binary_name: prometheus
+        runtime_release_public_link: /usr/local/bin/prometheus-observability-agent
+        runtime_release_urls:
+          amd64: "{{ observability_agent.release_urls.amd64 }}"
+          arm64: "{{ observability_agent.release_urls.arm64 }}"
+        runtime_release_sha256:
+          amd64: "{{ observability_agent.linux_amd64_sha256 }}"
+          arm64: "{{ observability_agent.linux_arm64_sha256 }}"
+        runtime_release_arch_slugs:
+          amd64: linux-amd64
+          arm64: linux-arm64
+        runtime_release_artifact_filename: prometheus
+        runtime_release_artifact_type: archive
+        runtime_release_archive_strip_components: 1
+        runtime_release_archive_members:
+          amd64: "prometheus-{{ observability_agent.version }}.linux-amd64/prometheus"
+          arm64: "prometheus-{{ observability_agent.version }}.linux-arm64/prometheus"
+
+    - name: Write observability agent systemd credential sources
+      ansible.builtin.copy:
+        content: "{{ item.content }}"
+        dest: "{{ observability_agent.credential_dir }}/{{ item.name }}"
+        owner: root
+        group: root
+        mode: "0600"
+      loop:
+        - name: receiver-ca.crt
+          content: "{{ observability_secrets.receiver_ca_pem }}"
+        - name: client.crt
+          content: "{{ _observability_agent_senders[0].certificate_pem }}"
+        - name: client.key
+          content: "{{ _observability_agent_senders[0].private_key_pem }}"
+      no_log: true
+      diff: false
+      notify: Restart observability agent
+
+    - name: Read sender certificate subject without logging credential material
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/openssl
+          - x509
+          - -noout
+          - -subject
+          - -nameopt
+          - RFC2253
+          - -in
+          - "{{ observability_agent.credential_dir }}/client.crt"
+      register: _observability_agent_client_subject
+      changed_when: false
+      no_log: true
+
+    - name: Require certificate common name to equal node identity
+      ansible.builtin.assert:
+        that:
+          - _observability_agent_client_subject.stdout | trim == 'subject=CN=' ~ observability_agent.node_id
+        fail_msg: Observability sender certificate common name does not match its node identity.
+      no_log: true
+
+    - name: Render bounded observability agent configuration
+      ansible.builtin.template:
+        src: prometheus.yml.j2
+        dest: "{{ observability_agent.config_dir }}/prometheus.yml"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart observability agent
+
+    - name: Install schema-2 manifest adapter
+      ansible.builtin.copy:
+        src: observability-agent-adapter.py
+        dest: /usr/local/libexec/observability-agent-adapter.py
+        owner: root
+        group: root
+        mode: "0755"
+      notify: Restart observability agent adapter timer
+
+    - name: Install observability agent units
+      ansible.builtin.template:
+        src: "{{ item }}"
+        dest: "/etc/systemd/system/{{ item | regex_replace('\\.j2$', '') }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - observability-agent.service.j2
+        - observability-agent-adapter.service.j2
+        - observability-agent-adapter.timer.j2
+      notify:
+        - Reload observability agent systemd
+        - Restart observability agent
+        - Restart observability agent adapter timer
+
+    - name: Enable and start observability agent sender
+      ansible.builtin.systemd_service:
+        name: observability-agent.service
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Enable and start observability agent adapter timer
+      ansible.builtin.systemd_service:
+        name: observability-agent-adapter.timer
+        enabled: true
+        state: started
+        daemon_reload: true

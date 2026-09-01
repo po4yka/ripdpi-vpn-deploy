@@ -1,0 +1,10 @@
+[Unit]
+Description=Run RIPDPI observability manifest adapter
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+Unit=observability-agent-adapter.service
+
+[Install]
+WantedBy=timers.target

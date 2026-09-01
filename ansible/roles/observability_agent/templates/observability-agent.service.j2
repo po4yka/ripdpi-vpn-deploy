@@ -1,0 +1,24 @@
+[Unit]
+Description=RIPDPI bounded observability remote-write agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=observability-agent
+Group=observability-agent
+LoadCredential=client.crt:{{ observability_agent.credential_dir }}/client.crt
+LoadCredential=client.key:{{ observability_agent.credential_dir }}/client.key
+LoadCredential=receiver-ca.crt:{{ observability_agent.credential_dir }}/receiver-ca.crt
+ExecStart=/usr/local/bin/prometheus-observability-agent agent --config.file={{ observability_agent.config_dir }}/prometheus.yml --web.listen-address={{ observability_agent.web_listen }} --storage.agent.path={{ observability_agent.wal_dir }} --storage.agent.wal-compression --storage.agent.retention.max-size={{ observability_agent.wal_max_size }} --storage.agent.retention.max-time={{ observability_agent.wal_max_time }}
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ observability_agent.wal_dir }}
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
