@@ -79,8 +79,8 @@
           - /var/tmp/observability-control-plane-fixture/mtls-client.py
           - --method
           - POST
-          - --content-length
-          - '9437184'
+          - --body-size
+          - '2048'
           - --ca
           - /var/tmp/observability-control-plane-fixture/tls/ca.crt
           - --cert

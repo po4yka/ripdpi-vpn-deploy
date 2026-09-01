@@ -320,13 +320,14 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     assert "load_cert_chain" in content
     assert "server_hostname=self.host" in content
     assert "response.read()" not in content
-    assert 'parser.add_argument("--content-length", type=int)' in content
-    assert "def send_declared_length_request(connection, args):" in content
-    assert "connection.sock.sendall(request)" in content
-    assert 'parts[0] in (b"HTTP/1.0", b"HTTP/1.1")' in content
-    assert 'parts[1] == b"413"' in content
+    assert 'parser.add_argument("--body-size", type=int)' in content
+    assert "def send_declared_length_request" not in content
+    assert "connection.sock.sendall(request)" not in content
+    assert 'body = b"x" * args.body_size' in content
+    assert "args.body_size > 16 * 1024" in content
     assert "except ssl.SSLError:" in content
-    assert "if not response_bytes:" in content
+    assert "connection.request(" in content
+    assert "response = connection.getresponse()" in content
     assert "body=body" in content
     assert "urllib" not in content
 
@@ -335,9 +336,8 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     )
     oversized_command = oversized["ansible.builtin.command"]["argv"]
     assert "--body-file" not in oversized_command
-    assert (
-        oversized_command[oversized_command.index("--content-length") + 1] == "9437184"
-    )
+    assert "--content-length" not in oversized_command
+    assert oversized_command[oversized_command.index("--body-size") + 1] == "2048"
     assert oversized["failed_when"] == (
         "oversized_request.stdout != '413' or oversized_request.rc != 0"
     )
@@ -347,3 +347,5 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     verify_text = (ROLE / "molecule/enabled/verify.yml").read_text()
     assert "observability-remote-write.error.log" not in verify_text
     assert "oversized_request.rc != 60" not in verify_text
+    converge = (ROLE / "molecule/enabled/converge.yml").read_text()
+    assert "request_body_limit: 1k" in converge

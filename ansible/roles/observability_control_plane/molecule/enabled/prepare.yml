@@ -95,47 +95,6 @@
                   )
 
 
-          def send_declared_length_request(connection, args):
-              if (
-                  args.method != "POST"
-                  or args.body
-                  or args.content_length is None
-              ):
-                  return 2
-              if args.content_length < 0 or args.content_length > 16 * 1024 * 1024:
-                  return 2
-              connection.connect()
-              request = (
-                  f"POST {args.path} HTTP/1.1\r\n"
-                  f"Host: {args.server_name}\r\n"
-                  f"Content-Length: {args.content_length}\r\n"
-                  "Connection: close\r\n\r\n"
-              ).encode("ascii")
-              response_bytes = b""
-              try:
-                  connection.sock.sendall(request)
-                  while b"\r\n" not in response_bytes and len(response_bytes) < 4096:
-                      chunk = connection.sock.recv(4096 - len(response_bytes))
-                      if not chunk:
-                          break
-                      response_bytes += chunk
-              except ssl.SSLError:
-                  # nginx may close without TLS close_notify after its bounded rejection.
-                  pass
-              if not response_bytes:
-                  return 60
-              status_line = response_bytes.split(b"\r\n", 1)[0]
-              parts = status_line.split(b" ", 2)
-              if (
-                  len(parts) == 3
-                  and parts[0] in (b"HTTP/1.0", b"HTTP/1.1")
-                  and parts[1] == b"413"
-              ):
-                  print(413)
-                  return 0
-              return 2
-
-
           def main():
               parser = argparse.ArgumentParser()
               parser.add_argument("--server-name", required=True)
@@ -145,9 +104,14 @@
               parser.add_argument("--cert", required=True)
               parser.add_argument("--key", required=True)
               parser.add_argument("--body", default="")
-              parser.add_argument("--content-length", type=int)
+              parser.add_argument("--body-size", type=int)
               args = parser.parse_args()
-              body = args.body.encode("utf-8")
+              if args.body_size is not None:
+                  if args.body or args.body_size <= 0 or args.body_size > 16 * 1024:
+                      return 2
+                  body = b"x" * args.body_size
+              else:
+                  body = args.body.encode("utf-8")
               headers = {"Host": args.server_name}
               context = ssl.create_default_context(cafile=args.ca)
               context.load_cert_chain(certfile=args.cert, keyfile=args.key)
@@ -155,8 +119,6 @@
                   args.server_name, timeout=5, context=context
               )
               try:
-                  if args.content_length is not None:
-                      return send_declared_length_request(connection, args)
                   connection.request(
                       args.method,
                       args.path,
