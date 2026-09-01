@@ -10,6 +10,13 @@ map $ssl_client_s_dn $observability_remote_write_node {
 }
 
 server {
+    listen {{ observability_control_plane.ingress_port }} ssl http2 default_server;
+    listen [::]:{{ observability_control_plane.ingress_port }} ssl http2 default_server;
+    server_name _;
+    ssl_reject_handshake on;
+}
+
+server {
     listen {{ observability_control_plane.ingress_port }} ssl http2;
     listen [::]:{{ observability_control_plane.ingress_port }} ssl http2;
     server_name {{ observability_control_plane.ingress_sni }};

@@ -45,6 +45,8 @@ def test_ingress_is_only_the_bounded_authenticated_write_path() -> None:
     )
 
     for required in (
+        "listen 9443 ssl http2 default_server;",
+        "ssl_reject_handshake on;",
         "listen 9443 ssl http2;",
         "ssl_client_certificate /etc/observability-control-plane/tls/client-ca.crt;",
         "ssl_crl /etc/observability-control-plane/tls/client.crl;",
@@ -88,6 +90,15 @@ def test_prometheus_service_is_loopback_only_and_storage_is_bounded() -> None:
         "--storage.tsdb.retention.size=20GB",
         "ProtectSystem=strict",
         "NoNewPrivileges=true",
+        "PrivateDevices=true",
+        "ProtectKernelTunables=yes",
+        "ProtectKernelModules=yes",
+        "ProtectControlGroups=yes",
+        "ProtectKernelLogs=yes",
+        "ProtectClock=yes",
+        "LockPersonality=yes",
+        "RestrictNamespaces=yes",
+        "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6",
         "ReadWritePaths=/var/lib/observability-prometheus",
     ):
         assert required in rendered

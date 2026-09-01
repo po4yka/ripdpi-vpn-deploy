@@ -21,7 +21,6 @@ observability_control_plane:
   tsdb_retention_time: 30d
   tsdb_retention_size: 20GB
   tsdb_required_bytes: 42949672960
-  generation: ""
   prometheus:
     version: ""
     urls: {amd64: "", arm64: ""}

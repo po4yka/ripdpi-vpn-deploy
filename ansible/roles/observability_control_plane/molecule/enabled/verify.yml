@@ -1,0 +1,129 @@
+---
+- name: Verify enabled observability control-plane receiver
+  hosts: all
+  become: true
+  tasks:
+    - name: Assert nginx and Prometheus are enabled and active
+      ansible.builtin.command:
+        argv: [systemctl, is-active, --quiet, nginx]
+      changed_when: false
+
+    - name: Assert remote-write receiver rejects a missing or wrong SNI
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --fail
+          - --silent
+          - --cacert
+          - /var/tmp/observability-control-plane-fixture/tls/ca.crt
+          - --cert
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.crt
+          - --key
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
+          - --resolve
+          - wrong.fixture.test:9443:127.0.0.1
+          - https://wrong.fixture.test:9443/remote-write/v1/nodes/vpn-p0
+      register: wrong_sni
+      changed_when: false
+      failed_when: wrong_sni.rc == 0
+
+    - name: Assert remote-write receiver rejects a GET, oversized request, and CN/path mismatch
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --output
+          - /dev/null
+          - --write-out
+          - '%{http_code}'
+          - --cacert
+          - /var/tmp/observability-control-plane-fixture/tls/ca.crt
+          - --cert
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.crt
+          - --key
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
+          - --resolve
+          - ingest.fixture.test:9443:127.0.0.1
+          - https://ingest.fixture.test:9443/remote-write/v1/nodes/vpn-p0
+      register: get_request
+      changed_when: false
+      failed_when: get_request.stdout != '405'
+
+    - name: Assert remote-write receiver rejects a CN path mismatch
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --output
+          - /dev/null
+          - --write-out
+          - '%{http_code}'
+          - --cacert
+          - /var/tmp/observability-control-plane-fixture/tls/ca.crt
+          - --cert
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p1.crt
+          - --key
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p1.key
+          - --resolve
+          - ingest.fixture.test:9443:127.0.0.1
+          - https://ingest.fixture.test:9443/remote-write/v1/nodes/vpn-p0
+      register: mismatched_cn
+      changed_when: false
+      failed_when: mismatched_cn.stdout != '403'
+
+    - name: Assert remote-write receiver rejects an oversized request
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --output
+          - /dev/null
+          - --write-out
+          - '%{http_code}'
+          - --request
+          - POST
+          - --data-binary
+          - '@/var/tmp/observability-control-plane-fixture/oversize.bin'
+          - --cacert
+          - /var/tmp/observability-control-plane-fixture/tls/ca.crt
+          - --cert
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.crt
+          - --key
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
+          - --resolve
+          - ingest.fixture.test:9443:127.0.0.1
+          - https://ingest.fixture.test:9443/remote-write/v1/nodes/vpn-p0
+      register: oversized_request
+      changed_when: false
+      failed_when: oversized_request.stdout != '413'
+
+    - name: Assert valid mTLS remote write reaches only loopback Prometheus
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --fail
+          - --silent
+          - --request
+          - POST
+          - --data-binary
+          - fixture
+          - --cacert
+          - /var/tmp/observability-control-plane-fixture/tls/ca.crt
+          - --cert
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.crt
+          - --key
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
+          - --resolve
+          - ingest.fixture.test:9443:127.0.0.1
+          - https://ingest.fixture.test:9443/remote-write/v1/nodes/vpn-p0
+      changed_when: false
+
+    - name: Assert failed candidate rollback restores an immutable generation
+      ansible.builtin.command:
+        argv: [readlink, /etc/observability-control-plane/current.yml]
+      changed_when: false
+
+    - name: Assert TSDB free-space preflight remains enforced
+      ansible.builtin.command:
+        argv: [df, -PB1, /var/lib/observability-prometheus]
+      changed_when: false

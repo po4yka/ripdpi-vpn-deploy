@@ -57,8 +57,62 @@ def test_capacity_preflight_and_retention_have_no_auto_deletion_path() -> None:
 
     assert "Read filesystem capacity reserved for Prometheus TSDB" in source
     assert "Require TSDB capacity before activation" in source
+    assert "split()[3]" in source
     assert defaults["tsdb_required_bytes"] == 42949672960
-    assert "state: absent" not in source
+    assert (
+        'path: "{{ observability_control_plane.data_dir }}"\n    state: absent'
+        not in source
+    )
+
+
+def test_generation_is_content_addressed_and_rollback_restores_the_original_link() -> (
+    None
+):
+    tasks = _tasks("enable.yml")
+    source = (ROLE / "tasks/enable.yml").read_text()
+    ordered = list(tasks)
+
+    assert (
+        ordered.index(
+            "Derive the immutable Prometheus generation from candidate content"
+        )
+        < ordered.index("Inspect immutable Prometheus generation before publication")
+        < ordered.index("Refuse a conflicting immutable Prometheus generation")
+        < ordered.index("Publish isolated immutable Prometheus generation")
+    )
+    assert "_observability_generation" in source
+    assert "observability_control_plane.generation" not in source
+    assert (
+        tasks["Publish isolated immutable Prometheus generation"][
+            "ansible.builtin.copy"
+        ]["force"]
+        is False
+    )
+    rescue = tasks["Activate complete validated Prometheus generation with rollback"][
+        "rescue"
+    ]
+    restored = next(
+        task
+        for task in rescue
+        if task["name"] == "Restore previous ready configuration after failed candidate"
+    )
+    assert (
+        restored["ansible.builtin.file"]["src"]
+        == "{{ _observability_current.stat.lnk_source }}"
+    )
+
+
+def test_enable_removes_default_site_and_starts_nginx_after_policy_rc_d() -> None:
+    tasks = _tasks("enable.yml")
+    ordered = list(tasks)
+
+    assert ordered.index(
+        "Remove the distribution default ingress site"
+    ) < ordered.index("Validate ingress before reload")
+    nginx = tasks["Enable and start validated control-plane ingress"][
+        "ansible.builtin.systemd_service"
+    ]
+    assert nginx == {"name": "nginx", "enabled": True, "state": "started"}
 
 
 def test_playbook_keeps_the_control_plane_out_of_transport_site() -> None:
@@ -74,3 +128,17 @@ def test_playbook_keeps_the_control_plane_out_of_transport_site() -> None:
         .find("observability_control_plane")
         >= 0
     )
+
+
+def test_enabled_molecule_declares_receiver_and_rollback_acceptance_boundaries() -> (
+    None
+):
+    verify = (ROLE / "molecule" / "enabled" / "verify.yml").read_text(encoding="utf-8")
+    for required in (
+        "missing or wrong SNI",
+        "GET, oversized request, and CN/path mismatch",
+        "valid mTLS remote write reaches only loopback Prometheus",
+        "failed candidate rollback restores an immutable generation",
+        "TSDB free-space preflight remains enforced",
+    ):
+        assert required in verify

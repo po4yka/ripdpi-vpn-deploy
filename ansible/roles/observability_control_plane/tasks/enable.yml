@@ -12,7 +12,6 @@
       - observability_control_plane.tsdb_retention_time == '30d'
       - observability_control_plane.tsdb_retention_size == '20GB'
       - observability_control_plane.tsdb_required_bytes | int >= 42949672960
-      - observability_control_plane.generation is match('^[a-f0-9]{64}$')
       - observability_control_plane.ingress_sni is match('^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$')
       - observability_control_plane.control_plane_dns_san is match('^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$')
       - observability_control_plane.ingress_sni != observability_control_plane.control_plane_dns_san
@@ -123,7 +122,7 @@
   ansible.builtin.assert:
     that:
       - >-
-        (_observability_tsdb_capacity.stdout_lines[-1].split()[1] | int) >=
+        (_observability_tsdb_capacity.stdout_lines[-1].split()[3] | int) >=
         (observability_control_plane.tsdb_required_bytes | int)
     fail_msg: Observability TSDB requires at least the configured 40 GiB capacity before activation.
 
@@ -217,13 +216,34 @@
   loop: "{{ _observability_client_subjects.results }}"
   no_log: true
 
-- name: Render isolated Prometheus generation
-  ansible.builtin.template:
-    src: prometheus.yml.j2
-    dest: "{{ observability_control_plane.config_root }}/generations/{{ observability_control_plane.generation }}.yml"
+- name: Derive the immutable Prometheus generation from candidate content
+  ansible.builtin.set_fact:
+    _observability_generation: "{{ lookup('ansible.builtin.template', 'prometheus.yml.j2') | hash('sha256') }}"
+  no_log: true
+
+- name: Inspect immutable Prometheus generation before publication
+  ansible.builtin.stat:
+    path: "{{ observability_control_plane.config_root }}/generations/{{ _observability_generation }}.yml"
+    checksum_algorithm: sha256
+  register: _observability_candidate_generation
+  changed_when: false
+
+- name: Refuse a conflicting immutable Prometheus generation
+  ansible.builtin.assert:
+    that: >-
+      not (_observability_candidate_generation.stat.exists | default(false)) or
+      _observability_candidate_generation.stat.checksum == _observability_generation
+    fail_msg: A different configuration already occupies the derived immutable generation.
+  no_log: true
+
+- name: Publish isolated immutable Prometheus generation
+  ansible.builtin.copy:
+    content: "{{ lookup('ansible.builtin.template', 'prometheus.yml.j2') }}"
+    dest: "{{ observability_control_plane.config_root }}/generations/{{ _observability_generation }}.yml"
     owner: root
     group: "{{ observability_control_plane.service_group }}"
     mode: '0640'
+    force: false
   no_log: true
   diff: false
 
@@ -269,7 +289,7 @@
   block:
     - name: Point current configuration at candidate generation
       ansible.builtin.file:
-        src: "{{ observability_control_plane.config_root }}/generations/{{ observability_control_plane.generation }}.yml"
+        src: "{{ observability_control_plane.config_root }}/generations/{{ _observability_generation }}.yml"
         dest: "{{ observability_control_plane.config_root }}/current.yml"
         state: link
         force: true
@@ -294,7 +314,7 @@
   rescue:
     - name: Restore previous ready configuration after failed candidate
       ansible.builtin.file:
-        src: "{{ observability_control_plane.config_root }}/previous.yml"
+        src: "{{ _observability_current.stat.lnk_source }}"
         dest: "{{ observability_control_plane.config_root }}/current.yml"
         state: link
         force: true
@@ -326,12 +346,18 @@
     state: link
     force: true
 
+- name: Remove the distribution default ingress site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+
 - name: Validate ingress before reload
   ansible.builtin.command:
     argv: [nginx, -t]
   changed_when: false
 
-- name: Flush control-plane activation handlers
+- name: Enable and start validated control-plane ingress
   ansible.builtin.systemd_service:
     name: nginx
-    state: reloaded
+    enabled: true
+    state: started

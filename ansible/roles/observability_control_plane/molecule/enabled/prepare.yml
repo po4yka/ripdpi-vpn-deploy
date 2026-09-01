@@ -1,0 +1,69 @@
+---
+- name: Prepare enabled control-plane receiver fixture
+  hosts: all
+  become: true
+  tasks:
+    - name: Create fixture directory
+      ansible.builtin.file:
+        path: /var/tmp/observability-control-plane-fixture
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: Create local pinned archive and mTLS fixture
+      ansible.builtin.shell: |
+        set -eu
+        fixture=/var/tmp/observability-control-plane-fixture
+        mkdir -p "$fixture/tls" "$fixture/ca/newcerts"
+        : > "$fixture/ca/index.txt"
+        printf '1000\n' > "$fixture/ca/serial"
+        printf '1000\n' > "$fixture/ca/crlnumber"
+        cat > "$fixture/ca/openssl.cnf" <<'EOF'
+        [ ca ]
+        default_ca = CA_default
+        [ CA_default ]
+        database = /var/tmp/observability-control-plane-fixture/ca/index.txt
+        serial = /var/tmp/observability-control-plane-fixture/ca/serial
+        crlnumber = /var/tmp/observability-control-plane-fixture/ca/crlnumber
+        private_key = /var/tmp/observability-control-plane-fixture/tls/ca.key
+        certificate = /var/tmp/observability-control-plane-fixture/tls/ca.crt
+        new_certs_dir = /var/tmp/observability-control-plane-fixture/ca/newcerts
+        default_md = sha256
+        default_crl_days = 1
+        policy = policy_any
+        [ policy_any ]
+        commonName = supplied
+        EOF
+        openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=fixture-ca \
+          -keyout "$fixture/tls/ca.key" -out "$fixture/tls/ca.crt"
+        openssl req -newkey rsa:2048 -nodes -subj /CN=ingest.fixture.test \
+          -keyout "$fixture/tls/server.key" -out "$fixture/tls/server.csr"
+        printf 'subjectAltName=DNS:ingest.fixture.test,DNS:control.fixture.test\n' > "$fixture/server.ext"
+        openssl x509 -req -days 1 -CA "$fixture/tls/ca.crt" -CAkey "$fixture/tls/ca.key" \
+          -CAcreateserial -in "$fixture/tls/server.csr" -out "$fixture/tls/server.crt" -extfile "$fixture/server.ext"
+        for identity in vpn-p0 vpn-p1; do
+          openssl req -newkey rsa:2048 -nodes -subj "/CN=$identity" \
+            -keyout "$fixture/tls/client-$identity.key" -out "$fixture/tls/client-$identity.csr"
+          printf 'extendedKeyUsage=clientAuth\n' > "$fixture/client.ext"
+          openssl x509 -req -days 1 -CA "$fixture/tls/ca.crt" -CAkey "$fixture/tls/ca.key" \
+            -CAcreateserial -in "$fixture/tls/client-$identity.csr" -out "$fixture/tls/client-$identity.crt" -extfile "$fixture/client.ext"
+        done
+        openssl ca -batch -config "$fixture/ca/openssl.cnf" -gencrl -out "$fixture/tls/ca.crl"
+        cat > "$fixture/prometheus" <<'EOF'
+        #!/usr/bin/env python3
+        import http.server
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200 if self.path == '/-/ready' else 404); self.end_headers()
+            def do_POST(self):
+                self.send_response(200 if self.path == '/api/v1/write' else 404); self.end_headers()
+            def log_message(self, *_args): pass
+        http.server.HTTPServer(('127.0.0.1', 9090), Handler).serve_forever()
+        EOF
+        chmod 0755 "$fixture/prometheus"
+        tar -C "$fixture" -czf "$fixture/prometheus.tar.gz" prometheus
+        dd if=/dev/zero of="$fixture/oversize.bin" bs=1M count=9 status=none
+      args:
+        creates: /var/tmp/observability-control-plane-fixture/prometheus.tar.gz
+      changed_when: false
