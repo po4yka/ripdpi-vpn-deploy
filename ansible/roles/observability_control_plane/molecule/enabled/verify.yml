@@ -73,16 +73,7 @@
       delay: 1
       until: (mismatched_cn.msg | default('')) != 'Error executing command.'
 
-    - name: Reset bounded oversized-request rejection evidence
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/truncate
-          - -s
-          - '0'
-          - /var/log/nginx/observability-remote-write.error.log
-      changed_when: false
-
-    - name: Submit an oversized request for server-side rejection evidence
+    - name: Submit an oversized request and require exact server-side 413
       ansible.builtin.command:
         argv:
           - /var/tmp/observability-control-plane-fixture/mtls-client.py
@@ -102,28 +93,10 @@
           - /remote-write/v1/nodes/vpn-p0
       register: oversized_request
       changed_when: false
-      failed_when:
-        - oversized_request.stdout != '413'
-        - oversized_request.rc != 60
+      failed_when: oversized_request.stdout != '413' or oversized_request.rc != 0
       retries: 2
       delay: 1
-      until: (oversized_request.msg | default('')) != 'Error executing command.'
-
-    - name: Read bounded oversized-request rejection evidence
-      ansible.builtin.slurp:
-        src: /var/log/nginx/observability-remote-write.error.log
-      register: oversized_request_log
-
-    - name: Require exact server-side oversized-request rejection
-      ansible.builtin.assert:
-        that:
-          - >-
-            'client intended to send too large body' in
-            (oversized_request_log.content | b64decode)
-          - >-
-            'POST /remote-write/v1/nodes/vpn-p0 HTTP/1.1' in
-            (oversized_request_log.content | b64decode)
-        fail_msg: The authenticated ingress did not record an oversized-body rejection.
+      until: oversized_request.stdout == '413' and oversized_request.rc == 0
 
     - name: Assert valid mTLS remote write reaches only loopback Prometheus
       ansible.builtin.command:

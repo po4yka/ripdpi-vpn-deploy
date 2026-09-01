@@ -95,7 +95,8 @@ def test_service_uses_systemd_credentials_and_bounded_agent_wal() -> None:
     assert "LoadCredential=client.key:" in unit
     assert "LoadCredential=receiver-ca.crt:" in unit
     assert "LoadCredential=prometheus.yml:" in unit
-    assert "WorkingDirectory=" not in unit
+    assert "WorkingDirectory=%d" in unit
+    assert unit.index("WorkingDirectory=%d") < unit.index("ExecStart=")
     assert "ExecStartPre=" not in unit
     assert (
         "/generations/{{ _observability_agent_service_generation }}/prometheus.yml"
@@ -180,6 +181,7 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
     assert tasks.index(
         "Bind observability service to the candidate credential generation"
     ) < tasks.index("Install observability agent units")
+    assert "WorkingDirectory=%d" in unit
     for name in ("client.crt", "client.key", "receiver-ca.crt", "prometheus.yml"):
         assert (
             f"LoadCredential={name}:{{{{ observability_agent.credential_dir }}}}/"
@@ -207,16 +209,21 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
     rollback = tasks[restore:restart_previous]
     assert "stat.lnk_target | basename" in tasks[active_target:service_activity]
     assert normalize < service_activity
-    assert 'src: "generations/{{ _observability_agent_previous_generation_id }}"' in rollback
+    assert (
+        'src: "generations/{{ _observability_agent_previous_generation_id }}"'
+        in rollback
+    )
     assert "{{ _observability_agent_previous_generation_id }}" in rollback
     assert "stat.lnk_source" not in rollback
     assert "- -purpose\n              - sslclient" in tasks
     assert "- x509\n              - x509" not in tasks
     assert "prometheus.yml" in tasks[publish:switch]
-    assert "mode: \"0711\"" in tasks
+    assert 'mode: "0711"' in tasks
     assert "'0644' if item.item == 'prometheus.yml' else '0600'" in tasks
     assert "Wait for observability agent local readiness" in tasks[switch:]
-    assert "Link observability agent configuration to the active generation" not in tasks
+    assert (
+        "Link observability agent configuration to the active generation" not in tasks
+    )
 
 
 def test_agent_policy_bounds_and_first_activation_rollback_are_fail_closed() -> None:
@@ -347,7 +354,9 @@ def test_site_uses_the_role_contract_as_the_single_enablement_flag() -> None:
     assert "enable_observability_agent" not in group_vars
 
 
-def test_molecule_scenarios_execute_the_named_role_and_seed_disable_state_once() -> None:
+def test_molecule_scenarios_execute_the_named_role_and_seed_disable_state_once() -> (
+    None
+):
     default_converge = (ROLE / "molecule/default/converge.yml").read_text()
     default_prepare = (ROLE / "molecule/default/prepare.yml").read_text()
     enabled_converge = (ROLE / "molecule/enabled/converge.yml").read_text()
