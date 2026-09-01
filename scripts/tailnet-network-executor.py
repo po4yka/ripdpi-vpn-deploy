@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""Independent, durable provider rollback guard for Tailnet promotion.
+
+The process owns the Terraform descriptors and a private receipt.  Its unix
+socket is deliberately the only interface exposed to a promotion controller;
+the controller cannot replace the planned rollback with provider API calls.
+"""
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import selectors
+import socket
+import stat
+import sys
+import time
+
+ROOT = Path(__file__).resolve().parents[1]
+PROMOTION = ROOT / "scripts" / "tailnet-network-promotion.py"
+MAX = 65536
+
+
+def _promotion():
+    spec = importlib.util.spec_from_file_location("tailnet_network_promotion", PROMOTION)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+p = _promotion()
+
+
+class ExecutorError(RuntimeError):
+    pass
+
+
+def canonical(value):
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False) + "\n").encode()
+
+
+def private_fd(path: Path, *, executable=False):
+    """Open one current-user private regular file without following links."""
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+    info = os.fstat(fd)
+    allowed = 0o022 if executable else 0o077
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1
+            or info.st_mode & allowed):
+        os.close(fd)
+        raise ExecutorError("private-input-refused")
+    return fd
+
+
+class ReceiptStore:
+    """A locked canonical receipt; no request data is ever put in argv."""
+    def __init__(self, root: Path):
+        self.root = root
+        if root.is_symlink():
+            raise ExecutorError("state-directory-refused")
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        info = root.stat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700:
+            raise ExecutorError("state-directory-refused")
+        self.path, self.lock = root / "receipt.json", root / "lock"
+
+    def _locked(self):
+        fd = os.open(self.lock, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        os.fchmod(fd, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        return fd
+
+    def get(self):
+        if not self.path.exists():
+            return None
+        fd = private_fd(self.path)
+        try:
+            raw = os.read(fd, MAX + 1)
+        finally:
+            os.close(fd)
+        if len(raw) > MAX:
+            raise ExecutorError("receipt-refused")
+        try:
+            envelope = json.loads(raw)
+        except (ValueError, UnicodeError):
+            raise ExecutorError("receipt-refused") from None
+        if (not isinstance(envelope, dict) or set(envelope) != {"payload", "sha256"}
+                or not isinstance(envelope["sha256"], str)
+                or envelope["sha256"] != hashlib.sha256(canonical(envelope["payload"])).hexdigest()
+                or raw != canonical(envelope)):
+            raise ExecutorError("receipt-refused")
+        return envelope["payload"]
+
+    def put(self, value):
+        raw = canonical({"payload": value, "sha256": hashlib.sha256(canonical(value)).hexdigest()})
+        temporary = self.root / ".receipt.new"
+        fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        try:
+            os.write(fd, raw); os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(temporary, self.path)
+        os.chmod(self.path, 0o600)
+        directory = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY)
+        try: os.fsync(directory)
+        finally: os.close(directory)
+
+    def clear(self):
+        try:
+            os.unlink(self.path)
+        except FileNotFoundError:
+            return
+        directory = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY)
+        try: os.fsync(directory)
+        finally: os.close(directory)
+
+
+class Executor:
+    def __init__(self, target, state, terraform, digest, receipt_root):
+        target_fd, state_fd, tf_fd = private_fd(target), private_fd(state), private_fd(terraform, executable=True)
+        try:
+            self.target = p.ProviderTarget(target_fd, state_fd)
+            self.trusted = p.TrustedTerraform(tf_fd, digest)
+        except BaseException:
+            for fd in (target_fd, state_fd, tf_fd):
+                try: os.close(fd)
+                except OSError: pass
+            raise
+        self.store = ReceiptStore(receipt_root)
+        self.adapter = p.TerraformAdapter(self.target, trusted_terraform=self.trusted,
+                                          return_path_guard=self._readback,
+                                          external_rollback_guard=lambda *_: True,
+                                          allow_apply=True)
+        # Terraform is the sole provider client.  Keep the credential only in
+        # this process environment; the receipt, socket protocol and argv
+        # contain identities and digests only.
+        token = os.environ.get("UPCLOUD_TOKEN")
+        if not token:
+            self.close()
+            raise ExecutorError("provider-credentials-unavailable")
+        self.adapter.environment_map = {**self.adapter.environment_map, "UPCLOUD_TOKEN": token}
+
+    def close(self): self.adapter.close()
+
+    def _readback(self, action, identity):
+        if action != "readback": raise ExecutorError("return-path-refused")
+        raw = self.adapter._command(["state", "pull"])
+        try:
+            state = json.loads(raw)
+            resource = next(x for x in state["resources"] if x.get("type") == "upcloud_server" and x.get("name") == "vpn")
+            firewall = resource["instances"][0]["attributes"]["firewall"]
+        except (KeyError, IndexError, StopIteration, TypeError, ValueError):
+            raise ExecutorError("provider-readback-invalid") from None
+        if type(firewall) is not bool: raise ExecutorError("provider-readback-invalid")
+        return {**identity, "firewall": firewall}
+
+    def _same(self, receipt, request, state):
+        return isinstance(receipt, dict) and receipt.get("state") == state and all(receipt.get(k) == v for k, v in request.items())
+
+    def guard(self, action, request):
+        if not isinstance(request, dict): raise ExecutorError("request-refused")
+        lock = self.store._locked()
+        try:
+            current = self.store.get()
+            if action == "arm":
+                fields = {"server_uuid", "environment", "provider_target_sha256", "forward_plan_sha256", "guest_generation", "guest_nonce", "guest_snapshot_digest", "guest_deadline"}
+                if set(request) != fields or current is not None or request["provider_target_sha256"] != self.target.digest or request["guest_deadline"] <= int(time.time()):
+                    raise ExecutorError("arm-refused")
+                value = {**request, "expires_at": request["guest_deadline"], "state": "armed"}
+                self.store.put(value); return value
+            if action == "inspect-current":
+                if current is None or any(current.get(k) != v for k, v in request.items()): raise ExecutorError("receipt-foreign")
+                return current
+            immutable = {k: v for k, v in request.items() if k not in {"state", "provider_applied_at", "promotion_observed_at", "_deadline_reconcile"}}
+            if current is None or any(current.get(k) != v for k, v in immutable.items()):
+                raise ExecutorError("receipt-foreign")
+            if action == "inspect": return current
+            if action == "mark-applied" and current["state"] == "armed" and type(request.get("provider_applied_at")) is int:
+                value = {**request, "state":"provider-applied"}; self.store.put(value); return value
+            if action == "commit" and current["state"] == "provider-applied" and type(request.get("promotion_observed_at")) is int:
+                value = {**request, "state":"committed-cleanup-debt"}; self.store.put(value); return value
+            if action == "release" and current["state"] == "committed-cleanup-debt":
+                self.store.clear(); return {"state":"released"}
+            if action == "execute" and current["state"] in {"armed", "provider-applied"} and (current["expires_at"] > int(time.time()) or request.get("_deadline_reconcile") is True):
+                plan = self.adapter.plan("rollback")
+                try:
+                    # This daemon alone owns the armed receipt and invokes the
+                    # canonical Terraform false transition after recovery.
+                    self.adapter._rollback_armed = True
+                    self.adapter.apply("rollback", plan)
+                finally: plan.close()
+                self.store.put({"state":"executed"}); return {"state":"executed"}
+            raise ExecutorError("transition-refused")
+        finally:
+            os.close(lock)
+
+    def reconcile(self):
+        current = self.store.get()
+        if current and current.get("state") in {"armed", "provider-applied"} and current.get("expires_at", 0) <= int(time.time()):
+            # A missed deadline is unsafe: perform the independent false apply.
+            request = {**current, "_deadline_reconcile": True}
+            return self.guard("execute", request)
+
+
+def serve(args):
+    executor = Executor(Path(args.target), Path(args.state), Path(args.terraform), args.terraform_sha256, Path(args.receipt_dir))
+    path = Path(args.socket)
+    if path.exists() or path.is_symlink(): raise ExecutorError("socket-refused")
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        listener.bind(str(path)); os.chmod(path, 0o600); listener.listen(8); listener.setblocking(False)
+        while True:
+            ready, _, _ = __import__('select').select([listener], [], [], 1)
+            if not ready:
+                try: executor.reconcile()
+                except ExecutorError: pass
+                continue
+            connection, _ = listener.accept()
+            with connection:
+                chunks = bytearray()
+                while len(chunks) <= MAX:
+                    chunk = connection.recv(min(4096, MAX + 1 - len(chunks)))
+                    if not chunk:
+                        break
+                    chunks.extend(chunk)
+                raw = bytes(chunks)
+                try:
+                    request = json.loads(raw); result = executor.guard(request["action"], request["value"])
+                    connection.sendall(canonical({"ok": result}))
+                except (ExecutorError, KeyError, TypeError, ValueError): connection.sendall(canonical({"error":"rollback-uncertain"}))
+    finally:
+        listener.close(); executor.close()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("serve")
+    parser.add_argument("--target", required=True); parser.add_argument("--state", required=True)
+    parser.add_argument("--terraform", required=True); parser.add_argument("--terraform-sha256", required=True)
+    parser.add_argument("--receipt-dir", required=True); parser.add_argument("--socket", required=True)
+    args = parser.parse_args()
+    try: serve(args)
+    except (ExecutorError, p.PromotionError): return 1
+    return 0
+
+if __name__ == "__main__": raise SystemExit(main())
