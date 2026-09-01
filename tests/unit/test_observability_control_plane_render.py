@@ -566,6 +566,7 @@ def _tls_fixture_server(
             try:
                 tls_connection.close()
             except OSError:
+                # The client may abort the oversized request before server cleanup.
                 pass
             listener.close()
 
