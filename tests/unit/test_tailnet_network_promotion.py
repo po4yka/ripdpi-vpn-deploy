@@ -540,6 +540,7 @@ def test_forward_lock_is_held_through_apply_marker_and_then_released(
     tmp_path, monkeypatch
 ):
     m = mod()
+    monkeypatch.setattr(m.time, "time", lambda: 1_000)
     target = _target(m, tmp_path)
     armed = _rollback_capability(target)
     current = dict(armed)
@@ -590,6 +591,74 @@ def test_forward_lock_is_held_through_apply_marker_and_then_released(
     with pytest.raises(OSError):
         os.fstat(held_fd)
     assert calls == ["begin-forward", "inspect", "apply", "mark-applied"]
+
+
+def test_forward_refuses_lease_that_expires_after_provider_lock(monkeypatch, tmp_path):
+    m = mod()
+    target = _target(m, tmp_path)
+    armed = _rollback_capability(target, expires_at=1_001)
+    current = dict(armed)
+    monkeypatch.setattr(m.time, "time", lambda: 1_001)
+
+    def guard(action, value):
+        if action == "begin-forward":
+            current.clear()
+            current.update(
+                {**value, "forward_lease": "f" * 64, "state": "forward-started"}
+            )
+            return dict(current)
+        if action == "inspect":
+            return dict(current)
+        raise AssertionError(action)
+
+    adapter = m.TerraformAdapter(
+        target,
+        external_rollback_guard=guard,
+        provider_transaction_lock=lambda: os.open(
+            tmp_path / "provider.lock", os.O_CREAT | os.O_RDWR, 0o600
+        ),
+    )
+    adapter._rollback_armed = True
+    adapter._rollback_receipt = armed
+    with pytest.raises(m.PromotionError, match="rollback-uncertain"):
+        adapter.begin_forward(armed)
+    assert adapter._forward_lock_fd == -1
+
+
+def test_forward_refuses_lease_that_expires_immediately_before_apply(
+    monkeypatch, tmp_path
+):
+    m = mod()
+    target = _target(m, tmp_path)
+    armed = _rollback_capability(target, expires_at=1_002)
+    current = dict(armed)
+    monkeypatch.setattr(m.time, "time", lambda: 1_000)
+
+    def guard(action, value):
+        if action == "begin-forward":
+            current.clear()
+            current.update(
+                {**value, "forward_lease": "f" * 64, "state": "forward-started"}
+            )
+            return dict(current)
+        if action == "inspect":
+            return dict(current)
+        raise AssertionError(action)
+
+    adapter = m.TerraformAdapter(
+        target,
+        external_rollback_guard=guard,
+        provider_transaction_lock=lambda: os.open(
+            tmp_path / "provider.lock", os.O_CREAT | os.O_RDWR, 0o600
+        ),
+    )
+    adapter._rollback_armed = True
+    adapter._rollback_receipt = armed
+    forward = adapter.begin_forward(armed)
+    monkeypatch.setattr(m.time, "time", lambda: 1_002)
+    with pytest.raises(m.PromotionError, match="rollback-uncertain"):
+        adapter.apply_forward(forward, object(), 1_002)
+    assert adapter._forward_lock_fd == -1
 
 
 @pytest.mark.parametrize(

@@ -748,7 +748,9 @@ class TerraformAdapter:
             # The provider lock is shared with deadline reconciliation.  Re-read
             # the exact durable lease after acquiring it, before Terraform can
             # make the public change.
-            if self.external_rollback_guard("inspect", result) != result:
+            if self.external_rollback_guard("inspect", result) != result or result[
+                "expires_at"
+            ] <= int(time.time()):
                 raise PromotionError("rollback-uncertain")
         except BaseException:
             os.close(lock)
@@ -758,13 +760,14 @@ class TerraformAdapter:
         return self._rollback_receipt
 
     def apply_forward(self, capability, plan, applied_at):
-        if (
-            capability != self._rollback_receipt
-            or self._forward_lock_fd < 0
-            or dict(capability).get("state") != "forward-started"
-        ):
-            raise PromotionError("rollback-uncertain")
         try:
+            if (
+                capability != self._rollback_receipt
+                or self._forward_lock_fd < 0
+                or dict(capability).get("state") != "forward-started"
+                or dict(capability).get("expires_at", 0) <= int(time.time())
+            ):
+                raise PromotionError("rollback-uncertain")
             self.apply("forward", plan)
             return self.mark_applied(capability, applied_at)
         finally:

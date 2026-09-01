@@ -371,6 +371,13 @@ class Executor:
                 or type(value.get("expires_at")) is not int
                 or value["expires_at"] != value["guest_deadline"]
                 or type(value.get(marker)) is not int
+                or (
+                    "forward_lease" in value
+                    and (
+                        not isinstance(value["forward_lease"], str)
+                        or p.HEX.fullmatch(value["forward_lease"]) is None
+                    )
+                )
             ):
                 raise ExecutorError("receipt-refused")
             return value
@@ -490,6 +497,8 @@ class Executor:
             if action == "begin-forward" and current["state"] == "armed":
                 if set(request) != set(current) - {"state"}:
                     raise ExecutorError("receipt-refused")
+                if current["expires_at"] <= int(time.time()):
+                    raise ExecutorError("receipt-expired")
                 value = {
                     **request,
                     "forward_lease": secrets.token_hex(32),
@@ -545,7 +554,10 @@ class Executor:
                     and request.get("_deadline_reconcile") is not True
                 ):
                     raise ExecutorError("receipt-refused")
-                if action == "expire" and current["state"] == "armed":
+                if action == "expire" and current["state"] in {
+                    "armed",
+                    "forward-started",
+                }:
                     observed = self._readback(
                         "readback",
                         {

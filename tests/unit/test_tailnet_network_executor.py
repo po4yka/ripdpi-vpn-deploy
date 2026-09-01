@@ -204,6 +204,55 @@ def test_expired_armed_false_readback_terminalizes_without_provider_apply(
     assert value.adapter.calls == [] and value.store.get()["state"] == "executed"
 
 
+def test_expired_armed_receipt_cannot_begin_forward(tmp_path, monkeypatch):
+    m = mod()
+    value = executor(m, tmp_path)
+    monkeypatch.setattr(m.time, "time", lambda: 1_000)
+    armed = value.guard("arm", request())
+    monkeypatch.setattr(m.time, "time", lambda: armed["expires_at"])
+    with pytest.raises(m.ExecutorError, match="receipt-expired"):
+        value.guard(
+            "begin-forward",
+            {key: item for key, item in armed.items() if key != "state"},
+        )
+    assert value.store.get() == armed
+
+
+def test_expired_forward_started_false_readback_terminalizes_without_apply(
+    tmp_path, monkeypatch
+):
+    m = mod()
+    value = executor(m, tmp_path)
+    monkeypatch.setattr(m.time, "time", lambda: 1_000)
+    value.target.value = {
+        "server_uuid": request()["server_uuid"],
+        "environment": "prod",
+    }
+    armed = value.guard("arm", request())
+    value.guard(
+        "begin-forward", {key: item for key, item in armed.items() if key != "state"}
+    )
+    value._readback = lambda *_: {"firewall": False}
+    monkeypatch.setattr(m.time, "time", lambda: 2_001)
+    assert value.reconcile() == {"state": "executed"}
+    assert value.adapter.calls == []
+    terminal = value.store.get()
+    assert terminal["state"] == "executed" and "forward_lease" in terminal
+
+
+def test_terminal_receipt_rejects_malformed_forward_lease(tmp_path):
+    m = mod()
+    value = executor(m, tmp_path)
+    terminal = {
+        **request(),
+        "state": "executed",
+        "executed_at": 1_001,
+        "forward_lease": "not-a-lease",
+    }
+    with pytest.raises(m.ExecutorError, match="receipt-refused"):
+        value._valid_current(terminal)
+
+
 def test_expiry_serializes_with_forward_mark_and_rolls_back_true(tmp_path, monkeypatch):
     """A stale timer observation cannot terminalize across a live forward lock."""
     m = mod()
