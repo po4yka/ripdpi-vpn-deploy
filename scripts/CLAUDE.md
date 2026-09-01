@@ -95,6 +95,11 @@ shared probe budget, fixed launcher, lock, rollback snapshot and committed recei
 Onboarding publishes its local assignment only after exact receipt reconciliation;
 active evaluator evidence never substitutes controller identity for server state.
 
+**Tailnet firewall fragments have one canonical grammar** —
+`tailnet-network-guest.py` validates and publishes the same schema-1 bytes as
+the firewall role. Empty typed sets omit the `elements` clause because nftables
+does not accept an explicit empty set expression.
+
 **SSH recovery installation has an early privacy guard** — the dedicated
 controller rejects enabled Ansible debug before inventory processing, forwards
 `ANSIBLE_DEBUG=false` to override config defaults, and validates exact aliases

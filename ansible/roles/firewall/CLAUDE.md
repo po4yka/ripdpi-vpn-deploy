@@ -16,6 +16,10 @@ before the public CIDR allowlist. Keep that drop even when the Tailnet role is
 disabled because a stale interface can outlive its inventory toggle. The live
 listener verifier requires the exact accept/drop/public ordering.
 
+**Empty Tailnet sets omit `elements`** — nftables rejects `elements = { }`.
+The checked-in empty fragment, inline check-mode render, validator, and guest
+transaction helper must keep the same schema-1 bytes.
+
 **Public listener ports come from Terraform's contract** — `site.yml` verifies `public_listener_contract` against the runtime manifest before this template renders. Do not add transport ports directly to `nftables.conf.j2`.
 
 **Egress modes are opt-in** — `firewall_egress_policy: permissive` preserves
@@ -70,3 +74,7 @@ preserve baseline bytes. The rule-bearing render is no_log with diff disabled.
 - **Strict egress is not a privacy boundary for proxy traffic** — enabled
   proxy transports need broad upstream egress to carry client traffic. Use
   strict mode to constrain host services, not to classify client destinations.
+- **Task-level check mode has no magic flag** — Ansible's `check_mode: true`
+  does not set `ansible_check_mode`. Test-only role inclusion must set the
+  explicit `_firewall_task_check_mode` context so validation follows the same
+  branch as a real `ansible-playbook --check` run.
