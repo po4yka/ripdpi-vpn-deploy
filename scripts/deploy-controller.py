@@ -230,7 +230,7 @@ def tailnet_site_environment(environment, host_count, mode, *, enabled):
     return {**environment, "TAILSCALE_AUTH_KEY": credential}
 
 
-def tailnet_enabled_for_selection(root, hosts, memberships, override_values):
+def tailnet_enabled_for_selection(root, hosts, memberships, metadata, override_values):
     """Resolve the effective replace-semantics Tailnet toggle for selected hosts."""
     enabled = []
     for host in hosts:
@@ -247,6 +247,13 @@ def tailnet_enabled_for_selection(root, hosts, memberships, override_values):
                 vpn = document["vpn"]
                 if not isinstance(vpn, dict):
                     raise DeployError("canonical vpn variables invalid")
+        host_metadata = metadata.get(host["name"])
+        if not isinstance(host_metadata, dict):
+            raise DeployError("canonical host metadata invalid")
+        if "vpn" in host_metadata:
+            vpn = host_metadata["vpn"]
+            if not isinstance(vpn, dict):
+                raise DeployError("canonical host vpn variables invalid")
         if "vpn" in override_values:
             vpn = override_values["vpn"]
             if not isinstance(vpn, dict):
@@ -580,7 +587,7 @@ def controller(mode):
         transactions = transaction_inputs("deploy" if mode == "deploy" else "check",
                                           hosts, identity, directory, root, environment)
         tailnet_hosts = tailnet_enabled_for_selection(
-            root, hosts, memberships, override_values)
+            root, hosts, memberships, metadata, override_values)
         site_environment = tailnet_site_environment(
             environment, len(hosts), mode, enabled=bool(tailnet_hosts))
         prepared = []

@@ -548,6 +548,26 @@ def test_tailnet_enabled_multi_node_refuses_without_credential_before_ssh(worksp
     assert not any(entry["program"] in ("ssh", "ansible-playbook") for entry in calls(workspace))
 
 
+@pytest.mark.parametrize("target", ["deploy", "dry-run"])
+def test_tailnet_host_metadata_multi_node_refuses_before_ssh(workspace, target):
+    source = workspace["inventory"].read_text()
+    source = source.replace(
+        "provider=upcloud",
+        "provider=upcloud vpn='{\"enable_tailnet_management\": True}'",
+    ).replace(
+        "provider=vultr",
+        "provider=vultr vpn='{\"enable_tailnet_management\": True}'",
+    )
+    workspace["inventory"].write_text(source)
+
+    result = invoke(workspace, target=target, limit="")
+
+    assert result.returncode != 0
+    assert "Tailnet management requires one exact inventory node" in result.stderr
+    assert not any(entry["program"] in ("ssh", "ansible-playbook")
+                   for entry in calls(workspace))
+
+
 @pytest.mark.parametrize("field", ["ENV", "PROVIDER"])
 @pytest.mark.parametrize("target", ["deploy", "backup-configure", "install-ssh-recovery"])
 def test_make_labels_do_not_expand_before_controller_privacy_guard(workspace, field, target):

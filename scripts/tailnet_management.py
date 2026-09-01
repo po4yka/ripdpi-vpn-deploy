@@ -380,7 +380,7 @@ def _remove_transaction(paths: CommandPaths, *, phase: str) -> None:
         except OSError:
             # Confirmation was committed before cleanup. A possible reappearing
             # confirmed receipt is cleanup debt and never authorizes rollback.
-            if path.exists():
+            if phase != "confirmed" or path.exists():
                 raise
     except OSError as error:
         raise Refusal("tailnet-recovery-state-cleanup-failed") from error

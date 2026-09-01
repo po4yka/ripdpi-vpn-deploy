@@ -10,6 +10,7 @@ destroy table inet nat
 {% set ssh_v4_cidrs = ssh_cidrs | select('match', '^(?!.*:).*') | list %}
 {% set ssh_v6_cidrs = ssh_cidrs | select('match', '.*:.*') | list %}
 {% set ssh_port = firewall_effective_ssh_ports | first | int %}
+{% set ssh_public_interface_guard = 'iifname != "tailscale0" ' if vpn.enable_tailnet_management | default(false) else '' -%}
 {% set _xray_cohorts = (xray.cohorts | default([])) if xray is defined else [] %}
 {% set _xray_fallback_port = xray_fallback_port | default(0) | int %}
 {% if _xray_cohorts | length > 0 %}
@@ -115,10 +116,10 @@ table inet filter {
     meta l4proto ipv6-icmp icmpv6 type echo-request accept
 
 {% if ssh_v4_cidrs %}
-    tcp dport {{ ssh_port }} ip saddr { {{ ssh_v4_cidrs | join(", ") }} } accept
+    {{ ssh_public_interface_guard }}tcp dport {{ ssh_port }} ip saddr { {{ ssh_v4_cidrs | join(", ") }} } accept
 {% endif %}
 {% if ssh_v6_cidrs %}
-    tcp dport {{ ssh_port }} ip6 saddr { {{ ssh_v6_cidrs | join(", ") }} } accept
+    {{ ssh_public_interface_guard }}tcp dport {{ ssh_port }} ip6 saddr { {{ ssh_v6_cidrs | join(", ") }} } accept
 {% endif %}
 {%- if vpn.enable_tailnet_management | default(false) %}
 {% for source in tailnet_management.approved_sources | default([]) %}

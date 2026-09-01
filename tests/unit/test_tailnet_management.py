@@ -80,6 +80,7 @@ def test_firewall_allows_only_exact_approved_tailnet_sources() -> None:
         "approved_sources": ["100.64.10.20", "fd7a:115c:a1e0::1234"],
     }
     variables["firewall_effective_ssh_ports"] = [22022]
+    variables["allowed_ssh_cidrs"] = ["0.0.0.0/0", "::/0"]
     variables["public_listener_contract"] = []
     rendered = render_template(
         ROOT / "ansible/roles/firewall/templates/nftables.conf.j2", variables
@@ -92,6 +93,13 @@ def test_firewall_allows_only_exact_approved_tailnet_sources() -> None:
         'iifname "tailscale0" tcp dport 22022 ' "ip6 saddr fd7a:115c:a1e0::1234 accept"
     ) in rendered
     assert 'iifname "tailscale0" accept' not in rendered
+    assert (
+        'iifname != "tailscale0" tcp dport 22022 ip saddr { 0.0.0.0/0 } accept'
+        in rendered
+    )
+    assert (
+        'iifname != "tailscale0" tcp dport 22022 ip6 saddr { ::/0 } accept' in rendered
+    )
 
     firewall_tasks = yaml.safe_load(
         (ROOT / "ansible/roles/firewall/tasks/main.yml").read_text()
@@ -602,6 +610,38 @@ def test_confirmation_rechecks_receipt_limit_before_replacement(
         controller._mark_transaction_confirmed(paths)
 
     assert receipt.read_bytes() == armed
+
+
+def test_armed_receipt_unlink_fsync_failure_remains_uncertain(
+    tmp_path, monkeypatch
+) -> None:
+    controller = _load_controller()
+    paths = _paths(controller, tmp_path)
+    snapshot = controller.SystemSnapshot(
+        resolver=b"resolver",
+        routes=b"routes",
+        sshd=b"sshd",
+        resolver_mode=0o644,
+        resolver_uid=os.geteuid(),
+        resolver_gid=os.getegid(),
+    )
+    controller._write_transaction(
+        paths,
+        backend_state="NeedsLogin",
+        snapshot=snapshot,
+        auth_file="vpn-tailnet-auth-0123456789abcdef0123456789abcdef",
+    )
+
+    def fail_directory_fsync(_path):
+        raise OSError("fixture directory fsync failure")
+
+    monkeypatch.setattr(controller, "_fsync_directory", fail_directory_fsync)
+    with pytest.raises(
+        controller.Refusal, match="tailnet-recovery-state-cleanup-failed"
+    ):
+        controller._remove_transaction(paths, phase="armed")
+
+    assert not (tmp_path / "transaction.json").exists()
 
 
 def test_stopped_state_during_armed_recovery_retains_evidence_without_logout(
