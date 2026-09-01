@@ -95,6 +95,31 @@
                   )
 
 
+          def send_declared_length_request(connection, args):
+              if (
+                  args.method != "POST"
+                  or args.body
+                  or args.content_length is None
+              ):
+                  return 2
+              if args.content_length < 0 or args.content_length > 16 * 1024 * 1024:
+                  return 2
+              connection.connect()
+              request = (
+                  f"POST {args.path} HTTP/1.1\r\n"
+                  f"Host: {args.server_name}\r\n"
+                  f"Content-Length: {args.content_length}\r\n"
+                  "Connection: close\r\n\r\n"
+              ).encode("ascii")
+              connection.sock.sendall(request)
+              response = http.client.HTTPResponse(
+                  connection.sock, method=args.method
+              )
+              response.begin()
+              print(response.status)
+              return 0
+
+
           def main():
               parser = argparse.ArgumentParser()
               parser.add_argument("--server-name", required=True)
@@ -108,16 +133,14 @@
               args = parser.parse_args()
               body = args.body.encode("utf-8")
               headers = {"Host": args.server_name}
-              if args.content_length is not None:
-                  if args.content_length < len(body) or args.content_length > 16 * 1024 * 1024:
-                      return 2
-                  headers["Content-Length"] = str(args.content_length)
               context = ssl.create_default_context(cafile=args.ca)
               context.load_cert_chain(certfile=args.cert, keyfile=args.key)
               connection = DirectHTTPSConnection(
                   args.server_name, timeout=5, context=context
               )
               try:
+                  if args.content_length is not None:
+                      return send_declared_length_request(connection, args)
                   connection.request(
                       args.method,
                       args.path,

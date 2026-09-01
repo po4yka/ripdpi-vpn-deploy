@@ -4,7 +4,7 @@
 
 **The sender is a pinned Prometheus Agent runtime** — runtime-release verifies the exact archive before activation. Empty version, URL, checksum, or architecture pin is a hard failure; this role never selects a latest release.
 
-**mTLS material crosses the service boundary through systemd credentials** — systemd copies the non-secret Prometheus configuration and its root-only CA, certificate, and key from one immutable generation into the authoritative `%d` credential directory. Prometheus loads `%d/prometheus.yml`, whose relative TLS paths therefore resolve beside the delivered credentials without a guessed `/run/credentials` layout, embedded secret, or environment-file fallback. The certificate subject must equal the configured technical node ID.
+**mTLS material crosses the service boundary through systemd credentials** — systemd copies the non-secret Prometheus configuration and its root-only CA, certificate, and key from one immutable generation into the authoritative `%d` credential directory. Prometheus loads `%d/prometheus.yml`, whose relative TLS paths resolve beside that configuration without a guessed `/run/credentials` layout, embedded secret, environment-file fallback, or invalid credential-directory chdir. The certificate subject must equal the configured technical node ID.
 
 **The adapter consumes schema-2 node manifests only** — it exports a bounded, redacted manifest summary to node_exporter's existing loopback textfile path. It does not run watchdog, backup, or protocol probes.
 
