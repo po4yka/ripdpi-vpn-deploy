@@ -34,6 +34,7 @@ RECOVERY_GENERATION = "tailnet-recovery-v1"
 TRANSACTION_NAME = "transaction.json"
 LOCK_NAME = "transaction.lock"
 RECOVERY_STATE_MAX_BYTES = 1_048_576
+AUTH_FILE_PREFIX = "vpn-tailnet-auth-"
 
 
 class Refusal(RuntimeError):
@@ -202,9 +203,16 @@ def _transaction_path(paths: CommandPaths) -> Path:
 
 
 def _write_transaction(
-    paths: CommandPaths, *, backend_state: str, snapshot: SystemSnapshot
+    paths: CommandPaths,
+    *,
+    backend_state: str,
+    snapshot: SystemSnapshot,
+    auth_file: str,
 ) -> None:
-    if backend_state != "NeedsLogin":
+    if (
+        backend_state != "NeedsLogin"
+        or re.fullmatch(r"vpn-tailnet-auth-[0-9a-f]{32}", auth_file) is None
+    ):
         raise Refusal("tailnet-recovery-state-invalid")
     nonce = secrets.token_hex(16)
     value = {
@@ -213,6 +221,7 @@ def _write_transaction(
         "nonce": nonce,
         "phase": "armed",
         "original_backend_state": backend_state,
+        "auth_file": auth_file,
         "snapshot": _snapshot_document(snapshot),
     }
     payload = _canonical_bytes(value)
@@ -292,6 +301,7 @@ def _read_transaction(paths: CommandPaths) -> tuple[dict, SystemSnapshot]:
             "nonce",
             "phase",
             "original_backend_state",
+            "auth_file",
             "snapshot",
         }
         or value["schema_version"] != 1
@@ -300,6 +310,8 @@ def _read_transaction(paths: CommandPaths) -> tuple[dict, SystemSnapshot]:
         or re.fullmatch(r"[0-9a-f]{32}", value["nonce"]) is None
         or value["phase"] not in {"armed", "confirmed"}
         or value["original_backend_state"] != "NeedsLogin"
+        or not isinstance(value["auth_file"], str)
+        or re.fullmatch(r"vpn-tailnet-auth-[0-9a-f]{32}", value["auth_file"]) is None
         or payload != _canonical_bytes(value)
     ):
         raise Refusal("tailnet-recovery-state-invalid")
@@ -556,7 +568,7 @@ def _validate_auth_directory(path: Path) -> None:
         raise Refusal("tailnet-auth-directory-unsafe")
 
 
-def _write_auth_file(directory: Path, auth_key: str) -> Path:
+def _validate_auth_key(auth_key: str) -> None:
     if (
         not isinstance(auth_key, str)
         or not auth_key
@@ -568,8 +580,13 @@ def _write_auth_file(directory: Path, auth_key: str) -> Path:
         or auth_key.strip() != auth_key
     ):
         raise Refusal("tailnet-auth-required")
+
+
+def _write_auth_file(directory: Path, auth_key: str, *, name: str) -> Path:
+    _validate_auth_key(auth_key)
+    if re.fullmatch(r"vpn-tailnet-auth-[0-9a-f]{32}", name) is None:
+        raise Refusal("tailnet-auth-file-failed")
     _validate_auth_directory(directory)
-    name = f"vpn-tailnet-auth-{secrets.token_hex(16)}"
     path = directory / name
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     if hasattr(os, "O_NOFOLLOW"):
@@ -610,6 +627,18 @@ def _remove_auth_file(path: Path) -> None:
             os.close(directory_fd)
     except OSError as error:
         raise Refusal("tailnet-auth-file-cleanup-failed") from error
+
+
+def _remove_recovery_auth_file(paths: CommandPaths, transaction: dict) -> None:
+    _validate_auth_directory(paths.auth_directory)
+    path = paths.auth_directory / transaction["auth_file"]
+    try:
+        path.stat(follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        raise Refusal("tailnet-auth-file-cleanup-failed") from error
+    _remove_auth_file(path)
 
 
 def _postconditions(
@@ -662,6 +691,7 @@ def _recover_locked(*, paths: CommandPaths, runner: Runner) -> dict[str, object]
         transaction, before = _read_transaction(paths)
     except FileNotFoundError:
         return {"status": "idle", "changed": False}
+    _remove_recovery_auth_file(paths, transaction)
     if transaction["phase"] == "confirmed":
         _remove_transaction(paths, phase="confirmed")
         return {"status": "confirmed", "changed": True}
@@ -703,11 +733,19 @@ def configure(
         if state != "NeedsLogin":
             raise Refusal("tailnet-existing-state-unsupported")
 
-        auth_path = _write_auth_file(paths.auth_directory, auth_key)
+        _validate_auth_key(auth_key)
+        auth_name = f"{AUTH_FILE_PREFIX}{secrets.token_hex(16)}"
+        auth_path = None
         primary_error: BaseException | None = None
         try:
             _require_recovery_ready(paths, runner)
-            _write_transaction(paths, backend_state=state, snapshot=before)
+            _write_transaction(
+                paths,
+                backend_state=state,
+                snapshot=before,
+                auth_file=auth_name,
+            )
+            auth_path = _write_auth_file(paths.auth_directory, auth_key, name=auth_name)
             runner(
                 [
                     paths.tailscale,
@@ -737,6 +775,7 @@ def configure(
                 outcome = _recover_locked(paths=paths, runner=runner)
             except (Exception, KeyboardInterrupt, SystemExit) as cleanup_error:
                 raise Refusal("tailnet-rollback-uncertain") from cleanup_error
+            auth_path = None
             if outcome["status"] == "confirmed":
                 return {"status": "configured", "changed": True}
             if isinstance(error, Refusal):
