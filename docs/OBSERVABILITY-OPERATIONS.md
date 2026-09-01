@@ -9,8 +9,11 @@ generated inventory.
 Every command requires an exact inventory alias, an explicit environment and
 one component: `agent`, `control-plane`, or `deadman`. Wildcards, groups and
 `all` are rejected before SSH or Ansible. The controller uses the inventory's
-pinned SSH identity and the supplied `known_hosts`; it never calls
-`ansible/playbooks/site.yml`.
+pinned SSH identity and the supplied `known_hosts`; it snapshots the selected
+alias into a private one-host inventory, disables ambient Ansible vars plugins,
+and supplies strict SSH options without a local config, proxy or multiplexing.
+It never calls `ansible/playbooks/site.yml`. `OBSERVABILITY_ENVIRONMENT` has no
+fallback to `ENV`: every Make invocation must supply it explicitly.
 
 ## Inputs
 
@@ -35,7 +38,9 @@ export OBSERVABILITY_VARS="/owner/private/path/control-plane-vars.yml"
 
 The vars document must contain the selected role's exact mapping with
 `enabled: true`; a disabled or different component is rejected before Ansible.
-Use the dedicated `remove` command for disable convergence.
+Use the dedicated `remove` command for disable convergence. `remove` also
+requires that same private deployment-vars snapshot, so it disables the actual
+configured roots instead of guessing defaults.
 
 The controller rejects enabled `ANSIBLE_DEBUG` or `ANSIBLE_DIFF_ALWAYS` and
 sets both false for child processes. It never prints a secrets path, decrypted
@@ -51,8 +56,8 @@ generation derived from agent credentials.
 | `make observability-status` | fixed systemd properties and loopback readiness on one host | no | no |
 | `make observability-drill` | local Alertmanager API on the staging control plane | submits one synthetic firing/resolved pair | **yes: private staging Telegram route** |
 | `make observability-rotate` | replacement private vars/secrets | converges only the selected role and host | may restart that role's units |
-| `make observability-rollback` | private last-known-good vars/secrets | reconverges only the selected role and host to that complete prior generation | may restart that role's units; no notification is claimed |
-| `make observability-remove` | canonical role defaults | converges `enabled: false` for only the selected role and host | no; control-plane TSDB retention remains intact |
+| `make observability-rollback` | private last-known-good vars/secrets plus a digest-bound rollback manifest | reconverges only the control-plane role and host to its remotely retained previous generation | may restart that role's units; no notification is claimed |
+| `make observability-remove` | private deployment vars snapshot | converges `enabled: false` for only the selected role and host | no; control-plane TSDB retention remains intact |
 
 The status output is a bounded JSON object containing only the requested alias,
 component, categorical unit states and aggregate readiness. It is passive and
@@ -87,12 +92,15 @@ Production execution still requires an explicitly approved change window and
 the repository's deployment evidence gates.
 
 For rollback, point `OBSERVABILITY_SECRETS_FILE` and `OBSERVABILITY_VARS` at the
-retained last-known-good material for the selected component. Ansible owns the
-runtime state: it validates and reconverges the complete prior agent,
-control-plane, or dead-man generation, including owned credentials and ingress,
-instead of editing remote links from an operator shell:
+retained control-plane material and provide a private `0600` JSON manifest whose
+host, component, previous generation and SHA-256 values bind both files. The
+controller reads the actual remote `previous.yml` link through the same strict
+transport and refuses a missing, divergent, or arbitrary generation. Agent and
+dead-man rollback remain unavailable through this operator surface until they
+retain an equivalent durable previous-generation link.
 
 ```sh
+export OBSERVABILITY_ROLLBACK_MANIFEST="/owner/private/path/control-plane-rollback.json"
 make observability-rollback
 ```
 
@@ -106,9 +114,11 @@ make observability-remove
 
 `make observability-drill` is accepted only for `staging` plus the
 `control-plane` component. It sends a clearly labelled synthetic warning with
-one stable fingerprint and then its resolved form to the loopback Alertmanager
-API. It performs no deploy, provider call, service restart, public request, or
-production fault injection.
+one stable fingerprint and keeps it firing for more than the fixed 30-second
+Alertmanager group wait. Before resolving it, the controller requires a bounded
+loopback Alertmanager API observation of that active fingerprint. It performs no
+deploy, provider call, service restart, public request, or production fault
+injection.
 
 Command success proves only that the local Alertmanager API accepted the pair.
 Record the separately observed Telegram firing and resolved messages; API

@@ -40,7 +40,7 @@ node-a
     secrets = _write(tmp_path / "secrets.yml", "observability_secrets: {{}}\n")
     variables = _write(
         tmp_path / "vars.yml",
-        "observability_control_plane:\n  enabled: true\n",
+        "observability_control_plane:\n  enabled: true\n  config_root: /etc/observability-control-plane\n",
     )
     binary = tmp_path / "bin"
     binary.mkdir()
@@ -55,6 +55,8 @@ if entry['program'] == 'ansible-playbook':
         if candidate.suffix in ('.yml', '.yaml') and candidate.exists():
             entry['playbook'] = candidate.read_text()
             break
+    if '-i' in entry['argv']:
+        entry['inventory'] = pathlib.Path(entry['argv'][entry['argv'].index('-i') + 1]).read_text()
     print('secret-path=' + os.environ.get('VPN_SECRETS_FILE', 'missing'))
     print('token=fixture-secret-value', file=sys.stderr)
 with log.open('a') as stream:
@@ -64,8 +66,8 @@ if entry['program'] == 'ssh':
     entry = {{'program': 'ssh-payload', 'payload': payload}}
     with log.open('a') as stream:
         stream.write(json.dumps(entry) + '\\n')
-    if 'LINKS =' in payload:
-        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'rolled-back'}}))
+    if 'previous =' in payload:
+        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'retained', 'generation': 'a' * 64}}))
     elif '/api/v2/alerts' in payload:
         print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'submitted'}}))
     else:
@@ -73,6 +75,19 @@ if entry['program'] == 'ssh':
 """
     for name in ("ansible-playbook", "ssh"):
         _write(binary / name, recorder, 0o700)
+    git = f"""#!{sys.executable}
+import os, sys
+args = sys.argv[1:]
+if 'rev-parse' in args:
+    print('0' * 40)
+elif 'ls-tree' in args:
+    pass
+elif 'diff' in args:
+    raise SystemExit(1 if os.environ.get('FIXTURE_GIT_DIRTY') == '1' else 0)
+else:
+    raise SystemExit(2)
+"""
+    _write(binary / "git", git, 0o700)
     environment = {
         **os.environ,
         "PATH": str(binary) + os.pathsep + os.environ.get("PATH", ""),
@@ -97,6 +112,7 @@ if entry['program'] == 'ssh':
         "common": common,
         "secrets": secrets,
         "vars": variables,
+        "git": binary / "git",
     }
 
 
@@ -154,6 +170,13 @@ def test_render_is_one_role_check_mode_for_one_exact_host(
     assert "hosts: node-a" in call["playbook"]
     assert "observability_control_plane" in call["playbook"]
     assert "observability_agent" not in call["playbook"]
+    assert (
+        str(operator["tmp"])
+        not in call["inventory"].split("ansible_ssh_private_key_file=")[0]
+    )
+    assert "ControlMaster=no" in call["inventory"]
+    assert "ProxyCommand=none" in call["inventory"]
+    assert "UserKnownHostsFile=" in call["inventory"]
     assert str(operator["secrets"]) not in result.stdout + result.stderr
     assert "fixture-secret-value" not in result.stdout + result.stderr
 
@@ -254,10 +277,33 @@ def test_rollback_reconverges_one_role_from_private_last_known_good_inputs(
         str(operator["secrets"]),
         "--vars",
         str(operator["vars"]),
+        "--confirm",
     )
     assert result.returncode == 2
-    assert result.stderr == "observability-operator: --confirm required\n"
+    assert result.stderr == "observability-operator: rollback manifest required\n"
     assert _calls(operator) == []
+
+    generation = "a" * 64
+    secrets = operator["secrets"]
+    variables = operator["vars"]
+    assert isinstance(secrets, Path) and isinstance(variables, Path)
+    manifest = _write(
+        operator["tmp"] / "rollback.json",
+        json.dumps(
+            {
+                "schema_version": 1,
+                "host": "node-a",
+                "component": "control-plane",
+                "previous_generation": generation,
+                "vars_sha256": __import__("hashlib")
+                .sha256(variables.read_bytes())
+                .hexdigest(),
+                "secrets_sha256": __import__("hashlib")
+                .sha256(secrets.read_bytes())
+                .hexdigest(),
+            }
+        ),
+    )
 
     result = _run(
         operator,
@@ -266,10 +312,18 @@ def test_rollback_reconverges_one_role_from_private_last_known_good_inputs(
         str(operator["secrets"]),
         "--vars",
         str(operator["vars"]),
+        "--rollback-manifest",
+        str(manifest),
         "--confirm",
     )
     assert result.returncode == 0, result.stderr
-    call = _calls(operator)[0]
+    calls = _calls(operator)
+    assert [entry["program"] for entry in calls] == [
+        "ssh",
+        "ssh-payload",
+        "ansible-playbook",
+    ]
+    call = calls[-1]
     assert call["program"] == "ansible-playbook"
     assert call["argv"][call["argv"].index("--limit") + 1] == "node-a"
     assert "observability_control_plane" in call["playbook"]
@@ -280,12 +334,26 @@ def test_remove_converges_only_selected_role_with_enabled_false(
     operator: dict[str, object],
 ) -> None:
     result = _run(operator, "remove", "--confirm")
+    assert result.returncode == 2
+    assert (
+        result.stderr
+        == "observability-operator: private deployment snapshot required\n"
+    )
+
+    variables = operator["vars"]
+    assert isinstance(variables, Path)
+    variables.write_text(
+        "observability_control_plane:\n  enabled: true\n  config_root: /owner/custom-observability\n",
+        encoding="utf-8",
+    )
+    result = _run(operator, "remove", "--vars", str(variables), "--confirm")
 
     assert result.returncode == 0, result.stderr
     call = _calls(operator)[0]
     assert call["argv"][call["argv"].index("--limit") + 1] == "node-a"
     assert "observability_control_plane" in call["playbook"]
     assert "enabled: false" in call["playbook"]
+    assert "/owner/custom-observability" in call["playbook"]
     assert "site.yml" not in " ".join(call["argv"])
 
 
@@ -309,6 +377,28 @@ def test_debug_diff_and_unsafe_files_fail_closed(operator: dict[str, object]) ->
     )
     assert result.returncode == 2
     assert result.stderr == "observability-operator: private secrets required\n"
+    assert _calls(operator) == []
+
+
+def test_dirty_deployable_source_refuses_before_inventory_or_transport(
+    operator: dict[str, object],
+) -> None:
+    git = operator["git"]
+    assert isinstance(git, Path)
+    git.write_text(
+        "#!/bin/sh\n"
+        'case "$*" in\n'
+        "  *rev-parse*) printf '%040d\\n' 0 ;;\n"
+        "  *ls-tree*) exit 0 ;;\n"
+        "  *diff*) exit 1 ;;\n"
+        "  *) exit 2 ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    git.chmod(0o700)
+    result = _run(operator, "status")
+    assert result.returncode == 2
+    assert result.stderr.startswith("observability-operator: source dirty revision=")
     assert _calls(operator) == []
 
 
@@ -375,6 +465,9 @@ def test_makefile_exposes_only_narrow_observability_controller_targets() -> None
     ]
     assert "scripts/observability-operator.py" in block
     assert "site.yml" not in block
+    assert "OBSERVABILITY_ENVIRONMENT ?= $(ENV)" not in source
+    assert "require OBSERVABILITY_ENVIRONMENT explicitly" in source
+    assert "--rollback-manifest" in block
 
 
 def test_make_status_forwards_literal_exact_scope(operator: dict[str, object]) -> None:
@@ -404,3 +497,37 @@ def test_make_status_forwards_literal_exact_scope(operator: dict[str, object]) -
         "ssh",
         "ssh-payload",
     ]
+
+
+def test_make_never_inherits_prod_environment_for_operator_targets(
+    operator: dict[str, object],
+) -> None:
+    environment = operator["env"]
+    assert isinstance(environment, dict)
+    environment["ENV"] = "prod"
+    result = subprocess.run(
+        ["make", "observability-status"],
+        cwd=ROOT,
+        env=environment,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+    assert result.returncode != 0
+    assert "OBSERVABILITY_ENVIRONMENT explicitly" in result.stderr
+    assert _calls(operator) == []
+
+
+def test_drill_waits_past_group_wait_and_checks_receiver_before_resolve() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    start = source.index("def _drill_program")
+    end = source.index("def _remote", start)
+    program = source[start:end]
+    assert "time.monotonic() + 31" in program
+    assert "/api/v2/alerts" in program
+    assert "receiver evidence missing" in program
+    assert (
+        program.index("send(base)")
+        < program.index("receiver evidence missing")
+        < program.index("send(resolved)")
+    )

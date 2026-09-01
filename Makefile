@@ -1089,7 +1089,7 @@ remove-operator-crons:
 # Keep operator-supplied values literal. The controller validates every path,
 # exact inventory alias, component, environment and confirmation boundary.
 OBSERVABILITY_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini
-OBSERVABILITY_ENVIRONMENT ?= $(ENV)
+OBSERVABILITY_ENVIRONMENT ?=
 OBSERVABILITY_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
 OBSERVABILITY_SECRETS_FILE ?= $(SECRETS_FILE)
 
@@ -1104,10 +1104,14 @@ override OBSERVABILITY_COMPONENT_LITERAL := $(value OBSERVABILITY_COMPONENT)
 override OBSERVABILITY_KNOWN_HOSTS_LITERAL := $(if $(filter file default undefined,$(origin OBSERVABILITY_KNOWN_HOSTS)),$(OBSERVABILITY_KNOWN_HOSTS),$(value OBSERVABILITY_KNOWN_HOSTS))
 override OBSERVABILITY_SECRETS_LITERAL := $(if $(filter file default undefined,$(origin OBSERVABILITY_SECRETS_FILE)),$(OBSERVABILITY_SECRETS_FILE),$(value OBSERVABILITY_SECRETS_FILE))
 override OBSERVABILITY_VARS_LITERAL := $(value OBSERVABILITY_VARS)
+override OBSERVABILITY_ROLLBACK_MANIFEST_LITERAL := $(value OBSERVABILITY_ROLLBACK_MANIFEST)
+ifeq ($(strip $(OBSERVABILITY_ENVIRONMENT_LITERAL)),)
+$(error observability operator commands require OBSERVABILITY_ENVIRONMENT explicitly)
+endif
 export OBSERVABILITY_INVENTORY_LITERAL OBSERVABILITY_HOST_LITERAL
 export OBSERVABILITY_ENVIRONMENT_LITERAL OBSERVABILITY_COMPONENT_LITERAL
 export OBSERVABILITY_KNOWN_HOSTS_LITERAL OBSERVABILITY_SECRETS_LITERAL
-export OBSERVABILITY_VARS_LITERAL
+export OBSERVABILITY_VARS_LITERAL OBSERVABILITY_ROLLBACK_MANIFEST_LITERAL
 unexport MAKEFLAGS MFLAGS
 MAKEOVERRIDES :=
 endif
@@ -1143,10 +1147,12 @@ observability-rotate:
 observability-rollback:
 	@python3 scripts/observability-operator.py rollback $(observability_common) \
 	  --secrets "$${OBSERVABILITY_SECRETS_LITERAL}" --vars "$${OBSERVABILITY_VARS_LITERAL}" \
+	  --rollback-manifest "$${OBSERVABILITY_ROLLBACK_MANIFEST_LITERAL}" \
 	  --confirm
 
 observability-remove:
-	@python3 scripts/observability-operator.py remove $(observability_common) --confirm
+	@python3 scripts/observability-operator.py remove $(observability_common) \
+	  --vars "$${OBSERVABILITY_VARS_LITERAL}" --confirm
 
 scan-targets:
 	@test -n "$(SEEDS)$(CIDR)$(CRAWL)" || { \

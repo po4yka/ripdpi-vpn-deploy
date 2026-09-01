@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -49,7 +50,9 @@ def _private_file(path: Path | None, category: str) -> Path:
     return absolute
 
 
-def _require_enabled_component(path: Path, component: str) -> None:
+def _component_variables(
+    path: Path, component: str, *, enabled: bool | None
+) -> dict[str, Any]:
     descriptor = -1
     try:
         descriptor = fleet_inspection._open_local_file(path, private=True)
@@ -66,8 +69,11 @@ def _require_enabled_component(path: Path, component: str) -> None:
             raise OperatorError("private variables rejected")
         document = yaml.safe_load(raw.decode("utf-8"))
         value = document[COMPONENTS[component]]
-        if not isinstance(value, dict) or value.get("enabled") is not True:
+        if not isinstance(value, dict) or (
+            enabled is not None and value.get("enabled") is not enabled
+        ):
             raise OperatorError("enabled component variables required")
+        return dict(value)
     except OperatorError:
         raise
     except (
@@ -141,6 +147,53 @@ def _source_identity() -> tuple[str, str]:
     return revision, digest
 
 
+def _clean_source_identity() -> tuple[str, str]:
+    """Reject deployable source drift before any SSH or Ansible process starts."""
+    revision, digest = _source_identity()
+    try:
+        for command in (
+            [
+                "git",
+                "diff",
+                "--quiet",
+                "HEAD",
+                "--",
+                "ansible",
+                "scripts",
+                "requirements.yml",
+            ],
+            [
+                "git",
+                "diff",
+                "--cached",
+                "--quiet",
+                "--",
+                "ansible",
+                "scripts",
+                "requirements.yml",
+            ],
+        ):
+            result = subprocess.run(
+                command,
+                cwd=ROOT,
+                env=_environment(),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=10,
+            )
+            if result.returncode == 1:
+                raise OperatorError(f"source dirty revision={revision} digest={digest}")
+            if result.returncode:
+                raise OperatorError("source cleanliness unavailable")
+    except OperatorError:
+        raise
+    except (OSError, subprocess.SubprocessError):
+        raise OperatorError("source cleanliness unavailable") from None
+    return revision, digest
+
+
 def _selected_host(args: argparse.Namespace) -> dict[str, Any]:
     try:
         return fleet_inspection.select_hosts(args.inventory, [args.host])[0]
@@ -202,7 +255,13 @@ def _require_inventory_scope(args: argparse.Namespace) -> None:
             os.close(descriptor)
 
 
-def _playbook(component: str, host: str, *, remove: bool = False) -> str:
+def _playbook(
+    component: str,
+    host: str,
+    *,
+    remove: bool = False,
+    component_vars: dict[str, Any] | None = None,
+) -> str:
     role = COMPONENTS[component]
     play: dict[str, Any] = {
         "name": f"Converge exact {component} observability component",
@@ -213,17 +272,11 @@ def _playbook(component: str, host: str, *, remove: bool = False) -> str:
         "any_errors_fatal": True,
     }
     if remove:
-        defaults = yaml.safe_load(
-            (ANSIBLE / "roles" / role / "defaults" / "main.yml").read_text(
-                encoding="utf-8"
-            )
-        )
-        component_defaults = defaults.get(role)
-        if not isinstance(component_defaults, dict):
-            raise OperatorError("role defaults rejected")
-        component_defaults = dict(component_defaults)
-        component_defaults["enabled"] = False
-        play["vars"] = {role: component_defaults}
+        if component_vars is None:
+            raise OperatorError("private deployment snapshot required")
+        component_vars = dict(component_vars)
+        component_vars["enabled"] = False
+        play["vars"] = {role: component_vars}
     else:
         play["vars_files"] = ["{{ lookup('env', 'VPN_SECRETS_FILE') }}"]
     play["roles"] = [{"role": role}]
@@ -234,12 +287,16 @@ def _run_playbook(
     args: argparse.Namespace,
     *,
     secrets: Path | None,
+    host: dict[str, Any],
     check: bool = False,
     syntax: bool = False,
     remove: bool = False,
+    component_vars: dict[str, Any] | None = None,
 ) -> None:
-    payload = _playbook(args.component, args.host, remove=remove)
-    revision, digest = _source_identity()
+    payload = _playbook(
+        args.component, args.host, remove=remove, component_vars=component_vars
+    )
+    revision, digest = _clean_source_identity()
     with tempfile.TemporaryDirectory(prefix="observability-operator-") as directory:
         os.chmod(directory, 0o700)
         path = Path(directory) / "playbook.yml"
@@ -253,11 +310,33 @@ def _run_playbook(
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
+        inventory = Path(directory) / "inventory.ini"
+        options = fleet_inspection._strict_connection_options(host, args.known_hosts)
+        ssh_args = shlex.join(
+            ["-F", "/dev/null", *sum((["-o", option] for option in options), [])]
+        )
+        inventory.write_text(
+            "[vpn]\n"
+            + args.host
+            + " ansible_host="
+            + host["transport"]
+            + " ansible_user="
+            + host["user"]
+            + " ansible_port="
+            + str(host["port"])
+            + " ansible_ssh_private_key_file="
+            + host["key"]
+            + " ansible_ssh_common_args="
+            + shlex.quote(ssh_args)
+            + "\n",
+            encoding="utf-8",
+        )
+        inventory.chmod(0o600)
         command = [
             "ansible-playbook",
             str(path),
             "-i",
-            str(args.inventory),
+            str(inventory),
             "--limit",
             args.host,
         ]
@@ -271,6 +350,7 @@ def _run_playbook(
             environment = _environment(secrets)
             environment["DEPLOY_SOURCE_REVISION"] = revision
             environment["DEPLOYABLE_SOURCE_DIGEST"] = digest
+            environment["ANSIBLE_VARS_ENABLED"] = ""
             result = subprocess.run(
                 command,
                 cwd=ROOT,
@@ -346,6 +426,7 @@ print(json.dumps({{"schema_version": 1, "component": COMPONENT, "state": "health
 def _drill_program() -> bytes:
     return b"""import datetime
 import json
+import time
 import urllib.request
 
 now = datetime.datetime.now(datetime.timezone.utc)
@@ -357,6 +438,21 @@ def send(alert):
         if response.status not in (200, 202):
             raise RuntimeError("delivery rejected")
 send(base)
+deadline = time.monotonic() + 31
+fingerprint = json.dumps(labels, sort_keys=True, separators=(",", ":"))
+while True:
+    with urllib.request.urlopen("http://127.0.0.1:9093/api/v2/alerts", timeout=5) as response:
+        observed = json.load(response)
+    if not isinstance(observed, list) or not any(
+        isinstance(item, dict)
+        and json.dumps(item.get("labels"), sort_keys=True, separators=(",", ":")) == fingerprint
+        and item.get("status", {}).get("state") == "active"
+        for item in observed
+    ):
+        raise RuntimeError("receiver evidence missing")
+    if time.monotonic() >= deadline:
+        break
+    time.sleep(min(1, max(0, deadline - time.monotonic())))
 resolved = dict(base)
 resolved["endsAt"] = (now + datetime.timedelta(seconds=1)).isoformat()
 send(resolved)
@@ -431,14 +527,125 @@ def _remote(
             )
         ):
             raise OperatorError("remote report rejected")
-    else:
+    elif operation == "drill":
         expected_state = "submitted"
         if (
             set(value) != {"schema_version", "component", "state"}
             or value.get("state") != expected_state
         ):
             raise OperatorError("remote report rejected")
+    elif operation == "rollback":
+        if (
+            set(value) != {"schema_version", "component", "state", "generation"}
+            or value.get("state") != "retained"
+            or not isinstance(value.get("generation"), str)
+            or not SAFE_GENERATION.fullmatch(value["generation"])
+        ):
+            raise OperatorError("remote report rejected")
+    else:
+        raise OperatorError("remote report rejected")
     return value
+
+
+def _file_digest(path: Path) -> str:
+    descriptor = fleet_inspection._open_local_file(path, private=True)
+    try:
+        digest = hashlib.sha256()
+        while chunk := os.read(descriptor, 65536):
+            digest.update(chunk)
+        return digest.hexdigest()
+    finally:
+        os.close(descriptor)
+
+
+def _private_bytes(path: Path) -> bytes:
+    descriptor = fleet_inspection._open_local_file(path, private=True)
+    try:
+        raw = b""
+        while len(raw) <= fleet_inspection.LIMIT:
+            chunk = os.read(
+                descriptor, min(65536, fleet_inspection.LIMIT + 1 - len(raw))
+            )
+            if not chunk:
+                break
+            raw += chunk
+        if len(raw) > fleet_inspection.LIMIT:
+            raise OperatorError("rollback manifest rejected")
+        return raw
+    finally:
+        os.close(descriptor)
+
+
+def _rollback_manifest(
+    path: Path | None, args: argparse.Namespace, secrets: Path, variables: Path
+) -> str:
+    manifest = _private_file(path, "rollback manifest required")
+    try:
+        value = json.loads(_private_bytes(manifest).decode("utf-8"))
+        generation = value["previous_generation"]
+        if (
+            set(value)
+            != {
+                "schema_version",
+                "host",
+                "component",
+                "previous_generation",
+                "vars_sha256",
+                "secrets_sha256",
+            }
+            or value["schema_version"] != 1
+            or value["host"] != args.host
+            or value["component"] != args.component
+            or not isinstance(generation, str)
+            or not SAFE_GENERATION.fullmatch(generation)
+            or value["vars_sha256"] != _file_digest(variables)
+            or value["secrets_sha256"] != _file_digest(secrets)
+        ):
+            raise ValueError
+        return generation
+    except (
+        OSError,
+        UnicodeError,
+        ValueError,
+        KeyError,
+        TypeError,
+        json.JSONDecodeError,
+    ):
+        raise OperatorError("rollback manifest rejected") from None
+
+
+def _rollback_program(config_root: str) -> bytes:
+    return f"""import json
+import os
+import re
+previous = {config_root!r} + "/previous.yml"
+if not os.path.islink(previous):
+    raise SystemExit(2)
+name = os.path.basename(os.path.realpath(previous))
+if not re.fullmatch(r"[0-9a-f]{{64}}[.]yml", name):
+    raise SystemExit(2)
+print(json.dumps({{"schema_version": 1, "component": "control-plane", "state": "retained", "generation": name[:-4]}}, sort_keys=True))
+""".encode("utf-8")
+
+
+def _require_retained_generation(
+    args: argparse.Namespace,
+    host: dict[str, Any],
+    component_vars: dict[str, Any],
+    expected: str,
+) -> None:
+    if args.component != "control-plane":
+        raise OperatorError("retained rollback generation unavailable")
+    root = component_vars.get("config_root")
+    if not isinstance(root, str) or not root.startswith("/"):
+        raise OperatorError("private variables rejected")
+    value = _remote(args, host, _rollback_program(root), operation="rollback")
+    if (
+        set(value) != {"schema_version", "component", "state", "generation"}
+        or value.get("state") != "retained"
+        or value.get("generation") != expected
+    ):
+        raise OperatorError("retained rollback generation rejected")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -450,6 +657,7 @@ def _parser() -> argparse.ArgumentParser:
     common.add_argument("--known-hosts", type=Path, required=True)
     common.add_argument("--secrets", type=Path)
     common.add_argument("--vars", type=Path)
+    common.add_argument("--rollback-manifest", type=Path)
     parser = argparse.ArgumentParser(prog="observability-operator.py")
     commands = parser.add_subparsers(dest="command", required=True)
     for command in ("render", "validate", "status"):
@@ -473,24 +681,32 @@ def main(argv: list[str] | None = None) -> int:
                 raise OperatorError("drills require staging")
             if args.component != "control-plane":
                 raise OperatorError("drill component rejected")
+        source_revision, deployable_source_digest = _clean_source_identity()
         host = _selected_host(args)
         _require_inventory_scope(args)
-        source_revision, deployable_source_digest = _source_identity()
         try:
             fleet_inspection._local_file(args.known_hosts)
         except fleet_inspection.InspectionError:
             raise OperatorError("known-hosts rejected") from None
         secrets = None
+        component_vars = None
         if args.command in SECRET_COMMANDS:
             secrets = _private_file(args.secrets, "private secrets required")
             args.vars = _private_file(args.vars, "private variables required")
-            _require_enabled_component(args.vars, args.component)
+            component_vars = _component_variables(
+                args.vars, args.component, enabled=True
+            )
+        if args.command == "remove":
+            args.vars = _private_file(args.vars, "private deployment snapshot required")
+            component_vars = _component_variables(
+                args.vars, args.component, enabled=None
+            )
         if args.command == "drill":
             result = _remote(args, host, _drill_program(), operation="drill")
         elif args.command in MUTATING_COMMANDS and not getattr(args, "confirm", False):
             raise OperatorError("--confirm required")
         elif args.command == "render":
-            _run_playbook(args, secrets=secrets, check=True)
+            _run_playbook(args, secrets=secrets, host=host, check=True)
             result = {
                 "schema_version": 1,
                 "component": args.component,
@@ -498,7 +714,7 @@ def main(argv: list[str] | None = None) -> int:
                 "state": "rendered-check",
             }
         elif args.command == "validate":
-            _run_playbook(args, secrets=secrets, syntax=True)
+            _run_playbook(args, secrets=secrets, host=host, syntax=True)
             result = {
                 "schema_version": 1,
                 "component": args.component,
@@ -510,7 +726,7 @@ def main(argv: list[str] | None = None) -> int:
                 args, host, _status_program(args.component), operation="status"
             )
         elif args.command == "rotate":
-            _run_playbook(args, secrets=secrets)
+            _run_playbook(args, secrets=secrets, host=host)
             result = {
                 "schema_version": 1,
                 "component": args.component,
@@ -518,7 +734,16 @@ def main(argv: list[str] | None = None) -> int:
                 "state": "rotated",
             }
         elif args.command == "rollback":
-            _run_playbook(args, secrets=secrets)
+            assert (
+                secrets is not None
+                and args.vars is not None
+                and component_vars is not None
+            )
+            expected = _rollback_manifest(
+                args.rollback_manifest, args, secrets, args.vars
+            )
+            _require_retained_generation(args, host, component_vars, expected)
+            _run_playbook(args, secrets=secrets, host=host)
             result = {
                 "schema_version": 1,
                 "component": args.component,
@@ -526,7 +751,13 @@ def main(argv: list[str] | None = None) -> int:
                 "state": "rolled-back",
             }
         elif args.command == "remove":
-            _run_playbook(args, secrets=None, remove=True)
+            _run_playbook(
+                args,
+                secrets=None,
+                host=host,
+                remove=True,
+                component_vars=component_vars,
+            )
             result = {
                 "schema_version": 1,
                 "component": args.component,

@@ -80,6 +80,11 @@ for authenticated client traffic or observed delivery.
 - The exact-host observability operator controller now exposes render,
   validation, passive redacted status, staging synthetic delivery drill,
   credential convergence, last-known-good rollback and component removal.
+- Its operator boundary rejects dirty deployable source before any transport,
+  requires an explicit environment, snapshots one strict known-host SSH
+  transport for Ansible, retains synthetic firing past the fixed group wait
+  before receiver evidence and resolution, and fails closed on unbound removal
+  or rollback inputs.
 - This is source and local-test evidence only. No staging host, private
   Telegram receipt, live credential rotation, rollback, fleet telemetry or
   two-vantage client-path acceptance has been observed, so the feature remains
