@@ -199,6 +199,7 @@ SOPS_FILE     ?= $(HOME)/.config/vpn-provision/$(ENV).secrets.sops.yaml
 TFVARS        := $(TF_ROOT)/environments/$(ENV).tfvars
 TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
 ZIZMOR_VERSION := 1.29.0
+PROMTOOL_VERSION := 3.14.0
 DEPLOY_SOURCE_REVISION ?= $(shell ./scripts/deploy-source-identity.sh --revision 2>/dev/null)
 DEPLOYABLE_SOURCE_DIGEST ?= $(shell ./scripts/deploy-source-identity.sh --digest 2>/dev/null)
 
@@ -822,6 +823,8 @@ ci-fast:
 	@command -v ansible-playbook >/dev/null 2>&1 || { echo "missing: ansible-playbook" >&2; exit 1; }
 	@echo "== ansible syntax =="; cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,'
 	@$(MAKE) liveness-profile-check
+	@command -v promtool >/dev/null 2>&1 || { echo "missing: promtool $(PROMTOOL_VERSION) (run: mise install)" >&2; exit 1; }
+	@promtool --version 2>&1 | grep -F "version $(PROMTOOL_VERSION)" >/dev/null || { echo "promtool $(PROMTOOL_VERSION) required (run: mise install)" >&2; exit 1; }
 	@echo "== unit tests =="; python3 -m pytest tests/unit/ -q
 	@echo "== bats shell tests =="; bats tests/bats/
 	@command -v cargo >/dev/null 2>&1 || { echo "missing: cargo" >&2; exit 1; }

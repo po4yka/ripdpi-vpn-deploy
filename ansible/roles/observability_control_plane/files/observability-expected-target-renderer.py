@@ -142,7 +142,32 @@ def render(document: dict[str, Any]) -> bytes:
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
-def _atomic_write(path: Path, payload: bytes) -> None:
+def _matches_published_output(
+    path: Path, previous: os.stat_result, parent: os.stat_result, payload: bytes
+) -> bool:
+    descriptor = -1
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        current = os.fstat(descriptor)
+        if (
+            current.st_dev != previous.st_dev
+            or current.st_ino != previous.st_ino
+            or not stat.S_ISREG(current.st_mode)
+            or current.st_nlink != 1
+            or current.st_uid not in {0, os.geteuid()}
+            or stat.S_IMODE(current.st_mode) != 0o640
+            or current.st_gid != parent.st_gid
+        ):
+            return False
+        return os.read(descriptor, len(payload) + 1) == payload
+    except OSError:
+        return False
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _atomic_write(path: Path, payload: bytes) -> bool:
     parent = path.parent
     try:
         parent_metadata = parent.lstat()
@@ -173,6 +198,10 @@ def _atomic_write(path: Path, payload: bytes) -> None:
         or previous.st_uid not in {0, os.geteuid()}
     ):
         raise RendererError("invalid output")
+    if previous is not None and _matches_published_output(
+        path, previous, parent_metadata, payload
+    ):
+        return False
     descriptor = -1
     temporary: Path | None = None
     try:
@@ -210,6 +239,7 @@ def _atomic_write(path: Path, payload: bytes) -> None:
                 temporary.unlink()
             except FileNotFoundError:
                 pass
+    return True
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -218,12 +248,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        _atomic_write(args.output, render(_load_inventory(args.inventory)))
+        changed = _atomic_write(args.output, render(_load_inventory(args.inventory)))
     except (RendererError, OSError):
         print(
             "observability-expected-target-renderer: validation failed", file=sys.stderr
         )
         return 2
+    print("changed" if changed else "unchanged")
     return 0
 
 

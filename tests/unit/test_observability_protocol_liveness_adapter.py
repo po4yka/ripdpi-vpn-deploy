@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 
 import pytest
 import yaml
@@ -229,9 +233,16 @@ def test_adapter_template_consumes_only_published_evidence() -> None:
 
 def test_adapter_accepts_shared_textfile_directory_and_publishes_collector_readable_output(
     tmp_path: Path,
+    request: pytest.FixtureRequest,
 ) -> None:
-    shared = tmp_path / "textfile"
-    shared.mkdir()
+    if os.geteuid() == 0:
+        shared = Path(
+            tempfile.mkdtemp(prefix="protocol-liveness-textfile-", dir="/tmp")
+        )
+        request.addfinalizer(lambda: shutil.rmtree(shared))
+    else:
+        shared = tmp_path / "textfile"
+        shared.mkdir()
     shared.chmod(0o3775)
     evidence = tmp_path / "last-evidence.json"
     evidence.write_text(json.dumps(_evidence()), encoding="utf-8")
@@ -259,18 +270,40 @@ def test_adapter_accepts_shared_textfile_directory_and_publishes_collector_reada
     )
 
     assert result.returncode == 0, result.stderr
-    assert output.stat().st_mode & 0o777 == 0o640
-    assert (
-        subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "open(__import__('sys').argv[1]).read()",
-                str(output),
-            ]
-        ).returncode
-        == 0
+    output_stat = output.stat()
+    assert stat.S_IMODE(output_stat.st_mode) == 0o640
+    assert output_stat.st_gid == shared.stat().st_gid
+    assert output_stat.st_mode & stat.S_IRGRP
+    reader_uid = 65534 if output_stat.st_uid != 65534 else 65533
+    reader_gid = 65534 if output_stat.st_gid != 65534 else 65533
+    assert reader_uid != output_stat.st_uid
+    reader = (
+        "import os,sys; "
+        "group=int(sys.argv[2]); uid=int(sys.argv[3]); gid=int(sys.argv[4]); "
+        "\ntry: os.setgroups([group]); os.setgid(gid); os.setuid(uid)"
+        "\nexcept PermissionError: "
+        "print('capability-unavailable', file=sys.stderr); sys.exit(77)"
+        "\nassert os.geteuid() != int(sys.argv[5])"
+        "\nassert os.getegid() != group and group in os.getgroups()"
+        "\nopen(sys.argv[1]).read()"
     )
+    read_result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            reader,
+            str(output),
+            str(output_stat.st_gid),
+            str(reader_uid),
+            str(reader_gid),
+            str(output_stat.st_uid),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if read_result.returncode == 77 and "capability-unavailable" in read_result.stderr:
+        pytest.skip("root runtime lacks setgroups/setgid/setuid capability")
+    assert read_result.returncode == 0, read_result.stderr
 
 
 def test_role_wires_the_adapter_only_when_the_explicit_opt_in_is_enabled() -> None:
@@ -330,11 +363,76 @@ def test_role_wires_the_adapter_only_when_the_explicit_opt_in_is_enabled() -> No
     )
 
 
-def test_enabled_and_disabled_molecule_scenarios_prove_adapter_lifecycle() -> None:
-    enabled_converge = yaml.safe_load(
-        (ROLE / "molecule/enabled/converge.yml").read_text()
+def test_enabled_molecule_proves_distinct_supplementary_group_read_access() -> None:
+    prepare = yaml.safe_load((ROLE / "molecule/enabled/prepare.yml").read_text())
+    prepare_tasks = prepare[0]["tasks"]
+    textfile_group = next(
+        task
+        for task in prepare_tasks
+        if task["name"] == "Create the observability textfile collector group"
     )
-    config = enabled_converge[0]["pre_tasks"][-1]["ansible.builtin.set_fact"][
+    assert textfile_group["ansible.builtin.group"]["name"] == "observability-textfile"
+    textfile_directories = next(
+        task
+        for task in prepare_tasks
+        if task["name"]
+        == "Create canonical protocol-liveness publisher and textfile paths"
+    )
+    textfile_item = next(
+        item
+        for item in textfile_directories["loop"]
+        if item["path"] == "/var/lib/node_exporter/textfile"
+    )
+    assert textfile_item == {
+        "path": "/var/lib/node_exporter/textfile",
+        "group": "observability-textfile",
+        "mode": "3775",
+    }
+
+    side_effect = yaml.safe_load(
+        (ROLE / "molecule/enabled/side_effect.yml").read_text()
+    )
+    tasks = side_effect[0]["pre_tasks"]
+    names = {task["name"] for task in tasks}
+    assert {
+        "Create a distinct observability textfile reader identity",
+        "Require a distinct primary group and the textfile supplementary group",
+        "Require collector-only group readability on generated textfiles",
+        "Read generated observability textfiles through only the supplementary group",
+    }.issubset(names)
+
+    reader = next(
+        task
+        for task in tasks
+        if task["name"]
+        == "Read generated observability textfiles through only the supplementary group"
+    )
+    identity = next(
+        task
+        for task in tasks
+        if task["name"] == "Create a distinct observability textfile reader identity"
+    )
+    assert identity["ansible.builtin.user"]["group"] == "observability-molecule-reader"
+    assert identity["ansible.builtin.user"]["groups"] == ["observability-textfile"]
+    assert identity["ansible.builtin.user"]["append"] is False
+    command = reader["ansible.builtin.command"]
+    assert reader["become"] is True
+    assert reader["become_user"] == "observability-molecule-reader"
+    assert command["argv"] == [
+        "/usr/bin/cat",
+        "/var/lib/node_exporter/textfile/observability-expected-targets.prom",
+        "/var/lib/node_exporter/textfile/protocol-liveness.prom",
+    ]
+    assert reader["changed_when"] is False
+    assert "ignore_errors" not in reader
+    assert "failed_when" not in reader
+
+
+def test_enabled_and_disabled_molecule_scenarios_prove_adapter_lifecycle() -> None:
+    fixture_contract = yaml.safe_load(
+        (ROLE / "molecule/enabled/tasks/fixture-contract.yml").read_text()
+    )
+    config = fixture_contract[-1]["ansible.builtin.set_fact"][
         "observability_control_plane"
     ]
     assert config["protocol_liveness"]["enabled"] is True

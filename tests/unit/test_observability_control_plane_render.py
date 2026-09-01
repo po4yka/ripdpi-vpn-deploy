@@ -154,11 +154,23 @@ def test_enabled_role_refuses_missing_pins_and_mtls_before_mutation(
 
 def test_enabled_molecule_archive_matches_runtime_release_strip_contract() -> None:
     prepare = (ROLE / "molecule/enabled/prepare.yml").read_text()
-    converge = (ROLE / "molecule/enabled/converge.yml").read_text()
+    fixture = yaml.safe_load(
+        (ROLE / "molecule/enabled/tasks/fixture-contract.yml").read_text()
+    )
+    config = fixture[-1]["ansible.builtin.set_fact"]["observability_control_plane"]
 
-    assert 'tar -C "$fixture" -czf "$fixture/prometheus.tar.gz" prometheus-fixture/prometheus' in prepare
-    assert "archive_members: {amd64: prometheus-fixture/prometheus, arm64: prometheus-fixture/prometheus}" in converge
-    assert "runtime_release_archive_strip_components: 1" in (ROLE / "tasks/enable.yml").read_text()
+    assert (
+        'tar -C "$fixture" -czf "$fixture/prometheus.tar.gz" '
+        "prometheus-fixture/prometheus"
+    ) in prepare
+    assert config["prometheus"]["archive_members"] == {
+        "amd64": "prometheus-fixture/prometheus",
+        "arm64": "prometheus-fixture/prometheus",
+    }
+    assert (
+        "runtime_release_archive_strip_components: 1"
+        in (ROLE / "tasks/enable.yml").read_text()
+    )
 
 
 def test_disabled_molecule_seeds_retained_tsdb_once_before_idempotence() -> None:

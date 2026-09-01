@@ -42,14 +42,15 @@
         - /etc/systemd/system/observability-control-plane-adapter.timer
         - /usr/local/libexec/observability-control-plane-adapter.py
         - /usr/local/libexec/observability-expected-target-renderer.py
+        - /etc/observability-control-plane/expected-targets.json
         - /var/lib/node_exporter/textfile/observability-expected-targets.prom
         - /var/lib/node_exporter/textfile/observability-control-plane.prom
       register: expected_target_opt_out_surfaces
       failed_when: expected_target_opt_out_surfaces.stat.exists
 
-    - name: Assert TSDB remains after expected-target opt-out
+    - name: Assert TSDB content remains after expected-target opt-out
       ansible.builtin.command:
-        argv: [test, -d, /var/lib/observability-prometheus]
+        argv: [test, -f, /var/lib/observability-prometheus/molecule-retained]
       changed_when: false
 
     - name: Assert protocol-liveness adapter timer is enabled and active

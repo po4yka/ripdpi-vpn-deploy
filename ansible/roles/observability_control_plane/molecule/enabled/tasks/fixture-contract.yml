@@ -1,0 +1,90 @@
+---
+- name: Read enabled fixture TLS inputs
+  ansible.builtin.slurp:
+    src: "/var/tmp/observability-control-plane-fixture/{{ item }}"
+  loop:
+    - tls/server.crt
+    - tls/server.key
+    - tls/ca.crt
+    - tls/ca.crl
+    - tls/client-vpn-p0.crt
+  register: control_plane_fixture_tls
+  no_log: true
+
+- name: Read local Prometheus fixture archive digest
+  ansible.builtin.command:
+    argv: [sha256sum, /var/tmp/observability-control-plane-fixture/prometheus.tar.gz]
+  register: control_plane_fixture_archive
+  changed_when: false
+
+- name: Define complete enabled control-plane fixture contract
+  ansible.builtin.set_fact:
+    observability_control_plane:
+      enabled: true
+      service_user: prometheus
+      service_group: prometheus
+      install_root: /opt/observability-prometheus
+      binary_link: /usr/local/libexec/observability-prometheus
+      config_root: /etc/observability-control-plane
+      data_dir: /var/lib/observability-prometheus
+      ingress_port: 9443
+      ingress_sni: ingest.fixture.test
+      control_plane_dns_san: control.fixture.test
+      prometheus_listen: 127.0.0.1:9090
+      remote_write_path_prefix: /remote-write/v1/nodes
+      request_body_limit: 8m
+      request_concurrency: 4
+      request_rate: 20r/s
+      request_rate_burst: 40
+      tsdb_retention_time: 30d
+      tsdb_retention_size: 20GB
+      tsdb_required_bytes: 42949672960
+      prometheus:
+        version: molecule-fixture-v1
+        urls:
+          amd64: file:///var/tmp/observability-control-plane-fixture/prometheus.tar.gz
+          arm64: file:///var/tmp/observability-control-plane-fixture/prometheus.tar.gz
+        sha256:
+          amd64: "{{ control_plane_fixture_archive.stdout.split()[0] }}"
+          arm64: "{{ control_plane_fixture_archive.stdout.split()[0] }}"
+        archive_members:
+          amd64: prometheus-fixture/prometheus
+          arm64: prometheus-fixture/prometheus
+      tls:
+        server_cert_pem: "{{ control_plane_fixture_tls.results[0].content | b64decode }}"
+        server_key_pem: "{{ control_plane_fixture_tls.results[1].content | b64decode }}"
+        client_ca_pem: "{{ control_plane_fixture_tls.results[2].content | b64decode }}"
+        client_crl_pem: "{{ control_plane_fixture_tls.results[3].content | b64decode }}"
+      ingest_identities:
+        - node_id: vpn-p0
+          client_cert_pem: "{{ control_plane_fixture_tls.results[4].content | b64decode }}"
+      expected_targets:
+        enabled: true
+        inventory:
+          schema_version: 1
+          generation: inventory-v1
+          source_id: inventory-source-v1
+          max_future_seconds: 30
+          targets:
+            - target: vpn-p0
+              role: edge
+              lifecycle: enabled
+              ever_seen: false
+              label_values:
+                node: [vpn-p0]
+                role: [edge]
+              required_families: [vpn_watchdog_collection_success]
+        textfile_directory: /var/lib/node_exporter/textfile
+        expected_source_revision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        observed_source_revision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        expected_deployable_digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        observed_deployable_digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      protocol_liveness:
+        enabled: true
+        evidence_directory: /var/lib/vpn-protocol-liveness
+        evidence_path: /var/lib/vpn-protocol-liveness/last-evidence.json
+        output_directory: /var/lib/node_exporter/textfile
+        output_path: /var/lib/node_exporter/textfile/protocol-liveness.prom
+        stale_after_seconds: 180
+        max_future_seconds: 60
+  no_log: true

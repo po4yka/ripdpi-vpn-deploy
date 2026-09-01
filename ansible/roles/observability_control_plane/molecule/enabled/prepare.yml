@@ -3,6 +3,11 @@
   hosts: all
   become: true
   tasks:
+    - name: Create the observability textfile collector group
+      ansible.builtin.group:
+        name: observability-textfile
+        system: true
+
     - name: Create fixture directory
       ansible.builtin.file:
         path: /var/tmp/observability-control-plane-fixture
@@ -16,13 +21,14 @@
         path: "{{ item.path }}"
         state: directory
         owner: root
-        group: root
+        group: "{{ item.group | default('root') }}"
         mode: "{{ item.mode }}"
       loop:
         - path: /var/lib/vpn-protocol-liveness
           mode: '0700'
         - path: /var/lib/node_exporter/textfile
-          mode: '0755'
+          group: observability-textfile
+          mode: '3775'
 
     - name: Publish canonical protocol-liveness fixture evidence
       ansible.builtin.copy:

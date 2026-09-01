@@ -40,7 +40,8 @@
       - "{{ observability_control_plane.config_root }}/expected-targets.json"
       - --output
       - "{{ observability_control_plane.expected_targets.textfile_directory }}/observability-expected-targets.prom"
-  changed_when: true
+  register: _observability_expected_target_render
+  changed_when: _observability_expected_target_render.stdout == 'changed'
   no_log: true
 
 - name: Derive immutable expected-target rule generation

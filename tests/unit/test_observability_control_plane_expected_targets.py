@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
+import shutil
 import stat
 import subprocess
 import sys
+import tomllib
 
 import yaml
 
@@ -17,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible/roles/observability_control_plane"
 RENDERER = ROLE / "files/observability-expected-target-renderer.py"
 ADAPTER = ROLE / "files/observability-control-plane-adapter.py"
+PROMTOOL_VERSION = "3.14.0"
 
 
 def _inventory() -> dict:
@@ -72,6 +76,7 @@ def test_renderer_validates_and_deterministically_renders_bounded_targets(
     result = _run_renderer(tmp_path, _inventory())
 
     assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "changed"
     assert (tmp_path / "expected.prom").read_text(encoding="utf-8") == (
         "# TYPE vpn_observability_expected_target gauge\n"
         'vpn_observability_expected_target{node="vpn-p0",role="edge"} 1\n'
@@ -79,6 +84,11 @@ def test_renderer_validates_and_deterministically_renders_bounded_targets(
         'vpn_observability_expected_target_ever_seen{node="vpn-p2",role="edge",state="seen"} 1\n'
         'vpn_observability_expected_target_ever_seen{node="vpn-p0",role="edge",state="seen"} 1\n'
     )
+    published = (tmp_path / "expected.prom").stat()
+    repeated = _run_renderer(tmp_path, _inventory())
+    assert repeated.returncode == 0, repeated.stderr
+    assert repeated.stdout.strip() == "unchanged"
+    assert (tmp_path / "expected.prom").stat().st_ino == published.st_ino
 
 
 def test_renderer_refuses_duplicate_identity_or_unbounded_labels(
@@ -170,11 +180,23 @@ def test_renderer_exports_never_seen_separately_from_seen_target(
 def test_promtool_rules_require_matching_family_and_respect_ever_seen(
     tmp_path: Path,
 ) -> None:
-    promtool = os.environ.get("PROMTOOL")
-    if not promtool:
-        import pytest
-
-        pytest.skip("PROMTOOL is required for Prometheus rule evaluation")
+    promtool = shutil.which("promtool")
+    assert (
+        promtool is not None
+    ), f"promtool {PROMTOOL_VERSION} is required; run mise install"
+    version = subprocess.run(
+        [promtool, "--version"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert version.returncode == 0, version.stdout + version.stderr
+    assert re.search(
+        rf"\bversion {re.escape(PROMTOOL_VERSION)}\b",
+        version.stdout + version.stderr,
+    ), (
+        version.stdout + version.stderr
+    )
 
     inventory = _inventory()
     inventory["targets"][0]["ever_seen"] = False
@@ -244,6 +266,17 @@ def test_promtool_rules_require_matching_family_and_respect_ever_seen(
         timeout=20,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_promtool_parser_pin_is_canonical_across_local_and_hosted_gates() -> None:
+    mise = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert mise["tools"]["aqua:prometheus/prometheus"] == PROMTOOL_VERSION
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert f"PROMTOOL_VERSION := {PROMTOOL_VERSION}" in makefile
+    assert "promtool --version" in makefile
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert f'PROMTOOL_VERSION: "{PROMTOOL_VERSION}"' in workflow
+    assert "PROMETHEUS_LINUX_AMD64_SHA256" in workflow
 
 
 def test_resource_adapter_reports_source_deploy_resource_and_pipeline_states(
@@ -399,8 +432,18 @@ def test_role_wires_only_opted_in_expected_targets_into_immutable_config() -> No
     assert "side_effect" in enabled_scenario["scenario"]["test_sequence"]
     opt_out = (ROLE / "molecule/enabled/side_effect.yml").read_text()
     enabled_verify = (ROLE / "molecule/enabled/verify.yml").read_text()
-    assert "expected-targets-disable.yml" in opt_out
+    fixture_contract_path = ROLE / "molecule/enabled/tasks/fixture-contract.yml"
+    fixture_contract = yaml.safe_load(fixture_contract_path.read_text())
+    fixture_config = fixture_contract[-1]["ansible.builtin.set_fact"][
+        "observability_control_plane"
+    ]
+    assert fixture_config["expected_targets"]["enabled"] is True
+    assert "roles:" in opt_out
+    assert "role: observability_control_plane" in opt_out
+    assert "combine({'enabled': false})" in opt_out
+    assert "tasks_from: expected-targets-disable.yml" not in opt_out
     assert "observability-prometheus" in enabled_verify
+    assert "molecule-retained" in enabled_verify
     assert "observability-control-plane.prom" in enabled_verify
 
 
