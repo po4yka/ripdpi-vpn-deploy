@@ -27,6 +27,22 @@ def _trusted_directory() -> Path:
     return root
 
 
+def _root_owned_sticky_tmp() -> Path:
+    for candidate in (Path("/private/tmp"), Path("/tmp")):
+        try:
+            metadata = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        if (
+            stat.S_ISDIR(metadata.st_mode)
+            and metadata.st_uid == 0
+            and metadata.st_mode & stat.S_ISVTX
+            and metadata.st_mode & stat.S_IWOTH
+        ):
+            return candidate
+    raise AssertionError("a root-owned world-writable sticky temp directory is required")
+
+
 @pytest.fixture
 def trusted_root():
     root = _trusted_directory()
@@ -211,7 +227,11 @@ def test_topology_rejects_identity_placement_and_public_surface(
 
 
 def test_topology_accepts_root_owned_sticky_ancestor_with_trusted_child() -> None:
-    root = Path(tempfile.mkdtemp(prefix="ripdpi-observability-sticky-", dir="/private/tmp"))
+    root = Path(
+        tempfile.mkdtemp(
+            prefix="ripdpi-observability-sticky-", dir=_root_owned_sticky_tmp()
+        )
+    )
     root.chmod(0o700)
     try:
         result = _validate(_topology(), root)
@@ -223,7 +243,8 @@ def test_topology_accepts_root_owned_sticky_ancestor_with_trusted_child() -> Non
 
 @pytest.mark.parametrize("fault", ["writable-ancestor", "symlink-child"])
 def test_topology_rejects_unsafe_child_below_sticky_ancestor(fault: str) -> None:
-    root = Path(tempfile.mkdtemp(prefix="ripdpi-observability-unsafe-", dir="/private/tmp"))
+    sticky_tmp = _root_owned_sticky_tmp()
+    root = Path(tempfile.mkdtemp(prefix="ripdpi-observability-unsafe-", dir=sticky_tmp))
     root.chmod(0o700)
     cleanup = [root]
     if fault == "writable-ancestor":
@@ -233,7 +254,7 @@ def test_topology_rejects_unsafe_child_below_sticky_ancestor(fault: str) -> None
         target = unsafe / "trusted"
         target.mkdir(mode=0o700)
     else:
-        target = Path(tempfile.mkdtemp(prefix="ripdpi-observability-target-", dir="/private/tmp"))
+        target = Path(tempfile.mkdtemp(prefix="ripdpi-observability-target-", dir=sticky_tmp))
         target.chmod(0o700)
         cleanup.append(target)
         (root / "child").symlink_to(target, target_is_directory=True)
@@ -450,7 +471,9 @@ def test_render_inventory_publishes_validated_deterministic_topology(tmp_path: P
 
 def test_render_inventory_from_root_owned_sticky_tmp_is_supported() -> None:
     parent = Path(
-        tempfile.mkdtemp(prefix="ripdpi-observability-render-", dir="/private/tmp")
+        tempfile.mkdtemp(
+            prefix="ripdpi-observability-render-", dir=_root_owned_sticky_tmp()
+        )
     )
     parent.chmod(0o700)
     try:
