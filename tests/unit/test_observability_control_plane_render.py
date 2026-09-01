@@ -216,7 +216,7 @@ def test_enabled_receiver_waits_for_the_exact_get_refusal_before_red_path_checks
     for red_path in (
         "Assert remote-write receiver rejects a missing or wrong SNI",
         "Assert remote-write receiver rejects a CN path mismatch",
-        "Assert remote-write receiver rejects an oversized request",
+        "Submit an oversized request for server-side rejection evidence",
         "Assert valid mTLS remote write reaches only loopback Prometheus",
     ):
         assert names.index(readiness["name"]) < names.index(red_path)
@@ -311,8 +311,15 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     oversized = next(
         task
         for task in client_tasks
-        if task["name"] == "Assert remote-write receiver rejects an oversized request"
+        if task["name"].startswith("Submit an oversized")
     )
     oversized_command = oversized["ansible.builtin.command"]["argv"]
     assert "--body-file" not in oversized_command
     assert oversized_command[oversized_command.index("--content-length") + 1] == "9437184"
+    assert oversized["failed_when"] == [
+        "oversized_request.stdout != '413'",
+        "oversized_request.rc != 60",
+    ]
+    verify_text = (ROLE / "molecule/enabled/verify.yml").read_text()
+    assert "client intended to send too large body" in verify_text
+    assert "POST /remote-write/v1/nodes/vpn-p0 HTTP/1.1" in verify_text

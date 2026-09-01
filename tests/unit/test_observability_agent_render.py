@@ -313,6 +313,8 @@ def test_enabled_scenario_proves_idempotence_queue_age_and_authenticated_drain()
     verify = (ROLE / "molecule" / "enabled" / "verify.yml").read_text(encoding="utf-8")
 
     scenario = yaml.safe_load(molecule)["scenario"]["test_sequence"]
+    platform = yaml.safe_load(molecule)["platforms"][0]
+    assert platform["tmpfs"] == ["/run:rw,rshared"]
     assert scenario == [
         "dependency",
         "syntax",
