@@ -756,7 +756,7 @@ def _require_recovery_service_success(paths: CommandPaths, runner: Runner) -> No
         fields[key] = value
     if fields != {
         "Result": "success",
-        "ExecMainCode": "exited",
+        "ExecMainCode": "1",
         "ExecMainStatus": "0",
     }:
         raise Refusal("tailnet-recovery-unavailable")

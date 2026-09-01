@@ -323,7 +323,7 @@ class FakeRunner:
                 else self.recovery_status
             )
             stdout = (
-                "Result=success\nExecMainCode=exited\n"
+                "Result=success\nExecMainCode=1\n"
                 f"ExecMainStatus={status}\n"
             )
         else:
