@@ -168,3 +168,28 @@ def test_disabled_molecule_seeds_retained_tsdb_once_before_idempotence() -> None
     assert "Seed historical TSDB marker" not in converge
     assert "Create historical TSDB directory" in prepare
     assert "Seed historical TSDB marker" in prepare
+
+
+def test_prometheus_restart_is_conditional_on_published_runtime_changes() -> None:
+    tasks = yaml.safe_load((ROLE / "tasks/enable.yml").read_text())
+    nested = [
+        child
+        for task in tasks
+        for section in ("block", "rescue", "always")
+        for child in task.get(section, [])
+    ]
+    by_name = {task["name"]: task for task in [*tasks, *nested]}
+
+    assert by_name["Install Prometheus service unit"]["register"] == (
+        "_observability_prometheus_unit"
+    )
+    assert by_name["Point current configuration at candidate generation"][
+        "register"
+    ] == "_observability_prometheus_activation"
+    service = by_name[
+        "Start or restart Prometheus for the published generation"
+    ]["ansible.builtin.systemd_service"]
+    assert service["state"] == (
+        "{{ 'restarted' if (_observability_prometheus_unit.changed or "
+        "_observability_prometheus_activation.changed) else 'started' }}"
+    )

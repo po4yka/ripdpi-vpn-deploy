@@ -254,6 +254,7 @@
     owner: root
     group: root
     mode: '0644'
+  register: _observability_prometheus_unit
 
 - name: Inspect current generation before activation
   ansible.builtin.stat:
@@ -293,13 +294,16 @@
         dest: "{{ observability_control_plane.config_root }}/current.yml"
         state: link
         force: true
+      register: _observability_prometheus_activation
 
-    - name: Reload and restart Prometheus for candidate generation
+    - name: Start or restart Prometheus for the published generation
       ansible.builtin.systemd_service:
         name: observability-prometheus
-        daemon_reload: true
+        daemon_reload: "{{ _observability_prometheus_unit.changed }}"
         enabled: true
-        state: restarted
+        state: >-
+          {{ 'restarted' if (_observability_prometheus_unit.changed or
+          _observability_prometheus_activation.changed) else 'started' }}
 
     - name: Require loopback-only Prometheus candidate readiness
       ansible.builtin.uri:
