@@ -23,6 +23,8 @@ from typing import Any, Callable, Protocol
 
 CONFIG_VERSION = "real_vps_awg_nat_runner_v1"
 MANIFEST_VERSION = "real_vps_awg_nat_evidence_v2"
+CLIENT_IDENTITY_VERSION = "ripdpi_awg_client_identity_v1"
+CLIENT_IDENTITY_DESCRIPTOR_NAME = "real-vps-awg-client-identity.json"
 WORKFLOW_PATH = ".github/workflows/real-vps-awg-nat.yml"
 LOCAL_ENTRYPOINT_PATH = "scripts/run-real-vps-awg-nat-local.sh"
 EXECUTOR_ENTRYPOINTS = {
@@ -95,6 +97,7 @@ CONFIG_FIELDS = {
 MANIFEST_FIELDS = {
     "version",
     "sourceSha",
+    "clientIdentity",
     "startedAtEpoch",
     "finishedAtEpoch",
     "generatedAtEpoch",
@@ -117,6 +120,7 @@ PROVENANCE_FIELDS = {
     "invocationAttempt",
     "sourceArchiveSha256",
 }
+CLIENT_IDENTITY_FIELDS = {"version", "ripdpiSourceSha", "artifactSha256"}
 PRODUCER_FIELDS = {
     "runnerSha256",
     "serverControlHookSha256",
@@ -274,6 +278,33 @@ def require_invocation_id(value: Any, context: str = "invocation id") -> str:
     if not isinstance(value, str) or INVOCATION_ID_RE.fullmatch(value) is None:
         raise ValueError(f"{context} has invalid format")
     return value
+
+
+def client_identity_descriptor(path_value: Any) -> dict[str, str]:
+    """Read the private, immutable identity of the actual RIPDPI client artifact."""
+    path = _secure_path(path_value, executable=False)
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise ValueError("client identity descriptor is unavailable") from exc
+    if not 0 < len(raw) <= 4096:
+        raise ValueError("client identity descriptor is invalid")
+    try:
+        value = json.loads(raw)
+    except (ValueError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("client identity descriptor is invalid") from exc
+    if not isinstance(value, dict):
+        raise ValueError("client identity descriptor is invalid")
+    require_fields(value, CLIENT_IDENTITY_FIELDS, "client identity descriptor")
+    if value["version"] != CLIENT_IDENTITY_VERSION:
+        raise ValueError("unsupported client identity descriptor")
+    source_sha = require_sha(value["ripdpiSourceSha"], SHA1_RE, "client source SHA")
+    artifact_sha256 = require_sha(
+        value["artifactSha256"], SHA256_RE, "client artifact SHA"
+    )
+    if source_sha == "0" * 40 or artifact_sha256 == "0" * 64:
+        raise ValueError("client identity descriptor must bind a real artifact")
+    return {"ripdpiSourceSha": source_sha, "artifactSha256": artifact_sha256}
 
 
 def provenance_from_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -760,6 +791,7 @@ def run_lane(
     return {
         "version": MANIFEST_VERSION,
         "sourceSha": metadata["sourceSha"],
+        "clientIdentity": config["clientIdentity"],
         "startedAtEpoch": started,
         "finishedAtEpoch": finished,
         "generatedAtEpoch": finished,
@@ -816,6 +848,8 @@ def validate_manifest(
     expected_invocation_id: str | None = None,
     expected_invocation_attempt: int | None = None,
     expected_source_archive_sha256: str | None = None,
+    expected_client_source_sha: str | None = None,
+    expected_client_artifact_sha256: str | None = None,
 ) -> None:
     if not isinstance(manifest, dict):
         raise ValueError("manifest must be an object")
@@ -825,6 +859,26 @@ def validate_manifest(
     require_sha(expected_source_sha, SHA1_RE, "expected source SHA")
     if manifest["sourceSha"] != expected_source_sha:
         raise ValueError("manifest source SHA mismatch")
+    client_identity = manifest["clientIdentity"]
+    if not isinstance(client_identity, dict):
+        raise ValueError("client identity must be an object")
+    require_fields(
+        client_identity, {"ripdpiSourceSha", "artifactSha256"}, "client identity"
+    )
+    require_sha(client_identity["ripdpiSourceSha"], SHA1_RE, "client source SHA")
+    require_sha(client_identity["artifactSha256"], SHA256_RE, "client artifact SHA")
+    if expected_client_source_sha is not None:
+        require_sha(expected_client_source_sha, SHA1_RE, "expected client source SHA")
+        if client_identity["ripdpiSourceSha"] != expected_client_source_sha:
+            raise ValueError("manifest client source SHA mismatch")
+    if expected_client_artifact_sha256 is not None:
+        require_sha(
+            expected_client_artifact_sha256,
+            SHA256_RE,
+            "expected client artifact SHA",
+        )
+        if client_identity["artifactSha256"] != expected_client_artifact_sha256:
+            raise ValueError("manifest client artifact SHA mismatch")
     started = require_int(manifest["startedAtEpoch"], "startedAtEpoch", 1)
     finished = require_int(manifest["finishedAtEpoch"], "finishedAtEpoch", 1)
     generated = require_int(manifest["generatedAtEpoch"], "generatedAtEpoch", 1)
@@ -951,6 +1005,11 @@ def validate_manifest(
         raise ValueError("cleanup evidence is incomplete")
     if classification == "PASS":
         if (
+            client_identity["ripdpiSourceSha"] == "0" * 40
+            or client_identity["artifactSha256"] == "0" * 64
+        ):
+            raise ValueError("PASS manifest lacks client identity")
+        if (
             reason_code != "NONE"
             or [phase["id"] for phase in phases] != EXPECTED_PHASES
         ):
@@ -1071,6 +1130,9 @@ def load_config(path: Path) -> dict[str, Any]:
     if value["version"] != CONFIG_VERSION:
         raise ValueError("unsupported runner config version")
     runner_id = require_sha(value["runnerId"], SHA256_RE, "runnerId")
+    client_identity = client_identity_descriptor(
+        str(config_path.parent / CLIENT_IDENTITY_DESCRIPTOR_NAME)
+    )
     client, _, client_private, client_public, client_psk = _client_config_credentials(
         value["clientConfigPath"]
     )
@@ -1123,6 +1185,7 @@ def load_config(path: Path) -> dict[str, Any]:
         "serverDeployHook": str(deploy_hook),
         "rotationHook": str(rotation_hook),
         "runnerIdSha256": sha256_bytes(f"ripdpi:awg-runner:v1:{runner_id}".encode()),
+        "clientIdentity": client_identity,
         "serverControlHookSha256": sha256_bytes(control_hook.read_bytes()),
         "serverDeployHookSha256": sha256_bytes(deploy_hook.read_bytes()),
         "rotationHookSha256": sha256_bytes(rotation_hook.read_bytes()),
@@ -1560,12 +1623,17 @@ def probe_child() -> int:
 
 
 def failure_manifest(
-    metadata: dict[str, Any], producer_sha: str, reason_code: str = "CONFIG_INVALID"
+    metadata: dict[str, Any],
+    producer_sha: str,
+    reason_code: str = "CONFIG_INVALID",
+    client_identity: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     now = int(time.time())
     return {
         "version": MANIFEST_VERSION,
         "sourceSha": metadata["sourceSha"],
+        "clientIdentity": client_identity
+        or {"ripdpiSourceSha": "0" * 40, "artifactSha256": "0" * 64},
         "startedAtEpoch": now,
         "finishedAtEpoch": now,
         "generatedAtEpoch": now,
@@ -1626,6 +1694,8 @@ def main(argv: list[str] | None = None) -> int:
     validate.add_argument("--expected-run-id", type=int)
     validate.add_argument("--expected-run-attempt", type=int)
     validate.add_argument("--expected-source-archive-sha256", required=True)
+    validate.add_argument("--expected-client-source-sha")
+    validate.add_argument("--expected-client-artifact-sha256")
     validate.add_argument("--allow-non-pass", action="store_true")
     subparsers.add_parser("probe-child")
     args = parser.parse_args(argv)
@@ -1653,6 +1723,8 @@ def main(argv: list[str] | None = None) -> int:
                 expected_invocation_id=expected_invocation_id,
                 expected_invocation_attempt=expected_invocation_attempt,
                 expected_source_archive_sha256=args.expected_source_archive_sha256,
+                expected_client_source_sha=args.expected_client_source_sha,
+                expected_client_artifact_sha256=args.expected_client_artifact_sha256,
             )
             return (
                 0 if args.allow_non_pass or manifest["classification"] == "PASS" else 1

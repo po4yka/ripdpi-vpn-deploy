@@ -180,6 +180,10 @@ def metadata() -> dict:
 
 def config() -> dict:
     return {
+        "clientIdentity": {
+            "ripdpiSourceSha": "d" * 40,
+            "artifactSha256": "e" * 64,
+        },
         "runnerIdSha256": "2" * 64,
         "serverControlHookSha256": "5" * 64,
         "serverDeployHookSha256": "6" * 64,
@@ -195,6 +199,7 @@ def write_private_runner_config(
     rotated_contents: str | None = None,
     omit_current: bool = False,
     omit_rotated: bool = False,
+    include_client_identity: bool = True,
 ) -> tuple[Path, Path]:
     current = tmp_path / "current.conf"
     rotated = tmp_path / "rotated.conf"
@@ -233,31 +238,105 @@ def write_private_runner_config(
             path.write_text(default_contents if contents is None else contents)
             path.chmod(mode)
     config_path = tmp_path / "runner.json"
-    config_path.write_text(
-        json.dumps(
-            {
-                "version": lane.CONFIG_VERSION,
-                "runnerId": "a" * 64,
-                "clientConfigPath": str(current),
-                "rotatedClientConfigPath": str(rotated),
-                "clientAddress": "10.66.66.2/32",
-                "tcpEchoAddress": "93.184.216.34",
-                "tcpEchoPort": 10001,
-                "udpEchoAddress": "151.101.1.69",
-                "udpEchoPort": 10002,
-                "serverControlHook": str(control),
-                "serverDeployHook": str(deploy),
-                "rotationHook": str(rotation),
-                "probeTimeoutSeconds": 5,
-                "recoveryTimeoutSeconds": 30,
-                "deployTimeoutSeconds": 600,
-            }
+    client_identity = tmp_path / lane.CLIENT_IDENTITY_DESCRIPTOR_NAME
+    if include_client_identity:
+        client_identity.write_text(
+            json.dumps(
+                {
+                    "version": "ripdpi_awg_client_identity_v1",
+                    "ripdpiSourceSha": "d" * 40,
+                    "artifactSha256": "e" * 64,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
         )
-    )
+        client_identity.chmod(0o600)
+    value = {
+        "version": lane.CONFIG_VERSION,
+        "runnerId": "a" * 64,
+        "clientConfigPath": str(current),
+        "rotatedClientConfigPath": str(rotated),
+        "clientAddress": "10.66.66.2/32",
+        "tcpEchoAddress": "93.184.216.34",
+        "tcpEchoPort": 10001,
+        "udpEchoAddress": "151.101.1.69",
+        "udpEchoPort": 10002,
+        "serverControlHook": str(control),
+        "serverDeployHook": str(deploy),
+        "rotationHook": str(rotation),
+        "probeTimeoutSeconds": 5,
+        "recoveryTimeoutSeconds": 30,
+        "deployTimeoutSeconds": 600,
+    }
+    config_path.write_text(json.dumps(value))
     config_path.chmod(0o600)
     source_archive = tmp_path / "source.tar"
     source_archive.write_bytes(b"source")
     return config_path, source_archive
+
+
+def test_private_client_identity_descriptor_is_required_and_bound(
+    tmp_path: Path,
+) -> None:
+    config_path, _source_archive = write_private_runner_config(
+        tmp_path, include_client_identity=True
+    )
+
+    loaded = lane.load_config(config_path)
+
+    assert loaded["clientIdentity"] == {
+        "ripdpiSourceSha": "d" * 40,
+        "artifactSha256": "e" * 64,
+    }
+
+
+def test_client_identity_descriptor_missing_or_symlink_fails_closed(
+    tmp_path: Path,
+) -> None:
+    config_path, source_archive = write_private_runner_config(
+        tmp_path, include_client_identity=False
+    )
+    manifest = run_with_private_config(
+        config_path, source_archive, tmp_path / "out.json"
+    )
+    assert manifest["classification"] == "INFRA_UNAVAILABLE"
+    assert manifest["reasonCode"] == "CONFIG_INVALID"
+    assert manifest["clientIdentity"] == {
+        "ripdpiSourceSha": "0" * 40,
+        "artifactSha256": "0" * 64,
+    }
+
+    symlink_root = tmp_path / "symlink"
+    symlink_root.mkdir()
+    config_path, _source_archive = write_private_runner_config(symlink_root)
+    descriptor = config_path.parent / lane.CLIENT_IDENTITY_DESCRIPTOR_NAME
+    replacement = config_path.parent / "replacement.json"
+    replacement.write_text(descriptor.read_text())
+    replacement.chmod(0o600)
+    descriptor.unlink()
+    descriptor.symlink_to(replacement)
+    with pytest.raises(ValueError, match="absolute regular file"):
+        lane.load_config(config_path)
+
+
+def test_client_identity_descriptor_rejects_placeholder_digests(tmp_path: Path) -> None:
+    config_path, _source_archive = write_private_runner_config(tmp_path)
+    descriptor = config_path.parent / lane.CLIENT_IDENTITY_DESCRIPTOR_NAME
+    descriptor.write_text(
+        json.dumps(
+            {
+                "version": lane.CLIENT_IDENTITY_VERSION,
+                "ripdpiSourceSha": "0" * 40,
+                "artifactSha256": "e" * 64,
+            }
+        )
+    )
+    descriptor.chmod(0o600)
+
+    with pytest.raises(ValueError, match="must bind a real artifact"):
+        lane.load_config(config_path)
 
 
 def run_with_private_config(
@@ -370,6 +449,28 @@ def test_stale_manifest_is_rejected() -> None:
         assert "stale" in str(exc)
     else:
         raise AssertionError("stale manifest was accepted")
+
+
+def test_manifest_client_identity_is_bound_to_expected_artifact() -> None:
+    manifest = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    lane.validate_manifest(
+        manifest,
+        expected_source_sha="1" * 40,
+        expected_client_source_sha="d" * 40,
+        expected_client_artifact_sha256="e" * 64,
+        now=2_000_000_000,
+    )
+    manifest["clientIdentity"]["artifactSha256"] = "f" * 64
+    with pytest.raises(ValueError, match="client artifact SHA mismatch"):
+        lane.validate_manifest(
+            manifest,
+            expected_source_sha="1" * 40,
+            expected_client_source_sha="d" * 40,
+            expected_client_artifact_sha256="e" * 64,
+            now=2_000_000_000,
+        )
 
 
 def test_optional_workflow_is_manual_fail_closed_and_uploads_evidence() -> None:
