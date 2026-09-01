@@ -276,6 +276,7 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
         if task["name"] == "Assert remote-write receiver rejects a CN path mismatch"
     )
     mismatch_command = mismatched_cn["ansible.builtin.command"]["argv"]
+    assert mismatch_command[mismatch_command.index("--method") + 1] == "POST"
     assert mismatch_command[mismatch_command.index("--cert") + 1].endswith(
         "client-vpn-p0.crt"
     )

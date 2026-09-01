@@ -54,6 +54,8 @@
       ansible.builtin.command:
         argv:
           - /var/tmp/observability-control-plane-fixture/mtls-client.py
+          - --method
+          - POST
           - --ca
           - /var/tmp/observability-control-plane-fixture/tls/ca.crt
           - --cert
