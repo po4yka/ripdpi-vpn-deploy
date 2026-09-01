@@ -1,9 +1,9 @@
 ---
 task_id: SEC-1787916931540401
 change: sec-1787916931540401-restricted-admin-network-rollout
-commit_sha: b8948b427388e21a48cfbf99d521e787783b950d
+commit_sha: 501a27bbddd7e0c62378223ded801f6db77ef859
 local: passed
-local_evidence: make -j1 check passed with 2948 Python tests, one existing skip, 55 Bats tests, Rust release tests and Clippy; isolated profile stopped and context and config were unchanged; log SHA256 6e89e0a28c5e7cb7b8101ed1a5b7585a8b23e128263a6b76cdf1c5dc873d9a15
+local_evidence: the combined-tree make -j1 check passed with 2951 Python tests, one existing skip, 55 Bats tests, Rust release tests and Clippy; isolated profile stopped and context and config were unchanged; log SHA256 5daca6ec5b2403c80f3101956af6c463c4dbdfacb18b04c92b1ec03c7ff31af2
 remote_ci: required
 remote_ci_evidence: null
 dry_run: required
