@@ -465,6 +465,21 @@ def test_enabled_fixture_creates_diagnostic_account_before_runtime_ownership() -
     )
 
 
+def test_enabled_fixture_keeps_textfile_ancestors_private() -> None:
+    tasks = yaml.safe_load(
+        (ROLE / "molecule" / "enabled" / "prepare.yml").read_text(encoding="utf-8")
+    )[0]["tasks"]
+    directories = tasks[0]["loop"]
+    by_path = {item["path"]: item["mode"] for item in directories}
+    paths = [item["path"] for item in directories]
+
+    assert by_path["/var/lib/node_exporter"] == "0755"
+    assert by_path["/var/lib/node_exporter/textfile"] == "3775"
+    assert paths.index("/var/lib/node_exporter") < paths.index(
+        "/var/lib/node_exporter/textfile"
+    )
+
+
 def test_enabled_receiver_records_only_categorical_failure_phases() -> None:
     prepare = (ROLE / "molecule" / "enabled" / "prepare.yml").read_text(
         encoding="utf-8"
