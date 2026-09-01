@@ -9,11 +9,13 @@ on:
 
 permissions:
   contents: read
-  packages: write
-  security-events: write
 
 jobs:
   publish:
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
