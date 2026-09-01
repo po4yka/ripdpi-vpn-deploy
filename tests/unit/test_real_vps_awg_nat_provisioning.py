@@ -94,7 +94,8 @@ def test_role_is_a_documented_standalone_research_exception() -> None:
         assert "disposable systemd-capable Linux VM" in source
         assert "consumer uplink" in source
     assert "must not invoke `awg-evidence-provision`" in normalized_runbook
-    assert "not operationally enabled" in normalized_runbook
+    assert "three required source gates" in normalized_runbook
+    assert "does not itself authorize a VM start" in normalized_runbook
     assert "de-onboarding" in normalized_runbook
     assert "executor binding" in normalized_runbook
     assert "fail-closed VM preflight" in normalized_runbook

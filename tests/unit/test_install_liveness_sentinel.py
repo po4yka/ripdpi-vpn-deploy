@@ -163,6 +163,136 @@ def test_four_profiles_use_one_decrypt_and_receipt_before_assignment(setup):
     assert not any("scp" == Path(c[0][0]).name for c in calls)
 
 
+def test_bound_executor_routes_fixed_command_through_colima_not_host_ssh(setup):
+    s = setup
+    captured = []
+    captured_environment = {}
+    s["environment"]["UPCLOUD_TOKEN"] = "must-not-be-forwarded"
+    s["environment"]["SSH_AUTH_SOCK"] = "/private/agent.sock"
+
+    def fake_run(command, *, environment, **_kwargs):
+        captured.extend(command)
+        captured_environment.update(environment)
+        return b"probe\n"
+
+    s["module"]._run = fake_run
+    result = s["module"]._ssh(s["config"]["sentinels"][0], "id -un", s["environment"],
+                              executor={"profile": "vpn-liveness-one-shot"})
+    assert result == b"probe\n"
+    assert captured == ["colima", "ssh", "--profile", "vpn-liveness-one-shot", "--",
+                        "/bin/sh", "-c", "id -un"]
+    assert "sentinel-a" not in captured
+    assert captured_environment == {
+        "PATH": s["environment"]["PATH"],
+        "HOME": s["environment"]["HOME"],
+        "LANG": "C",
+        "LC_ALL": "C",
+    }
+
+
+def test_install_binds_executor_before_any_remote_material_transfer(setup, tmp_path, monkeypatch):
+    s = setup
+    manifest, binding, cleanup = (tmp_path / name for name in
+                                  ("executor.json", "binding.json", "cleanup.json"))
+    for path in (manifest, cleanup):
+        path.write_text("{}\n")
+        path.chmod(0o600)
+    events = []
+    s["environment"]["UPCLOUD_TOKEN"] = "must-not-be-forwarded"
+    original_run = s["module"]._run
+
+    def capture_executor_environment(command, *, environment, **kwargs):
+        if command[:3] == ["docker", "context", "show"]:
+            assert environment == {
+                "PATH": s["environment"]["PATH"],
+                "HOME": s["environment"]["HOME"],
+            }
+            return b"default\n"
+        return original_run(command, environment=environment, **kwargs)
+
+    monkeypatch.setattr(s["module"], "_run", capture_executor_environment)
+
+    def load_executor(*_args, runner, **_kwargs):
+        runner(("docker", "context", "show"), timeout=10)
+        events.append("preflight")
+        return {"profile": "vpn-liveness-one-shot"}
+
+    monkeypatch.setattr(s["module"], "load_live_executor", load_executor)
+
+    def bind(*_args, **_kwargs):
+        assert not any(Path(call[0][0]).name == "ssh" for call in s["calls"])
+        events.append("bound")
+        binding.write_text('{"bound":true}\n')
+        binding.chmod(0o600)
+        return {"bound": True}
+
+    monkeypatch.setattr(s["module"], "bind_executor", bind)
+    seen = []
+
+    def executor_ssh(sentinel, command, environment, input_bytes=b"", timeout=30, executor=None):
+        assert executor == {"profile": "vpn-liveness-one-shot"}
+        seen.append(command)
+        return s["fake_run"](["ssh", sentinel["ssh_target"], command], environment=environment,
+                             input_bytes=input_bytes, timeout=timeout)
+
+    monkeypatch.setattr(s["module"], "_ssh", executor_ssh)
+    result = s["module"].install(
+        s["path"], "probe-a", "sentinel", s["registry"], read_awg_stdin=True,
+        stdin=io.StringIO(s["values"]["private_key"] + "\n"), environment=s["environment"],
+        executor_manifest=manifest, executor_binding=binding, cleanup_manifest=cleanup)
+    assert result["status"] == "committed"
+    assert events == ["preflight", "bound"]
+    assert seen[:2] == ["id -un", "sudo -n true"]
+    installed = json.loads(s["registry"].read_text())["sentinels"]["probe-a"]
+    assert installed["executor_binding_sha256"] == hashlib.sha256(binding.read_bytes()).hexdigest()
+
+
+def test_executor_install_refuses_multi_sentinel_config_before_tools(setup, tmp_path):
+    s = setup
+    s["config"]["sentinels"].append(
+        {**s["config"]["sentinels"][0], "id": "probe-b", "ssh_target": "sentinel-b"}
+    )
+    s["path"].write_text(yaml.safe_dump(s["config"]))
+    manifest, binding, cleanup = (
+        tmp_path / name for name in ("executor.json", "binding.json", "cleanup.json")
+    )
+
+    with pytest.raises(s["module"].InstallError, match="executor-config"):
+        s["module"].install(
+            s["path"],
+            "probe-a",
+            "sentinel",
+            s["registry"],
+            read_awg_stdin=True,
+            stdin=io.StringIO(s["values"]["private_key"] + "\n"),
+            environment=s["environment"],
+            executor_manifest=manifest,
+            executor_binding=binding,
+            cleanup_manifest=cleanup,
+        )
+    assert not s["calls"]
+    assert not binding.exists()
+
+
+@pytest.mark.parametrize(
+    "previous,current,accepted",
+    [
+        ({}, None, True),
+        ({"executor_binding_sha256": "a" * 64}, "a" * 64, True),
+        ({"executor_binding_sha256": "a" * 64}, None, False),
+        ({}, "a" * 64, False),
+        ({"executor_binding_sha256": "a" * 64}, "b" * 64, False),
+    ],
+)
+def test_pending_retry_cannot_change_executor_transport(setup, previous, current, accepted):
+    check = lambda: setup["module"]._require_pending_executor(previous, current)
+    if accepted:
+        assert check() is None
+    else:
+        with pytest.raises(setup["module"].InstallError, match="pending-executor-conflict"):
+            check()
+
+
 def test_public_profile_endpoint_must_match_exact_target_digest(setup):
     setup["config"]["sentinels"][0]["target"]["public_service_address_sha256"] = "e" * 64
 
