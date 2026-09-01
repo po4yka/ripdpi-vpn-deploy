@@ -517,7 +517,7 @@ def _isolated_inventory_repo(tmp_path):
 
     root = tmp_path / "repo"
     (root / "scripts").mkdir(parents=True)
-    for script in ("render-inventory.sh", "terraform-env.sh"):
+    for script in ("render-inventory.sh", "terraform-env.sh", "validate-secrets.py"):
         shutil.copy(REPO_ROOT / "scripts" / script, root / "scripts" / script)
     for provider in ("upcloud", "hetzner"):
         envdir = root / "terraform" / "providers" / provider / "environments"
@@ -527,6 +527,10 @@ def _isolated_inventory_repo(tmp_path):
     (root / "ansible" / "inventory" / "generated.ini").write_text("last-good\n")
     (root / "ansible" / "group_vars").mkdir()
     (root / "ansible" / "group_vars" / "vpn-p0.yml").write_text("---\n")
+    (root / "ansible" / "group_vars" / "all.yml").write_text(
+        "---\nobservability_contract:\n  enabled: false\n"
+        "  schema_version: 1\n  credential_mode: systemd\n"
+    )
     bindir = tmp_path / "bin"
     bindir.mkdir()
     _build_terraform_stub(bindir, FIXTURES / "tf-output-sample.json")
@@ -542,6 +546,13 @@ def _isolated_inventory_repo(tmp_path):
         "AWG_EVIDENCE_MODES": "",
         "STUB_LOG": str(tmp_path / "terraform.log"),
     }
+    for key in (
+        "OBSERVABILITY_HOST_CLASSES",
+        "OBSERVABILITY_FAILURE_DOMAINS",
+        "OBSERVABILITY_SENTINELS_JSON",
+        "VPN_SECRETS_FILE",
+    ):
+        env.pop(key, None)
     return root, env
 
 
