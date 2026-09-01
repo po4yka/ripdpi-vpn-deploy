@@ -356,6 +356,10 @@ def test_enabled_scenario_proves_idempotence_queue_age_and_authenticated_drain()
         "'short_body': events.count('short_body')",
         "'handler_error': events.count('handler_error')",
         "'tls_handshake_rejected': events.count('tls_handshake_rejected')",
+        "'tls_unknown_ca': events.count('tls_handshake_unknown_ca')",
+        "'tls_missing_client_cert': events.count(",
+        "'tls_bad_cert': events.count('tls_handshake_bad_cert')",
+        "'tls_other': events.count('tls_handshake_other')",
     ):
         assert field in arrival
     assert "failed_when: false" in arrival
@@ -379,8 +383,21 @@ def test_enabled_receiver_records_only_categorical_failure_phases() -> None:
     assert 'record_event("accepted")' in prepare
     assert 'record_event("handler_error")' in prepare
     assert 'record_event("tls_handshake_rejected")' in prepare
+    assert 'record_event("tls_handshake_" + category)' in prepare
     assert "class Server(http.server.ThreadingHTTPServer)" in prepare
-    assert "except ssl.SSLError:" in prepare
+    assert "except ssl.SSLError as error:" in prepare
+    for reason in (
+        "TLSV1_ALERT_UNKNOWN_CA",
+        "SSLV3_ALERT_UNKNOWN_CA",
+        "PEER_DID_NOT_RETURN_A_CERTIFICATE",
+        "CERTIFICATE_VERIFY_FAILED",
+        "SSLV3_ALERT_BAD_CERTIFICATE",
+        "TLSV1_ALERT_BAD_CERTIFICATE",
+        "SSLV3_ALERT_CERTIFICATE_EXPIRED",
+    ):
+        assert f'"{reason}"' in prepare
+    assert "str(error)" not in prepare
+    assert "verify_message" not in prepare
     assert 'json.dumps({"phase": phase})' in prepare
     assert "if len(body) != length" in prepare
 

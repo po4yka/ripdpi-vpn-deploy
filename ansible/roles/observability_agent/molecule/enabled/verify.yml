@@ -68,6 +68,12 @@
                 'short_body': events.count('short_body'),
                 'handler_error': events.count('handler_error'),
                 'tls_handshake_rejected': events.count('tls_handshake_rejected'),
+                'tls_unknown_ca': events.count('tls_handshake_unknown_ca'),
+                'tls_missing_client_cert': events.count(
+                    'tls_handshake_missing_client_cert'
+                ),
+                'tls_bad_cert': events.count('tls_handshake_bad_cert'),
+                'tls_other': events.count('tls_handshake_other'),
             }, sort_keys=True))
             sys.exit(0 if arrived else 1)
       register: observability_remote_write_arrival
@@ -103,6 +109,18 @@
             journal = result.stdout.lower()
             categories = {
                 'tls': bool(re.search(r'certificate|x509|tls|handshake', journal)),
+                'sender_unknown_authority': bool(
+                    re.search(r'unknown authority|unknown ca', journal)
+                ),
+                'sender_certificate_required': bool(
+                    re.search(r'certificate required|did not return a certificate', journal)
+                ),
+                'sender_bad_certificate': bool(
+                    re.search(r'bad certificate|certificate expired', journal)
+                ),
+                'sender_server_verify': bool(
+                    re.search(r'failed to verify certificate|hostname', journal)
+                ),
                 'sender_path_signal': bool(
                     re.search(r'permission denied|no such file', journal)
                 ),

@@ -214,8 +214,26 @@
               def get_request(self):
                   try:
                       return super().get_request()
-                  except ssl.SSLError:
+                  except ssl.SSLError as error:
+                      reason = getattr(error, "reason", "")
+                      if reason in {
+                          "TLSV1_ALERT_UNKNOWN_CA",
+                          "SSLV3_ALERT_UNKNOWN_CA",
+                      }:
+                          category = "unknown_ca"
+                      elif reason == "PEER_DID_NOT_RETURN_A_CERTIFICATE":
+                          category = "missing_client_cert"
+                      elif reason in {
+                          "CERTIFICATE_VERIFY_FAILED",
+                          "SSLV3_ALERT_BAD_CERTIFICATE",
+                          "TLSV1_ALERT_BAD_CERTIFICATE",
+                          "SSLV3_ALERT_CERTIFICATE_EXPIRED",
+                      }:
+                          category = "bad_cert"
+                      else:
+                          category = "other"
                       record_event("tls_handshake_rejected")
+                      record_event("tls_handshake_" + category)
                       raise
 
           server = Server(("127.0.0.1", 19443), Handler)
