@@ -31,6 +31,45 @@ SECRET_COMMANDS = frozenset({"render", "validate", "rotate", "rollback"})
 MUTATING_COMMANDS = frozenset({"drill", "rotate", "rollback", "remove"})
 SAFE_GENERATION = re.compile(r"^[0-9a-f]{64}$")
 TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+AUTOLOAD_DIRS = (
+    "action_plugins",
+    "become_plugins",
+    "cache_plugins",
+    "callback_plugins",
+    "cliconf_plugins",
+    "connection_plugins",
+    "doc_fragments",
+    "filter_plugins",
+    "httpapi_plugins",
+    "inventory_plugins",
+    "library",
+    "lookup_plugins",
+    "module_utils",
+    "netconf_plugins",
+    "shell_plugins",
+    "strategy_plugins",
+    "terminal_plugins",
+    "test_plugins",
+    "vars_plugins",
+)
+PLUGIN_KINDS = (
+    "VARS",
+    "CALLBACK",
+    "ACTION",
+    "CONNECTION",
+    "LOOKUP",
+    "FILTER",
+    "TEST",
+    "BECOME",
+    "CACHE",
+    "CLICONF",
+    "DOC_FRAGMENT",
+    "HTTPAPI",
+    "INVENTORY",
+    "NETCONF",
+    "STRATEGY",
+    "TERMINAL",
+)
 
 
 class OperatorError(Exception):
@@ -117,11 +156,100 @@ def _environment(secrets: Path | None = None) -> dict[str, str]:
             "ANSIBLE_DIFF_ALWAYS": "false",
             "ANSIBLE_NOCOLOR": "true",
             "PYTHONDONTWRITEBYTECODE": "1",
+            "ANSIBLE_HOST_KEY_CHECKING": "true",
+            "ANSIBLE_INVENTORY_ENABLED": "ini",
+            "ANSIBLE_VARS_ENABLED": "",
+            "ANSIBLE_LOG_PATH": os.devnull,
+            "ANSIBLE_STDOUT_CALLBACK": "default",
+            "ANSIBLE_LOAD_CALLBACK_PLUGINS": "false",
+            "ANSIBLE_DISPLAY_ARGS_TO_STDOUT": "false",
+            "ANSIBLE_COLLECTIONS_PATH": str(ROOT / ".ansible" / "collections"),
+            "ANSIBLE_COLLECTIONS_SCAN_SYS_PATH": "false",
+            "ANSIBLE_ROLES_PATH": str(ANSIBLE / "roles"),
         }
     )
+    for kind in PLUGIN_KINDS:
+        allowed[f"ANSIBLE_{kind}_PLUGINS"] = os.devnull
     if secrets is not None:
         allowed["VPN_SECRETS_FILE"] = str(secrets)
     return allowed
+
+
+def _is_discovery_path(path: str) -> bool:
+    parts = Path(path).parts
+    if parts[:2] == ("ansible", "playbooks"):
+        return len(parts) >= 3 and parts[2] in {*AUTOLOAD_DIRS, "roles"}
+    return (
+        len(parts) >= 4
+        and parts[:2] == ("ansible", "roles")
+        and parts[3] in AUTOLOAD_DIRS
+    )
+
+
+def _validate_discovery_paths() -> None:
+    playbooks = ANSIBLE / "playbooks"
+    roles = ANSIBLE / "roles"
+    bases = [playbooks]
+    try:
+        if os.path.lexists(playbooks / "roles"):
+            raise OperatorError("unsupported Ansible discovery path")
+        for role in roles.iterdir():
+            if role.is_symlink():
+                raise OperatorError("unsupported Ansible discovery path")
+            if role.is_dir():
+                bases.append(role)
+        if any(
+            os.path.lexists(base / name) for base in bases for name in AUTOLOAD_DIRS
+        ):
+            raise OperatorError("unsupported Ansible discovery path")
+        result = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+                "--",
+                "ansible/playbooks",
+                "ansible/roles",
+            ],
+            cwd=ROOT,
+            env=_environment(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=10,
+        )
+        if result.returncode:
+            raise OperatorError("source cleanliness unavailable")
+        records = result.stdout.split(b"\0")
+        index = 0
+        while index < len(records) - 1:
+            record = records[index]
+            if len(record) < 4 or record[2:3] != b" ":
+                raise OperatorError("source cleanliness unavailable")
+            try:
+                path = record[3:].decode("utf-8")
+            except UnicodeError:
+                raise OperatorError("source cleanliness unavailable") from None
+            if _is_discovery_path(path):
+                raise OperatorError("unsupported Ansible discovery path")
+            if record[:1] in (b"R", b"C") or record[1:2] in (b"R", b"C"):
+                index += 1
+                if index >= len(records) - 1:
+                    raise OperatorError("source cleanliness unavailable")
+                try:
+                    original = records[index].decode("utf-8")
+                except UnicodeError:
+                    raise OperatorError("source cleanliness unavailable") from None
+                if _is_discovery_path(original):
+                    raise OperatorError("unsupported Ansible discovery path")
+            index += 1
+    except OperatorError:
+        raise
+    except (OSError, subprocess.SubprocessError):
+        raise OperatorError("source cleanliness unavailable") from None
 
 
 def _source_identity() -> tuple[str, str]:
@@ -191,6 +319,7 @@ def _clean_source_identity() -> tuple[str, str]:
         raise
     except (OSError, subprocess.SubprocessError):
         raise OperatorError("source cleanliness unavailable") from None
+    _validate_discovery_paths()
     return revision, digest
 
 
@@ -350,7 +479,7 @@ def _run_playbook(
             environment = _environment(secrets)
             environment["DEPLOY_SOURCE_REVISION"] = revision
             environment["DEPLOYABLE_SOURCE_DIGEST"] = digest
-            environment["ANSIBLE_VARS_ENABLED"] = ""
+            environment["ANSIBLE_HOME"] = str(Path(directory) / "ansible-home")
             result = subprocess.run(
                 command,
                 cwd=ROOT,
@@ -447,7 +576,7 @@ while True:
         isinstance(item, dict)
         and json.dumps(item.get("labels"), sort_keys=True, separators=(",", ":")) == fingerprint
         and item.get("status", {}).get("state") == "active"
-        and item.get("receivers") == ["telegram-primary"]
+        and item.get("receivers") == [{"name": "telegram-primary"}]
         for item in observed
     ):
         raise RuntimeError("receiver routing evidence missing")

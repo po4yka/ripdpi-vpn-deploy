@@ -57,6 +57,11 @@ if entry['program'] == 'ansible-playbook':
             break
     if '-i' in entry['argv']:
         entry['inventory'] = pathlib.Path(entry['argv'][entry['argv'].index('-i') + 1]).read_text()
+    entry['environment'] = {{key: os.environ.get(key) for key in (
+        'ANSIBLE_ACTION_PLUGINS', 'ANSIBLE_CALLBACK_PLUGINS',
+        'ANSIBLE_FILTER_PLUGINS', 'ANSIBLE_LOOKUP_PLUGINS',
+        'ANSIBLE_VARS_ENABLED', 'ANSIBLE_HOME',
+    )}}
     print('secret-path=' + os.environ.get('VPN_SECRETS_FILE', 'missing'))
     print('token=fixture-secret-value', file=sys.stderr)
 with log.open('a') as stream:
@@ -84,6 +89,8 @@ elif 'ls-tree' in args:
     pass
 elif 'diff' in args:
     raise SystemExit(1 if os.environ.get('FIXTURE_GIT_DIRTY') == '1' else 0)
+elif 'status' in args:
+    pass
 else:
     raise SystemExit(2)
 """
@@ -177,6 +184,15 @@ def test_render_is_one_role_check_mode_for_one_exact_host(
     assert "ControlMaster=no" in call["inventory"]
     assert "ProxyCommand=none" in call["inventory"]
     assert "UserKnownHostsFile=" in call["inventory"]
+    assert call["environment"] == {
+        "ANSIBLE_ACTION_PLUGINS": os.devnull,
+        "ANSIBLE_CALLBACK_PLUGINS": os.devnull,
+        "ANSIBLE_FILTER_PLUGINS": os.devnull,
+        "ANSIBLE_LOOKUP_PLUGINS": os.devnull,
+        "ANSIBLE_VARS_ENABLED": "",
+        "ANSIBLE_HOME": call["environment"]["ANSIBLE_HOME"],
+    }
+    assert call["environment"]["ANSIBLE_HOME"].endswith("/ansible-home")
     assert str(operator["secrets"]) not in result.stdout + result.stderr
     assert "fixture-secret-value" not in result.stdout + result.stderr
 
@@ -402,6 +418,37 @@ def test_dirty_deployable_source_refuses_before_inventory_or_transport(
     assert _calls(operator) == []
 
 
+def test_untracked_discovery_path_refuses_before_ansible(
+    operator: dict[str, object],
+) -> None:
+    git = operator["git"]
+    assert isinstance(git, Path)
+    git.write_text(
+        "#!/bin/sh\n"
+        'case "$*" in\n'
+        "  *rev-parse*) printf '%040d\\n' 0 ;;\n"
+        "  *ls-tree*|*diff*) exit 0 ;;\n"
+        "  *status*) printf '?? ansible/roles/observability_control_plane/lookup_plugins/unsafe.py\\0' ;;\n"
+        "  *) exit 2 ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    git.chmod(0o700)
+    result = _run(
+        operator,
+        "render",
+        "--secrets",
+        str(operator["secrets"]),
+        "--vars",
+        str(operator["vars"]),
+    )
+    assert result.returncode == 2
+    assert (
+        result.stderr == "observability-operator: unsupported Ansible discovery path\n"
+    )
+    assert _calls(operator) == []
+
+
 def test_component_commands_reject_disabled_or_wrong_role_variables(
     operator: dict[str, object],
 ) -> None:
@@ -578,7 +625,7 @@ def test_drill_waits_past_group_wait_and_proves_receiver_before_resolve(
             {
                 "labels": labels,
                 "status": {"state": "active"},
-                "receivers": ["telegram-primary"],
+                "receivers": [{"name": "telegram-primary"}],
             }
         ],
     )
@@ -612,7 +659,7 @@ def test_drill_refuses_active_alert_without_expected_receiver_evidence(
                 {
                     "labels": labels,
                     "status": {"state": "active"},
-                    "receivers": ["wrong-receiver"],
+                    "receivers": [{"name": "wrong-receiver"}],
                 }
             ],
         )
