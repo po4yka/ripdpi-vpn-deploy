@@ -1,0 +1,134 @@
+---
+- name: Verify enabled observability control-plane receiver
+  hosts: all
+  become: true
+  tasks:
+    - name: Assert nginx and Prometheus are enabled and active
+      ansible.builtin.command:
+        argv: [systemctl, is-active, --quiet, nginx]
+      changed_when: false
+
+    - name: Wait for the receiver and assert the authenticated GET refusal
+      ansible.builtin.command:
+        argv:
+          - /var/tmp/observability-control-plane-fixture/mtls-client.py
+          - --ca
+          - /var/tmp/observability-control-plane-fixture/tls/ca.crt
+          - --cert
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.crt
+          - --key
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
+          - --server-name
+          - ingest.fixture.test
+          - --path
+          - /remote-write/v1/nodes/vpn-p0
+      register: get_request
+      changed_when: false
+      failed_when: false
+      retries: 10
+      delay: 1
+      until: get_request.stdout == '405'
+
+    - name: Assert remote-write receiver rejects a missing or wrong SNI
+      ansible.builtin.command:
+        argv:
+          - /var/tmp/observability-control-plane-fixture/mtls-client.py
+          - --ca
+          - /var/tmp/observability-control-plane-fixture/tls/ca.crt
+          - --cert
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.crt
+          - --key
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
+          - --server-name
+          - wrong.fixture.test
+          - --path
+          - /remote-write/v1/nodes/vpn-p0
+      register: wrong_sni
+      changed_when: false
+      failed_when: wrong_sni.rc != 60
+      retries: 2
+      delay: 1
+      until: (wrong_sni.msg | default('')) != 'Error executing command.'
+
+    - name: Assert remote-write receiver rejects a CN path mismatch
+      ansible.builtin.command:
+        argv:
+          - /var/tmp/observability-control-plane-fixture/mtls-client.py
+          - --method
+          - POST
+          - --ca
+          - /var/tmp/observability-control-plane-fixture/tls/ca.crt
+          - --cert
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.crt
+          - --key
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
+          - --server-name
+          - ingest.fixture.test
+          - --path
+          - /remote-write/v1/nodes/vpn-p1
+      register: mismatched_cn
+      changed_when: false
+      failed_when: mismatched_cn.stdout != '403' and mismatched_cn.rc != 60
+      retries: 2
+      delay: 1
+      until: (mismatched_cn.msg | default('')) != 'Error executing command.'
+
+    - name: Submit an oversized request and require exact server-side 413
+      ansible.builtin.command:
+        argv:
+          - /var/tmp/observability-control-plane-fixture/mtls-client.py
+          - --method
+          - POST
+          - --body-size
+          - '8388609'
+          - --ca
+          - /var/tmp/observability-control-plane-fixture/tls/ca.crt
+          - --cert
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.crt
+          - --key
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
+          - --server-name
+          - ingest.fixture.test
+          - --path
+          - /remote-write/v1/nodes/vpn-p0
+      register: oversized_request
+      changed_when: false
+      failed_when: oversized_request.stdout != '413' or oversized_request.rc != 0
+      retries: 2
+      delay: 1
+      until: oversized_request.stdout == '413' and oversized_request.rc == 0
+
+    - name: Assert valid mTLS remote write reaches only loopback Prometheus
+      ansible.builtin.command:
+        argv:
+          - /var/tmp/observability-control-plane-fixture/mtls-client.py
+          - --method
+          - POST
+          - --body
+          - fixture
+          - --ca
+          - /var/tmp/observability-control-plane-fixture/tls/ca.crt
+          - --cert
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.crt
+          - --key
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
+          - --server-name
+          - ingest.fixture.test
+          - --path
+          - /remote-write/v1/nodes/vpn-p0
+      register: valid_write
+      changed_when: false
+      failed_when: valid_write.stdout != '200'
+      retries: 2
+      delay: 1
+      until: (valid_write.msg | default('')) != 'Error executing command.'
+
+    - name: Assert failed candidate rollback restores an immutable generation
+      ansible.builtin.command:
+        argv: [readlink, /etc/observability-control-plane/current.yml]
+      changed_when: false
+
+    - name: Assert TSDB free-space preflight remains enforced
+      ansible.builtin.command:
+        argv: [df, -PB1, /var/lib/observability-prometheus]
+      changed_when: false

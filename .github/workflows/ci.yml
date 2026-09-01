@@ -256,6 +256,8 @@ jobs:
           - nginx-xhttp
           - watchdog
           - monitoring
+          - observability_agent
+          - observability_control_plane
           - backup
           - subscription-host
           - amneziawg
@@ -565,6 +567,10 @@ jobs:
         include:
           - role: watchdog
             scenario: failure
+          - role: observability_agent
+            scenario: enabled
+          - role: observability_control_plane
+            scenario: enabled
           - role: cascade-ingress
             scenario: populated
           - role: cascade-ingress

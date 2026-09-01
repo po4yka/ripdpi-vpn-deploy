@@ -88,10 +88,11 @@ ansible/                                             — playbook order, group_v
 ansible/roles/{amneziawg,backup,baseline,cdn-front,
               cascade-egress,cascade-ingress,dns-morph-bridge,firewall,geodata,honeypot,
               hysteria,hysteria-realm,intrusion_prevention,monitoring,naive,node_manifest,
-              nginx-xhttp,network-exposure-gate,policy-ratelimit,package_updates,real-vps-awg-nat,reality-self-steal,
+              nginx-xhttp,network-exposure-gate,observability_agent,observability_control_plane,
+              policy-ratelimit,package_updates,real-vps-awg-nat,reality-self-steal,
               runtime-release,security_audit,split-hop-egress,
               split-hop-ingress,probe-matrix-target,snell,subscription-host,
-              tailnet-management,warp-outbound,watchdog,xray,xray-runtime}/  — 34 roles
+              tailnet-management,warp-outbound,watchdog,xray,xray-runtime}/  — 36 roles
 terraform/                                           — provider-root strategy
 terraform/providers/{hetzner,scaleway,upcloud,vultr}/ — per-provider quirks
 terraform/shared/                                    — cloud-init contract

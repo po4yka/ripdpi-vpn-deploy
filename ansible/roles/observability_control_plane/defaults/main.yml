@@ -1,0 +1,34 @@
+---
+# Inert until the dedicated control-plane playbook supplies explicit pins and
+# credentials. An incomplete receiver must fail before it writes a host.
+observability_control_plane:
+  enabled: false
+  service_user: prometheus
+  service_group: prometheus
+  install_root: /opt/observability-prometheus
+  binary_link: /usr/local/libexec/observability-prometheus
+  config_root: /etc/observability-control-plane
+  data_dir: /var/lib/observability-prometheus
+  ingress_port: 9443
+  ingress_sni: ""
+  control_plane_dns_san: ""
+  prometheus_listen: 127.0.0.1:9090
+  remote_write_path_prefix: /remote-write/v1/nodes
+  request_body_limit: 8m
+  request_concurrency: 4
+  request_rate: 20r/s
+  request_rate_burst: 40
+  tsdb_retention_time: 30d
+  tsdb_retention_size: 20GB
+  tsdb_required_bytes: 42949672960
+  prometheus:
+    version: ""
+    urls: {amd64: "", arm64: ""}
+    sha256: {amd64: "", arm64: ""}
+    archive_members: {amd64: "", arm64: ""}
+  tls:
+    server_cert_pem: ""
+    server_key_pem: ""
+    client_ca_pem: ""
+    client_crl_pem: ""
+  ingest_identities: []

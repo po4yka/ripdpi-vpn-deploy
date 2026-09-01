@@ -1,0 +1,33 @@
+[Unit]
+Description=RIPDPI schema-2 observability manifest adapter
+After=node-manifest.service
+
+[Service]
+Type=oneshot
+User={{ monitoring.node_exporter_user | default('prometheus') }}
+Group={{ monitoring.node_exporter_group | default('prometheus') }}
+SupplementaryGroups={{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}
+ExecStart=/usr/local/libexec/observability-agent-adapter.py --manifest {{ node_manifest.path | default('/var/lib/ripdpi-vpn-deploy/manifest.json') }} --output {{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/observability-agent.prom --node-id {{ observability_agent.node_id }} --expected-source-revision {{ node_manifest_source_revision }} --expected-deployable-digest {{ node_manifest_deployable_digest }}
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectClock=true
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+MemoryMax=64M
+TasksMax=16
+LimitNOFILE=1024
+ReadWritePaths={{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}

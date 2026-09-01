@@ -8,7 +8,7 @@ two-layer guard. Deprecation/removal of any role is a **recommendation only**.
 ## Context and problem
 
 The stated purpose is keeping a few non-technical family devices in RU online
-with minimal remote intervention. The repo has grown to **31 Ansible roles**
+with minimal remote intervention. The repo has grown to **36 Ansible roles**
 plus research-grade machinery (split-hop dual-role defense, probe-matrix,
 idle-cycle measurement, multi-operator). On a single operator the
 maintenance and silent-failure surface now scales super-linearly — against a
@@ -84,10 +84,12 @@ Final tier with each angle's vote. "Contested" = the three did not agree.
 | amneziawg | TACTICAL | CORE | CORE | **CORE** *(contested)* | (b)/(c) win: default-on in `all.yml`, declared P2 device-VPN baseline, a 4th transport shape. (a)'s build-tax point is *valid and real* (see burden table — it builds amneziawg-go from source at deploy) but doesn't outweigh baseline status. |
 | geodata | TACTICAL | CORE | CORE | **CORE** *(contested)* | (b)/(c) win: default-on; the firewall geo-block set depends on its feed — disabling it silently half-breaks the allowlist. License-tier death risk is real but has named fallbacks. |
 | monitoring | TACTICAL | CORE | CORE | **CORE** *(contested)* | (b)/(c) win: default-on; local collection and textfile ingestion are sound. Threshold paging remains an explicit operator-owned boundary. A single operator must not fly blind. |
+| observability_agent | CORE | CORE | CORE | **CORE** | Default-off only during the staged migration; it is the bounded authenticated off-host telemetry sender required for unattended fleet visibility. |
 | watchdog | CORE | CORE | CORE | **CORE** | Two-level local supervision prevents permanent process death. Authenticated public-path liveness and rotation are intentionally separate and use the quorum/OTP flow in `PROTOCOL-LIVENESS.md`. |
 | backup | CORE | CORE | CORE | **CORE** | restic+age is the recovery path on burn; Molecule now exercises snapshots, isolated restores, cleanup, and remote-failure behavior. |
 | node_manifest | CORE | CORE | CORE | **CORE** | Records enabled listeners, security controls, and recovery metadata for verification and drift tooling. |
 | xray-runtime | CORE | CORE | CORE | **CORE** | Shared pinned Xray installation boundary; owns no listener itself. |
+| runtime-release | CORE | CORE | CORE | **CORE** | Shared immutable runtime publication and rollback boundary used by baseline transports. |
 | subscription-host | TACTICAL | CORE | CORE | **TACTICAL** *(contested)* | (a) wins: `enable_subscription_host: false` (default-off); ARCHITECTURE lists it "optional"; v1 delivery is `emit-singbox.sh` + scp. (b)/(c)'s "zero-intervention reconfig" is a later hardening aspiration, not the current baseline. |
 | policy-ratelimit | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; re-scoped to a routing-blackhole abuse limiter that cannot see external REALITY probes by design. |
 | honeypot | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; bounded retention and alert-pipeline behavior are tested, but the extra public listeners remain situational. |
@@ -95,6 +97,7 @@ Final tier with each angle's vote. "Contested" = the three did not agree.
 | naive | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; xcaddy from-source build + v147 preamble breakage. Enable only when HTTP/2+Chromium fingerprint is specifically the threat. |
 | warp-outbound | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; changes egress ASN (breaks burn-check/ASN-drift). Enable only when the upstream ASN path is burned. |
 | reality-self-steal | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; replaces a borrowed cross-ASN REALITY target with an operator-owned loopback TLS/H2 site without adding a public listener. Promotion still requires DNS, certificate, client SNI, and filtered-vantage evidence. |
+| observability_control_plane | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Dedicated default-off mTLS remote-write receiver; production-safe only on an explicitly provisioned control-plane host. |
 | intrusion_prevention | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Opt-in Fail2Ban SSH jail, enabled only by the host-hardening policy. |
 | security_audit | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Operator-run non-blocking report collection; it does not mutate or gate the data plane. |
 | split-hop-egress | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | Pilot/unconfirmed; paired ingress coverage now exists, but routing is scoped to probe users and no family production proof exists. |
@@ -107,7 +110,7 @@ Final tier with each angle's vote. "Contested" = the three did not agree.
 | cascade-ingress | EXCEPTION | EXCEPTION | EXCEPTION | **EXCEPTION** | Jurisdiction-scoped client termination scaffold; inert without governance, exact allowlist, and fresh attestation. |
 | cascade-egress | EXCEPTION | EXCEPTION | EXCEPTION | **EXCEPTION** | Private tunnel termination and forwarding half of the isolated exception topology. |
 
-**Tally:** CORE 13 · TACTICAL 9 · RESEARCH 7 · EXCEPTION 2. The canonical
+**Tally:** CORE 15 · TACTICAL 12 · RESEARCH 7 · EXCEPTION 2. The canonical
 machine-readable source is `ansible/role-tiers.yml`; this table explains that
 manifest and must change with it. Gated roles remain absent from family
 profiles, while host-hardening CORE roles may retain their own opt-in policy.

@@ -1,0 +1,40 @@
+---
+- name: Gather control-plane service facts before disable
+  ansible.builtin.service_facts:
+
+- name: Stop and disable existing control-plane service
+  ansible.builtin.systemd_service:
+    name: observability-prometheus
+    enabled: false
+    state: stopped
+  when:
+    - not ansible_check_mode
+    - "'observability-prometheus.service' in ansible_facts.services"
+
+- name: Remove control-plane units and ingress only
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/observability-prometheus.service
+    - /etc/nginx/sites-enabled/observability-remote-write.conf
+    - /etc/nginx/sites-available/observability-remote-write.conf
+    - "{{ observability_control_plane.config_root }}"
+  notify: Reload observability ingress
+
+- name: Reload systemd after removing owned service unit
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Preserve TSDB on convergent disable
+  ansible.builtin.stat:
+    path: "{{ observability_control_plane.data_dir }}"
+  register: _observability_tsdb_preserved
+  changed_when: false
+
+- name: Refuse a disable operation that would remove historical TSDB
+  ansible.builtin.assert:
+    that: _observability_tsdb_preserved.stat.exists | default(false)
+    fail_msg: Control-plane disable preserves TSDB; destructive retention is separate.
+  when: _observability_tsdb_preserved.stat.exists | default(false)

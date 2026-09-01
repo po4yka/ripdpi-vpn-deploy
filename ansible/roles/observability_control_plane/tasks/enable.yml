@@ -1,0 +1,367 @@
+---
+- name: Require a complete bounded control-plane contract
+  ansible.builtin.assert:
+    that:
+      - observability_control_plane.ingress_port | int == 9443
+      - observability_control_plane.prometheus_listen == '127.0.0.1:9090'
+      - observability_control_plane.remote_write_path_prefix == '/remote-write/v1/nodes'
+      - observability_control_plane.request_body_limit == '8m'
+      - observability_control_plane.request_concurrency | int == 4
+      - observability_control_plane.request_rate == '20r/s'
+      - observability_control_plane.request_rate_burst | int == 40
+      - observability_control_plane.tsdb_retention_time == '30d'
+      - observability_control_plane.tsdb_retention_size == '20GB'
+      - observability_control_plane.tsdb_required_bytes | int >= 42949672960
+      - observability_control_plane.ingress_sni is match('^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$')
+      - observability_control_plane.control_plane_dns_san is match('^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$')
+      - observability_control_plane.ingress_sni != observability_control_plane.control_plane_dns_san
+      - observability_control_plane.prometheus.version is match('^[A-Za-z0-9._+-]+$')
+      - observability_control_plane.prometheus.urls.amd64 is match('^https://|^file://')
+      - observability_control_plane.prometheus.urls.arm64 is match('^https://|^file://')
+      - observability_control_plane.prometheus.sha256.amd64 is match('^[0-9a-fA-F]{64}$')
+      - observability_control_plane.prometheus.sha256.arm64 is match('^[0-9a-fA-F]{64}$')
+      - observability_control_plane.prometheus.archive_members.amd64 is match('^[A-Za-z0-9._+/+-]+$')
+      - observability_control_plane.prometheus.archive_members.arm64 is match('^[A-Za-z0-9._+/+-]+$')
+      - observability_control_plane.tls.server_cert_pem | length > 0
+      - observability_control_plane.tls.server_key_pem | length > 0
+      - observability_control_plane.tls.client_ca_pem | length > 0
+      - observability_control_plane.tls.client_crl_pem | length > 0
+      - observability_control_plane.ingest_identities | length > 0
+      - >-
+        observability_control_plane.ingest_identities | map(attribute='node_id') |
+        list | unique | length == observability_control_plane.ingest_identities | length
+    fail_msg: >-
+      observability_control_plane requires exact bounded receiver settings,
+      a pinned Prometheus archive, separate ingress SNI/DNS SAN identities,
+      and complete mTLS/CRL material before it writes a host.
+  no_log: true
+
+- name: Require safe technical node identities
+  ansible.builtin.assert:
+    that:
+      - item.node_id is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
+      - item.client_cert_pem | default('') | length > 0
+    fail_msg: Each ingestion identity requires one bounded node_id and client certificate.
+  loop: "{{ observability_control_plane.ingest_identities }}"
+  no_log: true
+
+- name: Create dedicated control-plane account
+  ansible.builtin.group:
+    name: "{{ observability_control_plane.service_group }}"
+    system: true
+
+- name: Create dedicated control-plane account
+  ansible.builtin.user:
+    name: "{{ observability_control_plane.service_user }}"
+    group: "{{ observability_control_plane.service_group }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ observability_control_plane.data_dir }}"
+    create_home: false
+
+- name: Install hardened ingress package
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    policy_rc_d: 101
+
+- name: Install pinned Prometheus through runtime-release
+  ansible.builtin.include_role:
+    name: runtime-release
+  vars:
+    runtime_release_version: "{{ observability_control_plane.prometheus.version }}"
+    runtime_release_install_root: "{{ observability_control_plane.install_root }}"
+    runtime_release_binary_name: prometheus
+    runtime_release_public_link: "{{ observability_control_plane.binary_link }}"
+    runtime_release_urls: "{{ observability_control_plane.prometheus.urls }}"
+    runtime_release_sha256: "{{ observability_control_plane.prometheus.sha256 }}"
+    runtime_release_arch_slugs: {amd64: amd64, arm64: arm64}
+    runtime_release_artifact_filename: prometheus.tar.gz
+    runtime_release_artifact_type: archive
+    runtime_release_archive_members: "{{ observability_control_plane.prometheus.archive_members }}"
+    runtime_release_archive_strip_components: 1
+
+- name: Create private control-plane directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ observability_control_plane.config_root }}"
+      owner: root
+      group: "{{ observability_control_plane.service_group }}"
+      mode: '0750'
+    - path: "{{ observability_control_plane.config_root }}/generations"
+      owner: root
+      group: root
+      mode: '0755'
+    - path: "{{ observability_control_plane.config_root }}/tls"
+      owner: root
+      group: "{{ observability_control_plane.service_group }}"
+      mode: '0750'
+    - path: "{{ observability_control_plane.config_root }}/clients"
+      owner: root
+      group: root
+      mode: '0750'
+    - path: "{{ observability_control_plane.data_dir }}"
+      owner: "{{ observability_control_plane.service_user }}"
+      group: "{{ observability_control_plane.service_group }}"
+      mode: '0750'
+
+- name: Read filesystem capacity reserved for Prometheus TSDB
+  ansible.builtin.command:
+    argv: [df, -PB1, "{{ observability_control_plane.data_dir }}"]
+  register: _observability_tsdb_capacity
+  changed_when: false
+
+- name: Require TSDB capacity before activation
+  ansible.builtin.assert:
+    that:
+      - >-
+        (_observability_tsdb_capacity.stdout_lines[-1].split()[3] | int) >=
+        (observability_control_plane.tsdb_required_bytes | int)
+    fail_msg: Observability TSDB requires at least the configured 40 GiB capacity before activation.
+
+- name: Materialize ingress TLS and revocation authority
+  ansible.builtin.copy:
+    content: "{{ item.content }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: "{{ observability_control_plane.service_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - content: "{{ observability_control_plane.tls.server_cert_pem }}"
+      dest: "{{ observability_control_plane.config_root }}/tls/server.crt"
+      mode: '0640'
+    - content: "{{ observability_control_plane.tls.server_key_pem }}"
+      dest: "{{ observability_control_plane.config_root }}/tls/server.key"
+      mode: '0640'
+    - content: "{{ observability_control_plane.tls.client_ca_pem }}"
+      dest: "{{ observability_control_plane.config_root }}/tls/client-ca.crt"
+      mode: '0640'
+    - content: "{{ observability_control_plane.tls.client_crl_pem }}"
+      dest: "{{ observability_control_plane.config_root }}/tls/client.crl"
+      mode: '0640'
+  no_log: true
+  diff: false
+
+- name: Materialize identity certificates for preflight only
+  ansible.builtin.copy:
+    content: "{{ item.client_cert_pem }}"
+    dest: "{{ observability_control_plane.config_root }}/clients/{{ item.node_id }}.crt"
+    owner: root
+    group: root
+    mode: '0600'
+  loop: "{{ observability_control_plane.ingest_identities }}"
+  no_log: true
+  diff: false
+
+- name: Verify server certificate contains separate ingress and management DNS SANs
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - x509
+      - -in
+      - "{{ observability_control_plane.config_root }}/tls/server.crt"
+      - -noout
+      - -checkhost
+      - "{{ item }}"
+  loop:
+    - "{{ observability_control_plane.ingress_sni }}"
+    - "{{ observability_control_plane.control_plane_dns_san }}"
+  changed_when: false
+  no_log: true
+
+- name: Verify each client certificate identity, EKU, CA and CRL
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - verify
+      - -purpose
+      - sslclient
+      - -crl_check_all
+      - -CAfile
+      - "{{ observability_control_plane.config_root }}/tls/client-ca.crt"
+      - -CRLfile
+      - "{{ observability_control_plane.config_root }}/tls/client.crl"
+      - "{{ observability_control_plane.config_root }}/clients/{{ item.node_id }}.crt"
+  loop: "{{ observability_control_plane.ingest_identities }}"
+  changed_when: false
+  no_log: true
+
+- name: Verify each client certificate subject equals its technical node identity
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - x509
+      - -in
+      - "{{ observability_control_plane.config_root }}/clients/{{ item.node_id }}.crt"
+      - -noout
+      - -subject
+      - -nameopt
+      - RFC2253
+  loop: "{{ observability_control_plane.ingest_identities }}"
+  register: _observability_client_subjects
+  changed_when: false
+  no_log: true
+
+- name: Refuse client certificate subject/path mismatches
+  ansible.builtin.assert:
+    that: item.stdout == 'subject=CN=' ~ item.item.node_id
+    fail_msg: Client certificate CN must exactly equal its assigned node_id.
+  loop: "{{ _observability_client_subjects.results }}"
+  no_log: true
+
+- name: Derive the immutable Prometheus generation from candidate content
+  ansible.builtin.set_fact:
+    _observability_generation: "{{ lookup('ansible.builtin.template', 'prometheus.yml.j2') | hash('sha256') }}"
+  no_log: true
+
+- name: Inspect immutable Prometheus generation before publication
+  ansible.builtin.stat:
+    path: "{{ observability_control_plane.config_root }}/generations/{{ _observability_generation }}.yml"
+    checksum_algorithm: sha256
+  register: _observability_candidate_generation
+  changed_when: false
+
+- name: Refuse a conflicting immutable Prometheus generation
+  ansible.builtin.assert:
+    that: >-
+      not (_observability_candidate_generation.stat.exists | default(false)) or
+      _observability_candidate_generation.stat.checksum == _observability_generation
+    fail_msg: A different configuration already occupies the derived immutable generation.
+  no_log: true
+
+- name: Publish isolated immutable Prometheus generation
+  ansible.builtin.copy:
+    content: "{{ lookup('ansible.builtin.template', 'prometheus.yml.j2') }}"
+    dest: "{{ observability_control_plane.config_root }}/generations/{{ _observability_generation }}.yml"
+    owner: root
+    group: "{{ observability_control_plane.service_group }}"
+    mode: '0640'
+    force: false
+  no_log: true
+  diff: false
+
+- name: Install Prometheus service unit
+  ansible.builtin.template:
+    src: observability-prometheus.service.j2
+    dest: /etc/systemd/system/observability-prometheus.service
+    owner: root
+    group: root
+    mode: '0644'
+  register: _observability_prometheus_unit
+
+- name: Inspect current generation before activation
+  ansible.builtin.stat:
+    path: "{{ observability_control_plane.config_root }}/current.yml"
+    follow: false
+  register: _observability_current
+
+- name: Refuse an unsafe existing control-plane generation link
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (_observability_current.stat.exists | default(false)) or
+        (_observability_current.stat.islnk | default(false))
+      - >-
+        not (_observability_current.stat.exists | default(false)) or
+        _observability_current.stat.lnk_source is match(
+          '^' ~ observability_control_plane.config_root ~
+          '/generations/[a-f0-9]{64}[.]yml$')
+    fail_msg: Existing control-plane current.yml must be an owned generation link.
+
+- name: Preserve ready control-plane generation before activation
+  ansible.builtin.file:
+    src: "{{ _observability_current.stat.lnk_source }}"
+    dest: "{{ observability_control_plane.config_root }}/previous.yml"
+    state: link
+    force: true
+    owner: root
+    group: "{{ observability_control_plane.service_group }}"
+  when: _observability_current.stat.exists | default(false)
+  changed_when: false
+
+- name: Activate complete validated Prometheus generation with rollback
+  block:
+    - name: Point current configuration at candidate generation
+      ansible.builtin.file:
+        src: "{{ observability_control_plane.config_root }}/generations/{{ _observability_generation }}.yml"
+        dest: "{{ observability_control_plane.config_root }}/current.yml"
+        state: link
+        force: true
+      register: _observability_prometheus_activation
+
+    - name: Start or restart Prometheus for the published generation
+      ansible.builtin.systemd_service:
+        name: observability-prometheus
+        daemon_reload: "{{ _observability_prometheus_unit.changed }}"
+        enabled: true
+        state: >-
+          {{ 'restarted' if (_observability_prometheus_unit.changed or
+          _observability_prometheus_activation.changed) else 'started' }}
+
+    - name: Require loopback-only Prometheus candidate readiness
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9090/-/ready
+        status_code: 200
+        return_content: false
+      register: _observability_ready
+      retries: 5
+      delay: 2
+      until: _observability_ready.status == 200
+      no_log: true
+  rescue:
+    - name: Restore previous ready configuration after failed candidate
+      ansible.builtin.file:
+        src: "{{ _observability_current.stat.lnk_source }}"
+        dest: "{{ observability_control_plane.config_root }}/current.yml"
+        state: link
+        force: true
+      when: _observability_current.stat.exists | default(false)
+
+    - name: Restore previous ready Prometheus service
+      ansible.builtin.systemd_service:
+        name: observability-prometheus
+        daemon_reload: true
+        state: restarted
+      when: _observability_current.stat.exists | default(false)
+
+    - name: Fail closed when no previous ready generation exists
+      ansible.builtin.fail:
+        msg: Candidate control-plane generation did not become ready; previous ready generation was restored when available.
+
+- name: Render write-only mTLS ingress
+  ansible.builtin.template:
+    src: observability-remote-write.conf.j2
+    dest: /etc/nginx/sites-available/observability-remote-write.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Enable write-only mTLS ingress
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/observability-remote-write.conf
+    dest: /etc/nginx/sites-enabled/observability-remote-write.conf
+    state: link
+    force: true
+
+- name: Remove the distribution default ingress site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+
+- name: Validate ingress before reload
+  ansible.builtin.command:
+    argv: [nginx, -t]
+  changed_when: false
+
+- name: Enable and start validated control-plane ingress
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+    state: started

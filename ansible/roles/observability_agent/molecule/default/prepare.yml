@@ -1,0 +1,40 @@
+---
+- name: Prepare observability-agent disable scenario
+  hosts: all
+  become: true
+  tasks:
+    - name: Create existing monitoring textfile directory
+      ansible.builtin.file:
+        path: /var/lib/node_exporter/textfile
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+    - name: Create synthetic agent-owned state
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      loop:
+        - /etc/observability-agent
+        - /etc/observability-agent/credentials
+        - /var/lib/observability-agent/wal
+        - /opt/observability-agent
+
+    - name: Create synthetic producer textfile that the agent does not own
+      ansible.builtin.copy:
+        dest: /var/lib/node_exporter/textfile/producer-owned.prom
+        content: "vpn_fixture_producer 1\n"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Create synthetic agent textfile
+      ansible.builtin.copy:
+        dest: /var/lib/node_exporter/textfile/observability-agent.prom
+        content: "vpn_observability_adapter_collection_success 1\n"
+        owner: root
+        group: root
+        mode: "0600"
