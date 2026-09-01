@@ -22,6 +22,7 @@
   delegate_to: localhost
   become: false
   changed_when: false
+  when: vpn.enable_tailnet_management | default(false) | bool
 
 - name: Validate firewall egress policy mode
   ansible.builtin.assert:

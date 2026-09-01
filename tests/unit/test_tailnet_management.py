@@ -103,6 +103,7 @@ def test_firewall_allows_only_exact_approved_tailnet_sources() -> None:
     )
     assert validator["name"] == "Validate Tailnet firewall sources before mutation"
     assert validator["delegate_to"] == "localhost"
+    assert "vpn.enable_tailnet_management" in validator["when"]
     assert "tailnet-validate-sources.py" in validator["ansible.builtin.command"]["cmd"]
 
 
