@@ -309,6 +309,18 @@ def test_disable_removes_only_observability_agent_owned_state() -> None:
     assert "watchdog" not in tasks
 
 
+def test_adapter_explicitly_joins_the_textfile_writer_group() -> None:
+    unit = (ROLE / "templates" / "observability-agent-adapter.service.j2").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "SupplementaryGroups={{ monitoring.node_exporter_textfile_group "
+        "| default('node_exporter_textfile') }}"
+    ) in unit
+    assert unit.index("SupplementaryGroups=") < unit.index("ExecStart=")
+
+
 def test_enabled_scenario_proves_idempotence_queue_age_and_authenticated_drain() -> (
     None
 ):

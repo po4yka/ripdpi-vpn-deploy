@@ -6,6 +6,7 @@ After=node-manifest.service
 Type=oneshot
 User={{ monitoring.node_exporter_user | default('prometheus') }}
 Group={{ monitoring.node_exporter_group | default('prometheus') }}
+SupplementaryGroups={{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}
 ExecStart=/usr/local/libexec/observability-agent-adapter.py --manifest {{ node_manifest.path | default('/var/lib/ripdpi-vpn-deploy/manifest.json') }} --output {{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/observability-agent.prom --node-id {{ observability_agent.node_id }} --expected-source-revision {{ node_manifest_source_revision }} --expected-deployable-digest {{ node_manifest_deployable_digest }}
 NoNewPrivileges=true
 CapabilityBoundingSet=
