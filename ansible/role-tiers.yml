@@ -39,6 +39,7 @@ tiers:
   amneziawg: core           # P2 device-VPN (obfuscated WG UDP)
   geodata: core             # geosite/geoip feed; firewall geo-block depends on it
   monitoring: core          # local-first node_exporter + log rotation
+  observability_agent: core # bounded remote-write sender; default-off during migration
   watchdog: core            # service supervision + alerting
   backup: core              # restic+age recovery path
   node_manifest: core       # machine-readable enabled surfaces/recovery summary

@@ -1,0 +1,278 @@
+---
+- name: Prepare real observability-agent runtime fixture
+  hosts: all
+  become: true
+  tasks:
+    - name: Create observability fixture directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - path: /var/lib/observability-fixture
+          mode: "0700"
+        - path: /var/lib/ripdpi-vpn-deploy
+          mode: "0755"
+        - path: /var/lib/node_exporter/textfile
+          mode: "3775"
+
+    - name: Create node exporter fixture group
+      ansible.builtin.group:
+        name: node_exporter_textfile
+        system: true
+
+    - name: Create node exporter fixture account
+      ansible.builtin.user:
+        name: prometheus
+        groups: node_exporter_textfile
+        append: true
+        system: true
+        shell: /usr/sbin/nologin
+
+    - name: Set node exporter fixture directory authority
+      ansible.builtin.file:
+        path: /var/lib/node_exporter/textfile
+        owner: root
+        group: node_exporter_textfile
+        mode: "3775"
+
+    - name: Write schema-2 node manifest fixture
+      ansible.builtin.copy:
+        dest: /var/lib/ripdpi-vpn-deploy/manifest.json
+        owner: root
+        group: root
+        mode: "0644"
+        content: >-
+          {"schema_version":2,"environment":"ci","provider":"fixture",
+          "source_revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deployable_digest":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+
+    - name: Generate fixture certificate authority
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/openssl
+          - req
+          - -x509
+          - -newkey
+          - rsa:2048
+          - -nodes
+          - -days
+          - "2"
+          - -subj
+          - /CN=observability-fixture-ca
+          - -keyout
+          - /var/lib/observability-fixture/ca.key
+          - -out
+          - /var/lib/observability-fixture/ca.crt
+        creates: /var/lib/observability-fixture/ca.crt
+
+    - name: Write fixture certificate extension policies
+      ansible.builtin.copy:
+        dest: "/var/lib/observability-fixture/{{ item.name }}"
+        owner: root
+        group: root
+        mode: "0600"
+        content: "{{ item.content }}"
+      loop:
+        - name: server.ext
+          content: "subjectAltName=DNS:ingest.fixture.test\nextendedKeyUsage=serverAuth\n"
+        - name: client.ext
+          content: "extendedKeyUsage=clientAuth\n"
+
+    - name: Generate fixture server key and request
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/openssl
+          - req
+          - -new
+          - -newkey
+          - rsa:2048
+          - -nodes
+          - -subj
+          - /CN=ingest.fixture.test
+          - -keyout
+          - /var/lib/observability-fixture/server.key
+          - -out
+          - /var/lib/observability-fixture/server.csr
+        creates: /var/lib/observability-fixture/server.csr
+
+    - name: Sign fixture server certificate
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/openssl
+          - x509
+          - -req
+          - -days
+          - "2"
+          - -in
+          - /var/lib/observability-fixture/server.csr
+          - -CA
+          - /var/lib/observability-fixture/ca.crt
+          - -CAkey
+          - /var/lib/observability-fixture/ca.key
+          - -CAcreateserial
+          - -extfile
+          - /var/lib/observability-fixture/server.ext
+          - -out
+          - /var/lib/observability-fixture/server.crt
+        creates: /var/lib/observability-fixture/server.crt
+
+    - name: Generate fixture client key and request
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/openssl
+          - req
+          - -new
+          - -newkey
+          - rsa:2048
+          - -nodes
+          - -subj
+          - /CN=node-fixture
+          - -keyout
+          - /var/lib/observability-fixture/client.key
+          - -out
+          - /var/lib/observability-fixture/client.csr
+        creates: /var/lib/observability-fixture/client.csr
+
+    - name: Sign fixture client certificate
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/openssl
+          - x509
+          - -req
+          - -days
+          - "2"
+          - -in
+          - /var/lib/observability-fixture/client.csr
+          - -CA
+          - /var/lib/observability-fixture/ca.crt
+          - -CAkey
+          - /var/lib/observability-fixture/ca.key
+          - -CAcreateserial
+          - -extfile
+          - /var/lib/observability-fixture/client.ext
+          - -out
+          - /var/lib/observability-fixture/client.crt
+        creates: /var/lib/observability-fixture/client.crt
+
+    - name: Install bounded mTLS remote-write fixture
+      ansible.builtin.copy:
+        dest: /usr/local/libexec/observability-receiver-fixture.py
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/python3
+          import http.server
+          import json
+          import ssl
+
+          LOG = "/var/lib/observability-fixture/receiver.log"
+
+          class Handler(http.server.BaseHTTPRequestHandler):
+              def do_POST(self):
+                  length = int(self.headers.get("Content-Length", "0"))
+                  if length < 1 or length > 8 * 1024 * 1024:
+                      self.send_error(413)
+                      return
+                  self.rfile.read(length)
+                  subject = dict(item[0] for item in self.connection.getpeercert()["subject"])
+                  with open(LOG, "a", encoding="utf-8") as handle:
+                      handle.write(json.dumps({"path": self.path, "cn": subject.get("commonName")}) + "\n")
+                  self.send_response(200)
+                  self.end_headers()
+
+              def log_message(self, *_args):
+                  return
+
+          server = http.server.ThreadingHTTPServer(("127.0.0.1", 19443), Handler)
+          context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+          context.verify_mode = ssl.CERT_REQUIRED
+          context.load_verify_locations("/var/lib/observability-fixture/ca.crt")
+          context.load_cert_chain(
+              "/var/lib/observability-fixture/server.crt",
+              "/var/lib/observability-fixture/server.key",
+          )
+          server.socket = context.wrap_socket(server.socket, server_side=True)
+          server.serve_forever()
+
+    - name: Install bounded node exporter fixture
+      ansible.builtin.copy:
+        dest: /usr/local/libexec/node-exporter-fixture.py
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/python3
+          import http.server
+
+          METRICS = b"# TYPE node_load1 gauge\nnode_load1 0.5\n"
+
+          class Handler(http.server.BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path != "/metrics":
+                      self.send_error(404)
+                      return
+                  self.send_response(200)
+                  self.send_header("Content-Type", "text/plain")
+                  self.send_header("Content-Length", str(len(METRICS)))
+                  self.end_headers()
+                  self.wfile.write(METRICS)
+
+              def log_message(self, *_args):
+                  return
+
+          http.server.ThreadingHTTPServer(("127.0.0.1", 9100), Handler).serve_forever()
+
+    - name: Install observability fixture units
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item.name }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: "{{ item.content }}"
+      loop:
+        - name: observability-receiver-fixture.service
+          content: |
+            [Service]
+            Type=simple
+            ExecStart=/usr/bin/python3 /usr/local/libexec/observability-receiver-fixture.py
+        - name: node-exporter-fixture.service
+          content: |
+            [Service]
+            Type=simple
+            ExecStart=/usr/bin/python3 /usr/local/libexec/node-exporter-fixture.py
+
+    - name: Start observability fixtures
+      block:
+        - name: Start observability fixture services
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            state: started
+            daemon_reload: true
+          loop:
+            - observability-receiver-fixture.service
+            - node-exporter-fixture.service
+      rescue:
+        - name: Read bounded observability fixture failure status
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/systemctl
+              - status
+              - --no-pager
+              - --full
+              - observability-receiver-fixture.service
+              - node-exporter-fixture.service
+          register: observability_fixture_failure
+          changed_when: false
+          failed_when: false
+
+        - name: Report bounded observability fixture failure status
+          ansible.builtin.debug:
+            var: observability_fixture_failure.stdout_lines
+
+        - name: Refuse unavailable observability fixture services
+          ansible.builtin.fail:
+            msg: Observability fixture services did not start.

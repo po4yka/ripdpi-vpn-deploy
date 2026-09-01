@@ -1,15 +1,15 @@
 global:
-  scrape_interval: {{ observability_agent.scrape_interval }}
+  scrape_interval: 30s
   external_labels:
-    environment: "{{ observability_agent.environment }}"
-    node_id: "{{ observability_agent.node_id }}"
+    environment: ""
+    node_id: ""
 
 scrape_configs:
   - job_name: node-exporter
-    sample_limit: {{ observability_agent.scrape_sample_limit }}
-    label_limit: {{ observability_agent.scrape_label_limit }}
-    label_name_length_limit: {{ observability_agent.scrape_label_name_length_limit }}
-    label_value_length_limit: {{ observability_agent.scrape_label_value_length_limit }}
+    sample_limit: 2000
+    label_limit: 16
+    label_name_length_limit: 64
+    label_value_length_limit: 128
     static_configs:
       - targets: ["127.0.0.1:9100"]
     metric_relabel_configs:
@@ -25,12 +25,12 @@ scrape_configs:
       - regex: "^(__name__|job|cpu|mode|device|fstype|mountpoint)$"
         action: labelkeep
   - job_name: observability-agent
-    sample_limit: {{ observability_agent.scrape_sample_limit }}
-    label_limit: {{ observability_agent.scrape_label_limit }}
-    label_name_length_limit: {{ observability_agent.scrape_label_name_length_limit }}
-    label_value_length_limit: {{ observability_agent.scrape_label_value_length_limit }}
+    sample_limit: 2000
+    label_limit: 16
+    label_name_length_limit: 64
+    label_value_length_limit: 128
     static_configs:
-      - targets: ["{{ observability_agent.web_listen }}"]
+      - targets: ["127.0.0.1:19090"]
     metric_relabel_configs:
       - source_labels: [__name__]
         regex: "^(process_(cpu_seconds_total|resident_memory_bytes|open_fds|max_fds|start_time_seconds)|go_(goroutines|threads)|prometheus_remote_storage_(samples_pending|samples_failed_total|samples_retried_total|samples_dropped_total|queue_highest_timestamp_seconds|queue_highest_sent_timestamp_seconds))$"
@@ -39,15 +39,15 @@ scrape_configs:
         action: labelkeep
 
 remote_write:
-  - url: "{{ observability_agent.receiver_origin }}/remote-write/v1/nodes/{{ observability_agent.node_id }}"
+  - url: "/remote-write/v1/nodes/"
     tls_config:
       ca_file: /run/credentials/observability-agent.service/receiver-ca.crt
       cert_file: /run/credentials/observability-agent.service/client.crt
       key_file: /run/credentials/observability-agent.service/client.key
-      server_name: "{{ observability_agent.receiver_sni }}"
+      server_name: ""
       insecure_skip_verify: false
     queue_config:
-      capacity: {{ observability_agent.queue_capacity }}
+      capacity: 5000
       max_shards: 4
-      max_samples_per_send: {{ observability_agent.queue_max_samples_per_send }}
-      batch_send_deadline: {{ observability_agent.queue_batch_send_deadline }}
+      max_samples_per_send: 1000
+      batch_send_deadline: 5s

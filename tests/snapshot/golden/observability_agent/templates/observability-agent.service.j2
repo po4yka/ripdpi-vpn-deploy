@@ -1,0 +1,43 @@
+[Unit]
+Description=RIPDPI bounded observability remote-write agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=observability-agent
+Group=observability-agent
+LoadCredential=client.crt:/etc/credstore/observability-agent/current/client.crt
+LoadCredential=client.key:/etc/credstore/observability-agent/current/client.key
+LoadCredential=receiver-ca.crt:/etc/credstore/observability-agent/current/receiver-ca.crt
+ExecStartPre=/usr/local/bin/promtool-observability-agent check config --agent --syntax-only /etc/observability-agent/prometheus.yml
+ExecStart=/usr/local/bin/prometheus-observability-agent --agent --config.file=/etc/observability-agent/prometheus.yml --web.listen-address=127.0.0.1:19090 --storage.agent.path=/var/lib/observability-agent/wal --storage.agent.wal-compression --storage.agent.retention.max-time=1h
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectClock=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+MemoryMax=512M
+TasksMax=64
+LimitNOFILE=65536
+ReadWritePaths=/var/lib/observability-agent/wal
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,4 +1,18 @@
 ---
+- name: Assert observability agent owned path boundary
+  ansible.builtin.assert:
+    that:
+      - >-
+        (observability_agent.install_root | default('/opt/observability-agent'))
+        is match('^/opt/observability-agent(?:-[a-z0-9-]+)?$')
+      - >-
+        (observability_agent.promtool_install_root | default('/opt/observability-agent-promtool'))
+        is match('^/opt/observability-agent-promtool(?:-[a-z0-9-]+)?$')
+      - (observability_agent.config_dir | default('/etc/observability-agent')) == '/etc/observability-agent'
+      - (observability_agent.credential_dir | default('/etc/credstore/observability-agent')) == '/etc/credstore/observability-agent'
+      - (observability_agent.wal_dir | default('/var/lib/observability-agent/wal')) == '/var/lib/observability-agent/wal'
+    fail_msg: Observability agent may remove or publish only its fixed role-owned paths.
+
 - name: Disable observability agent when feature is disabled
   when: not (observability_agent.enabled | default(false) | bool)
   block:
@@ -21,11 +35,13 @@
         - /etc/systemd/system/observability-agent-adapter.service
         - /etc/systemd/system/observability-agent-adapter.timer
         - /usr/local/libexec/observability-agent-adapter.py
-        - "{{ observability_agent.config_dir }}"
-        - "{{ observability_agent.credential_dir }}"
-        - "{{ observability_agent.wal_dir }}"
-        - "{{ observability_agent.install_root }}"
+        - "{{ observability_agent.config_dir | default('/etc/observability-agent') }}"
+        - "{{ observability_agent.credential_dir | default('/etc/credstore/observability-agent') }}"
+        - "{{ observability_agent.wal_dir | default('/var/lib/observability-agent/wal') }}"
+        - "{{ observability_agent.install_root | default('/opt/observability-agent') }}"
+        - "{{ observability_agent.promtool_install_root | default('/opt/observability-agent-promtool') }}"
         - /usr/local/bin/prometheus-observability-agent
+        - /usr/local/bin/promtool-observability-agent
         - "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/observability-agent.prom"
       notify: Reload observability agent systemd
 
@@ -40,18 +56,41 @@
           - observability_agent.version | default('') | length > 0
           - observability_agent.node_id | default('') is match('^[a-z][a-z0-9_-]{0,63}$')
           - observability_agent.environment | default('') is match('^[a-z][a-z0-9_-]{0,63}$')
-          - observability_agent.receiver_origin | default('') is match('^https://[^/?#]+$')
-          - observability_agent.receiver_sni | default('') is match('^[A-Za-z0-9.-]{1,253}$')
+          - >-
+            observability_agent.receiver_origin | default('')
+            is match('^https://[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(?::[1-9][0-9]{0,4})?$')
+          - observability_agent.receiver_origin | urlsplit('port') | default(443, true) | int <= 65535
+          - observability_agent.receiver_sni | default('') is match('^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$')
           - observability_agent.release_urls.amd64 | default('') is match('^https://')
           - observability_agent.release_urls.arm64 | default('') is match('^https://')
           - observability_agent.linux_amd64_sha256 | default('') is match('^[0-9a-f]{64}$')
           - observability_agent.linux_arm64_sha256 | default('') is match('^[0-9a-f]{64}$')
-          - observability_agent.wal_max_size | default('') is match('^[1-9][0-9]{0,3}(?:MB|GB)$')
-          - observability_agent.wal_max_time | default('') is match('^[1-9][0-9]*(?:m|h)$')
+          - observability_agent.wal_max_time | default('') is match('^(?:(?:[1-9]|[1-5][0-9]|60)m|(?:[1-9]|1[0-9]|2[0-4])h)$')
+          - observability_agent.web_listen | default('') is match('^127\\.0\\.0\\.1:[1-9][0-9]{0,4}$')
+          - observability_agent.web_listen.split(':')[-1] | int <= 65535
+          - node_manifest_source_revision | default('') is match('^[0-9a-f]{40}$')
+          - node_manifest_deployable_digest | default('') is match('^[0-9a-f]{64}$')
+          - observability_agent.scrape_sample_limit | default(0) | int >= 1
+          - observability_agent.scrape_sample_limit | default(0) | int <= 10000
+          - observability_agent.scrape_label_limit | default(0) | int >= 1
+          - observability_agent.scrape_label_limit | default(0) | int <= 64
+          - observability_agent.scrape_interval | default('') is match('^(?:[1-9]|[1-9][0-9]|[12][0-9]{2}|300)s$')
+          - observability_agent.scrape_label_name_length_limit | default(0) | int >= 1
+          - observability_agent.scrape_label_name_length_limit | default(0) | int <= 128
+          - observability_agent.scrape_label_value_length_limit | default(0) | int >= 1
+          - observability_agent.scrape_label_value_length_limit | default(0) | int <= 256
+          - observability_agent.queue_capacity | default(0) | int >= 1
+          - observability_agent.queue_capacity | default(0) | int <= 10000
+          - observability_agent.queue_max_samples_per_send | default(0) | int >= 1
+          - observability_agent.queue_max_samples_per_send | default(0) | int <= 2000
+          - observability_agent.queue_batch_send_deadline | default('') is match('^(?:[1-9]|[12][0-9]|30)s$')
+          - observability_agent.memory_max | default('') == '512M'
+          - observability_agent.tasks_max | default(0) | int == 64
+          - observability_agent.nofile_limit | default(0) | int == 65536
         fail_msg: >-
           Observability agent requires schema-1 systemd credentials, exact Prometheus
           archive pins, technical node identity, HTTPS receiver origin, separate SNI,
-          and bounded WAL values.
+          and a bounded WAL retention window.
 
     - name: Select exact node mTLS sender authority
       ansible.builtin.set_fact:
@@ -89,7 +128,11 @@
         - path: "{{ observability_agent.config_dir }}"
           mode: "0755"
         - path: "{{ observability_agent.credential_dir }}"
-          mode: "0700"
+          group: observability-agent
+          mode: "0710"
+        - path: "{{ observability_agent.credential_dir }}/generations"
+          group: observability-agent
+          mode: "0750"
         - path: "{{ observability_agent.wal_dir }}"
           owner: observability-agent
           group: observability-agent
@@ -119,54 +162,296 @@
           amd64: "prometheus-{{ observability_agent.version }}.linux-amd64/prometheus"
           arm64: "prometheus-{{ observability_agent.version }}.linux-arm64/prometheus"
 
-    - name: Write observability agent systemd credential sources
-      ansible.builtin.copy:
-        content: "{{ item.content }}"
-        dest: "{{ observability_agent.credential_dir }}/{{ item.name }}"
-        owner: root
-        group: root
-        mode: "0600"
-      loop:
-        - name: receiver-ca.crt
-          content: "{{ observability_secrets.receiver_ca_pem }}"
-        - name: client.crt
-          content: "{{ _observability_agent_senders[0].certificate_pem }}"
-        - name: client.key
-          content: "{{ _observability_agent_senders[0].private_key_pem }}"
-      no_log: true
-      diff: false
-      notify: Restart observability agent
+    - name: Install matching pinned promtool through runtime-release
+      ansible.builtin.include_role:
+        name: runtime-release
+      vars:
+        runtime_release_version: "{{ observability_agent.version }}"
+        runtime_release_install_root: "{{ observability_agent.promtool_install_root }}"
+        runtime_release_binary_name: promtool
+        runtime_release_public_link: /usr/local/bin/promtool-observability-agent
+        runtime_release_urls:
+          amd64: "{{ observability_agent.release_urls.amd64 }}"
+          arm64: "{{ observability_agent.release_urls.arm64 }}"
+        runtime_release_sha256:
+          amd64: "{{ observability_agent.linux_amd64_sha256 }}"
+          arm64: "{{ observability_agent.linux_arm64_sha256 }}"
+        runtime_release_arch_slugs:
+          amd64: linux-amd64
+          arm64: linux-arm64
+        runtime_release_artifact_filename: promtool
+        runtime_release_artifact_type: archive
+        runtime_release_archive_strip_components: 1
+        runtime_release_archive_members:
+          amd64: "prometheus-{{ observability_agent.version }}.linux-amd64/promtool"
+          arm64: "prometheus-{{ observability_agent.version }}.linux-arm64/promtool"
 
-    - name: Read sender certificate subject without logging credential material
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/openssl
-          - x509
-          - -noout
-          - -subject
-          - -nameopt
-          - RFC2253
-          - -in
-          - "{{ observability_agent.credential_dir }}/client.crt"
-      register: _observability_agent_client_subject
-      changed_when: false
-      no_log: true
+    - name: Validate and publish observability credential bundle
+      block:
+        - name: Create private observability credential candidate
+          ansible.builtin.tempfile:
+            path: "{{ observability_agent.credential_dir }}/generations"
+            prefix: .candidate.
+            state: directory
+          register: _observability_agent_credential_candidate
+          changed_when: false
+          no_log: true
 
-    - name: Require certificate common name to equal node identity
-      ansible.builtin.assert:
-        that:
-          - _observability_agent_client_subject.stdout | trim == 'subject=CN=' ~ observability_agent.node_id
-        fail_msg: Observability sender certificate common name does not match its node identity.
-      no_log: true
+        - name: Restrict private observability credential candidate
+          ansible.builtin.file:
+            path: "{{ _observability_agent_credential_candidate.path }}"
+            owner: root
+            group: observability-agent
+            mode: "0750"
+            state: directory
+          changed_when: false
+          no_log: true
 
-    - name: Render bounded observability agent configuration
-      ansible.builtin.template:
-        src: prometheus.yml.j2
+        - name: Write candidate observability credential bundle
+          ansible.builtin.copy:
+            content: "{{ item.content }}"
+            dest: "{{ _observability_agent_credential_candidate.path }}/{{ item.name }}"
+            owner: root
+            group: root
+            mode: "0600"
+          loop:
+            - name: receiver-ca.crt
+              content: "{{ observability_secrets.receiver_ca_pem }}"
+            - name: client.crt
+              content: "{{ _observability_agent_senders[0].certificate_pem }}"
+            - name: client.key
+              content: "{{ _observability_agent_senders[0].private_key_pem }}"
+          no_log: true
+          diff: false
+          changed_when: false
+
+        - name: Verify candidate sender certificate authority
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/openssl
+              - verify
+              - -purpose
+              - sslclient
+              - -CAfile
+              - "{{ _observability_agent_credential_candidate.path }}/receiver-ca.crt"
+              - "{{ _observability_agent_credential_candidate.path }}/client.crt"
+          changed_when: false
+          no_log: true
+
+        - name: Read candidate sender certificate subject
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/openssl
+              - x509
+              - -noout
+              - -subject
+              - -nameopt
+              - RFC2253
+              - -in
+              - "{{ _observability_agent_credential_candidate.path }}/client.crt"
+          register: _observability_agent_client_subject
+          changed_when: false
+          no_log: true
+
+        - name: Read candidate sender certificate public key
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/openssl
+              - x509
+              - -pubkey
+              - -noout
+              - -in
+              - "{{ _observability_agent_credential_candidate.path }}/client.crt"
+          register: _observability_agent_certificate_public_key
+          changed_when: false
+          no_log: true
+
+        - name: Verify candidate sender private key
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/openssl
+              - pkey
+              - -pubout
+              - -in
+              - "{{ _observability_agent_credential_candidate.path }}/client.key"
+          register: _observability_agent_private_public_key
+          changed_when: false
+          no_log: true
+
+        - name: Require candidate identity and key to match the node authority
+          ansible.builtin.assert:
+            that:
+              - _observability_agent_client_subject.stdout | trim == 'subject=CN=' ~ observability_agent.node_id
+              - _observability_agent_certificate_public_key.stdout | trim == _observability_agent_private_public_key.stdout | trim
+            fail_msg: Observability sender certificate identity or private key does not match.
+          no_log: true
+
+        - name: Render bounded observability agent configuration candidate
+          ansible.builtin.set_fact:
+            _observability_agent_rendered_config: "{{ lookup('template', 'prometheus.yml.j2') }}"
+          no_log: true
+
+        - name: Write candidate observability configuration
+          ansible.builtin.copy:
+            content: "{{ _observability_agent_rendered_config }}"
+            dest: "{{ _observability_agent_credential_candidate.path }}/prometheus.yml"
+            owner: root
+            group: observability-agent
+            mode: "0640"
+          no_log: true
+          diff: false
+          changed_when: false
+
+        - name: Validate candidate observability configuration
+          ansible.builtin.command:
+            argv:
+              - /usr/local/bin/promtool-observability-agent
+              - check
+              - config
+              - --agent
+              - --syntax-only
+              - "{{ _observability_agent_credential_candidate.path }}/prometheus.yml"
+          changed_when: false
+          no_log: true
+
+        - name: Derive private observability configuration generation
+          ansible.builtin.set_fact:
+            _observability_agent_credential_generation: >-
+              {{ {'ca': observability_secrets.receiver_ca_pem,
+                  'certificate': _observability_agent_senders[0].certificate_pem,
+                  'key': _observability_agent_senders[0].private_key_pem,
+                  'config': _observability_agent_rendered_config} | to_json | hash('sha256') }}
+          no_log: true
+
+        - name: Inspect observability configuration generation
+          ansible.builtin.stat:
+            path: >-
+              {{ observability_agent.credential_dir }}/generations/{{
+                 _observability_agent_credential_generation }}
+            follow: false
+          register: _observability_agent_generation
+          no_log: true
+
+        - name: Atomically publish validated observability generation
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/python3
+              - -c
+              - |
+                import errno
+                import os
+                import sys
+
+                candidate, generation = sys.argv[1:3]
+                try:
+                    os.rename(candidate, generation)
+                except OSError as exc:
+                    if exc.errno in (errno.EEXIST, errno.ENOTEMPTY):
+                        raise SystemExit(75) from None
+                    raise
+                parent_fd = os.open(os.path.dirname(generation), os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(parent_fd)
+                finally:
+                    os.close(parent_fd)
+              - "{{ _observability_agent_credential_candidate.path }}"
+              - >-
+                {{ observability_agent.credential_dir }}/generations/{{
+                   _observability_agent_credential_generation }}
+          register: _observability_agent_generation_publish
+          when: not _observability_agent_generation.stat.exists
+          changed_when: _observability_agent_generation_publish.rc == 0
+          failed_when: _observability_agent_generation_publish.rc not in [0, 75]
+          no_log: true
+
+        - name: Reinspect complete observability configuration generation
+          ansible.builtin.stat:
+            path: >-
+              {{ observability_agent.credential_dir }}/generations/{{
+                 _observability_agent_credential_generation }}
+            follow: false
+          register: _observability_agent_generation
+          no_log: true
+
+        - name: Assert observability generation directory is immutable and private
+          ansible.builtin.assert:
+            that:
+              - _observability_agent_generation.stat.exists
+              - _observability_agent_generation.stat.isdir | default(false)
+              - not (_observability_agent_generation.stat.islnk | default(false))
+              - _observability_agent_generation.stat.uid | int == 0
+              - _observability_agent_generation.stat.gr_name == 'observability-agent'
+              - _observability_agent_generation.stat.mode == '0750'
+            fail_msg: Existing observability generation is unsafe.
+          no_log: true
+
+        - name: Inspect observability generation files
+          ansible.builtin.stat:
+            path: >-
+              {{ observability_agent.credential_dir }}/generations/{{
+                 _observability_agent_credential_generation }}/{{ item }}
+            follow: false
+          loop:
+            - receiver-ca.crt
+            - client.crt
+            - client.key
+            - prometheus.yml
+          register: _observability_agent_generation_files
+          no_log: true
+
+        - name: Assert observability generation files are exact private regular files
+          ansible.builtin.assert:
+            that:
+              - item.stat.isreg | default(false)
+              - not (item.stat.islnk | default(false))
+              - item.stat.uid | int == 0
+              - item.stat.nlink | int == 1
+              - item.stat.mode == ('0640' if item.item == 'prometheus.yml' else '0600')
+              - item.item != 'prometheus.yml' or item.stat.gr_name == 'observability-agent'
+            fail_msg: Existing observability generation file is unsafe.
+          loop: "{{ _observability_agent_generation_files.results }}"
+          no_log: true
+
+        - name: Read existing observability generation
+          ansible.builtin.slurp:
+            src: >-
+              {{ observability_agent.credential_dir }}/generations/{{
+                 _observability_agent_credential_generation }}/{{ item }}
+          loop:
+            - receiver-ca.crt
+            - client.crt
+            - client.key
+            - prometheus.yml
+          register: _observability_agent_existing_generation
+          no_log: true
+
+        - name: Require existing observability generation to match exact candidate
+          ansible.builtin.assert:
+            that:
+              - (_observability_agent_existing_generation.results[0].content | b64decode) == observability_secrets.receiver_ca_pem
+              - (_observability_agent_existing_generation.results[1].content | b64decode) == _observability_agent_senders[0].certificate_pem
+              - (_observability_agent_existing_generation.results[2].content | b64decode) == _observability_agent_senders[0].private_key_pem
+              - (_observability_agent_existing_generation.results[3].content | b64decode) == _observability_agent_rendered_config
+            fail_msg: Existing observability generation conflicts with its content identity.
+          no_log: true
+
+      always:
+        - name: Remove private observability credential candidate
+          ansible.builtin.file:
+            path: "{{ _observability_agent_credential_candidate.path }}"
+            state: absent
+          when: _observability_agent_credential_candidate.path is defined
+          changed_when: false
+          no_log: true
+
+    - name: Link observability agent configuration to the active generation
+      ansible.builtin.file:
+        src: "{{ observability_agent.credential_dir }}/current/prometheus.yml"
         dest: "{{ observability_agent.config_dir }}/prometheus.yml"
         owner: root
-        group: root
-        mode: "0644"
-      notify: Restart observability agent
+        group: observability-agent
+        state: link
+        force: true
 
     - name: Install schema-2 manifest adapter
       ansible.builtin.copy:
@@ -176,6 +461,14 @@
         group: root
         mode: "0755"
       notify: Restart observability agent adapter timer
+
+    - name: Install canonical observability metric manifest
+      ansible.builtin.copy:
+        src: "{{ role_path }}/../../../contract/observability-metric-manifest.example.json"
+        dest: "{{ observability_agent.config_dir }}/metric-manifest.json"
+        owner: root
+        group: root
+        mode: "0644"
 
     - name: Install observability agent units
       ansible.builtin.template:
@@ -188,10 +481,142 @@
         - observability-agent.service.j2
         - observability-agent-adapter.service.j2
         - observability-agent-adapter.timer.j2
+      register: _observability_agent_units
       notify:
         - Reload observability agent systemd
-        - Restart observability agent
         - Restart observability agent adapter timer
+
+    - name: Inspect active observability configuration generation
+      ansible.builtin.stat:
+        path: "{{ observability_agent.credential_dir }}/current"
+        follow: false
+      register: _observability_agent_previous_generation
+      no_log: true
+
+    - name: Assert active observability generation is absent or a managed symlink
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (_observability_agent_previous_generation.stat.exists | default(false)) or
+            (_observability_agent_previous_generation.stat.islnk | default(false))
+        fail_msg: Active observability generation is not a managed symlink.
+
+    - name: Inspect observability agent service activity
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/systemctl
+          - is-active
+          - --quiet
+          - observability-agent.service
+      register: _observability_agent_service_active
+      changed_when: false
+      failed_when: false
+
+    - name: Activate and verify observability configuration generation
+      block:
+        - name: Switch current observability credential generation
+          ansible.builtin.file:
+            src: "generations/{{ _observability_agent_credential_generation }}"
+            dest: "{{ observability_agent.credential_dir }}/current"
+            owner: root
+            group: root
+            state: link
+            force: true
+          register: _observability_agent_generation_switch
+          no_log: true
+
+        - name: Restart observability agent on the complete generation
+          ansible.builtin.systemd_service:
+            name: observability-agent.service
+            enabled: true
+            state: restarted
+            daemon_reload: true
+          when: >-
+            _observability_agent_generation_switch.changed or
+            _observability_agent_units.changed or
+            _observability_agent_service_active.rc != 0
+
+        - name: Wait for observability agent local readiness
+          ansible.builtin.uri:
+            url: "http://{{ observability_agent.web_listen }}/-/ready"
+            status_code: 200
+          register: _observability_agent_ready
+          retries: 15
+          delay: 1
+          until: _observability_agent_ready.status == 200
+      rescue:
+        - name: Restore previous observability generation
+          ansible.builtin.file:
+            src: "{{ _observability_agent_previous_generation.stat.lnk_source }}"
+            dest: "{{ observability_agent.credential_dir }}/current"
+            owner: root
+            group: root
+            state: link
+            force: true
+          when: _observability_agent_previous_generation.stat.islnk | default(false)
+          no_log: true
+
+        - name: Stop and disable failed first observability agent activation
+          ansible.builtin.systemd_service:
+            name: observability-agent.service
+            enabled: false
+            state: stopped
+            daemon_reload: true
+          when: not (_observability_agent_previous_generation.stat.islnk | default(false))
+
+        - name: Remove failed first observability generation activation
+          ansible.builtin.file:
+            path: "{{ observability_agent.credential_dir }}/current"
+            state: absent
+          when: not (_observability_agent_previous_generation.stat.islnk | default(false))
+          no_log: true
+
+        - name: Remove dangling failed first observability agent configuration
+          ansible.builtin.file:
+            path: "{{ observability_agent.config_dir }}/prometheus.yml"
+            state: absent
+          when: not (_observability_agent_previous_generation.stat.islnk | default(false))
+          no_log: true
+
+        - name: Restart restored observability generation
+          ansible.builtin.systemd_service:
+            name: observability-agent.service
+            state: restarted
+            daemon_reload: true
+          when: _observability_agent_previous_generation.stat.islnk | default(false)
+
+        - name: Verify restored observability generation readiness
+          ansible.builtin.uri:
+            url: "http://{{ observability_agent.web_listen }}/-/ready"
+            status_code: 200
+          register: _observability_agent_restored_ready
+          retries: 15
+          delay: 1
+          until: _observability_agent_restored_ready.status == 200
+          when: _observability_agent_previous_generation.stat.islnk | default(false)
+
+        - name: Inspect failed first observability agent activation state
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/systemctl
+              - show
+              - observability-agent.service
+              - --property=ActiveState
+              - --value
+          register: _observability_agent_failed_first_state
+          changed_when: false
+          when: not (_observability_agent_previous_generation.stat.islnk | default(false))
+
+        - name: Assert failed first observability agent activation is inactive
+          ansible.builtin.assert:
+            that:
+              - _observability_agent_failed_first_state.stdout | trim == 'inactive'
+            fail_msg: Failed first observability agent activation did not stop cleanly.
+          when: not (_observability_agent_previous_generation.stat.islnk | default(false))
+
+        - name: Refuse failed observability generation activation
+          ansible.builtin.fail:
+            msg: Observability agent generation failed readiness and was rolled back.
 
     - name: Enable and start observability agent sender
       ansible.builtin.systemd_service:

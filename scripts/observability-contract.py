@@ -39,7 +39,9 @@ FORBIDDEN_LABEL = re.compile(
     r"(?:^|_)(?:ip|address|endpoint|domain|sni|uuid|short_id|password|token|chat_id|client|user|username|destination|path|args|command|log)(?:_|$)",
     re.IGNORECASE,
 )
-ALLOWED_LABELS = frozenset({"node", "role", "profile", "policy", "severity", "vantage"})
+ALLOWED_LABELS = frozenset(
+    {"node", "role", "profile", "policy", "severity", "vantage", "state"}
+)
 EVIDENCE_STATES = frozenset(
     {
         "fresh",
@@ -314,8 +316,7 @@ def _canonical_topology(document: dict[str, Any]) -> dict[str, Any]:
     control = by_class["control-plane"][0]
     deadman = by_class["deadman"][0]
     if any(
-        control["failure_domain"] == node["failure_domain"]
-        for node in by_class["vpn"]
+        control["failure_domain"] == node["failure_domain"] for node in by_class["vpn"]
     ):
         raise ContractError("control-plane placement")
     if (
@@ -328,11 +329,17 @@ def _canonical_topology(document: dict[str, Any]) -> dict[str, Any]:
     for node in sorted(nodes.values(), key=lambda item: item["node_id"]):
         listeners = []
         for listener in node["public_listeners"]:
-            normalized = {key: value for key, value in listener.items() if value is not None}
+            normalized = {
+                key: value for key, value in listener.items() if value is not None
+            }
             listeners.append(normalized)
         canonical_nodes.append(
             {
-                **{key: value for key, value in node.items() if key != "public_listeners"},
+                **{
+                    key: value
+                    for key, value in node.items()
+                    if key != "public_listeners"
+                },
                 "public_listeners": sorted(
                     listeners,
                     key=lambda item: (
@@ -349,9 +356,7 @@ def _canonical_topology(document: dict[str, Any]) -> dict[str, Any]:
         "credential_mode": document["credential_mode"],
         "source_revision": document["source_revision"],
         "nodes": canonical_nodes,
-        "sentinels": sorted(
-            sentinels.values(), key=lambda item: item["sentinel_id"]
-        ),
+        "sentinels": sorted(sentinels.values(), key=lambda item: item["sentinel_id"]),
     }
 
 
@@ -500,9 +505,7 @@ def _evaluate_target(
     required = set(target["required_families"])
     if not required.issubset(seen_families):
         return "malformed", []
-    stale_after = min(
-        families[name]["stale_after_seconds"] for name in seen_families
-    )
+    stale_after = min(families[name]["stale_after_seconds"] for name in seen_families)
     if now - observed_at > stale_after:
         return "stale", []
     return "fresh", valid_samples

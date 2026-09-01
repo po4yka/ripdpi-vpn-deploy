@@ -86,8 +86,25 @@ def test_metric_manifest_schema_bounds_cardinality_at_evidence_state_maximum() -
 
     module.validate_document(schema, manifest)
     evidence_state["max_series"] = 2049
-    with pytest.raises(module.ContractError, match="document does not match its schema"):
+    with pytest.raises(
+        module.ContractError, match="document does not match its schema"
+    ):
         module.validate_document(schema, manifest)
+
+
+def test_agent_manifest_identity_state_is_a_bounded_allowed_label() -> None:
+    module = _module()
+    manifest, inventory, evidence = _documents()
+
+    families, _targets, _observations = module._validate_semantics(
+        manifest, inventory, evidence
+    )
+
+    assert families["vpn_observability_node_manifest_identity"]["labels"] == [
+        "node",
+        "role",
+        "state",
+    ]
 
 
 def _documents() -> tuple[dict, dict, dict]:
@@ -447,7 +464,10 @@ def test_negative_gauge_remains_valid(
     assert rc == 0
     assert stderr == ""
     assert json.loads(stdout)["states"] == {"fresh": 1}
-    assert "vpn_watchdog_collection_success{node=\"vpn-p0\",role=\"edge\"} -1" in output.read_text()
+    assert (
+        'vpn_watchdog_collection_success{node="vpn-p0",role="edge"} -1'
+        in output.read_text()
+    )
 
 
 def test_optional_emitted_family_uses_its_own_staleness_window(

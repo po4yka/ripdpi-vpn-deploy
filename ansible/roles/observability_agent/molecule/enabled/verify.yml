@@ -1,0 +1,187 @@
+---
+- name: Verify real observability agent
+  hosts: all
+  become: true
+  tasks:
+    - name: Wait for the loopback agent readiness endpoint
+      ansible.builtin.uri:
+        url: http://127.0.0.1:19090/-/ready
+        status_code: 200
+      register: observability_agent_ready
+      retries: 30
+      delay: 1
+      until: observability_agent_ready.status == 200
+
+    - name: Wait for authenticated remote-write arrival
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - >-
+            import json,pathlib,sys;
+            p=pathlib.Path('/var/lib/observability-fixture/receiver.log');
+            rows=[json.loads(x) for x in p.read_text().splitlines()] if p.exists() else [];
+            sys.exit(0 if any(r == {'path':'/remote-write/v1/nodes/node-fixture','cn':'node-fixture'} for r in rows) else 1)
+      register: observability_remote_write_arrival
+      changed_when: false
+      retries: 30
+      delay: 1
+      until: observability_remote_write_arrival.rc == 0
+
+    - name: Run schema-2 manifest adapter now
+      ansible.builtin.systemd_service:
+        name: observability-agent-adapter.service
+        state: started
+
+    - name: Read bounded adapter output
+      ansible.builtin.slurp:
+        src: /var/lib/node_exporter/textfile/observability-agent.prom
+      register: observability_adapter_output
+
+    - name: Assert runtime, credential, and redaction contract
+      ansible.builtin.assert:
+        that:
+          - "'vpn_observability_adapter_collection_success 1' in (observability_adapter_output.content | b64decode)"
+          - "'node=\"node-fixture\"' in (observability_adapter_output.content | b64decode)"
+          - "'127.0.0.1:19090' not in (observability_adapter_output.content | b64decode)"
+
+    - name: Inspect observability agent unit hardening
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/systemctl
+          - show
+          - observability-agent.service
+          - --property=User
+          - --property=ActiveState
+          - --property=NoNewPrivileges
+          - --property=ProtectSystem
+          - --property=PrivateDevices
+      register: observability_agent_unit
+      changed_when: false
+
+    - name: Assert observability agent unit is active and hardened
+      ansible.builtin.assert:
+        that:
+          - "'User=observability-agent' in observability_agent_unit.stdout_lines"
+          - "'ActiveState=active' in observability_agent_unit.stdout_lines"
+          - "'NoNewPrivileges=yes' in observability_agent_unit.stdout_lines"
+          - "'ProtectSystem=strict' in observability_agent_unit.stdout_lines"
+          - "'PrivateDevices=yes' in observability_agent_unit.stdout_lines"
+
+    - name: Capture authenticated receiver and remote-write counter baseline
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+            import json
+            import pathlib
+            import re
+            import urllib.request
+
+            metrics = urllib.request.urlopen(
+                "http://127.0.0.1:19090/metrics", timeout=2
+            ).read().decode()
+            def values(name):
+                return [float(match.group(1)) for match in re.finditer(
+                    r"^" + re.escape(name) + r"(?:[{][^}]*[}])? ([0-9.eE+-]+)$",
+                    metrics,
+                    re.M,
+                )]
+            receiver = pathlib.Path("/var/lib/observability-fixture/receiver.log")
+            rows = receiver.read_text().splitlines() if receiver.exists() else []
+            required = (
+                "prometheus_remote_storage_queue_highest_timestamp_seconds",
+                "prometheus_remote_storage_queue_highest_sent_timestamp_seconds",
+                "prometheus_remote_storage_samples_failed_total",
+                "prometheus_remote_storage_samples_retried_total",
+            )
+            if any(not values(name) for name in required):
+                raise SystemExit(2)
+            print(json.dumps({
+                "retry": max(
+                    max(values("prometheus_remote_storage_samples_failed_total")),
+                    max(values("prometheus_remote_storage_samples_retried_total")),
+                ),
+                "received": len(rows),
+            }, sort_keys=True))
+      register: observability_outage_baseline
+      changed_when: false
+
+    - name: Stop receiver to exercise bounded local WAL evidence
+      ansible.builtin.systemd_service:
+        name: observability-receiver-fixture.service
+        state: stopped
+
+    - name: Wait for a new remote-write retry and positive queue age
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+            import re
+            import sys
+            import urllib.request
+
+            metrics = urllib.request.urlopen(
+                "http://127.0.0.1:19090/metrics", timeout=2
+            ).read().decode()
+            def maximum(name):
+                values = [float(match.group(1)) for match in re.finditer(
+                    r"^" + re.escape(name) + r"(?:[{][^}]*[}])? ([0-9.eE+-]+)$",
+                    metrics,
+                    re.M,
+                )]
+                return max(values) if values else 0.0
+            age = maximum(
+                "prometheus_remote_storage_queue_highest_timestamp_seconds"
+            ) - maximum(
+                "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
+            )
+            retry = max(
+                maximum("prometheus_remote_storage_samples_failed_total"),
+                maximum("prometheus_remote_storage_samples_retried_total"),
+            )
+            raise SystemExit(0 if age > 0 and retry > float(sys.argv[1]) else 1)
+          - "{{ (observability_outage_baseline.stdout | from_json).retry }}"
+      register: observability_outage_evidence
+      changed_when: false
+      retries: 30
+      delay: 1
+      until: observability_outage_evidence.rc == 0
+
+    - name: Restore receiver after bounded outage
+      ansible.builtin.systemd_service:
+        name: observability-receiver-fixture.service
+        state: started
+
+    - name: Wait for queue drain and new authenticated receiver arrival
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+            import pathlib
+            import re
+            import sys
+            import urllib.request
+
+            metrics = urllib.request.urlopen(
+                "http://127.0.0.1:19090/metrics", timeout=2
+            ).read().decode()
+            pending = [float(match.group(1)) for match in re.finditer(
+                r"^prometheus_remote_storage_samples_pending(?:\{[^}]*\})? ([0-9.eE+-]+)$",
+                metrics,
+                re.M,
+            )]
+            receiver = pathlib.Path("/var/lib/observability-fixture/receiver.log")
+            received = len(receiver.read_text().splitlines()) if receiver.exists() else 0
+            raise SystemExit(
+                0 if pending and max(pending) == 0 and received > int(sys.argv[1]) else 1
+            )
+          - "{{ (observability_outage_baseline.stdout | from_json).received }}"
+      register: observability_recovered_evidence
+      changed_when: false
+      retries: 30
+      delay: 1
+      until: observability_recovered_evidence.rc == 0

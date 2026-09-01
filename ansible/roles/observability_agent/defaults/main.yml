@@ -12,15 +12,20 @@ observability_agent:
   receiver_origin: ""
   receiver_sni: ""
   install_root: /opt/observability-agent
+  promtool_install_root: /opt/observability-agent-promtool
   config_dir: /etc/observability-agent
   credential_dir: /etc/credstore/observability-agent
   wal_dir: /var/lib/observability-agent/wal
-  wal_max_size: 128MB
   wal_max_time: 1h
   web_listen: 127.0.0.1:19090
   scrape_interval: 30s
+  scrape_sample_limit: 2000
+  scrape_label_limit: 16
+  scrape_label_name_length_limit: 64
+  scrape_label_value_length_limit: 128
   queue_capacity: 5000
   queue_max_samples_per_send: 1000
   queue_batch_send_deadline: 5s
-  metric_name_allowlist: >-
-    ^(?:node_(?:cpu|memory|filesystem|load|time|boot|network|disk|filefd|uname)_.*|process_.*|go_.*|prometheus_.*|vpn_(?:xray_stats|observability_).*)$
+  memory_max: 512M
+  tasks_max: 64
+  nofile_limit: 65536

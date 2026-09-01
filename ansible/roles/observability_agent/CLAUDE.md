@@ -4,14 +4,14 @@
 
 **The sender is a pinned Prometheus Agent runtime** — runtime-release verifies the exact archive before activation. Empty version, URL, checksum, or architecture pin is a hard failure; this role never selects a latest release.
 
-**mTLS material crosses the service boundary through systemd credentials** — the rendered Prometheus configuration refers only to `$CREDENTIALS_DIRECTORY`; it never embeds a certificate, key, token, or environment-file fallback. The source files remain root-only and the certificate subject must equal the configured technical node ID.
+**mTLS material crosses the service boundary through systemd credentials** — the rendered Prometheus configuration refers only to the stable `/run/credentials/observability-agent.service` runtime directory; it never embeds a certificate, key, token, or environment-file fallback. The source files remain root-only and the certificate subject must equal the configured technical node ID.
 
 **The adapter consumes schema-2 node manifests only** — it exports a bounded, redacted manifest summary to node_exporter's existing loopback textfile path. It does not run watchdog, backup, or protocol probes.
 
 ## What's done well
 
 - The remote-write URL is constructed as one node-bound HTTPS path and SNI is supplied separately, so DNS routing cannot silently change the mTLS name.
-- Prometheus Agent is loopback-only, caps queue shards at four, and bounds WAL time and size.
+- Prometheus Agent is loopback-only, caps queue shards at four, and bounds WAL retention time.
 - Disable removes the sender's unit, configuration, credentials, adapter, and WAL without taking ownership of node_exporter, watchdog, or producer files.
 
 ## Pitfalls
