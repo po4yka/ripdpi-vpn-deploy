@@ -18,6 +18,12 @@ redacted evidence. It maps that evidence to bounded one-hot metrics and never
 executes probes or recomputes sentinel, variant, profile, or quorum semantics.
 It is separately opt-in and owns only its adapter, units, timer, and one
 textfile; disable preserves the canonical evaluator evidence.
+Alerting is separately opt-in. Prometheus evaluates immutable validated rules;
+Alertmanager remains loopback-only and receives its primary Telegram token only
+through a systemd credential. Telegram routing contains only bounded technical
+aliases and cannot authorize maintenance or infrastructure actions. The
+synthetic pipeline watchdog may target only an explicitly enabled loopback
+canary receiver; the independent dead-man sender remains a separate owner.
 
 ## What's done well
 
@@ -36,3 +42,6 @@ add a second target-discovery path, endpoint labels, notification routes, or
 liveness quorum logic here; protocol verdict adaptation remains external.
 Do not turn a stale, future, malformed, or unknown published verdict into a
 healthy, blocked, or rotation conclusion.
+Do not put Telegram tokens in Alertmanager YAML, argv, environment, metrics, or
+logs. A missing destination is a pre-mutation refusal, and disabling alerting
+removes its unit/config/credential surfaces without deleting Prometheus TSDB.

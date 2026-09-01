@@ -77,7 +77,7 @@
           - /var/lib/node_exporter/textfile/protocol-liveness.prom
       changed_when: false
 
-    - name: Inspect expected-target surfaces created by the enabled role lifecycle
+    - name: Inspect expected-target and alerting surfaces created by the enabled role lifecycle
       ansible.builtin.stat:
         path: "{{ item }}"
       loop:
@@ -88,9 +88,12 @@
         - /etc/observability-control-plane/expected-targets.json
         - /var/lib/node_exporter/textfile/observability-expected-targets.prom
         - /var/lib/node_exporter/textfile/observability-control-plane.prom
+        - /etc/systemd/system/observability-alertmanager.service
+        - /etc/observability-control-plane/alertmanager-current.yml
+        - /etc/observability-control-plane/credentials/telegram-bot-token
       register: enabled_expected_target_surfaces
 
-    - name: Require every expected-target surface before opt-out
+    - name: Require every expected-target and alerting surface before opt-out
       ansible.builtin.assert:
         that:
           - enabled_expected_target_surfaces.results | map(attribute='stat.exists') | list | min
@@ -101,6 +104,25 @@
         argv: [systemctl, is-enabled, --quiet, observability-control-plane-adapter.timer]
       changed_when: false
 
+    - name: Require loopback-only Alertmanager before opt-out
+      ansible.builtin.command:
+        argv: [systemctl, is-active, --quiet, observability-alertmanager]
+      changed_when: false
+
+    - name: Read generated Alertmanager config without exposing credential material
+      ansible.builtin.command:
+        argv: [cat, /etc/observability-control-plane/alertmanager-current.yml]
+      register: alertmanager_fixture_config
+      changed_when: false
+      no_log: true
+
+    - name: Require generated routing to reference only the systemd credential path
+      ansible.builtin.assert:
+        that:
+          - "'bot_token_file:' in alertmanager_fixture_config.stdout"
+          - "'molecule-token-not-real-value' not in alertmanager_fixture_config.stdout"
+      no_log: true
+
     - name: Seed a TSDB retention marker before opt-out
       ansible.builtin.copy:
         dest: /var/lib/observability-prometheus/molecule-retained
@@ -109,11 +131,13 @@
         group: prometheus
         mode: '0600'
 
-    - name: Opt out expected targets through the complete role contract
+    - name: Opt out expected targets and alerting through the complete role contract
       ansible.builtin.set_fact:
         observability_control_plane: >-
-          {{ observability_control_plane | combine(
-            {'expected_targets': observability_control_plane.expected_targets |
+          {{ observability_control_plane | combine({
+            'expected_targets': observability_control_plane.expected_targets |
+            combine({'enabled': false}),
+            'alerting': observability_control_plane.alerting |
             combine({'enabled': false})}, recursive=true) }}
       no_log: true
   roles:

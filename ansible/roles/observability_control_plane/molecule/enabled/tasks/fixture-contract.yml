@@ -17,6 +17,12 @@
   register: control_plane_fixture_archive
   changed_when: false
 
+- name: Read local Alertmanager fixture archive digest
+  ansible.builtin.command:
+    argv: [sha256sum, /var/tmp/observability-control-plane-fixture/alertmanager.tar.gz]
+  register: control_plane_alertmanager_fixture_archive
+  changed_when: false
+
 - name: Define complete enabled control-plane fixture contract
   ansible.builtin.set_fact:
     observability_control_plane:
@@ -50,6 +56,9 @@
         archive_members:
           amd64: prometheus-fixture/prometheus
           arm64: prometheus-fixture/prometheus
+        promtool_archive_members:
+          amd64: prometheus-fixture/promtool
+          arm64: prometheus-fixture/promtool
       tls:
         server_cert_pem: "{{ control_plane_fixture_tls.results[0].content | b64decode }}"
         server_key_pem: "{{ control_plane_fixture_tls.results[1].content | b64decode }}"
@@ -87,4 +96,45 @@
         output_path: /var/lib/node_exporter/textfile/protocol-liveness.prom
         stale_after_seconds: 180
         max_future_seconds: 60
+      alerting:
+        enabled: true
+        source_generation: cccccccccccccccccccccccccccccccccccccccc
+        listen: 127.0.0.1:9093
+        data_dir: /var/lib/observability-alertmanager
+        install_root: /opt/observability-alertmanager
+        binary_link: /usr/local/libexec/observability-alertmanager
+        amtool_install_root: /opt/observability-amtool
+        amtool_binary_link: /usr/local/libexec/observability-amtool
+        promtool_install_root: /opt/observability-promtool
+        promtool_binary_link: /usr/local/libexec/observability-promtool
+        credential_path: /etc/observability-control-plane/credentials/telegram-bot-token
+        alertmanager:
+          version: molecule-fixture-v1
+          urls:
+            amd64: file:///var/tmp/observability-control-plane-fixture/alertmanager.tar.gz
+            arm64: file:///var/tmp/observability-control-plane-fixture/alertmanager.tar.gz
+          sha256:
+            amd64: "{{ control_plane_alertmanager_fixture_archive.stdout.split()[0] }}"
+            arm64: "{{ control_plane_alertmanager_fixture_archive.stdout.split()[0] }}"
+          archive_members:
+            amd64: alertmanager-fixture/alertmanager
+            arm64: alertmanager-fixture/alertmanager
+          amtool_archive_members:
+            amd64: alertmanager-fixture/amtool
+            arm64: alertmanager-fixture/amtool
+        telegram:
+          bot_token: 123456789:molecule-token-not-real-value
+          chat_id: '-100000000001'
+          topic_id: 42
+          parse_mode: HTML
+          max_alerts: 5
+        group_wait: 30s
+        group_interval: 5m
+        critical_repeat_interval: 1h
+        warning_repeat_interval: 6h
+        recovery_stability: 3m
+        deadman:
+          enabled: false
+          receiver_url: http://127.0.0.1:19093/alerts
+          repeat_interval: 1m
   no_log: true

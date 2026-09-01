@@ -45,6 +45,10 @@
   loop: "{{ observability_control_plane.ingest_identities }}"
   no_log: true
 
+- name: Require the opt-in alerting contract before host mutation
+  ansible.builtin.include_tasks: alerting-contract.yml
+  when: observability_control_plane.alerting.enabled | bool
+
 - name: Create dedicated control-plane account
   ansible.builtin.group:
     name: "{{ observability_control_plane.service_group }}"
@@ -226,6 +230,14 @@
   when: >-
     not ((observability_control_plane.expected_targets |
     default({'enabled': false}, true)).enabled | default(false) | bool)
+
+- name: Configure bounded alerting and Telegram routing
+  ansible.builtin.include_tasks: alerting.yml
+  when: observability_control_plane.alerting.enabled | bool
+
+- name: Remove disabled alerting artifacts
+  ansible.builtin.include_tasks: alerting-disable.yml
+  when: not (observability_control_plane.alerting.enabled | bool)
 
 - name: Derive the immutable Prometheus generation from candidate content
   ansible.builtin.set_fact:

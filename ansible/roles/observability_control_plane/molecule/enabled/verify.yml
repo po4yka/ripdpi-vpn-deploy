@@ -48,6 +48,24 @@
       register: expected_target_opt_out_surfaces
       failed_when: expected_target_opt_out_surfaces.stat.exists
 
+    - name: Assert alerting opt-out removed only its owned runtime surfaces
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - /etc/systemd/system/observability-alertmanager.service
+        - /etc/observability-control-plane/alertmanager-current.yml
+        - /etc/observability-control-plane/alertmanager-previous.yml
+        - /etc/observability-control-plane/credentials/telegram-bot-token
+      register: alerting_opt_out_surfaces
+      failed_when: alerting_opt_out_surfaces.stat.exists
+
+    - name: Assert Alertmanager state remains after alerting opt-out
+      ansible.builtin.stat:
+        path: /var/lib/observability-alertmanager
+      register: retained_alertmanager_state
+      failed_when: not retained_alertmanager_state.stat.isdir
+
     - name: Assert TSDB content remains after expected-target opt-out
       ansible.builtin.command:
         argv: [test, -f, /var/lib/observability-prometheus/molecule-retained]

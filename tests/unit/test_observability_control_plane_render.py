@@ -159,13 +159,23 @@ def test_enabled_molecule_archive_matches_runtime_release_strip_contract() -> No
     )
     config = fixture[-1]["ansible.builtin.set_fact"]["observability_control_plane"]
 
-    assert (
-        'tar -C "$fixture" -czf "$fixture/prometheus.tar.gz" '
-        "prometheus-fixture/prometheus"
-    ) in prepare
+    assert "prometheus-fixture/prometheus prometheus-fixture/promtool" in prepare
+    assert ".alerting-fixture-v1" in prepare
     assert config["prometheus"]["archive_members"] == {
         "amd64": "prometheus-fixture/prometheus",
         "arm64": "prometheus-fixture/prometheus",
+    }
+    assert config["prometheus"]["promtool_archive_members"] == {
+        "amd64": "prometheus-fixture/promtool",
+        "arm64": "prometheus-fixture/promtool",
+    }
+    assert config["alerting"]["alertmanager"]["archive_members"] == {
+        "amd64": "alertmanager-fixture/alertmanager",
+        "arm64": "alertmanager-fixture/alertmanager",
+    }
+    assert config["alerting"]["alertmanager"]["amtool_archive_members"] == {
+        "amd64": "alertmanager-fixture/amtool",
+        "arm64": "alertmanager-fixture/amtool",
     }
     assert (
         "runtime_release_archive_strip_components: 1"

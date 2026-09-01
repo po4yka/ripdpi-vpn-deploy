@@ -26,6 +26,7 @@ observability_control_plane:
     urls: {amd64: "", arm64: ""}
     sha256: {amd64: "", arm64: ""}
     archive_members: {amd64: "", arm64: ""}
+    promtool_archive_members: {amd64: "", arm64: ""}
   tls:
     server_cert_pem: ""
     server_key_pem: ""
@@ -51,3 +52,36 @@ observability_control_plane:
     output_path: /var/lib/node_exporter/textfile/protocol-liveness.prom
     stale_after_seconds: 180
     max_future_seconds: 60
+  alerting:
+    enabled: false
+    source_generation: ""
+    listen: 127.0.0.1:9093
+    data_dir: /var/lib/observability-alertmanager
+    install_root: /opt/observability-alertmanager
+    binary_link: /usr/local/libexec/observability-alertmanager
+    amtool_install_root: /opt/observability-amtool
+    amtool_binary_link: /usr/local/libexec/observability-amtool
+    promtool_install_root: /opt/observability-promtool
+    promtool_binary_link: /usr/local/libexec/observability-promtool
+    credential_path: /etc/observability-control-plane/credentials/telegram-bot-token
+    alertmanager:
+      version: ""
+      urls: {amd64: "", arm64: ""}
+      sha256: {amd64: "", arm64: ""}
+      archive_members: {amd64: "", arm64: ""}
+      amtool_archive_members: {amd64: "", arm64: ""}
+    telegram:
+      bot_token: ""
+      chat_id: ""
+      topic_id: 0
+      parse_mode: HTML
+      max_alerts: 5
+    group_wait: 30s
+    group_interval: 5m
+    critical_repeat_interval: 1h
+    warning_repeat_interval: 6h
+    recovery_stability: 3m
+    deadman:
+      enabled: false
+      receiver_url: http://127.0.0.1:19093/alerts
+      repeat_interval: 1m
