@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import subprocess
 
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
 import yaml
 
 from template_render import merge_render_vars, render_template
@@ -34,6 +36,23 @@ def _render_with_toggle(enabled: bool) -> str:
     return render_template(TEMPLATE, variables)
 
 
+def _render_with_ansible_whitespace() -> str:
+    variables = merge_render_vars()
+    variables["vpn"] = {**variables["vpn"], "enable_tailnet_management": True}
+    variables["firewall_effective_ssh_ports"] = [22022]
+    variables["public_listener_contract"] = []
+    environment = Environment(
+        loader=FileSystemLoader(str(TEMPLATE.parent)),
+        undefined=StrictUndefined,
+        keep_trailing_newline=True,
+        trim_blocks=True,
+    )
+    environment.tests["match"] = lambda value, pattern: bool(
+        re.search(pattern, str(value))
+    )
+    return environment.get_template(TEMPLATE.name).render(**variables)
+
+
 def test_empty_tailnet_fragment_is_inert_and_declares_only_typed_sets() -> None:
     rendered = _render()
     fragment = EMPTY_FRAGMENT.read_text()
@@ -60,6 +79,9 @@ def test_empty_tailnet_fragment_is_inert_and_declares_only_typed_sets() -> None:
 
 def test_tailnet_sets_accept_only_exact_host_prefixes_on_existing_ssh_port() -> None:
     rendered = _render()
+    ansible_rendered_lines = _render_with_ansible_whitespace().splitlines()
+    rendered_lines = rendered.splitlines()
+    template_source = TEMPLATE.read_text()
     committed_fragment = """# vpn-tailnet-ssh-sets schema=1
 set vpn_tailnet_ssh_v4 {
   type ipv4_addr
@@ -76,6 +98,18 @@ set vpn_tailnet_ssh_v6 {
 
     assert "100.64.10.20/32, 100.64.10.21/32" in committed_fragment
     assert "fd7a:115c:a1e0::1234/128" in committed_fragment
+    assert "\n{% if vpn.enable_tailnet_management | default(false) %}\n" in template_source
+    assert "\n{%- if vpn.enable_tailnet_management | default(false) %}\n" not in template_source
+    assert "    meta l4proto ipv6-icmp icmpv6 type echo-request accept" in rendered_lines
+    assert (
+        '    iifname "tailscale0" tcp dport 22022 ip saddr @vpn_tailnet_ssh_v4 accept'
+        in rendered_lines
+    )
+    assert "    meta l4proto ipv6-icmp icmpv6 type echo-request accept" in ansible_rendered_lines
+    assert (
+        '    iifname "tailscale0" tcp dport 22022 ip saddr @vpn_tailnet_ssh_v4 accept'
+        in ansible_rendered_lines
+    )
     assert 'iifname "tailscale0" tcp dport 22022 ip saddr @vpn_tailnet_ssh_v4 accept' in rendered
     assert 'iifname "tailscale0" tcp dport 22022 ip6 saddr @vpn_tailnet_ssh_v6 accept' in rendered
     assert 'iifname "tailscale0" tcp dport 22022 accept' not in rendered

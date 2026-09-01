@@ -56,6 +56,8 @@ table inet filter {
     meta l4proto ipv6-icmp icmpv6 type nd-router-advert ip6 saddr fe80::/10 ip6 hoplimit 255 accept
     meta l4proto ipv6-icmp icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert } ip6 hoplimit 255 accept
     meta l4proto ipv6-icmp icmpv6 type echo-request accept
+
+
     # A stale or unmanaged overlay interface never inherits the public SSH
     # allowlist. Exact managed Tailnet sources were accepted above.
     iifname "tailscale0" tcp dport 22 drop

@@ -78,3 +78,6 @@ preserve baseline bytes. The rule-bearing render is no_log with diff disabled.
   does not set `ansible_check_mode`. Test-only role inclusion must set the
   explicit `_firewall_task_check_mode` context so validation follows the same
   branch as a real `ansible-playbook --check` run.
+- **Do not left-trim before nft rule blocks** — `{%- if` can join the first
+  conditional rule to the preceding terminal statement under Ansible's Jinja
+  whitespace policy. Preserve a real newline before every emitted rule.

@@ -129,7 +129,7 @@ table inet filter {
     meta l4proto ipv6-icmp icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert } ip6 hoplimit 255 accept
     meta l4proto ipv6-icmp icmpv6 type echo-request accept
 
-{%- if vpn.enable_tailnet_management | default(false) %}
+{% if vpn.enable_tailnet_management | default(false) %}
     iifname "tailscale0" tcp dport {{ ssh_port }} ip saddr @vpn_tailnet_ssh_v4 accept
     iifname "tailscale0" tcp dport {{ ssh_port }} ip6 saddr @vpn_tailnet_ssh_v6 accept
 {% endif %}
