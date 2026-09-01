@@ -1,9 +1,9 @@
 ---
 task_id: SEC-1787916931540401
 change: sec-1787916931540401-restricted-admin-network-rollout
-commit_sha: null
-local: required
-local_evidence: null
+commit_sha: e265689c83ca3ea16b8d84b19574000ea597bd3d
+local: passed
+local_evidence: the combined-tree make -j1 check passed with 2969 Python tests, one existing skip, 55 Bats tests, 184 Rust release tests and Clippy; isolated profile stopped and context and config were unchanged; log SHA256 0f31ada651e9c771887691eebb5701add05ac7894f25f0f37840385f38454fe5
 remote_ci: required
 remote_ci_evidence: null
 dry_run: required
@@ -27,8 +27,8 @@ artifact_evidence: source and installed configuration only; no release binary ar
 | REQ-ADMIN-ISOLATION | SEC-1787917605386179 | Opt-in controller snapshots resolver bytes, canonical default routes and full `sshd -T`; unit and Molecule tests cover exact disabled DNS/routes/exit-node/Tailscale-SSH/netfilter preferences, rollback and unchanged repeat | local source and synthetic Molecule passed; real staged resolver, routing, host-key and dual-path SSH comparisons pending |
 | REQ-ADMIN-SCOPE | SEC-1787917605386179 | Exact canonical Tailnet source validation and guest nftables render on the existing effective SSH port; full Tailnet policy review plus approved/unapproved device connection tests | local guest-source policy passed; complete ACL diff and positive/negative live policy tests pending |
 | REQ-ADMIN-MIGRATION | SEC-1787917604306451 | 301 affected planner/core/adapter tests plus pinned Debian 13 and Ubuntu 24.04 packaged-main checks include real OpenSSH full effective parity, custom port, unknown-layout, bounded execution, read-set races and four-file crash boundaries | local source and packaged-main checks passed; complete local, hosted and staging pending |
-| REQ-ADMIN-ROLLBACK | SEC-1787917604868749 | Installation/upgrade and earlier fault tests passed; native apply reproduced a readiness contention refusal, so the activation step is reopened pending the corrected positive path | readiness correction and migration/confirm/timeout acceptance pending; guest firewall and real reboot remain pending |
-| REQ-ADMIN-PROMOTION | SEC-1787917605886845 | Exact-node selector, fresh strict SSH, required DNS/VPN probes and external provider rollback evidence | pending |
+| REQ-ADMIN-ROLLBACK | SEC-1787917604868749 | Durable fixed-path recovery, interruption reconciliation, exact guest nftables rollback and provider-side timed executor | source and isolated native checks passed; staging reboot pending |
+| REQ-ADMIN-PROMOTION | SEC-1787917605886845 | Exact-node selector, frozen strict transport, required DNS/VPN probes, private capability-bound provider rollback and promotion receipt | source passed; staging and live pending |
 | REQ-ADMIN-EVIDENCE | SEC-1788028226822310 | 135 focused tests cover exact authenticated API-principal binding before Terraform, fixed 36/44/47-hour deadlines, ancestor-symlink and inode-replacement refusal, manifest permission/identity/state-digest failures, backup/secondary-IP/additional-resource refusal in state and refreshed plan, exact-environment binding, pre-Terraform evidence reservation/release, private same-inode plan inspection/apply, exact-ID delete-only checks, inventory preservation, categorical audit ordering and bounded authenticated provider-absence outcomes | focused and full local source gates passed; exact hosted CI, staging deletion and account billing observation remain pending |
 | REQ-ADMIN-EVIDENCE | SEC-1787917606418274 | Real isolated staging login, forced disconnect, reboot recovery and repeat rollback before fleet promotion | pending |
 
@@ -264,3 +264,15 @@ parser/bootstrap evidence only: cloud-final interruption/reboot, ordinary
 baseline transaction wiring, fresh TCP SSH and staging are not proved.
 
 Local source work is authorized. No local test implies staging or live acceptance. Provisioning waits for available approved executor, verified actual cost/credit, exact-resource cleanup and the approved deadline; policy application waits for a fresh separately approved ACL diff. The serial fleet step remains open until observed direct and Tailnet SSH and actual VPN probes all pass.
+
+## Final combined source boundary
+
+The combined candidate adds exact Tailnet source sets, a durable guest
+transaction, a timed provider rollback executor, strict frozen-transport
+promotion, and fail-closed boot recovery required before nftables. Executor
+reuse binds the provider target, exact Terraform bytes, and a domain-separated
+private capability fingerprint; raw provider credentials are never persisted.
+Focused network and AWG tests, production `ansible-lint`, Python compilation,
+and independent security rereview passed. This remains source evidence: real
+staging disconnect/reboot/rollback and serial fleet emergency and VPN-path
+checks are still mandatory.

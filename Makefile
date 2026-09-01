@@ -34,6 +34,45 @@ $(error network exposure review inputs must be literal values)
 endif
 endif
 
+# Tailnet promotion accepts one private config path and ambient provider
+# capabilities. Capture them before includes and eager assignments can expand
+# command-line Make syntax.
+ifneq ($(filter tailnet-network-promote,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error Tailnet network promotion requires exactly one Make goal)
+endif
+_TAILNET_NETWORK_ALLOWED_COMMAND_VARIABLES := TAILNET_NETWORK_CONFIG
+_TAILNET_NETWORK_COMMAND_VARIABLES := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
+_TAILNET_NETWORK_FORBIDDEN_COMMAND_VARIABLES := $(filter-out $(_TAILNET_NETWORK_ALLOWED_COMMAND_VARIABLES),$(_TAILNET_NETWORK_COMMAND_VARIABLES))
+ifneq ($(filter-out undefined environment,$(origin UPCLOUD_TOKEN)),)
+$(error Tailnet network promotion provider credentials must come from the environment)
+endif
+ifneq ($(strip $(_TAILNET_NETWORK_FORBIDDEN_COMMAND_VARIABLES)),)
+$(error Tailnet network promotion accepts command-line values only for TAILNET_NETWORK_CONFIG)
+endif
+_TAILNET_NETWORK_LITERAL_INPUTS := $(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)
+override TAILNET_NETWORK_CONFIG := $(value TAILNET_NETWORK_CONFIG)
+override ENV := $(value ENV)
+override PROVIDER := $(value PROVIDER)
+override HOME := $(value HOME)
+override DEPLOY_SOURCE_REVISION :=
+override DEPLOYABLE_SOURCE_DIGEST :=
+override UPCLOUD_TOKEN := $(value UPCLOUD_TOKEN)
+export TAILNET_NETWORK_CONFIG UPCLOUD_TOKEN
+unexport UPCLOUD_USERNAME UPCLOUD_PASSWORD UPCLOUD_API_USERNAME UPCLOUD_API_PASSWORD
+unexport MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+ifneq ($(findstring $$,$(_TAILNET_NETWORK_LITERAL_INPUTS)),)
+$(error Tailnet network promotion inputs must be literal values)
+endif
+ifneq ($(findstring ",$(_TAILNET_NETWORK_LITERAL_INPUTS)),)
+$(error Tailnet network promotion inputs must be literal values)
+endif
+ifneq ($(findstring ',$(_TAILNET_NETWORK_LITERAL_INPUTS)),)
+$(error Tailnet network promotion inputs must be literal values)
+endif
+endif
+
 # Disposable liveness lifecycle inputs are controller data, not Make syntax.
 # Capture them before trusted includes and eager source-identity assignments.
 _DISPOSABLE_LIVENESS_GOALS := prepare-disposable-liveness install-disposable-liveness-sentinel protocol-liveness-disposable deonboard-disposable-liveness
@@ -129,7 +168,7 @@ endif
 
 # Tailnet enrollment is an ambient one-node capability. Reject command-line
 # Make data before it can enter implicit exports or recipe expansion.
-ifneq ($(filter deploy dry-run deploy-canary,$(MAKECMDGOALS)),)
+ifneq ($(filter deploy dry-run deploy-canary tailnet-network-promote,$(MAKECMDGOALS)),)
 ifneq ($(filter-out undefined environment,$(origin TAILSCALE_AUTH_KEY)),)
 $(error Tailnet enrollment credentials must come from the environment)
 endif
@@ -171,7 +210,7 @@ INSPECT_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini
 INSPECT_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
 export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 
-.PHONY: help init validate plan apply inventory wait decrypt require-inventory require-clean-source validate-ansible-extra-vars dry-run deploy backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
+.PHONY: help init validate plan apply inventory wait decrypt require-inventory require-clean-source validate-ansible-extra-vars dry-run deploy tailnet-network-promote backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
         pre-deploy-check network-exposure-review \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
@@ -410,6 +449,7 @@ override ANSIBLE_EXTRA_VARS_FILE := $(if $(filter file default undefined,$(origi
 override INSPECT_KNOWN_HOSTS := $(if $(filter file default undefined,$(origin INSPECT_KNOWN_HOSTS)),$(INSPECT_KNOWN_HOSTS),$(value INSPECT_KNOWN_HOSTS))
 override DEPLOY_SSH_CONTEXTS_FILE := $(value DEPLOY_SSH_CONTEXTS_FILE)
 override DEPLOY_PROMOTION_CONFIG_FILE := $(value DEPLOY_PROMOTION_CONFIG_FILE)
+override TAILNET_NETWORK_CONFIG := $(value TAILNET_NETWORK_CONFIG)
 endif
 deploy dry-run deploy-canary: override DEPLOY_SOURCE_REVISION :=
 deploy dry-run deploy-canary: override DEPLOYABLE_SOURCE_DIGEST :=
@@ -428,6 +468,10 @@ dry-run:
 
 deploy:
 	@python3 scripts/deploy-controller.py deploy
+
+tailnet-network-promote:
+	@test -n "$$TAILNET_NETWORK_CONFIG" || { echo "TAILNET_NETWORK_CONFIG required"; exit 1; }
+	@python3 scripts/tailnet-network-controller.py --config "$$TAILNET_NETWORK_CONFIG"
 
 # Capture caller data as simple variables before implicit environment export can
 # expand Make functions. Repository-defined default paths still resolve normally.

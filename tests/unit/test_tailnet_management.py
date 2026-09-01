@@ -99,16 +99,23 @@ def test_firewall_allows_only_exact_approved_tailnet_sources() -> None:
     )
 
     assert (
-        'iifname "tailscale0" tcp dport 22022 ip saddr 100.64.10.20 accept' in rendered
+        'iifname "tailscale0" tcp dport 22022 ip saddr '
+        "@vpn_tailnet_ssh_v4 accept" in rendered
     )
     assert (
-        'iifname "tailscale0" tcp dport 22022 ' "ip6 saddr fd7a:115c:a1e0::1234 accept"
-    ) in rendered
+        'iifname "tailscale0" tcp dport 22022 ip6 saddr '
+        "@vpn_tailnet_ssh_v6 accept" in rendered
+    )
+    # Reviewed sources are transaction-owned fragment data. The baseline
+    # template must never interpolate them into the main ruleset directly.
+    assert "100.64.10.20" not in rendered
+    assert "fd7a:115c:a1e0::1234" not in rendered
     assert 'iifname "tailscale0" accept' not in rendered
     tailnet_drop = 'iifname "tailscale0" tcp dport 22022 drop'
     public_v4 = "tcp dport 22022 ip saddr { 0.0.0.0/0 } accept"
     public_v6 = "tcp dport 22022 ip6 saddr { ::/0 } accept"
-    assert rendered.index("ip saddr 100.64.10.20 accept") < rendered.index(tailnet_drop)
+    assert rendered.index("@vpn_tailnet_ssh_v4 accept") < rendered.index(tailnet_drop)
+    assert rendered.index("@vpn_tailnet_ssh_v6 accept") < rendered.index(tailnet_drop)
     assert rendered.index(tailnet_drop) < rendered.index(public_v4)
     assert rendered.index(tailnet_drop) < rendered.index(public_v6)
     assert 'iifname != "tailscale0"' not in rendered

@@ -1,4 +1,10 @@
 ---
+- name: Resolve effective firewall check-mode context
+  ansible.builtin.set_fact:
+    _firewall_effective_check_mode: >-
+      {{ ansible_check_mode or (_firewall_task_check_mode | default(false) | bool) }}
+  changed_when: false
+
 # OS-level firewall: declarative nftables, validate-before-reload.
 # Hypervisor firewall (provider-specific) is the outer layer; this is
 # the inner layer co-located with the workload.
@@ -21,8 +27,27 @@
       }}
   delegate_to: localhost
   become: false
+  register: _firewall_tailnet_sources_validation
   changed_when: false
+  check_mode: false
+  no_log: true
   when: vpn.enable_tailnet_management | default(false) | bool
+
+- name: Record approved Tailnet SSH sets fragment
+  ansible.builtin.set_fact:
+    _firewall_tailnet_initial_fragment: "{{ (_firewall_tailnet_sources_validation.stdout | from_json).fragment }}"
+  changed_when: false
+  no_log: true
+  when: vpn.enable_tailnet_management | default(false) | bool
+
+- name: Record inert Tailnet SSH sets fragment when management is disabled
+  ansible.builtin.set_fact:
+    _firewall_tailnet_initial_fragment: >-
+      {{ lookup('ansible.builtin.file',
+                role_path ~ '/files/vpn-tailnet-ssh-sets.empty.nft',
+                rstrip=False) }}
+  changed_when: false
+  when: not (vpn.enable_tailnet_management | default(false) | bool)
 
 - name: Validate firewall egress policy mode
   ansible.builtin.assert:
@@ -82,6 +107,298 @@
     - _firewall_ufw_binary.stat.exists
     - "'Status: active' in _firewall_ufw_status.stdout"
   changed_when: true
+
+- name: Inspect Tailnet SSH sets include directory before firewall mutation
+  ansible.builtin.stat:
+    path: /etc/nftables.d
+    follow: false
+    get_attributes: false
+    get_checksum: false
+    get_mime: false
+  register: _firewall_nftables_include_dir
+  changed_when: false
+
+- name: Refuse unsafe Tailnet SSH sets include directory
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (_firewall_nftables_include_dir.stat.exists | default(false)) or
+        (_firewall_nftables_include_dir.stat.isdir | default(false))
+      - >-
+        not (_firewall_nftables_include_dir.stat.exists | default(false)) or
+        not (_firewall_nftables_include_dir.stat.islnk | default(false))
+      - >-
+        not (_firewall_nftables_include_dir.stat.exists | default(false)) or
+        _firewall_nftables_include_dir.stat.uid == 0
+      - >-
+        not (_firewall_nftables_include_dir.stat.exists | default(false)) or
+        _firewall_nftables_include_dir.stat.gid == 0
+      - >-
+        not (_firewall_nftables_include_dir.stat.exists | default(false)) or
+        _firewall_nftables_include_dir.stat.mode == '0755'
+      - >-
+        not (_firewall_nftables_include_dir.stat.exists | default(false)) or
+        not (_firewall_nftables_include_dir.stat.wgrp | default(false))
+      - >-
+        not (_firewall_nftables_include_dir.stat.exists | default(false)) or
+        not (_firewall_nftables_include_dir.stat.woth | default(false))
+    fail_msg: Tailnet SSH sets include directory must be a real directory.
+
+- name: Create Tailnet SSH sets include directory when absent
+  ansible.builtin.file:
+    path: /etc/nftables.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: not (_firewall_nftables_include_dir.stat.exists | default(false))
+
+- name: Inspect Tailnet SSH sets fragment before firewall mutation
+  ansible.builtin.stat:
+    path: /etc/nftables.d/vpn-tailnet-ssh-sets.nft
+    follow: false
+    get_attributes: false
+    get_checksum: false
+    get_mime: false
+  register: _firewall_tailnet_ssh_sets_stat
+  changed_when: false
+
+- name: Record whether Tailnet SSH sets fragment is absent
+  ansible.builtin.set_fact:
+    _firewall_tailnet_ssh_sets_was_absent: >-
+      {{ not (_firewall_tailnet_ssh_sets_stat.stat.exists | default(false)) }}
+  changed_when: false
+
+- name: Refuse unsafe Tailnet SSH sets fragment metadata
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (_firewall_tailnet_ssh_sets_stat.stat.exists | default(false)) or
+        (_firewall_tailnet_ssh_sets_stat.stat.isreg | default(false))
+      - >-
+        not (_firewall_tailnet_ssh_sets_stat.stat.exists | default(false)) or
+        not (_firewall_tailnet_ssh_sets_stat.stat.islnk | default(false))
+      - >-
+        not (_firewall_tailnet_ssh_sets_stat.stat.exists | default(false)) or
+        _firewall_tailnet_ssh_sets_stat.stat.uid == 0
+      - >-
+        not (_firewall_tailnet_ssh_sets_stat.stat.exists | default(false)) or
+        _firewall_tailnet_ssh_sets_stat.stat.gid == 0
+      - >-
+        not (_firewall_tailnet_ssh_sets_stat.stat.exists | default(false)) or
+        _firewall_tailnet_ssh_sets_stat.stat.mode == '0644'
+      - >-
+        not (_firewall_tailnet_ssh_sets_stat.stat.exists | default(false)) or
+        not (_firewall_tailnet_ssh_sets_stat.stat.wgrp | default(false))
+      - >-
+        not (_firewall_tailnet_ssh_sets_stat.stat.exists | default(false)) or
+        not (_firewall_tailnet_ssh_sets_stat.stat.woth | default(false))
+    fail_msg: Tailnet SSH sets fragment must be a root-owned regular mode-0644 file.
+
+- name: Install approved Tailnet SSH sets fragment when absent
+  ansible.builtin.copy:
+    content: "{{ _firewall_tailnet_initial_fragment }}"
+    dest: /etc/nftables.d/vpn-tailnet-ssh-sets.nft
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+  no_log: true
+
+- name: Install Tailnet firewall transaction runtime directory
+  ansible.builtin.file:
+    path: /usr/local/lib/vpn-tailnet-network
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install Tailnet firewall transaction helper
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../scripts/tailnet-network-guest.py"
+    dest: /usr/local/lib/vpn-tailnet-network/tailnet-network-guest.py
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install private Tailnet firewall transaction state directory
+  ansible.builtin.file:
+    path: /var/lib/vpn-tailnet-network
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install Tailnet firewall recovery units
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - vpn-tailnet-network-boot-recover.service
+    - vpn-tailnet-network-recover.service
+    - vpn-tailnet-network-recover.timer
+  register: _firewall_tailnet_recovery_units
+  when: ansible_facts.get('virtualization_type', '') != 'docker'
+
+- name: Install nftables required-dependency directory for boot recovery
+  ansible.builtin.file:
+    path: /etc/systemd/system/nftables.service.requires
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ansible_facts.get('virtualization_type', '') != 'docker'
+
+- name: Install exact nftables boot recovery requirement
+  # This is deliberately independent of the unit copy result: an interrupted
+  # upgrade can persist new unit bytes before its RequiredBy link is created.
+  ansible.builtin.file:
+    src: /etc/systemd/system/vpn-tailnet-network-boot-recover.service
+    dest: /etc/systemd/system/nftables.service.requires/vpn-tailnet-network-boot-recover.service
+    state: link
+    owner: root
+    group: root
+    force: "{{ _firewall_effective_check_mode | bool }}"
+  register: _firewall_tailnet_boot_required_by
+  when: ansible_facts.get('virtualization_type', '') != 'docker'
+
+- name: Reload systemd after Tailnet recovery dependency changes
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when:
+    - ansible_facts.get('virtualization_type', '') != 'docker'
+    - >-
+      _firewall_tailnet_recovery_units.changed or
+      _firewall_tailnet_boot_required_by.changed
+
+- name: Enable persistent Tailnet firewall recovery
+  ansible.builtin.systemd_service:
+    name: "{{ item.name }}"
+    enabled: true
+    state: "{{ item.state }}"
+  loop:
+    - {name: vpn-tailnet-network-boot-recover.service, state: stopped}
+    - {name: vpn-tailnet-network-recover.timer, state: started}
+  when: ansible_facts.get('virtualization_type', '') != 'docker'
+
+- name: Validate bundled empty Tailnet SSH sets fragment for clean check mode
+  ansible.builtin.assert:
+    that:
+      - >-
+        lookup('ansible.builtin.file', role_path ~ '/files/vpn-tailnet-ssh-sets.empty.nft', rstrip=False) ==
+        '# vpn-tailnet-ssh-sets schema=1\n'
+        ~ 'set vpn_tailnet_ssh_v4 {\n'
+        ~ '  type ipv4_addr\n'
+        ~ '  flags interval\n'
+        ~ '}\n\n'
+        ~ 'set vpn_tailnet_ssh_v6 {\n'
+        ~ '  type ipv6_addr\n'
+        ~ '  flags interval\n'
+        ~ '}\n'
+    fail_msg: Bundled empty Tailnet SSH sets fragment is not canonical schema-1.
+  when:
+    - _firewall_effective_check_mode | bool
+    - _firewall_tailnet_ssh_sets_was_absent | bool
+
+- name: Reinspect Tailnet SSH sets fragment immediately before nftables render
+  ansible.builtin.stat:
+    path: /etc/nftables.d/vpn-tailnet-ssh-sets.nft
+    follow: false
+    get_attributes: false
+    get_checksum: false
+    get_mime: false
+  register: _firewall_tailnet_ssh_sets_final_stat
+  changed_when: false
+  when: not ((_firewall_effective_check_mode | bool) and (_firewall_tailnet_ssh_sets_was_absent | bool))
+
+- name: Refuse unsafe final Tailnet SSH sets fragment metadata
+  ansible.builtin.assert:
+    that:
+      - _firewall_tailnet_ssh_sets_final_stat.stat.isreg | default(false)
+      - not (_firewall_tailnet_ssh_sets_final_stat.stat.islnk | default(false))
+      - _firewall_tailnet_ssh_sets_final_stat.stat.uid == 0
+      - _firewall_tailnet_ssh_sets_final_stat.stat.gid == 0
+      - _firewall_tailnet_ssh_sets_final_stat.stat.mode == '0644'
+      - not (_firewall_tailnet_ssh_sets_final_stat.stat.wgrp | default(false))
+      - not (_firewall_tailnet_ssh_sets_final_stat.stat.woth | default(false))
+    fail_msg: Tailnet SSH sets fragment changed to unsafe metadata before nftables render.
+  when: not ((_firewall_effective_check_mode | bool) and (_firewall_tailnet_ssh_sets_was_absent | bool))
+
+- name: Read final Tailnet SSH sets fragment
+  ansible.builtin.slurp:
+    src: /etc/nftables.d/vpn-tailnet-ssh-sets.nft
+  register: _firewall_tailnet_ssh_sets_existing
+  changed_when: false
+  no_log: true
+  when: not ((_firewall_effective_check_mode | bool) and (_firewall_tailnet_ssh_sets_was_absent | bool))
+
+- name: Refuse unsafe or foreign Tailnet SSH sets fragment
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import ipaddress
+        import re
+        import sys
+
+        source = sys.stdin.read()
+        match = re.fullmatch(
+            r"# vpn-tailnet-ssh-sets schema=1\n"
+            r"set vpn_tailnet_ssh_v4 \{\n"
+            r"  type ipv4_addr\n"
+            r"  flags interval\n"
+            r"(?:  elements = \{ (?P<v4>[^\s,]+/32(?:, [^\s,]+/32)*) \}\n)?"
+            r"\}\n\n"
+            r"set vpn_tailnet_ssh_v6 \{\n"
+            r"  type ipv6_addr\n"
+            r"  flags interval\n"
+            r"(?:  elements = \{ (?P<v6>[^\s,]+/128(?:, [^\s,]+/128)*) \}\n)?"
+            r"\}\n$",
+            source,
+        )
+        if not match:
+            raise SystemExit("fragment is not schema-1")
+
+        def parse(values, version, prefix):
+            tokens = [] if values is None else values.split(", ")
+            networks = []
+            for token in tokens:
+                network = ipaddress.ip_network(token, strict=True)
+                if network.version != version or network.prefixlen != prefix or str(network) != token:
+                    raise SystemExit("fragment has non-canonical source")
+                networks.append(network)
+            canonical = sorted({str(network) for network in networks}, key=lambda token: int(ipaddress.ip_network(token).network_address))
+            if tokens != canonical:
+                raise SystemExit("fragment sources are not sorted unique canonical prefixes")
+            return canonical
+
+        v4 = parse(match.group("v4"), 4, 32)
+        v6 = parse(match.group("v6"), 6, 128)
+        elements = lambda values: "" if not values else "  elements = { " + ", ".join(values) + " }\n"
+        canonical = (
+            "# vpn-tailnet-ssh-sets schema=1\n"
+            "set vpn_tailnet_ssh_v4 {\n"
+            "  type ipv4_addr\n"
+            "  flags interval\n"
+            f"{elements(v4)}"
+            "}\n\n"
+            "set vpn_tailnet_ssh_v6 {\n"
+            "  type ipv6_addr\n"
+            "  flags interval\n"
+            f"{elements(v6)}"
+            "}\n"
+        )
+        if source != canonical:
+            raise SystemExit("fragment bytes are not canonical")
+    stdin: "{{ _firewall_tailnet_ssh_sets_existing.content | b64decode }}"
+    stdin_add_newline: false
+  changed_when: false
+  no_log: true
+  when: not ((_firewall_effective_check_mode | bool) and (_firewall_tailnet_ssh_sets_was_absent | bool))
 
 - name: Render nftables config
   ansible.builtin.template:

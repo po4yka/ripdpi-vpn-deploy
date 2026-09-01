@@ -14,6 +14,21 @@
         cmd: nft -c -f /etc/nftables.conf
       changed_when: false
 
+    - name: Validate complete nftables candidate with representative Tailnet sets
+      ansible.builtin.command:
+        cmd: nft -c -f /etc/nftables.conf
+      changed_when: false
+
+    - name: Require exact set-backed Tailnet SSH accepts in the live candidate
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep -Fqx '    iifname "tailscale0" tcp dport 22 ip saddr @vpn_tailnet_ssh_v4 accept' /etc/nftables.conf
+          grep -Fqx '    iifname "tailscale0" tcp dport 22 ip6 saddr @vpn_tailnet_ssh_v6 accept' /etc/nftables.conf
+          ! grep -Fqx '    iifname "tailscale0" tcp dport 22 accept' /etc/nftables.conf
+        executable: /bin/bash
+      changed_when: false
+
     - name: Install an independent split-hop NAT sentinel
       ansible.builtin.shell:
         cmd: |

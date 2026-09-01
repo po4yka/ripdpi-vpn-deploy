@@ -1,0 +1,24 @@
+[Unit]
+Description=Recover an interrupted Tailnet firewall transaction before nftables
+DefaultDependencies=no
+After=local-fs.target
+Before=nftables.service network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/vpn-tailnet-network/tailnet-network-guest.py boot-recover
+StandardInput=null
+StandardOutput=null
+StandardError=null
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/nftables.d /var/lib/vpn-tailnet-network
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=network-pre.target
+RequiredBy=nftables.service

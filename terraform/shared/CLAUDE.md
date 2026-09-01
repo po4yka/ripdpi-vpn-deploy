@@ -12,6 +12,8 @@ and exits. The Ansible run handles the rest. Anything secret stays in SOPS.
 
 **Bootstrap completion is fail-closed** — the first-boot command creates the runtime directory required by minimal images, validates the effective SSH configuration, reloads `ssh.service`, and creates the completion marker in one `&&` chain. A failed validation or reload must leave the marker absent so external waiters cannot advance to Ansible.
 
+**Bootstrap SSH ownership is explicit** — `10-cloud-init-hardening.conf` starts with a managed ownership header and contains only the listener port plus the four first-boot authentication primitives. Runtime SSH policy belongs to the later controller transaction.
+
 ## What's done well
 
 - **Marker-based wait** — `scripts/wait-cloud-init.sh` treats the marker file as authoritative after cloud-init reaches a terminal state. This tolerates provider-image recoverable warnings while still failing when SSH validation or reload did not publish the marker.

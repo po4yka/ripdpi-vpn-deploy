@@ -55,6 +55,7 @@ NON_SECRET_TOPLEVEL = {
     "_evidence_awg_toolchain_manifest", "_evidence_firewall_description",
     "_evidence_firewall_loader", "_evidence_firewall_policy",
     "_evidence_firewall_service", "_evidence_firewall_table",
+    "_firewall_tailnet_initial_fragment",
     "public_listener_contract",
 }
 

@@ -14,6 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible/roles/real-vps-awg-nat"
@@ -630,7 +631,9 @@ def test_activation_failure_preserves_previous_complete_toolchain(
         assert module.digest(module.COMMAND_DIR / name) == binaries[name]
 
 
-@pytest.mark.parametrize("kind", ["private", "writable", "symlink", "foreign_uid", "foreign_gid"])
+@pytest.mark.parametrize(
+    "kind", ["private", "writable", "symlink", "foreign_uid", "foreign_gid"]
+)
 def test_activation_rejects_unsafe_existing_command_directory_without_mutation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
@@ -653,7 +656,10 @@ def test_activation_rejects_unsafe_existing_command_directory_without_mutation(
         module.activate_toolchain(tmp_path / "not-used", {})
     after = target.stat()
     assert (after.st_mode, after.st_uid, after.st_gid, after.st_ino) == (
-        before.st_mode, before.st_uid, before.st_gid, before.st_ino
+        before.st_mode,
+        before.st_uid,
+        before.st_gid,
+        before.st_ino,
     )
     assert (target / "sentinel").read_text() == "must remain unchanged"
     assert command_dir.is_symlink() == (kind == "symlink")
@@ -742,6 +748,111 @@ def test_sensitive_files_are_root_only_and_installer_is_exact_source() -> None:
     assert "sentinel_ssh_private_key" not in server_vars
     assert "current_client_config" not in server_vars
     assert "rotated_client_config" not in server_vars
+
+
+def test_sentinel_provisions_exact_client_identity_before_activation() -> None:
+    defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
+    tasks = yaml.safe_load((ROLE / "tasks/sentinel.yml").read_text())
+    template = (ROLE / "templates/sentinel-client-identity.json.j2").read_text()
+
+    assert defaults["real_vps_awg_nat_client_source_sha"] == ""
+    assert defaults["real_vps_awg_nat_client_artifact_sha256"] == ""
+    validation = next(
+        task
+        for task in tasks
+        if task["name"]
+        == "Validate private sentinel material and exact source contract"
+    )
+    assertions = "\n".join(validation["ansible.builtin.assert"]["that"])
+    assert "real_vps_awg_nat_client_source_sha is match('^[0-9a-f]{40}$')" in assertions
+    assert (
+        "real_vps_awg_nat_client_artifact_sha256 is match('^[0-9a-f]{64}$')"
+        in assertions
+    )
+    assert (
+        "real_vps_awg_nat_client_source_sha == real_vps_awg_nat_awg_go_commit"
+        in assertions
+    )
+    assert assertions.count("'" + "0" * 40 + "'") == 1
+    assert assertions.count("'" + "0" * 64 + "'") == 1
+
+    identity_index = next(
+        index
+        for index, task in enumerate(tasks)
+        if task["name"] == "Install exact RIPDPI client identity descriptor"
+    )
+    install_index = next(
+        index
+        for index, task in enumerate(tasks)
+        if task["name"] == "Install exact-source local runner and timer"
+    )
+    identity = tasks[identity_index]["ansible.builtin.template"]
+    disable_index = next(
+        index
+        for index, task in enumerate(tasks)
+        if task["name"]
+        == "Disable recurring AWG evidence before updating its generation"
+    )
+    wait_index = next(
+        index
+        for index, task in enumerate(tasks)
+        if task["name"] == "Wait for the previous recurring AWG evidence invocation"
+    )
+    runner_config_index = next(
+        index
+        for index, task in enumerate(tasks)
+        if task["name"] == "Install private runner config"
+    )
+    assert disable_index < wait_index < runner_config_index < install_index
+    assert identity_index < install_index
+    assert identity == {
+        "src": "sentinel-client-identity.json.j2",
+        "dest": "/etc/ripdpi/real-vps-awg-client-identity.json",
+        "owner": "root",
+        "group": "root",
+        "mode": "0600",
+    }
+    assert tasks[identity_index]["no_log"] is True
+    assert tasks[identity_index]["diff"] is False
+    disable = tasks[disable_index]["ansible.builtin.systemd_service"]
+    assert disable == {
+        "name": "ripdpi-real-vps-awg-nat.timer",
+        "enabled": False,
+        "state": "stopped",
+    }
+    wait = tasks[wait_index]["ansible.builtin.command"]
+    assert wait["argv"] == [
+        "flock",
+        "--wait",
+        "1800",
+        "/run/lock/ripdpi-real-vps-awg-nat/lane.lock",
+        "/bin/true",
+    ]
+    assert tasks[wait_index]["changed_when"] is False
+    provenance = next(
+        task
+        for task in tasks
+        if task["name"] == "Validate installed AWG binary provenance"
+    )
+    provenance_assertions = "\n".join(provenance["ansible.builtin.assert"]["that"])
+    assert (
+        "_evidence_awg_toolchain_manifest.binaries['amneziawg-go'] == "
+        "real_vps_awg_nat_client_artifact_sha256"
+    ) in provenance_assertions
+    assert not any(
+        task.get("ansible.builtin.systemd_service", {}).get("enabled") is True
+        for task in tasks[:install_index]
+    )
+    assert template == (
+        '{"artifactSha256":{{ real_vps_awg_nat_client_artifact_sha256 | to_json }},'
+        '"ripdpiSourceSha":{{ real_vps_awg_nat_client_source_sha | to_json }},'
+        '"version":"ripdpi_awg_client_identity_v1"}\n'
+    )
+    role_notes = (ROLE / "CLAUDE.md").read_text()
+    runbook = (ROOT / "docs/REAL-VPS-AWG-NAT.md").read_text()
+    assert "explicit disruptive maintenance" in role_notes
+    assert "intentionally disruptive" in runbook
+    assert "failed provisioning attempt leaves the timer" in runbook
 
 
 def test_echo_service_is_dual_protocol_and_firewall_scoped() -> None:
@@ -1863,7 +1974,10 @@ def test_makefile_deploy_supports_safe_limit_and_extra_vars() -> None:
 
     assert "scripts/deploy-controller.py deploy" in target
     assert "deploy dry-run: export DEPLOY_LIMIT = $(ANSIBLE_LIMIT)" in makefile
-    assert "deploy dry-run: export DEPLOY_EXTRA_VARS_FILE = $(ANSIBLE_EXTRA_VARS_FILE)" in makefile
+    assert (
+        "deploy dry-run: export DEPLOY_EXTRA_VARS_FILE = $(ANSIBLE_EXTRA_VARS_FILE)"
+        in makefile
+    )
     assert 'environment["VPN_SECRETS_FILE"] = str(secrets)' in controller
     assert '"--extra-vars", "@" + str(overrides)' in controller
     assert "stat.S_IMODE(s.st_mode) == 0o600" in extra_vars_preflight

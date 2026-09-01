@@ -28,6 +28,13 @@ destroy table inet nat
 {% set transport_needs_open_egress = (vpn.enable_xray_reality | default(true)) or (vpn.enable_hysteria | default(false)) or (vpn.enable_naive | default(false)) -%}
 
 table inet filter {
+  # This transaction-owned fragment may declare only the two typed SSH source
+  # sets below.  It is validated before this complete candidate is installed.
+{% if (_firewall_effective_check_mode | default(ansible_check_mode | default(false))) and (_firewall_tailnet_ssh_sets_was_absent | default(false)) %}
+{{ _firewall_tailnet_initial_fragment | indent(width=2, first=True) }}
+{% else %}
+  include "/etc/nftables.d/vpn-tailnet-ssh-sets.nft"
+{% endif %}
 {% if (security_controls | default({})).fail2ban | default(false) %}
   # sshd offenders populated by Fail2Ban. The intrusion_prevention role owns
   # set membership only; firewall owns the input-chain drop rules.
@@ -114,14 +121,9 @@ table inet filter {
     meta l4proto ipv6-icmp icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert } ip6 hoplimit 255 accept
     meta l4proto ipv6-icmp icmpv6 type echo-request accept
 
-{%- if vpn.enable_tailnet_management | default(false) %}
-{% for source in tailnet_management.approved_sources | default([]) %}
-{% if ':' in source %}
-    iifname "tailscale0" tcp dport {{ ssh_port }} ip6 saddr {{ source }} accept
-{% else %}
-    iifname "tailscale0" tcp dport {{ ssh_port }} ip saddr {{ source }} accept
-{% endif %}
-{% endfor %}
+{% if vpn.enable_tailnet_management | default(false) %}
+    iifname "tailscale0" tcp dport {{ ssh_port }} ip saddr @vpn_tailnet_ssh_v4 accept
+    iifname "tailscale0" tcp dport {{ ssh_port }} ip6 saddr @vpn_tailnet_ssh_v6 accept
 {% endif %}
     # A stale or unmanaged overlay interface never inherits the public SSH
     # allowlist. Exact managed Tailnet sources were accepted above.

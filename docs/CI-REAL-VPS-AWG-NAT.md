@@ -182,6 +182,10 @@ domain-separated hashes.
 
 Each executor publishes only canonical `manifest.json`:
 
+The current `real_vps_awg_nat_evidence_v3` schema requires the validated
+RIPDPI source commit and client artifact SHA-256 in `clientIdentity`; v2 output
+predates that required identity and is rejected rather than ambiguously decoded.
+
 - `PASS` means exact deployed-source provenance, all five phases, three PCAP
   digests, observed restart/reload generations, old-key rejection,
   transactional promotion, complete cleanup, fresh evidence-peer handshakes,

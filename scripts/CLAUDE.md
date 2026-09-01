@@ -95,6 +95,19 @@ shared probe budget, fixed launcher, lock, rollback snapshot and committed recei
 Onboarding publishes its local assignment only after exact receipt reconciliation;
 active evaluator evidence never substitutes controller identity for server state.
 
+**Tailnet firewall fragments have one canonical grammar** —
+`tailnet-network-guest.py` validates and publishes the same schema-1 bytes as
+the firewall role. The validator supplies the approved-source fragment for an
+enabled first convergence; promotion owns later replacements. Empty typed sets
+omit the `elements` clause because nftables does not accept an explicit empty
+set expression.
+
+**Tailnet rollback stays two-phase** — prior provider state is rolled back but
+its receipt remains active until the exact guest transaction is rolled back.
+Only then may the executor terminalize it. A retry observes an already-disabled
+provider as idempotent and continues guest cleanup instead of replaying the
+Terraform rollback.
+
 **Disposable liveness execution is privately bound** — the one-shot consumer-
 uplink executor uses a non-default Colima systemd profile with no mounts, address,
 port forwarder, SSH config or Docker-context activation. A root UUID marker and
@@ -210,4 +223,4 @@ readiness or convergence call.
 
 **Sentinel privilege is fixed-command only** — AmneziaWG needs a temporary network namespace, so onboarding installs one root-owned runner and one exact sudoers command. Never accept a config path or private key through the remote command line, and always delete the namespace in a `finally`/trap path.
 
-**Real-VPS AWG evidence is executor-neutral, generation-bound, and transactional** — the local systemd timer is primary and the compatible workflow is optional. Both deploy an exact source archive, bind the manifest to executor/entrypoint/invocation provenance, require healthy direct TCP+UDP controls before an AWG failure is classified as product-facing, observe service/config generation changes, reject the old PSK, and commit or roll back the client/server pair. Old-key rejection passes only when both TCP and UDP fail; success of either is `OLD_KEY_STILL_ACCEPTED` and fails closed. Local installation snapshots a detached exact-SHA root-owned checkout, copies validated private hooks to immutable fixed paths, hardens the toolchain tree to root-only read/execute permissions, and shares one install/run lock. `latest.json` exists only after a strict PASS; valid failures stay versioned and malformed output is quarantined. Exit 75 means infrastructure unavailable, and only strict counters, enum verdicts, hashed identities, and digests may leave the sentinel.
+**Real-VPS AWG evidence is executor-neutral, generation-bound, and transactional** — the local systemd timer is primary and the compatible workflow is optional. Both deploy an exact source archive, bind the v3 manifest to executor/entrypoint/invocation provenance and one client source/artifact identity read through its validated file descriptor, require healthy direct TCP+UDP controls before an AWG failure is classified as product-facing, observe service/config generation changes, reject the old PSK, and commit or roll back the client/server pair. Old-key rejection passes only when both TCP and UDP fail; success of either is `OLD_KEY_STILL_ACCEPTED` and fails closed. Local installation snapshots a detached exact-SHA root-owned checkout, copies validated private hooks to immutable fixed paths, hardens the toolchain tree to root-only read/execute permissions, and shares one install/run lock. `latest.json` exists only after a strict PASS; valid failures stay versioned and malformed output is quarantined. Exit 75 means infrastructure unavailable, and only strict counters, enum verdicts, hashed identities, and digests may leave the sentinel.
