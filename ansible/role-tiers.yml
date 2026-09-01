@@ -40,6 +40,7 @@ tiers:
   geodata: core             # geosite/geoip feed; firewall geo-block depends on it
   monitoring: core          # local-first node_exporter + log rotation
   observability_agent: core # bounded remote-write sender; default-off during migration
+  observability_control_plane: tactical # dedicated default-off authenticated metrics receiver
   watchdog: core            # service supervision + alerting
   backup: core              # restic+age recovery path
   node_manifest: core       # machine-readable enabled surfaces/recovery summary
@@ -84,6 +85,7 @@ toggle_role_map:
   enable_amneziawg: amneziawg
   enable_geodata: geodata
   enable_monitoring: monitoring
+  enable_observability_agent: observability_agent
   enable_watchdog: watchdog
   enable_backup: backup
   enable_subscription_host: subscription-host

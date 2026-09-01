@@ -1,0 +1,50 @@
+# Write-only ingestion. Prometheus, status and administrative APIs stay loopback-only.
+limit_req_zone $ssl_client_s_dn zone=observability_remote_write_rate:10m rate=20r/s;
+limit_conn_zone $ssl_client_s_dn zone=observability_remote_write_conn:10m;
+
+map $ssl_client_s_dn $observability_remote_write_node {
+    default "";
+
+}
+
+server {
+    listen 9443 ssl http2 default_server;
+    listen [::]:9443 ssl http2 default_server;
+    server_name _;
+    ssl_reject_handshake on;
+}
+
+server {
+    listen 9443 ssl http2;
+    listen [::]:9443 ssl http2;
+    server_name ;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_certificate /etc/observability-control-plane/tls/server.crt;
+    ssl_certificate_key /etc/observability-control-plane/tls/server.key;
+    ssl_client_certificate /etc/observability-control-plane/tls/client-ca.crt;
+    ssl_crl /etc/observability-control-plane/tls/client.crl;
+    ssl_verify_client on;
+    client_max_body_size 8m;
+    access_log off;
+    error_log /var/log/nginx/observability-remote-write.error.log warn;
+
+    location ~ ^/remote-write/v1/nodes/([A-Za-z0-9][A-Za-z0-9_.-]{0,63})$ {
+        if ($request_method != POST) { return 405; }
+        if ($ssl_client_verify != SUCCESS) { return 403; }
+        if ($observability_remote_write_node = "") { return 403; }
+        if ($observability_remote_write_node != $1) { return 403; }
+        limit_conn observability_remote_write_conn 4;
+        limit_req zone=observability_remote_write_rate burst=40 nodelay;
+        proxy_pass http://127.0.0.1:9090/api/v1/write;
+        proxy_http_version 1.1;
+        proxy_set_header Host "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Real-IP "";
+        proxy_pass_request_headers off;
+        proxy_set_header Content-Type $content_type;
+        proxy_set_header Content-Encoding $http_content_encoding;
+        proxy_set_header X-Prometheus-Remote-Write-Version $http_x_prometheus_remote_write_version;
+    }
+
+    location / { return 404; }
+}

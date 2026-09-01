@@ -59,7 +59,7 @@ Current coverage:
 ```
 CLAUDE.md                                — this file
 ansible/CLAUDE.md                        — playbook order, group_vars contract
-ansible/roles/<name>/CLAUDE.md           — 34 roles, all backfilled
+ansible/roles/<name>/CLAUDE.md           — 36 roles, all backfilled
 terraform/CLAUDE.md                      — provider-root strategy
 terraform/providers/<name>/CLAUDE.md     — upcloud, hetzner, vultr, scaleway
 terraform/shared/CLAUDE.md               — cloud-init contract

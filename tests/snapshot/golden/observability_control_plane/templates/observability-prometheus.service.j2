@@ -1,0 +1,33 @@
+[Unit]
+Description=Observability Prometheus control plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=prometheus
+Group=prometheus
+ExecStart=/usr/local/libexec/observability-prometheus --config.file=/etc/observability-control-plane/current.yml --web.listen-address=127.0.0.1:9090 --web.enable-remote-write-receiver --storage.tsdb.path=/var/lib/observability-prometheus --storage.tsdb.retention.time=30d --storage.tsdb.retention.size=20GB
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/observability-prometheus
+ReadOnlyPaths=/etc/observability-control-plane /usr/local/libexec/observability-prometheus
+MemoryMax=1G
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target
