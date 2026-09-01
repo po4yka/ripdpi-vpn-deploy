@@ -1,13 +1,18 @@
 """Focused contract tests for the independent Tailnet rollback guard."""
 
 from __future__ import annotations
-import importlib.util, json, os, subprocess, sys, threading
+import importlib.util, json, os, subprocess, sys, tempfile, threading
 from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 SCRIPT = ROOT / "scripts/tailnet-network-executor.py"
+
+
+def _short_temp_root(private_tmp: Path = Path("/private/tmp")) -> Path:
+    """Keep AF_UNIX fixtures short while remaining portable to Linux runners."""
+    return private_tmp if private_tmp.is_dir() else Path(tempfile.gettempdir())
 
 
 def mod():
@@ -29,6 +34,14 @@ def request():
         "guest_snapshot_digest": "d" * 64,
         "guest_deadline": 2_000,
     }
+
+
+def test_short_temp_root_falls_back_when_macos_private_tmp_is_absent(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+
+    assert _short_temp_root(tmp_path / "absent") == tmp_path
 
 
 class Plan:
@@ -324,10 +337,8 @@ def test_deadline_terminalization_exits_daemon_and_removes_socket_pid(
     tmp_path, monkeypatch
 ):
     import shutil
-    import tempfile
-
     m = mod()
-    runtime = Path(tempfile.mkdtemp(prefix="tnterm-", dir="/private/tmp"))
+    runtime = Path(tempfile.mkdtemp(prefix="tnterm-", dir=_short_temp_root()))
     socket_path = runtime / "executor.sock"
     receipt_root = runtime / "state"
 
@@ -432,7 +443,7 @@ def test_make_target_preserves_literal_config_until_controller_boundary():
 
 def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkeypatch):
     """A controller crash mid-frame cannot monopolize the recovery daemon."""
-    import shutil, socket, tempfile, time
+    import shutil, socket, time
 
     server = "123e4567-e89b-42d3-a456-426614174000"
     state = {
@@ -472,7 +483,7 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
     for path in (target_path, state_path):
         path.chmod(0o600)
     binary.chmod(0o700)
-    runtime = Path(tempfile.mkdtemp(prefix="tnexec-", dir="/private/tmp"))
+    runtime = Path(tempfile.mkdtemp(prefix="tnexec-", dir=_short_temp_root()))
     sock, root = runtime / "executor.sock", runtime / "state-root"
     env = {**os.environ, "UPCLOUD_TOKEN": "test-token"}
     command = [
