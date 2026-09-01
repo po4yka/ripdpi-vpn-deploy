@@ -1,9 +1,9 @@
 ---
 task_id: SEC-1787496881680472
 change: sec-1787496881680472-sshd-config-ownership
-commit_sha: null
-local: required
-local_evidence: null
+commit_sha: b8948b427388e21a48cfbf99d521e787783b950d
+local: passed
+local_evidence: make -j1 check passed with 2948 Python tests, one existing skip, 55 Bats tests, Rust release tests and Clippy; log SHA256 6e89e0a28c5e7cb7b8101ed1a5b7585a8b23e128263a6b76cdf1c5dc873d9a15
 remote_ci: required
 remote_ci_evidence: null
 dry_run: not_applicable

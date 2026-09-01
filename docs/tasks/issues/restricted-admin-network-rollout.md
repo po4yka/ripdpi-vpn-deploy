@@ -14,7 +14,7 @@ openspec_change: sec-1787916931540401-restricted-admin-network-rollout
 created: 2026-08-28
 updated: 2026-09-01
 related_tasks: [SEC-1787496881680472]
-status_detail: Five of seven source steps are implemented in the combined protected candidate: durable SSH recovery, restricted Tailnet management, strict exact-node promotion with guest/provider rollback, and UUID-bound staging cleanup. Real isolated staging disconnect/reboot/rollback and serial fleet emergency/VPN acceptance remain required.
+status_detail: Five of seven source steps are implemented in the combined protected source delivery: durable SSH recovery, restricted Tailnet management, strict exact-node promotion with guest/provider rollback, and UUID-bound staging cleanup. Real isolated staging disconnect/reboot/rollback and serial fleet emergency/VPN acceptance remain required.
 ---
 
 ## Goal

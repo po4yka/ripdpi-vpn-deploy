@@ -1,9 +1,9 @@
 ---
 task_id: TST-1786299293097217
 change: tst-1786299293097217-complete-recurring-amneziawg-live-acceptance
-commit_sha: null
-local: required
-local_evidence: null
+commit_sha: b8948b427388e21a48cfbf99d521e787783b950d
+local: passed
+local_evidence: focused AWG identity and refusal tests plus make -j1 check passed; the full gate recorded 2948 Python tests, one existing skip, 55 Bats tests, Rust release tests and Clippy; no live client or VPS was used
 remote_ci: required
 remote_ci_evidence: null
 dry_run: required

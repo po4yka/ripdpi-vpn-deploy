@@ -14,7 +14,7 @@ openspec_change: sec-1787496881680472-sshd-config-ownership
 created: 2026-08-23
 updated: 2026-09-01
 related_tasks: [SEC-1787916931540401]
-status_detail: Five of six source steps are implemented in the combined protected candidate: single-owner bootstrap and managed layers, duplicate-owner refusal, assembled effective validation, and exact algorithm pins. The remaining blocker is the required scratch-node custom-port and pinned-algorithm lockout rehearsal followed by fleet verification.
+status_detail: Five of six source steps are implemented in the combined protected source delivery: single-owner bootstrap and managed layers, duplicate-owner refusal, assembled effective validation, and exact algorithm pins. The remaining blocker is the required scratch-node custom-port and pinned-algorithm lockout rehearsal followed by fleet verification.
 ---
 
 ## Goal
