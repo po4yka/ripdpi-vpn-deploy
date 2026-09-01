@@ -1,4 +1,10 @@
 ---
+- name: Resolve effective firewall check-mode context
+  ansible.builtin.set_fact:
+    _firewall_effective_check_mode: >-
+      {{ ansible_check_mode or (_firewall_task_check_mode | default(false) | bool) }}
+  changed_when: false
+
 # OS-level firewall: declarative nftables, validate-before-reload.
 # Hypervisor firewall (provider-specific) is the outer layer; this is
 # the inner layer co-located with the workload.
@@ -267,16 +273,14 @@
         ~ 'set vpn_tailnet_ssh_v4 {\n'
         ~ '  type ipv4_addr\n'
         ~ '  flags interval\n'
-        ~ '  elements = { }\n'
         ~ '}\n\n'
         ~ 'set vpn_tailnet_ssh_v6 {\n'
         ~ '  type ipv6_addr\n'
         ~ '  flags interval\n'
-        ~ '  elements = { }\n'
         ~ '}\n'
     fail_msg: Bundled empty Tailnet SSH sets fragment is not canonical schema-1.
   when:
-    - ansible_check_mode
+    - _firewall_effective_check_mode | bool
     - _firewall_tailnet_ssh_sets_was_absent | bool
 
 - name: Reinspect Tailnet SSH sets fragment immediately before nftables render
@@ -288,7 +292,7 @@
     get_mime: false
   register: _firewall_tailnet_ssh_sets_final_stat
   changed_when: false
-  when: not (ansible_check_mode and (_firewall_tailnet_ssh_sets_was_absent | bool))
+  when: not ((_firewall_effective_check_mode | bool) and (_firewall_tailnet_ssh_sets_was_absent | bool))
 
 - name: Refuse unsafe final Tailnet SSH sets fragment metadata
   ansible.builtin.assert:
@@ -301,7 +305,7 @@
       - not (_firewall_tailnet_ssh_sets_final_stat.stat.wgrp | default(false))
       - not (_firewall_tailnet_ssh_sets_final_stat.stat.woth | default(false))
     fail_msg: Tailnet SSH sets fragment changed to unsafe metadata before nftables render.
-  when: not (ansible_check_mode and (_firewall_tailnet_ssh_sets_was_absent | bool))
+  when: not ((_firewall_effective_check_mode | bool) and (_firewall_tailnet_ssh_sets_was_absent | bool))
 
 - name: Read final Tailnet SSH sets fragment
   ansible.builtin.slurp:
@@ -309,7 +313,7 @@
   register: _firewall_tailnet_ssh_sets_existing
   changed_when: false
   no_log: true
-  when: not (ansible_check_mode and (_firewall_tailnet_ssh_sets_was_absent | bool))
+  when: not ((_firewall_effective_check_mode | bool) and (_firewall_tailnet_ssh_sets_was_absent | bool))
 
 - name: Refuse unsafe or foreign Tailnet SSH sets fragment
   ansible.builtin.command:
@@ -327,12 +331,12 @@
             r"set vpn_tailnet_ssh_v4 \{\n"
             r"  type ipv4_addr\n"
             r"  flags interval\n"
-            r"  elements = \{(?P<v4>(?: [^\s,]+/32(?:, [^\s,]+/32)*)?) \}\n"
+            r"(?:  elements = \{ (?P<v4>[^\s,]+/32(?:, [^\s,]+/32)*) \}\n)?"
             r"\}\n\n"
             r"set vpn_tailnet_ssh_v6 \{\n"
             r"  type ipv6_addr\n"
             r"  flags interval\n"
-            r"  elements = \{(?P<v6>(?: [^\s,]+/128(?:, [^\s,]+/128)*)?) \}\n"
+            r"(?:  elements = \{ (?P<v6>[^\s,]+/128(?:, [^\s,]+/128)*) \}\n)?"
             r"\}\n$",
             source,
         )
@@ -340,7 +344,7 @@
             raise SystemExit("fragment is not schema-1")
 
         def parse(values, version, prefix):
-            tokens = [] if not values.strip() else values.strip().split(", ")
+            tokens = [] if values is None else values.split(", ")
             networks = []
             for token in tokens:
                 network = ipaddress.ip_network(token, strict=True)
@@ -354,18 +358,18 @@
 
         v4 = parse(match.group("v4"), 4, 32)
         v6 = parse(match.group("v6"), 6, 128)
-        elements = lambda values: "{ }" if not values else "{ " + ", ".join(values) + " }"
+        elements = lambda values: "" if not values else "  elements = { " + ", ".join(values) + " }\n"
         canonical = (
             "# vpn-tailnet-ssh-sets schema=1\n"
             "set vpn_tailnet_ssh_v4 {\n"
             "  type ipv4_addr\n"
             "  flags interval\n"
-            f"  elements = {elements(v4)}\n"
+            f"{elements(v4)}"
             "}\n\n"
             "set vpn_tailnet_ssh_v6 {\n"
             "  type ipv6_addr\n"
             "  flags interval\n"
-            f"  elements = {elements(v6)}\n"
+            f"{elements(v6)}"
             "}\n"
         )
         if source != canonical:
@@ -374,7 +378,7 @@
     stdin_add_newline: false
   changed_when: false
   no_log: true
-  when: not (ansible_check_mode and (_firewall_tailnet_ssh_sets_was_absent | bool))
+  when: not ((_firewall_effective_check_mode | bool) and (_firewall_tailnet_ssh_sets_was_absent | bool))
 
 - name: Render nftables config
   ansible.builtin.template:

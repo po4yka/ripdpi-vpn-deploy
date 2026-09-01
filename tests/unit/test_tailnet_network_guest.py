@@ -17,13 +17,21 @@ def load():
     return module
 
 
+def test_empty_fragment_omits_nftables_invalid_empty_elements_expression() -> None:
+    module = load()
+    empty = fragment("", "")
+
+    assert b"elements = { }" not in empty
+    assert module.canonical_fragment(empty) == empty
+
+
 def fragment(v4="100.64.10.20/32", v6="fd7a:115c:a1e0::1234/128"):
     return (
         "# vpn-tailnet-ssh-sets schema=1\nset vpn_tailnet_ssh_v4 {\n  type ipv4_addr\n  flags interval\n"
-        + (f"  elements = {{ {v4} }}\n" if v4 else "  elements = { }\n")
+        + (f"  elements = {{ {v4} }}\n" if v4 else "")
         + "}\n\nset vpn_tailnet_ssh_v6 {\n"
         "  type ipv6_addr\n  flags interval\n"
-        + (f"  elements = {{ {v6} }}\n" if v6 else "  elements = { }\n")
+        + (f"  elements = {{ {v6} }}\n" if v6 else "")
         + "}\n"
     ).encode()
 

@@ -192,16 +192,16 @@ def canonical_fragment(raw: bytes) -> bytes:
     pattern = (
         r"# vpn-tailnet-ssh-sets schema=1\nset vpn_tailnet_ssh_v4 \{\n"
         r"  type ipv4_addr\n  flags interval\n"
-        r"  elements = \{(?P<v4>(?: [^\s,]+/32(?:, [^\s,]+/32)*)?) \}\n\}\n\n"
+        r"(?:  elements = \{ (?P<v4>[^\s,]+/32(?:, [^\s,]+/32)*) \}\n)?\}\n\n"
         r"set vpn_tailnet_ssh_v6 \{\n  type ipv6_addr\n  flags interval\n"
-        r"  elements = \{(?P<v6>(?: [^\s,]+/128(?:, [^\s,]+/128)*)?) \}\n\}\n\Z"
+        r"(?:  elements = \{ (?P<v6>[^\s,]+/128(?:, [^\s,]+/128)*) \}\n)?\}\n\Z"
     )
     match = re.fullmatch(pattern, text)
     if match is None:
         raise Refusal("fragment-invalid")
 
     def items(value, version, prefix):
-        tokens = [] if not value.strip() else value.strip().split(", ")
+        tokens = [] if value is None else value.split(", ")
         try:
             networks = [ipaddress.ip_network(token, strict=True) for token in tokens]
         except ValueError:
@@ -217,12 +217,13 @@ def canonical_fragment(raw: bytes) -> bytes:
         return canonical
 
     v4, v6 = items(match["v4"], 4, 32), items(match["v6"], 6, 128)
-    form = lambda values: "{ }" if not values else "{ " + ", ".join(values) + " }"
+    form = lambda values: "" if not values else "  elements = { " + ", ".join(values) + " }\n"
     result = (
         "# vpn-tailnet-ssh-sets schema=1\nset vpn_tailnet_ssh_v4 {\n"
-        "  type ipv4_addr\n  flags interval\n  elements = " + form(v4) + "\n}\n\n"
+        "  type ipv4_addr\n  flags interval\n" + form(v4) + "}\n\n"
         "set vpn_tailnet_ssh_v6 {\n  type ipv6_addr\n  flags interval\n"
-        "  elements = " + form(v6) + "\n}\n"
+        + form(v6)
+        + "}\n"
     ).encode()
     if result != raw:
         raise Refusal("fragment-invalid")

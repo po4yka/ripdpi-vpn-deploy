@@ -47,14 +47,13 @@ def test_empty_tailnet_fragment_is_inert_and_declares_only_typed_sets() -> None:
         "set vpn_tailnet_ssh_v4 {\n"
         "  type ipv4_addr\n"
         "  flags interval\n"
-        "  elements = { }\n"
         "}\n\n"
         "set vpn_tailnet_ssh_v6 {\n"
         "  type ipv6_addr\n"
         "  flags interval\n"
-        "  elements = { }\n"
         "}\n"
     )
+    assert "elements = { }" not in fragment
     assert "chain " not in fragment
     assert "table " not in fragment
 
@@ -95,7 +94,8 @@ def test_tailnet_ssh_accepts_are_absent_when_management_is_disabled() -> None:
 
 def test_clean_check_mode_uses_inlined_empty_sets_without_creating_fragment() -> None:
     variables = merge_render_vars()
-    variables["ansible_check_mode"] = True
+    variables["ansible_check_mode"] = False
+    variables["_firewall_effective_check_mode"] = True
     variables["_firewall_tailnet_ssh_sets_was_absent"] = True
     variables["firewall_effective_ssh_ports"] = [22022]
     variables["public_listener_contract"] = []
@@ -104,6 +104,7 @@ def test_clean_check_mode_uses_inlined_empty_sets_without_creating_fragment() ->
     assert f'include "{FRAGMENT_PATH}"' not in rendered
     assert "  set vpn_tailnet_ssh_v4 {" in rendered
     assert "  set vpn_tailnet_ssh_v6 {" in rendered
+    assert "elements = { }" not in rendered
     assert 'iifname "tailscale0" tcp dport 22022 drop' in rendered
     assert "@vpn_tailnet_ssh_v4 accept" not in rendered
     assert "@vpn_tailnet_ssh_v6 accept" not in rendered
@@ -133,6 +134,7 @@ set vpn_tailnet_ssh_v6 {
     )
     rejected_foreign = accepted + "chain bypass { tcp dport 22022 accept }\n"
 
+    assert subprocess.run(["python3", "-c", validator], input=EMPTY_FRAGMENT.read_text(), text=True).returncode == 0
     assert subprocess.run(["python3", "-c", validator], input=accepted, text=True).returncode == 0
     assert subprocess.run(["python3", "-c", validator], input=rejected_duplicate, text=True).returncode != 0
     assert subprocess.run(["python3", "-c", validator], input=rejected_foreign, text=True).returncode != 0
@@ -173,7 +175,7 @@ def test_existing_tailnet_fragment_is_preserved_only_when_safe_and_schema_valid(
     assert assert_task["ansible.builtin.command"]["stdin_add_newline"] is False
     clean_check_task = next(task for task in tasks if task["name"] == "Validate bundled empty Tailnet SSH sets fragment for clean check mode")
     assert clean_check_task["when"] == [
-        "ansible_check_mode",
+        "_firewall_effective_check_mode | bool",
         "_firewall_tailnet_ssh_sets_was_absent | bool",
     ]
     clean_check_assertion = clean_check_task["ansible.builtin.assert"]["that"][0]
@@ -185,6 +187,24 @@ def test_existing_tailnet_fragment_is_preserved_only_when_safe_and_schema_valid(
         "Reinspect Tailnet SSH sets fragment immediately before nftables render"
     ) < task_names.index("Render nftables config")
     assert "nft -c -f %s" in tasks_text
+
+
+def test_molecule_task_level_check_mode_sets_the_explicit_role_contract() -> None:
+    converge = yaml.safe_load((ROLE / "molecule/default/converge.yml").read_text())
+    check_block = next(
+        task
+        for task in converge[0]["pre_tasks"]
+        if task["name"] == "Exercise clean firewall check mode before Tailnet fragment exists"
+    )
+    include = check_block["block"][0]
+
+    assert check_block["check_mode"] is True
+    assert include["vars"]["_firewall_task_check_mode"] is True
+    tasks = yaml.safe_load(TASKS.read_text())
+    resolver = next(task for task in tasks if task["name"] == "Resolve effective firewall check-mode context")
+    expression = resolver["ansible.builtin.set_fact"]["_firewall_effective_check_mode"]
+    assert "ansible_check_mode" in expression
+    assert "_firewall_task_check_mode" in expression
 
 
 def test_tailnet_include_cannot_create_a_separate_table_bypass() -> None:

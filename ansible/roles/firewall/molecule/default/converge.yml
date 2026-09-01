@@ -62,6 +62,10 @@
         - name: Run the firewall role without creating the Tailnet fragment
           ansible.builtin.include_role:
             name: firewall
+          vars:
+            # Per-task check_mode does not update Ansible's magic variable.
+            # Pin it so the role exercises the same branch as CLI --check.
+            _firewall_task_check_mode: true
 
     - name: Confirm clean firewall check mode created no Tailnet fragment path
       ansible.builtin.stat:
@@ -92,12 +96,10 @@
             ~ 'set vpn_tailnet_ssh_v4 {\n'
             ~ '  type ipv4_addr\n'
             ~ '  flags interval\n'
-            ~ '  elements = { }\n'
             ~ '}\n\n'
             ~ 'set vpn_tailnet_ssh_v6 {\n'
             ~ '  type ipv6_addr\n'
             ~ '  flags interval\n'
-            ~ '  elements = { }\n'
             ~ '}\n'
 
     - name: Install representative canonical Tailnet SSH sets fragment
