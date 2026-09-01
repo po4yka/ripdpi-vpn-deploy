@@ -298,4 +298,15 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     assert "load_cert_chain" in content
     assert "server_hostname=self.host" in content
     assert "response.read()" not in content
+    assert 'parser.add_argument("--content-length", type=int)' in content
+    assert 'headers["Content-Length"] = str(args.content_length)' in content
     assert "urllib" not in content
+
+    oversized = next(
+        task
+        for task in client_tasks
+        if task["name"] == "Assert remote-write receiver rejects an oversized request"
+    )
+    oversized_command = oversized["ansible.builtin.command"]["argv"]
+    assert "--body-file" not in oversized_command
+    assert oversized_command[oversized_command.index("--content-length") + 1] == "9437184"

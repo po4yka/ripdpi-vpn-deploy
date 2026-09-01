@@ -45,16 +45,10 @@ def test_sender_constructs_exact_node_bound_write_path_and_sni() -> None:
 
     assert "/remote-write/v1/nodes/{{ observability_agent.node_id }}" in template
     assert 'server_name: "{{ observability_agent.receiver_sni }}"' in template
-    assert (
-        "cert_file: /run/credentials/observability-agent.service/client.crt" in template
-    )
-    assert (
-        "key_file: /run/credentials/observability-agent.service/client.key" in template
-    )
-    assert (
-        "ca_file: /run/credentials/observability-agent.service/receiver-ca.crt"
-        in template
-    )
+    assert "cert_file: client.crt" in template
+    assert "key_file: client.key" in template
+    assert "ca_file: receiver-ca.crt" in template
+    assert "/run/credentials/observability-agent.service" not in template
     assert "max_shards: 4" in template
     assert "127.0.0.1:9100" in template
     assert "{{ observability_agent.web_listen }}" in template
@@ -88,9 +82,7 @@ def test_sender_template_renders_node_path_without_credential_values() -> None:
     receiver = document["remote_write"][0]
     assert receiver["url"] == "https://receiver.test/remote-write/v1/nodes/edge-prod"
     assert receiver["tls_config"]["server_name"] == "ingest.internal.test"
-    assert receiver["tls_config"]["key_file"] == (
-        "/run/credentials/observability-agent.service/client.key"
-    )
+    assert receiver["tls_config"]["key_file"] == "client.key"
     assert "BEGIN" not in rendered
 
 
@@ -102,14 +94,15 @@ def test_service_uses_systemd_credentials_and_bounded_agent_wal() -> None:
     assert "LoadCredential=client.crt:" in unit
     assert "LoadCredential=client.key:" in unit
     assert "LoadCredential=receiver-ca.crt:" in unit
-    assert "LoadCredential=prometheus.yml:" not in unit
+    assert "LoadCredential=prometheus.yml:" in unit
+    assert "WorkingDirectory=%d" in unit
     assert "ExecStartPre=" not in unit
+    assert "--config.file=%d/prometheus.yml" in unit
+    assert "--config.file=${CREDENTIALS_DIRECTORY}/prometheus.yml" not in unit
     assert (
         "--config.file={{ observability_agent.credential_dir }}/current/prometheus.yml"
-        in unit
+        not in unit
     )
-    assert "--config.file=${CREDENTIALS_DIRECTORY}/prometheus.yml" not in unit
-    assert "--config.file=%d/prometheus.yml" not in unit
     assert "config_dir }}/prometheus.yml" not in unit
     assert " --agent " in unit
     assert " prometheus-observability-agent agent " not in unit
@@ -185,6 +178,10 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
     )
     assert (
         "LoadCredential=client.key:{{ observability_agent.credential_dir }}/current/client.key"
+        in unit
+    )
+    assert (
+        "LoadCredential=prometheus.yml:{{ observability_agent.credential_dir }}/current/prometheus.yml"
         in unit
     )
     assert "- -purpose\n              - sslclient" in tasks

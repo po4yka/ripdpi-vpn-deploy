@@ -65,7 +65,6 @@
         mkdir -p "$fixture/prometheus-fixture"
         cp "$fixture/prometheus" "$fixture/prometheus-fixture/prometheus"
         tar -C "$fixture" -czf "$fixture/prometheus.tar.gz" prometheus-fixture/prometheus
-        dd if=/dev/zero of="$fixture/oversize.bin" bs=1M count=9 status=none
       args:
         creates: /var/tmp/observability-control-plane-fixture/prometheus.tar.gz
       changed_when: false
@@ -80,7 +79,6 @@
           #!/usr/bin/python3
           import argparse
           import http.client
-          import pathlib
           import socket
           import ssl
           import sys
@@ -106,13 +104,14 @@
               parser.add_argument("--cert", required=True)
               parser.add_argument("--key", required=True)
               parser.add_argument("--body", default="")
-              parser.add_argument("--body-file")
+              parser.add_argument("--content-length", type=int)
               args = parser.parse_args()
-              body = (
-                  pathlib.Path(args.body_file).read_bytes()
-                  if args.body_file
-                  else args.body.encode("utf-8")
-              )
+              body = args.body.encode("utf-8")
+              headers = {"Host": args.server_name}
+              if args.content_length is not None:
+                  if args.content_length < len(body) or args.content_length > 16 * 1024 * 1024:
+                      return 2
+                  headers["Content-Length"] = str(args.content_length)
               context = ssl.create_default_context(cafile=args.ca)
               context.load_cert_chain(certfile=args.cert, keyfile=args.key)
               connection = DirectHTTPSConnection(
@@ -123,7 +122,7 @@
                       args.method,
                       args.path,
                       body=body,
-                      headers={"Host": args.server_name},
+                      headers=headers,
                   )
                   response = connection.getresponse()
                   print(response.status)
