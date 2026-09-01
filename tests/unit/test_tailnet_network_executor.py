@@ -28,11 +28,13 @@ def request():
         "server_uuid": "123e4567-e89b-42d3-a456-426614174000",
         "environment": "prod",
         "provider_target_sha256": "a" * 64,
+        "terraform_snapshot_sha256": "e" * 64,
         "forward_plan_sha256": "b" * 64,
         "guest_generation": "123e4567-e89b-42d3-a456-426614174000",
         "guest_nonce": "c" * 64,
         "guest_snapshot_digest": "d" * 64,
         "guest_deadline": 2_000,
+        "guest_phase": "transactional",
     }
 
 
@@ -67,6 +69,7 @@ def executor(m, root):
     value.store = m.ReceiptStore(root)
     value.adapter = Adapter()
     value.target = value.adapter.target
+    value.terraform_snapshot = type("Snapshot", (), {"digest": "e" * 64})()
     return value
 
 
@@ -103,6 +106,10 @@ def test_crash_after_provider_apply_reconciles_to_independent_false_apply(
         "guest_deadline": 3_000,
     }
     monkeypatch.setattr(m.time, "time", lambda: 2_100)
+    with pytest.raises(m.ExecutorError, match="arm-refused"):
+        value.guard("arm", next_request)
+    assert value.guard("reconcile", {}) == {"state": "executed"}
+    assert value.guard("acknowledge", {"state": "executed"}) == {"state": "idle"}
     assert value.guard("arm", next_request)["state"] == "armed"
 
 
@@ -131,8 +138,40 @@ def test_release_prevents_deadline_rollback_and_restart_reads_canonical_receipt(
         },
     )
     assert value.guard("release", committed) == {"state": "released"}
+    assert value.guard("reconcile", {}) == {"state": "released"}
+    assert value.store.get()["state"] == "released"
+    assert value.guard("acknowledge", {"state": "released"}) == {"state": "idle"}
+    assert value.store.get() is None
     assert executor(m, tmp_path).reconcile() is None
     assert value.adapter.calls == []
+
+
+def test_reconcile_exposes_cleanup_debt_for_evidence_validated_release(
+    tmp_path, monkeypatch
+):
+    m = mod()
+    value = executor(m, tmp_path)
+    monkeypatch.setattr(m.time, "time", lambda: 1_000)
+    armed = value.guard("arm", request())
+    forward = value.guard(
+        "begin-forward", {key: item for key, item in armed.items() if key != "state"}
+    )
+    applied = value.guard(
+        "mark-applied",
+        {
+            **{key: item for key, item in forward.items() if key != "state"},
+            "provider_applied_at": 1_001,
+        },
+    )
+    debt = value.guard(
+        "commit",
+        {
+            **{key: item for key, item in applied.items() if key != "state"},
+            "promotion_observed_at": 1_002,
+        },
+    )
+    assert value.guard("reconcile", {}) == debt
+    assert value.store.get() == debt
 
 
 def test_foreign_or_stale_receipt_fails_closed(tmp_path, monkeypatch):
@@ -145,6 +184,53 @@ def test_foreign_or_stale_receipt_fails_closed(tmp_path, monkeypatch):
     monkeypatch.setattr(m.time, "time", lambda: 2_001)
     with pytest.raises(m.ExecutorError, match="transition-refused"):
         value.guard("execute", armed)
+
+
+def test_executor_refuses_rollback_receipt_bound_to_foreign_snapshot(
+    tmp_path, monkeypatch
+):
+    m = mod()
+    value = executor(m, tmp_path)
+    monkeypatch.setattr(m.time, "time", lambda: 1_000)
+    with pytest.raises(m.ExecutorError, match="arm-refused"):
+        value.guard("arm", {**request(), "terraform_snapshot_sha256": "f" * 64})
+    assert value.store.get() is None
+
+
+@pytest.mark.parametrize(
+    "foreign_field", ["provider_target_sha256", "terraform_snapshot_sha256"]
+)
+def test_terminal_ack_refuses_receipt_bound_to_foreign_authority(
+    tmp_path, monkeypatch, foreign_field
+):
+    m = mod()
+    value = executor(m, tmp_path)
+    monkeypatch.setattr(m.time, "time", lambda: 1_000)
+    armed = value.guard("arm", request())
+    forward = value.guard(
+        "begin-forward", {key: item for key, item in armed.items() if key != "state"}
+    )
+    applied = value.guard(
+        "mark-applied",
+        {
+            **{key: item for key, item in forward.items() if key != "state"},
+            "provider_applied_at": 1_001,
+        },
+    )
+    committed = value.guard(
+        "commit",
+        {
+            **{key: item for key, item in applied.items() if key != "state"},
+            "promotion_observed_at": 1_002,
+        },
+    )
+    assert value.guard("release", committed) == {"state": "released"}
+    foreign = {**value.store.get(), foreign_field: "f" * 64}
+    value.store.put(foreign)
+
+    with pytest.raises(m.ExecutorError, match="receipt-refused"):
+        value.guard("acknowledge", {"state": "released"})
+    assert value.store.get() == foreign
 
 
 def test_corrupt_receipt_and_stale_temp_fail_closed_before_reconcile(
@@ -367,8 +453,12 @@ def test_deadline_terminalization_exits_daemon_and_removes_socket_pid(
             self.daemon_identity = {
                 "provider_target_sha256": "a" * 64,
                 "terraform_sha256": "b" * 64,
+                "terraform_snapshot_sha256": "d" * 64,
                 "provider_capability_sha256": "c" * 64,
             }
+            self.terraform_snapshot = type(
+                "Snapshot", (), {"remove": lambda _self: None}
+            )()
 
         def reconcile(self):
             return {"state": "executed"}
@@ -385,6 +475,8 @@ def test_deadline_terminalization_exits_daemon_and_removes_socket_pid(
             "state": "state",
             "terraform": "terraform",
             "terraform_sha256": "a" * 64,
+            "terraform_snapshot": "snapshot",
+            "terraform_snapshot_sha256": "d" * 64,
             "receipt_dir": str(receipt_root),
             "socket": str(socket_path),
         },
@@ -395,6 +487,181 @@ def test_deadline_terminalization_exits_daemon_and_removes_socket_pid(
         assert not (receipt_root / "daemon.json").exists()
     finally:
         shutil.rmtree(runtime)
+
+
+def test_terminal_controller_reconcile_reaps_daemon_artifacts_and_allows_restart(
+    tmp_path, monkeypatch
+):
+    import shutil, time
+
+    m = mod()
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_terminal_lifecycle", controller_path
+    )
+    controller = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(controller)
+    runtime = Path(tempfile.mkdtemp(prefix="tnterminal-", dir=_short_temp_root()))
+    socket_path = runtime / "executor.sock"
+    receipt_root = runtime / "state"
+    snapshot_path = runtime / "terraform-snapshot"
+    snapshot_path.mkdir(mode=0o700)
+
+    terminal = executor(m, receipt_root)
+    monkeypatch.setattr(m.time, "time", lambda: 1_000)
+    armed = terminal.guard("arm", request())
+    forward = terminal.guard(
+        "begin-forward", {key: value for key, value in armed.items() if key != "state"}
+    )
+    applied = terminal.guard(
+        "mark-applied",
+        {
+            **{key: value for key, value in forward.items() if key != "state"},
+            "provider_applied_at": 1_001,
+        },
+    )
+    committed = terminal.guard(
+        "commit",
+        {
+            **{key: value for key, value in applied.items() if key != "state"},
+            "promotion_observed_at": 1_002,
+        },
+    )
+    assert terminal.guard("release", committed) == {"state": "released"}
+
+    class Snapshot:
+        def __init__(self, root):
+            self.root = Path(root)
+
+        def remove(self):
+            shutil.rmtree(self.root)
+
+    class TerminalExecutor:
+        def __init__(self, *_args):
+            self.store = m.ReceiptStore(receipt_root)
+            self.daemon_identity = {
+                "provider_target_sha256": "a" * 64,
+                "terraform_sha256": "b" * 64,
+                "terraform_snapshot_sha256": "e" * 64,
+                "provider_capability_sha256": "c" * 64,
+            }
+            self.terraform_snapshot = Snapshot(snapshot_path)
+
+        def guard(self, action, value):
+            current = self.store.get()
+            if action == "reconcile":
+                assert value == {}
+                return {"state": current["state"]} if current else {"state": "idle"}
+            if action == "acknowledge":
+                assert current and value == {"state": current["state"]}
+                self.store.clear()
+                return {"state": "idle"}
+            if action == "arm":
+                assert current is None
+                armed_value = {
+                    **value,
+                    "expires_at": value["guest_deadline"],
+                    "state": "armed",
+                }
+                self.store.put(armed_value)
+                return armed_value
+            if action == "execute":
+                assert current == value and current["state"] == "armed"
+                self.store.put({**current, "state": "executed", "executed_at": 1_003})
+                return {"state": "executed"}
+            raise AssertionError(action)
+
+        def reconcile(self):
+            return None
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(m, "Executor", TerminalExecutor)
+    args = type(
+        "Args",
+        (),
+        {
+            "target": "target",
+            "state": "state",
+            "terraform": "terraform",
+            "terraform_sha256": "b" * 64,
+            "terraform_snapshot": str(snapshot_path),
+            "terraform_snapshot_sha256": "e" * 64,
+            "receipt_dir": str(receipt_root),
+            "socket": str(socket_path),
+        },
+    )()
+
+    def start_daemon():
+        worker = threading.Thread(target=m.serve, args=(args,), daemon=True)
+        worker.start()
+        for _ in range(100):
+            if socket_path.exists():
+                try:
+                    controller.guard(socket_path)("ping", {})
+                except controller.p.PromotionError:
+                    pass
+                else:
+                    break
+            time.sleep(0.01)
+        assert socket_path.exists() and (receipt_root / "daemon.json").exists()
+        return worker
+
+    try:
+        first = start_daemon()
+        first_result = (
+            {"status": "reconciled"}
+            if controller._reconcile_previous(
+                object(),
+                controller.guard(socket_path),
+                lambda *_: (_ for _ in ()).throw(AssertionError("guest must not run")),
+                {"name": "node-a"},
+                runtime / "proof.json",
+            )
+            else None
+        )
+        assert first_result == {"status": "reconciled"}
+        controller._wait_for_terminal_cleanup(
+            None, receipt_root, socket_path, snapshot_path
+        )
+        first.join(timeout=2)
+        assert not first.is_alive()
+        assert m.ReceiptStore(receipt_root).get() is None
+        assert not socket_path.exists()
+        assert not (receipt_root / "daemon.json").exists()
+        assert not snapshot_path.exists()
+
+        snapshot_path.mkdir(mode=0o700)
+        second = start_daemon()
+        rollback_guard = controller.guard(socket_path)
+        assert rollback_guard("ping", {})["receipt_state"] is None
+        assert not controller._reconcile_previous(
+            object(),
+            rollback_guard,
+            lambda *_: (_ for _ in ()).throw(AssertionError("guest must not run")),
+            {"name": "node-a"},
+            runtime / "proof.json",
+        )
+        execute_calls = []
+
+        def execute(*_args, **_kwargs):
+            execute_calls.append(True)
+            armed_value = rollback_guard("arm", request())
+            assert rollback_guard("execute", armed_value) == {"state": "executed"}
+            return {"status": "rolled-back"}
+
+        monkeypatch.setattr(controller.p, "execute", execute)
+        assert controller.p.execute({}, object()) == {"status": "rolled-back"}
+        assert execute_calls == [True]
+        controller._wait_for_terminal_cleanup(
+            None, receipt_root, socket_path, snapshot_path
+        )
+        second.join(timeout=2)
+        assert not second.is_alive()
+    finally:
+        shutil.rmtree(runtime, ignore_errors=True)
 
 
 def test_controller_guest_rpc_is_fixed_strict_command_and_dry_run_disables_apply(
@@ -426,12 +693,17 @@ def test_controller_guest_rpc_is_fixed_strict_command_and_dry_run_disables_apply
     (tmp_path / "known").write_text("node-a ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI\n")
     rpc = c.strict_guest(host, tmp_path / "known", b"fragment")
     rpc({}, "prepare", {}, False)
+    rpc({}, "preview", {}, False)
     assert (
         command[0][0][-1]
         == "sudo -n /usr/bin/python3 -I -B " + c.GUEST_HELPER + " prepare"
     )
     assert "-S -" not in command[0][0][-1]
     assert json.loads(command[0][1])["timeout"] == c.PREPARE_TIMEOUT
+    assert json.loads(command[1][1]) == {
+        "candidate_b64": __import__("base64").b64encode(b"fragment").decode("ascii")
+    }
+    assert command[1][0][-1].endswith(c.GUEST_HELPER + " preview")
     assert len(command[0][1]) <= 64 * 1024
     target = type("Target", (), {"value": {}, "digest": "a" * 64})()
     adapter = type("Adapter", (), {"target": target, "allow_apply": False})()
@@ -545,11 +817,15 @@ def test_provider_applied_reconcile_retries_guest_without_second_provider_apply(
         return {**identity, "status": "rolled_back"}
 
     with pytest.raises(controller.p.PromotionError, match="rollback-uncertain"):
-        controller._reconcile_previous(value.guard, guest, {"name": "node-a"})
+        controller._reconcile_previous(
+            value.adapter, value.guard, guest, {"name": "node-a"}, Path("proof.json")
+        )
     assert value.store.get()["state"] == "provider-applied"
     assert value.adapter.calls == [("plan", "rollback"), ("apply", "rollback")]
 
-    controller._reconcile_previous(value.guard, guest, {"name": "node-a"})
+    controller._reconcile_previous(
+        value.adapter, value.guard, guest, {"name": "node-a"}, Path("proof.json")
+    )
     assert value.adapter.calls == [("plan", "rollback"), ("apply", "rollback")]
     assert value.store.get()["state"] == "executed"
 
@@ -591,7 +867,13 @@ def test_controller_reconcile_rolls_back_guest_before_terminalizing_executor():
         assert action == "rollback" and value == identity
         return {**identity, "status": "rolled_back"}
 
-    c._reconcile_previous(rollback_guard, guest, {"name": "node-a"})
+    adapter = type("Adapter", (), {"external_rollback_guard": rollback_guard})()
+    assert (
+        c._reconcile_previous(
+            adapter, rollback_guard, guest, {"name": "node-a"}, Path("proof.json")
+        )
+        is True
+    )
     assert calls == [
         ("provider", "reconcile"),
         ("guest", "status"),
@@ -599,6 +881,438 @@ def test_controller_reconcile_rolls_back_guest_before_terminalizing_executor():
         ("guest", "rollback"),
         ("provider", "execute"),
     ]
+
+
+def test_controller_routes_committed_cleanup_debt_through_reconcile_release(
+    monkeypatch,
+):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_cleanup_debt", controller_path
+    )
+    c = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(c)
+    current = {
+        **request(),
+        "state": "committed-cleanup-debt",
+        "forward_lease": "e" * 64,
+        "expires_at": 2_000,
+        "provider_applied_at": 1_001,
+        "promotion_observed_at": 1_002,
+    }
+    calls = []
+
+    def rollback_guard(action, value):
+        calls.append((action, value))
+        assert action == "reconcile"
+        return current
+
+    adapter = object()
+    monkeypatch.setattr(
+        c.p,
+        "reconcile_release",
+        lambda actual, capability: calls.append(
+            ("reconcile-release", actual, dict(capability))
+        )
+        or {"status": "committed"},
+    )
+    c._reconcile_previous(
+        adapter,
+        rollback_guard,
+        lambda *_: (_ for _ in ()).throw(AssertionError("guest must not run")),
+        {"name": "node-a"},
+        Path("proof.json"),
+    )
+    assert calls == [
+        ("reconcile", {}),
+        ("reconcile-release", adapter, current),
+    ]
+
+
+@pytest.mark.parametrize("terminal_state", ["executed", "released"])
+def test_fresh_controller_terminal_reconcile_stops_before_new_transaction(
+    terminal_state,
+):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_terminal_reconcile", controller_path
+    )
+    c = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(c)
+    calls = []
+
+    def rollback_guard(action, value):
+        calls.append((action, value))
+        if action == "reconcile":
+            return {"state": terminal_state}
+        assert action == "acknowledge" and value == {"state": terminal_state}
+        return {"state": "idle"}
+
+    assert (
+        c._reconcile_previous(
+            object(),
+            rollback_guard,
+            lambda *_: (_ for _ in ()).throw(AssertionError("guest must not run")),
+            {"name": "node-a"},
+            Path("proof.json"),
+        )
+        is True
+    )
+    assert calls == [
+        ("reconcile", {}),
+        ("acknowledge", {"state": terminal_state}),
+    ]
+
+
+@pytest.mark.parametrize("guest_phase", ["prepared", "applied"])
+def test_provider_applied_reconcile_rolls_back_each_uncommitted_guest_phase(
+    guest_phase,
+):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_phase_reconcile", controller_path
+    )
+    c = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(c)
+    current = {
+        **request(),
+        "state": "provider-applied",
+        "forward_lease": "e" * 64,
+        "expires_at": 2_000,
+        "provider_applied_at": 1_001,
+    }
+    identity = {
+        "generation": current["guest_generation"],
+        "nonce": current["guest_nonce"],
+        "snapshot_digest": current["guest_snapshot_digest"],
+        "deadline": current["guest_deadline"],
+    }
+    calls = []
+
+    def rollback_guard(action, value):
+        calls.append(("provider", action))
+        if action == "reconcile":
+            return current
+        if action == "rollback-provider":
+            return current
+        if action == "execute":
+            return {"state": "executed"}
+        raise AssertionError(action)
+
+    def guest(_host, action, value, cleanup):
+        calls.append(("guest", action, cleanup))
+        if action == "status":
+            return {**identity, "status": guest_phase}
+        assert action == "rollback" and value == identity and cleanup is True
+        return {**identity, "status": "rolled_back"}
+
+    adapter = type("Adapter", (), {"external_rollback_guard": rollback_guard})()
+    c._reconcile_previous(
+        adapter, rollback_guard, guest, {"name": "node-a"}, Path("proof.json")
+    )
+    assert calls == [
+        ("provider", "reconcile"),
+        ("guest", "status", False),
+        ("provider", "rollback-provider"),
+        ("guest", "rollback", True),
+        ("provider", "execute"),
+    ]
+
+
+def test_provider_applied_committed_guest_finishes_commit_release_without_rollback(
+    monkeypatch,
+):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_committed_reconcile", controller_path
+    )
+    c = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(c)
+    current = {
+        **request(),
+        "state": "provider-applied",
+        "forward_lease": "e" * 64,
+        "expires_at": 2_000,
+        "provider_applied_at": 1_001,
+    }
+    identity = {
+        "generation": current["guest_generation"],
+        "nonce": current["guest_nonce"],
+        "snapshot_digest": current["guest_snapshot_digest"],
+        "deadline": current["guest_deadline"],
+    }
+    proof = {"status": "passed"}
+    calls = []
+
+    def rollback_guard(action, value):
+        calls.append(("provider", action))
+        assert action == "reconcile"
+        return current
+
+    adapter = type(
+        "Adapter",
+        (),
+        {
+            "external_rollback_guard": rollback_guard,
+            "environment": "prod",
+            "target": type(
+                "Target",
+                (),
+                {
+                    "value": {
+                        "inventory_alias": "node-a",
+                        "public_service_address_sha256": "a" * 64,
+                        "deployable_digest": "b" * 64,
+                    }
+                },
+            )(),
+        },
+    )()
+    monkeypatch.setattr(c.p, "promotion_proof", lambda *_: proof)
+    monkeypatch.setattr(
+        c.p,
+        "reconcile_commit_release",
+        lambda actual, armed, receipt, actual_proof: calls.append(
+            ("commit-release", actual, dict(armed), receipt, actual_proof)
+        )
+        or {"status": "committed"},
+    )
+
+    def guest(_host, action, _value, _cleanup):
+        calls.append(("guest", action))
+        assert action == "status"
+        return {**identity, "status": "committed"}
+
+    c._reconcile_previous(
+        adapter, rollback_guard, guest, {"name": "node-a"}, Path("proof.json")
+    )
+    armed = dict(current)
+    for key in ("forward_lease", "provider_applied_at"):
+        armed.pop(key)
+    armed["state"] = "armed"
+    assert calls == [
+        ("provider", "reconcile"),
+        ("guest", "status"),
+        ("commit-release", adapter, armed, {**identity, "status": "committed"}, proof),
+    ]
+
+
+def test_controller_guard_reads_split_stream_frame_to_eof(monkeypatch):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_stream", controller_path
+    )
+    c = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(c)
+    chunks = [b'{"ok":{"state":', b'"released"}}', b""]
+    timeouts = []
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def settimeout(self, timeout):
+            timeouts.append(timeout)
+
+        def connect(self, _path):
+            pass
+
+        def sendall(self, _payload):
+            pass
+
+        def shutdown(self, _how):
+            pass
+
+        def recv(self, _size):
+            return chunks.pop(0)
+
+    monkeypatch.setattr(c.socket, "socket", lambda *_args: Client())
+    assert c.guard(Path("/private/executor.sock"))("release", {}) == {
+        "state": "released"
+    }
+    chunks.extend([b'{"ok":{"state":', b'"released"}}', b""])
+    assert c.guard(Path("/private/executor.sock"))("rollback-provider", {}) == {
+        "state": "released"
+    }
+    chunks.extend([b'{"ok":{"state":', b'"released"}}', b""])
+    assert c.guard(Path("/private/executor.sock"))("execute", {}) == {
+        "state": "released"
+    }
+    assert timeouts == [
+        c.p.GUARD_RPC_TIMEOUT_SECONDS,
+        c.p.ROLLBACK_GUARD_RPC_TIMEOUT_SECONDS,
+        c.p.ROLLBACK_GUARD_RPC_TIMEOUT_SECONDS,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("state", "required"),
+    [("armed", True), ("committed-cleanup-debt", True), ("executed", False)],
+)
+def test_controller_keeps_snapshot_only_for_active_durable_recovery(
+    tmp_path, state, required
+):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_snapshot_recovery", controller_path
+    )
+    c = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(c)
+    root = tmp_path / "executor"
+    root.mkdir(mode=0o700)
+    payload = {"state": state}
+    canonical = (
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+    envelope = {
+        "payload": payload,
+        "sha256": __import__("hashlib").sha256(canonical).hexdigest(),
+    }
+    receipt = root / "receipt.json"
+    receipt.write_text(
+        json.dumps(envelope, sort_keys=True, separators=(",", ":")) + "\n"
+    )
+    receipt.chmod(0o600)
+    assert c.snapshot_recovery_required(root) is required
+
+
+def test_controller_refuses_non_object_snapshot_recovery_payload(tmp_path):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_snapshot_payload", controller_path
+    )
+    c = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(c)
+    root = tmp_path / "executor"
+    root.mkdir(mode=0o700)
+    payload = ["armed"]
+    canonical = (
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+    envelope = {
+        "payload": payload,
+        "sha256": __import__("hashlib").sha256(canonical).hexdigest(),
+    }
+    receipt = root / "receipt.json"
+    receipt.write_text(
+        json.dumps(envelope, sort_keys=True, separators=(",", ":")) + "\n"
+    )
+    receipt.chmod(0o600)
+    with pytest.raises(c.ControllerError, match="executor-recovery-refused"):
+        c.snapshot_recovery_required(root)
+
+
+def _provider_return_path_state():
+    def rule(comment, family=None, protocol=None, start=None, end=None, **extra):
+        value = {
+            "action": "accept",
+            "direction": "in",
+            "comment": comment,
+            **extra,
+        }
+        if family:
+            value["family"] = family
+        if protocol:
+            value["protocol"] = protocol
+        if start is not None:
+            value["destination_port_start"] = str(start)
+            value["destination_port_end"] = str(end if end is not None else start)
+        return value
+
+    rules = [
+        rule(
+            "SSH allow 203.0.113.7/32",
+            "IPv4",
+            "tcp",
+            2222,
+            source_address_start="203.0.113.7",
+            source_address_end="203.0.113.7",
+        ),
+        rule("TCP/443 VLESS+REALITY", "IPv4", "tcp", 443),
+        rule("TCP/443 VLESS+REALITY IPv6", "IPv6", "tcp", 443),
+        rule("TCP return IPv4", "IPv4", "tcp", 32768, 60999),
+        rule("UDP return IPv4", "IPv4", "udp", 32768, 60999),
+        rule("TCP return IPv6", "IPv6", "tcp", 32768, 60999),
+        rule("UDP return IPv6", "IPv6", "udp", 32768, 60999),
+        {
+            "action": "drop",
+            "direction": "in",
+            "family": "IPv4",
+            "comment": "default deny inbound",
+        },
+        {
+            "action": "drop",
+            "direction": "in",
+            "family": "IPv6",
+            "comment": "default deny inbound v6",
+        },
+        {"action": "accept", "direction": "out", "comment": "default allow outbound"},
+    ]
+    return {
+        "resources": [
+            {
+                "type": "upcloud_server",
+                "name": "vpn",
+                "instances": [{"attributes": {"firewall": False}}],
+            },
+            {
+                "type": "upcloud_firewall_rules",
+                "name": "vpn",
+                "instances": [{"attributes": {"firewall_rule": rules}}],
+            },
+            {
+                "type": "terraform_data",
+                "name": "ssh_port",
+                "instances": [{"attributes": {"input": 2222}}],
+            },
+        ],
+        "outputs": {
+            "ssh_port": {"value": 2222},
+            "public_listeners": {
+                "value": [{"name": "xray", "protocol": "tcp", "port": 443}]
+            },
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["ssh-port", "management-source", "listener", "return-range", "rule-order"],
+)
+def test_forward_guard_validates_effective_provider_return_path(fault):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_provider_rules", controller_path
+    )
+    c = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(c)
+    state = _provider_return_path_state()
+    rules = state["resources"][1]["instances"][0]["attributes"]["firewall_rule"]
+    host = {"port": 2222}
+    assert c.validate_provider_return_path(state, host) is False
+    if fault == "ssh-port":
+        state["resources"][2]["instances"][0]["attributes"]["input"] = 22
+    elif fault == "management-source":
+        rules[0].pop("source_address_end")
+    elif fault == "listener":
+        rules.pop(2)
+    elif fault == "return-range":
+        rules[3]["destination_port_start"] = "1"
+    else:
+        rules.insert(0, rules.pop(7))
+    with pytest.raises(c.p.PromotionError, match="provider-return-path-invalid"):
+        c.validate_provider_return_path(state, host)
 
 
 def test_spawn_timeout_reaps_owned_process_before_controller_returns(
@@ -708,6 +1422,19 @@ def test_controller_freezes_one_inventory_host_for_guest_provider_and_proof(
 
     monkeypatch.setattr(controller.p.fleet_inspection, "select_hosts", select_hosts)
     monkeypatch.setattr(controller, "private_directory", lambda _path: None)
+
+    class Snapshot:
+        digest = "e" * 64
+        root = tmp_path / "executor/terraform-snapshot"
+
+        @classmethod
+        def create(cls, *_args):
+            return cls()
+
+        def remove(self):
+            pass
+
+    monkeypatch.setattr(controller.p, "TerraformConfigSnapshot", Snapshot)
     guest_hosts = []
 
     def strict_guest(host, *_args):
@@ -729,6 +1456,7 @@ def test_controller_freezes_one_inventory_host_for_guest_provider_and_proof(
             super().__init__(*fds)
             self.digest = "a" * 64
             self.value = {
+                "environment": "prod",
                 "inventory_alias": "node-a",
                 "public_service_address_sha256": "b" * 64,
                 "deployable_digest": "c" * 64,
@@ -830,6 +1558,16 @@ def test_controller_reaps_unarmed_executor_when_reconcile_is_interrupted(
     monkeypatch.setattr(controller, "private_directory", lambda _path: None)
     monkeypatch.setenv("UPCLOUD_TOKEN", "fixture-token")
 
+    class Snapshot:
+        digest = "e" * 64
+        root = tmp_path / "executor/terraform-snapshot"
+
+        @classmethod
+        def create(cls, *_args):
+            return cls()
+
+    monkeypatch.setattr(controller.p, "TerraformConfigSnapshot", Snapshot)
+
     class Owned:
         def __init__(self, *fds):
             self.fds = list(fds)
@@ -843,6 +1581,7 @@ def test_controller_reaps_unarmed_executor_when_reconcile_is_interrupted(
             super().__init__(*fds)
             self.digest = "a" * 64
             self.value = {
+                "environment": "prod",
                 "inventory_alias": "node-a",
                 "public_service_address_sha256": "b" * 64,
                 "deployable_digest": "c" * 64,
@@ -963,6 +1702,28 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
     binary.chmod(0o700)
     runtime = Path(tempfile.mkdtemp(prefix="tnexec-", dir=_short_temp_root()))
     sock, root = runtime / "executor.sock", runtime / "state-root"
+    source = runtime / "source"
+    provider = source / "terraform/providers/upcloud"
+    (provider / "environments").mkdir(parents=True)
+    (provider / ".terraform-env/default").mkdir(parents=True)
+    (source / "terraform/shared").mkdir(parents=True)
+    (source / "scripts").mkdir(parents=True)
+    snapshot_files = {
+        source / "scripts/terraform-env.sh": b"#!/bin/sh\n",
+        provider / "main.tf": b"terraform {}\n",
+        provider / ".terraform.lock.hcl": b"# lock\n",
+        provider / "environments/prod.tfvars": b"enable_provider_firewall=false\n",
+        provider / ".terraform-env/default/environment": b"default",
+        provider / "terraform.tfstate": state_raw,
+        source / "terraform/shared/cloud-init.yaml.tftpl": b"#cloud-config\n",
+    }
+    for path, raw in snapshot_files.items():
+        path.write_bytes(raw)
+        path.chmod(0o700 if path.name == "terraform-env.sh" else 0o600)
+    executor_module = mod()
+    snapshot = executor_module.p.TerraformConfigSnapshot.create(
+        source, runtime / "terraform-snapshot", "prod"
+    )
     env = {**os.environ, "UPCLOUD_TOKEN": "test-token"}
     command = [
         sys.executable,
@@ -976,6 +1737,10 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
         str(binary),
         "--terraform-sha256",
         __import__("hashlib").sha256(binary.read_bytes()).hexdigest(),
+        "--terraform-snapshot",
+        str(snapshot.root),
+        "--terraform-snapshot-sha256",
+        snapshot.digest,
         "--receipt-dir",
         str(root),
         "--socket",
@@ -995,6 +1760,7 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
     identity = controller.executor_identity(
         __import__("hashlib").sha256(target_path.read_bytes()).hexdigest(),
         __import__("hashlib").sha256(binary.read_bytes()).hexdigest(),
+        snapshot.digest,
         "test-token",
     )
     controller._remove_verified_stale_executor(
@@ -1004,6 +1770,10 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
         socket_required=False,
     )
     assert not (root / "daemon.json").exists()
+    snapshot = executor_module.p.TerraformConfigSnapshot.create(
+        source, runtime / "terraform-snapshot", "prod"
+    )
+    assert snapshot.digest == identity["terraform_snapshot_sha256"]
     process = subprocess.Popen(
         [*command, str(sock)],
         env=env,
@@ -1046,10 +1816,12 @@ def test_controller_two_invocations_reject_unarmed_or_changed_executor(
     controller = importlib.util.module_from_spec(spec)
     assert spec.loader
     spec.loader.exec_module(controller)
-    first = controller.executor_identity("a" * 64, "b" * 64, "first-token")
-    changed_terraform = controller.executor_identity("a" * 64, "c" * 64, "first-token")
+    first = controller.executor_identity("a" * 64, "b" * 64, "d" * 64, "first-token")
+    changed_terraform = controller.executor_identity(
+        "a" * 64, "c" * 64, "d" * 64, "first-token"
+    )
     changed_capability = controller.executor_identity(
-        "a" * 64, "b" * 64, "second-token"
+        "a" * 64, "b" * 64, "d" * 64, "second-token"
     )
     assert (
         first["provider_capability_sha256"]
@@ -1067,7 +1839,15 @@ def test_controller_two_invocations_reject_unarmed_or_changed_executor(
     # provider capability.
     daemon = tmp_path / "daemon.json"
     daemon.write_text(
-        json.dumps({"schema_version": 2, "pid": os.getpid(), **first}) + "\n"
+        json.dumps(
+            {
+                "schema_version": 3,
+                "pid": os.getpid(),
+                "process_started_at": controller.process_incarnation(os.getpid()),
+                **first,
+            }
+        )
+        + "\n"
     )
     daemon.chmod(0o600)
     with pytest.raises(controller.ControllerError, match="executor-unreachable"):
@@ -1088,6 +1868,48 @@ def test_controller_two_invocations_reject_unarmed_or_changed_executor(
     )
 
 
+def test_stale_executor_cleanup_distinguishes_recycled_live_pid(monkeypatch):
+    import shutil, socket
+
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_pid_incarnation", controller_path
+    )
+    controller = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(controller)
+    identity = controller.executor_identity("a" * 64, "b" * 64, "d" * 64, "test-token")
+    runtime = Path(tempfile.mkdtemp(prefix="tnpid-", dir=_short_temp_root()))
+    marker = runtime / "daemon.json"
+    marker.write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "pid": os.getpid(),
+                "process_started_at": "prior-process-incarnation",
+                **identity,
+            }
+        )
+        + "\n"
+    )
+    marker.chmod(0o600)
+    socket_path = runtime / "executor.sock"
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(socket_path))
+    listener.close()
+    monkeypatch.setattr(
+        controller, "process_incarnation", lambda _pid: "recycled-process-incarnation"
+    )
+
+    try:
+        controller._remove_verified_stale_executor(runtime, socket_path, identity)
+
+        assert not marker.exists()
+        assert not socket_path.exists()
+    finally:
+        shutil.rmtree(runtime, ignore_errors=True)
+
+
 def test_spawn_wait_revalidates_identity_before_second_controller_can_arm(
     monkeypatch, tmp_path
 ):
@@ -1099,8 +1921,8 @@ def test_spawn_wait_revalidates_identity_before_second_controller_can_arm(
     controller = importlib.util.module_from_spec(spec)
     assert spec.loader
     spec.loader.exec_module(controller)
-    first = controller.executor_identity("a" * 64, "b" * 64, "first-token")
-    second = controller.executor_identity("a" * 64, "b" * 64, "second-token")
+    first = controller.executor_identity("a" * 64, "b" * 64, "d" * 64, "first-token")
+    second = controller.executor_identity("a" * 64, "b" * 64, "d" * 64, "second-token")
     socket_path = tmp_path / "executor.sock"
     socket_path.write_text("not-a-socket")
 
@@ -1137,7 +1959,7 @@ def test_controller_reaps_a_spawned_unarmed_executor_after_prepare_failure(
     controller = importlib.util.module_from_spec(spec)
     assert spec.loader
     spec.loader.exec_module(controller)
-    identity = controller.executor_identity("a" * 64, "b" * 64, "token")
+    identity = controller.executor_identity("a" * 64, "b" * 64, "d" * 64, "token")
 
     class Process:
         alive = True

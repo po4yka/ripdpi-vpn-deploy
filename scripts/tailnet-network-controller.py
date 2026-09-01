@@ -8,9 +8,11 @@ import base64
 import fcntl
 import hashlib
 import importlib.util
+import ipaddress
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import stat
 import subprocess
@@ -25,14 +27,37 @@ MAX = 65536
 # The canonical JSON request (including base64 and timeout) must fit the
 # guest's 64-KiB bounded stdin frame at this exact raw candidate ceiling.
 MAX_CANDIDATE = 49125
-PREPARE_TIMEOUT = 900
 
 
-def executor_identity(target_digest: str, terraform_digest: str, token: str):
+def process_incarnation(pid: int):
+    """Return the kernel-reported process start time used to detect PID reuse."""
+    try:
+        result = subprocess.run(
+            ["/bin/ps", "-o", "lstart=", "-p", str(pid)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=5,
+            env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"},
+            text=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise ControllerError("process-incarnation-refused") from None
+    value = result.stdout.strip()
+    if result.returncode != 0 or not value or len(value) > 64 or "\n" in value:
+        raise ControllerError("process-incarnation-refused")
+    return value
+
+
+def executor_identity(
+    target_digest: str, terraform_digest: str, snapshot_digest: str, token: str
+):
     """Return the non-secret authority a controller must match before reuse."""
     if (
         p.HEX.fullmatch(target_digest) is None
         or p.HEX.fullmatch(terraform_digest) is None
+        or p.HEX.fullmatch(snapshot_digest) is None
         or not isinstance(token, str)
         or not token
     ):
@@ -40,11 +65,12 @@ def executor_identity(target_digest: str, terraform_digest: str, token: str):
     return {
         "provider_target_sha256": target_digest,
         "terraform_sha256": terraform_digest,
+        "terraform_snapshot_sha256": snapshot_digest,
         # This is an in-memory/0600 daemon capability binding, never a
         # promotion receipt.  It prevents a later credential from arming an
         # executor that inherited a prior controller's provider authority.
         "provider_capability_sha256": hashlib.sha256(
-            b"tailnet-network-executor-capability-v1\0" + token.encode("utf-8")
+            b"tailnet-network-executor-capability-v2\0" + token.encode("utf-8")
         ).hexdigest(),
     }
 
@@ -60,6 +86,7 @@ def module():
 
 
 p = module()
+PREPARE_TIMEOUT = p.TRANSACTION_LEASE_SECONDS
 
 
 class ControllerError(RuntimeError):
@@ -126,6 +153,52 @@ def private_directory(path: Path):
         os.close(fd)
 
 
+def snapshot_recovery_required(root: Path):
+    """Keep an old immutable snapshot only while a durable lease needs it."""
+    path = root / "receipt.json"
+    if not path.exists():
+        return False
+    fd = private(path)
+    try:
+        raw = os.read(fd, MAX + 1)
+    finally:
+        os.close(fd)
+    try:
+        envelope = json.loads(raw)
+        payload = envelope["payload"]
+        canonical_payload = (
+            json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+        ).encode()
+        canonical_envelope = (
+            json.dumps(envelope, sort_keys=True, separators=(",", ":")) + "\n"
+        ).encode()
+        if (
+            len(raw) > MAX
+            or raw != canonical_envelope
+            or set(envelope) != {"payload", "sha256"}
+            or envelope["sha256"] != hashlib.sha256(canonical_payload).hexdigest()
+            or not isinstance(payload, dict)
+            or payload.get("state")
+            not in {
+                "armed",
+                "forward-started",
+                "provider-applied",
+                "committed-cleanup-debt",
+                "executed",
+                "released",
+            }
+        ):
+            raise ValueError
+        return payload["state"] in {
+            "armed",
+            "forward-started",
+            "provider-applied",
+            "committed-cleanup-debt",
+        }
+    except (KeyError, TypeError, ValueError, UnicodeError):
+        raise ControllerError("executor-recovery-refused") from None
+
+
 def load_config(path: Path):
     fd = private(path)
     try:
@@ -168,11 +241,23 @@ def guard(socket_path: Path):
             raise p.PromotionError("rollback-uncertain")
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-                client.settimeout(90)
+                client.settimeout(
+                    p.ROLLBACK_GUARD_RPC_TIMEOUT_SECONDS
+                    if action in {"rollback-provider", "execute"}
+                    else p.GUARD_RPC_TIMEOUT_SECONDS
+                )
                 client.connect(str(socket_path))
                 client.sendall(payload)
                 client.shutdown(socket.SHUT_WR)
-                raw = client.recv(MAX + 1)
+                chunks = bytearray()
+                while len(chunks) <= MAX:
+                    chunk = client.recv(min(4096, MAX + 1 - len(chunks)))
+                    if not chunk:
+                        break
+                    chunks.extend(chunk)
+                if len(chunks) > MAX:
+                    raise ValueError
+                raw = bytes(chunks)
             result = json.loads(raw)
             if not isinstance(result, dict) or set(result) != {"ok"}:
                 raise ValueError
@@ -203,7 +288,9 @@ def provider_transaction_lock(root: Path):
     return fd
 
 
-def _live_executor(socket_path: Path, identity: dict, *, allow_unarmed=False):
+def _live_executor(
+    socket_path: Path, identity: dict, *, allow_unarmed=False, allow_terminal=False
+):
     try:
         value = guard(socket_path)("ping", {})
         return (
@@ -219,6 +306,7 @@ def _live_executor(socket_path: Path, identity: dict, *, allow_unarmed=False):
                     "committed-cleanup-debt",
                 }
                 | ({None} if allow_unarmed else set())
+                | ({"executed", "released"} if allow_terminal else set())
             )
         )
     except p.PromotionError:
@@ -229,7 +317,12 @@ def _wait_for_spawned_executor(process, socket_path: Path, identity: dict):
     """Accept only the just-spawned daemon's exact unarmed handshake."""
     for _ in range(50):
         if socket_path.exists():
-            if _live_executor(socket_path, identity, allow_unarmed=True):
+            if _live_executor(
+                socket_path,
+                identity,
+                allow_unarmed=True,
+                allow_terminal=True,
+            ):
                 return
             # The socket can belong to another controller or a stale daemon;
             # never continue into arm based on path existence alone.
@@ -277,18 +370,34 @@ def _terminate_unarmed_executor(process, socket_path: Path, identity: dict):
         _reap_spawned_process(process)
 
 
-def _reconcile_previous(rollback_guard, guest, host):
+def _wait_for_terminal_cleanup(process, root: Path, socket_path: Path, snapshot: Path):
+    """Do not report reconciliation while durable daemon artifacts remain live."""
+    for _ in range(50):
+        artifacts_removed = not any(
+            path.exists() or path.is_symlink()
+            for path in (socket_path, root / "daemon.json", snapshot)
+        )
+        process_exited = process is None or process.poll() is not None
+        if artifacts_removed and process_exited:
+            return
+        time.sleep(0.1)
+    raise ControllerError("executor-cleanup-refused")
+
+
+def _reconcile_previous(adapter, rollback_guard, guest, host, promotion_config):
     """Finish an earlier provider and guest rollback before a new promotion."""
     current = rollback_guard("reconcile", {})
     state = current.get("state") if isinstance(current, dict) else None
-    expected = {
-        "armed": "prepared",
-        "forward-started": "prepared",
-        "provider-applied": "applied",
-    }
-    if state in {"idle", "executed", "released"}:
-        return
-    if state not in expected:
+    if state == "idle":
+        return False
+    if state in {"executed", "released"}:
+        if rollback_guard("acknowledge", {"state": state}) != {"state": "idle"}:
+            raise p.PromotionError("rollback-uncertain")
+        return True
+    if state == "committed-cleanup-debt":
+        p.reconcile_release(adapter, tuple(sorted(current.items())))
+        return True
+    if state not in {"armed", "forward-started", "provider-applied"}:
         raise p.PromotionError("rollback-uncertain")
     try:
         identity = {
@@ -299,12 +408,48 @@ def _reconcile_previous(rollback_guard, guest, host):
         }
     except KeyError:
         raise p.PromotionError("rollback-uncertain") from None
+    if current.get("guest_phase") == "unchanged":
+        rollback_guard("rollback-provider", current)
+        terminal = rollback_guard("execute", current)
+        if terminal != {"state": "executed"}:
+            raise p.PromotionError("rollback-uncertain")
+        return True
+    if current.get("guest_phase") != "transactional":
+        raise p.PromotionError("rollback-uncertain")
     status = guest(host, "status", {}, False)
     status_name = status.get("status") if isinstance(status, dict) else None
     if status_name == "rolled_back":
         p._same_receipt(status, identity, "rolled_back")
+    elif state in {"armed", "forward-started"}:
+        p._same_receipt(status, identity, "prepared")
+    elif status_name in {"prepared", "applied"}:
+        p._same_receipt(status, identity, status_name)
+    elif status_name == "committed":
+        p._same_receipt(status, identity, "committed")
+        expected_identity = {
+            key: adapter.target.value[key]
+            for key in (
+                "inventory_alias",
+                "public_service_address_sha256",
+                "deployable_digest",
+            )
+        }
+        proof = p.promotion_proof(
+            Path(promotion_config),
+            p._env(adapter.environment),
+            expected_identity,
+            current["provider_applied_at"],
+        )
+        if proof is None:
+            raise p.PromotionError("promotion-proof-failed")
+        armed = dict(current)
+        armed.pop("forward_lease")
+        armed.pop("provider_applied_at")
+        armed["state"] = "armed"
+        p.reconcile_commit_release(adapter, tuple(sorted(armed.items())), status, proof)
+        return True
     else:
-        p._same_receipt(status, identity, expected[state])
+        raise p.PromotionError("rollback-uncertain")
     rollback_guard("rollback-provider", current)
     if status_name != "rolled_back":
         p._same_receipt(
@@ -313,6 +458,7 @@ def _reconcile_previous(rollback_guard, guest, host):
     terminal = rollback_guard("execute", current)
     if terminal != {"state": "executed"}:
         raise p.PromotionError("rollback-uncertain")
+    return True
 
 
 def _remove_verified_stale_executor(
@@ -327,9 +473,11 @@ def _remove_verified_stale_executor(
         os.close(fd)
     if (
         not isinstance(value, dict)
-        or set(value) != {"schema_version", "pid", *identity}
-        or value.get("schema_version") != 2
+        or set(value) != {"schema_version", "pid", "process_started_at", *identity}
+        or value.get("schema_version") != 3
         or type(value.get("pid")) is not int
+        or not isinstance(value.get("process_started_at"), str)
+        or not value["process_started_at"]
         or any(value.get(key) != item for key, item in identity.items())
     ):
         raise ControllerError("executor-stale-refused")
@@ -340,7 +488,8 @@ def _remove_verified_stale_executor(
     except PermissionError:
         raise ControllerError("executor-stale-refused") from None
     else:
-        raise ControllerError("executor-unreachable")
+        if process_incarnation(value["pid"]) == value["process_started_at"]:
+            raise ControllerError("executor-unreachable")
     if socket_required:
         info = socket_path.lstat()
         if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.geteuid():
@@ -360,6 +509,8 @@ def strict_guest(host, known_hosts, candidate: bytes):
                 "candidate_b64": base64.b64encode(candidate).decode("ascii"),
                 "timeout": PREPARE_TIMEOUT,
             }
+        elif action == "preview":
+            request = {"candidate_b64": base64.b64encode(candidate).decode("ascii")}
         elif action in {"apply", "rollback", "confirm"}:
             request = identity
         elif action == "status":
@@ -376,7 +527,7 @@ def strict_guest(host, known_hosts, candidate: bytes):
             input_data=json.dumps(
                 request, sort_keys=True, separators=(",", ":")
             ).encode(),
-            timeout=90,
+            timeout=p.COMMAND_TIMEOUT_SECONDS,
         )
         try:
             return json.loads(raw)
@@ -384,6 +535,147 @@ def strict_guest(host, known_hosts, candidate: bytes):
             raise p.PromotionError("guest-uncertain") from None
 
     return call
+
+
+def validate_provider_return_path(state_value, host):
+    """Validate the effective stateless provider rules for the frozen SSH host."""
+    try:
+        if not isinstance(state_value, dict) or type(host["port"]) is not int:
+            raise ValueError
+
+        def resource(kind, name):
+            matches = [
+                item
+                for item in state_value["resources"]
+                if item.get("type") == kind and item.get("name") == name
+            ]
+            if len(matches) != 1 or len(matches[0]["instances"]) != 1:
+                raise ValueError
+            return matches[0]["instances"][0]["attributes"]
+
+        server = resource("upcloud_server", "vpn")
+        rules = resource("upcloud_firewall_rules", "vpn")["firewall_rule"]
+        ssh_data = resource("terraform_data", "ssh_port")["input"]
+        outputs = state_value["outputs"]
+        ssh_output = outputs["ssh_port"]["value"]
+        listeners = outputs["public_listeners"]["value"]
+        if (
+            type(server["firewall"]) is not bool
+            or type(ssh_data) is not int
+            or ssh_data != host["port"]
+            or ssh_output != host["port"]
+            or not isinstance(rules, list)
+            or not rules
+            or not isinstance(listeners, list)
+            or not listeners
+        ):
+            raise ValueError
+
+        def drop_index(family):
+            indices = [
+                index
+                for index, rule in enumerate(rules)
+                if rule.get("action") == "drop"
+                and rule.get("direction") == "in"
+                and rule.get("family") == family
+            ]
+            if len(indices) != 1:
+                raise ValueError
+            return indices[0]
+
+        drops = {family: drop_index(family) for family in ("IPv4", "IPv6")}
+        ssh_rules = [
+            (index, rule)
+            for index, rule in enumerate(rules)
+            if isinstance(rule.get("comment"), str)
+            and rule["comment"].startswith("SSH allow ")
+        ]
+        if not ssh_rules:
+            raise ValueError
+        for index, rule in ssh_rules:
+            start = ipaddress.ip_address(rule["source_address_start"])
+            end = ipaddress.ip_address(rule["source_address_end"])
+            family = "IPv6" if start.version == 6 else "IPv4"
+            if (
+                end.version != start.version
+                or int(start) > int(end)
+                or rule.get("action") != "accept"
+                or rule.get("direction") != "in"
+                or rule.get("family") != family
+                or rule.get("protocol") != "tcp"
+                or rule.get("destination_port_start") != str(host["port"])
+                or rule.get("destination_port_end") != str(host["port"])
+                or index >= drops[family]
+            ):
+                raise ValueError
+
+        for listener in listeners:
+            if (
+                not isinstance(listener, dict)
+                or not isinstance(listener.get("name"), str)
+                or listener.get("protocol") not in {"tcp", "udp"}
+            ):
+                raise ValueError
+            if type(listener.get("port")) is int:
+                start = end = listener["port"]
+            else:
+                match = re.fullmatch(
+                    r"([0-9]{1,5})-([0-9]{1,5})", listener.get("port_range", "")
+                )
+                if match is None:
+                    raise ValueError
+                start, end = map(int, match.groups())
+            if not 1 <= start <= end <= 65535:
+                raise ValueError
+            for family in ("IPv4", "IPv6"):
+                matching = [
+                    index
+                    for index, rule in enumerate(rules)
+                    if rule.get("action") == "accept"
+                    and rule.get("direction") == "in"
+                    and rule.get("family") == family
+                    and rule.get("protocol") == listener["protocol"]
+                    and rule.get("destination_port_start") == str(start)
+                    and rule.get("destination_port_end") == str(end)
+                ]
+                if not matching or min(matching) >= drops[family]:
+                    raise ValueError
+
+        return_ranges = set()
+        for family in ("IPv4", "IPv6"):
+            for protocol in ("tcp", "udp"):
+                comment = f"{protocol.upper()} return {family}"
+                matches = [
+                    (index, rule)
+                    for index, rule in enumerate(rules)
+                    if rule.get("comment") == comment
+                    and rule.get("action") == "accept"
+                    and rule.get("direction") == "in"
+                    and rule.get("family") == family
+                    and rule.get("protocol") == protocol
+                ]
+                if len(matches) != 1 or matches[0][0] >= drops[family]:
+                    raise ValueError
+                start = int(matches[0][1]["destination_port_start"])
+                end = int(matches[0][1]["destination_port_end"])
+                if not 1024 <= start <= end <= 65535:
+                    raise ValueError
+                return_ranges.add((start, end))
+        if len(return_ranges) != 1 or not any(
+            rule.get("action") == "accept" and rule.get("direction") == "out"
+            for rule in rules
+        ):
+            raise ValueError
+        return server["firewall"]
+    except (
+        IndexError,
+        KeyError,
+        StopIteration,
+        TypeError,
+        ValueError,
+        ipaddress.AddressValueError,
+    ):
+        raise p.PromotionError("provider-return-path-invalid") from None
 
 
 def run(config):
@@ -409,6 +701,7 @@ def run(config):
         validated_tf = p.TrustedTerraform(terraform_fd, config["terraform_sha256"])
         terraform_fd = -1
         target_digest = validated_target.digest
+        target_environment = validated_target.value["environment"]
         terraform_digest = validated_tf.digest
     finally:
         if validated_target is not None:
@@ -431,12 +724,24 @@ def run(config):
     root = Path(config["executor_dir"])
     private_directory(root)
     sock = root / "executor.sock"
+    snapshot_path = root / "terraform-snapshot"
+    if (
+        (snapshot_path.exists() or snapshot_path.is_symlink())
+        and not (sock.exists() or sock.is_symlink() or (root / "daemon.json").exists())
+        and not snapshot_recovery_required(root)
+    ):
+        p.TerraformConfigSnapshot(snapshot_path).remove()
+    terraform_snapshot = p.TerraformConfigSnapshot.create(
+        ROOT, snapshot_path, target_environment
+    )
     token = os.environ.get("UPCLOUD_TOKEN")
     process = None
     if config["mode"] == "apply":
         if not token:
             raise ControllerError("provider-credentials-unavailable")
-        identity = executor_identity(target_digest, terraform_digest, token)
+        identity = executor_identity(
+            target_digest, terraform_digest, terraform_snapshot.digest, token
+        )
         if sock.exists() or sock.is_symlink():
             if not _live_executor(sock, identity):
                 _remove_verified_stale_executor(root, sock, identity)
@@ -458,6 +763,10 @@ def run(config):
                     str(terraform),
                     "--terraform-sha256",
                     config["terraform_sha256"],
+                    "--terraform-snapshot",
+                    str(terraform_snapshot.root),
+                    "--terraform-snapshot-sha256",
+                    terraform_snapshot.digest,
                     "--receipt-dir",
                     str(root),
                     "--socket",
@@ -489,6 +798,7 @@ def run(config):
         adapter = p.TerraformAdapter(
             provider_target,
             trusted_terraform=trusted_terraform,
+            terraform_snapshot=terraform_snapshot,
             external_rollback_guard=guard(sock),
             provider_transaction_lock=lambda: provider_transaction_lock(root),
             allow_apply=config["mode"] == "apply",
@@ -518,17 +828,9 @@ def run(config):
         def return_path(action, identity):
             if action not in {"forward", "readback"}:
                 raise p.PromotionError("provider-return-path-invalid")
-            if action == "forward":
-                return True
             try:
-                state_value = json.loads(adapter._command(["state", "pull"]))
-                resource = next(
-                    item
-                    for item in state_value["resources"]
-                    if item.get("type") == "upcloud_server"
-                    and item.get("name") == "vpn"
-                )
-                firewall = resource["instances"][0]["attributes"]["firewall"]
+                state_value = json.loads(adapter.current_state())
+                firewall = validate_provider_return_path(state_value, aliases[0])
             except (
                 KeyError,
                 IndexError,
@@ -537,9 +839,11 @@ def run(config):
                 ValueError,
                 p.PromotionError,
             ):
-                raise p.PromotionError("provider-readback-invalid") from None
-            if type(firewall) is not bool:
-                raise p.PromotionError("provider-readback-invalid")
+                if action == "readback":
+                    raise p.PromotionError("provider-readback-invalid") from None
+                raise p.PromotionError("provider-return-path-invalid") from None
+            if action == "forward":
+                return firewall is False
             return {**identity, "firewall": firewall}
 
         adapter.return_path_guard = return_path
@@ -561,13 +865,17 @@ def run(config):
         }
         try:
             if config["mode"] == "apply":
-                _reconcile_previous(
+                if _reconcile_previous(
+                    adapter,
                     guard(sock),
                     strict_guest(
                         aliases[0], Path(config["known_hosts_path"]), candidate
                     ),
                     aliases[0],
-                )
+                    Path(config["promotion_config_path"]),
+                ):
+                    _wait_for_terminal_cleanup(process, root, sock, snapshot_path)
+                    return {"status": "reconciled"}
             return p.execute(
                 request,
                 adapter,
@@ -583,6 +891,8 @@ def run(config):
             raise
     finally:
         adapter.close()
+        if config["mode"] == "dry-run":
+            terraform_snapshot.remove()
 
 
 def main():

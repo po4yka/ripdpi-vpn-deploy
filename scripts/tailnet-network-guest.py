@@ -25,7 +25,10 @@ from uuid import UUID, uuid4
 SCHEMA = 1
 MAX_FILE = 256 * 1024
 MAX_STATE = 1024 * 1024
-MAX_TIMEOUT = 900
+# This standalone helper cannot import the controller deployment tree.  The
+# contract test keeps this ceiling equal to promotion.TRANSACTION_LEASE_SECONDS,
+# whose expression covers the complete bounded forward and recovery path.
+MAX_TIMEOUT = 2955
 MAX_CANDIDATE = 49125
 TERMINAL = {"committed", "rolled_back"}
 STATES = TERMINAL | {

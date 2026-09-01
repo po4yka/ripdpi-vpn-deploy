@@ -55,6 +55,8 @@ def test_executor_closes_earlier_input_when_a_later_open_fails(tmp_path, monkeyp
                 tmp_path / "state",
                 tmp_path / "terraform",
                 "a" * 64,
+                tmp_path / "snapshot",
+                "b" * 64,
                 tmp_path / "receipts",
             )
         with pytest.raises(OSError):
@@ -215,6 +217,13 @@ def _target(
             os.close(state_fd)
 
 
+def _recovery_snapshot(m):
+    snapshot = object.__new__(m.TerraformConfigSnapshot)
+    snapshot.digest = "e" * 64
+    snapshot.verify = lambda: None
+    return snapshot
+
+
 def test_review_accepts_only_exact_upcloud_firewall_flip_and_noop_siblings():
     m = mod()
     m.review_plan(plan(False, True), SERVER, False, True)
@@ -267,6 +276,83 @@ def test_adapter_refuses_plan_without_a_reviewed_executable_capability(tmp_path)
         adapter.plan("forward")
 
 
+def _terraform_snapshot_source(tmp_path):
+    source = tmp_path / "source"
+    (source / "scripts").mkdir(parents=True)
+    provider = source / "terraform/providers/upcloud"
+    (provider / "environments").mkdir(parents=True)
+    (provider / ".terraform-env/default/providers").mkdir(parents=True)
+    (source / "terraform/shared").mkdir(parents=True)
+    files = {
+        source / "scripts/terraform-env.sh": b'#!/bin/sh\nexec terraform "$@"\n',
+        provider / "main.tf": b'terraform { required_version = ">= 1.0" }\n',
+        provider / "variables.tf": b'variable "enable_provider_firewall" {}\n',
+        provider / ".terraform.lock.hcl": b"# lock\n",
+        provider / "environments/prod.tfvars": b"enable_provider_firewall = false\n",
+        source / "terraform/shared/cloud-init.yaml.tftpl": b"#cloud-config\n",
+        provider / ".terraform-env/default/environment": b"default",
+        provider / ".terraform-env/default/providers/plugin": b"plugin",
+        provider / "terraform.tfstate": b'{"version":4,"resources":[]}\n',
+    }
+    for path, raw in files.items():
+        path.write_bytes(raw)
+        path.chmod(0o700 if path.name in {"terraform-env.sh", "plugin"} else 0o600)
+    return source
+
+
+def test_terraform_snapshot_binds_full_selected_config_and_ignores_live_drift(
+    tmp_path,
+):
+    m = mod()
+    source = _terraform_snapshot_source(tmp_path)
+    destination = tmp_path / "private/terraform-snapshot"
+    destination.parent.mkdir(mode=0o700)
+    snapshot = m.TerraformConfigSnapshot.create(source, destination, "prod")
+    original_digest = snapshot.digest
+
+    (source / "terraform/providers/upcloud/main.tf").write_text("mutated live config")
+    (source / "terraform/providers/upcloud/environments/prod.tfvars").write_text(
+        "mutated live tfvars"
+    )
+    snapshot.verify()
+    assert snapshot.digest == original_digest
+    assert snapshot.var_file == "environments/prod.tfvars"
+    command, environment = snapshot.invocation(["plan"])
+    assert command == [
+        "-chdir=" + str(destination / "terraform/providers/upcloud"),
+        "plan",
+    ]
+    assert environment == {
+        "TF_DATA_DIR": str(destination / "terraform-data"),
+    }
+    assert str(source) not in " ".join(command)
+
+
+@pytest.mark.parametrize("fault", ["config", "tfvars", "wrapper", "data", "extra"])
+def test_terraform_snapshot_refuses_tamper_symlink_or_unmanifested_input(
+    tmp_path, fault
+):
+    m = mod()
+    source = _terraform_snapshot_source(tmp_path)
+    destination = tmp_path / "private/terraform-snapshot"
+    destination.parent.mkdir(mode=0o700)
+    snapshot = m.TerraformConfigSnapshot.create(source, destination, "prod")
+    paths = {
+        "config": destination / "terraform/providers/upcloud/main.tf",
+        "tfvars": destination / "terraform/providers/upcloud/environments/prod.tfvars",
+        "wrapper": destination / "scripts/terraform-env.sh",
+        "data": destination / "terraform-data/environment",
+    }
+    if fault == "extra":
+        (destination / "unexpected").write_text("x")
+    else:
+        path = paths[fault]
+        path.unlink()
+        path.symlink_to(source / "scripts/terraform-env.sh")
+    with pytest.raises(m.PromotionError, match="terraform-snapshot-invalid"):
+        snapshot.verify()
+
+
 def test_promotion_proof_is_a_single_explicit_dependency():
     source = SCRIPT.read_text()
     assert source.count("proof_result = promotion_proof(") == 1
@@ -315,6 +401,9 @@ class Adapter:
 
     def external_rollback(self, _capability):
         self.calls.append(("external-rollback",))
+
+    def rollback_provider(self, _capability):
+        self.calls.append(("rollback-provider",))
 
     def release_rollback(self, _capability):
         self.calls.append(("release",))
@@ -462,15 +551,133 @@ def test_execute_closes_adapter_on_every_preapply_boundary(
             m.PromotionError("provider-plan-invalid")
         )
     if boundary == "dry-run":
+        guest_calls = []
+
+        def preview(_host, action, identity, cleanup):
+            guest_calls.append((action, identity, cleanup))
+            return {"status": "would-change", "snapshot_digest": "d" * 64}
+
         assert m.execute(
-            request, adapter, guest=lambda *_: None, known_hosts=tmp_path / "known"
+            request, adapter, guest=preview, known_hosts=tmp_path / "known"
         ) == {"status": "dry-run"}
+        assert guest_calls == [("preview", {}, False)]
     else:
         with pytest.raises(m.PromotionError):
             m.execute(
                 request, adapter, guest=lambda *_: None, known_hosts=tmp_path / "known"
             )
     assert adapter.calls[-1] == ("close",)
+
+
+@pytest.mark.parametrize(
+    "preview",
+    [
+        None,
+        {"status": "prepared", "snapshot_digest": "d" * 64},
+        {"status": "unchanged", "snapshot_digest": "not-a-digest"},
+        {"status": "unchanged", "snapshot_digest": "d" * 64, "extra": True},
+    ],
+)
+def test_dry_run_refuses_any_non_strict_guest_preview(tmp_path, monkeypatch, preview):
+    m = mod()
+    adapter = Adapter()
+    request = _request(tmp_path)
+    request["mode"] = "dry-run"
+    monkeypatch.setattr(
+        m.fleet_inspection,
+        "select_hosts",
+        lambda *_: [
+            {
+                "name": "node-a",
+                "address": "198.51.100.1",
+                "transport": "100.64.0.1",
+                "port": 22,
+            }
+        ],
+    )
+    with pytest.raises(m.PromotionError, match="guest-uncertain"):
+        m.execute(
+            request,
+            adapter,
+            guest=lambda *_: preview,
+            known_hosts=tmp_path / "known",
+        )
+    assert adapter.calls[-1] == ("close",)
+
+
+def test_unchanged_guest_runs_provider_transaction_without_guest_writes(
+    tmp_path, monkeypatch
+):
+    m = mod()
+    adapter = Adapter()
+    (tmp_path / "known").write_text("fixture")
+    host = {
+        "name": "node-a",
+        "alias": "node-a",
+        "address": "198.51.100.1",
+        "transport": "100.64.0.1",
+        "port": 22,
+        "key": "k",
+        "user": "deploy",
+    }
+    monkeypatch.setattr(m.fleet_inspection, "select_hosts", lambda *_: [host])
+    monkeypatch.setattr(m, "_bounded", lambda *_a, **_k: b"")
+    proof = {
+        "schema_version": 1,
+        "status": "passed",
+        "target_identity": _request(tmp_path)["target_identity"],
+        "observed_at": 1_001,
+    }
+    monkeypatch.setattr(m, "promotion_proof", lambda *_: proof)
+    guest_calls = []
+
+    def guest(_host, action, identity, cleanup):
+        guest_calls.append((action, identity, cleanup))
+        assert action == "prepare"
+        return {"status": "unchanged", "snapshot_digest": "d" * 64}
+
+    assert m.execute(
+        _request(tmp_path), adapter, guest=guest, known_hosts=tmp_path / "known"
+    ) == {"status": "committed"}
+    assert guest_calls == [("prepare", {}, False)]
+    assert ("apply", "forward") in adapter.calls
+    assert ("apply", "rollback") not in adapter.calls
+    assert ("commit-rollback",) in adapter.calls
+
+
+def test_unchanged_guest_proof_failure_rolls_provider_back_and_terminalizes(
+    tmp_path, monkeypatch
+):
+    m = mod()
+    adapter = Adapter()
+    (tmp_path / "known").write_text("fixture")
+    host = {
+        "name": "node-a",
+        "alias": "node-a",
+        "address": "198.51.100.1",
+        "transport": "100.64.0.1",
+        "port": 22,
+        "key": "k",
+        "user": "deploy",
+    }
+    monkeypatch.setattr(m.fleet_inspection, "select_hosts", lambda *_: [host])
+    monkeypatch.setattr(m, "_bounded", lambda *_a, **_k: b"")
+    monkeypatch.setattr(m, "promotion_proof", lambda *_: None)
+    guest_calls = []
+
+    def guest(_host, action, identity, cleanup):
+        guest_calls.append((action, identity, cleanup))
+        assert action == "prepare"
+        return {"status": "unchanged", "snapshot_digest": "d" * 64}
+
+    with pytest.raises(m.PromotionError, match="promotion-proof-failed"):
+        m.execute(
+            _request(tmp_path), adapter, guest=guest, known_hosts=tmp_path / "known"
+        )
+    assert guest_calls == [("prepare", {}, False)]
+    assert ("apply", "forward") in adapter.calls
+    assert ("apply", "rollback") in adapter.calls
+    assert adapter.calls.count(("external-rollback",)) == 1
 
 
 def test_execute_rolls_provider_back_before_guest_when_proof_fails(
@@ -539,13 +746,19 @@ def test_post_forward_rollback_plan_failure_uses_armed_external_rollback_first(
 
     adapter.plan = planned
     guest = []
+    original_provider_rollback = adapter.rollback_provider
     original_external = adapter.external_rollback
     events = []
 
+    def provider_rollback(capability):
+        events.append("provider-rollback")
+        original_provider_rollback(capability)
+
     def external(capability):
-        events.append("provider")
+        events.append("terminal")
         original_external(capability)
 
+    adapter.rollback_provider = provider_rollback
     adapter.external_rollback = external
     with pytest.raises(m.PromotionError, match="provider-plan-invalid"):
         m.execute(
@@ -556,7 +769,8 @@ def test_post_forward_rollback_plan_failure_uses_armed_external_rollback_first(
             or _receipt(action),
             known_hosts=tmp_path / "known",
         )
-    assert events == ["guest", "provider", "guest"] and guest[-1] == ("rollback", True)
+    assert events == ["guest", "provider-rollback", "guest", "terminal"]
+    assert guest[-1] == ("rollback", True)
 
 
 def test_prepare_refusal_closes_forward_plan_and_never_attempts_provider_rollback(
@@ -639,7 +853,9 @@ def test_external_rollback_arm_requires_exact_bound_receipt(tmp_path):
             pass
 
     adapter = m.TerraformAdapter(
-        _target(m, tmp_path), external_rollback_guard=lambda *_: {"state": "armed"}
+        _target(m, tmp_path),
+        terraform_snapshot=_recovery_snapshot(m),
+        external_rollback_guard=lambda *_: {"state": "armed"},
     )
     with pytest.raises(m.PromotionError, match="provider-rollback-not-armed"):
         adapter.arm_rollback(Forward(), _receipt("prepare"))
@@ -679,6 +895,7 @@ def test_forward_lock_is_held_through_apply_marker_and_then_released(
 
     adapter = m.TerraformAdapter(
         target,
+        terraform_snapshot=_recovery_snapshot(m),
         external_rollback_guard=guard,
         provider_transaction_lock=provider_lock,
     )
@@ -722,6 +939,7 @@ def test_forward_refuses_lease_that_expires_after_provider_lock(monkeypatch, tmp
 
     adapter = m.TerraformAdapter(
         target,
+        terraform_snapshot=_recovery_snapshot(m),
         external_rollback_guard=guard,
         provider_transaction_lock=lambda: os.open(
             tmp_path / "provider.lock", os.O_CREAT | os.O_RDWR, 0o600
@@ -756,6 +974,7 @@ def test_forward_refuses_lease_that_expires_immediately_before_apply(
 
     adapter = m.TerraformAdapter(
         target,
+        terraform_snapshot=_recovery_snapshot(m),
         external_rollback_guard=guard,
         provider_transaction_lock=lambda: os.open(
             tmp_path / "provider.lock", os.O_CREAT | os.O_RDWR, 0o600
@@ -932,9 +1151,7 @@ def test_terraform_environment_is_canonical_and_sanitized():
         m._env("unsafe/value")
 
 
-def test_adapter_command_uses_reviewed_terraform_fd_through_wrapper(
-    tmp_path, monkeypatch
-):
+def test_adapter_command_uses_reviewed_terraform_fd_and_snapshot(tmp_path, monkeypatch):
     terraform = __import__("shutil").which("terraform")
     if terraform is None:
         pytest.skip("terraform unavailable")
@@ -946,12 +1163,14 @@ def test_adapter_command_uses_reviewed_terraform_fd_through_wrapper(
         fd = os.open(terraform, os.O_RDONLY)
         trusted = m.TrustedTerraform(fd, __import__("hashlib").sha256(raw).hexdigest())
         fd = -1
-        wrapper = tmp_path / "terraform-env.sh"
-        wrapper.write_text('#!/bin/sh\nexec terraform "$@"\n')
-        wrapper.chmod(0o700)
-        monkeypatch.setattr(m, "TERRAFORM_ENV", wrapper)
+        source = _terraform_snapshot_source(tmp_path)
+        snapshot_root = tmp_path / "private/terraform-snapshot"
+        snapshot_root.parent.mkdir(mode=0o700)
+        snapshot = m.TerraformConfigSnapshot.create(source, snapshot_root, "prod")
         target = _target(m, tmp_path)
-        adapter = m.TerraformAdapter(target, trusted_terraform=trusted)
+        adapter = m.TerraformAdapter(
+            target, trusted_terraform=trusted, terraform_snapshot=snapshot
+        )
         assert b"Terraform v" in adapter._command(["version"])
     finally:
         if adapter is not None:
@@ -1083,7 +1302,14 @@ def test_provider_target_rejects_tamper_and_state_drift_before_plan(
 
     target = _target(m, tmp_path / "fresh")
     adapter = m.TerraformAdapter(target)
-    monkeypatch.setattr(adapter, "_command", lambda *_a, **_k: b'{"serial":2}\n')
+    snapshot_type = type(
+        "Snapshot", (), {"state_bytes": lambda _self: b'{"serial":2}\n'}
+    )
+    trusted_type = type("Trusted", (), {})
+    adapter.terraform_snapshot = snapshot_type()
+    adapter.trusted_terraform = trusted_type()
+    monkeypatch.setattr(m, "TerraformConfigSnapshot", snapshot_type)
+    monkeypatch.setattr(m, "TrustedTerraform", trusted_type)
     with pytest.raises(m.PromotionError, match="provider-state-drift"):
         adapter.plan("forward")
 
@@ -1120,11 +1346,13 @@ def _rollback_capability(target, *, expires_at=2_000):
                 "server_uuid": SERVER,
                 "environment": "staging",
                 "provider_target_sha256": target.digest,
+                "terraform_snapshot_sha256": "e" * 64,
                 "forward_plan_sha256": "a" * 64,
                 "guest_generation": "123e4567-e89b-42d3-a456-426614174000",
                 "guest_nonce": "a" * 64,
                 "guest_snapshot_digest": "d" * 64,
                 "guest_deadline": 2_000_000_000,
+                "guest_phase": "transactional",
                 "expires_at": expires_at,
                 "state": "armed",
             }.items()
@@ -1168,7 +1396,11 @@ def test_cleanup_debt_rehydrates_on_fresh_adapter_and_releases(tmp_path, monkeyp
         raise AssertionError(action)
 
     monkeypatch.setattr(m.time, "time", lambda: 1_000)
-    fresh = m.TerraformAdapter(target, external_rollback_guard=guard)
+    fresh = m.TerraformAdapter(
+        target,
+        terraform_snapshot=_recovery_snapshot(m),
+        external_rollback_guard=guard,
+    )
     assert m.reconcile_release(fresh, capability) == {"status": "committed"}
     assert calls == ["inspect", "release"] and fresh._rollback_armed is False
 
@@ -1187,7 +1419,11 @@ def test_cleanup_debt_rehydrate_refuses_missing_tampered_or_expired(
     else:
         capability["expires_at"] = 999
     monkeypatch.setattr(m.time, "time", lambda: 1_000)
-    adapter = m.TerraformAdapter(target, external_rollback_guard=lambda *_: capability)
+    adapter = m.TerraformAdapter(
+        target,
+        terraform_snapshot=_recovery_snapshot(m),
+        external_rollback_guard=lambda *_: capability,
+    )
     with pytest.raises(m.PromotionError, match="rollback-uncertain"):
         m.reconcile_release(adapter, tuple(sorted(capability.items())))
     assert adapter._rollback_armed is False
@@ -1206,7 +1442,11 @@ def test_cleanup_debt_release_failure_retains_rehydrated_capability(
             return value
         return {"state": "still-armed"}
 
-    adapter = m.TerraformAdapter(target, external_rollback_guard=guard)
+    adapter = m.TerraformAdapter(
+        target,
+        terraform_snapshot=_recovery_snapshot(m),
+        external_rollback_guard=guard,
+    )
     with pytest.raises(m.PromotionError, match="rollback-uncertain"):
         m.reconcile_release(adapter, capability)
     assert adapter._rollback_armed is False and adapter._cleanup_receipt == capability
@@ -1274,6 +1514,16 @@ def test_rollback_plan_and_apply_use_post_forward_readback_not_initial_state_dig
         external_rollback_guard=lambda *_: None,
         allow_apply=True,
     )
+    adapter.terraform_snapshot = type(
+        "Snapshot",
+        (),
+        {"state_path": tmp_path / "terraform.tfstate", "var_file": "fixture.tfvars"},
+    )()
+    trusted_type = type("Trusted", (), {})
+    snapshot_type = type(adapter.terraform_snapshot)
+    adapter.trusted_terraform = trusted_type()
+    monkeypatch.setattr(m, "TrustedTerraform", trusted_type)
+    monkeypatch.setattr(m, "TerraformConfigSnapshot", snapshot_type)
     monkeypatch.setattr(
         adapter,
         "_verify_initial_state",
@@ -1314,7 +1564,11 @@ def test_reconcile_release_refuses_preconfirm_armed_capability(tmp_path, monkeyp
         return value
 
     monkeypatch.setattr(m.time, "time", lambda: 1_000)
-    adapter = m.TerraformAdapter(target, external_rollback_guard=guard)
+    adapter = m.TerraformAdapter(
+        target,
+        terraform_snapshot=_recovery_snapshot(m),
+        external_rollback_guard=guard,
+    )
     with pytest.raises(m.PromotionError, match="rollback-uncertain"):
         m.reconcile_release(adapter, armed)
     assert (
@@ -1353,7 +1607,11 @@ def test_postconfirm_restart_transitions_armed_to_cleanup_debt_then_releases(
         raise AssertionError(action)
 
     monkeypatch.setattr(m.time, "time", lambda: 1_000)
-    adapter = m.TerraformAdapter(target, external_rollback_guard=guard)
+    adapter = m.TerraformAdapter(
+        target,
+        terraform_snapshot=_recovery_snapshot(m),
+        external_rollback_guard=guard,
+    )
     assert m.reconcile_commit_release(adapter, armed, guest, proof) == {
         "status": "committed"
     }
@@ -1387,7 +1645,11 @@ def test_restart_refuses_foreign_committed_guest_before_guard_commit(
         raise AssertionError(action)
 
     monkeypatch.setattr(m.time, "time", lambda: 1_000)
-    adapter = m.TerraformAdapter(target, external_rollback_guard=guard)
+    adapter = m.TerraformAdapter(
+        target,
+        terraform_snapshot=_recovery_snapshot(m),
+        external_rollback_guard=guard,
+    )
     with pytest.raises(m.PromotionError, match="rollback-uncertain"):
         m.reconcile_commit_release(adapter, armed, foreign, proof)
     assert calls == ["inspect-current", "inspect"]
@@ -1420,7 +1682,11 @@ def test_restart_after_guard_commit_lost_response_rehydrates_cleanup_and_release
         raise AssertionError(action)
 
     monkeypatch.setattr(m.time, "time", lambda: 1_000)
-    adapter = m.TerraformAdapter(target, external_rollback_guard=guard)
+    adapter = m.TerraformAdapter(
+        target,
+        terraform_snapshot=_recovery_snapshot(m),
+        external_rollback_guard=guard,
+    )
     assert m.reconcile_commit_release(adapter, armed, guest, proof) == {
         "status": "committed"
     }
@@ -1454,7 +1720,11 @@ def test_restart_refuses_proof_older_than_durable_provider_apply_marker(
         raise AssertionError(action)
 
     monkeypatch.setattr(m.time, "time", lambda: 1_001)
-    adapter = m.TerraformAdapter(target, external_rollback_guard=guard)
+    adapter = m.TerraformAdapter(
+        target,
+        terraform_snapshot=_recovery_snapshot(m),
+        external_rollback_guard=guard,
+    )
     with pytest.raises(m.PromotionError, match="rollback-uncertain"):
         m.reconcile_commit_release(adapter, armed, _receipt("confirm"), proof)
     assert calls == ["inspect-current", "inspect"]
@@ -1466,7 +1736,9 @@ def test_arm_and_reconcile_refuse_expired_guest_deadline(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(m.time, "time", lambda: 1_000)
     adapter = m.TerraformAdapter(
-        target, external_rollback_guard=lambda action, value: calls.append(action)
+        target,
+        terraform_snapshot=_recovery_snapshot(m),
+        external_rollback_guard=lambda action, value: calls.append(action),
     )
 
     class Forward:
@@ -1482,7 +1754,9 @@ def test_arm_and_reconcile_refuse_expired_guest_deadline(tmp_path, monkeypatch):
     assert calls == []
 
     adapter = m.TerraformAdapter(
-        target, external_rollback_guard=lambda action, value: value
+        target,
+        terraform_snapshot=_recovery_snapshot(m),
+        external_rollback_guard=lambda action, value: value,
     )
     with pytest.raises(m.PromotionError, match="rollback-uncertain"):
         m.reconcile_commit_release(
@@ -1595,12 +1869,15 @@ def test_real_adapter_final_false_uses_external_executor_then_guest_rollback(
             return {**value, "forward_lease": "a" * 64, "state": "forward-started"}
         if action == "mark-applied":
             return {**value, "state": "provider-applied"}
+        if action == "rollback-provider":
+            return value
         if action == "execute":
             return {"state": "executed"}
         raise AssertionError(action)
 
     adapter = m.TerraformAdapter(
         target,
+        terraform_snapshot=_recovery_snapshot(m),
         return_path_guard=return_guard,
         external_rollback_guard=external_guard,
         allow_apply=True,

@@ -8,6 +8,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/tailnet-network-guest.py"
+sys.path.insert(0, str(ROOT / "scripts"))
 
 
 def load():
@@ -15,6 +16,67 @@ def load():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_script(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_transaction_lease_covers_every_sequential_hard_timeout():
+    guest = load()
+    promotion = load_script(
+        "tailnet_network_promotion_lease",
+        ROOT / "scripts/tailnet-network-promotion.py",
+    )
+    controller = load_script(
+        "tailnet_network_controller_lease",
+        ROOT / "scripts/tailnet-network-controller.py",
+    )
+    maximal_post_prepare_path = [
+        ("prepare-response", 90),
+        ("guard-arm", 90),
+        ("guard-begin-forward", 90),
+        ("guard-inspect", 90),
+        ("provider-forward-return-path-local-readback", 0),
+        ("provider-forward-apply", 90),
+        ("controller-forward-post-apply-readback-stage", 90),
+        ("guard-mark-applied", 90),
+        ("controller-rollback-pre-plan-readback-stage", 90),
+        ("provider-rollback-plan", 90),
+        ("provider-rollback-show", 90),
+        ("guest-apply", 90),
+        ("public-ssh", 30),
+        ("public-sftp", 30),
+        ("tailnet-ssh", 30),
+        ("tailnet-sftp", 30),
+        ("promotion-proof", 615),
+        ("guest-status", 90),
+        ("guest-confirm", 90),
+        ("guard-commit", 90),
+        ("guard-release", 90),
+        ("recovery-provider-pre-plan-local-readback", 0),
+        ("recovery-provider-plan", 90),
+        ("recovery-provider-show", 90),
+        ("recovery-provider-pre-apply-local-readback", 0),
+        ("recovery-provider-apply", 90),
+        ("recovery-provider-post-apply-local-readback", 0),
+        ("recovery-rollback-provider-response", 90),
+        ("recovery-guest-rollback", 90),
+        ("recovery-execute-permitted-rollback", 360),
+    ]
+
+    assert (
+        promotion.TRANSACTION_LEASE_SECONDS
+        == sum(timeout for _stage, timeout in maximal_post_prepare_path) + 60
+    )
+    assert promotion.ROLLBACK_GUARD_RPC_TIMEOUT_SECONDS == 3 * 90 + 90
+    assert guest.MAX_TIMEOUT == controller.PREPARE_TIMEOUT
+    assert controller.PREPARE_TIMEOUT == promotion.TRANSACTION_LEASE_SECONDS
+    assert promotion.NOOP_ROLLBACK_SECONDS == promotion.TRANSACTION_LEASE_SECONDS
 
 
 def test_empty_fragment_omits_nftables_invalid_empty_elements_expression() -> None:

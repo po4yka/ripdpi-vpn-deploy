@@ -19,6 +19,7 @@ import select
 import secrets
 import socket
 import stat
+import subprocess
 import sys
 import time
 
@@ -28,11 +29,35 @@ MAX = 65536
 IO_TIMEOUT = 5
 
 
-def daemon_identity(target_digest: str, terraform_digest: str, token: str):
+def process_incarnation(pid: int):
+    """Return the kernel-reported process start time used to detect PID reuse."""
+    try:
+        result = subprocess.run(
+            ["/bin/ps", "-o", "lstart=", "-p", str(pid)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=5,
+            env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"},
+            text=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise ExecutorError("process-incarnation-refused") from None
+    value = result.stdout.strip()
+    if result.returncode != 0 or not value or len(value) > 64 or "\n" in value:
+        raise ExecutorError("process-incarnation-refused")
+    return value
+
+
+def daemon_identity(
+    target_digest: str, terraform_digest: str, snapshot_digest: str, token: str
+):
     """Bind a daemon to the reviewed Terraform and its non-secret authority."""
     if (
         p.HEX.fullmatch(target_digest) is None
         or p.HEX.fullmatch(terraform_digest) is None
+        or p.HEX.fullmatch(snapshot_digest) is None
         or not isinstance(token, str)
         or not token
     ):
@@ -40,8 +65,9 @@ def daemon_identity(target_digest: str, terraform_digest: str, token: str):
     return {
         "provider_target_sha256": target_digest,
         "terraform_sha256": terraform_digest,
+        "terraform_snapshot_sha256": snapshot_digest,
         "provider_capability_sha256": hashlib.sha256(
-            b"tailnet-network-executor-capability-v1\0" + token.encode("utf-8")
+            b"tailnet-network-executor-capability-v2\0" + token.encode("utf-8")
         ).hexdigest(),
     }
 
@@ -280,7 +306,16 @@ class ReceiptStore:
 
 
 class Executor:
-    def __init__(self, target, state, terraform, digest, receipt_root):
+    def __init__(
+        self,
+        target,
+        state,
+        terraform,
+        digest,
+        terraform_snapshot,
+        terraform_snapshot_digest,
+        receipt_root,
+    ):
         target_fd = state_fd = tf_fd = -1
         provider_target = trusted = adapter = None
         try:
@@ -291,10 +326,14 @@ class Executor:
             target_fd = state_fd = -1
             trusted = p.TrustedTerraform(tf_fd, digest)
             tf_fd = -1
+            snapshot = p.TerraformConfigSnapshot(
+                terraform_snapshot, terraform_snapshot_digest
+            )
             store = ReceiptStore(receipt_root)
             adapter = p.TerraformAdapter(
                 provider_target,
                 trusted_terraform=trusted,
+                terraform_snapshot=snapshot,
                 return_path_guard=self._readback,
                 external_rollback_guard=lambda *_: True,
                 allow_apply=True,
@@ -305,7 +344,9 @@ class Executor:
             token = os.environ.get("UPCLOUD_TOKEN")
             if not token:
                 raise ExecutorError("provider-credentials-unavailable")
-            identity = daemon_identity(provider_target.digest, trusted.digest, token)
+            identity = daemon_identity(
+                provider_target.digest, trusted.digest, snapshot.digest, token
+            )
             adapter.environment_map = {
                 **adapter.environment_map,
                 "UPCLOUD_TOKEN": token,
@@ -330,6 +371,7 @@ class Executor:
         self.trusted = trusted
         self.store = store
         self.adapter = adapter
+        self.terraform_snapshot = snapshot
         self.daemon_identity = identity
 
     def close(self):
@@ -338,7 +380,7 @@ class Executor:
     def _readback(self, action, identity):
         if action != "readback":
             raise ExecutorError("return-path-refused")
-        raw = self.adapter._command(["state", "pull"])
+        raw = self.adapter.current_state()
         try:
             state = json.loads(raw)
             resource = next(
@@ -365,11 +407,13 @@ class Executor:
             "server_uuid",
             "environment",
             "provider_target_sha256",
+            "terraform_snapshot_sha256",
             "forward_plan_sha256",
             "guest_generation",
             "guest_nonce",
             "guest_snapshot_digest",
             "guest_deadline",
+            "guest_phase",
             "expires_at",
             "state",
         }
@@ -392,17 +436,22 @@ class Executor:
                 or p.UUID.fullmatch(value["server_uuid"]) is None
                 or not isinstance(value.get("environment"), str)
                 or p.NAME.fullmatch(value["environment"]) is None
+                or value.get("provider_target_sha256") != self.target.digest
+                or value.get("terraform_snapshot_sha256")
+                != self.terraform_snapshot.digest
                 or not all(
                     isinstance(value.get(key), str)
                     and p.HEX.fullmatch(value[key]) is not None
                     for key in (
                         "provider_target_sha256",
+                        "terraform_snapshot_sha256",
                         "forward_plan_sha256",
                         "guest_nonce",
                         "guest_snapshot_digest",
                     )
                 )
                 or type(value.get("guest_deadline")) is not int
+                or value.get("guest_phase") not in {"transactional", "unchanged"}
                 or type(value.get("expires_at")) is not int
                 or value["expires_at"] != value["guest_deadline"]
                 or type(value.get(marker)) is not int
@@ -426,6 +475,7 @@ class Executor:
             }
             or set(value) != fields
             or value.get("provider_target_sha256") != self.target.digest
+            or value.get("terraform_snapshot_sha256") != self.terraform_snapshot.digest
             or not isinstance(value.get("environment"), str)
             or p.NAME.fullmatch(value["environment"]) is None
             or not isinstance(value.get("server_uuid"), str)
@@ -436,6 +486,7 @@ class Executor:
                 isinstance(value[k], str) and p.HEX.fullmatch(value[k]) is not None
                 for k in (
                     "provider_target_sha256",
+                    "terraform_snapshot_sha256",
                     "forward_plan_sha256",
                     "guest_nonce",
                     "guest_snapshot_digest",
@@ -443,6 +494,7 @@ class Executor:
                 + (("forward_lease",) if state != "armed" else ())
             )
             or type(value.get("guest_deadline")) is not int
+            or value.get("guest_phase") not in {"transactional", "unchanged"}
             or type(value.get("expires_at")) is not int
             or value["expires_at"] != value["guest_deadline"]
         ):
@@ -480,20 +532,20 @@ class Executor:
             if current is not None:
                 self._valid_current(current)
             if action == "reconcile":
-                if current is None or current["state"] in {"executed", "released"}:
+                if current is None:
                     return {"state": "idle"}
-                if current["state"] == "committed-cleanup-debt":
-                    value = {
-                        **current,
-                        "state": "released",
-                        "released_at": int(time.time()),
-                    }
-                    value.pop("provider_applied_at")
-                    value.pop("promotion_observed_at")
-                    self._valid_current(value)
-                    self.store.put(value)
-                    return {"state": "released"}
+                if current["state"] in {"executed", "released"}:
+                    return {"state": current["state"]}
                 return current
+            if action == "acknowledge":
+                if (
+                    current is None
+                    or current["state"] not in {"executed", "released"}
+                    or request != {"state": current["state"]}
+                ):
+                    raise ExecutorError("transition-refused")
+                self.store.clear()
+                return {"state": "idle"}
             if action == "rollback-provider":
                 if current is None or current["state"] not in {
                     "armed",
@@ -527,22 +579,25 @@ class Executor:
                     "server_uuid",
                     "environment",
                     "provider_target_sha256",
+                    "terraform_snapshot_sha256",
                     "forward_plan_sha256",
                     "guest_generation",
                     "guest_nonce",
                     "guest_snapshot_digest",
                     "guest_deadline",
+                    "guest_phase",
                 }
                 if (
                     set(request) != fields
                     or request["provider_target_sha256"] != self.target.digest
+                    or request["terraform_snapshot_sha256"]
+                    != self.terraform_snapshot.digest
                     or request["guest_deadline"] <= int(time.time())
+                    or request["guest_phase"] not in {"transactional", "unchanged"}
                 ):
                     raise ExecutorError("arm-refused")
                 if current is not None:
-                    if current["state"] not in {"executed", "released"}:
-                        raise ExecutorError("arm-refused")
-                    self.store.clear()
+                    raise ExecutorError("arm-refused")
                 value = {
                     **request,
                     "expires_at": request["guest_deadline"],
@@ -699,6 +754,8 @@ def serve(args):
         Path(args.state),
         Path(args.terraform),
         args.terraform_sha256,
+        Path(args.terraform_snapshot),
+        args.terraform_snapshot_sha256,
         Path(args.receipt_dir),
     )
     path = Path(args.socket)
@@ -707,11 +764,13 @@ def serve(args):
         raise ExecutorError("socket-refused")
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     bound = False
+    terminal = False
     try:
         executor.store.write_pid(
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "pid": os.getpid(),
+                "process_started_at": process_incarnation(os.getpid()),
                 **executor.daemon_identity,
             }
         )
@@ -732,6 +791,7 @@ def serve(args):
                         "executed",
                         "released",
                     }:
+                        terminal = True
                         break
                 continue
             try:
@@ -744,7 +804,7 @@ def serve(args):
                         if not chunk:
                             break
                         chunks.extend(chunk)
-                    terminal = False
+                    request_terminal = False
                     try:
                         request = json.loads(bytes(chunks))
                         if request.get("action") == "ping":
@@ -759,10 +819,14 @@ def serve(args):
                             }
                         else:
                             result = executor.guard(request["action"], request["value"])
-                            terminal = request.get("action") in {
+                            request_terminal = request.get("action") in {
                                 "execute",
                                 "release",
                             } and result.get("state") in {"executed", "released"}
+                            request_terminal = request_terminal or (
+                                request.get("action") == "acknowledge"
+                                and result == {"state": "idle"}
+                            )
                         response = canonical({"ok": result})
                     except (
                         ExecutorError,
@@ -778,7 +842,8 @@ def serve(args):
                     except (BrokenPipeError, ConnectionError, socket.timeout):
                         # The client disconnected; the receipt transition remains durable.
                         pass
-                    if terminal:
+                    if request_terminal:
+                        terminal = True
                         break
             except (OSError, socket.timeout):
                 # A hostile or partial client must not prevent deadline recovery.
@@ -797,6 +862,8 @@ def serve(args):
             except FileNotFoundError:
                 # A concurrent terminal cleanup already removed the owned marker.
                 pass
+        if terminal or executor.store.get() is None:
+            executor.terraform_snapshot.remove()
 
 
 def main():
@@ -806,6 +873,8 @@ def main():
     parser.add_argument("--state", required=True)
     parser.add_argument("--terraform", required=True)
     parser.add_argument("--terraform-sha256", required=True)
+    parser.add_argument("--terraform-snapshot", required=True)
+    parser.add_argument("--terraform-snapshot-sha256", required=True)
     parser.add_argument("--receipt-dir", required=True)
     parser.add_argument("--socket", required=True)
     args = parser.parse_args()

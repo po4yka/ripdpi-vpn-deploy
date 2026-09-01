@@ -15,24 +15,55 @@ from pathlib import Path
 import platform
 import re
 import selectors
+import secrets
+import shutil
 import signal
 import stat
 import subprocess
 import sys
 import tempfile
 import time
+import uuid
 
 import fleet_inspection
 from sshd_contexts import ContextError, bind_contexts
 
 ROOT = Path(__file__).resolve().parents[1]
-TERRAFORM_ENV = ROOT / "scripts" / "terraform-env.sh"
 MAX_OUTPUT = 1_048_576
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
 UUID = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\Z"
 )
 HEX = re.compile(r"[0-9a-f]{64}\Z")
+COMMAND_TIMEOUT_SECONDS = 90
+GUARD_RPC_TIMEOUT_SECONDS = 90
+ROLLBACK_GUARD_RPC_TIMEOUT_SECONDS = (
+    3 * COMMAND_TIMEOUT_SECONDS + GUARD_RPC_TIMEOUT_SECONDS
+)
+CONNECTIVITY_CHECK_TIMEOUT_SECONDS = 30
+PROMOTION_PROOF_TIMEOUT_SECONDS = 615
+DEADLINE_COMPLETION_MARGIN_SECONDS = 60
+# Once the guest creates its deadline, the longest bounded path includes the
+# prepare response plus apply/status/confirm, three provider commands on the
+# success path, four public/Tailnet checks, the proof, six guard RPCs, and two
+# controller return-path stages.  A
+# failure at the last safe point additionally needs one guest rollback, three
+# provider rollback commands, one normal guard RPC, and one long execute RPC.
+# Keep a completion margin
+# for bounded calls that return immediately before their timeout.
+TRANSACTION_LEASE_SECONDS = (
+    4 * COMMAND_TIMEOUT_SECONDS
+    + 3 * COMMAND_TIMEOUT_SECONDS
+    + 4 * CONNECTIVITY_CHECK_TIMEOUT_SECONDS
+    + PROMOTION_PROOF_TIMEOUT_SECONDS
+    + 8 * GUARD_RPC_TIMEOUT_SECONDS
+    + COMMAND_TIMEOUT_SECONDS
+    + 3 * COMMAND_TIMEOUT_SECONDS
+    + GUARD_RPC_TIMEOUT_SECONDS
+    + ROLLBACK_GUARD_RPC_TIMEOUT_SECONDS
+    + DEADLINE_COMPLETION_MARGIN_SECONDS
+)
+NOOP_ROLLBACK_SECONDS = TRANSACTION_LEASE_SECONDS
 
 
 class PromotionError(RuntimeError):
@@ -79,7 +110,12 @@ def _env(environment: str) -> dict[str, str]:
 
 
 def _bounded(
-    command, environment, *, input_data=None, timeout=90, pass_fds=()
+    command,
+    environment,
+    *,
+    input_data=None,
+    timeout=COMMAND_TIMEOUT_SECONDS,
+    pass_fds=(),
 ) -> bytes:
     try:
         process = subprocess.Popen(
@@ -287,6 +323,326 @@ class TrustedTerraform:
         return digest.hexdigest()
 
 
+class TerraformConfigSnapshot:
+    """Private immutable Terraform inputs plus one explicit mutable state path."""
+
+    MANIFEST = "manifest.json"
+
+    def __init__(self, root: Path, expected_digest: str | None = None):
+        self.root = Path(root)
+        self._manifest = self._load_manifest()
+        self.digest = self._manifest["sha256"]
+        if expected_digest is not None and self.digest != expected_digest:
+            raise PromotionError("terraform-snapshot-invalid")
+        payload = self._manifest["payload"]
+        self.environment = payload["environment"]
+        self.workspace = payload["workspace"]
+        self.var_file = payload["var_file"]
+        self.provider_root = self.root / "terraform/providers/upcloud"
+        self.data_dir = self.root / "terraform-data"
+        self.state_path = Path(payload["state_path"])
+        self.verify()
+
+    @staticmethod
+    def _canonical(value):
+        return (
+            json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+            + "\n"
+        ).encode()
+
+    @staticmethod
+    def _safe_source_file(path: Path):
+        try:
+            fd = os.open(
+                path,
+                os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0),
+            )
+            info = os.fstat(fd)
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != os.geteuid()
+                or info.st_nlink != 1
+                or info.st_mode & 0o022
+            ):
+                raise ValueError
+            return fd, info
+        except (OSError, ValueError):
+            try:
+                os.close(fd)
+            except (OSError, UnboundLocalError):
+                pass
+            raise PromotionError("terraform-snapshot-invalid") from None
+
+    @classmethod
+    def create(cls, source_root: Path, destination: Path, environment: str):
+        source_root, destination = Path(source_root), Path(destination)
+        if NAME.fullmatch(environment or "") is None or not destination.is_absolute():
+            raise PromotionError("terraform-snapshot-invalid")
+        if destination.exists() or destination.is_symlink():
+            snapshot = cls(destination)
+            if snapshot.environment != environment:
+                raise PromotionError("terraform-snapshot-invalid")
+            return snapshot
+        provider = source_root / "terraform/providers/upcloud"
+        workspace = "default" if environment == "prod" else environment
+        state_path = (
+            provider / "terraform.tfstate"
+            if workspace == "default"
+            else provider / "terraform.tfstate.d" / workspace / "terraform.tfstate"
+        )
+        sources = [
+            (source_root / "scripts/terraform-env.sh", "scripts/terraform-env.sh")
+        ]
+        sources.extend(
+            (path, str(path.relative_to(source_root))) for path in provider.glob("*.tf")
+        )
+        sources.append(
+            (
+                provider / ".terraform.lock.hcl",
+                "terraform/providers/upcloud/.terraform.lock.hcl",
+            )
+        )
+        tfvars = provider / "environments" / f"{environment}.tfvars"
+        sources.append(
+            (tfvars, f"terraform/providers/upcloud/environments/{environment}.tfvars")
+        )
+        shared = source_root / "terraform/shared"
+        sources.extend(
+            (path, str(path.relative_to(source_root)))
+            for path in sorted(shared.rglob("*"))
+            if path.is_file()
+        )
+        data_root = provider / ".terraform-env" / workspace
+        sources.extend(
+            (path, "terraform-data/" + str(path.relative_to(data_root)))
+            for path in sorted(data_root.rglob("*"))
+            if path.is_file()
+        )
+        if not any(relative.endswith(".tf") for _, relative in sources):
+            raise PromotionError("terraform-snapshot-invalid")
+        # The selected local state remains the one mutable transaction output;
+        # its absolute path is bound in the manifest while every executable and
+        # configuration input is copied and digest-bound.
+        state_fd, state_info = cls._safe_source_file(state_path)
+        if stat.S_IMODE(state_info.st_mode) != 0o600:
+            os.close(state_fd)
+            raise PromotionError("terraform-snapshot-invalid")
+        os.close(state_fd)
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        stage = Path(
+            tempfile.mkdtemp(prefix=".terraform-snapshot-", dir=destination.parent)
+        )
+        os.chmod(stage, 0o700)
+        manifest_files = []
+        try:
+            for source, relative in sorted(sources, key=lambda item: item[1]):
+                if Path(relative).is_absolute() or ".." in Path(relative).parts:
+                    raise PromotionError("terraform-snapshot-invalid")
+                source_fd, info = cls._safe_source_file(source)
+                target = stage / relative
+                target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                mode = 0o700 if info.st_mode & stat.S_IXUSR else 0o600
+                target_fd = os.open(
+                    target,
+                    os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0),
+                    mode,
+                )
+                digest = hashlib.sha256()
+                try:
+                    while chunk := os.read(source_fd, 1_048_576):
+                        digest.update(chunk)
+                        _write_all(target_fd, chunk)
+                    os.fchmod(target_fd, mode)
+                    os.fsync(target_fd)
+                finally:
+                    os.close(source_fd)
+                    os.close(target_fd)
+                manifest_files.append(
+                    {"path": relative, "sha256": digest.hexdigest(), "mode": mode}
+                )
+            # mkdir(parents=True) applies its requested mode only to the leaf;
+            # normalize every private snapshot directory before publication.
+            for directory, _names, _files in os.walk(stage, followlinks=False):
+                os.chmod(directory, 0o700)
+            payload = {
+                "schema_version": 1,
+                "provider": "upcloud",
+                "environment": environment,
+                "workspace": workspace,
+                "state_path": str(state_path.resolve()),
+                "var_file": f"environments/{environment}.tfvars",
+                "files": manifest_files,
+            }
+            manifest = {
+                "payload": payload,
+                "sha256": hashlib.sha256(cls._canonical(payload)).hexdigest(),
+            }
+            manifest_path = stage / cls.MANIFEST
+            fd = os.open(
+                manifest_path,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+            try:
+                _write_all(fd, cls._canonical(manifest))
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            os.replace(stage, destination)
+        except (Exception, KeyboardInterrupt, SystemExit):
+            shutil.rmtree(stage, ignore_errors=True)
+            raise
+        return cls(destination, manifest["sha256"])
+
+    def _load_manifest(self):
+        try:
+            fd = os.open(
+                self.root / self.MANIFEST,
+                os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0),
+            )
+            info = os.fstat(fd)
+            raw = os.read(fd, MAX_OUTPUT + 1)
+        except OSError:
+            raise PromotionError("terraform-snapshot-invalid") from None
+        finally:
+            try:
+                os.close(fd)
+            except (OSError, UnboundLocalError):
+                pass
+        try:
+            value = json.loads(raw)
+            payload = value["payload"]
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != os.geteuid()
+                or stat.S_IMODE(info.st_mode) != 0o600
+                or info.st_nlink != 1
+                or raw != self._canonical(value)
+                or set(value) != {"payload", "sha256"}
+                or value["sha256"]
+                != hashlib.sha256(self._canonical(payload)).hexdigest()
+                or set(payload)
+                != {
+                    "schema_version",
+                    "provider",
+                    "environment",
+                    "workspace",
+                    "state_path",
+                    "var_file",
+                    "files",
+                }
+                or payload["schema_version"] != 1
+                or payload["provider"] != "upcloud"
+                or NAME.fullmatch(payload["environment"]) is None
+                or payload["workspace"]
+                != (
+                    "default"
+                    if payload["environment"] == "prod"
+                    else payload["environment"]
+                )
+                or payload["var_file"]
+                != f"environments/{payload['environment']}.tfvars"
+                or not isinstance(payload["files"], list)
+            ):
+                raise ValueError
+            return value
+        except (KeyError, TypeError, ValueError, UnicodeError):
+            raise PromotionError("terraform-snapshot-invalid") from None
+
+    def verify(self):
+        manifest = self._load_manifest()
+        if manifest != self._manifest:
+            raise PromotionError("terraform-snapshot-invalid")
+        try:
+            root_info = self.root.lstat()
+            if (
+                not stat.S_ISDIR(root_info.st_mode)
+                or root_info.st_uid != os.geteuid()
+                or stat.S_IMODE(root_info.st_mode) != 0o700
+            ):
+                raise ValueError
+        except (OSError, ValueError):
+            raise PromotionError("terraform-snapshot-invalid") from None
+        expected = {self.MANIFEST}
+        for item in manifest["payload"]["files"]:
+            try:
+                if (
+                    set(item) != {"path", "sha256", "mode"}
+                    or Path(item["path"]).is_absolute()
+                    or ".." in Path(item["path"]).parts
+                    or HEX.fullmatch(item["sha256"]) is None
+                    or item["mode"] not in {0o600, 0o700}
+                    or item["path"] in expected
+                ):
+                    raise ValueError
+                expected.add(item["path"])
+                fd = os.open(
+                    self.root / item["path"],
+                    os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0),
+                )
+                info = os.fstat(fd)
+                digest = TrustedTerraform._digest(fd)
+                os.close(fd)
+                if (
+                    not stat.S_ISREG(info.st_mode)
+                    or info.st_uid != os.geteuid()
+                    or info.st_nlink != 1
+                    or stat.S_IMODE(info.st_mode) != item["mode"]
+                    or digest != item["sha256"]
+                ):
+                    raise ValueError
+            except (KeyError, OSError, TypeError, ValueError):
+                try:
+                    os.close(fd)
+                except (OSError, UnboundLocalError):
+                    pass
+                raise PromotionError("terraform-snapshot-invalid") from None
+        actual = set()
+        for directory, names, files in os.walk(self.root, followlinks=False):
+            base = Path(directory)
+            if any((base / name).is_symlink() for name in names):
+                raise PromotionError("terraform-snapshot-invalid")
+            for name in names:
+                info = (base / name).lstat()
+                if (
+                    not stat.S_ISDIR(info.st_mode)
+                    or info.st_uid != os.geteuid()
+                    or stat.S_IMODE(info.st_mode) != 0o700
+                ):
+                    raise PromotionError("terraform-snapshot-invalid")
+            actual.update(str((base / name).relative_to(self.root)) for name in files)
+        if actual != expected:
+            raise PromotionError("terraform-snapshot-invalid")
+        state_fd, state_info = self._safe_source_file(self.state_path)
+        if stat.S_IMODE(state_info.st_mode) != 0o600:
+            os.close(state_fd)
+            raise PromotionError("terraform-snapshot-invalid")
+        os.close(state_fd)
+
+    def invocation(self, arguments):
+        self.verify()
+        return [f"-chdir={self.provider_root}", *arguments], {
+            "TF_DATA_DIR": str(self.data_dir)
+        }
+
+    def state_bytes(self):
+        self.verify()
+        fd, info = self._safe_source_file(self.state_path)
+        try:
+            if not 0 < info.st_size <= MAX_OUTPUT:
+                raise PromotionError("provider-state-drift")
+            raw = os.read(fd, MAX_OUTPUT + 1)
+        finally:
+            os.close(fd)
+        if len(raw) > MAX_OUTPUT:
+            raise PromotionError("provider-state-drift")
+        return raw
+
+    def remove(self):
+        self.verify()
+        shutil.rmtree(self.root)
+
+
 class ProviderTarget:
     """Private state-backed binding between one inventory node and provider state."""
 
@@ -436,6 +792,7 @@ class TerraformAdapter:
         target: ProviderTarget,
         *,
         trusted_terraform: TrustedTerraform | None = None,
+        terraform_snapshot: TerraformConfigSnapshot | None = None,
         return_path_guard=None,
         external_rollback_guard=None,
         provider_transaction_lock=None,
@@ -457,6 +814,7 @@ class TerraformAdapter:
         self.provider_transaction_lock = provider_transaction_lock
         self.allow_apply = allow_apply
         self.trusted_terraform = trusted_terraform
+        self.terraform_snapshot = terraform_snapshot
         self._plans: set[SavedPlan] = set()
         self._rollback_armed = False
         self._rollback_receipt = None
@@ -492,36 +850,59 @@ class TerraformAdapter:
 
     def _guard_identity(self):
         self.target.verify()
+        if not isinstance(self.terraform_snapshot, TerraformConfigSnapshot):
+            raise PromotionError("terraform-snapshot-invalid")
+        self.terraform_snapshot.verify()
         return {
             "server_uuid": self.server_uuid,
             "environment": self.environment,
             "provider_target_sha256": self.target.digest,
+            "terraform_snapshot_sha256": self.terraform_snapshot.digest,
         }
 
     def _verify_initial_state(self):
         self.target.verify()
-        current = self._command(["state", "pull"])
+        if not isinstance(self.terraform_snapshot, TerraformConfigSnapshot):
+            raise PromotionError("terraform-snapshot-invalid")
+        current = self.terraform_snapshot.state_bytes()
         if hashlib.sha256(current).hexdigest() != self.target.value["state_sha256"]:
             raise PromotionError("provider-state-drift")
+
+    def current_state(self):
+        if not isinstance(self.terraform_snapshot, TerraformConfigSnapshot):
+            raise PromotionError("terraform-snapshot-invalid")
+        return self.terraform_snapshot.state_bytes()
 
     def _command(self, arguments, *, pass_fds=()):
         if not isinstance(self.trusted_terraform, TrustedTerraform):
             raise PromotionError("terraform-executable-not-trusted")
+        if not isinstance(self.terraform_snapshot, TerraformConfigSnapshot):
+            raise PromotionError("terraform-snapshot-invalid")
         self.trusted_terraform.verify()
         with tempfile.TemporaryDirectory(prefix="vpn-tailnet-bin-") as binary_directory:
             os.chmod(binary_directory, 0o700)
             self.trusted_terraform.install(Path(binary_directory))
+            command, snapshot_environment = self.terraform_snapshot.invocation(
+                arguments
+            )
             environment = {
                 **self.environment_map,
+                **snapshot_environment,
                 "PATH": binary_directory + ":/usr/bin:/bin:/usr/sbin:/sbin",
             }
             return _bounded(
-                [str(TERRAFORM_ENV), *arguments], environment, pass_fds=pass_fds
+                [str(Path(binary_directory) / "terraform"), *command],
+                environment,
+                pass_fds=pass_fds,
             )
 
     def _save(self, direction: str) -> SavedPlan:
         if direction not in {"forward", "rollback"}:
             raise PromotionError("provider-plan-invalid")
+        if not isinstance(self.trusted_terraform, TrustedTerraform):
+            raise PromotionError("terraform-executable-not-trusted")
+        if not isinstance(self.terraform_snapshot, TerraformConfigSnapshot):
+            raise PromotionError("terraform-snapshot-invalid")
         before, after = (
             ("false", "true") if direction == "forward" else ("true", "false")
         )
@@ -538,8 +919,10 @@ class TerraformAdapter:
                     "plan",
                     "-input=false",
                     "-refresh=true",
+                    f"-state={self.terraform_snapshot.state_path}",
                     "-out",
                     name,
+                    f"-var-file={self.terraform_snapshot.var_file}",
                     "-var",
                     f"enable_provider_firewall={after}",
                 ]
@@ -571,7 +954,21 @@ class TerraformAdapter:
         if not callable(self.external_rollback_guard):
             raise PromotionError("provider-apply-not-authorized")
         forward.verify()
-        guest_identity = _receipt(guest_receipt, "prepared")
+        if (
+            isinstance(guest_receipt, dict)
+            and guest_receipt.get("status") == "unchanged"
+        ):
+            snapshot_digest = _unchanged(guest_receipt)
+            guest_identity = {
+                "generation": str(uuid.uuid4()),
+                "nonce": secrets.token_hex(32),
+                "snapshot_digest": snapshot_digest,
+                "deadline": int(time.time()) + NOOP_ROLLBACK_SECONDS,
+            }
+            guest_phase = "unchanged"
+        else:
+            guest_identity = _receipt(guest_receipt, "prepared")
+            guest_phase = "transactional"
         if guest_identity["deadline"] <= int(time.time()):
             raise PromotionError("guest-uncertain")
         request = {
@@ -581,6 +978,7 @@ class TerraformAdapter:
             "guest_nonce": guest_identity["nonce"],
             "guest_snapshot_digest": guest_identity["snapshot_digest"],
             "guest_deadline": guest_identity["deadline"],
+            "guest_phase": guest_phase,
         }
         receipt = self.external_rollback_guard("arm", request)
         if (
@@ -619,6 +1017,7 @@ class TerraformAdapter:
                 "guest_nonce",
                 "guest_snapshot_digest",
                 "guest_deadline",
+                "guest_phase",
             }
             if state in {
                 "forward-started",
@@ -646,6 +1045,7 @@ class TerraformAdapter:
                 or HEX.fullmatch(value["guest_snapshot_digest"]) is None
                 or type(value["guest_deadline"]) is not int
                 or value["guest_deadline"] < 0
+                or value["guest_phase"] not in {"transactional", "unchanged"}
                 or (
                     state in {"armed", "forward-started", "provider-applied"}
                     and value["guest_deadline"] <= int(time.time())
@@ -792,6 +1192,18 @@ class TerraformAdapter:
             raise PromotionError("rollback-uncertain")
         self._readback(False)
 
+    def rollback_provider(self, capability):
+        """Rollback provider state while retaining the guest cleanup lease."""
+        if (
+            not self._rollback_armed
+            or capability != self._rollback_receipt
+            or dict(capability)["expires_at"] <= int(time.time())
+            or self.external_rollback_guard("rollback-provider", dict(capability))
+            != dict(capability)
+        ):
+            raise PromotionError("rollback-uncertain")
+        self._readback(False)
+
     def release_rollback(self, capability):
         if (
             capability != self._cleanup_receipt
@@ -838,15 +1250,18 @@ class TerraformAdapter:
     def commit_rollback(self, capability, guest_receipt, proof_receipt):
         if capability != self._rollback_receipt or not self._rollback_armed:
             raise PromotionError("rollback-uncertain")
-        guest_identity = _receipt(guest_receipt, "committed")
         self.validate_promotion_proof(proof_receipt)
         armed = dict(capability)
         if armed.get("state") != "provider-applied":
             raise PromotionError("rollback-uncertain")
-        if any(
-            armed["guest_" + key] != guest_identity[key]
-            for key in ("generation", "nonce", "snapshot_digest", "deadline")
-        ):
+        if armed.get("guest_phase") == "transactional":
+            guest_identity = _receipt(guest_receipt, "committed")
+            if any(
+                armed["guest_" + key] != guest_identity[key]
+                for key in ("generation", "nonce", "snapshot_digest", "deadline")
+            ):
+                raise PromotionError("rollback-uncertain")
+        elif armed.get("guest_phase") != "unchanged" or guest_receipt is not None:
             raise PromotionError("rollback-uncertain")
         if armed["expires_at"] <= int(time.time()):
             raise PromotionError("rollback-uncertain")
@@ -968,6 +1383,28 @@ def _receipt(value, status):
     }
 
 
+def _unchanged(value):
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"status", "snapshot_digest"}
+        or value.get("status") != "unchanged"
+        or HEX.fullmatch(value.get("snapshot_digest", "")) is None
+    ):
+        raise PromotionError("guest-uncertain")
+    return value["snapshot_digest"]
+
+
+def _preview(value):
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"status", "snapshot_digest"}
+        or value.get("status") not in {"would-change", "unchanged"}
+        or HEX.fullmatch(value.get("snapshot_digest", "")) is None
+    ):
+        raise PromotionError("guest-uncertain")
+    return value
+
+
 def _same_receipt(value, identity, status):
     if _receipt(value, status) != identity:
         raise PromotionError("guest-uncertain")
@@ -986,12 +1423,15 @@ def reconcile_commit_release(adapter, armed_capability, guest_receipt, proof_rec
     if dict(current)["state"] == "committed-cleanup-debt":
         # Revalidate the persisted evidence before releasing an already
         # committed guard transition whose local response was lost.
-        guest = _receipt(guest_receipt, "committed")
         value = dict(current)
-        if any(
-            value["guest_" + key] != guest[key]
-            for key in ("generation", "nonce", "snapshot_digest", "deadline")
-        ):
+        if value.get("guest_phase") == "transactional":
+            guest = _receipt(guest_receipt, "committed")
+            if any(
+                value["guest_" + key] != guest[key]
+                for key in ("generation", "nonce", "snapshot_digest", "deadline")
+            ):
+                raise PromotionError("rollback-uncertain")
+        elif value.get("guest_phase") != "unchanged" or guest_receipt is not None:
             raise PromotionError("rollback-uncertain")
         adapter.validate_promotion_proof(proof_receipt, value)
         cleanup = current
@@ -1016,7 +1456,7 @@ def promotion_proof(
             str(config),
         ],
         environment,
-        timeout=615,
+        timeout=PROMOTION_PROOF_TIMEOUT_SECONDS,
     )
     try:
         receipt = _json(output)
@@ -1094,6 +1534,7 @@ def _execute(
         raise PromotionError("request-invalid") from None
     forward = adapter.plan("forward")
     if request["mode"] == "dry-run":
+        _preview(guest(host, "preview", {}, False))
         forward.close()
         adapter._plans.discard(forward)
         return {"status": "dry-run"}
@@ -1104,13 +1545,18 @@ def _execute(
     committed = False
     try:
         prepared = guest(host, "prepare", {}, False)
-        identity = _receipt(prepared, "prepared")
+        unchanged = isinstance(prepared, dict) and prepared.get("status") == "unchanged"
+        if unchanged:
+            _unchanged(prepared)
+        else:
+            identity = _receipt(prepared, "prepared")
         capability = adapter.arm_rollback(forward, prepared)
         provider_started = True
         capability = adapter.begin_forward(capability)
         capability = adapter.apply_forward(capability, forward, int(time.time()))
         rollback = adapter.plan("rollback")
-        _same_receipt(guest(host, "apply", identity, False), identity, "applied")
+        if not unchanged:
+            _same_receipt(guest(host, "apply", identity, False), identity, "applied")
         applied_after = dict(capability)["provider_applied_at"]
         # Fresh public SFTP must precede the new Tailnet SFTP. ssh_command and
         # sftp_command preserve the same pinned HostKeyAlias independently.
@@ -1120,13 +1566,13 @@ def _execute(
                 fleet_inspection.ssh_command(transport, known_hosts),
                 environment or _env(adapter.environment),
                 input_data=b"",
-                timeout=30,
+                timeout=CONNECTIVITY_CHECK_TIMEOUT_SECONDS,
             )
             _bounded(
                 fleet_inspection.sftp_command(transport, known_hosts),
                 environment or _env(adapter.environment),
                 input_data=b"pwd\nquit\n",
-                timeout=30,
+                timeout=CONNECTIVITY_CHECK_TIMEOUT_SECONDS,
             )
         proof_result = promotion_proof(
             Path(request["promotion_config_path"]),
@@ -1136,10 +1582,13 @@ def _execute(
         )
         if proof_result is None:
             raise PromotionError("promotion-proof-failed")
-        _same_receipt(guest(host, "status", {}, False), identity, "applied")
+        if not unchanged:
+            _same_receipt(guest(host, "status", {}, False), identity, "applied")
         adapter.readback(True)
-        confirmed = guest(host, "confirm", identity, False)
-        _same_receipt(confirmed, identity, "committed")
+        confirmed = None
+        if not unchanged:
+            confirmed = guest(host, "confirm", identity, False)
+            _same_receipt(confirmed, identity, "committed")
         committed = True
         try:
             cleanup = adapter.commit_rollback(capability, confirmed, proof_result)
@@ -1164,18 +1613,22 @@ def _execute(
                 "rollback_capability": capability,
             }
         try:
+            if provider_started:
+                if rollback is None:
+                    adapter.rollback_provider(capability)
+                else:
+                    try:
+                        adapter.apply("rollback", rollback)
+                    except (Exception, KeyboardInterrupt, SystemExit):
+                        adapter.rollback_provider(capability)
             if identity is not None:
-                if provider_started:
-                    if rollback is None:
-                        adapter.external_rollback(capability)
-                    else:
-                        try:
-                            adapter.apply("rollback", rollback)
-                        except (Exception, KeyboardInterrupt, SystemExit):
-                            adapter.external_rollback(capability)
                 _same_receipt(
                     guest(host, "rollback", identity, True), identity, "rolled_back"
                 )
+            if provider_started:
+                # The provider is already false.  Execute now only terminalizes
+                # the durable lease after any transactional guest rollback.
+                adapter.external_rollback(capability)
         except (Exception, KeyboardInterrupt, SystemExit):
             raise PromotionError("rollback-uncertain") from None
         raise
