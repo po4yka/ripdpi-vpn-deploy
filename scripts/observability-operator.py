@@ -447,16 +447,17 @@ while True:
         isinstance(item, dict)
         and json.dumps(item.get("labels"), sort_keys=True, separators=(",", ":")) == fingerprint
         and item.get("status", {}).get("state") == "active"
+        and item.get("receivers") == ["telegram-primary"]
         for item in observed
     ):
-        raise RuntimeError("receiver evidence missing")
+        raise RuntimeError("receiver routing evidence missing")
     if time.monotonic() >= deadline:
         break
     time.sleep(min(1, max(0, deadline - time.monotonic())))
 resolved = dict(base)
 resolved["endsAt"] = (now + datetime.timedelta(seconds=1)).isoformat()
 send(resolved)
-print(json.dumps({"schema_version": 1, "component": "control-plane", "state": "submitted"}, sort_keys=True))
+print(json.dumps({"schema_version": 1, "component": "control-plane", "receiver": "telegram-primary", "state": "submitted"}, sort_keys=True))
 """
 
 
@@ -530,8 +531,9 @@ def _remote(
     elif operation == "drill":
         expected_state = "submitted"
         if (
-            set(value) != {"schema_version", "component", "state"}
+            set(value) != {"schema_version", "component", "receiver", "state"}
             or value.get("state") != expected_state
+            or value.get("receiver") != "telegram-primary"
         ):
             raise OperatorError("remote report rejected")
     elif operation == "rollback":
@@ -614,17 +616,24 @@ def _rollback_manifest(
         raise OperatorError("rollback manifest rejected") from None
 
 
-def _rollback_program(config_root: str) -> bytes:
+def _rollback_program(config_root: str, generation: str) -> bytes:
     return f"""import json
 import os
-import re
-previous = {config_root!r} + "/previous.yml"
-if not os.path.islink(previous):
+
+root = {config_root!r}
+generation = {generation!r}
+expected = os.path.join(root, "generations", generation + ".yml")
+previous = os.path.join(root, "previous.yml")
+if (
+    not os.path.islink(previous)
+    or os.path.realpath(root) != root
+    or os.path.realpath(os.path.dirname(expected)) != os.path.dirname(expected)
+    or os.path.realpath(expected) != expected
+    or os.path.realpath(previous) != expected
+    or not os.path.isfile(expected)
+):
     raise SystemExit(2)
-name = os.path.basename(os.path.realpath(previous))
-if not re.fullmatch(r"[0-9a-f]{{64}}[.]yml", name):
-    raise SystemExit(2)
-print(json.dumps({{"schema_version": 1, "component": "control-plane", "state": "retained", "generation": name[:-4]}}, sort_keys=True))
+print(json.dumps({{"schema_version": 1, "component": "control-plane", "state": "retained", "generation": generation}}, sort_keys=True))
 """.encode("utf-8")
 
 
@@ -639,7 +648,7 @@ def _require_retained_generation(
     root = component_vars.get("config_root")
     if not isinstance(root, str) or not root.startswith("/"):
         raise OperatorError("private variables rejected")
-    value = _remote(args, host, _rollback_program(root), operation="rollback")
+    value = _remote(args, host, _rollback_program(root, expected), operation="rollback")
     if (
         set(value) != {"schema_version", "component", "state", "generation"}
         or value.get("state") != "retained"

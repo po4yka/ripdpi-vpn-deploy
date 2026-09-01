@@ -116,7 +116,8 @@ make observability-remove
 `control-plane` component. It sends a clearly labelled synthetic warning with
 one stable fingerprint and keeps it firing for more than the fixed 30-second
 Alertmanager group wait. Before resolving it, the controller requires a bounded
-loopback Alertmanager API observation of that active fingerprint. It performs no
+loopback Alertmanager API observation of that active fingerprint routed to the
+exact `telegram-primary` receiver. It performs no
 deploy, provider call, service restart, public request, or production fault
 injection.
 

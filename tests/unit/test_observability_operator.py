@@ -69,7 +69,7 @@ if entry['program'] == 'ssh':
     if 'previous =' in payload:
         print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'retained', 'generation': 'a' * 64}}))
     elif '/api/v2/alerts' in payload:
-        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'submitted'}}))
+        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'receiver': 'telegram-primary', 'state': 'submitted'}}))
     else:
         print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'healthy', 'units': {{'observability-prometheus.service': 'active', 'observability-alertmanager.service': 'active', 'observability-control-plane-adapter.timer': 'active'}}}}))
 """
@@ -518,16 +518,151 @@ def test_make_never_inherits_prod_environment_for_operator_targets(
     assert _calls(operator) == []
 
 
-def test_drill_waits_past_group_wait_and_checks_receiver_before_resolve() -> None:
+class _DrillResponse:
+    def __init__(self, status: int, payload: object) -> None:
+        self.status = status
+        self._payload = json.dumps(payload).encode("utf-8")
+
+    def __enter__(self) -> "_DrillResponse":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        return None
+
+    def read(self, *_: object) -> bytes:
+        return self._payload
+
+
+def _run_drill_program(
+    monkeypatch: pytest.MonkeyPatch, alerts: list[dict[str, object]]
+) -> list[object]:
+    import time
+    import urllib.request
+
+    calls: list[object] = []
+    monotonic = iter((0.0, 31.0))
+
+    def urlopen(request: object, *, timeout: int) -> _DrillResponse:
+        assert timeout == 5
+        calls.append(request)
+        if isinstance(request, urllib.request.Request):
+            return _DrillResponse(202, {})
+        assert request == "http://127.0.0.1:9093/api/v2/alerts"
+        return _DrillResponse(200, alerts)
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(time, "monotonic", lambda: next(monotonic))
+    monkeypatch.setattr(time, "sleep", lambda _: pytest.fail("unexpected drill sleep"))
     source = SCRIPT.read_text(encoding="utf-8")
     start = source.index("def _drill_program")
     end = source.index("def _remote", start)
-    program = source[start:end]
-    assert "time.monotonic() + 31" in program
-    assert "/api/v2/alerts" in program
-    assert "receiver evidence missing" in program
-    assert (
-        program.index("send(base)")
-        < program.index("receiver evidence missing")
-        < program.index("send(resolved)")
+    namespace: dict[str, object] = {}
+    exec(compile(source[start:end], str(SCRIPT), "exec"), namespace)
+    program = namespace["_drill_program"]()
+    exec(compile(program, "drill-program", "exec"), {})
+    return calls
+
+
+def test_drill_waits_past_group_wait_and_proves_receiver_before_resolve(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    labels = {
+        "alertname": "ObservabilitySyntheticDrill",
+        "component": "control-plane",
+        "environment": "staging",
+        "severity": "warning",
+    }
+    calls = _run_drill_program(
+        monkeypatch,
+        [
+            {
+                "labels": labels,
+                "status": {"state": "active"},
+                "receivers": ["telegram-primary"],
+            }
+        ],
     )
+
+    result = json.loads(capsys.readouterr().out)
+    assert result == {
+        "component": "control-plane",
+        "receiver": "telegram-primary",
+        "schema_version": 1,
+        "state": "submitted",
+    }
+    assert len(calls) == 3
+    assert isinstance(calls[0], __import__("urllib.request").request.Request)
+    assert calls[1] == "http://127.0.0.1:9093/api/v2/alerts"
+    assert isinstance(calls[2], __import__("urllib.request").request.Request)
+
+
+def test_drill_refuses_active_alert_without_expected_receiver_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels = {
+        "alertname": "ObservabilitySyntheticDrill",
+        "component": "control-plane",
+        "environment": "staging",
+        "severity": "warning",
+    }
+    with pytest.raises(RuntimeError, match="receiver routing evidence missing"):
+        _run_drill_program(
+            monkeypatch,
+            [
+                {
+                    "labels": labels,
+                    "status": {"state": "active"},
+                    "receivers": ["wrong-receiver"],
+                }
+            ],
+        )
+    # The resolve POST is unreachable when routing evidence is absent.
+    # The helper raises before returning its local call list.
+
+
+def test_rollback_program_refuses_same_basename_outside_expected_generation(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "observability"
+    generations = root / "generations"
+    generations.mkdir(parents=True)
+    root.chmod(0o755)
+    generations.chmod(0o755)
+    generation = "a" * 64
+    expected = generations / f"{generation}.yml"
+    expected.write_text("expected\n", encoding="utf-8")
+    expected.chmod(0o644)
+    previous = root / "previous.yml"
+    previous.symlink_to(expected)
+
+    source = SCRIPT.read_text(encoding="utf-8")
+    sys.path.insert(0, str(SCRIPT.parent))
+    try:
+        namespace: dict[str, object] = {"__file__": str(SCRIPT)}
+        exec(compile(source, str(SCRIPT), "exec"), namespace)
+    finally:
+        sys.path.pop(0)
+    program = namespace["_rollback_program"](str(root), generation)
+    accepted = subprocess.run(
+        [sys.executable, "-c", program.decode("utf-8")],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert accepted.returncode == 0
+    assert json.loads(accepted.stdout)["generation"] == generation
+
+    previous.unlink()
+    foreign = tmp_path / "foreign" / expected.name
+    foreign.parent.mkdir()
+    foreign.write_text("foreign\n", encoding="utf-8")
+    foreign.chmod(0o644)
+    previous.symlink_to(foreign)
+    rejected = subprocess.run(
+        [sys.executable, "-c", program.decode("utf-8")],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert rejected.returncode == 2
+    assert rejected.stdout == ""
