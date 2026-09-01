@@ -237,6 +237,8 @@ def _write_transaction(
         try:
             temporary.unlink(missing_ok=True)
         except OSError:
+            # Preserve the original write failure; the unpublished random-name
+            # file is never considered recovery state or safe to reuse.
             pass
         raise Refusal("tailnet-recovery-state-write-failed") from error
 
@@ -327,6 +329,8 @@ def _mark_transaction_confirmed(paths: CommandPaths) -> None:
         try:
             temporary.unlink(missing_ok=True)
         except OSError:
+            # Preserve the confirmation failure. The canonical receipt is
+            # re-read below and remains the only authority for commit status.
             pass
         try:
             current, _ = _read_transaction(paths)
