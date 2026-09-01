@@ -416,21 +416,11 @@ def run(config):
         if validated_tf is not None:
             validated_tf.close()
         if target_fd >= 0:
-            try:
-                os.close(target_fd)
-            except OSError:
-                # Constructor ownership may already have closed a validated fd.
-                pass
+            os.close(target_fd)
         if state_fd >= 0:
-            try:
-                os.close(state_fd)
-            except OSError:
-                pass
+            os.close(state_fd)
         if terraform_fd >= 0:
-            try:
-                os.close(terraform_fd)
-            except OSError:
-                pass
+            os.close(terraform_fd)
     candidate_fd = private(Path(config["candidate_fragment_path"]))
     try:
         candidate = os.read(candidate_fd, MAX + 1)
@@ -504,32 +494,20 @@ def run(config):
             allow_apply=config["mode"] == "apply",
         )
     except (Exception, KeyboardInterrupt, SystemExit):
-        if adapter is not None:
-            adapter.close()
-        else:
-            if trusted_terraform is not None:
-                trusted_terraform.close()
-            if provider_target is not None:
-                provider_target.close()
+        if trusted_terraform is not None:
+            trusted_terraform.close()
+        if provider_target is not None:
+            provider_target.close()
         if config["mode"] == "apply":
             _terminate_unarmed_executor(process, sock, identity)
         raise
     finally:
         if target_fd >= 0:
-            try:
-                os.close(target_fd)
-            except OSError:
-                pass
+            os.close(target_fd)
         if state_fd >= 0:
-            try:
-                os.close(state_fd)
-            except OSError:
-                pass
+            os.close(state_fd)
         if terraform_fd >= 0:
-            try:
-                os.close(terraform_fd)
-            except OSError:
-                pass
+            os.close(terraform_fd)
     try:
         if token:
             adapter.environment_map = {

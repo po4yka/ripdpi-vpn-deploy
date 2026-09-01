@@ -63,6 +63,7 @@ def test_executor_closes_earlier_input_when_a_later_open_fails(tmp_path, monkeyp
         try:
             os.close(read_fd)
         except OSError:
+            # The exercised Executor path already owns and closes this descriptor.
             pass
         os.close(write_fd)
 
@@ -99,6 +100,7 @@ def test_controller_closes_earlier_input_when_a_later_open_fails(tmp_path, monke
         try:
             os.close(read_fd)
         except OSError:
+            # The exercised controller path already owns and closes this descriptor.
             pass
         os.close(write_fd)
 
@@ -208,15 +210,9 @@ def _target(
         return target
     finally:
         if target_fd >= 0:
-            try:
-                os.close(target_fd)
-            except OSError:
-                pass
+            os.close(target_fd)
         if state_fd >= 0:
-            try:
-                os.close(state_fd)
-            except OSError:
-                pass
+            os.close(state_fd)
 
 
 def test_review_accepts_only_exact_upcloud_firewall_flip_and_noop_siblings():
@@ -253,6 +249,7 @@ def test_saved_plan_is_private_unlinked_and_uses_native_fd_path(tmp_path):
             try:
                 os.close(fd)
             except OSError:
+                # SavedPlan closes an invalid descriptor before rejecting it.
                 pass
 
 
@@ -1037,6 +1034,7 @@ def test_actual_builtin_terraform_data_plan_can_be_saved_if_terraform_exists(tmp
             try:
                 os.close(fd)
             except OSError:
+                # SavedPlan closes an invalid descriptor before rejecting it.
                 pass
 
 
@@ -1529,10 +1527,7 @@ def test_adapter_close_owns_target_and_trusted_executable_fds(tmp_path):
         else:
             target.close()
         if trusted_fd >= 0:
-            try:
-                os.close(trusted_fd)
-            except OSError:
-                pass
+            os.close(trusted_fd)
 
 
 def test_guest_confirm_followed_by_external_commit_failure_retains_armed_lease(

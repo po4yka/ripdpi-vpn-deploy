@@ -346,7 +346,7 @@ def test_client_identity_descriptor_rejects_replaced_valid_inode(
     swapped.chmod(0o600)
     real_open = os.open
 
-    def replacing_open(path, flags, mode=0o777):
+    def replacing_open(path, flags, mode=0o600):
         if Path(path) == descriptor:
             os.replace(swapped, descriptor)
         return real_open(path, flags, mode)
