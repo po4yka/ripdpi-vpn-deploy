@@ -81,8 +81,6 @@ def test_renderer_validates_and_deterministically_renders_bounded_targets(
         "# TYPE vpn_observability_expected_target gauge\n"
         'vpn_observability_expected_target{node="vpn-p0",role="edge"} 1\n'
         'vpn_observability_expected_target{node="vpn-p2",role="edge"} 1\n'
-        'vpn_observability_expected_target_ever_seen{node="vpn-p2",role="edge",state="seen"} 1\n'
-        'vpn_observability_expected_target_ever_seen{node="vpn-p0",role="edge",state="seen"} 1\n'
     )
     published = (tmp_path / "expected.prom").stat()
     repeated = _run_renderer(tmp_path, _inventory())
@@ -165,7 +163,7 @@ def test_renderer_accepts_shared_textfile_directory_and_publishes_collector_read
         )
 
 
-def test_renderer_exports_never_seen_separately_from_seen_target(
+def test_renderer_does_not_publish_static_ever_seen_state(
     tmp_path: Path,
 ) -> None:
     inventory = _inventory()
@@ -173,11 +171,10 @@ def test_renderer_exports_never_seen_separately_from_seen_target(
     result = _run_renderer(tmp_path, inventory)
     assert result.returncode == 0
     text = (tmp_path / "expected.prom").read_text()
-    assert 'node="vpn-p2",role="edge",state="never-seen"' in text
-    assert 'node="vpn-p0",role="edge",state="seen"' in text
+    assert "vpn_observability_expected_target_ever_seen" not in text
 
 
-def test_promtool_rules_require_matching_family_and_respect_ever_seen(
+def test_promtool_rules_require_matching_family_and_resolve_when_evidence_arrives(
     tmp_path: Path,
 ) -> None:
     promtool = shutil.which("promtool")
@@ -205,7 +202,10 @@ def test_promtool_rules_require_matching_family_and_respect_ever_seen(
             ROLE / "templates/observability-expected-target-rules.yml.j2",
             {
                 "observability_control_plane": {
-                    "expected_targets": {"inventory": inventory}
+                    "expected_targets": {
+                        "inventory": inventory,
+                        "expected_source_revision": "c" * 40,
+                    }
                 }
             },
         ),
@@ -224,12 +224,8 @@ def test_promtool_rules_require_matching_family_and_respect_ever_seen(
                 "        values: '1 1 1 1 1'",
                 '      - series: \'vpn_observability_expected_target{node="vpn-p2",role="edge"}\'',
                 "        values: '1 1 1 1 1'",
-                '      - series: \'vpn_observability_expected_target_ever_seen{node="vpn-p0",role="edge",state="never-seen"}\'',
-                "        values: '1 1 1 1 1'",
-                '      - series: \'vpn_observability_expected_target_ever_seen{node="vpn-p2",role="edge",state="seen"}\'',
-                "        values: '1 1 1 1 1'",
                 '      - series: \'vpn_observability_evidence_state{node="vpn-p0",role="edge",state="fresh"}\'',
-                "        values: '1 1 1 1 1'",
+                "        values: '_ _ _ _ 1'",
                 '      - series: \'vpn_observability_evidence_state{node="vpn-p2",role="edge",state="fresh"}\'',
                 "        values: '1 1 1 1 1'",
                 '      - series: \'unrelated_metric{node="vpn-p0",role="edge"}\'',
@@ -240,18 +236,18 @@ def test_promtool_rules_require_matching_family_and_respect_ever_seen(
                 "      - eval_time: 4m",
                 "        alertname: ObservabilityRequiredFamilyMissing_vpn_p0_edge_vpn_watchdog_collection_success",
                 "        exp_alerts:",
-                "          - exp_labels: {severity: warning, node: vpn-p0, role: edge}",
-                "            exp_annotations: {summary: Required bounded evidence family is absent for an expected target.}",
-                "      - eval_time: 4m",
-                "        alertname: ObservabilityExpectedTargetNeverSeen_vpn_p0_edge",
-                "        exp_alerts:",
-                "          - exp_labels: {severity: warning, node: vpn-p0, role: edge, state: never-seen}",
-                "            exp_annotations: {summary: Expected target has never produced its required evidence.}",
+                "          - exp_labels: {severity: warning, component: expected-target, environment: fleet, node: vpn-p0, role: edge}",
+                "            exp_annotations: {incident_family: expected-target-family, evidence_class: required-family-absent, source_generation: cccccccccccccccccccccccccccccccccccccccc, summary: Required bounded evidence family is absent for an expected target., runbook: docs/RUNBOOK-incident.md}",
                 "      - eval_time: 4m",
                 "        alertname: ObservabilityRequiredFamilyMissing_vpn_p2_edge_vpn_watchdog_collection_success",
                 "        exp_alerts: []",
+                "      - eval_time: 3m",
+                "        alertname: ObservabilityExpectedTargetMissing",
+                "        exp_alerts:",
+                "          - exp_labels: {severity: warning, component: expected-target, environment: fleet, node: vpn-p0, role: edge}",
+                "            exp_annotations: {incident_family: expected-target-absence, evidence_class: no-evidence-state, source_generation: cccccccccccccccccccccccccccccccccccccccc, summary: Expected observability target has no evidence state., runbook: docs/RUNBOOK-incident.md}",
                 "      - eval_time: 4m",
-                "        alertname: ObservabilityExpectedTargetNeverSeen_vpn_p2_edge",
+                "        alertname: ObservabilityExpectedTargetMissing",
                 "        exp_alerts: []",
                 "",
             ]
@@ -370,7 +366,10 @@ def test_rules_are_prometheus_rule_documents_without_notification_routes() -> No
         ROLE / "templates/observability-expected-target-rules.yml.j2",
         {
             "observability_control_plane": {
-                "expected_targets": {"inventory": _inventory()}
+                "expected_targets": {
+                    "inventory": _inventory(),
+                    "expected_source_revision": "c" * 40,
+                }
             }
         },
     )
@@ -384,9 +383,15 @@ def test_rules_are_prometheus_rule_documents_without_notification_routes() -> No
         "ObservabilityControlPlaneResourceOrPipelineUnhealthy",
         "ObservabilityRequiredFamilyMissing_vpn_p0_edge_vpn_watchdog_collection_success",
         "ObservabilityRequiredFamilyMissing_vpn_p2_edge_vpn_watchdog_collection_success",
-        "ObservabilityExpectedTargetNeverSeen_vpn_p0_edge",
-        "ObservabilityExpectedTargetNeverSeen_vpn_p2_edge",
     }
+    for group in rules["groups"]:
+        for rule in group["rules"]:
+            assert rule["labels"]["component"] == "expected-target"
+            assert rule["labels"]["environment"] == "fleet"
+            assert rule["annotations"]["incident_family"]
+            assert rule["annotations"]["evidence_class"]
+            assert rule["annotations"]["source_generation"] == "c" * 40
+            assert rule["annotations"]["runbook"] == "docs/RUNBOOK-incident.md"
     template = (
         ROLE / "templates/observability-expected-target-rules.yml.j2"
     ).read_text()

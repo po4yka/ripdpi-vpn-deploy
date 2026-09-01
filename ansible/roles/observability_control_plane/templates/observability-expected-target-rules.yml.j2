@@ -11,16 +11,15 @@ groups:
         for: 3m
         labels:
           severity: warning
+          component: expected-target
+          environment: fleet
         annotations:
+          incident_family: expected-target-family
+          evidence_class: required-family-absent
+          source_generation: "{{ observability_control_plane.expected_targets.expected_source_revision }}"
           summary: Required bounded evidence family is absent for an expected target.
+          runbook: docs/RUNBOOK-incident.md
 {% endfor %}
-      - alert: ObservabilityExpectedTargetNeverSeen_{{ target.target | replace('-', '_') }}_{{ target.role | replace('-', '_') }}
-        expr: vpn_observability_expected_target_ever_seen{node="{{ target.target }}",role="{{ target.role }}",state="never-seen"} == 1
-        for: 3m
-        labels:
-          severity: warning
-        annotations:
-          summary: Expected target has never produced its required evidence.
 {% endfor %}
       - alert: ObservabilityExpectedTargetMissing
         expr: >-
@@ -30,15 +29,27 @@ groups:
         for: 3m
         labels:
           severity: warning
+          component: expected-target
+          environment: fleet
         annotations:
+          incident_family: expected-target-absence
+          evidence_class: no-evidence-state
+          source_generation: "{{ observability_control_plane.expected_targets.expected_source_revision }}"
           summary: Expected observability target has no evidence state.
+          runbook: docs/RUNBOOK-incident.md
       - alert: ObservabilityTargetEvidenceStale
         expr: vpn_observability_evidence_state{state="stale"} == 1
         for: 3m
         labels:
           severity: warning
+          component: expected-target
+          environment: fleet
         annotations:
+          incident_family: target-evidence-freshness
+          evidence_class: stale-evidence
+          source_generation: "{{ observability_control_plane.expected_targets.expected_source_revision }}"
           summary: Observability target evidence is stale.
+          runbook: docs/RUNBOOK-incident.md
       - alert: ObservabilitySourceIdentityMismatch
         expr: >-
           (vpn_observability_node_manifest_identity{state="mismatch"} == 1)
@@ -47,13 +58,25 @@ groups:
         for: 3m
         labels:
           severity: warning
+          component: expected-target
+          environment: fleet
         annotations:
+          incident_family: source-identity
+          evidence_class: identity-mismatch
+          source_generation: "{{ observability_control_plane.expected_targets.expected_source_revision }}"
           summary: Node source or deployable identity differs from the expected candidate.
+          runbook: docs/RUNBOOK-incident.md
       - alert: ObservabilityControlPlaneResourceOrPipelineUnhealthy
         expr: >-
           vpn_observability_evidence_state{node="observability-control-plane",role=~"tsdb-capacity|expected-target-pipeline",state!="fresh"} == 1
         for: 3m
         labels:
           severity: warning
+          component: expected-target
+          environment: fleet
         annotations:
+          incident_family: control-plane-health
+          evidence_class: resource-or-pipeline-unhealthy
+          source_generation: "{{ observability_control_plane.expected_targets.expected_source_revision }}"
           summary: Control-plane capacity or expected-target pipeline is unhealthy.
+          runbook: docs/RUNBOOK-incident.md
