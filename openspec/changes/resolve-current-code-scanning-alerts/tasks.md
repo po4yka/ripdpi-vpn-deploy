@@ -21,7 +21,7 @@ typed Tailnet failures, AWG validation, image publication, and SARIF upload.
 
 - [x] SEC-1788275548576527 Make Tailnet snapshot descriptor cleanup explicit and add focused canonical-failure tests #bug !high @item:SEC-1788275314490012
 - [x] SEC-1788275549110334 Remove the unused AWG parse result while preserving pre-mutation validation and focused tests #bug !high @item:SEC-1788275314490012
-- [ ] SEC-1788275549618803 Scope Molecule image workflow write permissions to publish jobs and prove local plus hosted behavior #bug !high @item:SEC-1788275314490012
+- [x] SEC-1788275549618803 Scope Molecule image workflow write permissions to publish jobs and prove local plus hosted behavior #bug !high @item:SEC-1788275314490012
 
 ## Verification
 

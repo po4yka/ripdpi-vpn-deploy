@@ -2,7 +2,7 @@
 id: SEC-1788275314490012
 title: Resolve current CodeQL and Scorecard code scanning alerts
 kind: bug
-status: doing
+status: review
 area: security
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: resolve-current-code-scanning-alerts
 created: 2026-09-01
 updated: 2026-09-01
 related_tasks: []
+status_detail: All eight alerts fixed without dismissal; exact main SHA 43aa5bf passed CodeQL, Scorecard, CI, image publication, and SARIF upload.
 ---
 
 ## Goal
