@@ -62,7 +62,9 @@
         http.server.HTTPServer(('127.0.0.1', 9090), Handler).serve_forever()
         EOF
         chmod 0755 "$fixture/prometheus"
-        tar -C "$fixture" -czf "$fixture/prometheus.tar.gz" prometheus
+        mkdir -p "$fixture/prometheus-fixture"
+        cp "$fixture/prometheus" "$fixture/prometheus-fixture/prometheus"
+        tar -C "$fixture" -czf "$fixture/prometheus.tar.gz" prometheus-fixture/prometheus
         dd if=/dev/zero of="$fixture/oversize.bin" bs=1M count=9 status=none
       args:
         creates: /var/tmp/observability-control-plane-fixture/prometheus.tar.gz

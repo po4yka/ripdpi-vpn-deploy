@@ -149,3 +149,12 @@ def test_enabled_role_refuses_missing_pins_and_mtls_before_mutation(
     # The failed assert is intentionally no_log because it checks credential
     # material; its recap proves the refusal happened before any host mutation.
     assert "changed=0" in result.stdout
+
+
+def test_enabled_molecule_archive_matches_runtime_release_strip_contract() -> None:
+    prepare = (ROLE / "molecule/enabled/prepare.yml").read_text()
+    converge = (ROLE / "molecule/enabled/converge.yml").read_text()
+
+    assert 'tar -C "$fixture" -czf "$fixture/prometheus.tar.gz" prometheus-fixture/prometheus' in prepare
+    assert "archive_members: {amd64: prometheus-fixture/prometheus, arm64: prometheus-fixture/prometheus}" in converge
+    assert "runtime_release_archive_strip_components: 1" in (ROLE / "tasks/enable.yml").read_text()

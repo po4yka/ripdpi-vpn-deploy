@@ -51,7 +51,7 @@
             sha256:
               amd64: "{{ control_plane_fixture_archive.stdout.split()[0] }}"
               arm64: "{{ control_plane_fixture_archive.stdout.split()[0] }}"
-            archive_members: {amd64: prometheus, arm64: prometheus}
+            archive_members: {amd64: prometheus-fixture/prometheus, arm64: prometheus-fixture/prometheus}
           tls:
             server_cert_pem: "{{ (control_plane_fixture_tls.results[0].content | b64decode) }}"
             server_key_pem: "{{ (control_plane_fixture_tls.results[1].content | b64decode) }}"
