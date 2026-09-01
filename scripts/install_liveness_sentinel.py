@@ -33,7 +33,8 @@ import yaml
 from fleet_inspection import LIMIT as COMMAND_LIMIT, InspectionError, _open_local_file, bounded_command
 from liveness_generation import JOB_TIMEOUT_SECONDS, RECEIPT_TIMEOUT
 from liveness_profiles import ProfileError, build_profiles
-from disposable_liveness_executor import ExecutorError, bind_executor, executor_command, load_live_executor
+from disposable_liveness_executor import (ExecutorError, bind_executor, binding_digest,
+                                           executor_command, load_bound_executor, load_live_executor)
 
 REPO = Path(__file__).resolve().parents[1]
 LIMIT = 1024 * 1024
@@ -603,6 +604,13 @@ def _audit(mapping, client, sid, environment):
             print("install-liveness-sentinel: audit-unavailable", file=sys.stderr)
 
 
+def _require_pending_executor(previous, current_binding_digest):
+    previous_digest = previous.get("executor_binding_sha256")
+    if ((previous_digest is None) != (current_binding_digest is None)
+            or previous_digest != current_binding_digest):
+        raise InstallError("pending-executor-conflict")
+
+
 def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, stdin=None, environment=None,
             executor_manifest=None, executor_binding=None, cleanup_manifest=None):
     environment = dict(os.environ if environment is None else environment)
@@ -611,6 +619,7 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
     pending_path = registry_path.with_name(registry_path.name + ".pending.json")
     transport = {key: sentinel[key] for key in ("ssh_target", "ssh_transport_host", "ssh_host_key_alias", "policy", "vantage") if key in sentinel}
     executor = None
+    current_executor_binding_digest = None
     executor_environment = {key: environment[key] for key in ("PATH", "HOME") if key in environment}
     executor_runner = lambda command, **kwargs: _run(list(command), environment=executor_environment, **kwargs)
     if any(value is not None for value in (executor_manifest, executor_binding, cleanup_manifest)):
@@ -623,6 +632,11 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
         try:
             executor = load_live_executor(Path(executor_manifest), home=Path(environment.get("HOME", str(Path.home()))),
                                           now=int(time.time()), runner=executor_runner)
+            if Path(executor_binding).exists():
+                load_bound_executor(Path(executor_binding), Path(executor_manifest), Path(config_path),
+                                    home=Path(environment.get("HOME", str(Path.home()))),
+                                    now=int(time.time()), runner=executor_runner)
+                current_executor_binding_digest = binding_digest(Path(executor_binding))
         except ExecutorError as exc:
             raise InstallError(str(exc)) from None
     with registry_lock(registry_path):
@@ -632,6 +646,7 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
                 raise InstallError("client-already-assigned")
         previous = pending["pending"].get(sid)
         if previous is not None:
+            _require_pending_executor(previous, current_executor_binding_digest)
             if previous["client"] != client or any(previous.get(k) != transport.get(k) for k in ("ssh_target", "ssh_transport_host", "ssh_host_key_alias", "policy", "vantage")) or previous.get("required_profiles") != required or any(previous["target_identity"].get(k) != sentinel["target"].get(k) for k in sentinel["target"]):
                 raise InstallError("pending-assignment-conflict")
             try:
@@ -700,7 +715,7 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
                                   now=int(time.time()), runner=executor_runner)
                 except ExecutorError as exc:
                     raise InstallError(str(exc)) from None
-                entry["executor_binding_sha256"] = hashlib.sha256(Path(executor_binding).read_bytes()).hexdigest()
+                entry["executor_binding_sha256"] = binding_digest(Path(executor_binding))
             if previous is not None and previous != entry:
                 raise InstallError("pending-source-or-profile-conflict")
             user = _ssh(sentinel, "id -un", environment, executor=executor).decode().strip()

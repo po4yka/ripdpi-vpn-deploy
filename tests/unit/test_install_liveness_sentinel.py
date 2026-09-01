@@ -274,6 +274,25 @@ def test_executor_install_refuses_multi_sentinel_config_before_tools(setup, tmp_
     assert not binding.exists()
 
 
+@pytest.mark.parametrize(
+    "previous,current,accepted",
+    [
+        ({}, None, True),
+        ({"executor_binding_sha256": "a" * 64}, "a" * 64, True),
+        ({"executor_binding_sha256": "a" * 64}, None, False),
+        ({}, "a" * 64, False),
+        ({"executor_binding_sha256": "a" * 64}, "b" * 64, False),
+    ],
+)
+def test_pending_retry_cannot_change_executor_transport(setup, previous, current, accepted):
+    check = lambda: setup["module"]._require_pending_executor(previous, current)
+    if accepted:
+        assert check() is None
+    else:
+        with pytest.raises(setup["module"].InstallError, match="pending-executor-conflict"):
+            check()
+
+
 def test_public_profile_endpoint_must_match_exact_target_digest(setup):
     setup["config"]["sentinels"][0]["target"]["public_service_address_sha256"] = "e" * 64
 

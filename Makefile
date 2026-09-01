@@ -34,11 +34,62 @@ $(error network exposure review inputs must be literal values)
 endif
 endif
 
+# Disposable liveness lifecycle inputs are controller data, not Make syntax.
+# Capture them before trusted includes and eager source-identity assignments.
+_DISPOSABLE_LIVENESS_GOALS := prepare-disposable-liveness install-disposable-liveness-sentinel protocol-liveness-disposable deonboard-disposable-liveness
+ifneq ($(filter $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error disposable liveness requires exactly one Make goal)
+endif
+ifneq ($(filter prepare-disposable-liveness,$(MAKECMDGOALS)),)
+_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := EXECUTOR_PROFILE EXECUTOR_MANIFEST
+else ifneq ($(filter install-disposable-liveness-sentinel,$(MAKECMDGOALS)),)
+_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := LIVENESS_CONFIG SENTINEL CLIENT EXECUTOR_MANIFEST EXECUTOR_BINDING STAGING_CLEANUP_MANIFEST
+else ifneq ($(filter protocol-liveness-disposable,$(MAKECMDGOALS)),)
+_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := LIVENESS_CONFIG EXECUTOR_MANIFEST EXECUTOR_BINDING
+else
+_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := EXECUTOR_MANIFEST EXECUTOR_BINDING STAGING_POST_DESTROY_EVIDENCE LIVENESS_SENTINEL_REGISTRY LIVENESS_CONFIG SOPS_FILE DEONBOARD_EVIDENCE
+endif
+_DISPOSABLE_LIVENESS_COMMAND_VARIABLES := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
+_DISPOSABLE_LIVENESS_FORBIDDEN_COMMAND_VARIABLES := $(filter-out $(_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES),$(_DISPOSABLE_LIVENESS_COMMAND_VARIABLES))
+ifneq ($(strip $(_DISPOSABLE_LIVENESS_FORBIDDEN_COMMAND_VARIABLES)),)
+$(error disposable liveness accepts only its documented command-line fields)
+endif
+_DISPOSABLE_LIVENESS_LITERAL_INPUTS := $(value EXECUTOR_PROFILE)$(value EXECUTOR_MANIFEST)$(value EXECUTOR_BINDING)$(value STAGING_CLEANUP_MANIFEST)$(value STAGING_POST_DESTROY_EVIDENCE)$(value DEONBOARD_EVIDENCE)$(value LIVENESS_CONFIG)$(value LIVENESS_SENTINEL_REGISTRY)$(value SENTINEL)$(value CLIENT)$(value SOPS_FILE)$(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)
+override EXECUTOR_PROFILE := $(value EXECUTOR_PROFILE)
+override EXECUTOR_MANIFEST := $(value EXECUTOR_MANIFEST)
+override EXECUTOR_BINDING := $(value EXECUTOR_BINDING)
+override STAGING_CLEANUP_MANIFEST := $(value STAGING_CLEANUP_MANIFEST)
+override STAGING_POST_DESTROY_EVIDENCE := $(value STAGING_POST_DESTROY_EVIDENCE)
+override DEONBOARD_EVIDENCE := $(value DEONBOARD_EVIDENCE)
+override LIVENESS_CONFIG := $(value LIVENESS_CONFIG)
+override LIVENESS_SENTINEL_REGISTRY := $(value LIVENESS_SENTINEL_REGISTRY)
+override SENTINEL := $(value SENTINEL)
+override CLIENT := $(value CLIENT)
+override SOPS_FILE := $(value SOPS_FILE)
+override ENV := $(value ENV)
+override PROVIDER := $(value PROVIDER)
+override HOME := $(value HOME)
+override DEPLOY_SOURCE_REVISION :=
+override DEPLOYABLE_SOURCE_DIGEST :=
+MAKEOVERRIDES :=
+unexport MAKEFLAGS MFLAGS
+ifneq ($(findstring $$,$(_DISPOSABLE_LIVENESS_LITERAL_INPUTS)),)
+$(error disposable liveness inputs must be literal values)
+endif
+ifneq ($(findstring ",$(_DISPOSABLE_LIVENESS_LITERAL_INPUTS)),)
+$(error disposable liveness inputs must be literal values)
+endif
+ifneq ($(findstring ',$(_DISPOSABLE_LIVENESS_LITERAL_INPUTS)),)
+$(error disposable liveness inputs must be literal values)
+endif
+endif
+
 -include .fleet.mk
 
 # Capture deployment labels before the eager Terraform path assignments below.
 # The included fleet file remains trusted executable Make configuration.
-ifneq ($(filter deploy dry-run deploy-canary backup-configure install-ssh-recovery staging-cleanup-manifest staging-destroy,$(MAKECMDGOALS)),)
+ifneq ($(filter deploy dry-run deploy-canary backup-configure install-ssh-recovery staging-cleanup-manifest staging-destroy $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
 override ENV := $(value ENV)
 override PROVIDER := $(value PROVIDER)
 endif
@@ -129,7 +180,9 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         audit-permissions asn-drift check-ip-reputation issue-bootstrap \
         test-tls-policing probe-payload-throttle fleet-status drift-since-tag fleet-rotate \
         snell-refinement \
-        protocol-liveness monitor-protocol-liveness install-liveness-sentinel watch-spare promote-spare probing-summary xray-diagnostics tspu-canary \
+        protocol-liveness monitor-protocol-liveness install-liveness-sentinel \
+        prepare-disposable-liveness install-disposable-liveness-sentinel protocol-liveness-disposable deonboard-disposable-liveness \
+        watch-spare promote-spare probing-summary xray-diagnostics tspu-canary \
         emit-sbom molecule-full-stack audit-log audit-log-append pyinfra-audit \
         setup-yubikey check-killswitch install-operator-crons \
         remove-operator-crons issue-sub-token sub-reads \
@@ -204,6 +257,10 @@ help:
 	@echo "  protocol-liveness LIVENESS_CONFIG=…  Pull sentinel probes and evaluate quorum"
 	@echo "  monitor-protocol-liveness LIVENESS_CONFIG=…  Persist and alert on protocol-liveness transitions"
 	@echo "  install-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=…  Secure sentinel onboarding"
+	@echo "  prepare-disposable-liveness EXECUTOR_PROFILE=… EXECUTOR_MANIFEST=…  Create one no-mount executor"
+	@echo "  install-disposable-liveness-sentinel …  Bind and onboard one disposable sentinel from stdin"
+	@echo "  protocol-liveness-disposable …  Evaluate one exact executor-bound report"
+	@echo "  deonboard-disposable-liveness …  Remove the exact assignment after guarded provider absence"
 	@echo "  watch-spare                Cron: probe blue, push OTP-gated promote alert"
 	@echo "  promote-spare OTP=…        Consume OTP and swing traffic to GREEN_ENV"
 	@echo ""
@@ -897,6 +954,51 @@ install-liveness-sentinel:
 	@test -n "$(LIVENESS_CONFIG)" -a -n "$(SENTINEL)" -a -n "$(CLIENT)" || { echo "usage: make install-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=…"; exit 1; }
 	@HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
 	  ./scripts/install-liveness-sentinel.sh --config "$(LIVENESS_CONFIG)" --sentinel "$(SENTINEL)" --client "$(CLIENT)" --awg-private-key-stdin
+
+ifneq ($(filter $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
+export EXECUTOR_PROFILE EXECUTOR_MANIFEST EXECUTOR_BINDING STAGING_CLEANUP_MANIFEST STAGING_POST_DESTROY_EVIDENCE DEONBOARD_EVIDENCE LIVENESS_CONFIG LIVENESS_SENTINEL_REGISTRY SENTINEL CLIENT SOPS_FILE
+unexport HOSTS COHORTS SOPS_FILES ANSIBLE_LIMIT ANSIBLE_EXTRA_VARS_FILE DESTROY_ARGS
+endif
+
+prepare-disposable-liveness:
+	@test -n "$${EXECUTOR_PROFILE}" -a -n "$${EXECUTOR_MANIFEST}" || { echo "usage: make prepare-disposable-liveness EXECUTOR_PROFILE=… EXECUTOR_MANIFEST=…"; exit 1; }
+	@build-gate -- python3 ./scripts/disposable_liveness_executor.py prepare \
+	  --profile "$${EXECUTOR_PROFILE}" \
+	  --manifest "$${EXECUTOR_MANIFEST}" \
+	  --ttl-seconds 21600
+
+install-disposable-liveness-sentinel:
+	@test -n "$${LIVENESS_CONFIG}" -a -n "$${SENTINEL}" -a -n "$${CLIENT}" \
+	  -a -n "$${EXECUTOR_MANIFEST}" -a -n "$${EXECUTOR_BINDING}" \
+	  -a -n "$${STAGING_CLEANUP_MANIFEST}" || { echo "usage: make install-disposable-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=… EXECUTOR_MANIFEST=… EXECUTOR_BINDING=… STAGING_CLEANUP_MANIFEST=…"; exit 1; }
+	@python3 ./scripts/install_liveness_sentinel.py \
+	  --config "$${LIVENESS_CONFIG}" \
+	  --sentinel "$${SENTINEL}" \
+	  --client "$${CLIENT}" \
+	  --awg-private-key-stdin \
+	  --executor-manifest "$${EXECUTOR_MANIFEST}" \
+	  --executor-binding "$${EXECUTOR_BINDING}" \
+	  --cleanup-manifest "$${STAGING_CLEANUP_MANIFEST}"
+
+protocol-liveness-disposable:
+	@test -n "$${LIVENESS_CONFIG}" -a -n "$${EXECUTOR_MANIFEST}" -a -n "$${EXECUTOR_BINDING}" || { echo "usage: make protocol-liveness-disposable LIVENESS_CONFIG=… EXECUTOR_MANIFEST=… EXECUTOR_BINDING=…"; exit 1; }
+	@python3 ./scripts/protocol-liveness.py \
+	  --config "$${LIVENESS_CONFIG}" \
+	  --executor-manifest "$${EXECUTOR_MANIFEST}" \
+	  --executor-binding "$${EXECUTOR_BINDING}"
+
+deonboard-disposable-liveness:
+	@test -n "$${EXECUTOR_MANIFEST}" -a -n "$${EXECUTOR_BINDING}" \
+	  -a -n "$${STAGING_POST_DESTROY_EVIDENCE}" -a -n "$${LIVENESS_SENTINEL_REGISTRY}" \
+	  -a -n "$${LIVENESS_CONFIG}" -a -n "$${SOPS_FILE}" -a -n "$${DEONBOARD_EVIDENCE}" || { echo "usage: make deonboard-disposable-liveness EXECUTOR_MANIFEST=… EXECUTOR_BINDING=… STAGING_POST_DESTROY_EVIDENCE=… LIVENESS_SENTINEL_REGISTRY=… LIVENESS_CONFIG=… SOPS_FILE=… DEONBOARD_EVIDENCE=…"; exit 1; }
+	@build-gate -- python3 ./scripts/disposable_liveness_executor.py deonboard \
+	  --binding "$${EXECUTOR_BINDING}" \
+	  --manifest "$${EXECUTOR_MANIFEST}" \
+	  --absence-evidence "$${STAGING_POST_DESTROY_EVIDENCE}" \
+	  --registry "$${LIVENESS_SENTINEL_REGISTRY}" \
+	  --config "$${LIVENESS_CONFIG}" \
+	  --sops-file "$${SOPS_FILE}" \
+	  --output "$${DEONBOARD_EVIDENCE}"
 
 probing-summary:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/probing-summary.sh

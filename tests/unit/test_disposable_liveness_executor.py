@@ -370,7 +370,9 @@ def test_binding_cross_links_executor_config_generation_and_report(setup):
     }
     assert module.verify_report_binding(binding, manifest, config, report) == {
         "kind": "colima-systemd",
-        "executor_id": document["executor_id"],
+        "executor_id_sha256": hashlib.sha256(
+            document["executor_id"].encode("ascii")
+        ).hexdigest(),
         "manifest_sha256": document["executor_manifest_sha256"],
     }
     report["provenance"] = {
