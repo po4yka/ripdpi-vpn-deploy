@@ -1,0 +1,24 @@
+[Unit]
+Description=Observability Prometheus control plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ observability_control_plane.service_user }}
+Group={{ observability_control_plane.service_group }}
+ExecStart={{ observability_control_plane.binary_link }} --config.file={{ observability_control_plane.config_root }}/current.yml --web.listen-address={{ observability_control_plane.prometheus_listen }} --web.enable-remote-write-receiver --storage.tsdb.path={{ observability_control_plane.data_dir }} --storage.tsdb.retention.time={{ observability_control_plane.tsdb_retention_time }} --storage.tsdb.retention.size={{ observability_control_plane.tsdb_retention_size }}
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ observability_control_plane.data_dir }}
+ReadOnlyPaths={{ observability_control_plane.config_root }} {{ observability_control_plane.binary_link }}
+MemoryMax=1G
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

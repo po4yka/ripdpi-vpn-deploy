@@ -1,0 +1,16 @@
+---
+- name: Verify disabled observability control-plane lifecycle
+  hosts: all
+  become: true
+  tasks:
+    - name: Historical TSDB marker remains after disable
+      ansible.builtin.stat:
+        path: /var/lib/observability-prometheus/keep
+      register: retained_tsdb
+      failed_when: not retained_tsdb.stat.exists
+
+    - name: Owned control-plane configuration remains absent
+      ansible.builtin.stat:
+        path: /etc/observability-control-plane
+      register: control_config
+      failed_when: control_config.stat.exists

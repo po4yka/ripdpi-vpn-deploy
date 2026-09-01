@@ -1,0 +1,19 @@
+---
+- name: Converge disabled control-plane lifecycle without touching TSDB
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: Seed historical TSDB marker owned outside disable lifecycle
+      ansible.builtin.copy:
+        dest: /var/lib/observability-prometheus/keep
+        content: retained
+        owner: root
+        group: root
+        mode: '0600'
+  vars:
+    observability_control_plane:
+      enabled: false
+      config_root: /etc/observability-control-plane
+      data_dir: /var/lib/observability-prometheus
+  roles:
+    - role: observability_control_plane

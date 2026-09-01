@@ -1,0 +1,9 @@
+---
+- name: Converge the dedicated observability control plane
+  hosts: vpn-observability-control
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+
+  roles:
+    - role: observability_control_plane
