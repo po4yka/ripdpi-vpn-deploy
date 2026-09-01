@@ -174,9 +174,10 @@ accept-new SSH keys, or the repair watchdog. See proposal and normative specs.
   operator-owned Mac MAY act as the external sentinel only after source provides
   a fail-closed non-default-profile/no-mount/no-port preflight, a private executor
   binding cross-linked to the accepted report, and exact de-onboarding of its
-  configuration, local assignment, and dedicated client identity. Until all
-  three exist, the replacement is not operationally enabled and no credential
-  transfer or acceptance run is allowed. The eventual run must exit through the
+  configuration, local assignment, and dedicated client identity. The source
+  implementation supplies those three gates without starting a VM or contacting
+  a provider. Credential transfer and the acceptance run remain separate
+  action-time-approved operations. The eventual run must exit through the
   current consumer uplink and MUST NOT be reported as independent physical-
   hardware, filtered-path quorum, recurring uptime, or Android proof. An
   ordinary external VPS still cannot substitute for that consumer path.

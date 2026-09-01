@@ -10,17 +10,19 @@ the named NAT counter.
 The retired Raspberry Pi is not required. The approved replacement design for a
 one-shot acceptance run is a disposable systemd-capable Linux VM inside an
 isolated profile on the operator-owned Mac, with traffic leaving through the
-current consumer uplink. This replacement is not operationally enabled by the
-current source. Do not transfer credentials or invoke `make
-install-liveness-sentinel` until that separate protocol-liveness lane provides
-all three missing gates: a fail-closed VM preflight for a non-default profile
-with no host mounts or published ports, a private executor binding cross-linked
-to the accepted report, and exact de-onboarding of the liveness configuration,
-local assignment and dedicated client identity. The disposable lane must not
+current consumer uplink. The protocol-liveness controller now provides the three
+required source gates: a fail-closed VM preflight for a non-default profile with
+no host mounts or published ports, a private executor binding cross-linked to
+the accepted report, and exact de-onboarding of the liveness configuration,
+local assignment and dedicated client identity after guarded provider absence.
+This source capability does not itself authorize a VM start, credential
+transfer, target creation, ACL change, or live probe; each external action still
+uses the action-time approval and evidence sequence in
+`docs/PROTOCOL-LIVENESS.md`. The disposable lane must not
 invoke `awg-evidence-provision` or this recurring role, which deliberately leaves
 persistent echo, peer, firewall and forced-command state installed.
 
-After those gates are implemented and reviewed, the run must record the exact
+An approved run must record the exact
 VM/runtime identity privately and remove only its owned resources after evidence
 capture. It will prove the observed consumer-uplink path; it will not prove
 independent physical hardware, recurring uptime, filtered-path quorum, or
@@ -83,8 +85,8 @@ The supported local topology maps the echo to Linux/systemd/nft host
 `vpn-p2-vultr-ams` in `vpn-p2-udp`, and the recurring sentinel to a separately
 approved persistent off-fleet Linux/systemd host. Do not render the disposable
 one-shot VM into `awg_evidence_sentinel` or run this provisioning play against
-it. The protocol-liveness implementation gates above must land before any
-disposable-VM onboarding. The inventory hostnames
+it. The disposable executor stays outside this role and the ordinary inventory.
+The inventory hostnames
 come from provider state; cohort groups come from the matching `COHORTS` entries
 during inventory rendering. A macOS machine is not a supported echo host.
 The non-secret inventory has exactly one host in each group:

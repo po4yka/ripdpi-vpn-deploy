@@ -270,6 +270,24 @@ def test_pull_report_uses_direct_transport_with_pinned_host_identity(monkeypatch
         assert "HostKeyAlias=sentinel-a" in captured
 
 
+def test_pull_report_uses_bound_colima_executor_without_host_ssh(monkeypatch) -> None:
+    module = runpy.run_path(str(SCRIPT))
+    captured = []
+
+    def fake_run(command, **_kwargs):
+        captured.extend(command)
+        return b"{}\n"
+
+    monkeypatch.setitem(module["pull_report"].__globals__, "bounded_command", fake_run)
+    sentinel = {"id": "tls-freeze-a", "ssh_target": "must-not-be-used",
+                "policy": "fullstack", "vantage": "external"}
+    assert module["pull_report"](sentinel, 10, 30, {"profile": "vpn-liveness-one-shot"}) == (
+        "tls-freeze-a", "{}", "")
+    assert captured[:4] == ["colima", "ssh", "--profile", "vpn-liveness-one-shot"]
+    assert "must-not-be-used" not in captured
+    assert captured[-3:] == ["/bin/sh", "-c", "sudo -n /usr/local/sbin/vpn-protocol-liveness"]
+
+
 @pytest.mark.parametrize("required,keys", [(["p0-reality"], {"sing_box"}),
     (["p2-hysteria2"], {"sing_box"}), (["p1-xhttp"], {"xray"}),
     (["p2-amneziawg"], {"awg", "awg_toolchain"})])

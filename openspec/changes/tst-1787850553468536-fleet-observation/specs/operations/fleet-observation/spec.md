@@ -210,6 +210,34 @@ default routes, rotate identities, or modify provider rules.
 - **THEN** its interface, namespace, process, and temporary secrets are removed
   while pre-existing interfaces, routes, and production services remain intact.
 
+### Requirement: REQ-OBS-DISPOSABLE-EXECUTOR — One-shot consumer-uplink execution is exact and removable
+
+The retired Raspberry Pi MUST NOT remain an acceptance prerequisite. A one-shot
+replacement MAY use an operator-owned disposable systemd Linux VM only when a
+private controller manifest proves a non-default profile, no host mounts, no
+reachable VM address or port forwarder, no generated SSH config, unchanged
+Docker context, bounded lifetime, and an exact root-owned executor identity.
+Before any dedicated material reaches the VM, the installer MUST bind that
+identity to the exact config, cleanup manifest, sentinel, client, generation,
+provenance and target identity. The evaluator MUST reject a report that does not
+match the private binding exactly.
+
+#### Scenario: Executor drifts before credential transfer
+
+- **WHEN** the profile, config, root marker, mount table, context or expiry no
+  longer satisfies its prepared private manifest
+- **THEN** onboarding refuses before key input, decryption or remote writes.
+
+#### Scenario: Guarded target is absent and the executor is retired
+
+- **WHEN** the exact bound provider cleanup evidence records authenticated
+  absence of the server and root storage with no active owned resources
+- **THEN** de-onboarding removes the dedicated encrypted client entries, exact
+  local assignment and single-sentinel config, then deletes only the exact
+  root-marker-bound profile, while retaining categorical private evidence.
+- **AND** malformed, foreign or partially matching artifacts fail closed without
+  deleting them; a partially completed exact de-onboarding is safely retryable.
+
 ### Requirement: REQ-OBS-ACCEPTANCE — Live proof has explicit limits
 
 Completion MUST include actual external authenticated REALITY, XHTTP, Hysteria2,
