@@ -233,3 +233,21 @@ def test_enabled_receiver_curl_checks_ignore_ambient_proxy_and_curlrc() -> None:
         assert command[:2] == ["/usr/bin/curl", "--disable"]
         assert command[command.index("--noproxy") + 1] == "*"
         assert command[command.index("--max-time") + 1] == "5"
+
+    readiness_name = "Wait for the receiver and assert the authenticated GET refusal"
+    for task in curl_tasks:
+        if task["name"] == readiness_name:
+            continue
+        result = task["register"]
+        assert task["retries"] == 2
+        assert task["delay"] == 1
+        assert task["until"] == (
+            f"({result}.msg | default('')) != 'Error executing command.'"
+        )
+
+    wrong_sni = next(
+        task
+        for task in curl_tasks
+        if task["name"] == "Assert remote-write receiver rejects a missing or wrong SNI"
+    )
+    assert wrong_sni["failed_when"] == "wrong_sni.rc != 60"

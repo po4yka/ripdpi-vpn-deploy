@@ -30,7 +30,10 @@
           - https://wrong.fixture.test:9443/remote-write/v1/nodes/vpn-p0
       register: wrong_sni
       changed_when: false
-      failed_when: wrong_sni.rc == 0
+      failed_when: wrong_sni.rc != 60
+      retries: 2
+      delay: 1
+      until: (wrong_sni.msg | default('')) != 'Error executing command.'
 
     - name: Wait for the receiver and assert the authenticated GET refusal
       ansible.builtin.command:
@@ -88,6 +91,9 @@
       register: mismatched_cn
       changed_when: false
       failed_when: mismatched_cn.stdout != '403'
+      retries: 2
+      delay: 1
+      until: (mismatched_cn.msg | default('')) != 'Error executing command.'
 
     - name: Assert remote-write receiver rejects an oversized request
       ansible.builtin.command:
@@ -119,6 +125,9 @@
       register: oversized_request
       changed_when: false
       failed_when: oversized_request.stdout != '413'
+      retries: 2
+      delay: 1
+      until: (oversized_request.msg | default('')) != 'Error executing command.'
 
     - name: Assert valid mTLS remote write reaches only loopback Prometheus
       ansible.builtin.command:
@@ -144,7 +153,12 @@
           - --resolve
           - ingest.fixture.test:9443:127.0.0.1
           - https://ingest.fixture.test:9443/remote-write/v1/nodes/vpn-p0
+      register: valid_write
       changed_when: false
+      failed_when: valid_write.rc != 0
+      retries: 2
+      delay: 1
+      until: (valid_write.msg | default('')) != 'Error executing command.'
 
     - name: Assert failed candidate rollback restores an immutable generation
       ansible.builtin.command:

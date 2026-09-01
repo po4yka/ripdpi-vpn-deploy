@@ -95,10 +95,7 @@ def test_service_uses_systemd_credentials_and_bounded_agent_wal() -> None:
     assert "LoadCredential=client.key:" in unit
     assert "LoadCredential=receiver-ca.crt:" in unit
     assert "LoadCredential=prometheus.yml:" in unit
-    assert (
-        "ExecStartPre=/usr/local/bin/promtool-observability-agent check config --agent --syntax-only %d/prometheus.yml"
-        in unit
-    )
+    assert "ExecStartPre=" not in unit
     assert "--config.file=%d/prometheus.yml" in unit
     assert "config_dir }}/prometheus.yml" not in unit
     assert " --agent " in unit
@@ -151,8 +148,10 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
     verify_key = tasks.index("Verify candidate sender private key")
     publish = tasks.index("Atomically publish validated observability generation")
     switch = tasks.index("Switch current observability credential generation")
+    validate_config = tasks.index("Validate candidate observability configuration")
     assert candidate < verify_ca < publish < switch
     assert candidate < verify_key < publish < switch
+    assert candidate < validate_config < publish < switch
     assert "os.rename(candidate, generation)" in tasks[publish:switch]
     assert 'path: "{{ observability_agent.credential_dir }}/generations"' in tasks
     assert (
