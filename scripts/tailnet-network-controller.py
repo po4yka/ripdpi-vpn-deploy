@@ -67,6 +67,31 @@ def guard(socket_path: Path):
         except (OSError, ValueError, UnicodeError): raise p.PromotionError("rollback-uncertain") from None
     return invoke
 
+def _live_executor(socket_path: Path, target_digest: str):
+    try:
+        value = guard(socket_path)("ping", {})
+        return value == {"provider_target_sha256": target_digest}
+    except p.PromotionError:
+        return False
+
+def _remove_verified_stale_executor(root: Path, socket_path: Path, target_digest: str):
+    """Only unlink a dead, same-target daemon socket with its private pid record."""
+    pid_path = root / "daemon.json"
+    fd = private(pid_path)
+    try: value = json.loads(os.read(fd, MAX + 1))
+    finally: os.close(fd)
+    if (not isinstance(value, dict) or set(value) != {"schema_version", "pid", "provider_target_sha256"}
+            or value.get("schema_version") != 1 or type(value.get("pid")) is not int
+            or value.get("provider_target_sha256") != target_digest):
+        raise ControllerError("executor-stale-refused")
+    try: os.kill(value["pid"], 0)
+    except ProcessLookupError: pass
+    except PermissionError: raise ControllerError("executor-stale-refused") from None
+    else: raise ControllerError("executor-unreachable")
+    info = socket_path.lstat()
+    if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.geteuid(): raise ControllerError("executor-stale-refused")
+    socket_path.unlink(); pid_path.unlink()
+
 def strict_guest(host, known_hosts, candidate: bytes):
     """Fixed helper command, private fragment on stdin, strict pinned SSH only."""
     if len(candidate) > MAX: raise p.PromotionError("guest-uncertain")
@@ -79,7 +104,10 @@ def strict_guest(host, known_hosts, candidate: bytes):
             request = {}
         else:
             raise p.PromotionError("guest-uncertain")
-        command = p.fleet_inspection.ssh_command(host, known_hosts) + ["sudo", "-n", "/usr/bin/python3", "-I", "-B", GUEST_HELPER, action]
+        command = p.fleet_inspection.ssh_command(host, known_hosts)
+        # fleet_inspection owns all strict transport and pinned-host options;
+        # replace only its fixed remote command, never append a second one.
+        command[-1] = "sudo -n /usr/bin/python3 -I -B " + GUEST_HELPER + " " + action
         raw = p._bounded(command, p._env("prod"), input_data=json.dumps(request, sort_keys=True, separators=(",", ":")).encode(), timeout=90)
         try: return json.loads(raw)
         except (ValueError, UnicodeError): raise p.PromotionError("guest-uncertain") from None
@@ -94,6 +122,7 @@ def run(config):
     try:
         # Validate the three opened inodes in this composition root before daemon spawn.
         validated_target = p.ProviderTarget(fds[0], fds[1]); validated_tf = p.TrustedTerraform(fds[2], config["terraform_sha256"])
+        target_digest = validated_target.digest
         validated_target.close(); validated_tf.close(); fds = []
     finally:
         for fd in fds:
@@ -104,14 +133,21 @@ def run(config):
     finally: os.close(candidate_fd)
     if len(candidate) > MAX: raise ControllerError("candidate-refused")
     root = Path(config["executor_dir"]); root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info = root.lstat()
+    if root.is_symlink() or not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700:
+        raise ControllerError("executor-directory-refused")
     sock = root / "executor.sock"
     if config["mode"] == "apply":
-        process = subprocess.Popen([sys.executable, str(EXECUTOR), "serve", "--target", str(target), "--state", str(state), "--terraform", str(terraform), "--terraform-sha256", config["terraform_sha256"], "--receipt-dir", str(root), "--socket", str(sock)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        for _ in range(50):
-            if sock.exists(): break
-            if process.poll() is not None: raise ControllerError("executor-unavailable")
-            time.sleep(.1)
-        else: raise ControllerError("executor-unavailable")
+        if sock.exists() or sock.is_symlink():
+            if not _live_executor(sock, target_digest):
+                _remove_verified_stale_executor(root, sock, target_digest)
+        if not sock.exists():
+            process = subprocess.Popen([sys.executable, str(EXECUTOR), "serve", "--target", str(target), "--state", str(state), "--terraform", str(terraform), "--terraform-sha256", config["terraform_sha256"], "--receipt-dir", str(root), "--socket", str(sock)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            for _ in range(50):
+                if sock.exists(): break
+                if process.poll() is not None: raise ControllerError("executor-unavailable")
+                time.sleep(.1)
+            else: raise ControllerError("executor-unavailable")
     adapter = p.TerraformAdapter(p.ProviderTarget(private(target), private(state)), trusted_terraform=p.TrustedTerraform(private(terraform, executable=True), config["terraform_sha256"]), external_rollback_guard=guard(sock), allow_apply=config["mode"] == "apply")
     if config["mode"] == "apply":
         token = os.environ.get("UPCLOUD_TOKEN")

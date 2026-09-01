@@ -15,6 +15,8 @@ import json
 import os
 from pathlib import Path
 import selectors
+import select
+import secrets
 import socket
 import stat
 import sys
@@ -23,6 +25,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 PROMOTION = ROOT / "scripts" / "tailnet-network-promotion.py"
 MAX = 65536
+IO_TIMEOUT = 5
 
 
 def _promotion():
@@ -56,6 +59,19 @@ def private_fd(path: Path, *, executable=False):
     return fd
 
 
+def _safe_directory(path: Path):
+    """Require a current-user, no-follow private directory ancestry."""
+    chain = (path, *path.parents)
+    for item in chain:
+        try:
+            info = item.lstat()
+        except OSError:
+            raise ExecutorError("state-directory-refused") from None
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid not in {0, os.geteuid()}
+                or info.st_mode & 0o022):
+            raise ExecutorError("state-directory-refused")
+
+
 class ReceiptStore:
     """A locked canonical receipt; no request data is ever put in argv."""
     def __init__(self, root: Path):
@@ -63,10 +79,20 @@ class ReceiptStore:
         if root.is_symlink():
             raise ExecutorError("state-directory-refused")
         root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        _safe_directory(root)
         info = root.stat()
         if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700:
             raise ExecutorError("state-directory-refused")
-        self.path, self.lock = root / "receipt.json", root / "lock"
+        self.path, self.lock, self.pid = root / "receipt.json", root / "lock", root / "daemon.json"
+        self._cleanup_stale()
+
+    def _cleanup_stale(self):
+        for stale in self.root.glob(".receipt.*.tmp"):
+            info = stale.lstat()
+            if stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1:
+                stale.unlink()
+            else:
+                raise ExecutorError("state-directory-refused")
 
     def _locked(self):
         fd = os.open(self.lock, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
@@ -93,14 +119,27 @@ class ReceiptStore:
                 or envelope["sha256"] != hashlib.sha256(canonical(envelope["payload"])).hexdigest()
                 or raw != canonical(envelope)):
             raise ExecutorError("receipt-refused")
-        return envelope["payload"]
+        value = envelope["payload"]
+        if not isinstance(value, dict) or value.get("state") not in {"armed", "provider-applied", "committed-cleanup-debt", "executed"}:
+            raise ExecutorError("receipt-refused")
+        return value
+
+    @staticmethod
+    def _write_all(fd, raw):
+        offset = 0
+        while offset < len(raw):
+            written = os.write(fd, raw[offset:])
+            if written <= 0:
+                raise ExecutorError("receipt-write-failed")
+            offset += written
 
     def put(self, value):
         raw = canonical({"payload": value, "sha256": hashlib.sha256(canonical(value)).hexdigest()})
-        temporary = self.root / ".receipt.new"
+        self._cleanup_stale()
+        temporary = self.root / (".receipt." + secrets.token_hex(16) + ".tmp")
         fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o600)
         try:
-            os.write(fd, raw); os.fsync(fd)
+            self._write_all(fd, raw); os.fsync(fd)
         finally:
             os.close(fd)
         os.replace(temporary, self.path)
@@ -108,6 +147,13 @@ class ReceiptStore:
         directory = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY)
         try: os.fsync(directory)
         finally: os.close(directory)
+
+    def write_pid(self, value):
+        raw = canonical(value)
+        fd = os.open(self.pid, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        try:
+            self._write_all(fd, raw); os.fsync(fd)
+        finally: os.close(fd)
 
     def clear(self):
         try:
@@ -161,11 +207,31 @@ class Executor:
     def _same(self, receipt, request, state):
         return isinstance(receipt, dict) and receipt.get("state") == state and all(receipt.get(k) == v for k, v in request.items())
 
+    def _valid_current(self, value):
+        base = {"server_uuid", "environment", "provider_target_sha256", "forward_plan_sha256", "guest_generation", "guest_nonce", "guest_snapshot_digest", "guest_deadline", "expires_at", "state"}
+        state = value.get("state") if isinstance(value, dict) else None
+        fields = set(base)
+        if state in {"provider-applied", "committed-cleanup-debt"}: fields.add("provider_applied_at")
+        if state == "committed-cleanup-debt": fields.add("promotion_observed_at")
+        if (state == "executed" and set(value) == {"state"}): return value
+        if (state not in {"armed", "provider-applied", "committed-cleanup-debt"} or set(value) != fields
+                or value.get("provider_target_sha256") != self.target.digest
+                or not all(isinstance(value[k], str) and len(value[k]) == 64 for k in ("forward_plan_sha256", "guest_nonce", "guest_snapshot_digest"))
+                or not isinstance(value.get("guest_deadline"), int) or not isinstance(value.get("expires_at"), int)
+                or value["expires_at"] != value["guest_deadline"]):
+            raise ExecutorError("receipt-refused")
+        if state in {"provider-applied", "committed-cleanup-debt"} and (not isinstance(value.get("provider_applied_at"), int) or not 0 <= value["provider_applied_at"] <= value["guest_deadline"]):
+            raise ExecutorError("receipt-refused")
+        if state == "committed-cleanup-debt" and (not isinstance(value.get("promotion_observed_at"), int) or not value["provider_applied_at"] <= value["promotion_observed_at"] <= value["guest_deadline"]):
+            raise ExecutorError("receipt-refused")
+        return value
+
     def guard(self, action, request):
         if not isinstance(request, dict): raise ExecutorError("request-refused")
         lock = self.store._locked()
         try:
             current = self.store.get()
+            if current is not None: self._valid_current(current)
             if action == "arm":
                 fields = {"server_uuid", "environment", "provider_target_sha256", "forward_plan_sha256", "guest_generation", "guest_nonce", "guest_snapshot_digest", "guest_deadline"}
                 if set(request) != fields or current is not None or request["provider_target_sha256"] != self.target.digest or request["guest_deadline"] <= int(time.time()):
@@ -200,6 +266,8 @@ class Executor:
 
     def reconcile(self):
         current = self.store.get()
+        if current is not None:
+            self._valid_current(current)
         if current and current.get("state") in {"armed", "provider-applied"} and current.get("expires_at", 0) <= int(time.time()):
             # A missed deadline is unsafe: perform the independent false apply.
             request = {**current, "_deadline_reconcile": True}
@@ -209,31 +277,47 @@ class Executor:
 def serve(args):
     executor = Executor(Path(args.target), Path(args.state), Path(args.terraform), args.terraform_sha256, Path(args.receipt_dir))
     path = Path(args.socket)
+    _safe_directory(path.parent)
     if path.exists() or path.is_symlink(): raise ExecutorError("socket-refused")
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
+        executor.store.write_pid({"schema_version": 1, "pid": os.getpid(), "provider_target_sha256": executor.target.digest})
         listener.bind(str(path)); os.chmod(path, 0o600); listener.listen(8); listener.setblocking(False)
         while True:
-            ready, _, _ = __import__('select').select([listener], [], [], 1)
+            ready, _, _ = select.select([listener], [], [], 1)
             if not ready:
                 try: executor.reconcile()
-                except ExecutorError: pass
+                except (ExecutorError, p.PromotionError): pass
                 continue
-            connection, _ = listener.accept()
-            with connection:
-                chunks = bytearray()
-                while len(chunks) <= MAX:
-                    chunk = connection.recv(min(4096, MAX + 1 - len(chunks)))
-                    if not chunk:
-                        break
-                    chunks.extend(chunk)
-                raw = bytes(chunks)
-                try:
-                    request = json.loads(raw); result = executor.guard(request["action"], request["value"])
-                    connection.sendall(canonical({"ok": result}))
-                except (ExecutorError, KeyError, TypeError, ValueError): connection.sendall(canonical({"error":"rollback-uncertain"}))
+            try:
+                connection, _ = listener.accept()
+                with connection:
+                    connection.settimeout(IO_TIMEOUT)
+                    chunks = bytearray()
+                    while len(chunks) <= MAX:
+                        chunk = connection.recv(min(4096, MAX + 1 - len(chunks)))
+                        if not chunk: break
+                        chunks.extend(chunk)
+                    try:
+                        request = json.loads(bytes(chunks))
+                        if request.get("action") == "ping":
+                            result = {"provider_target_sha256": executor.target.digest}
+                        else:
+                            result = executor.guard(request["action"], request["value"])
+                        response = canonical({"ok": result})
+                    except (ExecutorError, p.PromotionError, KeyError, TypeError, ValueError, UnicodeError):
+                        response = canonical({"error":"rollback-uncertain"})
+                    try: connection.sendall(response)
+                    except (BrokenPipeError, ConnectionError, socket.timeout): pass
+            except (OSError, socket.timeout):
+                # A hostile or partial client must not prevent deadline recovery.
+                continue
     finally:
         listener.close(); executor.close()
+        try: path.unlink()
+        except FileNotFoundError: pass
+        try: executor.store.pid.unlink()
+        except FileNotFoundError: pass
 
 
 def main():

@@ -56,16 +56,36 @@ def test_foreign_or_stale_receipt_fails_closed(tmp_path, monkeypatch):
     with pytest.raises(m.ExecutorError, match="transition-refused"):
         value.guard("execute", armed)
 
+def test_corrupt_receipt_and_stale_temp_fail_closed_before_reconcile(tmp_path, monkeypatch):
+    m = mod(); value = executor(m, tmp_path); monkeypatch.setattr(m.time, "time", lambda: 1_000)
+    value.guard("arm", request())
+    (tmp_path / ".receipt.deadbeef.tmp").write_text("stale")
+    restarted = m.ReceiptStore(tmp_path)
+    assert not (tmp_path / ".receipt.deadbeef.tmp").exists()
+    (tmp_path / "receipt.json").write_text('{"payload":{},"sha256":"bad"}\n')
+    with pytest.raises(m.ExecutorError, match="receipt-refused"):
+        value.reconcile()
+    assert value.adapter.calls == []
+
+def test_receipt_short_write_does_not_publish_partial_file(tmp_path, monkeypatch):
+    m = mod(); store = m.ReceiptStore(tmp_path)
+    monkeypatch.setattr(m.os, "write", lambda *_: 0)
+    with pytest.raises(m.ExecutorError, match="receipt-write-failed"):
+        store.put({"state":"executed"})
+    assert not store.path.exists()
+
 def test_controller_guest_rpc_is_fixed_strict_command_and_dry_run_disables_apply(monkeypatch, tmp_path):
     controller_path = ROOT / "scripts/tailnet-network-controller.py"
     spec = importlib.util.spec_from_file_location("tailnet_network_controller", controller_path)
     c = importlib.util.module_from_spec(spec); assert spec.loader; spec.loader.exec_module(c)
     command = []
-    monkeypatch.setattr(c.p.fleet_inspection, "ssh_command", lambda host, known: ["ssh", "-oStrictHostKeyChecking=yes", host["name"]])
     monkeypatch.setattr(c.p, "_bounded", lambda argv, *_a, **kw: command.append((argv, kw["input_data"])) or b'{"state":"prepared"}')
-    rpc = c.strict_guest({"name":"node-a"}, tmp_path / "known", b"fragment")
+    host = {"name":"node-a", "alias":"node-a", "transport":"100.64.0.1", "port":22, "key":"/private/key", "user":"deploy", "ssh_host_key_alias":"node-a"}
+    (tmp_path / "known").write_text("node-a ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI\n")
+    rpc = c.strict_guest(host, tmp_path / "known", b"fragment")
     rpc({}, "prepare", {}, False)
-    assert command[0][0][-7:] == ["sudo", "-n", "/usr/bin/python3", "-I", "-B", c.GUEST_HELPER, "prepare"]
+    assert command[0][0][-1] == "sudo -n /usr/bin/python3 -I -B " + c.GUEST_HELPER + " prepare"
+    assert "-S -" not in command[0][0][-1]
     target = type("Target", (), {"value":{}, "digest":"a"*64})()
     adapter = type("Adapter", (), {"target":target, "allow_apply":False})()
     assert adapter.allow_apply is False

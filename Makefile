@@ -120,7 +120,7 @@ INSPECT_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini
 INSPECT_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
 export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 
-.PHONY: help init validate plan apply inventory wait decrypt require-inventory require-clean-source validate-ansible-extra-vars dry-run deploy backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
+.PHONY: help init validate plan apply inventory wait decrypt require-inventory require-clean-source validate-ansible-extra-vars dry-run deploy tailnet-network-promote backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
         pre-deploy-check network-exposure-review \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
@@ -371,6 +371,10 @@ dry-run:
 
 deploy:
 	@python3 scripts/deploy-controller.py deploy
+
+tailnet-network-promote:
+	@test -n "$$TAILNET_NETWORK_CONFIG" || { echo "TAILNET_NETWORK_CONFIG required"; exit 1; }
+	@python3 scripts/tailnet-network-controller.py --config "$$TAILNET_NETWORK_CONFIG"
 
 # Capture caller data as simple variables before implicit environment export can
 # expand Make functions. Repository-defined default paths still resolve normally.
