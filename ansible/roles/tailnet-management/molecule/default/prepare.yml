@@ -55,7 +55,7 @@
             get)
               printf '%s\n' \
                 '{"accept-dns":false,"accept-routes":false,'\
-                '"advertise-exit-node":false,"advertise-routes":"",'\
+                '"advertise-exit-node":false,"advertise-routes":[],'\
                 '"exit-node":"","netfilter-mode":"off",'\
                 '"shields-up":false,"ssh":false}'
               ;;
