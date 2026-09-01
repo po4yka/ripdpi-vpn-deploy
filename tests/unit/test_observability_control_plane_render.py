@@ -249,6 +249,20 @@ def test_enabled_receiver_checks_use_the_bounded_direct_fixture_client() -> None
             f"({result}.msg | default('')) != 'Error executing command.'"
         )
 
+
+def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
+    verify = yaml.safe_load((ROLE / "molecule/enabled/verify.yml").read_text())
+    client_tasks = [
+        task
+        for task in verify[0]["tasks"]
+        if task.get("ansible.builtin.command", {}).get("argv", [None])[0]
+        == "/var/tmp/observability-control-plane-fixture/mtls-client.py"
+    ]
+    prepare = (ROLE / "molecule/enabled/prepare.yml").read_text(encoding="utf-8")
+
+    assert "except ssl.SSLError:\n                  return 60" in prepare
+    assert "except (OSError, http.client.HTTPException):\n                  return 2" in prepare
+
     wrong_sni = next(
         task
         for task in client_tasks

@@ -129,9 +129,9 @@
                   response.read()
                   print(response.status)
                   return 0
-              except ssl.SSLCertVerificationError:
+              except ssl.SSLError:
                   return 60
-              except (OSError, http.client.HTTPException, ssl.SSLError):
+              except (OSError, http.client.HTTPException):
                   return 2
               finally:
                   connection.close()
