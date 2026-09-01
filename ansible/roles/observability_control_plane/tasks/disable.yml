@@ -17,10 +17,11 @@
     enabled: false
     state: stopped
   loop:
-    - observability-protocol-liveness-adapter.service
     - observability-protocol-liveness-adapter.timer
-  failed_when: false
-  when: not ansible_check_mode
+    - observability-protocol-liveness-adapter.service
+  when:
+    - not ansible_check_mode
+    - item in ansible_facts.services
 
 - name: Remove protocol-liveness adapter owned surfaces
   ansible.builtin.file:

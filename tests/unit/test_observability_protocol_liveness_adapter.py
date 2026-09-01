@@ -257,6 +257,13 @@ def test_role_wires_the_adapter_only_when_the_explicit_opt_in_is_enabled() -> No
     assert timer["ansible.builtin.systemd_service"]["state"] == "started"
 
     disable = yaml.safe_load((ROLE / "tasks/disable.yml").read_text())
+    stop = next(
+        task
+        for task in disable
+        if task["name"] == "Stop and disable protocol-liveness adapter units"
+    )
+    assert "failed_when" not in stop
+    assert "item in ansible_facts.services" in stop["when"]
     removal = next(
         task
         for task in disable
