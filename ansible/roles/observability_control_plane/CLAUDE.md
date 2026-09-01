@@ -13,6 +13,9 @@ Prometheus is installed through `runtime-release` with explicit pins.
 When explicitly enabled, expected targets are validated from a repository
 inventory and rendered as bounded contract metrics; source/deploy identity,
 TSDB capacity, and pipeline status use the existing bounded evidence families.
+The protocol-liveness adapter consumes only the canonical evaluator's published
+redacted evidence. It maps that evidence to bounded one-hot metrics and never
+executes probes or recomputes sentinel, variant, profile, or quorum semantics.
 
 ## What's done well
 
@@ -29,3 +32,5 @@ allowlist. Do not overwrite an existing content-addressed generation with
 different bytes. Retention cleanup is explicitly not part of disable. Do not
 add a second target-discovery path, endpoint labels, notification routes, or
 liveness quorum logic here; protocol verdict adaptation remains external.
+Do not turn a stale, future, malformed, or unknown published verdict into a
+healthy, blocked, or rotation conclusion.
