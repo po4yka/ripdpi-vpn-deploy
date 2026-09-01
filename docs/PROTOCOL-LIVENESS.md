@@ -152,6 +152,42 @@ private mode-0600 Colima config, and a root-owned executor UUID marker. It write
 an owner-private manifest with a maximum six-hour lifetime; failure before that
 manifest exists stops and deletes the exact profile.
 
+Use the Makefile as the only operator surface for this lifecycle. Keep every
+path in an owner-private directory and pass the AWG key on standard input rather
+than as a Make or process argument:
+
+```sh
+make prepare-disposable-liveness \
+  EXECUTOR_PROFILE=vpn-liveness-<run-id> \
+  EXECUTOR_MANIFEST=<private-dir>/executor.json
+
+make install-disposable-liveness-sentinel \
+  LIVENESS_CONFIG=<private-dir>/liveness.yaml \
+  SENTINEL=<sentinel-id> CLIENT=<dedicated-client-id> \
+  EXECUTOR_MANIFEST=<private-dir>/executor.json \
+  EXECUTOR_BINDING=<private-dir>/binding.json \
+  STAGING_CLEANUP_MANIFEST=<private-dir>/staging-cleanup.json \
+  < <private-dir>/awg-private-key
+
+make protocol-liveness-disposable \
+  LIVENESS_CONFIG=<private-dir>/liveness.yaml \
+  EXECUTOR_MANIFEST=<private-dir>/executor.json \
+  EXECUTOR_BINDING=<private-dir>/binding.json
+
+make deonboard-disposable-liveness \
+  EXECUTOR_MANIFEST=<private-dir>/executor.json \
+  EXECUTOR_BINDING=<private-dir>/binding.json \
+  STAGING_POST_DESTROY_EVIDENCE=<private-dir>/staging-destroy.json \
+  LIVENESS_SENTINEL_REGISTRY=<private-dir>/sentinels.json \
+  LIVENESS_CONFIG=<private-dir>/liveness.yaml \
+  SOPS_FILE=<encrypted-secrets-file> \
+  DEONBOARD_EVIDENCE=<private-dir>/deonboard.json
+```
+
+Each invocation accepts exactly one lifecycle goal. The Make boundary rejects
+extra command-line variables, Make or shell expansion syntax, and quote-bearing
+values before recipes or eager source-identity expressions can evaluate them.
+
 `install-disposable-liveness-sentinel` requires that executor manifest, the
 UUID-bound staging cleanup manifest, and a new private binding path. Preflight
 runs before AWG key input or decryption. The installer then binds the executor
