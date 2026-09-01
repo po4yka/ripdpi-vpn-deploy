@@ -243,6 +243,8 @@ def test_molecule_task_level_check_mode_sets_the_explicit_role_contract() -> Non
 
 def test_molecule_tailnet_converge_binds_sources_to_the_installed_fragment() -> None:
     converge = yaml.safe_load((ROLE / "molecule/default/converge.yml").read_text())
+    play = converge[0]
+    pre_tasks = play["pre_tasks"]
     post_tasks = converge[0]["post_tasks"]
     include = next(
         task
@@ -254,9 +256,24 @@ def test_molecule_tailnet_converge_binds_sources_to_the_installed_fragment() -> 
     )
     check_include = check_block["block"][0]
     expected = {"approved_sources": ["100.64.10.20", "fd7a:115c:a1e0::1234"]}
+    first_converge_only_tasks = {
+        "Remove Tailnet SSH sets fixture before clean check-mode convergence",
+        "Exercise clean firewall check mode before Tailnet fragment exists",
+        "Confirm clean firewall check mode created no Tailnet fragment path",
+        "Require clean firewall check mode to preserve an absent Tailnet fragment path",
+        "Read the initially installed empty Tailnet SSH sets fragment",
+        "Require the initially installed fragment to be exactly empty",
+    }
 
+    assert play["vars"]["vpn"]["enable_tailnet_management"] is True
+    assert play["vars"]["tailnet_management"] == expected
     assert include["vars"]["tailnet_management"] == expected
     assert check_include["vars"]["tailnet_management"] == expected
+    assert {
+        task["name"]
+        for task in [*pre_tasks, *post_tasks]
+        if "molecule-idempotence-notest" in task.get("tags", [])
+    } == first_converge_only_tasks
 
 
 def test_tailnet_include_cannot_create_a_separate_table_bypass() -> None:

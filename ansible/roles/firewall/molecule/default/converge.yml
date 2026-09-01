@@ -10,6 +10,11 @@
       enable_hysteria: true
       enable_amneziawg: true
       enable_policy_ratelimit: true
+      enable_tailnet_management: true
+    tailnet_management:
+      approved_sources:
+        - "100.64.10.20"
+        - "fd7a:115c:a1e0::1234"
     firewall_awg_uplink_interface: eth0
     amneziawg:
       listen_port: 51820
@@ -55,9 +60,13 @@
       ansible.builtin.file:
         path: /etc/nftables.d
         state: absent
+      tags:
+        - molecule-idempotence-notest
 
     - name: Exercise clean firewall check mode before Tailnet fragment exists
       check_mode: true
+      tags:
+        - molecule-idempotence-notest
       block:
         - name: Run the firewall role without creating the Tailnet fragment
           ansible.builtin.include_role:
@@ -72,11 +81,15 @@
         path: /etc/nftables.d
       register: _firewall_clean_check_tailnet_dir
       changed_when: false
+      tags:
+        - molecule-idempotence-notest
 
     - name: Require clean firewall check mode to preserve an absent Tailnet fragment path
       ansible.builtin.assert:
         that:
           - not _firewall_clean_check_tailnet_dir.stat.exists
+      tags:
+        - molecule-idempotence-notest
   roles:
     - role: firewall
 
@@ -86,6 +99,8 @@
         src: /etc/nftables.d/vpn-tailnet-ssh-sets.nft
       register: _firewall_empty_tailnet_sets
       changed_when: false
+      tags:
+        - molecule-idempotence-notest
 
     - name: Require the initially installed fragment to be exactly empty
       ansible.builtin.assert:
@@ -101,6 +116,8 @@
             ~ '  type ipv6_addr\n'
             ~ '  flags interval\n'
             ~ '}\n'
+      tags:
+        - molecule-idempotence-notest
 
     - name: Install representative canonical Tailnet SSH sets fragment
       ansible.builtin.copy:
