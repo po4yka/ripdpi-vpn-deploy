@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1787496881680472-sshd-config-ownership
 created: 2026-08-23
-updated: 2026-08-27
-related_tasks: []
-status_detail: Implementation remains on codex/complete-high-review at 37f3a6a50b21e294e5da6048a491d91568cd4627, not main. Recovery restored direct SSH. Existing guest drop-ins still require explicit migration; scratch custom-port and algorithm checks, persistent rollback, fresh SSH connection proof, and serial convergence remain open. The active admin-access-safety task owns production SSH changes.
+updated: 2026-09-01
+related_tasks: [SEC-1787916931540401]
+status_detail: Five of six source steps are implemented in the combined protected candidate: single-owner bootstrap and managed layers, duplicate-owner refusal, assembled effective validation, and exact algorithm pins. The remaining blocker is the required scratch-node custom-port and pinned-algorithm lockout rehearsal followed by fleet verification.
 ---
 
 ## Goal
