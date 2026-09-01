@@ -12,7 +12,7 @@ blocked_by: [TST-1787850553468536, ANS-1787497148207353]
 spec_mode: required
 openspec_change: mon-1788008977760206-centralized-observability-telegram-alerting
 created: 2026-08-29
-updated: 2026-08-29
+updated: 2026-09-01
 related_tasks: [SEC-1787916931540401, TST-1787497001212692]
 ---
 
@@ -74,3 +74,13 @@ for authenticated client traffic or observed delivery.
   rebased/serialized, never overwritten.
 - No live provider, server, Telegram, credential, failure injection, cutover or
   storage action is authorized by this planning record alone.
+
+## Current source status
+
+- The exact-host observability operator controller now exposes render,
+  validation, passive redacted status, staging synthetic delivery drill,
+  credential convergence, last-known-good rollback and component removal.
+- This is source and local-test evidence only. No staging host, private
+  Telegram receipt, live credential rotation, rollback, fleet telemetry or
+  two-vantage client-path acceptance has been observed, so the feature remains
+  open.

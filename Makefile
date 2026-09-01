@@ -226,6 +226,9 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         emit-sbom molecule-full-stack audit-log audit-log-append pyinfra-audit \
         setup-yubikey check-killswitch install-operator-crons \
         remove-operator-crons issue-sub-token sub-reads \
+        observability-render observability-validate observability-status \
+        observability-drill observability-rotate observability-rollback \
+        observability-remove \
         awg-evidence-provision \
         test-unit snapshot-check snapshot-update validate-secrets \
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
@@ -322,6 +325,8 @@ help:
 	@echo "  diff-secrets               Drift: deployed config vs current secrets"
 	@echo ""
 	@echo "── OBSERVABILITY / DEFENSIVE ──────────────────────────────────────────"
+	@echo "  observability-{render,validate,status}  Exact-host configuration/read surface"
+	@echo "  observability-{drill,rotate,rollback,remove}  Confirmed exact-host lifecycle"
 	@echo "  burn-check                 External IP reachability probe"
 	@echo "  asn-drift                  Alert on VPS ASN reassignment"
 	@echo "  check-ip-reputation        Spamhaus / optional FireHOL file / AbuseIPDB"
@@ -1080,6 +1085,68 @@ install-operator-crons:
 
 remove-operator-crons:
 	./scripts/install-operator-crons.sh --remove
+
+# Keep operator-supplied values literal. The controller validates every path,
+# exact inventory alias, component, environment and confirmation boundary.
+OBSERVABILITY_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini
+OBSERVABILITY_ENVIRONMENT ?= $(ENV)
+OBSERVABILITY_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
+OBSERVABILITY_SECRETS_FILE ?= $(SECRETS_FILE)
+
+ifneq ($(filter observability-render observability-validate observability-status observability-drill observability-rotate observability-rollback observability-remove,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error observability operator commands require exactly one make goal)
+endif
+override OBSERVABILITY_INVENTORY_LITERAL := $(if $(filter file default undefined,$(origin OBSERVABILITY_INVENTORY)),$(OBSERVABILITY_INVENTORY),$(value OBSERVABILITY_INVENTORY))
+override OBSERVABILITY_HOST_LITERAL := $(value OBSERVABILITY_HOST)
+override OBSERVABILITY_ENVIRONMENT_LITERAL := $(if $(filter file default undefined,$(origin OBSERVABILITY_ENVIRONMENT)),$(OBSERVABILITY_ENVIRONMENT),$(value OBSERVABILITY_ENVIRONMENT))
+override OBSERVABILITY_COMPONENT_LITERAL := $(value OBSERVABILITY_COMPONENT)
+override OBSERVABILITY_KNOWN_HOSTS_LITERAL := $(if $(filter file default undefined,$(origin OBSERVABILITY_KNOWN_HOSTS)),$(OBSERVABILITY_KNOWN_HOSTS),$(value OBSERVABILITY_KNOWN_HOSTS))
+override OBSERVABILITY_SECRETS_LITERAL := $(if $(filter file default undefined,$(origin OBSERVABILITY_SECRETS_FILE)),$(OBSERVABILITY_SECRETS_FILE),$(value OBSERVABILITY_SECRETS_FILE))
+override OBSERVABILITY_VARS_LITERAL := $(value OBSERVABILITY_VARS)
+export OBSERVABILITY_INVENTORY_LITERAL OBSERVABILITY_HOST_LITERAL
+export OBSERVABILITY_ENVIRONMENT_LITERAL OBSERVABILITY_COMPONENT_LITERAL
+export OBSERVABILITY_KNOWN_HOSTS_LITERAL OBSERVABILITY_SECRETS_LITERAL
+export OBSERVABILITY_VARS_LITERAL
+unexport MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+endif
+
+define observability_common
+	  --inventory "$${OBSERVABILITY_INVENTORY_LITERAL}" \
+	  --host "$${OBSERVABILITY_HOST_LITERAL}" \
+	  --environment "$${OBSERVABILITY_ENVIRONMENT_LITERAL}" \
+	  --component "$${OBSERVABILITY_COMPONENT_LITERAL}" \
+	  --known-hosts "$${OBSERVABILITY_KNOWN_HOSTS_LITERAL}"
+endef
+
+observability-render:
+	@python3 scripts/observability-operator.py render $(observability_common) \
+	  --secrets "$${OBSERVABILITY_SECRETS_LITERAL}" --vars "$${OBSERVABILITY_VARS_LITERAL}"
+
+observability-validate:
+	@python3 scripts/observability-operator.py validate $(observability_common) \
+	  --secrets "$${OBSERVABILITY_SECRETS_LITERAL}" --vars "$${OBSERVABILITY_VARS_LITERAL}"
+
+observability-status:
+	@python3 scripts/observability-operator.py status $(observability_common)
+
+observability-drill:
+	@python3 scripts/observability-operator.py drill $(observability_common) \
+	  --confirm-notification
+
+observability-rotate:
+	@python3 scripts/observability-operator.py rotate $(observability_common) \
+	  --secrets "$${OBSERVABILITY_SECRETS_LITERAL}" --vars "$${OBSERVABILITY_VARS_LITERAL}" \
+	  --confirm
+
+observability-rollback:
+	@python3 scripts/observability-operator.py rollback $(observability_common) \
+	  --secrets "$${OBSERVABILITY_SECRETS_LITERAL}" --vars "$${OBSERVABILITY_VARS_LITERAL}" \
+	  --confirm
+
+observability-remove:
+	@python3 scripts/observability-operator.py remove $(observability_common) --confirm
 
 scan-targets:
 	@test -n "$(SEEDS)$(CIDR)$(CRAWL)" || { \
