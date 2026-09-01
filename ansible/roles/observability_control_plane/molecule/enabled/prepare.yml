@@ -111,13 +111,29 @@
                   f"Content-Length: {args.content_length}\r\n"
                   "Connection: close\r\n\r\n"
               ).encode("ascii")
-              connection.sock.sendall(request)
-              response = http.client.HTTPResponse(
-                  connection.sock, method=args.method
-              )
-              response.begin()
-              print(response.status)
-              return 0
+              response_bytes = b""
+              try:
+                  connection.sock.sendall(request)
+                  while b"\r\n" not in response_bytes and len(response_bytes) < 4096:
+                      chunk = connection.sock.recv(4096 - len(response_bytes))
+                      if not chunk:
+                          break
+                      response_bytes += chunk
+              except ssl.SSLError:
+                  # nginx may close without TLS close_notify after its bounded rejection.
+                  pass
+              if not response_bytes:
+                  return 60
+              status_line = response_bytes.split(b"\r\n", 1)[0]
+              parts = status_line.split(b" ", 2)
+              if (
+                  len(parts) == 3
+                  and parts[0] in (b"HTTP/1.0", b"HTTP/1.1")
+                  and parts[1] == b"413"
+              ):
+                  print(413)
+                  return 0
+              return 2
 
 
           def main():

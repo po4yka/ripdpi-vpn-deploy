@@ -29,3 +29,5 @@ observability_agent:
   memory_max: 512M
   tasks_max: 64
   nofile_limit: 65536
+
+_observability_agent_service_generation: ""

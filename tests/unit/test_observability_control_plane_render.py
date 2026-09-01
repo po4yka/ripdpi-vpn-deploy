@@ -301,9 +301,10 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     assert 'parser.add_argument("--content-length", type=int)' in content
     assert "def send_declared_length_request(connection, args):" in content
     assert "connection.sock.sendall(request)" in content
-    assert "http.client.HTTPResponse(" in content
-    assert "connection.sock, method=args.method" in content
-    assert "response.begin()" in content
+    assert 'parts[0] in (b"HTTP/1.0", b"HTTP/1.1")' in content
+    assert 'parts[1] == b"413"' in content
+    assert "except ssl.SSLError:" in content
+    assert "if not response_bytes:" in content
     assert "body=body" in content
     assert "urllib" not in content
 

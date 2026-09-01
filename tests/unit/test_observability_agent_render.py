@@ -97,6 +97,11 @@ def test_service_uses_systemd_credentials_and_bounded_agent_wal() -> None:
     assert "LoadCredential=prometheus.yml:" in unit
     assert "WorkingDirectory=" not in unit
     assert "ExecStartPre=" not in unit
+    assert (
+        "/generations/{{ _observability_agent_service_generation }}/prometheus.yml"
+        in unit
+    )
+    assert "/current/" not in unit
     assert "--config.file=%d/prometheus.yml" in unit
     assert "--config.file=${CREDENTIALS_DIRECTORY}/prometheus.yml" not in unit
     assert (
@@ -172,18 +177,39 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
     )
     always_cleanup = tasks.index("Remove private observability credential candidate")
     assert publish < always_cleanup < switch
-    assert (
-        "LoadCredential=client.crt:{{ observability_agent.credential_dir }}/current/client.crt"
-        in unit
+    assert tasks.index(
+        "Bind observability service to the candidate credential generation"
+    ) < tasks.index("Install observability agent units")
+    for name in ("client.crt", "client.key", "receiver-ca.crt", "prometheus.yml"):
+        assert (
+            f"LoadCredential={name}:{{{{ observability_agent.credential_dir }}}}/"
+            "generations/{{ _observability_agent_service_generation }}/"
+            f"{name}"
+        ) in unit
+    assert "Assert active observability generation target is role-owned" in tasks
+    assert "^generations/[a-f0-9]{64}$" in tasks
+    assert "observability_agent.credential_dir ~ '/generations/'" in tasks
+    assert "Normalize active observability credential generation" in tasks
+    active_target = tasks.index(
+        "Assert active observability generation target is role-owned"
     )
-    assert (
-        "LoadCredential=client.key:{{ observability_agent.credential_dir }}/current/client.key"
-        in unit
+    service_activity = tasks.index("Inspect observability agent service activity")
+    assert "stat.lnk_target" in tasks[active_target:service_activity]
+    assert "stat.lnk_source" not in tasks[active_target:service_activity]
+    restore = tasks.index("Restore previous observability generation")
+    bind_previous = tasks.index(
+        "Bind restored service to the previous credential generation"
     )
-    assert (
-        "LoadCredential=prometheus.yml:{{ observability_agent.credential_dir }}/current/prometheus.yml"
-        in unit
-    )
+    restore_unit = tasks.index("Restore previous observability agent service unit")
+    restart_previous = tasks.index("Restart restored observability generation")
+    assert restore < bind_previous < restore_unit < restart_previous
+    normalize = tasks.index("Normalize active observability credential generation")
+    rollback = tasks[restore:restart_previous]
+    assert "stat.lnk_target | basename" in tasks[active_target:service_activity]
+    assert normalize < service_activity
+    assert 'src: "generations/{{ _observability_agent_previous_generation_id }}"' in rollback
+    assert "{{ _observability_agent_previous_generation_id }}" in rollback
+    assert "stat.lnk_source" not in rollback
     assert "- -purpose\n              - sslclient" in tasks
     assert "- x509\n              - x509" not in tasks
     assert "prometheus.yml" in tasks[publish:switch]

@@ -7,10 +7,10 @@ Wants=network-online.target
 Type=simple
 User=observability-agent
 Group=observability-agent
-LoadCredential=client.crt:/etc/observability-agent/credentials/current/client.crt
-LoadCredential=client.key:/etc/observability-agent/credentials/current/client.key
-LoadCredential=receiver-ca.crt:/etc/observability-agent/credentials/current/receiver-ca.crt
-LoadCredential=prometheus.yml:/etc/observability-agent/credentials/current/prometheus.yml
+LoadCredential=client.crt:/etc/observability-agent/credentials/generations/3333333333333333333333333333333333333333333333333333333333333333/client.crt
+LoadCredential=client.key:/etc/observability-agent/credentials/generations/3333333333333333333333333333333333333333333333333333333333333333/client.key
+LoadCredential=receiver-ca.crt:/etc/observability-agent/credentials/generations/3333333333333333333333333333333333333333333333333333333333333333/receiver-ca.crt
+LoadCredential=prometheus.yml:/etc/observability-agent/credentials/generations/3333333333333333333333333333333333333333333333333333333333333333/prometheus.yml
 ExecStart=/usr/local/bin/prometheus-observability-agent --agent --config.file=%d/prometheus.yml --web.listen-address=127.0.0.1:19090 --storage.agent.path=/var/lib/observability-agent/wal --storage.agent.wal-compression --storage.agent.retention.max-time=1h
 Restart=on-failure
 RestartSec=5s

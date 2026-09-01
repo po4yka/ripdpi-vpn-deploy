@@ -459,6 +459,12 @@
         group: root
         mode: "0644"
 
+    - name: Bind observability service to the candidate credential generation
+      ansible.builtin.set_fact:
+        _observability_agent_service_generation: >-
+          {{ _observability_agent_credential_generation }}
+      no_log: true
+
     - name: Install observability agent units
       ansible.builtin.template:
         src: "{{ item }}"
@@ -489,6 +495,29 @@
             not (_observability_agent_previous_generation.stat.exists | default(false)) or
             (_observability_agent_previous_generation.stat.islnk | default(false))
         fail_msg: Active observability generation is not a managed symlink.
+
+    - name: Assert active observability generation target is role-owned
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (_observability_agent_previous_generation.stat.islnk | default(false)) or
+            (((_observability_agent_previous_generation.stat.lnk_target | default(''))
+              is match('^generations/[a-f0-9]{64}$')) or
+             (((_observability_agent_previous_generation.stat.lnk_target | default(''))
+               | basename) is match('^[a-f0-9]{64}$') and
+              (_observability_agent_previous_generation.stat.lnk_target | default('')) ==
+              (observability_agent.credential_dir ~ '/generations/' ~
+               ((_observability_agent_previous_generation.stat.lnk_target | default(''))
+                | basename))))
+        fail_msg: Active observability generation link has an unsafe target.
+      no_log: true
+
+    - name: Normalize active observability credential generation
+      ansible.builtin.set_fact:
+        _observability_agent_previous_generation_id: >-
+          {{ _observability_agent_previous_generation.stat.lnk_target | basename }}
+      when: _observability_agent_previous_generation.stat.islnk | default(false)
+      no_log: true
 
     - name: Inspect observability agent service activity
       ansible.builtin.command:
@@ -536,7 +565,7 @@
       rescue:
         - name: Restore previous observability generation
           ansible.builtin.file:
-            src: "{{ _observability_agent_previous_generation.stat.lnk_source }}"
+            src: "generations/{{ _observability_agent_previous_generation_id }}"
             dest: "{{ observability_agent.credential_dir }}/current"
             owner: root
             group: root
@@ -544,6 +573,22 @@
             force: true
           when: _observability_agent_previous_generation.stat.islnk | default(false)
           no_log: true
+
+        - name: Bind restored service to the previous credential generation
+          ansible.builtin.set_fact:
+            _observability_agent_service_generation: >-
+              {{ _observability_agent_previous_generation_id }}
+          when: _observability_agent_previous_generation.stat.islnk | default(false)
+          no_log: true
+
+        - name: Restore previous observability agent service unit
+          ansible.builtin.template:
+            src: observability-agent.service.j2
+            dest: /etc/systemd/system/observability-agent.service
+            owner: root
+            group: root
+            mode: "0644"
+          when: _observability_agent_previous_generation.stat.islnk | default(false)
 
         - name: Stop and disable failed first observability agent activation
           ansible.builtin.systemd_service:
