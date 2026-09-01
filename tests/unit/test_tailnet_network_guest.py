@@ -481,10 +481,28 @@ def test_firewall_role_installs_persistent_fail_closed_recovery_units():
         ROOT / "ansible/roles/firewall/files/vpn-tailnet-network-recover.timer"
     ).read_text()
     assert (
-        "Before=nftables.service network-pre.target" in boot and "boot-recover" in boot
+        "Before=nftables.service network-pre.target" in boot
+        and "RequiredBy=nftables.service" in boot
+        and "boot-recover" in boot
     )
     assert (
         "SuccessExitStatus=75" in worker
         and "ReadWritePaths=/etc/nftables.d /var/lib/vpn-tailnet-network" in worker
     )
     assert "Persistent=true" in timer and "OnUnitActiveSec=30s" in timer
+    required = tasks.split("- name: Install exact nftables boot recovery requirement", 1)[1]
+    required = required.split("- name:", 1)[0]
+    # A rerun after a partial unit upgrade has no copy change to key from: the
+    # exact link must still self-heal independently.
+    assert "state: link" in required
+    assert (
+        "dest: /etc/systemd/system/nftables.service.requires/"
+        "vpn-tailnet-network-boot-recover.service" in required
+    )
+    assert "_firewall_tailnet_recovery_units.changed" not in required
+    reload = tasks.split("- name: Reload systemd after Tailnet recovery dependency changes", 1)[1]
+    reload = reload.split("- name:", 1)[0]
+    assert "_firewall_tailnet_boot_required_by.changed" in reload
+    assert tasks.index("- name: Install exact nftables boot recovery requirement") < tasks.index(
+        "- name: Reload systemd after Tailnet recovery dependency changes"
+    ) < tasks.index("- name: Enable persistent Tailnet firewall recovery")

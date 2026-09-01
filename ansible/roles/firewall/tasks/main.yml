@@ -218,12 +218,35 @@
   register: _firewall_tailnet_recovery_units
   when: ansible_facts.get('virtualization_type', '') != 'docker'
 
-- name: Reload systemd after Tailnet recovery unit changes
+- name: Install nftables required-dependency directory for boot recovery
+  ansible.builtin.file:
+    path: /etc/systemd/system/nftables.service.requires
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ansible_facts.get('virtualization_type', '') != 'docker'
+
+- name: Install exact nftables boot recovery requirement
+  # This is deliberately independent of the unit copy result: an interrupted
+  # upgrade can persist new unit bytes before its RequiredBy link is created.
+  ansible.builtin.file:
+    src: /etc/systemd/system/vpn-tailnet-network-boot-recover.service
+    dest: /etc/systemd/system/nftables.service.requires/vpn-tailnet-network-boot-recover.service
+    state: link
+    owner: root
+    group: root
+  register: _firewall_tailnet_boot_required_by
+  when: ansible_facts.get('virtualization_type', '') != 'docker'
+
+- name: Reload systemd after Tailnet recovery dependency changes
   ansible.builtin.systemd_service:
     daemon_reload: true
   when:
     - ansible_facts.get('virtualization_type', '') != 'docker'
-    - _firewall_tailnet_recovery_units.changed
+    - >-
+      _firewall_tailnet_recovery_units.changed or
+      _firewall_tailnet_boot_required_by.changed
 
 - name: Enable persistent Tailnet firewall recovery
   ansible.builtin.systemd_service:

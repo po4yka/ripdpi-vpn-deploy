@@ -21,3 +21,4 @@ LockPersonality=yes
 
 [Install]
 WantedBy=network-pre.target
+RequiredBy=nftables.service

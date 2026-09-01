@@ -104,7 +104,9 @@ def test_clean_check_mode_uses_inlined_empty_sets_without_creating_fragment() ->
     assert f'include "{FRAGMENT_PATH}"' not in rendered
     assert "  set vpn_tailnet_ssh_v4 {" in rendered
     assert "  set vpn_tailnet_ssh_v6 {" in rendered
-    assert 'iifname "tailscale0" tcp dport 22022' not in rendered
+    assert 'iifname "tailscale0" tcp dport 22022 drop' in rendered
+    assert "@vpn_tailnet_ssh_v4 accept" not in rendered
+    assert "@vpn_tailnet_ssh_v6 accept" not in rendered
 
 
 def test_fragment_validator_accepts_canonical_hosts_and_refuses_noncanonical_input() -> None:
