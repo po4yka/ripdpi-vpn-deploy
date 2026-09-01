@@ -87,15 +87,20 @@ def test_role_is_a_documented_standalone_research_exception() -> None:
     assert "sentinel to the Raspberry Pi" not in runbook
     assert "physical Linux sentinel" not in runbook
     assert "off-fleet physical sentinel" not in role_notes
-    for source in (runbook, role_notes):
-        normalized = " ".join(source.split())
-        assert "disposable systemd-capable Linux VM" in normalized
-        assert "consumer uplink" in normalized
-    assert "must not invoke `awg-evidence-provision`" in runbook
-    assert "install-liveness-sentinel" in runbook
+    normalized_runbook = " ".join(runbook.split())
+    normalized_role_notes = " ".join(role_notes.split())
+    for source in (normalized_runbook, normalized_role_notes):
+        assert "disposable systemd-capable Linux VM" in source
+        assert "consumer uplink" in source
+    assert "must not invoke `awg-evidence-provision`" in normalized_runbook
+    assert "not operationally enabled" in normalized_runbook
+    assert "de-onboarding" in normalized_runbook
+    assert "executor binding" in normalized_runbook
+    assert "fail-closed VM preflight" in normalized_runbook
     assert "make install-liveness-sentinel" in liveness
-    assert "does not prove independent physical hardware" in " ".join(runbook.split())
-    assert "must not invoke this role" in " ".join(role_notes.split())
+    assert "will not prove independent physical hardware" in normalized_runbook
+    assert "must not invoke this role" in normalized_role_notes
+    assert "not operationally enabled" in normalized_role_notes
 
 
 def test_role_fails_closed_and_never_embeds_private_material() -> None:

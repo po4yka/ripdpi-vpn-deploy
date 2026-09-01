@@ -13,8 +13,10 @@ off-fleet persistent Linux sentinel plus two separately inventoried evidence hos
 putting it in the family deploy would collapse trust boundaries and distribute
 sentinel-only keys to production inventory. A disposable systemd-capable Linux
 VM on the operator Mac's consumer uplink must not invoke this role: one-shot
-acceptance uses the separate `install-liveness-sentinel` path because this role
+acceptance belongs to the separate protocol-liveness path because this role
 deliberately leaves recurring echo, peer and forced-command state installed.
+That disposable path is not operationally enabled until it has fail-closed VM
+isolation preflight, report-bound executor evidence, and exact de-onboarding.
 Its only entrypoint is
 `provision-real-vps-awg-nat.yml`, and `ansible/role-tiers.yml` classifies it as
 research. That playbook loads private input only from the root-readable SOPS
@@ -53,4 +55,5 @@ root-only variables file, and only then publishes source SHA/digest state.
 - A local disposable sentinel belongs to the separate protocol-liveness lane,
   not this recurring role. It must use a non-default isolated VM profile,
   dedicated identities, no host mounts or published ports, and exact cleanup.
+  Do not transfer credentials until those checks and de-onboarding are enforced.
   Record its consumer-uplink vantage without claiming a persistent physical host.
