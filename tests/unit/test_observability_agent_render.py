@@ -286,3 +286,11 @@ def test_enabled_scenario_proves_idempotence_queue_age_and_authenticated_drain()
     assert "queue_highest_sent_timestamp_seconds" in verify[outage:restore]
     assert "retry > float(sys.argv[1])" in verify[outage:restore]
     assert "received > int(sys.argv[1])" in verify[drain:]
+
+
+def test_site_uses_the_role_contract_as_the_single_enablement_flag() -> None:
+    site = (ROOT / "ansible" / "playbooks" / "site.yml").read_text()
+    group_vars = (ROOT / "ansible" / "group_vars" / "all.yml").read_text()
+
+    assert "when: observability_agent.enabled | default(false)" in site
+    assert "enable_observability_agent" not in group_vars

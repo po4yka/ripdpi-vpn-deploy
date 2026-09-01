@@ -85,7 +85,6 @@ toggle_role_map:
   enable_amneziawg: amneziawg
   enable_geodata: geodata
   enable_monitoring: monitoring
-  enable_observability_agent: observability_agent
   enable_watchdog: watchdog
   enable_backup: backup
   enable_subscription_host: subscription-host

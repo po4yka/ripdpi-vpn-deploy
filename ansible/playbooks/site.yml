@@ -354,7 +354,7 @@
       tags: [manifest]
 
     - role: observability_agent
-      when: vpn.enable_observability_agent | default(false)
+      when: observability_agent.enabled | default(false)
       tags: [observability-agent, monitoring]
 
 - name: Publish and prove the SSH baseline after the VPN stack converges
