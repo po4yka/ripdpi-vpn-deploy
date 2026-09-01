@@ -239,3 +239,11 @@ network_exposure_gate:
   promotion_approved: false
   promotion_digest: ""
   authorized_hosts: []
+
+# Versioned observability configuration accepts systemd credentials only.
+# Role enablement remains separate and default-off until its implementation
+# steps land; no plaintext-file or environment fallback is supported.
+observability_contract:
+  enabled: false
+  schema_version: 1
+  credential_mode: systemd
