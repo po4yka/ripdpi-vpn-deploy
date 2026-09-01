@@ -10,6 +10,7 @@ its separately supplied systemd credential.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from datetime import UTC, datetime
 import hashlib
 import hmac
@@ -26,6 +27,8 @@ import time
 from typing import Any
 from urllib import request
 
+import fcntl
+
 MAX_STATE_BYTES = 4096
 GENERATION = re.compile(r"^[0-9a-f]{40,64}$")
 SIGNATURE = re.compile(r"^[0-9a-f]{64}$")
@@ -33,6 +36,13 @@ SIGNATURE = re.compile(r"^[0-9a-f]{64}$")
 
 class DeadmanError(RuntimeError):
     """A deliberately redacted, safe-to-log rejection."""
+
+
+class BoundedPulseServer(ThreadingHTTPServer):
+    """A small public ingestion listener; the private status server reuses it."""
+
+    request_queue_size = 4
+    daemon_threads = True
 
 
 def _pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -95,6 +105,8 @@ def _load_config(path: Path) -> dict[str, Any]:
         "max_pulse_bytes",
         "retry_attempts",
         "retry_timeout_seconds",
+        "reminder_interval_seconds",
+        "canary_interval_seconds",
         "reverse_health_url",
         "reverse_health_max_bytes",
         "telegram",
@@ -106,7 +118,7 @@ def _load_config(path: Path) -> dict[str, Any]:
     if (
         data["missed_pulse_limit"] != 5
         or not isinstance(data["max_future_seconds"], int)
-        or not 0 <= data["max_future_seconds"] <= 60
+        or not 1 <= data["max_future_seconds"] <= 60
     ):
         raise DeadmanError("invalid config")
     if (
@@ -117,6 +129,11 @@ def _load_config(path: Path) -> dict[str, Any]:
     if data["retry_attempts"] not in (1, 2) or data[
         "retry_timeout_seconds"
     ] not in range(1, 6):
+        raise DeadmanError("invalid config")
+    if (
+        data["reminder_interval_seconds"] != 3600
+        or data["canary_interval_seconds"] != 86400
+    ):
         raise DeadmanError("invalid config")
     if not isinstance(data["reverse_health_url"], str) or not data[
         "reverse_health_url"
@@ -136,16 +153,26 @@ def _load_config(path: Path) -> dict[str, Any]:
     return data
 
 
+def _empty_state() -> dict[str, Any]:
+    return {
+        "schema": 1,
+        "last_sequence": 0,
+        "last_expiry": 0,
+        "last_pulse": 0,
+        "incident": False,
+        "last_delivery": "never",
+        "last_delivery_at": 0,
+        "last_canary": 0,
+        "last_canary_delivery": "never",
+        "pending_event": "none",
+        "pending_nonce": 0,
+        "pending_at": 0,
+    }
+
+
 def _state(path: Path) -> dict[str, Any]:
     if not path.exists():
-        return {
-            "schema": 1,
-            "last_sequence": 0,
-            "last_expiry": 0,
-            "last_pulse": 0,
-            "incident": False,
-            "last_delivery": "never",
-        }
+        return _empty_state()
     try:
         metadata = path.stat()
         if (
@@ -157,26 +184,67 @@ def _state(path: Path) -> dict[str, Any]:
         data = json.loads(path.read_text("utf-8"), object_pairs_hook=_pairs)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, DeadmanError) as exc:
         raise DeadmanError("unsafe state") from exc
-    if not isinstance(data, dict) or set(data) != {
+    oldest_fields = {
         "schema",
         "last_sequence",
         "last_expiry",
         "last_pulse",
         "incident",
         "last_delivery",
-    }:
+    }
+    prior_fields = oldest_fields | {"last_delivery_at", "last_canary"}
+    current_fields = set(_empty_state())
+    if not isinstance(data, dict):
+        raise DeadmanError("unsafe state")
+    if set(data) == oldest_fields or set(data) == prior_fields:
+        data = {**_empty_state(), **data}
+    if set(data) != current_fields:
         raise DeadmanError("unsafe state")
     if (
         data["schema"] != 1
         or not all(
             isinstance(data[key], int) and data[key] >= 0
-            for key in ("last_sequence", "last_expiry", "last_pulse")
+            for key in (
+                "last_sequence",
+                "last_expiry",
+                "last_pulse",
+                "last_delivery_at",
+                "last_canary",
+                "pending_nonce",
+                "pending_at",
+            )
         )
         or not isinstance(data["incident"], bool)
         or data["last_delivery"] not in {"never", "firing", "recovery", "failed"}
+        or data["last_canary_delivery"] not in {"never", "success", "failed"}
+        or data["pending_event"] not in {"none", "firing", "recovery", "canary"}
     ):
         raise DeadmanError("unsafe state")
     return data
+
+
+_LOCK_GUARD = threading.Lock()
+_LOCAL_LOCKS: dict[str, threading.Lock] = {}
+
+
+@contextmanager
+def _state_lock(path: Path):  # type: ignore[no-untyped-def]
+    """Serialize HTTP workers and timer processes around one state RMW transaction."""
+    key = str(path.resolve())
+    with _LOCK_GUARD:
+        local = _LOCAL_LOCKS.setdefault(key, threading.Lock())
+    with local:
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        descriptor = os.open(
+            path.parent / ".state.lock", os.O_CREAT | os.O_RDWR | os.O_CLOEXEC, 0o600
+        )
+        try:
+            os.fchmod(descriptor, 0o600)
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            yield
+        finally:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            os.close(descriptor)
 
 
 def _save_state(path: Path, data: dict[str, Any]) -> None:
@@ -189,7 +257,12 @@ def _save_state(path: Path, data: dict[str, Any]) -> None:
         )
         if len(encoded) > MAX_STATE_BYTES:
             raise DeadmanError("unsafe state")
-        os.write(descriptor, encoded)
+        offset = 0
+        while offset < len(encoded):
+            written = os.write(descriptor, encoded[offset:])
+            if written <= 0:
+                raise DeadmanError("unsafe state")
+            offset += written
         os.fsync(descriptor)
         os.close(descriptor)
         descriptor = -1
@@ -255,13 +328,36 @@ def accept_pulse(
     actual = hmac.new(token, _canonical(pulse), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(actual, signature):
         raise DeadmanError("invalid pulse")
+    if not all(health.values()):
+        raise DeadmanError("unhealthy pulse")
     state.update(last_sequence=pulse["sequence"], last_expiry=expiry, last_pulse=now)
     return state
 
 
+def accept_and_save(
+    path: Path, raw: bytes, token: bytes, config: dict[str, Any], now: int
+) -> dict[str, Any]:
+    with _state_lock(path):
+        accepted = accept_pulse(raw, token, _state(path), config, now)
+        _save_state(path, accepted)
+        return accepted
+
+
+def _read_pulse_body(stream: Any, length: int, maximum: int) -> bytes:
+    if length < 0 or length > maximum:
+        raise DeadmanError("invalid pulse")
+    try:
+        body = stream.read(length)
+    except OSError as exc:
+        raise DeadmanError("invalid pulse") from exc
+    if len(body) != length:
+        raise DeadmanError("invalid pulse")
+    return body
+
+
 def _telegram(config: dict[str, Any], credential: bytes, event: str) -> bool:
     """Send a bounded, deliberately non-sensitive secondary message."""
-    if event not in {"firing", "recovery"}:
+    if event not in {"firing", "recovery", "canary"}:
         raise DeadmanError("invalid event")
     payload: dict[str, Any] = {
         "chat_id": config["telegram"]["chat_id"],
@@ -332,6 +428,85 @@ def _reverse_health(
     return False
 
 
+def _reserve_delivery(
+    path: Path,
+    config: dict[str, Any],
+    now: int,
+) -> tuple[dict[str, Any], tuple[str, int] | None]:
+    with _state_lock(path):
+        state = _state(path)
+        if (
+            state["pending_event"] != "none"
+            and now - state["pending_at"]
+            >= config["retry_attempts"] * config["retry_timeout_seconds"] + 1
+        ):
+            if state["pending_event"] == "canary":
+                state["last_canary_delivery"] = "failed"
+                state["last_canary"] = state["pending_at"]
+            else:
+                state["last_delivery"] = "failed"
+                state["last_delivery_at"] = state["pending_at"]
+            state["pending_event"] = "none"
+            state["pending_at"] = 0
+            _save_state(path, state)
+        if state["pending_event"] != "none":
+            return dict(state), None
+        overdue = (
+            state["last_pulse"] == 0
+            or now - state["last_pulse"]
+            >= config["pulse_interval_seconds"] * config["missed_pulse_limit"]
+        )
+        event: str | None = None
+        notification_due = (
+            now - state["last_delivery_at"] >= config["reminder_interval_seconds"]
+        )
+        if overdue and (not state["incident"] or notification_due):
+            state["incident"] = True
+            event = "firing"
+        elif not overdue and state["incident"]:
+            state["incident"] = False
+            event = "recovery"
+        if (
+            not state["incident"]
+            and event is None
+            and (
+                now - state["last_canary"] >= config["canary_interval_seconds"]
+                or (
+                    state["last_canary_delivery"] == "failed"
+                    and now - state["last_canary"]
+                    >= config["reminder_interval_seconds"]
+                )
+            )
+        ):
+            event = "canary"
+        if event is not None:
+            state["pending_nonce"] += 1
+            state["pending_event"] = event
+            state["pending_at"] = now
+            _save_state(path, state)
+            return dict(state), (event, state["pending_nonce"])
+        return dict(state), None
+
+
+def _complete_delivery(
+    path: Path, event: str, nonce: int, success: bool, now: int
+) -> dict[str, Any]:
+    with _state_lock(path):
+        state = _state(path)
+        if state["pending_event"] != event or state["pending_nonce"] != nonce:
+            return state
+        state["pending_event"] = "none"
+        state["pending_at"] = 0
+        if event == "canary":
+            state["last_canary_delivery"] = "success" if success else "failed"
+            state["last_canary"] = now
+        else:
+            state["last_delivery"] = event if success else "failed"
+            state["last_delivery_at"] = now
+        _save_state(path, state)
+        return state
+
+
 def tick(
     path: Path,
     config: dict[str, Any],
@@ -339,26 +514,27 @@ def tick(
     pulse_token: bytes,
     now: int,
 ) -> dict[str, Any]:
-    state = _state(path)
-    overdue = (
-        state["last_pulse"] == 0
-        or now - state["last_pulse"]
-        >= config["pulse_interval_seconds"] * config["missed_pulse_limit"]
-    )
-    if overdue and not state["incident"]:
-        state["incident"] = True
-        state["last_delivery"] = (
-            "firing" if _telegram(config, telegram_token, "firing") else "failed"
+    state, reservation = _reserve_delivery(path, config, now)
+    if reservation is not None:
+        event, nonce = reservation
+        state = _complete_delivery(
+            path, event, nonce, _telegram(config, telegram_token, event), now
         )
-        _save_state(path, state)
-    elif not overdue and state["incident"]:
-        state["incident"] = False
-        state["last_delivery"] = (
-            "recovery" if _telegram(config, telegram_token, "recovery") else "failed"
-        )
-        _save_state(path, state)
     _reverse_health(config, pulse_token, state, now)
     return state
+
+
+def _status_payload(state: dict[str, Any]) -> bytes:
+    return json.dumps(
+        {
+            "schema": 1,
+            "incident": state["incident"],
+            "last_delivery": state["last_delivery"],
+            "last_pulse": state["last_pulse"],
+            "last_canary_delivery": state["last_canary_delivery"],
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
 
 
 def _serve(arguments: argparse.Namespace) -> int:
@@ -367,27 +543,34 @@ def _serve(arguments: argparse.Namespace) -> int:
     state_path = Path(arguments.state)
     host, port = arguments.listen.rsplit(":", 1)
     status_host, status_port = arguments.status_listen.rsplit(":", 1)
+    requests = threading.BoundedSemaphore(4)
 
     class Handler(BaseHTTPRequestHandler):
+        def setup(self) -> None:
+            super().setup()
+            self.connection.settimeout(5)
+
         def do_POST(self) -> None:  # noqa: N802
             if self.path != config["pulse_path"]:
                 self.send_error(404)
                 return
+            if not requests.acquire(blocking=False):
+                self.send_error(503)
+                return
             try:
                 length = int(self.headers.get("Content-Length", "-1"))
-                if length < 0 or length > config["max_pulse_bytes"]:
-                    raise DeadmanError("invalid pulse")
-                state = accept_pulse(
-                    self.rfile.read(length),
+                accept_and_save(
+                    state_path,
+                    _read_pulse_body(self.rfile, length, config["max_pulse_bytes"]),
                     token,
-                    _state(state_path),
                     config,
                     int(time.time()),
                 )
-                _save_state(state_path, state)
-            except (DeadmanError, ValueError):
+            except (DeadmanError, OSError, ValueError):
                 self.send_error(400)
                 return
+            finally:
+                requests.release()
             self.send_response(204)
             self.end_headers()
 
@@ -404,15 +587,7 @@ def _serve(arguments: argparse.Namespace) -> int:
             except DeadmanError:
                 self.send_error(503)
                 return
-            body = json.dumps(
-                {
-                    "schema": 1,
-                    "incident": current["incident"],
-                    "last_delivery": current["last_delivery"],
-                    "last_pulse": current["last_pulse"],
-                },
-                separators=(",", ":"),
-            ).encode("utf-8")
+            body = _status_payload(current)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -422,9 +597,9 @@ def _serve(arguments: argparse.Namespace) -> int:
         def log_message(self, _format: str, *_args: object) -> None:
             return
 
-    status_server = ThreadingHTTPServer((status_host, int(status_port)), StatusHandler)
+    status_server = BoundedPulseServer((status_host, int(status_port)), StatusHandler)
     threading.Thread(target=status_server.serve_forever, daemon=True).start()
-    ThreadingHTTPServer((host, int(port)), Handler).serve_forever()
+    BoundedPulseServer((host, int(port)), Handler).serve_forever()
     return 0
 
 

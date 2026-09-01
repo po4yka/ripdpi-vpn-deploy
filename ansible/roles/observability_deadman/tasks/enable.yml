@@ -12,7 +12,7 @@
       - observability_deadman.reverse_health_max_bytes | int <= 4096
       - observability_deadman.pulse_interval_seconds | int == 60
       - observability_deadman.missed_pulse_limit | int == 5
-      - observability_deadman.max_future_seconds | int >= 0
+      - observability_deadman.max_future_seconds | int >= 1
       - observability_deadman.max_future_seconds | int <= 60
       - observability_deadman.max_pulse_bytes | int >= 512
       - observability_deadman.max_pulse_bytes | int <= 4096
@@ -20,6 +20,8 @@
       - observability_deadman.retry_attempts | int <= 2
       - observability_deadman.retry_timeout_seconds | int >= 1
       - observability_deadman.retry_timeout_seconds | int <= 5
+      - observability_deadman.reminder_interval_seconds | int == 3600
+      - observability_deadman.canary_interval_seconds | int == 86400
       - observability_deadman.telegram.chat_id | string is match('^-?[0-9]{6,20}$')
       - observability_deadman.telegram.topic_id | int >= 0
       - observability_deadman_secrets.schema_version | default(0) | int == 1
@@ -165,6 +167,21 @@
         - observability-deadman-tick.timer
       when: not ansible_check_mode
   rescue:
+    - name: Gather candidate dead-man unit facts before rollback
+      ansible.builtin.service_facts:
+
+    - name: Stop candidate dead-man units before rollback
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: false
+        state: stopped
+      loop:
+        - observability-deadman-tick.timer
+        - observability-deadman.service
+      when:
+        - not ansible_check_mode
+        - item in ansible_facts.services
+
     - name: Restore previous dead-man generation link
       ansible.builtin.file:
         src: "{{ _observability_deadman_previous.stat.lnk_source }}"
@@ -172,6 +189,19 @@
         state: link
         force: true
       when: _observability_deadman_previous.stat.exists | default(false)
+
+    - name: Restart restored dead-man generation
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        daemon_reload: true
+        enabled: true
+        state: "{{ 'restarted' if item == 'observability-deadman.service' else 'started' }}"
+      loop:
+        - observability-deadman.service
+        - observability-deadman-tick.timer
+      when:
+        - not ansible_check_mode
+        - _observability_deadman_previous.stat.exists | default(false)
 
     - name: Remove failed first dead-man generation link
       ansible.builtin.file:

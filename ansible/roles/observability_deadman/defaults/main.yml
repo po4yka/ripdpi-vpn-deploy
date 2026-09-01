@@ -19,6 +19,8 @@ observability_deadman:
   max_pulse_bytes: 4096
   retry_attempts: 2
   retry_timeout_seconds: 5
+  reminder_interval_seconds: 3600
+  canary_interval_seconds: 86400
   telegram:
     chat_id: ""
     topic_id: 0
