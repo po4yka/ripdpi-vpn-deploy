@@ -486,6 +486,46 @@ def test_corrupt_recovery_state_refuses_without_tailnet_mutation(tmp_path) -> No
     assert not any(call[1:] == ["logout"] for call in runner.calls)
 
 
+def test_recovery_receipt_uses_one_serialized_write_and_read_bound(tmp_path) -> None:
+    controller = _load_controller()
+    paths = _paths(controller, tmp_path)
+    snapshot = controller.SystemSnapshot(
+        resolver=b"r" * 100_000,
+        routes=b"t" * 100_000,
+        sshd=b"s" * 100_000,
+        resolver_mode=0o644,
+        resolver_uid=os.geteuid(),
+        resolver_gid=os.getegid(),
+    )
+
+    controller._write_transaction(paths, backend_state="NeedsLogin", snapshot=snapshot)
+
+    _receipt, recovered = controller._read_transaction(paths)
+    assert recovered == snapshot
+    assert (tmp_path / "transaction.json").stat().st_size > 262_144
+
+
+def test_oversized_recovery_receipt_refuses_before_publication(tmp_path) -> None:
+    controller = _load_controller()
+    snapshot = controller.SystemSnapshot(
+        resolver=b"r" * 262_144,
+        routes=b"t" * 262_144,
+        sshd=b"s" * 262_144,
+        resolver_mode=0o644,
+        resolver_uid=os.geteuid(),
+        resolver_gid=os.getegid(),
+    )
+
+    with pytest.raises(controller.Refusal, match="tailnet-recovery-state-write-failed"):
+        controller._write_transaction(
+            _paths(controller, tmp_path),
+            backend_state="NeedsLogin",
+            snapshot=snapshot,
+        )
+
+    assert not (tmp_path / "transaction.json").exists()
+
+
 def test_stopped_state_during_armed_recovery_retains_evidence_without_logout(
     tmp_path,
 ) -> None:
@@ -714,7 +754,25 @@ def test_role_preflights_existing_tailnet_before_every_host_write() -> None:
         names.index("Refuse package installation over a local Tailscale command")
         < first_write
     )
+    assert (
+        names.index(
+            "Require one existing Tailscale command when package installation is disabled"
+        )
+        < first_write
+    )
     assert names.index("Require enrollment capability before host writes") < first_write
+    daemon = next(
+        task
+        for task in tasks
+        if task["name"] == "Enable and start the Tailscale daemon"
+    )
+    timer = next(
+        task
+        for task in tasks
+        if task["name"] == "Arm persistent Tailnet recovery before enrollment"
+    )
+    assert "not ansible_check_mode" in daemon["when"]
+    assert timer["when"] == "not ansible_check_mode"
     ownership = next(
         task
         for task in tasks

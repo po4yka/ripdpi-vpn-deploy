@@ -390,6 +390,54 @@ def test_unrestricted_ssh_rule_is_rejected(tmp_path: Path) -> None:
     assert result.stdout == "unexpected unrestricted firewall tcp 22\n"
 
 
+def test_ordinary_ssh_accepts_nested_nftables_prefix_sets(tmp_path: Path) -> None:
+    rule = _nft_rule("tcp", 22, source_restricted=True)
+    source_match = next(
+        expression["match"]
+        for expression in rule["rule"]["expr"]
+        if expression.get("match", {}).get("left", {}).get("payload", {}).get("field")
+        == "saddr"
+    )
+    source_match["right"] = {
+        "set": [
+            {"prefix": {"addr": "203.0.113.0", "len": 24}},
+            "198.51.100.7",
+        ]
+    }
+
+    result = _verify_listeners(tmp_path, [], "", nft_output=_nft_document(rule))
+
+    assert result.returncode == 0
+
+
+def test_tailnet_ssh_still_rejects_prefix_source_expressions(tmp_path: Path) -> None:
+    rule = _nft_rule(
+        "tcp",
+        22,
+        source_restricted=True,
+        source_address="100.64.1.2",
+        input_interface="tailscale0",
+    )
+    source_match = next(
+        expression["match"]
+        for expression in rule["rule"]["expr"]
+        if expression.get("match", {}).get("left", {}).get("payload", {}).get("field")
+        == "saddr"
+    )
+    source_match["right"] = {"prefix": {"addr": "100.64.1.2", "len": 32}}
+
+    result = _verify_listeners(
+        tmp_path,
+        [],
+        "",
+        nft_output=_nft_document(rule),
+        tailnet_sources=["100.64.1.2"],
+    )
+
+    assert result.returncode == 1
+    assert "unexpected unrestricted firewall tcp 22" in result.stdout
+
+
 def test_source_scoped_ssh_rule_is_allowed(tmp_path: Path) -> None:
     result = _verify_listeners(
         tmp_path,

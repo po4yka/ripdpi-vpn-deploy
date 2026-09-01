@@ -22,7 +22,9 @@ class PortSelector:
 
     @property
     def label(self) -> str:
-        value = str(self.start) if self.start == self.end else f"{self.start}-{self.end}"
+        value = (
+            str(self.start) if self.start == self.end else f"{self.start}-{self.end}"
+        )
         return f"{self.protocol} {value}"
 
 
@@ -43,7 +45,9 @@ def _selector(protocol: object, port: object, port_range: object) -> PortSelecto
     if protocol not in {"tcp", "udp"}:
         raise ValueError(f"unsupported protocol {protocol!r}")
     if (port is None) == (port_range is None):
-        raise ValueError(f"{protocol} listener must define exactly one port or port_range")
+        raise ValueError(
+            f"{protocol} listener must define exactly one port or port_range"
+        )
     if port is not None:
         if not isinstance(port, int) or isinstance(port, bool):
             raise ValueError(f"{protocol} port must be an integer")
@@ -106,9 +110,12 @@ def _decode_tailnet_sources(encoded: str) -> frozenset[str]:
         except ValueError as exc:
             raise ValueError("Tailnet source must be a canonical address") from exc
         network = ipaddress.ip_network(
-            "100.64.0.0/10" if address.version == 4 else "fd7a:115c:a1e0::/48")
+            "100.64.0.0/10" if address.version == 4 else "fd7a:115c:a1e0::/48"
+        )
         if str(address) != value or address not in network or value in result:
-            raise ValueError("Tailnet source must be a unique canonical Tailnet address")
+            raise ValueError(
+                "Tailnet source must be a unique canonical Tailnet address"
+            )
         result.add(value)
     return frozenset(result)
 
@@ -119,10 +126,26 @@ def _run(*command: str) -> str:
 
 
 def _right_values(value: object) -> set[object]:
-    if isinstance(value, dict) and isinstance(value.get("set"), list):
-        value = value["set"]
+    if isinstance(value, dict):
+        if isinstance(value.get("set"), list):
+            result: set[object] = set()
+            for item in value["set"]:
+                result.update(_right_values(item))
+            return result
+        prefix = value.get("prefix")
+        if isinstance(prefix, dict):
+            address = prefix.get("addr")
+            length = prefix.get("len")
+            if isinstance(address, str) and isinstance(length, int):
+                try:
+                    return {str(ipaddress.ip_network(f"{address}/{length}"))}
+                except ValueError:
+                    return set()
     if isinstance(value, list):
-        return {item for item in value if isinstance(item, (str, int))}
+        result = set()
+        for item in value:
+            result.update(_right_values(item))
+        return result
     return {value} if isinstance(value, (str, int)) else set()
 
 
@@ -281,7 +304,11 @@ def _public_socket_ports(ss_output: str) -> set[tuple[str, int]]:
         fields = line.split()
         if len(fields) < 5:
             continue
-        protocol = "tcp" if fields[0].startswith("tcp") else "udp" if fields[0].startswith("udp") else None
+        protocol = (
+            "tcp"
+            if fields[0].startswith("tcp")
+            else "udp" if fields[0].startswith("udp") else None
+        )
         parsed = _split_local_address(fields[4])
         if protocol is None or parsed is None:
             continue
@@ -313,11 +340,13 @@ def _violations(
             continue
         if selector == ssh:
             tailnet_rule = (
-                rule.source_restricted and rule.input_restricted
+                rule.source_restricted
+                and rule.input_restricted
                 and rule.input_interfaces == frozenset({"tailscale0"})
                 and len(rule.source_addresses) == 1
                 and rule.source_addresses <= tailnet_sources
-                and not rule.unknown_predicate)
+                and not rule.unknown_predicate
+            )
             if tailnet_rule:
                 tailnet_seen[next(iter(rule.source_addresses))] += 1
                 continue
@@ -385,7 +414,9 @@ def main() -> int:
         print(f"verify-public-listeners: {exc}", file=sys.stderr)
         return 2
 
-    violations = _violations(expected, firewall, sockets, args.ssh_port, tailnet_sources)
+    violations = _violations(
+        expected, firewall, sockets, args.ssh_port, tailnet_sources
+    )
     if violations:
         print("\n".join(violations))
         return 1
