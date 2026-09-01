@@ -23,7 +23,7 @@ The outer operation MUST retain its established typed failure result.
 
 ## MODIFIED Requirements
 
-### Requirement: REQ-CODEQL-ALERT-CLOSURE — Clear the identified alert sets in source
+### Requirement: REQ-CODEQL-ALERT-CLOSURE — Clear the identified alert set in source
 
 The implementation MUST preserve closure of CodeQL alerts 320 through 327 and
 MUST remove the causes of CodeQL alerts 424 and 511 through 513 without
