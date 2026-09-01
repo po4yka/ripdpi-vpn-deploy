@@ -293,4 +293,5 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     assert "socket.create_connection((DIRECT_ADDRESS, DIRECT_PORT), timeout=5)" in content
     assert "load_cert_chain" in content
     assert "server_hostname=self.host" in content
+    assert "response.read()" not in content
     assert "urllib" not in content

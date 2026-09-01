@@ -50,7 +50,7 @@
       install_root: /opt/observability-agent
       promtool_install_root: /opt/observability-agent-promtool
       config_dir: /etc/observability-agent
-      credential_dir: /etc/credstore/observability-agent
+      credential_dir: /etc/observability-agent/credentials
       wal_dir: /var/lib/observability-agent/wal
       wal_max_time: 10m
       web_listen: 127.0.0.1:19090

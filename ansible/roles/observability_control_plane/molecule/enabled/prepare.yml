@@ -126,7 +126,6 @@
                       headers={"Host": args.server_name},
                   )
                   response = connection.getresponse()
-                  response.read()
                   print(response.status)
                   return 0
               except ssl.SSLError:

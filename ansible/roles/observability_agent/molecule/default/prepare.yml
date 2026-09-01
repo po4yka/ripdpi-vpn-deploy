@@ -19,7 +19,7 @@
         mode: "0700"
       loop:
         - /etc/observability-agent
-        - /etc/credstore/observability-agent
+        - /etc/observability-agent/credentials
         - /var/lib/observability-agent/wal
         - /opt/observability-agent
 

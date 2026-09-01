@@ -11,6 +11,14 @@ ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible" / "roles" / "observability_agent"
 
 
+def test_private_credentials_do_not_depend_on_system_credstore_traversal() -> None:
+    defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
+
+    assert defaults["observability_agent"]["credential_dir"] == (
+        "/etc/observability-agent/credentials"
+    )
+
+
 def test_sender_is_fail_closed_and_uses_runtime_release() -> None:
     tasks = (ROLE / "tasks" / "main.yml").read_text(encoding="utf-8")
 

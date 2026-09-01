@@ -8,7 +8,7 @@
         path: "{{ item }}"
       loop:
         - /etc/observability-agent
-        - /etc/credstore/observability-agent
+        - /etc/observability-agent/credentials
         - /var/lib/observability-agent/wal
         - /opt/observability-agent
         - /var/lib/node_exporter/textfile/observability-agent.prom

@@ -9,7 +9,7 @@
         (observability_agent.promtool_install_root | default('/opt/observability-agent-promtool'))
         is match('^/opt/observability-agent-promtool(?:-[a-z0-9-]+)?$')
       - (observability_agent.config_dir | default('/etc/observability-agent')) == '/etc/observability-agent'
-      - (observability_agent.credential_dir | default('/etc/credstore/observability-agent')) == '/etc/credstore/observability-agent'
+      - (observability_agent.credential_dir | default('/etc/observability-agent/credentials')) == '/etc/observability-agent/credentials'
       - (observability_agent.wal_dir | default('/var/lib/observability-agent/wal')) == '/var/lib/observability-agent/wal'
     fail_msg: Observability agent may remove or publish only its fixed role-owned paths.
 
@@ -36,7 +36,7 @@
         - /etc/systemd/system/observability-agent-adapter.timer
         - /usr/local/libexec/observability-agent-adapter.py
         - "{{ observability_agent.config_dir | default('/etc/observability-agent') }}"
-        - "{{ observability_agent.credential_dir | default('/etc/credstore/observability-agent') }}"
+        - "{{ observability_agent.credential_dir | default('/etc/observability-agent/credentials') }}"
         - "{{ observability_agent.wal_dir | default('/var/lib/observability-agent/wal') }}"
         - "{{ observability_agent.install_root | default('/opt/observability-agent') }}"
         - "{{ observability_agent.promtool_install_root | default('/opt/observability-agent-promtool') }}"
