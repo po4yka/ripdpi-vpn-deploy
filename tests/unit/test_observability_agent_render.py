@@ -96,7 +96,8 @@ def test_service_uses_systemd_credentials_and_bounded_agent_wal() -> None:
     assert "LoadCredential=receiver-ca.crt:" in unit
     assert "LoadCredential=prometheus.yml:" in unit
     assert "ExecStartPre=" not in unit
-    assert "--config.file=%d/prometheus.yml" in unit
+    assert "--config.file=${CREDENTIALS_DIRECTORY}/prometheus.yml" in unit
+    assert "--config.file=%d/prometheus.yml" not in unit
     assert "config_dir }}/prometheus.yml" not in unit
     assert " --agent " in unit
     assert " prometheus-observability-agent agent " not in unit

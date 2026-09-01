@@ -11,7 +11,7 @@ LoadCredential=client.crt:{{ observability_agent.credential_dir }}/current/clien
 LoadCredential=client.key:{{ observability_agent.credential_dir }}/current/client.key
 LoadCredential=receiver-ca.crt:{{ observability_agent.credential_dir }}/current/receiver-ca.crt
 LoadCredential=prometheus.yml:{{ observability_agent.credential_dir }}/current/prometheus.yml
-ExecStart=/usr/local/bin/prometheus-observability-agent --agent --config.file=%d/prometheus.yml --web.listen-address={{ observability_agent.web_listen }} --storage.agent.path={{ observability_agent.wal_dir }} --storage.agent.wal-compression --storage.agent.retention.max-time={{ observability_agent.wal_max_time }}
+ExecStart=/usr/local/bin/prometheus-observability-agent --agent --config.file=${CREDENTIALS_DIRECTORY}/prometheus.yml --web.listen-address={{ observability_agent.web_listen }} --storage.agent.path={{ observability_agent.wal_dir }} --storage.agent.wal-compression --storage.agent.retention.max-time={{ observability_agent.wal_max_time }}
 Restart=on-failure
 RestartSec=5s
 NoNewPrivileges=true

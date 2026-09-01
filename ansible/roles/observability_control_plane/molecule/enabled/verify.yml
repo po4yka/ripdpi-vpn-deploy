@@ -11,23 +11,17 @@
     - name: Assert remote-write receiver rejects a missing or wrong SNI
       ansible.builtin.command:
         argv:
-          - /usr/bin/curl
-          - --disable
-          - --noproxy
-          - '*'
-          - --max-time
-          - "5"
-          - --fail
-          - --silent
-          - --cacert
+          - /var/tmp/observability-control-plane-fixture/mtls-client.py
+          - --ca
           - /var/tmp/observability-control-plane-fixture/tls/ca.crt
           - --cert
           - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.crt
           - --key
           - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
-          - --resolve
-          - wrong.fixture.test:9443:127.0.0.1
-          - https://wrong.fixture.test:9443/remote-write/v1/nodes/vpn-p0
+          - --server-name
+          - wrong.fixture.test
+          - --path
+          - /remote-write/v1/nodes/vpn-p0
       register: wrong_sni
       changed_when: false
       failed_when: wrong_sni.rc != 60
@@ -38,26 +32,17 @@
     - name: Wait for the receiver and assert the authenticated GET refusal
       ansible.builtin.command:
         argv:
-          - /usr/bin/curl
-          - --disable
-          - --noproxy
-          - '*'
-          - --max-time
-          - "5"
-          - --silent
-          - --output
-          - /dev/null
-          - --write-out
-          - '%{http_code}'
-          - --cacert
+          - /var/tmp/observability-control-plane-fixture/mtls-client.py
+          - --ca
           - /var/tmp/observability-control-plane-fixture/tls/ca.crt
           - --cert
           - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.crt
           - --key
           - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
-          - --resolve
-          - ingest.fixture.test:9443:127.0.0.1
-          - https://ingest.fixture.test:9443/remote-write/v1/nodes/vpn-p0
+          - --server-name
+          - ingest.fixture.test
+          - --path
+          - /remote-write/v1/nodes/vpn-p0
       register: get_request
       changed_when: false
       failed_when: false
@@ -68,26 +53,17 @@
     - name: Assert remote-write receiver rejects a CN path mismatch
       ansible.builtin.command:
         argv:
-          - /usr/bin/curl
-          - --disable
-          - --noproxy
-          - '*'
-          - --max-time
-          - "5"
-          - --silent
-          - --output
-          - /dev/null
-          - --write-out
-          - '%{http_code}'
-          - --cacert
+          - /var/tmp/observability-control-plane-fixture/mtls-client.py
+          - --ca
           - /var/tmp/observability-control-plane-fixture/tls/ca.crt
           - --cert
           - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p1.crt
           - --key
           - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p1.key
-          - --resolve
-          - ingest.fixture.test:9443:127.0.0.1
-          - https://ingest.fixture.test:9443/remote-write/v1/nodes/vpn-p0
+          - --server-name
+          - ingest.fixture.test
+          - --path
+          - /remote-write/v1/nodes/vpn-p0
       register: mismatched_cn
       changed_when: false
       failed_when: mismatched_cn.stdout != '403'
@@ -98,30 +74,21 @@
     - name: Assert remote-write receiver rejects an oversized request
       ansible.builtin.command:
         argv:
-          - /usr/bin/curl
-          - --disable
-          - --noproxy
-          - '*'
-          - --max-time
-          - "5"
-          - --silent
-          - --output
-          - /dev/null
-          - --write-out
-          - '%{http_code}'
-          - --request
+          - /var/tmp/observability-control-plane-fixture/mtls-client.py
+          - --method
           - POST
-          - --data-binary
-          - '@/var/tmp/observability-control-plane-fixture/oversize.bin'
-          - --cacert
+          - --body-file
+          - /var/tmp/observability-control-plane-fixture/oversize.bin
+          - --ca
           - /var/tmp/observability-control-plane-fixture/tls/ca.crt
           - --cert
           - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.crt
           - --key
           - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
-          - --resolve
-          - ingest.fixture.test:9443:127.0.0.1
-          - https://ingest.fixture.test:9443/remote-write/v1/nodes/vpn-p0
+          - --server-name
+          - ingest.fixture.test
+          - --path
+          - /remote-write/v1/nodes/vpn-p0
       register: oversized_request
       changed_when: false
       failed_when: oversized_request.stdout != '413'
@@ -132,30 +99,24 @@
     - name: Assert valid mTLS remote write reaches only loopback Prometheus
       ansible.builtin.command:
         argv:
-          - /usr/bin/curl
-          - --disable
-          - --noproxy
-          - '*'
-          - --max-time
-          - "5"
-          - --fail
-          - --silent
-          - --request
+          - /var/tmp/observability-control-plane-fixture/mtls-client.py
+          - --method
           - POST
-          - --data-binary
+          - --body
           - fixture
-          - --cacert
+          - --ca
           - /var/tmp/observability-control-plane-fixture/tls/ca.crt
           - --cert
           - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.crt
           - --key
           - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
-          - --resolve
-          - ingest.fixture.test:9443:127.0.0.1
-          - https://ingest.fixture.test:9443/remote-write/v1/nodes/vpn-p0
+          - --server-name
+          - ingest.fixture.test
+          - --path
+          - /remote-write/v1/nodes/vpn-p0
       register: valid_write
       changed_when: false
-      failed_when: valid_write.rc != 0
+      failed_when: valid_write.stdout != '200'
       retries: 2
       delay: 1
       until: (valid_write.msg | default('')) != 'Error executing command.'

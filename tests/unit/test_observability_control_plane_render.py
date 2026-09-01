@@ -204,9 +204,9 @@ def test_enabled_receiver_waits_for_the_exact_get_refusal_before_red_path_checks
     ]
     command = readiness["ansible.builtin.command"]["argv"]
 
-    assert command[0] == "/usr/bin/curl"
-    assert command[command.index("--noproxy") + 1] == "*"
-    assert command[command.index("--max-time") + 1] == "5"
+    assert command[0] == "/var/tmp/observability-control-plane-fixture/mtls-client.py"
+    assert command[command.index("--server-name") + 1] == "ingest.fixture.test"
+    assert command[command.index("--path") + 1] == "/remote-write/v1/nodes/vpn-p0"
     assert readiness["failed_when"] is False
     assert readiness["retries"] == 10
     assert readiness["delay"] == 1
@@ -218,24 +218,24 @@ def test_enabled_receiver_waits_for_the_exact_get_refusal_before_red_path_checks
     )
 
 
-def test_enabled_receiver_curl_checks_ignore_ambient_proxy_and_curlrc() -> None:
+def test_enabled_receiver_checks_use_the_bounded_direct_fixture_client() -> None:
     verify = yaml.safe_load((ROLE / "molecule/enabled/verify.yml").read_text())
-    curl_tasks = [
+    client_tasks = [
         task
         for task in verify[0]["tasks"]
         if task.get("ansible.builtin.command", {}).get("argv", [None])[0]
-        in {"curl", "/usr/bin/curl"}
+        == "/var/tmp/observability-control-plane-fixture/mtls-client.py"
     ]
 
-    assert len(curl_tasks) == 5
-    for task in curl_tasks:
+    assert len(client_tasks) == 5
+    for task in client_tasks:
         command = task["ansible.builtin.command"]["argv"]
-        assert command[:2] == ["/usr/bin/curl", "--disable"]
-        assert command[command.index("--noproxy") + 1] == "*"
-        assert command[command.index("--max-time") + 1] == "5"
+        assert command[0] == "/var/tmp/observability-control-plane-fixture/mtls-client.py"
+        assert "--server-name" in command
+        assert "--path" in command
 
     readiness_name = "Wait for the receiver and assert the authenticated GET refusal"
-    for task in curl_tasks:
+    for task in client_tasks:
         if task["name"] == readiness_name:
             continue
         result = task["register"]
@@ -247,7 +247,19 @@ def test_enabled_receiver_curl_checks_ignore_ambient_proxy_and_curlrc() -> None:
 
     wrong_sni = next(
         task
-        for task in curl_tasks
+        for task in client_tasks
         if task["name"] == "Assert remote-write receiver rejects a missing or wrong SNI"
     )
     assert wrong_sni["failed_when"] == "wrong_sni.rc != 60"
+
+    prepare = yaml.safe_load((ROLE / "molecule/enabled/prepare.yml").read_text())
+    client = next(
+        task
+        for task in prepare[0]["tasks"]
+        if task["name"] == "Install bounded direct mTLS fixture client"
+    )
+    content = client["ansible.builtin.copy"]["content"]
+    assert "socket.create_connection((DIRECT_ADDRESS, DIRECT_PORT), timeout=5)" in content
+    assert "load_cert_chain" in content
+    assert "server_hostname=self.host" in content
+    assert "urllib" not in content
