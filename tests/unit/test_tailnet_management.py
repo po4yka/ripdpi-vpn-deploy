@@ -900,4 +900,7 @@ def test_molecule_prepares_sshd_policy_inspection_runtime() -> None:
     )
     assert nft_fixture["owner"] == "root"
     assert nft_fixture["mode"] == "0755"
+    assert (
+        '"advertise-routes":[]' in (ROLE / "molecule/default/prepare.yml").read_text()
+    )
     assert '"-j list chains"' in nft_fixture["content"]
