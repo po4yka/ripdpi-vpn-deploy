@@ -2,17 +2,20 @@
 Description=Recover an unconfirmed restricted Tailnet enrollment
 After=tailscaled.service
 Wants=tailscaled.service
-ConditionPathExists=/var/lib/vpn-tailnet-management/transaction.json
+Before=ssh.service ssh.socket
 
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/python3 /usr/local/lib/vpn-tailnet/tailnet-recover.py
-SuccessExitStatus=75
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 RuntimeDirectory=vpn-tailnet-management
 RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
 ReadWritePaths=/var/lib/vpn-tailnet-management /run/vpn-tailnet-management
 RestrictAddressFamilies=AF_UNIX AF_NETLINK
+
+[Install]
+RequiredBy=ssh.service ssh.socket

@@ -51,19 +51,24 @@ unset TAILSCALE_AUTH_KEY
 The Make boundary rejects command-line credentials. The deploy controller
 validates the auth-key shape and one-node selection, then forwards it only to
 the `site.yml` Ansible process. The role sends it on controller stdin. The host
-controller writes a random mode-`0600` file under owner-controlled `/run`, uses
+controller writes a random mode-`0600` file under the owner-controlled
+`/run/vpn-tailnet-management` runtime directory, uses
 Tailscale's `--auth-key=file:` form, and removes and fsyncs that file before
 returning. Logs and task results remain redacted.
 
 Before `tailscale login`, the controller verifies that the persistent recovery
-timer is enabled and active, then fsyncs a private mode-`0600` transaction under
+timer is enabled and active, executes the sandboxed recovery worker successfully,
+then fsyncs a private mode-`0600` transaction under
 `/var/lib/vpn-tailnet-management`. The record contains a fresh nonce, the exact
 recovery generation, the original backend state, and bounded resolver,
 default-route and `sshd -T` snapshots with resolver ownership and mode. The
-controller and periodic worker serialize on the same root-only lock. Controller
-loss or reboot while the record is armed makes the worker log out the new node,
-verify the original snapshots and remove the record. Corrupt state or unrelated
-drift is retained and refused for manual recovery instead of being overwritten.
+controller and periodic worker serialize on the same root-only lock. The worker
+is also a required boot dependency before `ssh.service` or `ssh.socket`; it starts
+after `tailscaled`, reconciles an armed record, and only then permits the ordinary
+SSH listener to start. Controller loss or reboot while the record is armed makes
+the worker log out the new node, verify the original snapshots and remove the
+record. Corrupt state or unrelated drift is retained and refused for manual
+recovery instead of being overwritten.
 
 After all local postconditions pass, the controller durably marks the record
 confirmed before removing it. A crash after that commit can only finish receipt

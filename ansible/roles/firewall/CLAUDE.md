@@ -13,7 +13,8 @@ udp). Default policy drop.
 **Tailnet SSH is interface-separated** — exact approved `tailscale0` sources
 are accepted first, then every other SSH packet on that interface is dropped
 before the public CIDR allowlist. Keep that drop even when the Tailnet role is
-disabled because a stale interface can outlive its inventory toggle.
+disabled because a stale interface can outlive its inventory toggle. The live
+listener verifier requires the exact accept/drop/public ordering.
 
 **Public listener ports come from Terraform's contract** — `site.yml` verifies `public_listener_contract` against the runtime manifest before this template renders. Do not add transport ports directly to `nftables.conf.j2`.
 

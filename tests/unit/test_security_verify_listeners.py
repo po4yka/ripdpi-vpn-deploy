@@ -40,6 +40,7 @@ def _nft_rule(
     source_address: str | None = None,
     input_interface: str | None = None,
     broad_protocol: str | None = None,
+    verdict: str = "accept",
 ) -> dict:
     expressions: list[dict] = []
     if broad_protocol is not None:
@@ -91,7 +92,7 @@ def _nft_rule(
                 }
             }
         )
-    expressions.append({"accept": None})
+    expressions.append({verdict: None})
     return {
         "rule": {
             "family": "inet",
@@ -124,6 +125,7 @@ def _verify_listeners(
     nft_output: str | None = None,
     ssh_port: int = 22,
     tailnet_sources: list[str] | None = None,
+    include_tailnet_drop: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir(exist_ok=True)
@@ -137,12 +139,19 @@ def _verify_listeners(
     encoded_tailnet = base64.b64encode(
         json.dumps(tailnet_sources or []).encode()
     ).decode()
+    resolved_nft = nft_output if nft_output is not None else _nft_for_contract(contract)
+    if include_tailnet_drop:
+        document = json.loads(resolved_nft)
+        drop = _nft_rule(
+            "tcp", ssh_port, input_interface="tailscale0", verdict="drop"
+        )
+        insertion = len(document["nftables"]) if tailnet_sources else 0
+        document["nftables"].insert(insertion, drop)
+        resolved_nft = json.dumps(document)
     env = {
         **os.environ,
         "FAKE_SS_OUTPUT": ss_output,
-        "FAKE_NFT_OUTPUT": (
-            nft_output if nft_output is not None else _nft_for_contract(contract)
-        ),
+        "FAKE_NFT_OUTPUT": resolved_nft,
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
     }
     return subprocess.run(
@@ -463,6 +472,38 @@ def test_exact_tailnet_source_and_interface_scoped_ssh_rule_is_allowed(
         tailnet_sources=[source],
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_tailnet_ssh_requires_drop_between_exact_and_public_accepts(
+    tmp_path: Path,
+) -> None:
+    exact = _nft_rule(
+        "tcp", 22, source_address="100.64.10.20", input_interface="tailscale0"
+    )
+    drop = _nft_rule("tcp", 22, input_interface="tailscale0", verdict="drop")
+    public = _nft_rule("tcp", 22, source_restricted=True)
+
+    accepted = _verify_listeners(
+        tmp_path,
+        [],
+        "",
+        nft_output=_nft_document(exact, drop, public),
+        tailnet_sources=["100.64.10.20"],
+        include_tailnet_drop=False,
+    )
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+
+    for rules in ((exact, public), (drop, exact, public), (exact, public, drop)):
+        refused = _verify_listeners(
+            tmp_path,
+            [],
+            "",
+            nft_output=_nft_document(*rules),
+            tailnet_sources=["100.64.10.20"],
+            include_tailnet_drop=False,
+        )
+        assert refused.returncode == 1
+        assert "invalid Tailnet SSH drop ordering" in refused.stdout
 
 
 @pytest.mark.parametrize(
