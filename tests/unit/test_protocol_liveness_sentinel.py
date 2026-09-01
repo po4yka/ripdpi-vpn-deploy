@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib.util
 import json
@@ -929,6 +930,48 @@ def test_namespace_partial_creation_is_reconciled_without_deleting_collision(mon
         assert module.probe_awg(config, True, {})["verdict"] == "error"
     assert present == (failure == "collision")
     assert any(c[:3] == ["ip", "netns", "delete"] for c in calls) == (failure != "collision")
+
+
+def test_awg_validation_call_is_retained_without_an_unused_result():
+    tree = ast.parse(SCRIPT.read_text())
+    probe = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "probe_awg"
+    )
+    direct_calls = [
+        node
+        for node in ast.walk(probe)
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "awg_probe_url"
+    ]
+    assert len(direct_calls) == 1
+
+
+def test_awg_validation_failure_precedes_namespace_mutation(monkeypatch):
+    spec = importlib.util.spec_from_file_location("sentinel_awg_validation", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(
+        module, "awg_probe_url", lambda _config: (_ for _ in ()).throw(ValueError())
+    )
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("validation must precede namespace mutation")
+        ),
+    )
+
+    result = module.probe_awg(
+        {"amneziawg": {"config": "/fixture"}}, True, {}
+    )
+
+    assert result["verdict"] == "error"
+    assert result["duration_ms"] is None
+    assert result["error_kind"] == "valueerror"
 
 
 def test_unstarted_curl_does_not_claim_attempted_payload(monkeypatch):
