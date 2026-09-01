@@ -95,6 +95,14 @@ shared probe budget, fixed launcher, lock, rollback snapshot and committed recei
 Onboarding publishes its local assignment only after exact receipt reconciliation;
 active evaluator evidence never substitutes controller identity for server state.
 
+**Disposable liveness execution is privately bound** — the one-shot consumer-
+uplink executor uses a non-default Colima systemd profile with no mounts, address,
+port forwarder, SSH config or Docker-context activation. A root UUID marker and
+mode-0600 manifest bind installer/evaluator traffic to one profile and exact
+report provenance. De-onboarding requires the already-bound guarded provider-
+absence evidence before encrypted client removal, local assignment/config
+removal and exact profile deletion; it never invokes the persistent AWG role.
+
 **SSH recovery installation has an early privacy guard** — the dedicated
 controller rejects enabled Ansible debug before inventory processing, forwards
 `ANSIBLE_DEBUG=false` to override config defaults, and validates exact aliases

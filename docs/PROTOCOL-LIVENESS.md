@@ -141,6 +141,44 @@ with real local parsers before any remote writes. REALITY and Hysteria2 use
 sing-box; XHTTP uses Xray with verified TLS. No full secrets document, server
 private key or another client's credentials reach the sentinel.
 
+### Disposable consumer-uplink executor
+
+The retired Raspberry Pi is replaced for one-shot acceptance by an exact,
+non-default Colima profile. `prepare-disposable-liveness` starts it only through
+the machine build gate with `autoActivate=false`, no host mounts, no reachable VM
+address, no port forwarder, and no generated SSH config. The controller requires
+PID 1 to be systemd, passwordless local sudo, an unchanged Docker context, a
+private mode-0600 Colima config, and a root-owned executor UUID marker. It writes
+an owner-private manifest with a maximum six-hour lifetime; failure before that
+manifest exists stops and deletes the exact profile.
+
+`install-disposable-liveness-sentinel` requires that executor manifest, the
+UUID-bound staging cleanup manifest, and a new private binding path. Preflight
+runs before AWG key input or decryption. The installer then binds the executor
+UUID and manifest digest to the exact liveness configuration, sentinel, dedicated
+client, generation, source/runner/public-profile provenance, target identity and
+cleanup-manifest digest before the first remote write. All install and report
+commands use `colima ssh --profile <exact-profile>`; the configured ordinary SSH
+alias is not an alternate route for this execution.
+
+`protocol-liveness-disposable` revalidates the live profile and private binding,
+then accepts the report only when its generation, provenance and target identity
+match that binding byte-for-byte. The public report schema stays unchanged; the
+redacted aggregate adds only executor kind, UUID and manifest digest from the
+private cross-link. This proves one consumer-uplink observation, not a second
+physical vantage, recurring uptime, filtered-path quorum, or Android behavior.
+
+Finally, `deonboard-disposable-liveness` requires the exact mode-0600 guarded
+destroy evidence whose manifest digest is already bound and whose provider result
+is `verified` (or a pre-expiry apply finalized after expiry), with server and root
+storage absent and no active owned resources. It removes the dedicated client
+from every Xray, Hysteria, AWG, Snell and client-registry collection in an
+encrypted sibling first, then removes the exact local assignment and dedicated
+single-sentinel config, and only then stops/deletes the root-marker-bound profile.
+Every step is retryable; partial or foreign identities refuse without deleting
+them. The private manifest, binding, provider-absence evidence and categorical
+de-onboarding receipt remain as the audit boundary.
+
 Installation stages a complete private generation, then starts a bounded detached
 systemd job. A shared lock serializes install and probe. Pending state snapshots
 the previous launcher, engine, sudo rule and current generation before activation.

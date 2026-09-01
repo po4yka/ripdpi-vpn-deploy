@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import sys
 import tempfile
 import time
@@ -25,6 +26,7 @@ from uuid import UUID
 import yaml
 from fleet_inspection import InspectionError, bounded_command
 from liveness_generation import probe_deadline
+from disposable_liveness_executor import ExecutorError, executor_command, load_bound_executor, verify_report_binding
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -154,14 +156,11 @@ def ssh_options(sentinel: dict, connect_timeout: int) -> list[str]:
     return [argument for value in values for argument in ("-o", value)]
 
 
-def pull_report(sentinel: dict, connect_timeout: int, command_timeout: int) -> tuple[str, str, str]:
-    command = [
-        "ssh",
-        *ssh_options(sentinel, connect_timeout),
-        "--",
-        sentinel["ssh_target"],
-        *REMOTE_COMMAND,
-    ]
+def pull_report(sentinel: dict, connect_timeout: int, command_timeout: int,
+                executor: dict | None = None) -> tuple[str, str, str]:
+    command = (list(executor_command(executor["profile"], shlex.join(REMOTE_COMMAND)))
+               if executor is not None else ["ssh", *ssh_options(sentinel, connect_timeout), "--",
+                                             sentinel["ssh_target"], *REMOTE_COMMAND])
     try:
         environment = {key: os.environ[key] for key in ("PATH", "HOME", "SSH_AUTH_SOCK") if key in os.environ}
         environment.update({"LANG": "C", "LC_ALL": "C"})
@@ -433,6 +432,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--state-dir", type=Path)
+    parser.add_argument("--executor-manifest", type=Path)
+    parser.add_argument("--executor-binding", type=Path)
     args = parser.parse_args()
     try:
         config = load_config(args.config)
@@ -440,12 +441,31 @@ def main() -> int:
         print(f"protocol-liveness: {exc}", file=sys.stderr)
         return 2
 
+    executor = None
+    if (args.executor_manifest is None) != (args.executor_binding is None):
+        print("protocol-liveness: executor artifacts must be paired", file=sys.stderr)
+        return 2
+    if args.executor_manifest is not None:
+        try:
+            executor = load_bound_executor(
+                args.executor_binding, args.executor_manifest, args.config,
+                home=Path.home(), now=int(time.time()),
+                runner=lambda command, **kwargs: bounded_command(
+                    list(command), environment={key: os.environ[key] for key in ("PATH", "HOME") if key in os.environ},
+                    **kwargs))
+        except (ExecutorError, OSError):
+            print("protocol-liveness: executor binding refused", file=sys.stderr)
+            return 2
+        if sum(sentinel["id"] == executor.get("sentinel") for sentinel in config["sentinels"]) != 1:
+            print("protocol-liveness: executor sentinel refused", file=sys.stderr)
+            return 2
     timeout = config.get("probe_timeout_seconds", 15)
     raw_reports: dict[str, str] = {}
     errors: list[str] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(config["sentinels"])) as pool:
         futures = [
-            pool.submit(pull_report, sentinel, timeout, remote_probe_deadline(config, sentinel))
+            pool.submit(pull_report, sentinel, timeout, remote_probe_deadline(config, sentinel),
+                        executor if executor is not None and executor["sentinel"] == sentinel["id"] else None)
             for sentinel in config["sentinels"]
         ]
         for future in concurrent.futures.as_completed(futures):
@@ -463,8 +483,19 @@ def main() -> int:
         if error:
             errors.append(error)
         elif report is not None:
+            if executor is not None and executor["sentinel"] == sentinel_id:
+                try:
+                    report["_executor"] = verify_report_binding(
+                        args.executor_binding, args.executor_manifest, args.config, report)
+                except ExecutorError:
+                    errors.append(f"{sentinel_id}: executor binding mismatch")
+                    continue
             reports[sentinel_id] = report
     payload = aggregate(config, reports, errors)
+    for item in payload["evidence"]:
+        report = reports[item["sentinel"]]
+        if "_executor" in report:
+            item["executor"] = report["_executor"]
     if os.environ.get("PROTOCOL_LIVENESS_EVALUATED_AT"):
         payload["evaluated_at"] = int(os.environ["PROTOCOL_LIVENESS_EVALUATED_AT"])
     payload.update(
