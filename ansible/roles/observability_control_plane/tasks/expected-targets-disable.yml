@@ -24,4 +24,5 @@
     - /usr/local/libexec/observability-expected-target-renderer.py
     - /usr/local/libexec/observability-control-plane-adapter.py
     - "{{ observability_control_plane.expected_targets.textfile_directory }}/observability-expected-targets.prom"
+    - "{{ observability_control_plane.expected_targets.textfile_directory }}/observability-control-plane.prom"
     - "{{ observability_control_plane.config_root }}/expected-targets.json"

@@ -134,6 +134,7 @@ def test_renderer_accepts_shared_textfile_directory_and_publishes_collector_read
 
     assert result.returncode == 0, result.stderr
     assert output.stat().st_mode & 0o777 == 0o640
+    assert output.stat().st_gid == shared.stat().st_gid
     assert (
         subprocess.run(
             [
@@ -145,6 +146,18 @@ def test_renderer_accepts_shared_textfile_directory_and_publishes_collector_read
         ).returncode
         == 0
     )
+
+
+def test_renderer_exports_never_seen_separately_from_seen_target(
+    tmp_path: Path,
+) -> None:
+    inventory = _inventory()
+    inventory["targets"][0]["ever_seen"] = False
+    result = _run_renderer(tmp_path, inventory)
+    assert result.returncode == 0
+    text = (tmp_path / "expected.prom").read_text()
+    assert 'node="vpn-p2",role="edge",state="never-seen"' in text
+    assert 'node="vpn-p0",role="edge",state="seen"' in text
 
 
 def test_resource_adapter_reports_source_deploy_resource_and_pipeline_states(
@@ -293,6 +306,7 @@ def test_role_wires_only_opted_in_expected_targets_into_immutable_config() -> No
     disable = (ROLE / "tasks/disable.yml").read_text()
     assert "observability-control-plane-adapter.timer" in disable
     assert "/usr/local/libexec/observability-expected-target-renderer.py" in disable
+    assert "observability-control-plane.prom" in disable
 
 
 def test_prometheus_config_references_only_the_immutable_rules_generation() -> None:
