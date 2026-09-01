@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import importlib.util
+import fcntl
 import json
+import multiprocessing
+import os
 from pathlib import Path
 import subprocess
 
@@ -12,20 +15,21 @@ import yaml
 
 from template_render import merge_render_vars, render_template
 
-
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "tailnet-management-controller.py"
+SCRIPT = ROOT / "scripts" / "tailnet_management.py"
 ROLE = ROOT / "ansible" / "roles" / "tailnet-management"
 
 
 def _load_controller():
-    spec = importlib.util.spec_from_file_location("tailnet_management_controller", SCRIPT)
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_management_controller", SCRIPT
+    )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def test_tailnet_role_is_opt_in_tactical_and_wired_after_firewall() -> None:
+def test_tailnet_role_is_opt_in_tactical_and_wired_after_geodata() -> None:
     defaults = yaml.safe_load((ROOT / "ansible/group_vars/all.yml").read_text())
     tiers = yaml.safe_load((ROOT / "ansible/role-tiers.yml").read_text())
     site = yaml.safe_load((ROOT / "ansible/playbooks/site.yml").read_text())[0]
@@ -34,13 +38,37 @@ def test_tailnet_role_is_opt_in_tactical_and_wired_after_firewall() -> None:
     assert defaults["vpn"]["enable_tailnet_management"] is False
     assert tiers["tiers"]["tailnet-management"] == "tactical"
     assert tiers["toggle_role_map"]["enable_tailnet_management"] == "tailnet-management"
-    assert roles.index("tailnet-management") == roles.index("firewall") + 1
+    assert roles.index("firewall") < roles.index("tailnet-management")
+    assert roles.index("tailnet-management") == roles.index("geodata") + 1
+    assert roles.index("tailnet-management") < roles.index("xray")
+
+
+def test_tailnet_operator_scripts_have_one_job_and_install_durable_recovery() -> None:
+    scripts = ROOT / "scripts"
+    tasks = (ROLE / "tasks/main.yml").read_text()
+    service = (ROLE / "templates/vpn-tailnet-recover.service.j2").read_text()
+    timer = (ROLE / "templates/vpn-tailnet-recover.timer.j2").read_text()
+
+    for name in (
+        "tailnet-configure.py",
+        "tailnet-check.py",
+        "tailnet-recover.py",
+        "tailnet-validate-sources.py",
+    ):
+        assert (scripts / name).is_file()
+        assert name in tasks
+    assert "tailnet-management-controller.py" not in tasks
+    assert "After=tailscaled.service" in service
+    assert (
+        "ExecStart=/usr/bin/python3 /usr/local/lib/vpn-tailnet/tailnet-recover.py"
+        in service
+    )
+    assert "Persistent=true" in timer
+    assert "enabled: true" in tasks and "vpn-tailnet-recover.timer" in tasks
 
 
 def test_tailnet_molecule_uses_the_published_image_architecture() -> None:
-    scenario = yaml.safe_load(
-        (ROLE / "molecule/default/molecule.yml").read_text()
-    )
+    scenario = yaml.safe_load((ROLE / "molecule/default/molecule.yml").read_text())
     assert scenario["platforms"][0]["platform"] == "linux/amd64"
 
 
@@ -56,10 +84,11 @@ def test_firewall_allows_only_exact_approved_tailnet_sources() -> None:
         ROOT / "ansible/roles/firewall/templates/nftables.conf.j2", variables
     )
 
-    assert 'iifname "tailscale0" tcp dport 22022 ip saddr 100.64.10.20 accept' in rendered
     assert (
-        'iifname "tailscale0" tcp dport 22022 '
-        'ip6 saddr fd7a:115c:a1e0::1234 accept'
+        'iifname "tailscale0" tcp dport 22022 ip saddr 100.64.10.20 accept' in rendered
+    )
+    assert (
+        'iifname "tailscale0" tcp dport 22022 ' "ip6 saddr fd7a:115c:a1e0::1234 accept"
     ) in rendered
     assert 'iifname "tailscale0" accept' not in rendered
 
@@ -83,9 +112,10 @@ def test_source_validation_rejects_non_exact_or_non_tailnet_addresses(sources) -
 
 def test_source_validation_accepts_exact_v4_and_v6_tailnet_addresses() -> None:
     controller = _load_controller()
-    assert controller.validate_sources(
-        ["100.64.1.2", "fd7a:115c:a1e0::1234"]
-    ) == ["100.64.1.2", "fd7a:115c:a1e0::1234"]
+    assert controller.validate_sources(["100.64.1.2", "fd7a:115c:a1e0::1234"]) == [
+        "100.64.1.2",
+        "fd7a:115c:a1e0::1234",
+    ]
 
 
 class FakeRunner:
@@ -96,42 +126,63 @@ class FakeRunner:
         drift: str | None = None,
         preference_mismatch: bool = False,
         tailscale_firewall: bool = False,
+        stopped: bool = False,
+        volatile_routes: bool = False,
+        login_failure_after_enrollment: bool = False,
     ) -> None:
         self.root = root
         self.drift = drift
         self.preference_mismatch = preference_mismatch
         self.tailscale_firewall = tailscale_firewall
+        self.stopped = stopped
+        self.volatile_routes = volatile_routes
+        self.login_failure_after_enrollment = login_failure_after_enrollment
+        self.route_reads = 0
         self.running = False
         self.calls: list[list[str]] = []
         self.auth_file_mode: int | None = None
         self.auth_file_bytes: bytes | None = None
+        self.transaction_mode: int | None = None
+        self.transaction_bytes: bytes | None = None
 
     def __call__(self, argv: list[str], *, timeout: int):
         self.calls.append(argv)
         command = argv[1:]
         stdout = ""
         if command == ["status", "--json"]:
-            stdout = json.dumps({"BackendState": "Running" if self.running else "NeedsLogin"})
+            backend = (
+                "Running"
+                if self.running
+                else "Stopped" if self.stopped else "NeedsLogin"
+            )
+            stdout = json.dumps({"BackendState": backend})
         elif command == ["get", "--json", "all"]:
             preferences = {
-                    "accept-dns": False,
-                    "accept-routes": False,
-                    "advertise-exit-node": False,
-                    "advertise-routes": "",
-                    "exit-node": "",
-                    "netfilter-mode": "off",
-                    "shields-up": False,
-                    "ssh": False,
+                "accept-dns": False,
+                "accept-routes": False,
+                "advertise-exit-node": False,
+                "advertise-routes": "",
+                "exit-node": "",
+                "netfilter-mode": "off",
+                "shields-up": False,
+                "ssh": False,
             }
             if self.preference_mismatch:
                 preferences["accept-routes"] = True
             stdout = json.dumps(preferences)
         elif command[:1] == ["login"]:
-            auth_arg = next(item for item in command if item.startswith("--auth-key=file:"))
+            auth_arg = next(
+                item for item in command if item.startswith("--auth-key=file:")
+            )
             auth_path = Path(auth_arg.removeprefix("--auth-key=file:"))
             self.auth_file_mode = auth_path.stat().st_mode & 0o777
             self.auth_file_bytes = auth_path.read_bytes()
+            transaction = self.root / "transaction.json"
+            self.transaction_mode = transaction.stat().st_mode & 0o777
+            self.transaction_bytes = transaction.read_bytes()
             self.running = True
+            if self.login_failure_after_enrollment:
+                raise subprocess.TimeoutExpired(argv, timeout)
         elif command == ["ip", "-4"]:
             stdout = "100.64.1.9\n"
         elif command == ["ip", "-6"]:
@@ -140,12 +191,40 @@ class FakeRunner:
             stdout = "port 22022\nhostkey /etc/ssh/ssh_host_ed25519_key\n"
             if self.drift == "sshd" and self.running:
                 stdout = "port 22\nhostkey /etc/ssh/ssh_host_ed25519_key\n"
-        elif argv[0].endswith("ip") and command == ["-4", "-json", "route", "show", "default"]:
-            stdout = '[{"dst":"default","gateway":"192.0.2.1","dev":"eth0"}]\n'
+        elif argv[0].endswith("ip") and command == [
+            "-4",
+            "-json",
+            "route",
+            "show",
+            "default",
+        ]:
+            self.route_reads += 1
+            expires = (
+                f',"expires":{100 - self.route_reads}' if self.volatile_routes else ""
+            )
+            stdout = (
+                '[{"dst":"default","gateway":"192.0.2.1","dev":"eth0"'
+                + expires
+                + "}]\n"
+            )
             if self.drift == "route-v4" and self.running:
                 stdout = '[{"dst":"default","gateway":"192.0.2.2","dev":"eth0"}]\n'
-        elif argv[0].endswith("ip") and command == ["-6", "-json", "route", "show", "default"]:
-            stdout = '[{"dst":"default","gateway":"2001:db8::1","dev":"eth0"}]\n'
+        elif argv[0].endswith("ip") and command == [
+            "-6",
+            "-json",
+            "route",
+            "show",
+            "default",
+        ]:
+            self.route_reads += 1
+            expires = (
+                f',"expires":{100 - self.route_reads}' if self.volatile_routes else ""
+            )
+            stdout = (
+                '[{"dst":"default","gateway":"2001:db8::1","dev":"eth0"'
+                + expires
+                + "}]\n"
+            )
             if self.drift == "route-v6" and self.running:
                 stdout = '[{"dst":"default","gateway":"2001:db8::2","dev":"eth0"}]\n'
         elif argv[0].endswith("nft") and command == ["-j", "list", "ruleset"]:
@@ -156,6 +235,11 @@ class FakeRunner:
             )
         elif command == ["logout"]:
             self.running = False
+        elif argv[0].endswith("systemctl") and command in (
+            ["is-enabled", "vpn-tailnet-recover.timer"],
+            ["is-active", "vpn-tailnet-recover.timer"],
+        ):
+            pass
         else:
             raise AssertionError(argv)
         return subprocess.CompletedProcess(argv, 0, stdout, "")
@@ -169,10 +253,14 @@ def _paths(controller, root: Path):
         nft="/fixture/nft",
         resolv_conf=root / "resolv.conf",
         auth_directory=root,
+        state_directory=root,
+        systemctl="/fixture/systemctl",
     )
 
 
-def test_fresh_enrollment_uses_private_auth_file_and_preserves_host_policy(tmp_path) -> None:
+def test_fresh_enrollment_uses_private_auth_file_and_preserves_host_policy(
+    tmp_path,
+) -> None:
     controller = _load_controller()
     (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
     runner = FakeRunner(tmp_path)
@@ -186,6 +274,9 @@ def test_fresh_enrollment_uses_private_auth_file_and_preserves_host_policy(tmp_p
     assert result == {"status": "configured", "changed": True}
     assert runner.auth_file_mode == 0o600
     assert runner.auth_file_bytes == b"tskey-auth-fixture_1234\n"
+    assert runner.transaction_mode == 0o600
+    assert b"tskey-auth" not in runner.transaction_bytes
+    assert not (tmp_path / "transaction.json").exists()
     assert not list(tmp_path.glob("vpn-tailnet-auth-*"))
     login = next(call for call in runner.calls if call[1:2] == ["login"])
     assert "tskey-auth-fixture_1234" not in " ".join(login)
@@ -199,6 +290,224 @@ def test_fresh_enrollment_uses_private_auth_file_and_preserves_host_policy(tmp_p
         "--shields-up=false",
         "--ssh=false",
     }.issubset(login)
+
+
+def test_failed_login_is_treated_as_potentially_enrolled_and_rolled_back(
+    tmp_path,
+) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner = FakeRunner(tmp_path, login_failure_after_enrollment=True)
+
+    with pytest.raises(controller.Refusal, match="tailnet-enrollment-failed"):
+        controller.configure(
+            paths=_paths(controller, tmp_path),
+            runner=runner,
+            auth_key="tskey-auth-fixture_1234",
+        )
+
+    assert runner.running is False
+    assert any(call[1:] == ["logout"] for call in runner.calls)
+    assert not (tmp_path / "transaction.json").exists()
+
+
+def test_stopped_authenticated_state_refuses_before_enrollment_mutation(
+    tmp_path,
+) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner = FakeRunner(tmp_path, stopped=True)
+
+    with pytest.raises(controller.Refusal, match="tailnet-existing-state-unsupported"):
+        controller.configure(
+            paths=_paths(controller, tmp_path),
+            runner=runner,
+            auth_key="tskey-auth-fixture_1234",
+        )
+
+    assert not any(call[1:2] in (["login"], ["logout"]) for call in runner.calls)
+    assert not (tmp_path / "transaction.json").exists()
+
+
+def test_check_refuses_stopped_authenticated_state_without_mutation(tmp_path) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner = FakeRunner(tmp_path, stopped=True)
+
+    with pytest.raises(controller.Refusal, match="tailnet-existing-state-unsupported"):
+        controller.check(paths=_paths(controller, tmp_path), runner=runner)
+
+    assert not any(call[1:2] in (["login"], ["logout"]) for call in runner.calls)
+
+
+def test_volatile_route_lifetimes_do_not_look_like_policy_drift(tmp_path) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner = FakeRunner(tmp_path, volatile_routes=True)
+
+    result = controller.configure(
+        paths=_paths(controller, tmp_path),
+        runner=runner,
+        auth_key="tskey-auth-fixture_1234",
+    )
+
+    assert result == {"status": "configured", "changed": True}
+    assert runner.running is True
+
+
+class PersistentRunner(FakeRunner):
+    @property
+    def marker(self) -> Path:
+        return self.root / "tailnet-running"
+
+    def __call__(self, argv: list[str], *, timeout: int):
+        command = argv[1:]
+        self.running = self.marker.exists()
+        result = super().__call__(argv, timeout=timeout)
+        if command[:1] == ["login"]:
+            self.marker.write_text("running")
+        elif command == ["logout"]:
+            self.marker.unlink(missing_ok=True)
+        return result
+
+
+def _crash_after_login(root: str) -> None:
+    controller = _load_controller()
+
+    class CrashRunner(PersistentRunner):
+        def __call__(self, argv: list[str], *, timeout: int):
+            result = super().__call__(argv, timeout=timeout)
+            if argv[1:2] == ["login"]:
+                os._exit(86)
+            return result
+
+    path = Path(root)
+    controller.configure(
+        paths=_paths(controller, path),
+        runner=CrashRunner(path),
+        auth_key="tskey-auth-fixture_1234",
+    )
+
+
+def _crash_after_confirmation(root: str) -> None:
+    controller = _load_controller()
+    path = Path(root)
+
+    def crash_before_receipt_cleanup(_paths, *, phase: str) -> None:
+        assert phase == "confirmed"
+        os._exit(87)
+
+    controller._remove_transaction = crash_before_receipt_cleanup
+    controller.configure(
+        paths=_paths(controller, path),
+        runner=PersistentRunner(path),
+        auth_key="tskey-auth-fixture_1234",
+    )
+
+
+def test_process_death_after_login_is_recovered_from_durable_state(tmp_path) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    process = multiprocessing.get_context("fork").Process(
+        target=_crash_after_login, args=(str(tmp_path),)
+    )
+    process.start()
+    process.join(10)
+
+    assert process.exitcode == 86
+    assert (tmp_path / "tailnet-running").exists()
+    transaction = tmp_path / "transaction.json"
+    assert transaction.exists() and transaction.stat().st_mode & 0o777 == 0o600
+
+    result = controller.recover(
+        paths=_paths(controller, tmp_path), runner=PersistentRunner(tmp_path)
+    )
+
+    assert result == {"status": "rolled_back", "changed": True}
+    assert not transaction.exists()
+    assert not (tmp_path / "tailnet-running").exists()
+    assert controller.recover(
+        paths=_paths(controller, tmp_path), runner=PersistentRunner(tmp_path)
+    ) == {"status": "idle", "changed": False}
+
+
+def test_process_death_after_confirmation_never_rolls_back_enrollment(tmp_path) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    process = multiprocessing.get_context("fork").Process(
+        target=_crash_after_confirmation, args=(str(tmp_path),)
+    )
+    process.start()
+    process.join(10)
+
+    assert process.exitcode == 87
+    assert (tmp_path / "tailnet-running").exists()
+    assert (
+        json.loads((tmp_path / "transaction.json").read_text())["phase"] == "confirmed"
+    )
+
+    result = controller.recover(
+        paths=_paths(controller, tmp_path), runner=PersistentRunner(tmp_path)
+    )
+
+    assert result == {"status": "confirmed", "changed": True}
+    assert (tmp_path / "tailnet-running").exists()
+    assert not (tmp_path / "transaction.json").exists()
+
+
+def test_corrupt_recovery_state_refuses_without_tailnet_mutation(tmp_path) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    transaction = tmp_path / "transaction.json"
+    transaction.write_text('{"schema_version":999}\n')
+    transaction.chmod(0o600)
+    runner = PersistentRunner(tmp_path)
+    runner.marker.write_text("running")
+
+    with pytest.raises(controller.Refusal, match="tailnet-recovery-state-invalid"):
+        controller.recover(paths=_paths(controller, tmp_path), runner=runner)
+
+    assert transaction.exists()
+    assert runner.marker.exists()
+    assert not any(call[1:] == ["logout"] for call in runner.calls)
+
+
+def test_stopped_state_during_armed_recovery_retains_evidence_without_logout(
+    tmp_path,
+) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    paths = _paths(controller, tmp_path)
+    runner = FakeRunner(tmp_path, stopped=True)
+    controller._write_transaction(
+        paths,
+        backend_state="NeedsLogin",
+        snapshot=controller._snapshot(paths, runner),
+    )
+
+    with pytest.raises(controller.Refusal, match="tailnet-rollback-uncertain"):
+        controller.recover(paths=paths, runner=runner)
+
+    assert (tmp_path / "transaction.json").exists()
+    assert not any(call[1:] == ["logout"] for call in runner.calls)
+
+
+def test_periodic_recovery_defers_while_controller_holds_lock(tmp_path) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    lock = tmp_path / "transaction.lock"
+    lock.touch(mode=0o600)
+    lock.chmod(0o600)
+    fd = os.open(lock, os.O_RDWR)
+    runner = PersistentRunner(tmp_path)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(controller.Busy, match="tailnet-recovery-busy"):
+            controller.recover(paths=_paths(controller, tmp_path), runner=runner)
+    finally:
+        os.close(fd)
+
+    assert runner.calls == []
 
 
 def test_missing_key_refuses_before_login(tmp_path) -> None:
@@ -336,26 +645,66 @@ def test_role_never_puts_auth_key_in_command_or_inventory() -> None:
     assert "--auth-key" not in tasks
     assert "auth_key" not in defaults
     assert "TAILSCALE_AUTH_KEY" not in site
-    assert "'check' if ansible_check_mode else 'configure'" in tasks
+    assert (
+        "'tailnet-check.py' if ansible_check_mode else 'tailnet-configure.py'" in tasks
+    )
     assert "check_mode: false" in tasks
     assert "Predict first Tailnet enrollment in check mode" in tasks
 
 
 def test_role_pins_the_official_signed_stable_package_source() -> None:
-    defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())[
-        "tailnet_management"
-    ]
+    defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
     tasks = (ROLE / "tasks/main.yml").read_text()
 
-    assert defaults["package_version"] == "1.102.3"
+    assert defaults["tailnet_management_package_version"] == "1.102.3"
     assert (
-        defaults["repository_gpg_sha256"]
+        defaults["tailnet_management_repository_gpg_sha256"]
         == "3e03dacf222698c60b8e2f990b809ca1b3e104de127767864284e6c228f1fb39"
     )
     assert "https://pkgs.tailscale.com/stable/" in tasks
     assert "signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg" in tasks
-    assert 'Pin-Priority: 1001' in tasks
-    assert 'name: "tailscale={{ tailnet_management.package_version }}"' in tasks
+    assert "Pin-Priority: 1001" in tasks
+    assert 'name: "tailscale={{ tailnet_management_package_version }}"' in tasks
+    assert defaults["tailnet_management"] == {"approved_sources": []}
+    assert "tailnet_management.install_package" not in tasks
+
+
+def test_role_preflights_existing_tailnet_before_every_host_write() -> None:
+    tasks = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
+    names = [task["name"] for task in tasks]
+    status = names.index(
+        "Read existing Tailnet state before package or controller writes"
+    )
+    preferences = names.index(
+        "Read existing running Tailnet preferences before host writes"
+    )
+    first_write = names.index("Install signed-repository prerequisites")
+
+    assert status < preferences < first_write
+    for name in (
+        "Read existing Tailnet state before package or controller writes",
+        "Read existing running Tailnet preferences before host writes",
+    ):
+        task = next(task for task in tasks if task["name"] == name)
+        assert task["changed_when"] is False
+        assert task["no_log"] is True
+    assert (
+        names.index("Refuse unsupported existing Tailnet state before host writes")
+        < first_write
+    )
+    assert (
+        names.index("Refuse unmanaged running Tailnet preferences before host writes")
+        < first_write
+    )
+    ownership = next(
+        task
+        for task in tasks
+        if task["name"] == "Refuse ambiguous existing Tailscale command ownership"
+    )
+    checks = "\n".join(ownership["ansible.builtin.assert"]["that"])
+    assert ".stat.isreg" in checks
+    assert ".stat.uid == 0" in checks
+    assert ".stat.wgrp" in checks and ".stat.woth" in checks
 
 
 def test_role_does_not_parse_success_json_when_the_controller_refuses() -> None:

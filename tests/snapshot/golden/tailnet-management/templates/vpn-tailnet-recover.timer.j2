@@ -1,0 +1,11 @@
+[Unit]
+Description=Retry recovery of unconfirmed restricted Tailnet enrollment
+
+[Timer]
+OnBootSec=15s
+OnUnitActiveSec=30s
+Persistent=true
+Unit=vpn-tailnet-recover.service
+
+[Install]
+WantedBy=timers.target

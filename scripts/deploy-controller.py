@@ -217,15 +217,46 @@ def execution_environment(root, directory):
     return environment
 
 
-def tailnet_site_environment(environment, host_count, mode):
+def tailnet_site_environment(environment, host_count, mode, *, enabled):
     """Forward a validated one-node enrollment capability only to site.yml."""
     credential = os.environ.get("TAILSCALE_AUTH_KEY")
+    if enabled and host_count != 1:
+        raise DeployError("Tailnet management requires one exact inventory node")
     if credential is None or mode != "deploy":
         return environment
-    if (host_count != 1 or re.fullmatch(r"tskey-auth-[A-Za-z0-9_-]{8,480}", credential)
+    if (not enabled or re.fullmatch(r"tskey-auth-[A-Za-z0-9_-]{8,480}", credential)
             is None):
         raise DeployError("Tailnet enrollment credential invalid")
     return {**environment, "TAILSCALE_AUTH_KEY": credential}
+
+
+def tailnet_enabled_for_selection(root, hosts, memberships, override_values):
+    """Resolve the effective replace-semantics Tailnet toggle for selected hosts."""
+    enabled = []
+    for host in hosts:
+        vpn = {}
+        for group in ("all", "vpn", *memberships[host["name"]]):
+            if not re.fullmatch(r"all|vpn|vpn-[a-z0-9][a-z0-9-]*", group):
+                raise DeployError("unsupported canonical cohort")
+            document = yaml.safe_load(read_input(root / "ansible/group_vars" / (group + ".yml")))
+            if document is None:
+                document = {}
+            if not isinstance(document, dict):
+                raise DeployError("canonical variables invalid")
+            if "vpn" in document:
+                vpn = document["vpn"]
+                if not isinstance(vpn, dict):
+                    raise DeployError("canonical vpn variables invalid")
+        if "vpn" in override_values:
+            vpn = override_values["vpn"]
+            if not isinstance(vpn, dict):
+                raise DeployError("operator vpn variables invalid")
+        value = vpn.get("enable_tailnet_management", False)
+        if not isinstance(value, bool):
+            raise DeployError("Tailnet management toggle invalid")
+        if value:
+            enabled.append(host["name"])
+    return enabled
 
 
 def checked(command, *, environment, cwd, timeout=15, capture=False, stream=False):
@@ -548,7 +579,10 @@ def controller(mode):
             commands.append(fleet_inspection.ssh_command(host, known_hosts))
         transactions = transaction_inputs("deploy" if mode == "deploy" else "check",
                                           hosts, identity, directory, root, environment)
-        site_environment = tailnet_site_environment(environment, len(hosts), mode)
+        tailnet_hosts = tailnet_enabled_for_selection(
+            root, hosts, memberships, override_values)
+        site_environment = tailnet_site_environment(
+            environment, len(hosts), mode, enabled=bool(tailnet_hosts))
         prepared = []
         for index, (host, command) in enumerate(zip(hosts, commands)):
             inventory = single_inventory(directory, index, host, memberships)

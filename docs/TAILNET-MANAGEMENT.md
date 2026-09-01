@@ -55,6 +55,22 @@ controller writes a random mode-`0600` file under owner-controlled `/run`, uses
 Tailscale's `--auth-key=file:` form, and removes and fsyncs that file before
 returning. Logs and task results remain redacted.
 
+Before `tailscale login`, the controller verifies that the persistent recovery
+timer is enabled and active, then fsyncs a private mode-`0600` transaction under
+`/var/lib/vpn-tailnet-management`. The record contains a fresh nonce, the exact
+recovery generation, the original backend state, and bounded resolver,
+default-route and `sshd -T` snapshots with resolver ownership and mode. The
+controller and periodic worker serialize on the same root-only lock. Controller
+loss or reboot while the record is armed makes the worker log out the new node,
+verify the original snapshots and remove the record. Corrupt state or unrelated
+drift is retained and refused for manual recovery instead of being overwritten.
+
+After all local postconditions pass, the controller durably marks the record
+confirmed before removing it. A crash after that commit can only finish receipt
+cleanup; it cannot log out the confirmed node. This local transaction protects
+enrollment itself. It does not replace the later provider rollback and fresh
+public-plus-Tailnet SSH proof required by the serial promotion workflow.
+
 `make dry-run` never forwards or consumes the capability. It uses the installed
 controller's read-only `check` action when available; on a fresh node it reports
 the pending enrollment without creating the controller or joining the Tailnet.
