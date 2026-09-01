@@ -277,6 +277,9 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     )
     mismatch_command = mismatched_cn["ansible.builtin.command"]["argv"]
     assert mismatch_command[mismatch_command.index("--method") + 1] == "POST"
+    assert mismatched_cn["failed_when"] == (
+        "mismatched_cn.stdout != '403' and mismatched_cn.rc != 60"
+    )
     assert mismatch_command[mismatch_command.index("--cert") + 1].endswith(
         "client-vpn-p0.crt"
     )

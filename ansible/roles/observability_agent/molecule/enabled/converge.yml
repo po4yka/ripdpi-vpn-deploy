@@ -93,7 +93,7 @@
               - --unit=observability-agent.service
               - --no-pager
               - --output=cat
-              - --lines=20
+              - --lines=80
           register: observability_agent_failure_journal
           changed_when: false
           failed_when: false

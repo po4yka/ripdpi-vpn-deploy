@@ -347,7 +347,7 @@ def test_enabled_molecule_preserves_bounded_failure_diagnostics() -> None:
         "ansible.builtin.command"
     ]["argv"]
     assert journal[0] == "/usr/bin/journalctl"
-    assert journal[journal.index("--lines=20")] == "--lines=20"
+    assert journal[journal.index("--lines=80")] == "--lines=80"
     assert rescue[-1]["ansible.builtin.fail"]["msg"].startswith(
         "Observability agent fixture convergence failed"
     )

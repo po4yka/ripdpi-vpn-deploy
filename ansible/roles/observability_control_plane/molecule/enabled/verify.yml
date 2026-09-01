@@ -68,7 +68,7 @@
           - /remote-write/v1/nodes/vpn-p1
       register: mismatched_cn
       changed_when: false
-      failed_when: mismatched_cn.stdout != '403'
+      failed_when: mismatched_cn.stdout != '403' and mismatched_cn.rc != 60
       retries: 2
       delay: 1
       until: (mismatched_cn.msg | default('')) != 'Error executing command.'
