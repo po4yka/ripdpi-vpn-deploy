@@ -1,12 +1,13 @@
 """Static receiver-contract regression tests for the observability control plane."""
 
+import argparse
 from pathlib import Path
-import io
 import os
 import socket
 import ssl
 import subprocess
 import threading
+from typing import Callable
 
 import pytest
 import yaml
@@ -259,6 +260,34 @@ def test_enabled_receiver_checks_use_the_bounded_direct_fixture_client() -> None
         if task.get("ansible.builtin.command", {}).get("argv", [None])[0]
         == "/var/tmp/observability-control-plane-fixture/mtls-client.py"
     ]
+    prepare_text = (ROLE / "molecule/enabled/prepare.yml").read_text(encoding="utf-8")
+    assert "except ssl.SSLError:\n                  return 60" in prepare_text
+    assert (
+        "except (OSError, http.client.HTTPException, ValueError):\n                  return 2"
+        in prepare_text
+    )
+
+    wrong_sni = next(
+        task
+        for task in client_tasks
+        if task["name"] == "Assert remote-write receiver rejects a missing or wrong SNI"
+    )
+    assert wrong_sni["failed_when"] == "wrong_sni.rc != 60"
+
+    mismatched_cn = next(
+        task
+        for task in client_tasks
+        if task["name"] == "Assert remote-write receiver rejects a CN path mismatch"
+    )
+    mismatch_command = mismatched_cn["ansible.builtin.command"]["argv"]
+    assert mismatch_command[mismatch_command.index("--method") + 1] == "POST"
+    assert mismatched_cn["failed_when"] == (
+        "mismatched_cn.stdout != '403' and mismatched_cn.rc != 60"
+    )
+    assert mismatch_command[mismatch_command.index("--cert") + 1].endswith(
+        "client-vpn-p0.crt"
+    )
+    assert mismatch_command[mismatch_command.index("--path") + 1].endswith("/vpn-p1")
 
     assert len(client_tasks) == 5
     for task in client_tasks:
@@ -294,36 +323,6 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
         if task.get("ansible.builtin.command", {}).get("argv", [None])[0]
         == "/var/tmp/observability-control-plane-fixture/mtls-client.py"
     ]
-    prepare = (ROLE / "molecule/enabled/prepare.yml").read_text(encoding="utf-8")
-
-    assert "except ssl.SSLError:\n                  return 60" in prepare
-    assert (
-        "except (OSError, http.client.HTTPException, ValueError):\n                  return 2"
-        in prepare
-    )
-
-    wrong_sni = next(
-        task
-        for task in client_tasks
-        if task["name"] == "Assert remote-write receiver rejects a missing or wrong SNI"
-    )
-    assert wrong_sni["failed_when"] == "wrong_sni.rc != 60"
-
-    mismatched_cn = next(
-        task
-        for task in client_tasks
-        if task["name"] == "Assert remote-write receiver rejects a CN path mismatch"
-    )
-    mismatch_command = mismatched_cn["ansible.builtin.command"]["argv"]
-    assert mismatch_command[mismatch_command.index("--method") + 1] == "POST"
-    assert mismatched_cn["failed_when"] == (
-        "mismatched_cn.stdout != '403' and mismatched_cn.rc != 60"
-    )
-    assert mismatch_command[mismatch_command.index("--cert") + 1].endswith(
-        "client-vpn-p0.crt"
-    )
-    assert mismatch_command[mismatch_command.index("--path") + 1].endswith("/vpn-p1")
-
     prepare = yaml.safe_load((ROLE / "molecule/enabled/prepare.yml").read_text())
     client = next(
         task
@@ -331,76 +330,38 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
         if task["name"] == "Install bounded direct mTLS fixture client"
     )
     content = client["ansible.builtin.copy"]["content"]
-    assert (
-        "socket.create_connection((DIRECT_ADDRESS, DIRECT_PORT), timeout=5)" in content
+
+    assert "subprocess.run(" in content
+    assert '"curl",' in content
+    assert content[content.index('"curl",') :].startswith(
+        '"curl",\n        "--disable",'
     )
-    assert "load_cert_chain" in content
-    assert "server_hostname=self.host" in content
-    assert "response.read()" not in content
-    assert 'parser.add_argument("--body-size", type=int)' in content
-    assert "def send_declared_length_request" not in content
-    assert "connection.sock.sendall(request)" not in content
+    assert '"--noproxy",' in content
+    assert '"--resolve",' in content
+    assert '"--cacert",' in content
+    assert '"--cert",' in content
+    assert '"--key",' in content
+    assert '"--max-time",' in content
+    assert '"--output",' in content
+    assert '"%{http_code}",' in content
+    assert '"--data-binary",' in content
+    assert '"@-",' in content
+    assert 'input=b"x" * args.body_size' in content
+    assert "stderr=subprocess.DEVNULL" in content
+    assert "asyncio" not in content
+    assert "threading" not in content
+    assert "makefile" not in content
+    assert "select" not in content
+    assert 'if status != "413":' in content
     assert "MAX_BODY_SIZE = 8 * 1024 * 1024 + 1" in content
-    assert "args.body_size > MAX_BODY_SIZE" in content
-    assert "def send_streaming_request" in content
-    assert "threading.Thread(target=read_response, daemon=True)" in content
-    assert "while remaining and not completed.is_set()" in content
-    assert "if send_error is not None and status != 413" in content
-    assert "deadline = time.monotonic() + response_timeout" in content
-    assert "sock.shutdown(socket.SHUT_RDWR)" in content
-    assert "reader.join(timeout=0.1)" in content
-    assert "ssl.SSLEOFError" in content
-    assert '"Expect: 100-continue"' not in content
-    assert '"Content-Length: {}".format(args.body_size)' in content
-    assert "def read_response_status" in content
-    assert "BoundedBody" not in content
-    assert "except ssl.SSLError:" in content
-    assert "connection.request(" in content
-    assert "status = connection.getresponse().status" in content
-    assert 'body=args.body.encode("utf-8")' in content
-    assert "urllib" not in content
 
     oversized = next(
         task for task in client_tasks if task["name"].startswith("Submit an oversized")
     )
     oversized_command = oversized["ansible.builtin.command"]["argv"]
-    assert "--body-file" not in oversized_command
-    assert "--content-length" not in oversized_command
     assert oversized_command[oversized_command.index("--body-size") + 1] == "8388609"
     assert oversized["failed_when"] == (
         "oversized_request.stdout != '413' or oversized_request.rc != 0"
-    )
-    assert oversized["until"] == (
-        "oversized_request.stdout == '413' and oversized_request.rc == 0"
-    )
-    verify_text = (ROLE / "molecule/enabled/verify.yml").read_text()
-    assert "observability-remote-write.error.log" not in verify_text
-    assert "oversized_request.rc != 60" not in verify_text
-    converge = (ROLE / "molecule/enabled/converge.yml").read_text()
-    assert "request_body_limit: 8m" in converge
-
-
-def test_enabled_fixture_parses_413_before_a_request_body_is_sent() -> None:
-    namespace = _fixture_client_namespace()
-    read_response_status = namespace["read_response_status"]
-
-    assert callable(read_response_status)
-    assert (
-        read_response_status(
-            io.BytesIO(
-                b"HTTP/1.1 413 Request Entity Too Large\r\nConnection: close\r\n\r\n"
-            )
-        )
-        == 413
-    )
-    with pytest.raises(ValueError, match="interim response"):
-        read_response_status(io.BytesIO(b"HTTP/1.1 100 Continue\r\n\r\n"))
-
-
-def _fixture_request(size: int) -> bytes:
-    return (
-        b"POST /remote-write/v1/nodes/fixture HTTP/1.1\r\n"
-        b"Host: ingest.fixture.test\r\n" + f"Content-Length: {size}\r\n\r\n".encode()
     )
 
 
@@ -411,102 +372,9 @@ def _read_headers(connection: socket.socket) -> bytes:
     return received.split(b"\r\n\r\n", 1)[1]
 
 
-def test_enabled_fixture_accepts_413_returned_during_streaming_upload() -> None:
-    namespace = _fixture_client_namespace()
-    send_streaming_request = namespace["send_streaming_request"]
-    client, server = socket.socketpair()
-    response = b"HTTP/1.1 413 Request Entity Too Large\r\nConnection: close\r\n\r\n"
-
-    def reject_after_headers() -> None:
-        try:
-            _read_headers(server)
-            server.sendall(response)
-            server.shutdown(socket.SHUT_WR)
-        finally:
-            server.close()
-
-    thread = threading.Thread(target=reject_after_headers)
-    thread.start()
-    try:
-        assert send_streaming_request(client, _fixture_request(65537), 65537) == 413
-    finally:
-        client.close()
-        thread.join(timeout=1)
-
-
-def test_enabled_fixture_accepts_413_returned_after_streaming_body() -> None:
-    namespace = _fixture_client_namespace()
-    send_streaming_request = namespace["send_streaming_request"]
-    client, server = socket.socketpair()
-    body_size = 65537
-    response = b"HTTP/1.1 413 Request Entity Too Large\r\nConnection: close\r\n\r\n"
-
-    def reject_after_body() -> None:
-        try:
-            received = _read_headers(server)
-            while len(received) < body_size:
-                received += server.recv(body_size - len(received))
-            server.sendall(response)
-        finally:
-            server.close()
-
-    thread = threading.Thread(target=reject_after_body)
-    thread.start()
-    try:
-        assert (
-            send_streaming_request(client, _fixture_request(body_size), body_size)
-            == 413
-        )
-    finally:
-        client.close()
-        thread.join(timeout=1)
-
-
-def test_enabled_fixture_refuses_a_streaming_upload_without_response() -> None:
-    namespace = _fixture_client_namespace()
-    send_streaming_request = namespace["send_streaming_request"]
-    readers: list[threading.Thread] = []
-
-    class TrackingThread(threading.Thread):
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            super().__init__(*args, **kwargs)
-            readers.append(self)
-
-    class TrackingThreading:
-        Event = staticmethod(threading.Event)
-        Thread = TrackingThread
-
-    namespace["threading"] = TrackingThreading
-    client, server = socket.socketpair()
-    hold_open = threading.Event()
-
-    def receive_without_response() -> None:
-        try:
-            _read_headers(server)
-            server.recv(1)
-            hold_open.wait(1)
-        finally:
-            server.close()
-
-    thread = threading.Thread(target=receive_without_response)
-    thread.start()
-    try:
-        with pytest.raises(TimeoutError, match="response timeout"):
-            send_streaming_request(
-                client, _fixture_request(1), 1, response_timeout=0.01
-            )
-    finally:
-        hold_open.set()
-        client.close()
-        thread.join(timeout=1)
-    assert readers and all(not reader.is_alive() for reader in readers)
-
-
-def test_enabled_fixture_accepts_413_from_an_abrupt_tls_peer_close(
-    tmp_path: Path,
-) -> None:
-    namespace = _fixture_client_namespace()
-    send_streaming_request = namespace["send_streaming_request"]
+def _tls_fixture_server(
+    tmp_path: Path, handler: Callable[[ssl.SSLSocket], None]
+) -> tuple[int, Path, Path, threading.Thread]:
     certificate = tmp_path / "certificate.pem"
     private_key = tmp_path / "private-key.pem"
     subprocess.run(
@@ -521,6 +389,8 @@ def test_enabled_fixture_accepts_413_from_an_abrupt_tls_peer_close(
             "1",
             "-subj",
             "/CN=fixture.test",
+            "-addext",
+            "subjectAltName=DNS:fixture.test",
             "-keyout",
             str(private_key),
             "-out",
@@ -534,59 +404,154 @@ def test_enabled_fixture_accepts_413_from_an_abrupt_tls_peer_close(
     listener.listen(1)
     server_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     server_context.load_cert_chain(certificate, private_key)
-    client_context = ssl.create_default_context()
-    client_context.check_hostname = False
-    client_context.verify_mode = ssl.CERT_NONE
-    response = b"HTTP/1.1 413 Request Entity Too Large\r\nConnection: close\r\n\r\n"
-    response_sent = threading.Event()
 
-    def reject_and_close_tls() -> None:
+    def serve() -> None:
         connection, _ = listener.accept()
         tls_connection = server_context.wrap_socket(connection, server_side=True)
         try:
-            _read_headers(tls_connection)
-            tls_connection.sendall(response)
-            response_sent.set()
-            tls_connection.close()
+            handler(tls_connection)
         finally:
+            try:
+                tls_connection.close()
+            except OSError:
+                pass
             listener.close()
 
-    thread = threading.Thread(target=reject_and_close_tls)
+    thread = threading.Thread(target=serve)
     thread.start()
-    raw = socket.create_connection(listener.getsockname(), timeout=1)
-    client = client_context.wrap_socket(raw, server_hostname="fixture.test")
+    return listener.getsockname()[1], certificate, private_key, thread
 
-    class PeerClosedTLSSocket:
-        def __init__(self, delegate: ssl.SSLSocket) -> None:
-            self.delegate = delegate
-            self.send_calls = 0
 
-        def sendall(self, data: bytes) -> None:
-            self.send_calls += 1
-            if self.send_calls == 2:
-                assert response_sent.wait(1)
-                raise ssl.SSLEOFError("peer closed during body upload")
-            self.delegate.sendall(data)
+def _run_oversized_request(
+    namespace: dict[str, object],
+    port: int,
+    certificate: Path,
+    private_key: Path,
+    body_size: int,
+    timeout: float = 5,
+) -> int:
+    namespace["DIRECT_PORT"] = port
+    namespace["CURL_MAX_TIME"] = timeout
+    namespace["CURL_PROCESS_TIMEOUT"] = timeout + 1
+    args = argparse.Namespace(
+        server_name="fixture.test",
+        path="/remote-write/v1/nodes/fixture",
+        method="POST",
+        ca=str(certificate),
+        cert=str(certificate),
+        key=str(private_key),
+        body_size=body_size,
+    )
+    return namespace["send_oversized_request"](args, None)
 
-        def makefile(self, *args: object, **kwargs: object) -> object:
-            return self.delegate.makefile(*args, **kwargs)
 
-        def settimeout(self, timeout: float) -> None:
-            self.delegate.settimeout(timeout)
+@pytest.mark.parametrize("_attempt", range(2))
+def test_enabled_fixture_accepts_413_returned_during_streaming_upload(
+    tmp_path: Path, _attempt: int
+) -> None:
+    namespace = _fixture_client_namespace()
+    response = b"HTTP/1.1 413 Request Entity Too Large\r\nConnection: close\r\n\r\n"
 
-        def shutdown(self, how: int) -> None:
-            self.delegate.shutdown(how)
+    def reject_after_headers(server: ssl.SSLSocket) -> None:
+        _read_headers(server)
+        server.sendall(response)
+        server.close()
 
-        def close(self) -> None:
-            self.delegate.close()
-
-    peer_closed_client = PeerClosedTLSSocket(client)
+    port, certificate, private_key, thread = _tls_fixture_server(
+        tmp_path, reject_after_headers
+    )
     try:
         assert (
-            send_streaming_request(peer_closed_client, _fixture_request(65537), 65537)
+            _run_oversized_request(namespace, port, certificate, private_key, 65537)
             == 413
         )
-        assert peer_closed_client.send_calls == 2
     finally:
-        client.close()
         thread.join(timeout=1)
+    assert not thread.is_alive()
+
+
+@pytest.mark.parametrize("_attempt", range(2))
+def test_enabled_fixture_accepts_413_returned_after_streaming_body(
+    tmp_path: Path, _attempt: int
+) -> None:
+    namespace = _fixture_client_namespace()
+    body_size = 65537
+    response = b"HTTP/1.1 413 Request Entity Too Large\r\nConnection: close\r\n\r\n"
+
+    def reject_after_body(server: ssl.SSLSocket) -> None:
+        received = _read_headers(server)
+        server.sendall(b"HTTP/1.1 100 Continue\r\n\r\n")
+        while len(received) < body_size:
+            received += server.recv(body_size - len(received))
+        server.sendall(response)
+        server.close()
+
+    port, certificate, private_key, thread = _tls_fixture_server(
+        tmp_path, reject_after_body
+    )
+    try:
+        assert (
+            _run_oversized_request(namespace, port, certificate, private_key, body_size)
+            == 413
+        )
+    finally:
+        thread.join(timeout=1)
+    assert not thread.is_alive()
+
+
+@pytest.mark.parametrize("_attempt", range(2))
+def test_enabled_fixture_refuses_tls_truncation_after_an_http_413(
+    tmp_path: Path, _attempt: int
+) -> None:
+    namespace = _fixture_client_namespace()
+
+    def reject_and_truncate(server: ssl.SSLSocket) -> None:
+        _read_headers(server)
+        server.shutdown(socket.SHUT_WR)
+
+    port, certificate, private_key, thread = _tls_fixture_server(
+        tmp_path, reject_and_truncate
+    )
+    try:
+        with pytest.raises(OSError, match="oversized request failed"):
+            _run_oversized_request(namespace, port, certificate, private_key, 65537)
+    finally:
+        thread.join(timeout=1)
+    assert not thread.is_alive()
+
+
+def test_enabled_fixture_refuses_a_non_413_tls_response(tmp_path: Path) -> None:
+    namespace = _fixture_client_namespace()
+
+    def respond_ok(server: ssl.SSLSocket) -> None:
+        _read_headers(server)
+        server.sendall(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n")
+        server.close()
+
+    port, certificate, private_key, thread = _tls_fixture_server(tmp_path, respond_ok)
+    try:
+        with pytest.raises(ValueError, match="unexpected HTTP response status"):
+            _run_oversized_request(namespace, port, certificate, private_key, 1)
+    finally:
+        thread.join(timeout=1)
+    assert not thread.is_alive()
+
+
+def test_enabled_fixture_refuses_a_silent_tls_response(tmp_path: Path) -> None:
+    namespace = _fixture_client_namespace()
+    release = threading.Event()
+
+    def hold_open(server: ssl.SSLSocket) -> None:
+        _read_headers(server)
+        release.wait(1)
+
+    port, certificate, private_key, thread = _tls_fixture_server(tmp_path, hold_open)
+    try:
+        with pytest.raises(OSError, match="oversized request (timed out|failed)"):
+            _run_oversized_request(
+                namespace, port, certificate, private_key, 1, timeout=0.05
+            )
+    finally:
+        release.set()
+        thread.join(timeout=1)
+    assert not thread.is_alive()

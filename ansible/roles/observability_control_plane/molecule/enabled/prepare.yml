@@ -79,15 +79,17 @@
           #!/usr/bin/python3
           import argparse
           import http.client
+          import os
           import socket
           import ssl
+          import subprocess
           import sys
-          import threading
-          import time
 
           DIRECT_ADDRESS = "127.0.0.1"
           DIRECT_PORT = 9443
           MAX_BODY_SIZE = 8 * 1024 * 1024 + 1
+          CURL_MAX_TIME = 5
+          CURL_PROCESS_TIMEOUT = 6
 
 
           class DirectHTTPSConnection(http.client.HTTPSConnection):
@@ -98,108 +100,64 @@
                   )
 
 
-          def read_response_status(response):
-              status_line = response.readline(4096)
-              if not status_line.endswith(b"\r\n"):
-                  raise ValueError("missing HTTP response status line")
+          def send_oversized_request(args, _context):
+              command = (
+                  "curl",
+                  "--disable",
+                  "--silent",
+                  "--show-error",
+                  "--noproxy",
+                  "*",
+                  "--resolve",
+                  "{}:{}:{}".format(args.server_name, DIRECT_PORT, DIRECT_ADDRESS),
+                  "--cacert",
+                  args.ca,
+                  "--cert",
+                  args.cert,
+                  "--key",
+                  args.key,
+                  "--connect-timeout",
+                  str(CURL_MAX_TIME),
+                  "--max-time",
+                  str(CURL_MAX_TIME),
+                  "--output",
+                  os.devnull,
+                  "--write-out",
+                  "%{http_code}",
+                  "--request",
+                  args.method,
+                  "--header",
+                  "Host: {}".format(args.server_name),
+                  "--header",
+                  "Content-Length: {}".format(args.body_size),
+                  "--header",
+                  "Expect: 100-continue",
+                  "--data-binary",
+                  "@-",
+                  "https://{}:{}{}".format(
+                      args.server_name, DIRECT_PORT, args.path
+                  ),
+              )
               try:
-                  version, status, _reason = status_line.decode("ascii").rstrip("\r\n").split(" ", 2)
-              except (UnicodeDecodeError, ValueError) as error:
-                  raise ValueError("malformed HTTP response status line") from error
-              if version not in ("HTTP/1.0", "HTTP/1.1") or not status.isdecimal():
-                  raise ValueError("malformed HTTP response status line")
-              while True:
-                  header = response.readline(4096)
-                  if header == b"\r\n":
-                      break
-                  if not header.endswith(b"\r\n") or b":" not in header:
-                      raise ValueError("malformed HTTP response headers")
-              if status == "100":
-                  raise ValueError("interim response")
+                  completed = subprocess.run(
+                      command,
+                      input=b"x" * args.body_size,
+                      stdout=subprocess.PIPE,
+                      stderr=subprocess.DEVNULL,
+                      check=False,
+                      timeout=CURL_PROCESS_TIMEOUT,
+                  )
+              except subprocess.TimeoutExpired as error:
+                  raise OSError("oversized request timed out") from error
+              if completed.returncode != 0:
+                  raise OSError("oversized request failed")
+              try:
+                  status = completed.stdout.decode("ascii")
+              except UnicodeDecodeError as error:
+                  raise ValueError("malformed HTTP response status") from error
+              if status != "413":
+                  raise ValueError("unexpected HTTP response status")
               return int(status)
-
-
-          def send_streaming_request(sock, request, body_size, response_timeout=5):
-              result = {}
-              completed = threading.Event()
-              deadline = time.monotonic() + response_timeout
-
-              def read_response():
-                  try:
-                      with sock.makefile("rb") as response:
-                          result["status"] = read_response_status(response)
-                  except Exception as error:
-                      result["error"] = error
-                  finally:
-                      completed.set()
-
-              reader = threading.Thread(target=read_response, daemon=True)
-              try:
-                  def remaining_time():
-                      return deadline - time.monotonic()
-
-                  timeout = remaining_time()
-                  if timeout <= 0:
-                      raise TimeoutError("response timeout")
-                  sock.settimeout(timeout)
-                  sock.sendall(request)
-                  reader.start()
-                  remaining = body_size
-                  send_error = None
-                  while remaining and not completed.is_set():
-                      timeout = remaining_time()
-                      if timeout <= 0:
-                          raise TimeoutError("response timeout")
-                      try:
-                          sock.settimeout(timeout)
-                          size = min(remaining, 64 * 1024)
-                          sock.sendall(b"x" * size)
-                          remaining -= size
-                      except TimeoutError as error:
-                          raise TimeoutError("response timeout") from error
-                      except (BrokenPipeError, ConnectionResetError, ssl.SSLEOFError) as error:
-                          send_error = error
-                          break
-                  timeout = remaining_time()
-                  if timeout <= 0 or not completed.wait(timeout):
-                      raise TimeoutError("response timeout")
-                  if "error" in result:
-                      if isinstance(result["error"], TimeoutError):
-                          raise TimeoutError("response timeout") from result["error"]
-                      raise result["error"]
-                  status = result.get("status")
-                  if status is None:
-                      raise OSError("missing response status")
-                  if send_error is not None and status != 413:
-                      raise send_error
-                  return status
-              finally:
-                  try:
-                      sock.shutdown(socket.SHUT_RDWR)
-                  except OSError:
-                      pass
-                  sock.close()
-                  if reader.is_alive():
-                      reader.join(timeout=0.1)
-                  if reader.is_alive():
-                      raise RuntimeError("response reader did not stop")
-
-
-          def send_oversized_request(args, context):
-              raw = socket.create_connection((DIRECT_ADDRESS, DIRECT_PORT), timeout=5)
-              sock = context.wrap_socket(raw, server_hostname=args.server_name)
-              try:
-                  request = "\r\n".join((
-                      "{} {} HTTP/1.1".format(args.method, args.path),
-                      "Host: {}".format(args.server_name),
-                      "Content-Length: {}".format(args.body_size),
-                      "Connection: close",
-                      "",
-                      "",
-                  )).encode("ascii")
-                  return send_streaming_request(sock, request, args.body_size)
-              finally:
-                  sock.close()
 
 
           def main():
