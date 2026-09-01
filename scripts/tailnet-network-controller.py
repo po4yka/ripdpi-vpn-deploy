@@ -902,7 +902,10 @@ def main():
     try:
         result = run(load_config(Path(args.config)))
         print(json.dumps(result, sort_keys=True))
-        if result.get("status") == "committed-rollback-armed":
+        if result.get("status") in {
+            "committed-cleanup-debt",
+            "committed-rollback-armed",
+        }:
             return 1
     except (ControllerError, p.PromotionError):
         return 1

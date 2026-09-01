@@ -41,14 +41,36 @@ ifneq ($(filter tailnet-network-promote,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error Tailnet network promotion requires exactly one Make goal)
 endif
+_TAILNET_NETWORK_ALLOWED_COMMAND_VARIABLES := TAILNET_NETWORK_CONFIG
+_TAILNET_NETWORK_COMMAND_VARIABLES := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
+_TAILNET_NETWORK_FORBIDDEN_COMMAND_VARIABLES := $(filter-out $(_TAILNET_NETWORK_ALLOWED_COMMAND_VARIABLES),$(_TAILNET_NETWORK_COMMAND_VARIABLES))
 ifneq ($(filter-out undefined environment,$(origin UPCLOUD_TOKEN)),)
 $(error Tailnet network promotion provider credentials must come from the environment)
 endif
+ifneq ($(strip $(_TAILNET_NETWORK_FORBIDDEN_COMMAND_VARIABLES)),)
+$(error Tailnet network promotion accepts command-line values only for TAILNET_NETWORK_CONFIG)
+endif
+_TAILNET_NETWORK_LITERAL_INPUTS := $(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)
 override TAILNET_NETWORK_CONFIG := $(value TAILNET_NETWORK_CONFIG)
+override ENV := $(value ENV)
+override PROVIDER := $(value PROVIDER)
+override HOME := $(value HOME)
+override DEPLOY_SOURCE_REVISION :=
+override DEPLOYABLE_SOURCE_DIGEST :=
 override UPCLOUD_TOKEN := $(value UPCLOUD_TOKEN)
 export TAILNET_NETWORK_CONFIG UPCLOUD_TOKEN
+unexport UPCLOUD_USERNAME UPCLOUD_PASSWORD UPCLOUD_API_USERNAME UPCLOUD_API_PASSWORD
 unexport MAKEFLAGS MFLAGS
 MAKEOVERRIDES :=
+ifneq ($(findstring $$,$(_TAILNET_NETWORK_LITERAL_INPUTS)),)
+$(error Tailnet network promotion inputs must be literal values)
+endif
+ifneq ($(findstring ",$(_TAILNET_NETWORK_LITERAL_INPUTS)),)
+$(error Tailnet network promotion inputs must be literal values)
+endif
+ifneq ($(findstring ',$(_TAILNET_NETWORK_LITERAL_INPUTS)),)
+$(error Tailnet network promotion inputs must be literal values)
+endif
 endif
 
 # Disposable liveness lifecycle inputs are controller data, not Make syntax.

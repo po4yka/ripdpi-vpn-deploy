@@ -1086,6 +1086,36 @@ def test_release_failure_after_guest_commit_is_cleanup_debt_not_rollback(
     assert ("apply", "rollback") not in adapter.calls
 
 
+def test_controller_cli_fails_for_committed_cleanup_debt(monkeypatch, tmp_path):
+    controller = controller_mod()
+    config = tmp_path / "config.json"
+    config.write_text("{}")
+    monkeypatch.setattr(controller.sys, "argv", ["controller", "--config", str(config)])
+    monkeypatch.setattr(controller, "load_config", lambda _path: {})
+    monkeypatch.setattr(
+        controller,
+        "run",
+        lambda _config: {"status": "committed-cleanup-debt"},
+    )
+
+    assert controller.main() == 1
+
+
+def test_controller_cli_keeps_committed_rollback_armed_nonzero(monkeypatch, tmp_path):
+    controller = controller_mod()
+    config = tmp_path / "config.json"
+    config.write_text("{}")
+    monkeypatch.setattr(controller.sys, "argv", ["controller", "--config", str(config)])
+    monkeypatch.setattr(controller, "load_config", lambda _path: {})
+    monkeypatch.setattr(
+        controller,
+        "run",
+        lambda _config: {"status": "committed-rollback-armed"},
+    )
+
+    assert controller.main() == 1
+
+
 def test_current_proof_requires_post_apply_boundary(monkeypatch):
     m = mod()
     expected = {
