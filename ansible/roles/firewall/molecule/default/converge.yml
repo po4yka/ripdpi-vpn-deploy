@@ -94,7 +94,7 @@
     - role: firewall
 
   post_tasks:
-    - name: Read the initially installed empty Tailnet SSH sets fragment
+    - name: Read the initially installed approved Tailnet SSH sets fragment
       ansible.builtin.slurp:
         src: /etc/nftables.d/vpn-tailnet-ssh-sets.nft
       register: _firewall_empty_tailnet_sets
@@ -102,7 +102,7 @@
       tags:
         - molecule-idempotence-notest
 
-    - name: Require the initially installed fragment to be exactly empty
+    - name: Require the initially installed fragment to contain approved sources
       ansible.builtin.assert:
         that:
           - >-
@@ -111,10 +111,12 @@
             ~ 'set vpn_tailnet_ssh_v4 {\n'
             ~ '  type ipv4_addr\n'
             ~ '  flags interval\n'
+            ~ '  elements = { 100.64.10.20/32 }\n'
             ~ '}\n\n'
             ~ 'set vpn_tailnet_ssh_v6 {\n'
             ~ '  type ipv6_addr\n'
             ~ '  flags interval\n'
+            ~ '  elements = { fd7a:115c:a1e0::1234/128 }\n'
             ~ '}\n'
       tags:
         - molecule-idempotence-notest

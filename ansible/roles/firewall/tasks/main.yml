@@ -27,8 +27,27 @@
       }}
   delegate_to: localhost
   become: false
+  register: _firewall_tailnet_sources_validation
   changed_when: false
+  check_mode: false
+  no_log: true
   when: vpn.enable_tailnet_management | default(false) | bool
+
+- name: Record approved Tailnet SSH sets fragment
+  ansible.builtin.set_fact:
+    _firewall_tailnet_initial_fragment: "{{ (_firewall_tailnet_sources_validation.stdout | from_json).fragment }}"
+  changed_when: false
+  no_log: true
+  when: vpn.enable_tailnet_management | default(false) | bool
+
+- name: Record inert Tailnet SSH sets fragment when management is disabled
+  ansible.builtin.set_fact:
+    _firewall_tailnet_initial_fragment: >-
+      {{ lookup('ansible.builtin.file',
+                role_path ~ '/files/vpn-tailnet-ssh-sets.empty.nft',
+                rstrip=False) }}
+  changed_when: false
+  when: not (vpn.enable_tailnet_management | default(false) | bool)
 
 - name: Validate firewall egress policy mode
   ansible.builtin.assert:
@@ -176,9 +195,9 @@
         not (_firewall_tailnet_ssh_sets_stat.stat.woth | default(false))
     fail_msg: Tailnet SSH sets fragment must be a root-owned regular mode-0644 file.
 
-- name: Install empty Tailnet SSH sets fragment when absent
+- name: Install approved Tailnet SSH sets fragment when absent
   ansible.builtin.copy:
-    src: vpn-tailnet-ssh-sets.empty.nft
+    content: "{{ _firewall_tailnet_initial_fragment }}"
     dest: /etc/nftables.d/vpn-tailnet-ssh-sets.nft
     owner: root
     group: root
@@ -242,6 +261,7 @@
     state: link
     owner: root
     group: root
+    force: "{{ _firewall_effective_check_mode | bool }}"
   register: _firewall_tailnet_boot_required_by
   when: ansible_facts.get('virtualization_type', '') != 'docker'
 

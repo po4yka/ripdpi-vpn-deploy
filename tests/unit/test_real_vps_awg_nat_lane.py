@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import shlex
 import subprocess
 from pathlib import Path
@@ -340,6 +341,31 @@ def test_loaded_client_identity_is_retained_in_preflight_failure(
     }
 
 
+def test_loaded_client_identity_is_retained_when_executor_start_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path, source_archive = write_private_runner_config(tmp_path)
+    loaded = lane.load_config(config_path)
+    monkeypatch.setattr(lane, "load_config", lambda _path: loaded)
+    monkeypatch.setattr(lane.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(lane.shutil, "which", lambda _command: "/usr/bin/tool")
+
+    class FailedExecutor:
+        def __init__(self, _config: dict) -> None:
+            raise OSError("fixture executor failure")
+
+    monkeypatch.setattr(lane, "SystemExecutor", FailedExecutor)
+    manifest = run_with_private_config(
+        config_path, source_archive, tmp_path / "runner-exception.json"
+    )
+
+    assert manifest["reasonCode"] == "RUNNER_EXCEPTION"
+    assert manifest["clientIdentity"] == {
+        "ripdpiSourceSha": "d" * 40,
+        "artifactSha256": "e" * 64,
+    }
+
+
 def test_client_identity_descriptor_rejects_placeholder_digests(tmp_path: Path) -> None:
     config_path, _source_archive = write_private_runner_config(tmp_path)
     descriptor = config_path.parent / lane.CLIENT_IDENTITY_DESCRIPTOR_NAME
@@ -649,6 +675,109 @@ def test_preflight_failures_are_redacted_nonpass_evidence_without_latest_mutatio
     assert "preflight_fail PREFLIGHT_CONFIG_INVALID" in launcher
     assert "preflight_fail PREFLIGHT_RUNNER_INVALID" in launcher
     assert "preflight_fail PREFLIGHT_SOURCE_UNSAFE" in launcher
+
+
+def test_missing_readlink_emits_preflight_evidence(tmp_path: Path) -> None:
+    launcher = REPO_ROOT / "scripts/run-real-vps-awg-nat-local.sh"
+    tool_dir = tmp_path / "tools"
+    tool_dir.mkdir()
+    for name in (
+        "awk",
+        "chmod",
+        "cmp",
+        "date",
+        "find",
+        "flock",
+        "git",
+        "install",
+        "mkdir",
+        "mv",
+        "python3",
+        "rm",
+        "sha256sum",
+        "stat",
+    ):
+        resolved = shutil.which(name)
+        if resolved is None:
+            assert name == "flock"
+            (tool_dir / name).write_text("#!/bin/sh\nexit 0\n")
+            (tool_dir / name).chmod(0o755)
+        else:
+            (tool_dir / name).symlink_to(resolved)
+    state = tmp_path / "state"
+    runtime = tmp_path / "runtime"
+    state.mkdir()
+    runtime.mkdir()
+
+    completed = subprocess.run(
+        ["/bin/bash", str(launcher)],
+        env={
+            "PATH": str(tool_dir),
+            "RUNTIME_DIRECTORY": str(runtime),
+            "STATE_DIRECTORY": str(state),
+        },
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+    assert completed.returncode == 75
+    records = list((state / "evidence").glob("preflight-*.json"))
+    assert len(records) == 1
+    assert json.loads(records[0].read_text())["reasonCode"] == "PREFLIGHT_TOOL_MISSING"
+
+
+def test_unresolvable_repo_root_emits_source_unsafe_evidence(tmp_path: Path) -> None:
+    launcher = REPO_ROOT / "scripts/run-real-vps-awg-nat-local.sh"
+    tool_dir = tmp_path / "tools"
+    tool_dir.mkdir()
+    for name in (
+        "awk",
+        "chmod",
+        "cmp",
+        "date",
+        "find",
+        "flock",
+        "git",
+        "install",
+        "mkdir",
+        "mv",
+        "python3",
+        "rm",
+        "sha256sum",
+        "stat",
+    ):
+        resolved = shutil.which(name)
+        if resolved is None:
+            assert name == "flock"
+            (tool_dir / name).write_text("#!/bin/sh\nexit 0\n")
+            (tool_dir / name).chmod(0o755)
+        else:
+            (tool_dir / name).symlink_to(resolved)
+    fake_readlink = tool_dir / "readlink"
+    fake_readlink.write_text("#!/bin/sh\nexit 1\n")
+    fake_readlink.chmod(0o755)
+    state = tmp_path / "state"
+    runtime = tmp_path / "runtime"
+    state.mkdir()
+    runtime.mkdir()
+
+    completed = subprocess.run(
+        ["/bin/bash", str(launcher)],
+        env={
+            "PATH": str(tool_dir),
+            "RUNTIME_DIRECTORY": str(runtime),
+            "STATE_DIRECTORY": str(state),
+        },
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+    assert completed.returncode == 75
+    records = list((state / "evidence").glob("preflight-*.json"))
+    assert len(records) == 1
+    assert json.loads(records[0].read_text())["reasonCode"] == "PREFLIGHT_SOURCE_UNSAFE"
 
 
 def test_preflight_emitter_writes_canonical_redacted_manifest_without_latest_update(

@@ -1803,7 +1803,10 @@ def main(argv: list[str] | None = None) -> int:
                 manifest = run_lane(config, executor, metadata)
             except OSError:
                 manifest = failure_manifest(
-                    metadata, producer_sha, reason_code="RUNNER_EXCEPTION"
+                    metadata,
+                    producer_sha,
+                    reason_code="RUNNER_EXCEPTION",
+                    client_identity=config["clientIdentity"],
                 )
     write_canonical_json(args.output, manifest)
     validate_manifest(manifest, expected_source_sha=args.source_sha)

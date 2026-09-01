@@ -31,15 +31,7 @@ table inet filter {
   # This transaction-owned fragment may declare only the two typed SSH source
   # sets below.  It is validated before this complete candidate is installed.
 {% if (_firewall_effective_check_mode | default(ansible_check_mode | default(false))) and (_firewall_tailnet_ssh_sets_was_absent | default(false)) %}
-  set vpn_tailnet_ssh_v4 {
-    type ipv4_addr
-    flags interval
-  }
-
-  set vpn_tailnet_ssh_v6 {
-    type ipv6_addr
-    flags interval
-  }
+{{ _firewall_tailnet_initial_fragment | indent(width=2, first=True) }}
 {% else %}
   include "/etc/nftables.d/vpn-tailnet-ssh-sets.nft"
 {% endif %}

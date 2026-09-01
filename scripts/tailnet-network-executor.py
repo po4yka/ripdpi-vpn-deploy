@@ -119,6 +119,7 @@ def _ensure_private_directory(path: Path):
         try:
             os.mkdir(path.name, 0o700, dir_fd=parent)
         except FileExistsError:
+            # The existing final component is checked by _safe_directory below.
             pass
     finally:
         os.close(parent)
@@ -288,11 +289,12 @@ class Executor:
         try:
             self.target = p.ProviderTarget(target_fd, state_fd)
             self.trusted = p.TrustedTerraform(tf_fd, digest)
-        except BaseException:
+        except (Exception, KeyboardInterrupt, SystemExit):
             for fd in (target_fd, state_fd, tf_fd):
                 try:
                     os.close(fd)
                 except OSError:
+                    # A partially constructed promotion object may own this fd.
                     pass
             raise
         self.store = ReceiptStore(receipt_root)
@@ -456,13 +458,58 @@ class Executor:
         if not isinstance(request, dict):
             raise ExecutorError("request-refused")
         provider_lock = (
-            self.store._provider_locked() if action in {"execute", "expire"} else -1
+            self.store._provider_locked()
+            if action in {"execute", "expire", "reconcile", "rollback-provider"}
+            else -1
         )
         lock = self.store._locked()
         try:
             current = self.store.get()
             if current is not None:
                 self._valid_current(current)
+            if action == "reconcile":
+                if current is None or current["state"] in {"executed", "released"}:
+                    return {"state": "idle"}
+                if current["state"] == "committed-cleanup-debt":
+                    value = {
+                        **current,
+                        "state": "released",
+                        "released_at": int(time.time()),
+                    }
+                    value.pop("provider_applied_at")
+                    value.pop("promotion_observed_at")
+                    self._valid_current(value)
+                    self.store.put(value)
+                    return {"state": "released"}
+                return current
+            if action == "rollback-provider":
+                if current is None or current["state"] not in {
+                    "armed",
+                    "forward-started",
+                    "provider-applied",
+                }:
+                    raise ExecutorError("transition-refused")
+                if request != current:
+                    raise ExecutorError("receipt-refused")
+                observed = self._readback(
+                    "readback",
+                    {
+                        "server_uuid": self.target.value["server_uuid"],
+                        "environment": self.target.value["environment"],
+                        "provider_target_sha256": self.target.digest,
+                    },
+                )
+                if observed["firewall"] is False:
+                    return current
+                if observed["firewall"] is not True:
+                    raise ExecutorError("provider-readback-invalid")
+                plan = self.adapter.plan("rollback")
+                try:
+                    self.adapter._rollback_armed = True
+                    self.adapter.apply("rollback", plan)
+                finally:
+                    plan.close()
+                return current
             if action == "arm":
                 fields = {
                     "server_uuid",
@@ -575,29 +622,26 @@ class Executor:
                     and request.get("_deadline_reconcile") is not True
                 ):
                     raise ExecutorError("receipt-refused")
-                if action == "expire" and current["state"] in {
-                    "armed",
-                    "forward-started",
-                }:
-                    observed = self._readback(
-                        "readback",
-                        {
-                            "server_uuid": self.target.value["server_uuid"],
-                            "environment": self.target.value["environment"],
-                            "provider_target_sha256": self.target.digest,
-                        },
-                    )
-                    if observed["firewall"] is False:
-                        value = {
-                            **current,
-                            "state": "executed",
-                            "executed_at": int(time.time()),
-                        }
-                        self._valid_current(value)
-                        self.store.put(value)
-                        return {"state": "executed"}
-                    if observed["firewall"] is not True:
-                        raise ExecutorError("provider-readback-invalid")
+                observed = self._readback(
+                    "readback",
+                    {
+                        "server_uuid": self.target.value["server_uuid"],
+                        "environment": self.target.value["environment"],
+                        "provider_target_sha256": self.target.digest,
+                    },
+                )
+                if observed["firewall"] is False:
+                    value = {
+                        **current,
+                        "state": "executed",
+                        "executed_at": int(time.time()),
+                    }
+                    value.pop("provider_applied_at", None)
+                    self._valid_current(value)
+                    self.store.put(value)
+                    return {"state": "executed"}
+                if observed["firewall"] is not True:
+                    raise ExecutorError("provider-readback-invalid")
                 plan = self.adapter.plan("rollback")
                 try:
                     # This daemon alone owns the armed receipt and invokes the
@@ -717,6 +761,7 @@ def serve(args):
                     try:
                         connection.sendall(response)
                     except (BrokenPipeError, ConnectionError, socket.timeout):
+                        # The client disconnected; the receipt transition remains durable.
                         pass
                     if terminal:
                         break
@@ -729,11 +774,13 @@ def serve(args):
         try:
             path.unlink()
         except FileNotFoundError:
+            # The listener was never bound or was already removed during cleanup.
             pass
         if bound:
             try:
                 executor.store.pid.unlink()
             except FileNotFoundError:
+                # A concurrent terminal cleanup already removed the owned marker.
                 pass
 
 

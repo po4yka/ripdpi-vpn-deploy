@@ -453,6 +453,39 @@ def validate_sources(sources) -> list[str]:
     return result
 
 
+def canonical_sources_fragment(sources: list[str]) -> str:
+    """Render validated host addresses in the transaction fragment grammar."""
+    canonical = validate_sources(sources)
+    by_version = {
+        version: sorted(
+            (
+                f"{source}/{'32' if version == 4 else '128'}"
+                for source in canonical
+                if ipaddress.ip_address(source).version == version
+            ),
+            key=lambda token: int(ipaddress.ip_network(token).network_address),
+        )
+        for version in (4, 6)
+    }
+
+    def elements(values: list[str]) -> str:
+        return "" if not values else f"  elements = {{ {', '.join(values)} }}\n"
+
+    return (
+        "# vpn-tailnet-ssh-sets schema=1\n"
+        "set vpn_tailnet_ssh_v4 {\n"
+        "  type ipv4_addr\n"
+        "  flags interval\n"
+        f"{elements(by_version[4])}"
+        "}\n\n"
+        "set vpn_tailnet_ssh_v6 {\n"
+        "  type ipv6_addr\n"
+        "  flags interval\n"
+        f"{elements(by_version[6])}"
+        "}\n"
+    )
+
+
 def _status(paths: CommandPaths, runner: Runner) -> str:
     output = runner(
         [paths.tailscale, "status", "--json"], timeout=COMMAND_TIMEOUT_SECONDS

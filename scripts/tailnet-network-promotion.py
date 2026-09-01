@@ -111,6 +111,9 @@ def _bounded(
                 )
             sent = 0
             data = input_data or b""
+            if not data and process.stdin is not None:
+                selector.unregister(process.stdin)
+                process.stdin.close()
             while selector.get_map():
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -126,13 +129,17 @@ def _bounded(
                                 raise PromotionError("provider-output-limit")
                     elif events & selectors.EVENT_WRITE:
                         try:
-                            sent += os.write(key.fd, data[sent:])
+                            written = os.write(key.fd, data[sent:])
+                            if written <= 0:
+                                raise PromotionError("provider-command-failed")
+                            sent += written
                         except BrokenPipeError:
                             # The bounded child closed stdin before consuming
                             # the request; its exit status remains authoritative.
-                            pass
-                        selector.unregister(key.fileobj)
-                        key.fileobj.close()
+                            sent = len(data)
+                        if sent == len(data):
+                            selector.unregister(key.fileobj)
+                            key.fileobj.close()
             if process.wait(max(0.001, deadline - time.monotonic())) != 0:
                 raise PromotionError("provider-command-failed")
             return bytes(output)
@@ -752,7 +759,7 @@ class TerraformAdapter:
                 "expires_at"
             ] <= int(time.time()):
                 raise PromotionError("rollback-uncertain")
-        except BaseException:
+        except (Exception, KeyboardInterrupt, SystemExit):
             os.close(lock)
             raise
         self._forward_lock_fd = lock
@@ -1037,6 +1044,7 @@ def _execute(
     guest,
     known_hosts: Path,
     environment=None,
+    selected_host=None,
 ):
     """Run exactly one selected node; the caller supplies bounded guest RPCs."""
     try:
@@ -1055,12 +1063,17 @@ def _execute(
             or not isinstance(request["promotion_config_path"], str)
         ):
             raise ValueError
-        hosts = fleet_inspection.select_hosts(
-            Path(request["inventory_path"]), [request["inventory_name"]]
-        )
-        if len(hosts) != 1:
+        if selected_host is None:
+            hosts = fleet_inspection.select_hosts(
+                Path(request["inventory_path"]), [request["inventory_name"]]
+            )
+            if len(hosts) != 1:
+                raise ValueError
+            host = hosts[0]
+        elif not isinstance(selected_host, dict):
             raise ValueError
-        host = hosts[0]
+        else:
+            host = selected_host
         bind_contexts(
             request["contexts"], host["address"], host["transport"], host["port"]
         )
@@ -1130,7 +1143,7 @@ def _execute(
         committed = True
         try:
             cleanup = adapter.commit_rollback(capability, confirmed, proof_result)
-        except BaseException:
+        except (Exception, KeyboardInterrupt, SystemExit):
             return {
                 "status": "committed-rollback-armed",
                 "rollback_capability": capability,
@@ -1139,12 +1152,12 @@ def _execute(
             }
         try:
             adapter.release_rollback(cleanup)
-        except BaseException:
+        except (Exception, KeyboardInterrupt, SystemExit):
             return {"status": "committed-cleanup-debt", "rollback_capability": cleanup}
         rollback.close()
         adapter._plans.discard(rollback)
         return {"status": "committed"}
-    except BaseException:
+    except (Exception, KeyboardInterrupt, SystemExit):
         if committed:
             return {
                 "status": "committed-rollback-armed",
@@ -1158,12 +1171,12 @@ def _execute(
                     else:
                         try:
                             adapter.apply("rollback", rollback)
-                        except BaseException:
+                        except (Exception, KeyboardInterrupt, SystemExit):
                             adapter.external_rollback(capability)
                 _same_receipt(
                     guest(host, "rollback", identity, True), identity, "rolled_back"
                 )
-        except BaseException:
+        except (Exception, KeyboardInterrupt, SystemExit):
             raise PromotionError("rollback-uncertain") from None
         raise
     finally:
@@ -1181,6 +1194,7 @@ def execute(
     guest,
     known_hosts: Path,
     environment=None,
+    selected_host=None,
 ):
     """Own and close every provider capability on all validation and plan paths."""
     try:
@@ -1190,6 +1204,7 @@ def execute(
             guest=guest,
             known_hosts=known_hosts,
             environment=environment,
+            selected_host=selected_host,
         )
     finally:
         adapter.close()

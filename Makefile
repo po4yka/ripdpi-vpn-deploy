@@ -34,6 +34,23 @@ $(error network exposure review inputs must be literal values)
 endif
 endif
 
+# Tailnet promotion accepts one private config path and ambient provider
+# capabilities. Capture them before includes and eager assignments can expand
+# command-line Make syntax.
+ifneq ($(filter tailnet-network-promote,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error Tailnet network promotion requires exactly one Make goal)
+endif
+ifneq ($(filter-out undefined environment,$(origin UPCLOUD_TOKEN)),)
+$(error Tailnet network promotion provider credentials must come from the environment)
+endif
+override TAILNET_NETWORK_CONFIG := $(value TAILNET_NETWORK_CONFIG)
+override UPCLOUD_TOKEN := $(value UPCLOUD_TOKEN)
+export TAILNET_NETWORK_CONFIG UPCLOUD_TOKEN
+unexport MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+endif
+
 -include .fleet.mk
 
 # Capture deployment labels before the eager Terraform path assignments below.

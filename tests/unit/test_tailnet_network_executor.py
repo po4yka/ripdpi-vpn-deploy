@@ -88,6 +88,11 @@ def test_crash_after_provider_apply_reconciles_to_independent_false_apply(
         },
     )
     assert applied["state"] == "provider-applied"
+    value.target.value = {
+        "server_uuid": request()["server_uuid"],
+        "environment": "prod",
+    }
+    value._readback = lambda *_args: {"firewall": True}
     monkeypatch.setattr(m.time, "time", lambda: 2_001)
     assert value.reconcile() == {"state": "executed"}
     assert value.adapter.calls == [("plan", "rollback"), ("apply", "rollback")]
@@ -150,7 +155,7 @@ def test_corrupt_receipt_and_stale_temp_fail_closed_before_reconcile(
     monkeypatch.setattr(m.time, "time", lambda: 1_000)
     value.guard("arm", request())
     (tmp_path / ".receipt.deadbeef.tmp").write_text("stale")
-    restarted = m.ReceiptStore(tmp_path)
+    m.ReceiptStore(tmp_path)
     assert not (tmp_path / ".receipt.deadbeef.tmp").exists()
     (tmp_path / "receipt.json").write_text('{"payload":{},"sha256":"bad"}\n')
     with pytest.raises(m.ExecutorError, match="receipt-refused"):
@@ -275,6 +280,11 @@ def test_expiry_serializes_with_forward_mark_and_rolls_back_true(tmp_path, monke
     forward = value.guard(
         "begin-forward", {k: v for k, v in armed.items() if k != "state"}
     )
+    value.target.value = {
+        "server_uuid": request()["server_uuid"],
+        "environment": "prod",
+    }
+    value._readback = lambda *_args: {"firewall": True}
     monkeypatch.setattr(m.time, "time", lambda: 2_001)
     provider_lock = value.store._provider_locked()
     outcome = []
@@ -420,9 +430,245 @@ def test_controller_guest_rpc_is_fixed_strict_command_and_dry_run_disables_apply
         == "sudo -n /usr/bin/python3 -I -B " + c.GUEST_HELPER + " prepare"
     )
     assert "-S -" not in command[0][0][-1]
+    assert json.loads(command[0][1])["timeout"] == c.PREPARE_TIMEOUT
+    assert len(command[0][1]) <= 64 * 1024
     target = type("Target", (), {"value": {}, "digest": "a" * 64})()
     adapter = type("Adapter", (), {"target": target, "allow_apply": False})()
     assert adapter.allow_apply is False
+
+
+def test_controller_candidate_ceiling_matches_the_guest_json_frame(
+    monkeypatch, tmp_path
+):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_ceiling", controller_path
+    )
+    c = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(c)
+    payloads = []
+    monkeypatch.setattr(
+        c.p.fleet_inspection,
+        "ssh_command",
+        lambda *_args: ["ssh", "host", "command"],
+    )
+    monkeypatch.setattr(
+        c.p,
+        "_bounded",
+        lambda _argv, _env, **kwargs: payloads.append(kwargs["input_data"])
+        or b'{"status":"prepared"}',
+    )
+    host = {"name": "node-a"}
+    c.strict_guest(host, tmp_path / "known", b"x" * c.MAX_CANDIDATE)(
+        host, "prepare", {}, False
+    )
+    assert len(payloads[0]) <= 64 * 1024
+    with pytest.raises(c.p.PromotionError, match="guest-uncertain"):
+        c.strict_guest(host, tmp_path / "known", b"x" * (c.MAX_CANDIDATE + 1))
+
+
+def test_active_false_receipt_reconciles_provider_then_guest_before_terminal(
+    tmp_path, monkeypatch
+):
+    m = mod()
+    value = executor(m, tmp_path)
+    monkeypatch.setattr(m.time, "time", lambda: 1_000)
+    value.target.value = {
+        "server_uuid": request()["server_uuid"],
+        "environment": "prod",
+    }
+    value.guard("arm", request())
+    value._readback = lambda *_args: {"firewall": False}
+
+    current = value.guard("reconcile", {})
+    assert current["state"] == "armed"
+    assert value.guard("rollback-provider", current) == current
+    assert value.adapter.calls == []
+    assert value.guard("execute", current) == {"state": "executed"}
+
+
+def test_provider_applied_reconcile_retries_guest_without_second_provider_apply(
+    tmp_path, monkeypatch
+):
+    m = mod()
+    value = executor(m, tmp_path)
+    monkeypatch.setattr(m.time, "time", lambda: 1_000)
+    value.target.value = {
+        "server_uuid": request()["server_uuid"],
+        "environment": "prod",
+    }
+    armed = value.guard("arm", request())
+    forward = value.guard(
+        "begin-forward", {key: item for key, item in armed.items() if key != "state"}
+    )
+    current = value.guard(
+        "mark-applied",
+        {
+            **{key: item for key, item in forward.items() if key != "state"},
+            "provider_applied_at": 1_001,
+        },
+    )
+    provider_firewall = {"enabled": True}
+    original_apply = value.adapter.apply
+
+    def apply(direction, plan):
+        original_apply(direction, plan)
+        provider_firewall["enabled"] = False
+
+    value.adapter.apply = apply
+    value._readback = lambda *_args: {"firewall": provider_firewall["enabled"]}
+
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_actual_reconcile", controller_path
+    )
+    controller = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(controller)
+    identity = {
+        "generation": current["guest_generation"],
+        "nonce": current["guest_nonce"],
+        "snapshot_digest": current["guest_snapshot_digest"],
+        "deadline": current["guest_deadline"],
+    }
+    attempts = {"rollback": 0}
+
+    def guest(_host, action, payload, _cleanup):
+        if action == "status":
+            return {**identity, "status": "applied"}
+        assert action == "rollback" and payload == identity
+        attempts["rollback"] += 1
+        if attempts["rollback"] == 1:
+            raise controller.p.PromotionError("rollback-uncertain")
+        return {**identity, "status": "rolled_back"}
+
+    with pytest.raises(controller.p.PromotionError, match="rollback-uncertain"):
+        controller._reconcile_previous(value.guard, guest, {"name": "node-a"})
+    assert value.store.get()["state"] == "provider-applied"
+    assert value.adapter.calls == [("plan", "rollback"), ("apply", "rollback")]
+
+    controller._reconcile_previous(value.guard, guest, {"name": "node-a"})
+    assert value.adapter.calls == [("plan", "rollback"), ("apply", "rollback")]
+    assert value.store.get()["state"] == "executed"
+
+
+def test_controller_reconcile_rolls_back_guest_before_terminalizing_executor():
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_reconcile", controller_path
+    )
+    c = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(c)
+    current = {**request(), "state": "provider-applied", "provider_applied_at": 1_001}
+    calls = []
+
+    def rollback_guard(action, value):
+        calls.append(("provider", action))
+        if action == "reconcile":
+            return current
+        if action == "rollback-provider":
+            assert value == current
+            return current
+        if action == "execute":
+            assert value == current
+            return {"state": "executed"}
+        raise AssertionError(action)
+
+    identity = {
+        "generation": current["guest_generation"],
+        "nonce": current["guest_nonce"],
+        "snapshot_digest": current["guest_snapshot_digest"],
+        "deadline": current["guest_deadline"],
+    }
+
+    def guest(_host, action, value, _cleanup):
+        calls.append(("guest", action))
+        if action == "status":
+            return {**identity, "status": "applied"}
+        assert action == "rollback" and value == identity
+        return {**identity, "status": "rolled_back"}
+
+    c._reconcile_previous(rollback_guard, guest, {"name": "node-a"})
+    assert calls == [
+        ("provider", "reconcile"),
+        ("guest", "status"),
+        ("provider", "rollback-provider"),
+        ("guest", "rollback"),
+        ("provider", "execute"),
+    ]
+
+
+def test_spawn_timeout_reaps_owned_process_before_controller_returns(
+    monkeypatch, tmp_path
+):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_spawn_timeout", controller_path
+    )
+    c = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(c)
+
+    class Process:
+        terminated = False
+        killed = False
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            self.killed = True
+
+        def wait(self, timeout=None):
+            if not self.killed:
+                raise subprocess.TimeoutExpired("executor", timeout)
+            return 0
+
+    process = Process()
+    c._reap_spawned_process(process)
+    assert process.terminated and process.killed
+
+
+@pytest.mark.parametrize("failure", [KeyboardInterrupt(), SystemExit(2)])
+def test_spawn_wait_interrupt_reaps_credential_bearing_child(
+    monkeypatch, tmp_path, failure
+):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_spawn_interrupt", controller_path
+    )
+    controller = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(controller)
+
+    class Process:
+        terminated = False
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, **_kwargs):
+            return 0
+
+    process = Process()
+    monkeypatch.setattr(
+        controller,
+        "_wait_for_spawned_executor",
+        lambda *_args: (_ for _ in ()).throw(failure),
+    )
+    with pytest.raises(type(failure)):
+        controller._wait_or_reap_spawned_executor(
+            process, tmp_path / "executor.sock", {"token_sha256": "a" * 64}
+        )
+    assert process.terminated
 
 
 def test_make_target_preserves_literal_config_until_controller_boundary():
@@ -643,4 +889,38 @@ def test_spawn_wait_revalidates_identity_before_second_controller_can_arm(
     monkeypatch.setattr(controller, "guard", first_daemon)
     with pytest.raises(controller.ControllerError, match="executor-identity-refused"):
         controller._wait_for_spawned_executor(process, socket_path, second)
+    assert process.terminated
+
+
+def test_controller_reaps_a_spawned_unarmed_executor_after_prepare_failure(
+    monkeypatch, tmp_path
+):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location("tailnet_controller_reap", controller_path)
+    controller = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(controller)
+    identity = controller.executor_identity("a" * 64, "b" * 64, "token")
+
+    class Process:
+        alive = True
+        terminated = False
+
+        def poll(self):
+            return None if self.alive else 0
+
+        def terminate(self):
+            self.terminated = True
+            self.alive = False
+
+        def wait(self, **_kwargs):
+            return 0
+
+    process = Process()
+    monkeypatch.setattr(
+        controller,
+        "_live_executor",
+        lambda *_args, **kwargs: kwargs.get("allow_unarmed", False),
+    )
+    controller._terminate_unarmed_executor(process, tmp_path / "executor.sock", identity)
     assert process.terminated

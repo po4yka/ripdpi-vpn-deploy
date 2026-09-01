@@ -7,7 +7,6 @@ set -euo pipefail
 : "${RUNTIME_DIRECTORY:?systemd must provide RUNTIME_DIRECTORY}"
 : "${STATE_DIRECTORY:?systemd must provide STATE_DIRECTORY}"
 
-REPO_ROOT="$(readlink -f "${RIPDPI_AWG_EVIDENCE_REPO_ROOT:-/opt/ripdpi-real-vps-awg-nat/current}")"
 RUNNER="/usr/local/libexec/ripdpi-real-vps-awg-nat"
 CONFIG="/etc/ripdpi/real-vps-awg-nat-local.json"
 ENTRYPOINT="scripts/run-real-vps-awg-nat-local.sh"
@@ -43,6 +42,9 @@ preflight_fail() {
 for tool in awk cmp find flock git install python3 readlink sha256sum stat; do
   command -v "$tool" >/dev/null 2>&1 || preflight_fail PREFLIGHT_TOOL_MISSING
 done
+if ! REPO_ROOT="$(readlink -f "${RIPDPI_AWG_EVIDENCE_REPO_ROOT:-/opt/ripdpi-real-vps-awg-nat/current}")"; then
+  preflight_fail PREFLIGHT_SOURCE_UNSAFE
+fi
 [[ -d "$LOCK_DIR" ]] || preflight_fail PREFLIGHT_LOCK_BUSY
 [[ "$(stat -c '%u:%a' "$LOCK_DIR")" == "0:700" ]] || preflight_fail PREFLIGHT_LOCK_BUSY
 exec 9>"$LOCK_DIR/lane.lock" || preflight_fail PREFLIGHT_LOCK_BUSY

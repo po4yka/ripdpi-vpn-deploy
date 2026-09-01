@@ -26,6 +26,7 @@ SCHEMA = 1
 MAX_FILE = 256 * 1024
 MAX_STATE = 1024 * 1024
 MAX_TIMEOUT = 900
+MAX_CANDIDATE = 49125
 TERMINAL = {"committed", "rolled_back"}
 STATES = TERMINAL | {
     "prepared",
@@ -241,6 +242,38 @@ def _record(path: Path):
     }
 
 
+def _resolver_read(path: Path):
+    """Read a managed resolver file through a bounded, no-follow link chain."""
+    root = path.parents[1]
+    allowed_roots = tuple(
+        root / relative
+        for relative in (
+            "run/systemd/resolve",
+            "run/NetworkManager",
+            "run/resolvconf",
+        )
+    )
+    current = path
+    for _ in range(4):
+        info = current.lstat()
+        if not stat.S_ISLNK(info.st_mode):
+            return _read(current, limit=64 * 1024)[0]
+        if info.st_uid != os.geteuid():
+            raise Refusal("file-unsafe")
+        target = Path(os.readlink(current))
+        current = target if target.is_absolute() else current.parent / target
+        current = Path(os.path.normpath(str(current)))
+        try:
+            current.relative_to(root)
+        except ValueError:
+            raise Refusal("file-unsafe") from None
+        if not any(
+            current == allowed or allowed in current.parents for allowed in allowed_roots
+        ):
+            raise Refusal("file-unsafe")
+    raise Refusal("file-unsafe")
+
+
 def _record_bytes(value):
     try:
         content = base64.b64decode(value["data_b64"], validate=True)
@@ -349,7 +382,7 @@ class Runtime:
                 ),
             )
         return {
-            "resolver_sha256": _hash(_read(self.paths.resolver, limit=64 * 1024)[0]),
+            "resolver_sha256": _hash(_resolver_read(self.paths.resolver)),
             "routes_sha256": _hash(
                 json.dumps(routes, sort_keys=True, separators=(",", ":")).encode()
             ),
@@ -836,6 +869,8 @@ def main():
             candidate = base64.b64decode(request["candidate_b64"], validate=True)
         except (KeyError, TypeError, ValueError):
             raise Refusal("request-invalid") from None
+        if len(candidate) > MAX_CANDIDATE:
+            raise Refusal("request-invalid")
         result = (
             transaction.prepare(candidate, request.get("timeout", 300))
             if args.action == "prepare"

@@ -137,6 +137,27 @@ def test_prepare_apply_rollback_restores_exact_bytes_and_metadata(setup):
     ]
 
 
+def test_resolver_fence_accepts_a_private_standard_relative_symlink(setup):
+    module, paths, _, _ = setup
+    target = paths.resolver.parents[1] / "run/systemd/resolve/stub-resolv.conf"
+    target.parent.mkdir(parents=True)
+    target.write_text("nameserver 127.0.0.53\n")
+    target.chmod(0o644)
+    paths.resolver.symlink_to("../run/systemd/resolve/stub-resolv.conf")
+    assert module._resolver_read(paths.resolver) == b"nameserver 127.0.0.53\n"
+
+
+def test_resolver_fence_refuses_a_symlink_outside_managed_runtime_roots(setup):
+    module, paths, _, _ = setup
+    target = paths.resolver.parent / "foreign-resolver.conf"
+    target.write_text("nameserver 192.0.2.1\n")
+    target.chmod(0o644)
+    paths.resolver.symlink_to(target.name)
+
+    with pytest.raises(module.Refusal, match="file-unsafe"):
+        module._resolver_read(paths.resolver)
+
+
 def test_confirm_revalidates_applied_graph_and_is_terminal(setup):
     module, _, _, transaction = setup
     receipt = transaction.prepare(fragment("100.64.10.22/32"))

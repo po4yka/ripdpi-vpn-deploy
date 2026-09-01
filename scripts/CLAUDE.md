@@ -97,8 +97,16 @@ active evaluator evidence never substitutes controller identity for server state
 
 **Tailnet firewall fragments have one canonical grammar** —
 `tailnet-network-guest.py` validates and publishes the same schema-1 bytes as
-the firewall role. Empty typed sets omit the `elements` clause because nftables
-does not accept an explicit empty set expression.
+the firewall role. The validator supplies the approved-source fragment for an
+enabled first convergence; promotion owns later replacements. Empty typed sets
+omit the `elements` clause because nftables does not accept an explicit empty
+set expression.
+
+**Tailnet rollback stays two-phase** — prior provider state is rolled back but
+its receipt remains active until the exact guest transaction is rolled back.
+Only then may the executor terminalize it. A retry observes an already-disabled
+provider as idempotent and continues guest cleanup instead of replaying the
+Terraform rollback.
 
 **SSH recovery installation has an early privacy guard** — the dedicated
 controller rejects enabled Ansible debug before inventory processing, forwards

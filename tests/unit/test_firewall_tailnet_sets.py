@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 import subprocess
 
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 import yaml
 
 from template_render import merge_render_vars, render_template
@@ -43,6 +43,7 @@ def _render_with_ansible_whitespace() -> str:
     variables["public_listener_contract"] = []
     environment = Environment(
         loader=FileSystemLoader(str(TEMPLATE.parent)),
+        autoescape=select_autoescape(),
         undefined=StrictUndefined,
         keep_trailing_newline=True,
         trim_blocks=True,
@@ -126,22 +127,64 @@ def test_tailnet_ssh_accepts_are_absent_when_management_is_disabled() -> None:
     assert 'iifname "tailscale0" tcp dport 22022 ip6 saddr @vpn_tailnet_ssh_v6 accept' not in disabled
 
 
-def test_clean_check_mode_uses_inlined_empty_sets_without_creating_fragment() -> None:
+def test_clean_check_mode_uses_validated_approved_sets_without_creating_fragment() -> None:
     variables = merge_render_vars()
     variables["ansible_check_mode"] = False
     variables["_firewall_effective_check_mode"] = True
     variables["_firewall_tailnet_ssh_sets_was_absent"] = True
+    variables["vpn"] = {**variables["vpn"], "enable_tailnet_management": True}
     variables["firewall_effective_ssh_ports"] = [22022]
     variables["public_listener_contract"] = []
+    variables["_firewall_tailnet_initial_fragment"] = """# vpn-tailnet-ssh-sets schema=1
+set vpn_tailnet_ssh_v4 {
+  type ipv4_addr
+  flags interval
+  elements = { 100.64.10.20/32 }
+}
+
+set vpn_tailnet_ssh_v6 {
+  type ipv6_addr
+  flags interval
+  elements = { fd7a:115c:a1e0::1234/128 }
+}
+"""
     rendered = render_template(TEMPLATE, variables)
 
     assert f'include "{FRAGMENT_PATH}"' not in rendered
     assert "  set vpn_tailnet_ssh_v4 {" in rendered
     assert "  set vpn_tailnet_ssh_v6 {" in rendered
-    assert "elements = { }" not in rendered
+    assert "elements = { 100.64.10.20/32 }" in rendered
+    assert "elements = { fd7a:115c:a1e0::1234/128 }" in rendered
     assert 'iifname "tailscale0" tcp dport 22022 drop' in rendered
-    assert "@vpn_tailnet_ssh_v4 accept" not in rendered
-    assert "@vpn_tailnet_ssh_v6 accept" not in rendered
+    assert "@vpn_tailnet_ssh_v4 accept" in rendered
+    assert "@vpn_tailnet_ssh_v6 accept" in rendered
+
+
+def test_source_validator_emits_the_exact_canonical_initial_fragment() -> None:
+    completed = subprocess.run(
+        ["python3", str(ROOT / "scripts/tailnet-validate-sources.py")],
+        input='["fd7a:115c:a1e0::1234", "100.64.10.20"]',
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    document = yaml.safe_load(completed.stdout)
+
+    assert document["status"] == "valid"
+    assert document["count"] == 2
+    assert document["fragment"] == (
+        "# vpn-tailnet-ssh-sets schema=1\n"
+        "set vpn_tailnet_ssh_v4 {\n"
+        "  type ipv4_addr\n"
+        "  flags interval\n"
+        "  elements = { 100.64.10.20/32 }\n"
+        "}\n\n"
+        "set vpn_tailnet_ssh_v6 {\n"
+        "  type ipv6_addr\n"
+        "  flags interval\n"
+        "  elements = { fd7a:115c:a1e0::1234/128 }\n"
+        "}\n"
+    )
 
 
 def test_fragment_validator_accepts_canonical_hosts_and_refuses_noncanonical_input() -> None:
@@ -177,7 +220,7 @@ set vpn_tailnet_ssh_v6 {
 def test_existing_tailnet_fragment_is_preserved_only_when_safe_and_schema_valid() -> None:
     tasks_text = TASKS.read_text()
     tasks = yaml.safe_load(tasks_text)
-    copy_task = next(task for task in tasks if task["name"] == "Install empty Tailnet SSH sets fragment when absent")
+    copy_task = next(task for task in tasks if task["name"] == "Install approved Tailnet SSH sets fragment when absent")
     stat_task = next(task for task in tasks if task["name"] == "Inspect Tailnet SSH sets fragment before firewall mutation")
     directory_task = next(task for task in tasks if task["name"] == "Refuse unsafe Tailnet SSH sets include directory")
     final_stat_task = next(task for task in tasks if task["name"] == "Reinspect Tailnet SSH sets fragment immediately before nftables render")
@@ -186,8 +229,15 @@ def test_existing_tailnet_fragment_is_preserved_only_when_safe_and_schema_valid(
     assert_task = next(task for task in tasks if task["name"] == "Refuse unsafe or foreign Tailnet SSH sets fragment")
 
     assert stat_task["ansible.builtin.stat"]["follow"] is False
+    source_validator = next(
+        task
+        for task in tasks
+        if task["name"] == "Validate Tailnet firewall sources before mutation"
+    )
+    assert source_validator["check_mode"] is False
     assert final_stat_task["ansible.builtin.stat"]["follow"] is False
     assert copy_task["ansible.builtin.copy"]["force"] is False
+    assert "_firewall_tailnet_initial_fragment" in copy_task["ansible.builtin.copy"]["content"]
     assert copy_task["ansible.builtin.copy"]["owner"] == "root"
     assert copy_task["ansible.builtin.copy"]["mode"] == "0644"
     metadata_assertions = "\n".join(metadata_task["ansible.builtin.assert"]["that"])
@@ -207,17 +257,15 @@ def test_existing_tailnet_fragment_is_preserved_only_when_safe_and_schema_valid(
     assert "vpn_tailnet_ssh_v6" in tasks_text
     assert "ansible.builtin.command" in assert_task
     assert assert_task["ansible.builtin.command"]["stdin_add_newline"] is False
-    clean_check_task = next(task for task in tasks if task["name"] == "Validate bundled empty Tailnet SSH sets fragment for clean check mode")
-    assert clean_check_task["when"] == [
-        "_firewall_effective_check_mode | bool",
-        "_firewall_tailnet_ssh_sets_was_absent | bool",
-    ]
-    clean_check_assertion = clean_check_task["ansible.builtin.assert"]["that"][0]
-    assert "rstrip=False" in clean_check_assertion
+    boot_link = next(task for task in tasks if task["name"] == "Install exact nftables boot recovery requirement")
+    assert (
+        boot_link["ansible.builtin.file"]["force"]
+        == "{{ _firewall_effective_check_mode | bool }}"
+    )
     assert "ipaddress.ip_network" in tasks_text
     assert "fragment bytes are not canonical" in tasks_text
     task_names = [task["name"] for task in tasks]
-    assert task_names.index("Install empty Tailnet SSH sets fragment when absent") < task_names.index(
+    assert task_names.index("Install approved Tailnet SSH sets fragment when absent") < task_names.index(
         "Reinspect Tailnet SSH sets fragment immediately before nftables render"
     ) < task_names.index("Render nftables config")
     assert "nft -c -f %s" in tasks_text
@@ -261,8 +309,8 @@ def test_molecule_tailnet_converge_binds_sources_to_the_installed_fragment() -> 
         "Exercise clean firewall check mode before Tailnet fragment exists",
         "Confirm clean firewall check mode created no Tailnet fragment path",
         "Require clean firewall check mode to preserve an absent Tailnet fragment path",
-        "Read the initially installed empty Tailnet SSH sets fragment",
-        "Require the initially installed fragment to be exactly empty",
+        "Read the initially installed approved Tailnet SSH sets fragment",
+        "Require the initially installed fragment to contain approved sources",
     }
 
     assert play["vars"]["vpn"]["enable_tailnet_management"] is True

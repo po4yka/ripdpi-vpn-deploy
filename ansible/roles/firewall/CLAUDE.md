@@ -17,8 +17,10 @@ disabled because a stale interface can outlive its inventory toggle. The live
 listener verifier requires the exact accept/drop/public ordering.
 
 **Empty Tailnet sets omit `elements`** — nftables rejects `elements = { }`.
-The checked-in empty fragment, inline check-mode render, validator, and guest
-transaction helper must keep the same schema-1 bytes.
+The disabled checked-in fragment stays empty. An enabled first convergence and
+check mode both consume the validator's canonical approved-source fragment;
+later transactions preserve the already-published fragment. The validator,
+role, and guest transaction helper must keep the same schema-1 grammar.
 
 **Public listener ports come from Terraform's contract** — `site.yml` verifies `public_listener_contract` against the runtime manifest before this template renders. Do not add transport ports directly to `nftables.conf.j2`.
 

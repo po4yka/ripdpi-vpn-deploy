@@ -22,6 +22,10 @@ PROMOTION_PATH = ROOT / "scripts" / "tailnet-network-promotion.py"
 EXECUTOR = ROOT / "scripts" / "tailnet-network-executor.py"
 GUEST_HELPER = "/usr/local/lib/vpn-tailnet-network/tailnet-network-guest.py"
 MAX = 65536
+# The canonical JSON request (including base64 and timeout) must fit the
+# guest's 64-KiB bounded stdin frame at this exact raw candidate ceiling.
+MAX_CANDIDATE = 49125
+PREPARE_TIMEOUT = 900
 
 
 def executor_identity(target_digest: str, terraform_digest: str, token: str):
@@ -83,7 +87,7 @@ def private_directory(path: Path):
     if not path.is_absolute():
         raise ControllerError("executor-directory-refused")
     parent = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
-    fd = -1
+    fd = None
     try:
         for part in path.parts[1:-1]:
             child = os.open(
@@ -101,13 +105,14 @@ def private_directory(path: Path):
         try:
             os.mkdir(path.name, 0o700, dir_fd=parent)
         except FileExistsError:
+            # The final component is validated through its no-follow descriptor.
             pass
         fd = os.open(
             path.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent
         )
     finally:
         os.close(parent)
-    if fd < 0:
+    if fd is None:
         raise ControllerError("executor-directory-refused")
     try:
         info = os.fstat(fd)
@@ -163,7 +168,7 @@ def guard(socket_path: Path):
             raise p.PromotionError("rollback-uncertain")
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-                client.settimeout(5)
+                client.settimeout(90)
                 client.connect(str(socket_path))
                 client.sendall(payload)
                 client.shutdown(socket.SHUT_WR)
@@ -237,6 +242,74 @@ def _wait_for_spawned_executor(process, socket_path: Path, identity: dict):
     raise ControllerError("executor-unavailable")
 
 
+def _reap_spawned_process(process):
+    if process is None or process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+
+
+def _wait_or_reap_spawned_executor(process, socket_path: Path, identity: dict):
+    """Never leave the credential-bearing child behind after handshake failure."""
+    try:
+        _wait_for_spawned_executor(process, socket_path, identity)
+    except (Exception, KeyboardInterrupt, SystemExit):
+        _reap_spawned_process(process)
+        raise
+
+
+def _terminate_unarmed_executor(process, socket_path: Path, identity: dict):
+    """Reap the child we spawned only while its receipt remains unarmed."""
+    if process is None or process.poll() is not None:
+        return
+    if _live_executor(socket_path, identity, allow_unarmed=True) and not _live_executor(
+        socket_path, identity
+    ):
+        _reap_spawned_process(process)
+
+
+def _reconcile_previous(rollback_guard, guest, host):
+    """Finish an earlier provider and guest rollback before a new promotion."""
+    current = rollback_guard("reconcile", {})
+    state = current.get("state") if isinstance(current, dict) else None
+    expected = {
+        "armed": "prepared",
+        "forward-started": "prepared",
+        "provider-applied": "applied",
+    }
+    if state in {"idle", "executed", "released"}:
+        return
+    if state not in expected:
+        raise p.PromotionError("rollback-uncertain")
+    try:
+        identity = {
+            "generation": current["guest_generation"],
+            "nonce": current["guest_nonce"],
+            "snapshot_digest": current["guest_snapshot_digest"],
+            "deadline": current["guest_deadline"],
+        }
+    except KeyError:
+        raise p.PromotionError("rollback-uncertain") from None
+    status = guest(host, "status", {}, False)
+    status_name = status.get("status") if isinstance(status, dict) else None
+    if status_name == "rolled_back":
+        p._same_receipt(status, identity, "rolled_back")
+    else:
+        p._same_receipt(status, identity, expected[state])
+    rollback_guard("rollback-provider", current)
+    if status_name != "rolled_back":
+        p._same_receipt(
+            guest(host, "rollback", identity, True), identity, "rolled_back"
+        )
+    terminal = rollback_guard("execute", current)
+    if terminal != {"state": "executed"}:
+        raise p.PromotionError("rollback-uncertain")
+
+
 def _remove_verified_stale_executor(
     root: Path, socket_path: Path, identity: dict, *, socket_required=True
 ):
@@ -274,12 +347,15 @@ def _remove_verified_stale_executor(
 
 def strict_guest(host, known_hosts, candidate: bytes):
     """Fixed helper command, private fragment on stdin, strict pinned SSH only."""
-    if len(candidate) > MAX:
+    if len(candidate) > MAX_CANDIDATE:
         raise p.PromotionError("guest-uncertain")
 
     def call(_host, action, identity, cleanup):
         if action == "prepare":
-            request = {"candidate_b64": base64.b64encode(candidate).decode("ascii")}
+            request = {
+                "candidate_b64": base64.b64encode(candidate).decode("ascii"),
+                "timeout": PREPARE_TIMEOUT,
+            }
         elif action in {"apply", "rollback", "confirm"}:
             request = identity
         elif action == "status":
@@ -332,19 +408,21 @@ def run(config):
             try:
                 os.close(fd)
             except OSError:
+                # Constructor ownership may already have closed a validated fd.
                 pass
     candidate_fd = private(Path(config["candidate_fragment_path"]))
     try:
         candidate = os.read(candidate_fd, MAX + 1)
     finally:
         os.close(candidate_fd)
-    if len(candidate) > MAX:
+    if len(candidate) > MAX_CANDIDATE:
         raise ControllerError("candidate-refused")
     root = Path(config["executor_dir"])
     private_directory(root)
     sock = root / "executor.sock"
+    token = os.environ.get("UPCLOUD_TOKEN")
+    process = None
     if config["mode"] == "apply":
-        token = os.environ.get("UPCLOUD_TOKEN")
         if not token:
             raise ControllerError("provider-credentials-unavailable")
         identity = executor_identity(target_digest, terraform_digest, token)
@@ -380,8 +458,15 @@ def run(config):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
+                env={
+                    "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+                    "LANG": "C",
+                    "LC_ALL": "C",
+                    "TZ": "UTC",
+                    "UPCLOUD_TOKEN": token,
+                },
             )
-            _wait_for_spawned_executor(process, sock, identity)
+            _wait_or_reap_spawned_executor(process, sock, identity)
     adapter = p.TerraformAdapter(
         p.ProviderTarget(private(target), private(state)),
         trusted_terraform=p.TrustedTerraform(
@@ -391,7 +476,7 @@ def run(config):
         provider_transaction_lock=lambda: provider_transaction_lock(root),
         allow_apply=config["mode"] == "apply",
     )
-    if config["mode"] == "apply":
+    if token:
         adapter.environment_map = {**adapter.environment_map, "UPCLOUD_TOKEN": token}
 
     def return_path(action, identity):
@@ -437,12 +522,24 @@ def run(config):
         },
         "provider_target_sha256": adapter.target.digest,
     }
-    return p.execute(
-        request,
-        adapter,
-        guest=strict_guest(aliases[0], Path(config["known_hosts_path"]), candidate),
-        known_hosts=Path(config["known_hosts_path"]),
-    )
+    try:
+        if config["mode"] == "apply":
+            _reconcile_previous(
+                guard(sock),
+                strict_guest(aliases[0], Path(config["known_hosts_path"]), candidate),
+                aliases[0],
+            )
+        return p.execute(
+            request,
+            adapter,
+            guest=strict_guest(aliases[0], Path(config["known_hosts_path"]), candidate),
+            known_hosts=Path(config["known_hosts_path"]),
+            selected_host=aliases[0],
+        )
+    except Exception:
+        if config["mode"] == "apply":
+            _terminate_unarmed_executor(process, sock, identity)
+        raise
 
 
 def main():
@@ -450,7 +547,10 @@ def main():
     parser.add_argument("--config", required=True)
     args = parser.parse_args()
     try:
-        print(json.dumps(run(load_config(Path(args.config))), sort_keys=True))
+        result = run(load_config(Path(args.config)))
+        print(json.dumps(result, sort_keys=True))
+        if result.get("status") == "committed-rollback-armed":
+            return 1
     except (ControllerError, p.PromotionError):
         return 1
     return 0

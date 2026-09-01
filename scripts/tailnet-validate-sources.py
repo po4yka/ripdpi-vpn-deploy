@@ -16,7 +16,15 @@ try:
         limit=8192,
     )
     sources = domain.validate_sources(value)
-    print(json.dumps({"status": "valid", "count": len(sources)}))
+    print(
+        json.dumps(
+            {
+                "status": "valid",
+                "count": len(sources),
+                "fragment": domain.canonical_sources_fragment(sources),
+            }
+        )
+    )
 except domain.Refusal as error:
     print(json.dumps({"status": "error", "reason": str(error)}), file=sys.stderr)
     raise SystemExit(2) from None
