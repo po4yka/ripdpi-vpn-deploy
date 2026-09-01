@@ -175,7 +175,7 @@ class FakeRunner:
                 "accept-dns": False,
                 "accept-routes": False,
                 "advertise-exit-node": False,
-                "advertise-routes": "",
+                "advertise-routes": [],
                 "exit-node": "",
                 "netfilter-mode": "off",
                 "shields-up": False,
@@ -537,6 +537,73 @@ def test_oversized_recovery_receipt_refuses_before_publication(tmp_path) -> None
     assert not (tmp_path / "transaction.json").exists()
 
 
+def test_recovery_receipt_reserves_confirmed_phase_growth_before_arming(
+    tmp_path, monkeypatch
+) -> None:
+    controller = _load_controller()
+    paths = _paths(controller, tmp_path)
+    snapshot = controller.SystemSnapshot(
+        resolver=b"resolver",
+        routes=b"routes",
+        sshd=b"sshd",
+        resolver_mode=0o644,
+        resolver_uid=os.geteuid(),
+        resolver_gid=os.getegid(),
+    )
+    value = {
+        "schema_version": 1,
+        "generation": controller.RECOVERY_GENERATION,
+        "nonce": "0" * 32,
+        "phase": "armed",
+        "original_backend_state": "NeedsLogin",
+        "auth_file": "vpn-tailnet-auth-0123456789abcdef0123456789abcdef",
+        "snapshot": controller._snapshot_document(snapshot),
+    }
+    armed_size = len(controller._canonical_bytes(value))
+    confirmed_size = len(controller._canonical_bytes({**value, "phase": "confirmed"}))
+    assert confirmed_size > armed_size
+    monkeypatch.setattr(controller, "RECOVERY_STATE_MAX_BYTES", armed_size)
+
+    with pytest.raises(controller.Refusal, match="tailnet-recovery-state-write-failed"):
+        controller._write_transaction(
+            paths,
+            backend_state="NeedsLogin",
+            snapshot=snapshot,
+            auth_file=value["auth_file"],
+        )
+
+    assert not (tmp_path / "transaction.json").exists()
+
+
+def test_confirmation_rechecks_receipt_limit_before_replacement(
+    tmp_path, monkeypatch
+) -> None:
+    controller = _load_controller()
+    paths = _paths(controller, tmp_path)
+    snapshot = controller.SystemSnapshot(
+        resolver=b"resolver",
+        routes=b"routes",
+        sshd=b"sshd",
+        resolver_mode=0o644,
+        resolver_uid=os.geteuid(),
+        resolver_gid=os.getegid(),
+    )
+    controller._write_transaction(
+        paths,
+        backend_state="NeedsLogin",
+        snapshot=snapshot,
+        auth_file="vpn-tailnet-auth-0123456789abcdef0123456789abcdef",
+    )
+    receipt = tmp_path / "transaction.json"
+    armed = receipt.read_bytes()
+    monkeypatch.setattr(controller, "RECOVERY_STATE_MAX_BYTES", len(armed) + 3)
+
+    with pytest.raises(controller.Refusal, match="tailnet-recovery-confirm-uncertain"):
+        controller._mark_transaction_confirmed(paths)
+
+    assert receipt.read_bytes() == armed
+
+
 def test_stopped_state_during_armed_recovery_retains_evidence_without_logout(
     tmp_path,
 ) -> None:
@@ -761,6 +828,16 @@ def test_role_preflights_existing_tailnet_before_every_host_write() -> None:
     assert (
         names.index("Refuse unmanaged running Tailnet preferences before host writes")
         < first_write
+    )
+    preferences_guard = next(
+        task
+        for task in tasks
+        if task["name"]
+        == "Refuse unmanaged running Tailnet preferences before host writes"
+    )
+    assert (
+        "_tailnet_existing_prefs['advertise-routes'] == []"
+        in preferences_guard["ansible.builtin.assert"]["that"]
     )
     assert (
         names.index("Refuse package installation over a local Tailscale command")

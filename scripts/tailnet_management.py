@@ -24,7 +24,7 @@ EXPECTED_PREFS = {
     "accept-dns": False,
     "accept-routes": False,
     "advertise-exit-node": False,
-    "advertise-routes": "",
+    "advertise-routes": [],
     "exit-node": "",
     "netfilter-mode": "off",
     "shields-up": False,
@@ -225,7 +225,8 @@ def _write_transaction(
         "snapshot": _snapshot_document(snapshot),
     }
     payload = _canonical_bytes(value)
-    if len(payload) > RECOVERY_STATE_MAX_BYTES:
+    confirmed_payload = _canonical_bytes({**value, "phase": "confirmed"})
+    if max(len(payload), len(confirmed_payload)) > RECOVERY_STATE_MAX_BYTES:
         raise Refusal("tailnet-recovery-state-write-failed")
     temporary = paths.state_directory / f".{TRANSACTION_NAME}.{nonce}"
     canonical = _transaction_path(paths)
@@ -324,6 +325,8 @@ def _mark_transaction_confirmed(paths: CommandPaths) -> None:
         return
     value["phase"] = "confirmed"
     payload = _canonical_bytes(value)
+    if len(payload) > RECOVERY_STATE_MAX_BYTES:
+        raise Refusal("tailnet-recovery-confirm-uncertain")
     temporary = (
         paths.state_directory / f".{TRANSACTION_NAME}.{value['nonce']}.confirmed"
     )

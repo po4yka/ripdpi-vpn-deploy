@@ -105,7 +105,7 @@
       - not (_tailnet_existing_prefs['accept-dns'] | bool)
       - not (_tailnet_existing_prefs['accept-routes'] | bool)
       - not (_tailnet_existing_prefs['advertise-exit-node'] | bool)
-      - _tailnet_existing_prefs['advertise-routes'] == ''
+      - _tailnet_existing_prefs['advertise-routes'] == []
       - _tailnet_existing_prefs['exit-node'] == ''
       - _tailnet_existing_prefs['netfilter-mode'] == 'off'
       - not (_tailnet_existing_prefs['shields-up'] | bool)
