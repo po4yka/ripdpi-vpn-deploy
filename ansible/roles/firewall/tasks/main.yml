@@ -7,6 +7,22 @@
   ansible.builtin.include_role:
     name: network-exposure-gate
 
+- name: Validate Tailnet firewall sources before mutation
+  ansible.builtin.command:
+    cmd: >-
+      python3 {{ role_path }}/../../../scripts/tailnet-validate-sources.py
+    stdin: >-
+      {{
+        (
+          tailnet_management.approved_sources | default([])
+          if vpn.enable_tailnet_management | default(false) | bool
+          else []
+        ) | to_json
+      }}
+  delegate_to: localhost
+  become: false
+  changed_when: false
+
 - name: Validate firewall egress policy mode
   ansible.builtin.assert:
     that:

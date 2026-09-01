@@ -33,7 +33,7 @@
         content: |
           #!/bin/sh
           set -eu
-          [ "$*" = "-j list ruleset" ] || exit 64
+          [ "$*" = "-j list chains" ] || exit 64
           printf '%s\n' '{"nftables":[]}'
 
     - name: Install stateful Tailscale CLI fixture

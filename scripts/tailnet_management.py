@@ -506,7 +506,7 @@ def _snapshot(paths: CommandPaths, runner: Runner) -> SystemSnapshot:
 
 def _require_no_tailscale_firewall(paths: CommandPaths, runner: Runner) -> None:
     output = runner(
-        [paths.nft, "-j", "list", "ruleset"], timeout=COMMAND_TIMEOUT_SECONDS
+        [paths.nft, "-j", "list", "chains"], timeout=COMMAND_TIMEOUT_SECONDS
     ).stdout
     ruleset = _bounded_json(output, reason="tailnet-firewall-state-invalid")
 
