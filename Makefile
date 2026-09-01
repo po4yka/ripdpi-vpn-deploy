@@ -78,7 +78,7 @@ endif
 
 # Tailnet enrollment is an ambient one-node capability. Reject command-line
 # Make data before it can enter implicit exports or recipe expansion.
-ifneq ($(filter deploy dry-run deploy-canary,$(MAKECMDGOALS)),)
+ifneq ($(filter deploy dry-run deploy-canary tailnet-network-promote,$(MAKECMDGOALS)),)
 ifneq ($(filter-out undefined environment,$(origin TAILSCALE_AUTH_KEY)),)
 $(error Tailnet enrollment credentials must come from the environment)
 endif
@@ -353,6 +353,7 @@ override ANSIBLE_EXTRA_VARS_FILE := $(if $(filter file default undefined,$(origi
 override INSPECT_KNOWN_HOSTS := $(if $(filter file default undefined,$(origin INSPECT_KNOWN_HOSTS)),$(INSPECT_KNOWN_HOSTS),$(value INSPECT_KNOWN_HOSTS))
 override DEPLOY_SSH_CONTEXTS_FILE := $(value DEPLOY_SSH_CONTEXTS_FILE)
 override DEPLOY_PROMOTION_CONFIG_FILE := $(value DEPLOY_PROMOTION_CONFIG_FILE)
+override TAILNET_NETWORK_CONFIG := $(value TAILNET_NETWORK_CONFIG)
 endif
 deploy dry-run deploy-canary: override DEPLOY_SOURCE_REVISION :=
 deploy dry-run deploy-canary: override DEPLOYABLE_SOURCE_DIGEST :=
