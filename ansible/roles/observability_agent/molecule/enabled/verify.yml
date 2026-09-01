@@ -17,11 +17,47 @@
         argv:
           - /usr/bin/python3
           - -c
-          - >-
-            import json,pathlib,sys;
-            p=pathlib.Path('/var/lib/observability-fixture/receiver.log');
-            rows=[json.loads(x) for x in p.read_text().splitlines()] if p.exists() else [];
-            sys.exit(0 if any(r == {'path':'/remote-write/v1/nodes/node-fixture','cn':'node-fixture'} for r in rows) else 1)
+          - |
+            import json
+            import pathlib
+            import re
+            import sys
+            import urllib.request
+
+            p = pathlib.Path('/var/lib/observability-fixture/receiver.log')
+            rows = [json.loads(x) for x in p.read_text().splitlines()] if p.exists() else []
+            arrived = any(
+                row == {
+                    'path': '/remote-write/v1/nodes/node-fixture',
+                    'cn': 'node-fixture',
+                }
+                for row in rows
+            )
+            metrics = urllib.request.urlopen(
+                'http://127.0.0.1:19090/metrics', timeout=2
+            ).read().decode()
+
+            def maximum(name):
+                values = [
+                    float(match.group(1))
+                    for match in re.finditer(
+                        r'^' + re.escape(name) + r'(?:[{][^}]*[}])? ([0-9.eE+-]+)$',
+                        metrics,
+                        re.M,
+                    )
+                ]
+                return max(values) if values else None
+
+            print(json.dumps({
+                'arrived': arrived,
+                'received': len(rows),
+                'failed': maximum('prometheus_remote_storage_samples_failed_total'),
+                'retried': maximum('prometheus_remote_storage_samples_retried_total'),
+                'pending': maximum('prometheus_remote_storage_samples_pending'),
+                'highest': maximum('prometheus_remote_storage_queue_highest_timestamp_seconds'),
+                'highest_sent': maximum('prometheus_remote_storage_queue_highest_sent_timestamp_seconds'),
+            }, sort_keys=True))
+            sys.exit(0 if arrived else 1)
       register: observability_remote_write_arrival
       changed_when: false
       retries: 30

@@ -141,9 +141,10 @@ def test_scrapes_have_explicit_sample_and_label_bounds() -> None:
     assert "node_mountpoint_allowlist" not in template
     assert "self_metric_name_allowlist" not in template
     assert (
-        "^(node_(cpu|memory|filesystem|load|time|boot|network|disk|filefd)_.*"
+        "^(node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*"
         in template
     )
+    assert "node_load(1|5|15)" in template
     assert "^(__name__|job|cpu|mode|device|fstype|mountpoint)$" in template
 
 
@@ -344,6 +345,17 @@ def test_enabled_scenario_proves_idempotence_queue_age_and_authenticated_drain()
     assert "queue_highest_sent_timestamp_seconds" in verify[outage:restore]
     assert "retry > float(sys.argv[1])" in verify[outage:restore]
     assert "received > int(sys.argv[1])" in verify[drain:]
+    arrival = verify[:baseline]
+    for field in (
+        "'arrived': arrived",
+        "'received': len(rows)",
+        "'failed': maximum('prometheus_remote_storage_samples_failed_total')",
+        "'retried': maximum('prometheus_remote_storage_samples_retried_total')",
+        "'pending': maximum('prometheus_remote_storage_samples_pending')",
+        "'highest': maximum('prometheus_remote_storage_queue_highest_timestamp_seconds')",
+        "'highest_sent': maximum('prometheus_remote_storage_queue_highest_sent_timestamp_seconds')",
+    ):
+        assert field in arrival
 
 
 def test_site_uses_the_role_contract_as_the_single_enablement_flag() -> None:
