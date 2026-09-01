@@ -158,3 +158,12 @@ def test_enabled_molecule_archive_matches_runtime_release_strip_contract() -> No
     assert 'tar -C "$fixture" -czf "$fixture/prometheus.tar.gz" prometheus-fixture/prometheus' in prepare
     assert "archive_members: {amd64: prometheus-fixture/prometheus, arm64: prometheus-fixture/prometheus}" in converge
     assert "runtime_release_archive_strip_components: 1" in (ROLE / "tasks/enable.yml").read_text()
+
+
+def test_disabled_molecule_seeds_retained_tsdb_once_before_idempotence() -> None:
+    converge = (ROLE / "molecule/default/converge.yml").read_text()
+    prepare = (ROLE / "molecule/default/prepare.yml").read_text()
+
+    assert "Seed historical TSDB marker" not in converge
+    assert "Create historical TSDB directory" in prepare
+    assert "Seed historical TSDB marker" in prepare

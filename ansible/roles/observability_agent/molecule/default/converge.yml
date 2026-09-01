@@ -9,34 +9,5 @@
       credential_dir: /etc/credstore/observability-agent
       wal_dir: /var/lib/observability-agent/wal
       install_root: /opt/observability-agent
-  pre_tasks:
-    - name: Create synthetic agent-owned state
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-        owner: root
-        group: root
-        mode: "0700"
-      loop:
-        - /etc/observability-agent
-        - /etc/credstore/observability-agent
-        - /var/lib/observability-agent/wal
-        - /opt/observability-agent
-
-    - name: Create synthetic producer textfile that the agent does not own
-      ansible.builtin.copy:
-        dest: /var/lib/node_exporter/textfile/producer-owned.prom
-        content: "vpn_fixture_producer 1\n"
-        owner: root
-        group: root
-        mode: "0644"
-
-    - name: Create synthetic agent textfile
-      ansible.builtin.copy:
-        dest: /var/lib/node_exporter/textfile/observability-agent.prom
-        content: "vpn_observability_adapter_collection_success 1\n"
-        owner: root
-        group: root
-        mode: "0600"
   roles:
-    - role: ../../
+    - role: observability_agent

@@ -294,3 +294,14 @@ def test_site_uses_the_role_contract_as_the_single_enablement_flag() -> None:
 
     assert "when: observability_agent.enabled | default(false)" in site
     assert "enable_observability_agent" not in group_vars
+
+
+def test_molecule_scenarios_execute_the_named_role_and_seed_disable_state_once() -> None:
+    default_converge = (ROLE / "molecule/default/converge.yml").read_text()
+    default_prepare = (ROLE / "molecule/default/prepare.yml").read_text()
+    enabled_converge = (ROLE / "molecule/enabled/converge.yml").read_text()
+
+    assert "- role: observability_agent" in default_converge
+    assert "- role: observability_agent" in enabled_converge
+    assert "Create synthetic agent-owned state" not in default_converge
+    assert "Create synthetic agent-owned state" in default_prepare

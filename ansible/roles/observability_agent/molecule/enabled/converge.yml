@@ -66,4 +66,4 @@
       tasks_max: 64
       nofile_limit: 65536
   roles:
-    - role: ../../
+    - role: observability_agent
