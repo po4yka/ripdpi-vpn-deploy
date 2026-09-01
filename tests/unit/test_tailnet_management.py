@@ -43,6 +43,26 @@ def test_tailnet_role_is_opt_in_tactical_and_wired_after_geodata() -> None:
     assert roles.index("tailnet-management") < roles.index("xray")
 
 
+def test_live_fleet_profiles_enable_only_reviewed_tailnet_management_sources() -> None:
+    group_vars = ROOT / "ansible" / "group_vars"
+    defaults = yaml.safe_load((group_vars / "all.yml").read_text())
+    approved_sources = defaults["tailnet_management"]["approved_sources"]
+    controller = _load_controller()
+
+    assert controller.validate_sources(approved_sources) == approved_sources
+    assert len(approved_sources) == 2
+
+    enabled_profiles = {
+        "vpn-p0-self-steal.yml",
+        "vpn-p1-web.yml",
+        "vpn-p2-udp.yml",
+    }
+    for path in sorted(group_vars.glob("vpn-*.yml")):
+        document = yaml.safe_load(path.read_text()) or {}
+        enabled = document.get("vpn", {}).get("enable_tailnet_management", False)
+        assert enabled is (path.name in enabled_profiles), path.name
+
+
 def test_tailnet_operator_scripts_have_one_job_and_install_durable_recovery() -> None:
     scripts = ROOT / "scripts"
     tasks = (ROLE / "tasks/main.yml").read_text()

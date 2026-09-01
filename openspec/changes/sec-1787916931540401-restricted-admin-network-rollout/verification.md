@@ -276,3 +276,27 @@ Focused network and AWG tests, production `ansible-lint`, Python compilation,
 and independent security rereview passed. This remains source evidence: real
 staging disconnect/reboot/rollback and serial fleet emergency and VPN-path
 checks are still mandatory.
+
+## Production foundation diagnosis and explicit cohort opt-in
+
+A user-authorized P0 provider restart returned the node to its public listener
+surface but did not restore the Tailnet peer. A second one-time recovery boot
+used a read-only root filesystem and temporary `init=/bin/bash` only to query
+unit enablement and exact fixed-path presence, then returned through
+`exec /sbin/init`. The pinned Tailscale binary, daemon unit, recovery unit and
+state were all absent. No journal, credential or state payload was read and no
+host file was changed. This categorically identifies a foundation that was
+never installed; it is not evidence of a failed `tailscaled` boot.
+
+The matching source boundary keeps the global opt-in false and enables
+Tailnet management only in the three profiles used by the current P0, P1 and
+P2 inventory. The shared approved-source list contains exactly one validated
+Tailnet IPv4 address and one validated Tailnet IPv6 address already represented
+by the saved ACL. A behavioral profile regression rejects any additional or
+missing enabled profile, and actual `ansible-inventory --host` evaluation for
+all three aliases must resolve the enabled role plus the same exact list.
+
+This correction is source readiness only. No package was installed and no node
+was enrolled by the diagnostic or local tests. The isolated staging rehearsal,
+fresh emergency-plus-Tailnet SSH proof, unchanged DNS/routes/listeners/VPN
+proof and serial P0→P1→P2 rollout remain open.
