@@ -347,6 +347,7 @@ def test_deadline_terminalization_exits_daemon_and_removes_socket_pid(
     tmp_path, monkeypatch
 ):
     import shutil
+
     m = mod()
     runtime = Path(tempfile.mkdtemp(prefix="tnterm-", dir=_short_temp_root()))
     socket_path = runtime / "executor.sock"
@@ -687,6 +688,237 @@ def test_make_target_preserves_literal_config_until_controller_boundary():
     assert '"$TAILNET_NETWORK_CONFIG"' in result.stdout
 
 
+def test_controller_freezes_one_inventory_host_for_guest_provider_and_proof(
+    monkeypatch, tmp_path
+):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_frozen_host", controller_path
+    )
+    controller = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(controller)
+    host_a = {"name": "node-a", "address": "192.0.2.10", "port": 22}
+    host_b = {"name": "node-b", "address": "192.0.2.11", "port": 22}
+    selections = []
+
+    def select_hosts(*_args):
+        selections.append(True)
+        return [host_a if len(selections) == 1 else host_b]
+
+    monkeypatch.setattr(controller.p.fleet_inspection, "select_hosts", select_hosts)
+    monkeypatch.setattr(controller, "private_directory", lambda _path: None)
+    guest_hosts = []
+
+    def strict_guest(host, *_args):
+        guest_hosts.append(host)
+        return lambda *_call: {"status": "unchanged"}
+
+    monkeypatch.setattr(controller, "strict_guest", strict_guest)
+
+    class Owned:
+        def __init__(self, *fds):
+            self.fds = list(fds)
+
+        def close(self):
+            while self.fds:
+                os.close(self.fds.pop())
+
+    class Target(Owned):
+        def __init__(self, *fds):
+            super().__init__(*fds)
+            self.digest = "a" * 64
+            self.value = {
+                "inventory_alias": "node-a",
+                "public_service_address_sha256": "b" * 64,
+                "deployable_digest": "c" * 64,
+            }
+
+    class Trusted(Owned):
+        def __init__(self, fd, _digest):
+            super().__init__(fd)
+            self.digest = "d" * 64
+
+    class Adapter:
+        def __init__(self, target, *, trusted_terraform, **_kwargs):
+            self.target = target
+            self.trusted = trusted_terraform
+            self.environment_map = {}
+
+        def close(self):
+            self.target.close()
+            self.trusted.close()
+
+    monkeypatch.setattr(controller.p, "ProviderTarget", Target)
+    monkeypatch.setattr(controller.p, "TrustedTerraform", Trusted)
+    monkeypatch.setattr(controller.p, "TerraformAdapter", Adapter)
+    observed = {}
+
+    def execute(request, adapter, *, guest, selected_host=None, **_kwargs):
+        # A regression that omits selected_host would force a second inventory
+        # read here and bind the provider/proof to node B.
+        chosen = selected_host or select_hosts()[0]
+        observed.update(
+            host=chosen,
+            alias=request["target_identity"]["inventory_alias"],
+            guest=guest("preview", {}),
+        )
+        adapter.close()
+        return {"status": "dry-run"}
+
+    monkeypatch.setattr(controller.p, "execute", execute)
+    files = {}
+    for name, content, mode in (
+        ("target", b"target", 0o600),
+        ("state", b"state", 0o600),
+        ("terraform", b"#!/bin/sh\n", 0o700),
+        ("candidate", b"define set vpn_tailnet_ssh_v4 = { 100.64.0.1 }\n", 0o600),
+    ):
+        files[name] = tmp_path / name
+        files[name].write_bytes(content)
+        files[name].chmod(mode)
+
+    result = controller.run(
+        {
+            "inventory_path": str(tmp_path / "inventory"),
+            "inventory_name": "node-a",
+            "provider_target_path": str(files["target"]),
+            "provider_state_path": str(files["state"]),
+            "terraform_path": str(files["terraform"]),
+            "terraform_sha256": "d" * 64,
+            "candidate_fragment_path": str(files["candidate"]),
+            "executor_dir": str(tmp_path / "executor"),
+            "known_hosts_path": str(tmp_path / "known"),
+            "contexts": [],
+            "mode": "dry-run",
+            "promotion_config_path": str(tmp_path / "config"),
+        }
+    )
+    assert result == {"status": "dry-run"}
+    assert len(selections) == 1
+    assert guest_hosts == [host_a]
+    assert observed == {
+        "host": host_a,
+        "alias": "node-a",
+        "guest": {"status": "unchanged"},
+    }
+
+
+@pytest.mark.parametrize(
+    ("stage", "interruption"),
+    [
+        ("adapter", KeyboardInterrupt()),
+        ("adapter", SystemExit(2)),
+        ("reconcile", KeyboardInterrupt()),
+        ("reconcile", SystemExit(2)),
+    ],
+)
+def test_controller_reaps_unarmed_executor_when_reconcile_is_interrupted(
+    monkeypatch, tmp_path, stage, interruption
+):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_reconcile_interrupt", controller_path
+    )
+    controller = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(controller)
+    host = {"name": "node-a", "address": "192.0.2.10", "port": 22}
+    monkeypatch.setattr(
+        controller.p.fleet_inspection, "select_hosts", lambda *_args: [host]
+    )
+    monkeypatch.setattr(controller, "private_directory", lambda _path: None)
+    monkeypatch.setenv("UPCLOUD_TOKEN", "fixture-token")
+
+    class Owned:
+        def __init__(self, *fds):
+            self.fds = list(fds)
+
+        def close(self):
+            while self.fds:
+                os.close(self.fds.pop())
+
+    class Target(Owned):
+        def __init__(self, *fds):
+            super().__init__(*fds)
+            self.digest = "a" * 64
+            self.value = {
+                "inventory_alias": "node-a",
+                "public_service_address_sha256": "b" * 64,
+                "deployable_digest": "c" * 64,
+            }
+
+    class Trusted(Owned):
+        def __init__(self, fd, _digest):
+            super().__init__(fd)
+            self.digest = "d" * 64
+
+    class Adapter:
+        def __init__(self, target, *, trusted_terraform, **_kwargs):
+            if stage == "adapter":
+                raise interruption
+            self.target = target
+            self.trusted = trusted_terraform
+            self.environment_map = {}
+
+        def close(self):
+            self.target.close()
+            self.trusted.close()
+
+    class Process:
+        pass
+
+    process = Process()
+    monkeypatch.setattr(controller.p, "ProviderTarget", Target)
+    monkeypatch.setattr(controller.p, "TrustedTerraform", Trusted)
+    monkeypatch.setattr(controller.p, "TerraformAdapter", Adapter)
+    monkeypatch.setattr(controller.subprocess, "Popen", lambda *_a, **_k: process)
+    monkeypatch.setattr(controller, "_wait_or_reap_spawned_executor", lambda *_: None)
+    monkeypatch.setattr(controller, "strict_guest", lambda *_: lambda *_call: {})
+    monkeypatch.setattr(
+        controller,
+        "_reconcile_previous",
+        lambda *_: (
+            (_ for _ in ()).throw(interruption) if stage == "reconcile" else None
+        ),
+    )
+    reaped = []
+    monkeypatch.setattr(
+        controller,
+        "_terminate_unarmed_executor",
+        lambda child, *_args: reaped.append(child),
+    )
+    files = {}
+    for name, content, mode in (
+        ("target", b"target", 0o600),
+        ("state", b"state", 0o600),
+        ("terraform", b"#!/bin/sh\n", 0o700),
+        ("candidate", b"define set vpn_tailnet_ssh_v4 = { 100.64.0.1 }\n", 0o600),
+    ):
+        files[name] = tmp_path / name
+        files[name].write_bytes(content)
+        files[name].chmod(mode)
+
+    with pytest.raises(type(interruption)):
+        controller.run(
+            {
+                "inventory_path": str(tmp_path / "inventory"),
+                "inventory_name": "node-a",
+                "provider_target_path": str(files["target"]),
+                "provider_state_path": str(files["state"]),
+                "terraform_path": str(files["terraform"]),
+                "terraform_sha256": "d" * 64,
+                "candidate_fragment_path": str(files["candidate"]),
+                "executor_dir": str(tmp_path / "executor"),
+                "known_hosts_path": str(tmp_path / "known"),
+                "contexts": [],
+                "mode": "apply",
+                "promotion_config_path": str(tmp_path / "config"),
+            }
+        )
+    assert reaped == [process]
+
+
 def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkeypatch):
     """A controller crash mid-frame cannot monopolize the recovery daemon."""
     import shutil, socket, time
@@ -791,10 +1023,10 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
             client.connect(str(sock))
             client.sendall(b'{"action":"ping","value":{}}')
             client.shutdown(socket.SHUT_WR)
-            assert (
-                json.loads(client.recv(4096))["ok"]
-                == {"identity": identity, "receipt_state": None}
-            )
+            assert json.loads(client.recv(4096))["ok"] == {
+                "identity": identity,
+                "receipt_state": None,
+            }
         assert process.poll() is None
         stuck.close()
     finally:
@@ -815,15 +1047,14 @@ def test_controller_two_invocations_reject_unarmed_or_changed_executor(
     assert spec.loader
     spec.loader.exec_module(controller)
     first = controller.executor_identity("a" * 64, "b" * 64, "first-token")
-    changed_terraform = controller.executor_identity(
-        "a" * 64, "c" * 64, "first-token"
-    )
+    changed_terraform = controller.executor_identity("a" * 64, "c" * 64, "first-token")
     changed_capability = controller.executor_identity(
         "a" * 64, "b" * 64, "second-token"
     )
-    assert first["provider_capability_sha256"] != changed_capability[
-        "provider_capability_sha256"
-    ]
+    assert (
+        first["provider_capability_sha256"]
+        != changed_capability["provider_capability_sha256"]
+    )
 
     def ping(_socket):
         return lambda *_args: {"identity": first, "receipt_state": None}
@@ -849,8 +1080,12 @@ def test_controller_two_invocations_reject_unarmed_or_changed_executor(
 
     monkeypatch.setattr(controller, "guard", armed_ping)
     assert controller._live_executor(Path("/private/executor.sock"), first)
-    assert not controller._live_executor(Path("/private/executor.sock"), changed_terraform)
-    assert not controller._live_executor(Path("/private/executor.sock"), changed_capability)
+    assert not controller._live_executor(
+        Path("/private/executor.sock"), changed_terraform
+    )
+    assert not controller._live_executor(
+        Path("/private/executor.sock"), changed_capability
+    )
 
 
 def test_spawn_wait_revalidates_identity_before_second_controller_can_arm(
@@ -896,7 +1131,9 @@ def test_controller_reaps_a_spawned_unarmed_executor_after_prepare_failure(
     monkeypatch, tmp_path
 ):
     controller_path = ROOT / "scripts/tailnet-network-controller.py"
-    spec = importlib.util.spec_from_file_location("tailnet_controller_reap", controller_path)
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_controller_reap", controller_path
+    )
     controller = importlib.util.module_from_spec(spec)
     assert spec.loader
     spec.loader.exec_module(controller)
@@ -922,5 +1159,7 @@ def test_controller_reaps_a_spawned_unarmed_executor_after_prepare_failure(
         "_live_executor",
         lambda *_args, **kwargs: kwargs.get("allow_unarmed", False),
     )
-    controller._terminate_unarmed_executor(process, tmp_path / "executor.sock", identity)
+    controller._terminate_unarmed_executor(
+        process, tmp_path / "executor.sock", identity
+    )
     assert process.terminated

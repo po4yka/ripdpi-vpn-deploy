@@ -325,6 +325,50 @@ def test_client_identity_descriptor_missing_or_symlink_fails_closed(
         lane.load_config(config_path)
 
 
+def test_client_identity_descriptor_rejects_replaced_valid_inode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    descriptor = tmp_path / lane.CLIENT_IDENTITY_DESCRIPTOR_NAME
+    original = {
+        "version": lane.CLIENT_IDENTITY_VERSION,
+        "ripdpiSourceSha": "d" * 40,
+        "artifactSha256": "e" * 64,
+    }
+    replacement = {
+        "version": lane.CLIENT_IDENTITY_VERSION,
+        "ripdpiSourceSha": "a" * 40,
+        "artifactSha256": "b" * 64,
+    }
+    descriptor.write_text(json.dumps(original))
+    descriptor.chmod(0o600)
+    swapped = tmp_path / "replacement.json"
+    swapped.write_text(json.dumps(replacement))
+    swapped.chmod(0o600)
+    real_open = os.open
+
+    def replacing_open(path, flags, mode=0o777):
+        if Path(path) == descriptor:
+            os.replace(swapped, descriptor)
+        return real_open(path, flags, mode)
+
+    monkeypatch.setattr(os, "open", replacing_open)
+    with pytest.raises(ValueError, match="descriptor is unavailable"):
+        lane.client_identity_descriptor(str(descriptor))
+
+
+def test_client_identity_requires_manifest_v3() -> None:
+    assert lane.MANIFEST_VERSION == "real_vps_awg_nat_evidence_v3"
+    manifest = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    lane.validate_manifest(manifest, expected_source_sha="1" * 40, now=2_000_000_000)
+    manifest["version"] = "real_vps_awg_nat_evidence_v2"
+    with pytest.raises(ValueError, match="unsupported manifest version"):
+        lane.validate_manifest(
+            manifest, expected_source_sha="1" * 40, now=2_000_000_000
+        )
+
+
 def test_loaded_client_identity_is_retained_in_preflight_failure(
     tmp_path: Path,
 ) -> None:

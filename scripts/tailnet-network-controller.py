@@ -212,7 +212,12 @@ def _live_executor(socket_path: Path, identity: dict, *, allow_unarmed=False):
             and value["identity"] == identity
             and value["receipt_state"]
             in (
-                {"armed", "forward-started", "provider-applied", "committed-cleanup-debt"}
+                {
+                    "armed",
+                    "forward-started",
+                    "provider-applied",
+                    "committed-cleanup-debt",
+                }
                 | ({None} if allow_unarmed else set())
             )
         )
@@ -322,8 +327,7 @@ def _remove_verified_stale_executor(
         os.close(fd)
     if (
         not isinstance(value, dict)
-        or set(value)
-        != {"schema_version", "pid", *identity}
+        or set(value) != {"schema_version", "pid", *identity}
         or value.get("schema_version") != 2
         or type(value.get("pid")) is not int
         or any(value.get(key) != item for key, item in identity.items())
@@ -393,22 +397,39 @@ def run(config):
         Path(config[k])
         for k in ("provider_target_path", "provider_state_path", "terraform_path")
     )
-    fds = [private(target), private(state), private(terraform, executable=True)]
+    target_fd = state_fd = terraform_fd = -1
+    validated_target = validated_tf = None
     try:
+        target_fd = private(target)
+        state_fd = private(state)
+        terraform_fd = private(terraform, executable=True)
         # Validate the three opened inodes in this composition root before daemon spawn.
-        validated_target = p.ProviderTarget(fds[0], fds[1])
-        validated_tf = p.TrustedTerraform(fds[2], config["terraform_sha256"])
+        validated_target = p.ProviderTarget(target_fd, state_fd)
+        target_fd = state_fd = -1
+        validated_tf = p.TrustedTerraform(terraform_fd, config["terraform_sha256"])
+        terraform_fd = -1
         target_digest = validated_target.digest
         terraform_digest = validated_tf.digest
-        validated_target.close()
-        validated_tf.close()
-        fds = []
     finally:
-        for fd in fds:
+        if validated_target is not None:
+            validated_target.close()
+        if validated_tf is not None:
+            validated_tf.close()
+        if target_fd >= 0:
             try:
-                os.close(fd)
+                os.close(target_fd)
             except OSError:
                 # Constructor ownership may already have closed a validated fd.
+                pass
+        if state_fd >= 0:
+            try:
+                os.close(state_fd)
+            except OSError:
+                pass
+        if terraform_fd >= 0:
+            try:
+                os.close(terraform_fd)
+            except OSError:
                 pass
     candidate_fd = private(Path(config["candidate_fragment_path"]))
     try:
@@ -432,9 +453,7 @@ def run(config):
         elif (root / "daemon.json").exists():
             # A process can die after durable PID identity write but before
             # socket bind.  Reuse the same verified stale-artifact cleanup.
-            _remove_verified_stale_executor(
-                root, sock, identity, socket_required=False
-            )
+            _remove_verified_stale_executor(root, sock, identity, socket_required=False)
         if not sock.exists():
             process = subprocess.Popen(
                 [
@@ -467,79 +486,125 @@ def run(config):
                 },
             )
             _wait_or_reap_spawned_executor(process, sock, identity)
-    adapter = p.TerraformAdapter(
-        p.ProviderTarget(private(target), private(state)),
-        trusted_terraform=p.TrustedTerraform(
-            private(terraform, executable=True), config["terraform_sha256"]
-        ),
-        external_rollback_guard=guard(sock),
-        provider_transaction_lock=lambda: provider_transaction_lock(root),
-        allow_apply=config["mode"] == "apply",
-    )
-    if token:
-        adapter.environment_map = {**adapter.environment_map, "UPCLOUD_TOKEN": token}
-
-    def return_path(action, identity):
-        if action not in {"forward", "readback"}:
-            raise p.PromotionError("provider-return-path-invalid")
-        if action == "forward":
-            return True
-        try:
-            state_value = json.loads(adapter._command(["state", "pull"]))
-            resource = next(
-                item
-                for item in state_value["resources"]
-                if item.get("type") == "upcloud_server" and item.get("name") == "vpn"
-            )
-            firewall = resource["instances"][0]["attributes"]["firewall"]
-        except (
-            KeyError,
-            IndexError,
-            StopIteration,
-            TypeError,
-            ValueError,
-            p.PromotionError,
-        ):
-            raise p.PromotionError("provider-readback-invalid") from None
-        if type(firewall) is not bool:
-            raise p.PromotionError("provider-readback-invalid")
-        return {**identity, "firewall": firewall}
-
-    adapter.return_path_guard = return_path
-    request = {
-        "inventory_path": config["inventory_path"],
-        "inventory_name": config["inventory_name"],
-        "contexts": config["contexts"],
-        "mode": config["mode"],
-        "promotion_config_path": config["promotion_config_path"],
-        "target_identity": {
-            k: adapter.target.value[k]
-            for k in (
-                "inventory_alias",
-                "public_service_address_sha256",
-                "deployable_digest",
-            )
-        },
-        "provider_target_sha256": adapter.target.digest,
-    }
+    target_fd = state_fd = terraform_fd = -1
+    provider_target = trusted_terraform = adapter = None
     try:
-        if config["mode"] == "apply":
-            _reconcile_previous(
-                guard(sock),
-                strict_guest(aliases[0], Path(config["known_hosts_path"]), candidate),
-                aliases[0],
-            )
-        return p.execute(
-            request,
-            adapter,
-            guest=strict_guest(aliases[0], Path(config["known_hosts_path"]), candidate),
-            known_hosts=Path(config["known_hosts_path"]),
-            selected_host=aliases[0],
+        target_fd = private(target)
+        state_fd = private(state)
+        terraform_fd = private(terraform, executable=True)
+        provider_target = p.ProviderTarget(target_fd, state_fd)
+        target_fd = state_fd = -1
+        trusted_terraform = p.TrustedTerraform(terraform_fd, config["terraform_sha256"])
+        terraform_fd = -1
+        adapter = p.TerraformAdapter(
+            provider_target,
+            trusted_terraform=trusted_terraform,
+            external_rollback_guard=guard(sock),
+            provider_transaction_lock=lambda: provider_transaction_lock(root),
+            allow_apply=config["mode"] == "apply",
         )
-    except Exception:
+    except (Exception, KeyboardInterrupt, SystemExit):
+        if adapter is not None:
+            adapter.close()
+        else:
+            if trusted_terraform is not None:
+                trusted_terraform.close()
+            if provider_target is not None:
+                provider_target.close()
         if config["mode"] == "apply":
             _terminate_unarmed_executor(process, sock, identity)
         raise
+    finally:
+        if target_fd >= 0:
+            try:
+                os.close(target_fd)
+            except OSError:
+                pass
+        if state_fd >= 0:
+            try:
+                os.close(state_fd)
+            except OSError:
+                pass
+        if terraform_fd >= 0:
+            try:
+                os.close(terraform_fd)
+            except OSError:
+                pass
+    try:
+        if token:
+            adapter.environment_map = {
+                **adapter.environment_map,
+                "UPCLOUD_TOKEN": token,
+            }
+
+        def return_path(action, identity):
+            if action not in {"forward", "readback"}:
+                raise p.PromotionError("provider-return-path-invalid")
+            if action == "forward":
+                return True
+            try:
+                state_value = json.loads(adapter._command(["state", "pull"]))
+                resource = next(
+                    item
+                    for item in state_value["resources"]
+                    if item.get("type") == "upcloud_server"
+                    and item.get("name") == "vpn"
+                )
+                firewall = resource["instances"][0]["attributes"]["firewall"]
+            except (
+                KeyError,
+                IndexError,
+                StopIteration,
+                TypeError,
+                ValueError,
+                p.PromotionError,
+            ):
+                raise p.PromotionError("provider-readback-invalid") from None
+            if type(firewall) is not bool:
+                raise p.PromotionError("provider-readback-invalid")
+            return {**identity, "firewall": firewall}
+
+        adapter.return_path_guard = return_path
+        request = {
+            "inventory_path": config["inventory_path"],
+            "inventory_name": config["inventory_name"],
+            "contexts": config["contexts"],
+            "mode": config["mode"],
+            "promotion_config_path": config["promotion_config_path"],
+            "target_identity": {
+                k: adapter.target.value[k]
+                for k in (
+                    "inventory_alias",
+                    "public_service_address_sha256",
+                    "deployable_digest",
+                )
+            },
+            "provider_target_sha256": adapter.target.digest,
+        }
+        try:
+            if config["mode"] == "apply":
+                _reconcile_previous(
+                    guard(sock),
+                    strict_guest(
+                        aliases[0], Path(config["known_hosts_path"]), candidate
+                    ),
+                    aliases[0],
+                )
+            return p.execute(
+                request,
+                adapter,
+                guest=strict_guest(
+                    aliases[0], Path(config["known_hosts_path"]), candidate
+                ),
+                known_hosts=Path(config["known_hosts_path"]),
+                selected_host=aliases[0],
+            )
+        except (Exception, KeyboardInterrupt, SystemExit):
+            if config["mode"] == "apply":
+                _terminate_unarmed_executor(process, sock, identity)
+            raise
+    finally:
+        adapter.close()
 
 
 def main():

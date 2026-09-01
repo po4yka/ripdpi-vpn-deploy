@@ -203,7 +203,7 @@ def test_apply_failure_never_reports_applied(setup, failure):
 def test_recover_rolls_back_interrupted_applying_state(setup):
     _, paths, _, transaction = setup
     before = paths.fragment.read_bytes()
-    receipt = transaction.prepare(fragment("100.64.10.24/32"))
+    transaction.prepare(fragment("100.64.10.24/32"))
     state = transaction._load()
     state["status"] = "applying"
     transaction._save(state)
@@ -216,18 +216,18 @@ def test_recover_rolls_back_interrupted_applying_state(setup):
 
 def test_expired_and_boot_recovery_are_fail_closed(setup):
     _, _, runtime, transaction = setup
-    receipt = transaction.prepare(fragment("100.64.10.25/32"), timeout=60)
+    transaction.prepare(fragment("100.64.10.25/32"), timeout=60)
     runtime.now += 61
     runtime.mono += 61
     assert transaction.recover()["status"] == "rolled_back"
-    receipt = transaction.prepare(fragment("100.64.10.26/32"), timeout=60)
+    transaction.prepare(fragment("100.64.10.26/32"), timeout=60)
     assert transaction.recover(boot=True)["status"] == "rolled_back"
 
 
 def test_boot_recovery_does_not_depend_on_pre_network_fences(setup, monkeypatch):
     _, paths, runtime, transaction = setup
     before = paths.fragment.read_bytes()
-    receipt = transaction.prepare(fragment("100.64.10.27/32"))
+    transaction.prepare(fragment("100.64.10.27/32"))
     state = transaction._load()
     state["status"] = "applying"
     transaction._save(state)
@@ -296,6 +296,26 @@ def test_initialized_without_receipt_is_recovery_debt_not_idle(setup):
     (paths.state / "initialized").chmod(0o600)
     with pytest.raises(module.Refusal, match="state-orphaned"):
         transaction.status()
+
+
+def test_prepare_persists_recovery_receipt_before_initialized_marker(
+    setup, monkeypatch
+):
+    module, paths, _, transaction = setup
+    real_atomic = module._atomic
+
+    def fail_initialized(path, content, *args, **kwargs):
+        if path.name == "initialized":
+            raise OSError("fixture marker failure")
+        return real_atomic(path, content, *args, **kwargs)
+
+    monkeypatch.setattr(module, "_atomic", fail_initialized)
+    with pytest.raises(OSError, match="fixture marker failure"):
+        transaction.prepare(fragment("100.64.10.35/32"))
+
+    assert (paths.state / "transaction.json").is_file()
+    assert not (paths.state / "initialized").exists()
+    assert transaction.recover(boot=True)["status"] == "rolled_back"
 
 
 def test_real_nft_json_readback_accepts_only_exact_host_elements(setup):
@@ -519,7 +539,9 @@ def test_firewall_role_installs_persistent_fail_closed_recovery_units():
         and "ReadWritePaths=/etc/nftables.d /var/lib/vpn-tailnet-network" in worker
     )
     assert "Persistent=true" in timer and "OnUnitActiveSec=30s" in timer
-    required = tasks.split("- name: Install exact nftables boot recovery requirement", 1)[1]
+    required = tasks.split(
+        "- name: Install exact nftables boot recovery requirement", 1
+    )[1]
     required = required.split("- name:", 1)[0]
     # A rerun after a partial unit upgrade has no copy change to key from: the
     # exact link must still self-heal independently.
@@ -529,9 +551,15 @@ def test_firewall_role_installs_persistent_fail_closed_recovery_units():
         "vpn-tailnet-network-boot-recover.service" in required
     )
     assert "_firewall_tailnet_recovery_units.changed" not in required
-    reload = tasks.split("- name: Reload systemd after Tailnet recovery dependency changes", 1)[1]
+    reload = tasks.split(
+        "- name: Reload systemd after Tailnet recovery dependency changes", 1
+    )[1]
     reload = reload.split("- name:", 1)[0]
     assert "_firewall_tailnet_boot_required_by.changed" in reload
-    assert tasks.index("- name: Install exact nftables boot recovery requirement") < tasks.index(
-        "- name: Reload systemd after Tailnet recovery dependency changes"
-    ) < tasks.index("- name: Enable persistent Tailnet firewall recovery")
+    assert (
+        tasks.index("- name: Install exact nftables boot recovery requirement")
+        < tasks.index(
+            "- name: Reload systemd after Tailnet recovery dependency changes"
+        )
+        < tasks.index("- name: Enable persistent Tailnet firewall recovery")
+    )

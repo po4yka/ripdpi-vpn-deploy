@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 CONFIG_VERSION = "real_vps_awg_nat_runner_v1"
-MANIFEST_VERSION = "real_vps_awg_nat_evidence_v2"
+MANIFEST_VERSION = "real_vps_awg_nat_evidence_v3"
 CLIENT_IDENTITY_VERSION = "ripdpi_awg_client_identity_v1"
 CLIENT_IDENTITY_DESCRIPTOR_NAME = "real-vps-awg-client-identity.json"
 WORKFLOW_PATH = ".github/workflows/real-vps-awg-nat.yml"
@@ -289,10 +289,37 @@ def require_invocation_id(value: Any, context: str = "invocation id") -> str:
 def client_identity_descriptor(path_value: Any) -> dict[str, str]:
     """Read the private, immutable identity of the actual RIPDPI client artifact."""
     path = _secure_path(path_value, executable=False)
+    expected = path.stat()
+    descriptor = -1
     try:
-        raw = path.read_bytes()
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+        )
+        observed = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(observed.st_mode)
+            or observed.st_nlink != 1
+            or observed.st_uid not in {0, os.geteuid()}
+            or stat.S_IMODE(observed.st_mode) & 0o077
+            or not 0 < observed.st_size <= 4096
+            or (observed.st_dev, observed.st_ino) != (expected.st_dev, expected.st_ino)
+        ):
+            raise ValueError("client identity descriptor is unavailable")
+        chunks = []
+        remaining = observed.st_size
+        while remaining:
+            chunk = os.read(descriptor, remaining)
+            if not chunk:
+                raise ValueError("client identity descriptor is unavailable")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
     except OSError as exc:
         raise ValueError("client identity descriptor is unavailable") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
     if not 0 < len(raw) <= 4096:
         raise ValueError("client identity descriptor is invalid")
     try:

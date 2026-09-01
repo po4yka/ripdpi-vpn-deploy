@@ -7,6 +7,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/tailnet-network-promotion.py"
+EXECUTOR = ROOT / "scripts/tailnet-network-executor.py"
+CONTROLLER = ROOT / "scripts/tailnet-network-controller.py"
 SERVER = "123e4567-e89b-42d3-a456-426614174000"
 
 
@@ -15,6 +17,90 @@ def mod():
     result = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(result)
     return result
+
+
+def executor_mod():
+    spec = importlib.util.spec_from_file_location("tailnet_network_executor", EXECUTOR)
+    result = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(result)
+    return result
+
+
+def controller_mod():
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller", CONTROLLER
+    )
+    result = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(result)
+    return result
+
+
+def test_executor_closes_earlier_input_when_a_later_open_fails(tmp_path, monkeypatch):
+    module = executor_mod()
+    read_fd, write_fd = os.pipe()
+    calls = 0
+
+    def private_fd(_path, *, executable=False):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return read_fd
+        raise module.ExecutorError("private-input-refused")
+
+    monkeypatch.setattr(module, "private_fd", private_fd)
+    try:
+        with pytest.raises(module.ExecutorError, match="private-input-refused"):
+            module.Executor(
+                tmp_path / "target",
+                tmp_path / "state",
+                tmp_path / "terraform",
+                "a" * 64,
+                tmp_path / "receipts",
+            )
+        with pytest.raises(OSError):
+            os.fstat(read_fd)
+    finally:
+        try:
+            os.close(read_fd)
+        except OSError:
+            pass
+        os.close(write_fd)
+
+
+def test_controller_closes_earlier_input_when_a_later_open_fails(tmp_path, monkeypatch):
+    module = controller_mod()
+    read_fd, write_fd = os.pipe()
+    calls = 0
+
+    def private(_path, *, executable=False):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return read_fd
+        raise module.ControllerError("private-input-refused")
+
+    monkeypatch.setattr(module, "private", private)
+    monkeypatch.setattr(
+        module.p.fleet_inspection, "select_hosts", lambda *_: [object()]
+    )
+    config = {
+        "inventory_path": str(tmp_path / "inventory"),
+        "inventory_name": "node-a",
+        "provider_target_path": str(tmp_path / "target"),
+        "provider_state_path": str(tmp_path / "state"),
+        "terraform_path": str(tmp_path / "terraform"),
+    }
+    try:
+        with pytest.raises(module.ControllerError, match="private-input-refused"):
+            module.run(config)
+        with pytest.raises(OSError):
+            os.fstat(read_fd)
+    finally:
+        try:
+            os.close(read_fd)
+        except OSError:
+            pass
+        os.close(write_fd)
 
 
 def plan(before, after):
@@ -113,9 +199,24 @@ def _target(
     state_path = tmp_path / ("terraform-state-" + alias + ".json")
     state_path.write_bytes(state)
     state_path.chmod(0o600)
-    return m.ProviderTarget(
-        os.open(path, os.O_RDONLY), os.open(state_path, os.O_RDONLY)
-    )
+    target_fd = state_fd = -1
+    try:
+        target_fd = os.open(path, os.O_RDONLY)
+        state_fd = os.open(state_path, os.O_RDONLY)
+        target = m.ProviderTarget(target_fd, state_fd)
+        target_fd = state_fd = -1
+        return target
+    finally:
+        if target_fd >= 0:
+            try:
+                os.close(target_fd)
+            except OSError:
+                pass
+        if state_fd >= 0:
+            try:
+                os.close(state_fd)
+            except OSError:
+                pass
 
 
 def test_review_accepts_only_exact_upcloud_firewall_flip_and_noop_siblings():
@@ -132,15 +233,27 @@ def test_saved_plan_is_private_unlinked_and_uses_native_fd_path(tmp_path):
     path = tmp_path / "plan"
     path.write_bytes(b"x")
     path.chmod(0o600)
-    fd = os.open(path, os.O_RDONLY)
-    os.unlink(path)
-    saved = m.SavedPlan(fd)
-    assert saved.path().endswith(str(fd))
-    assert os.fstat(fd).st_nlink == 0
-    saved.close()
-    saved.close()
-    with pytest.raises(m.PromotionError, match="provider-plan-closed"):
-        saved.path()
+    fd = -1
+    saved = None
+    try:
+        fd = os.open(path, os.O_RDONLY)
+        os.unlink(path)
+        saved = m.SavedPlan(fd)
+        fd = -1
+        assert saved.path().endswith(str(saved.fd))
+        assert os.fstat(saved.fd).st_nlink == 0
+        saved.close()
+        saved.close()
+        with pytest.raises(m.PromotionError, match="provider-plan-closed"):
+            saved.path()
+    finally:
+        if saved is not None:
+            saved.close()
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
 
 
 def test_adapter_has_no_apply_authority_without_both_injected_guards(tmp_path):
@@ -830,15 +943,29 @@ def test_adapter_command_uses_reviewed_terraform_fd_through_wrapper(
         pytest.skip("terraform unavailable")
     m = mod()
     raw = Path(terraform).read_bytes()
-    fd = os.open(terraform, os.O_RDONLY)
-    trusted = m.TrustedTerraform(fd, __import__("hashlib").sha256(raw).hexdigest())
-    wrapper = tmp_path / "terraform-env.sh"
-    wrapper.write_text('#!/bin/sh\nexec terraform "$@"\n')
-    wrapper.chmod(0o700)
-    monkeypatch.setattr(m, "TERRAFORM_ENV", wrapper)
-    adapter = m.TerraformAdapter(_target(m, tmp_path), trusted_terraform=trusted)
-    assert b"Terraform v" in adapter._command(["version"])
-    os.close(fd)
+    fd = -1
+    trusted = target = adapter = None
+    try:
+        fd = os.open(terraform, os.O_RDONLY)
+        trusted = m.TrustedTerraform(fd, __import__("hashlib").sha256(raw).hexdigest())
+        fd = -1
+        wrapper = tmp_path / "terraform-env.sh"
+        wrapper.write_text('#!/bin/sh\nexec terraform "$@"\n')
+        wrapper.chmod(0o700)
+        monkeypatch.setattr(m, "TERRAFORM_ENV", wrapper)
+        target = _target(m, tmp_path)
+        adapter = m.TerraformAdapter(target, trusted_terraform=trusted)
+        assert b"Terraform v" in adapter._command(["version"])
+    finally:
+        if adapter is not None:
+            adapter.close()
+        else:
+            if target is not None:
+                target.close()
+            if trusted is not None:
+                trusted.close()
+        if fd >= 0:
+            os.close(fd)
 
 
 def test_actual_builtin_terraform_data_plan_can_be_saved_if_terraform_exists(tmp_path):
@@ -874,32 +1001,43 @@ def test_actual_builtin_terraform_data_plan_can_be_saved_if_terraform_exists(tmp
         .returncode
         == 0
     )
-    fd = os.open(plan_path, os.O_RDONLY)
-    os.fchmod(fd, 0o600)
-    inode = os.fstat(fd).st_ino
-    os.unlink(plan_path)
-    saved = mod().SavedPlan(fd)
-    assert os.fstat(saved.fd).st_ino == inode
-    fd_path = saved.path()
-    shown = __import__("subprocess").run(
-        [terraform, "show", "-json", fd_path],
-        cwd=tmp_path,
-        env=env,
-        pass_fds=(fd,),
-        capture_output=True,
-    )
-    assert shown.returncode == 0 and json.loads(shown.stdout)[
-        "format_version"
-    ].startswith("1.")
-    applied = __import__("subprocess").run(
-        [terraform, "apply", "-auto-approve", fd_path],
-        cwd=tmp_path,
-        env=env,
-        pass_fds=(fd,),
-        capture_output=True,
-    )
-    assert applied.returncode == 0
-    saved.close()
+    fd = -1
+    saved = None
+    try:
+        fd = os.open(plan_path, os.O_RDONLY)
+        os.fchmod(fd, 0o600)
+        inode = os.fstat(fd).st_ino
+        os.unlink(plan_path)
+        saved = mod().SavedPlan(fd)
+        fd = -1
+        assert os.fstat(saved.fd).st_ino == inode
+        fd_path = saved.path()
+        shown = __import__("subprocess").run(
+            [terraform, "show", "-json", fd_path],
+            cwd=tmp_path,
+            env=env,
+            pass_fds=(saved.fd,),
+            capture_output=True,
+        )
+        assert shown.returncode == 0 and json.loads(shown.stdout)[
+            "format_version"
+        ].startswith("1.")
+        applied = __import__("subprocess").run(
+            [terraform, "apply", "-auto-approve", fd_path],
+            cwd=tmp_path,
+            env=env,
+            pass_fds=(saved.fd,),
+            capture_output=True,
+        )
+        assert applied.returncode == 0
+    finally:
+        if saved is not None:
+            saved.close()
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
 
 
 def test_provider_target_binds_exact_state_environment_node_and_open_inode(
@@ -1345,9 +1483,6 @@ def test_arm_and_reconcile_refuse_expired_guest_deadline(tmp_path, monkeypatch):
         adapter.arm_rollback(Forward(), expired)
     assert calls == []
 
-    applied = dict(_applied_capability(target))
-    applied["guest_deadline"] = 999
-    applied = tuple(sorted(applied.items()))
     adapter = m.TerraformAdapter(
         target, external_rollback_guard=lambda action, value: value
     )
@@ -1371,15 +1506,33 @@ def test_adapter_close_owns_target_and_trusted_executable_fds(tmp_path):
     executable = tmp_path / "terraform"
     executable.write_bytes(b"fixture")
     executable.chmod(0o700)
-    trusted_fd = os.open(executable, os.O_RDONLY)
-    trusted = m.TrustedTerraform(trusted_fd, hashlib.sha256(b"fixture").hexdigest())
-    target_fds = (target.fd, target.state_fd)
-    adapter = m.TerraformAdapter(target, trusted_terraform=trusted)
-    adapter.close()
-    adapter.close()
-    for fd in (*target_fds, trusted_fd):
-        with pytest.raises(OSError):
-            os.fstat(fd)
+    trusted_fd = -1
+    trusted = adapter = None
+    try:
+        trusted_fd = os.open(executable, os.O_RDONLY)
+        owned_trusted_fd = trusted_fd
+        trusted = m.TrustedTerraform(trusted_fd, hashlib.sha256(b"fixture").hexdigest())
+        trusted_fd = -1
+        target_fds = (target.fd, target.state_fd)
+        adapter = m.TerraformAdapter(target, trusted_terraform=trusted)
+        adapter.close()
+        adapter.close()
+        for owned_fd in (*target_fds, owned_trusted_fd):
+            with pytest.raises(OSError):
+                os.fstat(owned_fd)
+    finally:
+        if adapter is not None:
+            adapter.close()
+        elif trusted is not None:
+            trusted.close()
+            target.close()
+        else:
+            target.close()
+        if trusted_fd >= 0:
+            try:
+                os.close(trusted_fd)
+            except OSError:
+                pass
 
 
 def test_guest_confirm_followed_by_external_commit_failure_retains_armed_lease(

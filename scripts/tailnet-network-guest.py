@@ -218,7 +218,9 @@ def canonical_fragment(raw: bytes) -> bytes:
         return canonical
 
     v4, v6 = items(match["v4"], 4, 32), items(match["v6"], 6, 128)
-    form = lambda values: "" if not values else "  elements = { " + ", ".join(values) + " }\n"
+    form = lambda values: (
+        "" if not values else "  elements = { " + ", ".join(values) + " }\n"
+    )
     result = (
         "# vpn-tailnet-ssh-sets schema=1\nset vpn_tailnet_ssh_v4 {\n"
         "  type ipv4_addr\n  flags interval\n" + form(v4) + "}\n\n"
@@ -268,7 +270,8 @@ def _resolver_read(path: Path):
         except ValueError:
             raise Refusal("file-unsafe") from None
         if not any(
-            current == allowed or allowed in current.parents for allowed in allowed_roots
+            current == allowed or allowed in current.parents
+            for allowed in allowed_roots
         ):
             raise Refusal("file-unsafe")
     raise Refusal("file-unsafe")
@@ -707,8 +710,11 @@ class Transaction:
                 "status": "prepared",
                 "plan": plan,
             }
-            _atomic(self.paths.state / "initialized", b"1\n")
             self._save(state)
+            # The durable receipt is the recovery authority.  Publishing the
+            # initialization marker first can strand a marker-only state if
+            # the process exits before transaction.json is committed.
+            _atomic(self.paths.state / "initialized", b"1\n")
             return self._receipt(state)
 
     def preview(self, candidate: bytes):

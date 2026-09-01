@@ -281,44 +281,56 @@ class ReceiptStore:
 
 class Executor:
     def __init__(self, target, state, terraform, digest, receipt_root):
-        target_fd, state_fd, tf_fd = (
-            private_fd(target),
-            private_fd(state),
-            private_fd(terraform, executable=True),
-        )
+        target_fd = state_fd = tf_fd = -1
+        provider_target = trusted = adapter = None
         try:
-            self.target = p.ProviderTarget(target_fd, state_fd)
-            self.trusted = p.TrustedTerraform(tf_fd, digest)
+            target_fd = private_fd(target)
+            state_fd = private_fd(state)
+            tf_fd = private_fd(terraform, executable=True)
+            provider_target = p.ProviderTarget(target_fd, state_fd)
+            target_fd = state_fd = -1
+            trusted = p.TrustedTerraform(tf_fd, digest)
+            tf_fd = -1
+            store = ReceiptStore(receipt_root)
+            adapter = p.TerraformAdapter(
+                provider_target,
+                trusted_terraform=trusted,
+                return_path_guard=self._readback,
+                external_rollback_guard=lambda *_: True,
+                allow_apply=True,
+            )
+            # Terraform is the sole provider client.  Keep the credential only in
+            # this process environment; the receipt, socket protocol and argv
+            # contain identities and digests only.
+            token = os.environ.get("UPCLOUD_TOKEN")
+            if not token:
+                raise ExecutorError("provider-credentials-unavailable")
+            identity = daemon_identity(provider_target.digest, trusted.digest, token)
+            adapter.environment_map = {
+                **adapter.environment_map,
+                "UPCLOUD_TOKEN": token,
+            }
         except (Exception, KeyboardInterrupt, SystemExit):
-            for fd in (target_fd, state_fd, tf_fd):
-                try:
-                    os.close(fd)
-                except OSError:
-                    # A partially constructed promotion object may own this fd.
-                    pass
+            if adapter is not None:
+                adapter.close()
+            else:
+                if trusted is not None:
+                    trusted.close()
+                if provider_target is not None:
+                    provider_target.close()
             raise
-        self.store = ReceiptStore(receipt_root)
-        self.adapter = p.TerraformAdapter(
-            self.target,
-            trusted_terraform=self.trusted,
-            return_path_guard=self._readback,
-            external_rollback_guard=lambda *_: True,
-            allow_apply=True,
-        )
-        # Terraform is the sole provider client.  Keep the credential only in
-        # this process environment; the receipt, socket protocol and argv
-        # contain identities and digests only.
-        token = os.environ.get("UPCLOUD_TOKEN")
-        if not token:
-            self.close()
-            raise ExecutorError("provider-credentials-unavailable")
-        self.daemon_identity = daemon_identity(
-            self.target.digest, self.trusted.digest, token
-        )
-        self.adapter.environment_map = {
-            **self.adapter.environment_map,
-            "UPCLOUD_TOKEN": token,
-        }
+        finally:
+            if target_fd >= 0:
+                os.close(target_fd)
+            if state_fd >= 0:
+                os.close(state_fd)
+            if tf_fd >= 0:
+                os.close(tf_fd)
+        self.target = provider_target
+        self.trusted = trusted
+        self.store = store
+        self.adapter = adapter
+        self.daemon_identity = identity
 
     def close(self):
         self.adapter.close()
@@ -678,6 +690,7 @@ class Executor:
             # lock as the controller's forward apply.  A stale false read can
             # therefore never terminalize an in-flight forward publication.
             return self.guard("expire", {**current, "_deadline_reconcile": True})
+        return None
 
 
 def serve(args):
@@ -739,7 +752,9 @@ def serve(args):
                             result = {
                                 "identity": executor.daemon_identity,
                                 "receipt_state": (
-                                    current.get("state") if current is not None else None
+                                    current.get("state")
+                                    if current is not None
+                                    else None
                                 ),
                             }
                         else:
