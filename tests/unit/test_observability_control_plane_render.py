@@ -323,8 +323,11 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     assert 'parser.add_argument("--body-size", type=int)' in content
     assert "def send_declared_length_request" not in content
     assert "connection.sock.sendall(request)" not in content
-    assert 'body = b"x" * args.body_size' in content
-    assert "args.body_size > 16 * 1024" in content
+    assert "class BoundedBody:" in content
+    assert "MAX_BODY_SIZE = 8 * 1024 * 1024 + 1" in content
+    assert "args.body_size > MAX_BODY_SIZE" in content
+    assert "Content-Length" in content
+    assert 'body = BoundedBody(args.body_size)' in content
     assert "except ssl.SSLError:" in content
     assert "connection.request(" in content
     assert "response = connection.getresponse()" in content
@@ -337,7 +340,7 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     oversized_command = oversized["ansible.builtin.command"]["argv"]
     assert "--body-file" not in oversized_command
     assert "--content-length" not in oversized_command
-    assert oversized_command[oversized_command.index("--body-size") + 1] == "2048"
+    assert oversized_command[oversized_command.index("--body-size") + 1] == "8388609"
     assert oversized["failed_when"] == (
         "oversized_request.stdout != '413' or oversized_request.rc != 0"
     )
@@ -348,4 +351,4 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     assert "observability-remote-write.error.log" not in verify_text
     assert "oversized_request.rc != 60" not in verify_text
     converge = (ROLE / "molecule/enabled/converge.yml").read_text()
-    assert "request_body_limit: 1k" in converge
+    assert "request_body_limit: 8m" in converge

@@ -85,6 +85,8 @@
 
           DIRECT_ADDRESS = "127.0.0.1"
           DIRECT_PORT = 9443
+          MAX_BODY_SIZE = 8 * 1024 * 1024 + 1
+          BODY_CHUNK_SIZE = 64 * 1024
 
 
           class DirectHTTPSConnection(http.client.HTTPSConnection):
@@ -93,6 +95,22 @@
                   self.sock = self._context.wrap_socket(
                       raw, server_hostname=self.host
                   )
+
+
+          class BoundedBody:
+              def __init__(self, size):
+                  self.remaining = size
+
+              def read(self, amount=-1):
+                  if self.remaining <= 0:
+                      return b""
+                  size = min(
+                      self.remaining,
+                      BODY_CHUNK_SIZE,
+                      BODY_CHUNK_SIZE if amount is None or amount < 0 else amount,
+                  )
+                  self.remaining -= size
+                  return b"x" * size
 
 
           def main():
@@ -107,12 +125,14 @@
               parser.add_argument("--body-size", type=int)
               args = parser.parse_args()
               if args.body_size is not None:
-                  if args.body or args.body_size <= 0 or args.body_size > 16 * 1024:
+                  if args.body or args.body_size <= 0 or args.body_size > MAX_BODY_SIZE:
                       return 2
-                  body = b"x" * args.body_size
+                  body = BoundedBody(args.body_size)
               else:
                   body = args.body.encode("utf-8")
               headers = {"Host": args.server_name}
+              if args.body_size is not None:
+                  headers["Content-Length"] = str(args.body_size)
               context = ssl.create_default_context(cafile=args.ca)
               context.load_cert_chain(certfile=args.cert, keyfile=args.key)
               connection = DirectHTTPSConnection(

@@ -80,7 +80,7 @@
           - --method
           - POST
           - --body-size
-          - '2048'
+          - '8388609'
           - --ca
           - /var/tmp/observability-control-plane-fixture/tls/ca.crt
           - --cert

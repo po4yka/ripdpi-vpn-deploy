@@ -36,7 +36,7 @@
           control_plane_dns_san: control.fixture.test
           prometheus_listen: 127.0.0.1:9090
           remote_write_path_prefix: /remote-write/v1/nodes
-          request_body_limit: 1k
+          request_body_limit: 8m
           request_concurrency: 4
           request_rate: 20r/s
           request_rate_burst: 40
