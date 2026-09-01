@@ -1,4 +1,4 @@
-# role: real-vps-awg-nat — recurring physical evidence provisioning
+# role: real-vps-awg-nat — external evidence provisioning
 
 ## Design decisions
 
@@ -9,9 +9,15 @@ only its dedicated client and forced-command SSH private keys.
 
 **Standalone research-role exception** — this role intentionally has no
 `vpn.enable_*` toggle and is never included by `site.yml`. It targets an
-off-fleet physical sentinel plus two separately inventoried evidence hosts;
+off-fleet persistent Linux sentinel plus two separately inventoried evidence hosts;
 putting it in the family deploy would collapse trust boundaries and distribute
-sentinel-only keys to production inventory. Its only entrypoint is
+sentinel-only keys to production inventory. A disposable systemd-capable Linux
+VM on the operator Mac's consumer uplink must not invoke this role: one-shot
+acceptance belongs to the separate protocol-liveness path because this role
+deliberately leaves recurring echo, peer and forced-command state installed.
+That disposable path is not operationally enabled until it has fail-closed VM
+isolation preflight, report-bound executor evidence, and exact de-onboarding.
+Its only entrypoint is
 `provision-real-vps-awg-nat.yml`, and `ansible/role-tiers.yml` classifies it as
 research. That playbook loads private input only from the root-readable SOPS
 material named by `VPN_SECRETS_FILE`; placement metadata remains in a separate
@@ -46,3 +52,8 @@ root-only variables file, and only then publishes source SHA/digest state.
   `make clean` must remove decrypted SOPS material after provisioning.
 - Exit 75 means an unavailable prerequisite/control path. A failed exact-source
   apply, restart, reload, or malformed transaction exits as product failure.
+- A local disposable sentinel belongs to the separate protocol-liveness lane,
+  not this recurring role. It must use a non-default isolated VM profile,
+  dedicated identities, no host mounts or published ports, and exact cleanup.
+  Do not transfer credentials until those checks and de-onboarding are enforced.
+  Record its consumer-uplink vantage without claiming a persistent physical host.

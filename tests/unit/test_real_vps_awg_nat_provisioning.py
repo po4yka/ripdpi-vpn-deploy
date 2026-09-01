@@ -76,12 +76,31 @@ def test_role_is_a_documented_standalone_research_exception() -> None:
     site = (ROOT / "ansible/playbooks/site.yml").read_text()
     role_notes = (ROLE / "CLAUDE.md").read_text()
     tiers = (ROOT / "ansible/role-tiers.yml").read_text()
+    runbook = (ROOT / "docs/REAL-VPS-AWG-NAT.md").read_text()
+    liveness = (ROOT / "docs/PROTOCOL-LIVENESS.md").read_text()
 
     assert "real-vps-awg-nat" not in site
     assert "Standalone research-role exception" in role_notes
     assert "intentionally has no" in role_notes
     assert "`vpn.enable_*` toggle" in role_notes
     assert "real-vps-awg-nat: research" in tiers
+    assert "sentinel to the Raspberry Pi" not in runbook
+    assert "physical Linux sentinel" not in runbook
+    assert "off-fleet physical sentinel" not in role_notes
+    normalized_runbook = " ".join(runbook.split())
+    normalized_role_notes = " ".join(role_notes.split())
+    for source in (normalized_runbook, normalized_role_notes):
+        assert "disposable systemd-capable Linux VM" in source
+        assert "consumer uplink" in source
+    assert "must not invoke `awg-evidence-provision`" in normalized_runbook
+    assert "not operationally enabled" in normalized_runbook
+    assert "de-onboarding" in normalized_runbook
+    assert "executor binding" in normalized_runbook
+    assert "fail-closed VM preflight" in normalized_runbook
+    assert "make install-liveness-sentinel" in liveness
+    assert "will not prove independent physical hardware" in normalized_runbook
+    assert "must not invoke this role" in normalized_role_notes
+    assert "not operationally enabled" in normalized_role_notes
 
 
 def test_role_fails_closed_and_never_embeds_private_material() -> None:
