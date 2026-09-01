@@ -275,9 +275,17 @@ def test_enabled_scenario_proves_idempotence_queue_age_and_authenticated_drain()
     )
     verify = (ROLE / "molecule" / "enabled" / "verify.yml").read_text(encoding="utf-8")
 
-    assert "    - idempotence" in molecule
-    assert "    - verify" in molecule
-    assert "    - destroy" in molecule
+    scenario = yaml.safe_load(molecule)["scenario"]["test_sequence"]
+    assert scenario == [
+        "dependency",
+        "syntax",
+        "create",
+        "prepare",
+        "converge",
+        "idempotence",
+        "verify",
+        "destroy",
+    ]
     baseline = verify.index(
         "Capture authenticated receiver and remote-write counter baseline"
     )

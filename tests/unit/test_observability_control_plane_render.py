@@ -193,3 +193,26 @@ def test_prometheus_restart_is_conditional_on_published_runtime_changes() -> Non
         "{{ 'restarted' if (_observability_prometheus_unit.changed or "
         "_observability_prometheus_activation.changed) else 'started' }}"
     )
+
+
+def test_enabled_receiver_waits_for_the_exact_get_refusal_before_red_path_checks() -> None:
+    verify = yaml.safe_load((ROLE / "molecule/enabled/verify.yml").read_text())
+    tasks = verify[0]["tasks"]
+    by_name = {task["name"]: task for task in tasks}
+    readiness = by_name[
+        "Wait for the receiver and assert the authenticated GET refusal"
+    ]
+    command = readiness["ansible.builtin.command"]["argv"]
+
+    assert command[0] == "/usr/bin/curl"
+    assert command[command.index("--noproxy") + 1] == "*"
+    assert command[command.index("--max-time") + 1] == "5"
+    assert readiness["failed_when"] is False
+    assert readiness["retries"] == 10
+    assert readiness["delay"] == 1
+    assert readiness["until"] == "get_request.stdout == '405'"
+
+    names = [task["name"] for task in tasks]
+    assert names.index(readiness["name"]) < names.index(
+        "Assert remote-write receiver rejects a CN path mismatch"
+    )
