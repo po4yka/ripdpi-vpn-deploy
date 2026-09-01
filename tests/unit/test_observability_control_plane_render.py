@@ -270,6 +270,19 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     )
     assert wrong_sni["failed_when"] == "wrong_sni.rc != 60"
 
+    mismatched_cn = next(
+        task
+        for task in client_tasks
+        if task["name"] == "Assert remote-write receiver rejects a CN path mismatch"
+    )
+    mismatch_command = mismatched_cn["ansible.builtin.command"]["argv"]
+    assert mismatch_command[mismatch_command.index("--cert") + 1].endswith(
+        "client-vpn-p0.crt"
+    )
+    assert mismatch_command[mismatch_command.index("--path") + 1].endswith(
+        "/vpn-p1"
+    )
+
     prepare = yaml.safe_load((ROLE / "molecule/enabled/prepare.yml").read_text())
     client = next(
         task

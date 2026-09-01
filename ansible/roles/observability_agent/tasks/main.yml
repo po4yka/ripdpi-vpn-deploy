@@ -128,11 +128,9 @@
         - path: "{{ observability_agent.config_dir }}"
           mode: "0755"
         - path: "{{ observability_agent.credential_dir }}"
-          group: observability-agent
-          mode: "0710"
+          mode: "0711"
         - path: "{{ observability_agent.credential_dir }}/generations"
-          group: observability-agent
-          mode: "0750"
+          mode: "0711"
         - path: "{{ observability_agent.wal_dir }}"
           owner: observability-agent
           group: observability-agent
@@ -201,8 +199,8 @@
           ansible.builtin.file:
             path: "{{ _observability_agent_credential_candidate.path }}"
             owner: root
-            group: observability-agent
-            mode: "0750"
+            group: root
+            mode: "0711"
             state: directory
           changed_when: false
           no_log: true
@@ -296,8 +294,8 @@
             content: "{{ _observability_agent_rendered_config }}"
             dest: "{{ _observability_agent_credential_candidate.path }}/prometheus.yml"
             owner: root
-            group: observability-agent
-            mode: "0640"
+            group: root
+            mode: "0644"
           no_log: true
           diff: false
           changed_when: false
@@ -380,8 +378,8 @@
               - _observability_agent_generation.stat.isdir | default(false)
               - not (_observability_agent_generation.stat.islnk | default(false))
               - _observability_agent_generation.stat.uid | int == 0
-              - _observability_agent_generation.stat.gr_name == 'observability-agent'
-              - _observability_agent_generation.stat.mode == '0750'
+              - _observability_agent_generation.stat.gr_name == 'root'
+              - _observability_agent_generation.stat.mode == '0711'
             fail_msg: Existing observability generation is unsafe.
           no_log: true
 
@@ -406,8 +404,8 @@
               - not (item.stat.islnk | default(false))
               - item.stat.uid | int == 0
               - item.stat.nlink | int == 1
-              - item.stat.mode == ('0640' if item.item == 'prometheus.yml' else '0600')
-              - item.item != 'prometheus.yml' or item.stat.gr_name == 'observability-agent'
+              - item.stat.mode == ('0644' if item.item == 'prometheus.yml' else '0600')
+              - item.stat.gr_name == 'root'
             fail_msg: Existing observability generation file is unsafe.
           loop: "{{ _observability_agent_generation_files.results }}"
           no_log: true

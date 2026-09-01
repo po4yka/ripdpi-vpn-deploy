@@ -57,13 +57,13 @@
           - --ca
           - /var/tmp/observability-control-plane-fixture/tls/ca.crt
           - --cert
-          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p1.crt
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.crt
           - --key
-          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p1.key
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
           - --server-name
           - ingest.fixture.test
           - --path
-          - /remote-write/v1/nodes/vpn-p0
+          - /remote-write/v1/nodes/vpn-p1
       register: mismatched_cn
       changed_when: false
       failed_when: mismatched_cn.stdout != '403'

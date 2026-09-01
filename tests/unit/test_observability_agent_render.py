@@ -94,11 +94,14 @@ def test_service_uses_systemd_credentials_and_bounded_agent_wal() -> None:
     assert "LoadCredential=client.crt:" in unit
     assert "LoadCredential=client.key:" in unit
     assert "LoadCredential=receiver-ca.crt:" in unit
-    assert "LoadCredential=prometheus.yml:" in unit
+    assert "LoadCredential=prometheus.yml:" not in unit
     assert "ExecStartPre=" not in unit
-    assert "--config.file={{ observability_agent.credential_dir }}/current/prometheus.yml" not in unit
+    assert (
+        "--config.file={{ observability_agent.credential_dir }}/current/prometheus.yml"
+        in unit
+    )
     assert "--config.file=${CREDENTIALS_DIRECTORY}/prometheus.yml" not in unit
-    assert "--config.file=%d/prometheus.yml" in unit
+    assert "--config.file=%d/prometheus.yml" not in unit
     assert "config_dir }}/prometheus.yml" not in unit
     assert " --agent " in unit
     assert " prometheus-observability-agent agent " not in unit
@@ -179,6 +182,8 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
     assert "- -purpose\n              - sslclient" in tasks
     assert "- x509\n              - x509" not in tasks
     assert "prometheus.yml" in tasks[publish:switch]
+    assert "mode: \"0711\"" in tasks
+    assert "'0644' if item.item == 'prometheus.yml' else '0600'" in tasks
     assert "Wait for observability agent local readiness" in tasks[switch:]
     assert "Link observability agent configuration to the active generation" not in tasks
 

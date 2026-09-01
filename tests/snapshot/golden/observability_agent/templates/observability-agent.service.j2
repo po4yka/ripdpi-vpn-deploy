@@ -10,8 +10,7 @@ Group=observability-agent
 LoadCredential=client.crt:/etc/credstore/observability-agent/current/client.crt
 LoadCredential=client.key:/etc/credstore/observability-agent/current/client.key
 LoadCredential=receiver-ca.crt:/etc/credstore/observability-agent/current/receiver-ca.crt
-LoadCredential=prometheus.yml:/etc/credstore/observability-agent/current/prometheus.yml
-ExecStart=/usr/local/bin/prometheus-observability-agent --agent --config.file=%d/prometheus.yml --web.listen-address=127.0.0.1:19090 --storage.agent.path=/var/lib/observability-agent/wal --storage.agent.wal-compression --storage.agent.retention.max-time=1h
+ExecStart=/usr/local/bin/prometheus-observability-agent --agent --config.file=/etc/credstore/observability-agent/current/prometheus.yml --web.listen-address=127.0.0.1:19090 --storage.agent.path=/var/lib/observability-agent/wal --storage.agent.wal-compression --storage.agent.retention.max-time=1h
 Restart=on-failure
 RestartSec=5s
 NoNewPrivileges=true
