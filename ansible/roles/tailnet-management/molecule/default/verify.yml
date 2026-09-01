@@ -32,7 +32,7 @@
 
     - name: Controller repeat is unchanged without an enrollment credential
       ansible.builtin.command:
-        cmd: /usr/bin/python3 /usr/local/lib/vpn-tailnet/tailnet-management-controller.py configure
+        cmd: /usr/bin/python3 /usr/local/lib/vpn-tailnet/tailnet-configure.py
       register: _tailnet_repeat
       changed_when: false
 

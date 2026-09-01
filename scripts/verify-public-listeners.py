@@ -34,6 +34,8 @@ class FirewallAcceptRule:
     loopback_only: bool
     established_only: bool
     protocols: frozenset[str]
+    source_addresses: frozenset[str]
+    input_interfaces: frozenset[str]
     unknown_predicate: bool
 
 
@@ -87,6 +89,30 @@ def _decode_contract(encoded: str) -> dict[PortSelector, str]:
     return selectors
 
 
+def _decode_tailnet_sources(encoded: str) -> frozenset[str]:
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+        document = json.loads(raw)
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Tailnet sources must be valid base64-encoded JSON") from exc
+    if not isinstance(document, list):
+        raise ValueError("Tailnet sources must be a JSON array")
+    result: set[str] = set()
+    for value in document:
+        if not isinstance(value, str):
+            raise ValueError("Tailnet source must be an address string")
+        try:
+            address = ipaddress.ip_address(value)
+        except ValueError as exc:
+            raise ValueError("Tailnet source must be a canonical address") from exc
+        network = ipaddress.ip_network(
+            "100.64.0.0/10" if address.version == 4 else "fd7a:115c:a1e0::/48")
+        if str(address) != value or address not in network or value in result:
+            raise ValueError("Tailnet source must be a unique canonical Tailnet address")
+        result.add(value)
+    return frozenset(result)
+
+
 def _run(*command: str) -> str:
     result = subprocess.run(command, check=True, capture_output=True, text=True)
     return result.stdout
@@ -135,6 +161,8 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
         loopback_only = False
         established_only = False
         protocols: set[str] = set()
+        source_addresses: set[str] = set()
+        input_interfaces: set[str] = set()
         unknown_predicate = False
 
         for expression in expressions:
@@ -168,6 +196,11 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
                     selector_value = right
                 elif payload_protocol in {"ip", "ip6"} and field == "saddr":
                     source_restricted = True
+                    values = _right_values(right)
+                    if values and all(isinstance(value, str) for value in values):
+                        source_addresses.update(str(value) for value in values)
+                    else:
+                        unknown_predicate = True
                 elif payload_protocol == "ip" and field == "protocol":
                     protocols.update(str(value) for value in _right_values(right))
                 elif payload_protocol == "ip6" and field == "nexthdr":
@@ -179,6 +212,11 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
             elif isinstance(meta, dict) and meta.get("key") in {"iif", "iifname"}:
                 input_restricted = True
                 loopback_only = right in {"lo", 1}
+                values = _right_values(right)
+                if values and all(isinstance(value, str) for value in values):
+                    input_interfaces.update(str(value) for value in values)
+                elif not loopback_only:
+                    unknown_predicate = True
             elif isinstance(conntrack, dict) and conntrack.get("key") == "state":
                 states = {str(value) for value in _right_values(right)}
                 established_only = bool(states) and states <= {"established", "related"}
@@ -198,6 +236,8 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
                 loopback_only=loopback_only,
                 established_only=established_only,
                 protocols=frozenset(protocols),
+                source_addresses=frozenset(source_addresses),
+                input_interfaces=frozenset(input_interfaces),
                 unknown_predicate=unknown_predicate,
             )
         )
@@ -256,10 +296,12 @@ def _violations(
     firewall: list[FirewallAcceptRule],
     sockets: set[tuple[str, int]],
     ssh_port: int,
+    tailnet_sources: frozenset[str],
 ) -> list[str]:
     violations: list[str] = []
     conforming: dict[PortSelector, int] = {selector: 0 for selector in expected}
     ssh = PortSelector("tcp", ssh_port, ssh_port)
+    tailnet_seen = {source: 0 for source in tailnet_sources}
     for rule in firewall:
         selector = rule.selector
         if selector is None:
@@ -270,6 +312,15 @@ def _violations(
             violations.append("unexpected broad firewall accept")
             continue
         if selector == ssh:
+            tailnet_rule = (
+                rule.source_restricted and rule.input_restricted
+                and rule.input_interfaces == frozenset({"tailscale0"})
+                and len(rule.source_addresses) == 1
+                and rule.source_addresses <= tailnet_sources
+                and not rule.unknown_predicate)
+            if tailnet_rule:
+                tailnet_seen[next(iter(rule.source_addresses))] += 1
+                continue
             if (
                 not rule.source_restricted
                 or rule.input_restricted
@@ -297,6 +348,11 @@ def _violations(
             violations.append(f"missing firewall {selector.label}")
         elif count > expected_count:
             violations.append(f"duplicate firewall {selector.label}")
+    for _source, count in sorted(tailnet_seen.items()):
+        if count == 0:
+            violations.append("missing Tailnet SSH source rule")
+        elif count > 1:
+            violations.append("duplicate Tailnet SSH source rule")
     for selector in sorted(expected):
         for port in range(selector.start, selector.end + 1):
             if (selector.protocol, port) in sockets:
@@ -316,9 +372,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--contract-b64", required=True)
     parser.add_argument("--ssh-port", required=True, type=_port)
+    parser.add_argument("--tailnet-sources-b64", required=True)
     args = parser.parse_args()
     try:
         expected = _decode_contract(args.contract_b64)
+        tailnet_sources = _decode_tailnet_sources(args.tailnet_sources_b64)
         firewall = _firewall_rules(
             _run("nft", "-j", "list", "chain", "inet", "filter", "input")
         )
@@ -327,7 +385,7 @@ def main() -> int:
         print(f"verify-public-listeners: {exc}", file=sys.stderr)
         return 2
 
-    violations = _violations(expected, firewall, sockets, args.ssh_port)
+    violations = _violations(expected, firewall, sockets, args.ssh_port, tailnet_sources)
     if violations:
         print("\n".join(violations))
         return 1

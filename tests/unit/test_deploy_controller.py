@@ -486,6 +486,9 @@ def test_make_refuses_command_line_tailnet_credential_before_expansion(
 
 
 def test_tailnet_credential_reaches_only_one_node_site_playbook(workspace):
+    write(workspace["root"] / "ansible/group_vars/vpn-p0.yml",
+          "vpn: {enable_tailnet_management: true}\n")
+    commit_fixture(workspace)
     workspace["env"]["TAILSCALE_AUTH_KEY"] = "tskey-auth-fixture_12345678"
     result = invoke(workspace, target="deploy", limit="node-one")
 
@@ -528,6 +531,20 @@ def test_tailnet_credential_refuses_invalid_or_multi_node_use_before_ssh(
 
     assert result.returncode != 0
     assert "Tailnet enrollment credential invalid" in result.stderr
+    assert not any(entry["program"] in ("ssh", "ansible-playbook") for entry in calls(workspace))
+
+
+@pytest.mark.parametrize("target", ["deploy", "dry-run"])
+def test_tailnet_enabled_multi_node_refuses_without_credential_before_ssh(workspace, target):
+    for cohort in ("vpn-p0", "vpn-p1p2"):
+        write(workspace["root"] / f"ansible/group_vars/{cohort}.yml",
+              "vpn: {enable_tailnet_management: true}\n")
+    commit_fixture(workspace)
+
+    result = invoke(workspace, target=target, limit="")
+
+    assert result.returncode != 0
+    assert "Tailnet management requires one exact inventory node" in result.stderr
     assert not any(entry["program"] in ("ssh", "ansible-playbook") for entry in calls(workspace))
 
 

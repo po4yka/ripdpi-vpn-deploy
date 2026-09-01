@@ -208,8 +208,7 @@
     - name: Guard — validate exact Tailnet management source addresses
       ansible.builtin.command:
         cmd: >-
-          python3 {{ playbook_dir }}/../../scripts/tailnet-management-controller.py
-          validate-sources
+          python3 {{ playbook_dir }}/../../scripts/tailnet-validate-sources.py
         stdin: "{{ tailnet_management.approved_sources | default([]) | to_json }}"
       delegate_to: localhost
       become: false
@@ -242,10 +241,6 @@
     - role: firewall
       tags: [firewall, always]
 
-    - role: tailnet-management
-      when: vpn.enable_tailnet_management | default(false)
-      tags: [tailnet-management, security]
-
     - role: intrusion_prevention
       when: (security_controls | default({})).fail2ban | default(false)
       tags: [security, intrusion-prevention]
@@ -257,6 +252,10 @@
          (vpn.enable_cascade_ingress | default(false))) and
         not (vpn_subscription_only | default(false))
       tags: [geodata, xray]
+
+    - role: tailnet-management
+      when: vpn.enable_tailnet_management | default(false)
+      tags: [tailnet-management, security]
 
     # Verify the optional egress before any Xray render or handler flush can
     # activate routes that depend on it. The xray tag must retain this gate.

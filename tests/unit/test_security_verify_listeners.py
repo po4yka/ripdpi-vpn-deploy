@@ -38,6 +38,7 @@ def _nft_rule(
     target: int | str | None = None,
     *,
     source_restricted: bool = False,
+    source_address: str | None = None,
     input_interface: str | None = None,
     broad_protocol: str | None = None,
 ) -> dict:
@@ -61,13 +62,15 @@ def _nft_rule(
                 }
             }
         )
-    if source_restricted:
+    if source_restricted or source_address is not None:
+        source_value = source_address or "@allowed_sources"
+        source_protocol = "ip6" if ":" in source_value else "ip"
         expressions.append(
             {
                 "match": {
                     "op": "in",
-                    "left": {"payload": {"protocol": "ip", "field": "saddr"}},
-                    "right": "@allowed_sources",
+                    "left": {"payload": {"protocol": source_protocol, "field": "saddr"}},
+                    "right": source_value,
                 }
             }
         )
@@ -104,6 +107,7 @@ def _verify_listeners(
     *,
     nft_output: str | None = None,
     ssh_port: int = 22,
+    tailnet_sources: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir(exist_ok=True)
@@ -112,6 +116,7 @@ def _verify_listeners(
         executable.write_text(f'#!/bin/sh\nprintf "%s\\n" "${variable}"\n', encoding="utf-8")
         executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
     encoded_contract = base64.b64encode(json.dumps(contract).encode()).decode()
+    encoded_tailnet = base64.b64encode(json.dumps(tailnet_sources or []).encode()).decode()
     env = {
         **os.environ,
         "FAKE_SS_OUTPUT": ss_output,
@@ -125,6 +130,8 @@ def _verify_listeners(
             encoded_contract,
             "--ssh-port",
             str(ssh_port),
+            "--tailnet-sources-b64",
+            encoded_tailnet,
         ],
         capture_output=True,
         env=env,
@@ -147,6 +154,7 @@ def test_playbook_runs_repository_listener_verifier() -> None:
     assert "--ssh-port {{ security_effective_ssh_ports[0] }}" in task[
         "ansible.builtin.script"
     ]["cmd"]
+    assert "--tailnet-sources-b64" in task["ansible.builtin.script"]["cmd"]
     assert task["failed_when"] == "security_unexpected_public_listeners.rc != 0"
 
 
@@ -341,6 +349,47 @@ def test_source_scoped_ssh_rule_is_allowed(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("source", ["100.64.10.20", "fd7a:115c:a1e0::1234"])
+def test_exact_tailnet_source_and_interface_scoped_ssh_rule_is_allowed(
+    tmp_path: Path, source: str
+) -> None:
+    result = _verify_listeners(
+        tmp_path, [], "",
+        nft_output=_nft_document(_nft_rule(
+            "tcp", 22, source_address=source, input_interface="tailscale0")),
+        tailnet_sources=[source])
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(("source", "interface"), [
+    ("100.64.10.21", "tailscale0"), ("100.64.10.20", "eth0")])
+def test_wrong_tailnet_source_or_interface_scoped_ssh_rule_is_rejected(
+    tmp_path: Path, source: str, interface: str
+) -> None:
+    result = _verify_listeners(
+        tmp_path, [], "",
+        nft_output=_nft_document(_nft_rule(
+            "tcp", 22, source_address=source, input_interface=interface)),
+        tailnet_sources=["100.64.10.20"])
+    assert result.returncode == 1
+    assert "unexpected unrestricted firewall tcp 22" in result.stdout
+    assert "missing Tailnet SSH source rule" in result.stdout
+
+
+@pytest.mark.parametrize("copies", [0, 2])
+def test_missing_or_duplicate_tailnet_ssh_source_rule_is_rejected(
+    tmp_path: Path, copies: int
+) -> None:
+    rule = _nft_rule("tcp", 22, source_address="100.64.10.20",
+                     input_interface="tailscale0")
+    result = _verify_listeners(
+        tmp_path, [], "", nft_output=_nft_document(*(rule for _ in range(copies))),
+        tailnet_sources=["100.64.10.20"])
+    assert result.returncode == 1
+    expected = "missing" if copies == 0 else "duplicate"
+    assert f"{expected} Tailnet SSH source rule" in result.stdout
 
 
 def test_custom_source_scoped_ssh_port_is_allowed(tmp_path: Path) -> None:
