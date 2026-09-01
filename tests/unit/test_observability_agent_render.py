@@ -261,11 +261,16 @@ def test_self_scrape_follows_the_configured_loopback_listener_and_drops_endpoint
 
 def test_disable_removes_only_observability_agent_owned_state() -> None:
     tasks = (ROLE / "tasks" / "main.yml").read_text(encoding="utf-8")
+    disable = tasks[
+        tasks.index("Disable observability agent when feature is disabled") :
+        tasks.index("Configure observability agent when feature is enabled")
+    ]
 
     assert "Remove observability agent owned runtime state" in tasks
     assert "/var/lib/node_exporter/textfile/observability-agent.prom" not in tasks
     assert "prometheus-node-exporter" not in tasks
-    assert "watchdog" not in tasks
+    assert "/var/lib/vpn-watchdog/state" not in disable
+    assert "/var/lib/vpn-backup" not in disable
 
 
 def test_enabled_scenario_proves_idempotence_queue_age_and_authenticated_drain() -> (

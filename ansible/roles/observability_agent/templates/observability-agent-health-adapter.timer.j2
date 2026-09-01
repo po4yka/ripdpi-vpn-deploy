@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh RIPDPI watchdog and backup health metrics
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=1min
+RandomizedDelaySec=15
+Persistent=true
+
+[Install]
+WantedBy=timers.target
