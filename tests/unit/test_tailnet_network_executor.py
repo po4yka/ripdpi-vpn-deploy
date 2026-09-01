@@ -298,24 +298,43 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
     runtime = Path(tempfile.mkdtemp(prefix="tnexec-", dir="/private/tmp"))
     sock, root = runtime / "executor.sock", runtime / "state-root"
     env = {**os.environ, "UPCLOUD_TOKEN": "test-token"}
+    command = [
+        sys.executable,
+        str(SCRIPT),
+        "serve",
+        "--target",
+        str(target_path),
+        "--state",
+        str(state_path),
+        "--terraform",
+        str(binary),
+        "--terraform-sha256",
+        __import__("hashlib").sha256(binary.read_bytes()).hexdigest(),
+        "--receipt-dir",
+        str(root),
+        "--socket",
+    ]
+    # AF_UNIX bind fails only after the daemon has persisted its PID identity.
+    prebind = subprocess.run(
+        [*command, str(runtime / ("x" * 120))], env=env, capture_output=True, text=True
+    )
+    assert prebind.returncode == 1 and (root / "daemon.json").exists()
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_recovery", controller_path
+    )
+    controller = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(controller)
+    controller._remove_verified_stale_executor(
+        root,
+        sock,
+        __import__("hashlib").sha256(target_path.read_bytes()).hexdigest(),
+        socket_required=False,
+    )
+    assert not (root / "daemon.json").exists()
     process = subprocess.Popen(
-        [
-            sys.executable,
-            str(SCRIPT),
-            "serve",
-            "--target",
-            str(target_path),
-            "--state",
-            str(state_path),
-            "--terraform",
-            str(binary),
-            "--terraform-sha256",
-            __import__("hashlib").sha256(binary.read_bytes()).hexdigest(),
-            "--receipt-dir",
-            str(root),
-            "--socket",
-            str(sock),
-        ],
+        [*command, str(sock)],
         env=env,
     )
     try:

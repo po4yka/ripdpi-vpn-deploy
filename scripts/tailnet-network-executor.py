@@ -554,6 +554,7 @@ def serve(args):
     if path.exists() or path.is_symlink():
         raise ExecutorError("socket-refused")
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    bound = False
     try:
         executor.store.write_pid(
             {
@@ -563,6 +564,7 @@ def serve(args):
             }
         )
         listener.bind(str(path))
+        bound = True
         os.chmod(path, 0o600)
         listener.listen(8)
         listener.setblocking(False)
@@ -621,10 +623,11 @@ def serve(args):
             path.unlink()
         except FileNotFoundError:
             pass
-        try:
-            executor.store.pid.unlink()
-        except FileNotFoundError:
-            pass
+        if bound:
+            try:
+                executor.store.pid.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def main():
