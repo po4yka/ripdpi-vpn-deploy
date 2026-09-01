@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 
@@ -133,19 +135,24 @@ def test_renderer_accepts_shared_textfile_directory_and_publishes_collector_read
     )
 
     assert result.returncode == 0, result.stderr
-    assert output.stat().st_mode & 0o777 == 0o640
-    assert output.stat().st_gid == shared.stat().st_gid
-    assert (
-        subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "open(__import__('sys').argv[1]).read()",
-                str(output),
-            ]
-        ).returncode
-        == 0
-    )
+    output_stat = output.stat()
+    assert stat.S_IMODE(output_stat.st_mode) == 0o640
+    assert output_stat.st_gid == shared.stat().st_gid
+    assert output_stat.st_mode & stat.S_IRGRP
+    if os.geteuid() == 0:
+        # Exercise the collector's group-read contract with a distinct uid.
+        reader = (
+            "import os,sys; "
+            "os.setgroups([int(sys.argv[2])]); "
+            "os.setgid(int(sys.argv[2])); os.setuid(65534); "
+            "open(sys.argv[1]).read()"
+        )
+        assert (
+            subprocess.run(
+                [sys.executable, "-c", reader, str(output), str(output_stat.st_gid)]
+            ).returncode
+            == 0
+        )
 
 
 def test_renderer_exports_never_seen_separately_from_seen_target(
@@ -158,6 +165,85 @@ def test_renderer_exports_never_seen_separately_from_seen_target(
     text = (tmp_path / "expected.prom").read_text()
     assert 'node="vpn-p2",role="edge",state="never-seen"' in text
     assert 'node="vpn-p0",role="edge",state="seen"' in text
+
+
+def test_promtool_rules_require_matching_family_and_respect_ever_seen(
+    tmp_path: Path,
+) -> None:
+    promtool = os.environ.get("PROMTOOL")
+    if not promtool:
+        import pytest
+
+        pytest.skip("PROMTOOL is required for Prometheus rule evaluation")
+
+    inventory = _inventory()
+    inventory["targets"][0]["ever_seen"] = False
+    (tmp_path / "rules.yml").write_text(
+        render_template(
+            ROLE / "templates/observability-expected-target-rules.yml.j2",
+            {
+                "observability_control_plane": {
+                    "expected_targets": {"inventory": inventory}
+                }
+            },
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "rules.test.yml").write_text(
+        "\n".join(
+            [
+                "rule_files:",
+                "  - rules.yml",
+                "evaluation_interval: 1m",
+                "tests:",
+                "  - interval: 1m",
+                "    input_series:",
+                '      - series: \'vpn_observability_expected_target{node="vpn-p0",role="edge"}\'',
+                "        values: '1 1 1 1 1'",
+                '      - series: \'vpn_observability_expected_target{node="vpn-p2",role="edge"}\'',
+                "        values: '1 1 1 1 1'",
+                '      - series: \'vpn_observability_expected_target_ever_seen{node="vpn-p0",role="edge",state="never-seen"}\'',
+                "        values: '1 1 1 1 1'",
+                '      - series: \'vpn_observability_expected_target_ever_seen{node="vpn-p2",role="edge",state="seen"}\'',
+                "        values: '1 1 1 1 1'",
+                '      - series: \'vpn_observability_evidence_state{node="vpn-p0",role="edge",state="fresh"}\'',
+                "        values: '1 1 1 1 1'",
+                '      - series: \'vpn_observability_evidence_state{node="vpn-p2",role="edge",state="fresh"}\'',
+                "        values: '1 1 1 1 1'",
+                '      - series: \'unrelated_metric{node="vpn-p0",role="edge"}\'',
+                "        values: '1 1 1 1 1'",
+                '      - series: \'vpn_watchdog_collection_success{node="vpn-p2",role="edge"}\'',
+                "        values: '1 1 1 1 1'",
+                "    alert_rule_test:",
+                "      - eval_time: 4m",
+                "        alertname: ObservabilityRequiredFamilyMissing_vpn_p0_edge_vpn_watchdog_collection_success",
+                "        exp_alerts:",
+                "          - exp_labels: {severity: warning, node: vpn-p0, role: edge}",
+                "            exp_annotations: {summary: Required bounded evidence family is absent for an expected target.}",
+                "      - eval_time: 4m",
+                "        alertname: ObservabilityExpectedTargetNeverSeen_vpn_p0_edge",
+                "        exp_alerts:",
+                "          - exp_labels: {severity: warning, node: vpn-p0, role: edge, state: never-seen}",
+                "            exp_annotations: {summary: Expected target has never produced its required evidence.}",
+                "      - eval_time: 4m",
+                "        alertname: ObservabilityRequiredFamilyMissing_vpn_p2_edge_vpn_watchdog_collection_success",
+                "        exp_alerts: []",
+                "      - eval_time: 4m",
+                "        alertname: ObservabilityExpectedTargetNeverSeen_vpn_p2_edge",
+                "        exp_alerts: []",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [promtool, "test", "rules", "rules.test.yml"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_resource_adapter_reports_source_deploy_resource_and_pipeline_states(
@@ -307,6 +393,15 @@ def test_role_wires_only_opted_in_expected_targets_into_immutable_config() -> No
     assert "observability-control-plane-adapter.timer" in disable
     assert "/usr/local/libexec/observability-expected-target-renderer.py" in disable
     assert "observability-control-plane.prom" in disable
+    enabled_scenario = yaml.safe_load(
+        (ROLE / "molecule/enabled/molecule.yml").read_text()
+    )
+    assert "side_effect" in enabled_scenario["scenario"]["test_sequence"]
+    opt_out = (ROLE / "molecule/enabled/side_effect.yml").read_text()
+    enabled_verify = (ROLE / "molecule/enabled/verify.yml").read_text()
+    assert "expected-targets-disable.yml" in opt_out
+    assert "observability-prometheus" in enabled_verify
+    assert "observability-control-plane.prom" in enabled_verify
 
 
 def test_prometheus_config_references_only_the_immutable_rules_generation() -> None:

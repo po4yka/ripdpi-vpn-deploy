@@ -34,3 +34,27 @@
         owner: root
         group: root
         mode: '0644'
+
+    - name: Seed expected-target and control-plane owned outputs for disable cleanup
+      ansible.builtin.copy:
+        dest: "/var/lib/node_exporter/textfile/{{ item }}"
+        content: stale
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - observability-expected-targets.prom
+        - observability-control-plane.prom
+
+    - name: Seed expected-target owned units and binaries for disable cleanup
+      ansible.builtin.copy:
+        dest: "{{ item }}"
+        content: stale
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - /etc/systemd/system/observability-control-plane-adapter.service
+        - /etc/systemd/system/observability-control-plane-adapter.timer
+        - /usr/local/libexec/observability-control-plane-adapter.py
+        - /usr/local/libexec/observability-expected-target-renderer.py

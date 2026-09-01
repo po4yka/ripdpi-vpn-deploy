@@ -29,6 +29,29 @@
       delay: 1
       until: get_request.stdout == '405'
 
+    - name: Assert Prometheus remains active after expected-target opt-out
+      ansible.builtin.command:
+        argv: [systemctl, is-active, --quiet, observability-prometheus]
+      changed_when: false
+
+    - name: Assert expected-target opt-out removed only its owned surfaces
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/systemd/system/observability-control-plane-adapter.service
+        - /etc/systemd/system/observability-control-plane-adapter.timer
+        - /usr/local/libexec/observability-control-plane-adapter.py
+        - /usr/local/libexec/observability-expected-target-renderer.py
+        - /var/lib/node_exporter/textfile/observability-expected-targets.prom
+        - /var/lib/node_exporter/textfile/observability-control-plane.prom
+      register: expected_target_opt_out_surfaces
+      failed_when: expected_target_opt_out_surfaces.stat.exists
+
+    - name: Assert TSDB remains after expected-target opt-out
+      ansible.builtin.command:
+        argv: [test, -d, /var/lib/observability-prometheus]
+      changed_when: false
+
     - name: Assert protocol-liveness adapter timer is enabled and active
       ansible.builtin.command:
         argv: [systemctl, is-active, --quiet, observability-protocol-liveness-adapter.timer]

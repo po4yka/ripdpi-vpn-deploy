@@ -1,0 +1,13 @@
+---
+- name: Disable only expected-target observation artifacts after enabled convergence
+  hosts: all
+  become: true
+  tasks:
+    - name: Converge expected-target opt-out while preserving the receiver
+      ansible.builtin.include_role:
+        name: observability_control_plane
+        tasks_from: expected-targets-disable.yml
+      vars:
+        observability_control_plane:
+          expected_targets:
+            textfile_directory: /var/lib/node_exporter/textfile
