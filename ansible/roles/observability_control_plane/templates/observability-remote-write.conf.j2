@@ -30,7 +30,7 @@ server {
     access_log off;
     error_log /var/log/nginx/observability-remote-write.error.log warn;
 
-    location ~ ^/remote-write/v1/nodes/([A-Za-z0-9][A-Za-z0-9_.-]{0,63})$ {
+    location ~ "^/remote-write/v1/nodes/([A-Za-z0-9][A-Za-z0-9_.-]{0,63})$" {
         if ($request_method != POST) { return 405; }
         if ($ssl_client_verify != SUCCESS) { return 403; }
         if ($observability_remote_write_node = "") { return 403; }

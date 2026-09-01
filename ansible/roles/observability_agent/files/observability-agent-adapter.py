@@ -180,6 +180,7 @@ def _atomic_write(path: Path, content: str) -> None:
             try:
                 os.unlink(temporary, dir_fd=parent_fd)
             except FileNotFoundError:
+                # A concurrent cleanup may remove the unpublished temporary name.
                 pass
         os.close(parent_fd)
 

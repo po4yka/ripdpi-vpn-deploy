@@ -55,7 +55,7 @@ def test_ingress_is_only_the_bounded_authenticated_write_path() -> None:
         "limit_conn observability_remote_write_conn 4;",
         "rate=20r/s;",
         "burst=40 nodelay;",
-        "location ~ ^/remote-write/v1/nodes/",
+        'location ~ "^/remote-write/v1/nodes/',
         "if ($request_method != POST) { return 405; }",
         "if ($observability_remote_write_node != $1) { return 403; }",
         "proxy_pass http://127.0.0.1:9090/api/v1/write;",

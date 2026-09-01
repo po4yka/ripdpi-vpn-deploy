@@ -55,7 +55,7 @@ def test_sender_constructs_exact_node_bound_write_path_and_sni() -> None:
 def test_sender_template_renders_node_path_without_credential_values() -> None:
     template = (ROLE / "templates" / "prometheus.yml.j2").read_text(encoding="utf-8")
     rendered = (
-        Environment(undefined=StrictUndefined)
+        Environment(undefined=StrictUndefined, autoescape=True)
         .from_string(template)
         .render(
             observability_agent={
@@ -94,10 +94,13 @@ def test_service_uses_systemd_credentials_and_bounded_agent_wal() -> None:
     assert "LoadCredential=client.crt:" in unit
     assert "LoadCredential=client.key:" in unit
     assert "LoadCredential=receiver-ca.crt:" in unit
+    assert "LoadCredential=prometheus.yml:" in unit
     assert (
-        "ExecStartPre=/usr/local/bin/promtool-observability-agent check config --agent"
+        "ExecStartPre=/usr/local/bin/promtool-observability-agent check config --agent --syntax-only %d/prometheus.yml"
         in unit
     )
+    assert "--config.file=%d/prometheus.yml" in unit
+    assert "config_dir }}/prometheus.yml" not in unit
     assert " --agent " in unit
     assert " prometheus-observability-agent agent " not in unit
     assert "--storage.agent.retention.max-size=" not in unit
@@ -176,6 +179,7 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
     assert "- x509\n              - x509" not in tasks
     assert "prometheus.yml" in tasks[publish:switch]
     assert "Wait for observability agent local readiness" in tasks[switch:]
+    assert "Link observability agent configuration to the active generation" not in tasks
 
 
 def test_agent_policy_bounds_and_first_activation_rollback_are_fail_closed() -> None:

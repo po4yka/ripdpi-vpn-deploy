@@ -444,15 +444,6 @@
           changed_when: false
           no_log: true
 
-    - name: Link observability agent configuration to the active generation
-      ansible.builtin.file:
-        src: "{{ observability_agent.credential_dir }}/current/prometheus.yml"
-        dest: "{{ observability_agent.config_dir }}/prometheus.yml"
-        owner: root
-        group: observability-agent
-        state: link
-        force: true
-
     - name: Install schema-2 manifest adapter
       ansible.builtin.copy:
         src: observability-agent-adapter.py
@@ -567,13 +558,6 @@
         - name: Remove failed first observability generation activation
           ansible.builtin.file:
             path: "{{ observability_agent.credential_dir }}/current"
-            state: absent
-          when: not (_observability_agent_previous_generation.stat.islnk | default(false))
-          no_log: true
-
-        - name: Remove dangling failed first observability agent configuration
-          ansible.builtin.file:
-            path: "{{ observability_agent.config_dir }}/prometheus.yml"
             state: absent
           when: not (_observability_agent_previous_generation.stat.islnk | default(false))
           no_log: true
