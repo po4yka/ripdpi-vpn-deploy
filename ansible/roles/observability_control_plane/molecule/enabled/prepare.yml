@@ -11,6 +11,12 @@
         group: root
         mode: '0700'
 
+    - name: Install curl for the bounded mTLS fixture client
+      ansible.builtin.apt:
+        name: curl
+        state: present
+        update_cache: false
+
     - name: Create local pinned archive and mTLS fixture
       ansible.builtin.shell: |
         set -eu
@@ -92,6 +98,10 @@
           CURL_PROCESS_TIMEOUT = 6
 
 
+          class FixtureTransportError(OSError):
+              pass
+
+
           class DirectHTTPSConnection(http.client.HTTPSConnection):
               def connect(self):
                   raw = socket.create_connection((DIRECT_ADDRESS, DIRECT_PORT), timeout=5)
@@ -148,9 +158,13 @@
                       timeout=CURL_PROCESS_TIMEOUT,
                   )
               except subprocess.TimeoutExpired as error:
-                  raise OSError("oversized request timed out") from error
+                  raise FixtureTransportError("curl_timeout") from error
+              except FileNotFoundError as error:
+                  raise FixtureTransportError("curl_unavailable") from error
+              if completed.returncode == 28:
+                  raise FixtureTransportError("curl_timeout")
               if completed.returncode != 0:
-                  raise OSError("oversized request failed")
+                  raise FixtureTransportError("curl_failed")
               try:
                   status = completed.stdout.decode("ascii")
               except UnicodeDecodeError as error:
@@ -195,6 +209,9 @@
                           connection.close()
                   print(status)
                   return 0
+              except FixtureTransportError as error:
+                  print(str(error), file=sys.stderr)
+                  return 2
               except ssl.SSLError:
                   return 60
               except (OSError, http.client.HTTPException, ValueError):

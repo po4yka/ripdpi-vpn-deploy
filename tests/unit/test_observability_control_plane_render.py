@@ -324,6 +324,16 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
         == "/var/tmp/observability-control-plane-fixture/mtls-client.py"
     ]
     prepare = yaml.safe_load((ROLE / "molecule/enabled/prepare.yml").read_text())
+    curl_dependency = next(
+        task
+        for task in prepare[0]["tasks"]
+        if task["name"] == "Install curl for the bounded mTLS fixture client"
+    )
+    assert curl_dependency["ansible.builtin.apt"] == {
+        "name": "curl",
+        "state": "present",
+        "update_cache": False,
+    }
     client = next(
         task
         for task in prepare[0]["tasks"]
@@ -348,6 +358,8 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     assert '"@-",' in content
     assert 'input=b"x" * args.body_size' in content
     assert "stderr=subprocess.DEVNULL" in content
+    assert 'raise FixtureTransportError("curl_unavailable")' in content
+    assert "print(str(error), file=sys.stderr)" in content
     assert "asyncio" not in content
     assert "threading" not in content
     assert "makefile" not in content
@@ -363,6 +375,28 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     assert oversized["failed_when"] == (
         "oversized_request.stdout != '413' or oversized_request.rc != 0"
     )
+
+
+def test_enabled_fixture_classifies_a_missing_curl_binary_without_raw_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    namespace = _fixture_client_namespace()
+
+    def unavailable(*_args: object, **_kwargs: object) -> object:
+        raise FileNotFoundError("do not expose this path")
+
+    monkeypatch.setattr(namespace["subprocess"], "run", unavailable)
+    args = argparse.Namespace(
+        server_name="fixture.test",
+        path="/remote-write/v1/nodes/fixture",
+        method="POST",
+        ca="ca.pem",
+        cert="cert.pem",
+        key="key.pem",
+        body_size=1,
+    )
+    with pytest.raises(OSError, match="curl_unavailable"):
+        namespace["send_oversized_request"](args, None)
 
 
 def _read_headers(connection: socket.socket) -> bytes:
@@ -513,7 +547,7 @@ def test_enabled_fixture_refuses_tls_truncation_after_an_http_413(
         tmp_path, reject_and_truncate
     )
     try:
-        with pytest.raises(OSError, match="oversized request failed"):
+        with pytest.raises(OSError, match="curl_failed"):
             _run_oversized_request(namespace, port, certificate, private_key, 65537)
     finally:
         thread.join(timeout=1)
@@ -547,7 +581,7 @@ def test_enabled_fixture_refuses_a_silent_tls_response(tmp_path: Path) -> None:
 
     port, certificate, private_key, thread = _tls_fixture_server(tmp_path, hold_open)
     try:
-        with pytest.raises(OSError, match="oversized request (timed out|failed)"):
+        with pytest.raises(OSError, match="curl_timeout"):
             _run_oversized_request(
                 namespace, port, certificate, private_key, 1, timeout=0.05
             )
