@@ -310,7 +310,9 @@ class FakeRunner:
         elif argv[0].endswith("systemctl") and command == [
             "show",
             "vpn-tailnet-recover.service",
-            "--property=Result,ExecMainCode,ExecMainStatus",
+            "--property=Result",
+            "--property=ExecMainCode",
+            "--property=ExecMainStatus",
             "--no-pager",
         ]:
             self.recovery_show_calls += 1
