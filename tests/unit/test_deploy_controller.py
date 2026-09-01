@@ -38,7 +38,8 @@ def workspace(tmp_path):
     (root / "Makefile").write_bytes((ROOT / "Makefile").read_bytes())
     for name in ("fleet_inspection.py", "deploy-source-identity.sh", "sshd_bundle_source.py", "sshd_contexts.py",
                  "sshd_transaction_limits.py",
-                 "validate-ansible-extra-vars.py", "deploy-controller.py", "bootstrap_readiness.py"):
+                 "validate-ansible-extra-vars.py", "deploy-controller.py", "bootstrap_readiness.py",
+                 "network-exposure-gate.py"):
         source = ROOT / "scripts" / name
         if source.exists():
             target = root / "scripts" / name
@@ -156,6 +157,20 @@ def invoke(workspace, target="dry-run", limit="", context_pairs=None, **values):
 def calls(workspace):
     path = workspace["calls"]
     return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def network_exposure_override(workspace, *, mode="canary"):
+    artifact = write(workspace["root"].parent / "reviewed-policy.json", "synthetic signed policy\n")
+    key = write(workspace["root"].parent / "reviewed-key.pem", "synthetic public key\n")
+    promoted = mode in {"canary", "enforce"}
+    value = {"network_exposure_gate": {
+        "mode": mode, "artifact": str(artifact), "trusted_key": str(key),
+        "trusted_key_sha256": "a" * 64, "source_id": "reviewed-source",
+        "promotion_approved": promoted, "promotion_digest": "b" * 64 if promoted else "",
+        "authorized_hosts": ["node-one"] if promoted else [],
+    }}
+    override = write(workspace["root"].parent / "network-exposure.yml", yaml.safe_dump(value))
+    return override, artifact, key
 
 
 def assert_recovery_preflight(entry, address):
@@ -491,6 +506,115 @@ def test_every_local_input_is_validated_before_first_ssh(workspace, fault):
     result = invoke(workspace)
     assert result.returncode != 0
     assert not any(entry["program"] in ("ssh", "ansible-playbook") for entry in calls(workspace))
+
+
+@pytest.mark.parametrize("fault", ["artifact-mode", "artifact-symlink", "key-mode", "key-symlink"])
+def test_network_exposure_inputs_refuse_before_transport_or_audit(workspace, fault):
+    override, artifact, key = network_exposure_override(workspace)
+    target = artifact if fault.startswith("artifact-") else key
+    if fault.endswith("mode"):
+        target.chmod(0o640)
+    else:
+        replacement = target.with_suffix(target.suffix + ".replacement")
+        replacement.write_bytes(target.read_bytes())
+        replacement.chmod(0o600)
+        target.unlink()
+        target.symlink_to(replacement)
+    result = invoke(workspace, target="dry-run", limit="node-one",
+                    ANSIBLE_EXTRA_VARS_FILE=str(override))
+    assert result.returncode != 0
+    assert not any(entry["program"] in {"ssh", "ansible-playbook", "audit-log.sh"}
+                   for entry in calls(workspace))
+
+
+@pytest.mark.parametrize("mode,target", [
+    ("log_only", "dry-run"), ("canary", "deploy"), ("enforce", "deploy"),
+])
+def test_network_exposure_inputs_are_snapshotted_for_exact_selected_host(
+        workspace, mode, target):
+    override, artifact, key = network_exposure_override(workspace, mode=mode)
+    root, call_record = workspace["root"], workspace["calls"]
+    write(root / "scripts/network-exposure-gate.py", f"""#!{sys.executable}
+import json, pathlib, stat, sys
+artifact = pathlib.Path(sys.argv[sys.argv.index('--artifact') + 1])
+key = pathlib.Path(sys.argv[sys.argv.index('--trusted-key') + 1])
+assert artifact.read_text() == 'synthetic signed policy\\n'
+assert key.read_text() == 'synthetic public key\\n'
+assert stat.S_IMODE(artifact.stat().st_mode) == stat.S_IMODE(key.stat().st_mode) == 0o600
+assert artifact != pathlib.Path({str(artifact)!r}) and key != pathlib.Path({str(key)!r})
+with pathlib.Path({str(call_record)!r}).open('a') as stream:
+    stream.write(json.dumps({{'program': 'network-exposure-gate.py', 'args': sys.argv[1:],
+                             'artifact': str(artifact), 'key': str(key)}}) + '\\n')
+print(json.dumps({{'summary': {{'validation': 'valid'}}, 'plan': {{}}}}))
+""", 0o700)
+    ansible_record = root.parent / "network-exposure-ansible.json"
+    binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
+    write(binary / "ansible-playbook", f"""#!{sys.executable}
+import json, pathlib, stat, sys, yaml
+play = json.loads(pathlib.Path(sys.argv[1]).read_text())
+files = play[0]['vars']['deployment_input_files']['node-one']
+override = next(pathlib.Path(path) for path in files if pathlib.Path(path).name.endswith('-overrides.yml'))
+gate = yaml.safe_load(override.read_text())['network_exposure_gate']
+artifact = pathlib.Path(gate['artifact'])
+key = pathlib.Path(gate['trusted_key'])
+pathlib.Path({str(ansible_record)!r}).write_text(json.dumps({{
+    'gate': gate, 'override_mode': stat.S_IMODE(override.stat().st_mode),
+    'artifact_mode': stat.S_IMODE(artifact.stat().st_mode),
+    'key_mode': stat.S_IMODE(key.stat().st_mode),
+    'artifact_bytes': artifact.read_text(), 'key_bytes': key.read_text(),
+}}))
+""", 0o700)
+    commit_fixture(workspace)
+    result = invoke(workspace, target=target, limit="node-one",
+                    ANSIBLE_EXTRA_VARS_FILE=str(override))
+    assert result.returncode == 0, result.stderr
+    observed = calls(workspace)
+    gate_call = next(entry for entry in observed if entry["program"] == "network-exposure-gate.py")
+    first_transport = next(index for index, entry in enumerate(observed)
+                           if entry["program"] in {"ssh", "ansible-playbook"})
+    assert observed.index(gate_call) < first_transport
+    assert gate_call["args"][gate_call["args"].index("--inventory-host") + 1] == "node-one"
+    loaded = json.loads(ansible_record.read_text())
+    assert loaded["override_mode"] == loaded["artifact_mode"] == loaded["key_mode"] == 0o600
+    assert loaded["artifact_bytes"] == "synthetic signed policy\n"
+    assert loaded["key_bytes"] == "synthetic public key\n"
+    assert loaded["gate"]["mode"] == mode
+    assert loaded["gate"]["authorized_hosts"] == (["node-one"] if mode in {"canary", "enforce"} else [])
+    assert Path(loaded["gate"]["artifact"]) != artifact
+    assert Path(loaded["gate"]["trusted_key"]) != key
+    assert not Path(loaded["gate"]["artifact"]).exists()
+    assert not Path(loaded["gate"]["trusted_key"]).exists()
+
+
+def test_network_exposure_source_replacement_refuses_after_validation_before_ssh(workspace):
+    override, artifact, _key = network_exposure_override(workspace)
+    root = workspace["root"]
+    replacement = artifact.with_suffix(".replacement")
+    replacement.write_text("replaced signed policy\n")
+    replacement.chmod(0o600)
+    write(root / "scripts/network-exposure-gate.py", f"""#!{sys.executable}
+import os
+os.replace({str(replacement)!r}, {str(artifact)!r})
+print('{{"summary": {{"validation": "valid"}}, "plan": {{}}}}')
+""", 0o700)
+    result = invoke(workspace, target="dry-run", limit="node-one",
+                    ANSIBLE_EXTRA_VARS_FILE=str(override))
+    assert result.returncode != 0
+    assert not any(entry["program"] in {"ssh", "ansible-playbook", "audit-log.sh"}
+                   for entry in calls(workspace))
+
+
+def test_network_exposure_promotion_must_equal_exact_inventory_selection(workspace):
+    override, _artifact, _key = network_exposure_override(workspace)
+    document = yaml.safe_load(override.read_text())
+    document["network_exposure_gate"]["authorized_hosts"] = ["node-two"]
+    override.write_text(yaml.safe_dump(document))
+    override.chmod(0o600)
+    result = invoke(workspace, target="deploy", limit="node-one",
+                    ANSIBLE_EXTRA_VARS_FILE=str(override))
+    assert result.returncode != 0
+    assert not any(entry["program"] in {"ssh", "ansible-playbook", "audit-log.sh"}
+                   for entry in calls(workspace))
 
 
 @pytest.mark.parametrize("fault", ["contexts-mode", "contexts-selection", "contexts-value",

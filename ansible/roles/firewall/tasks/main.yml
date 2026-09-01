@@ -3,6 +3,10 @@
 # Hypervisor firewall (provider-specific) is the outer layer; this is
 # the inner layer co-located with the workload.
 
+- name: Validate reviewed network exposure policy before firewall mutation
+  ansible.builtin.include_role:
+    name: network-exposure-gate
+
 - name: Validate firewall egress policy mode
   ansible.builtin.assert:
     that:
@@ -70,6 +74,9 @@
     group: root
     mode: "0644"
     validate: "nft -c -f %s"
+  # Removed rules can contain reviewed addresses even when the new plan is empty.
+  no_log: true
+  diff: false
   register: _firewall_nftables_config
 
 - name: Ensure nftables service is enabled and started

@@ -11,11 +11,11 @@ Deliver the validated, redacted, non-mutating review path and disabled-default A
 
 ## Execution
 
-- [ ] ANS-1786277767052018 Define feed metadata and directional policy schemas with placeholder-only fixtures !high #feature @item:ANS-1786277767052693
-- [ ] ANS-1786277767052243 Implement fail-closed validation and disabled-default Ansible integration !high #feature @item:ANS-1786277767052693 @blocked_by:ANS-1786277767052018
-- [ ] ANS-1786277767052707 Add redacted dry-run, log-only, canary, expiry, and rollback behavior !high #feature @item:ANS-1786277767052693 @blocked_by:ANS-1786277767052243
-- [ ] TST-1786277767052610 Prove disabled render parity, invalid-input failure, redaction, idempotence, and rollback !high #feature @item:ANS-1786277767052693 @blocked_by:ANS-1786277767052707
-- [ ] DOC-1786277767052241 Document reviewed artifact refresh, promotion criteria, traffic scope, and no hidden apply path !high #feature @item:ANS-1786277767052693 @blocked_by:TST-1786277767052610
+- [x] ANS-1786277767052018 Define feed metadata and directional policy schemas with placeholder-only fixtures !high #feature @item:ANS-1786277767052693
+- [x] ANS-1786277767052243 Implement fail-closed validation and disabled-default Ansible integration !high #feature @item:ANS-1786277767052693 @blocked_by:ANS-1786277767052018
+- [x] ANS-1786277767052707 Add redacted dry-run, log-only, canary, expiry, and rollback behavior !high #feature @item:ANS-1786277767052693 @blocked_by:ANS-1786277767052243
+- [x] TST-1786277767052610 Prove disabled render parity, invalid-input failure, redaction, idempotence, and rollback !high #feature @item:ANS-1786277767052693 @blocked_by:ANS-1786277767052707
+- [x] DOC-1786277767052241 Document reviewed artifact refresh, promotion criteria, traffic scope, and no hidden apply path !high #feature @item:ANS-1786277767052693 @blocked_by:TST-1786277767052610
 
 ## Verification
 

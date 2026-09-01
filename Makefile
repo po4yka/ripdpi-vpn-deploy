@@ -1,6 +1,39 @@
 PROVIDER ?= upcloud
 ENV      ?= prod
 
+# This target accepts operator paths and aliases.  Keep them literal before
+# included Makefiles, exported variables, or eager source-identity recipes can
+# evaluate command-line Make syntax.
+ifneq ($(filter network-exposure-review,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error network exposure review requires exactly one Make goal)
+endif
+_NETWORK_EXPOSURE_ALLOWED_COMMAND_VARIABLES := NETWORK_EXPOSURE_CONFIG ANSIBLE_LIMIT
+_NETWORK_EXPOSURE_COMMAND_VARIABLES := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
+_NETWORK_EXPOSURE_FORBIDDEN_COMMAND_VARIABLES := $(filter-out $(_NETWORK_EXPOSURE_ALLOWED_COMMAND_VARIABLES),$(_NETWORK_EXPOSURE_COMMAND_VARIABLES))
+ifneq ($(strip $(_NETWORK_EXPOSURE_FORBIDDEN_COMMAND_VARIABLES)),)
+$(error network exposure review accepts command-line values only for NETWORK_EXPOSURE_CONFIG and ANSIBLE_LIMIT)
+endif
+_NETWORK_EXPOSURE_LITERAL_INPUTS := $(value NETWORK_EXPOSURE_CONFIG)$(value ANSIBLE_LIMIT)$(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)
+override NETWORK_EXPOSURE_CONFIG := $(value NETWORK_EXPOSURE_CONFIG)
+override ANSIBLE_LIMIT := $(value ANSIBLE_LIMIT)
+override ENV := $(value ENV)
+override PROVIDER := $(value PROVIDER)
+override HOME := $(value HOME)
+override DEPLOY_SOURCE_REVISION :=
+override DEPLOYABLE_SOURCE_DIGEST :=
+MAKEOVERRIDES :=
+ifneq ($(findstring $$,$(_NETWORK_EXPOSURE_LITERAL_INPUTS)),)
+$(error network exposure review inputs must be literal values)
+endif
+ifneq ($(findstring ",$(_NETWORK_EXPOSURE_LITERAL_INPUTS)),)
+$(error network exposure review inputs must be literal values)
+endif
+ifneq ($(findstring ',$(_NETWORK_EXPOSURE_LITERAL_INPUTS)),)
+$(error network exposure review inputs must be literal values)
+endif
+endif
+
 -include .fleet.mk
 
 # Capture deployment labels before the eager Terraform path assignments below.
@@ -52,6 +85,7 @@ ANSIBLE_LIMIT ?=
 ANSIBLE_EXTRA_VARS_FILE ?=
 DEPLOY_SSH_CONTEXTS_FILE ?=
 DEPLOY_PROMOTION_CONFIG_FILE ?=
+NETWORK_EXPOSURE_CONFIG ?=
 
 TF_ROOT       := terraform/providers/$(PROVIDER)
 TF_ENV        := ./scripts/terraform-env.sh
@@ -67,6 +101,7 @@ DEPLOY_SOURCE_REVISION ?= $(shell ./scripts/deploy-source-identity.sh --revision
 DEPLOYABLE_SOURCE_DIGEST ?= $(shell ./scripts/deploy-source-identity.sh --digest 2>/dev/null)
 
 export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
+export NETWORK_EXPOSURE_CONFIG
 export PROVIDER ENV CLIENT PLAN HOST VANTAGE REALITY_TARGET_VANTAGE LIVENESS_CONFIG DEPLOY_SOURCE_REVISION DEPLOYABLE_SOURCE_DIGEST
 INSPECT_HOSTS ?=
 INSPECT_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini
@@ -74,7 +109,7 @@ INSPECT_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
 export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 
 .PHONY: help init validate plan apply inventory wait decrypt require-inventory require-clean-source validate-ansible-extra-vars dry-run deploy backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
-        pre-deploy-check \
+        pre-deploy-check network-exposure-review \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
         molecule-test smoke-test validate-target monitor-reality-target probe-sni-survival scan-targets blue-green \
@@ -218,6 +253,7 @@ help:
 	@echo "  vpnd-msrv                  cargo check --locked with Rust 1.88.0"
 	@echo "  tf-policy                  terraform test + conftest OPA policy check for all providers"
 	@echo "  tf-policy-verify           Run pinned Conftest policy tests without provider credentials"
+	@echo "  network-exposure-review    Validate signed policy without changing managed hosts"
 	@echo "  molecule-test ROLE=<name>  Run one role's molecule scenario"
 	@echo "  molecule-full-stack        site.yml end-to-end inside a Docker container"
 
@@ -256,6 +292,14 @@ apply:
 
 inventory:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" ./scripts/render-inventory.sh
+
+network-exposure-review:
+	@exec /usr/bin/env -i \
+	  PATH="$$PATH" HOME="$$HOME" \
+	  LANG="$${LANG:-C}" LC_ALL="$${LC_ALL:-}" LC_CTYPE="$${LC_CTYPE:-}" TZ="$${TZ:-UTC}" \
+	  PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 \
+	  NETWORK_EXPOSURE_CONFIG='$(NETWORK_EXPOSURE_CONFIG)' ANSIBLE_LIMIT='$(ANSIBLE_LIMIT)' \
+	  python3 ./scripts/network-exposure-review-controller.py
 
 wait:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/wait-cloud-init.sh

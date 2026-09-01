@@ -128,3 +128,51 @@ def test_accepts_https_origin_decoy_overrides(tmp_path: Path, value: str) -> Non
 def test_rejects_malformed_decoy_overrides(tmp_path: Path, value: object) -> None:
     with pytest.raises(ValueError):
         validator.validate(write_yaml(tmp_path, {"public_site_canonical_url": value}))
+
+
+def exposure_config(tmp_path: Path, *, mode: str = "canary") -> dict[str, object]:
+    return {"mode": mode, "artifact": str(tmp_path / "reviewed-policy.json"),
+            "trusted_key": str(tmp_path / "reviewed-key.pem"),
+            "trusted_key_sha256": "a" * 64, "source_id": "reviewed-source",
+            "promotion_approved": mode in {"canary", "enforce"},
+            "promotion_digest": "b" * 64 if mode in {"canary", "enforce"} else "",
+            "authorized_hosts": ["node-one"] if mode in {"canary", "enforce"} else []}
+
+
+@pytest.mark.parametrize("mode", ["log_only", "canary", "enforce"])
+def test_accepts_typed_network_exposure_override(tmp_path: Path, mode: str) -> None:
+    validator.validate(write_yaml(tmp_path, {
+        "network_exposure_gate": exposure_config(tmp_path, mode=mode)}))
+
+
+@pytest.mark.parametrize("field,value", [
+    ("mode", "observe"), ("artifact", "relative.json"), ("trusted_key", "relative.pem"),
+    ("trusted_key_sha256", "A" * 64), ("source_id", "Invalid Source"),
+    ("promotion_approved", 1), ("promotion_digest", "short"),
+    ("authorized_hosts", ["node-*"]),
+])
+def test_rejects_malformed_network_exposure_override(
+        tmp_path: Path, field: str, value: object) -> None:
+    config = exposure_config(tmp_path)
+    config[field] = value
+    with pytest.raises(ValueError, match="network_exposure_gate"):
+        validator.validate(write_yaml(tmp_path, {"network_exposure_gate": config}))
+
+
+def test_disabled_network_exposure_override_contains_no_external_inputs(tmp_path: Path) -> None:
+    config = exposure_config(tmp_path, mode="canary")
+    config.update(mode="disabled", artifact="", trusted_key="", trusted_key_sha256="",
+                  source_id="", promotion_approved=False, promotion_digest="",
+                  authorized_hosts=[])
+    validator.validate(write_yaml(tmp_path, {"network_exposure_gate": config}))
+
+
+def test_rejects_duplicate_network_exposure_fields(tmp_path: Path) -> None:
+    path = tmp_path / "extra-vars.yml"
+    path.write_text(
+        "network_exposure_gate:\n  mode: log_only\n  mode: enforce\n"
+        "  artifact: /private/artifact.json\n  trusted_key: /private/key.pem\n"
+        f"  trusted_key_sha256: {'a' * 64}\n  source_id: reviewed-source\n"
+        "  promotion_approved: false\n  promotion_digest: ''\n  authorized_hosts: []\n")
+    with pytest.raises(ValueError, match="duplicate"):
+        validator.validate(path)

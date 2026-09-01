@@ -1,0 +1,10 @@
+---
+network_exposure_gate:
+  mode: disabled
+  artifact: ""
+  trusted_key: ""
+  trusted_key_sha256: ""
+  source_id: ""
+  promotion_approved: false
+  promotion_digest: ""
+  authorized_hosts: []

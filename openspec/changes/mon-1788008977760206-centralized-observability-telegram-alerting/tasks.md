@@ -32,7 +32,7 @@ task open.
 
 ## Execution
 
-- [ ] MON-1788009822802454 Define versioned metric redaction freshness and expected-inventory contracts with exhaustive state-table tests #feature !high @item:MON-1788008977760206
+- [x] MON-1788009822802454 Define versioned metric redaction freshness and expected-inventory contracts with exhaustive state-table tests #feature !high @item:MON-1788008977760206
 - [ ] MON-1788009838945651 Implement observability secrets topology and inventory contracts with duplicate-identity and public-listener rejection tests #feature !high @item:MON-1788008977760206 @blocked_by:MON-1788009822802454
 - [ ] MON-1788009839512116 Implement hardened observability agent adapters bounded WAL remote write and convergent disable with Molecule coverage #feature !high @item:MON-1788008977760206 @blocked_by:MON-1788009838945651
 - [ ] MON-1788009840041404 Implement write-only authenticated ingestion and bounded Prometheus storage with isolation rollback and integration tests #feature !high @item:MON-1788008977760206 @blocked_by:MON-1788009838945651

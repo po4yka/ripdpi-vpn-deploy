@@ -1,0 +1,26 @@
+---
+- name: Prepare isolated exposure gate fixture
+  hosts: all
+  become: true
+  tasks:
+    - name: Generate ephemeral signed artifacts on the controller
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ lookup('env', 'MOLECULE_SCENARIO_DIRECTORY') }}/prepare-fixture.py"
+          - "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/exposure-fixture"
+      delegate_to: localhost
+      become: false
+      changed_when: true
+      no_log: true
+
+    - name: Install the real firewall and SSH runtime
+      ansible.builtin.apt:
+        name: [nftables, openssh-server]
+        state: present
+        update_cache: true
+
+    - name: Start the SSH fixture for effective listener discovery
+      ansible.builtin.systemd_service:
+        name: ssh
+        state: started
