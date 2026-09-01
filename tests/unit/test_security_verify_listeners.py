@@ -12,7 +12,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLAYBOOK = REPO_ROOT / "ansible" / "playbooks" / "security-verify.yml"
 VERIFIER = REPO_ROOT / "scripts" / "verify-public-listeners.py"
@@ -45,7 +44,13 @@ def _nft_rule(
     expressions: list[dict] = []
     if broad_protocol is not None:
         expressions.append(
-            {"match": {"op": "==", "left": {"meta": {"key": "l4proto"}}, "right": broad_protocol}}
+            {
+                "match": {
+                    "op": "==",
+                    "left": {"meta": {"key": "l4proto"}},
+                    "right": broad_protocol,
+                }
+            }
         )
     if protocol is not None and target is not None:
         right: object
@@ -69,7 +74,9 @@ def _nft_rule(
             {
                 "match": {
                     "op": "in",
-                    "left": {"payload": {"protocol": source_protocol, "field": "saddr"}},
+                    "left": {
+                        "payload": {"protocol": source_protocol, "field": "saddr"}
+                    },
                     "right": source_value,
                 }
             }
@@ -85,7 +92,14 @@ def _nft_rule(
             }
         )
     expressions.append({"accept": None})
-    return {"rule": {"family": "inet", "table": "filter", "chain": "input", "expr": expressions}}
+    return {
+        "rule": {
+            "family": "inet",
+            "table": "filter",
+            "chain": "input",
+            "expr": expressions,
+        }
+    }
 
 
 def _nft_document(*rules: dict) -> str:
@@ -95,7 +109,9 @@ def _nft_document(*rules: dict) -> str:
 def _nft_for_contract(contract: list[dict]) -> str:
     rules: list[dict] = []
     for listener in contract:
-        target = listener["port"] if listener["port"] is not None else listener["port_range"]
+        target = (
+            listener["port"] if listener["port"] is not None else listener["port_range"]
+        )
         rules.append(_nft_rule(listener["protocol"], target))
     return _nft_document(*rules)
 
@@ -113,14 +129,20 @@ def _verify_listeners(
     fake_bin.mkdir(exist_ok=True)
     for command, variable in (("ss", "FAKE_SS_OUTPUT"), ("nft", "FAKE_NFT_OUTPUT")):
         executable = fake_bin / command
-        executable.write_text(f'#!/bin/sh\nprintf "%s\\n" "${variable}"\n', encoding="utf-8")
+        executable.write_text(
+            f'#!/bin/sh\nprintf "%s\\n" "${variable}"\n', encoding="utf-8"
+        )
         executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
     encoded_contract = base64.b64encode(json.dumps(contract).encode()).decode()
-    encoded_tailnet = base64.b64encode(json.dumps(tailnet_sources or []).encode()).decode()
+    encoded_tailnet = base64.b64encode(
+        json.dumps(tailnet_sources or []).encode()
+    ).decode()
     env = {
         **os.environ,
         "FAKE_SS_OUTPUT": ss_output,
-        "FAKE_NFT_OUTPUT": nft_output if nft_output is not None else _nft_for_contract(contract),
+        "FAKE_NFT_OUTPUT": (
+            nft_output if nft_output is not None else _nft_for_contract(contract)
+        ),
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
     }
     return subprocess.run(
@@ -146,16 +168,30 @@ def _ss_line(protocol: str, address: str) -> str:
 def test_playbook_runs_repository_listener_verifier() -> None:
     play = yaml.safe_load(PLAYBOOK.read_text(encoding="utf-8"))[0]
     task = next(
-        task for task in play["tasks"] if task["name"] == "Public listeners match enabled profile manifest"
+        task
+        for task in play["tasks"]
+        if task["name"] == "Public listeners match enabled profile manifest"
     )
 
     assert "ansible.builtin.script" in task
     assert "scripts/verify-public-listeners.py" in task["ansible.builtin.script"]["cmd"]
-    assert "--ssh-port {{ security_effective_ssh_ports[0] }}" in task[
-        "ansible.builtin.script"
-    ]["cmd"]
+    assert (
+        "--ssh-port {{ security_effective_ssh_ports[0] }}"
+        in task["ansible.builtin.script"]["cmd"]
+    )
     assert "--tailnet-sources-b64" in task["ansible.builtin.script"]["cmd"]
+    assert "vpn.enable_tailnet_management" in task["ansible.builtin.script"]["cmd"]
     assert task["failed_when"] == "security_unexpected_public_listeners.rc != 0"
+
+    tailnet_check = next(
+        item
+        for item in play["tasks"]
+        if item["name"] == "Tailnet management state matches the restricted policy"
+    )
+    assert tailnet_check["ansible.builtin.command"]["argv"][-1].endswith(
+        "tailnet-check.py"
+    )
+    assert "vpn.enable_tailnet_management" in tailnet_check["when"]
 
 
 @pytest.mark.parametrize(
@@ -200,8 +236,12 @@ def test_private_socket_does_not_satisfy_public_listener_contract(
     assert result.stdout == "missing tcp 443\n"
 
 
-@pytest.mark.parametrize("address", ["0.0.0.0:443", "[::]:443", "8.8.8.8:443", "[2001:4860::1]:443"])
-def test_public_socket_satisfies_public_listener_contract(tmp_path: Path, address: str) -> None:
+@pytest.mark.parametrize(
+    "address", ["0.0.0.0:443", "[::]:443", "8.8.8.8:443", "[2001:4860::1]:443"]
+)
+def test_public_socket_satisfies_public_listener_contract(
+    tmp_path: Path, address: str
+) -> None:
     result = _verify_listeners(
         tmp_path,
         [_listener("xray", "tcp", port=443)],
@@ -211,7 +251,9 @@ def test_public_socket_satisfies_public_listener_contract(tmp_path: Path, addres
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_blocked_wildcard_and_private_auxiliary_sockets_are_not_public_exposure(tmp_path: Path) -> None:
+def test_blocked_wildcard_and_private_auxiliary_sockets_are_not_public_exposure(
+    tmp_path: Path,
+) -> None:
     contract = [_listener("xray", "tcp", port=443)]
     result = _verify_listeners(
         tmp_path,
@@ -230,7 +272,9 @@ def test_blocked_wildcard_and_private_auxiliary_sockets_are_not_public_exposure(
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_unexpected_firewall_exposure_fails_even_when_socket_is_listening(tmp_path: Path) -> None:
+def test_unexpected_firewall_exposure_fails_even_when_socket_is_listening(
+    tmp_path: Path,
+) -> None:
     contract = [_listener("xray", "tcp", port=443)]
     result = _verify_listeners(
         tmp_path,
@@ -255,7 +299,9 @@ def test_missing_firewall_exposure_fails_for_listening_socket(tmp_path: Path) ->
     assert result.stdout == "missing firewall tcp 443\n"
 
 
-def test_partial_udp_range_does_not_satisfy_public_listener_contract(tmp_path: Path) -> None:
+def test_partial_udp_range_does_not_satisfy_public_listener_contract(
+    tmp_path: Path,
+) -> None:
     result = _verify_listeners(
         tmp_path,
         [_listener("hysteria", "udp", port_range="20000-20002")],
@@ -287,14 +333,18 @@ def test_broad_transport_accept_is_rejected(tmp_path: Path) -> None:
         tmp_path,
         contract,
         _ss_line("tcp", "0.0.0.0:443"),
-        nft_output=_nft_document(_nft_rule("tcp", 443), _nft_rule(broad_protocol="tcp")),
+        nft_output=_nft_document(
+            _nft_rule("tcp", 443), _nft_rule(broad_protocol="tcp")
+        ),
     )
 
     assert result.returncode == 1
     assert "unexpected broad firewall accept" in result.stdout
 
 
-def test_source_or_interface_restricted_rule_does_not_satisfy_public_contract(tmp_path: Path) -> None:
+def test_source_or_interface_restricted_rule_does_not_satisfy_public_contract(
+    tmp_path: Path,
+) -> None:
     contract = [_listener("xray", "tcp", port=443)]
     for rule in (
         _nft_rule("tcp", 443, source_restricted=True),
@@ -356,23 +406,32 @@ def test_exact_tailnet_source_and_interface_scoped_ssh_rule_is_allowed(
     tmp_path: Path, source: str
 ) -> None:
     result = _verify_listeners(
-        tmp_path, [], "",
-        nft_output=_nft_document(_nft_rule(
-            "tcp", 22, source_address=source, input_interface="tailscale0")),
-        tailnet_sources=[source])
+        tmp_path,
+        [],
+        "",
+        nft_output=_nft_document(
+            _nft_rule("tcp", 22, source_address=source, input_interface="tailscale0")
+        ),
+        tailnet_sources=[source],
+    )
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-@pytest.mark.parametrize(("source", "interface"), [
-    ("100.64.10.21", "tailscale0"), ("100.64.10.20", "eth0")])
+@pytest.mark.parametrize(
+    ("source", "interface"), [("100.64.10.21", "tailscale0"), ("100.64.10.20", "eth0")]
+)
 def test_wrong_tailnet_source_or_interface_scoped_ssh_rule_is_rejected(
     tmp_path: Path, source: str, interface: str
 ) -> None:
     result = _verify_listeners(
-        tmp_path, [], "",
-        nft_output=_nft_document(_nft_rule(
-            "tcp", 22, source_address=source, input_interface=interface)),
-        tailnet_sources=["100.64.10.20"])
+        tmp_path,
+        [],
+        "",
+        nft_output=_nft_document(
+            _nft_rule("tcp", 22, source_address=source, input_interface=interface)
+        ),
+        tailnet_sources=["100.64.10.20"],
+    )
     assert result.returncode == 1
     assert "unexpected unrestricted firewall tcp 22" in result.stdout
     assert "missing Tailnet SSH source rule" in result.stdout
@@ -382,11 +441,16 @@ def test_wrong_tailnet_source_or_interface_scoped_ssh_rule_is_rejected(
 def test_missing_or_duplicate_tailnet_ssh_source_rule_is_rejected(
     tmp_path: Path, copies: int
 ) -> None:
-    rule = _nft_rule("tcp", 22, source_address="100.64.10.20",
-                     input_interface="tailscale0")
+    rule = _nft_rule(
+        "tcp", 22, source_address="100.64.10.20", input_interface="tailscale0"
+    )
     result = _verify_listeners(
-        tmp_path, [], "", nft_output=_nft_document(*(rule for _ in range(copies))),
-        tailnet_sources=["100.64.10.20"])
+        tmp_path,
+        [],
+        "",
+        nft_output=_nft_document(*(rule for _ in range(copies))),
+        tailnet_sources=["100.64.10.20"],
+    )
     assert result.returncode == 1
     expected = "missing" if copies == 0 else "duplicate"
     assert f"{expected} Tailnet SSH source rule" in result.stdout
@@ -430,7 +494,9 @@ def test_default_port_is_not_exempt_when_sshd_uses_custom_port(tmp_path: Path) -
     assert result.stdout == "unexpected firewall tcp 22\n"
 
 
-def test_baseline_loopback_conntrack_and_icmp_accepts_are_allowed(tmp_path: Path) -> None:
+def test_baseline_loopback_conntrack_and_icmp_accepts_are_allowed(
+    tmp_path: Path,
+) -> None:
     def accepted(left: dict, right: object) -> dict:
         return {
             "rule": {

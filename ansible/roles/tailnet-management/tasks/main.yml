@@ -116,6 +116,33 @@
     - (_tailnet_existing_status.stdout | from_json).BackendState == 'Running'
   no_log: true
 
+- name: Refuse package installation over a local Tailscale command
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (
+          tailnet_management_install_package | bool and
+          _tailnet_existing_cli_candidates == ['/usr/local/bin/tailscale']
+        )
+    fail_msg: >-
+      Package-managed Tailnet enrollment refuses an existing local Tailscale
+      command because installing /usr/bin/tailscale would create ambiguity.
+
+- name: Require enrollment capability before host writes
+  ansible.builtin.assert:
+    that:
+      - >-
+        (
+          _tailnet_existing_cli_candidates | length == 1 and
+          (_tailnet_existing_status.stdout | from_json).BackendState == 'Running'
+        ) or (
+          lookup('env', 'TAILSCALE_AUTH_KEY')
+          is match('^tskey-auth-[A-Za-z0-9_-]{8,480}$')
+        )
+    fail_msg: Tailnet enrollment requires a valid controller-provided auth key.
+  when: not ansible_check_mode
+  no_log: true
+
 - name: Select official Tailscale repository family
   ansible.builtin.set_fact:
     _tailnet_repository_family: >-

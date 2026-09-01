@@ -64,6 +64,7 @@ def test_tailnet_operator_scripts_have_one_job_and_install_durable_recovery() ->
         in service
     )
     assert "Persistent=true" in timer
+    assert "RestrictAddressFamilies=AF_UNIX AF_NETLINK" in service
     assert "enabled: true" in tasks and "vpn-tailnet-recover.timer" in tasks
 
 
@@ -91,6 +92,18 @@ def test_firewall_allows_only_exact_approved_tailnet_sources() -> None:
         'iifname "tailscale0" tcp dport 22022 ' "ip6 saddr fd7a:115c:a1e0::1234 accept"
     ) in rendered
     assert 'iifname "tailscale0" accept' not in rendered
+
+    firewall_tasks = yaml.safe_load(
+        (ROOT / "ansible/roles/firewall/tasks/main.yml").read_text()
+    )
+    validator = next(
+        task
+        for task in firewall_tasks
+        if task["name"] == "Validate Tailnet firewall sources before mutation"
+    )
+    assert validator["name"] == "Validate Tailnet firewall sources before mutation"
+    assert validator["delegate_to"] == "localhost"
+    assert "tailnet-validate-sources.py" in validator["ansible.builtin.command"]["cmd"]
 
 
 @pytest.mark.parametrize(
@@ -227,7 +240,7 @@ class FakeRunner:
             )
             if self.drift == "route-v6" and self.running:
                 stdout = '[{"dst":"default","gateway":"2001:db8::2","dev":"eth0"}]\n'
-        elif argv[0].endswith("nft") and command == ["-j", "list", "ruleset"]:
+        elif argv[0].endswith("nft") and command == ["-j", "list", "chains"]:
             stdout = (
                 '{"nftables":[{"chain":{"name":"ts-input"}}]}'
                 if self.tailscale_firewall
@@ -696,6 +709,11 @@ def test_role_preflights_existing_tailnet_before_every_host_write() -> None:
         names.index("Refuse unmanaged running Tailnet preferences before host writes")
         < first_write
     )
+    assert (
+        names.index("Refuse package installation over a local Tailscale command")
+        < first_write
+    )
+    assert names.index("Require enrollment capability before host writes") < first_write
     ownership = next(
         task
         for task in tasks
@@ -734,4 +752,4 @@ def test_molecule_prepares_sshd_policy_inspection_runtime() -> None:
     )
     assert nft_fixture["owner"] == "root"
     assert nft_fixture["mode"] == "0755"
-    assert '"-j list ruleset"' in nft_fixture["content"]
+    assert '"-j list chains"' in nft_fixture["content"]

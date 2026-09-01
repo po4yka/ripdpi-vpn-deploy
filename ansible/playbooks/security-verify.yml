@@ -166,10 +166,25 @@
           --contract-b64 {{ terraform_public_listeners_b64 }}
           --ssh-port {{ security_effective_ssh_ports[0] }}
           --tailnet-sources-b64 {{
-          tailnet_management.approved_sources | default([]) | to_json | b64encode }}
+          (
+            tailnet_management.approved_sources | default([])
+            if vpn.enable_tailnet_management | default(false) | bool
+            else []
+          ) | to_json | b64encode }}
       register: security_unexpected_public_listeners
       changed_when: false
       failed_when: security_unexpected_public_listeners.rc != 0
+
+    - name: Tailnet management state matches the restricted policy
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - /usr/local/lib/vpn-tailnet/tailnet-check.py
+      environment:
+        PATH: /usr/sbin:/usr/bin:/sbin:/bin
+      changed_when: false
+      when: vpn.enable_tailnet_management | default(false) | bool
+      no_log: true
 
     - name: Honeypot IPv4 listener is active
       ansible.builtin.shell:
