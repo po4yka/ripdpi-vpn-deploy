@@ -128,6 +128,15 @@
       Package-managed Tailnet enrollment refuses an existing local Tailscale
       command because installing /usr/bin/tailscale would create ambiguity.
 
+- name: Require one existing Tailscale command when package installation is disabled
+  ansible.builtin.assert:
+    that:
+      - _tailnet_existing_cli_candidates | length == 1
+    fail_msg: >-
+      Tailnet management without package installation requires exactly one
+      validated existing Tailscale command.
+  when: not (tailnet_management_install_package | bool)
+
 - name: Require enrollment capability before host writes
   ansible.builtin.assert:
     that:
@@ -258,7 +267,9 @@
     name: tailscaled.service
     enabled: true
     state: started
-  when: tailnet_management_install_package | bool
+  when:
+    - tailnet_management_install_package | bool
+    - not ansible_check_mode
 
 - name: Arm persistent Tailnet recovery before enrollment
   ansible.builtin.systemd_service:
@@ -266,6 +277,7 @@
     enabled: true
     state: started
     daemon_reload: "{{ _tailnet_recovery_units.changed }}"
+  when: not ansible_check_mode
 
 - name: Inspect installed Tailnet controller state
   ansible.builtin.stat:

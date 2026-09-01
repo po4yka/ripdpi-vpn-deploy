@@ -33,6 +33,7 @@ EXPECTED_PREFS = {
 RECOVERY_GENERATION = "tailnet-recovery-v1"
 TRANSACTION_NAME = "transaction.json"
 LOCK_NAME = "transaction.lock"
+RECOVERY_STATE_MAX_BYTES = 1_048_576
 
 
 class Refusal(RuntimeError):
@@ -215,6 +216,8 @@ def _write_transaction(
         "snapshot": _snapshot_document(snapshot),
     }
     payload = _canonical_bytes(value)
+    if len(payload) > RECOVERY_STATE_MAX_BYTES:
+        raise Refusal("tailnet-recovery-state-write-failed")
     temporary = paths.state_directory / f".{TRANSACTION_NAME}.{nonce}"
     canonical = _transaction_path(paths)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
@@ -256,11 +259,11 @@ def _read_transaction(paths: CommandPaths) -> tuple[dict, SystemSnapshot]:
             or metadata.st_uid != os.geteuid()
             or stat.S_IMODE(metadata.st_mode) != 0o600
             or metadata.st_nlink != 1
-            or metadata.st_size > 1_048_576
+            or metadata.st_size > RECOVERY_STATE_MAX_BYTES
         ):
             raise Refusal("tailnet-recovery-state-invalid")
         chunks = []
-        remaining = 1_048_577
+        remaining = RECOVERY_STATE_MAX_BYTES + 1
         while remaining:
             chunk = os.read(fd, min(65_536, remaining))
             if not chunk:
@@ -276,7 +279,9 @@ def _read_transaction(paths: CommandPaths) -> tuple[dict, SystemSnapshot]:
         if "fd" in locals():
             os.close(fd)
     value = _bounded_json(
-        payload.decode("utf-8"), reason="tailnet-recovery-state-invalid"
+        payload.decode("utf-8"),
+        reason="tailnet-recovery-state-invalid",
+        limit=RECOVERY_STATE_MAX_BYTES,
     )
     if (
         not isinstance(value, dict)
