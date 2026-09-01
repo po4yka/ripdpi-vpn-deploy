@@ -47,12 +47,15 @@ artifact_evidence: null
   CI, deployment and traffic acceptance remain separate evidence categories.
 - Real-vantage prerequisites: reachable approved sentinel, pinned clients, and
   dedicated active AWG private key. An offline sentinel or a revoked recovery
-  key cannot satisfy them. Coordination now reports approval for one temporary
-  staging VPS (target EUR 5, absolute total cap EUR 7), with price verification
-  before creation and cleanup after evidence, no later than 48 hours. Provisioning
-  ownership and the concrete plan must be coordinated before creation. The
-  existing Raspberry Pi is the executor; only new test identities and one-shot
-  acceptance are allowed. No resource has been created in this code/CI phase.
+  key cannot satisfy them. The former Raspberry Pi executor has been retired and
+  is not a prerequisite. The approved replacement for the one-shot acceptance
+  run is a disposable systemd-capable Linux VM on the operator-owned Mac whose
+  traffic exits through the current consumer uplink. It must use new test
+  identities, record its executor kind and exact runtime privately, and be
+  removed after evidence capture. Such a run proves only the observed external
+  consumer-uplink vantage; it is not independent physical-hardware, recurring,
+  filtered-path quorum, or Android evidence. No replacement VM has been started
+  or configured in this planning update.
 - Dry-run means canonical candidate rendering/parsing and isolated installer
   orchestration tests without contacting a host, not `make dry-run` or Ansible
   check mode; those are not passive inspection. No live installer run occurred.

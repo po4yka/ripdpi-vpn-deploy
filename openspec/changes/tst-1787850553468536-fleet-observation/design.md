@@ -169,8 +169,14 @@ accept-new SSH keys, or the repair watchdog. See proposal and normative specs.
   explicit managed-state mutations, not zero kernel or audit writes.
 - Unit stubs cannot prove protocol compatibility. Require real pinned parser
   checks and external traffic; report blocked prerequisites without closure.
-- Current client sentinel may be offline; an ordinary external VPS cannot prove
-  a filtered user path. Record the actual vantage and preserve that distinction.
+- The retired Raspberry Pi is not an acceptance prerequisite. For the approved
+  one-shot run, a disposable systemd-capable Linux VM on the operator-owned Mac
+  MAY act as the external sentinel only when its traffic exits through the
+  current consumer uplink, it uses dedicated client material, and private
+  evidence records the executor kind alongside `vantage: external`. This proves
+  the observed consumer-uplink path only; it MUST NOT be reported as independent
+  physical-hardware, filtered-path quorum, recurring uptime, or Android proof.
+  An ordinary external VPS still cannot substitute for that consumer path.
 - Restores can write repository locks and local temporary files. Passive
   inspection reads markers only; isolated restore is separately authorized and
   must never run the full backup script, whose retention path prunes snapshots.
@@ -190,9 +196,12 @@ accept-new SSH keys, or the repair watchdog. See proposal and normative specs.
    with migration guidance; do not maintain an alternate unsafe legacy branch.
 4. Run targeted tests, `make validate`, `make ci-fast`, independent review, then
    exact runtime parser checks. Heavy suites run through `build-gate --`.
-5. With reachable approved sentinel and dedicated material, run one external
-   four-profile probe without scheduling or production repair. Capture redacted
-   source/runtime/path evidence; leave missing transport acceptance open.
+5. With a reachable approved sentinel and dedicated material, run one external
+   four-profile probe without scheduling or production repair. When no persistent
+   sentinel exists, use the approved disposable local Linux VM on the consumer
+   uplink, retain its exact runtime/profile identity, and destroy only that VM's
+   owned resources after evidence capture. Capture redacted source/runtime/path
+   evidence; leave missing transport acceptance open.
 6. If installation or its initial probe fails, restore the complete previous
    sentinel files and assignment; clean only this attempt's temporary resources.
    Removing the new inspector is local rollback, never a production network change.
