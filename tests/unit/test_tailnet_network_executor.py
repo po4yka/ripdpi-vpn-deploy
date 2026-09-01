@@ -1,7 +1,7 @@
 """Focused contract tests for the independent Tailnet rollback guard."""
 
 from __future__ import annotations
-import importlib.util, json, os, subprocess, sys
+import importlib.util, json, os, subprocess, sys, threading
 from pathlib import Path
 import pytest
 
@@ -64,6 +64,9 @@ def test_crash_after_provider_apply_reconciles_to_independent_false_apply(
     value = executor(m, tmp_path)
     monkeypatch.setattr(m.time, "time", lambda: 1_000)
     armed = value.guard("arm", request())
+    armed = value.guard(
+        "begin-forward", {k: v for k, v in armed.items() if k != "state"}
+    )
     applied = value.guard(
         "mark-applied",
         {
@@ -92,6 +95,9 @@ def test_release_prevents_deadline_rollback_and_restart_reads_canonical_receipt(
     value = executor(m, tmp_path)
     monkeypatch.setattr(m.time, "time", lambda: 1_000)
     armed = value.guard("arm", request())
+    armed = value.guard(
+        "begin-forward", {k: v for k, v in armed.items() if k != "state"}
+    )
     applied = value.guard(
         "mark-applied",
         {
@@ -196,6 +202,123 @@ def test_expired_armed_false_readback_terminalizes_without_provider_apply(
     monkeypatch.setattr(m.time, "time", lambda: 2_001)
     assert value.reconcile() == {"state": "executed"}
     assert value.adapter.calls == [] and value.store.get()["state"] == "executed"
+
+
+def test_expiry_serializes_with_forward_mark_and_rolls_back_true(tmp_path, monkeypatch):
+    """A stale timer observation cannot terminalize across a live forward lock."""
+    m = mod()
+    value = executor(m, tmp_path)
+    monkeypatch.setattr(m.time, "time", lambda: 1_000)
+    armed = value.guard("arm", request())
+    forward = value.guard(
+        "begin-forward", {k: v for k, v in armed.items() if k != "state"}
+    )
+    monkeypatch.setattr(m.time, "time", lambda: 2_001)
+    provider_lock = value.store._provider_locked()
+    outcome = []
+
+    def reconcile():
+        outcome.append(value.reconcile())
+
+    worker = threading.Thread(target=reconcile)
+    worker.start()
+    # The timer has observed the expired forward but cannot cross the provider
+    # lock while the controller persists its successful publication marker.
+    value.guard(
+        "mark-applied",
+        {
+            **{k: v for k, v in forward.items() if k != "state"},
+            "provider_applied_at": 1_999,
+        },
+    )
+    os.close(provider_lock)
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert outcome == [{"state": "executed"}]
+    assert value.adapter.calls == [("plan", "rollback"), ("apply", "rollback")]
+    assert value.store.get()["state"] == "executed"
+
+
+def test_partial_execute_and_release_requests_preserve_current_receipt(
+    tmp_path, monkeypatch
+):
+    m = mod()
+    value = executor(m, tmp_path)
+    monkeypatch.setattr(m.time, "time", lambda: 1_000)
+    armed = value.guard("arm", request())
+    forward = value.guard(
+        "begin-forward", {k: v for k, v in armed.items() if k != "state"}
+    )
+    applied = value.guard(
+        "mark-applied",
+        {
+            **{k: v for k, v in forward.items() if k != "state"},
+            "provider_applied_at": 1_001,
+        },
+    )
+    with pytest.raises(m.ExecutorError, match="receipt-refused"):
+        value.guard("execute", {"state": "provider-applied"})
+    assert value.store.get() == applied
+    debt = value.guard(
+        "commit",
+        {
+            **{k: v for k, v in applied.items() if k != "state"},
+            "promotion_observed_at": 1_002,
+        },
+    )
+    with pytest.raises(m.ExecutorError, match="receipt-refused"):
+        value.guard("release", {"state": "committed-cleanup-debt"})
+    assert value.store.get() == debt
+
+
+def test_deadline_terminalization_exits_daemon_and_removes_socket_pid(
+    tmp_path, monkeypatch
+):
+    import shutil
+    import tempfile
+
+    m = mod()
+    runtime = Path(tempfile.mkdtemp(prefix="tnterm-", dir="/private/tmp"))
+    socket_path = runtime / "executor.sock"
+    receipt_root = runtime / "state"
+
+    class Store:
+        pid = receipt_root / "daemon.json"
+
+        def write_pid(self, value):
+            receipt_root.mkdir(mode=0o700)
+            self.pid.write_bytes(m.canonical(value))
+
+    class FakeExecutor:
+        def __init__(self, *_args):
+            self.store = Store()
+            self.target = type("Target", (), {"digest": "a" * 64})()
+
+        def reconcile(self):
+            return {"state": "executed"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(m, "Executor", FakeExecutor)
+    args = type(
+        "Args",
+        (),
+        {
+            "target": "target",
+            "state": "state",
+            "terraform": "terraform",
+            "terraform_sha256": "a" * 64,
+            "receipt_dir": str(receipt_root),
+            "socket": str(socket_path),
+        },
+    )()
+    try:
+        m.serve(args)
+        assert not socket_path.exists()
+        assert not (receipt_root / "daemon.json").exists()
+    finally:
+        shutil.rmtree(runtime)
 
 
 def test_controller_guest_rpc_is_fixed_strict_command_and_dry_run_disables_apply(

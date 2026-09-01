@@ -1,7 +1,7 @@
 """Unit coverage for the import-only provider/guest promotion core."""
 
 from __future__ import annotations
-import hashlib, importlib.util, json, os
+import fcntl, hashlib, importlib.util, json, os
 from pathlib import Path
 import platform
 import pytest
@@ -194,6 +194,15 @@ class Adapter:
         self.calls.append(("mark-applied",))
         self.capability = (("provider_applied_at", when), ("state", "provider-applied"))
         return self.capability
+
+    def begin_forward(self, _capability):
+        self.calls.append(("begin-forward",))
+        self.capability = (("forward_lease", "a" * 64), ("state", "forward-started"))
+        return self.capability
+
+    def apply_forward(self, capability, value, when):
+        self.apply("forward", value)
+        return self.mark_applied(capability, when)
 
     def external_rollback(self, _capability):
         self.calls.append(("external-rollback",))
@@ -525,6 +534,62 @@ def test_external_rollback_arm_requires_exact_bound_receipt(tmp_path):
     )
     with pytest.raises(m.PromotionError, match="provider-rollback-not-armed"):
         adapter.arm_rollback(Forward(), _receipt("prepare"))
+
+
+def test_forward_lock_is_held_through_apply_marker_and_then_released(
+    tmp_path, monkeypatch
+):
+    m = mod()
+    target = _target(m, tmp_path)
+    armed = _rollback_capability(target)
+    current = dict(armed)
+    calls = []
+    lock_path = tmp_path / "provider.lock"
+
+    def guard(action, value):
+        calls.append(action)
+        if action == "begin-forward":
+            current.clear()
+            current.update(
+                {**value, "forward_lease": "f" * 64, "state": "forward-started"}
+            )
+            return dict(current)
+        if action == "inspect":
+            return dict(current)
+        if action == "mark-applied":
+            current.clear()
+            current.update({**value, "state": "provider-applied"})
+            return dict(current)
+        raise AssertionError(action)
+
+    def provider_lock():
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        return fd
+
+    adapter = m.TerraformAdapter(
+        target,
+        external_rollback_guard=guard,
+        provider_transaction_lock=provider_lock,
+    )
+    adapter._rollback_armed = True
+    adapter._rollback_receipt = armed
+    forward = adapter.begin_forward(armed)
+    held_fd = adapter._forward_lock_fd
+    os.fstat(held_fd)
+
+    def apply(direction, _plan):
+        assert direction == "forward"
+        os.fstat(adapter._forward_lock_fd)
+        calls.append("apply")
+
+    monkeypatch.setattr(adapter, "apply", apply)
+    marked = adapter.apply_forward(forward, object(), 999)
+    assert dict(marked)["state"] == "provider-applied"
+    assert adapter._forward_lock_fd == -1
+    with pytest.raises(OSError):
+        os.fstat(held_fd)
+    assert calls == ["begin-forward", "inspect", "apply", "mark-applied"]
 
 
 @pytest.mark.parametrize(
@@ -867,6 +932,7 @@ def _cleanup_capability(target, *, expires_at=2_000):
     value = dict(_rollback_capability(target, expires_at=expires_at))
     value |= {
         "state": "committed-cleanup-debt",
+        "forward_lease": "f" * 64,
         "provider_applied_at": 999,
         "promotion_observed_at": 1_000,
     }
@@ -875,7 +941,11 @@ def _cleanup_capability(target, *, expires_at=2_000):
 
 def _applied_capability(target, *, expires_at=2_000):
     value = dict(_rollback_capability(target, expires_at=expires_at))
-    value |= {"state": "provider-applied", "provider_applied_at": 999}
+    value |= {
+        "state": "provider-applied",
+        "forward_lease": "f" * 64,
+        "provider_applied_at": 999,
+    }
     return tuple(sorted(value.items()))
 
 
@@ -1305,6 +1375,8 @@ def test_real_adapter_final_false_uses_external_executor_then_guest_rollback(
         events.append(("guard", action))
         if action == "arm":
             return {**value, "expires_at": 2_000, "state": "armed"}
+        if action == "begin-forward":
+            return {**value, "forward_lease": "a" * 64, "state": "forward-started"}
         if action == "mark-applied":
             return {**value, "state": "provider-applied"}
         if action == "execute":
@@ -1379,7 +1451,7 @@ def test_real_adapter_final_false_uses_external_executor_then_guest_rollback(
 
     request = _request(tmp_path)
     request["provider_target_sha256"] = target.digest
-    with pytest.raises(m.PromotionError, match="provider-readback-invalid"):
+    with pytest.raises(m.PromotionError, match="rollback-uncertain"):
         m.execute(request, adapter, guest=guest, known_hosts=tmp_path / "known")
     assert ("guard", "execute") in events
     assert guest_events[-1] == ("rollback", True)

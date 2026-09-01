@@ -126,6 +126,7 @@ class ReceiptStore:
             root / "lock",
             root / "daemon.json",
         )
+        self.provider_lock = root / "provider.lock"
         self._cleanup_stale()
 
     def _cleanup_stale(self):
@@ -144,6 +145,24 @@ class ReceiptStore:
         fd = os.open(
             self.lock, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600
         )
+        os.fchmod(fd, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        return fd
+
+    def _provider_locked(self):
+        fd = os.open(
+            self.provider_lock,
+            os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        info = os.fstat(fd)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.geteuid()
+            or info.st_nlink != 1
+        ):
+            os.close(fd)
+            raise ExecutorError("provider-lock-refused")
         os.fchmod(fd, 0o600)
         fcntl.flock(fd, fcntl.LOCK_EX)
         return fd
@@ -174,6 +193,7 @@ class ReceiptStore:
         value = envelope["payload"]
         if not isinstance(value, dict) or value.get("state") not in {
             "armed",
+            "forward-started",
             "provider-applied",
             "committed-cleanup-debt",
             "executed",
@@ -320,6 +340,8 @@ class Executor:
         }
         state = value.get("state") if isinstance(value, dict) else None
         fields = set(base)
+        if state in {"forward-started", "provider-applied", "committed-cleanup-debt"}:
+            fields.add("forward_lease")
         if state in {"provider-applied", "committed-cleanup-debt"}:
             fields.add("provider_applied_at")
         if state == "committed-cleanup-debt":
@@ -327,7 +349,10 @@ class Executor:
         if state in {"executed", "released"}:
             marker = "executed_at" if state == "executed" else "released_at"
             if (
-                set(value) != base | {marker}
+                (
+                    set(value) != base | {marker}
+                    and set(value) != base | {marker, "forward_lease"}
+                )
                 or not isinstance(value.get("server_uuid"), str)
                 or p.UUID.fullmatch(value["server_uuid"]) is None
                 or not isinstance(value.get("environment"), str)
@@ -350,7 +375,13 @@ class Executor:
                 raise ExecutorError("receipt-refused")
             return value
         if (
-            state not in {"armed", "provider-applied", "committed-cleanup-debt"}
+            state
+            not in {
+                "armed",
+                "forward-started",
+                "provider-applied",
+                "committed-cleanup-debt",
+            }
             or set(value) != fields
             or value.get("provider_target_sha256") != self.target.digest
             or not isinstance(value.get("environment"), str)
@@ -367,10 +398,16 @@ class Executor:
                     "guest_nonce",
                     "guest_snapshot_digest",
                 )
+                + (("forward_lease",) if state != "armed" else ())
             )
             or type(value.get("guest_deadline")) is not int
             or type(value.get("expires_at")) is not int
             or value["expires_at"] != value["guest_deadline"]
+        ):
+            raise ExecutorError("receipt-refused")
+        if state == "forward-started" and (
+            not isinstance(value.get("forward_lease"), str)
+            or p.HEX.fullmatch(value["forward_lease"]) is None
         ):
             raise ExecutorError("receipt-refused")
         if state in {"provider-applied", "committed-cleanup-debt"} and (
@@ -390,6 +427,9 @@ class Executor:
     def guard(self, action, request):
         if not isinstance(request, dict):
             raise ExecutorError("request-refused")
+        provider_lock = (
+            self.store._provider_locked() if action in {"execute", "expire"} else -1
+        )
         lock = self.store._locked()
         try:
             current = self.store.get()
@@ -447,7 +487,20 @@ class Executor:
                 raise ExecutorError("receipt-foreign")
             if action == "inspect":
                 return current
-            if action == "mark-applied" and current["state"] == "armed":
+            if action == "begin-forward" and current["state"] == "armed":
+                if set(request) != set(current) - {"state"}:
+                    raise ExecutorError("receipt-refused")
+                value = {
+                    **request,
+                    "forward_lease": secrets.token_hex(32),
+                    "state": "forward-started",
+                }
+                self._valid_current(value)
+                self.store.put(value)
+                return value
+            if action == "mark-applied" and current["state"] != "forward-started":
+                raise ExecutorError("receipt-refused")
+            if action == "mark-applied" and current["state"] == "forward-started":
                 if set(request) != (set(current) - {"state"}) | {"provider_applied_at"}:
                     raise ExecutorError("receipt-refused")
                 value = {**request, "state": "provider-applied"}
@@ -464,6 +517,8 @@ class Executor:
                 self.store.put(value)
                 return value
             if action == "release" and current["state"] == "committed-cleanup-debt":
+                if set(request) != set(current):
+                    raise ExecutorError("receipt-refused")
                 value = {
                     **current,
                     "state": "released",
@@ -475,15 +530,41 @@ class Executor:
                 self.store.put(value)
                 return {"state": "released"}
             if action == "execute" and current["state"] == "executed":
+                if request != current:
+                    raise ExecutorError("receipt-refused")
                 return {"state": "executed"}
             if (
-                action == "execute"
-                and current["state"] in {"armed", "provider-applied"}
-                and (
-                    current["expires_at"] > int(time.time())
-                    or request.get("_deadline_reconcile") is True
-                )
+                action in {"execute", "expire"}
+                and current["state"] in {"armed", "forward-started", "provider-applied"}
+                and (current["expires_at"] > int(time.time()) or action == "expire")
             ):
+                if action == "execute" and request != current:
+                    raise ExecutorError("receipt-refused")
+                if (
+                    action == "expire"
+                    and request.get("_deadline_reconcile") is not True
+                ):
+                    raise ExecutorError("receipt-refused")
+                if action == "expire" and current["state"] == "armed":
+                    observed = self._readback(
+                        "readback",
+                        {
+                            "server_uuid": self.target.value["server_uuid"],
+                            "environment": self.target.value["environment"],
+                            "provider_target_sha256": self.target.digest,
+                        },
+                    )
+                    if observed["firewall"] is False:
+                        value = {
+                            **current,
+                            "state": "executed",
+                            "executed_at": int(time.time()),
+                        }
+                        self._valid_current(value)
+                        self.store.put(value)
+                        return {"state": "executed"}
+                    if observed["firewall"] is not True:
+                        raise ExecutorError("provider-readback-invalid")
                 plan = self.adapter.plan("rollback")
                 try:
                     # This daemon alone owns the armed receipt and invokes the
@@ -504,6 +585,8 @@ class Executor:
             raise ExecutorError("transition-refused")
         finally:
             os.close(lock)
+            if provider_lock >= 0:
+                os.close(provider_lock)
 
     def reconcile(self):
         current = self.store.get()
@@ -511,34 +594,13 @@ class Executor:
             self._valid_current(current)
         if (
             current
-            and current.get("state") in {"armed", "provider-applied"}
+            and current.get("state") in {"armed", "forward-started", "provider-applied"}
             and current.get("expires_at", 0) <= int(time.time())
         ):
-            if current["state"] == "armed":
-                identity = {
-                    "server_uuid": self.target.value["server_uuid"],
-                    "environment": self.target.value["environment"],
-                    "provider_target_sha256": self.target.digest,
-                }
-                observed = self._readback("readback", identity)
-                if observed["firewall"] is False:
-                    value = {
-                        **current,
-                        "state": "executed",
-                        "executed_at": int(time.time()),
-                    }
-                    self._valid_current(value)
-                    lock = self.store._locked()
-                    try:
-                        self.store.put(value)
-                    finally:
-                        os.close(lock)
-                    return {"state": "executed"}
-                if observed["firewall"] is not True:
-                    raise ExecutorError("provider-readback-invalid")
-            # A missed deadline is unsafe: perform the independent false apply.
-            request = {**current, "_deadline_reconcile": True}
-            return self.guard("execute", request)
+            # Re-read and act only while holding the same provider transaction
+            # lock as the controller's forward apply.  A stale false read can
+            # therefore never terminalize an in-flight forward publication.
+            return self.guard("expire", {**current, "_deadline_reconcile": True})
 
 
 def serve(args):
@@ -572,9 +634,15 @@ def serve(args):
             ready, _, _ = select.select([listener], [], [], 1)
             if not ready:
                 try:
-                    executor.reconcile()
+                    terminal_result = executor.reconcile()
                 except (ExecutorError, p.PromotionError):
                     pass
+                else:
+                    if terminal_result and terminal_result.get("state") in {
+                        "executed",
+                        "released",
+                    }:
+                        break
                 continue
             try:
                 connection, _ = listener.accept()

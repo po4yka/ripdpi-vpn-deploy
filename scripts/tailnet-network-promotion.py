@@ -431,6 +431,7 @@ class TerraformAdapter:
         trusted_terraform: TrustedTerraform | None = None,
         return_path_guard=None,
         external_rollback_guard=None,
+        provider_transaction_lock=None,
         allow_apply=False,
     ):
         if not isinstance(target, ProviderTarget):
@@ -446,20 +447,28 @@ class TerraformAdapter:
             return_path_guard,
             external_rollback_guard,
         )
+        self.provider_transaction_lock = provider_transaction_lock
         self.allow_apply = allow_apply
         self.trusted_terraform = trusted_terraform
         self._plans: set[SavedPlan] = set()
         self._rollback_armed = False
         self._rollback_receipt = None
         self._cleanup_receipt = None
+        self._forward_lock_fd = -1
 
     def close(self):
+        self._release_forward_lock()
         for plan in tuple(self._plans):
             plan.close()
         self._plans.clear()
         self.target.close()
         if self.trusted_terraform is not None:
             self.trusted_terraform.close()
+
+    def _release_forward_lock(self):
+        if self._forward_lock_fd >= 0:
+            os.close(self._forward_lock_fd)
+            self._forward_lock_fd = -1
 
     def bind_target(self, identity, target_digest):
         self.target.verify()
@@ -604,6 +613,12 @@ class TerraformAdapter:
                 "guest_snapshot_digest",
                 "guest_deadline",
             }
+            if state in {
+                "forward-started",
+                "provider-applied",
+                "committed-cleanup-debt",
+            }:
+                fields.add("forward_lease")
             if state in {"provider-applied", "committed-cleanup-debt"}:
                 fields.add("provider_applied_at")
             if state == "committed-cleanup-debt":
@@ -625,7 +640,7 @@ class TerraformAdapter:
                 or type(value["guest_deadline"]) is not int
                 or value["guest_deadline"] < 0
                 or (
-                    state in {"armed", "provider-applied"}
+                    state in {"armed", "forward-started", "provider-applied"}
                     and value["guest_deadline"] <= int(time.time())
                 )
                 or (
@@ -652,7 +667,7 @@ class TerraformAdapter:
         except (KeyError, TypeError, ValueError):
             raise PromotionError("rollback-uncertain") from None
         result = tuple(sorted(value.items()))
-        if state in {"armed", "provider-applied"}:
+        if state in {"armed", "forward-started", "provider-applied"}:
             self._rollback_receipt, self._rollback_armed = result, True
         else:
             self._cleanup_receipt, self._rollback_armed = result, False
@@ -678,6 +693,8 @@ class TerraformAdapter:
             state = current.get("state")
             if state == "armed":
                 return self.hydrate_armed(capability)
+            if state == "forward-started":
+                return self._hydrate(capability, "forward-started")
             if state == "provider-applied":
                 return self._hydrate(capability, "provider-applied")
             if state == "committed-cleanup-debt":
@@ -691,7 +708,7 @@ class TerraformAdapter:
             raise PromotionError("rollback-uncertain")
         armed = dict(capability)
         if (
-            armed.get("state") != "armed"
+            armed.get("state") != "forward-started"
             or type(applied_at) is not int
             or not 0 <= applied_at < armed["guest_deadline"]
         ):
@@ -705,6 +722,53 @@ class TerraformAdapter:
             raise PromotionError("rollback-uncertain")
         self._rollback_receipt = tuple(sorted(result.items()))
         return self._rollback_receipt
+
+    def begin_forward(self, capability):
+        if capability != self._rollback_receipt or not self._rollback_armed:
+            raise PromotionError("rollback-uncertain")
+        armed = dict(capability)
+        if armed.get("state") != "armed":
+            raise PromotionError("rollback-uncertain")
+        request = {key: value for key, value in armed.items() if key != "state"}
+        result = self.external_rollback_guard("begin-forward", request)
+        expected = {**request, "state": "forward-started"}
+        if (
+            not isinstance(result, dict)
+            or set(result) != {*expected, "forward_lease"}
+            or any(result[key] != value for key, value in expected.items())
+            or HEX.fullmatch(result["forward_lease"]) is None
+        ):
+            raise PromotionError("rollback-uncertain")
+        if not callable(self.provider_transaction_lock):
+            raise PromotionError("rollback-uncertain")
+        lock = self.provider_transaction_lock()
+        if type(lock) is not int or lock < 0:
+            raise PromotionError("rollback-uncertain")
+        try:
+            # The provider lock is shared with deadline reconciliation.  Re-read
+            # the exact durable lease after acquiring it, before Terraform can
+            # make the public change.
+            if self.external_rollback_guard("inspect", result) != result:
+                raise PromotionError("rollback-uncertain")
+        except BaseException:
+            os.close(lock)
+            raise
+        self._forward_lock_fd = lock
+        self._rollback_receipt = tuple(sorted(result.items()))
+        return self._rollback_receipt
+
+    def apply_forward(self, capability, plan, applied_at):
+        if (
+            capability != self._rollback_receipt
+            or self._forward_lock_fd < 0
+            or dict(capability).get("state") != "forward-started"
+        ):
+            raise PromotionError("rollback-uncertain")
+        try:
+            self.apply("forward", plan)
+            return self.mark_applied(capability, applied_at)
+        finally:
+            self._release_forward_lock()
 
     def external_rollback(self, capability):
         if not self._rollback_armed:
@@ -1027,8 +1091,8 @@ def _execute(
         identity = _receipt(prepared, "prepared")
         capability = adapter.arm_rollback(forward, prepared)
         provider_started = True
-        adapter.apply("forward", forward)
-        capability = adapter.mark_applied(capability, int(time.time()))
+        capability = adapter.begin_forward(capability)
+        capability = adapter.apply_forward(capability, forward, int(time.time()))
         rollback = adapter.plan("rollback")
         _same_receipt(guest(host, "apply", identity, False), identity, "applied")
         applied_after = dict(capability)["provider_applied_at"]

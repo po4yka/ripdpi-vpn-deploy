@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import fcntl
 import importlib.util
 import json
 import os
@@ -153,6 +154,26 @@ def guard(socket_path: Path):
             raise p.PromotionError("rollback-uncertain") from None
 
     return invoke
+
+
+def provider_transaction_lock(root: Path):
+    path = root / "provider.lock"
+    fd = os.open(
+        path,
+        os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    info = os.fstat(fd)
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or info.st_uid != os.geteuid()
+        or info.st_nlink != 1
+    ):
+        os.close(fd)
+        raise ControllerError("provider-lock-refused")
+    os.fchmod(fd, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    return fd
 
 
 def _live_executor(socket_path: Path, target_digest: str):
@@ -315,6 +336,7 @@ def run(config):
             private(terraform, executable=True), config["terraform_sha256"]
         ),
         external_rollback_guard=guard(sock),
+        provider_transaction_lock=lambda: provider_transaction_lock(root),
         allow_apply=config["mode"] == "apply",
     )
     if config["mode"] == "apply":
