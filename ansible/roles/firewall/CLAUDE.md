@@ -10,6 +10,11 @@ multi-profile stack; raw iptables is too easy to leak state.
 P0 (`xray_port` 443/tcp), P1 (`nginx_xhttp_public_port`), P2 (`hysteria_port`
 udp). Default policy drop.
 
+**Tailnet SSH is interface-separated** — exact approved `tailscale0` sources
+are accepted first, then every other SSH packet on that interface is dropped
+before the public CIDR allowlist. Keep that drop even when the Tailnet role is
+disabled because a stale interface can outlive its inventory toggle.
+
 **Public listener ports come from Terraform's contract** — `site.yml` verifies `public_listener_contract` against the runtime manifest before this template renders. Do not add transport ports directly to `nftables.conf.j2`.
 
 **Egress modes are opt-in** — `firewall_egress_policy: permissive` preserves

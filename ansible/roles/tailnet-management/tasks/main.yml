@@ -242,6 +242,14 @@
     - tailnet-check.py
     - tailnet-recover.py
 
+- name: Ensure private volatile Tailnet capability directory
+  ansible.builtin.file:
+    path: /run/vpn-tailnet-management
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
 - name: Ensure private Tailnet recovery state directory
   ansible.builtin.file:
     path: /var/lib/vpn-tailnet-management

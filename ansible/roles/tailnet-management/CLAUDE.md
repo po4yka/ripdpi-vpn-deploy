@@ -10,8 +10,10 @@ advertised routes, exit-node use and Tailscale netfilter management off. The
 firewall role owns exact `tailscale0` SSH source rules.
 
 **Ephemeral enrollment capability** — `TAILSCALE_AUTH_KEY` is accepted only on
-Ansible stdin, written to a root-owned mode-0600 file in `/run`, and removed
-after the bounded login attempt. It never belongs in inventory or SOPS.
+Ansible stdin, written to a root-owned mode-0600 file in the dedicated
+`/run/vpn-tailnet-management` directory, and removed after the bounded login
+attempt. The recovery unit owns the same volatile runtime directory. The key
+never belongs in inventory or SOPS.
 
 **Durable unconfirmed enrollment recovery** — a private transaction is fsynced
 before `tailscale login`; a persistent systemd timer serializes on the same
