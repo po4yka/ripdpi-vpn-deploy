@@ -5,7 +5,6 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import stat
 
 import pytest
 import yaml
@@ -228,7 +227,7 @@ def test_rejected_lock_closes_the_open_descriptor(setup, monkeypatch):
     monkeypatch.setattr(module.os, "close", record_close)
     with pytest.raises(module.ExecutorError, match="deonboard-lock"):
         with module._exclusive_locks((lock,)):
-            raise AssertionError("unreachable")
+            pass
     assert len(closed) == 1
 
 
