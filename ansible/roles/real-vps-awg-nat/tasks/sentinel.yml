@@ -35,6 +35,12 @@
       - real_vps_awg_nat_runner_id is match('^[0-9a-f]{64}$')
       - real_vps_awg_nat_expected_source_sha is match('^[0-9a-f]{40}$')
       - real_vps_awg_nat_expected_source_archive_sha256 is match('^[0-9a-f]{64}$')
+      - real_vps_awg_nat_client_source_sha is match('^[0-9a-f]{40}$')
+      - real_vps_awg_nat_client_source_sha != '0000000000000000000000000000000000000000'
+      - real_vps_awg_nat_client_artifact_sha256 is match('^[0-9a-f]{64}$')
+      - >-
+        real_vps_awg_nat_client_artifact_sha256 !=
+        '0000000000000000000000000000000000000000000000000000000000000000'
       - real_vps_awg_nat_source_bundle | length > 0
       - real_vps_awg_nat_source_bundle_sha256 is match('^[0-9a-f]{64}$')
       - real_vps_awg_nat_awg_go_source_bundle | length > 0
@@ -119,6 +125,29 @@
     owner: root
     group: root
     mode: "0700"
+
+- name: Inspect existing recurring AWG evidence timer
+  ansible.builtin.stat:
+    path: /etc/systemd/system/ripdpi-real-vps-awg-nat.timer
+    follow: false
+  register: _evidence_existing_timer
+
+- name: Disable recurring AWG evidence before updating its generation
+  ansible.builtin.systemd_service:
+    name: ripdpi-real-vps-awg-nat.timer
+    enabled: false
+    state: stopped
+  when: _evidence_existing_timer.stat.exists
+
+- name: Wait for the previous recurring AWG evidence invocation
+  ansible.builtin.command:
+    argv:
+      - flock
+      - --wait
+      - "1800"
+      - /run/lock/ripdpi-real-vps-awg-nat/lane.lock
+      - /bin/true
+  changed_when: false
 
 - name: Remove legacy mutable AWG source trees
   ansible.builtin.file:
@@ -230,6 +259,16 @@
   ansible.builtin.template:
     src: sentinel-runner.json.j2
     dest: /etc/ripdpi/real-vps-awg-nat.json
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+
+- name: Install exact RIPDPI client identity descriptor
+  ansible.builtin.template:
+    src: sentinel-client-identity.json.j2
+    dest: /etc/ripdpi/real-vps-awg-client-identity.json
     owner: root
     group: root
     mode: "0600"

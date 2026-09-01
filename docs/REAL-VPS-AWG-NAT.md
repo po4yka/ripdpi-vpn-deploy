@@ -181,6 +181,12 @@ place. `amneziawg-go`, `awg`, and
 while holding the recurring lane's lock, so a timer cannot observe a mixed
 toolchain.
 
+The non-secret placement vars must also bind the exact client under test with
+`real_vps_awg_nat_client_source_sha` (40 lowercase hex) and
+`real_vps_awg_nat_client_artifact_sha256` (64 lowercase hex). Sentinel
+provisioning validates both, rejects all-zero placeholders, and installs the
+root-owned mode-`0600` descriptor consumed by every scheduled run.
+
 ## Offline exact-source installation
 
 Build the source bundle from a clean committed checkout. The command prints a
@@ -208,6 +214,12 @@ make clean
 The target requires the rendered family inventory plus the three standalone
 evidence groups, runs the normal strict secret preflight, and loads private
 values only from `VPN_SECRETS_FILE`.
+
+This standalone research provisioning command is intentionally disruptive: it
+disables the recurring timer, waits for the shared lane lock, and validates the
+complete generation before enabling the timer again. It is not an ordinary
+idempotent `site.yml` converge. Any failed provisioning attempt leaves the timer
+disabled for operator recovery rather than resuming a mixed generation.
 
 The sentinel receives the bundle through Ansible, verifies its exact commit,
 and invokes `install-real-vps-awg-nat-local.sh`. Each scheduled run streams a

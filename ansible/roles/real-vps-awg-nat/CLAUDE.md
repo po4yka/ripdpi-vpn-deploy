@@ -48,6 +48,15 @@ root-only variables file, and only then publishes source SHA/digest state.
   and the next prepare discard those uncommitted staging files before acting.
 - The offline bundle must be built from a clean committed HEAD and supplied as
   a private Ansible variable; a moving branch or remote checkout is rejected.
+- Sentinel provisioning must install the exact RIPDPI source and artifact
+  digests beside the private runner config. A hand-written descriptor is not a
+  supported activation path and the timer fails closed without this binding.
+- An existing recurring timer is disabled before generation inputs change and
+  remains disabled after any failed converge. Provisioning waits for the shared
+  lane lock; only the exact-source installer re-enables the completed generation.
+- The standalone provisioning play is an explicit disruptive maintenance
+  operation, not an ordinary idempotent family converge: even an exact-current
+  generation is quiesced and revalidated so no stale private input is trusted.
 - Never bypass `VPN_SECRETS_FILE` with a plaintext extra-vars secrets file;
   `make clean` must remove decrypted SOPS material after provisioning.
 - Exit 75 means an unavailable prerequisite/control path. A failed exact-source
