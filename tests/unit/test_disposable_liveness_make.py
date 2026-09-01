@@ -95,6 +95,9 @@ with open(os.environ["DISPOSABLE_MAKE_LOG"], "a", encoding="utf-8") as stream:
     gate.chmod(0o755)
 
     env = os.environ.copy()
+    # The synthetic child must reveal only the Make target's own gate decision,
+    # not the outer machine gate used to run the repository test suite.
+    env.pop("BUILD_GATE_HELD", None)
     for field in (
         "EXECUTOR_PROFILE",
         "EXECUTOR_MANIFEST",
