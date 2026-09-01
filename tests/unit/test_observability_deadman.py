@@ -87,6 +87,18 @@ def test_defaults_are_inert_and_keep_status_loopback_only() -> None:
     assert defaults["retry_attempts"] == 2
 
 
+def test_dedicated_playbook_targets_only_the_deadman_inventory_group() -> None:
+    playbook = yaml.safe_load(
+        (ROOT / "ansible/playbooks/observability-deadman.yml").read_text()
+    )
+
+    assert len(playbook) == 1
+    assert playbook[0]["hosts"] == "vpn-observability-deadman"
+    assert playbook[0]["serial"] == 1
+    assert playbook[0]["any_errors_fatal"] is True
+    assert playbook[0]["roles"] == [{"role": "observability_deadman"}]
+
+
 def test_valid_pulse_advances_state_without_exposing_token() -> None:
     accepted = deadman.accept_pulse(pulse(), TOKEN, state(), config(), NOW)
     assert accepted["last_sequence"] == 1
