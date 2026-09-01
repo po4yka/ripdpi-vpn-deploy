@@ -136,7 +136,9 @@ def test_enabled_molecule_declares_receiver_and_rollback_acceptance_boundaries()
     verify = (ROLE / "molecule" / "enabled" / "verify.yml").read_text(encoding="utf-8")
     for required in (
         "missing or wrong SNI",
-        "GET, oversized request, and CN/path mismatch",
+        "authenticated GET refusal",
+        "CN path mismatch",
+        "oversized request",
         "valid mTLS remote write reaches only loopback Prometheus",
         "failed candidate rollback restores an immutable generation",
         "TSDB free-space preflight remains enforced",

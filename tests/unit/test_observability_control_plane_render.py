@@ -213,9 +213,13 @@ def test_enabled_receiver_waits_for_the_exact_get_refusal_before_red_path_checks
     assert readiness["until"] == "get_request.stdout == '405'"
 
     names = [task["name"] for task in tasks]
-    assert names.index(readiness["name"]) < names.index(
-        "Assert remote-write receiver rejects a CN path mismatch"
-    )
+    for red_path in (
+        "Assert remote-write receiver rejects a missing or wrong SNI",
+        "Assert remote-write receiver rejects a CN path mismatch",
+        "Assert remote-write receiver rejects an oversized request",
+        "Assert valid mTLS remote write reaches only loopback Prometheus",
+    ):
+        assert names.index(readiness["name"]) < names.index(red_path)
 
 
 def test_enabled_receiver_checks_use_the_bounded_direct_fixture_client() -> None:

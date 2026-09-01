@@ -4,7 +4,7 @@
 
 **The sender is a pinned Prometheus Agent runtime** — runtime-release verifies the exact archive before activation. Empty version, URL, checksum, or architecture pin is a hard failure; this role never selects a latest release.
 
-**mTLS material crosses the service boundary through systemd credentials** — the rendered Prometheus configuration refers only to the stable `/run/credentials/observability-agent.service` runtime directory; it never embeds a certificate, key, token, or environment-file fallback. The source files remain root-only and the certificate subject must equal the configured technical node ID.
+**mTLS material crosses the service boundary through systemd credentials** — the non-secret Prometheus configuration is read from the immutable active generation and refers only to the stable `/run/credentials/observability-agent.service` runtime directory. It never embeds a certificate, key, token, or environment-file fallback. The credential source files remain root-only and the certificate subject must equal the configured technical node ID.
 
 **The adapter consumes schema-2 node manifests only** — it exports a bounded, redacted manifest summary to node_exporter's existing loopback textfile path. It does not run watchdog, backup, or protocol probes.
 
