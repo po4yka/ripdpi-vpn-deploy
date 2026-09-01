@@ -1,6 +1,27 @@
 groups:
   - name: observability_expected_targets
     rules:
+{% for target in observability_control_plane.expected_targets.inventory.targets | default([]) if target.lifecycle == 'enabled' %}
+{% for family in target.required_families %}
+      - alert: ObservabilityRequiredFamilyMissing_{{ target.target | replace('-', '_') }}_{{ target.role | replace('-', '_') }}_{{ family | replace(':', '_') }}
+        expr: >-
+          (vpn_observability_expected_target{node="{{ target.target }}",role="{{ target.role }}"} == 1)
+          unless on (node, role)
+          {{ family }}{node=~"^({{ target.label_values.node | join('|') }})$",role=~"^({{ target.label_values.role | join('|') }})$"{% for label, values in target.label_values | dictsort if label not in ['node', 'role'] %},{{ label }}=~"^({{ values | join('|') }})$"{% endfor %}}
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: Required bounded evidence family is absent for an expected target.
+{% endfor %}
+      - alert: ObservabilityExpectedTargetNeverSeen_{{ target.target | replace('-', '_') }}_{{ target.role | replace('-', '_') }}
+        expr: vpn_observability_expected_target_ever_seen{node="{{ target.target }}",role="{{ target.role }}",state="never-seen"} == 1
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: Expected target has never produced its required evidence.
+{% endfor %}
       - alert: ObservabilityExpectedTargetMissing
         expr: >-
           vpn_observability_expected_target

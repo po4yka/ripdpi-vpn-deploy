@@ -74,6 +74,8 @@ def test_renderer_validates_and_deterministically_renders_bounded_targets(
         "# TYPE vpn_observability_expected_target gauge\n"
         'vpn_observability_expected_target{node="vpn-p0",role="edge"} 1\n'
         'vpn_observability_expected_target{node="vpn-p2",role="edge"} 1\n'
+        'vpn_observability_expected_target_ever_seen{node="vpn-p2",role="edge",state="seen"} 1\n'
+        'vpn_observability_expected_target_ever_seen{node="vpn-p0",role="edge",state="seen"} 1\n'
     )
 
 
@@ -103,6 +105,46 @@ def test_renderer_excludes_disabled_target_from_missing_target_series(
     metrics = (tmp_path / "expected.prom").read_text(encoding="utf-8")
     assert 'node="vpn-p2"' not in metrics
     assert 'node="vpn-p0"' in metrics
+
+
+def test_renderer_accepts_shared_textfile_directory_and_publishes_collector_readable_output(
+    tmp_path: Path,
+) -> None:
+    shared = tmp_path / "textfile"
+    shared.mkdir()
+    shared.chmod(0o3775)
+    source = tmp_path / "expected.json"
+    source.write_text(json.dumps(_inventory()), encoding="utf-8")
+    output = shared / "observability-expected-targets.prom"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(RENDERER),
+            "--inventory",
+            str(source),
+            "--output",
+            str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert output.stat().st_mode & 0o777 == 0o640
+    assert (
+        subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "open(__import__('sys').argv[1]).read()",
+                str(output),
+            ]
+        ).returncode
+        == 0
+    )
 
 
 def test_resource_adapter_reports_source_deploy_resource_and_pipeline_states(
@@ -192,9 +234,15 @@ def test_resource_adapter_replaces_pipeline_success_after_validation_failure(
 
 
 def test_rules_are_prometheus_rule_documents_without_notification_routes() -> None:
-    rules = yaml.safe_load(
-        (ROLE / "templates/observability-expected-target-rules.yml.j2").read_text()
+    rendered = render_template(
+        ROLE / "templates/observability-expected-target-rules.yml.j2",
+        {
+            "observability_control_plane": {
+                "expected_targets": {"inventory": _inventory()}
+            }
+        },
     )
+    rules = yaml.safe_load(rendered)
     assert set(rules) == {"groups"}
     names = {rule["alert"] for group in rules["groups"] for rule in group["rules"]}
     assert names == {
@@ -202,13 +250,20 @@ def test_rules_are_prometheus_rule_documents_without_notification_routes() -> No
         "ObservabilityTargetEvidenceStale",
         "ObservabilitySourceIdentityMismatch",
         "ObservabilityControlPlaneResourceOrPipelineUnhealthy",
+        "ObservabilityRequiredFamilyMissing_vpn_p0_edge_vpn_watchdog_collection_success",
+        "ObservabilityRequiredFamilyMissing_vpn_p2_edge_vpn_watchdog_collection_success",
+        "ObservabilityExpectedTargetNeverSeen_vpn_p0_edge",
+        "ObservabilityExpectedTargetNeverSeen_vpn_p2_edge",
     }
-    rendered = (
+    template = (
         ROLE / "templates/observability-expected-target-rules.yml.j2"
     ).read_text()
-    assert "alertmanager" not in rendered.lower()
-    assert "telegram" not in rendered.lower()
-    assert "deadman" not in rendered.lower()
+    assert "alertmanager" not in template.lower()
+    assert "telegram" not in template.lower()
+    assert "deadman" not in template.lower()
+    assert "vpn_watchdog_collection_success" in rendered
+    assert 'node=~"^(vpn-p0)$"' in rendered
+    assert 'role=~"^(edge)$"' in rendered
 
 
 def test_role_wires_only_opted_in_expected_targets_into_immutable_config() -> None:
@@ -232,6 +287,12 @@ def test_role_wires_only_opted_in_expected_targets_into_immutable_config() -> No
     assert "rule_files:" in prometheus
     assert "_observability_rules_generation" in prometheus
     assert "expected_targets | default" in prometheus
+    enable = (ROLE / "tasks/enable.yml").read_text()
+    assert "Remove disabled expected-target observation artifacts" in enable
+    assert "expected-targets-disable.yml" in enable
+    disable = (ROLE / "tasks/disable.yml").read_text()
+    assert "observability-control-plane-adapter.timer" in disable
+    assert "/usr/local/libexec/observability-expected-target-renderer.py" in disable
 
 
 def test_prometheus_config_references_only_the_immutable_rules_generation() -> None:

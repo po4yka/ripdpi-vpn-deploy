@@ -253,11 +253,20 @@ def _atomic_write(path: Path, payload: bytes) -> None:
         metadata = parent.lstat()
     except OSError as exc:
         raise AdapterError("invalid output") from exc
-    if (
-        not stat.S_ISDIR(metadata.st_mode)
-        or metadata.st_uid not in {0, os.geteuid()}
-        or metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
-    ):
+    strict_parent = (
+        stat.S_ISDIR(metadata.st_mode)
+        and metadata.st_uid in {0, os.geteuid()}
+        and metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH) == 0
+    )
+    shared_textfile_parent = (
+        stat.S_ISDIR(metadata.st_mode)
+        and metadata.st_uid in {0, os.geteuid()}
+        and metadata.st_mode & stat.S_IWOTH == 0
+        and metadata.st_mode & stat.S_IWGRP != 0
+        and metadata.st_mode & stat.S_ISGID != 0
+        and metadata.st_mode & stat.S_ISVTX != 0
+    )
+    if not (strict_parent or shared_textfile_parent):
         raise AdapterError("invalid output")
     try:
         previous = path.lstat()
@@ -295,7 +304,7 @@ def _atomic_write(path: Path, payload: bytes) -> None:
         descriptor = -1
         os.replace(temporary, path)
         temporary = None
-        os.chmod(path, 0o600)
+        os.chmod(path, 0o640)
     except OSError as exc:
         raise AdapterError("invalid output") from exc
     finally:

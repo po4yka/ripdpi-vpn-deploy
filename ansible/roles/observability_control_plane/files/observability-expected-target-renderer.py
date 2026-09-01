@@ -132,6 +132,13 @@ def render(document: dict[str, Any]) -> bytes:
         f'{{node="{_label(node)}",role="{_label(role)}"}} 1'
         for node, role in identities
     )
+    for target in document["targets"]:
+        if target["lifecycle"] == "enabled":
+            state = "seen" if target["ever_seen"] else "never-seen"
+            lines.append(
+                "vpn_observability_expected_target_ever_seen"
+                f'{{node="{_label(target["target"])}",role="{_label(target["role"])}",state="{state}"}} 1'
+            )
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
@@ -192,7 +199,7 @@ def _atomic_write(path: Path, payload: bytes) -> None:
         descriptor = -1
         os.replace(temporary, path)
         temporary = None
-        os.chmod(path, 0o600)
+        os.chmod(path, 0o640)
     except OSError as exc:
         raise RendererError("invalid output") from exc
     finally:

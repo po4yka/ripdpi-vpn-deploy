@@ -227,6 +227,52 @@ def test_adapter_template_consumes_only_published_evidence() -> None:
     assert "vpn-protocol-liveness" not in service
 
 
+def test_adapter_accepts_shared_textfile_directory_and_publishes_collector_readable_output(
+    tmp_path: Path,
+) -> None:
+    shared = tmp_path / "textfile"
+    shared.mkdir()
+    shared.chmod(0o3775)
+    evidence = tmp_path / "last-evidence.json"
+    evidence.write_text(json.dumps(_evidence()), encoding="utf-8")
+    output = shared / "protocol-liveness.prom"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ADAPTER),
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--now",
+            "1800000010",
+            "--stale-after",
+            "120",
+            "--max-future",
+            "30",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert output.stat().st_mode & 0o777 == 0o640
+    assert (
+        subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "open(__import__('sys').argv[1]).read()",
+                str(output),
+            ]
+        ).returncode
+        == 0
+    )
+
+
 def test_role_wires_the_adapter_only_when_the_explicit_opt_in_is_enabled() -> None:
     defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
     protocol = defaults["observability_control_plane"]["protocol_liveness"]
@@ -278,6 +324,10 @@ def test_role_wires_the_adapter_only_when_the_explicit_opt_in_is_enabled() -> No
         in removal["loop"]
     )
     assert all("evidence" not in path for path in removal["loop"])
+    assert (
+        "Remove disabled protocol-liveness adapter artifacts"
+        in (ROLE / "tasks/enable.yml").read_text()
+    )
 
 
 def test_enabled_and_disabled_molecule_scenarios_prove_adapter_lifecycle() -> None:
