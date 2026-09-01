@@ -1,0 +1,94 @@
+---
+- name: Require a complete bounded expected-target adapter contract
+  ansible.builtin.assert:
+    that:
+      - observability_control_plane.expected_targets.inventory is mapping
+      - observability_control_plane.expected_targets.textfile_directory is match('^/var/lib/node_exporter/textfile$')
+      - observability_control_plane.expected_targets.expected_source_revision is match('^[0-9a-f]{40,64}$')
+      - observability_control_plane.expected_targets.observed_source_revision is match('^[0-9a-f]{40,64}$')
+      - observability_control_plane.expected_targets.expected_deployable_digest is match('^[0-9a-f]{64}$')
+      - observability_control_plane.expected_targets.observed_deployable_digest is match('^[0-9a-f]{64}$')
+    fail_msg: Expected-target observation requires a bounded inventory and exact source identities.
+  no_log: true
+
+- name: Install expected-target renderers
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/libexec/{{ item }}"
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - observability-expected-target-renderer.py
+    - observability-control-plane-adapter.py
+
+- name: Materialize deterministic expected-target inventory input
+  ansible.builtin.copy:
+    content: "{{ observability_control_plane.expected_targets.inventory | to_json }}\n"
+    dest: "{{ observability_control_plane.config_root }}/expected-targets.json"
+    owner: root
+    group: "{{ observability_control_plane.service_group }}"
+    mode: '0640'
+  no_log: true
+  diff: false
+
+- name: Render bounded expected-target metrics
+  ansible.builtin.command:
+    argv:
+      - /usr/local/libexec/observability-expected-target-renderer.py
+      - --inventory
+      - "{{ observability_control_plane.config_root }}/expected-targets.json"
+      - --output
+      - "{{ observability_control_plane.expected_targets.textfile_directory }}/observability-expected-targets.prom"
+  changed_when: true
+  no_log: true
+
+- name: Derive immutable expected-target rule generation
+  ansible.builtin.set_fact:
+    _observability_rules_content: "{{ lookup('ansible.builtin.template', 'observability-expected-target-rules.yml.j2') }}"
+    _observability_rules_generation: >-
+      {{ lookup('ansible.builtin.template', 'observability-expected-target-rules.yml.j2') | hash('sha256') }}
+
+- name: Inspect immutable expected-target rule generation
+  ansible.builtin.stat:
+    path: "{{ observability_control_plane.config_root }}/generations/{{ _observability_rules_generation }}.rules.yml"
+    checksum_algorithm: sha256
+  register: _observability_candidate_rules
+  changed_when: false
+
+- name: Refuse conflicting immutable expected-target rules
+  ansible.builtin.assert:
+    that: >-
+      not (_observability_candidate_rules.stat.exists | default(false)) or
+      _observability_candidate_rules.stat.checksum == _observability_rules_generation
+    fail_msg: A different rules payload already occupies the derived immutable generation.
+  no_log: true
+
+- name: Publish immutable expected-target rules
+  ansible.builtin.copy:
+    content: "{{ _observability_rules_content }}"
+    dest: "{{ observability_control_plane.config_root }}/generations/{{ _observability_rules_generation }}.rules.yml"
+    owner: root
+    group: "{{ observability_control_plane.service_group }}"
+    mode: '0640'
+    force: false
+  no_log: true
+  diff: false
+
+- name: Install control-plane adapter units
+  ansible.builtin.template:
+    src: "{{ item }}"
+    dest: "/etc/systemd/system/{{ item | regex_replace('\\.j2$', '') }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - observability-control-plane-adapter.service.j2
+    - observability-control-plane-adapter.timer.j2
+
+- name: Enable bounded control-plane adapter timer
+  ansible.builtin.systemd_service:
+    name: observability-control-plane-adapter.timer
+    daemon_reload: true
+    enabled: true
+    state: started

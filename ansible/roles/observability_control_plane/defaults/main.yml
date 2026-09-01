@@ -32,3 +32,11 @@ observability_control_plane:
     client_ca_pem: ""
     client_crl_pem: ""
   ingest_identities: []
+  expected_targets:
+    enabled: false
+    inventory: {}
+    textfile_directory: /var/lib/node_exporter/textfile
+    expected_source_revision: ""
+    observed_source_revision: ""
+    expected_deployable_digest: ""
+    observed_deployable_digest: ""

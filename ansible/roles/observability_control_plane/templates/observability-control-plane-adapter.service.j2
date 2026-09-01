@@ -1,0 +1,24 @@
+[Unit]
+Description=Publish bounded observability control-plane evidence
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/libexec/observability-control-plane-adapter.py --inventory {{ observability_control_plane.config_root }}/expected-targets.json --output {{ observability_control_plane.expected_targets.textfile_directory }}/observability-control-plane.prom --data-dir {{ observability_control_plane.data_dir }} --required-free-bytes {{ observability_control_plane.tsdb_required_bytes }} --expected-source-revision {{ observability_control_plane.expected_targets.expected_source_revision }} --observed-source-revision {{ observability_control_plane.expected_targets.observed_source_revision }} --expected-deployable-digest {{ observability_control_plane.expected_targets.expected_deployable_digest }} --observed-deployable-digest {{ observability_control_plane.expected_targets.observed_deployable_digest }}
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths={{ observability_control_plane.expected_targets.textfile_directory }}
+ReadOnlyPaths={{ observability_control_plane.config_root }} {{ observability_control_plane.data_dir }} /usr/local/libexec/observability-control-plane-adapter.py

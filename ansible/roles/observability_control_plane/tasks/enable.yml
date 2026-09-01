@@ -216,6 +216,11 @@
   loop: "{{ _observability_client_subjects.results }}"
   no_log: true
 
+- name: Configure expected-target observation artifacts
+  ansible.builtin.include_tasks: expected-targets.yml
+  when: >-
+    (observability_control_plane.expected_targets | default({'enabled': false}, true)).enabled | default(false) | bool
+
 - name: Derive the immutable Prometheus generation from candidate content
   ansible.builtin.set_fact:
     _observability_generation: "{{ lookup('ansible.builtin.template', 'prometheus.yml.j2') | hash('sha256') }}"

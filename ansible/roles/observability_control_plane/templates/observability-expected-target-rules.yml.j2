@@ -1,0 +1,38 @@
+groups:
+  - name: observability_expected_targets
+    rules:
+      - alert: ObservabilityExpectedTargetMissing
+        expr: >-
+          vpn_observability_expected_target
+          unless on (node, role)
+          max by (node, role) (vpn_observability_evidence_state)
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: Expected observability target has no evidence state.
+      - alert: ObservabilityTargetEvidenceStale
+        expr: vpn_observability_evidence_state{state="stale"} == 1
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: Observability target evidence is stale.
+      - alert: ObservabilitySourceIdentityMismatch
+        expr: >-
+          (vpn_observability_node_manifest_identity{state="mismatch"} == 1)
+          or
+          (vpn_observability_evidence_state{node="observability-control-plane",role=~"source-revision|deployable-digest",state="mismatch"} == 1)
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: Node source or deployable identity differs from the expected candidate.
+      - alert: ObservabilityControlPlaneResourceOrPipelineUnhealthy
+        expr: >-
+          vpn_observability_evidence_state{node="observability-control-plane",role=~"tsdb-capacity|expected-target-pipeline",state!="fresh"} == 1
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: Control-plane capacity or expected-target pipeline is unhealthy.
