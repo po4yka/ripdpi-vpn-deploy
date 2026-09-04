@@ -212,7 +212,7 @@ def _silence():
     }
 
 
-def test_startup_refusal_logs_only_the_fixed_gateway_category():
+def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
     result = subprocess.run(
         [sys.executable, str(ROLE / "files/observability-silence-gateway.py")],
         env={**os.environ, "CREDENTIALS_DIRECTORY": ""},
@@ -224,6 +224,23 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category():
     assert result.returncode == 1
     assert result.stdout == ""
     assert result.stderr == "silence-gateway: credential-directory\n"
+
+    spec = importlib.util.spec_from_file_location(
+        "silence_gateway_startup", ROLE / "files/observability-silence-gateway.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setenv(
+        "CREDENTIALS_DIRECTORY",
+        "/run/credentials/observability-silence-gateway.service",
+    )
+
+    def unavailable_context(**_kwargs):
+        raise OSError("fixture detail must not cross the category boundary")
+
+    monkeypatch.setattr(module.ssl, "create_default_context", unavailable_context)
+    with pytest.raises(module.GatewayError, match="^backend-credentials$"):
+        module.main()
 
 
 def test_authenticated_finite_silence_reaches_backend_with_derived_owner(gateway):
