@@ -122,6 +122,17 @@ def _duplicate_values(items: list[object], key: str) -> set[str]:
     return {value for value in values if values.count(value) > 1}
 
 
+def _silence_gateway_authorities(observability: dict) -> list[str]:
+    gateway = observability.get("silence_gateway") or {}
+    material = [
+        value
+        for key, value in gateway.items()
+        if key == "sender_token" or key.endswith("_pem")
+    ]
+    material.extend(operator.get("token") for operator in gateway.get("operators", []))
+    return [value for value in material if isinstance(value, str)]
+
+
 def _rotation_interval_is_bounded(rotation: dict) -> bool:
     started_value = rotation.get("started_at")
     expires_value = rotation.get("expires_at")
@@ -225,6 +236,7 @@ def _observability_rotation_errors(
         for value in (sender.get("certificate_pem"), sender.get("private_key_pem"))
         if isinstance(value, str)
     )
+    active_material.update(_silence_gateway_authorities(observability))
     next_material = [
         value
         for key, value in rotation.items()
@@ -370,6 +382,12 @@ def _semantic_errors(
         for value in (sender.get("certificate_pem"), sender.get("private_key_pem"))
     )
     actual_authorities = [value for value in authorities if isinstance(value, str)]
+    actual_authorities.extend(_silence_gateway_authorities(observability))
+    gateway = observability.get("silence_gateway") or {}
+    if _duplicate_values(gateway.get("operators", []), "owner"):
+        errors.append(
+            ("observability_secrets.silence_gateway.operators", "duplicate owner")
+        )
     if len(actual_authorities) != len(set(actual_authorities)):
         errors.append(
             (

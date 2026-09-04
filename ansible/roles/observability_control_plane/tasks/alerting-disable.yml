@@ -1,6 +1,39 @@
 ---
+- name: Inspect retained authority recovery before disable
+  ansible.builtin.stat:
+    path: /etc/observability-control-plane/.authority-rollback
+    follow: false
+  register: _observability_authority_pending
+  changed_when: false
+
+- name: Preserve unresolved authority snapshot instead of disabling its surfaces
+  ansible.builtin.assert:
+    that:
+      - not (_observability_authority_pending.stat.exists | default(false))
+    fail_msg: Private authority recovery is pending; recover it before disabling or deleting configuration.
+
 - name: Gather alerting service facts before opt-out
   ansible.builtin.service_facts:
+
+- name: Stop disabled silence authority
+  ansible.builtin.systemd_service:
+    name: observability-silence-gateway
+    enabled: false
+    state: stopped
+  when:
+    - not ansible_check_mode
+    - "'observability-silence-gateway.service' in ansible_facts.services"
+
+- name: Find owned silence credentials
+  ansible.builtin.find:
+    paths: /etc/observability-control-plane/credentials
+    patterns: 'silence-*'
+    file_type: file
+    follow: false
+    recurse: false
+  register: _observability_disabled_silence_credentials
+  changed_when: false
+  no_log: true
 
 - name: Stop disabled Alertmanager service
   ansible.builtin.systemd_service:
@@ -32,10 +65,14 @@
     {{
       [
         '/etc/systemd/system/observability-alertmanager.service',
+        '/etc/systemd/system/observability-silence-gateway.service',
+        '/usr/local/libexec/observability-silence-gateway',
+        '/etc/observability-control-plane/alertmanager-web.yml',
         observability_control_plane.config_root ~ '/alertmanager-current.yml',
         observability_control_plane.config_root ~ '/alertmanager-previous.yml',
         observability_control_plane.alerting.credential_path
-      ] + (_observability_alerting_generations.files | map(attribute='path') | list)
+      ] + (_observability_disabled_silence_credentials.files | map(attribute='path') | list)
+      + (_observability_alerting_generations.files | map(attribute='path') | list)
     }}
 
 - name: Reload systemd after alerting opt-out

@@ -109,6 +109,19 @@
           openssl verify -x509_strict -purpose sslclient -CAfile "$fixture/tls/ca.crt" \
             "$fixture/tls/client-$identity.crt"
         done
+        openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=silence-fixture-ca \
+          -addext 'basicConstraints=critical,CA:TRUE,pathlen:0' \
+          -addext 'keyUsage=critical,keyCertSign,cRLSign' \
+          -keyout "$fixture/tls/silence-ca.key" -out "$fixture/tls/silence-ca.crt"
+        for identity in server client; do
+          openssl req -newkey rsa:2048 -nodes -subj "/CN=silence-$identity" \
+            -keyout "$fixture/tls/silence-$identity.key" -out "$fixture/tls/silence-$identity.csr"
+          printf '%s\n' 'basicConstraints=critical,CA:FALSE' 'keyUsage=critical,digitalSignature,keyEncipherment' \
+            "extendedKeyUsage=${identity}Auth" 'subjectAltName=IP:127.0.0.1' > "$fixture/silence.ext"
+          openssl x509 -req -days 1 -CA "$fixture/tls/silence-ca.crt" -CAkey "$fixture/tls/silence-ca.key" \
+            -CAcreateserial -in "$fixture/tls/silence-$identity.csr" \
+            -out "$fixture/tls/silence-$identity.crt" -extfile "$fixture/silence.ext"
+        done
         cat > "$fixture/prometheus" <<'EOF'
         #!/usr/bin/env python3
         import http.server
@@ -126,12 +139,23 @@
         EOF
         cat > "$fixture/alertmanager" <<'EOF'
         #!/usr/bin/env python3
-        import http.server
-        class Handler(http.server.BaseHTTPRequestHandler):
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        import os
+        import ssl
+        class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
-                self.send_response(200 if self.path == '/-/ready' else 404); self.end_headers()
-            def log_message(self, *_args): pass
-        http.server.HTTPServer(('127.0.0.1', 9093), Handler).serve_forever()
+                self.send_response(200 if self.path == '/-/ready' else 404)
+                self.end_headers()
+            def log_message(self, *_args):
+                pass
+        credentials = os.environ['CREDENTIALS_DIRECTORY']
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(credentials+'/silence-backend-server.crt', credentials+'/silence-backend-server.key')
+        context.load_verify_locations(credentials+'/silence-backend-ca.pem')
+        context.verify_mode = ssl.CERT_REQUIRED
+        server = HTTPServer(('127.0.0.1', 9093), Handler)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        server.serve_forever()
         EOF
         cat > "$fixture/amtool" <<'EOF'
         #!/bin/sh
@@ -147,9 +171,9 @@
         tar -C "$fixture" -czf "$fixture/alertmanager.tar.gz" \
           alertmanager-fixture/alertmanager alertmanager-fixture/amtool
         dd if=/dev/zero of="$fixture/oversize.bin" bs=1M count=9 status=none
-        touch "$fixture/.alerting-fixture-v1"
+        touch "$fixture/.silence-fixture-v2"
       args:
-        creates: /var/tmp/observability-control-plane-fixture/.alerting-fixture-v1
+        creates: /var/tmp/observability-control-plane-fixture/.silence-fixture-v2
       changed_when: false
 
     - name: Install bounded direct mTLS fixture client

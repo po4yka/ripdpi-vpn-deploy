@@ -182,3 +182,45 @@ No staging placement, fleet rollout, two-vantage protocol acceptance, human
 Telegram receipt, credential rotation on production, paging cutover or live
 rollback has been performed by this source integration. Those execution steps
 and all corresponding required evidence remain open.
+
+## Finite silence gateway: local native C13, 2026-09-04
+
+The real Darwin arm64 Alertmanager 0.28.1 and the gateway source with SHA256
+`8c461d391fd1aa5c8157649171ad0946016c33c6f484197baf67c9ed2dc32ffa`
+passed one bounded 15.468-second run. The official archive checksum was
+`6ad077f9de99fe96843a68313f19dd2dbc1e8929135293e48bb10824bd6b4df4`;
+the verified binary checksum was
+`f8a3adfe1793e86faa7a3c19a5c98097f196f2479ff245e3d9411e24c03e5c2d`.
+
+The run observed a firing webhook, a 15-second finite silence, and a second
+firing webhook after native expiry with the same alert identity and no resolved
+notification. Direct backend access without a client certificate, missing
+authentication, sender maintenance, excessive TTL, broad scope and foreign-owner
+deletion all refused; creator deletion succeeded. Processes and threads exited,
+ports closed, and the private runtime including generated keys was removed.
+The redacted result SHA256 is
+`03af9762a3bc190419ab24c9ccd1a78ccb0518808524228915ea46cdbecb0655`.
+
+This proves the local gateway/Alertmanager protocol and expiry boundary only.
+It does not prove Linux/systemd, staging placement, fleet/VPN traffic or Telegram
+receipt. The MON execution step remains open through those required gates.
+
+Independent source review found that failed activation could leave new gateway
+credentials with the old Prometheus credential snapshot. The corrected role
+captures its fixed authority write-set before publication, restores bytes and
+metadata on ordinary Ansible failure, and reloads the previous service snapshots.
+Six real-Ansible scenarios with explicit filesystem and HTTP-process service
+adapters passed: active rotation/retry, inactive restoration, first-install
+cleanup, incomplete restore with retained recovery state, partial active topology
+refusal and first-enable failure with a standalone active Prometheus. The helper
+passed 22 filesystem/CLI cases, including size limits, unsafe paths and retained
+recovery state. These are adapter tests, not native systemd rollback proof.
+
+A later installed-Ansible check-mode regression exposed skipped snapshot capture
+followed by parsing empty stdout. A separate read-only inspection path now allows
+six observed check-mode scenarios: unchanged and rotated authority, a fresh
+namespace, stopped/disabled service activation prediction, and manual-recovery/
+unsafe-namespace refusal. Managed bytes, inodes,
+modes and service state remained unchanged; no rollback snapshot was created.
+Runtime binary installation and abrupt process/host loss are outside the ordinary
+authority rollback boundary. Final exact-commit and hosted results are pending.

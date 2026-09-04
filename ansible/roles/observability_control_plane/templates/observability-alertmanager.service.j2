@@ -7,7 +7,10 @@ Wants=network-online.target
 User={{ observability_control_plane.service_user }}
 Group={{ observability_control_plane.service_group }}
 LoadCredential=telegram-bot-token:{{ observability_control_plane.alerting.credential_path }}
-ExecStart={{ observability_control_plane.alerting.binary_link }} --config.file={{ observability_control_plane.config_root }}/alertmanager-current.yml --web.listen-address={{ observability_control_plane.alerting.listen }} --storage.path={{ observability_control_plane.alerting.data_dir }} --cluster.listen-address=
+LoadCredential=silence-backend-ca.pem:/etc/observability-control-plane/credentials/silence-backend-ca.pem
+LoadCredential=silence-backend-server.crt:/etc/observability-control-plane/credentials/silence-backend-server.crt
+LoadCredential=silence-backend-server.key:/etc/observability-control-plane/credentials/silence-backend-server.key
+ExecStart={{ observability_control_plane.alerting.binary_link }} --config.file={{ observability_control_plane.config_root }}/alertmanager-current.yml --web.config.file=/etc/observability-control-plane/alertmanager-web.yml --web.listen-address={{ observability_control_plane.alerting.listen }} --storage.path={{ observability_control_plane.alerting.data_dir }} --cluster.listen-address=
 Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=30s

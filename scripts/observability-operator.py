@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 from typing import Any
+from uuid import UUID
 
 import yaml
 
@@ -28,7 +29,9 @@ COMPONENTS = {
     "deadman": "observability_deadman",
 }
 SECRET_COMMANDS = frozenset({"render", "validate", "rotate", "rollback"})
-MUTATING_COMMANDS = frozenset({"drill", "rotate", "rollback", "remove"})
+MUTATING_COMMANDS = frozenset(
+    {"drill", "rotate", "rollback", "remove", "silence-create", "silence-delete"}
+)
 SAFE_GENERATION = re.compile(r"^[0-9a-f]{64}$")
 TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 AUTOLOAD_DIRS = (
@@ -495,6 +498,60 @@ def _run_playbook(
             raise OperatorError("ansible command failed")
 
 
+def _gateway_program(owner: str | None = None) -> str:
+    """Emit a private, fixed-path token reader for the root SSH payload."""
+    name = "silence-sender-token" if owner is None else f"silence-owner-{owner}-token"
+    return (
+        """import os
+import re
+import stat
+import urllib.request
+
+def read_gateway_token(root, name, expected_uid=0):
+    directory = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        metadata = os.fstat(directory)
+        if metadata.st_uid != expected_uid or stat.S_IMODE(metadata.st_mode) & 0o022:
+            raise RuntimeError("gateway credential unavailable")
+        for part in root.strip("/").split("/"):
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+            os.close(directory)
+            directory = child
+            metadata = os.fstat(directory)
+            if metadata.st_uid != expected_uid or stat.S_IMODE(metadata.st_mode) & 0o022:
+                raise RuntimeError("gateway credential unavailable")
+        descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+        try:
+            metadata = os.fstat(descriptor)
+            if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != expected_uid
+                or stat.S_IMODE(metadata.st_mode) != 0o600 or metadata.st_nlink != 1
+                or metadata.st_size not in (64, 65)):
+                raise RuntimeError("gateway credential unavailable")
+            raw = os.read(descriptor, 66)
+            if not re.fullmatch(b"[0-9a-f]{64}\\n?", raw):
+                raise RuntimeError("gateway credential unavailable")
+            return raw.decode("ascii").rstrip("\\n")
+        finally:
+            os.close(descriptor)
+    finally:
+        os.close(directory)
+
+class _NoGatewayRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise RuntimeError("gateway redirect rejected")
+
+gateway_token = read_gateway_token("/etc/observability-control-plane/credentials", """
+        + repr(name)
+        + """)
+gateway_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoGatewayRedirect())
+def gateway_request(path, data=None, method="GET"):
+    request = urllib.request.Request("http://127.0.0.1:19094" + path, data=data,
+        headers={"Authorization": "Bearer " + gateway_token, "Content-Type": "application/json"}, method=method)
+    return gateway_opener.open(request, timeout=5)
+"""
+    )
+
+
 def _status_program(component: str) -> bytes:
     units = {
         "agent": (
@@ -505,6 +562,7 @@ def _status_program(component: str) -> bytes:
         "control-plane": (
             "observability-prometheus.service",
             "observability-alertmanager.service",
+            "observability-silence-gateway.service",
             "observability-control-plane-adapter.timer",
         ),
         "deadman": (
@@ -516,11 +574,12 @@ def _status_program(component: str) -> bytes:
         "agent": ("http://127.0.0.1:19090/-/ready",),
         "control-plane": (
             "http://127.0.0.1:9090/-/ready",
-            "http://127.0.0.1:9093/-/ready",
+            "gateway",
         ),
         "deadman": ("http://127.0.0.1:19094/v1/status",),
     }[component]
-    source = f"""import json
+    source = (
+        (_gateway_program() if component == "control-plane" else "") + f"""import json
 import subprocess
 import urllib.request
 
@@ -542,18 +601,19 @@ for unit in UNITS:
 ready = []
 for url in READINESS:
     try:
-        with urllib.request.urlopen(url, timeout=3) as response:
+        with (gateway_request("/-/ready") if url == "gateway" else urllib.request.build_opener(urllib.request.ProxyHandler({{}})).open(url, timeout=3)) as response:
             ready.append(response.status == 200)
     except Exception:
         ready.append(False)
 healthy = all(value == "active" for value in states.values()) and all(ready)
 print(json.dumps({{"schema_version": 1, "component": COMPONENT, "state": "healthy" if healthy else "degraded", "units": states}}, sort_keys=True))
 """
+    )
     return source.encode("utf-8")
 
 
-def _drill_program() -> bytes:
-    return b"""import datetime
+def _drill_program(owner: str) -> bytes:
+    source = _gateway_program(owner) + """import datetime
 import json
 import time
 import urllib.request
@@ -562,15 +622,14 @@ now = datetime.datetime.now(datetime.timezone.utc)
 labels = {"alertname": "ObservabilitySyntheticDrill", "component": "control-plane", "environment": "staging", "severity": "warning"}
 base = {"labels": labels, "annotations": {"summary": "operator synthetic delivery drill", "runbook": "docs/OBSERVABILITY-OPERATIONS.md"}, "startsAt": now.isoformat()}
 def send(alert):
-    request = urllib.request.Request("http://127.0.0.1:9093/api/v2/alerts", data=json.dumps([alert]).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(request, timeout=5) as response:
+    with gateway_request("/api/v2/alerts", data=json.dumps([alert]).encode("utf-8"), method="POST") as response:
         if response.status not in (200, 202):
             raise RuntimeError("delivery rejected")
 send(base)
 deadline = time.monotonic() + 31
 fingerprint = json.dumps(labels, sort_keys=True, separators=(",", ":"))
 while True:
-    with urllib.request.urlopen("http://127.0.0.1:9093/api/v2/alerts", timeout=5) as response:
+    with gateway_request("/api/v2/alerts") as response:
         observed = json.load(response)
     if not isinstance(observed, list) or not any(
         isinstance(item, dict)
@@ -588,6 +647,48 @@ resolved["endsAt"] = (now + datetime.timedelta(seconds=1)).isoformat()
 send(resolved)
 print(json.dumps({"schema_version": 1, "component": "control-plane", "receiver": "telegram-primary", "state": "submitted"}, sort_keys=True))
 """
+    return source.encode("utf-8")
+
+
+def _silence_program(
+    owner: str, *, request: bytes | None, silence_id: str | None
+) -> bytes:
+    operation = "created" if request is not None else "deleted"
+    path = "/v1/silences" if request is not None else "/v1/silences/" + str(silence_id)
+    method = "POST" if request is not None else "DELETE"
+    source = _gateway_program(owner) + f"""import json
+from uuid import UUID
+
+with gateway_request({path!r}, data={request!r}, method={method!r}) as response:
+    if response.status != {201 if request is not None else 200}:
+        raise RuntimeError("silence operation rejected")
+    raw = response.read(4097)
+    if len(raw) > 4096:
+        raise RuntimeError("silence response rejected")
+    value = json.loads(raw)
+    identifier = value["silence_id"]
+    if str(UUID(identifier)) != identifier or set(value) != {({"silence_id"} if request is not None else {"silence_id", "deleted"})!r}:
+        raise RuntimeError("silence response rejected")
+    if {operation!r} == "deleted" and (value["deleted"] is not True or identifier != {silence_id!r}):
+        raise RuntimeError("silence response rejected")
+print(json.dumps({{"schema_version": 1, "component": "control-plane", "state": {operation!r}, "silence_id": identifier}}, sort_keys=True))
+"""
+    return source.encode("utf-8")
+
+
+def _silence_request(path: Path | None) -> bytes:
+    path = _private_file(path, "private silence request required")
+    try:
+        descriptor = fleet_inspection._open_local_file(path, private=True)
+        try:
+            raw = os.read(descriptor, 4097)
+        finally:
+            os.close(descriptor)
+    except (OSError, fleet_inspection.InspectionError):
+        raise OperatorError("silence request rejected") from None
+    if not raw or len(raw) > 4096:
+        raise OperatorError("silence request rejected")
+    return raw
 
 
 def _remote(
@@ -630,6 +731,7 @@ def _remote(
             "control-plane": {
                 "observability-prometheus.service",
                 "observability-alertmanager.service",
+                "observability-silence-gateway.service",
                 "observability-control-plane-adapter.timer",
             },
             "deadman": {
@@ -664,6 +766,21 @@ def _remote(
             or value.get("state") != expected_state
             or value.get("receiver") != "telegram-primary"
         ):
+            raise OperatorError("remote report rejected")
+    elif operation in {"silence-create", "silence-delete"}:
+        identifier = value.get("silence_id")
+        if (
+            set(value) != {"schema_version", "component", "state", "silence_id"}
+            or value.get("state")
+            != ("created" if operation == "silence-create" else "deleted")
+            or not isinstance(identifier, str)
+            or not re.fullmatch(
+                r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+                identifier,
+            )
+        ):
+            raise OperatorError("remote report rejected")
+        if operation == "silence-delete" and identifier != args.silence_id:
             raise OperatorError("remote report rejected")
     elif operation == "rollback":
         if (
@@ -802,6 +919,15 @@ def _parser() -> argparse.ArgumentParser:
         commands.add_parser(command, parents=[common])
     drill = commands.add_parser("drill", parents=[common])
     drill.add_argument("--confirm-notification", action="store_true")
+    drill.add_argument("--silence-owner")
+    for command in ("silence-create", "silence-delete"):
+        silence = commands.add_parser(command, parents=[common])
+        silence.add_argument("--confirm", action="store_true")
+        silence.add_argument("--silence-owner")
+        if command == "silence-create":
+            silence.add_argument("--request", type=Path)
+        else:
+            silence.add_argument("--silence-id")
     for command in ("rotate", "rollback", "remove"):
         mutation = commands.add_parser(command, parents=[common])
         mutation.add_argument("--confirm", action="store_true")
@@ -819,6 +945,31 @@ def main(argv: list[str] | None = None) -> int:
                 raise OperatorError("drills require staging")
             if args.component != "control-plane":
                 raise OperatorError("drill component rejected")
+            if not isinstance(args.silence_owner, str) or not re.fullmatch(
+                r"[a-z][a-z0-9_-]{0,63}", args.silence_owner
+            ):
+                raise OperatorError("valid --silence-owner required")
+        silence_request = None
+        if args.command in {"silence-create", "silence-delete"}:
+            if not args.confirm:
+                raise OperatorError("--confirm required")
+            if args.component != "control-plane":
+                raise OperatorError("silence component rejected")
+            if not isinstance(args.silence_owner, str) or not re.fullmatch(
+                r"[a-z][a-z0-9_-]{0,63}", args.silence_owner
+            ):
+                raise OperatorError("valid --silence-owner required")
+            if args.command == "silence-delete":
+                try:
+                    if (
+                        not isinstance(args.silence_id, str)
+                        or str(UUID(args.silence_id)) != args.silence_id
+                    ):
+                        raise ValueError
+                except ValueError:
+                    raise OperatorError("silence ID rejected") from None
+            else:
+                silence_request = _silence_request(args.request)
         source_revision, deployable_source_digest = _clean_source_identity()
         host = _selected_host(args)
         _require_inventory_scope(args)
@@ -840,7 +991,20 @@ def main(argv: list[str] | None = None) -> int:
                 args.vars, args.component, enabled=None
             )
         if args.command == "drill":
-            result = _remote(args, host, _drill_program(), operation="drill")
+            result = _remote(
+                args, host, _drill_program(args.silence_owner), operation="drill"
+            )
+        elif args.command in {"silence-create", "silence-delete"}:
+            result = _remote(
+                args,
+                host,
+                _silence_program(
+                    args.silence_owner,
+                    request=silence_request,
+                    silence_id=getattr(args, "silence_id", None),
+                ),
+                operation=args.command,
+            )
         elif args.command in MUTATING_COMMANDS and not getattr(args, "confirm", False):
             raise OperatorError("--confirm required")
         elif args.command == "render":

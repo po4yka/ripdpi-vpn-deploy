@@ -70,6 +70,18 @@ observability_control_plane:
       sha256: {amd64: "", arm64: ""}
       archive_members: {amd64: "", arm64: ""}
       amtool_archive_members: {amd64: "", arm64: ""}
+    silence_gateway:
+      enabled: false
+      listen: 127.0.0.1:19094
+      max_ttl_seconds: 14400
+      environment: ""
+      operators: []
+      sender_token: ""
+      backend_ca_pem: ""
+      backend_server_cert_pem: ""
+      backend_server_key_pem: ""
+      backend_client_cert_pem: ""
+      backend_client_key_pem: ""
     telegram:
       bot_token: ""
       chat_id: ""

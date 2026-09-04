@@ -16,8 +16,11 @@ rule_files:
 {% if (observability_control_plane.alerting | default({'enabled': false}, true)).enabled | default(false) %}
 alerting:
   alertmanagers:
-    - static_configs:
-        - targets: ['127.0.0.1:9093']
+    - authorization:
+        type: Bearer
+        credentials_file: /run/credentials/observability-prometheus.service/silence-sender-token
+      static_configs:
+        - targets: ['127.0.0.1:19094']
 {% endif %}
 
 scrape_configs:
@@ -26,6 +29,9 @@ scrape_configs:
       - targets: ['127.0.0.1:9100']
 {% if (observability_control_plane.alerting | default({'enabled': false}, true)).enabled | default(false) %}
   - job_name: observability-alertmanager
+    authorization:
+      type: Bearer
+      credentials_file: /run/credentials/observability-prometheus.service/silence-sender-token
     static_configs:
-      - targets: ['127.0.0.1:9093']
+      - targets: ['127.0.0.1:19094']
 {% endif -%}

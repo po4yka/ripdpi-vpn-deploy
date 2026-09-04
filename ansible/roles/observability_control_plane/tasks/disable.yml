@@ -1,4 +1,17 @@
 ---
+- name: Inspect retained authority recovery before disable
+  ansible.builtin.stat:
+    path: /etc/observability-control-plane/.authority-rollback
+    follow: false
+  register: _observability_authority_pending
+  changed_when: false
+
+- name: Preserve unresolved authority snapshot instead of disabling its surfaces
+  ansible.builtin.assert:
+    that:
+      - not (_observability_authority_pending.stat.exists | default(false))
+    fail_msg: Private authority recovery is pending; recover it before disabling or deleting configuration.
+
 - name: Gather control-plane service facts before disable
   ansible.builtin.service_facts:
 
@@ -10,6 +23,15 @@
   when:
     - not ansible_check_mode
     - "'observability-prometheus.service' in ansible_facts.services"
+
+- name: Stop and disable existing silence authority
+  ansible.builtin.systemd_service:
+    name: observability-silence-gateway
+    enabled: false
+    state: stopped
+  when:
+    - not ansible_check_mode
+    - "'observability-silence-gateway.service' in ansible_facts.services"
 
 - name: Stop and disable existing Alertmanager service
   ansible.builtin.systemd_service:
@@ -74,6 +96,8 @@
   loop:
     - /etc/systemd/system/observability-prometheus.service
     - /etc/systemd/system/observability-alertmanager.service
+    - /etc/systemd/system/observability-silence-gateway.service
+    - /usr/local/libexec/observability-silence-gateway
     - /etc/nginx/sites-enabled/observability-remote-write.conf
     - /etc/nginx/sites-available/observability-remote-write.conf
     - "{{ observability_control_plane.config_root }}"

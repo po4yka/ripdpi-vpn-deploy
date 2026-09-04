@@ -2,7 +2,7 @@
 id: MON-1788008977760206
 title: Deliver centralized observability and Telegram alerting
 kind: feature
-status: backlog
+status: doing
 area: monitoring
 priority: high
 risk: high
@@ -12,7 +12,7 @@ blocked_by: [TST-1787850553468536, ANS-1787497148207353]
 spec_mode: required
 openspec_change: mon-1788008977760206-centralized-observability-telegram-alerting
 created: 2026-08-29
-updated: 2026-09-01
+updated: 2026-09-04
 related_tasks: [SEC-1787916931540401, TST-1787497001212692]
 ---
 
@@ -74,6 +74,18 @@ for authenticated client traffic or observed delivery.
   rebased/serialized, never overwritten.
 - No live provider, server, Telegram, credential, failure injection, cutover or
   storage action is authorized by this planning record alone.
+
+## Active source ownership (2026-09-04)
+
+- Primary owns the isolated `codex/observability-silence-gateway-20260904`
+  branch, task metadata, shared configuration and protected integration.
+- The delegated silence-gateway worker owns only the control-plane role's
+  finite-silence implementation/templates and its dedicated behavior tests.
+  It must coordinate any shared secrets, inventory, Makefile or CI changes
+  before editing. Other source lanes and all staging/live actions are excluded.
+- This slice implements the existing maintenance requirement within
+  MON-1788009842115523. It does not close that whole rule/lifecycle step or
+  substitute for the separate dead-man, real integration and live gates.
 
 ## Current source status
 

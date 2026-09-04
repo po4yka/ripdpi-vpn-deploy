@@ -253,7 +253,7 @@ other nodes that may all be stale.
 ### 8. Stable incidents, inhibition, and recovery
 
 Alert fingerprints contain only stable allowlisted labels:
-`alertname`, `environment`, `node_id`, `component`, `policy`, `profile`,
+`alertname`, `environment`, `node`, `component`, `policy`, `profile`,
 `vantage`, and `severity` where applicable. Values, timestamps, counts, errors,
 and evidence summaries are annotations. This preserves one incident across
 updates and allows firing/resolved delivery to correlate.
@@ -354,6 +354,32 @@ Maintenance suppresses notification only; metrics,
 verdicts, incident starts, and health remain unchanged. Silence expiry resumes
 the same incident without inventing recovery. Create/delete/expiry audit records
 are retained without credentials.
+
+The gateway uses the existing alert label `node`; producer `node_id` remains a
+metric/identity field and is not a second silence matcher alias. Every scope
+requires the configured exact `environment` and at least one exact `node` or
+`policy`. The default maximum TTL is 14,400 seconds and is explicitly bounded
+by deployment policy. An authenticated token determines the owner; a supplied
+owner field is rejected. Reasons are bounded technical slugs, not free text.
+
+The fixed loopback gateway is `127.0.0.1:19094`, under a separate service UID.
+Alertmanager remains at `127.0.0.1:9093` with dedicated mutually authenticated
+TLS (including IP SAN verification). Only the gateway owns its backend client
+key. Prometheus uses a separate sender bearer token for alert ingestion,
+readiness and metrics; operator tokens authorize maintenance and explicit
+staging drills. Direct Alertmanager writes and raw silence API forwarding are
+unavailable. This gateway is mandatory when control-plane alerting is enabled.
+All these authorities remain separate from telemetry ingestion and Telegram.
+
+The canonical operator surface reads the selected owner's fixed root-owned
+mode-0600 token through strict SSH, never through local argv or environment.
+`observability-silence-create` forwards a bounded private JSON document with
+schema_version, reason, starts_at, ends_at and exact matchers. The gateway's
+POST `/v1/silences` returns only a UUID; DELETE `/v1/silences/<UUID>` requires
+the creating owner. Responses are bounded and validated before categorical
+operator output. Create/delete operations are explicit confirmations; neither
+runs Ansible nor changes source health. Native Alertmanager expiry remains
+authoritative even if gateway audit bookkeeping is temporarily unavailable.
 
 ### 12. Generation-based publication and rollback
 

@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 User=prometheus
 Group=prometheus
+
 ExecStart=/usr/local/libexec/observability-prometheus --config.file=/etc/observability-control-plane/current.yml --web.listen-address=127.0.0.1:9090 --web.enable-remote-write-receiver --storage.tsdb.path=/var/lib/observability-prometheus --storage.tsdb.retention.time=30d --storage.tsdb.retention.size=20GB
 Restart=on-failure
 RestartSec=5s

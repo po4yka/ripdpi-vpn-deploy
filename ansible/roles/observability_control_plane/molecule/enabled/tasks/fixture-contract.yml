@@ -8,6 +8,11 @@
     - tls/ca.crt
     - tls/ca.crl
     - tls/client-vpn-p0.crt
+    - tls/silence-ca.crt
+    - tls/silence-server.crt
+    - tls/silence-server.key
+    - tls/silence-client.crt
+    - tls/silence-client.key
   register: control_plane_fixture_tls
   no_log: true
 
@@ -122,6 +127,20 @@
           amtool_archive_members:
             amd64: alertmanager-fixture/amtool
             arm64: alertmanager-fixture/amtool
+        silence_gateway:
+          enabled: true
+          listen: 127.0.0.1:19094
+          environment: staging
+          max_ttl_seconds: 14400
+          operators:
+            - owner: operator-a
+              token: "{{ 'a1' * 32 }}"
+          sender_token: "{{ 'b2' * 32 }}"
+          backend_ca_pem: "{{ control_plane_fixture_tls.results[5].content | b64decode }}"
+          backend_server_cert_pem: "{{ control_plane_fixture_tls.results[6].content | b64decode }}"
+          backend_server_key_pem: "{{ control_plane_fixture_tls.results[7].content | b64decode }}"
+          backend_client_cert_pem: "{{ control_plane_fixture_tls.results[8].content | b64decode }}"
+          backend_client_key_pem: "{{ control_plane_fixture_tls.results[9].content | b64decode }}"
         telegram:
           bot_token: 123456789:molecule-token-not-real-value
           chat_id: '-100000000001'

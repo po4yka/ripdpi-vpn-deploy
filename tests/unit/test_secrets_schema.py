@@ -140,6 +140,155 @@ def test_observability_secret_authorities_are_versioned_and_distinct(example_doc
         assert schema["properties"][name]["properties"]["schema_version"] == {"const": 1}
 
 
+@pytest.fixture
+def silence_doc(filled):
+    filled["observability_secrets"] = {
+        "schema_version": 1,
+        "receiver_ca_pem": _fake_private_key("A"),
+        "ingress_certificate_pem": _fake_private_key("B"),
+        "ingress_private_key_pem": _fake_private_key("C"),
+        "senders": [
+            {
+                "node_id": "node-a",
+                "certificate_pem": _fake_private_key("D"),
+                "private_key_pem": _fake_private_key("E"),
+            }
+        ],
+        "telegram": {"bot_token": "f" * 64, "chat_id": "-1001234567890"},
+        "silence_gateway": {
+            "operators": [{"owner": "operator-a", "token": "a" * 64}],
+            "sender_token": "b" * 64,
+            "backend_ca_pem": _fake_private_key("F"),
+            "backend_server_cert_pem": _fake_private_key("G"),
+            "backend_server_key_pem": _fake_private_key("H"),
+            "backend_client_cert_pem": _fake_private_key("I"),
+            "backend_client_key_pem": _fake_private_key("J"),
+        },
+    }
+    return filled
+
+
+def test_silence_gateway_complete_credentials_validate_and_block_is_optional(
+    silence_doc, tmp_path
+):
+    result = _validate_cli(silence_doc, tmp_path)
+    assert result.returncode == 0, result.stderr
+    del silence_doc["observability_secrets"]["silence_gateway"]
+    result = _validate_cli(silence_doc, tmp_path)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "empty",
+        "overflow",
+        "owner",
+        "owner-newline",
+        "operator-token",
+        "sender-token",
+        "token-newline",
+        "unknown",
+        "operator-unknown",
+        "pem",
+    ],
+)
+def test_silence_gateway_schema_rejects_malformed_credentials(silence_doc, mutation):
+    gateway = silence_doc["observability_secrets"]["silence_gateway"]
+    if mutation == "empty":
+        gateway["operators"] = []
+    elif mutation == "overflow":
+        gateway["operators"] *= 33
+    elif mutation == "owner":
+        gateway["operators"][0]["owner"] = "Invalid Owner"
+    elif mutation == "owner-newline":
+        gateway["operators"][0]["owner"] += "\n"
+    elif mutation == "operator-token":
+        gateway["operators"][0]["token"] = "A" * 64
+    elif mutation == "sender-token":
+        gateway["sender_token"] = "a" * 63
+    elif mutation == "token-newline":
+        gateway["sender_token"] += "\n"
+    elif mutation == "unknown":
+        gateway["extra"] = "unrecognized"
+    elif mutation == "operator-unknown":
+        gateway["operators"][0]["extra"] = "unrecognized"
+    else:
+        gateway["backend_ca_pem"] = "short"
+    assert list(_validator().iter_errors(silence_doc))
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "operators",
+        "sender_token",
+        "backend_ca_pem",
+        "backend_server_cert_pem",
+        "backend_server_key_pem",
+        "backend_client_cert_pem",
+        "backend_client_key_pem",
+    ],
+)
+def test_silence_gateway_schema_requires_complete_block(silence_doc, field):
+    del silence_doc["observability_secrets"]["silence_gateway"][field]
+    assert list(_validator().iter_errors(silence_doc))
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "owner",
+        "operator-token",
+        "sender-token",
+        "receiver-ca",
+        "ingress-key",
+        "sender-cert",
+        "telegram-token",
+        "backend-key",
+        "rotation",
+    ],
+)
+def test_silence_gateway_reused_authorities_are_rejected_without_values(
+    silence_doc, tmp_path, mutation
+):
+    control = silence_doc["observability_secrets"]
+    gateway = control["silence_gateway"]
+    gateway["operators"].append({"owner": "operator-b", "token": "c" * 64})
+    if mutation == "owner":
+        gateway["operators"][1]["owner"] = "operator-a"
+    elif mutation == "operator-token":
+        gateway["operators"][1]["token"] = gateway["operators"][0]["token"]
+    elif mutation == "sender-token":
+        gateway["sender_token"] = gateway["operators"][0]["token"]
+    elif mutation == "receiver-ca":
+        gateway["backend_ca_pem"] = control["receiver_ca_pem"]
+    elif mutation == "ingress-key":
+        gateway["backend_server_key_pem"] = control["ingress_private_key_pem"]
+    elif mutation == "sender-cert":
+        gateway["backend_client_cert_pem"] = control["senders"][0]["certificate_pem"]
+    elif mutation == "telegram-token":
+        gateway["sender_token"] = control["telegram"]["bot_token"]
+    elif mutation == "backend-key":
+        gateway["backend_client_key_pem"] = gateway["backend_server_key_pem"]
+    else:
+        control["rotation"] = {
+            "authority": "telegram",
+            "next_token": gateway["sender_token"],
+            "started_at": "2026-09-04T00:00:00Z",
+            "expires_at": "2026-09-04T01:00:00Z",
+        }
+    result = _validate_cli(silence_doc, tmp_path)
+    assert result.returncode == 1
+    assert "credential authority" in result.stderr or "duplicate owner" in result.stderr
+    for value in [
+        gateway["sender_token"],
+        *(item["token"] for item in gateway["operators"]),
+        *(value for key, value in gateway.items() if key.endswith("_pem")),
+    ]:
+        assert value not in result.stderr
+
+
 @pytest.mark.parametrize(
     "mutation",
     [
