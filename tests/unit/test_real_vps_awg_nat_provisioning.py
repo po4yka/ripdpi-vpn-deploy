@@ -541,7 +541,7 @@ def test_digest_keyed_build_activates_complete_clean_host_command_set(
         "tools",
         {
             "src/Makefile": b"all:\n\t@true\n",
-            "src/awg-quick/linux.bash": b"#!/usr/bin/env bash\nexit 0\n",
+            "src/wg-quick/linux.bash": b"#!/usr/bin/env bash\nexit 0\n",
         },
     )
     vendor = tmp_path / "vendor.tar"
@@ -553,7 +553,7 @@ def test_digest_keyed_build_activates_complete_clean_host_command_set(
     vendor.chmod(0o600)
 
     def fake_make(path: Path) -> None:
-        output = path / ("awg" if path.name == "src" else "amneziawg-go")
+        output = path / ("wg" if path.name == "src" else "amneziawg-go")
         output.write_bytes(path.name.encode())
         output.chmod(0o755)
 
