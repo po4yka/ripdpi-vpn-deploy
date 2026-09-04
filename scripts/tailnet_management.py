@@ -24,7 +24,7 @@ EXPECTED_PREFS = {
     "accept-dns": False,
     "accept-routes": False,
     "advertise-exit-node": False,
-    "advertise-routes": [],
+    "advertise-routes": "",
     "exit-node": "",
     "netfilter-mode": "off",
     "shields-up": False,
@@ -332,11 +332,10 @@ def _read_transaction(paths: CommandPaths) -> tuple[dict, SystemSnapshot]:
             interrupted.unlink()
             _fsync_directory(paths.state_directory)
             canonical_metadata = path.stat(follow_symlinks=False)
-            if (
-                (canonical_metadata.st_dev, canonical_metadata.st_ino)
-                != (metadata.st_dev, metadata.st_ino)
-                or canonical_metadata.st_nlink != 1
-            ):
+            if (canonical_metadata.st_dev, canonical_metadata.st_ino) != (
+                metadata.st_dev,
+                metadata.st_ino,
+            ) or canonical_metadata.st_nlink != 1:
                 raise Refusal("tailnet-recovery-state-invalid")
         except OSError as error:
             raise Refusal("tailnet-recovery-state-invalid") from error
