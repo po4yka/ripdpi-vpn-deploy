@@ -26,6 +26,8 @@ GOAL_FIELDS = {
         "EXECUTOR_MANIFEST",
         "EXECUTOR_BINDING",
         "STAGING_CLEANUP_MANIFEST",
+        "HOSTS",
+        "COHORTS",
     },
     "protocol-liveness-disposable": {
         "LIVENESS_CONFIG",
@@ -66,6 +68,8 @@ record = {
 }
 if record["program"] == "install_liveness_sentinel.py":
     record["stdin"] = sys.stdin.read()
+    record["hosts"] = os.environ.get("HOSTS")
+    record["cohorts"] = os.environ.get("COHORTS")
 with open(os.environ["DISPOSABLE_MAKE_LOG"], "a", encoding="utf-8") as stream:
     stream.write(json.dumps(record, sort_keys=True) + "\\n")
 """
@@ -139,6 +143,8 @@ def _fields(tmp_path: Path) -> dict[str, str]:
         "LIVENESS_SENTINEL_REGISTRY": str(private / "registry.json"),
         "SENTINEL": "disposable-consumer",
         "CLIENT": "disposable-consumer-client",
+        "HOSTS": "upcloud:ci-staging-fixture",
+        "COHORTS": "device-full",
         "SOPS_FILE": str(private / "prod.sops.yaml"),
     }
 
@@ -297,8 +303,48 @@ def test_install_passes_exact_binding_and_private_key_only_on_stdin(
         fields["STAGING_CLEANUP_MANIFEST"],
     ]
     assert record["stdin"] == "synthetic-awg-private-key\n"
+    assert record["hosts"] == fields["HOSTS"]
+    assert record["cohorts"] == fields["COHORTS"]
     assert record["build_gate_held"] is None
     assert not (tmp_path / "gate.log").exists()
+    assert not (tmp_path / "git-spy.log").exists()
+
+
+@pytest.mark.parametrize("field", ["HOSTS", "COHORTS"])
+@pytest.mark.parametrize("origin", ["command", "environment"])
+def test_install_mapping_refuses_make_expansion_before_child(
+    tmp_path: Path, field: str, origin: str
+) -> None:
+    root, env = _workspace(tmp_path)
+    fields = _fields(tmp_path)
+    marker = tmp_path / "mapping-expanded"
+    value = f"$(shell touch {marker})"
+    if origin == "command":
+        fields[field] = value
+    else:
+        fields.pop(field)
+        env[field] = value
+
+    result = _run(root, env, "install-disposable-liveness-sentinel", fields)
+
+    assert result.returncode != 0
+    assert "inputs must be literal values" in result.stderr
+    assert not marker.exists()
+    assert not (tmp_path / "commands.jsonl").exists()
+    assert not (tmp_path / "git-spy.log").exists()
+
+
+def test_disposable_install_refuses_ambient_per_host_secrets(tmp_path: Path) -> None:
+    root, env = _workspace(tmp_path)
+    marker = tmp_path / "secrets-expanded"
+    env["SOPS_FILES"] = f"$(shell touch {marker})"
+
+    result = _run(root, env, "install-disposable-liveness-sentinel", _fields(tmp_path))
+
+    assert result.returncode != 0
+    assert "requires one shared staging secrets file" in result.stderr
+    assert not marker.exists()
+    assert not (tmp_path / "commands.jsonl").exists()
     assert not (tmp_path / "git-spy.log").exists()
 
 

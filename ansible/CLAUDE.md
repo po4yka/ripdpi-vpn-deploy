@@ -13,6 +13,11 @@ booleans. Disabling a profile is a config change, not a code change.
 `vpn-family-standard`, `vpn-device-full`, and `vpn-lab` group_vars for new
 inventory cohorts. Legacy `vpn-p0`, `vpn-p1p2`, and `vpn-fullstack` remain
 aliases for existing inventories and must stay guarded by `role-tiers.yml`.
+`vpn-device-full-staging` retains all four device transports and restricted
+Tailnet management but disables monitoring, watchdog and backup for a scoped
+recovery rehearsal. It inherits the reviewed exact Tailnet sources from all.yml;
+its complete `vpn` map follows the controller's replacement semantics. This
+profile does not establish monitoring or backup acceptance.
 
 **Per-role `defaults/main.yml`** — every variable a role consumes has a
 default. `group_vars` only overrides. Reading a role's defaults file tells

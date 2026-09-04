@@ -35,7 +35,7 @@ def transaction_request(tmp_path):
     known = tmp_path / "known_hosts"
     known.write_text("fixture-pin")
     proof = tmp_path / "proof.yaml"
-    proof.write_text("fixture")
+    proof.write_text("{}")
     proof.chmod(0o600)
     return {
         "schema_version": 1, "mode": "deploy", "inventory_alias": "node-a",
@@ -308,3 +308,60 @@ def test_request_boundaries_fail_before_rpc(transaction_request, mutation):
     with pytest.raises((controller.BaselineError, controller.fleet_inspection.InspectionError)):
         controller.execute(value, {}, rpc=rpc)
     assert not called
+
+
+def test_disposable_first_onboarding_and_fresh_proof_precede_unchanged_prepare(transaction_request):
+    controller = module()
+    calls = []
+    final = Path(transaction_request["promotion_config_path"]).with_name("final.json")
+
+    def onboard(path, environment):
+        calls.append("onboard")
+        return final, True
+
+    def proof(root, path, environment):
+        assert path == final
+        calls.append("proof")
+        return proof_receipt(transaction_request)
+
+    def rpc(*args, **kwargs):
+        calls.append("prepare")
+        return {"status": "unchanged"}
+
+    assert controller.execute(transaction_request, {}, onboard=onboard, proof=proof,
+                              rpc=rpc, clock=lambda: 100) == {"status": "unchanged"}
+    assert calls == ["onboard", "proof", "prepare"]
+
+
+@pytest.mark.parametrize("failure", ["onboard", "proof", "stale", "identity"])
+def test_onboarding_failure_never_arms_ssh_transaction(transaction_request, failure):
+    controller = module()
+    calls = []
+
+    def onboard(path, environment):
+        if failure == "onboard":
+            raise controller.BaselineError("onboarding-refused")
+        return path, True
+
+    def proof(*args):
+        if failure == "proof":
+            raise controller.BaselineError("proof-refused")
+        result = proof_receipt(transaction_request, observed_at=99 if failure == "stale" else 101)
+        if failure == "identity":
+            result["target_identity"] = {}
+        return result
+
+    with pytest.raises(controller.BaselineError):
+        controller.execute(transaction_request, {}, onboard=onboard, proof=proof,
+                           rpc=lambda *a, **k: calls.append("rpc"), clock=lambda: 100)
+    assert calls == []
+
+
+def test_check_mode_does_not_read_or_finalize_onboarding_capability(transaction_request):
+    controller = module()
+    request = dict(transaction_request, mode="check", promotion_config_path=None)
+    def forbidden(*args):
+        pytest.fail("check mode must not read onboarding inputs or launch evaluator")
+    result = controller.execute(request, {}, onboard=forbidden, proof=forbidden,
+        rpc=lambda *a, **k: {"status": "unchanged", "snapshot_digest": "e" * 64})
+    assert result == {"status": "unchanged"}

@@ -106,3 +106,16 @@ Production migration MUST require an authorized isolated staging target and obse
 - **AND** cleanup is not accepted until the authenticated API username exactly matches the manifest before resource lookup and read-only provider checks report the exact server and root storage absent in the same reserved inode; provider mismatch, authentication failure, forbidden resources, existing resources or ambiguous responses remain failures and never claim that cumulative billing was reversed.
 - **AND** successful guarded cleanup preserves the existing generated fleet inventory and emits only a categorical redacted audit event after exact provider absence; abort, apply failure or ambiguous absence emits no success audit.
 - **AND** only an operation with durable `apply_started_at` strictly before the hard deadline MAY complete read-only absence verification after expiry, and such evidence MUST say `verified_after_expiry` and `expired_after_apply`; a reserved-only or at-deadline operation MUST refuse before resource lookup or apply.
+
+#### Scenario: First disposable staging executor is not yet installed
+
+- **WHEN** one authorized UpCloud staging host in the tracked `device-full-staging` cohort supplies a typed first-onboarding intent
+- **THEN** the controller validates the exact target, UUID cleanup state and private encrypted capability before any site write, without inventing a binding epoch or final source/profile evidence.
+- **AND** after data-plane convergence the fixed canonical installer runs before SSH prepare; only an exact committed executor receipt and fresh four-profile proof permit prepare, including when SSH policy is unchanged.
+- **AND** private key bytes travel only through the installer's stdin, output bindings remain in persistent owner-only files, and ordinary check mode reads no onboarding keys and performs no installation.
+
+#### Scenario: Disposable onboarding is invoked again after interruption
+
+- **WHEN** the same staging intent is retried
+- **THEN** local publication resumes using the original binding epoch, and an existing completed assignment is reused only after exact source/config/executor/generation receipt validation without reinstalling it.
+- **AND** changed or foreign authority, unsafe paths, expired deadlines and unknown remote receipt state refuse without overwriting evidence; incomplete installer state follows only its existing pending reconciliation protocol.

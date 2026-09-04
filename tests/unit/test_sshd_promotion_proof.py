@@ -355,3 +355,56 @@ def test_cli_errors_are_categorical_and_never_echo_private_values(tmp_path):
     assert result.stdout == ""
     assert result.stderr == "sshd-promotion-proof: configuration-refused\n"
     assert "DO_NOT_LEAK" not in result.stderr
+
+
+def test_disposable_executor_inputs_are_private_and_forwarded_as_exact_snapshots(tmp_path, monkeypatch):
+    module = _load()
+    config = _config(tmp_path)
+    paths = {name: tmp_path / (name + '.json') for name in ('manifest', 'binding')}
+    for name, path in paths.items():
+        _private_json(path, {'fixture': name})
+    document = json.loads(config.read_text())
+    document['executor'] = {name: str(path) for name, path in paths.items()}
+    _private_json(config, document)
+    loaded, liveness = module.load_config(config)
+    evaluator = tmp_path / 'capture.py'
+    evaluator.write_text(
+        'import json,sys,os,pathlib,shutil\n'
+        'args=sys.argv[1:]\n'
+        'print(json.dumps({"manifest":pathlib.Path(args[args.index("--executor-manifest")+1]).read_text(),'
+        '"binding":pathlib.Path(args[args.index("--executor-binding")+1]).read_text(),'
+        '"path":os.environ["PATH"],"colima":shutil.which("colima")}))\n'
+    )
+    monkeypatch.setattr(module, 'EVALUATOR', evaluator)
+    # The caller path may change after load; evaluation uses only its snapshots.
+    paths['binding'].write_text('FOREIGN_REPLACEMENT')
+    monkeypatch.setenv('PATH', str(tmp_path / 'untrusted'))
+    result = module.evaluate(liveness, executor=loaded['_executor_files'])
+    assert json.loads(result['manifest']) == {'fixture': 'manifest'}
+    assert json.loads(result['binding']) == {'fixture': 'binding'}
+    assert result['path'] == module.EXECUTOR_PATH
+    assert '/opt/homebrew/bin' in result['path'].split(':')
+    assert str(tmp_path / 'untrusted') not in result['path']
+    assert result['colima'] == __import__('shutil').which('colima', path=module.EXECUTOR_PATH)
+
+
+@pytest.mark.parametrize('failure', ['unpaired', 'mode', 'symlink'])
+def test_disposable_executor_input_refusal_precedes_evaluation(tmp_path, failure):
+    module = _load()
+    config = _config(tmp_path)
+    manifest, binding = tmp_path / 'manifest.json', tmp_path / 'binding.json'
+    _private_json(manifest, {'fixture': 'manifest'})
+    _private_json(binding, {'fixture': 'binding'})
+    pair = {'manifest': str(manifest), 'binding': str(binding)}
+    if failure == 'unpaired':
+        del pair['binding']
+    elif failure == 'mode':
+        binding.chmod(0o644)
+    else:
+        binding.unlink()
+        binding.symlink_to(manifest)
+    document = json.loads(config.read_text())
+    document['executor'] = pair
+    _private_json(config, document)
+    with pytest.raises(module.ProofError, match='configuration-refused'):
+        module.load_config(config)
