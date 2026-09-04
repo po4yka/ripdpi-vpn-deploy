@@ -1015,6 +1015,7 @@ else:
                     "hosts": "localhost",
                     "connection": "local",
                     "gather_facts": False,
+                    "become": False,
                     "vars": variables,
                     "tasks": [
                         {
@@ -1086,6 +1087,7 @@ else:
                             "hosts": "localhost",
                             "connection": "local",
                             "gather_facts": False,
+                            "become": False,
                             "vars": variables,
                             "tasks": [
                                 {
