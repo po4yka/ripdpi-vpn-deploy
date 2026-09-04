@@ -94,3 +94,17 @@ artifact_evidence: null
   local repository decryption before any target configuration write. Its full
   local gate passed; exact-SHA hosted CI remains required. Local tests are not
   a substitute for external acceptance.
+
+## Disposable executor configuration regression (2026-09-04)
+
+- An actual Colima 0.10.3 prepare refused with `executor-config` before
+  manifest publication. Its owned profile was deleted; Docker context remained
+  unchanged. No credentials, bindings or traffic probes were installed.
+- Colima stores `portForwarder` at the top level of its configuration. The
+  validator and its fixture incorrectly used `network.portForwarder`. Matching
+  the real layout reproduced the refusal in the existing positive test; the
+  corrected lookup passes while absent, SSH and gRPC forwarding still refuse,
+  even with a nested `none` lookalike. Other isolation predicates are unchanged.
+- Executor and Make suites: 46 PASS. This is source regression evidence;
+  successful real executor preparation and external protocol acceptance remain
+  separate gates.

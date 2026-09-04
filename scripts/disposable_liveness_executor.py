@@ -256,7 +256,7 @@ def _config(home: Path, profile: str) -> tuple[Path, bytes, dict[str, Any]]:
         or not isinstance(value.get("network"), dict)
         or value["network"].get("address") is not False
         or value["network"].get("mode") != "shared"
-        or value["network"].get("portForwarder") != "none"
+        or value.get("portForwarder") != "none"
     ):
         raise ExecutorError("executor-config")
     return path, payload, value
