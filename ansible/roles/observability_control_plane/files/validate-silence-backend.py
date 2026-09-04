@@ -63,10 +63,13 @@ def validate(contract):
         ) != {purpose}:
             raise ValueError("leaf-purpose")
         try:
-            if cert.extensions.get_extension_for_class(x509.BasicConstraints).value.ca:
-                raise ValueError("leaf-ca")
+            is_ca = cert.extensions.get_extension_for_class(
+                x509.BasicConstraints
+            ).value.ca
         except x509.ExtensionNotFound:
-            pass
+            is_ca = False
+        if is_ca:
+            raise ValueError("leaf-ca")
         if identity == "server" and ipaddress.ip_address(
             "127.0.0.1"
         ) not in cert.extensions.get_extension_for_class(
