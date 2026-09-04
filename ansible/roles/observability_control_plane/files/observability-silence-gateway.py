@@ -519,6 +519,10 @@ def main():
         # LoadCredential exposes this exact path read-only inside the service's
         # mount namespace. A fresh context keeps the trust store dedicated.
         context.load_verify_locations(cafile=str(ca_path))
+    except FileNotFoundError as exc:
+        raise GatewayError("backend-ca-missing") from exc
+    except PermissionError as exc:
+        raise GatewayError("backend-ca-permission") from exc
     except ssl.SSLError as exc:
         raise GatewayError("backend-ca-ssl") from exc
     except OSError as exc:
