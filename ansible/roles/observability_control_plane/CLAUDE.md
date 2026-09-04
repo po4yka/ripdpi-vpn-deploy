@@ -75,7 +75,9 @@ abrupt host/process death are outside this configuration rollback boundary.
 
 Previous active AM and gateway must form one chain. Partial active topology is
 refused before authority publication; standalone active Prometheus before
-alerting enablement is supported. This is not a legacy direct-backend route.
+alerting enablement is supported. Preserve the previous Alertmanager generation
+only while activating a distinct candidate; an unchanged converge must retain
+the existing rollback generation. This is not a legacy direct-backend route.
 
 Check mode inspects existing namespace entries without creating a snapshot,
 permits absent fresh namespace, and uses native file/template change predictions.

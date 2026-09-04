@@ -73,7 +73,12 @@
         force: true
         owner: root
         group: '{{ observability_control_plane.service_group }}'
-      when: _observability_alertmanager_current.stat.exists | default(false)
+      when:
+        - _observability_alertmanager_current.stat.exists | default(false)
+        - >-
+          _observability_alertmanager_current.stat.lnk_source !=
+          observability_control_plane.config_root ~ '/generations/alertmanager-' ~
+          _observability_alertmanager_generation ~ '.yml'
     - name: Materialize primary Telegram credential for systemd
       ansible.builtin.copy:
         content: '{{ observability_control_plane.alerting.telegram.bot_token }}'
