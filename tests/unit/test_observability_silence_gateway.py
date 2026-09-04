@@ -78,6 +78,7 @@ def _tls(tmp_path: Path):
             )
         )
     server = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server.minimum_version = ssl.TLSVersion.TLSv1_2
     server.load_cert_chain(tmp_path / "server.pem", tmp_path / "server.key")
     server.load_verify_locations(tmp_path / "ca.pem")
     server.verify_mode = ssl.CERT_REQUIRED
