@@ -51,8 +51,8 @@ class Runner:
                         "network": {
                             "address": False,
                             "mode": "shared",
-                            "portForwarder": "none",
                         },
+                        "portForwarder": "none",
                         "sshConfig": False,
                     }
                 )
@@ -284,7 +284,7 @@ def test_live_verification_refuses_mount_port_or_context_drift(setup, drift):
     else:
         config = home / ".colima/vpn-liveness-one-shot/colima.yaml"
         doc = yaml.safe_load(config.read_text())
-        doc["network"]["portForwarder"] = "ssh"
+        doc["portForwarder"] = "ssh"
         config.write_text(yaml.safe_dump(doc))
         config.chmod(0o600)
 
@@ -292,6 +292,31 @@ def test_live_verification_refuses_mount_port_or_context_drift(setup, drift):
         module.load_live_executor(
             manifest_path, home=home, now=1_700_000_001, runner=runner
         )
+
+
+def test_nested_port_forwarder_cannot_authorize_missing_or_active_top_level(setup):
+    module, home, evidence, runner = setup
+    profile = "vpn-liveness-one-shot"
+    module.prepare_executor(
+        profile=profile,
+        manifest_path=evidence / "executor.json",
+        home=home,
+        now=1_700_000_000,
+        expires_at=1_700_003_600,
+        runner=runner,
+    )
+    config = home / ".colima" / profile / "colima.yaml"
+    doc = yaml.safe_load(config.read_text())
+    # Colima's effective setting is top-level; a nested lookalike has no authority.
+    doc["network"]["portForwarder"] = "none"
+    for forwarder in (None, "ssh", "grpc"):
+        if forwarder is None:
+            doc.pop("portForwarder", None)
+        else:
+            doc["portForwarder"] = forwarder
+        config.write_text(yaml.safe_dump(doc))
+        with pytest.raises(module.ExecutorError, match="executor-config"):
+            module._config(home, profile)
 
 
 def _identity():
