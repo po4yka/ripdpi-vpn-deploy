@@ -108,3 +108,12 @@ artifact_evidence: null
 - Executor and Make suites: 46 PASS. This is source regression evidence;
   successful real executor preparation and external protocol acceptance remain
   separate gates.
+- The next actual preparation passed configuration validation but refused at
+  `executor-status`, again deleting the owned profile without manifest or
+  credential publication. Colima's `status --json` describes driver/socket
+  details; named lifecycle state comes from `list --json`. Preparation/live
+  validation and de-onboarding now share exact-name NDJSON selection, reject
+  missing/duplicate/invalid records, and require Running for live use.
+- Corrected executor/Make/promotion suites: 104 PASS. Read-only parsing of the
+  installed CLI's named Stopped record and existing private configuration passed;
+  this does not credit a running executor or any guest traffic.
