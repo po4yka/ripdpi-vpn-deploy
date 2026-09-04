@@ -256,6 +256,30 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
     with pytest.raises(module.GatewayError, match="^backend-context-value$"):
         module.main()
 
+    monkeypatch.setattr(
+        module.ssl,
+        "PEM_cert_to_DER_cert",
+        lambda _value: (_ for _ in ()).throw(ValueError("private fixture detail")),
+    )
+    with pytest.raises(module.GatewayError, match="^backend-ca-format$"):
+        module.main()
+    monkeypatch.setattr(module.ssl, "PEM_cert_to_DER_cert", lambda _value: b"")
+
+    class EmptyCAContext:
+        minimum_version = None
+
+        def load_verify_locations(self, **_kwargs):
+            raise ValueError("private fixture detail")
+
+    monkeypatch.setattr(module.ssl, "SSLContext", lambda _protocol: EmptyCAContext())
+    with pytest.raises(module.GatewayError, match="^backend-ca-der$"):
+        module.main()
+    monkeypatch.setattr(
+        module.ssl,
+        "PEM_cert_to_DER_cert",
+        lambda value: b"fixture-der" if value == "fixture-ca" else None,
+    )
+
     class RefusingContext:
         minimum_version = None
         verify_mode = ssl.CERT_REQUIRED
