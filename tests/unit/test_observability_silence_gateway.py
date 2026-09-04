@@ -242,7 +242,7 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
         raise OSError("fixture detail must not cross the category boundary")
 
     monkeypatch.setattr(module.ssl, "create_default_context", unavailable_context)
-    with pytest.raises(module.GatewayError, match="^backend-ca$"):
+    with pytest.raises(module.GatewayError, match="^backend-ca-io$"):
         module.main()
 
     class RefusingContext:

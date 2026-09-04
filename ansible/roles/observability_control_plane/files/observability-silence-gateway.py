@@ -512,8 +512,14 @@ def main():
             cadata=ca_pem.decode("ascii", errors="strict")
         )
         context.minimum_version = ssl.TLSVersion.TLSv1_2
-    except (OSError, UnicodeError, ValueError) as exc:
-        raise GatewayError("backend-ca") from exc
+    except ssl.SSLError as exc:
+        raise GatewayError("backend-ca-ssl") from exc
+    except UnicodeError as exc:
+        raise GatewayError("backend-ca-encoding") from exc
+    except OSError as exc:
+        raise GatewayError("backend-ca-io") from exc
+    except ValueError as exc:
+        raise GatewayError("backend-ca-value") from exc
     try:
         context.load_cert_chain(
             str(credentials / "silence-backend-client.crt"),
