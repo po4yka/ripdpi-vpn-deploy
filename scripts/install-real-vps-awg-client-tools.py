@@ -468,9 +468,9 @@ def build_locked(args: argparse.Namespace) -> dict[str, object]:
             binary_dir = staging / "bin"
             binary_dir.mkdir()
             shutil.copy2(go_source / "amneziawg-go", binary_dir / "amneziawg-go")
-            shutil.copy2(tools_source / "src/awg", binary_dir / "awg")
+            shutil.copy2(tools_source / "src/wg", binary_dir / "awg")
             shutil.copy2(
-                tools_source / "src/awg-quick/linux.bash",
+                tools_source / "src/wg-quick/linux.bash",
                 binary_dir / "awg-quick",
             )
             for path in binary_dir.iterdir():
