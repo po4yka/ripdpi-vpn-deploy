@@ -1,0 +1,26 @@
+---
+- name: Verify dead-man fixture notification destinations are loopback-only
+  hosts: all
+  become: true
+  tasks:
+    - name: Resolve fixture-only notification destinations through hosts files
+      ansible.builtin.command:
+        argv:
+          - getent
+          - -s
+          - files
+          - ahostsv4
+          - "{{ item }}"
+      loop:
+        - api.telegram.org
+        - reverse.fixture.invalid
+      register: _observability_deadman_fixture_loopback
+      changed_when: false
+
+    - name: Assert fixture-only notification destinations resolve to loopback
+      ansible.builtin.assert:
+        that:
+          - item.rc == 0
+          - item.stdout is match('^127\\.0\\.0\\.1\\s')
+        fail_msg: "fixture destination did not resolve from /etc/hosts to loopback"
+      loop: "{{ _observability_deadman_fixture_loopback.results }}"

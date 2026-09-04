@@ -1,0 +1,42 @@
+global:
+  resolve_timeout: 3m
+route:
+  receiver: telegram-primary
+  group_by: [alertname, environment, node, component, policy, profile, vantage, severity]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 6h
+  routes:
+    - receiver: telegram-critical
+      matchers: ['severity="critical"']
+      repeat_interval: 1h
+    - receiver: telegram-primary
+      matchers: ['severity="warning"']
+      repeat_interval: 6h
+
+receivers:
+  - name: telegram-primary
+    telegram_configs:
+      - bot_token_file: /run/credentials/observability-alertmanager.service/telegram-bot-token
+        chat_id: 0
+
+        parse_mode: HTML
+        message: '{{ template "telegram.message" . }}'
+        send_resolved: true
+        max_alerts: 5
+  - name: telegram-critical
+    telegram_configs:
+      - bot_token_file: /run/credentials/observability-alertmanager.service/telegram-bot-token
+        chat_id: 0
+
+        parse_mode: HTML
+        message: '{{ template "telegram.message" . }}'
+        send_resolved: true
+        max_alerts: 5
+
+templates:
+  - /etc/observability-control-plane/generations/telegram-4444444444444444444444444444444444444444444444444444444444444444.tmpl
+inhibit_rules:
+  - source_matchers: ['alertname="ObservabilityBackupStageFailed"']
+    target_matchers: ['alertname="ObservabilityBackupEvidenceStale"']
+    equal: [node, component]

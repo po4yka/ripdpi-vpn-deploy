@@ -41,6 +41,7 @@ tiers:
   monitoring: core          # local-first node_exporter + log rotation
   observability_agent: core # bounded remote-write sender; default-off during migration
   observability_control_plane: tactical # dedicated default-off authenticated metrics receiver
+  observability_deadman: tactical # dedicated default-off monitoring-plane loss detector
   watchdog: core            # service supervision + alerting
   backup: core              # restic+age recovery path
   node_manifest: core       # machine-readable enabled surfaces/recovery summary

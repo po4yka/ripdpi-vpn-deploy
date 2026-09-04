@@ -18,6 +18,43 @@ variables {
   ]
 }
 
+run "starter_plan_preserves_exact_sku_and_root_size" {
+  command = plan
+
+  variables {
+    plan            = "STARTER-2xCPU-4GB"
+    storage_size_gb = 30
+  }
+
+  assert {
+    condition     = upcloud_server.vpn.plan == "STARTER-2xCPU-4GB" && upcloud_server.vpn.template[0].size == 30
+    error_message = "The approved Starter SKU and root size must reach the provider unchanged"
+  }
+}
+
+run "developer_plan_is_not_rewritten_to_starter" {
+  command = plan
+
+  variables {
+    plan = "DEV-2xCPU-4GB"
+  }
+
+  assert {
+    condition     = upcloud_server.vpn.plan == "DEV-2xCPU-4GB"
+    error_message = "Existing Developer inputs must not silently select a different plan"
+  }
+}
+
+run "rejects_unreviewed_starter_sku" {
+  command = plan
+
+  variables {
+    plan = "STARTER-4xCPU-8GB"
+  }
+
+  expect_failures = [var.plan]
+}
+
 # Cloud-init carries the build label downward into the VM. A refactor
 # that drops the `metadata = true` attribute would silently disable
 # cloud-init — host comes up unconfigured, ansible runs into a stock

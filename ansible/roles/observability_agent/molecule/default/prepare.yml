@@ -38,3 +38,11 @@
         owner: root
         group: root
         mode: "0600"
+
+    - name: Create synthetic health adapter textfile
+      ansible.builtin.copy:
+        dest: /var/lib/node_exporter/textfile/observability-health.prom
+        content: "vpn_watchdog_collection_success 1\n"
+        owner: root
+        group: root
+        mode: "0640"

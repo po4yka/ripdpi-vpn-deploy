@@ -1,0 +1,91 @@
+groups:
+  - name: observability_watchdog_backup
+    rules:
+      - alert: ObservabilityWatchdogEvidenceStale
+        expr: >-
+          (vpn_watchdog_collection_success == 0)
+          or on (node, role)
+          (vpn_watchdog_freshness_state{state="stale"} == 1)
+        for: 3m
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels:
+          severity: warning
+          component: watchdog
+        annotations:
+          incident_family: watchdog-evidence
+          evidence_class: stale-or-unknown
+          source_generation: "{{ observability_control_plane.alerting.source_generation }}"
+          summary: Watchdog evidence is missing or stale.
+          runbook: docs/RUNBOOK-incident.md
+      - alert: ObservabilityWatchdogRecoveryUnresolved
+        expr: vpn_watchdog_recovery_outcome{state="unresolved"} == 1
+        for: 2m
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels:
+          severity: warning
+          component: watchdog
+        annotations:
+          incident_family: watchdog-recovery
+          evidence_class: local-recovery-unresolved
+          source_generation: "{{ observability_control_plane.alerting.source_generation }}"
+          summary: Bounded local watchdog recovery remains unresolved.
+          runbook: docs/RUNBOOK-incident.md
+      - alert: ObservabilityBackupEvidenceStale
+        expr: >-
+          (vpn_backup_collection_success == 0)
+          or on (node, role)
+          (vpn_backup_freshness_state{state="stale"} == 1)
+        for: 3m
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels:
+          severity: warning
+          component: backup
+        annotations:
+          incident_family: backup-evidence
+          evidence_class: stale-or-unknown
+          source_generation: "{{ observability_control_plane.alerting.source_generation }}"
+          summary: Backup evidence is missing or stale.
+          runbook: docs/RUNBOOK-restore.md
+      - alert: ObservabilityBackupStageFailed
+        expr: vpn_backup_result{state="failed"} == 1
+        for: 3m
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels:
+          severity: critical
+          component: backup
+        annotations:
+          incident_family: backup-stage
+          evidence_class: confirmed-stage-failure
+          source_generation: "{{ observability_control_plane.alerting.source_generation }}"
+          summary: A producer-owned backup stage reported failure.
+          runbook: docs/RUNBOOK-restore.md
+      - alert: ObservabilityRestoreReadinessStale
+        expr: vpn_backup_freshness_state{role="restore-drill",state="stale"} == 1
+        for: 3m
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels:
+          severity: warning
+          component: backup
+        annotations:
+          incident_family: restore-readiness
+          evidence_class: stale-restore-proof
+          source_generation: "{{ observability_control_plane.alerting.source_generation }}"
+          summary: Approved isolated restore evidence is stale.
+          runbook: docs/RUNBOOK-restore.md
+{% if observability_control_plane.alerting.deadman.enabled %}
+  - name: observability_pipeline_watchdog
+    rules:
+      - alert: ObservabilityPipelineWatchdog
+        expr: vector(1)
+        for: 1m
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels:
+          severity: watchdog
+          component: observability-pipeline
+        annotations:
+          incident_family: observability-deadman
+          evidence_class: synthetic-pipeline-watchdog
+          source_generation: "{{ observability_control_plane.alerting.source_generation }}"
+          summary: Synthetic observability pipeline watchdog is firing.
+          runbook: docs/RUNBOOK-incident.md
+{% endif -%}

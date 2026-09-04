@@ -1,0 +1,48 @@
+[Unit]
+Description=RIPDPI watchdog and backup health adapter
+After=vpn-watchdog.service vpn-backup.service vpn-backup-restore-drill.service
+
+[Service]
+Type=oneshot
+User=root
+Group={{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}
+ExecStart=/usr/local/libexec/observability-agent-health-adapter.py \
+  --node-id {{ observability_agent.node_id }} \
+  --watchdog-state {{ observability_agent_watchdog_state_path }} \
+  --watchdog-fail-threshold {{ (watchdog | default({})).fail_threshold | default(3) }} \
+  --watchdog-alert-limit {{ (watchdog | default({})).alerts_per_hour_max | default(4) }} \
+  --watchdog-restart-limit {{ (watchdog | default({})).kicks_per_hour_max | default(3) }} \
+  --watchdog-max-age-seconds {{ observability_agent_watchdog_max_age_seconds }} \
+  --backup-stage {{ observability_agent_backup_stage_path }} \
+  --backup-stage-max-age-seconds {{ observability_agent_backup_stage_max_age_seconds }} \
+  --restore-drill {{ observability_agent_restore_drill_path }} \
+  --restore-drill-max-age-seconds {{ observability_agent_restore_drill_max_age_seconds }} \
+  --backup-snapshot-max-age-seconds {{ (backup_snapshot_max_age_hours | default(36) | int) * 3600 }} \
+  --output {{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/observability-health.prom
+UMask=0027
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectClock=true
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+MemoryMax=64M
+TasksMax=16
+LimitNOFILE=1024
+ReadOnlyPaths=-{{ observability_agent_watchdog_state_path }}
+ReadOnlyPaths=-{{ observability_agent_backup_stage_path }}
+ReadOnlyPaths=-{{ observability_agent_restore_drill_path }}
+ReadWritePaths={{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}

@@ -29,5 +29,11 @@ observability_agent:
   memory_max: 512M
   tasks_max: 64
   nofile_limit: 65536
+observability_agent_watchdog_state_path: /var/lib/vpn-watchdog/state
+observability_agent_watchdog_max_age_seconds: 900
+observability_agent_backup_stage_path: /var/lib/vpn-backup/backup-stage-status.json
+observability_agent_backup_stage_max_age_seconds: 129600
+observability_agent_restore_drill_path: /var/lib/vpn-backup/restore-drill-last-success.json
+observability_agent_restore_drill_max_age_seconds: 3024000
 
 _observability_agent_service_generation: ""

@@ -17,6 +17,7 @@ import re
 import sys
 from pathlib import Path
 
+from jinja2 import Environment
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -56,6 +57,9 @@ NON_SECRET_TOPLEVEL = {
     "_evidence_firewall_loader", "_evidence_firewall_policy",
     "_evidence_firewall_service", "_evidence_firewall_table",
     "_firewall_tailnet_initial_fragment",
+    # observability-control-plane immutable generation facts
+    "_observability_alert_rules_generation", "_observability_rules_generation",
+    "_observability_telegram_generation",
     "public_listener_contract",
 }
 
@@ -88,6 +92,22 @@ JINJA_IMPORT = re.compile(
     r"\{%-?\s*import\s+.+?\s+as\s+(\w+)(?:\s+with(?:out)?\s+context)?\s*-?%\}",
     re.DOTALL,
 )
+# Only lexing is used; keep rendering defaults safe if this environment is reused.
+JINJA_ENVIRONMENT = Environment(autoescape=True)
+
+
+def _without_raw_regions(template_text: str) -> str:
+    """Remove lexer-confirmed raw regions without rendering the template."""
+    outside_raw: list[str] = []
+    in_raw = False
+    for _line, token_type, value in JINJA_ENVIRONMENT.lex(template_text):
+        if token_type == "raw_begin":
+            in_raw = True
+        elif token_type == "raw_end":
+            in_raw = False
+        elif not in_raw:
+            outside_raw.append(value)
+    return "".join(outside_raw)
 
 
 def _extract_output_vars(scope_text: str, extra_locals: set[str]) -> set[str]:
@@ -117,6 +137,7 @@ def extract_toplevel_vars(template_text: str) -> set[str]:
     Macro arguments are local only inside that macro's body. Imports remain
     template-local and are also visible to macros declared in the same file.
     """
+    template_text = _without_raw_regions(template_text)
     imported = {match.group(1) for match in JINJA_IMPORT.finditer(template_text)}
     macro_blocks = list(JINJA_MACRO_BLOCK.finditer(template_text))
     without_macros = JINJA_MACRO_BLOCK.sub("", template_text)

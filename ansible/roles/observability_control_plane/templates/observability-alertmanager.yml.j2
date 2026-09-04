@@ -1,0 +1,57 @@
+global:
+  resolve_timeout: {{ observability_control_plane.alerting.recovery_stability }}
+route:
+  receiver: telegram-primary
+  group_by: [alertname, environment, node, component, policy, profile, vantage, severity]
+  group_wait: {{ observability_control_plane.alerting.group_wait }}
+  group_interval: {{ observability_control_plane.alerting.group_interval }}
+  repeat_interval: {{ observability_control_plane.alerting.warning_repeat_interval }}
+  routes:
+    - receiver: telegram-critical
+      matchers: ['severity="critical"']
+      repeat_interval: {{ observability_control_plane.alerting.critical_repeat_interval }}
+    - receiver: telegram-primary
+      matchers: ['severity="warning"']
+      repeat_interval: {{ observability_control_plane.alerting.warning_repeat_interval }}
+{% if observability_control_plane.alerting.deadman.enabled %}
+    - receiver: deadman-canary
+      matchers: ['alertname="ObservabilityPipelineWatchdog"']
+      repeat_interval: {{ observability_control_plane.alerting.deadman.repeat_interval }}
+      continue: false
+{% endif %}
+receivers:
+  - name: telegram-primary
+    telegram_configs:
+      - bot_token_file: /run/credentials/observability-alertmanager.service/telegram-bot-token
+        chat_id: {{ observability_control_plane.alerting.telegram.chat_id | int }}
+{% if observability_control_plane.alerting.telegram.topic_id > 0 %}
+        message_thread_id: {{ observability_control_plane.alerting.telegram.topic_id | int }}
+{% endif %}
+        parse_mode: {{ observability_control_plane.alerting.telegram.parse_mode }}
+        message: '{% raw %}{{ template "telegram.message" . }}{% endraw %}'
+        send_resolved: true
+        max_alerts: {{ observability_control_plane.alerting.telegram.max_alerts | int }}
+  - name: telegram-critical
+    telegram_configs:
+      - bot_token_file: /run/credentials/observability-alertmanager.service/telegram-bot-token
+        chat_id: {{ observability_control_plane.alerting.telegram.chat_id | int }}
+{% if observability_control_plane.alerting.telegram.topic_id > 0 %}
+        message_thread_id: {{ observability_control_plane.alerting.telegram.topic_id | int }}
+{% endif %}
+        parse_mode: {{ observability_control_plane.alerting.telegram.parse_mode }}
+        message: '{% raw %}{{ template "telegram.message" . }}{% endraw %}'
+        send_resolved: true
+        max_alerts: {{ observability_control_plane.alerting.telegram.max_alerts | int }}
+{% if observability_control_plane.alerting.deadman.enabled %}
+  - name: deadman-canary
+    webhook_configs:
+      - url: {{ observability_control_plane.alerting.deadman.receiver_url }}
+        send_resolved: true
+        max_alerts: 1
+{% endif %}
+templates:
+  - {{ observability_control_plane.config_root }}/generations/telegram-{{ _observability_telegram_generation }}.tmpl
+inhibit_rules:
+  - source_matchers: ['alertname="ObservabilityBackupStageFailed"']
+    target_matchers: ['alertname="ObservabilityBackupEvidenceStale"']
+    equal: [node, component]

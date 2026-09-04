@@ -12,6 +12,7 @@
         - /var/lib/observability-agent/wal
         - /opt/observability-agent
         - /var/lib/node_exporter/textfile/observability-agent.prom
+        - /var/lib/node_exporter/textfile/observability-health.prom
         - /var/lib/node_exporter/textfile/producer-owned.prom
       register: observability_agent_paths
 
@@ -23,4 +24,5 @@
           - not observability_agent_paths.results[2].stat.exists
           - not observability_agent_paths.results[3].stat.exists
           - not observability_agent_paths.results[4].stat.exists
-          - observability_agent_paths.results[5].stat.exists
+          - not observability_agent_paths.results[5].stat.exists
+          - observability_agent_paths.results[6].stat.exists

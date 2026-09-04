@@ -1,0 +1,11 @@
+{
+  "change": "resolve-current-code-scanning-alerts",
+  "evidence_summary": "Exact main 43aa5bf passed CI, CodeQL, Scorecard, Debian and Ubuntu image publication with SARIF upload; all eight alerts are fixed without dismissal.",
+  "execution_sha256": "6c14fd60cbb5182842ff2d2167e94dbc27484a98ca416bae6ce7aca3caaa685c",
+  "issue_sha256": "425acb80a2f8f4d0bbd01b090784779ba80f8a27ba6146177e2c7d36b66f5685",
+  "outcome": "done",
+  "prepared_at": "2026-09-01T18:35:58Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1788275314490012"
+}

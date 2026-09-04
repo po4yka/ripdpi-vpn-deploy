@@ -1,0 +1,37 @@
+[Unit]
+Description=Independent observability dead-man pulse receiver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=observability-deadman
+Group=observability-deadman
+LoadCredential=pulse-token:/etc/observability-deadman/credentials/pulse-token
+LoadCredential=telegram-bot-token:/etc/observability-deadman/credentials/telegram-bot-token
+ExecStart=/usr/local/libexec/observability-deadman.py serve --config /etc/observability-deadman/deadman-current.json --state /var/lib/observability-deadman/state.json --listen 0.0.0.0:9444 --status-listen 127.0.0.1:19094
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectClock=true
+LockPersonality=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/observability-deadman
+ReadOnlyPaths=/etc/observability-deadman /usr/local/libexec/observability-deadman.py
+MemoryMax=64M
+TasksMax=32
+LimitNOFILE=1024
+
+[Install]
+WantedBy=multi-user.target

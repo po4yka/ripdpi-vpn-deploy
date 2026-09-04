@@ -18,6 +18,12 @@ then all/vpn/cohort vars and SOPS. External host_vars are outside this intent.
 `/var/lib/<service>/` configs and small data. Not logs (`monitoring` has
 retention).
 
+**Backup outcomes are producer evidence** — the backup script atomically
+replaces a versioned, root-private marker after local, integrity, and optional
+remote stages. It contains only bounded stage results and timestamps; timer
+state, snapshot identifiers, restic output, and remote configuration are not
+evidence.
+
 ## What's done well
 
 - **Pre-restore validation** — `RUNBOOK-restore.md` requires checksum

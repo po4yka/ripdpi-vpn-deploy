@@ -1,0 +1,34 @@
+[Unit]
+Description=Observability Alertmanager notification router
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=prometheus
+Group=prometheus
+LoadCredential=telegram-bot-token:/etc/observability-control-plane/credentials/telegram-bot-token
+ExecStart=/usr/local/libexec/observability-alertmanager --config.file=/etc/observability-control-plane/alertmanager-current.yml --web.listen-address=127.0.0.1:9093 --storage.path=/var/lib/observability-alertmanager --cluster.listen-address=
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/observability-alertmanager
+ReadOnlyPaths=/etc/observability-control-plane /usr/local/libexec/observability-alertmanager
+MemoryMax=256M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

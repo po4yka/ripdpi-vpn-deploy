@@ -2,10 +2,5 @@
 - name: Converge disabled control-plane lifecycle without touching TSDB
   hosts: all
   become: true
-  vars:
-    observability_control_plane:
-      enabled: false
-      config_root: /etc/observability-control-plane
-      data_dir: /var/lib/observability-prometheus
   roles:
     - role: observability_control_plane

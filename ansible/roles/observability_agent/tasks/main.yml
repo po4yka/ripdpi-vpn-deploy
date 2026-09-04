@@ -11,6 +11,14 @@
       - (observability_agent.config_dir | default('/etc/observability-agent')) == '/etc/observability-agent'
       - (observability_agent.credential_dir | default('/etc/observability-agent/credentials')) == '/etc/observability-agent/credentials'
       - (observability_agent.wal_dir | default('/var/lib/observability-agent/wal')) == '/var/lib/observability-agent/wal'
+      - >-
+        observability_agent_watchdog_state_path == '/var/lib/vpn-watchdog/state'
+      - >-
+        observability_agent_backup_stage_path ==
+        '/var/lib/vpn-backup/backup-stage-status.json'
+      - >-
+        observability_agent_restore_drill_path ==
+        '/var/lib/vpn-backup/restore-drill-last-success.json'
     fail_msg: Observability agent may remove or publish only its fixed role-owned paths.
 
 - name: Disable observability agent when feature is disabled
@@ -24,6 +32,7 @@
       loop:
         - observability-agent.service
         - observability-agent-adapter.timer
+        - observability-agent-health-adapter.timer
       failed_when: false
 
     - name: Remove observability agent owned runtime state
@@ -34,7 +43,10 @@
         - /etc/systemd/system/observability-agent.service
         - /etc/systemd/system/observability-agent-adapter.service
         - /etc/systemd/system/observability-agent-adapter.timer
+        - /etc/systemd/system/observability-agent-health-adapter.service
+        - /etc/systemd/system/observability-agent-health-adapter.timer
         - /usr/local/libexec/observability-agent-adapter.py
+        - /usr/local/libexec/observability-agent-health-adapter.py
         - "{{ observability_agent.config_dir | default('/etc/observability-agent') }}"
         - "{{ observability_agent.credential_dir | default('/etc/observability-agent/credentials') }}"
         - "{{ observability_agent.wal_dir | default('/var/lib/observability-agent/wal') }}"
@@ -43,6 +55,7 @@
         - /usr/local/bin/prometheus-observability-agent
         - /usr/local/bin/promtool-observability-agent
         - "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/observability-agent.prom"
+        - "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/observability-health.prom"
       notify: Reload observability agent systemd
 
 - name: Configure observability agent when feature is enabled
@@ -87,6 +100,12 @@
           - observability_agent.memory_max | default('') == '512M'
           - observability_agent.tasks_max | default(0) | int == 64
           - observability_agent.nofile_limit | default(0) | int == 65536
+          - observability_agent_watchdog_max_age_seconds | int >= 60
+          - observability_agent_watchdog_max_age_seconds | int <= 86400
+          - observability_agent_backup_stage_max_age_seconds | int >= 3600
+          - observability_agent_backup_stage_max_age_seconds | int <= 604800
+          - observability_agent_restore_drill_max_age_seconds | int >= 86400
+          - observability_agent_restore_drill_max_age_seconds | int <= 3888000
         fail_msg: >-
           Observability agent requires schema-1 systemd credentials, exact Prometheus
           archive pins, technical node identity, HTTPS receiver origin, separate SNI,
@@ -451,6 +470,15 @@
         mode: "0755"
       notify: Restart observability agent adapter timer
 
+    - name: Install watchdog and backup health adapter
+      ansible.builtin.copy:
+        src: observability-agent-health-adapter.py
+        dest: /usr/local/libexec/observability-agent-health-adapter.py
+        owner: root
+        group: root
+        mode: "0755"
+      notify: Restart observability agent health adapter timer
+
     - name: Install canonical observability metric manifest
       ansible.builtin.copy:
         src: "{{ role_path }}/../../../contract/observability-metric-manifest.example.json"
@@ -476,6 +504,8 @@
         - observability-agent.service.j2
         - observability-agent-adapter.service.j2
         - observability-agent-adapter.timer.j2
+        - observability-agent-health-adapter.service.j2
+        - observability-agent-health-adapter.timer.j2
       register: _observability_agent_units
       notify:
         - Reload observability agent systemd
@@ -655,6 +685,13 @@
     - name: Enable and start observability agent adapter timer
       ansible.builtin.systemd_service:
         name: observability-agent-adapter.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Enable and start observability agent health adapter timer
+      ansible.builtin.systemd_service:
+        name: observability-agent-health-adapter.timer
         enabled: true
         state: started
         daemon_reload: true

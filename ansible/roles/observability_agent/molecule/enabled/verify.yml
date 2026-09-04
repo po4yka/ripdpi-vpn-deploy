@@ -307,10 +307,26 @@
         name: observability-agent-adapter.service
         state: started
 
+    - name: Run root-private producer health adapter now
+      ansible.builtin.systemd_service:
+        name: observability-agent-health-adapter.service
+        state: started
+
     - name: Read bounded adapter output
       ansible.builtin.slurp:
         src: /var/lib/node_exporter/textfile/observability-agent.prom
       register: observability_adapter_output
+
+    - name: Read bounded producer health output
+      ansible.builtin.slurp:
+        src: /var/lib/node_exporter/textfile/observability-health.prom
+      register: observability_health_output
+
+    - name: Inspect bounded producer health output ownership
+      ansible.builtin.stat:
+        path: /var/lib/node_exporter/textfile/observability-health.prom
+        follow: false
+      register: observability_health_stat
 
     - name: Assert runtime, credential, and redaction contract
       ansible.builtin.assert:
@@ -318,6 +334,24 @@
           - "'vpn_observability_adapter_collection_success 1' in (observability_adapter_output.content | b64decode)"
           - "'node=\"node-fixture\"' in (observability_adapter_output.content | b64decode)"
           - "'127.0.0.1:19090' not in (observability_adapter_output.content | b64decode)"
+          - >-
+            'vpn_watchdog_collection_success{node="node-fixture",role="watchdog"} 1'
+            in (observability_health_output.content | b64decode)
+          - >-
+            'vpn_watchdog_recovery_outcome{node="node-fixture",role="watchdog",state="recovered"} 1'
+            in (observability_health_output.content | b64decode)
+          - >-
+            'vpn_backup_result{node="node-fixture",role="integrity",state="success"} 1'
+            in (observability_health_output.content | b64decode)
+          - >-
+            'vpn_backup_restore_source{node="node-fixture",role="restore-drill",state="remote"} 1'
+            in (observability_health_output.content | b64decode)
+          - >-
+            'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+            not in (observability_health_output.content | b64decode)
+          - observability_health_stat.stat.uid | int == 0
+          - observability_health_stat.stat.gr_name == 'node_exporter_textfile'
+          - observability_health_stat.stat.mode == '0640'
 
     - name: Inspect observability agent unit hardening
       ansible.builtin.command:
@@ -333,6 +367,20 @@
       register: observability_agent_unit
       changed_when: false
 
+    - name: Inspect root-private health adapter hardening
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/systemctl
+          - show
+          - observability-agent-health-adapter.service
+          - --property=User
+          - --property=Group
+          - --property=NoNewPrivileges
+          - --property=ProtectSystem
+          - --property=PrivateDevices
+      register: observability_health_unit
+      changed_when: false
+
     - name: Assert observability agent unit is active and hardened
       ansible.builtin.assert:
         that:
@@ -341,6 +389,11 @@
           - "'NoNewPrivileges=yes' in observability_agent_unit.stdout_lines"
           - "'ProtectSystem=strict' in observability_agent_unit.stdout_lines"
           - "'PrivateDevices=yes' in observability_agent_unit.stdout_lines"
+          - "'User=root' in observability_health_unit.stdout_lines"
+          - "'Group=node_exporter_textfile' in observability_health_unit.stdout_lines"
+          - "'NoNewPrivileges=yes' in observability_health_unit.stdout_lines"
+          - "'ProtectSystem=strict' in observability_health_unit.stdout_lines"
+          - "'PrivateDevices=yes' in observability_health_unit.stdout_lines"
 
     - name: Capture authenticated receiver and remote-write counter baseline
       ansible.builtin.command:
@@ -372,12 +425,18 @@
             )
             if any(not values(name) for name in required):
                 raise SystemExit(2)
+            expected = {
+                "path": "/remote-write/v1/nodes/node-fixture",
+                "cn": "node-fixture",
+            }
             print(json.dumps({
                 "retry": max(
                     max(values("prometheus_remote_storage_samples_failed_total")),
                     max(values("prometheus_remote_storage_samples_retried_total")),
                 ),
-                "received": len(rows),
+                "received": sum(
+                    json.loads(row) == expected for row in rows
+                ),
             }, sort_keys=True))
       register: observability_outage_baseline
       changed_when: false
@@ -393,6 +452,7 @@
           - /usr/bin/python3
           - -c
           - |
+            import json
             import re
             import sys
             import urllib.request
@@ -407,15 +467,20 @@
                     re.M,
                 )]
                 return max(values) if values else 0.0
-            age = maximum(
-                "prometheus_remote_storage_queue_highest_timestamp_seconds"
-            ) - maximum(
+            highest = maximum("prometheus_remote_storage_queue_highest_timestamp_seconds")
+            highest_sent = maximum(
                 "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
             )
+            age = highest - highest_sent
             retry = max(
                 maximum("prometheus_remote_storage_samples_failed_total"),
                 maximum("prometheus_remote_storage_samples_retried_total"),
             )
+            print(json.dumps({
+                "highest": highest,
+                "highest_sent": highest_sent,
+                "retry": retry,
+            }, sort_keys=True))
             raise SystemExit(0 if age > 0 and retry > float(sys.argv[1]) else 1)
           - "{{ (observability_outage_baseline.stdout | from_json).retry }}"
       register: observability_outage_evidence
@@ -429,12 +494,13 @@
         name: observability-receiver-fixture.service
         state: started
 
-    - name: Wait for queue drain and new authenticated receiver arrival
+    - name: Wait for outage watermark recovery and new authenticated receiver arrival
       ansible.builtin.command:
         argv:
           - /usr/bin/python3
           - -c
           - |
+            import json
             import pathlib
             import re
             import sys
@@ -443,17 +509,37 @@
             metrics = urllib.request.urlopen(
                 "http://127.0.0.1:19090/metrics", timeout=2
             ).read().decode()
-            pending = [float(match.group(1)) for match in re.finditer(
-                r"^prometheus_remote_storage_samples_pending(?:\{[^}]*\})? ([0-9.eE+-]+)$",
-                metrics,
-                re.M,
-            )]
+            def maximum(name):
+                values = [float(match.group(1)) for match in re.finditer(
+                    r"^" + re.escape(name) + r"(?:[{][^}]*[}])? ([0-9.eE+-]+)$",
+                    metrics,
+                    re.M,
+                )]
+                return max(values) if values else 0.0
             receiver = pathlib.Path("/var/lib/observability-fixture/receiver.log")
-            received = len(receiver.read_text().splitlines()) if receiver.exists() else 0
+            rows = [
+                json.loads(row) for row in receiver.read_text().splitlines()
+            ] if receiver.exists() else []
+            expected = {
+                "path": "/remote-write/v1/nodes/node-fixture",
+                "cn": "node-fixture",
+            }
+            received = sum(row == expected for row in rows)
+            diagnostic = {
+                "outage_highest": float(sys.argv[2]),
+                "pending": maximum("prometheus_remote_storage_samples_pending"),
+                "received": received,
+                "sent": maximum(
+                    "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
+                ),
+            }
+            print(json.dumps(diagnostic, sort_keys=True))
             raise SystemExit(
-                0 if pending and max(pending) == 0 and received > int(sys.argv[1]) else 1
+                0 if diagnostic["sent"] >= diagnostic["outage_highest"]
+                and received > int(sys.argv[1]) else 1
             )
           - "{{ (observability_outage_baseline.stdout | from_json).received }}"
+          - "{{ (observability_outage_evidence.stdout | from_json).highest }}"
       register: observability_recovered_evidence
       changed_when: false
       retries: 30

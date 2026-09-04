@@ -2,7 +2,7 @@
 id: SEC-1788275314490012
 title: Resolve current CodeQL and Scorecard code scanning alerts
 kind: bug
-status: review
+status: done
 area: security
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-09-01
 updated: 2026-09-01
 related_tasks: []
 status_detail: All eight alerts fixed without dismissal; exact main SHA 43aa5bf passed CodeQL, Scorecard, CI, image publication, and SARIF upload.
+closed_at: "2026-09-01T18:35:58Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Exact main 43aa5bf passed CI, CodeQL, Scorecard, Debian and Ubuntu image publication with SARIF upload; all eight alerts are fixed without dismissal.
 ---
 
 ## Goal
