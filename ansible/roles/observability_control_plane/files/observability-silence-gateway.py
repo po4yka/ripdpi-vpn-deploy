@@ -509,13 +509,18 @@ def main():
     ca_path = credentials / "silence-backend-ca.pem"
     try:
         ca_pem = private_bytes(ca_path, 65536)
-        ca_der = ssl.PEM_cert_to_DER_cert(ca_pem.decode("ascii", errors="strict"))
     except UnicodeError as exc:
         raise GatewayError("backend-ca-encoding") from exc
     except OSError as exc:
         raise GatewayError("backend-ca-io") from exc
     except ValueError as exc:
         raise GatewayError("backend-ca-value") from exc
+    try:
+        ca_der = ssl.PEM_cert_to_DER_cert(ca_pem.decode("ascii", errors="strict"))
+    except UnicodeError as exc:
+        raise GatewayError("backend-ca-encoding") from exc
+    except ValueError as exc:
+        raise GatewayError("backend-ca-format") from exc
     try:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     except ssl.SSLError as exc:
@@ -533,7 +538,7 @@ def main():
     except OSError as exc:
         raise GatewayError("backend-ca-io") from exc
     except ValueError as exc:
-        raise GatewayError("backend-ca-value") from exc
+        raise GatewayError("backend-ca-der") from exc
     try:
         context.minimum_version = ssl.TLSVersion.TLSv1_2
     except ValueError as exc:
