@@ -506,20 +506,13 @@ def main():
     credentials = Path(os.environ.get("CREDENTIALS_DIRECTORY", ""))
     if str(credentials) != "/run/credentials/observability-silence-gateway.service":
         raise GatewayError("credential-directory")
+    ca_path = credentials / "silence-backend-ca.pem"
     try:
-        ca_pem = private_bytes(credentials / "silence-backend-ca.pem", 65536)
-        ca_text = ca_pem.decode("ascii", errors="strict")
-    except ssl.SSLError as exc:
-        raise GatewayError("backend-ca-ssl") from exc
-    except UnicodeError as exc:
-        raise GatewayError("backend-ca-encoding") from exc
-    except OSError as exc:
-        raise GatewayError("backend-ca-io") from exc
-    except ValueError as exc:
-        raise GatewayError("backend-ca-value") from exc
-    try:
+        # Validate the systemd credential with no-follow metadata and size
+        # checks before OpenSSL reopens the same read-only credential path.
+        private_bytes(ca_path, 65536)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        context.load_verify_locations(cadata=ca_text)
+        context.load_verify_locations(cafile=str(ca_path))
     except ssl.SSLError as exc:
         raise GatewayError("backend-ca-ssl") from exc
     except OSError as exc:
