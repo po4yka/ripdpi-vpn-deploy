@@ -29,6 +29,9 @@ separate UID receives the dedicated backend client certificate; Alertmanager
 requires that CA on HTTPS 127.0.0.1:9093. Prometheus holds only a sender token.
 The gateway opens its five credentials through systemd's exact
 `$CREDENTIALS_DIRECTORY` path and does not depend on a credential-directory cwd.
+Systemd may expose system credentials as read-only `0440 root:root` files inside
+that private mount; gateway metadata checks accept only that exact loaded form or
+an owner-private `0400` file and preserve file errors separately from JSON errors.
 Owner token digests derive maintenance identity; exact `node`/`policy` scope,
 reason and configured finite TTL (default four hours) precede any silence write.
 The bounded private journal records attempts/results/expiry and retains ownership

@@ -483,10 +483,15 @@ def private_bytes(path, limit):
         raise GatewayError("configuration-file") from exc
     with os.fdopen(descriptor, "rb") as stream:
         info = os.fstat(stream.fileno())
+        mode = stat.S_IMODE(info.st_mode)
+        owner_private = mode == 0o400 and info.st_uid in (0, os.geteuid())
+        systemd_private = (
+            mode == 0o440 and info.st_uid == 0 and info.st_gid == 0
+        )
         if (
             not stat.S_ISREG(info.st_mode)
-            or info.st_uid not in (0, os.geteuid())
-            or stat.S_IMODE(info.st_mode) & 0o077
+            or info.st_nlink != 1
+            or not (owner_private or systemd_private)
         ):
             raise GatewayError("configuration-file")
         payload = stream.read(limit + 1)
@@ -498,6 +503,8 @@ def private_bytes(path, limit):
 def private_json(path):
     try:
         return json.loads(private_bytes(path, 65536), object_pairs_hook=unique_object)
+    except GatewayError:
+        raise
     except (TypeError, ValueError) as exc:
         raise GatewayError("configuration-content") from exc
 
