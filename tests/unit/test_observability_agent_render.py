@@ -10,6 +10,7 @@ import sys
 import urllib.request
 
 from jinja2 import Environment, StrictUndefined
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -45,10 +46,9 @@ def _run_embedded_verification_script(
 
         pathlib.Path = lambda _path: ReceiverLog()  # type: ignore[assignment]
         with contextlib.redirect_stdout(stdout):
-            try:
+            with pytest.raises(SystemExit) as result:
                 exec(script, {"__name__": "__main__"})
-            except SystemExit as result:
-                return_code = int(result.code)
+            return_code = int(result.value.code)
     finally:
         sys.argv = original_argv
         urllib.request.urlopen = original_urlopen
