@@ -39,3 +39,53 @@
       Telegram destination, a credential token, fixed bounded routing, and an
       optional loopback-only dead-man canary receiver.
   no_log: true
+
+- name: Require finite authenticated silence authority before any host changes
+  ansible.builtin.assert:
+    that:
+      - observability_control_plane.config_root == '/etc/observability-control-plane'
+      - observability_control_plane.service_user != 'observability-silence'
+      - observability_control_plane.alerting.silence_gateway.enabled | bool
+      - observability_control_plane.alerting.silence_gateway.listen == '127.0.0.1:19094'
+      - observability_control_plane.alerting.silence_gateway.environment is match('^[a-z][a-z0-9_-]{0,63}\\Z')
+      - observability_control_plane.alerting.silence_gateway.max_ttl_seconds is integer
+      - observability_control_plane.alerting.silence_gateway.max_ttl_seconds >= 60
+      - observability_control_plane.alerting.silence_gateway.max_ttl_seconds <= 86400
+      - observability_control_plane.alerting.silence_gateway.operators | length >= 1
+      - observability_control_plane.alerting.silence_gateway.operators | length <= 32
+      - observability_control_plane.alerting.silence_gateway.sender_token is match('^[0-9a-f]{64}\\Z')
+      - >-
+        observability_control_plane.alerting.silence_gateway.operators | map(attribute='owner') | unique | length ==
+        observability_control_plane.alerting.silence_gateway.operators | length
+      - >-
+        observability_control_plane.alerting.silence_gateway.operators | map(attribute='token') | unique | length ==
+        observability_control_plane.alerting.silence_gateway.operators | length
+      - >-
+        observability_control_plane.alerting.silence_gateway.sender_token not in
+        (observability_control_plane.alerting.silence_gateway.operators | map(attribute='token') | list)
+    fail_msg: Alerting requires the private finite silence gateway and distinct bounded owner and sender identities.
+  no_log: true
+
+- name: Validate each authenticated maintenance owner
+  ansible.builtin.assert:
+    that:
+      - item.keys() | list | sort == ['owner', 'token']
+      - item.owner is match('^[a-z][a-z0-9_-]{0,63}\\Z')
+      - item.token is match('^[0-9a-f]{64}\\Z')
+  loop: "{{ observability_control_plane.alerting.silence_gateway.operators }}"
+  no_log: true
+
+- name: Verify dedicated backend certificate identities on the controller
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/validate-silence-backend.py') }}"
+    stdin: "{{ observability_control_plane | to_json }}"
+    stdin_add_newline: false
+  delegate_to: localhost
+  connection: local
+  become: false
+  changed_when: false
+  check_mode: false
+  no_log: true

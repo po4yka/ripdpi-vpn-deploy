@@ -75,10 +75,12 @@ if entry['program'] == 'ssh':
         stream.write(json.dumps(entry) + '\\n')
     if 'previous =' in payload:
         print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'retained', 'generation': 'a' * 64}}))
+    elif '/v1/silences' in payload:
+        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'deleted' if 'DELETE' in payload else 'created', 'silence_id': '12345678-1234-4234-8234-1234567890ab'}}))
     elif '/api/v2/alerts' in payload:
         print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'receiver': 'telegram-primary', 'state': 'submitted'}}))
     else:
-        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'healthy', 'units': {{'observability-prometheus.service': 'active', 'observability-alertmanager.service': 'active', 'observability-control-plane-adapter.timer': 'active'}}}}))
+        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'healthy', 'units': {{'observability-prometheus.service': 'active', 'observability-alertmanager.service': 'active', 'observability-silence-gateway.service': 'active', 'observability-control-plane-adapter.timer': 'active'}}}}))
 """
     for name in ("ansible-playbook", "ssh"):
         _write(binary / name, recorder, 0o700)
@@ -294,6 +296,7 @@ def test_status_is_secretless_read_only_and_redacted(
         "units": {
             "observability-prometheus.service": "active",
             "observability-alertmanager.service": "active",
+            "observability-silence-gateway.service": "active",
             "observability-control-plane-adapter.timer": "active",
         },
     }
@@ -319,6 +322,21 @@ def test_drill_is_staging_only_and_needs_explicit_notification_confirmation(
     result = _run(operator, "drill", "--confirm-notification")
     assert result.returncode == 2
     assert result.stderr == "observability-operator: drills require staging\n"
+    assert _calls(operator) == []
+
+
+def test_drill_requires_named_gateway_owner_before_transport(operator):
+    result = _run(operator, "drill", "--confirm-notification")
+    assert result.returncode == 2
+    assert result.stderr == "observability-operator: valid --silence-owner required\n"
+    assert _calls(operator) == []
+
+
+@pytest.mark.parametrize("owner", ["../owner", "owner/other", "Owner", "a" * 65])
+def test_drill_rejects_unsafe_gateway_owner_before_transport(operator, owner):
+    result = _run(operator, "drill", "--confirm-notification", "--silence-owner", owner)
+    assert result.returncode == 2
+    assert result.stderr == "observability-operator: valid --silence-owner required\n"
     assert _calls(operator) == []
 
 
@@ -651,20 +669,43 @@ def _run_drill_program(
     def urlopen(request: object, *, timeout: int) -> _DrillResponse:
         assert timeout == 5
         calls.append(request)
-        if isinstance(request, urllib.request.Request):
+        assert isinstance(request, urllib.request.Request)
+        assert request.full_url == "http://127.0.0.1:19094/api/v2/alerts"
+        assert request.get_header("Authorization") == "Bearer " + "a" * 64
+        if request.get_method() == "POST":
             return _DrillResponse(202, {})
-        assert request == "http://127.0.0.1:9093/api/v2/alerts"
         return _DrillResponse(200, alerts)
 
-    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    from types import SimpleNamespace
+
+    def build_opener(handler, redirect):
+        assert isinstance(redirect, urllib.request.HTTPRedirectHandler)
+        assert isinstance(handler, urllib.request.ProxyHandler)
+        assert handler.proxies == {}
+        return SimpleNamespace(open=urlopen)
+
+    monkeypatch.setattr(urllib.request, "build_opener", build_opener)
     monkeypatch.setattr(time, "monotonic", lambda: next(monotonic))
     monkeypatch.setattr(time, "sleep", lambda _: pytest.fail("unexpected drill sleep"))
     source = SCRIPT.read_text(encoding="utf-8")
     start = source.index("def _drill_program")
     end = source.index("def _remote", start)
+    gateway_start = source.index("def _gateway_program")
+    gateway_end = source.index("def _status_program", gateway_start)
     namespace: dict[str, object] = {}
+    exec(compile(source[gateway_start:gateway_end], str(SCRIPT), "exec"), namespace)
+    gateway = namespace["_gateway_program"]("operator")
+    # Credential reader has separate filesystem tests; keep this routing test hermetic.
+    gateway = (
+        gateway[: gateway.index("gateway_token =")]
+        + "gateway_token = '"
+        + "a" * 64
+        + "'\n"
+        + gateway[gateway.index("gateway_opener =") :]
+    )
+    namespace["_gateway_program"] = lambda owner: gateway
     exec(compile(source[start:end], str(SCRIPT), "exec"), namespace)
-    program = namespace["_drill_program"]()
+    program = namespace["_drill_program"]("operator")
     exec(compile(program, "drill-program", "exec"), {})
     return calls
 
@@ -698,7 +739,7 @@ def test_drill_waits_past_group_wait_and_proves_receiver_before_resolve(
     }
     assert len(calls) == 3
     assert isinstance(calls[0], __import__("urllib.request").request.Request)
-    assert calls[1] == "http://127.0.0.1:9093/api/v2/alerts"
+    assert calls[1].get_method() == "GET"
     assert isinstance(calls[2], __import__("urllib.request").request.Request)
 
 
@@ -772,3 +813,305 @@ def test_rollback_program_refuses_same_basename_outside_expected_generation(
     )
     assert rejected.returncode == 2
     assert rejected.stdout == ""
+
+
+def _gateway_token_reader():
+    source = SCRIPT.read_text(encoding="utf-8")
+    start = source.index("def _gateway_program")
+    end = source.index("def _status_program", start)
+    namespace = {}
+    exec(compile(source[start:end], str(SCRIPT), "exec"), namespace)
+    program = namespace["_gateway_program"]("operator")
+    exec(
+        compile(program[: program.index("gateway_token =")], "gateway-reader", "exec"),
+        namespace,
+    )
+    return namespace["read_gateway_token"]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "none",
+        "symlink",
+        "hardlink",
+        "mode",
+        "oversize",
+        "bad-token",
+        "directory",
+        "ancestor-symlink",
+        "ancestor-writable",
+        "root-writable",
+    ],
+)
+def test_gateway_token_reader_requires_private_regular_anchored_file(
+    tmp_path, monkeypatch, mutation
+):
+    import os
+    import stat
+    from types import SimpleNamespace
+
+    root = tmp_path / "credentials"
+    root.mkdir(mode=0o700)
+    token = root / "silence-owner-operator-token"
+    token.write_text("a" * 64 + "\n")
+    token.chmod(0o600)
+    actual_fstat = os.fstat
+
+    def fixture_fstat(fd):
+        value = actual_fstat(fd)
+        # This test exercises no-follow/mode/type checks on a user-owned fixture.
+        # Root identity is tested separately; no production UID guard is changed.
+        return SimpleNamespace(
+            st_uid=0,
+            st_mode=value.st_mode,
+            st_nlink=value.st_nlink,
+            st_size=value.st_size,
+        )
+
+    monkeypatch.setattr(os, "fstat", fixture_fstat)
+    # macOS pytest ancestors may be writable; anchor at fixture root for traversal.
+    actual_open = os.open
+
+    def fixture_open(path, flags, *args, **kwargs):
+        return actual_open(tmp_path if path == "/" else path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", fixture_open)
+    if mutation == "symlink":
+        token.rename(root / "other")
+        token.symlink_to("other")
+    elif mutation == "hardlink":
+        os.link(token, root / "other")
+    elif mutation == "mode":
+        token.chmod(0o644)
+    elif mutation == "oversize":
+        token.write_text("a" * 66)
+    elif mutation == "bad-token":
+        token.write_text("Z" * 64)
+    elif mutation == "directory":
+        token.unlink()
+        token.mkdir()
+    elif mutation == "ancestor-symlink":
+        root.rename(tmp_path / "other")
+        root.symlink_to("other")
+    elif mutation == "ancestor-writable":
+        root.chmod(0o777)
+    elif mutation == "root-writable":
+        tmp_path.chmod(0o777)
+    reader = _gateway_token_reader()
+    if mutation == "none":
+        assert reader("/credentials", token.name) == "a" * 64
+    else:
+        with pytest.raises((OSError, RuntimeError)):
+            reader("/credentials", token.name)
+
+
+def test_gateway_token_reader_rejects_wrong_owner_before_read(tmp_path, monkeypatch):
+    import os
+    from types import SimpleNamespace
+
+    actual_fstat = os.fstat
+
+    def wrong_owner(fd):
+        value = actual_fstat(fd)
+        return SimpleNamespace(st_uid=12345, st_mode=value.st_mode)
+
+    monkeypatch.setattr(os, "fstat", wrong_owner)
+    with pytest.raises(RuntimeError, match="gateway credential unavailable"):
+        _gateway_token_reader()(str(tmp_path), "token")
+
+
+@pytest.mark.parametrize("command", ["drill", "silence-create", "silence-delete"])
+@pytest.mark.parametrize("owner", ["operator", "$(shell touch MON_UNSAFE_MARKER)"])
+def test_make_gateway_commands_forward_owner_literally(operator, owner, command):
+    common = operator["common"]
+    values = dict(zip(common[::2], common[1::2]))
+    marker = operator["tmp"] / "MON_UNSAFE_MARKER"
+    if owner != "operator":
+        owner = "$(shell touch " + str(marker) + ")"
+    assert not marker.exists()
+    request = operator["tmp"] / "silence.json"
+    request.write_text("{}")
+    request.chmod(0o600)
+    result = subprocess.run(
+        [
+            "make",
+            "observability-" + command,
+            f"OBSERVABILITY_INVENTORY={values['--inventory']}",
+            f"OBSERVABILITY_HOST={values['--host']}",
+            f"OBSERVABILITY_ENVIRONMENT={values['--environment']}",
+            f"OBSERVABILITY_COMPONENT={values['--component']}",
+            f"OBSERVABILITY_KNOWN_HOSTS={values['--known-hosts']}",
+            f"OBSERVABILITY_SILENCE_OWNER={owner}",
+            f"OBSERVABILITY_SILENCE_REQUEST={request}",
+            "OBSERVABILITY_SILENCE_ID=12345678-1234-4234-8234-1234567890ab",
+        ],
+        cwd=ROOT,
+        env=operator["env"],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+    assert not marker.exists()
+    if owner == "operator":
+        assert result.returncode == 0, result.stderr
+        payload = _calls(operator)[1]["payload"]
+        assert "silence-owner-operator-token" in payload
+        assert "http://127.0.0.1:9093" not in payload
+    else:
+        assert result.returncode != 0
+        assert "valid --silence-owner required" in result.stderr
+        assert _calls(operator) == []
+
+
+def test_gateway_client_never_redirects_authorization():
+    source = SCRIPT.read_text()
+    start = source.index("def _gateway_program")
+    end = source.index("def _status_program", start)
+    namespace = {}
+    exec(compile(source[start:end], str(SCRIPT), "exec"), namespace)
+    program = namespace["_gateway_program"]("operator")
+    exec(
+        compile(program[: program.index("gateway_token =")], "gateway-reader", "exec"),
+        namespace,
+    )
+    handler = namespace["_NoGatewayRedirect"]()
+    with pytest.raises(RuntimeError, match="gateway redirect rejected"):
+        handler.redirect_request(
+            None, None, 302, "redirect", {}, "https://untrusted.invalid/"
+        )
+
+
+@pytest.mark.parametrize("command", ["silence-create", "silence-delete"])
+def test_silence_commands_require_confirmation_and_private_owner(operator, command):
+    result = _run(operator, command)
+    assert result.returncode == 2
+    assert result.stderr == "observability-operator: --confirm required\n"
+    assert _calls(operator) == []
+
+
+@pytest.mark.parametrize("command", ["silence-create", "silence-delete"])
+def test_silence_commands_use_exact_gateway_without_secrets_in_argv(operator, command):
+    extra = ["--confirm", "--silence-owner", "operator"]
+    if command == "silence-create":
+        request = operator["tmp"] / "silence.json"
+        request.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "reason": "planned-maintenance",
+                    "starts_at": "2026-09-04T16:00:00Z",
+                    "ends_at": "2026-09-04T17:00:00Z",
+                    "matchers": {"environment": "staging", "node": "node-a"},
+                }
+            )
+        )
+        request.chmod(0o600)
+        extra.extend(["--request", str(request)])
+    else:
+        extra.extend(["--silence-id", "12345678-1234-4234-8234-1234567890ab"])
+    result = _run(operator, command, *extra)
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    assert report["state"] == ("created" if command == "silence-create" else "deleted")
+    assert report["silence_id"] == "12345678-1234-4234-8234-1234567890ab"
+    calls = _calls(operator)
+    assert [call["program"] for call in calls] == ["ssh", "ssh-payload"]
+    assert "silence-owner-operator-token" in calls[1]["payload"]
+    assert (
+        "planned-maintenance"
+        not in json.dumps(calls[0]) + result.stdout + result.stderr
+    )
+
+
+def test_silence_delete_rejects_non_uuid_before_transport(operator):
+    result = _run(
+        operator,
+        "silence-delete",
+        "--confirm",
+        "--silence-owner",
+        "operator",
+        "--silence-id",
+        "../other",
+    )
+    assert result.returncode == 2
+    assert result.stderr == "observability-operator: silence ID rejected\n"
+    assert _calls(operator) == []
+
+
+def test_silence_create_rejects_public_request_before_transport(operator):
+    request = operator["tmp"] / "silence.json"
+    request.write_text("{}")
+    request.chmod(0o644)
+    result = _run(
+        operator,
+        "silence-create",
+        "--confirm",
+        "--silence-owner",
+        "operator",
+        "--request",
+        str(request),
+    )
+    assert result.returncode == 2
+    assert result.stderr == "observability-operator: private silence request required\n"
+    assert _calls(operator) == []
+
+
+@pytest.mark.parametrize("deleting", [False, True])
+@pytest.mark.parametrize("mutation", ["none", "bad-id", "extra", "oversize"])
+def test_silence_remote_program_validates_response_without_echoing_request(
+    deleting, mutation, capsys
+):
+    identifier = "12345678-1234-4234-8234-1234567890ab"
+    payload = {"silence_id": identifier}
+    if deleting:
+        payload["deleted"] = True
+    if mutation == "bad-id":
+        payload["silence_id"] = "unsafe"
+    elif mutation == "extra":
+        payload["unexpected"] = "private-evidence"
+    elif mutation == "oversize":
+        payload["unexpected"] = "x" * 4096
+    calls = []
+
+    def gateway_request(path, data, method):
+        calls.append((path, data, method))
+        return _DrillResponse(200 if deleting else 201, payload)
+
+    source = SCRIPT.read_text()
+    start = source.index("def _silence_program")
+    end = source.index("def _silence_request", start)
+    namespace = {"_gateway_program": lambda owner: ""}
+    exec(compile(source[start:end], str(SCRIPT), "exec"), namespace)
+    request = b'{"reason":"planned-maintenance"}'
+    program = namespace["_silence_program"](
+        "operator",
+        request=None if deleting else request,
+        silence_id=identifier if deleting else None,
+    )
+    if mutation != "none":
+        with pytest.raises((RuntimeError, ValueError)):
+            exec(
+                compile(program, "silence-program", "exec"),
+                {"gateway_request": gateway_request},
+            )
+        assert capsys.readouterr().out == ""
+    else:
+        exec(
+            compile(program, "silence-program", "exec"),
+            {"gateway_request": gateway_request},
+        )
+        report = json.loads(capsys.readouterr().out)
+        assert report == {
+            "schema_version": 1,
+            "component": "control-plane",
+            "state": "deleted" if deleting else "created",
+            "silence_id": identifier,
+        }
+    assert calls == [
+        (
+            "/v1/silences/" + identifier if deleting else "/v1/silences",
+            None if deleting else request,
+            "DELETE" if deleting else "POST",
+        )
+    ]

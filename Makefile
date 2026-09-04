@@ -233,7 +233,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         remove-operator-crons issue-sub-token sub-reads \
         observability-render observability-validate observability-status \
         observability-drill observability-rotate observability-rollback \
-        observability-remove \
+        observability-remove observability-silence-create observability-silence-delete \
         awg-evidence-provision \
         test-unit snapshot-check snapshot-update validate-secrets \
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
@@ -1100,7 +1100,7 @@ OBSERVABILITY_ENVIRONMENT ?=
 OBSERVABILITY_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
 OBSERVABILITY_SECRETS_FILE ?= $(SECRETS_FILE)
 
-ifneq ($(filter observability-render observability-validate observability-status observability-drill observability-rotate observability-rollback observability-remove,$(MAKECMDGOALS)),)
+ifneq ($(filter observability-render observability-validate observability-status observability-drill observability-rotate observability-rollback observability-remove observability-silence-create observability-silence-delete,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error observability operator commands require exactly one make goal)
 endif
@@ -1112,13 +1112,18 @@ override OBSERVABILITY_KNOWN_HOSTS_LITERAL := $(if $(filter file default undefin
 override OBSERVABILITY_SECRETS_LITERAL := $(if $(filter file default undefined,$(origin OBSERVABILITY_SECRETS_FILE)),$(OBSERVABILITY_SECRETS_FILE),$(value OBSERVABILITY_SECRETS_FILE))
 override OBSERVABILITY_VARS_LITERAL := $(value OBSERVABILITY_VARS)
 override OBSERVABILITY_ROLLBACK_MANIFEST_LITERAL := $(value OBSERVABILITY_ROLLBACK_MANIFEST)
+override OBSERVABILITY_SILENCE_OWNER_LITERAL := $(value OBSERVABILITY_SILENCE_OWNER)
+override OBSERVABILITY_SILENCE_REQUEST_LITERAL := $(value OBSERVABILITY_SILENCE_REQUEST)
+override OBSERVABILITY_SILENCE_ID_LITERAL := $(value OBSERVABILITY_SILENCE_ID)
 ifeq ($(strip $(OBSERVABILITY_ENVIRONMENT_LITERAL)),)
 $(error observability operator commands require OBSERVABILITY_ENVIRONMENT explicitly)
 endif
 export OBSERVABILITY_INVENTORY_LITERAL OBSERVABILITY_HOST_LITERAL
 export OBSERVABILITY_ENVIRONMENT_LITERAL OBSERVABILITY_COMPONENT_LITERAL
 export OBSERVABILITY_KNOWN_HOSTS_LITERAL OBSERVABILITY_SECRETS_LITERAL
-export OBSERVABILITY_VARS_LITERAL OBSERVABILITY_ROLLBACK_MANIFEST_LITERAL
+export OBSERVABILITY_VARS_LITERAL OBSERVABILITY_ROLLBACK_MANIFEST_LITERAL OBSERVABILITY_SILENCE_OWNER_LITERAL
+export OBSERVABILITY_SILENCE_REQUEST_LITERAL OBSERVABILITY_SILENCE_ID_LITERAL
+unexport OBSERVABILITY_SILENCE_OWNER OBSERVABILITY_SILENCE_REQUEST OBSERVABILITY_SILENCE_ID
 unexport MAKEFLAGS MFLAGS
 MAKEOVERRIDES :=
 endif
@@ -1144,7 +1149,17 @@ observability-status:
 
 observability-drill:
 	@python3 scripts/observability-operator.py drill $(observability_common) \
-	  --confirm-notification
+	  --confirm-notification --silence-owner "$${OBSERVABILITY_SILENCE_OWNER_LITERAL}"
+
+observability-silence-create:
+	@python3 scripts/observability-operator.py silence-create $(observability_common) \
+	  --silence-owner "$${OBSERVABILITY_SILENCE_OWNER_LITERAL}" \
+	  --request "$${OBSERVABILITY_SILENCE_REQUEST_LITERAL}" --confirm
+
+observability-silence-delete:
+	@python3 scripts/observability-operator.py silence-delete $(observability_common) \
+	  --silence-owner "$${OBSERVABILITY_SILENCE_OWNER_LITERAL}" \
+	  --silence-id "$${OBSERVABILITY_SILENCE_ID_LITERAL}" --confirm
 
 observability-rotate:
 	@python3 scripts/observability-operator.py rotate $(observability_common) \

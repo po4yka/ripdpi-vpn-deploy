@@ -1,0 +1,19 @@
+- name: Create isolated silence authority group
+  ansible.builtin.group:
+    name: observability-silence
+    system: true
+- name: Create isolated silence authority account
+  ansible.builtin.user:
+    name: observability-silence
+    group: observability-silence
+    system: true
+    create_home: false
+    home: /nonexistent
+    shell: /usr/sbin/nologin
+- name: Create private finite silence journal directory
+  ansible.builtin.file:
+    path: /var/lib/observability-silence-gateway
+    state: directory
+    owner: observability-silence
+    group: observability-silence
+    mode: '0700'

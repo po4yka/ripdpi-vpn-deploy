@@ -1,0 +1,298 @@
+---
+- name: Gather authority service state before publication
+  ansible.builtin.service_facts: null
+- name: Require known previous authority service states
+  ansible.builtin.assert:
+    that:
+      - item not in ansible_facts.services or ansible_facts.services[item].state in ['running', 'stopped',
+        'active', 'inactive']
+      - item not in ansible_facts.services or ansible_facts.services[item].status in ['enabled',
+        'disabled']
+  loop:
+    - observability-alertmanager.service
+    - observability-silence-gateway.service
+    - observability-prometheus.service
+- name: Start exact previous service snapshot
+  ansible.builtin.set_fact:
+    _observability_authority_services: {}
+- name: Capture previous active and enabled states
+  ansible.builtin.set_fact:
+    _observability_authority_services: "{{ _observability_authority_services | combine({item: {\n\
+      \  'exists': item in ansible_facts.services,\n  'active': (ansible_facts.services[item].state\
+      \ | default('stopped')) in ['running', 'active'],\n  'enabled': (ansible_facts.services[item].status\
+      \ | default('disabled')) == 'enabled'}}) }}"
+  loop:
+    - observability-alertmanager.service
+    - observability-silence-gateway.service
+    - observability-prometheus.service
+- name: Require a coherent previous active authority chain before writes
+  ansible.builtin.assert:
+    that:
+      - >-
+        _observability_authority_services['observability-alertmanager.service'].active ==
+        _observability_authority_services['observability-silence-gateway.service'].active
+    fail_msg: 'Unsupported previous active authority topology: Alertmanager and gateway must be active
+      together; standalone Prometheus before alerting enablement is supported.'
+- name: Capture private authority snapshot before the first publication write
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -c
+      - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/observability-authority-snapshot.py'')
+        }}'
+      - '{{ ''inspect'' if ansible_check_mode else ''prepare'' }}'
+      - /
+    stdin: '{{ {''owners'': observability_control_plane.alerting.silence_gateway.operators | map(attribute=''owner'')
+      | list, ''services'': _observability_authority_services} | to_json }}'
+  register: _observability_authority_capture
+  changed_when: false
+  no_log: true
+  diff: false
+  check_mode: false
+- name: Keep only non-secret snapshot identity and previous owner names in memory
+  ansible.builtin.set_fact:
+    _observability_authority: '{{ _observability_authority_capture.stdout | from_json }}'
+  no_log: true
+- name: Predict authority service activation without daemon actions in check mode
+  ansible.builtin.debug:
+    msg: Inspected whether Alertmanager and gateway need to be started or enabled.
+  changed_when: >-
+    not (_observability_authority.services['observability-alertmanager.service'].active and
+    _observability_authority.services['observability-alertmanager.service'].enabled and
+    _observability_authority.services['observability-silence-gateway.service'].active and
+    _observability_authority.services['observability-silence-gateway.service'].enabled)
+  when: ansible_check_mode
+
+- name: Activate validated Alertmanager generation with rollback
+  block:
+    - name: Preserve previous ready Alertmanager generation
+      ansible.builtin.file:
+        src: '{{ _observability_alertmanager_current.stat.lnk_source }}'
+        dest: '{{ observability_control_plane.config_root }}/alertmanager-previous.yml'
+        state: link
+        force: true
+        owner: root
+        group: '{{ observability_control_plane.service_group }}'
+      when: _observability_alertmanager_current.stat.exists | default(false)
+    - name: Materialize primary Telegram credential for systemd
+      ansible.builtin.copy:
+        content: '{{ observability_control_plane.alerting.telegram.bot_token }}'
+        dest: '{{ observability_control_plane.alerting.credential_path }}'
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+      diff: false
+      register: _observability_alertmanager_credential
+    - name: Publish candidate silence authority
+      ansible.builtin.include_tasks: silence-gateway.yml
+    - name: Install hardened Alertmanager service
+      ansible.builtin.template:
+        src: observability-alertmanager.service.j2
+        dest: /etc/systemd/system/observability-alertmanager.service
+        owner: root
+        group: root
+        mode: '0644'
+      register: _observability_alertmanager_unit
+    - name: Point Alertmanager at candidate generation
+      ansible.builtin.file:
+        src: '{{ observability_control_plane.config_root }}/generations/alertmanager-{{ _observability_alertmanager_generation
+          }}.yml'
+        dest: '{{ observability_control_plane.config_root }}/alertmanager-current.yml'
+        state: link
+        force: true
+        owner: root
+        group: '{{ observability_control_plane.service_group }}'
+      register: _observability_alertmanager_current_link
+    - name: Restart Alertmanager with candidate generation
+      ansible.builtin.systemd_service:
+        name: observability-alertmanager
+        daemon_reload: true
+        enabled: true
+        state: restarted
+      when: not ansible_check_mode and (_observability_alertmanager_runtime_changed | bool or _observability_alertmanager_credential.changed
+        or _observability_silence_credentials.changed or _observability_silence_web.changed or _observability_alertmanager_unit.changed
+        or _observability_alertmanager_current_link.changed)
+    - name: Ensure unchanged Alertmanager generation is running
+      ansible.builtin.systemd_service:
+        name: observability-alertmanager
+        enabled: true
+        state: started
+      when:
+        - not ansible_check_mode
+    - name: Restart changed authenticated silence gateway
+      ansible.builtin.systemd_service:
+        name: observability-silence-gateway
+        daemon_reload: true
+        enabled: true
+        state: restarted
+      when:
+        - not ansible_check_mode
+        - _observability_silence_program.changed or _observability_silence_policy.changed or _observability_silence_credentials.changed
+          or _observability_silence_unit.changed
+    - name: Ensure authenticated silence gateway is running
+      ansible.builtin.systemd_service:
+        name: observability-silence-gateway
+        enabled: true
+        state: started
+      when:
+        - not ansible_check_mode
+    - name: Require loopback-only Alertmanager readiness
+      ansible.builtin.uri:
+        url: http://127.0.0.1:19094/-/ready
+        headers:
+          Authorization: Bearer {{ observability_control_plane.alerting.silence_gateway.sender_token
+            }}
+        status_code: 200
+        return_content: false
+      register: _observability_alertmanager_ready
+      retries: 5
+      delay: 2
+      until: _observability_alertmanager_ready.status == 200
+      no_log: true
+      when:
+        - not ansible_check_mode
+    - name: Reload existing active Prometheus sender snapshot inside authority boundary
+      ansible.builtin.systemd_service:
+        name: observability-prometheus
+        state: restarted
+      when:
+        - not ansible_check_mode
+        - _observability_authority.services["observability-prometheus.service"].active
+        - _observability_silence_credentials.changed
+    - name: Require existing active Prometheus after sender publication
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9090/-/ready
+        status_code: 200
+        return_content: false
+      register: _observability_authority_prometheus_ready
+      retries: 5
+      delay: 2
+      until: _observability_authority_prometheus_ready.status == 200
+      when:
+        - not ansible_check_mode
+        - _observability_authority.services["observability-prometheus.service"].active
+      no_log: true
+    - name: Finish successful authority publication
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/observability-authority-snapshot.py'')
+            }}'
+          - finish
+          - /
+          - '{{ _observability_authority.id }}'
+      changed_when: false
+      no_log: true
+      when:
+        - not ansible_check_mode
+  rescue:
+    - name: Refuse invalid check-mode authority candidate without rollback writes
+      ansible.builtin.fail:
+        msg: Authority candidate check failed; no authority activation or snapshot rollback was performed.
+      when: ansible_check_mode
+    - name: Restore the captured authority and service credential snapshots
+      when: not ansible_check_mode
+      block:
+        - name: Gather current services before restoring authority
+          ansible.builtin.service_facts: null
+        - name: Stop attempted gateway and Alertmanager before removing candidate files
+          ansible.builtin.systemd_service:
+            name: '{{ item }}'
+            state: stopped
+            enabled: '{{ false if not _observability_authority.services[item].exists else omit }}'
+          loop:
+            - observability-silence-gateway.service
+            - observability-alertmanager.service
+          when: item in ansible_facts.services
+        - name: Restore exact prior authority bytes metadata links and absences
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/python3
+              - -c
+              - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/observability-authority-snapshot.py'')
+                }}'
+              - restore
+              - /
+              - '{{ _observability_authority.id }}'
+          changed_when: true
+          no_log: true
+        - name: Reload restored authority unit definitions
+          ansible.builtin.systemd_service:
+            daemon_reload: true
+        - name: Restore previous service state and LoadCredential snapshots in dependency order
+          ansible.builtin.systemd_service:
+            name: '{{ item }}'
+            enabled: '{{ _observability_authority.services[item].enabled }}'
+            state: '{{ ''restarted'' if _observability_authority.services[item].active else ''stopped''
+              }}'
+          loop:
+            - observability-alertmanager.service
+            - observability-silence-gateway.service
+            - observability-prometheus.service
+          when: _observability_authority.services[item].exists
+        - name: Read restored sender token only for private readiness
+          ansible.builtin.slurp:
+            src: /etc/observability-control-plane/credentials/silence-sender-token
+          register: _observability_authority_restored_sender
+          when: _observability_authority.services["observability-silence-gateway.service"].active
+          no_log: true
+        - name: Require restored authenticated backend readiness
+          ansible.builtin.uri:
+            url: http://127.0.0.1:19094/-/ready
+            headers:
+              Authorization: Bearer {{ _observability_authority_restored_sender.content | b64decode
+                }}
+            status_code: 200
+            return_content: false
+          register: _observability_authority_restored_ready
+          retries: 5
+          delay: 2
+          until: _observability_authority_restored_ready.status == 200
+          when: _observability_authority.services["observability-silence-gateway.service"].active
+          no_log: true
+        - name: Require restored active Prometheus readiness
+          ansible.builtin.uri:
+            url: http://127.0.0.1:9090/-/ready
+            status_code: 200
+            return_content: false
+          register: _observability_authority_restored_prometheus
+          retries: 5
+          delay: 2
+          until: _observability_authority_restored_prometheus.status == 200
+          when: _observability_authority.services["observability-prometheus.service"].active
+          no_log: true
+        - name: Finish observed authority rollback
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/python3
+              - -c
+              - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/observability-authority-snapshot.py'')
+                }}'
+              - finish
+              - /
+              - '{{ _observability_authority.id }}'
+          changed_when: false
+          no_log: true
+      rescue:
+        - name: Retain private manual recovery marker after incomplete rollback
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/python3
+              - -c
+              - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/observability-authority-snapshot.py'')
+                }}'
+              - mark
+              - /
+              - '{{ _observability_authority.id }}'
+          changed_when: false
+          no_log: true
+        - name: Refuse publication after incomplete authority rollback
+          ansible.builtin.fail:
+            msg: Authority rollback incomplete; private snapshot retained. Manual recovery is required
+              before further publication.
+    - name: Fail candidate after observed complete authority rollback
+      ansible.builtin.fail:
+        msg: Candidate rejected; authority rollback completed and prior service snapshots verified.
+      when: not ansible_check_mode

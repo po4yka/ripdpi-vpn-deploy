@@ -24,6 +24,13 @@ through a systemd credential. Telegram routing contains only bounded technical
 aliases and cannot authorize maintenance or infrastructure actions. The
 synthetic pipeline watchdog may target only an explicitly enabled loopback
 canary receiver; the independent dead-man sender remains a separate owner.
+Enabled alerting requires the private gateway on 127.0.0.1:19094. Only its
+separate UID receives the dedicated backend client certificate; Alertmanager
+requires that CA on HTTPS 127.0.0.1:9093. Prometheus holds only a sender token.
+Owner token digests derive maintenance identity; exact `node`/`policy` scope,
+reason and configured finite TTL (default four hours) precede any silence write.
+The bounded private journal records attempts/results/expiry and retains ownership
+across restart. Alertmanager owns native expiration; no source health is changed.
 
 ## What's done well
 
@@ -45,3 +52,26 @@ healthy, blocked, or rotation conclusion.
 Do not put Telegram tokens in Alertmanager YAML, argv, environment, metrics, or
 logs. A missing destination is a pre-mutation refusal, and disabling alerting
 removes its unit/config/credential surfaces without deleting Prometheus TSDB.
+
+Do not reuse ingestion CA or certificates for the backend, forward raw silence
+API routes, trust an owner in a request body, or grant Telegram authority.
+Gateway protocol fixtures are not real Alertmanager C13 integration evidence.
+
+A backend write and local completion audit are not an atomic transaction. If
+Alertmanager accepts a request but completion audit persistence fails, return
+failure and retain the durable attempt; native finite expiry remains authoritative.
+
+Authority publication snapshots its fixed mutable file set and prior service
+states before writes. Ordinary failure restores credentials/configuration and
+reloads only previously active services; first-install rollback stops new units
+before removing their files. A failed restore retains the private snapshot and
+blocks publication/disable until manual recovery. Runtime-release binaries and
+abrupt host/process death are outside this configuration rollback boundary.
+
+Previous active AM and gateway must form one chain. Partial active topology is
+refused before authority publication; standalone active Prometheus before
+alerting enablement is supported. This is not a legacy direct-backend route.
+
+Check mode inspects existing namespace entries without creating a snapshot,
+permits absent fresh namespace, and uses native file/template change predictions.
+It never activates services, performs readiness HTTP calls, or runs rollback cleanup.

@@ -54,6 +54,10 @@
         follow: false
       loop:
         - /etc/systemd/system/observability-alertmanager.service
+        - /etc/systemd/system/observability-silence-gateway.service
+        - /usr/local/libexec/observability-silence-gateway
+        - /etc/observability-control-plane/credentials/silence-auth.json
+        - /etc/observability-control-plane/credentials/silence-owner-operator-a-token
         - /etc/observability-control-plane/alertmanager-current.yml
         - /etc/observability-control-plane/alertmanager-previous.yml
         - /etc/observability-control-plane/credentials/telegram-bot-token

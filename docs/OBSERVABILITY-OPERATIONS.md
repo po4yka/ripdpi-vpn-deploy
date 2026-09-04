@@ -54,14 +54,16 @@ generation derived from agent credentials.
 | `make observability-render` | private vars/secrets, exact inventory, selected host facts | Ansible check mode only | no |
 | `make observability-validate` | private vars/secrets and role syntax | no host contact | no |
 | `make observability-status` | fixed systemd properties and loopback readiness on one host | no | no |
-| `make observability-drill` | local Alertmanager API on the staging control plane | submits one synthetic firing/resolved pair | **yes: private staging Telegram route** |
+| `make observability-drill` | authenticated local gateway on the staging control plane | submits one synthetic firing/resolved pair | **yes: private staging Telegram route** |
+| `make observability-silence-create` | private bounded request and named owner credential | finite scoped notification suppression | no synthetic incident |
+| `make observability-silence-delete` | silence UUID and named owner credential | removes that owner's silence | existing incident delivery may resume |
 | `make observability-rotate` | replacement private vars/secrets | converges only the selected role and host | may restart that role's units |
 | `make observability-rollback` | private last-known-good vars/secrets plus a digest-bound rollback manifest | reconverges only the control-plane role and host to its remotely retained previous generation | may restart that role's units; no notification is claimed |
 | `make observability-remove` | private deployment vars snapshot | converges `enabled: false` for only the selected role and host | no; control-plane TSDB retention remains intact |
 
 The status output is a bounded JSON object containing only the requested alias,
-component, categorical unit states and aggregate readiness. It is passive and
-secretless. `healthy` is local component readiness, not fresh fleet telemetry,
+component, categorical unit states and aggregate readiness. It is passive and needs no locally decrypted secrets. Control-plane readiness
+uses the existing remote sender credential without exposing it. `healthy` is local component readiness, not fresh fleet telemetry,
 outside-in VPN availability, Telegram receipt, or dead-man independence.
 
 ## Workflow
@@ -113,10 +115,12 @@ make observability-remove
 ## Staging delivery drill
 
 `make observability-drill` is accepted only for `staging` plus the
-`control-plane` component. It sends a clearly labelled synthetic warning with
+`control-plane` component and requires `OBSERVABILITY_SILENCE_OWNER` to name a
+configured operator. The token remains in its fixed remote root-owned credential
+file; do not provide a token in argv or environment. It sends a clearly labelled synthetic warning with
 one stable fingerprint and keeps it firing for more than the fixed 30-second
 Alertmanager group wait. Before resolving it, the controller requires a bounded
-loopback Alertmanager API observation of that active fingerprint routed to the
+authenticated loopback gateway observation of that active fingerprint routed to the
 exact `telegram-primary` receiver. It performs no
 deploy, provider call, service restart, public request, or production fault
 injection.
@@ -127,6 +131,51 @@ acceptance is not human receipt. A dead-man loss/recovery drill, service or node
 failure injection, credential rotation proof, two-vantage VPN proof and live
 rollback remain separate approved staging steps.
 
+## Finite maintenance silences
+
+Alerting requires `observability_control_plane.alerting.silence_gateway.enabled`
+and dedicated gateway authorities in `observability_secrets.silence_gateway`.
+Bind the existing private role-vars mapping to the SOPS fields instead of
+copying credential values. For example, the `alerting.silence_gateway` value in
+the complete control-plane vars document can be:
+
+```yaml
+silence_gateway: >-
+  {{ observability_secrets.silence_gateway | combine({
+      'enabled': true, 'listen': '127.0.0.1:19094',
+      'environment': 'staging', 'max_ttl_seconds': 14400}) }}
+```
+
+The role uses a fixed private configuration root and loopback-only gateway;
+Alertmanager's underlying API requires a separate client certificate held only
+by the gateway. Sender credentials cannot create or delete silences. A named
+operator may delete only silences it created. The default maximum TTL is four
+hours, bounded by the configured policy.
+
+Create a mode-0600 JSON request in an owner-controlled directory. Its exact
+fields are `schema_version: 1`, a technical-slug `reason`, UTC `starts_at` and
+`ends_at`, and `matchers`. Matchers require the configured `environment` and
+at least one exact `node` or `policy`; optional allowed stable labels further
+narrow the scope. Do not use `node_id`, regex matchers, an owner field, tokens,
+free-text diagnostics or an indefinite end time in this file.
+
+```sh
+export OBSERVABILITY_SILENCE_OWNER="operator"
+export OBSERVABILITY_SILENCE_REQUEST="/owner/private/path/maintenance.json"
+make observability-silence-create
+
+# Use the UUID returned by the successful create operation.
+export OBSERVABILITY_SILENCE_ID="<returned-uuid>"
+make observability-silence-delete
+```
+
+These explicit mutation commands use the already-selected exact inventory
+host and environment. They do not deploy, alter metrics, reset incident times,
+or claim recovery. Alertmanager expires a silence at its finite end even if
+the gateway is temporarily down. The private bounded audit retains categorical
+creation, expiry and deletion records without bearer tokens. A successful API
+response is not the required real alert delivery/expiry staging evidence.
+
 ## Failure handling
 
 The controller emits only categorical failures. On an Ansible or SSH error,
@@ -135,3 +184,14 @@ do not retry with debug/diff, paste decrypted variables into argv, or replace
 the exact role command with `site.yml`. Rollback refuses missing, mutable,
 foreign-owned, group-writable or path-shape-invalid generations. Treat that as
 an unresolved rollback blocker rather than repairing symlinks by hand.
+
+### Alerting authority recovery boundary
+
+An ordinary activation failure restores the captured credential/configuration
+files and previous service states. Failed restoration retains a private snapshot
+under `/etc/observability-control-plane/.authority-rollback` and blocks further
+publication and disable. Do not delete that snapshot or blindly restart services;
+restore the exact recorded authority under an exclusive maintenance window first.
+Runtime binary installation and abrupt process/host loss are outside this
+configuration rollback guarantee. Check mode inspects and predicts changes without
+creating a snapshot, starting services, or performing readiness requests.

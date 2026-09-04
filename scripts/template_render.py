@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -159,6 +160,13 @@ def merge_render_vars() -> dict:
     return merged
 
 
+def _sha256(value: str, algorithm: str) -> str:
+    """The single Ansible hash operation required by credential templates."""
+    if algorithm != "sha256" or not isinstance(value, str):
+        raise ValueError("template hash requires a string and sha256")
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
 def render_template(path: Path, vars_: dict) -> str:
     """Render one repository template with Ansible-compatible polyfills."""
     env = Environment(
@@ -167,6 +175,7 @@ def render_template(path: Path, vars_: dict) -> str:
         keep_trailing_newline=True,
         autoescape=select_autoescape(),
     )
+    env.filters["hash"] = _sha256
     env.filters["to_json"] = lambda value: json.dumps(value)
     env.filters["quote"] = lambda value: "'" + str(value).replace("'", "'\\''") + "'"
     env.filters["dirname"] = lambda value: os.path.dirname(str(value))

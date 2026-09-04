@@ -220,7 +220,7 @@ Each warning and critical condition MUST be a distinct alert with fixed severity
 critical alerts MUST inhibit their warning counterpart and both MAY share a
 stable `incident_family` annotation for human correlation without changing either
 alert's fingerprint. Alert fingerprints MUST use only stable allowlisted labels
-such as environment, node_id, component, policy, profile, vantage, and severity;
+such as environment, node, component, policy, profile, vantage, and severity;
 timestamps, counts,
 current values, and error details belong only in bounded annotations.
 Critical host loss MUST inhibit derivative local service alerts; critical VPN
@@ -327,6 +327,23 @@ silence creation, expiry, and deletion MUST be auditable without secrets.
 Telegram messages and bot callbacks MUST NOT grant authority to create a
 silence, restart a service, promote a spare, mutate a provider/firewall, or
 rotate credentials.
+
+Silence scopes MUST use the canonical alert label `node`, not the producer
+identity field `node_id`. Each scope MUST bind the configured environment and
+at least one exact node or policy. The authenticated owner MUST be derived from
+an individually assigned token rather than a request field. The loopback-only
+gateway MUST use a separate service UID and dedicated mTLS credentials to the
+Alertmanager backend; sender-only credentials MUST NOT authorize silences.
+The gateway MUST be enabled whenever control-plane alerting is enabled.
+
+#### Scenario: An operator creates and removes a finite silence
+
+- **WHEN** the named operator submits a private bounded request through the
+  confirmed canonical command with exact scope and finite start/end
+- **THEN** the gateway records that authenticated owner and returns only the
+  created silence UUID; deletion requires the same owner's authorization.
+- **AND** a public, sender-only, raw-backend, regex, indefinite, over-TTL or
+  caller-supplied-owner request is refused without changing alert state.
 
 #### Scenario: A maintenance silence expires during an outage
 

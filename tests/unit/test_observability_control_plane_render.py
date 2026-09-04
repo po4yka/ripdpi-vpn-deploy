@@ -114,7 +114,9 @@ def test_adapter_unit_preserves_empty_expected_target_values_for_parser(
     assert result.returncode == 2
     assert "validation failed" in result.stderr
     assert "expected one argument" not in result.stderr
-    assert "stale" in (textfile_directory / "observability-control-plane.prom").read_text()
+    assert (
+        "stale" in (textfile_directory / "observability-control-plane.prom").read_text()
+    )
 
 
 def test_ingress_is_only_the_bounded_authenticated_write_path() -> None:
@@ -238,7 +240,7 @@ def test_enabled_molecule_archive_matches_runtime_release_strip_contract() -> No
     config = fixture[-1]["ansible.builtin.set_fact"]["observability_control_plane"]
 
     assert "prometheus-fixture/prometheus prometheus-fixture/promtool" in prepare
-    assert ".alerting-fixture-v1" in prepare
+    assert ".silence-fixture-v2" in prepare
     assert config["prometheus"]["archive_members"] == {
         "amd64": "prometheus-fixture/prometheus",
         "arm64": "prometheus-fixture/prometheus",

@@ -1,0 +1,5 @@
+{"schema_version":1,"sender_token_sha256":{{ observability_control_plane.alerting.silence_gateway.sender_token | hash('sha256') | to_json }},"owners":[
+{% for operator in observability_control_plane.alerting.silence_gateway.operators %}
+{"owner":{{ operator.owner | to_json }},"token_sha256":{{ operator.token | hash('sha256') | to_json }}}{% if not loop.last %},{% endif %}
+{% endfor %}
+]}

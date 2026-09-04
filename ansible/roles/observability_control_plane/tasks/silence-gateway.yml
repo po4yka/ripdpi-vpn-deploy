@@ -1,0 +1,84 @@
+---
+- name: Install finite silence authority
+  ansible.builtin.copy:
+    src: observability-silence-gateway.py
+    dest: /usr/local/libexec/observability-silence-gateway
+    owner: root
+    group: root
+    mode: '0755'
+  register: _observability_silence_program
+
+- name: Render private silence authority credentials
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/observability-control-plane/credentials/{{ item }}"
+    owner: root
+    group: root
+    mode: '0600'
+  loop:
+    - silence-policy.json
+    - silence-auth.json
+  no_log: true
+  diff: false
+  register: _observability_silence_policy
+
+- name: Materialize disjoint backend and sender credentials
+  ansible.builtin.copy:
+    content: "{{ item.value }}"
+    dest: "/etc/observability-control-plane/credentials/{{ item.name }}"
+    owner: root
+    group: root
+    mode: '0600'
+  loop:
+    - name: silence-backend-ca.pem
+      value: "{{ observability_control_plane.alerting.silence_gateway.backend_ca_pem }}"
+    - name: silence-backend-server.crt
+      value: "{{ observability_control_plane.alerting.silence_gateway.backend_server_cert_pem }}"
+    - name: silence-backend-server.key
+      value: "{{ observability_control_plane.alerting.silence_gateway.backend_server_key_pem }}"
+    - name: silence-backend-client.crt
+      value: "{{ observability_control_plane.alerting.silence_gateway.backend_client_cert_pem }}"
+    - name: silence-backend-client.key
+      value: "{{ observability_control_plane.alerting.silence_gateway.backend_client_key_pem }}"
+    - name: silence-sender-token
+      value: "{{ observability_control_plane.alerting.silence_gateway.sender_token }}"
+  no_log: true
+  diff: false
+  register: _observability_silence_credentials
+
+- name: Materialize root-only authenticated operator tokens
+  ansible.builtin.copy:
+    content: "{{ item.token }}"
+    dest: "/etc/observability-control-plane/credentials/silence-owner-{{ item.owner }}-token"
+    owner: root
+    group: root
+    mode: '0600'
+  loop: "{{ observability_control_plane.alerting.silence_gateway.operators }}"
+  no_log: true
+  diff: false
+
+- name: Remove revoked owner token files from the captured write-set
+  ansible.builtin.file:
+    path: "/etc/observability-control-plane/credentials/silence-owner-{{ item }}-token"
+    state: absent
+  loop: "{{ _observability_authority.previous_owners }}"
+  when: item not in (observability_control_plane.alerting.silence_gateway.operators | map(attribute='owner') | list)
+  no_log: true
+
+- name: Install mandatory backend TLS configuration
+  ansible.builtin.template:
+    src: observability-alertmanager-web.yml.j2
+    dest: /etc/observability-control-plane/alertmanager-web.yml
+    owner: root
+    group: "{{ observability_control_plane.service_group }}"
+    mode: '0640'
+  register: _observability_silence_web
+
+- name: Install hardened silence gateway service
+  ansible.builtin.template:
+    src: observability-silence-gateway.service.j2
+    dest: /etc/systemd/system/observability-silence-gateway.service
+    owner: root
+    group: root
+    mode: '0644'
+  register: _observability_silence_unit

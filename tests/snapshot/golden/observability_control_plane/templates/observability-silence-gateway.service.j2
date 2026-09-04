@@ -1,0 +1,39 @@
+[Unit]
+Description=Authenticated finite Alertmanager silence authority
+After=observability-alertmanager.service
+Requires=observability-alertmanager.service
+
+[Service]
+User=observability-silence
+Group=observability-silence
+LoadCredential=silence-policy.json:/etc/observability-control-plane/credentials/silence-policy.json
+LoadCredential=silence-auth.json:/etc/observability-control-plane/credentials/silence-auth.json
+LoadCredential=silence-backend-ca.pem:/etc/observability-control-plane/credentials/silence-backend-ca.pem
+LoadCredential=silence-backend-client.crt:/etc/observability-control-plane/credentials/silence-backend-client.crt
+LoadCredential=silence-backend-client.key:/etc/observability-control-plane/credentials/silence-backend-client.key
+ExecStart=/usr/bin/python3 /usr/local/libexec/observability-silence-gateway
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=10s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+ReadWritePaths=/var/lib/observability-silence-gateway
+ReadOnlyPaths=/usr/local/libexec/observability-silence-gateway
+MemoryMax=128M
+TasksMax=32
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
