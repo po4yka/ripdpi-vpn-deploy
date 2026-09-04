@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 
+from jinja2.nativetypes import NativeEnvironment
 import pytest
 import yaml
 
@@ -465,6 +466,34 @@ def test_enabled_and_disabled_molecule_scenarios_prove_adapter_lifecycle() -> No
     enabled_verify = (ROLE / "molecule/enabled/verify.yml").read_text()
     assert "observability-protocol-liveness-adapter.timer" in enabled_verify
     assert "protocol-liveness.prom" in enabled_verify
+    verify_tasks = yaml.safe_load(enabled_verify)[0]["tasks"]
+    names = [task["name"] for task in verify_tasks]
+    run_index = names.index(
+        "Run protocol-liveness adapter once against canonical evidence"
+    )
+    clock, publication = verify_tasks[run_index - 2 : run_index]
+    assert clock["ansible.builtin.command"]["argv"] == ["date", "+%s"]
+    assert clock["changed_when"] is False
+    copy = publication["ansible.builtin.copy"]
+    assert copy["dest"] == config["protocol_liveness"]["evidence_path"]
+    assert (copy["owner"], copy["group"], copy["mode"]) == ("root", "root", "0600")
+    environment = NativeEnvironment(autoescape=True)
+    environment.filters["to_json"] = json.dumps
+    now = 1_800_000_187
+    document = environment.from_string(copy["content"]).render(
+        ansible_facts={"date_time": {"epoch": str(now - 187)}},
+        **{clock["register"]: {"stdout": str(now)}},
+    )
+    assert document["evaluated_at"] == now
+    bounds = {
+        "now": now,
+        "stale_after": config["protocol_liveness"]["stale_after_seconds"],
+        "max_future": config["protocol_liveness"]["max_future_seconds"],
+    }
+    assert b'state="fresh"' in adapter.render(document, **bounds)
+    document["evaluated_at"] -= 187
+    with pytest.raises(adapter.AdapterError, match="stale evidence"):
+        adapter.render(document, **bounds)
 
     disabled_verify = (ROLE / "molecule/default/verify.yml").read_text()
     assert "observability-protocol-liveness-adapter.service" in disabled_verify

@@ -76,6 +76,24 @@
         argv: [systemctl, is-active, --quiet, observability-protocol-liveness-adapter.timer]
       changed_when: false
 
+    - name: Read current time for protocol-liveness fixture publication
+      ansible.builtin.command:
+        argv: [date, '+%s']
+      register: protocol_liveness_fixture_clock
+      changed_when: false
+
+    - name: Refresh canonical evidence after convergence and idempotence
+      ansible.builtin.copy:
+        dest: /var/lib/vpn-protocol-liveness/last-evidence.json
+        owner: root
+        group: root
+        mode: '0600'
+        content: >-
+          {{ {"candidate_policies": [], "decision": "healthy",
+          "evaluated_at": protocol_liveness_fixture_clock.stdout | int, "evidence": [],
+          "failed_vantages": {}, "monitoring_errors": [], "schema_version": 2}
+          | to_json }}
+
     - name: Run protocol-liveness adapter once against canonical evidence
       ansible.builtin.command:
         argv: [systemctl, start, observability-protocol-liveness-adapter.service]
