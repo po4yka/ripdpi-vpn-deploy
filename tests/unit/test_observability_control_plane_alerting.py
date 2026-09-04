@@ -552,7 +552,7 @@ def test_alertmanager_unit_uses_systemd_credential_without_argv_secret() -> None
     assert "NoNewPrivileges=true" in unit
 
 
-def test_gateway_uses_systemd_credential_working_directory() -> None:
+def test_gateway_uses_private_systemd_credentials_without_cwd_dependency() -> None:
     enable = yaml.safe_load((ROLE / "tasks/enable.yml").read_text(encoding="utf-8"))
     alerting = yaml.safe_load((ROLE / "tasks/alerting.yml").read_text(encoding="utf-8"))
     silence = (ROLE / "tasks/silence-gateway.yml").read_text(encoding="utf-8")
@@ -578,8 +578,25 @@ def test_gateway_uses_systemd_credential_working_directory() -> None:
     assert silence.count("mode: '0600'") >= 3
     assert silence.count("owner: root") >= 3
     assert silence.count("group: root") >= 3
-    assert gateway_unit.count("LoadCredential=") == 5
-    assert "WorkingDirectory=%d" in gateway_unit
+    credential_names = (
+        "silence-policy.json",
+        "silence-auth.json",
+        "silence-backend-ca.pem",
+        "silence-backend-client.crt",
+        "silence-backend-client.key",
+    )
+    assert gateway_unit.count("LoadCredential=") == len(credential_names)
+    assert "WorkingDirectory=" not in gateway_unit
+    gateway = (ROLE / "files/observability-silence-gateway.py").read_text(
+        encoding="utf-8"
+    )
+    for name in credential_names:
+        assert gateway_unit.count(f"LoadCredential={name}:") == 1
+        assert f'credentials / "{name}"' in gateway
+    molecule = yaml.safe_load(
+        (ROLE / "molecule/enabled/molecule.yml").read_text(encoding="utf-8")
+    )
+    assert molecule["platforms"][0]["tmpfs"] == ["/run:rw,rshared"]
 
 
 def test_alerting_disable_removes_owned_runtime_but_preserves_tsdb() -> None:

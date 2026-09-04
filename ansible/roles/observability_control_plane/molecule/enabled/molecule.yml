@@ -16,6 +16,8 @@ platforms:
     command: /lib/systemd/systemd
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run:rw,rshared
     cgroupns_mode: host
 
 provisioner:
