@@ -421,6 +421,17 @@ def test_alerting_tasks_validate_before_activation_and_rollback() -> None:
         for task in yaml.safe_load((ROLE / "tasks/alerting-authority.yml").read_text())
         if task["name"] == "Activate validated Alertmanager generation with rollback"
     )
+    preserve = next(
+        task
+        for task in activation["block"]
+        if task["name"] == "Preserve previous ready Alertmanager generation"
+    )
+    assert preserve["when"] == [
+        "_observability_alertmanager_current.stat.exists | default(false)",
+        "_observability_alertmanager_current.stat.lnk_source != "
+        "observability_control_plane.config_root ~ '/generations/alertmanager-' ~ "
+        "_observability_alertmanager_generation ~ '.yml'",
+    ]
     rescue_names = [task["name"] for task in activation["rescue"]]
     assert (
         "Restore the captured authority and service credential snapshots"
