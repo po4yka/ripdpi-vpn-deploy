@@ -488,7 +488,13 @@ def test_molecule_lifecycle_scenarios_cover_deadman_enable_disable_and_refusal()
     assert "Require invalid contract to fail before mutation" in default_verify
     assert "role: observability_deadman" in enabled_converge
     assert "Include disabled dead-man role" in enabled_verify
-    assert "api.telegram.org reverse.fixture.invalid" in enabled_prepare
+    assert enabled["platforms"][0]["etc_hosts"] == {
+        "api.telegram.org": "127.0.0.1",
+        "reverse.fixture.invalid": "127.0.0.1",
+    }
+    assert "ansible.builtin.lineinfile" not in enabled_prepare
+    assert "- files" in enabled_prepare
+    assert "match('^127\\\\.0\\\\.0\\\\.1\\\\s')" in enabled_prepare
     assert "deadman_rotation_probe" in enabled_verify
     assert "expected = (400, 204)" in enabled_verify
     assert "expected = (400,)" in enabled_verify

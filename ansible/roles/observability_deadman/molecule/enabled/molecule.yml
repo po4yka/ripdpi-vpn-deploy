@@ -19,6 +19,9 @@ platforms:
     tmpfs:
       - /run:rw,rshared
     cgroupns_mode: host
+    etc_hosts:
+      api.telegram.org: 127.0.0.1
+      reverse.fixture.invalid: 127.0.0.1
 
 provisioner:
   name: ansible
