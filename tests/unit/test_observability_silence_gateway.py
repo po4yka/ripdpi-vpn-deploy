@@ -237,23 +237,25 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
 
     monkeypatch.setattr(module, "private_bytes", lambda *_args: b"fixture-ca")
 
-    def unavailable_context(**kwargs):
-        assert kwargs == {"cadata": "fixture-ca"}
+    def unavailable_context(_protocol):
         raise OSError("fixture detail must not cross the category boundary")
 
-    monkeypatch.setattr(module.ssl, "create_default_context", unavailable_context)
+    monkeypatch.setattr(module.ssl, "SSLContext", unavailable_context)
     with pytest.raises(module.GatewayError, match="^backend-ca-io$"):
         module.main()
 
     class RefusingContext:
         minimum_version = None
+        verify_mode = ssl.CERT_REQUIRED
+        check_hostname = True
+
+        def load_verify_locations(self, **kwargs):
+            assert kwargs == {"cadata": "fixture-ca"}
 
         def load_cert_chain(self, *_args):
             raise OSError("fixture detail must not cross the category boundary")
 
-    monkeypatch.setattr(
-        module.ssl, "create_default_context", lambda **_kwargs: RefusingContext()
-    )
+    monkeypatch.setattr(module.ssl, "SSLContext", lambda _protocol: RefusingContext())
     with pytest.raises(module.GatewayError, match="^backend-client-identity$"):
         module.main()
 

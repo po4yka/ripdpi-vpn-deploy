@@ -508,10 +508,7 @@ def main():
         raise GatewayError("credential-directory")
     try:
         ca_pem = private_bytes(credentials / "silence-backend-ca.pem", 65536)
-        context = ssl.create_default_context(
-            cadata=ca_pem.decode("ascii", errors="strict")
-        )
-        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        ca_text = ca_pem.decode("ascii", errors="strict")
     except ssl.SSLError as exc:
         raise GatewayError("backend-ca-ssl") from exc
     except UnicodeError as exc:
@@ -520,6 +517,19 @@ def main():
         raise GatewayError("backend-ca-io") from exc
     except ValueError as exc:
         raise GatewayError("backend-ca-value") from exc
+    try:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.load_verify_locations(cadata=ca_text)
+    except ssl.SSLError as exc:
+        raise GatewayError("backend-ca-ssl") from exc
+    except OSError as exc:
+        raise GatewayError("backend-ca-io") from exc
+    except ValueError as exc:
+        raise GatewayError("backend-ca-value") from exc
+    try:
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+    except ValueError as exc:
+        raise GatewayError("backend-tls-version") from exc
     try:
         context.load_cert_chain(
             str(credentials / "silence-backend-client.crt"),
