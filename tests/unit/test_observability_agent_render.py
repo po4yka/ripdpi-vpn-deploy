@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import builtins
 import contextlib
 import io
 import json
 from pathlib import Path
-import sys
-import urllib.request
+from types import SimpleNamespace
 
 from jinja2 import Environment, StrictUndefined
 import pytest
@@ -26,6 +26,9 @@ def _run_embedded_verification_script(
 ) -> tuple[int, dict[str, int | float]]:
     class Response:
         def read(self) -> bytes:
+            import pathlib
+
+            assert pathlib.Path is Path
             return metrics.encode("utf-8")
 
     class ReceiverLog:
@@ -35,26 +38,28 @@ def _run_embedded_verification_script(
         def read_text(self) -> str:
             return "\n".join(json.dumps(row) for row in receiver_rows)
 
-    original_argv = sys.argv
-    original_path = Path
-    original_urlopen = urllib.request.urlopen
+    fixture_modules = {
+        "sys": SimpleNamespace(argv=["verification-script", *args]),
+        "pathlib": SimpleNamespace(Path=lambda _path: ReceiverLog()),
+        "urllib.request": SimpleNamespace(
+            request=SimpleNamespace(urlopen=lambda *_args, **_kwargs: Response())
+        ),
+    }
+
+    def fixture_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if level == 0 and name in fixture_modules:
+            return fixture_modules[name]
+        return builtins.__import__(name, globals, locals, fromlist, level)
+
+    # Only this execution sees the fixtures; never mutate shared stdlib modules.
+    namespace = {
+        "__name__": "__main__",
+        "__builtins__": {**vars(builtins), "__import__": fixture_import},
+    }
     stdout = io.StringIO()
-    try:
-        sys.argv = ["verification-script", *args]
-        urllib.request.urlopen = lambda *_args, **_kwargs: Response()  # type: ignore[assignment]
-        import pathlib
-
-        pathlib.Path = lambda _path: ReceiverLog()  # type: ignore[assignment]
-        with contextlib.redirect_stdout(stdout):
-            with pytest.raises(SystemExit) as result:
-                exec(script, {"__name__": "__main__"})
-            return_code = int(result.value.code)
-    finally:
-        sys.argv = original_argv
-        urllib.request.urlopen = original_urlopen
-        import pathlib
-
-        pathlib.Path = original_path
+    with contextlib.redirect_stdout(stdout), pytest.raises(SystemExit) as result:
+        exec(script, namespace)
+    return_code = int(result.value.code)
 
     return return_code, json.loads(stdout.getvalue())
 
