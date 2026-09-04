@@ -227,7 +227,11 @@ def packaged_config(config):
     return config
 
 
-def test_packaged_main_is_normalized_only_when_every_publish_boundary_preserves_policy(planner, packaged_config):
+@pytest.mark.parametrize("shadowed_root", [False, True])
+def test_packaged_main_is_normalized_only_when_every_publish_boundary_preserves_policy(planner, packaged_config, shadowed_root):
+    if shadowed_root:
+        path = packaged_config / "sshd_config"
+        path.write_bytes(path.read_bytes() + b"PermitRootLogin yes\n")
     originals = configuration_records(packaged_config)
     plan = planner.build_plan(packaged_config, contexts=CONTEXTS)
     assert plan["schema_version"] == 2
@@ -237,6 +241,8 @@ def test_packaged_main_is_normalized_only_when_every_publish_boundary_preserves_
         b"# normalized-shadowed KbdInteractiveAuthentication no\n"
         b"# normalized-shadowed X11Forwarding yes\n",
     )
+    if shadowed_root:
+        expected = expected.replace(b"PermitRootLogin yes\n", b"# normalized-shadowed PermitRootLogin yes\n")
     main = plan["files"]["sshd_config"]
     assert base64.b64decode(main["after"]["data_b64"]) == expected
     assert {key: main["after"][key] for key in ("mode", "uid", "gid")} == {
@@ -248,11 +254,20 @@ def test_packaged_main_is_normalized_only_when_every_publish_boundary_preserves_
     # The core publishes this exact tuple and rolls it back in reverse. Every
     # prefix is therefore both an apply boundary and a reverse rollback suffix.
     planner.assert_effective(plan, packaged_config, phase="before")
+    for output in planner._effective_outputs(planner._capture(packaged_config)[0], {}, CONTEXTS):
+        assert b"permitrootlogin no" in output.splitlines()
     for relative in OWNERSHIP_FILES:
         pair = plan["files"][relative]
         (packaged_config / relative).write_bytes(base64.b64decode(pair["after"]["data_b64"]))
         (packaged_config / relative).chmod(pair["after"]["mode"])
         planner.assert_effective(plan, packaged_config, phase="before")
+    assert planner.build_plan(packaged_config, contexts=CONTEXTS)["changed"] is False
+    for relative in reversed(OWNERSHIP_FILES):
+        pair = plan["files"][relative]
+        (packaged_config / relative).write_bytes(base64.b64decode(pair["before"]["data_b64"]))
+        (packaged_config / relative).chmod(pair["before"]["mode"])
+        planner.assert_effective(plan, packaged_config, phase="before")
+    assert configuration_records(packaged_config) == originals
 
 
 @pytest.mark.parametrize("fault", ["kbd-value", "x11-value", "owned-main", "duplicate", "unshadowed"])
@@ -273,6 +288,52 @@ def test_packaged_main_unknown_or_unshadowed_ownership_refuses_without_writes(pl
     with pytest.raises(planner.OwnershipError):
         planner.build_plan(packaged_config, contexts=CONTEXTS)
     assert configuration_records(packaged_config) == originals
+
+
+@pytest.mark.parametrize("fault", ["unshadowed", "duplicate", "unexpected-value", "missing-bootstrap-root", "wrong-bootstrap-root", "match", "alternate-include"])
+def test_main_root_login_normalization_refuses_unsafe_or_unknown_layout(planner, packaged_config, fault):
+    main = packaged_config / "sshd_config"
+    original = main.read_bytes()
+    if fault == "unshadowed":
+        main.write_bytes(b"PermitRootLogin yes\n" + original)
+    elif fault == "duplicate":
+        main.write_bytes(original + b"PermitRootLogin yes\nPermitRootLogin yes\n")
+    elif fault == "unexpected-value":
+        main.write_bytes(original + b"PermitRootLogin prohibit-password\n")
+    else:
+        main.write_bytes(original + b"PermitRootLogin yes\n")
+        boot = packaged_config / BOOT
+        if fault == "missing-bootstrap-root":
+            boot.write_bytes(boot.read_bytes().replace(b"PermitRootLogin no\n", b""))
+        elif fault == "wrong-bootstrap-root":
+            boot.write_bytes(boot.read_bytes().replace(b"PermitRootLogin no\n", b"PermitRootLogin yes\n"))
+        elif fault == "match":
+            main.write_bytes(main.read_bytes() + b"Match User deploy\nPermitRootLogin yes\n")
+        else:
+            main.write_bytes(main.read_bytes().replace(b"/*.conf", b"/10-cloud-init-hardening.conf"))
+    records = configuration_records(packaged_config)
+    with pytest.raises(planner.OwnershipError):
+        planner.build_plan(packaged_config, contexts=CONTEXTS)
+    assert configuration_records(packaged_config) == records
+
+
+@pytest.mark.parametrize("unsafe_context", [0, 1, 2])
+def test_root_login_must_be_disabled_in_each_effective_context(planner, packaged_config, monkeypatch, unsafe_context):
+    main = packaged_config / "sshd_config"
+    main.write_bytes(main.read_bytes() + b"PermitRootLogin yes\n")
+    records = configuration_records(packaged_config)
+    real_outputs = planner._effective_outputs
+
+    def unsafe_outputs(*args, **kwargs):
+        outputs = real_outputs(*args, **kwargs)
+        assert b"permitrootlogin no\n" in outputs[unsafe_context]
+        outputs[unsafe_context] = outputs[unsafe_context].replace(b"permitrootlogin no\n", b"permitrootlogin yes\n")
+        return outputs
+
+    monkeypatch.setattr(planner, "_effective_outputs", unsafe_outputs)
+    with pytest.raises(planner.OwnershipError, match="^unsafe-effective-root-login$"):
+        planner.build_plan(packaged_config, contexts=CONTEXTS)
+    assert configuration_records(packaged_config) == records
 
 
 @pytest.mark.parametrize("fault", ["main", "unrelated", "membership", "inode", "mode", "absent-cloud"])

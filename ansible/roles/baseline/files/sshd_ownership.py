@@ -159,7 +159,7 @@ def _capture(config_dir, *, baseline=False):
                     raise OwnershipError("unsupported-include")
                 include_count += 1
             elif key in OWNED:
-                allowed_main = ({"subsystem"} if baseline else {"kbdinteractiveauthentication", "x11forwarding", "subsystem"})
+                allowed_main = ({"subsystem"} if baseline else {"kbdinteractiveauthentication", "x11forwarding", "subsystem", "permitrootlogin"})
                 if relative != "sshd_config" or key not in allowed_main:
                     if relative not in FRAGMENTS:
                         raise OwnershipError("unmanaged-owned-directive", relative)
@@ -227,7 +227,8 @@ def _candidates(captures):
 
 
 def _ownership_main(captures):
-    allowed = {"kbdinteractiveauthentication": ["no"], "x11forwarding": ["yes"]}
+    allowed = {"kbdinteractiveauthentication": ["no"], "x11forwarding": ["yes"], "permitrootlogin": ["yes"]}
+    include_index = next(index for index, key, _ in _lines(captures["sshd_config"][0]) if key == "include")
     result = []
     seen = set()
     for index, key, values in _lines(captures["sshd_config"][0]):
@@ -236,6 +237,8 @@ def _ownership_main(captures):
         if key in seen:
             raise OwnershipError("unsupported-owned-directive")
         seen.add(key)
+        if key == "permitrootlogin" and index < include_index:
+            raise OwnershipError("unshadowed-root-login")
         if key == "subsystem":
             if tuple(values) != PACKAGED_SFTP:
                 raise OwnershipError("unsupported-subsystem")
@@ -395,7 +398,10 @@ def _effective(captures, replacements, contexts):
 
 def _ownership_policy(captures, candidates, contexts):
     """Validate every deterministic apply prefix and reverse rollback suffix."""
-    before = _effective(captures, {}, contexts)
+    outputs = _effective_outputs(captures, {}, contexts)
+    if any([line for line in output.splitlines() if line.startswith(b"permitrootlogin ")] != [b"permitrootlogin no"] for output in outputs):
+        raise OwnershipError("unsafe-effective-root-login")
+    before = [_sha(output) for output in outputs]
     replacements = {}
     for relative in OWNERSHIP_FILES:
         if relative in candidates:

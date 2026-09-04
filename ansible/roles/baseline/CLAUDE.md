@@ -55,6 +55,11 @@ ownership-only migration, and do not treat local tests as staging acceptance.
 
 ## Pitfalls
 
+- **Shadowed root-login declarations need policy proof** — ownership migration
+  may comment one main `PermitRootLogin yes` after the canonical Include only
+  with bootstrap root denial and real global/contextual `permitrootlogin no`.
+  Never accept an unshadowed line or edit it directly on the host.
+
 - **Activation must not invalidate its own recovery proof** — run one fresh
   recovery execution outside the transaction lock, then fence its result after
   reacquiring the lock. Cached success or busy status alone is never readiness.
