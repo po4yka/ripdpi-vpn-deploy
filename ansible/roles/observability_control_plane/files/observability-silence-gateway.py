@@ -508,6 +508,14 @@ def main():
         raise GatewayError("credential-directory")
     ca_path = credentials / "silence-backend-ca.pem"
     try:
+        ca_info = os.stat(ca_path, follow_symlinks=False)
+    except FileNotFoundError as exc:
+        raise GatewayError("backend-ca-credential-missing") from exc
+    except PermissionError as exc:
+        raise GatewayError("backend-ca-credential-permission") from exc
+    if not stat.S_ISREG(ca_info.st_mode):
+        raise GatewayError("backend-ca-credential-type")
+    try:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     except ssl.SSLError as exc:
         raise GatewayError("backend-ca-ssl") from exc

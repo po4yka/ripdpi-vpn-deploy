@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import ssl
+import stat
 import subprocess
 import sys
 import threading
@@ -233,6 +234,11 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
     monkeypatch.setenv(
         "CREDENTIALS_DIRECTORY",
         "/run/credentials/observability-silence-gateway.service",
+    )
+    monkeypatch.setattr(
+        module.os,
+        "stat",
+        lambda *_args, **_kwargs: os.stat_result((stat.S_IFREG | 0o400,) + (0,) * 9),
     )
 
     monkeypatch.setattr(module, "private_bytes", lambda *_args: b"fixture-ca")
