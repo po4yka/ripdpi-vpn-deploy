@@ -511,7 +511,19 @@ def main():
         # Validate the systemd credential with no-follow metadata and size
         # checks before OpenSSL reopens the same read-only credential path.
         private_bytes(ca_path, 65536)
+    except OSError as exc:
+        raise GatewayError("backend-ca-io") from exc
+    except ValueError as exc:
+        raise GatewayError("backend-ca-value") from exc
+    try:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    except ssl.SSLError as exc:
+        raise GatewayError("backend-ca-ssl") from exc
+    except OSError as exc:
+        raise GatewayError("backend-ca-io") from exc
+    except ValueError as exc:
+        raise GatewayError("backend-context-value") from exc
+    try:
         context.load_verify_locations(cafile=str(ca_path))
     except ssl.SSLError as exc:
         raise GatewayError("backend-ca-ssl") from exc
