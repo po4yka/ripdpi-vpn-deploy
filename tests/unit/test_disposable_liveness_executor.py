@@ -51,8 +51,8 @@ class Runner:
                         "network": {
                             "address": False,
                             "mode": "shared",
-                            "portForwarder": "none",
                         },
+                        "portForwarder": "none",
                         "sshConfig": False,
                     }
                 )
@@ -63,10 +63,12 @@ class Runner:
             profile = command[3]
             return json.dumps(
                 {
-                    "name": profile,
-                    "status": self.profile_status,
+                    "display_name": "colima-" + profile,
+                    "driver": "macOS Virtualization.Framework",
                     "arch": "aarch64",
                     "runtime": "docker",
+                    "mount_type": "virtiofs",
+                    "docker_socket": f"unix://{self.home}/.colima/{profile}/docker.sock",
                 }
             ).encode()
         if command[:3] == ("colima", "list", "--json"):
@@ -74,7 +76,9 @@ class Runner:
                 path.name for path in (self.home / ".colima").iterdir() if path.is_dir()
             )
             return (
-                json.dumps(
+                '{"name":"default","status":"Running","runtime":"docker",'
+                '"arch":"aarch64"}\n'
+                + json.dumps(
                     {
                         "name": profile,
                         "status": self.profile_status,
@@ -161,6 +165,8 @@ def test_prepare_creates_private_bound_nondefault_profile_manifest(setup):
     assert manifest["profile"] == "vpn-liveness-one-shot"
     assert manifest["kind"] == "colima-systemd"
     assert manifest["initial_docker_context"] == "default"
+    assert ("colima", "list", "--json") in runner.calls
+    assert not any(call[:2] == ("colima", "status") for call in runner.calls)
     assert manifest_path.stat().st_mode & 0o777 == 0o600
     assert json.loads(manifest_path.read_text()) == manifest
     start = next(call for call in runner.calls if call[:2] == ("colima", "start"))
@@ -173,6 +179,59 @@ def test_prepare_creates_private_bound_nondefault_profile_manifest(setup):
         ("--port-forwarder", "none"),
     ):
         assert start[start.index(flag) + 1] == value
+
+
+@pytest.mark.parametrize(
+    "fault", ["missing", "duplicate", "stopped", "runtime", "arch", "json", "object"]
+)
+def test_live_profile_list_refuses_ambiguous_or_unusable_records_before_guest(
+    setup, fault
+):
+    module, home, _, _ = setup
+    record = {
+        "name": "vpn-liveness-one-shot",
+        "status": "Running",
+        "arch": "aarch64",
+        "runtime": "docker",
+    }
+    if fault in ("stopped", "runtime", "arch"):
+        key, value = {
+            "stopped": ("status", "Stopped"),
+            "runtime": ("runtime", "containerd"),
+            "arch": ("arch", "unknown"),
+        }[fault]
+        record[key] = value
+    rows = [record, record] if fault == "duplicate" else [record]
+    payload = b"\n".join(json.dumps(row).encode() for row in rows)
+    if fault == "missing":
+        payload = b'{"name":"default","status":"Running"}'
+    elif fault == "json":
+        payload += b"\ninvalid"
+    elif fault == "object":
+        payload += b"\n[]"
+    calls = []
+
+    def runner(argv, *, timeout):
+        calls.append(argv)
+        assert timeout == 30
+        return payload
+
+    with pytest.raises(module.ExecutorError, match="executor-status"):
+        module._inspect("vpn-liveness-one-shot", home=home, runner=runner)
+    assert calls == [("colima", "list", "--json")]
+
+
+def test_profile_list_command_failure_never_attempts_guest_inspection(setup):
+    module, home, _, _ = setup
+    calls = []
+
+    def runner(argv, *, timeout):
+        calls.append(argv)
+        raise module.ExecutorError("command-failed")
+
+    with pytest.raises(module.ExecutorError, match="executor-status"):
+        module._inspect("vpn-liveness-one-shot", home=home, runner=runner)
+    assert calls == [("colima", "list", "--json")]
 
 
 def test_private_json_io_handles_short_syscalls(setup, monkeypatch):
@@ -284,7 +343,7 @@ def test_live_verification_refuses_mount_port_or_context_drift(setup, drift):
     else:
         config = home / ".colima/vpn-liveness-one-shot/colima.yaml"
         doc = yaml.safe_load(config.read_text())
-        doc["network"]["portForwarder"] = "ssh"
+        doc["portForwarder"] = "ssh"
         config.write_text(yaml.safe_dump(doc))
         config.chmod(0o600)
 
@@ -292,6 +351,31 @@ def test_live_verification_refuses_mount_port_or_context_drift(setup, drift):
         module.load_live_executor(
             manifest_path, home=home, now=1_700_000_001, runner=runner
         )
+
+
+def test_nested_port_forwarder_cannot_authorize_missing_or_active_top_level(setup):
+    module, home, evidence, runner = setup
+    profile = "vpn-liveness-one-shot"
+    module.prepare_executor(
+        profile=profile,
+        manifest_path=evidence / "executor.json",
+        home=home,
+        now=1_700_000_000,
+        expires_at=1_700_003_600,
+        runner=runner,
+    )
+    config = home / ".colima" / profile / "colima.yaml"
+    doc = yaml.safe_load(config.read_text())
+    # Colima's effective setting is top-level; a nested lookalike has no authority.
+    doc["network"]["portForwarder"] = "none"
+    for forwarder in (None, "ssh", "grpc"):
+        if forwarder is None:
+            doc.pop("portForwarder", None)
+        else:
+            doc["portForwarder"] = forwarder
+        config.write_text(yaml.safe_dump(doc))
+        with pytest.raises(module.ExecutorError, match="executor-config"):
+            module._config(home, profile)
 
 
 def _identity():

@@ -256,25 +256,35 @@ def _config(home: Path, profile: str) -> tuple[Path, bytes, dict[str, Any]]:
         or not isinstance(value.get("network"), dict)
         or value["network"].get("address") is not False
         or value["network"].get("mode") != "shared"
-        or value["network"].get("portForwarder") != "none"
+        or value.get("portForwarder") != "none"
     ):
         raise ExecutorError("executor-config")
     return path, payload, value
 
 
-def _inspect(profile: str, *, home: Path, runner: Command) -> tuple[bytes, bytes]:
+def _listed_profile(profile: str, runner: Command) -> dict[str, Any]:
     try:
-        raw = runner(("colima", "status", "--profile", profile, "--json"), timeout=30)
-        status = json.loads(raw)
+        raw = runner(("colima", "list", "--json"), timeout=30)
+        entries = [json.loads(line) for line in raw.splitlines() if line.strip()]
     except (OSError, ValueError, TypeError) as exc:
         raise ExecutorError("executor-status") from exc
+    if any(not isinstance(entry, dict) for entry in entries):
+        raise ExecutorError("executor-status")
+    matches = [entry for entry in entries if entry.get("name") == profile]
     if (
-        not isinstance(status, dict)
-        or status.get("name") != profile
-        or status.get("status") != "Running"
-        or status.get("runtime") != "docker"
-        or status.get("arch") not in ("aarch64", "x86_64")
+        len(matches) != 1
+        or matches[0].get("status") not in ("Running", "Stopped")
+        or matches[0].get("runtime") != "docker"
+        or matches[0].get("arch") not in ("aarch64", "x86_64")
     ):
+        raise ExecutorError("executor-status")
+    return matches[0]
+
+
+def _inspect(profile: str, *, home: Path, runner: Command) -> tuple[bytes, bytes]:
+    # `status --json` describes drivers/sockets; `list --json` owns lifecycle/name.
+    status = _listed_profile(profile, runner)
+    if status["status"] != "Running":
         raise ExecutorError("executor-status")
     mounts = runner(("colima", "ssh", "--profile", profile, "--", "mount"), timeout=30)
     lowered = mounts.lower()
@@ -543,24 +553,7 @@ def _load_deonboard_executor(
         raise ExecutorError("executor-config")
     if _context(runner) != manifest["initial_docker_context"]:
         raise ExecutorError("executor-context")
-    try:
-        raw = runner(("colima", "list", "--json"), timeout=30)
-        entries = [json.loads(line) for line in raw.splitlines() if line.strip()]
-    except (OSError, ValueError, TypeError) as exc:
-        raise ExecutorError("executor-status") from exc
-    matches = [
-        entry
-        for entry in entries
-        if isinstance(entry, dict) and entry.get("name") == manifest["profile"]
-    ]
-    if (
-        len(matches) != 1
-        or matches[0].get("status") not in ("Running", "Stopped")
-        or matches[0].get("runtime") != "docker"
-        or matches[0].get("arch") not in ("aarch64", "x86_64")
-    ):
-        raise ExecutorError("executor-status")
-    state = matches[0]["status"]
+    state = _listed_profile(manifest["profile"], runner)["status"]
     if state == "Running":
         _inspect(manifest["profile"], home=home, runner=runner)
         if _read_marker(manifest["profile"], runner) != manifest["executor_id"]:

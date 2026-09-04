@@ -94,3 +94,35 @@ artifact_evidence: null
   local repository decryption before any target configuration write. Its full
   local gate passed; exact-SHA hosted CI remains required. Local tests are not
   a substitute for external acceptance.
+
+## Disposable executor configuration regression (2026-09-04)
+
+- An actual Colima 0.10.3 prepare refused with `executor-config` before
+  manifest publication. Its owned profile was deleted; Docker context remained
+  unchanged. No credentials, bindings or traffic probes were installed.
+- Colima stores `portForwarder` at the top level of its configuration. The
+  validator and its fixture incorrectly used `network.portForwarder`. Matching
+  the real layout reproduced the refusal in the existing positive test; the
+  corrected lookup passes while absent, SSH and gRPC forwarding still refuse,
+  even with a nested `none` lookalike. Other isolation predicates are unchanged.
+- Executor and Make suites: 46 PASS. This is source regression evidence;
+  successful real executor preparation and external protocol acceptance remain
+  separate gates.
+- The next actual preparation passed configuration validation but refused at
+  `executor-status`, again deleting the owned profile without manifest or
+  credential publication. Colima's `status --json` describes driver/socket
+  details; named lifecycle state comes from `list --json`. Preparation/live
+  validation and de-onboarding now share exact-name NDJSON selection, reject
+  missing/duplicate/invalid records, and require Running for live use.
+- Corrected executor/Make/promotion suites: 104 PASS. Read-only parsing of the
+  installed CLI's named Stopped record and existing private configuration passed;
+  this does not credit a running executor or any guest traffic.
+- Actual canonical preparation on source `5b8a9dff0e51739514c004667142180b4bf8fba5`
+  completed with exit 0; a subsequent canonical live revalidation passed. Real
+  configuration, exact named Running state, no mounts, systemd PID1, passwordless
+  sudo and matching root marker all passed. Manifest mode was 0600; Docker
+  context/config hashes were unchanged. Expiry was 21:06:20 UTC, below the
+  original 21:06:50 UTC cap; it was not renewed. Result artifact SHA-256:
+  `5932777ffcbca8e9ede20e068d5429c781127ecb8a6607654276f6ee02a65397`. The executor remains allocated for the approved one-shot
+  run; this proves preparation only, not client tool installation, credentials,
+  protocol traffic, de-onboarding, production or recurring acceptance.

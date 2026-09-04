@@ -468,11 +468,15 @@ def build_locked(args: argparse.Namespace) -> dict[str, object]:
             binary_dir = staging / "bin"
             binary_dir.mkdir()
             shutil.copy2(go_source / "amneziawg-go", binary_dir / "amneziawg-go")
-            shutil.copy2(tools_source / "src/awg", binary_dir / "awg")
+            shutil.copy2(tools_source / "src/wg", binary_dir / "awg")
             shutil.copy2(
-                tools_source / "src/awg-quick/linux.bash",
+                tools_source / "src/wg-quick/linux.bash",
                 binary_dir / "awg-quick",
             )
+            # Checkouts are build workspace, not immutable runtime payload.
+            # Upstream source symlinks must never weaken the final tree gate.
+            shutil.rmtree(go_source)
+            shutil.rmtree(tools_source)
             for path in binary_dir.iterdir():
                 os.chmod(path, 0o700)
             binaries = {name: digest(binary_dir / name) for name in BINARY_NAMES}
