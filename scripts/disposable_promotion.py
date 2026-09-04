@@ -220,7 +220,9 @@ def prepare_intent(intent, host, memberships, directory, deployed_secrets, envir
                 guard._private_read(output, "onboarding output", max_bytes=262144)
         for name, path in value["inputs"].items():
             raw = guard._private_read(Path(path), "onboarding input", max_bytes=262144)
-            snapshot = directory / ("onboarding-" + name)
+            # SOPS infers its store from the filename; this capability is YAML.
+            suffix = ".yaml" if name == "sops_file" else ""
+            snapshot = directory / ("onboarding-" + name + suffix)
             guard._private_write_new(snapshot, raw, "onboarding snapshot")
             value["inputs"][name] = str(snapshot)
         _cleanup_target(value, host)

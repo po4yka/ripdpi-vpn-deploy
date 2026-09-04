@@ -148,6 +148,11 @@ through Make and argv; no general site/backup task runs during installation.
 
 ## Pitfalls
 
+- **SOPS snapshot filenames preserve YAML format** — disposable onboarding
+  copies encrypted YAML to a `.yaml` snapshot because the canonical decrypt
+  command infers its store from the filename. Keep the real SOPS round-trip
+  regression; a mocked decrypt cannot detect this boundary.
+
 - **Plugin path environment variables are not a complete isolation boundary** —
   Ansible also auto-discovers plugin subdirectories at playbook and role bases.
   Reject unsupported discovery/shadow-role paths before SSH; private cwd and

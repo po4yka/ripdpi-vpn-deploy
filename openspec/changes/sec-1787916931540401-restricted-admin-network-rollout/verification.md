@@ -347,3 +347,16 @@ Local regression coverage includes forward publication, reverse restoration,
 second-plan idempotence and refusal of unshadowed, duplicate, unexpected-value,
 missing/wrong bootstrap, Match and alternate-Include inputs. Local tests do not
 credit a new installed bundle or staging rollback; those gates remain open.
+
+
+## Disposable onboarding encrypted snapshot format
+
+The staging deploy refused before Ansible or host writes: its encrypted YAML
+snapshot had no extension, causing real SOPS to select the wrong store. The
+fixed adapter gives only this snapshot a fixed `.yaml` suffix; encrypted bytes,
+private-mode checks, capability fencing and plaintext cleanup are unchanged.
+A real SOPS/age regression reproduces the refusal on the previous source and
+passes with the fix, using only generated fixture ciphertext and the existing
+public test age key. The whole adapter and SOPS round-trip modules pass 53 tests;
+collection is 3506 total / 3453 unit. These local results do not credit a staging
+deploy, protocol acceptance, MON, B2 or cleanup; those live gates remain open.

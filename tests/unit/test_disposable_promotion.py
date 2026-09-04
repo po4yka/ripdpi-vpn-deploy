@@ -265,6 +265,36 @@ def test_capabilities_bind_state_and_snapshot_exact_secrets_before_deployment(
     assert not (capabilities["directory"] / "onboarding-secrets.yaml").exists()
 
 
+def test_capability_snapshot_decrypts_with_real_sops_yaml(capabilities, tmp_path):
+    import os
+
+    roundtrip = load("sops_roundtrip", ROOT / "tests/unit/test_sops_roundtrip.py")
+    roundtrip._require_binaries()
+    plain = tmp_path / "fixture.yaml"
+    plain.write_bytes(capabilities["deployed_secrets"])
+    plain.chmod(0o600)
+    encrypted = tmp_path / "fixture.sops.yaml"
+    roundtrip._sops_encrypt(
+        plain,
+        encrypted,
+        roundtrip.AGE_KEY,
+        roundtrip._age_recipient(roundtrip.AGE_KEY),
+    )
+    inputs = capabilities["intent"]["inputs"]
+    Path(inputs["sops_file"]).write_bytes(encrypted.read_bytes())
+    Path(inputs["age_key_file"]).write_bytes(roundtrip.AGE_KEY.read_bytes())
+    capabilities["environment"] = {
+        key: os.environ[key] for key in ("PATH", "HOME") if key in os.environ
+    }
+
+    prepared = module().prepare_intent(**capabilities)
+
+    assert Path(prepared["inputs"]["sops_file"]).read_bytes() == encrypted.read_bytes()
+    assert prepared["outputs"] == capabilities["intent"]["outputs"]
+    assert not (capabilities["directory"] / "onboarding-secrets.yaml").exists()
+    assert all(not Path(path).exists() for path in prepared["outputs"].values())
+
+
 @pytest.mark.parametrize(
     "case",
     [
