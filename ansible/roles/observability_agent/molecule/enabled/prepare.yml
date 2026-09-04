@@ -86,9 +86,9 @@
           consecutive_fails=0
           last_alert_epoch=0
           alerts_this_hour=0
-          alerts_hour_started={{ ansible_date_time.epoch }}
+          alerts_hour_started={{ ansible_facts['date_time']['epoch'] }}
           kicks_this_hour=1
-          kicks_hour_started={{ ansible_date_time.epoch }}
+          kicks_hour_started={{ ansible_facts['date_time']['epoch'] }}
 
     - name: Write root-private backup stage fixture
       ansible.builtin.copy:
@@ -99,16 +99,16 @@
         content: |
           {
             "version": 1,
-            "updated_at": "{{ ansible_date_time.iso8601 }}",
+            "updated_at": "{{ ansible_facts['date_time']['iso8601'] }}",
             "local_backup": {
               "result": "success",
-              "attempted_at": "{{ ansible_date_time.iso8601 }}",
-              "succeeded_at": "{{ ansible_date_time.iso8601 }}"
+              "attempted_at": "{{ ansible_facts['date_time']['iso8601'] }}",
+              "succeeded_at": "{{ ansible_facts['date_time']['iso8601'] }}"
             },
             "integrity": {
               "result": "success",
-              "attempted_at": "{{ ansible_date_time.iso8601 }}",
-              "succeeded_at": "{{ ansible_date_time.iso8601 }}"
+              "attempted_at": "{{ ansible_facts['date_time']['iso8601'] }}",
+              "succeeded_at": "{{ ansible_facts['date_time']['iso8601'] }}"
             },
             "remote_copy": {"result": "disabled"}
           }
@@ -122,8 +122,8 @@
         content: >-
           {"version":1,"repository_source":"remote",
           "snapshot_id":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-          "snapshot_time":"{{ ansible_date_time.iso8601 }}",
-          "verified_at":"{{ ansible_date_time.iso8601 }}"}
+          "snapshot_time":"{{ ansible_facts['date_time']['iso8601'] }}",
+          "verified_at":"{{ ansible_facts['date_time']['iso8601'] }}"}
 
     - name: Generate fixture certificate authority
       ansible.builtin.command:

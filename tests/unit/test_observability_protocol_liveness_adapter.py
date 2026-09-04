@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,13 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible/roles/observability_control_plane"
 ADAPTER = ROLE / "files/observability-protocol-liveness-adapter.py"
+
+adapter_spec = importlib.util.spec_from_file_location(
+    "observability_protocol_liveness_adapter", ADAPTER
+)
+adapter = importlib.util.module_from_spec(adapter_spec)
+sys.modules[adapter_spec.name] = adapter
+adapter_spec.loader.exec_module(adapter)
 
 
 def _evidence(decision: str = "healthy", observed_at: int = 1_800_000_000) -> dict:
@@ -219,6 +227,24 @@ def test_adapter_refuses_duplicate_sentinel_series_before_metric_publication(
     assert 'role="liveness-published-evidence",state="malformed"' in (
         tmp_path / "protocol-liveness.prom"
     ).read_text(encoding="utf-8")
+
+
+def test_adapter_sets_collector_mode_before_atomic_publication(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output = tmp_path / "protocol-liveness.prom"
+    published_modes: list[int] = []
+    replace = adapter.os.replace
+
+    def observe_publication(source: Path, destination: Path) -> None:
+        published_modes.append(stat.S_IMODE(source.stat().st_mode))
+        replace(source, destination)
+
+    monkeypatch.setattr(adapter.os, "replace", observe_publication)
+
+    adapter._atomic_write(output, b"metric 1\n")
+    assert published_modes == [0o640]
+    assert stat.S_IMODE(output.stat().st_mode) == 0o640
 
 
 def test_adapter_template_consumes_only_published_evidence() -> None:

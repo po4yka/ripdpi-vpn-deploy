@@ -299,12 +299,12 @@ def _atomic_write(path: Path, payload: bytes) -> None:
             if written <= 0:
                 raise OSError("short write")
             offset += written
+        os.fchmod(descriptor, 0o640)
         os.fsync(descriptor)
         os.close(descriptor)
         descriptor = -1
         os.replace(temporary, path)
         temporary = None
-        os.chmod(path, 0o640)
     except OSError as exc:
         raise AdapterError("invalid output") from exc
     finally:

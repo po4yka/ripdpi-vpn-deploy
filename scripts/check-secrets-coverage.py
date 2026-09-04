@@ -92,7 +92,8 @@ JINJA_IMPORT = re.compile(
     r"\{%-?\s*import\s+.+?\s+as\s+(\w+)(?:\s+with(?:out)?\s+context)?\s*-?%\}",
     re.DOTALL,
 )
-JINJA_ENVIRONMENT = Environment()
+# Only lexing is used; keep rendering defaults safe if this environment is reused.
+JINJA_ENVIRONMENT = Environment(autoescape=True)
 
 
 def _without_raw_regions(template_text: str) -> str:

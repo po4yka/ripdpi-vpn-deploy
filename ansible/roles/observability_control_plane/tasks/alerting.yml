@@ -31,6 +31,11 @@
     runtime_release_archive_members: "{{ observability_control_plane.alerting.alertmanager.archive_members }}"
     runtime_release_archive_strip_components: 1
 
+- name: Capture Alertmanager runtime publication change
+  ansible.builtin.set_fact:
+    _observability_alertmanager_runtime_changed: "{{ runtime_release_changed | default(false) | bool }}"
+  changed_when: false
+
 - name: Install pinned amtool through runtime-release
   ansible.builtin.include_role:
     name: runtime-release
@@ -72,6 +77,7 @@
     mode: '0600'
   no_log: true
   diff: false
+  register: _observability_alertmanager_credential
 
 - name: Derive immutable alert rule and Telegram template generations
   ansible.builtin.set_fact:
@@ -159,6 +165,7 @@
     owner: root
     group: root
     mode: '0644'
+  register: _observability_alertmanager_unit
 
 - name: Inspect current Alertmanager generation before activation
   ansible.builtin.stat:
@@ -201,6 +208,7 @@
         force: true
         owner: root
         group: "{{ observability_control_plane.service_group }}"
+      register: _observability_alertmanager_current_link
 
     - name: Restart Alertmanager with candidate generation
       ansible.builtin.systemd_service:
@@ -208,6 +216,18 @@
         daemon_reload: true
         enabled: true
         state: restarted
+      when:
+        >-
+          _observability_alertmanager_runtime_changed | bool or
+          _observability_alertmanager_credential.changed or
+          _observability_alertmanager_unit.changed or
+          _observability_alertmanager_current_link.changed
+
+    - name: Ensure unchanged Alertmanager generation is running
+      ansible.builtin.systemd_service:
+        name: observability-alertmanager
+        enabled: true
+        state: started
 
     - name: Require loopback-only Alertmanager readiness
       ansible.builtin.uri:

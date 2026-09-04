@@ -38,7 +38,7 @@
         mode: '0600'
         content: >-
           {{ {"candidate_policies": [], "decision": "healthy",
-          "evaluated_at": ansible_date_time.epoch | int, "evidence": [],
+          "evaluated_at": ansible_facts['date_time']['epoch'] | int, "evidence": [],
           "failed_vantages": {}, "monitoring_errors": [], "schema_version": 2}
           | to_json }}
 

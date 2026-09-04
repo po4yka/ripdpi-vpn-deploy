@@ -339,12 +339,18 @@ def test_backup_stage_states_and_timestamps_are_explicit(
         {"version": 1},
         _backup_stage(local_backup={"result": "success"}),
         _backup_stage(remote_copy={"result": "enabled"}),
-        _backup_stage(updated_at=_timestamp(timedelta(minutes=1))),
+        pytest.param(
+            lambda: _backup_stage(updated_at=_timestamp(timedelta(minutes=1))),
+            id="future-at-execution",
+        ),
     ],
 )
 def test_backup_malformed_or_future_stage_fails_closed(
     tmp_path: Path, stage: object
 ) -> None:
+    # Construct relative time at execution, not during whole-suite collection.
+    if callable(stage):
+        stage = stage()
     result, metrics, _paths = _run(tmp_path, stage=stage)  # type: ignore[arg-type]
 
     assert result.returncode == 2
@@ -408,12 +414,18 @@ def test_restore_drill_source_and_freshness_are_bounded(
         {"version": 1},
         _restore_marker(source="unknown"),
         {**_restore_marker(), "snapshot_id": "secret-snapshot"},
-        _restore_marker(age=timedelta(minutes=1)),
+        pytest.param(
+            lambda: _restore_marker(age=timedelta(minutes=1)),
+            id="future-at-execution",
+        ),
     ],
 )
 def test_restore_malformed_or_future_marker_fails_closed(
     tmp_path: Path, restore: object
 ) -> None:
+    # A queued suite must not turn this future timestamp into a valid past one.
+    if callable(restore):
+        restore = restore()
     result, metrics, _paths = _run(tmp_path, restore=restore)  # type: ignore[arg-type]
 
     assert result.returncode == 2

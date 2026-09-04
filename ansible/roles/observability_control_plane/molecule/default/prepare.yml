@@ -46,15 +46,39 @@
         - observability-expected-targets.prom
         - observability-control-plane.prom
 
-    - name: Seed expected-target owned units and binaries for disable cleanup
+    - name: Seed valid inert expected-target owned units for disable cleanup
       ansible.builtin.copy:
-        dest: "{{ item }}"
-        content: stale
+        dest: "{{ item.path }}"
+        content: "{{ item.content }}"
         owner: root
         group: root
         mode: '0644'
       loop:
-        - /etc/systemd/system/observability-control-plane-adapter.service
-        - /etc/systemd/system/observability-control-plane-adapter.timer
+        - path: /etc/systemd/system/observability-control-plane-adapter.service
+          content: |
+            [Unit]
+            Description=Inert expected-target fixture
+            [Service]
+            Type=oneshot
+            ExecStart=/bin/true
+        - path: /etc/systemd/system/observability-control-plane-adapter.timer
+          content: |
+            [Unit]
+            Description=Inert expected-target timer fixture
+            [Timer]
+            OnBootSec=1h
+            [Install]
+            WantedBy=timers.target
+
+    - name: Seed inert expected-target owned scripts for disable cleanup
+      ansible.builtin.copy:
+        dest: "{{ item }}"
+        content: |
+          #!/bin/sh
+          exit 0
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
         - /usr/local/libexec/observability-control-plane-adapter.py
         - /usr/local/libexec/observability-expected-target-renderer.py

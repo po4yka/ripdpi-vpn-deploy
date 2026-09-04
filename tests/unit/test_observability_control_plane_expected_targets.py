@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,13 @@ ROLE = ROOT / "ansible/roles/observability_control_plane"
 RENDERER = ROLE / "files/observability-expected-target-renderer.py"
 ADAPTER = ROLE / "files/observability-control-plane-adapter.py"
 PROMTOOL_VERSION = "3.14.0"
+
+renderer_spec = importlib.util.spec_from_file_location(
+    "observability_expected_target_renderer", RENDERER
+)
+renderer = importlib.util.module_from_spec(renderer_spec)
+sys.modules[renderer_spec.name] = renderer
+renderer_spec.loader.exec_module(renderer)
 
 
 def _inventory() -> dict:
@@ -161,6 +169,24 @@ def test_renderer_accepts_shared_textfile_directory_and_publishes_collector_read
             ).returncode
             == 0
         )
+
+
+def test_renderer_sets_collector_mode_before_atomic_publication(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output = tmp_path / "observability-expected-targets.prom"
+    published_modes: list[int] = []
+    replace = renderer.os.replace
+
+    def observe_publication(source: Path, destination: Path) -> None:
+        published_modes.append(stat.S_IMODE(source.stat().st_mode))
+        replace(source, destination)
+
+    monkeypatch.setattr(renderer.os, "replace", observe_publication)
+
+    assert renderer._atomic_write(output, b"metric 1\n") is True
+    assert published_modes == [0o640]
+    assert stat.S_IMODE(output.stat().st_mode) == 0o640
 
 
 def test_renderer_does_not_publish_static_ever_seen_state(

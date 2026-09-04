@@ -389,6 +389,78 @@ def test_alerting_tasks_validate_before_activation_and_rollback() -> None:
     rescue_names = [task["name"] for task in activation["rescue"]]
     assert "Restore previous ready Alertmanager configuration" in rescue_names
     assert "Fail closed after Alertmanager candidate failure" in rescue_names
+    restart = next(
+        task
+        for task in activation["block"]
+        if task["name"] == "Restart Alertmanager with candidate generation"
+    )
+    assert restart["when"] == (
+        "_observability_alertmanager_runtime_changed | bool or "
+        "_observability_alertmanager_credential.changed or "
+        "_observability_alertmanager_unit.changed or "
+        "_observability_alertmanager_current_link.changed"
+    )
+    assert "Capture Alertmanager runtime publication change" in names
+    assert names.index("Capture Alertmanager runtime publication change") < names.index(
+        "Install pinned amtool through runtime-release"
+    )
+    assert "Ensure unchanged Alertmanager generation is running" in [
+        task["name"] for task in activation["block"]
+    ]
+
+
+def test_alertmanager_restart_condition_uses_one_ansible_expression(tmp_path: Path) -> None:
+    tasks = yaml.safe_load((ROLE / "tasks/alerting.yml").read_text())
+    activation = next(
+        task
+        for task in tasks
+        if task["name"] == "Activate validated Alertmanager generation with rollback"
+    )
+    condition = next(
+        task["when"]
+        for task in activation["block"]
+        if task["name"] == "Restart Alertmanager with candidate generation"
+    )
+    playbook = tmp_path / "restart-condition.yml"
+    source = (
+        """---
+- hosts: localhost
+  gather_facts: false
+  vars:
+    cases:
+      - {name: all_false, runtime: false, credential: false, unit: false, link: false, expected: false}
+      - {name: runtime, runtime: true, credential: false, unit: false, link: false, expected: true}
+      - {name: credential, runtime: false, credential: true, unit: false, link: false, expected: true}
+      - {name: unit, runtime: false, credential: false, unit: true, link: false, expected: true}
+      - {name: link, runtime: false, credential: false, unit: false, link: true, expected: true}
+  tasks:
+    - ansible.builtin.debug:
+        msg: "restart-{{ item.name }}"
+      vars:
+        _observability_alertmanager_runtime_changed: "{{ item.runtime }}"
+        _observability_alertmanager_credential: {changed: "{{ item.credential }}"}
+        _observability_alertmanager_unit: {changed: "{{ item.unit }}"}
+        _observability_alertmanager_current_link: {changed: "{{ item.link }}"}
+      loop: "{{ cases }}"
+      when: >-
+        __WHEN__
+      register: decisions
+    - ansible.builtin.assert:
+        that: >-
+          (item.item.expected | bool) == (not (item.skipped | default(false)))
+      loop: "{{ decisions.results }}"
+"""
+    ).replace("__WHEN__", condition)
+    playbook.write_text(source, encoding="utf-8")
+    result = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", str(playbook)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_alerting_contract_precedes_first_control_plane_host_mutation() -> None:
