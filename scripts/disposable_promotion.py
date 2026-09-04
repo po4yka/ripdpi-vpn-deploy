@@ -143,14 +143,14 @@ def validate_intent(value):
 
 
 def _decrypt(sops, age, output, environment):
-    from install_liveness_sentinel import _run
+    import install_liveness_sentinel as installer
 
     clean = {
         key: environment[key]
         for key in ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE")
         if key in environment
     }
-    _run(
+    installer._run(
         [str(ROOT / "scripts/decrypt-secrets.sh")],
         environment={
             **clean,
@@ -224,11 +224,13 @@ def prepare_intent(intent, host, memberships, directory, deployed_secrets, envir
             guard._private_write_new(snapshot, raw, "onboarding snapshot")
             value["inputs"][name] = str(snapshot)
         _cleanup_target(value, host)
-        from disposable_liveness_executor import _read_private, _validate_manifest
+        import disposable_liveness_executor as executor
         import time
 
-        executor_manifest, _ = _read_private(Path(value["inputs"]["executor_manifest"]))
-        _validate_manifest(executor_manifest, int(time.time()))
+        executor_manifest, _ = executor._read_private(
+            Path(value["inputs"]["executor_manifest"])
+        )
+        executor._validate_manifest(executor_manifest, int(time.time()))
         _decrypt(
             Path(value["inputs"]["sops_file"]),
             Path(value["inputs"]["age_key_file"]),
@@ -268,14 +270,14 @@ def prepare_intent(intent, host, memberships, directory, deployed_secrets, envir
 
 
 def _ensure_document(path, document):
-    from disposable_liveness_executor import _read_private, _write_new
+    import disposable_liveness_executor as executor
     import os
 
     if os.path.lexists(path):
-        if _read_private(path)[0] != document:
+        if executor._read_private(path)[0] != document:
             raise ValueError
     else:
-        _write_new(path, document)
+        executor._write_new(path, document)
 
 
 def finalize(intent, environment, *, clock=None):
