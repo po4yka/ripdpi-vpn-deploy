@@ -98,7 +98,7 @@
     - path: "{{ observability_control_plane.config_root }}"
       owner: root
       group: "{{ observability_control_plane.service_group }}"
-      mode: '0751'
+      mode: '0750'
     - path: "{{ observability_control_plane.config_root }}/generations"
       owner: root
       group: root

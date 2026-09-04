@@ -552,9 +552,7 @@ def test_alertmanager_unit_uses_systemd_credential_without_argv_secret() -> None
     assert "NoNewPrivileges=true" in unit
 
 
-def test_systemd_credential_sources_allow_traversal_without_secret_read_access() -> (
-    None
-):
+def test_gateway_uses_systemd_credential_working_directory() -> None:
     enable = yaml.safe_load((ROLE / "tasks/enable.yml").read_text(encoding="utf-8"))
     alerting = yaml.safe_load((ROLE / "tasks/alerting.yml").read_text(encoding="utf-8"))
     silence = (ROLE / "tasks/silence-gateway.yml").read_text(encoding="utf-8")
@@ -568,7 +566,7 @@ def test_systemd_credential_sources_allow_traversal_without_secret_read_access()
         if task["name"] == "Create private control-plane directories"
     )["loop"]
     assert directories[0]["path"] == "{{ observability_control_plane.config_root }}"
-    assert directories[0]["mode"] == "0751"
+    assert directories[0]["mode"] == "0750"
     credential_directory = next(
         task
         for task in alerting
@@ -576,11 +574,12 @@ def test_systemd_credential_sources_allow_traversal_without_secret_read_access()
     )["ansible.builtin.file"]
     assert credential_directory["owner"] == "root"
     assert credential_directory["group"] == "root"
-    assert credential_directory["mode"] == "0711"
+    assert credential_directory["mode"] == "0700"
     assert silence.count("mode: '0600'") >= 3
     assert silence.count("owner: root") >= 3
     assert silence.count("group: root") >= 3
     assert gateway_unit.count("LoadCredential=") == 5
+    assert "WorkingDirectory=%d" in gateway_unit
 
 
 def test_alerting_disable_removes_owned_runtime_but_preserves_tsdb() -> None:

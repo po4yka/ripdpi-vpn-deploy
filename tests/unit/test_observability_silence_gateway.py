@@ -236,6 +236,11 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
         "/run/credentials/observability-silence-gateway.service",
     )
     monkeypatch.setattr(
+        module.Path,
+        "cwd",
+        lambda: module.Path("/run/credentials/observability-silence-gateway.service"),
+    )
+    monkeypatch.setattr(
         module.os,
         "stat",
         lambda *_args, **_kwargs: os.stat_result((stat.S_IFREG | 0o400,) + (0,) * 9),
@@ -275,9 +280,7 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
         check_hostname = True
 
         def load_verify_locations(self, **kwargs):
-            assert kwargs == {
-                "cafile": "/run/credentials/observability-silence-gateway.service/silence-backend-ca.pem"
-            }
+            assert kwargs == {"cafile": "silence-backend-ca.pem"}
 
         def load_cert_chain(self, *_args):
             raise OSError("fixture detail must not cross the category boundary")
