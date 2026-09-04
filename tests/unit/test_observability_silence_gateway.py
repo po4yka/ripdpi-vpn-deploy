@@ -251,6 +251,18 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
     with pytest.raises(module.GatewayError, match="^backend-context-value$"):
         module.main()
 
+    class UnreadableCAContext:
+        minimum_version = None
+
+        def load_verify_locations(self, **_kwargs):
+            raise PermissionError("private fixture detail")
+
+    monkeypatch.setattr(
+        module.ssl, "SSLContext", lambda _protocol: UnreadableCAContext()
+    )
+    with pytest.raises(module.GatewayError, match="^backend-ca-permission$"):
+        module.main()
+
     class RefusingContext:
         minimum_version = None
         verify_mode = ssl.CERT_REQUIRED
