@@ -196,8 +196,7 @@ integrity_result="success"
 integrity_succeeded_at="$(timestamp)"
 active_stage=""
 publish_outcome
-
-{% if backup.remote.enabled | default(false) %}
+{% if backup.remote.enabled | default(false) -%}
 # ------------------------------------------------------------------
 # Remote sync via rclone (configured by Ansible)
 # ------------------------------------------------------------------
@@ -219,4 +218,4 @@ remote_result="success"
 remote_succeeded_at="$(timestamp)"
 active_stage=""
 publish_outcome
-{% endif %}
+{% endif -%}
