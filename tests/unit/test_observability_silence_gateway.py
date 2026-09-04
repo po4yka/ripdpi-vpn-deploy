@@ -236,11 +236,6 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
     )
 
     monkeypatch.setattr(module, "private_bytes", lambda *_args: b"fixture-ca")
-    monkeypatch.setattr(
-        module.ssl,
-        "PEM_cert_to_DER_cert",
-        lambda value: b"fixture-der" if value == "fixture-ca" else None,
-    )
 
     def unavailable_context(_protocol):
         raise OSError("fixture detail must not cross the category boundary")
@@ -256,37 +251,15 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
     with pytest.raises(module.GatewayError, match="^backend-context-value$"):
         module.main()
 
-    monkeypatch.setattr(
-        module.ssl,
-        "PEM_cert_to_DER_cert",
-        lambda _value: (_ for _ in ()).throw(ValueError("private fixture detail")),
-    )
-    with pytest.raises(module.GatewayError, match="^backend-ca-format$"):
-        module.main()
-    monkeypatch.setattr(module.ssl, "PEM_cert_to_DER_cert", lambda _value: b"")
-
-    class EmptyCAContext:
-        minimum_version = None
-
-        def load_verify_locations(self, **_kwargs):
-            raise ValueError("private fixture detail")
-
-    monkeypatch.setattr(module.ssl, "SSLContext", lambda _protocol: EmptyCAContext())
-    with pytest.raises(module.GatewayError, match="^backend-ca-der$"):
-        module.main()
-    monkeypatch.setattr(
-        module.ssl,
-        "PEM_cert_to_DER_cert",
-        lambda value: b"fixture-der" if value == "fixture-ca" else None,
-    )
-
     class RefusingContext:
         minimum_version = None
         verify_mode = ssl.CERT_REQUIRED
         check_hostname = True
 
         def load_verify_locations(self, **kwargs):
-            assert kwargs == {"cadata": b"fixture-der"}
+            assert kwargs == {
+                "cafile": "/run/credentials/observability-silence-gateway.service/silence-backend-ca.pem"
+            }
 
         def load_cert_chain(self, *_args):
             raise OSError("fixture detail must not cross the category boundary")
