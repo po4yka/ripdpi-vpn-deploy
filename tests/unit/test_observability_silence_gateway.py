@@ -244,6 +244,13 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
     with pytest.raises(module.GatewayError, match="^backend-ca-io$"):
         module.main()
 
+    def invalid_context(_protocol):
+        raise ValueError("fixture detail must not cross the category boundary")
+
+    monkeypatch.setattr(module.ssl, "SSLContext", invalid_context)
+    with pytest.raises(module.GatewayError, match="^backend-context-value$"):
+        module.main()
+
     class RefusingContext:
         minimum_version = None
         verify_mode = ssl.CERT_REQUIRED
