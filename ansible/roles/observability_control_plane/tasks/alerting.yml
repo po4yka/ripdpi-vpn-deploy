@@ -58,7 +58,7 @@
     state: directory
     owner: root
     group: root
-    mode: '0700'
+    mode: '0711'
 
 - name: Create private Alertmanager state directory
   ansible.builtin.file:
