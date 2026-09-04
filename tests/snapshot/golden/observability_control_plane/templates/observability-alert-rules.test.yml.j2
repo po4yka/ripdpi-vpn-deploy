@@ -1,0 +1,56 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'vpn_watchdog_collection_success{node="vpn-p0",role="watchdog"}'
+        values: '0x4 1x6'
+      - series: 'vpn_watchdog_freshness_state{node="vpn-p0",role="watchdog",state="fresh"}'
+        values: '0x4 1x6'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: ObservabilityWatchdogEvidenceStale
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: ObservabilityWatchdogEvidenceStale
+        exp_alerts:
+          - exp_labels:
+              component: watchdog
+              node: vpn-p0
+              role: watchdog
+              severity: warning
+            exp_annotations:
+              evidence_class: stale-or-unknown
+              incident_family: watchdog-evidence
+              runbook: docs/RUNBOOK-incident.md
+              source_generation: ""
+              summary: Watchdog evidence is missing or stale.
+      - eval_time: 9m
+        alertname: ObservabilityWatchdogEvidenceStale
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'vpn_backup_freshness_state{node="vpn-p2",role="restore-drill",state="stale"}'
+        values: '1x5'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ObservabilityRestoreReadinessStale
+        exp_alerts:
+          - exp_labels:
+              component: backup
+              node: vpn-p2
+              role: restore-drill
+              severity: warning
+              state: stale
+            exp_annotations:
+              evidence_class: stale-restore-proof
+              incident_family: restore-readiness
+              runbook: docs/RUNBOOK-restore.md
+              source_generation: ""
+              summary: Approved isolated restore evidence is stale.
+  - interval: 1m
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ObservabilityBackupEvidenceStale
+        exp_alerts: []

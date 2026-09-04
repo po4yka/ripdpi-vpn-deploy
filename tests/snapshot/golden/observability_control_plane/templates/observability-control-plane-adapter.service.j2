@@ -1,0 +1,24 @@
+[Unit]
+Description=Publish bounded observability control-plane evidence
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/libexec/observability-control-plane-adapter.py --inventory /etc/observability-control-plane/expected-targets.json --output /var/lib/node_exporter/textfile/observability-control-plane.prom --data-dir /var/lib/observability-prometheus --required-free-bytes 42949672960 --expected-source-revision '' --observed-source-revision '' --expected-deployable-digest '' --observed-deployable-digest ''
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/var/lib/node_exporter/textfile
+ReadOnlyPaths=/etc/observability-control-plane /var/lib/observability-prometheus /usr/local/libexec/observability-control-plane-adapter.py

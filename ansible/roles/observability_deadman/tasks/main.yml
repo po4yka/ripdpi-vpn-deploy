@@ -1,0 +1,3 @@
+---
+- name: Select observability dead-man lifecycle
+  ansible.builtin.include_tasks: "{{ 'enable.yml' if observability_deadman.enabled | bool else 'disable.yml' }}"

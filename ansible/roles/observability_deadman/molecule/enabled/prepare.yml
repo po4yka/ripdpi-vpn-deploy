@@ -1,0 +1,10 @@
+---
+- name: Isolate dead-man fixture notification destinations
+  hosts: all
+  become: true
+  tasks:
+    - name: Map fixture-only notification destinations to closed loopback
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: 127.0.0.1 api.telegram.org reverse.fixture.invalid
+        state: present

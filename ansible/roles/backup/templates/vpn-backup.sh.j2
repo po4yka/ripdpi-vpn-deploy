@@ -5,6 +5,144 @@ set -euo pipefail
 REPO="{{ restic_repo_dir }}"
 export RESTIC_PASSWORD_FILE=/etc/restic/password
 
+# This producer-owned marker is deliberately independent of the timer and
+# systemd result.  It records only durable stage outcomes, never restic output
+# or snapshot identities; the observability adapter is its consumer.
+: "${STATE_DIRECTORY:?systemd must provide STATE_DIRECTORY}"
+status_marker="${STATE_DIRECTORY}/backup-stage-status.json"
+local_result="pending"
+local_attempted_at=""
+local_succeeded_at=""
+local_failed_at=""
+integrity_result="pending"
+integrity_attempted_at=""
+integrity_succeeded_at=""
+integrity_failed_at=""
+remote_result="disabled"
+remote_attempted_at=""
+remote_succeeded_at=""
+remote_failed_at=""
+active_stage=""
+
+timestamp() {
+  date -u +%Y-%m-%dT%H:%M:%SZ
+}
+
+publish_status() {
+  BACKUP_STATUS_LOCAL_RESULT="$local_result" \
+  BACKUP_STATUS_LOCAL_ATTEMPTED_AT="$local_attempted_at" \
+  BACKUP_STATUS_LOCAL_SUCCEEDED_AT="$local_succeeded_at" \
+  BACKUP_STATUS_LOCAL_FAILED_AT="$local_failed_at" \
+  BACKUP_STATUS_INTEGRITY_RESULT="$integrity_result" \
+  BACKUP_STATUS_INTEGRITY_ATTEMPTED_AT="$integrity_attempted_at" \
+  BACKUP_STATUS_INTEGRITY_SUCCEEDED_AT="$integrity_succeeded_at" \
+  BACKUP_STATUS_INTEGRITY_FAILED_AT="$integrity_failed_at" \
+  BACKUP_STATUS_REMOTE_RESULT="$remote_result" \
+  BACKUP_STATUS_REMOTE_ATTEMPTED_AT="$remote_attempted_at" \
+  BACKUP_STATUS_REMOTE_SUCCEEDED_AT="$remote_succeeded_at" \
+  BACKUP_STATUS_REMOTE_FAILED_AT="$remote_failed_at" \
+  python3 - "$status_marker" <<'PY'
+import json
+import os
+import secrets
+import stat
+import sys
+from datetime import UTC, datetime
+
+marker = sys.argv[1]
+directory, name = os.path.split(marker)
+directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+temporary_name = f".{name}.{secrets.token_hex(16)}"
+temporary_fd = None
+try:
+    try:
+        existing = os.lstat(name, dir_fd=directory_fd)
+    except FileNotFoundError:
+        pass
+    else:
+        if (
+            not stat.S_ISREG(existing.st_mode)
+            or existing.st_nlink != 1
+            or existing.st_uid != os.geteuid()
+            or stat.S_IMODE(existing.st_mode) != 0o600
+        ):
+            raise OSError("unsafe-existing-backup-status")
+    temporary_fd = os.open(
+        temporary_name,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+        0o600,
+        dir_fd=directory_fd,
+    )
+    def stage(prefix: str) -> dict[str, str]:
+        result = os.environ[f"BACKUP_STATUS_{prefix}_RESULT"]
+        values = {"result": result}
+        for key, field in (
+            ("ATTEMPTED_AT", "attempted_at"),
+            ("SUCCEEDED_AT", "succeeded_at"),
+            ("FAILED_AT", "failed_at"),
+        ):
+            value = os.environ[f"BACKUP_STATUS_{prefix}_{key}"]
+            if value:
+                values[field] = value
+        return values
+    payload = {
+        "version": 1,
+        "updated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "local_backup": stage("LOCAL"),
+        "integrity": stage("INTEGRITY"),
+        "remote_copy": stage("REMOTE"),
+    }
+    encoded = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    view = memoryview(encoded)
+    while view:
+        written = os.write(temporary_fd, view)
+        if written <= 0:
+            raise OSError("short backup status write")
+        view = view[written:]
+    os.fchmod(temporary_fd, 0o600)
+    os.fsync(temporary_fd)
+    os.close(temporary_fd)
+    temporary_fd = None
+    os.replace(temporary_name, name, src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
+    os.fsync(directory_fd)
+finally:
+    if temporary_fd is not None:
+        os.close(temporary_fd)
+    try:
+        os.unlink(temporary_name, dir_fd=directory_fd)
+    except FileNotFoundError:
+        pass
+    os.close(directory_fd)
+PY
+}
+
+# Status publication must not change the backup command's own success/failure
+# contract.  An unavailable marker remains observable as missing evidence.
+publish_outcome() {
+  publish_status || printf '%s\n' 'backup status publication failed' >&2
+}
+
+record_failure() {
+  local status=$?
+  if [[ "$active_stage" == "local" && "$local_result" == "pending" ]]; then
+    local_result="failed"
+    local_failed_at="$(timestamp)"
+  elif [[ "$active_stage" == "integrity" && "$integrity_result" == "pending" ]]; then
+    integrity_result="failed"
+    integrity_failed_at="$(timestamp)"
+  elif [[ "$active_stage" == "remote" && "$remote_result" == "pending" ]]; then
+    remote_result="failed"
+    remote_failed_at="$(timestamp)"
+  fi
+  publish_outcome
+  exit "$status"
+}
+trap record_failure EXIT
+
+local_attempted_at="$(timestamp)"
+active_stage="local"
+publish_outcome
+
 INCLUDES=(
   /etc/xray
   /etc/hysteria
@@ -30,8 +168,16 @@ restic -r "$REPO" forget \
   --keep-daily 7 --keep-weekly 4 --keep-monthly 6 \
   --prune
 
+local_result="success"
+local_succeeded_at="$(timestamp)"
+active_stage=""
+publish_outcome
+
 # Fail the backup run if repository integrity is damaged or no recent
 # vpn-stack snapshot is available for restore.
+integrity_attempted_at="$(timestamp)"
+active_stage="integrity"
+publish_outcome
 restic -r "$REPO" check
 latest_snapshot="$(restic -r "$REPO" snapshots --tag vpn-stack --latest 1 --json | python3 -c '
 import datetime as dt, json, sys
@@ -46,10 +192,19 @@ print(snapshots[-1]["short_id"])
 ')"
 echo "verified recent vpn-stack snapshot ${latest_snapshot}"
 
+integrity_result="success"
+integrity_succeeded_at="$(timestamp)"
+active_stage=""
+publish_outcome
+
 {% if backup.remote.enabled | default(false) %}
 # ------------------------------------------------------------------
 # Remote sync via rclone (configured by Ansible)
 # ------------------------------------------------------------------
+remote_result="pending"
+remote_attempted_at="$(timestamp)"
+active_stage="remote"
+publish_outcome
 RCLONE_CONFIG=/etc/rclone/rclone.conf \
   rclone sync --quiet \
   --transfers={{ backup.remote.transfers | default(4) }} \
@@ -60,4 +215,8 @@ RCLONE_CONFIG=/etc/rclone/rclone.conf \
 # Verify the remote repository matches the checked local repository.
 RCLONE_CONFIG=/etc/rclone/rclone.conf \
   rclone check "$REPO" "{{ backup.remote.rclone_remote }}:{{ backup.remote.rclone_path }}/$(hostname)"
+remote_result="success"
+remote_succeeded_at="$(timestamp)"
+active_stage=""
+publish_outcome
 {% endif %}

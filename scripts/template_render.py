@@ -62,6 +62,7 @@ def merge_render_vars() -> dict:
     merged.setdefault("node_manifest_source_revision", "1" * 40)
     merged.setdefault("node_manifest_deployable_digest", "2" * 64)
     merged["_observability_agent_service_generation"] = "3" * 64
+    merged["_observability_telegram_generation"] = "4" * 64
     merged.setdefault(
         "watchdog_reality_probes",
         [

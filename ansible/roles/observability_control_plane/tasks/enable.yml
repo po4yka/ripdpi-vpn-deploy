@@ -45,6 +45,10 @@
   loop: "{{ observability_control_plane.ingest_identities }}"
   no_log: true
 
+- name: Require the opt-in alerting contract before host mutation
+  ansible.builtin.include_tasks: alerting-contract.yml
+  when: observability_control_plane.alerting.enabled | bool
+
 - name: Create dedicated control-plane account
   ansible.builtin.group:
     name: "{{ observability_control_plane.service_group }}"
@@ -216,6 +220,25 @@
   loop: "{{ _observability_client_subjects.results }}"
   no_log: true
 
+- name: Configure expected-target observation artifacts
+  ansible.builtin.include_tasks: expected-targets.yml
+  when: >-
+    (observability_control_plane.expected_targets | default({'enabled': false}, true)).enabled | default(false) | bool
+
+- name: Remove disabled expected-target observation artifacts
+  ansible.builtin.include_tasks: expected-targets-disable.yml
+  when: >-
+    not ((observability_control_plane.expected_targets |
+    default({'enabled': false}, true)).enabled | default(false) | bool)
+
+- name: Configure bounded alerting and Telegram routing
+  ansible.builtin.include_tasks: alerting.yml
+  when: observability_control_plane.alerting.enabled | bool
+
+- name: Remove disabled alerting artifacts
+  ansible.builtin.include_tasks: alerting-disable.yml
+  when: not (observability_control_plane.alerting.enabled | bool)
+
 - name: Derive the immutable Prometheus generation from candidate content
   ansible.builtin.set_fact:
     _observability_generation: "{{ lookup('ansible.builtin.template', 'prometheus.yml.j2') | hash('sha256') }}"
@@ -365,3 +388,58 @@
     name: nginx
     enabled: true
     state: started
+
+- name: Require the opt-in protocol-liveness adapter contract
+  ansible.builtin.assert:
+    that:
+      - observability_control_plane.protocol_liveness.evidence_directory == '/var/lib/vpn-protocol-liveness'
+      - >-
+        observability_control_plane.protocol_liveness.evidence_path ==
+        observability_control_plane.protocol_liveness.evidence_directory ~ '/last-evidence.json'
+      - observability_control_plane.protocol_liveness.output_directory == '/var/lib/node_exporter/textfile'
+      - >-
+        observability_control_plane.protocol_liveness.output_path ==
+        observability_control_plane.protocol_liveness.output_directory ~ '/protocol-liveness.prom'
+      - observability_control_plane.protocol_liveness.stale_after_seconds | int >= 60
+      - observability_control_plane.protocol_liveness.stale_after_seconds | int <= 3600
+      - observability_control_plane.protocol_liveness.max_future_seconds | int >= 0
+      - observability_control_plane.protocol_liveness.max_future_seconds | int <= 300
+    fail_msg: >-
+      Protocol-liveness adaptation requires the canonical publisher path, the
+      existing node_exporter textfile path, and bounded freshness limits.
+  when: observability_control_plane.protocol_liveness.enabled | bool
+
+- name: Install protocol-liveness adapter
+  ansible.builtin.copy:
+    src: observability-protocol-liveness-adapter.py
+    dest: /usr/local/libexec/observability-protocol-liveness-adapter.py
+    owner: root
+    group: root
+    mode: '0755'
+  when: observability_control_plane.protocol_liveness.enabled | bool
+
+- name: Install protocol-liveness adapter systemd units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - observability-protocol-liveness-adapter.service
+    - observability-protocol-liveness-adapter.timer
+  when: observability_control_plane.protocol_liveness.enabled | bool
+
+- name: Enable protocol-liveness adapter timer
+  ansible.builtin.systemd_service:
+    name: observability-protocol-liveness-adapter.timer
+    daemon_reload: true
+    enabled: true
+    state: started
+  when:
+    - not ansible_check_mode
+    - observability_control_plane.protocol_liveness.enabled | bool
+
+- name: Remove disabled protocol-liveness adapter artifacts
+  ansible.builtin.include_tasks: protocol-liveness-disable.yml
+  when: not (observability_control_plane.protocol_liveness.enabled | bool)

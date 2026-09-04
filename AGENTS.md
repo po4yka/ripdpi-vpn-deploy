@@ -92,7 +92,7 @@ ansible/roles/{amneziawg,backup,baseline,cdn-front,
               policy-ratelimit,package_updates,real-vps-awg-nat,reality-self-steal,
               runtime-release,security_audit,split-hop-egress,
               split-hop-ingress,probe-matrix-target,snell,subscription-host,
-              tailnet-management,warp-outbound,watchdog,xray,xray-runtime}/  — 36 roles
+              tailnet-management,warp-outbound,watchdog,xray,xray-runtime}/  — 37 roles
 terraform/                                           — provider-root strategy
 terraform/providers/{hetzner,scaleway,upcloud,vultr}/ — per-provider quirks
 terraform/shared/                                    — cloud-init contract

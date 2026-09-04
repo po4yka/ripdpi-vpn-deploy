@@ -1,0 +1,44 @@
+---
+- name: Gather alerting service facts before opt-out
+  ansible.builtin.service_facts:
+
+- name: Stop disabled Alertmanager service
+  ansible.builtin.systemd_service:
+    name: observability-alertmanager
+    enabled: false
+    state: stopped
+  when:
+    - not ansible_check_mode
+    - "'observability-alertmanager.service' in ansible_facts.services"
+
+- name: Find immutable alerting generations
+  ansible.builtin.find:
+    paths: "{{ observability_control_plane.config_root }}/generations"
+    patterns:
+      - alertmanager-*.yml
+      - alerts-*.rules.yml
+      - telegram-*.tmpl
+    file_type: file
+    follow: false
+    recurse: false
+  register: _observability_alerting_generations
+  changed_when: false
+
+- name: Remove disabled alerting surfaces
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: >-
+    {{
+      [
+        '/etc/systemd/system/observability-alertmanager.service',
+        observability_control_plane.config_root ~ '/alertmanager-current.yml',
+        observability_control_plane.config_root ~ '/alertmanager-previous.yml',
+        observability_control_plane.alerting.credential_path
+      ] + (_observability_alerting_generations.files | map(attribute='path') | list)
+    }}
+
+- name: Reload systemd after alerting opt-out
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: not ansible_check_mode

@@ -1,0 +1,48 @@
+[Unit]
+Description=RIPDPI watchdog and backup health adapter
+After=vpn-watchdog.service vpn-backup.service vpn-backup-restore-drill.service
+
+[Service]
+Type=oneshot
+User=root
+Group=node_exporter_textfile
+ExecStart=/usr/local/libexec/observability-agent-health-adapter.py \
+  --node-id  \
+  --watchdog-state /var/lib/vpn-watchdog/state \
+  --watchdog-fail-threshold 3 \
+  --watchdog-alert-limit 4 \
+  --watchdog-restart-limit 3 \
+  --watchdog-max-age-seconds 900 \
+  --backup-stage /var/lib/vpn-backup/backup-stage-status.json \
+  --backup-stage-max-age-seconds 129600 \
+  --restore-drill /var/lib/vpn-backup/restore-drill-last-success.json \
+  --restore-drill-max-age-seconds 3024000 \
+  --backup-snapshot-max-age-seconds 129600 \
+  --output /var/lib/node_exporter/textfile/observability-health.prom
+UMask=0027
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectClock=true
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+MemoryMax=64M
+TasksMax=16
+LimitNOFILE=1024
+ReadOnlyPaths=-/var/lib/vpn-watchdog/state
+ReadOnlyPaths=-/var/lib/vpn-backup/backup-stage-status.json
+ReadOnlyPaths=-/var/lib/vpn-backup/restore-drill-last-success.json
+ReadWritePaths=/var/lib/node_exporter/textfile

@@ -29,6 +29,63 @@
       delay: 1
       until: get_request.stdout == '405'
 
+    - name: Assert Prometheus remains active after expected-target opt-out
+      ansible.builtin.command:
+        argv: [systemctl, is-active, --quiet, observability-prometheus]
+      changed_when: false
+
+    - name: Assert expected-target opt-out removed only its owned surfaces
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/systemd/system/observability-control-plane-adapter.service
+        - /etc/systemd/system/observability-control-plane-adapter.timer
+        - /usr/local/libexec/observability-control-plane-adapter.py
+        - /usr/local/libexec/observability-expected-target-renderer.py
+        - /etc/observability-control-plane/expected-targets.json
+        - /var/lib/node_exporter/textfile/observability-expected-targets.prom
+        - /var/lib/node_exporter/textfile/observability-control-plane.prom
+      register: expected_target_opt_out_surfaces
+      failed_when: expected_target_opt_out_surfaces.stat.exists
+
+    - name: Assert alerting opt-out removed only its owned runtime surfaces
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - /etc/systemd/system/observability-alertmanager.service
+        - /etc/observability-control-plane/alertmanager-current.yml
+        - /etc/observability-control-plane/alertmanager-previous.yml
+        - /etc/observability-control-plane/credentials/telegram-bot-token
+      register: alerting_opt_out_surfaces
+      failed_when: alerting_opt_out_surfaces.stat.exists
+
+    - name: Assert Alertmanager state remains after alerting opt-out
+      ansible.builtin.stat:
+        path: /var/lib/observability-alertmanager
+      register: retained_alertmanager_state
+      failed_when: not retained_alertmanager_state.stat.isdir
+
+    - name: Assert TSDB content remains after expected-target opt-out
+      ansible.builtin.command:
+        argv: [test, -f, /var/lib/observability-prometheus/molecule-retained]
+      changed_when: false
+
+    - name: Assert protocol-liveness adapter timer is enabled and active
+      ansible.builtin.command:
+        argv: [systemctl, is-active, --quiet, observability-protocol-liveness-adapter.timer]
+      changed_when: false
+
+    - name: Run protocol-liveness adapter once against canonical evidence
+      ansible.builtin.command:
+        argv: [systemctl, start, observability-protocol-liveness-adapter.service]
+      changed_when: false
+
+    - name: Assert protocol-liveness adapter published the bounded textfile
+      ansible.builtin.command:
+        argv: [grep, -F, 'vpn_observability_evidence_state', /var/lib/node_exporter/textfile/protocol-liveness.prom]
+      changed_when: false
+
     - name: Assert remote-write receiver rejects a missing or wrong SNI
       ansible.builtin.command:
         argv:

@@ -1,0 +1,29 @@
+---
+- name: Gather dead-man service facts before disable
+  ansible.builtin.service_facts:
+
+- name: Stop and disable existing dead-man owned units
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop:
+    - observability-deadman.service
+    - observability-deadman-tick.timer
+  when:
+    - not ansible_check_mode
+    - item in ansible_facts.services
+
+- name: Remove dead-man owned surfaces and stale sender state
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/observability-deadman.service
+    - /etc/systemd/system/observability-deadman-tick.service
+    - /etc/systemd/system/observability-deadman-tick.timer
+    - /usr/local/libexec/observability-deadman.py
+    - "{{ observability_deadman.config_root }}"
+    - "{{ observability_deadman.pulse_credential_path | dirname }}"
+    - "{{ observability_deadman.state_dir }}"
+  notify: Reload observability dead-man systemd

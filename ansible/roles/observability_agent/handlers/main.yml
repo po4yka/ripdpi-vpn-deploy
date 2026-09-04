@@ -14,3 +14,9 @@
     name: observability-agent-adapter.timer
     state: restarted
   when: not ansible_check_mode
+
+- name: Restart observability agent health adapter timer
+  ansible.builtin.systemd_service:
+    name: observability-agent-health-adapter.timer
+    state: restarted
+  when: not ansible_check_mode

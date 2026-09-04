@@ -14,3 +14,27 @@
         path: /etc/observability-control-plane
       register: control_config
       failed_when: control_config.stat.exists
+
+    - name: Protocol-liveness adapter owned surfaces remain absent
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/systemd/system/observability-protocol-liveness-adapter.service
+        - /etc/systemd/system/observability-protocol-liveness-adapter.timer
+        - /usr/local/libexec/observability-protocol-liveness-adapter.py
+        - /var/lib/node_exporter/textfile/protocol-liveness.prom
+      register: protocol_adapter_surfaces
+      failed_when: protocol_adapter_surfaces.stat.exists
+
+    - name: Expected-target control-plane owned surfaces remain absent
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/systemd/system/observability-control-plane-adapter.service
+        - /etc/systemd/system/observability-control-plane-adapter.timer
+        - /usr/local/libexec/observability-control-plane-adapter.py
+        - /usr/local/libexec/observability-expected-target-renderer.py
+        - /var/lib/node_exporter/textfile/observability-expected-targets.prom
+        - /var/lib/node_exporter/textfile/observability-control-plane.prom
+      register: expected_target_surfaces
+      failed_when: expected_target_surfaces.stat.exists

@@ -3,9 +3,11 @@
 import argparse
 from pathlib import Path
 import os
+import shlex
 import socket
 import ssl
 import subprocess
+import sys
 import threading
 from typing import Callable
 
@@ -55,6 +57,64 @@ def _values() -> dict:
             ],
         }
     }
+
+
+def test_adapter_unit_preserves_empty_expected_target_values_for_parser(
+    tmp_path: Path,
+) -> None:
+    textfile_directory = tmp_path / "textfiles"
+    textfile_directory.mkdir()
+    values = _values()
+    control_plane = values["observability_control_plane"]
+    control_plane.update(
+        {
+            "data_dir": str(tmp_path / "data"),
+            "tsdb_required_bytes": 0,
+            "expected_targets": {
+                "textfile_directory": str(textfile_directory),
+                "expected_source_revision": "",
+                "observed_source_revision": "",
+                "expected_deployable_digest": "",
+                "observed_deployable_digest": "",
+            },
+        }
+    )
+
+    rendered = render_template(
+        ROLE / "templates/observability-control-plane-adapter.service.j2", values
+    )
+    exec_start = next(
+        line.removeprefix("ExecStart=")
+        for line in rendered.splitlines()
+        if line.startswith("ExecStart=")
+    )
+    argv = shlex.split(exec_start)
+
+    for option in (
+        "--expected-source-revision",
+        "--observed-source-revision",
+        "--expected-deployable-digest",
+        "--observed-deployable-digest",
+    ):
+        assert argv[argv.index(option) + 1] == ""
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROLE / "files/observability-control-plane-adapter.py"),
+            *argv[1:],
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 2
+    assert "validation failed" in result.stderr
+    assert "expected one argument" not in result.stderr
+    assert "stale" in (textfile_directory / "observability-control-plane.prom").read_text()
 
 
 def test_ingress_is_only_the_bounded_authenticated_write_path() -> None:
@@ -172,16 +232,29 @@ def test_enabled_role_refuses_missing_pins_and_mtls_before_mutation(
 
 def test_enabled_molecule_archive_matches_runtime_release_strip_contract() -> None:
     prepare = (ROLE / "molecule/enabled/prepare.yml").read_text()
-    converge = (ROLE / "molecule/enabled/converge.yml").read_text()
+    fixture = yaml.safe_load(
+        (ROLE / "molecule/enabled/tasks/fixture-contract.yml").read_text()
+    )
+    config = fixture[-1]["ansible.builtin.set_fact"]["observability_control_plane"]
 
-    assert (
-        'tar -C "$fixture" -czf "$fixture/prometheus.tar.gz" prometheus-fixture/prometheus'
-        in prepare
-    )
-    assert (
-        "archive_members: {amd64: prometheus-fixture/prometheus, arm64: prometheus-fixture/prometheus}"
-        in converge
-    )
+    assert "prometheus-fixture/prometheus prometheus-fixture/promtool" in prepare
+    assert ".alerting-fixture-v1" in prepare
+    assert config["prometheus"]["archive_members"] == {
+        "amd64": "prometheus-fixture/prometheus",
+        "arm64": "prometheus-fixture/prometheus",
+    }
+    assert config["prometheus"]["promtool_archive_members"] == {
+        "amd64": "prometheus-fixture/promtool",
+        "arm64": "prometheus-fixture/promtool",
+    }
+    assert config["alerting"]["alertmanager"]["archive_members"] == {
+        "amd64": "alertmanager-fixture/alertmanager",
+        "arm64": "alertmanager-fixture/alertmanager",
+    }
+    assert config["alerting"]["alertmanager"]["amtool_archive_members"] == {
+        "amd64": "alertmanager-fixture/amtool",
+        "arm64": "alertmanager-fixture/amtool",
+    }
     assert (
         "runtime_release_archive_strip_components: 1"
         in (ROLE / "tasks/enable.yml").read_text()

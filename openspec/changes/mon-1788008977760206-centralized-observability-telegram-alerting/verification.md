@@ -20,9 +20,9 @@ artifact_evidence: null
 
 # Verification
 
-No execution evidence exists at proposal time. `required` means the named proof
-must be observed and recorded against the exact candidate/deployed SHA; it is
-not a planning PASS. Update evidence fields and every table row only from actual
+`required` means the named proof must be observed and recorded against the
+exact candidate/deployed SHA; it is not a planning PASS. The source preparation
+evidence below is narrower than the outstanding staging and live matrix. Update evidence fields and every table row only from actual
 runs. Archive is forbidden while any category is `required` or `blocked`.
 
 ## Requirement evidence
@@ -147,3 +147,38 @@ or live data merely to manufacture evidence.
 - If credentials, approved hosts, failure-domain selection, staging window,
   external vantages, Telegram access, or hosted CI are unavailable, mark the
   exact category `blocked` with evidence and keep the change active.
+
+## Source preparation, 2026-09-04
+
+The final integration combines the published telemetry foundation
+`f5b9a208c445b865cbd487d6b226ba94eda94702` with the remaining MON adapters,
+alerting, private operator commands, independent dead-man and backup outcome
+producer. The final candidate SHA and whole-gate results must be recorded after
+commit; targeted preparation runs do not substitute for that gate.
+
+- The foundation main run `33569773572` failed its enabled-agent recovery
+  fixture after converge and idempotence. The revised fixture requires the
+  sender's transmitted timestamp to cross the observed outage watermark and
+  a new authenticated node/path arrival. It no longer mistakes continuously
+  queued scrapes for failed recovery. The focused agent-render module passed
+  21 tests, including pending-but-drained, below-watermark and no-arrival cases.
+- Canonical rendering exposed the missing Alertmanager generation variable
+  and incomplete dead-man JSON envelope. Both were fixed without relaxing
+  StrictUndefined or JSON validation; all 128 template snapshots were updated
+  only for the intentional source additions.
+- Dead-man receiver configuration and credentials are startup snapshots.
+  Credential, executable, generation-link and unit changes now restart inside
+  the activation block, followed by bounded direct-loopback readiness. No
+  deferred restart can bypass that block's failure handling or resurrect a
+  subsequently disabled role. Enabled and disabled Molecule scenarios are
+  required in CI; fixture destinations remain confined to loopback.
+- Four optional source identity arguments now preserve explicit empty values in
+  the control-plane adapter unit. The real CLI regression proves argument
+  parsing succeeds and invalid inventory remains a typed stale failure.
+- The client vendors the metric-manifest example byte-for-byte. Its mirror
+  update is an integration prerequisite, not evidence of client VPN traffic.
+
+No staging placement, fleet rollout, two-vantage protocol acceptance, human
+Telegram receipt, credential rotation on production, paging cutover or live
+rollback has been performed by this source integration. Those execution steps
+and all corresponding required evidence remain open.

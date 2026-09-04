@@ -2,13 +2,61 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
+import json
 from pathlib import Path
+import sys
+import urllib.request
 
 from jinja2 import Environment, StrictUndefined
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible" / "roles" / "observability_agent"
+
+
+def _run_embedded_verification_script(
+    script: str,
+    *,
+    metrics: str,
+    receiver_rows: list[dict[str, str]],
+    args: list[str],
+) -> tuple[int, dict[str, int | float]]:
+    class Response:
+        def read(self) -> bytes:
+            return metrics.encode("utf-8")
+
+    class ReceiverLog:
+        def exists(self) -> bool:
+            return bool(receiver_rows)
+
+        def read_text(self) -> str:
+            return "\n".join(json.dumps(row) for row in receiver_rows)
+
+    original_argv = sys.argv
+    original_path = Path
+    original_urlopen = urllib.request.urlopen
+    stdout = io.StringIO()
+    try:
+        sys.argv = ["verification-script", *args]
+        urllib.request.urlopen = lambda *_args, **_kwargs: Response()  # type: ignore[assignment]
+        import pathlib
+
+        pathlib.Path = lambda _path: ReceiverLog()  # type: ignore[assignment]
+        with contextlib.redirect_stdout(stdout):
+            try:
+                exec(script, {"__name__": "__main__"})
+            except SystemExit as result:
+                return_code = int(result.code)
+    finally:
+        sys.argv = original_argv
+        urllib.request.urlopen = original_urlopen
+        import pathlib
+
+        pathlib.Path = original_path
+
+    return return_code, json.loads(stdout.getvalue())
 
 
 def test_private_credentials_do_not_depend_on_system_credstore_traversal() -> None:
@@ -302,11 +350,17 @@ def test_self_scrape_follows_the_configured_loopback_listener_and_drops_endpoint
 
 def test_disable_removes_only_observability_agent_owned_state() -> None:
     tasks = (ROLE / "tasks" / "main.yml").read_text(encoding="utf-8")
+    disable = tasks[
+        tasks.index(
+            "Disable observability agent when feature is disabled"
+        ) : tasks.index("Configure observability agent when feature is enabled")
+    ]
 
     assert "Remove observability agent owned runtime state" in tasks
     assert "/var/lib/node_exporter/textfile/observability-agent.prom" not in tasks
     assert "prometheus-node-exporter" not in tasks
-    assert "watchdog" not in tasks
+    assert "/var/lib/vpn-watchdog/state" not in disable
+    assert "/var/lib/vpn-backup" not in disable
 
 
 def test_adapter_explicitly_joins_the_textfile_writer_group() -> None:
@@ -348,7 +402,9 @@ def test_enabled_scenario_proves_idempotence_queue_age_and_authenticated_drain()
     stop = verify.index("Stop receiver to exercise bounded local WAL evidence")
     outage = verify.index("Wait for a new remote-write retry and positive queue age")
     restore = verify.index("Restore receiver after bounded outage")
-    drain = verify.index("Wait for queue drain and new authenticated receiver arrival")
+    drain = verify.index(
+        "Wait for outage watermark recovery and new authenticated receiver arrival"
+    )
     assert baseline < stop < outage < restore < drain
     assert "queue_highest_timestamp_seconds" in verify[outage:restore]
     assert "queue_highest_sent_timestamp_seconds" in verify[outage:restore]
@@ -386,6 +442,77 @@ def test_enabled_scenario_proves_idempotence_queue_age_and_authenticated_drain()
     assert "observability-agent-credential-probe.service" in verify
     assert "observability_credential_transport_probe.stdout" in verify
     assert "when: observability_remote_write_arrival.rc != 0" in verify
+
+
+def test_enabled_recovery_proves_outage_watermark_without_global_quiescence() -> None:
+    tasks = yaml.safe_load(
+        (ROLE / "molecule" / "enabled" / "verify.yml").read_text(encoding="utf-8")
+    )[0]["tasks"]
+    by_name = {task["name"]: task for task in tasks}
+    outage_script = by_name["Wait for a new remote-write retry and positive queue age"][
+        "ansible.builtin.command"
+    ]["argv"][2]
+    recovery_script = by_name[
+        "Wait for outage watermark recovery and new authenticated receiver arrival"
+    ]["ansible.builtin.command"]["argv"][2]
+    outage_metrics = "\n".join(
+        (
+            "prometheus_remote_storage_queue_highest_timestamp_seconds 42",
+            "prometheus_remote_storage_queue_highest_sent_timestamp_seconds 35",
+            "prometheus_remote_storage_samples_failed_total 2",
+            "prometheus_remote_storage_samples_retried_total 2",
+        )
+    )
+    outage_code, outage = _run_embedded_verification_script(
+        outage_script,
+        metrics=outage_metrics,
+        receiver_rows=[],
+        args=["1"],
+    )
+
+    assert outage_code == 0
+    assert outage == {"highest": 42.0, "highest_sent": 35.0, "retry": 2.0}
+
+    recovered_metrics = "\n".join(
+        (
+            "prometheus_remote_storage_samples_pending 7",
+            "prometheus_remote_storage_queue_highest_sent_timestamp_seconds 42",
+        )
+    )
+    authenticated_rows = [
+        {"path": "/remote-write/v1/nodes/node-fixture", "cn": "node-fixture"}
+        for _ in range(55)
+    ]
+    recovered_code, recovered = _run_embedded_verification_script(
+        recovery_script,
+        metrics=recovered_metrics,
+        receiver_rows=authenticated_rows,
+        args=["54", str(outage["highest"])],
+    )
+
+    assert recovered_code == 0
+    assert recovered == {
+        "outage_highest": 42.0,
+        "pending": 7.0,
+        "received": 55,
+        "sent": 42.0,
+    }
+
+    below_watermark_code, _ = _run_embedded_verification_script(
+        recovery_script,
+        metrics=recovered_metrics.replace(" 42", " 41"),
+        receiver_rows=authenticated_rows,
+        args=["54", str(outage["highest"])],
+    )
+    unchanged_receiver_code, _ = _run_embedded_verification_script(
+        recovery_script,
+        metrics=recovered_metrics,
+        receiver_rows=authenticated_rows[:54],
+        args=["54", str(outage["highest"])],
+    )
+
+    assert below_watermark_code == 1
+    assert unchanged_receiver_code == 1
 
 
 def test_enabled_molecule_uses_exact_systemd_credentials_for_fail_only_probe() -> None:

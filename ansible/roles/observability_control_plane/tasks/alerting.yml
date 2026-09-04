@@ -1,0 +1,246 @@
+---
+- name: Install pinned promtool through runtime-release
+  ansible.builtin.include_role:
+    name: runtime-release
+  vars:
+    runtime_release_version: "{{ observability_control_plane.prometheus.version }}"
+    runtime_release_install_root: "{{ observability_control_plane.alerting.promtool_install_root }}"
+    runtime_release_binary_name: promtool
+    runtime_release_public_link: "{{ observability_control_plane.alerting.promtool_binary_link }}"
+    runtime_release_urls: "{{ observability_control_plane.prometheus.urls }}"
+    runtime_release_sha256: "{{ observability_control_plane.prometheus.sha256 }}"
+    runtime_release_arch_slugs: {amd64: amd64, arm64: arm64}
+    runtime_release_artifact_filename: prometheus.tar.gz
+    runtime_release_artifact_type: archive
+    runtime_release_archive_members: "{{ observability_control_plane.prometheus.promtool_archive_members }}"
+    runtime_release_archive_strip_components: 1
+
+- name: Install pinned Alertmanager through runtime-release
+  ansible.builtin.include_role:
+    name: runtime-release
+  vars:
+    runtime_release_version: "{{ observability_control_plane.alerting.alertmanager.version }}"
+    runtime_release_install_root: "{{ observability_control_plane.alerting.install_root }}"
+    runtime_release_binary_name: alertmanager
+    runtime_release_public_link: "{{ observability_control_plane.alerting.binary_link }}"
+    runtime_release_urls: "{{ observability_control_plane.alerting.alertmanager.urls }}"
+    runtime_release_sha256: "{{ observability_control_plane.alerting.alertmanager.sha256 }}"
+    runtime_release_arch_slugs: {amd64: amd64, arm64: arm64}
+    runtime_release_artifact_filename: alertmanager.tar.gz
+    runtime_release_artifact_type: archive
+    runtime_release_archive_members: "{{ observability_control_plane.alerting.alertmanager.archive_members }}"
+    runtime_release_archive_strip_components: 1
+
+- name: Install pinned amtool through runtime-release
+  ansible.builtin.include_role:
+    name: runtime-release
+  vars:
+    runtime_release_version: "{{ observability_control_plane.alerting.alertmanager.version }}"
+    runtime_release_install_root: "{{ observability_control_plane.alerting.amtool_install_root }}"
+    runtime_release_binary_name: amtool
+    runtime_release_public_link: "{{ observability_control_plane.alerting.amtool_binary_link }}"
+    runtime_release_urls: "{{ observability_control_plane.alerting.alertmanager.urls }}"
+    runtime_release_sha256: "{{ observability_control_plane.alerting.alertmanager.sha256 }}"
+    runtime_release_arch_slugs: {amd64: amd64, arm64: arm64}
+    runtime_release_artifact_filename: alertmanager.tar.gz
+    runtime_release_artifact_type: archive
+    runtime_release_archive_members: "{{ observability_control_plane.alerting.alertmanager.amtool_archive_members }}"
+    runtime_release_archive_strip_components: 1
+
+- name: Create private alerting credential directory
+  ansible.builtin.file:
+    path: "{{ observability_control_plane.alerting.credential_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Create private Alertmanager state directory
+  ansible.builtin.file:
+    path: "{{ observability_control_plane.alerting.data_dir }}"
+    state: directory
+    owner: "{{ observability_control_plane.service_user }}"
+    group: "{{ observability_control_plane.service_group }}"
+    mode: '0750'
+
+- name: Materialize primary Telegram credential for systemd
+  ansible.builtin.copy:
+    content: "{{ observability_control_plane.alerting.telegram.bot_token }}"
+    dest: "{{ observability_control_plane.alerting.credential_path }}"
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  diff: false
+
+- name: Derive immutable alert rule and Telegram template generations
+  ansible.builtin.set_fact:
+    _observability_alert_rules_content: "{{ lookup('ansible.builtin.template', 'observability-alert-rules.yml.j2') }}"
+    _observability_alert_rules_generation: "{{ lookup('ansible.builtin.template', 'observability-alert-rules.yml.j2') | hash('sha256') }}"
+    _observability_telegram_template_content: "{{ lookup('ansible.builtin.template', 'observability-telegram.tmpl.j2') }}"
+    _observability_telegram_generation: "{{ lookup('ansible.builtin.template', 'observability-telegram.tmpl.j2') | hash('sha256') }}"
+  no_log: true
+
+- name: Derive immutable Alertmanager generation
+  ansible.builtin.set_fact:
+    _observability_alertmanager_content: "{{ lookup('ansible.builtin.template', 'observability-alertmanager.yml.j2') }}"
+    _observability_alertmanager_generation: "{{ lookup('ansible.builtin.template', 'observability-alertmanager.yml.j2') | hash('sha256') }}"
+  no_log: true
+
+- name: Inspect immutable alerting generations
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+    checksum_algorithm: sha256
+    follow: false
+  loop:
+    - path: "{{ observability_control_plane.config_root }}/generations/alerts-{{ _observability_alert_rules_generation }}.rules.yml"
+      checksum: "{{ _observability_alert_rules_generation }}"
+    - path: "{{ observability_control_plane.config_root }}/generations/telegram-{{ _observability_telegram_generation }}.tmpl"
+      checksum: "{{ _observability_telegram_generation }}"
+    - path: "{{ observability_control_plane.config_root }}/generations/alertmanager-{{ _observability_alertmanager_generation }}.yml"
+      checksum: "{{ _observability_alertmanager_generation }}"
+  register: _observability_alerting_candidates
+  changed_when: false
+
+- name: Refuse conflicting immutable alerting generations
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (item.stat.exists | default(false)) or
+        (item.stat.isreg | default(false))
+      - >-
+        not (item.stat.exists | default(false)) or
+        item.stat.checksum == item.item.checksum
+    fail_msg: An unsafe or conflicting payload occupies an immutable alerting generation.
+  loop: "{{ _observability_alerting_candidates.results }}"
+  no_log: true
+
+- name: Publish immutable alerting candidates
+  ansible.builtin.copy:
+    content: "{{ item.content }}"
+    dest: "{{ item.path }}"
+    owner: root
+    group: "{{ observability_control_plane.service_group }}"
+    mode: '0640'
+    force: false
+  loop:
+    - content: "{{ _observability_alert_rules_content }}"
+      path: "{{ observability_control_plane.config_root }}/generations/alerts-{{ _observability_alert_rules_generation }}.rules.yml"
+    - content: "{{ _observability_telegram_template_content }}"
+      path: "{{ observability_control_plane.config_root }}/generations/telegram-{{ _observability_telegram_generation }}.tmpl"
+    - content: "{{ _observability_alertmanager_content }}"
+      path: "{{ observability_control_plane.config_root }}/generations/alertmanager-{{ _observability_alertmanager_generation }}.yml"
+  no_log: true
+  diff: false
+
+- name: Validate immutable alert rules
+  ansible.builtin.command:
+    argv:
+      - "{{ observability_control_plane.alerting.promtool_binary_link }}"
+      - check
+      - rules
+      - "{{ observability_control_plane.config_root }}/generations/alerts-{{ _observability_alert_rules_generation }}.rules.yml"
+  changed_when: false
+  no_log: true
+
+- name: Validate immutable Alertmanager generation
+  ansible.builtin.command:
+    argv:
+      - "{{ observability_control_plane.alerting.amtool_binary_link }}"
+      - check-config
+      - "{{ observability_control_plane.config_root }}/generations/alertmanager-{{ _observability_alertmanager_generation }}.yml"
+  changed_when: false
+  no_log: true
+
+- name: Install hardened Alertmanager service
+  ansible.builtin.template:
+    src: observability-alertmanager.service.j2
+    dest: /etc/systemd/system/observability-alertmanager.service
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Inspect current Alertmanager generation before activation
+  ansible.builtin.stat:
+    path: "{{ observability_control_plane.config_root }}/alertmanager-current.yml"
+    follow: false
+  register: _observability_alertmanager_current
+  changed_when: false
+
+- name: Refuse an unsafe existing Alertmanager generation link
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (_observability_alertmanager_current.stat.exists | default(false)) or
+        (_observability_alertmanager_current.stat.islnk | default(false))
+      - >-
+        not (_observability_alertmanager_current.stat.exists | default(false)) or
+        _observability_alertmanager_current.stat.lnk_source is match(
+          '^' ~ observability_control_plane.config_root ~
+          '/generations/alertmanager-[a-f0-9]{64}[.]yml$')
+    fail_msg: Existing Alertmanager config must be an owned immutable generation link.
+
+- name: Preserve previous ready Alertmanager generation
+  ansible.builtin.file:
+    src: "{{ _observability_alertmanager_current.stat.lnk_source }}"
+    dest: "{{ observability_control_plane.config_root }}/alertmanager-previous.yml"
+    state: link
+    force: true
+    owner: root
+    group: "{{ observability_control_plane.service_group }}"
+  when: _observability_alertmanager_current.stat.exists | default(false)
+  changed_when: false
+
+- name: Activate validated Alertmanager generation with rollback
+  block:
+    - name: Point Alertmanager at candidate generation
+      ansible.builtin.file:
+        src: "{{ observability_control_plane.config_root }}/generations/alertmanager-{{ _observability_alertmanager_generation }}.yml"
+        dest: "{{ observability_control_plane.config_root }}/alertmanager-current.yml"
+        state: link
+        force: true
+        owner: root
+        group: "{{ observability_control_plane.service_group }}"
+
+    - name: Restart Alertmanager with candidate generation
+      ansible.builtin.systemd_service:
+        name: observability-alertmanager
+        daemon_reload: true
+        enabled: true
+        state: restarted
+
+    - name: Require loopback-only Alertmanager readiness
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9093/-/ready
+        status_code: 200
+        return_content: false
+      register: _observability_alertmanager_ready
+      retries: 5
+      delay: 2
+      until: _observability_alertmanager_ready.status == 200
+      no_log: true
+  rescue:
+    - name: Restore previous ready Alertmanager configuration
+      ansible.builtin.file:
+        src: "{{ _observability_alertmanager_current.stat.lnk_source }}"
+        dest: "{{ observability_control_plane.config_root }}/alertmanager-current.yml"
+        state: link
+        force: true
+      when: _observability_alertmanager_current.stat.exists | default(false)
+
+    - name: Remove failed first Alertmanager configuration link
+      ansible.builtin.file:
+        path: "{{ observability_control_plane.config_root }}/alertmanager-current.yml"
+        state: absent
+      when: not (_observability_alertmanager_current.stat.exists | default(false))
+
+    - name: Restart restored Alertmanager generation
+      ansible.builtin.systemd_service:
+        name: observability-alertmanager
+        daemon_reload: true
+        state: restarted
+      when: _observability_alertmanager_current.stat.exists | default(false)
+
+    - name: Fail closed after Alertmanager candidate failure
+      ansible.builtin.fail:
+        msg: Alertmanager candidate did not become ready; the prior generation was restored when available.

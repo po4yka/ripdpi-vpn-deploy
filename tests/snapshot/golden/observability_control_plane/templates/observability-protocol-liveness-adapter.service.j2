@@ -1,0 +1,24 @@
+[Unit]
+Description=Adapt canonical published protocol-liveness evidence
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/libexec/observability-protocol-liveness-adapter.py --evidence /var/lib/vpn-protocol-liveness/last-evidence.json --output /var/lib/node_exporter/textfile/protocol-liveness.prom --stale-after 180 --max-future 60
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/var/lib/node_exporter/textfile
+ReadOnlyPaths=/var/lib/vpn-protocol-liveness /usr/local/libexec/observability-protocol-liveness-adapter.py

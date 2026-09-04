@@ -37,3 +37,6 @@ gitleaks = "8.30.1"
 # Static analysis for owned GitHub Actions, Dependabot, and pre-commit config.
 "pipx:zizmor" = "1.29.0"
 zizmor = "1.29.0"
+
+# Canonical PromQL/rule semantic parser used by the observability regression.
+"aqua:prometheus/prometheus" = "3.14.0"

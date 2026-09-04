@@ -1,0 +1,144 @@
+---
+- name: Exercise expected-target true to false lifecycle after enabled convergence
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: Reload complete enabled control-plane fixture contract
+      ansible.builtin.include_tasks: tasks/fixture-contract.yml
+
+    - name: Run the enabled expected-target adapter once
+      ansible.builtin.systemd_service:
+        name: observability-control-plane-adapter.service
+        state: started
+
+    - name: Run the enabled protocol-liveness adapter once
+      ansible.builtin.systemd_service:
+        name: observability-protocol-liveness-adapter.service
+        state: started
+
+    - name: Create the distinct observability reader primary group
+      ansible.builtin.group:
+        name: observability-molecule-reader
+        system: true
+
+    - name: Create a distinct observability textfile reader identity
+      ansible.builtin.user:
+        name: observability-molecule-reader
+        group: observability-molecule-reader
+        groups:
+          - observability-textfile
+        append: false
+        create_home: false
+        shell: /usr/sbin/nologin
+        system: true
+
+    - name: Inspect the distinct observability reader identity
+      ansible.builtin.command:
+        argv: [/usr/bin/id, "{{ item }}", observability-molecule-reader]
+      loop:
+        - -gn
+        - -Gn
+      register: observability_molecule_reader_identity
+      changed_when: false
+
+    - name: Require a distinct primary group and the textfile supplementary group
+      ansible.builtin.assert:
+        that:
+          - observability_molecule_reader_identity.results[0].stdout == 'observability-molecule-reader'
+          - "'observability-textfile' in observability_molecule_reader_identity.results[1].stdout.split()"
+          - "'observability-molecule-reader' in observability_molecule_reader_identity.results[1].stdout.split()"
+
+    - name: Inspect generated observability textfiles before the reader proof
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /var/lib/node_exporter/textfile/observability-expected-targets.prom
+        - /var/lib/node_exporter/textfile/protocol-liveness.prom
+      register: observability_molecule_textfiles
+
+    - name: Require collector-only group readability on generated textfiles
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.pw_name == 'root'
+          - item.stat.gr_name == 'observability-textfile'
+          - item.stat.mode == '0640'
+      loop: "{{ observability_molecule_textfiles.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read generated observability textfiles through only the supplementary group
+      become: true
+      become_user: observability-molecule-reader
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/cat
+          - /var/lib/node_exporter/textfile/observability-expected-targets.prom
+          - /var/lib/node_exporter/textfile/protocol-liveness.prom
+      changed_when: false
+
+    - name: Inspect expected-target and alerting surfaces created by the enabled role lifecycle
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/systemd/system/observability-control-plane-adapter.service
+        - /etc/systemd/system/observability-control-plane-adapter.timer
+        - /usr/local/libexec/observability-control-plane-adapter.py
+        - /usr/local/libexec/observability-expected-target-renderer.py
+        - /etc/observability-control-plane/expected-targets.json
+        - /var/lib/node_exporter/textfile/observability-expected-targets.prom
+        - /var/lib/node_exporter/textfile/observability-control-plane.prom
+        - /etc/systemd/system/observability-alertmanager.service
+        - /etc/observability-control-plane/alertmanager-current.yml
+        - /etc/observability-control-plane/credentials/telegram-bot-token
+      register: enabled_expected_target_surfaces
+
+    - name: Require every expected-target and alerting surface before opt-out
+      ansible.builtin.assert:
+        that:
+          - enabled_expected_target_surfaces.results | map(attribute='stat.exists') | list | min
+        fail_msg: Enabled lifecycle did not create every expected-target owned surface.
+
+    - name: Require the enabled expected-target timer before opt-out
+      ansible.builtin.command:
+        argv: [systemctl, is-enabled, --quiet, observability-control-plane-adapter.timer]
+      changed_when: false
+
+    - name: Require loopback-only Alertmanager before opt-out
+      ansible.builtin.command:
+        argv: [systemctl, is-active, --quiet, observability-alertmanager]
+      changed_when: false
+
+    - name: Read generated Alertmanager config without exposing credential material
+      ansible.builtin.command:
+        argv: [cat, /etc/observability-control-plane/alertmanager-current.yml]
+      register: alertmanager_fixture_config
+      changed_when: false
+      no_log: true
+
+    - name: Require generated routing to reference only the systemd credential path
+      ansible.builtin.assert:
+        that:
+          - "'bot_token_file:' in alertmanager_fixture_config.stdout"
+          - "'molecule-token-not-real-value' not in alertmanager_fixture_config.stdout"
+      no_log: true
+
+    - name: Seed a TSDB retention marker before opt-out
+      ansible.builtin.copy:
+        dest: /var/lib/observability-prometheus/molecule-retained
+        content: retained
+        owner: prometheus
+        group: prometheus
+        mode: '0600'
+
+    - name: Opt out expected targets and alerting through the complete role contract
+      ansible.builtin.set_fact:
+        observability_control_plane: >-
+          {{ observability_control_plane | combine({
+            'expected_targets': observability_control_plane.expected_targets |
+            combine({'enabled': false}),
+            'alerting': observability_control_plane.alerting |
+            combine({'enabled': false})}, recursive=true) }}
+      no_log: true
+  roles:
+    - role: observability_control_plane

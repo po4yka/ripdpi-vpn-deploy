@@ -1,0 +1,26 @@
+---
+# Kept inert until an independently placed dead-man host supplies all pins.
+observability_deadman:
+  enabled: false
+  service_user: observability-deadman
+  service_group: observability-deadman
+  config_root: /etc/observability-deadman
+  state_dir: /var/lib/observability-deadman
+  pulse_credential_path: /etc/observability-deadman/credentials/pulse-token
+  telegram_credential_path: /etc/observability-deadman/credentials/telegram-bot-token
+  pulse_listen: 0.0.0.0:9444
+  status_listen: 127.0.0.1:19094
+  pulse_path: /v1/pulse
+  reverse_health_url: ""
+  reverse_health_max_bytes: 1024
+  pulse_interval_seconds: 60
+  missed_pulse_limit: 5
+  max_future_seconds: 30
+  max_pulse_bytes: 4096
+  retry_attempts: 2
+  retry_timeout_seconds: 5
+  reminder_interval_seconds: 3600
+  canary_interval_seconds: 86400
+  telegram:
+    chat_id: ""
+    topic_id: 0

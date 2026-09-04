@@ -3,7 +3,29 @@ global:
   external_labels:
     component: observability-control-plane
 
+{% if (observability_control_plane.expected_targets | default({'enabled': false}, true)).enabled | default(false) or (observability_control_plane.alerting | default({'enabled': false}, true)).enabled | default(false) %}
+rule_files:
+{% if (observability_control_plane.expected_targets | default({'enabled': false}, true)).enabled | default(false) %}
+  - {{ observability_control_plane.config_root }}/generations/{{ _observability_rules_generation }}.rules.yml
+{% endif %}
+{% if (observability_control_plane.alerting | default({'enabled': false}, true)).enabled | default(false) %}
+  - {{ observability_control_plane.config_root }}/generations/alerts-{{ _observability_alert_rules_generation }}.rules.yml
+{% endif %}
+{% endif %}
+
+{% if (observability_control_plane.alerting | default({'enabled': false}, true)).enabled | default(false) %}
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['127.0.0.1:9093']
+{% endif %}
+
 scrape_configs:
   - job_name: observability-control-plane
     static_configs:
       - targets: ['127.0.0.1:9100']
+{% if (observability_control_plane.alerting | default({'enabled': false}, true)).enabled | default(false) %}
+  - job_name: observability-alertmanager
+    static_configs:
+      - targets: ['127.0.0.1:9093']
+{% endif -%}

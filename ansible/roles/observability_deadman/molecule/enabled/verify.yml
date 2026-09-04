@@ -1,0 +1,309 @@
+---
+- name: Verify enabled then disabled dead-man lifecycle
+  hosts: all
+  become: true
+  vars:
+    disabled_deadman:
+      enabled: false
+      service_user: observability-deadman
+      service_group: observability-deadman
+      config_root: /etc/observability-deadman
+      state_dir: /var/lib/observability-deadman
+      pulse_credential_path: /etc/observability-deadman/credentials/pulse-token
+      telegram_credential_path: /etc/observability-deadman/credentials/telegram-bot-token
+      pulse_listen: 0.0.0.0:9444
+      status_listen: 127.0.0.1:19094
+      pulse_path: /v1/pulse
+      reverse_health_url: https://reverse.fixture.invalid:19445/v1/health
+      reverse_health_max_bytes: 1024
+      pulse_interval_seconds: 60
+      missed_pulse_limit: 5
+      max_future_seconds: 30
+      max_pulse_bytes: 4096
+      retry_attempts: 2
+      retry_timeout_seconds: 5
+      reminder_interval_seconds: 3600
+      canary_interval_seconds: 86400
+      telegram:
+        chat_id: "-100000000001"
+        topic_id: 7
+    token_rotated_deadman:
+      enabled: true
+      service_user: observability-deadman
+      service_group: observability-deadman
+      config_root: /etc/observability-deadman
+      state_dir: /var/lib/observability-deadman
+      pulse_credential_path: /etc/observability-deadman/credentials/pulse-token
+      telegram_credential_path: /etc/observability-deadman/credentials/telegram-bot-token
+      pulse_listen: 0.0.0.0:9444
+      status_listen: 127.0.0.1:19094
+      pulse_path: /v1/pulse
+      reverse_health_url: https://reverse.fixture.invalid:19445/v1/health
+      reverse_health_max_bytes: 1024
+      pulse_interval_seconds: 60
+      missed_pulse_limit: 5
+      max_future_seconds: 30
+      max_pulse_bytes: 4096
+      retry_attempts: 2
+      retry_timeout_seconds: 5
+      reminder_interval_seconds: 3600
+      canary_interval_seconds: 86400
+      telegram:
+        chat_id: "-100000000001"
+        topic_id: 7
+    rotated_deadman:
+      enabled: true
+      service_user: observability-deadman
+      service_group: observability-deadman
+      config_root: /etc/observability-deadman
+      state_dir: /var/lib/observability-deadman
+      pulse_credential_path: /etc/observability-deadman/credentials/pulse-token
+      telegram_credential_path: /etc/observability-deadman/credentials/telegram-bot-token
+      pulse_listen: 0.0.0.0:9444
+      status_listen: 127.0.0.1:19094
+      pulse_path: /v1/pulse
+      reverse_health_url: https://reverse.fixture.invalid:19445/v1/health
+      reverse_health_max_bytes: 1024
+      pulse_interval_seconds: 60
+      missed_pulse_limit: 5
+      max_future_seconds: 30
+      max_pulse_bytes: 512
+      retry_attempts: 2
+      retry_timeout_seconds: 5
+      reminder_interval_seconds: 3600
+      canary_interval_seconds: 86400
+      telegram:
+        chat_id: "-100000000001"
+        topic_id: 8
+    rotated_deadman_secrets:
+      schema_version: 1
+      pulse_token: fixture-rotated-pulse-token-012345678
+      telegram:
+        bot_token: fixture-rotated-telegram-token-012345
+    deadman_rotation_probe: |
+      from datetime import UTC, datetime, timedelta
+      import hashlib
+      import hmac
+      import json
+      import sys
+      from urllib.error import HTTPError
+      from urllib.request import Request, urlopen
+
+      def post(token, sequence, padding=0, expiry_seconds=10):
+          now = datetime.now(UTC)
+          payload = {
+              'schema': 1,
+              'generation': 'a' * 40,
+              'sequence': sequence,
+              'issued_at': now.isoformat().replace('+00:00', 'Z'),
+              'expires_at': (now + timedelta(seconds=expiry_seconds)).isoformat().replace('+00:00', 'Z'),
+              'health': {
+                  'prometheus': True,
+                  'alertmanager': True,
+                  'canary': True,
+                  'primary_telegram': True,
+              },
+          }
+          payload['signature'] = hmac.new(
+              token,
+              json.dumps(payload, separators=(',', ':'), sort_keys=True).encode(),
+              hashlib.sha256,
+          ).hexdigest()
+          body = json.dumps(payload, separators=(',', ':')).encode() + b' ' * padding
+          request = Request(
+              'http://127.0.0.1:9444/v1/pulse', data=body, method='POST'
+          )
+          try:
+              with urlopen(request, timeout=5) as response:
+                  return response.status
+          except HTTPError as error:
+              return error.code
+
+      if sys.argv[1] == 'token':
+          statuses = (
+              post(b'fixture-pulse-token-0123456789', 1),
+              post(b'fixture-rotated-pulse-token-012345678', 1),
+          )
+          expected = (400, 204)
+      elif sys.argv[1] == 'config':
+          statuses = (
+              post(
+                  b'fixture-rotated-pulse-token-012345678',
+                  2,
+                  padding=600,
+                  expiry_seconds=20,
+              ),
+          )
+          expected = (400,)
+      else:
+          raise SystemExit(2)
+      raise SystemExit(0 if statuses == expected else 1)
+  tasks:
+    - name: Assert enabled dead-man units are active
+      ansible.builtin.command:
+        argv: [systemctl, is-active, --quiet, "{{ item }}"]
+      loop:
+        - observability-deadman.service
+        - observability-deadman-tick.timer
+      changed_when: false
+
+    - name: Assert enabled dead-man units are enabled
+      ansible.builtin.command:
+        argv: [systemctl, is-enabled, --quiet, "{{ item }}"]
+      loop:
+        - observability-deadman.service
+        - observability-deadman-tick.timer
+      changed_when: false
+
+    - name: Read enabled immutable dead-man generation link
+      ansible.builtin.command:
+        argv: [readlink, /etc/observability-deadman/deadman-current.json]
+      register: deadman_current_generation
+      changed_when: false
+
+    - name: Require enabled current link to target an immutable generation
+      ansible.builtin.assert:
+        that:
+          - deadman_current_generation.stdout is match('^/etc/observability-deadman/generations/deadman-[a-f0-9]{64}[.]json$')
+
+    - name: Validate enabled immutable dead-man candidate
+      ansible.builtin.command:
+        argv:
+          - /usr/local/libexec/observability-deadman.py
+          - validate-config
+          - --config
+          - /etc/observability-deadman/deadman-current.json
+      changed_when: false
+      no_log: true
+
+    - name: Inspect enabled dead-man mode and ownership boundaries
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - /etc/observability-deadman
+        - /etc/observability-deadman/credentials
+        - /etc/observability-deadman/credentials/pulse-token
+        - /etc/observability-deadman/credentials/telegram-bot-token
+        - /var/lib/observability-deadman
+        - /etc/observability-deadman/deadman-current.json
+      register: deadman_enabled_paths
+
+    - name: Require enabled dead-man mode and ownership boundaries
+      ansible.builtin.assert:
+        that:
+          - deadman_enabled_paths.results[0].stat.isdir
+          - deadman_enabled_paths.results[0].stat.mode == '0755'
+          - deadman_enabled_paths.results[1].stat.isdir
+          - deadman_enabled_paths.results[1].stat.mode == '0700'
+          - deadman_enabled_paths.results[2].stat.isreg
+          - deadman_enabled_paths.results[2].stat.mode == '0600'
+          - deadman_enabled_paths.results[2].stat.pw_name == 'root'
+          - deadman_enabled_paths.results[3].stat.isreg
+          - deadman_enabled_paths.results[3].stat.mode == '0600'
+          - deadman_enabled_paths.results[3].stat.pw_name == 'root'
+          - deadman_enabled_paths.results[4].stat.isdir
+          - deadman_enabled_paths.results[4].stat.mode == '0700'
+          - deadman_enabled_paths.results[4].stat.pw_name == 'observability-deadman'
+          - deadman_enabled_paths.results[5].stat.islnk
+
+    - name: Include token-only rotated dead-man role
+      ansible.builtin.include_role:
+        name: observability_deadman
+      vars:
+        observability_contract:
+          schema_version: 1
+          credential_mode: systemd
+        observability_deadman: "{{ token_rotated_deadman }}"
+        observability_deadman_secrets: "{{ rotated_deadman_secrets }}"
+
+    - name: Read token-only immutable dead-man generation link
+      ansible.builtin.command:
+        argv: [readlink, /etc/observability-deadman/deadman-current.json]
+      register: deadman_token_rotated_generation
+      changed_when: false
+
+    - name: Require token-only rotation to retain immutable generation link
+      ansible.builtin.assert:
+        that:
+          - deadman_token_rotated_generation.stdout == deadman_current_generation.stdout
+
+    - name: Require token-only receiver credential reload
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - "{{ deadman_rotation_probe }}"
+          - token
+      changed_when: false
+      no_log: true
+
+    - name: Include config-only rotated dead-man role
+      ansible.builtin.include_role:
+        name: observability_deadman
+      vars:
+        observability_contract:
+          schema_version: 1
+          credential_mode: systemd
+        observability_deadman: "{{ rotated_deadman }}"
+        observability_deadman_secrets: "{{ rotated_deadman_secrets }}"
+
+    - name: Read config-only immutable dead-man generation link
+      ansible.builtin.command:
+        argv: [readlink, /etc/observability-deadman/deadman-current.json]
+      register: deadman_config_rotated_generation
+      changed_when: false
+
+    - name: Require config-only rotation to change immutable generation link
+      ansible.builtin.assert:
+        that:
+          - deadman_config_rotated_generation.stdout is match('^/etc/observability-deadman/generations/deadman-[a-f0-9]{64}[.]json$')
+          - deadman_config_rotated_generation.stdout != deadman_token_rotated_generation.stdout
+
+    - name: Require config-only receiver generation reload
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - "{{ deadman_rotation_probe }}"
+          - config
+      changed_when: false
+      no_log: true
+
+    - name: Include disabled dead-man role
+      ansible.builtin.include_role:
+        name: observability_deadman
+      vars:
+        observability_deadman: "{{ disabled_deadman }}"
+
+    - name: Flush disabled dead-man systemd reload
+      ansible.builtin.meta: flush_handlers
+
+    - name: Assert disabled dead-man surfaces are removed
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/systemd/system/observability-deadman.service
+        - /etc/systemd/system/observability-deadman-tick.service
+        - /etc/systemd/system/observability-deadman-tick.timer
+        - /usr/local/libexec/observability-deadman.py
+        - /etc/observability-deadman
+        - /var/lib/observability-deadman
+      register: deadman_disabled_paths
+      failed_when: deadman_disabled_paths.stat.exists
+
+    - name: Assert disabled dead-man units are inactive
+      ansible.builtin.command:
+        argv: [systemctl, is-active, --quiet, "{{ item }}"]
+      loop:
+        - observability-deadman.service
+        - observability-deadman-tick.timer
+      register: deadman_disabled_units
+      changed_when: false
+      failed_when: false
+
+    - name: Require disabled dead-man units to remain inactive
+      ansible.builtin.assert:
+        that:
+          - item.rc != 0
+      loop: "{{ deadman_disabled_units.results }}"
