@@ -329,3 +329,21 @@ actual existing-node guard: empty string passes; array, null, nonempty IPv4
 and IPv6 routes refuse before the following task. This proves the local
 contract only; corrected staging enrollment and end-to-end direct/Tailnet SSH
 acceptance remain open.
+
+
+## Shadowed main root-login declaration
+
+The authorized staging ownership preview refused before activation because the
+main configuration contained a global `PermitRootLogin yes`, although the
+canonical early bootstrap fragment made effective root login `no`. Installation
+and recovery readiness passed; neither a transaction nor reboot was started.
+The planner now recognizes only this exact shadowed declaration after Include,
+requires root denial in real global and every supplied connection context, and
+retains the complete policy comparison at every publication boundary.
+Observed local gates: 332 tests across the ownership, transaction, migration
+and bundle modules passed; the narrow 12-case boundary passed after its initial
+reproduced refusal. Collection is 3430 total / 3377 unit; governance passed.
+Local regression coverage includes forward publication, reverse restoration,
+second-plan idempotence and refusal of unshadowed, duplicate, unexpected-value,
+missing/wrong bootstrap, Match and alternate-Include inputs. Local tests do not
+credit a new installed bundle or staging rollback; those gates remain open.
