@@ -7,7 +7,6 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
-import sys
 
 import yaml
 
@@ -409,7 +408,9 @@ def test_alerting_tasks_validate_before_activation_and_rollback() -> None:
     ]
 
 
-def test_alertmanager_restart_condition_uses_one_ansible_expression(tmp_path: Path) -> None:
+def test_alertmanager_restart_condition_uses_one_ansible_expression(
+    tmp_path: Path,
+) -> None:
     tasks = yaml.safe_load((ROLE / "tasks/alerting.yml").read_text())
     activation = next(
         task
@@ -422,8 +423,7 @@ def test_alertmanager_restart_condition_uses_one_ansible_expression(tmp_path: Pa
         if task["name"] == "Restart Alertmanager with candidate generation"
     )
     playbook = tmp_path / "restart-condition.yml"
-    source = (
-        """---
+    source = ("""---
 - hosts: localhost
   gather_facts: false
   vars:
@@ -449,8 +449,7 @@ def test_alertmanager_restart_condition_uses_one_ansible_expression(tmp_path: Pa
         that: >-
           (item.item.expected | bool) == (not (item.skipped | default(false)))
       loop: "{{ decisions.results }}"
-"""
-    ).replace("__WHEN__", condition)
+""").replace("__WHEN__", condition)
     playbook.write_text(source, encoding="utf-8")
     result = subprocess.run(
         ["ansible-playbook", "-i", "localhost,", str(playbook)],
