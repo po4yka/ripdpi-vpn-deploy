@@ -473,6 +473,28 @@ def test_role_wires_only_opted_in_expected_targets_into_immutable_config() -> No
     assert "role: observability_control_plane" in opt_out
     assert "combine({'enabled': false})" in opt_out
     assert "tasks_from: expected-targets-disable.yml" not in opt_out
+    opt_out_tasks = yaml.safe_load(
+        (ROLE / "molecule/enabled/side_effect.yml").read_text()
+    )[0]["pre_tasks"]
+    opt_out_names = [task["name"] for task in opt_out_tasks]
+    assert opt_out_names.index(
+        "Refresh canonical protocol-liveness evidence for side effects"
+    ) < opt_out_names.index("Run the enabled protocol-liveness adapter once")
+    assert opt_out_names.index(
+        "Run the enabled protocol-liveness adapter once"
+    ) < opt_out_names.index("Require fresh protocol-liveness side-effect output")
+    fresh = next(
+        task
+        for task in opt_out_tasks
+        if task["name"] == "Require fresh protocol-liveness side-effect output"
+    )
+    assert fresh["ansible.builtin.command"]["argv"] == [
+        "grep",
+        "-F",
+        'state="fresh"',
+        "/var/lib/node_exporter/textfile/protocol-liveness.prom",
+    ]
+    assert fresh["changed_when"] is False
     assert "observability-prometheus" in enabled_verify
     assert "molecule-retained" in enabled_verify
     assert "observability-control-plane.prom" in enabled_verify

@@ -11,10 +11,37 @@
         name: observability-control-plane-adapter.service
         state: started
 
+    - name: Read current time for protocol-liveness side effects
+      ansible.builtin.command:
+        argv: [date, '+%s']
+      register: protocol_liveness_side_effect_clock
+      changed_when: false
+
+    - name: Refresh canonical protocol-liveness evidence for side effects
+      ansible.builtin.copy:
+        dest: /var/lib/vpn-protocol-liveness/last-evidence.json
+        owner: root
+        group: root
+        mode: '0600'
+        content: >-
+          {{ {"candidate_policies": [], "decision": "healthy",
+          "evaluated_at": protocol_liveness_side_effect_clock.stdout | int,
+          "evidence": [], "failed_vantages": {}, "monitoring_errors": [],
+          "schema_version": 2} | to_json }}
+
     - name: Run the enabled protocol-liveness adapter once
       ansible.builtin.systemd_service:
         name: observability-protocol-liveness-adapter.service
         state: started
+
+    - name: Require fresh protocol-liveness side-effect output
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -F
+          - 'state="fresh"'
+          - /var/lib/node_exporter/textfile/protocol-liveness.prom
+      changed_when: false
 
     - name: Create the distinct observability reader primary group
       ansible.builtin.group:
