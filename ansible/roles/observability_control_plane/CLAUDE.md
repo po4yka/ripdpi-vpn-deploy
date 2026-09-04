@@ -27,8 +27,7 @@ canary receiver; the independent dead-man sender remains a separate owner.
 Enabled alerting requires the private gateway on 127.0.0.1:19094. Only its
 separate UID receives the dedicated backend client certificate; Alertmanager
 requires that CA on HTTPS 127.0.0.1:9093. Prometheus holds only a sender token.
-Credential source ancestors permit traversal only; source files remain root-only
-so systemd can transport them without granting runtime principals read access.
+The gateway opens its five credentials relative to systemd's `%d` mount.
 Owner token digests derive maintenance identity; exact `node`/`policy` scope,
 reason and configured finite TTL (default four hours) precede any silence write.
 The bounded private journal records attempts/results/expiry and retains ownership

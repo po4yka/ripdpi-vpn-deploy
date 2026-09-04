@@ -504,9 +504,12 @@ def private_json(path):
 
 def main():
     credentials = Path(os.environ.get("CREDENTIALS_DIRECTORY", ""))
-    if str(credentials) != "/run/credentials/observability-silence-gateway.service":
+    if (
+        str(credentials) != "/run/credentials/observability-silence-gateway.service"
+        or Path.cwd() != credentials
+    ):
         raise GatewayError("credential-directory")
-    ca_path = credentials / "silence-backend-ca.pem"
+    ca_path = Path("silence-backend-ca.pem")
     try:
         ca_info = os.stat(ca_path, follow_symlinks=False)
     except FileNotFoundError as exc:
@@ -543,8 +546,8 @@ def main():
         raise GatewayError("backend-tls-version") from exc
     try:
         context.load_cert_chain(
-            str(credentials / "silence-backend-client.crt"),
-            str(credentials / "silence-backend-client.key"),
+            "silence-backend-client.crt",
+            "silence-backend-client.key",
         )
     except (OSError, ValueError) as exc:
         raise GatewayError("backend-client-identity") from exc
@@ -552,8 +555,8 @@ def main():
     try:
         server = GatewayServer(
             ("127.0.0.1", 19094),
-            private_json(credentials / "silence-policy.json"),
-            private_json(credentials / "silence-auth.json"),
+            private_json(Path("silence-policy.json")),
+            private_json(Path("silence-auth.json")),
             backend,
             Path("/var/lib/observability-silence-gateway"),
         )

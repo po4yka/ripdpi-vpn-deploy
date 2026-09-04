@@ -11,6 +11,7 @@ LoadCredential=silence-auth.json:/etc/observability-control-plane/credentials/si
 LoadCredential=silence-backend-ca.pem:/etc/observability-control-plane/credentials/silence-backend-ca.pem
 LoadCredential=silence-backend-client.crt:/etc/observability-control-plane/credentials/silence-backend-client.crt
 LoadCredential=silence-backend-client.key:/etc/observability-control-plane/credentials/silence-backend-client.key
+WorkingDirectory=%d
 ExecStart=/usr/bin/python3 /usr/local/libexec/observability-silence-gateway
 Restart=on-failure
 RestartSec=5s
