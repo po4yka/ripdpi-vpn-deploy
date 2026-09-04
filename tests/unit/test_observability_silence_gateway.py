@@ -17,6 +17,7 @@ import subprocess
 import sys
 import threading
 import time
+from types import SimpleNamespace
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -294,6 +295,102 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
     monkeypatch.setenv("CREDENTIALS_DIRECTORY", "/run/credentials/different-unit")
     with pytest.raises(module.GatewayError, match="^credential-directory$"):
         module.main()
+
+
+def test_private_json_accepts_exact_systemd_root_credential(tmp_path, monkeypatch):
+    spec = importlib.util.spec_from_file_location(
+        "silence_gateway_systemd_credential",
+        ROLE / "files/observability-silence-gateway.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    credential = tmp_path / "silence-policy.json"
+    credential.write_text(
+        '{"schema_version":1,"environment":"staging","max_ttl_seconds":14400}\n'
+    )
+    monkeypatch.setattr(module.os, "geteuid", lambda: 1234)
+    monkeypatch.setattr(
+        module.os,
+        "fstat",
+        lambda _descriptor: SimpleNamespace(
+            st_mode=stat.S_IFREG | 0o440,
+            st_uid=0,
+            st_gid=0,
+            st_nlink=1,
+        ),
+    )
+
+    assert module.private_json(credential) == {
+        "schema_version": 1,
+        "environment": "staging",
+        "max_ttl_seconds": 14400,
+    }
+
+
+def test_private_json_accepts_owner_private_credential(tmp_path):
+    spec = importlib.util.spec_from_file_location(
+        "silence_gateway_owner_credential",
+        ROLE / "files/observability-silence-gateway.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    credential = tmp_path / "silence-policy.json"
+    credential.write_text('{"schema_version":1}\n')
+    credential.chmod(0o400)
+
+    assert module.private_json(credential) == {"schema_version": 1}
+
+
+def test_private_json_preserves_duplicate_key_category(tmp_path):
+    spec = importlib.util.spec_from_file_location(
+        "silence_gateway_duplicate_credential",
+        ROLE / "files/observability-silence-gateway.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    credential = tmp_path / "silence-policy.json"
+    credential.write_text('{"schema_version":1,"schema_version":1}\n')
+    credential.chmod(0o400)
+
+    with pytest.raises(module.GatewayError, match="^duplicate-json-key$"):
+        module.private_json(credential)
+
+
+@pytest.mark.parametrize(
+    "mode,uid,gid,nlink",
+    [
+        (0o440, 0, 3456, 1),
+        (0o460, 0, 2345, 1),
+        (0o444, 0, 2345, 1),
+        (0o440, 1234, 2345, 1),
+        (0o440, 0, 2345, 2),
+    ],
+)
+def test_private_json_rejects_non_systemd_credential_metadata_without_relabeling(
+    tmp_path, monkeypatch, mode, uid, gid, nlink
+):
+    spec = importlib.util.spec_from_file_location(
+        "silence_gateway_invalid_credential",
+        ROLE / "files/observability-silence-gateway.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    credential = tmp_path / "silence-policy.json"
+    credential.write_text("{}\n")
+    monkeypatch.setattr(module.os, "geteuid", lambda: 1234)
+    monkeypatch.setattr(
+        module.os,
+        "fstat",
+        lambda _descriptor: SimpleNamespace(
+            st_mode=stat.S_IFREG | mode,
+            st_uid=uid,
+            st_gid=gid,
+            st_nlink=nlink,
+        ),
+    )
+
+    with pytest.raises(module.GatewayError, match="^configuration-file$"):
+        module.private_json(credential)
 
 
 def test_authenticated_finite_silence_reaches_backend_with_derived_owner(gateway):
