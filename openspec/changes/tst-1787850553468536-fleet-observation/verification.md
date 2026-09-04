@@ -117,3 +117,12 @@ artifact_evidence: null
 - Corrected executor/Make/promotion suites: 104 PASS. Read-only parsing of the
   installed CLI's named Stopped record and existing private configuration passed;
   this does not credit a running executor or any guest traffic.
+- Actual canonical preparation on source `5b8a9dff0e51739514c004667142180b4bf8fba5`
+  completed with exit 0; a subsequent canonical live revalidation passed. Real
+  configuration, exact named Running state, no mounts, systemd PID1, passwordless
+  sudo and matching root marker all passed. Manifest mode was 0600; Docker
+  context/config hashes were unchanged. Expiry was 21:06:20 UTC, below the
+  original 21:06:50 UTC cap; it was not renewed. Result artifact SHA-256:
+  `5932777ffcbca8e9ede20e068d5429c781127ecb8a6607654276f6ee02a65397`. The executor remains allocated for the approved one-shot
+  run; this proves preparation only, not client tool installation, credentials,
+  protocol traffic, de-onboarding, production or recurring acceptance.
