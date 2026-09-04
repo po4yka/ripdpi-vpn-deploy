@@ -507,12 +507,15 @@ def main():
             cafile=str(credentials / "silence-backend-ca.pem")
         )
         context.minimum_version = ssl.TLSVersion.TLSv1_2
+    except (OSError, ValueError) as exc:
+        raise GatewayError("backend-ca") from exc
+    try:
         context.load_cert_chain(
             str(credentials / "silence-backend-client.crt"),
             str(credentials / "silence-backend-client.key"),
         )
     except (OSError, ValueError) as exc:
-        raise GatewayError("backend-credentials") from exc
+        raise GatewayError("backend-client-identity") from exc
     backend = AlertmanagerBackend("https://127.0.0.1:9093", context)
     try:
         server = GatewayServer(
