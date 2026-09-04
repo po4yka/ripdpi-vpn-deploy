@@ -235,7 +235,10 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
         "/run/credentials/observability-silence-gateway.service",
     )
 
-    def unavailable_context(**_kwargs):
+    monkeypatch.setattr(module, "private_bytes", lambda *_args: b"fixture-ca")
+
+    def unavailable_context(**kwargs):
+        assert kwargs == {"cadata": "fixture-ca"}
         raise OSError("fixture detail must not cross the category boundary")
 
     monkeypatch.setattr(module.ssl, "create_default_context", unavailable_context)

@@ -476,7 +476,7 @@ def unique_object(pairs):
     return result
 
 
-def private_json(path):
+def private_bytes(path, limit):
     try:
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     except OSError as exc:
@@ -489,11 +489,15 @@ def private_json(path):
             or stat.S_IMODE(info.st_mode) & 0o077
         ):
             raise GatewayError("configuration-file")
-        payload = stream.read(65537)
-    if len(payload) > 65536:
+        payload = stream.read(limit + 1)
+    if len(payload) > limit:
         raise GatewayError("configuration-size")
+    return payload
+
+
+def private_json(path):
     try:
-        return json.loads(payload, object_pairs_hook=unique_object)
+        return json.loads(private_bytes(path, 65536), object_pairs_hook=unique_object)
     except (TypeError, ValueError) as exc:
         raise GatewayError("configuration-content") from exc
 
@@ -503,11 +507,12 @@ def main():
     if str(credentials) != "/run/credentials/observability-silence-gateway.service":
         raise GatewayError("credential-directory")
     try:
+        ca_pem = private_bytes(credentials / "silence-backend-ca.pem", 65536)
         context = ssl.create_default_context(
-            cafile=str(credentials / "silence-backend-ca.pem")
+            cadata=ca_pem.decode("ascii", errors="strict")
         )
         context.minimum_version = ssl.TLSVersion.TLSv1_2
-    except (OSError, ValueError) as exc:
+    except (OSError, UnicodeError, ValueError) as exc:
         raise GatewayError("backend-ca") from exc
     try:
         context.load_cert_chain(
