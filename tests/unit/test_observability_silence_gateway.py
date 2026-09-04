@@ -236,6 +236,11 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
     )
 
     monkeypatch.setattr(module, "private_bytes", lambda *_args: b"fixture-ca")
+    monkeypatch.setattr(
+        module.ssl,
+        "PEM_cert_to_DER_cert",
+        lambda value: b"fixture-der" if value == "fixture-ca" else None,
+    )
 
     def unavailable_context(_protocol):
         raise OSError("fixture detail must not cross the category boundary")
@@ -257,9 +262,7 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
         check_hostname = True
 
         def load_verify_locations(self, **kwargs):
-            assert kwargs == {
-                "cafile": "/run/credentials/observability-silence-gateway.service/silence-backend-ca.pem"
-            }
+            assert kwargs == {"cadata": b"fixture-der"}
 
         def load_cert_chain(self, *_args):
             raise OSError("fixture detail must not cross the category boundary")

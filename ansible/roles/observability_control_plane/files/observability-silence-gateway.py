@@ -508,9 +508,10 @@ def main():
         raise GatewayError("credential-directory")
     ca_path = credentials / "silence-backend-ca.pem"
     try:
-        # Validate the systemd credential with no-follow metadata and size
-        # checks before OpenSSL reopens the same read-only credential path.
-        private_bytes(ca_path, 65536)
+        ca_pem = private_bytes(ca_path, 65536)
+        ca_der = ssl.PEM_cert_to_DER_cert(ca_pem.decode("ascii", errors="strict"))
+    except UnicodeError as exc:
+        raise GatewayError("backend-ca-encoding") from exc
     except OSError as exc:
         raise GatewayError("backend-ca-io") from exc
     except ValueError as exc:
@@ -524,7 +525,9 @@ def main():
     except ValueError as exc:
         raise GatewayError("backend-context-value") from exc
     try:
-        context.load_verify_locations(cafile=str(ca_path))
+        # DER avoids environment-specific PEM loader behavior while retaining a
+        # dedicated in-memory trust store containing only the validated CA.
+        context.load_verify_locations(cadata=ca_der)
     except ssl.SSLError as exc:
         raise GatewayError("backend-ca-ssl") from exc
     except OSError as exc:
