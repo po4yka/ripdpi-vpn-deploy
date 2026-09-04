@@ -20,6 +20,18 @@ artifact_evidence: source and installed configuration only; no release binary ar
 
 # Verification
 
+## Staging catalog alignment (2026-09-04)
+
+Authenticated read-only catalog preflight identified `STARTER-2xCPU-4GB`
+as the selected current 2-CPU/4-GiB/30-GiB plan. The older
+`DEV-2xCPU-4GB` is a distinct SKU, not an alias. The first native Terraform
+regression failed on the existing exact-plan allowlist; adding only the
+selected Starter SKU made all 36 UpCloud mock-provider tests pass. The tests
+also preserve the Developer SKU unchanged and reject an unreviewed Starter
+SKU. These results prove plan validation and forwarding only. No server was
+created, and staging recovery, account billing and serial live acceptance
+remain open under the existing approved budget and cleanup deadlines.
+
 ## Requirement evidence
 
 | Requirement | Execution step | Evidence | Result |

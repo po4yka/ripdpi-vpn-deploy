@@ -50,13 +50,6 @@ nftables continues to own egress policy.
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.15, < 2.0 |
 | <a name="requirement_upcloud"></a> [upcloud](#requirement\_upcloud) | ~> 5.36 |
 
-## Providers
-
-| Name | Version |
-| ---- | ------- |
-| <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
-| <a name="provider_upcloud"></a> [upcloud](#provider\_upcloud) | 5.43.0 |
-
 ## Modules
 
 No modules.
@@ -84,7 +77,7 @@ No modules.
 | <a name="input_enable_provider_firewall"></a> [enable\_provider\_firewall](#input\_enable\_provider\_firewall) | Activate the UpCloud stateless Public & Utility firewall after the exact node has passed guest-firewall and strict-SSH verification. | `bool` | `false` | no |
 | <a name="input_labels"></a> [labels](#input\_labels) | Provider-specific resource tags/labels. | `map(string)` | `{}` | no |
 | <a name="input_nginx_xhttp_public_port"></a> [nginx\_xhttp\_public\_port](#input\_nginx\_xhttp\_public\_port) | Public TCP port for nginx-xhttp. Keep this in sync with Ansible nginx\_xhttp\_public\_port. | `number` | `8443` | no |
-| <a name="input_plan"></a> [plan](#input\_plan) | UpCloud plan slug, e.g. 1xCPU-2GB or DEV-2xCPU-4GB. | `string` | n/a | yes |
+| <a name="input_plan"></a> [plan](#input\_plan) | Exact UpCloud plan slug, e.g. STARTER-2xCPU-4GB or an existing supported legacy SKU. | `string` | n/a | yes |
 | <a name="input_provider_return_ephemeral_ports"></a> [provider\_return\_ephemeral\_ports](#input\_provider\_return\_ephemeral\_ports) | Linux client ephemeral port range accepted for inbound TCP/UDP return traffic by the stateless provider firewall. | <pre>object({<br/>    start = number<br/>    end   = number<br/>  })</pre> | <pre>{<br/>  "end": 60999,<br/>  "start": 32768<br/>}</pre> | no |
 | <a name="input_public_listeners"></a> [public\_listeners](#input\_public\_listeners) | Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port\_range for each entry. | <pre>list(object({<br/>    name       = string<br/>    protocol   = string<br/>    port       = optional(number)<br/>    port_range = optional(string)<br/>  }))</pre> | `[]` | no |
 | <a name="input_server_name"></a> [server\_name](#input\_server\_name) | Hostname / Terraform name of the VPS. | `string` | n/a | yes |

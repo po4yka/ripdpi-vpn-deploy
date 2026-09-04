@@ -15,11 +15,11 @@ variable "zone" {
 
 variable "plan" {
   type        = string
-  description = "UpCloud plan slug, e.g. 1xCPU-2GB or DEV-2xCPU-4GB."
+  description = "Exact UpCloud plan slug, e.g. STARTER-2xCPU-4GB or an existing supported legacy SKU."
 
   validation {
-    condition     = contains(["1xCPU-1GB", "1xCPU-2GB", "2xCPU-4GB", "DEV-2xCPU-4GB"], var.plan)
-    error_message = "plan must be one of: 1xCPU-1GB, 1xCPU-2GB, 2xCPU-4GB, DEV-2xCPU-4GB."
+    condition     = contains(["1xCPU-1GB", "1xCPU-2GB", "2xCPU-4GB", "DEV-2xCPU-4GB", "STARTER-2xCPU-4GB"], var.plan)
+    error_message = "plan must be one of: 1xCPU-1GB, 1xCPU-2GB, 2xCPU-4GB, DEV-2xCPU-4GB, STARTER-2xCPU-4GB."
   }
 }
 

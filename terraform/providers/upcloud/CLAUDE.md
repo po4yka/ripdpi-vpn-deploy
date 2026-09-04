@@ -35,8 +35,10 @@ return rules limited to the host ephemeral range.
 
 ## Pitfalls
 
-- **UpCloud plan names change** — the API accepts both legacy `1xCPU-1GB` and
-  new tier strings. Pin via the validation block; don't accept arbitrary input.
+- **UpCloud plan names change** — `STARTER-2xCPU-4GB` and the legacy
+  `DEV-2xCPU-4GB` are distinct SKUs with different bundled storage and prices.
+  Pin the authenticated catalog's exact SKU; never alias one to the other or
+  accept arbitrary input. Existing supported legacy inputs remain unchanged.
 - **Admin user is provisioned twice by design** — the server `login` block
   and cloud-init `users` both create `admin_user`. The login block delivers
   SSH access even when cloud-init fails; cloud-init owns sshd hardening.
