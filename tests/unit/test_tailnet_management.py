@@ -8,6 +8,7 @@ import json
 import multiprocessing
 import os
 from pathlib import Path
+import shutil
 import subprocess
 
 import pytest
@@ -197,6 +198,7 @@ class FakeRunner:
         *,
         drift: str | None = None,
         preference_mismatch: bool = False,
+        advertised_routes: object = "",
         tailscale_firewall: bool = False,
         stopped: bool = False,
         volatile_routes: bool = False,
@@ -207,6 +209,7 @@ class FakeRunner:
         self.root = root
         self.drift = drift
         self.preference_mismatch = preference_mismatch
+        self.advertised_routes = advertised_routes
         self.tailscale_firewall = tailscale_firewall
         self.stopped = stopped
         self.volatile_routes = volatile_routes
@@ -238,7 +241,7 @@ class FakeRunner:
                 "accept-dns": False,
                 "accept-routes": False,
                 "advertise-exit-node": False,
-                "advertise-routes": [],
+                "advertise-routes": self.advertised_routes,
                 "exit-node": "",
                 "netfilter-mode": "off",
                 "shields-up": False,
@@ -271,10 +274,14 @@ class FakeRunner:
             "dev",
             "tailscale0",
         ]:
-            addresses = [] if self.drift == "tailnet-interface" else [
-                {"local": "100.64.1.9"},
-                {"local": "fd7a:115c:a1e0::9"},
-            ]
+            addresses = (
+                []
+                if self.drift == "tailnet-interface"
+                else [
+                    {"local": "100.64.1.9"},
+                    {"local": "fd7a:115c:a1e0::9"},
+                ]
+            )
             stdout = json.dumps([{"ifname": "tailscale0", "addr_info": addresses}])
         elif argv[0].endswith("sshd") and command == ["-T"]:
             stdout = "port 22022\nhostkey /etc/ssh/ssh_host_ed25519_key\n"
@@ -349,10 +356,7 @@ class FakeRunner:
                 and self.recovery_recheck_status is not None
                 else self.recovery_status
             )
-            stdout = (
-                "Result=success\nExecMainCode=1\n"
-                f"ExecMainStatus={status}\n"
-            )
+            stdout = "Result=success\nExecMainCode=1\n" f"ExecMainStatus={status}\n"
         else:
             raise AssertionError(argv)
         return subprocess.CompletedProcess(argv, 0, stdout, "")
@@ -990,6 +994,84 @@ def test_existing_mismatched_tailnet_refuses_without_mutation(tmp_path) -> None:
     assert not any(call[1:2] in (["login"], ["logout"]) for call in runner.calls)
 
 
+@pytest.mark.parametrize("advertised_routes", [[], None, "10.0.0.0/8", "fd00::/64"])
+def test_existing_advertised_routes_require_exact_cli_empty_string(
+    tmp_path, advertised_routes
+) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner = FakeRunner(tmp_path, advertised_routes=advertised_routes)
+    runner.running = True
+
+    with pytest.raises(controller.Refusal, match="tailnet-preferences-mismatch"):
+        controller.configure(
+            paths=_paths(controller, tmp_path), runner=runner, auth_key=""
+        )
+
+    assert not any(call[1:2] in (["login"], ["logout"]) for call in runner.calls)
+    assert not (tmp_path / "transaction.json").exists()
+    assert not list(tmp_path.glob("vpn-tailnet-auth-*"))
+
+
+@pytest.mark.parametrize("advertised_routes", ["", [], None, "10.0.0.0/8", "fd00::/64"])
+def test_installed_ansible_checks_exact_cli_routes_before_later_tasks(
+    tmp_path, advertised_routes
+) -> None:
+    executable = shutil.which("ansible-playbook")
+    assert executable is not None, "installed Ansible is required"
+    tasks = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
+    guard = next(
+        task
+        for task in tasks
+        if task["name"]
+        == "Refuse unmanaged running Tailnet preferences before host writes"
+    )
+    preferences = dict(_load_controller().EXPECTED_PREFS)
+    preferences["advertise-routes"] = advertised_routes
+    playbook = tmp_path / "guard.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "hosts": "localhost",
+                    "gather_facts": False,
+                    "vars": {
+                        "_tailnet_existing_cli_candidates": ["/usr/bin/tailscale"],
+                        "_tailnet_existing_status": {
+                            "stdout": '{"BackendState":"Running"}'
+                        },
+                        "_tailnet_existing_preferences": {
+                            "stdout": json.dumps(preferences)
+                        },
+                    },
+                    "tasks": [
+                        guard,
+                        {"ansible.builtin.debug": {"msg": "GUARD_PASSED"}},
+                    ],
+                }
+            ]
+        )
+    )
+    result = subprocess.run(
+        [executable, "-i", "localhost,", "-c", "local", str(playbook)],
+        env={
+            "PATH": os.environ["PATH"],
+            "HOME": str(tmp_path),
+            "LANG": "en_US.UTF-8",
+            "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
+            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
+            "ANSIBLE_NOCOLOR": "1",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    allowed = advertised_routes == ""
+    assert (result.returncode == 0) is allowed, result.stdout + result.stderr
+    assert ("GUARD_PASSED" in result.stdout) is allowed
+
+
 def test_missing_tailscale0_addresses_rolls_back_enrollment(tmp_path) -> None:
     controller = _load_controller()
     (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
@@ -1094,7 +1176,7 @@ def test_role_preflights_existing_tailnet_before_every_host_write() -> None:
         == "Refuse unmanaged running Tailnet preferences before host writes"
     )
     assert (
-        "_tailnet_existing_prefs['advertise-routes'] == []"
+        "_tailnet_existing_prefs['advertise-routes'] == ''"
         in preferences_guard["ansible.builtin.assert"]["that"]
     )
     assert (
@@ -1165,6 +1247,6 @@ def test_molecule_prepares_sshd_policy_inspection_runtime() -> None:
     assert nft_fixture["owner"] == "root"
     assert nft_fixture["mode"] == "0755"
     assert (
-        '"advertise-routes":[]' in (ROLE / "molecule/default/prepare.yml").read_text()
+        '"advertise-routes":""' in (ROLE / "molecule/default/prepare.yml").read_text()
     )
     assert '"-j list chains"' in nft_fixture["content"]

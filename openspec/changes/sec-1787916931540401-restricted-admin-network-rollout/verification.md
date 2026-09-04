@@ -312,3 +312,20 @@ This correction is source readiness only. No package was installed and no node
 was enrolled by the diagnostic or local tests. The isolated staging rehearsal,
 fresh emergency-plus-Tailnet SSH proof, unchanged DNS/routes/listeners/VPN
 proof and serial P0→P1→P2 rollout remain open.
+
+## Staging CLI preference contract correction
+
+The isolated staging enrollment installed the pinned Tailscale 1.102.3 package
+but failed its managed enrollment step. The original helper error was hidden
+by `no_log`; its exact historical category is not claimed. Subsequent readback
+showed `NeedsLogin` and no remaining auth file. No ACL was changed.
+
+The pinned CLI returns an empty string for `advertise-routes`, whereas both
+managed preference guards incorrectly required an empty array. The regression
+first rejected the valid string and accepted the array; the corrected helper,
+role guard and Molecule CLI fixture use the exact string contract. The whole
+Tailnet module passes 57 cases, including installed-Ansible execution of the
+actual existing-node guard: empty string passes; array, null, nonempty IPv4
+and IPv6 routes refuse before the following task. This proves the local
+contract only; corrected staging enrollment and end-to-end direct/Tailnet SSH
+acceptance remain open.

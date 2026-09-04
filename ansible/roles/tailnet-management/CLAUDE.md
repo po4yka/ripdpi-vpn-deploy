@@ -38,6 +38,9 @@ commit.
 
 ## Pitfalls
 
+- `tailscale get --json all` represents no advertised routes as the empty
+  string, not an array. Both the existing-node guard and enrollment verifier
+  must reject arrays, null and nonempty route strings.
 - This role does not edit Tailnet ACLs. ACL review and application are a
   separate controller-side action requiring a fresh approved policy diff.
 - `netfilter-mode=off` means the firewall role must run first and retain the
