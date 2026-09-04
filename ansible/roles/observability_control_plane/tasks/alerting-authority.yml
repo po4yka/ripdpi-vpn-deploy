@@ -192,6 +192,32 @@
       ansible.builtin.fail:
         msg: Authority candidate check failed; no authority activation or snapshot rollback was performed.
       when: ansible_check_mode
+    - name: Capture categorical gateway service state before rollback
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - observability-silence-gateway.service
+          - --property=LoadState,ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,NRestarts
+      register: _observability_gateway_failure_state
+      changed_when: false
+      failed_when: false
+      no_log: true
+      when: not ansible_check_mode
+    - name: Capture allowlisted gateway startup refusal before rollback
+      ansible.builtin.command:
+        argv:
+          - journalctl
+          - --no-pager
+          - --output=cat
+          - --unit=observability-silence-gateway.service
+          - '--grep=^silence-gateway: [a-z-]{1,32}$'
+          - --lines=1
+      register: _observability_gateway_failure_reason
+      changed_when: false
+      failed_when: false
+      no_log: true
+      when: not ansible_check_mode
     - name: Restore the captured authority and service credential snapshots
       when: not ansible_check_mode
       block:
@@ -294,5 +320,8 @@
               before further publication.
     - name: Fail candidate after observed complete authority rollback
       ansible.builtin.fail:
-        msg: Candidate rejected; authority rollback completed and prior service snapshots verified.
+        msg: >-
+          Candidate rejected; authority rollback completed and prior service snapshots verified.
+          Gateway status={{ _observability_gateway_failure_state.stdout_lines | default([]) | join(',') }};
+          reason={{ _observability_gateway_failure_reason.stdout | default('unavailable') }}.
       when: not ansible_check_mode

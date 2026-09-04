@@ -9,8 +9,11 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import importlib.util
 import ipaddress
 import json
+import os
 from pathlib import Path
 import ssl
+import subprocess
+import sys
 import threading
 import time
 from urllib.error import HTTPError
@@ -207,6 +210,20 @@ def _silence():
         "ends_at": "2023-11-14T23:13:20Z",
         "matchers": {"environment": "staging", "node": "node-a"},
     }
+
+
+def test_startup_refusal_logs_only_the_fixed_gateway_category():
+    result = subprocess.run(
+        [sys.executable, str(ROLE / "files/observability-silence-gateway.py")],
+        env={**os.environ, "CREDENTIALS_DIRECTORY": ""},
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == "silence-gateway: credential-directory\n"
 
 
 def test_authenticated_finite_silence_reaches_backend_with_derived_owner(gateway):

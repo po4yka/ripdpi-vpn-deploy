@@ -518,6 +518,9 @@ def main():
 if __name__ == "__main__":
     try:
         main()
+    except GatewayError as exc:
+        print(f"silence-gateway: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
     except (OSError, ValueError, KeyError, TypeError):
         print("silence-gateway: runtime-refused", file=sys.stderr)
         raise SystemExit(1) from None

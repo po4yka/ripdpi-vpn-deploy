@@ -427,6 +427,30 @@ def test_alerting_tasks_validate_before_activation_and_rollback() -> None:
         in rescue_names
     )
     assert "Fail candidate after observed complete authority rollback" in rescue_names
+    status = next(
+        task
+        for task in activation["rescue"]
+        if task["name"] == "Capture categorical gateway service state before rollback"
+    )
+    assert status["ansible.builtin.command"]["argv"] == [
+        "systemctl",
+        "show",
+        "observability-silence-gateway.service",
+        "--property=LoadState,ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,NRestarts",
+    ]
+    reason = next(
+        task
+        for task in activation["rescue"]
+        if task["name"] == "Capture allowlisted gateway startup refusal before rollback"
+    )
+    assert reason["ansible.builtin.command"]["argv"][0] == "journalctl"
+    assert reason["ansible.builtin.command"]["argv"][4] == (
+        "--grep=^silence-gateway: [a-z-]{1,32}$"
+    )
+    assert status["no_log"] is True and reason["no_log"] is True
+    assert rescue_names.index(status["name"]) < rescue_names.index(
+        "Restore the captured authority and service credential snapshots"
+    )
     restart = next(
         task
         for task in activation["block"]
