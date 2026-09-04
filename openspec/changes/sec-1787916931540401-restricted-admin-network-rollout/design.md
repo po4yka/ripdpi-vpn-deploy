@@ -215,3 +215,28 @@ The controller covers direct site-playbook callers, stops serial rollout on
 failure, and avoids durable prepare in check mode. Source integration and tests
 still do not authorize migration on real nodes without staged disconnect,
 reboot, rollback and connection proof.
+
+## Disposable staging first onboarding
+
+A one-node `upcloud:ci-staging-*` deploy may use a typed staging intent rather
+than fabricate a final liveness identity before the executor has been installed.
+Only the tracked `device-full-staging` cohort is allowed. It retains the complete
+ordinary defaults, all four protocol families and the approved Tailnet sources;
+monitoring, watchdog and offsite backup remain separate acceptance work.
+
+Before readiness/site writes, the controller binds the intent to the selected
+alias, public address, deployable digest and UUID cleanup manifest/state. It
+snapshots explicit private SOPS/age/AWG capabilities, checks the executor
+manifest lifetime and compares canonical decrypted secrets with the deployment
+plaintext and enrolled private key. Ansible receives only paths in its existing
+no-log transaction input; check mode does not read onboarding credentials.
+
+After data-plane roles, but before any SSH prepare RPC, a fixed adapter publishes
+the actual binding epoch and invokes the canonical disposable installer. There
+is no arbitrary hook or public-schema placeholder epoch. A private persistent
+authority/config/manifest/binding/registry set survives the temporary deployment
+controller. Retry preserves the epoch and reuses only the exact installed
+source, binding and committed remote receipt; conflicts preserve evidence and
+refuse. Fresh evaluator proof is required before prepare, including unchanged
+SSH policy, and changed SSH retains the independent post-apply proof. The
+onboarding work consumes none of the SSH rollback lease.

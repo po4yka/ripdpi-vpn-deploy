@@ -443,7 +443,8 @@ def prepare_host_playbooks(root, directory, index, host, memberships, metadata, 
             for name in ("site", "source-drift")}
 
 
-def transaction_inputs(mode, hosts, identity, directory, root, environment):
+def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
+                       memberships=None, deployed_secrets=None):
     try:
         raw = read_input(os.environ["DEPLOY_SSH_CONTEXTS_FILE"], private=True, exact_mode=0o600)
         contexts = json.loads(raw, object_pairs_hook=unique_object)
@@ -485,8 +486,18 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment):
             if (not isinstance(target, dict)
                     or any(target.get(key) != value for key, value in expected_target.items())):
                 raise DeployError("promotion proof configs do not bind selected targets")
+            config = promotions[alias]
+            if config.get("kind") == "disposable-staging-intent":
+                from disposable_promotion import OnboardingError, prepare_intent
+                if len(hosts) != 1 or memberships is None or deployed_secrets is None:
+                    raise DeployError("onboarding requires one staging host")
+                try:
+                    config = prepare_intent(config, host, memberships[alias], directory,
+                                            deployed_secrets, environment)
+                except OnboardingError:
+                    raise DeployError("onboarding capability refused") from None
             promotion = private_file(directory / (alias + "-promotion-config.json"),
-                                     json.dumps(promotions[alias], sort_keys=True).encode())
+                                     json.dumps(config, sort_keys=True).encode())
             promotion_paths.append(promotion)
         result[alias] = {
             "ssh_transaction_controller_managed": True,
@@ -585,7 +596,8 @@ def controller(mode):
             identities.add(pair)
             commands.append(fleet_inspection.ssh_command(host, known_hosts))
         transactions = transaction_inputs("deploy" if mode == "deploy" else "check",
-                                          hosts, identity, directory, root, environment)
+                                          hosts, identity, directory, root, environment,
+                                          memberships=memberships, deployed_secrets=secret_data)
         tailnet_hosts = tailnet_enabled_for_selection(
             root, hosts, memberships, metadata, override_values)
         site_environment = tailnet_site_environment(

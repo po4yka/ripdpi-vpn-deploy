@@ -57,11 +57,89 @@ def test_live_fleet_profiles_enable_only_reviewed_tailnet_management_sources() -
         "vpn-p0-self-steal.yml",
         "vpn-p1-web.yml",
         "vpn-p2-udp.yml",
+        "vpn-device-full-staging.yml",
     }
     for path in sorted(group_vars.glob("vpn-*.yml")):
         document = yaml.safe_load(path.read_text()) or {}
         enabled = document.get("vpn", {}).get("enable_tailnet_management", False)
         assert enabled is (path.name in enabled_profiles), path.name
+
+
+def test_staging_profile_preserves_transports_and_limits_rehearsal_services(
+    tmp_path,
+) -> None:
+    group_vars = ROOT / "ansible" / "group_vars"
+    baseline = yaml.safe_load((group_vars / "all.yml").read_text())["vpn"]
+    fullstack = yaml.safe_load((group_vars / "vpn-fullstack.yml").read_text())["vpn"]
+    profile = group_vars / "vpn-device-full-staging.yml"
+    assert profile.is_file()
+    document = yaml.safe_load(profile.read_text())
+    assert set(document) == {"vpn"}
+    assert document["vpn"] == {
+        **baseline,
+        **fullstack,
+        "enable_tailnet_management": True,
+        "enable_monitoring": False,
+        "enable_watchdog": False,
+        "enable_backup": False,
+    }
+    executable = shutil.which("ansible-playbook")
+    assert executable is not None, "installed Ansible is required"
+    playbook = tmp_path / "profile.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "hosts": "localhost",
+                    "gather_facts": False,
+                    "tasks": [
+                        {
+                            "ansible.builtin.include_vars": {
+                                "file": str(path),
+                                "hash_behaviour": "replace",
+                            }
+                        }
+                        for path in (
+                            group_vars / "all.yml",
+                            group_vars / "vpn.yml",
+                            profile,
+                        )
+                    ]
+                    + [
+                        {
+                            "ansible.builtin.assert": {
+                                "that": [
+                                    "vpn == expected_vpn",
+                                    "tailnet_management.approved_sources == expected_sources",
+                                ]
+                            },
+                            "vars": {
+                                "expected_vpn": document["vpn"],
+                                "expected_sources": yaml.safe_load(
+                                    (group_vars / "all.yml").read_text()
+                                )["tailnet_management"]["approved_sources"],
+                            },
+                        }
+                    ],
+                }
+            ]
+        )
+    )
+    result = subprocess.run(
+        [executable, "-i", "localhost,", "-c", "local", str(playbook)],
+        env={
+            "PATH": os.environ["PATH"],
+            "HOME": str(tmp_path),
+            "LANG": "en_US.UTF-8",
+            "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
+            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_tailnet_operator_scripts_have_one_job_and_install_durable_recovery() -> None:

@@ -116,6 +116,14 @@ report provenance. De-onboarding requires the already-bound guarded provider-
 absence evidence before encrypted client removal, local assignment/config
 removal and exact profile deletion; it never invokes the persistent AWG role.
 
+**Disposable staging onboarding precedes SSH prepare** — a typed one-node
+intent is validated and its explicit SOPS/age/key capabilities snapshotted by
+the deploy controller before host writes. The baseline adapter publishes a
+persistent binding epoch after data-plane roles, invokes only the canonical
+installer and requires fresh evidence even for unchanged SSH policy. Exact
+completed binding/receipt reuse avoids generating a conflicting executor
+assignment on retry; unknown state preserves evidence and refuses.
+
 **SSH recovery installation has an early privacy guard** — the dedicated
 controller rejects enabled Ansible debug before inventory processing, forwards
 `ANSIBLE_DEBUG=false` to override config defaults, and validates exact aliases

@@ -83,7 +83,10 @@ endif
 ifneq ($(filter prepare-disposable-liveness,$(MAKECMDGOALS)),)
 _DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := EXECUTOR_PROFILE EXECUTOR_MANIFEST
 else ifneq ($(filter install-disposable-liveness-sentinel,$(MAKECMDGOALS)),)
-_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := LIVENESS_CONFIG SENTINEL CLIENT EXECUTOR_MANIFEST EXECUTOR_BINDING STAGING_CLEANUP_MANIFEST
+_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := LIVENESS_CONFIG SENTINEL CLIENT EXECUTOR_MANIFEST EXECUTOR_BINDING STAGING_CLEANUP_MANIFEST HOSTS COHORTS
+ifneq ($(strip $(value SOPS_FILES)),)
+$(error disposable install requires one shared staging secrets file)
+endif
 else ifneq ($(filter protocol-liveness-disposable,$(MAKECMDGOALS)),)
 _DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := LIVENESS_CONFIG EXECUTOR_MANIFEST EXECUTOR_BINDING
 else
@@ -94,7 +97,7 @@ _DISPOSABLE_LIVENESS_FORBIDDEN_COMMAND_VARIABLES := $(filter-out $(_DISPOSABLE_L
 ifneq ($(strip $(_DISPOSABLE_LIVENESS_FORBIDDEN_COMMAND_VARIABLES)),)
 $(error disposable liveness accepts only its documented command-line fields)
 endif
-_DISPOSABLE_LIVENESS_LITERAL_INPUTS := $(value EXECUTOR_PROFILE)$(value EXECUTOR_MANIFEST)$(value EXECUTOR_BINDING)$(value STAGING_CLEANUP_MANIFEST)$(value STAGING_POST_DESTROY_EVIDENCE)$(value DEONBOARD_EVIDENCE)$(value LIVENESS_CONFIG)$(value LIVENESS_SENTINEL_REGISTRY)$(value SENTINEL)$(value CLIENT)$(value SOPS_FILE)$(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)
+_DISPOSABLE_LIVENESS_LITERAL_INPUTS := $(value EXECUTOR_PROFILE)$(value EXECUTOR_MANIFEST)$(value EXECUTOR_BINDING)$(value STAGING_CLEANUP_MANIFEST)$(value STAGING_POST_DESTROY_EVIDENCE)$(value DEONBOARD_EVIDENCE)$(value LIVENESS_CONFIG)$(value LIVENESS_SENTINEL_REGISTRY)$(value SENTINEL)$(value CLIENT)$(value SOPS_FILE)$(value HOSTS)$(value COHORTS)$(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)
 override EXECUTOR_PROFILE := $(value EXECUTOR_PROFILE)
 override EXECUTOR_MANIFEST := $(value EXECUTOR_MANIFEST)
 override EXECUTOR_BINDING := $(value EXECUTOR_BINDING)
@@ -106,6 +109,8 @@ override LIVENESS_SENTINEL_REGISTRY := $(value LIVENESS_SENTINEL_REGISTRY)
 override SENTINEL := $(value SENTINEL)
 override CLIENT := $(value CLIENT)
 override SOPS_FILE := $(value SOPS_FILE)
+override HOSTS := $(value HOSTS)
+override COHORTS := $(value COHORTS)
 override ENV := $(value ENV)
 override PROVIDER := $(value PROVIDER)
 override HOME := $(value HOME)
@@ -1019,10 +1024,12 @@ prepare-disposable-liveness:
 	  --manifest "$${EXECUTOR_MANIFEST}" \
 	  --ttl-seconds 21600
 
+install-disposable-liveness-sentinel: export HOSTS := $(HOSTS)
+install-disposable-liveness-sentinel: export COHORTS := $(COHORTS)
 install-disposable-liveness-sentinel:
 	@test -n "$${LIVENESS_CONFIG}" -a -n "$${SENTINEL}" -a -n "$${CLIENT}" \
 	  -a -n "$${EXECUTOR_MANIFEST}" -a -n "$${EXECUTOR_BINDING}" \
-	  -a -n "$${STAGING_CLEANUP_MANIFEST}" || { echo "usage: make install-disposable-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=… EXECUTOR_MANIFEST=… EXECUTOR_BINDING=… STAGING_CLEANUP_MANIFEST=…"; exit 1; }
+	  -a -n "$${STAGING_CLEANUP_MANIFEST}" -a -n "$${HOSTS}" -a -n "$${COHORTS}" || { echo "usage: make install-disposable-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=… EXECUTOR_MANIFEST=… EXECUTOR_BINDING=… STAGING_CLEANUP_MANIFEST=… HOSTS=… COHORTS=…"; exit 1; }
 	@python3 ./scripts/install_liveness_sentinel.py \
 	  --config "$${LIVENESS_CONFIG}" \
 	  --sentinel "$${SENTINEL}" \

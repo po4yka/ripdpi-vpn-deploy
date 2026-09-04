@@ -26,7 +26,7 @@ MAX_CONFIG = 65536
 MAX_OUTPUT = 1024 * 1024
 EVALUATOR_TIMEOUT = 600
 PROOF_MAX_STALE_SECONDS = 300
-EXECUTOR_PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+EXECUTOR_PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 
 class ProofError(Exception):
@@ -131,10 +131,18 @@ def load_config(path: Path) -> tuple[dict, bytes]:
         config = json.loads(private_bytes(path), object_pairs_hook=unique_object)
     except (ValueError, TypeError, RecursionError, UnicodeError):
         raise ProofError("configuration-refused") from None
-    if not isinstance(config, dict) or set(config) != {
-        "schema_version", "liveness_config", "expected_sentinels", "target_identity"
-    } or config.get("schema_version") != 1:
+    required = {"schema_version", "liveness_config", "expected_sentinels", "target_identity"}
+    if (not isinstance(config, dict) or set(config) not in (required, required | {"executor"})
+            or config.get("schema_version") != 1):
         raise ProofError("configuration-refused")
+    if "executor" in config:
+        executor = config["executor"]
+        if (not isinstance(executor, dict) or set(executor) != {"manifest", "binding"}
+                or any(not isinstance(value, str) for value in executor.values())):
+            raise ProofError("configuration-refused")
+        config["_executor_files"] = {
+            name: private_bytes(Path(path)) for name, path in executor.items()
+        }
     expected = config["expected_sentinels"]
     if (not isinstance(expected, list) or not expected or expected != sorted(expected)
             or len(expected) != len(set(expected))
@@ -167,7 +175,7 @@ def load_config(path: Path) -> tuple[dict, bytes]:
     return config, liveness_bytes
 
 
-def evaluate(liveness: bytes) -> dict:
+def evaluate(liveness: bytes, *, executor: dict[str, bytes] | None = None) -> dict:
     with tempfile.TemporaryDirectory(prefix="vpn-promotion-proof-") as directory:
         root = Path(directory)
         root.chmod(0o700)
@@ -177,11 +185,21 @@ def evaluate(liveness: bytes) -> dict:
             handle.write(liveness)
             handle.flush()
             os.fsync(handle.fileno())
+        arguments = [sys.executable, str(EVALUATOR), "--config", str(config)]
+        if executor is not None:
+            for name in ("manifest", "binding"):
+                snapshot = root / (name + ".json")
+                fd = os.open(snapshot, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+                with os.fdopen(fd, "wb") as handle:
+                    handle.write(executor[name])
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                arguments += ["--executor-" + name, str(snapshot)]
         environment = {"PATH": EXECUTOR_PATH, "LANG": "C", "LC_ALL": "C"}
         if "HOME" in os.environ:
             environment["HOME"] = os.environ["HOME"]
         process = subprocess.Popen(
-            [sys.executable, str(EVALUATOR), "--config", str(config)],
+            arguments,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -259,7 +277,8 @@ def validate_evaluation(payload: object, config: dict) -> dict:
 def prove(path: Path) -> dict:
     config, liveness = load_config(path)
     try:
-        payload = evaluate(liveness)
+        payload = (evaluate(liveness, executor=config["_executor_files"])
+                   if "_executor_files" in config else evaluate(liveness))
     except ProofError:
         raise
     except (OSError, subprocess.SubprocessError):
@@ -274,7 +293,15 @@ def main() -> int:
     args = parser.parse_args()
     try:
         if args.validate_config:
-            load_config(args.config)
+            try:
+                document = json.loads(private_bytes(args.config), object_pairs_hook=unique_object)
+                if isinstance(document, dict) and document.get("kind") == "disposable-staging-intent":
+                    from disposable_promotion import validate_intent
+                    validate_intent(document)
+                else:
+                    load_config(args.config)
+            except (ValueError, TypeError, UnicodeError):
+                raise ProofError("configuration-refused") from None
             return 0
         receipt = prove(args.config)
     except ProofError as exc:
