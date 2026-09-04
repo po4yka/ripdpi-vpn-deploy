@@ -1,17 +1,40 @@
 # Real-VPS AWG/NAT evidence sentinel
 
-The recurring lane uses three independent machines: an owner-controlled TCP
-and UDP echo host, a VPS with a dedicated `awg-evidence0` interface, and a
-physical Linux sentinel. It validates direct controls, initial AWG traffic,
-service restart, peer reload, rejection of the old key, recovery with the new
-key, interface counters, and the named NAT counter.
+The recurring lane uses three persistent independent execution boundaries: an
+owner-controlled TCP and UDP echo host, a VPS with a dedicated `awg-evidence0`
+interface, and an off-fleet Linux sentinel on the external consumer uplink. It
+validates direct controls, initial AWG traffic, service restart, peer reload,
+rejection of the old key, recovery with the new key, interface counters, and
+the named NAT counter.
+
+The retired Raspberry Pi is not required. The approved replacement design for a
+one-shot acceptance run is a disposable systemd-capable Linux VM inside an
+isolated profile on the operator-owned Mac, with traffic leaving through the
+current consumer uplink. The protocol-liveness controller now provides the three
+required source gates: a fail-closed VM preflight for a non-default profile with
+no host mounts or published ports, a private executor binding cross-linked to
+the accepted report, and exact de-onboarding of the liveness configuration,
+local assignment and dedicated client identity after guarded provider absence.
+This source capability does not itself authorize a VM start, credential
+transfer, target creation, ACL change, or live probe; each external action still
+uses the action-time approval and evidence sequence in
+`docs/PROTOCOL-LIVENESS.md`. The disposable lane must not
+invoke `awg-evidence-provision` or this recurring role, which deliberately leaves
+persistent echo, peer, firewall and forced-command state installed.
+
+An approved run must record the exact
+VM/runtime identity privately and remove only its owned resources after evidence
+capture. It will prove the observed consumer-uplink path; it will not prove
+independent physical hardware, recurring uptime, filtered-path quorum, or
+Android behavior. A recurring lane still needs a separately approved persistent
+external Linux sentinel.
 
 This is an explicit standalone research-role exception to the repository's
 normal `group_vars/all.yml` toggle plus `site.yml` wiring. The role itself must
 not run as part of the ordinary family site. Its echo and server surfaces may
-use two different existing family VPS nodes, while the physical sentinel stays
-on a third machine. Their credentials, interfaces, services, and firewall
-tables remain separate trust boundaries.
+use two different existing family VPS nodes, while the sentinel stays in its
+off-fleet execution boundary. Their credentials, interfaces, services, and
+firewall tables remain separate trust boundaries.
 
 ## Private input contract
 
@@ -59,10 +82,13 @@ once on an operator-owned machine; never reuse a production peer.
 
 The supported local topology maps the echo to Linux/systemd/nft host
 `vpn-p1-scaleway-pl-waw-1` in `vpn-p1-web`, the dedicated AWG interface to
-`vpn-p2-vultr-ams` in `vpn-p2-udp`, and the sentinel to the Raspberry Pi. The
-inventory hostnames come from provider state; cohort groups come from the
-matching `COHORTS` entries during inventory rendering. A macOS machine is not
-a supported echo host.
+`vpn-p2-vultr-ams` in `vpn-p2-udp`, and the recurring sentinel to a separately
+approved persistent off-fleet Linux/systemd host. Do not render the disposable
+one-shot VM into `awg_evidence_sentinel` or run this provisioning play against
+it. The disposable executor stays outside this role and the ordinary inventory.
+The inventory hostnames
+come from provider state; cohort groups come from the matching `COHORTS` entries
+during inventory rendering. A macOS machine is not a supported echo host.
 The non-secret inventory has exactly one host in each group:
 `awg_evidence_echo`, `awg_evidence_server`, and `awg_evidence_sentinel`. Set the
 echo global address, sentinel global source address, P2 egress address, P2 SSH
@@ -157,6 +183,16 @@ place. `amneziawg-go`, `awg`, and
 while holding the recurring lane's lock, so a timer cannot observe a mixed
 toolchain.
 
+The non-secret placement vars must also bind the exact client under test with
+`real_vps_awg_nat_client_source_sha` (40 lowercase hex) and
+`real_vps_awg_nat_client_artifact_sha256` (64 lowercase hex). Sentinel
+provisioning validates both, rejects all-zero placeholders, and installs the
+root-owned mode-`0600` descriptor consumed by every scheduled run. The source
+value must equal the pinned `amneziawg-go` commit, and the artifact value must
+equal the installed immutable toolchain manifest. Each invocation resolves and
+hashes the executable it will launch, validates those bindings, and supplies
+both values to structural and PASS-manifest validation.
+
 ## Offline exact-source installation
 
 Build the source bundle from a clean committed checkout. The command prints a
@@ -184,6 +220,12 @@ make clean
 The target requires the rendered family inventory plus the three standalone
 evidence groups, runs the normal strict secret preflight, and loads private
 values only from `VPN_SECRETS_FILE`.
+
+This standalone research provisioning command is intentionally disruptive: it
+disables the recurring timer, waits for the shared lane lock, and validates the
+complete generation before enabling the timer again. It is not an ordinary
+idempotent `site.yml` converge. Any failed provisioning attempt leaves the timer
+disabled for operator recovery rather than resuming a mixed generation.
 
 The sentinel receives the bundle through Ansible, verifies its exact commit,
 and invokes `install-real-vps-awg-nat-local.sh`. Each scheduled run streams a

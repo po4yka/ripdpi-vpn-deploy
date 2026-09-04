@@ -1,0 +1,3 @@
+---
+- name: Select observability control-plane lifecycle
+  ansible.builtin.include_tasks: "{{ 'enable.yml' if observability_control_plane.enabled | bool else 'disable.yml' }}"

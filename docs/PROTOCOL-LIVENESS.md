@@ -141,6 +141,86 @@ with real local parsers before any remote writes. REALITY and Hysteria2 use
 sing-box; XHTTP uses Xray with verified TLS. No full secrets document, server
 private key or another client's credentials reach the sentinel.
 
+### Disposable consumer-uplink executor
+
+The retired Raspberry Pi is replaced for one-shot acceptance by an exact,
+non-default Colima profile. `prepare-disposable-liveness` starts it only through
+the machine build gate with `autoActivate=false`, no host mounts, no reachable VM
+address, no port forwarder, and no generated SSH config. The controller requires
+PID 1 to be systemd, passwordless local sudo, an unchanged Docker context, a
+private mode-0600 Colima config, and a root-owned executor UUID marker. It writes
+an owner-private manifest with a maximum six-hour lifetime; failure before that
+manifest exists stops and deletes the exact profile.
+
+Use the Makefile as the only operator surface for this lifecycle. Keep every
+path in an owner-private directory and pass the AWG key on standard input rather
+than as a Make or process argument:
+
+```sh
+make prepare-disposable-liveness \
+  EXECUTOR_PROFILE=vpn-liveness-<run-id> \
+  EXECUTOR_MANIFEST=<private-dir>/executor.json
+
+make install-disposable-liveness-sentinel \
+  HOSTS=upcloud:ci-staging-<run-id> COHORTS=device-full-staging \
+  LIVENESS_CONFIG=<private-dir>/liveness.yaml \
+  SENTINEL=<sentinel-id> CLIENT=<dedicated-client-id> \
+  EXECUTOR_MANIFEST=<private-dir>/executor.json \
+  EXECUTOR_BINDING=<private-dir>/binding.json \
+  STAGING_CLEANUP_MANIFEST=<private-dir>/staging-cleanup.json \
+  < <private-dir>/awg-private-key
+
+make protocol-liveness-disposable \
+  LIVENESS_CONFIG=<private-dir>/liveness.yaml \
+  EXECUTOR_MANIFEST=<private-dir>/executor.json \
+  EXECUTOR_BINDING=<private-dir>/binding.json
+
+make deonboard-disposable-liveness \
+  EXECUTOR_MANIFEST=<private-dir>/executor.json \
+  EXECUTOR_BINDING=<private-dir>/binding.json \
+  STAGING_POST_DESTROY_EVIDENCE=<private-dir>/staging-destroy.json \
+  LIVENESS_SENTINEL_REGISTRY=<private-dir>/sentinels.json \
+  LIVENESS_CONFIG=<private-dir>/liveness.yaml \
+  SOPS_FILE=<encrypted-secrets-file> \
+  DEONBOARD_EVIDENCE=<private-dir>/deonboard.json
+```
+
+Each invocation accepts exactly one lifecycle goal. The Make boundary rejects
+extra command-line variables, Make or shell expansion syntax, and quote-bearing
+values before recipes or eager source-identity expressions can evaluate them.
+Only the install goal accepts and exports the exact `HOSTS`/`COHORTS` mapping;
+the existing installer validates provider/environment pairs and cohort names.
+Supply its dedicated encrypted `SOPS_FILE` and age-key path through the scoped
+process environment. Do not use a production secrets file for staging.
+
+`install-disposable-liveness-sentinel` requires that executor manifest, the
+UUID-bound staging cleanup manifest, and a new private binding path. Preflight
+runs before AWG key input or decryption. The installer then binds the executor
+UUID and manifest digest to the exact liveness configuration, sentinel, dedicated
+client, generation, source/runner/public-profile provenance, target identity and
+cleanup-manifest digest before the first remote write. All install and report
+commands use `colima ssh --profile <exact-profile>`; the configured ordinary SSH
+alias is not an alternate route for this execution.
+
+`protocol-liveness-disposable` revalidates the live profile and private binding,
+then accepts the report only when its generation, provenance and target identity
+match that binding byte-for-byte. The public report schema stays unchanged; the
+redacted aggregate adds only executor kind, executor-identity digest and manifest
+digest from the private cross-link. This proves one consumer-uplink observation,
+not a second physical vantage, recurring uptime, filtered-path quorum, or Android
+behavior.
+
+Finally, `deonboard-disposable-liveness` requires the exact mode-0600 guarded
+destroy evidence whose manifest digest is already bound and whose provider result
+is `verified` (or a pre-expiry apply finalized after expiry), with server and root
+storage absent and no active owned resources. It removes the dedicated client
+from every Xray, Hysteria, AWG, Snell and client-registry collection in an
+encrypted sibling first, then removes the exact local assignment and dedicated
+single-sentinel config, and only then stops/deletes the root-marker-bound profile.
+Every step is retryable; partial or foreign identities refuse without deleting
+them. The private manifest, binding, provider-absence evidence and categorical
+de-onboarding receipt remain as the audit boundary.
+
 Installation stages a complete private generation, then starts a bounded detached
 systemd job. A shared lock serializes install and probe. Pending state snapshots
 the previous launcher, engine, sudo rule and current generation before activation.
@@ -225,6 +305,50 @@ transaction time; the controller must separately require the returned
 For a serial multi-node deployment, the controller owns one private `0600`
 exact-alias-to-singular-config mapping and invokes this singular proof for each
 selected node; the operator does not run a separate deployment command per node.
+
+### First onboarding during a disposable staging deployment
+
+For exactly one `upcloud:ci-staging-*` host in `device-full-staging`, the
+`DEPLOY_PROMOTION_CONFIG_FILE` alias mapping may contain a schema-1
+`kind: disposable-staging-intent` instead of an already-installed proof config.
+Its exact fields are `schema_version`, `kind`, `target_identity`, `host`,
+`cohort`, `client`, `liveness`, `inputs` and `outputs`. `target_identity` contains
+only the selected alias, public-address digest and deployable digest. `liveness`
+uses the normal schema-2 policy with exactly one sentinel, one policy requiring
+all four profiles, the matching UpCloud AWG target, and **no `applied_at`**.
+There is no caller-provided binding timestamp or command/hook field.
+
+`inputs` names absolute private paths for `sops_file`, `age_key_file`,
+`awg_key_file`, `executor_manifest` and `cleanup_manifest`. The deploy controller
+snapshots these before readiness or host writes, checks the exact cleanup
+UUID/state/hostname/address binding and executor manifest lifetime, decrypts
+through the canonical SOPS script, and compares that plaintext with the deployed
+secret document and the enrolled client's AWG key. No key bytes cross Ansible's
+stdin JSON, process arguments or environment. Check mode neither reads these
+capabilities nor performs onboarding.
+
+`outputs` names distinct absolute files in persistent owner-only directories:
+`authority`, `liveness_config`, `executor_manifest`, `registry`, `binding` and
+`promotion_config`. Do not place them under the deploy controller's temporary
+directory. Keep them with the UUID cleanup artifacts until guarded de-onboarding;
+the encrypted input file and age key remain private capabilities, not outputs.
+The fixed baseline adapter installs the disposable sentinel **after data-plane
+roles and before the first SSH prepare RPC**. It publishes the actual binding
+epoch, invokes the canonical installer with the scoped key on stdin, and requires
+a fresh four-profile proof even when SSH policy is unchanged. Changed SSH policy
+still requires a separate fresh post-apply proof before confirmation.
+
+A retry preserves the epoch and reuses only an exact committed assignment,
+executor binding and remote generation receipt; it does not install a new
+generation over a completed binding. Interrupted local publication can resume
+from the private authority document. Foreign/conflicting outputs, unknown remote
+state, a changed source/ciphertext or an expired cleanup/executor deadline refuse
+without overwriting evidence. A binding-only interruption that cannot be
+reconciled by the canonical installer's pending registry requires manual recovery;
+never delete the binding to make the next run proceed. A failure to remove
+controller-owned plaintext aborts categorically; a retained private file is a
+cleanup residual, not a claim of successful erasure. These controller tests do
+not replace actual disposable-executor, protocol or provider acceptance.
 
 For monitoring without a warm spare, run `make monitor-protocol-liveness LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml`. It stores the latest redacted evidence beneath `${XDG_STATE_HOME:-~/.local/state}/vpn-deploy/protocol-liveness`, sends ntfy alerts on unhealthy transitions and recovery using `watchdog_secrets`, retries failed delivery, and emits at most one reminder per day while the state is unchanged. Evaluator startup, timeout, and output failures become persisted `unknown` evidence and alerts instead of silently leaving stale state. Notification credentials normally come from an owner-controlled `0600` materialized secrets file; unattended runs materialize it through `decrypt-secrets.sh` and remove it immediately. Explicit `NTFY_TOPIC`/`NTFY_TOKEN` environment overrides are supported for isolated testing and operator-controlled one-shot runs.
 

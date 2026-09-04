@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: ops-1787496414433523-deploy-path-integrity
 created: 2026-08-23
-updated: 2026-08-27
+updated: 2026-09-01
 related_tasks: []
-status_detail: Inventory and tagged guards are integrated through PR113; bounded wait is draft PR114. Rotation/rollback fixes pass focused local checks in codex/high-xray-restore-points-20260828 but full and hosted gates remain pending. Other steps and coordinated staging/live acceptance remain open. Recovery restored management access; no rotation or rollback was run on hosts in this slice.
+status_detail: All fourteen source execution steps are integrated and covered by recorded local and hosted checks. The task remains blocked on the required consolidated dry-run and live deploy-path cycle: bootstrap wait, rotation, rollback rehearsal, and serial inventory acceptance. Source and CI evidence do not substitute for host proof.
 ---
 
 ## Goal

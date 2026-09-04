@@ -1,0 +1,13 @@
+---
+- name: Converge observability-agent disable contract
+  hosts: all
+  become: true
+  vars:
+    observability_agent:
+      enabled: false
+      config_dir: /etc/observability-agent
+      credential_dir: /etc/observability-agent/credentials
+      wal_dir: /var/lib/observability-agent/wal
+      install_root: /opt/observability-agent
+  roles:
+    - role: observability_agent

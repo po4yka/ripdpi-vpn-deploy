@@ -16,6 +16,7 @@ vpn:
   enable_monitoring: true
   enable_watchdog: true
   enable_backup: true
+  enable_tailnet_management: true
   enable_subscription_host: true
   enable_policy_ratelimit: false
   enable_cdn_front: false

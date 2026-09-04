@@ -205,6 +205,17 @@
       changed_when: false
       tags: [always]
 
+    - name: Guard — validate exact Tailnet management source addresses
+      ansible.builtin.command:
+        cmd: >-
+          python3 {{ playbook_dir }}/../../scripts/tailnet-validate-sources.py
+        stdin: "{{ tailnet_management.approved_sources | default([]) | to_json }}"
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      when: vpn.enable_tailnet_management | default(false)
+      tags: [always, tailnet-management]
+
     - name: Guard — block public listener collisions before convergence
       ansible.builtin.command:
         cmd: "python3 {{ playbook_dir }}/../../scripts/check-listener-collisions.py"
@@ -241,6 +252,10 @@
          (vpn.enable_cascade_ingress | default(false))) and
         not (vpn_subscription_only | default(false))
       tags: [geodata, xray]
+
+    - role: tailnet-management
+      when: vpn.enable_tailnet_management | default(false)
+      tags: [tailnet-management, security]
 
     # Verify the optional egress before any Xray render or handler flush can
     # activate routes that depend on it. The xray tag must retain this gate.
@@ -337,6 +352,10 @@
 
     - role: node_manifest
       tags: [manifest]
+
+    - role: observability_agent
+      when: observability_agent.enabled | default(false)
+      tags: [observability-agent, monitoring]
 
 - name: Publish and prove the SSH baseline after the VPN stack converges
   hosts: vpn

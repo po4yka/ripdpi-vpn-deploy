@@ -22,18 +22,24 @@ class PortSelector:
 
     @property
     def label(self) -> str:
-        value = str(self.start) if self.start == self.end else f"{self.start}-{self.end}"
+        value = (
+            str(self.start) if self.start == self.end else f"{self.start}-{self.end}"
+        )
         return f"{self.protocol} {value}"
 
 
 @dataclass(frozen=True)
 class FirewallAcceptRule:
+    position: int
+    verdict: str
     selector: PortSelector | None
     source_restricted: bool
     input_restricted: bool
     loopback_only: bool
     established_only: bool
     protocols: frozenset[str]
+    source_addresses: frozenset[str]
+    input_interfaces: frozenset[str]
     unknown_predicate: bool
 
 
@@ -41,7 +47,9 @@ def _selector(protocol: object, port: object, port_range: object) -> PortSelecto
     if protocol not in {"tcp", "udp"}:
         raise ValueError(f"unsupported protocol {protocol!r}")
     if (port is None) == (port_range is None):
-        raise ValueError(f"{protocol} listener must define exactly one port or port_range")
+        raise ValueError(
+            f"{protocol} listener must define exactly one port or port_range"
+        )
     if port is not None:
         if not isinstance(port, int) or isinstance(port, bool):
             raise ValueError(f"{protocol} port must be an integer")
@@ -87,16 +95,59 @@ def _decode_contract(encoded: str) -> dict[PortSelector, str]:
     return selectors
 
 
+def _decode_tailnet_sources(encoded: str) -> frozenset[str]:
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+        document = json.loads(raw)
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Tailnet sources must be valid base64-encoded JSON") from exc
+    if not isinstance(document, list):
+        raise ValueError("Tailnet sources must be a JSON array")
+    result: set[str] = set()
+    for value in document:
+        if not isinstance(value, str):
+            raise ValueError("Tailnet source must be an address string")
+        try:
+            address = ipaddress.ip_address(value)
+        except ValueError as exc:
+            raise ValueError("Tailnet source must be a canonical address") from exc
+        network = ipaddress.ip_network(
+            "100.64.0.0/10" if address.version == 4 else "fd7a:115c:a1e0::/48"
+        )
+        if str(address) != value or address not in network or value in result:
+            raise ValueError(
+                "Tailnet source must be a unique canonical Tailnet address"
+            )
+        result.add(value)
+    return frozenset(result)
+
+
 def _run(*command: str) -> str:
     result = subprocess.run(command, check=True, capture_output=True, text=True)
     return result.stdout
 
 
 def _right_values(value: object) -> set[object]:
-    if isinstance(value, dict) and isinstance(value.get("set"), list):
-        value = value["set"]
+    if isinstance(value, dict):
+        if isinstance(value.get("set"), list):
+            result: set[object] = set()
+            for item in value["set"]:
+                result.update(_right_values(item))
+            return result
+        prefix = value.get("prefix")
+        if isinstance(prefix, dict):
+            address = prefix.get("addr")
+            length = prefix.get("len")
+            if isinstance(address, str) and isinstance(length, int):
+                try:
+                    return {str(ipaddress.ip_network(f"{address}/{length}"))}
+                except ValueError:
+                    return set()
     if isinstance(value, list):
-        return {item for item in value if isinstance(item, (str, int))}
+        result = set()
+        for item in value:
+            result.update(_right_values(item))
+        return result
     return {value} if isinstance(value, (str, int)) else set()
 
 
@@ -120,13 +171,22 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
         raise ValueError("nftables JSON output is missing nftables array")
 
     accepted: list[FirewallAcceptRule] = []
-    for item in objects:
+    for position, item in enumerate(objects):
         rule = item.get("rule") if isinstance(item, dict) else None
         expressions = rule.get("expr") if isinstance(rule, dict) else None
-        if not isinstance(expressions, list) or not any(
-            isinstance(expr, dict) and "accept" in expr for expr in expressions
-        ):
+        if not isinstance(expressions, list):
             continue
+        verdicts = [
+            verdict
+            for verdict in ("accept", "drop")
+            if any(
+                isinstance(expression, dict) and verdict in expression
+                for expression in expressions
+            )
+        ]
+        if len(verdicts) != 1:
+            continue
+        verdict = verdicts[0]
 
         protocol: str | None = None
         selector_value: object | None = None
@@ -135,6 +195,8 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
         loopback_only = False
         established_only = False
         protocols: set[str] = set()
+        source_addresses: set[str] = set()
+        input_interfaces: set[str] = set()
         unknown_predicate = False
 
         for expression in expressions:
@@ -142,7 +204,7 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
                 unknown_predicate = True
                 continue
             if "match" not in expression:
-                if set(expression) - {"accept", "counter"}:
+                if set(expression) - {"accept", "drop", "counter"}:
                     unknown_predicate = True
                 continue
             match = expression["match"]
@@ -168,6 +230,11 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
                     selector_value = right
                 elif payload_protocol in {"ip", "ip6"} and field == "saddr":
                     source_restricted = True
+                    values = _right_values(right)
+                    if values and all(isinstance(value, str) for value in values):
+                        source_addresses.update(str(value) for value in values)
+                    else:
+                        unknown_predicate = True
                 elif payload_protocol == "ip" and field == "protocol":
                     protocols.update(str(value) for value in _right_values(right))
                 elif payload_protocol == "ip6" and field == "nexthdr":
@@ -179,6 +246,11 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
             elif isinstance(meta, dict) and meta.get("key") in {"iif", "iifname"}:
                 input_restricted = True
                 loopback_only = right in {"lo", 1}
+                values = _right_values(right)
+                if values and all(isinstance(value, str) for value in values):
+                    input_interfaces.update(str(value) for value in values)
+                elif not loopback_only:
+                    unknown_predicate = True
             elif isinstance(conntrack, dict) and conntrack.get("key") == "state":
                 states = {str(value) for value in _right_values(right)}
                 established_only = bool(states) and states <= {"established", "related"}
@@ -192,12 +264,16 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
             selector = _dport_selector(protocol, selector_value)
         accepted.append(
             FirewallAcceptRule(
+                position=position,
+                verdict=verdict,
                 selector=selector,
                 source_restricted=source_restricted,
                 input_restricted=input_restricted,
                 loopback_only=loopback_only,
                 established_only=established_only,
                 protocols=frozenset(protocols),
+                source_addresses=frozenset(source_addresses),
+                input_interfaces=frozenset(input_interfaces),
                 unknown_predicate=unknown_predicate,
             )
         )
@@ -241,7 +317,11 @@ def _public_socket_ports(ss_output: str) -> set[tuple[str, int]]:
         fields = line.split()
         if len(fields) < 5:
             continue
-        protocol = "tcp" if fields[0].startswith("tcp") else "udp" if fields[0].startswith("udp") else None
+        protocol = (
+            "tcp"
+            if fields[0].startswith("tcp")
+            else "udp" if fields[0].startswith("udp") else None
+        )
         parsed = _split_local_address(fields[4])
         if protocol is None or parsed is None:
             continue
@@ -256,12 +336,27 @@ def _violations(
     firewall: list[FirewallAcceptRule],
     sockets: set[tuple[str, int]],
     ssh_port: int,
+    tailnet_sources: frozenset[str],
 ) -> list[str]:
     violations: list[str] = []
     conforming: dict[PortSelector, int] = {selector: 0 for selector in expected}
     ssh = PortSelector("tcp", ssh_port, ssh_port)
+    tailnet_seen = {source: 0 for source in tailnet_sources}
+    tailnet_accept_positions: list[int] = []
+    tailnet_drop_positions: list[int] = []
+    public_ssh_positions: list[int] = []
     for rule in firewall:
         selector = rule.selector
+        if rule.verdict == "drop":
+            if (
+                selector == ssh
+                and not rule.source_restricted
+                and rule.input_restricted
+                and rule.input_interfaces == frozenset({"tailscale0"})
+                and not rule.unknown_predicate
+            ):
+                tailnet_drop_positions.append(rule.position)
+            continue
         if selector is None:
             if rule.loopback_only or rule.established_only:
                 continue
@@ -270,12 +365,26 @@ def _violations(
             violations.append("unexpected broad firewall accept")
             continue
         if selector == ssh:
+            tailnet_rule = (
+                rule.source_restricted
+                and rule.input_restricted
+                and rule.input_interfaces == frozenset({"tailscale0"})
+                and len(rule.source_addresses) == 1
+                and rule.source_addresses <= tailnet_sources
+                and not rule.unknown_predicate
+            )
+            if tailnet_rule:
+                tailnet_seen[next(iter(rule.source_addresses))] += 1
+                tailnet_accept_positions.append(rule.position)
+                continue
             if (
                 not rule.source_restricted
                 or rule.input_restricted
                 or rule.unknown_predicate
             ):
                 violations.append(f"unexpected unrestricted firewall {ssh.label}")
+            else:
+                public_ssh_positions.append(rule.position)
             continue
         if selector not in expected:
             violations.append(f"unexpected firewall {selector.label}")
@@ -297,6 +406,19 @@ def _violations(
             violations.append(f"missing firewall {selector.label}")
         elif count > expected_count:
             violations.append(f"duplicate firewall {selector.label}")
+    for _source, count in sorted(tailnet_seen.items()):
+        if count == 0:
+            violations.append("missing Tailnet SSH source rule")
+        elif count > 1:
+            violations.append("duplicate Tailnet SSH source rule")
+    if len(tailnet_drop_positions) != 1:
+        violations.append("invalid Tailnet SSH drop ordering")
+    else:
+        drop_position = tailnet_drop_positions[0]
+        if any(position >= drop_position for position in tailnet_accept_positions) or any(
+            position <= drop_position for position in public_ssh_positions
+        ):
+            violations.append("invalid Tailnet SSH drop ordering")
     for selector in sorted(expected):
         for port in range(selector.start, selector.end + 1):
             if (selector.protocol, port) in sockets:
@@ -316,9 +438,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--contract-b64", required=True)
     parser.add_argument("--ssh-port", required=True, type=_port)
+    parser.add_argument("--tailnet-sources-b64", required=True)
     args = parser.parse_args()
     try:
         expected = _decode_contract(args.contract_b64)
+        tailnet_sources = _decode_tailnet_sources(args.tailnet_sources_b64)
         firewall = _firewall_rules(
             _run("nft", "-j", "list", "chain", "inet", "filter", "input")
         )
@@ -327,7 +451,9 @@ def main() -> int:
         print(f"verify-public-listeners: {exc}", file=sys.stderr)
         return 2
 
-    violations = _violations(expected, firewall, sockets, args.ssh_port)
+    violations = _violations(
+        expected, firewall, sockets, args.ssh_port, tailnet_sources
+    )
     if violations:
         print("\n".join(violations))
         return 1

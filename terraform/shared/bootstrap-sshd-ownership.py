@@ -60,6 +60,7 @@ def _port(value: object) -> str:
 
 def _boot_content(port: str) -> bytes:
     return (
+        "# Managed by vpn bootstrap SSH ownership.\n"
         f"Port {port}\n"
         "PasswordAuthentication no\n"
         "KbdInteractiveAuthentication no\n"

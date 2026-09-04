@@ -1,9 +1,9 @@
 ---
 task_id: SEC-1787916931540401
 change: sec-1787916931540401-restricted-admin-network-rollout
-commit_sha: null
-local: required
-local_evidence: null
+commit_sha: e265689c83ca3ea16b8d84b19574000ea597bd3d
+local: passed
+local_evidence: the combined-tree make -j1 check passed with 2969 Python tests, one existing skip, 55 Bats tests, 184 Rust release tests and Clippy; isolated profile stopped and context and config were unchanged; log SHA256 0f31ada651e9c771887691eebb5701add05ac7894f25f0f37840385f38454fe5
 remote_ci: required
 remote_ci_evidence: null
 dry_run: required
@@ -20,19 +20,61 @@ artifact_evidence: source and installed configuration only; no release binary ar
 
 # Verification
 
+## Staging catalog alignment (2026-09-04)
+
+Authenticated read-only catalog preflight identified `STARTER-2xCPU-4GB`
+as the selected current 2-CPU/4-GiB/30-GiB plan. The older
+`DEV-2xCPU-4GB` is a distinct SKU, not an alias. The first native Terraform
+regression failed on the existing exact-plan allowlist; adding only the
+selected Starter SKU made all 36 UpCloud mock-provider tests pass. The tests
+also preserve the Developer SKU unchanged and reject an unreviewed Starter
+SKU. These results prove plan validation and forwarding only. No server was
+created, and staging recovery, account billing and serial live acceptance
+remain open under the existing approved budget and cleanup deadlines.
+
 ## Requirement evidence
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-ADMIN-ISOLATION | SEC-1787917605386179 | Opt-in management configuration tests and staged resolver, routing and host-key comparisons | pending |
-| REQ-ADMIN-SCOPE | SEC-1787917605386179 | Reviewed full ACL diff and positive/negative policy and connection tests | pending |
+| REQ-ADMIN-ISOLATION | SEC-1787917605386179 | Opt-in controller snapshots resolver bytes, canonical default routes and full `sshd -T`; unit and Molecule tests cover exact disabled DNS/routes/exit-node/Tailscale-SSH/netfilter preferences, rollback and unchanged repeat | local source and synthetic Molecule passed; real staged resolver, routing, host-key and dual-path SSH comparisons pending |
+| REQ-ADMIN-SCOPE | SEC-1787917605386179 | Exact canonical Tailnet source validation and guest nftables render on the existing effective SSH port; full Tailnet policy review plus approved/unapproved device connection tests | local guest-source policy passed; complete ACL diff and positive/negative live policy tests pending |
 | REQ-ADMIN-MIGRATION | SEC-1787917604306451 | 301 affected planner/core/adapter tests plus pinned Debian 13 and Ubuntu 24.04 packaged-main checks include real OpenSSH full effective parity, custom port, unknown-layout, bounded execution, read-set races and four-file crash boundaries | local source and packaged-main checks passed; complete local, hosted and staging pending |
-| REQ-ADMIN-ROLLBACK | SEC-1787917604868749 | Installation/upgrade and earlier fault tests passed; native apply reproduced a readiness contention refusal, so the activation step is reopened pending the corrected positive path | readiness correction and migration/confirm/timeout acceptance pending; guest firewall and real reboot remain pending |
-| REQ-ADMIN-PROMOTION | SEC-1787917605886845 | Exact-node selector, fresh strict SSH, required DNS/VPN probes and external provider rollback evidence | pending |
+| REQ-ADMIN-ROLLBACK | SEC-1787917604868749 | Durable fixed-path recovery, interruption reconciliation, exact guest nftables rollback and provider-side timed executor | source and isolated native checks passed; staging reboot pending |
+| REQ-ADMIN-PROMOTION | SEC-1787917605886845 | Exact-node selector, frozen strict transport, required DNS/VPN probes, private capability-bound provider rollback and promotion receipt | source passed; staging and live pending |
 | REQ-ADMIN-EVIDENCE | SEC-1788028226822310 | 135 focused tests cover exact authenticated API-principal binding before Terraform, fixed 36/44/47-hour deadlines, ancestor-symlink and inode-replacement refusal, manifest permission/identity/state-digest failures, backup/secondary-IP/additional-resource refusal in state and refreshed plan, exact-environment binding, pre-Terraform evidence reservation/release, private same-inode plan inspection/apply, exact-ID delete-only checks, inventory preservation, categorical audit ordering and bounded authenticated provider-absence outcomes | focused and full local source gates passed; exact hosted CI, staging deletion and account billing observation remain pending |
 | REQ-ADMIN-EVIDENCE | SEC-1787917606418274 | Real isolated staging login, forced disconnect, reboot recovery and repeat rollback before fleet promotion | pending |
 
 ## Gates and remaining boundaries
+
+The restricted Tailnet management source candidate passed 101 deploy-controller
+tests plus all 26 Tailnet role/controller tests. The tests cover environment-only one-node enrollment, Make command-line expansion
+refusal, forwarding the capability only to the selected `site.yml` process,
+read-only check mode, exact IPv4/IPv6 Tailnet sources and fail-closed preference,
+resolver, route, sshd-policy and nftables checks. Production-profile
+`ansible-lint`, Python compilation, yamllint and diff checks passed. One isolated
+Molecule cycle completed syntax, create, prepare, converge, idempotence, verify
+and destroy with a pinned x86-only Debian 13 image under the owned ARM profile.
+It verified the exact enrollment flags, absence of key material in recorded
+argv, removal of the mode-0600 auth file and an unchanged second converge. The
+wrapper recorded command and stop rc 0, stopped profile, unchanged global
+Docker context and unchanged profile configuration; the mode-0600 log digest
+was `1a4ffb05a09d7f25292df3f5f01076374fa71725811af7d8f1f2c45b0119be5d`.
+
+The exact source commit `d8388f4` then passed the canonical local
+`make -j1 check` gate: 2804 Python unit tests passed with one existing skip,
+all 55 Bats tests passed, all four Terraform mock-provider suites and 45
+Conftest policy tests passed, and all 184 Rust tests plus Clippy passed. The
+owned profile stopped successfully; the global Docker context and profile
+configuration hash were unchanged. The subsequent evidence-only descendant
+changes no production or test behavior; exact hosted CI remains required.
+
+This evidence is source/container proof only. The Molecule Tailscale and
+nftables commands are fixtures because nested x86 emulation cannot access a
+real Tailnet control plane or host netlink namespace. No Tailnet ACL, host,
+provider, DNS, route, SSH identity or VPN data-plane mutation occurred. Exact
+hosted CI, a reviewed complete ACL policy, approved and unapproved device tests,
+fresh direct and Tailnet SSH with the same pinned host identity, resolver/route
+comparisons, emergency access and VPN traffic remain required.
 
 The corrected UUID-bound staging cleanup source slice passed 135 focused Python
 tests and the complete local `make -j1 check` gate on 2026-08-30: 2365 unit
@@ -234,3 +276,74 @@ parser/bootstrap evidence only: cloud-final interruption/reboot, ordinary
 baseline transaction wiring, fresh TCP SSH and staging are not proved.
 
 Local source work is authorized. No local test implies staging or live acceptance. Provisioning waits for available approved executor, verified actual cost/credit, exact-resource cleanup and the approved deadline; policy application waits for a fresh separately approved ACL diff. The serial fleet step remains open until observed direct and Tailnet SSH and actual VPN probes all pass.
+
+## Final combined source boundary
+
+The combined candidate adds exact Tailnet source sets, a durable guest
+transaction, a timed provider rollback executor, strict frozen-transport
+promotion, and fail-closed boot recovery required before nftables. Executor
+reuse binds the provider target, exact Terraform bytes, and a domain-separated
+private capability fingerprint; raw provider credentials are never persisted.
+Focused network and AWG tests, production `ansible-lint`, Python compilation,
+and independent security rereview passed. This remains source evidence: real
+staging disconnect/reboot/rollback and serial fleet emergency and VPN-path
+checks are still mandatory.
+
+## Production foundation diagnosis and explicit cohort opt-in
+
+A user-authorized P0 provider restart returned the node to its public listener
+surface but did not restore the Tailnet peer. A second one-time recovery boot
+used a read-only root filesystem and temporary `init=/bin/bash` only to query
+unit enablement and exact fixed-path presence, then returned through
+`exec /sbin/init`. The pinned Tailscale binary, daemon unit, recovery unit and
+state were all absent. No journal, credential or state payload was read and no
+host file was changed. This categorically identifies a foundation that was
+never installed; it is not evidence of a failed `tailscaled` boot.
+
+The matching source boundary keeps the global opt-in false and enables
+Tailnet management only in the three profiles used by the current P0, P1 and
+P2 inventory. The shared approved-source list contains exactly one validated
+Tailnet IPv4 address and one validated Tailnet IPv6 address already represented
+by the saved ACL. A behavioral profile regression rejects any additional or
+missing enabled profile, and actual `ansible-inventory --host` evaluation for
+all three aliases must resolve the enabled role plus the same exact list.
+
+This correction is source readiness only. No package was installed and no node
+was enrolled by the diagnostic or local tests. The isolated staging rehearsal,
+fresh emergency-plus-Tailnet SSH proof, unchanged DNS/routes/listeners/VPN
+proof and serial P0→P1→P2 rollout remain open.
+
+## Staging CLI preference contract correction
+
+The isolated staging enrollment installed the pinned Tailscale 1.102.3 package
+but failed its managed enrollment step. The original helper error was hidden
+by `no_log`; its exact historical category is not claimed. Subsequent readback
+showed `NeedsLogin` and no remaining auth file. No ACL was changed.
+
+The pinned CLI returns an empty string for `advertise-routes`, whereas both
+managed preference guards incorrectly required an empty array. The regression
+first rejected the valid string and accepted the array; the corrected helper,
+role guard and Molecule CLI fixture use the exact string contract. The whole
+Tailnet module passes 57 cases, including installed-Ansible execution of the
+actual existing-node guard: empty string passes; array, null, nonempty IPv4
+and IPv6 routes refuse before the following task. This proves the local
+contract only; corrected staging enrollment and end-to-end direct/Tailnet SSH
+acceptance remain open.
+
+
+## Shadowed main root-login declaration
+
+The authorized staging ownership preview refused before activation because the
+main configuration contained a global `PermitRootLogin yes`, although the
+canonical early bootstrap fragment made effective root login `no`. Installation
+and recovery readiness passed; neither a transaction nor reboot was started.
+The planner now recognizes only this exact shadowed declaration after Include,
+requires root denial in real global and every supplied connection context, and
+retains the complete policy comparison at every publication boundary.
+Observed local gates: 332 tests across the ownership, transaction, migration
+and bundle modules passed; the narrow 12-case boundary passed after its initial
+reproduced refusal. Collection is 3430 total / 3377 unit; governance passed.
+Local regression coverage includes forward publication, reverse restoration,
+second-plan idempotence and refusal of unshadowed, duplicate, unexpected-value,
+missing/wrong bootstrap, Match and alternate-Include inputs. Local tests do not
+credit a new installed bundle or staging rollback; those gates remain open.

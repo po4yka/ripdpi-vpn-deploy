@@ -25,7 +25,7 @@ LockPersonality=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
 StateDirectory=vpn-backup
-StateDirectoryMode=0750
+StateDirectoryMode=0700
 # restic's default cache lives under $HOME, which ProtectHome hides;
 # pin it inside the state directory.
 Environment=RESTIC_CACHE_DIR=/var/lib/vpn-backup/cache

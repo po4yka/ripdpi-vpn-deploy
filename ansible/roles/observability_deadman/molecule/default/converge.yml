@@ -1,0 +1,6 @@
+---
+- name: Converge disabled dead-man lifecycle
+  hosts: all
+  become: true
+  roles:
+    - role: observability_deadman

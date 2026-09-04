@@ -1,0 +1,14 @@
+---
+- name: Converge Tailnet management role
+  hosts: all
+  become: true
+  vars:
+    vpn:
+      enable_tailnet_management: true
+    tailnet_management:
+      approved_sources:
+        - 100.64.10.20
+        - fd7a:115c:a1e0::1234
+    tailnet_management_install_package: false
+  roles:
+    - role: tailnet-management

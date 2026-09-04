@@ -1,0 +1,88 @@
+---
+- name: Verify disabled dead-man lifecycle and invalid contract refusal
+  hosts: all
+  become: true
+  vars:
+    invalid_deadman:
+      enabled: true
+      service_user: observability-deadman
+      service_group: observability-deadman
+      config_root: /etc/observability-deadman
+      state_dir: /var/lib/observability-deadman
+      pulse_credential_path: /etc/observability-deadman/credentials/pulse-token
+      telegram_credential_path: /etc/observability-deadman/credentials/telegram-bot-token
+      pulse_listen: 0.0.0.0:9444
+      status_listen: 127.0.0.1:19094
+      pulse_path: /v1/pulse
+      reverse_health_url: http://reverse.fixture.invalid:19445/v1/health
+      reverse_health_max_bytes: 1024
+      pulse_interval_seconds: 60
+      missed_pulse_limit: 5
+      max_future_seconds: 30
+      max_pulse_bytes: 4096
+      retry_attempts: 2
+      retry_timeout_seconds: 5
+      reminder_interval_seconds: 3600
+      canary_interval_seconds: 86400
+      telegram:
+        chat_id: "-100000000001"
+        topic_id: 7
+    fixture_deadman_secrets:
+      schema_version: 1
+      pulse_token: fixture-pulse-token-0123456789
+      telegram:
+        bot_token: fixture-telegram-token-012345678
+  tasks:
+    - name: Assert disabled lifecycle removed every owned surface
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/systemd/system/observability-deadman.service
+        - /etc/systemd/system/observability-deadman-tick.service
+        - /etc/systemd/system/observability-deadman-tick.timer
+        - /usr/local/libexec/observability-deadman.py
+        - /etc/observability-deadman
+        - /var/lib/observability-deadman
+      register: deadman_disabled_surfaces
+      failed_when: deadman_disabled_surfaces.stat.exists
+
+    - name: Require invalid contract to fail before mutation
+      block:
+        - name: Include invalid enabled dead-man role
+          ansible.builtin.include_role:
+            name: observability_deadman
+          vars:
+            observability_contract:
+              schema_version: 1
+              credential_mode: systemd
+            observability_deadman: "{{ invalid_deadman }}"
+            observability_deadman_secrets: "{{ fixture_deadman_secrets }}"
+
+        - name: Reject an invalid contract accepted by the role
+          ansible.builtin.fail:
+            msg: Dead-man role accepted a non-HTTPS reverse health URL.
+      rescue:
+        - name: Require the contract gate to reject before mutation
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Require complete bounded dead-man contract before host mutation'
+
+    - name: Assert invalid contract created no dead-man surfaces
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/systemd/system/observability-deadman.service
+        - /etc/systemd/system/observability-deadman-tick.service
+        - /etc/systemd/system/observability-deadman-tick.timer
+        - /usr/local/libexec/observability-deadman.py
+        - /etc/observability-deadman
+        - /var/lib/observability-deadman
+      register: deadman_invalid_surfaces
+      failed_when: deadman_invalid_surfaces.stat.exists
+
+    - name: Assert invalid contract created no dead-man account
+      ansible.builtin.command:
+        argv: [getent, passwd, observability-deadman]
+      register: deadman_invalid_account
+      changed_when: false
+      failed_when: deadman_invalid_account.rc == 0

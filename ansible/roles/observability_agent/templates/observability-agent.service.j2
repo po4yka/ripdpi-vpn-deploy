@@ -1,0 +1,44 @@
+[Unit]
+Description=RIPDPI bounded observability remote-write agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=observability-agent
+Group=observability-agent
+LoadCredential=client.crt:{{ observability_agent.credential_dir }}/generations/{{ _observability_agent_service_generation }}/client.crt
+LoadCredential=client.key:{{ observability_agent.credential_dir }}/generations/{{ _observability_agent_service_generation }}/client.key
+LoadCredential=receiver-ca.crt:{{ observability_agent.credential_dir }}/generations/{{ _observability_agent_service_generation }}/receiver-ca.crt
+LoadCredential=prometheus.yml:{{ observability_agent.credential_dir }}/generations/{{ _observability_agent_service_generation }}/prometheus.yml
+WorkingDirectory=%d
+ExecStart=/usr/local/bin/prometheus-observability-agent --agent --config.file=%d/prometheus.yml --web.listen-address={{ observability_agent.web_listen }} --storage.agent.path={{ observability_agent.wal_dir }} --storage.agent.wal-compression --storage.agent.retention.max-time={{ observability_agent.wal_max_time }}
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectClock=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+MemoryMax={{ observability_agent.memory_max }}
+TasksMax={{ observability_agent.tasks_max }}
+LimitNOFILE={{ observability_agent.nofile_limit }}
+ReadWritePaths={{ observability_agent.wal_dir }}
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -47,3 +47,21 @@ def test_macro_argument_does_not_hide_same_named_global_outside_macro() -> None:
     """
 
     assert checker.extract_toplevel_vars(template) == {"title"}
+
+
+def test_raw_blocks_do_not_contribute_literal_go_template_tokens() -> None:
+    for raw_block in (
+        '''{% raw %}
+        {{ define "literal" }}{{ if .Values.enabled }}{{ range .Items }}
+        {{ template "literal" . }}{{ else }}{{ end }}{{ end }}
+        {{ hidden_inside_raw }}
+        {% endraw %}''',
+        '''{%- raw -%}
+        {{ define "literal" }}{{ if .Values.enabled }}{{ range .Items }}
+        {{ template "literal" . }}{{ else }}{{ end }}{{ end }}
+        {{ hidden_inside_trimmed_raw }}
+        {%- endraw -%}''',
+    ):
+        template = f"{raw_block}\n{{{{ unknown_outside_raw }}}}"
+
+        assert checker.extract_toplevel_vars(template) == {"unknown_outside_raw"}

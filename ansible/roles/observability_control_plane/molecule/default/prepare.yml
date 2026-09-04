@@ -1,0 +1,84 @@
+---
+- name: Prepare disabled control-plane lifecycle fixture
+  hosts: all
+  become: true
+  tasks:
+    - name: Create textfile directory for adapter cleanup fixture
+      ansible.builtin.file:
+        path: /var/lib/node_exporter/textfile
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Create historical TSDB directory owned outside disable lifecycle
+      ansible.builtin.file:
+        path: /var/lib/observability-prometheus
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Seed historical TSDB marker owned outside disable lifecycle
+      ansible.builtin.copy:
+        dest: /var/lib/observability-prometheus/keep
+        content: retained
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Seed adapter owned output for convergent disable cleanup
+      ansible.builtin.copy:
+        dest: /var/lib/node_exporter/textfile/protocol-liveness.prom
+        content: stale
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Seed expected-target and control-plane owned outputs for disable cleanup
+      ansible.builtin.copy:
+        dest: "/var/lib/node_exporter/textfile/{{ item }}"
+        content: stale
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - observability-expected-targets.prom
+        - observability-control-plane.prom
+
+    - name: Seed valid inert expected-target owned units for disable cleanup
+      ansible.builtin.copy:
+        dest: "{{ item.path }}"
+        content: "{{ item.content }}"
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - path: /etc/systemd/system/observability-control-plane-adapter.service
+          content: |
+            [Unit]
+            Description=Inert expected-target fixture
+            [Service]
+            Type=oneshot
+            ExecStart=/bin/true
+        - path: /etc/systemd/system/observability-control-plane-adapter.timer
+          content: |
+            [Unit]
+            Description=Inert expected-target timer fixture
+            [Timer]
+            OnBootSec=1h
+            [Install]
+            WantedBy=timers.target
+
+    - name: Seed inert expected-target owned scripts for disable cleanup
+      ansible.builtin.copy:
+        dest: "{{ item }}"
+        content: |
+          #!/bin/sh
+          exit 0
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - /usr/local/libexec/observability-control-plane-adapter.py
+        - /usr/local/libexec/observability-expected-target-renderer.py

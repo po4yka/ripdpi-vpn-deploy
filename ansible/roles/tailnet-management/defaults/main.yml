@@ -1,0 +1,8 @@
+---
+# Ordinary OpenSSH over Tailscale. The role is inert unless
+# vpn.enable_tailnet_management is explicitly true.
+tailnet_management_install_package: true
+tailnet_management_package_version: "1.102.3"
+tailnet_management_repository_gpg_sha256: "3e03dacf222698c60b8e2f990b809ca1b3e104de127767864284e6c228f1fb39"
+tailnet_management:
+  approved_sources: []

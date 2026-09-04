@@ -6,6 +6,10 @@ import copy
 import importlib.util
 import json
 import os
+import re
+import shutil
+import shlex
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -180,6 +184,10 @@ def metadata() -> dict:
 
 def config() -> dict:
     return {
+        "clientIdentity": {
+            "ripdpiSourceSha": "d" * 40,
+            "artifactSha256": "e" * 64,
+        },
         "runnerIdSha256": "2" * 64,
         "serverControlHookSha256": "5" * 64,
         "serverDeployHookSha256": "6" * 64,
@@ -195,6 +203,7 @@ def write_private_runner_config(
     rotated_contents: str | None = None,
     omit_current: bool = False,
     omit_rotated: bool = False,
+    include_client_identity: bool = True,
 ) -> tuple[Path, Path]:
     current = tmp_path / "current.conf"
     rotated = tmp_path / "rotated.conf"
@@ -233,31 +242,190 @@ def write_private_runner_config(
             path.write_text(default_contents if contents is None else contents)
             path.chmod(mode)
     config_path = tmp_path / "runner.json"
-    config_path.write_text(
-        json.dumps(
-            {
-                "version": lane.CONFIG_VERSION,
-                "runnerId": "a" * 64,
-                "clientConfigPath": str(current),
-                "rotatedClientConfigPath": str(rotated),
-                "clientAddress": "10.66.66.2/32",
-                "tcpEchoAddress": "93.184.216.34",
-                "tcpEchoPort": 10001,
-                "udpEchoAddress": "151.101.1.69",
-                "udpEchoPort": 10002,
-                "serverControlHook": str(control),
-                "serverDeployHook": str(deploy),
-                "rotationHook": str(rotation),
-                "probeTimeoutSeconds": 5,
-                "recoveryTimeoutSeconds": 30,
-                "deployTimeoutSeconds": 600,
-            }
+    client_identity = tmp_path / lane.CLIENT_IDENTITY_DESCRIPTOR_NAME
+    if include_client_identity:
+        client_identity.write_text(
+            json.dumps(
+                {
+                    "version": "ripdpi_awg_client_identity_v1",
+                    "ripdpiSourceSha": "d" * 40,
+                    "artifactSha256": "e" * 64,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
         )
-    )
+        client_identity.chmod(0o600)
+    value = {
+        "version": lane.CONFIG_VERSION,
+        "runnerId": "a" * 64,
+        "clientConfigPath": str(current),
+        "rotatedClientConfigPath": str(rotated),
+        "clientAddress": "10.66.66.2/32",
+        "tcpEchoAddress": "93.184.216.34",
+        "tcpEchoPort": 10001,
+        "udpEchoAddress": "151.101.1.69",
+        "udpEchoPort": 10002,
+        "serverControlHook": str(control),
+        "serverDeployHook": str(deploy),
+        "rotationHook": str(rotation),
+        "probeTimeoutSeconds": 5,
+        "recoveryTimeoutSeconds": 30,
+        "deployTimeoutSeconds": 600,
+    }
+    config_path.write_text(json.dumps(value))
     config_path.chmod(0o600)
     source_archive = tmp_path / "source.tar"
     source_archive.write_bytes(b"source")
     return config_path, source_archive
+
+
+def test_private_client_identity_descriptor_is_required_and_bound(
+    tmp_path: Path,
+) -> None:
+    config_path, _source_archive = write_private_runner_config(
+        tmp_path, include_client_identity=True
+    )
+
+    loaded = lane.load_config(config_path)
+
+    assert loaded["clientIdentity"] == {
+        "ripdpiSourceSha": "d" * 40,
+        "artifactSha256": "e" * 64,
+    }
+
+
+def test_client_identity_descriptor_missing_or_symlink_fails_closed(
+    tmp_path: Path,
+) -> None:
+    config_path, source_archive = write_private_runner_config(
+        tmp_path, include_client_identity=False
+    )
+    manifest = run_with_private_config(
+        config_path, source_archive, tmp_path / "out.json"
+    )
+    assert manifest["classification"] == "INFRA_UNAVAILABLE"
+    assert manifest["reasonCode"] == "CONFIG_INVALID"
+    assert manifest["clientIdentity"] == {
+        "ripdpiSourceSha": "0" * 40,
+        "artifactSha256": "0" * 64,
+    }
+
+    symlink_root = tmp_path / "symlink"
+    symlink_root.mkdir()
+    config_path, _source_archive = write_private_runner_config(symlink_root)
+    descriptor = config_path.parent / lane.CLIENT_IDENTITY_DESCRIPTOR_NAME
+    replacement = config_path.parent / "replacement.json"
+    replacement.write_text(descriptor.read_text())
+    replacement.chmod(0o600)
+    descriptor.unlink()
+    descriptor.symlink_to(replacement)
+    with pytest.raises(ValueError, match="absolute regular file"):
+        lane.load_config(config_path)
+
+
+def test_client_identity_descriptor_rejects_replaced_valid_inode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    descriptor = tmp_path / lane.CLIENT_IDENTITY_DESCRIPTOR_NAME
+    original = {
+        "version": lane.CLIENT_IDENTITY_VERSION,
+        "ripdpiSourceSha": "d" * 40,
+        "artifactSha256": "e" * 64,
+    }
+    replacement = {
+        "version": lane.CLIENT_IDENTITY_VERSION,
+        "ripdpiSourceSha": "a" * 40,
+        "artifactSha256": "b" * 64,
+    }
+    descriptor.write_text(json.dumps(original))
+    descriptor.chmod(0o600)
+    swapped = tmp_path / "replacement.json"
+    swapped.write_text(json.dumps(replacement))
+    swapped.chmod(0o600)
+    real_open = os.open
+
+    def replacing_open(path, flags, mode=0o600):
+        if Path(path) == descriptor:
+            os.replace(swapped, descriptor)
+        return real_open(path, flags, mode)
+
+    monkeypatch.setattr(os, "open", replacing_open)
+    with pytest.raises(ValueError, match="descriptor is unavailable"):
+        lane.client_identity_descriptor(str(descriptor))
+
+
+def test_client_identity_requires_manifest_v3() -> None:
+    assert lane.MANIFEST_VERSION == "real_vps_awg_nat_evidence_v3"
+    manifest = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    lane.validate_manifest(manifest, expected_source_sha="1" * 40, now=2_000_000_000)
+    manifest["version"] = "real_vps_awg_nat_evidence_v2"
+    with pytest.raises(ValueError, match="unsupported manifest version"):
+        lane.validate_manifest(
+            manifest, expected_source_sha="1" * 40, now=2_000_000_000
+        )
+
+
+def test_loaded_client_identity_is_retained_in_preflight_failure(
+    tmp_path: Path,
+) -> None:
+    config_path, source_archive = write_private_runner_config(tmp_path)
+    manifest = run_with_private_config(
+        config_path, source_archive, tmp_path / "out.json"
+    )
+
+    assert manifest["classification"] == "INFRA_UNAVAILABLE"
+    assert manifest["reasonCode"] == "PREREQUISITE_MISSING"
+    assert manifest["clientIdentity"] == {
+        "ripdpiSourceSha": "d" * 40,
+        "artifactSha256": "e" * 64,
+    }
+
+
+def test_loaded_client_identity_is_retained_when_executor_start_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path, source_archive = write_private_runner_config(tmp_path)
+    loaded = lane.load_config(config_path)
+    monkeypatch.setattr(lane, "load_config", lambda _path: loaded)
+    monkeypatch.setattr(lane.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(lane.shutil, "which", lambda _command: "/usr/bin/tool")
+
+    class FailedExecutor:
+        def __init__(self, _config: dict) -> None:
+            raise OSError("fixture executor failure")
+
+    monkeypatch.setattr(lane, "SystemExecutor", FailedExecutor)
+    manifest = run_with_private_config(
+        config_path, source_archive, tmp_path / "runner-exception.json"
+    )
+
+    assert manifest["reasonCode"] == "RUNNER_EXCEPTION"
+    assert manifest["clientIdentity"] == {
+        "ripdpiSourceSha": "d" * 40,
+        "artifactSha256": "e" * 64,
+    }
+
+
+def test_client_identity_descriptor_rejects_placeholder_digests(tmp_path: Path) -> None:
+    config_path, _source_archive = write_private_runner_config(tmp_path)
+    descriptor = config_path.parent / lane.CLIENT_IDENTITY_DESCRIPTOR_NAME
+    descriptor.write_text(
+        json.dumps(
+            {
+                "version": lane.CLIENT_IDENTITY_VERSION,
+                "ripdpiSourceSha": "0" * 40,
+                "artifactSha256": "e" * 64,
+            }
+        )
+    )
+    descriptor.chmod(0o600)
+
+    with pytest.raises(ValueError, match="must bind a real artifact"):
+        lane.load_config(config_path)
 
 
 def run_with_private_config(
@@ -370,6 +538,28 @@ def test_stale_manifest_is_rejected() -> None:
         assert "stale" in str(exc)
     else:
         raise AssertionError("stale manifest was accepted")
+
+
+def test_manifest_client_identity_is_bound_to_expected_artifact() -> None:
+    manifest = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    lane.validate_manifest(
+        manifest,
+        expected_source_sha="1" * 40,
+        expected_client_source_sha="d" * 40,
+        expected_client_artifact_sha256="e" * 64,
+        now=2_000_000_000,
+    )
+    manifest["clientIdentity"]["artifactSha256"] = "f" * 64
+    with pytest.raises(ValueError, match="client artifact SHA mismatch"):
+        lane.validate_manifest(
+            manifest,
+            expected_source_sha="1" * 40,
+            expected_client_source_sha="d" * 40,
+            expected_client_artifact_sha256="e" * 64,
+            now=2_000_000_000,
+        )
 
 
 def test_optional_workflow_is_manual_fail_closed_and_uploads_evidence() -> None:
@@ -497,7 +687,269 @@ def test_local_launcher_archives_exact_sha_and_validates_before_publish() -> Non
     assert "--allow-non-pass" in launcher
     assert 'quarantine="$quarantine_dir/invalid-' in launcher
     assert "run_status == 0 && validate_status == 0" in launcher
+    assert "validate-client-runtime" in launcher
+    assert 'PATH="$(dirname "$client_binary"):$PATH"' in launcher
+    assert launcher.count("--expected-client-source-sha") == 2
+    assert launcher.count("--expected-client-artifact-sha256") == 2
     assert "GITHUB_" not in launcher
+
+
+def test_runtime_client_identity_binds_actual_toolchain_binary(tmp_path: Path) -> None:
+    toolchain = tmp_path / "toolchains" / ("a" * 64)
+    binary_dir = toolchain / "bin"
+    binary_dir.mkdir(parents=True, mode=0o700)
+    binary = binary_dir / "amneziawg-go"
+    binary.write_bytes(b"exact-awg-runtime")
+    binary.chmod(0o700)
+    artifact_sha = lane.sha256_bytes(binary.read_bytes())
+    source_sha = "b" * 40
+    manifest = {
+        "schemaVersion": 1,
+        "inputs": {
+            "goBundleSha256": "c" * 64,
+            "goCommit": source_sha,
+            "toolsBundleSha256": "d" * 64,
+            "toolsCommit": "e" * 40,
+            "vendorSha256": "f" * 64,
+        },
+        "binaries": {
+            "amneziawg-go": artifact_sha,
+            "awg": "1" * 64,
+            "awg-quick": "2" * 64,
+        },
+        "treeSha256": "3" * 64,
+    }
+    manifest_path = toolchain / "manifest.json"
+    manifest_path.write_bytes(lane.canonical_json_bytes(manifest))
+    manifest_path.chmod(0o600)
+    identity_path = tmp_path / "client-identity.json"
+    identity_path.write_bytes(
+        lane.canonical_json_bytes(
+            {
+                "artifactSha256": artifact_sha,
+                "ripdpiSourceSha": source_sha,
+                "version": lane.CLIENT_IDENTITY_VERSION,
+            }
+        )
+    )
+    identity_path.chmod(0o600)
+
+    assert lane.validate_runtime_client_identity(identity_path, binary) == {
+        "artifactSha256": artifact_sha,
+        "ripdpiSourceSha": source_sha,
+    }
+
+    identity_path.write_bytes(
+        lane.canonical_json_bytes(
+            {
+                "artifactSha256": "4" * 64,
+                "ripdpiSourceSha": source_sha,
+                "version": lane.CLIENT_IDENTITY_VERSION,
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="artifact identity mismatch"):
+        lane.validate_runtime_client_identity(identity_path, binary)
+
+    identity_path.write_bytes(
+        lane.canonical_json_bytes(
+            {
+                "artifactSha256": artifact_sha,
+                "ripdpiSourceSha": "5" * 40,
+                "version": lane.CLIENT_IDENTITY_VERSION,
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="source identity mismatch"):
+        lane.validate_runtime_client_identity(identity_path, binary)
+
+    identity_path.write_bytes(
+        lane.canonical_json_bytes(
+            {
+                "artifactSha256": artifact_sha,
+                "ripdpiSourceSha": source_sha,
+                "version": lane.CLIENT_IDENTITY_VERSION,
+            }
+        )
+    )
+    binary.write_bytes(b"replaced-runtime")
+    with pytest.raises(ValueError, match="artifact digest mismatch"):
+        lane.validate_runtime_client_identity(identity_path, binary)
+
+
+def test_preflight_failures_are_redacted_nonpass_evidence_without_latest_mutation() -> (
+    None
+):
+    manifest = lane.failure_manifest(metadata(), "4" * 64, "PREFLIGHT_CONFIG_INVALID")
+    lane.validate_manifest(
+        manifest,
+        expected_source_sha="1" * 40,
+        now=manifest["generatedAtEpoch"],
+    )
+
+    launcher = (REPO_ROOT / "scripts" / "run-real-vps-awg-nat-local.sh").read_text()
+    assert "emit_preflight_failure" in launcher
+    assert "preflight_fail()" in launcher
+    for category in (
+        "PREFLIGHT_TOOL_MISSING",
+        "PREFLIGHT_LOCK_BUSY",
+        "PREFLIGHT_CONFIG_INVALID",
+        "PREFLIGHT_RUNNER_INVALID",
+        "PREFLIGHT_SOURCE_UNSAFE",
+        "PREFLIGHT_SOURCE_MISMATCH",
+    ):
+        assert category in launcher
+    assert launcher.index('rm -f -- "$evidence_dir/latest.json"') > launcher.index(
+        'git -C "$REPO_ROOT" diff-index --quiet HEAD'
+    )
+    assert "preflight_fail PREFLIGHT_LOCK_BUSY" in launcher
+    assert "preflight_fail PREFLIGHT_CONFIG_INVALID" in launcher
+    assert "preflight_fail PREFLIGHT_RUNNER_INVALID" in launcher
+    assert "preflight_fail PREFLIGHT_SOURCE_UNSAFE" in launcher
+
+
+def test_missing_readlink_emits_preflight_evidence(tmp_path: Path) -> None:
+    launcher = REPO_ROOT / "scripts/run-real-vps-awg-nat-local.sh"
+    tool_dir = tmp_path / "tools"
+    tool_dir.mkdir()
+    for name in (
+        "awk",
+        "chmod",
+        "cmp",
+        "date",
+        "find",
+        "flock",
+        "git",
+        "install",
+        "mkdir",
+        "mv",
+        "python3",
+        "rm",
+        "sha256sum",
+        "stat",
+    ):
+        resolved = shutil.which(name)
+        if resolved is None:
+            assert name == "flock"
+            (tool_dir / name).write_text("#!/bin/sh\nexit 0\n")
+            (tool_dir / name).chmod(0o755)
+        else:
+            (tool_dir / name).symlink_to(resolved)
+    state = tmp_path / "state"
+    runtime = tmp_path / "runtime"
+    state.mkdir()
+    runtime.mkdir()
+
+    completed = subprocess.run(
+        ["/bin/bash", str(launcher)],
+        env={
+            "PATH": str(tool_dir),
+            "RUNTIME_DIRECTORY": str(runtime),
+            "STATE_DIRECTORY": str(state),
+        },
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+    assert completed.returncode == 75
+    records = list((state / "evidence").glob("preflight-*.json"))
+    assert len(records) == 1
+    assert json.loads(records[0].read_text())["reasonCode"] == "PREFLIGHT_TOOL_MISSING"
+
+
+def test_unresolvable_repo_root_emits_source_unsafe_evidence(tmp_path: Path) -> None:
+    launcher = REPO_ROOT / "scripts/run-real-vps-awg-nat-local.sh"
+    tool_dir = tmp_path / "tools"
+    tool_dir.mkdir()
+    for name in (
+        "awk",
+        "chmod",
+        "cmp",
+        "date",
+        "find",
+        "flock",
+        "git",
+        "install",
+        "mkdir",
+        "mv",
+        "python3",
+        "rm",
+        "sha256sum",
+        "stat",
+    ):
+        resolved = shutil.which(name)
+        if resolved is None:
+            assert name == "flock"
+            (tool_dir / name).write_text("#!/bin/sh\nexit 0\n")
+            (tool_dir / name).chmod(0o755)
+        else:
+            (tool_dir / name).symlink_to(resolved)
+    fake_readlink = tool_dir / "readlink"
+    fake_readlink.write_text("#!/bin/sh\nexit 1\n")
+    fake_readlink.chmod(0o755)
+    state = tmp_path / "state"
+    runtime = tmp_path / "runtime"
+    state.mkdir()
+    runtime.mkdir()
+
+    completed = subprocess.run(
+        ["/bin/bash", str(launcher)],
+        env={
+            "PATH": str(tool_dir),
+            "RUNTIME_DIRECTORY": str(runtime),
+            "STATE_DIRECTORY": str(state),
+        },
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+    assert completed.returncode == 75
+    records = list((state / "evidence").glob("preflight-*.json"))
+    assert len(records) == 1
+    assert json.loads(records[0].read_text())["reasonCode"] == "PREFLIGHT_SOURCE_UNSAFE"
+
+
+def test_preflight_emitter_writes_canonical_redacted_manifest_without_latest_update(
+    tmp_path: Path,
+) -> None:
+    launcher = (REPO_ROOT / "scripts" / "run-real-vps-awg-nat-local.sh").read_text()
+    match = re.search(
+        r"emit_preflight_failure\(\) \{.*?\n\}\n\npreflight_fail", launcher, re.DOTALL
+    )
+    assert match is not None
+    emitter = match.group(0).removesuffix("\n\npreflight_fail")
+    evidence_dir = tmp_path / "evidence"
+    harness = f"""
+set -euo pipefail
+evidence_dir={shlex.quote(str(evidence_dir))}
+quarantine_dir={shlex.quote(str(tmp_path / "quarantine"))}
+preflight_epoch=2000000000
+mkdir -p "$evidence_dir"
+printf prior > "$evidence_dir/latest.json"
+{emitter}
+emit_preflight_failure PREFLIGHT_CONFIG_INVALID
+"""
+    completed = subprocess.run(["bash", "-c", harness], capture_output=True, text=True)
+    assert completed.returncode == 0, completed.stderr
+    assert (evidence_dir / "latest.json").read_text() == "prior"
+    records = list(evidence_dir.glob("preflight-*.json"))
+    assert len(records) == 1
+    raw = records[0].read_bytes()
+    manifest = json.loads(raw)
+    assert raw == lane.canonical_json_bytes(manifest)
+    lane.validate_manifest(
+        manifest,
+        expected_source_sha="0" * 40,
+        now=2_000_000_000,
+    )
+    assert manifest["classification"] == "INFRA_UNAVAILABLE"
+    assert manifest["reasonCode"] == "PREFLIGHT_CONFIG_INVALID"
+    assert manifest["clientIdentity"] == {
+        "ripdpiSourceSha": "0" * 40,
+        "artifactSha256": "0" * 64,
+    }
 
 
 def test_local_installer_pins_root_owned_source_and_fixed_units() -> None:

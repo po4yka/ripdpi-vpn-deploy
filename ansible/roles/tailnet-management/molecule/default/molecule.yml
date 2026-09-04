@@ -1,0 +1,44 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../../requirements.yml
+    role-file: ../../../requirements.yml
+
+driver:
+  name: docker
+
+platforms:
+  - name: vpn-tailnet-management-debian13
+    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13@sha256:ad92a972bfd235e4577bf6b56e9ab82d5ab259d6a3e627f6ebfab7c2b2bfeb7e
+    platform: linux/amd64
+    pre_build_image: true
+    privileged: true
+    command: /lib/systemd/systemd
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroupns_mode: host
+
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: ../../..
+    TAILSCALE_AUTH_KEY: tskey-auth-molecule-fixture
+  inventory:
+    host_vars:
+      vpn-tailnet-management-debian13:
+        ansible_user: root
+
+verifier:
+  name: ansible
+
+scenario:
+  test_sequence:
+    - dependency
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy

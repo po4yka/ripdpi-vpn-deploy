@@ -1,0 +1,547 @@
+---
+- name: Verify real observability agent
+  hosts: all
+  become: true
+  tasks:
+    - name: Wait for the loopback agent readiness endpoint
+      ansible.builtin.uri:
+        url: http://127.0.0.1:19090/-/ready
+        status_code: 200
+      register: observability_agent_ready
+      retries: 30
+      delay: 1
+      until: observability_agent_ready.status == 200
+
+    - name: Wait for authenticated remote-write arrival
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+            import json
+            import pathlib
+            import re
+            import sys
+            import urllib.request
+
+            p = pathlib.Path('/var/lib/observability-fixture/receiver.log')
+            rows = [json.loads(x) for x in p.read_text().splitlines()] if p.exists() else []
+            events_path = pathlib.Path(
+                '/var/lib/observability-fixture/receiver-events.log'
+            )
+            events = [
+                json.loads(x).get('phase')
+                for x in events_path.read_text().splitlines()
+            ] if events_path.exists() else []
+            arrived = any(
+                row == {
+                    'path': '/remote-write/v1/nodes/node-fixture',
+                    'cn': 'node-fixture',
+                }
+                for row in rows
+            )
+            metrics = urllib.request.urlopen(
+                'http://127.0.0.1:19090/metrics', timeout=2
+            ).read().decode()
+
+            def maximum(name):
+                values = [
+                    float(match.group(1))
+                    for match in re.finditer(
+                        r'^' + re.escape(name) + r'(?:[{][^}]*[}])? ([0-9.eE+-]+)$',
+                        metrics,
+                        re.M,
+                    )
+                ]
+                return max(values) if values else None
+
+            print(json.dumps({
+                'arrived': arrived,
+                'received': len(rows),
+                'failed': maximum('prometheus_remote_storage_samples_failed_total'),
+                'retried': maximum('prometheus_remote_storage_samples_retried_total'),
+                'pending': maximum('prometheus_remote_storage_samples_pending'),
+                'highest': maximum('prometheus_remote_storage_queue_highest_timestamp_seconds'),
+                'highest_sent': maximum('prometheus_remote_storage_queue_highest_sent_timestamp_seconds'),
+                'request_headers': events.count('headers'),
+                'length_rejected': events.count('length_rejected'),
+                'short_body': events.count('short_body'),
+                'handler_error': events.count('handler_error'),
+                'tls_handshake_rejected': events.count('tls_handshake_rejected'),
+                'tls_unknown_ca': events.count('tls_handshake_unknown_ca'),
+                'tls_missing_client_cert': events.count(
+                    'tls_handshake_missing_client_cert'
+                ),
+                'tls_bad_cert': events.count('tls_handshake_bad_cert'),
+                'tls_other': events.count('tls_handshake_other'),
+            }, sort_keys=True))
+            sys.exit(0 if arrived else 1)
+      register: observability_remote_write_arrival
+      changed_when: false
+      failed_when: false
+      retries: 30
+      delay: 1
+      until: observability_remote_write_arrival.rc == 0
+
+    - name: Classify bounded remote-write transport failure
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+            import json
+            import re
+            import subprocess
+
+            result = subprocess.run(
+                [
+                    '/usr/bin/journalctl',
+                    '--unit=observability-agent.service',
+                    '--no-pager',
+                    '--output=cat',
+                    '--lines=80',
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            journal = result.stdout.lower()
+            categories = {
+                'tls': bool(re.search(r'certificate|x509|tls|handshake', journal)),
+                'sender_unknown_authority': bool(
+                    re.search(r'unknown authority|unknown ca', journal)
+                ),
+                'sender_certificate_required': bool(
+                    re.search(r'certificate required|did not return a certificate', journal)
+                ),
+                'sender_bad_certificate': bool(
+                    re.search(r'bad certificate|certificate expired', journal)
+                ),
+                'sender_server_verify': bool(
+                    re.search(r'failed to verify certificate|hostname', journal)
+                ),
+                'sender_path_signal': bool(
+                    re.search(r'permission denied|no such file', journal)
+                ),
+                'connect': bool(
+                    re.search(r'connection refused|connect:|dial tcp', journal)
+                ),
+                'http': bool(re.search(r'http status|server returned', journal)),
+                'remote_error': bool(
+                    re.search(r'failed to send batch|non-recoverable error', journal)
+                ),
+            }
+            print(json.dumps(categories, sort_keys=True))
+      register: observability_remote_write_failure_category
+      changed_when: false
+      failed_when: false
+      when: observability_remote_write_arrival.rc != 0
+
+    - name: Report bounded remote-write transport category
+      ansible.builtin.debug:
+        msg: >-
+          {{ observability_remote_write_failure_category.stdout
+             | default('{"journal_unavailable": true}', true)
+             | from_json }}
+      when: observability_remote_write_arrival.rc != 0
+
+    - name: Diagnose systemd credential transport only after missing arrival
+      when: observability_remote_write_arrival.rc != 0
+      block:
+        - name: Remove prior credential diagnostic result
+          ansible.builtin.file:
+            path: "/run/observability-agent-fixture/credential-probe.json{{ item }}"
+            state: absent
+          loop:
+            - ""
+            - .tmp
+          changed_when: false
+          failed_when: false
+
+        - name: Install exact credential diagnostic unit
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/python3
+              - -c
+              - |
+                import pathlib
+                import sys
+
+                source = pathlib.Path('/etc/systemd/system/observability-agent.service')
+                target = pathlib.Path(
+                    '/etc/systemd/system/observability-agent-credential-probe.service'
+                )
+                required = {
+                    'client.crt',
+                    'client.key',
+                    'receiver-ca.crt',
+                    'prometheus.yml',
+                }
+                credentials = [
+                    line for line in source.read_text(encoding='utf-8').splitlines()
+                    if line.startswith('LoadCredential=')
+                ]
+                names = {
+                    line.removeprefix('LoadCredential=').split(':', 1)[0]
+                    for line in credentials
+                }
+                if len(credentials) != 4 or names != required:
+                    sys.exit(1)
+                target.write_text(
+                    '\n'.join([
+                        '[Service]',
+                        'Type=oneshot',
+                        'User=observability-agent',
+                        'Group=observability-agent',
+                        'WorkingDirectory=%d',
+                        *credentials,
+                        'ExecStart=/usr/local/libexec/'
+                        'observability-agent-credential-probe.py',
+                        '',
+                    ]),
+                    encoding='utf-8',
+                )
+                target.chmod(0o644)
+          changed_when: false
+          failed_when: false
+          no_log: true
+
+        - name: Run exact systemd credential diagnostic unit
+          ansible.builtin.systemd_service:
+            name: observability-agent-credential-probe.service
+            state: started
+            daemon_reload: true
+          register: observability_credential_probe_start
+          changed_when: false
+          failed_when: false
+          no_log: true
+
+        - name: Read categorical systemd credential diagnostic result
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/python3
+              - -c
+              - |
+                import json
+                import os
+                import stat
+                import subprocess
+
+                expected = {
+                    'ca_cert_key_loaded',
+                    'cert_key_match',
+                    'sslclient_verify',
+                    'tls_handshake',
+                }
+                fallback = {'probe_unavailable': True}
+                try:
+                    descriptor = os.open(
+                        '/run/observability-agent-fixture/credential-probe.json',
+                        os.O_RDONLY | os.O_NOFOLLOW,
+                    )
+                    try:
+                        metadata = os.fstat(descriptor)
+                        if (
+                            not stat.S_ISREG(metadata.st_mode)
+                            or stat.S_IMODE(metadata.st_mode) != 0o600
+                            or metadata.st_size > 512
+                        ):
+                            raise OSError('unsafe diagnostic result')
+                        candidate = json.loads(os.read(descriptor, 512))
+                    finally:
+                        os.close(descriptor)
+                    if (
+                        isinstance(candidate, dict)
+                        and set(candidate) == expected
+                        and all(type(value) is bool for value in candidate.values())
+                    ):
+                        print(json.dumps(candidate, sort_keys=True))
+                    else:
+                        print(json.dumps(fallback, sort_keys=True))
+                except (OSError, json.JSONDecodeError):
+                    print(json.dumps(fallback, sort_keys=True))
+          register: observability_credential_transport_probe
+          changed_when: false
+          failed_when: false
+
+      always:
+        - name: Remove credential diagnostic unit
+          ansible.builtin.file:
+            path: /etc/systemd/system/observability-agent-credential-probe.service
+            state: absent
+          changed_when: false
+          failed_when: false
+
+        - name: Remove credential diagnostic runtime artifacts
+          ansible.builtin.file:
+            path: "/run/observability-agent-fixture/credential-probe.json{{ item }}"
+            state: absent
+          loop:
+            - ""
+            - .tmp
+          changed_when: false
+          failed_when: false
+
+        - name: Reload systemd after credential diagnostic cleanup
+          ansible.builtin.systemd_service:
+            daemon_reload: true
+          changed_when: false
+          failed_when: false
+
+    - name: Refuse missing authenticated remote-write arrival
+      ansible.builtin.assert:
+        that:
+          - observability_remote_write_arrival.rc == 0
+        fail_msg: >-
+          Authenticated remote-write did not arrive; bounded categorical
+          evidence: arrival={{ observability_remote_write_arrival.stdout
+          | default('{}', true) }} transport={{
+          observability_remote_write_failure_category.stdout
+          | default('{"journal_unavailable": true}', true) }} credential_transport={{
+          observability_credential_transport_probe.stdout
+          | default('{"probe_unavailable": true}', true) }}.
+
+    - name: Run schema-2 manifest adapter now
+      ansible.builtin.systemd_service:
+        name: observability-agent-adapter.service
+        state: started
+
+    - name: Run root-private producer health adapter now
+      ansible.builtin.systemd_service:
+        name: observability-agent-health-adapter.service
+        state: started
+
+    - name: Read bounded adapter output
+      ansible.builtin.slurp:
+        src: /var/lib/node_exporter/textfile/observability-agent.prom
+      register: observability_adapter_output
+
+    - name: Read bounded producer health output
+      ansible.builtin.slurp:
+        src: /var/lib/node_exporter/textfile/observability-health.prom
+      register: observability_health_output
+
+    - name: Inspect bounded producer health output ownership
+      ansible.builtin.stat:
+        path: /var/lib/node_exporter/textfile/observability-health.prom
+        follow: false
+      register: observability_health_stat
+
+    - name: Assert runtime, credential, and redaction contract
+      ansible.builtin.assert:
+        that:
+          - "'vpn_observability_adapter_collection_success 1' in (observability_adapter_output.content | b64decode)"
+          - "'node=\"node-fixture\"' in (observability_adapter_output.content | b64decode)"
+          - "'127.0.0.1:19090' not in (observability_adapter_output.content | b64decode)"
+          - >-
+            'vpn_watchdog_collection_success{node="node-fixture",role="watchdog"} 1'
+            in (observability_health_output.content | b64decode)
+          - >-
+            'vpn_watchdog_recovery_outcome{node="node-fixture",role="watchdog",state="recovered"} 1'
+            in (observability_health_output.content | b64decode)
+          - >-
+            'vpn_backup_result{node="node-fixture",role="integrity",state="success"} 1'
+            in (observability_health_output.content | b64decode)
+          - >-
+            'vpn_backup_restore_source{node="node-fixture",role="restore-drill",state="remote"} 1'
+            in (observability_health_output.content | b64decode)
+          - >-
+            'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+            not in (observability_health_output.content | b64decode)
+          - observability_health_stat.stat.uid | int == 0
+          - observability_health_stat.stat.gr_name == 'node_exporter_textfile'
+          - observability_health_stat.stat.mode == '0640'
+
+    - name: Inspect observability agent unit hardening
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/systemctl
+          - show
+          - observability-agent.service
+          - --property=User
+          - --property=ActiveState
+          - --property=NoNewPrivileges
+          - --property=ProtectSystem
+          - --property=PrivateDevices
+      register: observability_agent_unit
+      changed_when: false
+
+    - name: Inspect root-private health adapter hardening
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/systemctl
+          - show
+          - observability-agent-health-adapter.service
+          - --property=User
+          - --property=Group
+          - --property=NoNewPrivileges
+          - --property=ProtectSystem
+          - --property=PrivateDevices
+      register: observability_health_unit
+      changed_when: false
+
+    - name: Assert observability agent unit is active and hardened
+      ansible.builtin.assert:
+        that:
+          - "'User=observability-agent' in observability_agent_unit.stdout_lines"
+          - "'ActiveState=active' in observability_agent_unit.stdout_lines"
+          - "'NoNewPrivileges=yes' in observability_agent_unit.stdout_lines"
+          - "'ProtectSystem=strict' in observability_agent_unit.stdout_lines"
+          - "'PrivateDevices=yes' in observability_agent_unit.stdout_lines"
+          - "'User=root' in observability_health_unit.stdout_lines"
+          - "'Group=node_exporter_textfile' in observability_health_unit.stdout_lines"
+          - "'NoNewPrivileges=yes' in observability_health_unit.stdout_lines"
+          - "'ProtectSystem=strict' in observability_health_unit.stdout_lines"
+          - "'PrivateDevices=yes' in observability_health_unit.stdout_lines"
+
+    - name: Capture authenticated receiver and remote-write counter baseline
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+            import json
+            import pathlib
+            import re
+            import urllib.request
+
+            metrics = urllib.request.urlopen(
+                "http://127.0.0.1:19090/metrics", timeout=2
+            ).read().decode()
+            def values(name):
+                return [float(match.group(1)) for match in re.finditer(
+                    r"^" + re.escape(name) + r"(?:[{][^}]*[}])? ([0-9.eE+-]+)$",
+                    metrics,
+                    re.M,
+                )]
+            receiver = pathlib.Path("/var/lib/observability-fixture/receiver.log")
+            rows = receiver.read_text().splitlines() if receiver.exists() else []
+            required = (
+                "prometheus_remote_storage_queue_highest_timestamp_seconds",
+                "prometheus_remote_storage_queue_highest_sent_timestamp_seconds",
+                "prometheus_remote_storage_samples_failed_total",
+                "prometheus_remote_storage_samples_retried_total",
+            )
+            if any(not values(name) for name in required):
+                raise SystemExit(2)
+            expected = {
+                "path": "/remote-write/v1/nodes/node-fixture",
+                "cn": "node-fixture",
+            }
+            print(json.dumps({
+                "retry": max(
+                    max(values("prometheus_remote_storage_samples_failed_total")),
+                    max(values("prometheus_remote_storage_samples_retried_total")),
+                ),
+                "received": sum(
+                    json.loads(row) == expected for row in rows
+                ),
+            }, sort_keys=True))
+      register: observability_outage_baseline
+      changed_when: false
+
+    - name: Stop receiver to exercise bounded local WAL evidence
+      ansible.builtin.systemd_service:
+        name: observability-receiver-fixture.service
+        state: stopped
+
+    - name: Wait for a new remote-write retry and positive queue age
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+            import json
+            import re
+            import sys
+            import urllib.request
+
+            metrics = urllib.request.urlopen(
+                "http://127.0.0.1:19090/metrics", timeout=2
+            ).read().decode()
+            def maximum(name):
+                values = [float(match.group(1)) for match in re.finditer(
+                    r"^" + re.escape(name) + r"(?:[{][^}]*[}])? ([0-9.eE+-]+)$",
+                    metrics,
+                    re.M,
+                )]
+                return max(values) if values else 0.0
+            highest = maximum("prometheus_remote_storage_queue_highest_timestamp_seconds")
+            highest_sent = maximum(
+                "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
+            )
+            age = highest - highest_sent
+            retry = max(
+                maximum("prometheus_remote_storage_samples_failed_total"),
+                maximum("prometheus_remote_storage_samples_retried_total"),
+            )
+            print(json.dumps({
+                "highest": highest,
+                "highest_sent": highest_sent,
+                "retry": retry,
+            }, sort_keys=True))
+            raise SystemExit(0 if age > 0 and retry > float(sys.argv[1]) else 1)
+          - "{{ (observability_outage_baseline.stdout | from_json).retry }}"
+      register: observability_outage_evidence
+      changed_when: false
+      retries: 30
+      delay: 1
+      until: observability_outage_evidence.rc == 0
+
+    - name: Restore receiver after bounded outage
+      ansible.builtin.systemd_service:
+        name: observability-receiver-fixture.service
+        state: started
+
+    - name: Wait for outage watermark recovery and new authenticated receiver arrival
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+            import json
+            import pathlib
+            import re
+            import sys
+            import urllib.request
+
+            metrics = urllib.request.urlopen(
+                "http://127.0.0.1:19090/metrics", timeout=2
+            ).read().decode()
+            def maximum(name):
+                values = [float(match.group(1)) for match in re.finditer(
+                    r"^" + re.escape(name) + r"(?:[{][^}]*[}])? ([0-9.eE+-]+)$",
+                    metrics,
+                    re.M,
+                )]
+                return max(values) if values else 0.0
+            receiver = pathlib.Path("/var/lib/observability-fixture/receiver.log")
+            rows = [
+                json.loads(row) for row in receiver.read_text().splitlines()
+            ] if receiver.exists() else []
+            expected = {
+                "path": "/remote-write/v1/nodes/node-fixture",
+                "cn": "node-fixture",
+            }
+            received = sum(row == expected for row in rows)
+            diagnostic = {
+                "outage_highest": float(sys.argv[2]),
+                "pending": maximum("prometheus_remote_storage_samples_pending"),
+                "received": received,
+                "sent": maximum(
+                    "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
+                ),
+            }
+            print(json.dumps(diagnostic, sort_keys=True))
+            raise SystemExit(
+                0 if diagnostic["sent"] >= diagnostic["outage_highest"]
+                and received > int(sys.argv[1]) else 1
+            )
+          - "{{ (observability_outage_baseline.stdout | from_json).received }}"
+          - "{{ (observability_outage_evidence.stdout | from_json).highest }}"
+      register: observability_recovered_evidence
+      changed_when: false
+      retries: 30
+      delay: 1
+      until: observability_recovered_evidence.rc == 0

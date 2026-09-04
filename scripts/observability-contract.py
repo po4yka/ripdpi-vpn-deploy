@@ -39,7 +39,9 @@ FORBIDDEN_LABEL = re.compile(
     r"(?:^|_)(?:ip|address|endpoint|domain|sni|uuid|short_id|password|token|chat_id|client|user|username|destination|path|args|command|log)(?:_|$)",
     re.IGNORECASE,
 )
-ALLOWED_LABELS = frozenset({"node", "role", "profile", "policy", "severity", "vantage"})
+ALLOWED_LABELS = frozenset(
+    {"node", "role", "profile", "policy", "severity", "vantage", "state"}
+)
 EVIDENCE_STATES = frozenset(
     {
         "fresh",
@@ -80,7 +82,23 @@ SCHEMAS = {
     "manifest": "observability-metric-manifest.schema.json",
     "inventory": "observability-expected-inventory.schema.json",
     "evidence": "observability-evidence.schema.json",
+    "topology": "observability-topology.schema.json",
 }
+
+PUBLIC_LISTENERS_BY_CLASS = {
+    "control-plane": frozenset({("observability-ingest", "tcp")}),
+    "deadman": frozenset({("observability-deadman-pulse", "tcp")}),
+}
+VPN_PUBLIC_LISTENERS = frozenset(
+    {
+        ("amneziawg", "udp"),
+        ("hysteria", "udp"),
+        ("nginx-xhttp", "tcp"),
+        ("public-site-http", "tcp"),
+        ("xray", "tcp"),
+        ("xray-fallback", "tcp"),
+    }
+)
 
 
 class ContractError(Exception):
@@ -106,12 +124,21 @@ def validate_document(schema: dict[str, Any], document: Any) -> None:
         raise ContractError("document does not match its schema")
 
 
-def _trusted_input_directory(metadata: os.stat_result) -> bool:
-    return (
+def _trusted_input_directory(
+    metadata: os.stat_result, *, allow_root_sticky: bool = False
+) -> bool:
+    strict = (
         stat.S_ISDIR(metadata.st_mode)
         and metadata.st_uid in {0, os.geteuid()}
         and metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH) == 0
     )
+    root_sticky = (
+        allow_root_sticky
+        and stat.S_ISDIR(metadata.st_mode)
+        and metadata.st_uid == 0
+        and metadata.st_mode & stat.S_ISVTX != 0
+    )
+    return strict or root_sticky
 
 
 def _open_trusted_input(path: Path) -> int:
@@ -125,14 +152,25 @@ def _open_trusted_input(path: Path) -> int:
         parent_descriptor = os.open(absolute.anchor, directory_flags)
         if not _trusted_input_directory(os.fstat(parent_descriptor)):
             raise ContractError("invalid input")
+        sticky_ancestor = False
+        trusted_child_after_sticky = False
         for component in absolute.parts[1:-1]:
             child_descriptor = os.open(
                 component, directory_flags, dir_fd=parent_descriptor
             )
             os.close(parent_descriptor)
             parent_descriptor = child_descriptor
-            if not _trusted_input_directory(os.fstat(parent_descriptor)):
+            child_metadata = os.fstat(parent_descriptor)
+            if _trusted_input_directory(child_metadata):
+                if sticky_ancestor:
+                    trusted_child_after_sticky = True
+            elif _trusted_input_directory(child_metadata, allow_root_sticky=True):
+                sticky_ancestor = True
+                trusted_child_after_sticky = False
+            else:
                 raise ContractError("invalid input")
+        if sticky_ancestor and not trusted_child_after_sticky:
+            raise ContractError("invalid input")
         descriptor = os.open(absolute.name, file_flags, dir_fd=parent_descriptor)
         metadata = os.fstat(descriptor)
         if (
@@ -224,6 +262,102 @@ def _unique(items: list[dict[str, Any]], key: str) -> dict[str, dict[str, Any]]:
             raise ContractError("duplicate identity")
         result[identity] = item
     return result
+
+
+def _canonical_topology(document: dict[str, Any]) -> dict[str, Any]:
+    """Validate independence/public-surface semantics and return canonical JSON."""
+    if isinstance(document, dict):
+        sentinels_value = document.get("sentinels")
+        if isinstance(sentinels_value, list) and len(sentinels_value) < 2:
+            raise ContractError("sentinel count")
+    validate_document(_schema("topology"), document)
+    try:
+        nodes = _unique(document["nodes"], "node_id")
+        sentinels = _unique(document["sentinels"], "sentinel_id")
+    except ContractError as exc:
+        raise ContractError("duplicate identity") from exc
+    if set(nodes) & set(sentinels):
+        raise ContractError("duplicate identity")
+    path_signatures = [item["path_signature"] for item in sentinels.values()]
+    if len(path_signatures) != len(set(path_signatures)):
+        raise ContractError("duplicate path signature")
+
+    by_class: dict[str, list[dict[str, Any]]] = {
+        "vpn": [],
+        "control-plane": [],
+        "deadman": [],
+    }
+    for node in nodes.values():
+        by_class[node["host_class"]].append(node)
+        listeners = node["public_listeners"]
+        identities = [(item["name"], item["protocol"]) for item in listeners]
+        if len(identities) != len(set(identities)):
+            raise ContractError("public listener")
+        allowed = PUBLIC_LISTENERS_BY_CLASS.get(node["host_class"])
+        if allowed is not None and set(identities) != allowed:
+            raise ContractError("public listener")
+        if node["host_class"] == "vpn" and not set(identities) <= VPN_PUBLIC_LISTENERS:
+            raise ContractError("public listener")
+    if not by_class["vpn"]:
+        raise ContractError("vpn node count")
+    if len(by_class["control-plane"]) != 1:
+        raise ContractError("control-plane count")
+    if len(by_class["deadman"]) != 1:
+        raise ContractError("dead-man count")
+    if len(sentinels) < 2:
+        raise ContractError("sentinel count")
+    node_failure_domains = {node["failure_domain"] for node in nodes.values()}
+    if any(
+        sentinel["failure_domain"] in node_failure_domains
+        for sentinel in sentinels.values()
+    ):
+        raise ContractError("sentinel placement")
+
+    control = by_class["control-plane"][0]
+    deadman = by_class["deadman"][0]
+    if any(
+        control["failure_domain"] == node["failure_domain"] for node in by_class["vpn"]
+    ):
+        raise ContractError("control-plane placement")
+    if (
+        deadman["provider"] == control["provider"]
+        or deadman["failure_domain"] == control["failure_domain"]
+    ):
+        raise ContractError("dead-man placement")
+
+    canonical_nodes = []
+    for node in sorted(nodes.values(), key=lambda item: item["node_id"]):
+        listeners = []
+        for listener in node["public_listeners"]:
+            normalized = {
+                key: value for key, value in listener.items() if value is not None
+            }
+            listeners.append(normalized)
+        canonical_nodes.append(
+            {
+                **{
+                    key: value
+                    for key, value in node.items()
+                    if key != "public_listeners"
+                },
+                "public_listeners": sorted(
+                    listeners,
+                    key=lambda item: (
+                        item["protocol"],
+                        item.get("port", 0),
+                        item.get("port_range", ""),
+                        item["name"],
+                    ),
+                ),
+            }
+        )
+    return {
+        "schema_version": document["schema_version"],
+        "credential_mode": document["credential_mode"],
+        "source_revision": document["source_revision"],
+        "nodes": canonical_nodes,
+        "sentinels": sorted(sentinels.values(), key=lambda item: item["sentinel_id"]),
+    }
 
 
 def _validate_semantics(
@@ -371,9 +505,7 @@ def _evaluate_target(
     required = set(target["required_families"])
     if not required.issubset(seen_families):
         return "malformed", []
-    stale_after = min(
-        families[name]["stale_after_seconds"] for name in seen_families
-    )
+    stale_after = min(families[name]["stale_after_seconds"] for name in seen_families)
     if now - observed_at > stale_after:
         return "stale", []
     return "fresh", valid_samples
@@ -625,12 +757,20 @@ def _parser() -> argparse.ArgumentParser:
     render.add_argument("--evidence", type=Path, required=True)
     render.add_argument("--output", type=Path, required=True)
     render.add_argument("--now", type=int, default=None)
+    topology = subcommands.add_parser("topology")
+    topology.add_argument("--document", type=Path, required=True)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    args: argparse.Namespace | None = None
     try:
         args = _parser().parse_args(argv)
+        if args.command == "topology":
+            topology = _load_json(args.document)
+            canonical = _canonical_topology(topology)
+            print(json.dumps(canonical, sort_keys=True, separators=(",", ":")))
+            return 0
         manifest = _load_json(args.manifest)
         inventory = _load_json(args.inventory)
         evidence = _load_json(args.evidence)
@@ -650,13 +790,30 @@ def main(argv: list[str] | None = None) -> int:
         }
         print(json.dumps(summary, sort_keys=True, separators=(",", ":")))
         return 0
-    except (ContractError, OSError, TypeError, ValueError, KeyError):
-        try:
-            _atomic_write(args.output, b"", require_existing=True)
-        except (ContractError, OSError):
-            # An unsafe or unavailable output path cannot be withdrawn safely.
-            pass
-        print("observability-contract: validation failed", file=sys.stderr)
+    except (ContractError, OSError, TypeError, ValueError, KeyError) as exc:
+        if args is not None and args.command == "render":
+            try:
+                _atomic_write(args.output, b"", require_existing=True)
+            except (ContractError, OSError):
+                # An unsafe or unavailable output path cannot be withdrawn safely.
+                pass
+            print("observability-contract: validation failed", file=sys.stderr)
+        else:
+            category = str(exc) if isinstance(exc, ContractError) else "topology"
+            if category not in {
+                "duplicate identity",
+                "duplicate path signature",
+                "control-plane placement",
+                "dead-man placement",
+                "public listener",
+                "control-plane count",
+                "dead-man count",
+                "sentinel count",
+                "sentinel placement",
+                "vpn node count",
+            }:
+                category = "topology"
+            print(f"observability-contract: {category} rejected", file=sys.stderr)
         return 2
 
 

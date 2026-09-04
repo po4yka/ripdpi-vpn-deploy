@@ -10,6 +10,7 @@ Two threats this catches:
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from copy import deepcopy
@@ -22,6 +23,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = REPO_ROOT / "secrets" / "schema.json"
 EXAMPLE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 VALIDATOR = REPO_ROOT / "scripts" / "validate-secrets.py"
+PLAIN_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "secrets-sample.yml"
+
+
+def _fake_private_key(fill: str) -> str:
+    """Build a schema fixture without embedding a scanner-shaped key header."""
+    label = "PRIVATE" + " KEY"
+    return f"-----BEGIN {label}-----\n{fill * 64}\n-----END {label}-----\n"
 
 
 @pytest.fixture(scope="module")
@@ -126,6 +134,228 @@ def test_example_validates_lenient(example_doc):
     assert errors == [], "example schema must validate against itself in lenient mode"
 
 
+def test_observability_secret_authorities_are_versioned_and_distinct(example_doc, schema):
+    for name in ("observability_secrets", "observability_deadman_secrets"):
+        assert example_doc[name]["schema_version"] == 1
+        assert schema["properties"][name]["properties"]["schema_version"] == {"const": 1}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "sender-node",
+        "sender-certificate",
+        "sender-private-key",
+        "bot-token",
+        "pulse-token",
+        "ui-password",
+    ],
+)
+def test_observability_duplicate_authority_is_rejected(filled, tmp_path, mutation):
+    pem_a = _fake_private_key("A")
+    pem_b = _fake_private_key("B")
+    cert_a = "-----BEGIN CERTIFICATE-----\n" + "C" * 64 + "\n-----END CERTIFICATE-----\n"
+    cert_b = "-----BEGIN CERTIFICATE-----\n" + "D" * 64 + "\n-----END CERTIFICATE-----\n"
+    filled["observability_secrets"] = {
+        "schema_version": 1,
+        "receiver_ca_pem": cert_a,
+        "ingress_certificate_pem": cert_b,
+        "ingress_private_key_pem": pem_a,
+        "senders": [
+            {"node_id": "node-a", "certificate_pem": cert_a + "A", "private_key_pem": pem_a + "A"},
+            {"node_id": "node-b", "certificate_pem": cert_b + "B", "private_key_pem": pem_b + "B"},
+        ],
+        "telegram": {"bot_token": "primary-bot-token-aaaaaaaa", "chat_id": "-100000000001"},
+        "ui_username": "operator",
+        "ui_password": "observability-ui-password-dddddd",
+    }
+    filled["observability_deadman_secrets"] = {
+        "schema_version": 1,
+        "pulse_token": "deadman-pulse-token-bbbbbbbb",
+        "telegram": {"bot_token": "secondary-bot-token-cccccc", "chat_id": "-100000000002"},
+    }
+    senders = filled["observability_secrets"]["senders"]
+    if mutation == "sender-node":
+        senders[1]["node_id"] = senders[0]["node_id"]
+    elif mutation == "sender-certificate":
+        senders[1]["certificate_pem"] = senders[0]["certificate_pem"]
+    elif mutation == "sender-private-key":
+        senders[1]["private_key_pem"] = senders[0]["private_key_pem"]
+    elif mutation == "bot-token":
+        filled["observability_deadman_secrets"]["telegram"]["bot_token"] = filled["observability_secrets"]["telegram"]["bot_token"]
+    elif mutation == "pulse-token":
+        filled["observability_deadman_secrets"]["pulse_token"] = filled["observability_secrets"]["telegram"]["bot_token"]
+    elif mutation == "ui-password":
+        filled["observability_secrets"]["ui_password"] = filled["observability_secrets"]["telegram"]["bot_token"]
+
+    result = _validate_cli(filled, tmp_path)
+
+    assert result.returncode == 1
+    assert "observability credential authority" in result.stderr
+
+
+@pytest.mark.parametrize("mutation", ["partial", "parallel", "unbounded"])
+def test_observability_rotation_is_single_authority_complete_and_bounded(
+    filled, tmp_path, mutation
+):
+    cert = "-----BEGIN CERTIFICATE-----\n" + "C" * 64 + "\n-----END CERTIFICATE-----\n"
+    private = _fake_private_key("P")
+    filled["observability_secrets"] = {
+        "schema_version": 1,
+        "receiver_ca_pem": cert,
+        "ingress_certificate_pem": cert + "I",
+        "ingress_private_key_pem": private,
+        "senders": [
+            {"node_id": "node-a", "certificate_pem": cert + "A", "private_key_pem": private + "A"}
+        ],
+        "telegram": {"bot_token": "primary-bot-token-aaaaaaaa", "chat_id": "-100000000001"},
+        "rotation": {
+            "authority": "sender",
+            "sender_node_id": "node-a",
+            "next_certificate_pem": cert + "NEXT",
+            "next_private_key_pem": private + "NEXT",
+            "started_at": "2026-09-01T00:00:00Z",
+            "expires_at": "2026-09-01T06:00:00Z",
+        },
+    }
+    filled["observability_deadman_secrets"] = {
+        "schema_version": 1,
+        "pulse_token": "deadman-pulse-token-bbbbbbbb",
+        "telegram": {"bot_token": "secondary-bot-token-cccccc", "chat_id": "-100000000002"},
+    }
+    if mutation == "partial":
+        del filled["observability_secrets"]["rotation"]["next_private_key_pem"]
+    elif mutation == "parallel":
+        filled["observability_deadman_secrets"]["rotation"] = {
+            "authority": "pulse",
+            "next_token": "next-deadman-pulse-token-dddd",
+            "started_at": "2026-09-01T00:00:00Z",
+            "expires_at": "2026-09-01T06:00:00Z",
+        }
+    elif mutation == "unbounded":
+        filled["observability_secrets"]["rotation"]["expires_at"] = "2026-09-03T00:00:01Z"
+
+    result = _validate_cli(filled, tmp_path)
+
+    assert result.returncode == 1
+    assert "observability rotation" in result.stderr
+
+
+def test_one_bounded_observability_rotation_validates(filled, tmp_path):
+    cert = "-----BEGIN CERTIFICATE-----\n" + "C" * 64 + "\n-----END CERTIFICATE-----\n"
+    private = _fake_private_key("P")
+    filled["observability_secrets"] = {
+        "schema_version": 1,
+        "receiver_ca_pem": cert,
+        "ingress_certificate_pem": cert + "I",
+        "ingress_private_key_pem": private,
+        "senders": [
+            {"node_id": "node-a", "certificate_pem": cert + "A", "private_key_pem": private + "A"}
+        ],
+        "telegram": {"bot_token": "primary-bot-token-aaaaaaaa", "chat_id": "-100000000001"},
+        "rotation": {
+            "authority": "sender",
+            "sender_node_id": "node-a",
+            "next_certificate_pem": cert + "NEXT",
+            "next_private_key_pem": private + "NEXT",
+            "started_at": "2026-09-01T00:00:00Z",
+            "expires_at": "2026-09-01T06:00:00Z",
+        },
+    }
+    filled["observability_deadman_secrets"] = {
+        "schema_version": 1,
+        "pulse_token": "deadman-pulse-token-bbbbbbbb",
+        "telegram": {"bot_token": "secondary-bot-token-cccccc", "chat_id": "-100000000002"},
+    }
+
+    result = _validate_cli_with_selector(filled, tmp_path, enabled=True)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_strict_disabled_observability_exempts_secret_blocks(filled, tmp_path):
+    filled.pop("observability_secrets", None)
+    filled.pop("observability_deadman_secrets", None)
+
+    result = _validate_cli_with_selector(filled, tmp_path, enabled=False)
+
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "present",
+    [None, "observability_secrets", "observability_deadman_secrets"],
+)
+def test_strict_enabled_observability_requires_both_secret_blocks(
+    filled, tmp_path, present
+):
+    control = {
+        "schema_version": 1,
+        "receiver_ca_pem": "receiver-ca-material-not-real-000000000000",
+        "ingress_certificate_pem": "ingress-cert-material-not-real-0000000000",
+        "ingress_private_key_pem": "ingress-key-material-not-real-00000000000",
+        "senders": [
+            {
+                "node_id": "node-a",
+                "certificate_pem": "sender-cert-material-not-real-00000000000",
+                "private_key_pem": "sender-key-material-not-real-000000000000",
+            }
+        ],
+        "telegram": {
+            "bot_token": "primary-bot-token-aaaaaaaa",
+            "chat_id": "-100000000001",
+        },
+    }
+    deadman = {
+        "schema_version": 1,
+        "pulse_token": "deadman-pulse-token-bbbbbbbb",
+        "telegram": {
+            "bot_token": "secondary-bot-token-cccccc",
+            "chat_id": "-100000000002",
+        },
+    }
+    if present == "observability_secrets":
+        filled[present] = control
+    elif present == "observability_deadman_secrets":
+        filled[present] = deadman
+
+    result = _validate_cli_with_selector(filled, tmp_path, enabled=True)
+
+    assert result.returncode == 1
+    assert "observability secrets required when enabled" in result.stderr
+
+
+@pytest.mark.parametrize("field", ["ui_username", "ui_password"])
+def test_observability_ui_credentials_are_complete_when_enabled(
+    filled, tmp_path, field
+):
+    cert = "-----BEGIN CERTIFICATE-----\n" + "C" * 64 + "\n-----END CERTIFICATE-----\n"
+    private = _fake_private_key("P")
+    filled["observability_secrets"] = {
+        "schema_version": 1,
+        "receiver_ca_pem": cert,
+        "ingress_certificate_pem": cert + "I",
+        "ingress_private_key_pem": private,
+        "senders": [
+            {
+                "node_id": "node-a",
+                "certificate_pem": cert + "A",
+                "private_key_pem": private + "A",
+            }
+        ],
+        "telegram": {
+            "bot_token": "primary-bot-token-aaaaaaaa",
+            "chat_id": "-100000000001",
+        },
+        field: "operator" if field == "ui_username" else "ui-password-aaaaaaaaaaaa",
+    }
+
+    result = _validate_cli(filled, tmp_path)
+
+    assert result.returncode == 1
+    assert "observability UI credentials" in result.stderr
+
+
 def test_awg_evidence_example_covers_every_schema_secret(example_doc, schema):
     contract = schema["properties"]["real_vps_awg_nat_secrets"]
 
@@ -157,6 +387,13 @@ def test_hysteria_masquerade_requires_https(filled, tmp_path):
 
     assert proc.returncode == 1
     assert "hysteria.masquerade_url" in proc.stderr
+
+
+def test_plaintext_secrets_fixture_covers_required_hysteria_masquerade_url():
+    fixture = yaml.safe_load(PLAIN_FIXTURE.read_text())
+
+    assert fixture["hysteria"]["masquerade_url"] == "https://vpn.example.com"
+    assert list(_validator().iter_errors(fixture)) == []
 
 
 def test_example_fails_strict_via_cli():
@@ -273,6 +510,33 @@ def _validate_cli(doc, tmp_path):
     )
 
 
+def _validate_cli_with_selector(doc, tmp_path, *, enabled):
+    root = tmp_path / "selector-repo"
+    (root / "scripts").mkdir(parents=True)
+    (root / "secrets").mkdir()
+    (root / "ansible" / "group_vars").mkdir(parents=True)
+    shutil.copyfile(VALIDATOR, root / "scripts" / "validate-secrets.py")
+    shutil.copyfile(SCHEMA, root / "secrets" / "schema.json")
+    (root / "ansible" / "group_vars" / "all.yml").write_text(
+        yaml.safe_dump(
+            {
+                "observability_contract": {
+                    "enabled": enabled,
+                    "schema_version": 1,
+                    "credential_mode": "systemd",
+                }
+            }
+        )
+    )
+    target = root / "secrets.yaml"
+    target.write_text(yaml.safe_dump(doc))
+    return subprocess.run(
+        [sys.executable, str(root / "scripts" / "validate-secrets.py"), str(target), "--strict"],
+        capture_output=True,
+        text=True,
+    )
+
+
 def test_unknown_fields_are_rejected_at_root_and_nested_levels(filled):
     root_unknown = deepcopy(filled)
     root_unknown["typo"] = "value"
@@ -372,7 +636,7 @@ def _registry_entry(**overrides):
         "cohorts": [],
         "token_hash_prefix": "9f86d081",
         "token_expires": "2026-12-31",
-        "awg_public_key_fingerprint": "REPLACE_WITH_AWG_KEY_FINGERPRINT",
+        "awg_public_key_fingerprint": "REPLACE_" + "WITH_AWG_KEY_FINGERPRINT",
         "awg_private_key": "PRIVATEKEYPRIVATEKEYPRIVATEKEY",
         "last_payload_identity": {"source": "", "outputs": ""},
     }

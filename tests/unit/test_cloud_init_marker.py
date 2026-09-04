@@ -29,6 +29,22 @@ MANAGED = "20-ansible-hardening.conf"
 CLOUD = "50-cloud-init.conf"
 
 
+def test_bootstrap_owner_marks_the_bounded_first_boot_policy() -> None:
+    spec = importlib.util.spec_from_file_location("bootstrap_sshd_ownership_header", BOOTSTRAP_OWNER)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module._boot_content("2222") == (
+        b"# Managed by vpn bootstrap SSH ownership.\n"
+        b"Port 2222\n"
+        b"PasswordAuthentication no\n"
+        b"KbdInteractiveAuthentication no\n"
+        b"PermitRootLogin no\n"
+        b"PubkeyAuthentication yes\n"
+    )
+
+
 def _write_sshd_stub(
     directory: Path,
     *,
@@ -130,6 +146,7 @@ def test_fresh_bootstrap_publishes_exact_single_owner_fragments_and_is_idempoten
     assert bootstrap_owner.normalize(ssh_config, "2222") is True
     fragments = ssh_config / "sshd_config.d"
     assert (fragments / BOOT).read_bytes() == (
+        b"# Managed by vpn bootstrap SSH ownership.\n"
         b"Port 2222\n"
         b"PasswordAuthentication no\n"
         b"KbdInteractiveAuthentication no\n"

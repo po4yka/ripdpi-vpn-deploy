@@ -33,6 +33,8 @@ import yaml
 from fleet_inspection import LIMIT as COMMAND_LIMIT, InspectionError, _open_local_file, bounded_command
 from liveness_generation import JOB_TIMEOUT_SECONDS, RECEIPT_TIMEOUT
 from liveness_profiles import ProfileError, build_profiles
+from disposable_liveness_executor import (ExecutorError, bind_executor, binding_digest,
+                                           executor_command, load_bound_executor, load_live_executor)
 
 REPO = Path(__file__).resolve().parents[1]
 LIMIT = 1024 * 1024
@@ -232,7 +234,7 @@ def _state(path, kind):
     doc = _json(_read(path, private=True))
     if not isinstance(doc, dict) or set(doc) != {"schema_version", kind} or type(doc["schema_version"]) is not int or doc["schema_version"] != 2 or not isinstance(doc[kind], dict):
         raise InstallError("invalid-registry")
-    allowed = {"client", "ssh_target", "ssh_transport_host", "ssh_host_key_alias", "generation_id", "provenance", "required_profiles", "policy", "vantage", "target_identity"}
+    allowed = {"client", "ssh_target", "ssh_transport_host", "ssh_host_key_alias", "generation_id", "provenance", "required_profiles", "policy", "vantage", "target_identity", "executor_binding_sha256"}
     clients = []
     for sid, entry in doc[kind].items():
         if not isinstance(sid, str) or not NAME.fullmatch(sid) or not isinstance(entry, dict) or set(entry) - allowed:
@@ -257,6 +259,9 @@ def _state(path, kind):
             _uuid(entry.get("generation_id"))
             _provenance(entry.get("provenance"))
             _target_identity(entry.get("target_identity"), entry["provenance"], entry["required_profiles"])
+        if "executor_binding_sha256" in entry and (not isinstance(entry["executor_binding_sha256"], str)
+                or re.fullmatch(r"[0-9a-f]{64}", entry["executor_binding_sha256"]) is None):
+            raise InstallError("invalid-registry")
     if len(clients) != len(set(clients)):
         raise InstallError("duplicate-client-assignment")
     return doc
@@ -378,10 +383,14 @@ def _parsers(directory, profiles, expected, environment):
         _run([engine, *arguments, str(directory / filename)], environment=environment, timeout=30)
 
 
-def _ssh(sentinel, command, environment, input_bytes=b"", timeout=30):
-    args = ["ssh", *_evaluator().ssh_options(sentinel, 10), "--"]
-    ssh_environment = {key: environment[key] for key in ("PATH", "HOME", "SSH_AUTH_SOCK") if key in environment}
+def _ssh(sentinel, command, environment, input_bytes=b"", timeout=30, executor=None):
+    allowed = ("PATH", "HOME") if executor is not None else ("PATH", "HOME", "SSH_AUTH_SOCK")
+    ssh_environment = {key: environment[key] for key in allowed if key in environment}
     ssh_environment.update(LANG="C", LC_ALL="C")
+    if executor is not None:
+        return _run(list(executor_command(executor["profile"], command)), environment=ssh_environment,
+                    input_bytes=input_bytes, timeout=timeout)
+    args = ["ssh", *_evaluator().ssh_options(sentinel, 10), "--"]
     return _run([*args, sentinel["ssh_target"], command], environment=ssh_environment, input_bytes=input_bytes, timeout=timeout)
 
 
@@ -542,8 +551,9 @@ def _remote_command(code, generation):
     return "sudo -n /usr/bin/python3 -I -B -S -c " + shlex.quote(code) + " " + _uuid(generation)
 
 
-def _receipt(sentinel, pending, environment):
-    response = _json(_ssh(sentinel, _remote_command(REMOTE_RECEIPT, pending["generation_id"]), environment))
+def _receipt(sentinel, pending, environment, executor=None):
+    response = _json(_ssh(sentinel, _remote_command(REMOTE_RECEIPT, pending["generation_id"]),
+                          environment, executor=executor))
     if response == {"state": "uncommitted"}:
         return None
     if response == {"state": "running"}:
@@ -561,11 +571,11 @@ def _receipt(sentinel, pending, environment):
     return value
 
 
-def _wait_receipt(sentinel, pending, environment):
+def _wait_receipt(sentinel, pending, environment, executor=None):
     deadline = time.monotonic() + RECEIPT_TIMEOUT
     while True:
         try:
-            receipt = _receipt(sentinel, pending, environment)
+            receipt = _receipt(sentinel, pending, environment, executor)
             if isinstance(receipt, dict):
                 return receipt
         except InstallError as exc:
@@ -594,12 +604,41 @@ def _audit(mapping, client, sid, environment):
             print("install-liveness-sentinel: audit-unavailable", file=sys.stderr)
 
 
-def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, stdin=None, environment=None):
+def _require_pending_executor(previous, current_binding_digest):
+    previous_digest = previous.get("executor_binding_sha256")
+    if ((previous_digest is None) != (current_binding_digest is None)
+            or previous_digest != current_binding_digest):
+        raise InstallError("pending-executor-conflict")
+
+
+def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, stdin=None, environment=None,
+            executor_manifest=None, executor_binding=None, cleanup_manifest=None):
     environment = dict(os.environ if environment is None else environment)
     config, sentinel, required, mapping, expected = _selection(config_path, sid, client, environment)
     registry_path = Path(registry_path).expanduser().absolute()
     pending_path = registry_path.with_name(registry_path.name + ".pending.json")
     transport = {key: sentinel[key] for key in ("ssh_target", "ssh_transport_host", "ssh_host_key_alias", "policy", "vantage") if key in sentinel}
+    executor = None
+    current_executor_binding_digest = None
+    executor_environment = {key: environment[key] for key in ("PATH", "HOME") if key in environment}
+    executor_runner = lambda command, **kwargs: _run(list(command), environment=executor_environment, **kwargs)
+    if any(value is not None for value in (executor_manifest, executor_binding, cleanup_manifest)):
+        if not all(value is not None for value in (executor_manifest, executor_binding, cleanup_manifest)):
+            raise InstallError("executor-artifacts-required")
+        declared = config.get("sentinels")
+        if (not isinstance(declared, list) or len(declared) != 1
+                or not isinstance(declared[0], dict) or declared[0].get("id") != sid):
+            raise InstallError("executor-config")
+        try:
+            executor = load_live_executor(Path(executor_manifest), home=Path(environment.get("HOME", str(Path.home()))),
+                                          now=int(time.time()), runner=executor_runner)
+            if Path(executor_binding).exists():
+                load_bound_executor(Path(executor_binding), Path(executor_manifest), Path(config_path),
+                                    home=Path(environment.get("HOME", str(Path.home()))),
+                                    now=int(time.time()), runner=executor_runner)
+                current_executor_binding_digest = binding_digest(Path(executor_binding))
+        except ExecutorError as exc:
+            raise InstallError(str(exc)) from None
     with registry_lock(registry_path):
         registry, pending = _state(registry_path, "sentinels"), _state(pending_path, "pending")
         for entries in (registry["sentinels"], pending["pending"]):
@@ -607,16 +646,17 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
                 raise InstallError("client-already-assigned")
         previous = pending["pending"].get(sid)
         if previous is not None:
+            _require_pending_executor(previous, current_executor_binding_digest)
             if previous["client"] != client or any(previous.get(k) != transport.get(k) for k in ("ssh_target", "ssh_transport_host", "ssh_host_key_alias", "policy", "vantage")) or previous.get("required_profiles") != required or any(previous["target_identity"].get(k) != sentinel["target"].get(k) for k in sentinel["target"]):
                 raise InstallError("pending-assignment-conflict")
             try:
-                receipt = _receipt(sentinel, previous, environment)
+                receipt = _receipt(sentinel, previous, environment, executor)
             except InstallError as exc:
                 if str(exc) == "command-failed":
                     raise InstallError("installation-unknown-pending-preserved") from None
                 raise
             if receipt == "running":
-                receipt = _wait_receipt(sentinel, previous, environment)
+                receipt = _wait_receipt(sentinel, previous, environment, executor)
             if receipt is not None:
                 _publish(registry_path, registry, pending_path, pending, sid, previous)
                 _audit(mapping, client, sid, environment)
@@ -661,18 +701,27 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
             _target_identity(target_identity, provenance, required)
             entry = {"client": client, **transport, "required_profiles": required, "generation_id": generation,
                      "provenance": provenance, "target_identity": target_identity}
-            if previous is not None and previous != entry:
-                raise InstallError("pending-source-or-profile-conflict")
             rendered = {name: (data if isinstance(data, str) else json.dumps(data, separators=(",", ":"))).encode() for name, data in profiles["files"].items()}
             for name, data in rendered.items():
                 _write(work / name, data)
             _parsers(work, rendered, expected, env)
             if _source_identity(REPO) != (revision, runner, engine):
                 raise InstallError("source-changed-during-preparation")
-            user = _ssh(sentinel, "id -un", environment).decode().strip()
+            if executor is not None:
+                try:
+                    bind_executor(Path(executor_manifest), Path(executor_binding), Path(config_path), Path(cleanup_manifest),
+                                  sentinel=sid, client=client, generation_id=generation, provenance=provenance,
+                                  target_identity=target_identity, home=Path(environment.get("HOME", str(Path.home()))),
+                                  now=int(time.time()), runner=executor_runner)
+                except ExecutorError as exc:
+                    raise InstallError(str(exc)) from None
+                entry["executor_binding_sha256"] = binding_digest(Path(executor_binding))
+            if previous is not None and previous != entry:
+                raise InstallError("pending-source-or-profile-conflict")
+            user = _ssh(sentinel, "id -un", environment, executor=executor).decode().strip()
             if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", user):
                 raise InstallError("unsafe-remote-user")
-            _ssh(sentinel, "sudo -n true", environment)
+            _ssh(sentinel, "sudo -n true", environment, executor=executor)
             runner_config = {"schema_version": 2, "sentinel": sid, "probe_url": config["probe_url"], "expected_status": config["expected_status"],
                              "timeout_seconds": config.get("probe_timeout_seconds", 15), "degraded_after_ms": config.get("degraded_after_ms", 3000),
                              "expected_runtime": expected, "provenance": provenance, "target_identity": target_identity, **profiles["runtime"]}
@@ -687,11 +736,12 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
             pending["pending"][sid] = entry
             _save(pending_path, pending)
             try:
-                _ssh(sentinel, _remote_command(REMOTE_STAGE, generation), environment, bundle, timeout=60)
+                _ssh(sentinel, _remote_command(REMOTE_STAGE, generation), environment, bundle,
+                     timeout=60, executor=executor)
             except InstallError:
                 # SSH loss does not establish whether the independent root job ran.
                 pass
-            receipt = _wait_receipt(sentinel, entry, environment)
+            receipt = _wait_receipt(sentinel, entry, environment, executor)
             _publish(registry_path, registry, pending_path, pending, sid, entry)
             _audit(mapping, client, sid, environment)
             return receipt
@@ -703,13 +753,20 @@ def main():
     parser.add_argument("--sentinel", required=True)
     parser.add_argument("--client", required=True)
     parser.add_argument("--awg-private-key-stdin", action="store_true")
+    parser.add_argument("--executor-manifest", type=Path)
+    parser.add_argument("--executor-binding", type=Path)
+    parser.add_argument("--cleanup-manifest", type=Path)
     args = parser.parse_args()
     registry = os.environ.get("LIVENESS_SENTINEL_REGISTRY", str(Path.home() / ".config/vpn-provision/liveness-sentinels.json"))
     try:
-        receipt = install(args.config, args.sentinel, args.client, registry, read_awg_stdin=args.awg_private_key_stdin)
+        receipt = install(args.config, args.sentinel, args.client, registry,
+                          read_awg_stdin=args.awg_private_key_stdin,
+                          executor_manifest=args.executor_manifest,
+                          executor_binding=args.executor_binding,
+                          cleanup_manifest=args.cleanup_manifest)
         print(json.dumps(receipt, sort_keys=True))
         return 0
-    except (InstallError, ProfileError) as exc:
+    except (InstallError, ProfileError, ExecutorError) as exc:
         print("install-liveness-sentinel: " + str(exc), file=sys.stderr)
         return 1
     except (OSError, ValueError, KeyError, TypeError, UnicodeError):

@@ -2,7 +2,7 @@
 id: VPD-1787497252303967
 title: Fix probe-matrix process leaks, timeouts, durability, and evidence semantics
 kind: bug
-status: blocked
+status: review
 area: vpnd
 priority: high
 risk: high
@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: vpd-1787497252303967-vpnd-probe-matrix-robust-evidence
 created: 2026-08-23
-updated: 2026-08-29
+updated: 2026-09-01
 related_tasks: []
-status_detail: Local durability implementation and schema-3 producer are complete; blocked on PR116 full/hosted protected integration, byte-identical RIPDPI mirror, and staging/live probe acceptance.
+status_detail: Probe durability, schema-3 producer, byte-identical client mirror, protected integration, and exact-main hosted checks are delivered. The task remains in review pending required staging and live four-protocol probe evidence; fixtures and source CI are not live acceptance.
 ---
 
 ## Goal

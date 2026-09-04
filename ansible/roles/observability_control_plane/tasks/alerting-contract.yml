@@ -1,0 +1,41 @@
+---
+- name: Require complete bounded Alertmanager and Telegram configuration
+  ansible.builtin.assert:
+    that:
+      - observability_control_plane.alerting.listen == '127.0.0.1:9093'
+      - observability_control_plane.alerting.source_generation is match('^[0-9a-f]{40,64}$')
+      - >-
+        observability_control_plane.alerting.credential_path ==
+        '/etc/observability-control-plane/credentials/telegram-bot-token'
+      - observability_control_plane.alerting.alertmanager.version is match('^[A-Za-z0-9._+-]+$')
+      - observability_control_plane.alerting.alertmanager.urls.amd64 is match('^https://|^file://')
+      - observability_control_plane.alerting.alertmanager.urls.arm64 is match('^https://|^file://')
+      - observability_control_plane.alerting.alertmanager.sha256.amd64 is match('^[0-9a-fA-F]{64}$')
+      - observability_control_plane.alerting.alertmanager.sha256.arm64 is match('^[0-9a-fA-F]{64}$')
+      - observability_control_plane.alerting.alertmanager.archive_members.amd64 is match('^[A-Za-z0-9._+/+-]+$')
+      - observability_control_plane.alerting.alertmanager.archive_members.arm64 is match('^[A-Za-z0-9._+/+-]+$')
+      - observability_control_plane.alerting.alertmanager.amtool_archive_members.amd64 is match('^[A-Za-z0-9._+/+-]+$')
+      - observability_control_plane.alerting.alertmanager.amtool_archive_members.arm64 is match('^[A-Za-z0-9._+/+-]+$')
+      - observability_control_plane.prometheus.promtool_archive_members.amd64 is match('^[A-Za-z0-9._+/+-]+$')
+      - observability_control_plane.prometheus.promtool_archive_members.arm64 is match('^[A-Za-z0-9._+/+-]+$')
+      - observability_control_plane.alerting.telegram.bot_token is match('^\\S{20,128}$')
+      - observability_control_plane.alerting.telegram.chat_id | string is match('^-?[0-9]{1,20}$')
+      - observability_control_plane.alerting.telegram.topic_id | int >= 0
+      - observability_control_plane.alerting.telegram.parse_mode == 'HTML'
+      - observability_control_plane.alerting.telegram.max_alerts | int >= 1
+      - observability_control_plane.alerting.telegram.max_alerts | int <= 10
+      - observability_control_plane.alerting.group_wait == '30s'
+      - observability_control_plane.alerting.group_interval == '5m'
+      - observability_control_plane.alerting.critical_repeat_interval == '1h'
+      - observability_control_plane.alerting.warning_repeat_interval == '6h'
+      - observability_control_plane.alerting.recovery_stability == '3m'
+      - >-
+        not (observability_control_plane.alerting.deadman.enabled | bool) or
+        observability_control_plane.alerting.deadman.receiver_url is
+        match('^http://127[.]0[.]0[.]1:[0-9]{2,5}/[A-Za-z0-9._/-]+$')
+      - observability_control_plane.alerting.deadman.repeat_interval == '1m'
+    fail_msg: >-
+      Alerting requires pinned validator/runtime archives, a private numeric
+      Telegram destination, a credential token, fixed bounded routing, and an
+      optional loopback-only dead-man canary receiver.
+  no_log: true

@@ -41,6 +41,9 @@ ownership-only migration, and do not treat local tests as staging acceptance.
   `templates/sshd_config.d-hardening.conf.j2` is rendered by Ansible, while the
   exact-node controller publishes it with durable rollback and fresh transport
   proof after the VPN stack converges.
+- **SSH algorithms are pinned as runtime policy** — the controller accepts only
+  provider defaults or the exact managed Ciphers, MACs, and KexAlgorithms
+  allowlists, validating global and requested contextual effective policy.
 - **SFTP is internal and managed once** — the packaged `Subsystem sftp` line is
   commented before the drop-in declares `internal-sftp`, avoiding duplicate
   Subsystem directives on Debian/Ubuntu while preserving Ansible file transfer.
@@ -51,6 +54,11 @@ ownership-only migration, and do not treat local tests as staging acceptance.
   is true; removed when disabled. Avoids forwarding on P0-only nodes.
 
 ## Pitfalls
+
+- **Shadowed root-login declarations need policy proof** — ownership migration
+  may comment one main `PermitRootLogin yes` after the canonical Include only
+  with bootstrap root denial and real global/contextual `permitrootlogin no`.
+  Never accept an unshadowed line or edit it directly on the host.
 
 - **Activation must not invalidate its own recovery proof** — run one fresh
   recovery execution outside the transaction lock, then fence its result after

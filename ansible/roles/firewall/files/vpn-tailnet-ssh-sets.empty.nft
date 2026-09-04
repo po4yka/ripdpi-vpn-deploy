@@ -1,0 +1,10 @@
+# vpn-tailnet-ssh-sets schema=1
+set vpn_tailnet_ssh_v4 {
+  type ipv4_addr
+  flags interval
+}
+
+set vpn_tailnet_ssh_v6 {
+  type ipv6_addr
+  flags interval
+}

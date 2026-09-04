@@ -1,0 +1,299 @@
+---
+- name: Prepare enabled control-plane receiver fixture
+  hosts: all
+  become: true
+  tasks:
+    - name: Create the observability textfile collector group
+      ansible.builtin.group:
+        name: observability-textfile
+        system: true
+
+    - name: Create fixture directory
+      ansible.builtin.file:
+        path: /var/tmp/observability-control-plane-fixture
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: Create canonical protocol-liveness publisher and textfile paths
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: "{{ item.group | default('root') }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - path: /var/lib/vpn-protocol-liveness
+          mode: '0700'
+        - path: /var/lib/node_exporter/textfile
+          group: observability-textfile
+          mode: '3775'
+
+    - name: Publish canonical protocol-liveness fixture evidence
+      ansible.builtin.copy:
+        dest: /var/lib/vpn-protocol-liveness/last-evidence.json
+        owner: root
+        group: root
+        mode: '0600'
+        content: >-
+          {{ {"candidate_policies": [], "decision": "healthy",
+          "evaluated_at": ansible_facts['date_time']['epoch'] | int, "evidence": [],
+          "failed_vantages": {}, "monitoring_errors": [], "schema_version": 2}
+          | to_json }}
+
+    - name: Install curl for the bounded mTLS fixture client
+      ansible.builtin.apt:
+        name: curl
+        state: present
+        update_cache: false
+
+    - name: Create local pinned archive and mTLS fixture
+      ansible.builtin.shell: |
+        set -eu
+        fixture=/var/tmp/observability-control-plane-fixture
+        mkdir -p "$fixture/tls" "$fixture/ca/newcerts"
+        : > "$fixture/ca/index.txt"
+        printf '1000\n' > "$fixture/ca/serial"
+        printf '1000\n' > "$fixture/ca/crlnumber"
+        cat > "$fixture/ca/openssl.cnf" <<'EOF'
+        [ ca ]
+        default_ca = CA_default
+        [ CA_default ]
+        database = /var/tmp/observability-control-plane-fixture/ca/index.txt
+        serial = /var/tmp/observability-control-plane-fixture/ca/serial
+        crlnumber = /var/tmp/observability-control-plane-fixture/ca/crlnumber
+        private_key = /var/tmp/observability-control-plane-fixture/tls/ca.key
+        certificate = /var/tmp/observability-control-plane-fixture/tls/ca.crt
+        new_certs_dir = /var/tmp/observability-control-plane-fixture/ca/newcerts
+        default_md = sha256
+        default_crl_days = 1
+        policy = policy_any
+        [ policy_any ]
+        commonName = supplied
+        EOF
+        openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=fixture-ca \
+          -addext 'basicConstraints=critical,CA:TRUE' \
+          -addext 'keyUsage=critical,keyCertSign,cRLSign' \
+          -addext 'subjectKeyIdentifier=hash' \
+          -keyout "$fixture/tls/ca.key" -out "$fixture/tls/ca.crt"
+        openssl req -newkey rsa:2048 -nodes -subj /CN=ingest.fixture.test \
+          -keyout "$fixture/tls/server.key" -out "$fixture/tls/server.csr"
+        cat > "$fixture/server.ext" <<'EOF'
+        basicConstraints=critical,CA:FALSE
+        keyUsage=critical,digitalSignature,keyEncipherment
+        extendedKeyUsage=serverAuth
+        subjectAltName=DNS:ingest.fixture.test,DNS:control.fixture.test
+        authorityKeyIdentifier=keyid,issuer
+        subjectKeyIdentifier=hash
+        EOF
+        openssl x509 -req -days 1 -CA "$fixture/tls/ca.crt" -CAkey "$fixture/tls/ca.key" \
+          -CAcreateserial -in "$fixture/tls/server.csr" -out "$fixture/tls/server.crt" -extfile "$fixture/server.ext"
+        for identity in vpn-p0 vpn-p1; do
+          openssl req -newkey rsa:2048 -nodes -subj "/CN=$identity" \
+            -keyout "$fixture/tls/client-$identity.key" -out "$fixture/tls/client-$identity.csr"
+          cat > "$fixture/client.ext" <<'EOF'
+        basicConstraints=critical,CA:FALSE
+        keyUsage=critical,digitalSignature,keyEncipherment
+        extendedKeyUsage=clientAuth
+        authorityKeyIdentifier=keyid,issuer
+        subjectKeyIdentifier=hash
+        EOF
+          openssl x509 -req -days 1 -CA "$fixture/tls/ca.crt" -CAkey "$fixture/tls/ca.key" \
+            -CAcreateserial -in "$fixture/tls/client-$identity.csr" -out "$fixture/tls/client-$identity.crt" -extfile "$fixture/client.ext"
+        done
+        openssl ca -batch -config "$fixture/ca/openssl.cnf" -gencrl -out "$fixture/tls/ca.crl"
+        openssl verify -x509_strict -purpose sslserver -CAfile "$fixture/tls/ca.crt" \
+          "$fixture/tls/server.crt"
+        for identity in vpn-p0 vpn-p1; do
+          openssl verify -x509_strict -purpose sslclient -CAfile "$fixture/tls/ca.crt" \
+            "$fixture/tls/client-$identity.crt"
+        done
+        cat > "$fixture/prometheus" <<'EOF'
+        #!/usr/bin/env python3
+        import http.server
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200 if self.path == '/-/ready' else 404); self.end_headers()
+            def do_POST(self):
+                self.send_response(200 if self.path == '/api/v1/write' else 404); self.end_headers()
+            def log_message(self, *_args): pass
+        http.server.HTTPServer(('127.0.0.1', 9090), Handler).serve_forever()
+        EOF
+        cat > "$fixture/promtool" <<'EOF'
+        #!/bin/sh
+        exit 0
+        EOF
+        cat > "$fixture/alertmanager" <<'EOF'
+        #!/usr/bin/env python3
+        import http.server
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200 if self.path == '/-/ready' else 404); self.end_headers()
+            def log_message(self, *_args): pass
+        http.server.HTTPServer(('127.0.0.1', 9093), Handler).serve_forever()
+        EOF
+        cat > "$fixture/amtool" <<'EOF'
+        #!/bin/sh
+        exit 0
+        EOF
+        chmod 0755 "$fixture/prometheus" "$fixture/promtool" "$fixture/alertmanager" "$fixture/amtool"
+        mkdir -p "$fixture/prometheus-fixture"
+        cp "$fixture/prometheus" "$fixture/promtool" "$fixture/prometheus-fixture/"
+        tar -C "$fixture" -czf "$fixture/prometheus.tar.gz" \
+          prometheus-fixture/prometheus prometheus-fixture/promtool
+        mkdir -p "$fixture/alertmanager-fixture"
+        cp "$fixture/alertmanager" "$fixture/amtool" "$fixture/alertmanager-fixture/"
+        tar -C "$fixture" -czf "$fixture/alertmanager.tar.gz" \
+          alertmanager-fixture/alertmanager alertmanager-fixture/amtool
+        dd if=/dev/zero of="$fixture/oversize.bin" bs=1M count=9 status=none
+        touch "$fixture/.alerting-fixture-v1"
+      args:
+        creates: /var/tmp/observability-control-plane-fixture/.alerting-fixture-v1
+      changed_when: false
+
+    - name: Install bounded direct mTLS fixture client
+      ansible.builtin.copy:
+        dest: /var/tmp/observability-control-plane-fixture/mtls-client.py
+        owner: root
+        group: root
+        mode: '0755'
+        content: |
+          #!/usr/bin/python3
+          import argparse
+          import http.client
+          import os
+          import socket
+          import ssl
+          import subprocess
+          import sys
+
+          DIRECT_ADDRESS = "127.0.0.1"
+          DIRECT_PORT = 9443
+          MAX_BODY_SIZE = 8 * 1024 * 1024 + 1
+          CURL_MAX_TIME = 5
+          CURL_PROCESS_TIMEOUT = 6
+
+
+          class FixtureTransportError(OSError):
+              pass
+
+
+          class DirectHTTPSConnection(http.client.HTTPSConnection):
+              def connect(self):
+                  raw = socket.create_connection((DIRECT_ADDRESS, DIRECT_PORT), timeout=5)
+                  self.sock = self._context.wrap_socket(
+                      raw, server_hostname=self.host
+                  )
+
+
+          def send_oversized_request(args, _context):
+              command = (
+                  "curl",
+                  "--disable",
+                  "--silent",
+                  "--show-error",
+                  "--noproxy",
+                  "*",
+                  "--resolve",
+                  "{}:{}:{}".format(args.server_name, DIRECT_PORT, DIRECT_ADDRESS),
+                  "--cacert",
+                  args.ca,
+                  "--cert",
+                  args.cert,
+                  "--key",
+                  args.key,
+                  "--connect-timeout",
+                  str(CURL_MAX_TIME),
+                  "--max-time",
+                  str(CURL_MAX_TIME),
+                  "--output",
+                  os.devnull,
+                  "--write-out",
+                  "%{http_code}",
+                  "--request",
+                  args.method,
+                  "--header",
+                  "Host: {}".format(args.server_name),
+                  "--header",
+                  "Content-Length: {}".format(args.body_size),
+                  "--header",
+                  "Expect: 100-continue",
+                  "--data-binary",
+                  "@-",
+                  "https://{}:{}{}".format(
+                      args.server_name, DIRECT_PORT, args.path
+                  ),
+              )
+              try:
+                  completed = subprocess.run(
+                      command,
+                      input=b"x" * args.body_size,
+                      stdout=subprocess.PIPE,
+                      stderr=subprocess.DEVNULL,
+                      check=False,
+                      timeout=CURL_PROCESS_TIMEOUT,
+                  )
+              except subprocess.TimeoutExpired as error:
+                  raise FixtureTransportError("curl_timeout") from error
+              except FileNotFoundError as error:
+                  raise FixtureTransportError("curl_unavailable") from error
+              if completed.returncode == 28:
+                  raise FixtureTransportError("curl_timeout")
+              if completed.returncode != 0:
+                  raise FixtureTransportError("curl_failed")
+              try:
+                  status = completed.stdout.decode("ascii")
+              except UnicodeDecodeError as error:
+                  raise ValueError("malformed HTTP response status") from error
+              if status != "413":
+                  raise ValueError("unexpected HTTP response status")
+              return int(status)
+
+
+          def main():
+              parser = argparse.ArgumentParser()
+              parser.add_argument("--server-name", required=True)
+              parser.add_argument("--path", required=True)
+              parser.add_argument("--method", choices=("GET", "POST"), default="GET")
+              parser.add_argument("--ca", required=True)
+              parser.add_argument("--cert", required=True)
+              parser.add_argument("--key", required=True)
+              parser.add_argument("--body", default="")
+              parser.add_argument("--body-size", type=int)
+              args = parser.parse_args()
+              if args.body_size is not None:
+                  if args.body or args.body_size <= 0 or args.body_size > MAX_BODY_SIZE:
+                      return 2
+              context = ssl.create_default_context(cafile=args.ca)
+              context.load_cert_chain(certfile=args.cert, keyfile=args.key)
+              try:
+                  if args.body_size is not None:
+                      status = send_oversized_request(args, context)
+                  else:
+                      connection = DirectHTTPSConnection(
+                          args.server_name, timeout=5, context=context
+                      )
+                      try:
+                          connection.request(
+                              args.method,
+                              args.path,
+                              body=args.body.encode("utf-8"),
+                              headers={"Host": args.server_name},
+                          )
+                          status = connection.getresponse().status
+                      finally:
+                          connection.close()
+                  print(status)
+                  return 0
+              except FixtureTransportError as error:
+                  print(str(error), file=sys.stderr)
+                  return 2
+              except ssl.SSLError:
+                  return 60
+              except (OSError, http.client.HTTPException, ValueError):
+                  return 2
+
+
+          if __name__ == "__main__":
+              sys.exit(main())

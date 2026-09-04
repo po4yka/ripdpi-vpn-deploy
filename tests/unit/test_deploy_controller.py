@@ -91,9 +91,10 @@ def workspace(tmp_path):
     # These transport boundaries never inspect real keys, connect to hosts or
     # run runtime playbooks. Paths are fixed inside this fixture's scripts.
     program = f"""#!{sys.executable}
-import json, pathlib, sys
+import json, os, pathlib, sys
 with pathlib.Path({str(calls)!r}).open('a') as stream:
-    stream.write(json.dumps({{'program': pathlib.Path(sys.argv[0]).name, 'args': sys.argv[1:]}}) + '\\n')
+    stream.write(json.dumps({{'program': pathlib.Path(sys.argv[0]).name, 'args': sys.argv[1:],
+        'tailnet_auth': 'present' if 'TAILSCALE_AUTH_KEY' in os.environ else 'absent'}}) + '\\n')
 if pathlib.Path(sys.argv[0]).name == 'ansible-inventory':
     print(json.dumps({{'vpn': {{'hosts': ['node-one', 'node-two']}}}}))
 sys.exit(0)
@@ -465,6 +466,106 @@ def test_make_inputs_do_not_expand_make_functions(workspace, field, target):
     assert result.returncode != 0
     assert not marker.exists()
     assert not any(entry["program"] in ("ssh", "ansible-playbook") for entry in calls(workspace))
+
+
+@pytest.mark.parametrize("target", ["deploy", "dry-run"])
+def test_make_refuses_command_line_tailnet_credential_before_expansion(
+    workspace, target
+):
+    marker = workspace["root"].parent / "tailnet-credential-expanded"
+    result = invoke(
+        workspace,
+        target=target,
+        limit="node-one",
+        TAILSCALE_AUTH_KEY="$(shell touch " + str(marker) + ")",
+    )
+    assert result.returncode != 0
+    assert "must come from the environment" in result.stderr
+    assert not marker.exists()
+    assert calls(workspace) == []
+
+
+def test_tailnet_credential_reaches_only_one_node_site_playbook(workspace):
+    write(workspace["root"] / "ansible/group_vars/vpn-p0.yml",
+          "vpn: {enable_tailnet_management: true}\n")
+    commit_fixture(workspace)
+    workspace["env"]["TAILSCALE_AUTH_KEY"] = "tskey-auth-fixture_12345678"
+    result = invoke(workspace, target="deploy", limit="node-one")
+
+    assert result.returncode == 0, result.stderr
+    observed = calls(workspace)
+    site = [
+        entry
+        for entry in observed
+        if entry["program"] == "ansible-playbook"
+        and Path(entry["args"][0]).stem.endswith("-site")
+    ]
+    assert len(site) == 1 and site[0]["tailnet_auth"] == "present"
+    assert all(
+        entry["tailnet_auth"] == "absent"
+        for entry in observed
+        if entry not in site
+    )
+
+
+def test_dry_run_never_forwards_ambient_tailnet_credential(workspace):
+    workspace["env"]["TAILSCALE_AUTH_KEY"] = "tskey-auth-fixture_12345678"
+    result = invoke(workspace, target="dry-run", limit="node-one")
+
+    assert result.returncode == 0, result.stderr
+    assert all(entry["tailnet_auth"] == "absent" for entry in calls(workspace))
+
+
+@pytest.mark.parametrize(
+    "credential,limit",
+    [
+        ("invalid", "node-one"),
+        ("tskey-auth-fixture_12345678", ""),
+    ],
+)
+def test_tailnet_credential_refuses_invalid_or_multi_node_use_before_ssh(
+    workspace, credential, limit
+):
+    workspace["env"]["TAILSCALE_AUTH_KEY"] = credential
+    result = invoke(workspace, target="deploy", limit=limit)
+
+    assert result.returncode != 0
+    assert "Tailnet enrollment credential invalid" in result.stderr
+    assert not any(entry["program"] in ("ssh", "ansible-playbook") for entry in calls(workspace))
+
+
+@pytest.mark.parametrize("target", ["deploy", "dry-run"])
+def test_tailnet_enabled_multi_node_refuses_without_credential_before_ssh(workspace, target):
+    for cohort in ("vpn-p0", "vpn-p1p2"):
+        write(workspace["root"] / f"ansible/group_vars/{cohort}.yml",
+              "vpn: {enable_tailnet_management: true}\n")
+    commit_fixture(workspace)
+
+    result = invoke(workspace, target=target, limit="")
+
+    assert result.returncode != 0
+    assert "Tailnet management requires one exact inventory node" in result.stderr
+    assert not any(entry["program"] in ("ssh", "ansible-playbook") for entry in calls(workspace))
+
+
+@pytest.mark.parametrize("target", ["deploy", "dry-run"])
+def test_tailnet_host_metadata_multi_node_refuses_before_ssh(workspace, target):
+    source = workspace["inventory"].read_text()
+    source = source.replace(
+        "provider=upcloud",
+        "provider=upcloud vpn='{\"enable_tailnet_management\": True}'",
+    ).replace(
+        "provider=vultr",
+        "provider=vultr vpn='{\"enable_tailnet_management\": True}'",
+    )
+    workspace["inventory"].write_text(source)
+
+    result = invoke(workspace, target=target, limit="")
+
+    assert result.returncode != 0
+    assert "Tailnet management requires one exact inventory node" in result.stderr
+    assert not any(entry["program"] in ("ssh", "ansible-playbook")
+                   for entry in calls(workspace))
 
 
 @pytest.mark.parametrize("field", ["ENV", "PROVIDER"])

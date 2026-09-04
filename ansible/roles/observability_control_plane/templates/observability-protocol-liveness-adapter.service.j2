@@ -1,0 +1,24 @@
+[Unit]
+Description=Adapt canonical published protocol-liveness evidence
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/libexec/observability-protocol-liveness-adapter.py --evidence {{ observability_control_plane.protocol_liveness.evidence_path }} --output {{ observability_control_plane.protocol_liveness.output_path }} --stale-after {{ observability_control_plane.protocol_liveness.stale_after_seconds }} --max-future {{ observability_control_plane.protocol_liveness.max_future_seconds }}
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths={{ observability_control_plane.protocol_liveness.output_directory }}
+ReadOnlyPaths={{ observability_control_plane.protocol_liveness.evidence_directory }} /usr/local/libexec/observability-protocol-liveness-adapter.py

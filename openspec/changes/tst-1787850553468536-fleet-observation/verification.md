@@ -35,6 +35,7 @@ artifact_evidence: null
 | REQ-OBS-XHTTP | TST-1787850897343789 | `check-liveness-profile-compatibility.py`: canonical emitters and real sing-box 1.13.16 / Xray 26.3.27 parsers passed; materializer suite 54 passed | Local parser evidence; no external traffic claim |
 | REQ-OBS-IDENTITY | TST-1787850897969705 | Installer/materializer regressions: explicit host/instance, key derivation match, revoked client and other-client exclusion, one private decryption | Local regression passed; no real client installation |
 | REQ-OBS-LIFECYCLE | TST-1787850898631764 | Runtime/matrix suite 91 passed, including creation-time interruption, owned-resource cleanup, occupied listener and unobserved-network regressions; final serialized ci-fast passed | Local/loopback evidence only; no external VPN traffic |
+| REQ-OBS-DISPOSABLE-EXECUTOR | TST-1787850899238844 | `test_disposable_liveness_executor.py`, `test_disposable_liveness_make.py`, and installer/evaluator regressions: exact no-mount profile, root marker, private cross-binding, real-Make literal/argv boundaries, no-host-SSH routing, short-I/O and lock cleanup, dedicated single-sentinel refusal, guarded provider-absence de-onboarding and exact retry | Focused 328 PASS; canonical local source `f0fb603ec2702ac0f027e5f4c7df602d32198ba4`: Python 2887 PASS + 1 existing skip, BATS 55, Rust 184 + Clippy, TF/policy/ci-fast PASS; profile stopped and Docker context/config restored. No disposable executor lifecycle, credential transfer, provider action or external traffic |
 | REQ-OBS-ROLLOUT | TST-1787850898631764 | Real filesystem generation/receiver tests; atomic candidate/job, typed receipt, rollback size bound; deadline integration four suites 199 passed | Local regression passed; no remote installation or power-loss claim |
 | REQ-OBS-ACCEPTANCE | TST-1787850899238844 | Exact-source external four-profile run with runtime and path provenance | Pending reachable approved sentinel and dedicated AWG material |
 
@@ -47,12 +48,25 @@ artifact_evidence: null
   CI, deployment and traffic acceptance remain separate evidence categories.
 - Real-vantage prerequisites: reachable approved sentinel, pinned clients, and
   dedicated active AWG private key. An offline sentinel or a revoked recovery
-  key cannot satisfy them. Coordination now reports approval for one temporary
-  staging VPS (target EUR 5, absolute total cap EUR 7), with price verification
-  before creation and cleanup after evidence, no later than 48 hours. Provisioning
-  ownership and the concrete plan must be coordinated before creation. The
-  existing Raspberry Pi is the executor; only new test identities and one-shot
-  acceptance are allowed. No resource has been created in this code/CI phase.
+  key cannot satisfy them. Coordination previously approved one temporary
+  staging VPS (target EUR 5, absolute total cap EUR 7, at most 48 hours) with
+  provider-price verification, guarded cleanup and single-owner provisioning.
+  That resource was subsequently guarded-destroyed and the authorization was
+  consumed; no staging target is currently authorized, and creating another one
+  requires fresh action-time confirmation.
+- The former Raspberry Pi executor has been retired and is not a prerequisite.
+  The approved replacement design for the one-shot acceptance run is a
+  disposable systemd-capable Linux VM on the operator-owned Mac whose traffic
+  exits through the current consumer uplink. Source now enforces the required
+  non-default-profile/no-mount/no-port preflight, binds private executor evidence
+  to the accepted report, and de-onboards the configuration, local assignment,
+  dedicated client identity and exact profile only after bound guarded provider
+  absence. Focused tests cover drift/refusal, report mismatch, route selection,
+  SOPS/local cleanup ordering and retryable exact deletion. No VM was started and
+  no credential transferred by this source change. A later approved run proves only the
+  observed external consumer-uplink vantage; it is not independent physical-
+  hardware, recurring, filtered-path quorum, or Android evidence. No replacement
+  VM has been started or configured in this planning update.
 - Dry-run means canonical candidate rendering/parsing and isolated installer
   orchestration tests without contacting a host, not `make dry-run` or Ansible
   check mode; those are not passive inspection. No live installer run occurred.

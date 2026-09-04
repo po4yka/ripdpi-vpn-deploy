@@ -1,0 +1,339 @@
+---
+- name: Validate exact approved Tailnet management sources before host writes
+  ansible.builtin.command:
+    cmd: >-
+      python3 {{ role_path }}/../../../scripts/tailnet-validate-sources.py
+    stdin: "{{ tailnet_management.approved_sources | to_json }}"
+  delegate_to: localhost
+  become: false
+  changed_when: false
+
+- name: Validate pinned Tailscale package inputs
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] in ['Debian', 'Ubuntu']
+      - ansible_facts['distribution_release'] is match('^[a-z][a-z0-9-]{1,31}$')
+      - tailnet_management_package_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+      - tailnet_management_repository_gpg_sha256 is match('^[0-9a-f]{64}$')
+    fail_msg: >-
+      Tailnet management requires Debian or Ubuntu plus an exact stable
+      Tailscale package version and repository-key SHA256 pin.
+  when: tailnet_management_install_package | bool
+
+- name: Inspect existing Tailscale command locations before host writes
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+    get_attributes: false
+    get_checksum: false
+    get_mime: false
+  loop:
+    - /usr/bin/tailscale
+    - /usr/local/bin/tailscale
+  register: _tailnet_existing_cli_stats
+  changed_when: false
+
+- name: Select an existing Tailscale command without ambiguity
+  ansible.builtin.set_fact:
+    _tailnet_existing_cli_metadata: >-
+      {{ _tailnet_existing_cli_stats.results |
+         selectattr('stat.exists', 'defined') |
+         selectattr('stat.exists') | list }}
+    _tailnet_existing_cli_candidates: >-
+      {{ _tailnet_existing_cli_stats.results |
+         selectattr('stat.exists', 'defined') |
+         selectattr('stat.exists') |
+         map(attribute='item') | list }}
+  changed_when: false
+
+- name: Refuse ambiguous existing Tailscale command ownership
+  ansible.builtin.assert:
+    that:
+      - _tailnet_existing_cli_candidates | length <= 1
+      - >-
+        _tailnet_existing_cli_metadata | length == 0 or
+        _tailnet_existing_cli_metadata[0].stat.isreg
+      - >-
+        _tailnet_existing_cli_metadata | length == 0 or
+        _tailnet_existing_cli_metadata[0].stat.uid == 0
+      - >-
+        _tailnet_existing_cli_metadata | length == 0 or
+        not (_tailnet_existing_cli_metadata[0].stat.wgrp | default(false))
+      - >-
+        _tailnet_existing_cli_metadata | length == 0 or
+        not (_tailnet_existing_cli_metadata[0].stat.woth | default(false))
+    fail_msg: Existing Tailscale command ownership is ambiguous.
+
+- name: Read existing Tailnet state before package or controller writes
+  ansible.builtin.command:
+    argv:
+      - "{{ _tailnet_existing_cli_candidates[0] }}"
+      - status
+      - --json
+  register: _tailnet_existing_status
+  changed_when: false
+  when: _tailnet_existing_cli_candidates | length == 1
+  no_log: true
+
+- name: Refuse unsupported existing Tailnet state before host writes
+  ansible.builtin.assert:
+    that:
+      - (_tailnet_existing_status.stdout | from_json).BackendState in ['Running', 'NeedsLogin']
+    fail_msg: Existing Tailnet state is unsupported for managed enrollment.
+  when: _tailnet_existing_cli_candidates | length == 1
+  no_log: true
+
+- name: Read existing running Tailnet preferences before host writes
+  ansible.builtin.command:
+    argv:
+      - "{{ _tailnet_existing_cli_candidates[0] }}"
+      - get
+      - --json
+      - all
+  register: _tailnet_existing_preferences
+  changed_when: false
+  when:
+    - _tailnet_existing_cli_candidates | length == 1
+    - (_tailnet_existing_status.stdout | from_json).BackendState == 'Running'
+  no_log: true
+
+- name: Refuse unmanaged running Tailnet preferences before host writes
+  vars:
+    _tailnet_existing_prefs: "{{ _tailnet_existing_preferences.stdout | from_json }}"
+  ansible.builtin.assert:
+    that:
+      - not (_tailnet_existing_prefs['accept-dns'] | bool)
+      - not (_tailnet_existing_prefs['accept-routes'] | bool)
+      - not (_tailnet_existing_prefs['advertise-exit-node'] | bool)
+      - _tailnet_existing_prefs['advertise-routes'] == ''
+      - _tailnet_existing_prefs['exit-node'] == ''
+      - _tailnet_existing_prefs['netfilter-mode'] == 'off'
+      - not (_tailnet_existing_prefs['shields-up'] | bool)
+      - not (_tailnet_existing_prefs['ssh'] | bool)
+    fail_msg: Existing Tailnet preferences are outside the managed policy.
+  when:
+    - _tailnet_existing_cli_candidates | length == 1
+    - (_tailnet_existing_status.stdout | from_json).BackendState == 'Running'
+  no_log: true
+
+- name: Refuse package installation over a local Tailscale command
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (
+          tailnet_management_install_package | bool and
+          _tailnet_existing_cli_candidates == ['/usr/local/bin/tailscale']
+        )
+    fail_msg: >-
+      Package-managed Tailnet enrollment refuses an existing local Tailscale
+      command because installing /usr/bin/tailscale would create ambiguity.
+
+- name: Require one existing Tailscale command when package installation is disabled
+  ansible.builtin.assert:
+    that:
+      - _tailnet_existing_cli_candidates | length == 1
+    fail_msg: >-
+      Tailnet management without package installation requires exactly one
+      validated existing Tailscale command.
+  when: not (tailnet_management_install_package | bool)
+
+- name: Record whether Tailnet enrollment capability is required
+  ansible.builtin.set_fact:
+    _tailnet_enrollment_required: >-
+      {{ not (
+        _tailnet_existing_cli_candidates | length == 1 and
+        (_tailnet_existing_status.stdout | from_json).BackendState == 'Running'
+      ) }}
+
+- name: Require enrollment capability before host writes
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (_tailnet_enrollment_required | bool) or (
+          lookup('env', 'TAILSCALE_AUTH_KEY')
+          is match('^tskey-auth-[A-Za-z0-9_-]{8,480}$')
+        )
+    fail_msg: Tailnet enrollment requires a valid controller-provided auth key.
+  when: not ansible_check_mode
+  no_log: true
+
+- name: Select official Tailscale repository family
+  ansible.builtin.set_fact:
+    _tailnet_repository_family: >-
+      {{ 'ubuntu' if ansible_facts['distribution'] == 'Ubuntu' else 'debian' }}
+  when: tailnet_management_install_package | bool
+
+- name: Install signed-repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - iproute2
+      - nftables
+      - openssh-server
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: tailnet_management_install_package | bool
+
+- name: Install pinned Tailscale repository key
+  ansible.builtin.get_url:
+    url: >-
+      https://pkgs.tailscale.com/stable/{{ _tailnet_repository_family
+      }}/{{ ansible_facts['distribution_release'] }}.noarmor.gpg
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    owner: root
+    group: root
+    mode: "0644"
+    checksum: "sha256:{{ tailnet_management_repository_gpg_sha256 }}"
+  when: tailnet_management_install_package | bool
+
+- name: Install pinned Tailscale stable apt source
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/tailscale.list
+    owner: root
+    group: root
+    mode: "0644"
+    content: >-
+      deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg]
+      https://pkgs.tailscale.com/stable/{{ _tailnet_repository_family }}
+      {{ ansible_facts['distribution_release'] }} main
+  when: tailnet_management_install_package | bool
+
+- name: Pin the exact Tailscale package release
+  ansible.builtin.copy:
+    dest: /etc/apt/preferences.d/tailscale
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Package: tailscale
+      Pin: version {{ tailnet_management_package_version }}
+      Pin-Priority: 1001
+  when: tailnet_management_install_package | bool
+
+- name: Install exact stable Tailscale package
+  ansible.builtin.apt:
+    name: "tailscale={{ tailnet_management_package_version }}"
+    state: present
+    update_cache: true
+    allow_downgrade: false
+  when: tailnet_management_install_package | bool
+
+- name: Ensure the Tailnet controller directory
+  ansible.builtin.file:
+    path: /usr/local/lib/vpn-tailnet
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the shared Tailnet management domain module
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../scripts/tailnet_management.py"
+    dest: /usr/local/lib/vpn-tailnet/tailnet_management.py
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install single-job Tailnet management commands
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../scripts/{{ item }}"
+    dest: "/usr/local/lib/vpn-tailnet/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - tailnet-configure.py
+    - tailnet-check.py
+    - tailnet-recover.py
+
+- name: Ensure private volatile Tailnet capability directory
+  ansible.builtin.file:
+    path: /run/vpn-tailnet-management
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Ensure private Tailnet recovery state directory
+  ansible.builtin.file:
+    path: /var/lib/vpn-tailnet-management
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install persistent Tailnet recovery units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - vpn-tailnet-recover.service
+    - vpn-tailnet-recover.timer
+  register: _tailnet_recovery_units
+
+- name: Enable and start the Tailscale daemon
+  ansible.builtin.systemd_service:
+    name: tailscaled.service
+    enabled: true
+    state: started
+  when:
+    - tailnet_management_install_package | bool
+    - not ansible_check_mode
+
+- name: Enable the boot Tailnet recovery gate
+  ansible.builtin.systemd_service:
+    name: vpn-tailnet-recover.service
+    enabled: true
+    daemon_reload: "{{ _tailnet_recovery_units.changed }}"
+  when: not ansible_check_mode
+
+- name: Arm persistent Tailnet recovery before enrollment
+  ansible.builtin.systemd_service:
+    name: vpn-tailnet-recover.timer
+    enabled: true
+    state: started
+    daemon_reload: "{{ _tailnet_recovery_units.changed }}"
+  when: not ansible_check_mode
+
+- name: Inspect installed Tailnet controller state
+  ansible.builtin.stat:
+    path: /usr/local/lib/vpn-tailnet/tailnet-configure.py
+    follow: false
+    get_attributes: false
+    get_checksum: false
+    get_mime: false
+  register: _tailnet_management_controller
+  check_mode: false
+
+- name: Enroll or verify ordinary OpenSSH Tailnet management
+  ansible.builtin.command:
+    cmd: >-
+      /usr/bin/python3 /usr/local/lib/vpn-tailnet/{{
+      'tailnet-check.py' if ansible_check_mode else 'tailnet-configure.py' }}
+    stdin: >-
+      {{ lookup('env', 'TAILSCALE_AUTH_KEY')
+         if (not ansible_check_mode and _tailnet_enrollment_required | bool)
+         else '' }}
+  check_mode: false
+  environment:
+    PATH: /usr/sbin:/usr/bin:/sbin:/bin
+  register: _tailnet_management_result
+  changed_when: >-
+    _tailnet_management_result.rc == 0 and
+    ((_tailnet_management_result.stdout | from_json).changed | bool)
+  when: >-
+    not ansible_check_mode or
+    (_tailnet_management_controller.stat.exists | default(false))
+  no_log: true
+
+- name: Predict first Tailnet enrollment in check mode
+  ansible.builtin.debug:
+    msg: Tailnet enrollment is pending; no enrollment capability was consumed.
+  changed_when: true
+  when:
+    - ansible_check_mode
+    - not (_tailnet_management_controller.stat.exists | default(false))

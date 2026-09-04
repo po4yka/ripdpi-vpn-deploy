@@ -39,6 +39,9 @@ tiers:
   amneziawg: core           # P2 device-VPN (obfuscated WG UDP)
   geodata: core             # geosite/geoip feed; firewall geo-block depends on it
   monitoring: core          # local-first node_exporter + log rotation
+  observability_agent: core # bounded remote-write sender; default-off during migration
+  observability_control_plane: tactical # dedicated default-off authenticated metrics receiver
+  observability_deadman: tactical # dedicated default-off monitoring-plane loss detector
   watchdog: core            # service supervision + alerting
   backup: core              # restic+age recovery path
   node_manifest: core       # machine-readable enabled surfaces/recovery summary
@@ -52,6 +55,7 @@ tiers:
   naive: tactical           # NaiveProxy; xcaddy from-source build
   warp-outbound: tactical   # Cloudflare WARP egress; changes ASN
   subscription-host: tactical # self-service config pull; v1 default is scp
+  tailnet-management: tactical # restricted ordinary OpenSSH management overlay
   intrusion_prevention: tactical # opt-in Fail2Ban sshd jail, nftables-native
   network-exposure-gate: tactical # reviewed controller gate, disabled by default
   security_audit: tactical  # operator-run non-blocking host audit reports
@@ -85,6 +89,7 @@ toggle_role_map:
   enable_watchdog: watchdog
   enable_backup: backup
   enable_subscription_host: subscription-host
+  enable_tailnet_management: tailnet-management
   enable_policy_ratelimit: policy-ratelimit
   enable_cdn_front: cdn-front
   enable_honeypot: honeypot
@@ -107,6 +112,7 @@ family_profiles:
   - group_vars/vpn-p0-self-steal.yml
   - group_vars/vpn-family-standard.yml
   - group_vars/vpn-device-full.yml
+  - group_vars/vpn-device-full-staging.yml
   - group_vars/vpn-p1-web.yml
   - group_vars/vpn-p2-udp.yml
   - group_vars/vpn-prod-hardened.yml

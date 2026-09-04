@@ -1,0 +1,22 @@
+---
+- name: Reload observability agent systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart observability agent
+  ansible.builtin.systemd_service:
+    name: observability-agent.service
+    state: restarted
+  when: not ansible_check_mode
+
+- name: Restart observability agent adapter timer
+  ansible.builtin.systemd_service:
+    name: observability-agent-adapter.timer
+    state: restarted
+  when: not ansible_check_mode
+
+- name: Restart observability agent health adapter timer
+  ansible.builtin.systemd_service:
+    name: observability-agent-health-adapter.timer
+    state: restarted
+  when: not ansible_check_mode

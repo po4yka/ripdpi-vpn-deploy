@@ -22,7 +22,9 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 CONFIG_VERSION = "real_vps_awg_nat_runner_v1"
-MANIFEST_VERSION = "real_vps_awg_nat_evidence_v2"
+MANIFEST_VERSION = "real_vps_awg_nat_evidence_v3"
+CLIENT_IDENTITY_VERSION = "ripdpi_awg_client_identity_v1"
+CLIENT_IDENTITY_DESCRIPTOR_NAME = "real-vps-awg-client-identity.json"
 WORKFLOW_PATH = ".github/workflows/real-vps-awg-nat.yml"
 LOCAL_ENTRYPOINT_PATH = "scripts/run-real-vps-awg-nat-local.sh"
 EXECUTOR_ENTRYPOINTS = {
@@ -74,6 +76,12 @@ REASON_CODES = {
     "INTERRUPTED",
     "CLEANUP_FAILED",
     "RUNNER_EXCEPTION",
+    "PREFLIGHT_TOOL_MISSING",
+    "PREFLIGHT_LOCK_BUSY",
+    "PREFLIGHT_CONFIG_INVALID",
+    "PREFLIGHT_RUNNER_INVALID",
+    "PREFLIGHT_SOURCE_UNSAFE",
+    "PREFLIGHT_SOURCE_MISMATCH",
 }
 CONFIG_FIELDS = {
     "version",
@@ -95,6 +103,7 @@ CONFIG_FIELDS = {
 MANIFEST_FIELDS = {
     "version",
     "sourceSha",
+    "clientIdentity",
     "startedAtEpoch",
     "finishedAtEpoch",
     "generatedAtEpoch",
@@ -117,6 +126,7 @@ PROVENANCE_FIELDS = {
     "invocationAttempt",
     "sourceArchiveSha256",
 }
+CLIENT_IDENTITY_FIELDS = {"version", "ripdpiSourceSha", "artifactSha256"}
 PRODUCER_FIELDS = {
     "runnerSha256",
     "serverControlHookSha256",
@@ -274,6 +284,119 @@ def require_invocation_id(value: Any, context: str = "invocation id") -> str:
     if not isinstance(value, str) or INVOCATION_ID_RE.fullmatch(value) is None:
         raise ValueError(f"{context} has invalid format")
     return value
+
+
+def client_identity_descriptor(path_value: Any) -> dict[str, str]:
+    """Read the private, immutable identity of the actual RIPDPI client artifact."""
+    path = _secure_path(path_value, executable=False)
+    expected = path.stat()
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+        )
+        observed = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(observed.st_mode)
+            or observed.st_nlink != 1
+            or observed.st_uid not in {0, os.geteuid()}
+            or stat.S_IMODE(observed.st_mode) & 0o077
+            or not 0 < observed.st_size <= 4096
+            or (observed.st_dev, observed.st_ino) != (expected.st_dev, expected.st_ino)
+        ):
+            raise ValueError("client identity descriptor is unavailable")
+        chunks = []
+        remaining = observed.st_size
+        while remaining:
+            chunk = os.read(descriptor, remaining)
+            if not chunk:
+                raise ValueError("client identity descriptor is unavailable")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+    except OSError as exc:
+        raise ValueError("client identity descriptor is unavailable") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    if not 0 < len(raw) <= 4096:
+        raise ValueError("client identity descriptor is invalid")
+    try:
+        value = json.loads(raw)
+    except (ValueError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("client identity descriptor is invalid") from exc
+    if not isinstance(value, dict):
+        raise ValueError("client identity descriptor is invalid")
+    require_fields(value, CLIENT_IDENTITY_FIELDS, "client identity descriptor")
+    if value["version"] != CLIENT_IDENTITY_VERSION:
+        raise ValueError("unsupported client identity descriptor")
+    source_sha = require_sha(value["ripdpiSourceSha"], SHA1_RE, "client source SHA")
+    artifact_sha256 = require_sha(
+        value["artifactSha256"], SHA256_RE, "client artifact SHA"
+    )
+    if source_sha == "0" * 40 or artifact_sha256 == "0" * 64:
+        raise ValueError("client identity descriptor must bind a real artifact")
+    return {"ripdpiSourceSha": source_sha, "artifactSha256": artifact_sha256}
+
+
+def validate_runtime_client_identity(
+    identity_path: Path, binary_path: Path
+) -> dict[str, str]:
+    """Bind the reported identity to the immutable toolchain binary in use."""
+    identity = client_identity_descriptor(str(identity_path))
+    binary = _secure_path(str(binary_path), executable=True)
+    if binary.name != "amneziawg-go":
+        raise ValueError("client runtime binary is invalid")
+    manifest_path = binary.parent.parent / "manifest.json"
+    manifest_file = _secure_path(str(manifest_path), executable=False)
+    raw = manifest_file.read_bytes()
+    if not 0 < len(raw) <= 64 * 1024:
+        raise ValueError("client runtime manifest is invalid")
+    try:
+        manifest = json.loads(raw)
+    except (ValueError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("client runtime manifest is invalid") from exc
+    if raw != canonical_json_bytes(manifest) or not isinstance(manifest, dict):
+        raise ValueError("client runtime manifest is invalid")
+    require_fields(
+        manifest,
+        {"schemaVersion", "inputs", "binaries", "treeSha256"},
+        "client runtime manifest",
+    )
+    if manifest["schemaVersion"] != 1:
+        raise ValueError("client runtime manifest is invalid")
+    inputs = manifest["inputs"]
+    binaries = manifest["binaries"]
+    if not isinstance(inputs, dict) or not isinstance(binaries, dict):
+        raise ValueError("client runtime manifest is invalid")
+    require_fields(
+        inputs,
+        {
+            "goBundleSha256",
+            "goCommit",
+            "toolsBundleSha256",
+            "toolsCommit",
+            "vendorSha256",
+        },
+        "client runtime inputs",
+    )
+    require_fields(
+        binaries,
+        {"amneziawg-go", "awg", "awg-quick"},
+        "client runtime binaries",
+    )
+    source_sha = require_sha(inputs["goCommit"], SHA1_RE, "client runtime source")
+    artifact_sha256 = require_sha(
+        binaries["amneziawg-go"], SHA256_RE, "client runtime artifact"
+    )
+    if sha256_bytes(binary.read_bytes()) != artifact_sha256:
+        raise ValueError("client runtime artifact digest mismatch")
+    if identity["ripdpiSourceSha"] != source_sha:
+        raise ValueError("client runtime source identity mismatch")
+    if identity["artifactSha256"] != artifact_sha256:
+        raise ValueError("client runtime artifact identity mismatch")
+    return identity
 
 
 def provenance_from_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -760,6 +883,7 @@ def run_lane(
     return {
         "version": MANIFEST_VERSION,
         "sourceSha": metadata["sourceSha"],
+        "clientIdentity": config["clientIdentity"],
         "startedAtEpoch": started,
         "finishedAtEpoch": finished,
         "generatedAtEpoch": finished,
@@ -816,6 +940,8 @@ def validate_manifest(
     expected_invocation_id: str | None = None,
     expected_invocation_attempt: int | None = None,
     expected_source_archive_sha256: str | None = None,
+    expected_client_source_sha: str | None = None,
+    expected_client_artifact_sha256: str | None = None,
 ) -> None:
     if not isinstance(manifest, dict):
         raise ValueError("manifest must be an object")
@@ -825,6 +951,26 @@ def validate_manifest(
     require_sha(expected_source_sha, SHA1_RE, "expected source SHA")
     if manifest["sourceSha"] != expected_source_sha:
         raise ValueError("manifest source SHA mismatch")
+    client_identity = manifest["clientIdentity"]
+    if not isinstance(client_identity, dict):
+        raise ValueError("client identity must be an object")
+    require_fields(
+        client_identity, {"ripdpiSourceSha", "artifactSha256"}, "client identity"
+    )
+    require_sha(client_identity["ripdpiSourceSha"], SHA1_RE, "client source SHA")
+    require_sha(client_identity["artifactSha256"], SHA256_RE, "client artifact SHA")
+    if expected_client_source_sha is not None:
+        require_sha(expected_client_source_sha, SHA1_RE, "expected client source SHA")
+        if client_identity["ripdpiSourceSha"] != expected_client_source_sha:
+            raise ValueError("manifest client source SHA mismatch")
+    if expected_client_artifact_sha256 is not None:
+        require_sha(
+            expected_client_artifact_sha256,
+            SHA256_RE,
+            "expected client artifact SHA",
+        )
+        if client_identity["artifactSha256"] != expected_client_artifact_sha256:
+            raise ValueError("manifest client artifact SHA mismatch")
     started = require_int(manifest["startedAtEpoch"], "startedAtEpoch", 1)
     finished = require_int(manifest["finishedAtEpoch"], "finishedAtEpoch", 1)
     generated = require_int(manifest["generatedAtEpoch"], "generatedAtEpoch", 1)
@@ -951,6 +1097,11 @@ def validate_manifest(
         raise ValueError("cleanup evidence is incomplete")
     if classification == "PASS":
         if (
+            client_identity["ripdpiSourceSha"] == "0" * 40
+            or client_identity["artifactSha256"] == "0" * 64
+        ):
+            raise ValueError("PASS manifest lacks client identity")
+        if (
             reason_code != "NONE"
             or [phase["id"] for phase in phases] != EXPECTED_PHASES
         ):
@@ -1071,6 +1222,9 @@ def load_config(path: Path) -> dict[str, Any]:
     if value["version"] != CONFIG_VERSION:
         raise ValueError("unsupported runner config version")
     runner_id = require_sha(value["runnerId"], SHA256_RE, "runnerId")
+    client_identity = client_identity_descriptor(
+        str(config_path.parent / CLIENT_IDENTITY_DESCRIPTOR_NAME)
+    )
     client, _, client_private, client_public, client_psk = _client_config_credentials(
         value["clientConfigPath"]
     )
@@ -1123,6 +1277,7 @@ def load_config(path: Path) -> dict[str, Any]:
         "serverDeployHook": str(deploy_hook),
         "rotationHook": str(rotation_hook),
         "runnerIdSha256": sha256_bytes(f"ripdpi:awg-runner:v1:{runner_id}".encode()),
+        "clientIdentity": client_identity,
         "serverControlHookSha256": sha256_bytes(control_hook.read_bytes()),
         "serverDeployHookSha256": sha256_bytes(deploy_hook.read_bytes()),
         "rotationHookSha256": sha256_bytes(rotation_hook.read_bytes()),
@@ -1560,12 +1715,17 @@ def probe_child() -> int:
 
 
 def failure_manifest(
-    metadata: dict[str, Any], producer_sha: str, reason_code: str = "CONFIG_INVALID"
+    metadata: dict[str, Any],
+    producer_sha: str,
+    reason_code: str = "CONFIG_INVALID",
+    client_identity: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     now = int(time.time())
     return {
         "version": MANIFEST_VERSION,
         "sourceSha": metadata["sourceSha"],
+        "clientIdentity": client_identity
+        or {"ripdpiSourceSha": "0" * 40, "artifactSha256": "0" * 64},
         "startedAtEpoch": now,
         "finishedAtEpoch": now,
         "generatedAtEpoch": now,
@@ -1626,11 +1786,24 @@ def main(argv: list[str] | None = None) -> int:
     validate.add_argument("--expected-run-id", type=int)
     validate.add_argument("--expected-run-attempt", type=int)
     validate.add_argument("--expected-source-archive-sha256", required=True)
+    validate.add_argument("--expected-client-source-sha")
+    validate.add_argument("--expected-client-artifact-sha256")
     validate.add_argument("--allow-non-pass", action="store_true")
+    runtime_identity = subparsers.add_parser("validate-client-runtime")
+    runtime_identity.add_argument("--identity", type=Path, required=True)
+    runtime_identity.add_argument("--binary", type=Path, required=True)
     subparsers.add_parser("probe-child")
     args = parser.parse_args(argv)
     if args.command == "probe-child":
         return probe_child()
+    if args.command == "validate-client-runtime":
+        try:
+            identity = validate_runtime_client_identity(args.identity, args.binary)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"real-VPS AWG/NAT client identity invalid: {exc}", file=sys.stderr)
+            return 1
+        sys.stdout.buffer.write(canonical_json_bytes(identity))
+        return 0
     if args.command == "validate":
         try:
             expected_invocation_id = args.expected_invocation_id
@@ -1653,6 +1826,8 @@ def main(argv: list[str] | None = None) -> int:
                 expected_invocation_id=expected_invocation_id,
                 expected_invocation_attempt=expected_invocation_attempt,
                 expected_source_archive_sha256=args.expected_source_archive_sha256,
+                expected_client_source_sha=args.expected_client_source_sha,
+                expected_client_artifact_sha256=args.expected_client_artifact_sha256,
             )
             return (
                 0 if args.allow_non_pass or manifest["classification"] == "PASS" else 1
@@ -1707,7 +1882,10 @@ def main(argv: list[str] | None = None) -> int:
         ]
         if os.geteuid() != 0 or missing or source_archive_sha256 == "0" * 64:
             manifest = failure_manifest(
-                metadata, producer_sha, reason_code="PREREQUISITE_MISSING"
+                metadata,
+                producer_sha,
+                reason_code="PREREQUISITE_MISSING",
+                client_identity=config["clientIdentity"],
             )
         else:
             try:
@@ -1722,7 +1900,10 @@ def main(argv: list[str] | None = None) -> int:
                 manifest = run_lane(config, executor, metadata)
             except OSError:
                 manifest = failure_manifest(
-                    metadata, producer_sha, reason_code="RUNNER_EXCEPTION"
+                    metadata,
+                    producer_sha,
+                    reason_code="RUNNER_EXCEPTION",
+                    client_identity=config["clientIdentity"],
                 )
     write_canonical_json(args.output, manifest)
     validate_manifest(manifest, expected_source_sha=args.source_sha)

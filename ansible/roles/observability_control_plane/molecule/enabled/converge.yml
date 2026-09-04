@@ -1,0 +1,9 @@
+---
+- name: Converge enabled bounded control-plane receiver
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: Load complete enabled control-plane fixture contract
+      ansible.builtin.include_tasks: tasks/fixture-contract.yml
+  roles:
+    - role: observability_control_plane

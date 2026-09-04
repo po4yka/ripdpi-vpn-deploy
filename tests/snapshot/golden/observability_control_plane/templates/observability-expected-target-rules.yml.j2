@@ -1,0 +1,63 @@
+groups:
+  - name: observability_expected_targets
+    rules:
+
+      - alert: ObservabilityExpectedTargetMissing
+        expr: >-
+          vpn_observability_expected_target
+          unless on (node, role)
+          max by (node, role) (vpn_observability_evidence_state)
+        for: 3m
+        labels:
+          severity: warning
+          component: expected-target
+          environment: fleet
+        annotations:
+          incident_family: expected-target-absence
+          evidence_class: no-evidence-state
+          source_generation: ""
+          summary: Expected observability target has no evidence state.
+          runbook: docs/RUNBOOK-incident.md
+      - alert: ObservabilityTargetEvidenceStale
+        expr: vpn_observability_evidence_state{state="stale"} == 1
+        for: 3m
+        labels:
+          severity: warning
+          component: expected-target
+          environment: fleet
+        annotations:
+          incident_family: target-evidence-freshness
+          evidence_class: stale-evidence
+          source_generation: ""
+          summary: Observability target evidence is stale.
+          runbook: docs/RUNBOOK-incident.md
+      - alert: ObservabilitySourceIdentityMismatch
+        expr: >-
+          (vpn_observability_node_manifest_identity{state="mismatch"} == 1)
+          or
+          (vpn_observability_evidence_state{node="observability-control-plane",role=~"source-revision|deployable-digest",state="mismatch"} == 1)
+        for: 3m
+        labels:
+          severity: warning
+          component: expected-target
+          environment: fleet
+        annotations:
+          incident_family: source-identity
+          evidence_class: identity-mismatch
+          source_generation: ""
+          summary: Node source or deployable identity differs from the expected candidate.
+          runbook: docs/RUNBOOK-incident.md
+      - alert: ObservabilityControlPlaneResourceOrPipelineUnhealthy
+        expr: >-
+          vpn_observability_evidence_state{node="observability-control-plane",role=~"tsdb-capacity|expected-target-pipeline",state!="fresh"} == 1
+        for: 3m
+        labels:
+          severity: warning
+          component: expected-target
+          environment: fleet
+        annotations:
+          incident_family: control-plane-health
+          evidence_class: resource-or-pipeline-unhealthy
+          source_generation: ""
+          summary: Control-plane capacity or expected-target pipeline is unhealthy.
+          runbook: docs/RUNBOOK-incident.md

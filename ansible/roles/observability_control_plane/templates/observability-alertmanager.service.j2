@@ -1,0 +1,34 @@
+[Unit]
+Description=Observability Alertmanager notification router
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ observability_control_plane.service_user }}
+Group={{ observability_control_plane.service_group }}
+LoadCredential=telegram-bot-token:{{ observability_control_plane.alerting.credential_path }}
+ExecStart={{ observability_control_plane.alerting.binary_link }} --config.file={{ observability_control_plane.config_root }}/alertmanager-current.yml --web.listen-address={{ observability_control_plane.alerting.listen }} --storage.path={{ observability_control_plane.alerting.data_dir }} --cluster.listen-address=
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths={{ observability_control_plane.alerting.data_dir }}
+ReadOnlyPaths={{ observability_control_plane.config_root }} {{ observability_control_plane.alerting.binary_link }}
+MemoryMax=256M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

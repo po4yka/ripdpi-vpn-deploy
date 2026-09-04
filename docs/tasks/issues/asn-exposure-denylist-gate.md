@@ -2,7 +2,7 @@
 id: ANS-1786277767052693
 title: Implement a disabled-by-default network exposure denylist gate
 kind: feature
-status: doing
+status: review
 area: ansible
 priority: high
 risk: high
@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: ans-1786277767052693-add-network-exposure-denylist-gate
 created: 2026-08-09
-updated: 2026-08-31
+updated: 2026-09-01
 related_tasks: []
-status_detail: Source candidate 729f262 passed the canonical local gate and all five execution steps are implemented. Client contract mirror and exact-head hosted CI are next; production enforcement remains disabled, PR110 remains draft, and staging/provider application is not authorized by this source delivery.
+status_detail: All five source steps, the client contract mirror, protected integration, and exact-main hosted checks are delivered. Enforcement remains disabled by default; staging log-only observation and any provider firewall apply remain separate live acceptance, and PR110 stays draft/no-apply.
 ---
 
 # Implement a disabled-by-default network exposure denylist gate

@@ -204,7 +204,14 @@ def test_baseline_role_scenario_does_not_claim_transactional_ssh_publication() -
     )[0]
     serialized = yaml.safe_dump(verify)
     assert "20-ansible-hardening.conf" not in serialized
-    assert "sshd -T" not in serialized
+    algorithm_reads = [
+        task for task in verify["tasks"]
+        if task["name"] == "Read effective SSH algorithm compatibility"
+    ]
+    assert len(algorithm_reads) == 1
+    assert algorithm_reads[0]["ansible.builtin.command"] == {"cmd": "sshd -T"}
+    assert algorithm_reads[0]["changed_when"] is False
+    assert "sshd -T -C" not in serialized
 
 
 def test_published_static_role_defaults_match_declared_manifest(tmp_path) -> None:

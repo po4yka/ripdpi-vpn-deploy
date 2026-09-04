@@ -1,0 +1,98 @@
+---
+- name: Prepare Tailnet management fixture
+  hosts: all
+  become: true
+  tasks:
+    - name: Install local policy-inspection dependencies
+      ansible.builtin.apt:
+        name:
+          - iproute2
+          - nftables
+          - openssh-server
+        state: present
+        update_cache: true
+
+    - name: Generate fixture OpenSSH host keys
+      ansible.builtin.command: ssh-keygen -A
+      changed_when: false
+
+    - name: Create the volatile OpenSSH privilege-separation directory
+      ansible.builtin.file:
+        path: /run/sshd
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create the required Tailnet interface fixture
+      ansible.builtin.shell: |
+        set -eu
+        ip link show tailscale0 >/dev/null 2>&1 || ip link add tailscale0 type dummy
+        ip address replace 100.64.1.9/32 dev tailscale0
+        ip -6 address replace fd7a:115c:a1e0::9/128 dev tailscale0
+        ip link set tailscale0 up
+      args:
+        executable: /bin/sh
+      changed_when: false
+
+    - name: Install the isolated nftables ruleset fixture
+      ansible.builtin.copy:
+        dest: /usr/sbin/nft
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          set -eu
+          [ "$*" = "-j list chains" ] || exit 64
+          printf '%s\n' '{"nftables":[]}'
+
+    - name: Install stateful Tailscale CLI fixture
+      ansible.builtin.copy:
+        dest: /usr/bin/tailscale
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          set -eu
+          state=/run/tailscale-fixture-state
+          log=/run/tailscale-fixture-calls
+          case "${1:-}" in
+            status)
+              if [ -f "$state" ]; then backend=Running; else backend=NeedsLogin; fi
+              printf '{"BackendState":"%s"}\n' "$backend"
+              ;;
+            get)
+              printf '%s\n' \
+                '{"accept-dns":false,"accept-routes":false,'\
+                '"advertise-exit-node":false,"advertise-routes":"",'\
+                '"exit-node":"","netfilter-mode":"off",'\
+                '"shields-up":false,"ssh":false}'
+              ;;
+            login)
+              shift
+              printf '%s\n' "$*" >> "$log"
+              auth_path=
+              for arg in "$@"; do
+                case "$arg" in --auth-key=file:*) auth_path=${arg#--auth-key=file:};; esac
+              done
+              [ -n "$auth_path" ]
+              [ "$(stat -c %a "$auth_path")" = 600 ]
+              [ "$(cat "$auth_path")" = tskey-auth-molecule-fixture ]
+              required_flags='--accept-dns=false --accept-routes=false --advertise-exit-node=false'
+              required_flags="$required_flags --advertise-routes= --exit-node="
+              required_flags="$required_flags --netfilter-mode=off --shields-up=false --ssh=false"
+              for required in $required_flags; do
+                case " $* " in *" $required "*) :;; *) exit 64;; esac
+              done
+              : > "$state"
+              ;;
+            ip)
+              if [ "${2:-}" = -4 ]; then printf '%s\n' 100.64.1.9; else printf '%s\n' fd7a:115c:a1e0::9; fi
+              ;;
+            logout)
+              rm -f "$state"
+              ;;
+            *) exit 64;;
+          esac

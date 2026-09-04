@@ -522,7 +522,7 @@ def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
     result: dict
     cleanup_failed = False
     try:
-        parsed = awg_probe_url(config)
+        awg_probe_url(config)
         address_family = "ipv4"
         existing = subprocess.run(["ip", "link", "show", interface], timeout=2, check=False, capture_output=True)
         if existing.returncode != 1:

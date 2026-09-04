@@ -1,0 +1,43 @@
+---
+- name: Verify Tailnet management role
+  hosts: all
+  become: true
+  tasks:
+    - name: Read fixture enrollment calls
+      ansible.builtin.slurp:
+        src: /run/tailscale-fixture-calls
+      register: _tailnet_fixture_calls
+
+    - name: Verify exact privacy and preference flags
+      ansible.builtin.assert:
+        that:
+          - "'tskey-auth-molecule-fixture' not in (_tailnet_fixture_calls.content | b64decode)"
+          - "'--accept-dns=false' in (_tailnet_fixture_calls.content | b64decode)"
+          - "'--accept-routes=false' in (_tailnet_fixture_calls.content | b64decode)"
+          - "'--netfilter-mode=off' in (_tailnet_fixture_calls.content | b64decode)"
+          - "'--shields-up=false' in (_tailnet_fixture_calls.content | b64decode)"
+          - "'--ssh=false' in (_tailnet_fixture_calls.content | b64decode)"
+
+    - name: Find leaked enrollment credential files
+      ansible.builtin.find:
+        paths: /run
+        patterns: vpn-tailnet-auth-*
+        file_type: file
+      register: _tailnet_auth_residue
+
+    - name: Enrollment capability was removed
+      ansible.builtin.assert:
+        that:
+          - _tailnet_auth_residue.matched == 0
+
+    - name: Controller repeat is unchanged without an enrollment credential
+      ansible.builtin.command:
+        cmd: /usr/bin/python3 /usr/local/lib/vpn-tailnet/tailnet-configure.py
+      register: _tailnet_repeat
+      changed_when: false
+
+    - name: Repeat reports the existing exact configuration
+      ansible.builtin.assert:
+        that:
+          - (_tailnet_repeat.stdout | from_json).status == 'configured'
+          - not ((_tailnet_repeat.stdout | from_json).changed | bool)

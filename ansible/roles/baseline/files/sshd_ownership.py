@@ -36,6 +36,15 @@ PACKAGED_SFTP = ("sftp", "/usr/lib/openssh/sftp-server")
 INTERNAL_SFTP = {("sftp", "internal-sftp"), ("sftp", "internal-sftp", "-f", "AUTHPRIV", "-l", "INFO")}
 AUTH = {"passwordauthentication": "no", "kbdinteractiveauthentication": "no",
         "permitrootlogin": "no", "pubkeyauthentication": "yes"}
+CANONICAL_ALGORITHMS = {
+    "ciphers": ("chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com",),
+    "macs": ("hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com",),
+    "kexalgorithms": ("curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512",),
+}
+CANONICAL_EFFECTIVE_ALGORITHMS = {
+    key.encode(): f"{key} {','.join(values)}".encode()
+    for key, values in CANONICAL_ALGORITHMS.items()
+}
 TUNABLE = {"x11forwarding", "allowtcpforwarding", "allowagentforwarding", "permittunnel",
            "permituserenvironment", "permitemptypasswords", "ignorerhosts", "loglevel",
            "clientaliveinterval", "clientalivecountmax", "maxauthtries", "maxsessions",
@@ -150,7 +159,7 @@ def _capture(config_dir, *, baseline=False):
                     raise OwnershipError("unsupported-include")
                 include_count += 1
             elif key in OWNED:
-                allowed_main = ({"subsystem"} if baseline else {"kbdinteractiveauthentication", "x11forwarding", "subsystem"})
+                allowed_main = ({"subsystem"} if baseline else {"kbdinteractiveauthentication", "x11forwarding", "subsystem", "permitrootlogin"})
                 if relative != "sshd_config" or key not in allowed_main:
                     if relative not in FRAGMENTS:
                         raise OwnershipError("unmanaged-owned-directive", relative)
@@ -218,7 +227,8 @@ def _candidates(captures):
 
 
 def _ownership_main(captures):
-    allowed = {"kbdinteractiveauthentication": ["no"], "x11forwarding": ["yes"]}
+    allowed = {"kbdinteractiveauthentication": ["no"], "x11forwarding": ["yes"], "permitrootlogin": ["yes"]}
+    include_index = next(index for index, key, _ in _lines(captures["sshd_config"][0]) if key == "include")
     result = []
     seen = set()
     for index, key, values in _lines(captures["sshd_config"][0]):
@@ -227,6 +237,8 @@ def _ownership_main(captures):
         if key in seen:
             raise OwnershipError("unsupported-owned-directive")
         seen.add(key)
+        if key == "permitrootlogin" and index < include_index:
+            raise OwnershipError("unshadowed-root-login")
         if key == "subsystem":
             if tuple(values) != PACKAGED_SFTP:
                 raise OwnershipError("unsupported-subsystem")
@@ -243,6 +255,19 @@ def _runtime_directives(raw):
     if "subsystem" in result and tuple(result["subsystem"][1]) not in INTERNAL_SFTP:
         raise OwnershipError("unsupported-subsystem")
     return result
+
+
+def _algorithm_directives(directives, *, required):
+    actual = {
+        key: tuple(values)
+        for key, (_, values) in directives.items()
+        if key in CANONICAL_ALGORITHMS
+    }
+    if actual and actual != CANONICAL_ALGORITHMS:
+        raise OwnershipError("algorithm-policy-changed")
+    if required and actual != CANONICAL_ALGORITHMS:
+        raise OwnershipError("algorithm-policy-changed")
+    return actual
 
 
 def _baseline_layout(captures):
@@ -373,7 +398,10 @@ def _effective(captures, replacements, contexts):
 
 def _ownership_policy(captures, candidates, contexts):
     """Validate every deterministic apply prefix and reverse rollback suffix."""
-    before = _effective(captures, {}, contexts)
+    outputs = _effective_outputs(captures, {}, contexts)
+    if any([line for line in output.splitlines() if line.startswith(b"permitrootlogin ")] != [b"permitrootlogin no"] for output in outputs):
+        raise OwnershipError("unsafe-effective-root-login")
+    before = [_sha(output) for output in outputs]
     replacements = {}
     for relative in OWNERSHIP_FILES:
         if relative in candidates:
@@ -459,8 +487,11 @@ def build_baseline_plan(config_dir=Path("/etc/ssh"), *, contexts, hardening):
         if type(hardening) is not bytes or not 0 < len(hardening) <= MAX_HARDENING:
             raise OwnershipError("invalid-hardening")
         desired = _runtime_directives(hardening)
+        _algorithm_directives(desired, required=True)
         contexts = _contexts(contexts)
         captures, inventory = _capture(config_dir, baseline=True)
+        existing = _runtime_directives(captures[MANAGED][0]) if MANAGED in captures else {}
+        existing_algorithms = _algorithm_directives(existing, required=False)
         subsystems = _baseline_layout(captures)
         main = captures["sshd_config"][0]
         if subsystems and "subsystem" in desired:
@@ -472,7 +503,11 @@ def build_baseline_plan(config_dir=Path("/etc/ssh"), *, contexts, hardening):
         candidates = {"sshd_config": main, MANAGED: hardening}
         before = _effective_outputs(captures, {}, contexts)
         after = _effective_outputs(captures, candidates, contexts)
-        if [_algorithms(output) for output in before] != [_algorithms(output) for output in after]:
+        before_algorithms = [_algorithms(output) for output in before]
+        after_algorithms = [_algorithms(output) for output in after]
+        if any(value != CANONICAL_EFFECTIVE_ALGORITHMS for value in after_algorithms):
+            raise OwnershipError("algorithm-policy-changed")
+        if existing_algorithms and any(value != CANONICAL_EFFECTIVE_ALGORITHMS for value in before_algorithms):
             raise OwnershipError("algorithm-policy-changed")
         created_metadata = {"mode": 0o644, "uid": OWNER_UID, "gid": 0}
         files = {relative: {"before": _record(*captures[relative]) if relative in captures else _record(),

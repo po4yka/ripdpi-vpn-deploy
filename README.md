@@ -193,6 +193,10 @@ Then:
     provision through `make awg-evidence-provision` after decrypting SOPS.
 25. `docs/XRAY-OBSERVABILITY.md` — loopback-only StatsService, redacted
     node_exporter counters, freshness checks, and failure interpretation.
+26. `docs/TAILNET-MANAGEMENT.md` — opt-in ordinary OpenSSH over Tailnet,
+    one-node enrollment capability handling, and the separate ACL/live gates.
+27. `docs/OBSERVABILITY-OPERATIONS.md` — exact-host render, validation, passive
+    status, staging delivery drill, rotation, rollback, and removal boundaries.
 
 Operational runbooks: `docs/RUNBOOK-{rotate,rollback,incident,restore,add-fallback}.md`.
 

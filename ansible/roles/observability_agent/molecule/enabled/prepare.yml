@@ -1,0 +1,525 @@
+---
+- name: Prepare real observability-agent runtime fixture
+  hosts: all
+  become: true
+  tasks:
+    - name: Create observability fixture directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - path: /var/lib/observability-fixture
+          mode: "0700"
+        - path: /var/lib/ripdpi-vpn-deploy
+          mode: "0755"
+        - path: /var/lib/node_exporter
+          mode: "0755"
+        - path: /var/lib/node_exporter/textfile
+          mode: "3775"
+        - path: /var/lib/vpn-watchdog
+          mode: "0700"
+        - path: /var/lib/vpn-backup
+          mode: "0700"
+        - path: /run/observability-agent-fixture
+          mode: "0700"
+
+    - name: Create node exporter fixture group
+      ansible.builtin.group:
+        name: node_exporter_textfile
+        system: true
+
+    - name: Create node exporter fixture account
+      ansible.builtin.user:
+        name: prometheus
+        groups: node_exporter_textfile
+        append: true
+        system: true
+        shell: /usr/sbin/nologin
+
+    - name: Create observability agent fixture group
+      ansible.builtin.group:
+        name: observability-agent
+        system: true
+
+    - name: Create observability agent fixture account
+      ansible.builtin.user:
+        name: observability-agent
+        group: observability-agent
+        system: true
+        shell: /usr/sbin/nologin
+
+    - name: Set credential diagnostic runtime directory authority
+      ansible.builtin.file:
+        path: /run/observability-agent-fixture
+        owner: observability-agent
+        group: observability-agent
+        mode: "0700"
+
+    - name: Set node exporter fixture directory authority
+      ansible.builtin.file:
+        path: /var/lib/node_exporter/textfile
+        owner: root
+        group: node_exporter_textfile
+        mode: "3775"
+
+    - name: Write schema-2 node manifest fixture
+      ansible.builtin.copy:
+        dest: /var/lib/ripdpi-vpn-deploy/manifest.json
+        owner: root
+        group: root
+        mode: "0644"
+        content: >-
+          {"schema_version":2,"environment":"ci","provider":"fixture",
+          "source_revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deployable_digest":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+
+    - name: Write root-private watchdog state fixture
+      ansible.builtin.copy:
+        dest: /var/lib/vpn-watchdog/state
+        owner: root
+        group: root
+        mode: "0640"
+        content: |
+          consecutive_fails=0
+          last_alert_epoch=0
+          alerts_this_hour=0
+          alerts_hour_started={{ ansible_facts['date_time']['epoch'] }}
+          kicks_this_hour=1
+          kicks_hour_started={{ ansible_facts['date_time']['epoch'] }}
+
+    - name: Write root-private backup stage fixture
+      ansible.builtin.copy:
+        dest: /var/lib/vpn-backup/backup-stage-status.json
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          {
+            "version": 1,
+            "updated_at": "{{ ansible_facts['date_time']['iso8601'] }}",
+            "local_backup": {
+              "result": "success",
+              "attempted_at": "{{ ansible_facts['date_time']['iso8601'] }}",
+              "succeeded_at": "{{ ansible_facts['date_time']['iso8601'] }}"
+            },
+            "integrity": {
+              "result": "success",
+              "attempted_at": "{{ ansible_facts['date_time']['iso8601'] }}",
+              "succeeded_at": "{{ ansible_facts['date_time']['iso8601'] }}"
+            },
+            "remote_copy": {"result": "disabled"}
+          }
+
+    - name: Write root-private restore drill fixture
+      ansible.builtin.copy:
+        dest: /var/lib/vpn-backup/restore-drill-last-success.json
+        owner: root
+        group: root
+        mode: "0600"
+        content: >-
+          {"version":1,"repository_source":"remote",
+          "snapshot_id":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "snapshot_time":"{{ ansible_facts['date_time']['iso8601'] }}",
+          "verified_at":"{{ ansible_facts['date_time']['iso8601'] }}"}
+
+    - name: Generate fixture certificate authority
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/openssl
+          - req
+          - -x509
+          - -newkey
+          - rsa:2048
+          - -nodes
+          - -days
+          - "2"
+          - -subj
+          - /CN=observability-fixture-ca
+          - -addext
+          - basicConstraints=critical,CA:TRUE
+          - -addext
+          - keyUsage=critical,keyCertSign,cRLSign
+          - -addext
+          - subjectKeyIdentifier=hash
+          - -keyout
+          - /var/lib/observability-fixture/ca.key
+          - -out
+          - /var/lib/observability-fixture/ca.crt
+        creates: /var/lib/observability-fixture/ca.crt
+
+    - name: Write fixture certificate extension policies
+      ansible.builtin.copy:
+        dest: "/var/lib/observability-fixture/{{ item.name }}"
+        owner: root
+        group: root
+        mode: "0600"
+        content: "{{ item.content }}"
+      loop:
+        - name: server.ext
+          content: |
+            basicConstraints=critical,CA:FALSE
+            keyUsage=critical,digitalSignature,keyEncipherment
+            extendedKeyUsage=serverAuth
+            subjectAltName=DNS:ingest.fixture.test
+            subjectKeyIdentifier=hash
+            authorityKeyIdentifier=keyid,issuer
+        - name: client.ext
+          content: |
+            basicConstraints=critical,CA:FALSE
+            keyUsage=critical,digitalSignature
+            extendedKeyUsage=clientAuth
+            subjectKeyIdentifier=hash
+            authorityKeyIdentifier=keyid,issuer
+
+    - name: Generate fixture server key and request
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/openssl
+          - req
+          - -new
+          - -newkey
+          - rsa:2048
+          - -nodes
+          - -subj
+          - /CN=ingest.fixture.test
+          - -keyout
+          - /var/lib/observability-fixture/server.key
+          - -out
+          - /var/lib/observability-fixture/server.csr
+        creates: /var/lib/observability-fixture/server.csr
+
+    - name: Sign fixture server certificate
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/openssl
+          - x509
+          - -req
+          - -days
+          - "2"
+          - -in
+          - /var/lib/observability-fixture/server.csr
+          - -CA
+          - /var/lib/observability-fixture/ca.crt
+          - -CAkey
+          - /var/lib/observability-fixture/ca.key
+          - -CAcreateserial
+          - -extfile
+          - /var/lib/observability-fixture/server.ext
+          - -out
+          - /var/lib/observability-fixture/server.crt
+        creates: /var/lib/observability-fixture/server.crt
+
+    - name: Generate fixture client key and request
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/openssl
+          - req
+          - -new
+          - -newkey
+          - rsa:2048
+          - -nodes
+          - -subj
+          - /CN=node-fixture
+          - -keyout
+          - /var/lib/observability-fixture/client.key
+          - -out
+          - /var/lib/observability-fixture/client.csr
+        creates: /var/lib/observability-fixture/client.csr
+
+    - name: Sign fixture client certificate
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/openssl
+          - x509
+          - -req
+          - -days
+          - "2"
+          - -in
+          - /var/lib/observability-fixture/client.csr
+          - -CA
+          - /var/lib/observability-fixture/ca.crt
+          - -CAkey
+          - /var/lib/observability-fixture/ca.key
+          - -CAcreateserial
+          - -extfile
+          - /var/lib/observability-fixture/client.ext
+          - -out
+          - /var/lib/observability-fixture/client.crt
+        creates: /var/lib/observability-fixture/client.crt
+
+    - name: Install bounded mTLS remote-write fixture
+      ansible.builtin.copy:
+        dest: /usr/local/libexec/observability-receiver-fixture.py
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/python3
+          import http.server
+          import json
+          import ssl
+
+          LOG = "/var/lib/observability-fixture/receiver.log"
+          EVENTS = "/var/lib/observability-fixture/receiver-events.log"
+
+          def record_event(phase):
+              with open(EVENTS, "a", encoding="utf-8") as handle:
+                  handle.write(json.dumps({"phase": phase}) + "\n")
+
+          class Handler(http.server.BaseHTTPRequestHandler):
+              def do_POST(self):
+                  record_event("headers")
+                  try:
+                      length = int(self.headers.get("Content-Length", "0"))
+                      if length < 1 or length > 8 * 1024 * 1024:
+                          record_event("length_rejected")
+                          self.send_error(413)
+                          return
+                      body = self.rfile.read(length)
+                      if len(body) != length:
+                          record_event("short_body")
+                          self.send_error(400)
+                          return
+                      subject = dict(
+                          item[0] for item in self.connection.getpeercert()["subject"]
+                      )
+                      with open(LOG, "a", encoding="utf-8") as handle:
+                          handle.write(
+                              json.dumps({
+                                  "path": self.path,
+                                  "cn": subject.get("commonName"),
+                              }) + "\n"
+                          )
+                      record_event("accepted")
+                      self.send_response(200)
+                      self.end_headers()
+                  except Exception:
+                      record_event("handler_error")
+                      raise
+
+              def log_message(self, *_args):
+                  return
+
+          class Server(http.server.ThreadingHTTPServer):
+              def get_request(self):
+                  try:
+                      return super().get_request()
+                  except ssl.SSLError as error:
+                      reason = getattr(error, "reason", "")
+                      if reason in {
+                          "TLSV1_ALERT_UNKNOWN_CA",
+                          "SSLV3_ALERT_UNKNOWN_CA",
+                      }:
+                          category = "unknown_ca"
+                      elif reason == "PEER_DID_NOT_RETURN_A_CERTIFICATE":
+                          category = "missing_client_cert"
+                      elif reason in {
+                          "CERTIFICATE_VERIFY_FAILED",
+                          "SSLV3_ALERT_BAD_CERTIFICATE",
+                          "TLSV1_ALERT_BAD_CERTIFICATE",
+                          "SSLV3_ALERT_CERTIFICATE_EXPIRED",
+                      }:
+                          category = "bad_cert"
+                      else:
+                          category = "other"
+                      record_event("tls_handshake_rejected")
+                      record_event("tls_handshake_" + category)
+                      raise
+
+          server = Server(("127.0.0.1", 19443), Handler)
+          context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+          context.verify_mode = ssl.CERT_REQUIRED
+          context.load_verify_locations("/var/lib/observability-fixture/ca.crt")
+          context.load_cert_chain(
+              "/var/lib/observability-fixture/server.crt",
+              "/var/lib/observability-fixture/server.key",
+          )
+          server.socket = context.wrap_socket(server.socket, server_side=True)
+          server.serve_forever()
+
+    - name: Install bounded node exporter fixture
+      ansible.builtin.copy:
+        dest: /usr/local/libexec/node-exporter-fixture.py
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/python3
+          import http.server
+
+          METRICS = b"# TYPE node_load1 gauge\nnode_load1 0.5\n"
+
+          class Handler(http.server.BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path != "/metrics":
+                      self.send_error(404)
+                      return
+                  self.send_response(200)
+                  self.send_header("Content-Type", "text/plain")
+                  self.send_header("Content-Length", str(len(METRICS)))
+                  self.end_headers()
+                  self.wfile.write(METRICS)
+
+              def log_message(self, *_args):
+                  return
+
+          http.server.ThreadingHTTPServer(("127.0.0.1", 9100), Handler).serve_forever()
+
+    - name: Install credential-transport diagnostic probe
+      ansible.builtin.copy:
+        dest: /usr/local/libexec/observability-agent-credential-probe.py
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/python3
+          import json
+          import os
+          import socket
+          import ssl
+          import subprocess
+
+          RESULT = {
+              "ca_cert_key_loaded": False,
+              "cert_key_match": False,
+              "sslclient_verify": False,
+              "tls_handshake": False,
+          }
+          credentials = os.environ.get("CREDENTIALS_DIRECTORY", "")
+          ca_file = os.path.join(credentials, "receiver-ca.crt")
+          cert_file = os.path.join(credentials, "client.crt")
+          key_file = os.path.join(credentials, "client.key")
+          result_file = "/run/observability-agent-fixture/credential-probe.json"
+
+          try:
+              context = ssl.create_default_context(cafile=ca_file)
+              context.load_cert_chain(cert_file=cert_file, keyfile=key_file)
+              RESULT["ca_cert_key_loaded"] = True
+          except (OSError, ssl.SSLError):
+              context = None
+
+          try:
+              certificate = subprocess.run(
+                  ["/usr/bin/openssl", "x509", "-pubkey", "-noout", "-in", cert_file],
+                  check=False,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.DEVNULL,
+                  text=False,
+                  timeout=3,
+              )
+              private_key = subprocess.run(
+                  ["/usr/bin/openssl", "pkey", "-pubout", "-in", key_file],
+                  check=False,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.DEVNULL,
+                  text=False,
+                  timeout=3,
+              )
+              RESULT["cert_key_match"] = (
+                  certificate.returncode == 0
+                  and private_key.returncode == 0
+                  and certificate.stdout == private_key.stdout
+              )
+          except (OSError, subprocess.TimeoutExpired):
+              pass
+
+          try:
+              verified = subprocess.run(
+                  [
+                      "/usr/bin/openssl",
+                      "verify",
+                      "-purpose",
+                      "sslclient",
+                      "-CAfile",
+                      ca_file,
+                      cert_file,
+                  ],
+                  check=False,
+                  stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL,
+                  timeout=3,
+              )
+              RESULT["sslclient_verify"] = verified.returncode == 0
+          except (OSError, subprocess.TimeoutExpired):
+              pass
+
+          if context is not None:
+              try:
+                  with socket.create_connection(("127.0.0.1", 19443), timeout=3) as raw:
+                      with context.wrap_socket(raw, server_hostname="ingest.fixture.test"):
+                          RESULT["tls_handshake"] = True
+              except (OSError, ssl.SSLError):
+                  pass
+
+          encoded = (json.dumps(RESULT, sort_keys=True) + "\n").encode("ascii")
+          temporary = result_file + ".tmp"
+          descriptor = os.open(
+              temporary,
+              os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+              0o600,
+          )
+          try:
+              written = 0
+              while written < len(encoded):
+                  count = os.write(descriptor, encoded[written:])
+                  if count < 1:
+                      raise OSError("diagnostic result write failed")
+                  written += count
+              os.fsync(descriptor)
+          finally:
+              os.close(descriptor)
+          os.replace(temporary, result_file)
+
+    - name: Install observability fixture units
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item.name }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: "{{ item.content }}"
+      loop:
+        - name: observability-receiver-fixture.service
+          content: |
+            [Service]
+            Type=simple
+            ExecStart=/usr/bin/python3 /usr/local/libexec/observability-receiver-fixture.py
+        - name: node-exporter-fixture.service
+          content: |
+            [Service]
+            Type=simple
+            ExecStart=/usr/bin/python3 /usr/local/libexec/node-exporter-fixture.py
+
+    - name: Start observability fixtures
+      block:
+        - name: Start observability fixture services
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            state: started
+            daemon_reload: true
+          loop:
+            - observability-receiver-fixture.service
+            - node-exporter-fixture.service
+      rescue:
+        - name: Read bounded observability fixture failure status
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/systemctl
+              - status
+              - --no-pager
+              - --full
+              - observability-receiver-fixture.service
+              - node-exporter-fixture.service
+          register: observability_fixture_failure
+          changed_when: false
+          failed_when: false
+
+        - name: Report bounded observability fixture failure status
+          ansible.builtin.debug:
+            var: observability_fixture_failure.stdout_lines
+
+        - name: Refuse unavailable observability fixture services
+          ansible.builtin.fail:
+            msg: Observability fixture services did not start.

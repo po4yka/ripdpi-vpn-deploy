@@ -159,8 +159,24 @@ def _transports(host):
     return result
 
 
+def prepare_promotion(path, environment):
+    """Only a typed staging intent can invoke the fixed onboarding adapter."""
+    try:
+        with os.fdopen(fleet_inspection._open_local_file(path, private=True), "rb") as handle:
+            raw = handle.read(MAX_REQUEST + 1)
+        if len(raw) > MAX_REQUEST:
+            raise ValueError
+        document = json.loads(raw)
+        if isinstance(document, dict) and document.get("kind") == "disposable-staging-intent":
+            from disposable_promotion import finalize
+            return finalize(document, environment), True
+        return path, False
+    except (OSError, ValueError, fleet_inspection.InspectionError):
+        raise BaselineError("onboarding-refused") from None
+
+
 def execute(request, environment, *, rpc=transaction_rpc, sftp=fresh_sftp, proof=promotion_proof,
-            clock=time.time):
+            clock=time.time, onboard=prepare_promotion):
     value = validate_request(request)
     hosts = fleet_inspection.select_hosts(Path(value["inventory_path"]), [value["inventory_alias"]])
     host = hosts[0]
@@ -169,6 +185,16 @@ def execute(request, environment, *, rpc=transaction_rpc, sftp=fresh_sftp, proof
     except ContextError:
         raise BaselineError("management-transport-required") from None
     known_hosts = Path(value["known_hosts_path"])
+    if value["mode"] == "deploy":
+        config, first_onboarding = onboard(Path(value["promotion_config_path"]), environment)
+        value["promotion_config_path"] = str(config)
+        if first_onboarding:
+            started = int(clock())
+            observed = proof(ROOT, config, environment)
+            if (observed.get("target_identity") != value["target_identity"]
+                    or type(observed.get("observed_at")) is not int
+                    or observed["observed_at"] < started):
+                raise BaselineError("promotion-proof-mismatch")
     prepare = {"intent": "sshd-baseline", "contexts": value["contexts"],
                "hardening_b64": value["hardening_b64"], "timeout": value["timeout_seconds"],
                "check_mode": value["mode"] == "check", "bundle_generation": value["bundle_generation"]}

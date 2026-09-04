@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh bounded observability control-plane evidence
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Persistent=true
+Unit=observability-control-plane-adapter.service
+
+[Install]
+WantedBy=timers.target

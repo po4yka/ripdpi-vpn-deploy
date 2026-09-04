@@ -1,0 +1,6 @@
+---
+- name: Converge disabled control-plane lifecycle without touching TSDB
+  hosts: all
+  become: true
+  roles:
+    - role: observability_control_plane

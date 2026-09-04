@@ -1,0 +1,87 @@
+---
+# Inert until the dedicated control-plane playbook supplies explicit pins and
+# credentials. An incomplete receiver must fail before it writes a host.
+observability_control_plane:
+  enabled: false
+  service_user: prometheus
+  service_group: prometheus
+  install_root: /opt/observability-prometheus
+  binary_link: /usr/local/libexec/observability-prometheus
+  config_root: /etc/observability-control-plane
+  data_dir: /var/lib/observability-prometheus
+  ingress_port: 9443
+  ingress_sni: ""
+  control_plane_dns_san: ""
+  prometheus_listen: 127.0.0.1:9090
+  remote_write_path_prefix: /remote-write/v1/nodes
+  request_body_limit: 8m
+  request_concurrency: 4
+  request_rate: 20r/s
+  request_rate_burst: 40
+  tsdb_retention_time: 30d
+  tsdb_retention_size: 20GB
+  tsdb_required_bytes: 42949672960
+  prometheus:
+    version: ""
+    urls: {amd64: "", arm64: ""}
+    sha256: {amd64: "", arm64: ""}
+    archive_members: {amd64: "", arm64: ""}
+    promtool_archive_members: {amd64: "", arm64: ""}
+  tls:
+    server_cert_pem: ""
+    server_key_pem: ""
+    client_ca_pem: ""
+    client_crl_pem: ""
+  ingest_identities: []
+  expected_targets:
+    enabled: false
+    inventory: {}
+    textfile_directory: /var/lib/node_exporter/textfile
+    expected_source_revision: ""
+    observed_source_revision: ""
+    expected_deployable_digest: ""
+    observed_deployable_digest: ""
+  protocol_liveness:
+    # This adapter is inert until canonical evaluator evidence and the
+    # node_exporter textfile collector are explicitly supplied on the control
+    # plane. It adapts that evidence; it never schedules or evaluates probes.
+    enabled: false
+    evidence_directory: /var/lib/vpn-protocol-liveness
+    evidence_path: /var/lib/vpn-protocol-liveness/last-evidence.json
+    output_directory: /var/lib/node_exporter/textfile
+    output_path: /var/lib/node_exporter/textfile/protocol-liveness.prom
+    stale_after_seconds: 180
+    max_future_seconds: 60
+  alerting:
+    enabled: false
+    source_generation: ""
+    listen: 127.0.0.1:9093
+    data_dir: /var/lib/observability-alertmanager
+    install_root: /opt/observability-alertmanager
+    binary_link: /usr/local/libexec/observability-alertmanager
+    amtool_install_root: /opt/observability-amtool
+    amtool_binary_link: /usr/local/libexec/observability-amtool
+    promtool_install_root: /opt/observability-promtool
+    promtool_binary_link: /usr/local/libexec/observability-promtool
+    credential_path: /etc/observability-control-plane/credentials/telegram-bot-token
+    alertmanager:
+      version: ""
+      urls: {amd64: "", arm64: ""}
+      sha256: {amd64: "", arm64: ""}
+      archive_members: {amd64: "", arm64: ""}
+      amtool_archive_members: {amd64: "", arm64: ""}
+    telegram:
+      bot_token: ""
+      chat_id: ""
+      topic_id: 0
+      parse_mode: HTML
+      max_alerts: 5
+    group_wait: 30s
+    group_interval: 5m
+    critical_repeat_interval: 1h
+    warning_repeat_interval: 6h
+    recovery_stability: 3m
+    deadman:
+      enabled: false
+      receiver_url: http://127.0.0.1:19093/alerts
+      repeat_interval: 1m

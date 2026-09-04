@@ -47,6 +47,19 @@
       changed_when: false
       failed_when: sshd_active.stdout != "active"
 
+    - name: Read effective SSH algorithm compatibility
+      ansible.builtin.command:
+        cmd: sshd -T
+      register: sshd_effective_algorithms
+      changed_when: false
+
+    - name: SSH supports effective algorithm reporting
+      ansible.builtin.assert:
+        that:
+          - "sshd_effective_algorithms.stdout_lines | select('match', '^ciphers [!-~]+$') | list | length == 1"
+          - "sshd_effective_algorithms.stdout_lines | select('match', '^macs [!-~]+$') | list | length == 1"
+          - "sshd_effective_algorithms.stdout_lines | select('match', '^kexalgorithms [!-~]+$') | list | length == 1"
+
     - name: Check whether SSH moduli file exists
       ansible.builtin.stat:
         path: /etc/ssh/moduli

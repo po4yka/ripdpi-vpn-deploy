@@ -34,11 +34,106 @@ $(error network exposure review inputs must be literal values)
 endif
 endif
 
+# Tailnet promotion accepts one private config path and ambient provider
+# capabilities. Capture them before includes and eager assignments can expand
+# command-line Make syntax.
+ifneq ($(filter tailnet-network-promote,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error Tailnet network promotion requires exactly one Make goal)
+endif
+_TAILNET_NETWORK_ALLOWED_COMMAND_VARIABLES := TAILNET_NETWORK_CONFIG
+_TAILNET_NETWORK_COMMAND_VARIABLES := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
+_TAILNET_NETWORK_FORBIDDEN_COMMAND_VARIABLES := $(filter-out $(_TAILNET_NETWORK_ALLOWED_COMMAND_VARIABLES),$(_TAILNET_NETWORK_COMMAND_VARIABLES))
+ifneq ($(filter-out undefined environment,$(origin UPCLOUD_TOKEN)),)
+$(error Tailnet network promotion provider credentials must come from the environment)
+endif
+ifneq ($(strip $(_TAILNET_NETWORK_FORBIDDEN_COMMAND_VARIABLES)),)
+$(error Tailnet network promotion accepts command-line values only for TAILNET_NETWORK_CONFIG)
+endif
+_TAILNET_NETWORK_LITERAL_INPUTS := $(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)
+override TAILNET_NETWORK_CONFIG := $(value TAILNET_NETWORK_CONFIG)
+override ENV := $(value ENV)
+override PROVIDER := $(value PROVIDER)
+override HOME := $(value HOME)
+override DEPLOY_SOURCE_REVISION :=
+override DEPLOYABLE_SOURCE_DIGEST :=
+override UPCLOUD_TOKEN := $(value UPCLOUD_TOKEN)
+export TAILNET_NETWORK_CONFIG UPCLOUD_TOKEN
+unexport UPCLOUD_USERNAME UPCLOUD_PASSWORD UPCLOUD_API_USERNAME UPCLOUD_API_PASSWORD
+unexport MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+ifneq ($(findstring $$,$(_TAILNET_NETWORK_LITERAL_INPUTS)),)
+$(error Tailnet network promotion inputs must be literal values)
+endif
+ifneq ($(findstring ",$(_TAILNET_NETWORK_LITERAL_INPUTS)),)
+$(error Tailnet network promotion inputs must be literal values)
+endif
+ifneq ($(findstring ',$(_TAILNET_NETWORK_LITERAL_INPUTS)),)
+$(error Tailnet network promotion inputs must be literal values)
+endif
+endif
+
+# Disposable liveness lifecycle inputs are controller data, not Make syntax.
+# Capture them before trusted includes and eager source-identity assignments.
+_DISPOSABLE_LIVENESS_GOALS := prepare-disposable-liveness install-disposable-liveness-sentinel protocol-liveness-disposable deonboard-disposable-liveness
+ifneq ($(filter $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error disposable liveness requires exactly one Make goal)
+endif
+ifneq ($(filter prepare-disposable-liveness,$(MAKECMDGOALS)),)
+_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := EXECUTOR_PROFILE EXECUTOR_MANIFEST
+else ifneq ($(filter install-disposable-liveness-sentinel,$(MAKECMDGOALS)),)
+_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := LIVENESS_CONFIG SENTINEL CLIENT EXECUTOR_MANIFEST EXECUTOR_BINDING STAGING_CLEANUP_MANIFEST HOSTS COHORTS
+ifneq ($(strip $(value SOPS_FILES)),)
+$(error disposable install requires one shared staging secrets file)
+endif
+else ifneq ($(filter protocol-liveness-disposable,$(MAKECMDGOALS)),)
+_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := LIVENESS_CONFIG EXECUTOR_MANIFEST EXECUTOR_BINDING
+else
+_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := EXECUTOR_MANIFEST EXECUTOR_BINDING STAGING_POST_DESTROY_EVIDENCE LIVENESS_SENTINEL_REGISTRY LIVENESS_CONFIG SOPS_FILE DEONBOARD_EVIDENCE
+endif
+_DISPOSABLE_LIVENESS_COMMAND_VARIABLES := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
+_DISPOSABLE_LIVENESS_FORBIDDEN_COMMAND_VARIABLES := $(filter-out $(_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES),$(_DISPOSABLE_LIVENESS_COMMAND_VARIABLES))
+ifneq ($(strip $(_DISPOSABLE_LIVENESS_FORBIDDEN_COMMAND_VARIABLES)),)
+$(error disposable liveness accepts only its documented command-line fields)
+endif
+_DISPOSABLE_LIVENESS_LITERAL_INPUTS := $(value EXECUTOR_PROFILE)$(value EXECUTOR_MANIFEST)$(value EXECUTOR_BINDING)$(value STAGING_CLEANUP_MANIFEST)$(value STAGING_POST_DESTROY_EVIDENCE)$(value DEONBOARD_EVIDENCE)$(value LIVENESS_CONFIG)$(value LIVENESS_SENTINEL_REGISTRY)$(value SENTINEL)$(value CLIENT)$(value SOPS_FILE)$(value HOSTS)$(value COHORTS)$(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)
+override EXECUTOR_PROFILE := $(value EXECUTOR_PROFILE)
+override EXECUTOR_MANIFEST := $(value EXECUTOR_MANIFEST)
+override EXECUTOR_BINDING := $(value EXECUTOR_BINDING)
+override STAGING_CLEANUP_MANIFEST := $(value STAGING_CLEANUP_MANIFEST)
+override STAGING_POST_DESTROY_EVIDENCE := $(value STAGING_POST_DESTROY_EVIDENCE)
+override DEONBOARD_EVIDENCE := $(value DEONBOARD_EVIDENCE)
+override LIVENESS_CONFIG := $(value LIVENESS_CONFIG)
+override LIVENESS_SENTINEL_REGISTRY := $(value LIVENESS_SENTINEL_REGISTRY)
+override SENTINEL := $(value SENTINEL)
+override CLIENT := $(value CLIENT)
+override SOPS_FILE := $(value SOPS_FILE)
+override HOSTS := $(value HOSTS)
+override COHORTS := $(value COHORTS)
+override ENV := $(value ENV)
+override PROVIDER := $(value PROVIDER)
+override HOME := $(value HOME)
+override DEPLOY_SOURCE_REVISION :=
+override DEPLOYABLE_SOURCE_DIGEST :=
+MAKEOVERRIDES :=
+unexport MAKEFLAGS MFLAGS
+ifneq ($(findstring $$,$(_DISPOSABLE_LIVENESS_LITERAL_INPUTS)),)
+$(error disposable liveness inputs must be literal values)
+endif
+ifneq ($(findstring ",$(_DISPOSABLE_LIVENESS_LITERAL_INPUTS)),)
+$(error disposable liveness inputs must be literal values)
+endif
+ifneq ($(findstring ',$(_DISPOSABLE_LIVENESS_LITERAL_INPUTS)),)
+$(error disposable liveness inputs must be literal values)
+endif
+endif
+
 -include .fleet.mk
 
 # Capture deployment labels before the eager Terraform path assignments below.
 # The included fleet file remains trusted executable Make configuration.
-ifneq ($(filter deploy dry-run deploy-canary backup-configure install-ssh-recovery staging-cleanup-manifest staging-destroy,$(MAKECMDGOALS)),)
+ifneq ($(filter deploy dry-run deploy-canary backup-configure install-ssh-recovery staging-cleanup-manifest staging-destroy $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
 override ENV := $(value ENV)
 override PROVIDER := $(value PROVIDER)
 endif
@@ -76,6 +171,18 @@ endif
 unexport UPCLOUD_API_USERNAME UPCLOUD_API_PASSWORD
 endif
 
+# Tailnet enrollment is an ambient one-node capability. Reject command-line
+# Make data before it can enter implicit exports or recipe expansion.
+ifneq ($(filter deploy dry-run deploy-canary tailnet-network-promote,$(MAKECMDGOALS)),)
+ifneq ($(filter-out undefined environment,$(origin TAILSCALE_AUTH_KEY)),)
+$(error Tailnet enrollment credentials must come from the environment)
+endif
+ifneq ($(origin TAILSCALE_AUTH_KEY),undefined)
+override TAILSCALE_AUTH_KEY := $(value TAILSCALE_AUTH_KEY)
+export TAILSCALE_AUTH_KEY
+endif
+endif
+
 HOSTS   ?=
 COHORTS ?=
 SOPS_FILES ?=
@@ -97,6 +204,7 @@ SOPS_FILE     ?= $(HOME)/.config/vpn-provision/$(ENV).secrets.sops.yaml
 TFVARS        := $(TF_ROOT)/environments/$(ENV).tfvars
 TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
 ZIZMOR_VERSION := 1.29.0
+PROMTOOL_VERSION := 3.14.0
 DEPLOY_SOURCE_REVISION ?= $(shell ./scripts/deploy-source-identity.sh --revision 2>/dev/null)
 DEPLOYABLE_SOURCE_DIGEST ?= $(shell ./scripts/deploy-source-identity.sh --digest 2>/dev/null)
 
@@ -108,7 +216,7 @@ INSPECT_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini
 INSPECT_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
 export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 
-.PHONY: help init validate plan apply inventory wait decrypt require-inventory require-clean-source validate-ansible-extra-vars dry-run deploy backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
+.PHONY: help init validate plan apply inventory wait decrypt require-inventory require-clean-source validate-ansible-extra-vars dry-run deploy tailnet-network-promote backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
         pre-deploy-check network-exposure-review \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
@@ -117,10 +225,15 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         audit-permissions asn-drift check-ip-reputation issue-bootstrap \
         test-tls-policing probe-payload-throttle fleet-status drift-since-tag fleet-rotate \
         snell-refinement \
-        protocol-liveness monitor-protocol-liveness install-liveness-sentinel watch-spare promote-spare probing-summary xray-diagnostics tspu-canary \
+        protocol-liveness monitor-protocol-liveness install-liveness-sentinel \
+        prepare-disposable-liveness install-disposable-liveness-sentinel protocol-liveness-disposable deonboard-disposable-liveness \
+        watch-spare promote-spare probing-summary xray-diagnostics tspu-canary \
         emit-sbom molecule-full-stack audit-log audit-log-append pyinfra-audit \
         setup-yubikey check-killswitch install-operator-crons \
         remove-operator-crons issue-sub-token sub-reads \
+        observability-render observability-validate observability-status \
+        observability-drill observability-rotate observability-rollback \
+        observability-remove \
         awg-evidence-provision \
         test-unit snapshot-check snapshot-update validate-secrets \
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
@@ -192,6 +305,10 @@ help:
 	@echo "  protocol-liveness LIVENESS_CONFIG=…  Pull sentinel probes and evaluate quorum"
 	@echo "  monitor-protocol-liveness LIVENESS_CONFIG=…  Persist and alert on protocol-liveness transitions"
 	@echo "  install-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=…  Secure sentinel onboarding"
+	@echo "  prepare-disposable-liveness EXECUTOR_PROFILE=… EXECUTOR_MANIFEST=…  Create one no-mount executor"
+	@echo "  install-disposable-liveness-sentinel …  Bind and onboard one disposable sentinel from stdin"
+	@echo "  protocol-liveness-disposable …  Evaluate one exact executor-bound report"
+	@echo "  deonboard-disposable-liveness …  Remove the exact assignment after guarded provider absence"
 	@echo "  watch-spare                Cron: probe blue, push OTP-gated promote alert"
 	@echo "  promote-spare OTP=…        Consume OTP and swing traffic to GREEN_ENV"
 	@echo ""
@@ -213,6 +330,8 @@ help:
 	@echo "  diff-secrets               Drift: deployed config vs current secrets"
 	@echo ""
 	@echo "── OBSERVABILITY / DEFENSIVE ──────────────────────────────────────────"
+	@echo "  observability-{render,validate,status}  Exact-host configuration/read surface"
+	@echo "  observability-{drill,rotate,rollback,remove}  Confirmed exact-host lifecycle"
 	@echo "  burn-check                 External IP reachability probe"
 	@echo "  asn-drift                  Alert on VPS ASN reassignment"
 	@echo "  check-ip-reputation        Spamhaus / optional FireHOL file / AbuseIPDB"
@@ -341,6 +460,7 @@ override ANSIBLE_EXTRA_VARS_FILE := $(if $(filter file default undefined,$(origi
 override INSPECT_KNOWN_HOSTS := $(if $(filter file default undefined,$(origin INSPECT_KNOWN_HOSTS)),$(INSPECT_KNOWN_HOSTS),$(value INSPECT_KNOWN_HOSTS))
 override DEPLOY_SSH_CONTEXTS_FILE := $(value DEPLOY_SSH_CONTEXTS_FILE)
 override DEPLOY_PROMOTION_CONFIG_FILE := $(value DEPLOY_PROMOTION_CONFIG_FILE)
+override TAILNET_NETWORK_CONFIG := $(value TAILNET_NETWORK_CONFIG)
 endif
 deploy dry-run deploy-canary: override DEPLOY_SOURCE_REVISION :=
 deploy dry-run deploy-canary: override DEPLOYABLE_SOURCE_DIGEST :=
@@ -359,6 +479,10 @@ dry-run:
 
 deploy:
 	@python3 scripts/deploy-controller.py deploy
+
+tailnet-network-promote:
+	@test -n "$$TAILNET_NETWORK_CONFIG" || { echo "TAILNET_NETWORK_CONFIG required"; exit 1; }
+	@python3 scripts/tailnet-network-controller.py --config "$$TAILNET_NETWORK_CONFIG"
 
 # Capture caller data as simple variables before implicit environment export can
 # expand Make functions. Repository-defined default paths still resolve normally.
@@ -709,6 +833,8 @@ ci-fast:
 	@command -v ansible-playbook >/dev/null 2>&1 || { echo "missing: ansible-playbook" >&2; exit 1; }
 	@echo "== ansible syntax =="; cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,'
 	@$(MAKE) liveness-profile-check
+	@command -v promtool >/dev/null 2>&1 || { echo "missing: promtool $(PROMTOOL_VERSION) (run: mise install)" >&2; exit 1; }
+	@promtool --version 2>&1 | grep -F "version $(PROMTOOL_VERSION)" >/dev/null || { echo "promtool $(PROMTOOL_VERSION) required (run: mise install)" >&2; exit 1; }
 	@echo "== unit tests =="; python3 -m pytest tests/unit/ -q
 	@echo "== bats shell tests =="; bats tests/bats/
 	@command -v cargo >/dev/null 2>&1 || { echo "missing: cargo" >&2; exit 1; }
@@ -886,6 +1012,53 @@ install-liveness-sentinel:
 	@HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
 	  ./scripts/install-liveness-sentinel.sh --config "$(LIVENESS_CONFIG)" --sentinel "$(SENTINEL)" --client "$(CLIENT)" --awg-private-key-stdin
 
+ifneq ($(filter $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
+export EXECUTOR_PROFILE EXECUTOR_MANIFEST EXECUTOR_BINDING STAGING_CLEANUP_MANIFEST STAGING_POST_DESTROY_EVIDENCE DEONBOARD_EVIDENCE LIVENESS_CONFIG LIVENESS_SENTINEL_REGISTRY SENTINEL CLIENT SOPS_FILE
+unexport HOSTS COHORTS SOPS_FILES ANSIBLE_LIMIT ANSIBLE_EXTRA_VARS_FILE DESTROY_ARGS
+endif
+
+prepare-disposable-liveness:
+	@test -n "$${EXECUTOR_PROFILE}" -a -n "$${EXECUTOR_MANIFEST}" || { echo "usage: make prepare-disposable-liveness EXECUTOR_PROFILE=… EXECUTOR_MANIFEST=…"; exit 1; }
+	@build-gate -- python3 ./scripts/disposable_liveness_executor.py prepare \
+	  --profile "$${EXECUTOR_PROFILE}" \
+	  --manifest "$${EXECUTOR_MANIFEST}" \
+	  --ttl-seconds 21600
+
+install-disposable-liveness-sentinel: export HOSTS := $(HOSTS)
+install-disposable-liveness-sentinel: export COHORTS := $(COHORTS)
+install-disposable-liveness-sentinel:
+	@test -n "$${LIVENESS_CONFIG}" -a -n "$${SENTINEL}" -a -n "$${CLIENT}" \
+	  -a -n "$${EXECUTOR_MANIFEST}" -a -n "$${EXECUTOR_BINDING}" \
+	  -a -n "$${STAGING_CLEANUP_MANIFEST}" -a -n "$${HOSTS}" -a -n "$${COHORTS}" || { echo "usage: make install-disposable-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=… EXECUTOR_MANIFEST=… EXECUTOR_BINDING=… STAGING_CLEANUP_MANIFEST=… HOSTS=… COHORTS=…"; exit 1; }
+	@python3 ./scripts/install_liveness_sentinel.py \
+	  --config "$${LIVENESS_CONFIG}" \
+	  --sentinel "$${SENTINEL}" \
+	  --client "$${CLIENT}" \
+	  --awg-private-key-stdin \
+	  --executor-manifest "$${EXECUTOR_MANIFEST}" \
+	  --executor-binding "$${EXECUTOR_BINDING}" \
+	  --cleanup-manifest "$${STAGING_CLEANUP_MANIFEST}"
+
+protocol-liveness-disposable:
+	@test -n "$${LIVENESS_CONFIG}" -a -n "$${EXECUTOR_MANIFEST}" -a -n "$${EXECUTOR_BINDING}" || { echo "usage: make protocol-liveness-disposable LIVENESS_CONFIG=… EXECUTOR_MANIFEST=… EXECUTOR_BINDING=…"; exit 1; }
+	@python3 ./scripts/protocol-liveness.py \
+	  --config "$${LIVENESS_CONFIG}" \
+	  --executor-manifest "$${EXECUTOR_MANIFEST}" \
+	  --executor-binding "$${EXECUTOR_BINDING}"
+
+deonboard-disposable-liveness:
+	@test -n "$${EXECUTOR_MANIFEST}" -a -n "$${EXECUTOR_BINDING}" \
+	  -a -n "$${STAGING_POST_DESTROY_EVIDENCE}" -a -n "$${LIVENESS_SENTINEL_REGISTRY}" \
+	  -a -n "$${LIVENESS_CONFIG}" -a -n "$${SOPS_FILE}" -a -n "$${DEONBOARD_EVIDENCE}" || { echo "usage: make deonboard-disposable-liveness EXECUTOR_MANIFEST=… EXECUTOR_BINDING=… STAGING_POST_DESTROY_EVIDENCE=… LIVENESS_SENTINEL_REGISTRY=… LIVENESS_CONFIG=… SOPS_FILE=… DEONBOARD_EVIDENCE=…"; exit 1; }
+	@build-gate -- python3 ./scripts/disposable_liveness_executor.py deonboard \
+	  --binding "$${EXECUTOR_BINDING}" \
+	  --manifest "$${EXECUTOR_MANIFEST}" \
+	  --absence-evidence "$${STAGING_POST_DESTROY_EVIDENCE}" \
+	  --registry "$${LIVENESS_SENTINEL_REGISTRY}" \
+	  --config "$${LIVENESS_CONFIG}" \
+	  --sops-file "$${SOPS_FILE}" \
+	  --output "$${DEONBOARD_EVIDENCE}"
+
 probing-summary:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/probing-summary.sh
 
@@ -919,6 +1092,74 @@ install-operator-crons:
 
 remove-operator-crons:
 	./scripts/install-operator-crons.sh --remove
+
+# Keep operator-supplied values literal. The controller validates every path,
+# exact inventory alias, component, environment and confirmation boundary.
+OBSERVABILITY_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini
+OBSERVABILITY_ENVIRONMENT ?=
+OBSERVABILITY_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
+OBSERVABILITY_SECRETS_FILE ?= $(SECRETS_FILE)
+
+ifneq ($(filter observability-render observability-validate observability-status observability-drill observability-rotate observability-rollback observability-remove,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error observability operator commands require exactly one make goal)
+endif
+override OBSERVABILITY_INVENTORY_LITERAL := $(if $(filter file default undefined,$(origin OBSERVABILITY_INVENTORY)),$(OBSERVABILITY_INVENTORY),$(value OBSERVABILITY_INVENTORY))
+override OBSERVABILITY_HOST_LITERAL := $(value OBSERVABILITY_HOST)
+override OBSERVABILITY_ENVIRONMENT_LITERAL := $(if $(filter file default undefined,$(origin OBSERVABILITY_ENVIRONMENT)),$(OBSERVABILITY_ENVIRONMENT),$(value OBSERVABILITY_ENVIRONMENT))
+override OBSERVABILITY_COMPONENT_LITERAL := $(value OBSERVABILITY_COMPONENT)
+override OBSERVABILITY_KNOWN_HOSTS_LITERAL := $(if $(filter file default undefined,$(origin OBSERVABILITY_KNOWN_HOSTS)),$(OBSERVABILITY_KNOWN_HOSTS),$(value OBSERVABILITY_KNOWN_HOSTS))
+override OBSERVABILITY_SECRETS_LITERAL := $(if $(filter file default undefined,$(origin OBSERVABILITY_SECRETS_FILE)),$(OBSERVABILITY_SECRETS_FILE),$(value OBSERVABILITY_SECRETS_FILE))
+override OBSERVABILITY_VARS_LITERAL := $(value OBSERVABILITY_VARS)
+override OBSERVABILITY_ROLLBACK_MANIFEST_LITERAL := $(value OBSERVABILITY_ROLLBACK_MANIFEST)
+ifeq ($(strip $(OBSERVABILITY_ENVIRONMENT_LITERAL)),)
+$(error observability operator commands require OBSERVABILITY_ENVIRONMENT explicitly)
+endif
+export OBSERVABILITY_INVENTORY_LITERAL OBSERVABILITY_HOST_LITERAL
+export OBSERVABILITY_ENVIRONMENT_LITERAL OBSERVABILITY_COMPONENT_LITERAL
+export OBSERVABILITY_KNOWN_HOSTS_LITERAL OBSERVABILITY_SECRETS_LITERAL
+export OBSERVABILITY_VARS_LITERAL OBSERVABILITY_ROLLBACK_MANIFEST_LITERAL
+unexport MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+endif
+
+define observability_common
+	  --inventory "$${OBSERVABILITY_INVENTORY_LITERAL}" \
+	  --host "$${OBSERVABILITY_HOST_LITERAL}" \
+	  --environment "$${OBSERVABILITY_ENVIRONMENT_LITERAL}" \
+	  --component "$${OBSERVABILITY_COMPONENT_LITERAL}" \
+	  --known-hosts "$${OBSERVABILITY_KNOWN_HOSTS_LITERAL}"
+endef
+
+observability-render:
+	@python3 scripts/observability-operator.py render $(observability_common) \
+	  --secrets "$${OBSERVABILITY_SECRETS_LITERAL}" --vars "$${OBSERVABILITY_VARS_LITERAL}"
+
+observability-validate:
+	@python3 scripts/observability-operator.py validate $(observability_common) \
+	  --secrets "$${OBSERVABILITY_SECRETS_LITERAL}" --vars "$${OBSERVABILITY_VARS_LITERAL}"
+
+observability-status:
+	@python3 scripts/observability-operator.py status $(observability_common)
+
+observability-drill:
+	@python3 scripts/observability-operator.py drill $(observability_common) \
+	  --confirm-notification
+
+observability-rotate:
+	@python3 scripts/observability-operator.py rotate $(observability_common) \
+	  --secrets "$${OBSERVABILITY_SECRETS_LITERAL}" --vars "$${OBSERVABILITY_VARS_LITERAL}" \
+	  --confirm
+
+observability-rollback:
+	@python3 scripts/observability-operator.py rollback $(observability_common) \
+	  --secrets "$${OBSERVABILITY_SECRETS_LITERAL}" --vars "$${OBSERVABILITY_VARS_LITERAL}" \
+	  --rollback-manifest "$${OBSERVABILITY_ROLLBACK_MANIFEST_LITERAL}" \
+	  --confirm
+
+observability-remove:
+	@python3 scripts/observability-operator.py remove $(observability_common) \
+	  --vars "$${OBSERVABILITY_VARS_LITERAL}" --confirm
 
 scan-targets:
 	@test -n "$(SEEDS)$(CIDR)$(CRAWL)" || { \

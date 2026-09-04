@@ -1,0 +1,24 @@
+---
+- name: Prepare dead-man disabled lifecycle fixture
+  hosts: all
+  become: true
+  tasks:
+    - name: Seed dead-man owned surfaces for disabled cleanup
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      loop:
+        - /etc/observability-deadman
+        - /etc/observability-deadman/credentials
+        - /var/lib/observability-deadman
+
+    - name: Seed dead-man verifier for disabled cleanup
+      ansible.builtin.copy:
+        content: "#!/bin/sh\nexit 0\n"
+        dest: /usr/local/libexec/observability-deadman.py
+        owner: root
+        group: root
+        mode: "0755"

@@ -10,6 +10,11 @@
       enable_hysteria: true
       enable_amneziawg: true
       enable_policy_ratelimit: true
+      enable_tailnet_management: true
+    tailnet_management:
+      approved_sources:
+        - "100.64.10.20"
+        - "fd7a:115c:a1e0::1234"
     firewall_awg_uplink_interface: eth0
     amneziawg:
       listen_port: 51820
@@ -50,16 +55,120 @@
         state: touch
         mode: "0600"
       when: not _firewall_molecule_ufw_fixture.stat.exists
+
+    - name: Remove Tailnet SSH sets fixture before clean check-mode convergence
+      ansible.builtin.file:
+        path: /etc/nftables.d
+        state: absent
+      tags:
+        - molecule-idempotence-notest
+
+    - name: Exercise clean firewall check mode before Tailnet fragment exists
+      check_mode: true
+      tags:
+        - molecule-idempotence-notest
+      block:
+        - name: Run the firewall role without creating the Tailnet fragment
+          ansible.builtin.include_role:
+            name: firewall
+          vars:
+            # Per-task check_mode does not update Ansible's magic variable.
+            # Pin it so the role exercises the same branch as CLI --check.
+            _firewall_task_check_mode: true
+
+    - name: Confirm clean firewall check mode created no Tailnet fragment path
+      ansible.builtin.stat:
+        path: /etc/nftables.d
+      register: _firewall_clean_check_tailnet_dir
+      changed_when: false
+      tags:
+        - molecule-idempotence-notest
+
+    - name: Require clean firewall check mode to preserve an absent Tailnet fragment path
+      ansible.builtin.assert:
+        that:
+          - not _firewall_clean_check_tailnet_dir.stat.exists
+      tags:
+        - molecule-idempotence-notest
   roles:
     - role: firewall
 
   post_tasks:
+    - name: Read the initially installed approved Tailnet SSH sets fragment
+      ansible.builtin.slurp:
+        src: /etc/nftables.d/vpn-tailnet-ssh-sets.nft
+      register: _firewall_empty_tailnet_sets
+      changed_when: false
+      tags:
+        - molecule-idempotence-notest
+
+    - name: Require the initially installed fragment to contain approved sources
+      ansible.builtin.assert:
+        that:
+          - >-
+            (_firewall_empty_tailnet_sets.content | b64decode) ==
+            '# vpn-tailnet-ssh-sets schema=1\n'
+            ~ 'set vpn_tailnet_ssh_v4 {\n'
+            ~ '  type ipv4_addr\n'
+            ~ '  flags interval\n'
+            ~ '  elements = { 100.64.10.20/32 }\n'
+            ~ '}\n\n'
+            ~ 'set vpn_tailnet_ssh_v6 {\n'
+            ~ '  type ipv6_addr\n'
+            ~ '  flags interval\n'
+            ~ '  elements = { fd7a:115c:a1e0::1234/128 }\n'
+            ~ '}\n'
+      tags:
+        - molecule-idempotence-notest
+
+    - name: Install representative canonical Tailnet SSH sets fragment
+      ansible.builtin.copy:
+        dest: /etc/nftables.d/vpn-tailnet-ssh-sets.nft
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # vpn-tailnet-ssh-sets schema=1
+          set vpn_tailnet_ssh_v4 {
+            type ipv4_addr
+            flags interval
+            elements = { 100.64.10.20/32 }
+          }
+
+          set vpn_tailnet_ssh_v6 {
+            type ipv6_addr
+            flags interval
+            elements = { fd7a:115c:a1e0::1234/128 }
+          }
+
+    - name: Build the Tailnet-enabled firewall fixture
+      ansible.builtin.set_fact:
+        _firewall_tailnet_enabled_vpn: >-
+          {{ vpn | combine({'enable_tailnet_management': true}) }}
+      changed_when: false
+
+    - name: Converge the real Tailnet-enabled firewall branch
+      ansible.builtin.include_role:
+        name: firewall
+      vars:
+        vpn: "{{ _firewall_tailnet_enabled_vpn }}"
+        tailnet_management:
+          approved_sources:
+            - "100.64.10.20"
+            - "fd7a:115c:a1e0::1234"
+
     - name: Repeat the role in check mode with UFW preinstalled
       check_mode: true
       block:
         - name: Exercise the actual dry-run task path
           ansible.builtin.include_role:
             name: firewall
+          vars:
+            vpn: "{{ _firewall_tailnet_enabled_vpn }}"
+            tailnet_management:
+              approved_sources:
+                - "100.64.10.20"
+                - "fd7a:115c:a1e0::1234"
 
     - name: Dry-run still probes the installed UFW state
       ansible.builtin.assert:

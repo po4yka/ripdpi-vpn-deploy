@@ -217,6 +217,55 @@ def execution_environment(root, directory):
     return environment
 
 
+def tailnet_site_environment(environment, host_count, mode, *, enabled):
+    """Forward a validated one-node enrollment capability only to site.yml."""
+    credential = os.environ.get("TAILSCALE_AUTH_KEY")
+    if enabled and host_count != 1:
+        raise DeployError("Tailnet management requires one exact inventory node")
+    if credential is None or mode != "deploy":
+        return environment
+    if (not enabled or re.fullmatch(r"tskey-auth-[A-Za-z0-9_-]{8,480}", credential)
+            is None):
+        raise DeployError("Tailnet enrollment credential invalid")
+    return {**environment, "TAILSCALE_AUTH_KEY": credential}
+
+
+def tailnet_enabled_for_selection(root, hosts, memberships, metadata, override_values):
+    """Resolve the effective replace-semantics Tailnet toggle for selected hosts."""
+    enabled = []
+    for host in hosts:
+        vpn = {}
+        for group in ("all", "vpn", *memberships[host["name"]]):
+            if not re.fullmatch(r"all|vpn|vpn-[a-z0-9][a-z0-9-]*", group):
+                raise DeployError("unsupported canonical cohort")
+            document = yaml.safe_load(read_input(root / "ansible/group_vars" / (group + ".yml")))
+            if document is None:
+                document = {}
+            if not isinstance(document, dict):
+                raise DeployError("canonical variables invalid")
+            if "vpn" in document:
+                vpn = document["vpn"]
+                if not isinstance(vpn, dict):
+                    raise DeployError("canonical vpn variables invalid")
+        host_metadata = metadata.get(host["name"])
+        if not isinstance(host_metadata, dict):
+            raise DeployError("canonical host metadata invalid")
+        if "vpn" in host_metadata:
+            vpn = host_metadata["vpn"]
+            if not isinstance(vpn, dict):
+                raise DeployError("canonical host vpn variables invalid")
+        if "vpn" in override_values:
+            vpn = override_values["vpn"]
+            if not isinstance(vpn, dict):
+                raise DeployError("operator vpn variables invalid")
+        value = vpn.get("enable_tailnet_management", False)
+        if not isinstance(value, bool):
+            raise DeployError("Tailnet management toggle invalid")
+        if value:
+            enabled.append(host["name"])
+    return enabled
+
+
 def checked(command, *, environment, cwd, timeout=15, capture=False, stream=False):
     status, output = run_command(command, environment=environment, cwd=cwd, timeout=timeout,
                                  capture=capture, stream=stream)
@@ -394,7 +443,8 @@ def prepare_host_playbooks(root, directory, index, host, memberships, metadata, 
             for name in ("site", "source-drift")}
 
 
-def transaction_inputs(mode, hosts, identity, directory, root, environment):
+def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
+                       memberships=None, deployed_secrets=None):
     try:
         raw = read_input(os.environ["DEPLOY_SSH_CONTEXTS_FILE"], private=True, exact_mode=0o600)
         contexts = json.loads(raw, object_pairs_hook=unique_object)
@@ -436,8 +486,18 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment):
             if (not isinstance(target, dict)
                     or any(target.get(key) != value for key, value in expected_target.items())):
                 raise DeployError("promotion proof configs do not bind selected targets")
+            config = promotions[alias]
+            if config.get("kind") == "disposable-staging-intent":
+                from disposable_promotion import OnboardingError, prepare_intent
+                if len(hosts) != 1 or memberships is None or deployed_secrets is None:
+                    raise DeployError("onboarding requires one staging host")
+                try:
+                    config = prepare_intent(config, host, memberships[alias], directory,
+                                            deployed_secrets, environment)
+                except OnboardingError:
+                    raise DeployError("onboarding capability refused") from None
             promotion = private_file(directory / (alias + "-promotion-config.json"),
-                                     json.dumps(promotions[alias], sort_keys=True).encode())
+                                     json.dumps(config, sort_keys=True).encode())
             promotion_paths.append(promotion)
         result[alias] = {
             "ssh_transaction_controller_managed": True,
@@ -536,7 +596,12 @@ def controller(mode):
             identities.add(pair)
             commands.append(fleet_inspection.ssh_command(host, known_hosts))
         transactions = transaction_inputs("deploy" if mode == "deploy" else "check",
-                                          hosts, identity, directory, root, environment)
+                                          hosts, identity, directory, root, environment,
+                                          memberships=memberships, deployed_secrets=secret_data)
+        tailnet_hosts = tailnet_enabled_for_selection(
+            root, hosts, memberships, metadata, override_values)
+        site_environment = tailnet_site_environment(
+            environment, len(hosts), mode, enabled=bool(tailnet_hosts))
         prepared = []
         for index, (host, command) in enumerate(zip(hosts, commands)):
             inventory = single_inventory(directory, index, host, memberships)
@@ -571,7 +636,7 @@ def controller(mode):
                 site += ["--check", "--diff"]
             elif os.environ.get("DEPLOY_TAGS"):
                 site += ["--tags", os.environ["DEPLOY_TAGS"]]
-            checked(site, environment=environment, cwd=directory, timeout=3600, stream=True)
+            checked(site, environment=site_environment, cwd=directory, timeout=3600, stream=True)
             if mode == "deploy":
                 checked(["ansible-playbook", str(playbooks["source-drift"]), *arguments],
                         environment=environment, cwd=directory, timeout=300, stream=True)
