@@ -477,7 +477,10 @@ def unique_object(pairs):
 
 
 def private_json(path):
-    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise GatewayError("configuration-file") from exc
     with os.fdopen(descriptor, "rb") as stream:
         info = os.fstat(stream.fileno())
         if (
@@ -489,29 +492,39 @@ def private_json(path):
         payload = stream.read(65537)
     if len(payload) > 65536:
         raise GatewayError("configuration-size")
-    return json.loads(payload, object_pairs_hook=unique_object)
+    try:
+        return json.loads(payload, object_pairs_hook=unique_object)
+    except (TypeError, ValueError) as exc:
+        raise GatewayError("configuration-content") from exc
 
 
 def main():
     credentials = Path(os.environ.get("CREDENTIALS_DIRECTORY", ""))
     if str(credentials) != "/run/credentials/observability-silence-gateway.service":
         raise GatewayError("credential-directory")
-    context = ssl.create_default_context(
-        cafile=str(credentials / "silence-backend-ca.pem")
-    )
-    context.minimum_version = ssl.TLSVersion.TLSv1_2
-    context.load_cert_chain(
-        str(credentials / "silence-backend-client.crt"),
-        str(credentials / "silence-backend-client.key"),
-    )
+    try:
+        context = ssl.create_default_context(
+            cafile=str(credentials / "silence-backend-ca.pem")
+        )
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.load_cert_chain(
+            str(credentials / "silence-backend-client.crt"),
+            str(credentials / "silence-backend-client.key"),
+        )
+    except (OSError, ValueError) as exc:
+        raise GatewayError("backend-credentials") from exc
     backend = AlertmanagerBackend("https://127.0.0.1:9093", context)
-    with GatewayServer(
-        ("127.0.0.1", 19094),
-        private_json(credentials / "silence-policy.json"),
-        private_json(credentials / "silence-auth.json"),
-        backend,
-        Path("/var/lib/observability-silence-gateway"),
-    ) as server:
+    try:
+        server = GatewayServer(
+            ("127.0.0.1", 19094),
+            private_json(credentials / "silence-policy.json"),
+            private_json(credentials / "silence-auth.json"),
+            backend,
+            Path("/var/lib/observability-silence-gateway"),
+        )
+    except OSError as exc:
+        raise GatewayError("startup-io") from exc
+    with server:
         server.serve_forever()
 
 
