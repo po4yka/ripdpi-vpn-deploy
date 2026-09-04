@@ -520,6 +520,9 @@ def test_digest_keyed_build_activates_complete_clean_host_command_set(
             path = repo / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(payload)
+        if name == "tools":
+            # The pinned upstream checkout includes this relative symlink.
+            (repo / "src/wg-quick/awg").symlink_to("../wg")
         subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
         subprocess.run(["git", "-C", str(repo), "commit", "-qm", "fixture"], check=True)
         commit = subprocess.run(
@@ -552,10 +555,14 @@ def test_digest_keyed_build_activates_complete_clean_host_command_set(
         archive.addfile(member, io.BytesIO(payload))
     vendor.chmod(0o600)
 
+    outside = tmp_path / "outside-build"
+    outside.write_bytes(b"preserve external link target")
+
     def fake_make(path: Path) -> None:
         output = path / ("wg" if path.name == "src" else "amneziawg-go")
         output.write_bytes(path.name.encode())
         output.chmod(0o755)
+        (path / "build-link").symlink_to(outside)
 
     monkeypatch.setattr(module, "run_offline_make", fake_make)
     args = SimpleNamespace(
@@ -570,9 +577,11 @@ def test_digest_keyed_build_activates_complete_clean_host_command_set(
     )
 
     first = module.build(args)
+    assert outside.read_bytes() == b"preserve external link target"
     assert first["changed"] is True
     target = module.BASE / first["toolchainId"]
     assert target.is_dir()
+    assert {path.name for path in target.iterdir()} == {"bin", "manifest.json"}
     assert stat.S_IMODE(target.stat().st_mode) == 0o500
     assert set(first["binaries"]) == set(module.BINARY_NAMES)
     assert module.ACTIVE_LINK.is_symlink()
