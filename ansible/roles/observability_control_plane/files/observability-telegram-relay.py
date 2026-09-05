@@ -302,6 +302,9 @@ def handler(config: dict[str, object]):  # type: ignore[no-untyped-def]
             if not self._authorized():
                 self._reply(401, "refused")
                 return
+            if self.headers.get("Content-Type") != "application/json":
+                self._reply(400, "refused")
+                return
             raw_length = self.headers.get("Content-Length", "")
             if re.fullmatch(r"[0-9]{1,6}", raw_length) is None:
                 self._reply(400, "refused")

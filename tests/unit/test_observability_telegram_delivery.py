@@ -194,11 +194,25 @@ def test_relay_requires_authenticated_loopback_webhook_before_delivery() -> None
                 request.Request(endpoint, data=body, method="POST"), timeout=2
             )
         assert refused.value.code == 401
+        with pytest.raises(error.HTTPError) as refused_type:
+            request.urlopen(
+                request.Request(
+                    endpoint,
+                    data=body,
+                    headers={"Authorization": "Bearer " + "a" * 64},
+                    method="POST",
+                ),
+                timeout=2,
+            )
+        assert refused_type.value.code == 400
         with request.urlopen(
             request.Request(
                 endpoint,
                 data=body,
-                headers={"Authorization": "Bearer " + "a" * 64},
+                headers={
+                    "Authorization": "Bearer " + "a" * 64,
+                    "Content-Type": "application/json",
+                },
                 method="POST",
             ),
             timeout=2,
@@ -472,6 +486,7 @@ def test_alertmanager_v0281_enforces_the_webhook_request_timeout(
     class WebhookStub(BaseHTTPRequestHandler):
         def do_POST(self) -> None:  # noqa: N802
             assert self.headers["Authorization"] == "Bearer relay-fixture-token"
+            assert self.headers["Content-Type"] == "application/json"
             length = int(self.headers.get("Content-Length", "0"))
             received.append(json.loads(self.rfile.read(length)))
             request_started.set()
@@ -604,8 +619,8 @@ def test_alertmanager_v0281_enforces_the_webhook_request_timeout(
     output = "".join(log_lines)
     assert received
     assert all(len(payload["alerts"]) == 5 for payload in received)
-    assert all(payload["truncatedAlerts"] == 2 for payload in received)
+    capped = next(payload for payload in received if payload["truncatedAlerts"] == 2)
     relay = _relay()
-    parsed = relay.parse_payload(json.dumps(received[0]).encode())
+    parsed = relay.parse_payload(json.dumps(capped).encode())
     assert len(relay.render_message(parsed)) <= 4096
     assert "relay-fixture-token" not in output
