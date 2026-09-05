@@ -69,6 +69,32 @@ def _published_variables() -> dict:
     }
 
 
+def test_full_stack_inventories_mirror_listener_defaults() -> None:
+    canonical = yaml.safe_load(
+        (REPO_ROOT / "ansible/group_vars/all.yml").read_text()
+    )
+    names = {
+        "xray_port",
+        "xray_fallback_port",
+        "nginx_xhttp_public_port",
+        "nginx_xhttp_fallback_port",
+        "hysteria_port",
+        "amneziawg_listen_port",
+        "subscription_port",
+        "honeypot_port",
+        "dns_morph_bridge_listen_port",
+        "hysteria_realm_listen_port",
+        "cdn_front_port",
+        "naive_bind_port",
+        "split_hop_ingress_listen_port",
+    }
+    expected = {name: canonical[name] for name in names}
+
+    for scenario in (_full_stack_scenario(), _published_scenario()):
+        variables = scenario["provisioner"]["inventory"]["group_vars"]["all"]
+        assert {name: variables.get(name) for name in names} == expected
+
+
 def test_full_stack_scenarios_repeat_convergence_before_verification() -> None:
     expected = [
         "dependency", "syntax", "create", "prepare", "converge",
@@ -103,11 +129,14 @@ def test_published_requirements_resolve_to_current_checkout_from_documented_cwd(
 
 
 def test_published_scenario_explicitly_disables_unpublished_xray_fallback() -> None:
+    canonical = yaml.safe_load(
+        (REPO_ROOT / "ansible/group_vars/all.yml").read_text()
+    )
     inventory = _published_scenario()["provisioner"]["inventory"]
     groups = inventory["group_vars"]
     hosts = inventory["hosts"]["vpn"]["hosts"]
 
-    assert "xray_fallback_port" not in groups["all"]
+    assert groups["all"]["xray_fallback_port"] == canonical["xray_fallback_port"] == 2053
     assert "xray_fallback_port" not in groups["vpn"]
     assert hosts["vpn-fullstack-debian13-published"]["xray_fallback_port"] == 0
 
