@@ -347,8 +347,17 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
         "Bind restored service to the previous credential generation"
     )
     restore_unit = tasks.index("Restore previous observability agent service unit")
+    restore_health_unit = tasks.index(
+        "Restore previous observability health adapter service unit"
+    )
     restart_previous = tasks.index("Restart restored observability generation")
-    assert restore < bind_previous < restore_unit < restart_previous
+    assert (
+        restore
+        < bind_previous
+        < restore_unit
+        < restore_health_unit
+        < restart_previous
+    )
     normalize = tasks.index("Normalize active observability credential generation")
     rollback = tasks[restore:restart_previous]
     assert "stat.lnk_target | basename" in tasks[active_target:service_activity]
@@ -359,6 +368,12 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
     )
     assert "{{ _observability_agent_previous_generation_id }}" in rollback
     assert "stat.lnk_source" not in rollback
+    health_rollback = tasks[restore_health_unit:restart_previous]
+    assert "src: observability-agent-health-adapter.service.j2" in health_rollback
+    assert (
+        "dest: /etc/systemd/system/observability-agent-health-adapter.service"
+        in health_rollback
+    )
     assert "- -purpose\n              - sslclient" in tasks
     assert "- x509\n              - x509" not in tasks
     assert "prometheus.yml" in tasks[publish:switch]
