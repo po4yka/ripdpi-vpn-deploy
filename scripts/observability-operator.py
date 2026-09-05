@@ -327,64 +327,40 @@ def _clean_source_identity() -> tuple[str, str]:
 
 
 def _selected_host(args: argparse.Namespace) -> dict[str, Any]:
+    section = {
+        "agent": "vpn",
+        "control-plane": "vpn-observability-control",
+        "deadman": "vpn-observability-deadman",
+    }[args.component]
     try:
-        return fleet_inspection.select_hosts(args.inventory, [args.host])[0]
+        return fleet_inspection.select_hosts(
+            args.inventory,
+            [args.host],
+            primary_section=section,
+            include_variables=True,
+        )[0]
     except (fleet_inspection.InspectionError, OSError):
         raise OperatorError("exact inventory host rejected") from None
 
 
-def _require_inventory_scope(args: argparse.Namespace) -> None:
-    descriptor = -1
+def _require_inventory_scope(args: argparse.Namespace, host: dict[str, Any]) -> None:
     try:
-        descriptor = fleet_inspection._open_local_file(args.inventory)
-        raw = b""
-        while len(raw) <= fleet_inspection.LIMIT:
-            chunk = os.read(
-                descriptor,
-                min(65536, fleet_inspection.LIMIT + 1 - len(raw)),
-            )
-            if not chunk:
-                break
-            raw += chunk
-        if len(raw) > fleet_inspection.LIMIT:
-            raise OperatorError("inventory scope rejected")
-        section = ""
-        values: dict[str, str] | None = None
-        for raw_line in raw.decode("utf-8").splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith(("#", ";")):
-                continue
-            if line.startswith("[") and line.endswith("]"):
-                section = line[1:-1]
-                continue
-            if section != "vpn":
-                continue
-            words = shlex.split(line, comments=True)
-            if words and words[0] == args.host:
-                values = {}
-                for assignment in words[1:]:
-                    key, separator, value = assignment.partition("=")
-                    if separator:
-                        values[key] = value
-                break
+        values = host["variables"]
         expected_class = {
             "agent": "vpn",
             "control-plane": "control-plane",
             "deadman": "deadman",
         }[args.component]
         if (
-            values is None
+            not isinstance(values, dict)
             or values.get("env") != args.environment
             or values.get("observability_host_class") != expected_class
         ):
             raise OperatorError("inventory scope rejected")
     except OperatorError:
         raise
-    except (fleet_inspection.InspectionError, OSError, UnicodeError, ValueError):
+    except (KeyError, TypeError):
         raise OperatorError("inventory scope rejected") from None
-    finally:
-        if descriptor >= 0:
-            os.close(descriptor)
 
 
 def _playbook(
@@ -972,7 +948,7 @@ def main(argv: list[str] | None = None) -> int:
                 silence_request = _silence_request(args.request)
         source_revision, deployable_source_digest = _clean_source_identity()
         host = _selected_host(args)
-        _require_inventory_scope(args)
+        _require_inventory_scope(args, host)
         try:
             fleet_inspection._local_file(args.known_hosts)
         except fleet_inspection.InspectionError:
