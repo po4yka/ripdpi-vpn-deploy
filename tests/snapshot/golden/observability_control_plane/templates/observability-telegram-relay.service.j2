@@ -1,0 +1,40 @@
+[Unit]
+Description=Bounded primary Telegram notification relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+DynamicUser=yes
+User=observability-telegram-relay
+Group=observability-telegram-relay
+LoadCredential=telegram-bot-token:/etc/observability-control-plane/credentials/telegram-bot-token
+LoadCredential=telegram-relay-auth-token:/etc/observability-control-plane/credentials/telegram-relay-auth-token
+ExecStart=/usr/local/libexec/observability-telegram-relay serve --listen 127.0.0.1:19095 --api-url https://api.telegram.org --chat-id  --topic-id 0 --bot-credential telegram-bot-token --auth-credential telegram-relay-auth-token
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=15s
+TimeoutStopSec=20s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+ProtectProc=invisible
+ProcSubset=pid
+
+[Install]
+WantedBy=multi-user.target

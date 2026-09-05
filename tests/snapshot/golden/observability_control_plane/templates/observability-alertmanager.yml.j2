@@ -16,26 +16,26 @@ route:
 
 receivers:
   - name: telegram-primary
-    telegram_configs:
-      - bot_token_file: /run/credentials/observability-alertmanager.service/telegram-bot-token
-        chat_id: 0
-
-        parse_mode: HTML
-        message: '{{ template "telegram.message" . }}'
+    webhook_configs:
+      - url: http://127.0.0.1:19095/alert
         send_resolved: true
         max_alerts: 5
+        timeout: 20s
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /run/credentials/observability-alertmanager.service/telegram-relay-auth-token
   - name: telegram-critical
-    telegram_configs:
-      - bot_token_file: /run/credentials/observability-alertmanager.service/telegram-bot-token
-        chat_id: 0
-
-        parse_mode: HTML
-        message: '{{ template "telegram.message" . }}'
+    webhook_configs:
+      - url: http://127.0.0.1:19095/alert
         send_resolved: true
         max_alerts: 5
+        timeout: 20s
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /run/credentials/observability-alertmanager.service/telegram-relay-auth-token
 
-templates:
-  - /etc/observability-control-plane/generations/telegram-4444444444444444444444444444444444444444444444444444444444444444.tmpl
 inhibit_rules:
   - source_matchers: ['alertname="ObservabilityBackupStageFailed"']
     target_matchers: ['alertname="ObservabilityBackupEvidenceStale"']

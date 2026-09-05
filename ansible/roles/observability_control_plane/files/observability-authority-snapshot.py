@@ -17,6 +17,7 @@ CONFIG = "etc/observability-control-plane"
 CREDENTIALS = CONFIG + "/credentials/"
 NAMES = [
     "telegram-bot-token",
+    "telegram-relay-auth-token",
     "silence-policy.json",
     "silence-auth.json",
     "silence-sender-token",
@@ -28,14 +29,17 @@ NAMES = [
 ]
 SERVICES = [
     "observability-alertmanager.service",
+    "observability-telegram-relay.service",
     "observability-silence-gateway.service",
     "observability-prometheus.service",
 ]
 FIXED = [CREDENTIALS + name for name in NAMES] + [
     CONFIG + "/alertmanager-web.yml",
     "etc/systemd/system/observability-alertmanager.service",
+    "etc/systemd/system/observability-telegram-relay.service",
     "etc/systemd/system/observability-silence-gateway.service",
     "usr/local/libexec/observability-silence-gateway",
+    "usr/local/libexec/observability-telegram-relay",
     CONFIG + "/alertmanager-current.yml",
     CONFIG + "/alertmanager-previous.yml",
 ]

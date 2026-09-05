@@ -83,11 +83,16 @@ observability_control_plane:
       backend_client_cert_pem: ""
       backend_client_key_pem: ""
     telegram:
+      api_url: https://api.telegram.org
       bot_token: ""
       chat_id: ""
       topic_id: 0
-      parse_mode: HTML
       max_alerts: 5
+      relay_listen: 127.0.0.1:19095
+      relay_url: http://127.0.0.1:19095/alert
+      relay_auth_path: /etc/observability-control-plane/credentials/telegram-relay-auth-token
+      relay_auth_credential: /run/credentials/observability-alertmanager.service/telegram-relay-auth-token
+      webhook_timeout: 20s
     group_wait: 30s
     group_interval: 5m
     critical_repeat_interval: 1h

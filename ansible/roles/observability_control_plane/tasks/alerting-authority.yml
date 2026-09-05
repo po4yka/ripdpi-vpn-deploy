@@ -10,6 +10,7 @@
         'disabled']
   loop:
     - observability-alertmanager.service
+    - observability-telegram-relay.service
     - observability-silence-gateway.service
     - observability-prometheus.service
 - name: Start exact previous service snapshot
@@ -23,6 +24,7 @@
       \ | default('disabled')) == 'enabled'}}) }}"
   loop:
     - observability-alertmanager.service
+    - observability-telegram-relay.service
     - observability-silence-gateway.service
     - observability-prometheus.service
 - name: Require a coherent previous active authority chain before writes
@@ -31,8 +33,14 @@
       - >-
         _observability_authority_services['observability-alertmanager.service'].active ==
         _observability_authority_services['observability-silence-gateway.service'].active
-    fail_msg: 'Unsupported previous active authority topology: Alertmanager and gateway must be active
-      together; standalone Prometheus before alerting enablement is supported.'
+      - >-
+        not _observability_authority_services['observability-telegram-relay.service'].exists or
+        _observability_authority_services['observability-alertmanager.service'].active ==
+        _observability_authority_services['observability-telegram-relay.service'].active
+    fail_msg: >-
+      Unsupported previous active authority topology: Alertmanager and gateway must be active
+      together, and an existing relay must match Alertmanager; standalone Prometheus before
+      alerting enablement is supported.
 - name: Capture private authority snapshot before the first publication write
   ansible.builtin.command:
     argv:
@@ -59,6 +67,8 @@
   changed_when: >-
     not (_observability_authority.services['observability-alertmanager.service'].active and
     _observability_authority.services['observability-alertmanager.service'].enabled and
+    _observability_authority.services['observability-telegram-relay.service'].active and
+    _observability_authority.services['observability-telegram-relay.service'].enabled and
     _observability_authority.services['observability-silence-gateway.service'].active and
     _observability_authority.services['observability-silence-gateway.service'].enabled)
   when: ansible_check_mode
@@ -79,16 +89,41 @@
           _observability_alertmanager_current.stat.lnk_source !=
           observability_control_plane.config_root ~ '/generations/alertmanager-' ~
           _observability_alertmanager_generation ~ '.yml'
-    - name: Materialize primary Telegram credential for systemd
+    - name: Materialize primary Telegram relay credentials for systemd
       ansible.builtin.copy:
-        content: '{{ observability_control_plane.alerting.telegram.bot_token }}'
-        dest: '{{ observability_control_plane.alerting.credential_path }}'
+        content: '{{ item.content }}'
+        dest: '{{ item.path }}'
         owner: root
         group: root
         mode: '0600'
+      loop:
+        - content: '{{ observability_control_plane.alerting.telegram.bot_token }}'
+          path: '{{ observability_control_plane.alerting.credential_path }}'
+        - content: >-
+            {{ ('observability-telegram-relay-v1:' ~
+                observability_control_plane.alerting.silence_gateway.sender_token) | hash('sha256') }}
+          path: >-
+            {{ observability_control_plane.alerting.telegram.relay_auth_path |
+               default('/etc/observability-control-plane/credentials/telegram-relay-auth-token') }}
       no_log: true
       diff: false
-      register: _observability_alertmanager_credential
+      register: _observability_telegram_credentials
+    - name: Install bounded primary Telegram relay
+      ansible.builtin.copy:
+        content: '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/observability-telegram-relay.py'') }}'
+        dest: /usr/local/libexec/observability-telegram-relay
+        owner: root
+        group: root
+        mode: '0755'
+      register: _observability_telegram_relay_program
+    - name: Install hardened primary Telegram relay service
+      ansible.builtin.template:
+        src: observability-telegram-relay.service.j2
+        dest: /etc/systemd/system/observability-telegram-relay.service
+        owner: root
+        group: root
+        mode: '0644'
+      register: _observability_telegram_relay_unit
     - name: Publish candidate silence authority
       ansible.builtin.include_tasks: silence-gateway.yml
     - name: Install hardened Alertmanager service
@@ -109,13 +144,46 @@
         owner: root
         group: '{{ observability_control_plane.service_group }}'
       register: _observability_alertmanager_current_link
+    - name: Restart changed primary Telegram relay
+      ansible.builtin.systemd_service:
+        name: observability-telegram-relay
+        daemon_reload: true
+        enabled: true
+        state: restarted
+      when:
+        - not ansible_check_mode
+        - >-
+          _observability_telegram_credentials.changed or
+          _observability_telegram_relay_program.changed or
+          _observability_telegram_relay_unit.changed
+    - name: Ensure primary Telegram relay is running
+      ansible.builtin.systemd_service:
+        name: observability-telegram-relay
+        enabled: true
+        state: started
+      when: not ansible_check_mode
+    - name: Require authenticated loopback Telegram relay readiness
+      ansible.builtin.uri:
+        url: http://127.0.0.1:19095/-/ready
+        headers:
+          Authorization: >-
+            Bearer {{ ('observability-telegram-relay-v1:' ~
+                       observability_control_plane.alerting.silence_gateway.sender_token) | hash('sha256') }}
+        status_code: 200
+        return_content: false
+      register: _observability_telegram_relay_ready
+      retries: 5
+      delay: 2
+      until: _observability_telegram_relay_ready.status == 200
+      no_log: true
+      when: not ansible_check_mode
     - name: Restart Alertmanager with candidate generation
       ansible.builtin.systemd_service:
         name: observability-alertmanager
         daemon_reload: true
         enabled: true
         state: restarted
-      when: not ansible_check_mode and (_observability_alertmanager_runtime_changed | bool or _observability_alertmanager_credential.changed
+      when: not ansible_check_mode and (_observability_alertmanager_runtime_changed | bool or _observability_telegram_credentials.changed
         or _observability_silence_credentials.changed or _observability_silence_web.changed or _observability_alertmanager_unit.changed
         or _observability_alertmanager_current_link.changed)
     - name: Ensure unchanged Alertmanager generation is running
@@ -236,6 +304,7 @@
           loop:
             - observability-silence-gateway.service
             - observability-alertmanager.service
+            - observability-telegram-relay.service
           when: item in ansible_facts.services
         - name: Restore exact prior authority bytes metadata links and absences
           ansible.builtin.command:
@@ -259,6 +328,7 @@
             state: '{{ ''restarted'' if _observability_authority.services[item].active else ''stopped''
               }}'
           loop:
+            - observability-telegram-relay.service
             - observability-alertmanager.service
             - observability-silence-gateway.service
             - observability-prometheus.service
@@ -268,6 +338,26 @@
             src: /etc/observability-control-plane/credentials/silence-sender-token
           register: _observability_authority_restored_sender
           when: _observability_authority.services["observability-silence-gateway.service"].active
+          no_log: true
+        - name: Read restored relay token only for private readiness
+          ansible.builtin.slurp:
+            src: /etc/observability-control-plane/credentials/telegram-relay-auth-token
+          register: _observability_authority_restored_relay
+          when: _observability_authority.services["observability-telegram-relay.service"].active
+          no_log: true
+        - name: Require restored authenticated Telegram relay readiness
+          ansible.builtin.uri:
+            url: http://127.0.0.1:19095/-/ready
+            headers:
+              Authorization: >-
+                Bearer {{ _observability_authority_restored_relay.content | b64decode }}
+            status_code: 200
+            return_content: false
+          register: _observability_authority_restored_relay_ready
+          retries: 5
+          delay: 2
+          until: _observability_authority_restored_relay_ready.status == 200
+          when: _observability_authority.services["observability-telegram-relay.service"].active
           no_log: true
         - name: Require restored authenticated backend readiness
           ansible.builtin.uri:

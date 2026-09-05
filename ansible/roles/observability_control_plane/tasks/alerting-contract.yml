@@ -18,12 +18,33 @@
       - observability_control_plane.alerting.alertmanager.amtool_archive_members.arm64 is match('^[A-Za-z0-9._+/+-]+$')
       - observability_control_plane.prometheus.promtool_archive_members.amd64 is match('^[A-Za-z0-9._+/+-]+$')
       - observability_control_plane.prometheus.promtool_archive_members.arm64 is match('^[A-Za-z0-9._+/+-]+$')
-      - observability_control_plane.alerting.telegram.bot_token is match('^\\S{20,128}$')
+      - >-
+        observability_control_plane.alerting.telegram.bot_token is
+        match('^[0-9]{6,16}:[A-Za-z0-9_-]{20,128}$')
+      - >-
+        observability_control_plane.alerting.telegram.api_url |
+        default('https://api.telegram.org') == 'https://api.telegram.org'
       - observability_control_plane.alerting.telegram.chat_id | string is match('^-?[0-9]{1,20}$')
       - observability_control_plane.alerting.telegram.topic_id | int >= 0
-      - observability_control_plane.alerting.telegram.parse_mode == 'HTML'
-      - observability_control_plane.alerting.telegram.max_alerts | int >= 1
-      - observability_control_plane.alerting.telegram.max_alerts | int <= 10
+      - observability_control_plane.alerting.telegram.topic_id | int <= 2147483647
+      - observability_control_plane.alerting.telegram.max_alerts | int == 5
+      - >-
+        observability_control_plane.alerting.telegram.relay_listen |
+        default('127.0.0.1:19095') == '127.0.0.1:19095'
+      - >-
+        observability_control_plane.alerting.telegram.relay_url |
+        default('http://127.0.0.1:19095/alert') == 'http://127.0.0.1:19095/alert'
+      - >-
+        observability_control_plane.alerting.telegram.relay_auth_path |
+        default('/etc/observability-control-plane/credentials/telegram-relay-auth-token') ==
+        '/etc/observability-control-plane/credentials/telegram-relay-auth-token'
+      - >-
+        observability_control_plane.alerting.telegram.relay_auth_credential |
+        default('/run/credentials/observability-alertmanager.service/telegram-relay-auth-token') ==
+        '/run/credentials/observability-alertmanager.service/telegram-relay-auth-token'
+      - >-
+        observability_control_plane.alerting.telegram.webhook_timeout |
+        default('20s') == '20s'
       - observability_control_plane.alerting.group_wait == '30s'
       - observability_control_plane.alerting.group_interval == '5m'
       - observability_control_plane.alerting.critical_repeat_interval == '1h'

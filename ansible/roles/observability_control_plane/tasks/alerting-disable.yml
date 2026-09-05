@@ -44,6 +44,15 @@
     - not ansible_check_mode
     - "'observability-alertmanager.service' in ansible_facts.services"
 
+- name: Stop disabled primary Telegram relay
+  ansible.builtin.systemd_service:
+    name: observability-telegram-relay
+    enabled: false
+    state: stopped
+  when:
+    - not ansible_check_mode
+    - "'observability-telegram-relay.service' in ansible_facts.services"
+
 - name: Find immutable alerting generations
   ansible.builtin.find:
     paths: "{{ observability_control_plane.config_root }}/generations"
@@ -65,12 +74,15 @@
     {{
       [
         '/etc/systemd/system/observability-alertmanager.service',
+        '/etc/systemd/system/observability-telegram-relay.service',
         '/etc/systemd/system/observability-silence-gateway.service',
+        '/usr/local/libexec/observability-telegram-relay',
         '/usr/local/libexec/observability-silence-gateway',
         '/etc/observability-control-plane/alertmanager-web.yml',
         observability_control_plane.config_root ~ '/alertmanager-current.yml',
         observability_control_plane.config_root ~ '/alertmanager-previous.yml',
-        observability_control_plane.alerting.credential_path
+        observability_control_plane.alerting.credential_path,
+        observability_control_plane.alerting.telegram.relay_auth_path
       ] + (_observability_disabled_silence_credentials.files | map(attribute='path') | list)
       + (_observability_alerting_generations.files | map(attribute='path') | list)
     }}

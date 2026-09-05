@@ -21,36 +21,33 @@ route:
 {% endif %}
 receivers:
   - name: telegram-primary
-    telegram_configs:
-      - bot_token_file: /run/credentials/observability-alertmanager.service/telegram-bot-token
-        chat_id: {{ observability_control_plane.alerting.telegram.chat_id | int }}
-{% if observability_control_plane.alerting.telegram.topic_id > 0 %}
-        message_thread_id: {{ observability_control_plane.alerting.telegram.topic_id | int }}
-{% endif %}
-        parse_mode: {{ observability_control_plane.alerting.telegram.parse_mode }}
-        message: '{% raw %}{{ template "telegram.message" . }}{% endraw %}'
+    webhook_configs:
+      - url: {{ observability_control_plane.alerting.telegram.relay_url | default('http://127.0.0.1:19095/alert') }}
         send_resolved: true
         max_alerts: {{ observability_control_plane.alerting.telegram.max_alerts | int }}
+        timeout: {{ observability_control_plane.alerting.telegram.webhook_timeout | default('20s') }}
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: {{ observability_control_plane.alerting.telegram.relay_auth_credential | default('/run/credentials/observability-alertmanager.service/telegram-relay-auth-token') }}
   - name: telegram-critical
-    telegram_configs:
-      - bot_token_file: /run/credentials/observability-alertmanager.service/telegram-bot-token
-        chat_id: {{ observability_control_plane.alerting.telegram.chat_id | int }}
-{% if observability_control_plane.alerting.telegram.topic_id > 0 %}
-        message_thread_id: {{ observability_control_plane.alerting.telegram.topic_id | int }}
-{% endif %}
-        parse_mode: {{ observability_control_plane.alerting.telegram.parse_mode }}
-        message: '{% raw %}{{ template "telegram.message" . }}{% endraw %}'
+    webhook_configs:
+      - url: {{ observability_control_plane.alerting.telegram.relay_url | default('http://127.0.0.1:19095/alert') }}
         send_resolved: true
         max_alerts: {{ observability_control_plane.alerting.telegram.max_alerts | int }}
+        timeout: {{ observability_control_plane.alerting.telegram.webhook_timeout | default('20s') }}
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: {{ observability_control_plane.alerting.telegram.relay_auth_credential | default('/run/credentials/observability-alertmanager.service/telegram-relay-auth-token') }}
 {% if observability_control_plane.alerting.deadman.enabled %}
   - name: deadman-canary
     webhook_configs:
       - url: {{ observability_control_plane.alerting.deadman.receiver_url }}
         send_resolved: true
         max_alerts: 1
+        timeout: 5s
 {% endif %}
-templates:
-  - {{ observability_control_plane.config_root }}/generations/telegram-{{ _observability_telegram_generation }}.tmpl
 inhibit_rules:
   - source_matchers: ['alertname="ObservabilityBackupStageFailed"']
     target_matchers: ['alertname="ObservabilityBackupEvidenceStale"']
