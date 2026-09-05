@@ -31,6 +31,8 @@
             -out /var/tmp/observability-deadman-fixture/pulse-server.csr >/dev/null 2>&1
           openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
             -subj /CN=pulse-fixture-ca \
+            -addext 'basicConstraints=critical,CA:TRUE' \
+            -addext 'keyUsage=critical,keyCertSign,cRLSign' \
             -keyout /var/tmp/observability-deadman-fixture/pulse-ca.key \
             -out /var/tmp/observability-deadman-fixture/pulse-ca.pem >/dev/null 2>&1
           openssl x509 -req -days 1 \
@@ -39,6 +41,12 @@
             -CAkey /var/tmp/observability-deadman-fixture/pulse-ca.key \
             -CAcreateserial -copy_extensions copy \
             -out /var/tmp/observability-deadman-fixture/pulse-server.pem >/dev/null 2>&1
+          openssl verify -x509_strict \
+            -no-CAfile -no-CApath -no-CAstore \
+            -trusted /var/tmp/observability-deadman-fixture/pulse-ca.pem \
+            -purpose sslserver \
+            -verify_hostname reverse.fixture.invalid \
+            /var/tmp/observability-deadman-fixture/pulse-server.pem
           openssl x509 -in /var/tmp/observability-deadman-fixture/client.pem \
             -noout -fingerprint -sha256 | sed 's/^sha256 Fingerprint=//; s/://g' | \
             tr 'A-F' 'a-f' > /var/tmp/observability-deadman-fixture/client.sha256

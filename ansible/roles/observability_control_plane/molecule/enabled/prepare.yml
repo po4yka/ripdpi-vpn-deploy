@@ -26,6 +26,12 @@
       loop:
         - path: /var/lib/vpn-protocol-liveness
           mode: '0700'
+        # Snapshot parent validation deliberately refuses a sticky or writable
+        # ancestor.  Keep this immediate parent production-shaped before the
+        # collector's sticky final directory is created.
+        - path: /var/lib/node_exporter
+          group: root
+          mode: '0755'
         - path: /var/lib/node_exporter/textfile
           group: observability-textfile
           mode: '3775'
