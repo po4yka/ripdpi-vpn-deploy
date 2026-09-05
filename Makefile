@@ -701,13 +701,15 @@ install-hooks:
 # Explicit Linux-only lane; run as root in a disposable runner/container.
 test-native-runtime:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 || { echo "native runtime tests require a disposable Linux root environment" >&2; exit 1; }
-	python3 -m pytest tests/unit/ -m native_runtime --fail-on-skip -v
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ -m native_runtime --fail-on-skip -v
 
 test-probe-matrix-mtproto:
 	cd tools/probe-matrix-mtproto && go test -mod=readonly -count=1 -v -timeout=2m -p=2 ./...
 
+# Tests invoke operator Make targets and parse their stdout as JSON. Do not
+# inherit recursive Make directory chatter, overrides or jobserver descriptors.
 test-unit:
-	python3 -m pytest tests/unit/ -m "not native_runtime" --fail-on-skip -q
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ -m "not native_runtime" --fail-on-skip -q
 
 snapshot-check:
 	python3 scripts/render-snapshots.py
@@ -847,7 +849,7 @@ ci-fast:
 	@$(MAKE) liveness-profile-check
 	@command -v promtool >/dev/null 2>&1 || { echo "missing: promtool $(PROMTOOL_VERSION) (run: mise install)" >&2; exit 1; }
 	@promtool --version 2>&1 | grep -F "version $(PROMTOOL_VERSION)" >/dev/null || { echo "promtool $(PROMTOOL_VERSION) required (run: mise install)" >&2; exit 1; }
-	@echo "== unit tests =="; python3 -m pytest tests/unit/ -m "not native_runtime" --fail-on-skip -q
+	@$(MAKE) test-unit
 	@echo "== bats shell tests =="; bats tests/bats/
 	@command -v cargo >/dev/null 2>&1 || { echo "missing: cargo" >&2; exit 1; }
 	@echo "== vpnd clippy =="; cd vpnd && cargo clippy --release --all-targets --locked -- -D warnings
