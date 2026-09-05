@@ -12,8 +12,9 @@ entry in `xray.clients`. Never reuse a recipient device credential.
 Multi-cohort deployments authorize that identity in every cohort so a green
 result covers every REALITY listener.
 
-**P0 shape model is shared** — watchdog derives REALITY probe flow and mux
-from `p0_reality_shapes`, the same fail-closed model consumed by Xray.
+**P0 shape rendering is shared** — watchdog passes raw REALITY probe overrides
+to `ansible/templates/p0-reality-shape.json.j2`, the same fail-closed renderer
+consumed by Xray.
 
 **Service endpoint is not the SSH endpoint** — the rendered client targets
 `vpn_service_address`, which inventory derives from Terraform's public IPv4.

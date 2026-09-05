@@ -14,8 +14,11 @@
   ],
   "outbounds": [
     {%- for probe in watchdog_reality_probes %}
-    {%- set _shape = p0_reality_shapes[probe.flow_mode | default(p0_reality_flow_mode)] %}
-    {%- set _finalmask = probe.finalmask | default(_shape.finalmask) %}
+    {%- set _shape = lookup(
+      'ansible.builtin.template',
+      p0_reality_shape_template,
+      template_vars={'p0_reality_shape_input': probe.p0_reality_shape_input}
+    ) | from_json %}
     {
       "tag": "watchdog-reality-{{ loop.index0 }}",
       "protocol": "vless",
@@ -38,7 +41,7 @@
           "serverName": "{{ xray.server_names[0] }}",
           "publicKey": "{{ xray.reality_public_key }}",
           "shortId": "{{ _client.short_id }}"
-        }{% if _finalmask %},
+        }{% if _shape.finalmask %},
         "sockopt": {"finalmask": "Sudoku"}{% endif %}
       }{% if _shape.client_mux %},
       "mux": {"enabled": true, "concurrency": 8}{% endif %}

@@ -46,6 +46,17 @@
         executable: /bin/bash
       changed_when: false
 
+    - name: REALITY probe uses the shared mux and finalmask shape
+      ansible.builtin.command:
+        cmd: >-
+          jq -e '
+            .outbounds[0]
+            | (.settings.vnext[0].users[0] | has("flow") | not)
+              and (.mux == {"enabled": true, "concurrency": 8})
+              and (.streamSettings.sockopt.finalmask == "Sudoku")
+          ' /etc/vpn-watchdog-reality.json
+      changed_when: false
+
     - name: probe script syntax-checks
       ansible.builtin.command:
         cmd: bash -n /usr/local/sbin/vpn-watchdog.sh

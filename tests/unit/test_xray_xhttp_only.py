@@ -129,6 +129,9 @@ def test_installed_ansible_smoke_client_uses_the_shared_mux_and_finalmask_shape(
             "become": False,
             "vars": {
                 "ansible_python_interpreter": sys.executable,
+                "p0_reality_shape_template": str(
+                    REPO_ROOT / "ansible/templates/p0-reality-shape.json.j2"
+                ),
                 "smoketest_dir": str(tmp_path),
                 "xray": {
                     "server_names": ["fixture.example"],

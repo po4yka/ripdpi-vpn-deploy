@@ -145,6 +145,9 @@
   register: _xray_config_change
   no_log: true
   diff: false
+  vars:
+    p0_reality_shape_template: >-
+      {{ role_path }}/../../templates/p0-reality-shape.json.j2
 
 - name: Backup previous Xray config if exists
   ansible.builtin.copy:
@@ -170,6 +173,9 @@
   no_log: true
   diff: false
   notify: Restart xray
+  vars:
+    p0_reality_shape_template: >-
+      {{ role_path }}/../../templates/p0-reality-shape.json.j2
 
 - name: Ensure xray is enabled and started
   ansible.builtin.systemd_service:

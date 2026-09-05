@@ -11,6 +11,8 @@
       enable_nginx_xhttp: true
       enable_hysteria: false
       enable_amneziawg: false
+      xray_flow_mode: mux
+      xray_finalmask: true
     amneziawg:
       interface: awg0
     xray:

@@ -22,6 +22,8 @@
         lookup('env', 'VPN_SECRETS_FILE')
         | default(playbook_dir ~ '/../../secrets/prod.secrets.example.yaml', true)
       }}
+    p0_reality_shape_template: >-
+      {{ playbook_dir }}/../templates/p0-reality-shape.json.j2
 
   vars_files:
     - "{{ vpn_secrets_file }}"
@@ -124,15 +126,11 @@
                     group: root
                     mode: "0600"
                     content: |
-                      {% set _smoke_shape_name =
-                        smoketest_reality_cohort.flow_mode
-                        | default(vpn.xray_flow_mode | default(p0_reality_flow_mode))
-                      %}
-                      {% set _smoke_shape = p0_reality_shapes[_smoke_shape_name] %}
-                      {% set _smoke_finalmask =
-                        smoketest_reality_cohort.finalmask
-                        | default(vpn.xray_finalmask | default(_smoke_shape.finalmask))
-                      %}
+                      {% set _smoke_shape = lookup(
+                        'ansible.builtin.template',
+                        p0_reality_shape_template,
+                        template_vars={'p0_reality_shape_input': smoketest_reality_cohort}
+                      ) | from_json %}
                       {
                         "log": { "loglevel": "warning" },
                         "inbounds": [{
@@ -164,7 +162,7 @@
                               "serverName": "{{ xray.server_names[0] }}",
                               "publicKey": "{{ xray.reality_public_key }}",
                               "shortId": "{{ smoketest_client.short_id }}"
-                            }{% if _smoke_finalmask %},
+                            }{% if _smoke_shape.finalmask %},
                             "sockopt": {"finalmask": "Sudoku"}{% endif %}
                           }{% if _smoke_shape.client_mux %},
                           "mux": {"enabled": true, "concurrency": 8}{% endif %}

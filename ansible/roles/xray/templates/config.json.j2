@@ -2,9 +2,6 @@
 {%- for _c in xray.clients %}{%- set _ = _client_by_name.update({_c.name: _c}) %}{%- endfor %}
 {%- set _fallback_port = (xray_fallback_port | int) %}
 {%- set _reality_enabled = vpn.enable_xray_reality | default(true) %}
-{%- set _default_flow_mode = vpn.xray_flow_mode | default(p0_reality_flow_mode) %}
-{%- set _default_shape = p0_reality_shapes[_default_flow_mode] %}
-{%- set _default_finalmask = vpn.xray_finalmask | default(_default_shape.finalmask) %}
 {%- if not _reality_enabled %}
   {%- set _cohorts = [] %}
   {%- set _multi = false %}
@@ -17,15 +14,11 @@
     {
       "name": "primary",
       "port": (xray_port | int),
-      "flow_mode": _default_flow_mode,
-      "finalmask": _default_finalmask,
       "clients": _all_clients,
     },
     {
       "name": "fallback",
       "port": _fallback_port,
-      "flow_mode": _default_flow_mode,
-      "finalmask": _default_finalmask,
       "clients": _all_clients,
     },
   ] %}
@@ -34,8 +27,6 @@
   {%- set _cohorts = [{
       "name": "default",
       "port": (xray_port | int),
-      "flow_mode": _default_flow_mode,
-      "finalmask": _default_finalmask,
       "clients": (xray.clients | map(attribute='name') | list),
   }] %}
   {%- set _multi = false %}
@@ -69,8 +60,11 @@
   "inbounds": [
     {%- for _coh in _cohorts %}
     {%- set _coh_clients = _coh.clients | map('extract', _client_by_name) | list %}
-    {%- set _shape = p0_reality_shapes[_coh.flow_mode | default(_default_flow_mode)] %}
-    {%- set _finalmask = _coh.finalmask | default(_default_finalmask) %}
+    {%- set _shape = lookup(
+      'ansible.builtin.template',
+      p0_reality_shape_template,
+      template_vars={'p0_reality_shape_input': _coh}
+    ) | from_json %}
     {
       "tag": "{% if _multi %}vless-reality-{{ _coh.name }}{% else %}vless-reality{% endif %}",
       "listen": "0.0.0.0",
@@ -104,7 +98,7 @@
             "{{ client.short_id }}"{% if not loop.last %},{% endif %}
             {%- endfor %}
           ]
-        }{% if _finalmask %},
+        }{% if _shape.finalmask %},
         "sockopt": {
           "finalmask": "Sudoku"
         }{% endif %}

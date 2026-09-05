@@ -8,6 +8,8 @@
     nginx_xhttp_port: 10085
     vpn:
       enable_nginx_xhttp: true
+      xray_flow_mode: mux
+      xray_finalmask: true
     xray:
       version: "v26.3.27"
       linux_amd64_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
