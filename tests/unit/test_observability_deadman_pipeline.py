@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTROL_ROLE = ROOT / "ansible/roles/observability_control_plane"
 DEADMAN_ROLE = ROOT / "ansible/roles/observability_deadman"
 PIPELINE_SOURCE = CONTROL_ROLE / "files/observability-deadman-pipeline.py"
+AUTHORITY_SOURCE = CONTROL_ROLE / "files/observability-authority-snapshot.py"
 RELAY_SOURCE = CONTROL_ROLE / "files/observability-telegram-relay.py"
 DEADMAN_SOURCE = DEADMAN_ROLE / "files/observability-deadman.py"
 TOKEN = b"bounded-deadman-pulse-token"
@@ -43,6 +44,10 @@ def _module(name: str, path: Path):  # type: ignore[no-untyped-def]
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _set_mode(path: Path, mode: int) -> None:
+    subprocess.run(["chmod", f"{mode:o}", str(path)], check=True, timeout=5)
 
 
 def _instant(epoch: int) -> str:
@@ -369,13 +374,13 @@ def test_state_writes_refuse_symlink_or_writable_parent(tmp_path: Path) -> None:
     with pytest.raises(pipeline.PipelineError, match="unsafe directory"):
         with pipeline._lock(link):
             pass
-    os.chmod(safe, 0o777)
+    _set_mode(safe, 0o777)
     with pytest.raises(pipeline.PipelineError, match="unsafe directory"):
         pipeline._atomic_json(safe / "receipt.json", {"schema": 1})
 
     shared = tmp_path / "textfile"
     shared.mkdir(mode=0o700)
-    os.chmod(shared, 0o3775)
+    _set_mode(shared, 0o3775)
     with pytest.raises(pipeline.PipelineError, match="unsafe directory"):
         pipeline._atomic_bytes(shared / "unsafe.prom", b"metric 1\n", mode=0o644)
     pipeline._atomic_bytes(
@@ -385,6 +390,77 @@ def test_state_writes_refuse_symlink_or_writable_parent(tmp_path: Path) -> None:
         allow_sticky_parent=True,
     )
     assert (shared / "owned.prom").read_text() == "metric 1\n"
+
+
+def test_atomic_public_write_stays_private_until_content_is_complete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pipeline = _module("observability_deadman_pipeline_atomic_mode", PIPELINE_SOURCE)
+    parent = tmp_path / "state"
+    parent.mkdir(mode=0o700)
+    observed_modes: list[int] = []
+    real_write = pipeline.os.write
+
+    def write(descriptor: int, content: bytes) -> int:
+        observed_modes.append(stat.S_IMODE(os.fstat(descriptor).st_mode))
+        return real_write(descriptor, content)
+
+    monkeypatch.setattr(pipeline.os, "write", write)
+    target = parent / "public.prom"
+    pipeline._atomic_bytes(target, b"metric 1\n", mode=0o644)
+
+    assert observed_modes == [0o600]
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644
+    assert not list(parent.glob(".pipeline-*"))
+
+
+def test_lock_open_failure_closes_the_trusted_parent_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pipeline = _module("observability_deadman_pipeline_lock_open", PIPELINE_SOURCE)
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(mode=0o700)
+    real_open = pipeline.os.open
+    opened: list[int] = []
+
+    def open_path(path, flags, mode=0o777, *, dir_fd=None):  # type: ignore[no-untyped-def]
+        if path == ".pipeline.lock":
+            raise OSError("injected lock open failure")
+        descriptor = real_open(path, flags, mode, dir_fd=dir_fd)
+        opened.append(descriptor)
+        return descriptor
+
+    monkeypatch.setattr(pipeline.os, "open", open_path)
+    with pytest.raises(OSError, match="injected lock open failure"):
+        with pipeline._lock(state_dir):
+            pass
+
+    assert opened
+    with pytest.raises(OSError):
+        os.fstat(opened[-1])
+
+
+def test_authority_snapshot_accepts_only_the_owned_sticky_textfile_parent(
+    tmp_path: Path,
+) -> None:
+    authority = _module("observability_authority_snapshot_textfile", AUTHORITY_SOURCE)
+    root = tmp_path / "root"
+    textfile = root / "var/lib/node_exporter/textfile"
+    textfile.mkdir(parents=True, mode=0o700)
+    _set_mode(textfile, 0o3775)
+    snapshot = authority.Snapshot(root)
+
+    assert snapshot.read(authority.DEADMAN_METRIC, allow_missing=True) == {
+        "kind": "absent"
+    }
+    metric = root / authority.DEADMAN_METRIC
+    metric.write_text("metric 1\n")
+    _set_mode(metric, 0o644)
+    assert snapshot.read(authority.DEADMAN_METRIC)["kind"] == "file"
+
+    _set_mode(textfile, 0o0775)
+    with pytest.raises(ValueError, match="unsafe-parent"):
+        snapshot.read(authority.DEADMAN_METRIC)
 
 
 def test_pulse_requires_fresh_watchdog_and_primary_delivery_then_advances_sequence(

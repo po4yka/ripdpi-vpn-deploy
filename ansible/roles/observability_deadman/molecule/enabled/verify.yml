@@ -126,7 +126,17 @@
       import ssl
       import sys
       from urllib.error import HTTPError
-      from urllib.request import Request, urlopen
+      from urllib.request import (
+          HTTPRedirectHandler,
+          HTTPSHandler,
+          ProxyHandler,
+          Request,
+          build_opener,
+      )
+
+      class NoRedirect(HTTPRedirectHandler):
+          def redirect_request(self, *_args, **_kwargs):
+              return None
 
       def post(token, sequence, padding=0, expiry_seconds=10):
           now = datetime.now(UTC)
@@ -156,7 +166,10 @@
               context = ssl.create_default_context(
                   cafile='/var/tmp/observability-deadman-fixture/pulse-ca.pem'
               )
-              with urlopen(request, timeout=5, context=context) as response:
+              opener = build_opener(
+                  ProxyHandler({}), HTTPSHandler(context=context), NoRedirect()
+              )
+              with opener.open(request, timeout=5) as response:
                   return response.status
           except HTTPError as error:
               return error.code

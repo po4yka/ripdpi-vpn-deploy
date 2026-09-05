@@ -10,12 +10,9 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import socket
-import ssl
 import stat
 import subprocess
 import threading
-import time
 from urllib import error
 from urllib import request
 from urllib.parse import urlsplit
@@ -595,9 +592,12 @@ def test_telegram_rate_limit_honours_bounded_retry_after_without_secret_output(
     assert TOKEN.decode() not in json.dumps(payload)
 
 
-@pytest.mark.parametrize("failure", [TimeoutError("timeout"), OSError("network")])
+@pytest.mark.parametrize(
+    "failure",
+    [TimeoutError("timeout"), OSError("network"), ValueError("invalid transport")],
+)
 def test_telegram_transient_transport_failure_uses_bounded_backoff_then_recovers(
-    monkeypatch: pytest.MonkeyPatch, failure: OSError
+    monkeypatch: pytest.MonkeyPatch, failure: Exception
 ) -> None:
     attempts = 0
     sleeps: list[int] = []
@@ -624,6 +624,71 @@ def test_telegram_transient_transport_failure_uses_bounded_backoff_then_recovers
     assert deadman._telegram(config(), TOKEN, "recovery") is True
     assert attempts == 2
     assert sleeps == [1]
+
+
+@pytest.mark.parametrize(
+    ("seam", "affected"),
+    [
+        ("cpu", {"cpu"}),
+        ("memory", {"memory"}),
+        ("filesystem", {"disk", "inode"}),
+        ("network", {"network"}),
+        ("unit", {"unit"}),
+    ],
+)
+def test_host_health_preserves_categorical_errors_for_bounded_collection_failures(
+    monkeypatch: pytest.MonkeyPatch, seam: str, affected: set[str]
+) -> None:
+    monkeypatch.setattr(deadman.os, "getloadavg", lambda: (0.0, 0.0, 0.0))
+    monkeypatch.setattr(deadman.os, "sysconf", lambda _name: 1)
+    monkeypatch.setattr(
+        deadman.os,
+        "statvfs",
+        lambda _path: type("Filesystem", (), {"f_bavail": 1, "f_favail": 1})(),
+    )
+    monkeypatch.setattr(
+        deadman.Path,
+        "iterdir",
+        lambda _path: iter([Path("/tmp/eth0")]),
+    )
+    monkeypatch.setattr(deadman.Path, "read_text", lambda *_args, **_kwargs: "up")
+    monkeypatch.setattr(
+        deadman.subprocess,
+        "run",
+        lambda *_args, **_kwargs: type("Result", (), {"returncode": 0})(),
+    )
+    if seam == "cpu":
+        monkeypatch.setattr(
+            deadman.os, "getloadavg", lambda: (_ for _ in ()).throw(OSError())
+        )
+    elif seam == "memory":
+        monkeypatch.setattr(
+            deadman.os, "sysconf", lambda _name: (_ for _ in ()).throw(ValueError())
+        )
+    elif seam == "filesystem":
+        monkeypatch.setattr(
+            deadman.os, "statvfs", lambda _path: (_ for _ in ()).throw(OSError())
+        )
+    elif seam == "network":
+        monkeypatch.setattr(
+            deadman.Path, "iterdir", lambda _path: (_ for _ in ()).throw(OSError())
+        )
+    else:
+        monkeypatch.setattr(
+            deadman.subprocess,
+            "run",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                subprocess.TimeoutExpired("systemctl", 3)
+            ),
+        )
+
+    health = deadman._host_health(config(), state(), NOW)
+
+    assert all(health[axis] == "error" for axis in affected)
+    assert all(
+        health[axis] == "ok"
+        for axis in {"cpu", "memory", "disk", "inode", "network", "unit"} - affected
+    )
 
 
 def test_telegram_server_error_retries_but_client_rejection_does_not(
@@ -1130,6 +1195,12 @@ def test_molecule_lifecycle_scenarios_cover_deadman_enable_disable_and_refusal()
     enabled_verify = (molecule / "enabled/verify.yml").read_text()
     enabled_verify_play = yaml.safe_load(enabled_verify)[0]
     enabled_prepare = (molecule / "enabled/prepare.yml").read_text()
+
+    assert "ProxyHandler({})" in enabled_verify
+    assert "HTTPSHandler(context=context)" in enabled_verify
+    assert "class NoRedirect(HTTPRedirectHandler)" in enabled_verify
+    assert "with opener.open(request, timeout=5)" in enabled_verify
+    assert "with urlopen(request" not in enabled_verify
 
     for scenario in (default, enabled):
         assert scenario["scenario"]["test_sequence"] == [

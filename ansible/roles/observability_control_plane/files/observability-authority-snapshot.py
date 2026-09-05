@@ -99,7 +99,7 @@ class Snapshot:
         self.directory = self.root / CONFIG / ".authority-rollback"
         self.path = self.directory / "snapshot.json"
 
-    def parent(self, path, *, allow_missing=False):
+    def parent(self, path, *, allow_missing=False, allow_final_sticky=False):
         relative = path.parent.relative_to(self.root)
         current = self.root
         for part in ("", *relative.parts):
@@ -110,17 +110,28 @@ class Snapshot:
                 if allow_missing and current != self.root:
                     return False
                 raise
+            mode = stat.S_IMODE(info.st_mode)
+            shared_textfile = (
+                allow_final_sticky
+                and current == path.parent
+                and mode == 0o3775
+                and info.st_uid in {0, os.geteuid()}
+            )
             if (
                 not stat.S_ISDIR(info.st_mode)
                 or info.st_uid != os.geteuid()
-                or stat.S_IMODE(info.st_mode) & 0o022
+                or (mode & 0o022 and not shared_textfile)
             ):
                 raise ValueError("unsafe-parent")
         return True
 
     def read(self, relative, limit=262144, *, allow_missing=False):
         path = self.root / relative
-        if not self.parent(path, allow_missing=allow_missing):
+        if not self.parent(
+            path,
+            allow_missing=allow_missing,
+            allow_final_sticky=relative == DEADMAN_METRIC,
+        ):
             return {"kind": "absent"}
         try:
             info = path.lstat()
