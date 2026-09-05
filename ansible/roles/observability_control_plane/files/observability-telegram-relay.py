@@ -40,6 +40,20 @@ class DeliveryFailure(RuntimeError):
     """Telegram delivery failed with a categorical, non-secret reason."""
 
 
+class _NoRedirect(request.HTTPRedirectHandler):
+    """Keep the Telegram request body on the one validated API origin."""
+
+    def redirect_request(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+
+_NO_REDIRECT_OPENER = request.build_opener(request.ProxyHandler({}), _NoRedirect())
+
+
+def _open_without_redirect(outbound: request.Request, *, timeout: float) -> object:
+    return _NO_REDIRECT_OPENER.open(outbound, timeout=timeout)
+
+
 def _bounded_string(
     value: object,
     *,
@@ -199,10 +213,11 @@ def deliver(
     chat_id: str,
     topic_id: int,
     message: str,
-    opener: Callable[..., object] = request.urlopen,
+    opener: Callable[..., object] | None = None,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> None:
     validate_delivery_contract(api_url, token, chat_id, topic_id)
+    open_request = opener or _open_without_redirect
     body: dict[str, object] = {
         "chat_id": chat_id,
         "text": message,
@@ -221,7 +236,7 @@ def deliver(
         delay = 1
         retryable = False
         try:
-            with opener(outbound, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+            with open_request(outbound, timeout=REQUEST_TIMEOUT_SECONDS) as response:
                 raw = response.read(MAX_RESPONSE_BYTES + 1)
                 if response.status != 200 or len(raw) > MAX_RESPONSE_BYTES:
                     raise DeliveryFailure("upstream-response")
@@ -230,8 +245,11 @@ def deliver(
                     raise DeliveryFailure("upstream-response")
                 return
         except error.HTTPError as exc:
-            retryable = exc.code == 429 or 500 <= exc.code <= 599
-            delay = _retry_after(exc.headers) if exc.code == 429 else 1
+            try:
+                retryable = exc.code == 429 or 500 <= exc.code <= 599
+                delay = _retry_after(exc.headers) if exc.code == 429 else 1
+            finally:
+                exc.close()
         except (TimeoutError, OSError):
             retryable = True
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:

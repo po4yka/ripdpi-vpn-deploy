@@ -109,7 +109,11 @@ relay on `127.0.0.1:19095`. Alertmanager supplies no more than five alerts and
 applies a fixed 20-second webhook timeout. The relay accepts only the bounded
 Alertmanager schema and configured bearer credential, HTML-escapes the technical
 allowlist, renders no more than five alerts, and reports Alertmanager's exact
-omitted count. The parent route waits 30 seconds before its first group and
+omitted count. Generate `observability_secrets.telegram.relay_auth_token` as an
+independent 64-character lowercase hexadecimal secret. It must not equal the bot
+token, silence sender token, or any operator token; the role refuses reuse before
+host writes and materializes the value verbatim only for systemd credentials.
+The parent route waits 30 seconds before its first group and
 regroups after five minutes. Critical incidents repeat after one hour and
 warnings after six hours. These bounds limit notification frequency; they do not
 shorten or resolve the source incident.
@@ -117,7 +121,9 @@ shorten or resolve the source incident.
 The relay makes at most two Telegram requests, each with a five-second timeout,
 and permits one bounded delay. It retries only transport failures, HTTP 429 and
 5xx responses; `Retry-After` is capped at five seconds and any other 4xx or
-malformed response fails immediately. The independent dead-man sender uses the
+malformed response fails immediately. Redirects are never followed: every 3xx
+response fails after the one request, so the message body cannot move to another
+origin. The independent dead-man sender uses the
 same two-attempt and five-second bounds. Its complete worst-case tick budget is
 35 seconds (two Telegram attempts, one five-second delay and two reverse-health
 attempts), inside the fixed 60-second systemd ceiling. Both senders read at most

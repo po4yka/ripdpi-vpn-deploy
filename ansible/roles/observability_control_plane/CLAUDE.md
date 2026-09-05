@@ -21,7 +21,9 @@ textfile; disable preserves the canonical evaluator evidence.
 Alerting is separately opt-in. Prometheus evaluates immutable validated rules;
 Alertmanager remains loopback-only and sends bounded authenticated webhooks to
 a separate loopback relay. Only that relay receives the primary Telegram token
-through a systemd credential. Telegram routing contains only bounded technical
+through a systemd credential. Its separate random relay credential comes from
+the private secrets document and is never derived from the Prometheus sender
+authority. Telegram routing contains only bounded technical
 aliases and cannot authorize maintenance or infrastructure actions. The relay
 owns two bounded delivery attempts, escaping, redaction, truncation and exact
 omission counts; fixed group and repeat intervals bound route frequency. A
@@ -59,7 +61,8 @@ Do not turn a stale, future, malformed, or unknown published verdict into a
 healthy, blocked, or rotation conclusion.
 Do not put Telegram tokens in Alertmanager YAML, argv, environment, metrics, or
 logs. Alertmanager holds only the relay authentication credential. A missing
-destination is a pre-mutation refusal, and disabling alerting removes both
+or reused relay credential is a pre-mutation refusal. The relay never follows an
+HTTP redirect away from the exact Telegram API destination. Disabling removes both
 alerting units, configuration and credential surfaces without deleting the
 Prometheus TSDB.
 

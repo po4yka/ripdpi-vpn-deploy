@@ -99,9 +99,7 @@
       loop:
         - content: '{{ observability_control_plane.alerting.telegram.bot_token }}'
           path: '{{ observability_control_plane.alerting.credential_path }}'
-        - content: >-
-            {{ ('observability-telegram-relay-v1:' ~
-                observability_control_plane.alerting.silence_gateway.sender_token) | hash('sha256') }}
+        - content: '{{ observability_secrets.telegram.relay_auth_token }}'
           path: >-
             {{ observability_control_plane.alerting.telegram.relay_auth_path |
                default('/etc/observability-control-plane/credentials/telegram-relay-auth-token') }}
@@ -167,8 +165,7 @@
         url: http://127.0.0.1:19095/-/ready
         headers:
           Authorization: >-
-            Bearer {{ ('observability-telegram-relay-v1:' ~
-                       observability_control_plane.alerting.silence_gateway.sender_token) | hash('sha256') }}
+            Bearer {{ observability_secrets.telegram.relay_auth_token }}
         status_code: 200
         return_content: false
       register: _observability_telegram_relay_ready

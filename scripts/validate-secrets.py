@@ -224,6 +224,7 @@ def _observability_rotation_errors(
             observability.get("ingress_certificate_pem"),
             observability.get("ingress_private_key_pem"),
             (observability.get("telegram") or {}).get("bot_token"),
+            (observability.get("telegram") or {}).get("relay_auth_token"),
             deadman.get("pulse_token"),
             (deadman.get("telegram") or {}).get("bot_token"),
         )
@@ -372,6 +373,7 @@ def _semantic_errors(
         observability.get("ingress_private_key_pem"),
         observability.get("ui_password"),
         (observability.get("telegram") or {}).get("bot_token"),
+        (observability.get("telegram") or {}).get("relay_auth_token"),
         deadman.get("pulse_token"),
         (deadman.get("telegram") or {}).get("bot_token"),
     ]
