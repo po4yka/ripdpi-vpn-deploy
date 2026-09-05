@@ -159,6 +159,33 @@ def test_ingress_binds_each_certificate_subject_to_exact_node_path() -> None:
     assert 'default "";' in rendered
 
 
+def test_ingress_exposes_only_mtls_bound_deadman_reverse_receiver() -> None:
+    values = _values()
+    control = values["observability_control_plane"]
+    control["ingest_identities"].append({"node_id": "deadman-control"})
+    control["alerting"] = {
+        "deadman": {
+            "enabled": True,
+            "node_id": "deadman-control",
+            "reverse_listen": "127.0.0.1:19096",
+            "reverse_path": "/observability/v1/deadman/reverse",
+        }
+    }
+
+    rendered = render_template(
+        ROLE / "templates/observability-remote-write.conf.j2", values
+    )
+
+    assert "location = /observability/v1/deadman/reverse" in rendered
+    assert "if ($ssl_client_verify != SUCCESS) { return 403; }" in rendered
+    assert (
+        "if ($observability_remote_write_node != deadman-control) { return 403; }"
+        in rendered
+    )
+    assert "client_max_body_size 4k;" in rendered
+    assert "proxy_pass http://127.0.0.1:19096/v1/deadman/reverse;" in rendered
+
+
 def test_prometheus_service_is_loopback_only_and_storage_is_bounded() -> None:
     rendered = render_template(
         ROLE / "templates/observability-prometheus.service.j2", _values()

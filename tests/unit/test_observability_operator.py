@@ -12,6 +12,7 @@ import subprocess
 import sys
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "observability-operator.py"
@@ -97,7 +98,7 @@ if entry['program'] == 'ssh':
     elif '/api/v2/alerts' in payload:
         print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'receiver': 'telegram-primary', 'state': 'submitted'}}))
     else:
-        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'healthy', 'units': {{'observability-prometheus.service': 'active', 'observability-alertmanager.service': 'active', 'observability-silence-gateway.service': 'active', 'observability-control-plane-adapter.timer': 'active'}}}}))
+        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'healthy', 'units': {{'nginx.service': 'active', 'observability-prometheus.service': 'active', 'observability-alertmanager.service': 'active', 'observability-telegram-relay.service': 'active', 'observability-silence-gateway.service': 'active', 'observability-control-plane-adapter.timer': 'active', 'observability-protocol-liveness-adapter.timer': 'active', 'observability-deadman-pipeline.service': 'active', 'observability-deadman-pulse.timer': 'active', 'observability-primary-canary.timer': 'active'}}}}))
 """
     for name in ("ansible-playbook", "ssh"):
         _write(binary / name, recorder, 0o700)
@@ -177,11 +178,13 @@ def _calls(operator: dict[str, object]) -> list[dict[str, object]]:
     return [json.loads(line) for line in path.read_text().splitlines()]
 
 
-@pytest.mark.parametrize("command", ["render", "validate", "rotate", "rollback"])
+@pytest.mark.parametrize(
+    "command", ["render", "validate", "deploy", "rotate", "rollback"]
+)
 def test_secret_consuming_commands_fail_before_execution_without_private_secrets(
     operator: dict[str, object], command: str
 ) -> None:
-    extra = ("--confirm",) if command == "rotate" else ()
+    extra = ("--confirm",) if command in {"deploy", "rotate"} else ()
     result = _run(operator, command, "--vars", str(operator["vars"]), *extra)
 
     assert result.returncode == 2
@@ -311,10 +314,16 @@ def test_status_is_secretless_read_only_and_redacted(
         "schema_version": 1,
         "state": "healthy",
         "units": {
+            "nginx.service": "active",
             "observability-prometheus.service": "active",
             "observability-alertmanager.service": "active",
+            "observability-telegram-relay.service": "active",
             "observability-silence-gateway.service": "active",
             "observability-control-plane-adapter.timer": "active",
+            "observability-protocol-liveness-adapter.timer": "active",
+            "observability-deadman-pipeline.service": "active",
+            "observability-deadman-pulse.timer": "active",
+            "observability-primary-canary.timer": "active",
         },
     }
     observed = _calls(operator)
@@ -323,6 +332,8 @@ def test_status_is_secretless_read_only_and_redacted(
     assert "journalctl" not in payload
     assert "Environment" not in payload
     assert "systemctl" in payload
+    assert "observability-deadman-pulse.service" not in payload
+    assert "observability-primary-canary.service" not in payload
 
 
 def test_drill_is_staging_only_and_needs_explicit_notification_confirmation(
@@ -375,6 +386,77 @@ def test_rotate_is_explicit_exact_host_role_convergence(
     assert "--check" not in call["argv"]
     assert call["argv"][call["argv"].index("--limit") + 1] == "node-a"
     assert "site.yml" not in " ".join(call["argv"])
+    assert (
+        "Refuse replacing an existing observability deployment" not in call["playbook"]
+    )
+
+
+def test_deploy_requires_confirmation_before_transport(
+    operator: dict[str, object],
+) -> None:
+    result = _run(
+        operator,
+        "deploy",
+        "--secrets",
+        str(operator["secrets"]),
+        "--vars",
+        str(operator["vars"]),
+    )
+
+    assert result.returncode == 2
+    assert result.stderr == "observability-operator: --confirm required\n"
+    assert _calls(operator) == []
+
+
+def test_deploy_is_initial_only_exact_host_role_convergence(
+    operator: dict[str, object],
+) -> None:
+    result = _run(
+        operator,
+        "deploy",
+        "--secrets",
+        str(operator["secrets"]),
+        "--vars",
+        str(operator["vars"]),
+        "--confirm",
+    )
+
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    assert report["state"] == "deployed"
+    call = _calls(operator)[0]
+    assert "--check" not in call["argv"]
+    assert call["argv"][call["argv"].index("--limit") + 1] == "node-a"
+    assert "site.yml" not in " ".join(call["argv"])
+    assert "Refuse replacing an existing observability deployment" in call["playbook"]
+    assert "/etc/systemd/system/observability-prometheus.service" in call["playbook"]
+
+
+@pytest.mark.parametrize(
+    ("component", "marker"),
+    [
+        ("agent", "/etc/systemd/system/observability-agent.service"),
+        (
+            "control-plane",
+            "/etc/systemd/system/observability-prometheus.service",
+        ),
+        ("deadman", "/etc/systemd/system/observability-deadman.service"),
+    ],
+)
+def test_initial_playbook_refuses_existing_component_marker(
+    component: str, marker: str
+) -> None:
+    module = _operator_module()
+    payload = yaml.safe_load(module._playbook(component, "node-a", initial=True))[0]
+
+    assert payload["pre_tasks"][0]["ansible.builtin.stat"] == {
+        "path": marker,
+        "follow": False,
+    }
+    refusal = payload["pre_tasks"][1]["ansible.builtin.assert"]
+    assert refusal["that"] == ["not observability_install_marker.stat.exists"]
+    assert "observability-rotate" in refusal["fail_msg"]
+    assert "observability-remove" in refusal["fail_msg"]
 
 
 def test_rollback_reconverges_one_role_from_private_last_known_good_inputs(
@@ -662,6 +744,7 @@ def test_makefile_exposes_only_narrow_observability_controller_targets() -> None
         "validate",
         "status",
         "drill",
+        "deploy",
         "rotate",
         "rollback",
         "remove",
@@ -676,6 +759,8 @@ def test_makefile_exposes_only_narrow_observability_controller_targets() -> None
     assert "OBSERVABILITY_ENVIRONMENT ?= $(ENV)" not in source
     assert "require OBSERVABILITY_ENVIRONMENT explicitly" in source
     assert "--rollback-manifest" in block
+    assert "observability-operator.py deploy" in block
+    assert "--confirm" in block
 
 
 def test_make_status_forwards_literal_exact_scope(operator: dict[str, object]) -> None:
@@ -705,6 +790,38 @@ def test_make_status_forwards_literal_exact_scope(operator: dict[str, object]) -
         "ssh",
         "ssh-payload",
     ]
+
+
+def test_make_deploy_forwards_exact_scope_and_private_inputs(
+    operator: dict[str, object],
+) -> None:
+    common = operator["common"]
+    assert isinstance(common, list)
+    values = dict(zip(common[::2], common[1::2]))
+    result = subprocess.run(
+        [
+            "make",
+            "observability-deploy",
+            f"OBSERVABILITY_INVENTORY={values['--inventory']}",
+            f"OBSERVABILITY_HOST={values['--host']}",
+            f"OBSERVABILITY_ENVIRONMENT={values['--environment']}",
+            f"OBSERVABILITY_COMPONENT={values['--component']}",
+            f"OBSERVABILITY_KNOWN_HOSTS={values['--known-hosts']}",
+            f"OBSERVABILITY_SECRETS_FILE={operator['secrets']}",
+            f"OBSERVABILITY_VARS={operator['vars']}",
+        ],
+        cwd=ROOT,
+        env=operator["env"],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["state"] == "deployed"
+    call = _calls(operator)[0]
+    assert call["program"] == "ansible-playbook"
+    assert "Refuse replacing an existing observability deployment" in call["playbook"]
 
 
 def test_make_never_inherits_prod_environment_for_operator_targets(

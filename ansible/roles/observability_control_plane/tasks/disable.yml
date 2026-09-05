@@ -51,6 +51,46 @@
     - not ansible_check_mode
     - "'observability-telegram-relay.service' in ansible_facts.services"
 
+- name: Stop and disable dead-man pipeline schedules before state reset
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop:
+    - observability-deadman-pulse.timer
+    - observability-primary-canary.timer
+    - observability-deadman-pulse.service
+    - observability-primary-canary.service
+    - observability-deadman-pipeline.service
+  when:
+    - not ansible_check_mode
+    - item in ansible_facts.services
+
+- name: Inspect installed dead-man pipeline helper before full disable
+  ansible.builtin.stat:
+    path: /usr/local/libexec/observability-deadman-pipeline.py
+    follow: false
+  register: _observability_disabled_deadman_helper
+  changed_when: false
+
+- name: Reconcile generation-bound state before full disable
+  ansible.builtin.command:
+    argv:
+      - /usr/local/libexec/observability-deadman-pipeline.py
+      - reconcile-state
+      - --state-dir
+      - '{{ observability_control_plane.alerting.deadman.state_dir }}'
+      - --generation
+      - '0000000000000000000000000000000000000000'
+      - --disable
+  register: _observability_disabled_deadman_state
+  changed_when: >-
+    (_observability_disabled_deadman_state.stdout | from_json).changed | bool
+  no_log: true
+  when:
+    - not ansible_check_mode
+    - _observability_disabled_deadman_helper.stat.isreg | default(false)
+
 - name: Stop and disable protocol-liveness adapter units
   ansible.builtin.systemd_service:
     name: "{{ item }}"
@@ -107,10 +147,17 @@
     - /etc/systemd/system/observability-alertmanager.service
     - /etc/systemd/system/observability-telegram-relay.service
     - /etc/systemd/system/observability-silence-gateway.service
+    - /etc/systemd/system/observability-deadman-pipeline.service
+    - /etc/systemd/system/observability-deadman-pulse.service
+    - /etc/systemd/system/observability-deadman-pulse.timer
+    - /etc/systemd/system/observability-primary-canary.service
+    - /etc/systemd/system/observability-primary-canary.timer
     - /usr/local/libexec/observability-telegram-relay
     - /usr/local/libexec/observability-silence-gateway
+    - /usr/local/libexec/observability-deadman-pipeline.py
     - /etc/nginx/sites-enabled/observability-remote-write.conf
     - /etc/nginx/sites-available/observability-remote-write.conf
+    - "{{ observability_control_plane.alerting.deadman.metrics_path }}"
     - "{{ observability_control_plane.config_root }}"
   notify: Reload observability ingress
 

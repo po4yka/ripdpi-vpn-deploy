@@ -2,6 +2,7 @@ rule_files:
   - alerts.yml
 evaluation_interval: 1m
 tests:
+
   - interval: 1m
     input_series:
       - series: 'vpn_watchdog_collection_success{node="vpn-p0",role="watchdog"}'

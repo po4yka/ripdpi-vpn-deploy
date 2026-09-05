@@ -232,7 +232,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         setup-yubikey check-killswitch install-operator-crons \
         remove-operator-crons issue-sub-token sub-reads \
         observability-render observability-validate observability-status \
-        observability-drill observability-rotate observability-rollback \
+        observability-drill observability-deploy observability-rotate observability-rollback \
         observability-remove observability-silence-create observability-silence-delete \
         awg-evidence-provision \
         test-unit snapshot-check snapshot-update validate-secrets \
@@ -331,7 +331,7 @@ help:
 	@echo ""
 	@echo "── OBSERVABILITY / DEFENSIVE ──────────────────────────────────────────"
 	@echo "  observability-{render,validate,status}  Exact-host configuration/read surface"
-	@echo "  observability-{drill,rotate,rollback,remove}  Confirmed exact-host lifecycle"
+	@echo "  observability-{drill,deploy,rotate,rollback,remove}  Confirmed exact-host lifecycle"
 	@echo "  burn-check                 External IP reachability probe"
 	@echo "  asn-drift                  Alert on VPS ASN reassignment"
 	@echo "  check-ip-reputation        Spamhaus / optional FireHOL file / AbuseIPDB"
@@ -1100,7 +1100,7 @@ OBSERVABILITY_ENVIRONMENT ?=
 OBSERVABILITY_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
 OBSERVABILITY_SECRETS_FILE ?= $(SECRETS_FILE)
 
-ifneq ($(filter observability-render observability-validate observability-status observability-drill observability-rotate observability-rollback observability-remove observability-silence-create observability-silence-delete,$(MAKECMDGOALS)),)
+ifneq ($(filter observability-render observability-validate observability-status observability-drill observability-deploy observability-rotate observability-rollback observability-remove observability-silence-create observability-silence-delete,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error observability operator commands require exactly one make goal)
 endif
@@ -1150,6 +1150,11 @@ observability-status:
 observability-drill:
 	@python3 scripts/observability-operator.py drill $(observability_common) \
 	  --confirm-notification --silence-owner "$${OBSERVABILITY_SILENCE_OWNER_LITERAL}"
+
+observability-deploy:
+	@python3 scripts/observability-operator.py deploy $(observability_common) \
+	  --secrets "$${OBSERVABILITY_SECRETS_LITERAL}" --vars "$${OBSERVABILITY_VARS_LITERAL}" \
+	  --confirm
 
 observability-silence-create:
 	@python3 scripts/observability-operator.py silence-create $(observability_common) \

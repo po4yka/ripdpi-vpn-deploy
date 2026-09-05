@@ -2,6 +2,45 @@ rule_files:
   - alerts.yml
 evaluation_interval: 1m
 tests:
+{% if observability_control_plane.alerting.deadman.enabled %}
+  - interval: 1m
+    input_series:
+      - series: 'vpn_observability_deadman_reverse_timestamp_seconds{generation="{{ observability_control_plane.alerting.source_generation }}"}'
+        values: '0x8'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: ObservabilityDeadmanReverseMissing
+        exp_alerts:
+          - exp_labels:
+              generation: "{{ observability_control_plane.alerting.source_generation }}"
+              component: observability-pipeline
+              severity: critical
+            exp_annotations:
+              incident_family: observability-deadman
+              evidence_class: reverse-heartbeat-missing
+              source_generation: "{{ observability_control_plane.alerting.source_generation }}"
+              summary: Independent dead-man reverse health is missing or stale.
+              runbook: docs/RUNBOOK-incident.md
+  - interval: 1m
+    input_series:
+      - series: 'vpn_observability_deadman_health{check="unit",generation="{{ observability_control_plane.alerting.source_generation }}",state="error"}'
+        values: '1x4'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ObservabilityDeadmanReverseUnhealthy
+        exp_alerts:
+          - exp_labels:
+              check: unit
+              state: error
+              component: observability-pipeline
+              severity: critical
+            exp_annotations:
+              incident_family: observability-deadman
+              evidence_class: reverse-heartbeat-unhealthy
+              source_generation: "{{ observability_control_plane.alerting.source_generation }}"
+              summary: Independent dead-man reported an unhealthy bounded subsystem.
+              runbook: docs/RUNBOOK-incident.md
+{% endif %}
   - interval: 1m
     input_series:
       - series: 'vpn_watchdog_collection_success{node="vpn-p0",role="watchdog"}'

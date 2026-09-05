@@ -99,7 +99,11 @@ def parse_payload(raw: bytes, maximum: int = MAX_PAYLOAD_BYTES) -> dict[str, obj
         raise Refusal("payload-contract")
     if value["version"] != "4" or value["status"] not in {"firing", "resolved"}:
         raise Refusal("payload-contract")
-    if value["receiver"] not in {"telegram-primary", "telegram-critical"}:
+    if value["receiver"] not in {
+        "telegram-primary",
+        "telegram-critical",
+        "telegram-canary",
+    }:
         raise Refusal("payload-contract")
     if (
         not isinstance(value["truncatedAlerts"], int)

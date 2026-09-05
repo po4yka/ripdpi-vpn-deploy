@@ -7,6 +7,9 @@ Wants=network-online.target
 User={{ observability_control_plane.service_user }}
 Group={{ observability_control_plane.service_group }}
 LoadCredential=telegram-relay-auth-token:{{ observability_control_plane.alerting.telegram.relay_auth_path | default('/etc/observability-control-plane/credentials/telegram-relay-auth-token') }}
+{% if observability_control_plane.alerting.deadman.enabled %}
+LoadCredential=deadman-canary-auth-token:{{ observability_control_plane.alerting.deadman.canary_auth_path }}
+{% endif %}
 LoadCredential=silence-backend-ca.pem:/etc/observability-control-plane/credentials/silence-backend-ca.pem
 LoadCredential=silence-backend-server.crt:/etc/observability-control-plane/credentials/silence-backend-server.crt
 LoadCredential=silence-backend-server.key:/etc/observability-control-plane/credentials/silence-backend-server.key

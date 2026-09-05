@@ -47,5 +47,7 @@ server {
         proxy_set_header X-Prometheus-Remote-Write-Version $http_x_prometheus_remote_write_version;
     }
 
+
+
     location / { return 404; }
 }

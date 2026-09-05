@@ -15,6 +15,33 @@
 - name: Gather alerting service facts before opt-out
   ansible.builtin.service_facts:
 
+- name: Resolve current and retained relay credential paths
+  ansible.builtin.set_fact:
+    _observability_disabled_relay_auth_paths: >-
+      {{
+        [
+          observability_control_plane.alerting.telegram.relay_auth_path |
+          default('/etc/observability-control-plane/credentials/telegram-relay-auth-token'),
+          (
+            observability_control_plane_alerting_generation.get(
+              'relay_auth_path',
+              '/etc/observability-control-plane/credentials/telegram-relay-auth-token'
+            )
+            if observability_control_plane_alerting_generation is defined and
+               observability_control_plane_alerting_generation is mapping
+            else '/etc/observability-control-plane/credentials/telegram-relay-auth-token'
+          )
+        ] | unique | list
+      }}
+
+- name: Refuse unsafe retained relay credential paths
+  ansible.builtin.assert:
+    that:
+      - >-
+        item == '/etc/observability-control-plane/credentials/telegram-relay-auth-token'
+    fail_msg: Retained alerting generation contains an unsafe relay credential path.
+  loop: "{{ _observability_disabled_relay_auth_paths }}"
+
 - name: Stop disabled silence authority
   ansible.builtin.systemd_service:
     name: observability-silence-gateway
@@ -53,6 +80,46 @@
     - not ansible_check_mode
     - "'observability-telegram-relay.service' in ansible_facts.services"
 
+- name: Stop disabled dead-man pipeline and schedules
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop:
+    - observability-deadman-pulse.timer
+    - observability-primary-canary.timer
+    - observability-deadman-pulse.service
+    - observability-primary-canary.service
+    - observability-deadman-pipeline.service
+  when:
+    - not ansible_check_mode
+    - item in ansible_facts.services
+
+- name: Inspect installed dead-man pipeline helper before state reset
+  ansible.builtin.stat:
+    path: /usr/local/libexec/observability-deadman-pipeline.py
+    follow: false
+  register: _observability_disabled_deadman_helper
+  changed_when: false
+
+- name: Reconcile generation-bound state before dead-man disable
+  ansible.builtin.command:
+    argv:
+      - /usr/local/libexec/observability-deadman-pipeline.py
+      - reconcile-state
+      - --state-dir
+      - '{{ observability_control_plane.alerting.deadman.state_dir }}'
+      - --generation
+      - '0000000000000000000000000000000000000000'
+      - --disable
+  register: _observability_disabled_deadman_state
+  changed_when: >-
+    (_observability_disabled_deadman_state.stdout | from_json).changed | bool
+  no_log: true
+  when:
+    - not ansible_check_mode
+    - _observability_disabled_deadman_helper.stat.isreg | default(false)
+
 - name: Find immutable alerting generations
   ansible.builtin.find:
     paths: "{{ observability_control_plane.config_root }}/generations"
@@ -76,14 +143,24 @@
         '/etc/systemd/system/observability-alertmanager.service',
         '/etc/systemd/system/observability-telegram-relay.service',
         '/etc/systemd/system/observability-silence-gateway.service',
+        '/etc/systemd/system/observability-deadman-pipeline.service',
+        '/etc/systemd/system/observability-deadman-pulse.service',
+        '/etc/systemd/system/observability-deadman-pulse.timer',
+        '/etc/systemd/system/observability-primary-canary.service',
+        '/etc/systemd/system/observability-primary-canary.timer',
         '/usr/local/libexec/observability-telegram-relay',
         '/usr/local/libexec/observability-silence-gateway',
+        '/usr/local/libexec/observability-deadman-pipeline.py',
         '/etc/observability-control-plane/alertmanager-web.yml',
         observability_control_plane.config_root ~ '/alertmanager-current.yml',
         observability_control_plane.config_root ~ '/alertmanager-previous.yml',
         observability_control_plane.alerting.credential_path,
-        observability_control_plane.alerting.telegram.relay_auth_path
+        observability_control_plane.alerting.deadman.pulse_credential_path,
+        observability_control_plane.alerting.deadman.pulse_ca_path,
+        observability_control_plane.alerting.deadman.canary_auth_path,
+        observability_control_plane.alerting.deadman.metrics_path
       ] + (_observability_disabled_silence_credentials.files | map(attribute='path') | list)
+      + _observability_disabled_relay_auth_paths
       + (_observability_alerting_generations.files | map(attribute='path') | list)
     }}
 

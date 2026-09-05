@@ -1,0 +1,31 @@
+[Unit]
+Description=Exercise primary Telegram delivery before an incident
+After=observability-telegram-relay.service
+Requires=observability-telegram-relay.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+LoadCredential=relay-token:/etc/observability-control-plane/credentials/telegram-relay-auth-token
+ExecStart=/usr/local/libexec/observability-deadman-pipeline.py primary-canary --state-dir /var/lib/observability-pipeline --relay-url http://127.0.0.1:19095/alert --generation  --timeout-seconds 5 --relay-credential relay-token
+TimeoutStartSec=15s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/observability-pipeline
+ReadOnlyPaths=/usr/local/libexec/observability-deadman-pipeline.py
+MemoryMax=64M
+TasksMax=16
+LimitNOFILE=1024

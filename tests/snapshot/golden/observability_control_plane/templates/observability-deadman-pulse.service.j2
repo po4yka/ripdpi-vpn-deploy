@@ -1,0 +1,32 @@
+[Unit]
+Description=Publish a short-lived authenticated observability pipeline pulse
+After=observability-deadman-pipeline.service observability-alertmanager.service observability-prometheus.service
+Requires=observability-deadman-pipeline.service observability-alertmanager.service observability-prometheus.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+LoadCredential=pulse-token:/etc/observability-control-plane/credentials/deadman-pulse-token
+LoadCredential=deadman-pulse-ca.pem:/etc/observability-control-plane/credentials/deadman-pulse-ca.pem
+ExecStart=/usr/local/libexec/observability-deadman-pipeline.py publish-pulse --state-dir /var/lib/observability-pipeline --primary-status /var/lib/observability-pipeline/primary-canary.json --deadman-url  --generation  --freshness-seconds 180 --primary-freshness-seconds 90000 --timeout-seconds 5 --prometheus-ready http://127.0.0.1:9090/-/ready --alertmanager-ready http://127.0.0.1:19094/-/ready --pulse-credential pulse-token --pulse-ca-credential deadman-pulse-ca.pem
+TimeoutStartSec=20s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/observability-pipeline
+ReadOnlyPaths=/usr/local/libexec/observability-deadman-pipeline.py
+MemoryMax=64M
+TasksMax=16
+LimitNOFILE=1024

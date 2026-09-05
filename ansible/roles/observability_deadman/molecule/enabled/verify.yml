@@ -2,7 +2,32 @@
 - name: Verify enabled then disabled dead-man lifecycle
   hosts: all
   become: true
+  pre_tasks:
+    - name: Read fixture reverse-health trust material
+      ansible.builtin.slurp:
+        src: "/var/tmp/observability-deadman-fixture/{{ item }}"
+      loop: [ca.pem, client.pem, client.key, ca.sha256, client.sha256, pulse-ca.pem, pulse-server.pem, pulse-server.key]
+      register: deadman_reverse_tls_files
+      no_log: true
   vars:
+    fixture_reverse_health_tls:
+      ca_pem: "{{ deadman_reverse_tls_files.results[0].content | b64decode }}"
+      client_cert_pem: "{{ deadman_reverse_tls_files.results[1].content | b64decode }}"
+      client_key_pem: "{{ deadman_reverse_tls_files.results[2].content | b64decode }}"
+      client_cn: deadman-control
+      client_cert_fingerprint_sha256: "{{ deadman_reverse_tls_files.results[4].content | b64decode | trim }}"
+      ca_fingerprint_sha256: "{{ deadman_reverse_tls_files.results[3].content | b64decode | trim }}"
+      ca_credential: reverse-health-ca
+      client_cert_credential: reverse-health-client-cert
+      client_key_credential: reverse-health-client-key
+    fixture_pulse_tls:
+      server_name: reverse.fixture.invalid
+      server_cert_credential: pulse-server-cert
+      server_key_credential: pulse-server-key
+    fixture_pulse_tls_secrets:
+      ca_pem: "{{ deadman_reverse_tls_files.results[5].content | b64decode }}"
+      server_cert_pem: "{{ deadman_reverse_tls_files.results[6].content | b64decode }}"
+      server_key_pem: "{{ deadman_reverse_tls_files.results[7].content | b64decode }}"
     disabled_deadman:
       enabled: false
       service_user: observability-deadman
@@ -14,8 +39,12 @@
       pulse_listen: 0.0.0.0:9444
       status_listen: 127.0.0.1:19094
       pulse_path: /v1/pulse
-      reverse_health_url: https://reverse.fixture.invalid:19445/v1/health
+      pulse_tls: "{{ fixture_pulse_tls }}"
+      reverse_health_url: https://reverse.fixture.invalid:9443/observability/v1/deadman/reverse
       reverse_health_max_bytes: 1024
+      source_generation: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      required_units: [observability-deadman.service]
+      reverse_health_tls: "{{ fixture_reverse_health_tls }}"
       pulse_interval_seconds: 60
       missed_pulse_limit: 5
       max_future_seconds: 30
@@ -38,8 +67,12 @@
       pulse_listen: 0.0.0.0:9444
       status_listen: 127.0.0.1:19094
       pulse_path: /v1/pulse
-      reverse_health_url: https://reverse.fixture.invalid:19445/v1/health
+      pulse_tls: "{{ fixture_pulse_tls }}"
+      reverse_health_url: https://reverse.fixture.invalid:9443/observability/v1/deadman/reverse
       reverse_health_max_bytes: 1024
+      source_generation: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      required_units: [observability-deadman.service]
+      reverse_health_tls: "{{ fixture_reverse_health_tls }}"
       pulse_interval_seconds: 60
       missed_pulse_limit: 5
       max_future_seconds: 30
@@ -62,8 +95,12 @@
       pulse_listen: 0.0.0.0:9444
       status_listen: 127.0.0.1:19094
       pulse_path: /v1/pulse
-      reverse_health_url: https://reverse.fixture.invalid:19445/v1/health
+      pulse_tls: "{{ fixture_pulse_tls }}"
+      reverse_health_url: https://reverse.fixture.invalid:9443/observability/v1/deadman/reverse
       reverse_health_max_bytes: 1024
+      source_generation: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      required_units: [observability-deadman.service]
+      reverse_health_tls: "{{ fixture_reverse_health_tls }}"
       pulse_interval_seconds: 60
       missed_pulse_limit: 5
       max_future_seconds: 30
@@ -78,6 +115,7 @@
     rotated_deadman_secrets:
       schema_version: 1
       pulse_token: fixture-rotated-pulse-token-012345678
+      pulse_tls: "{{ fixture_pulse_tls_secrets }}"
       telegram:
         bot_token: fixture-rotated-telegram-token-012345
     deadman_rotation_probe: |
@@ -85,6 +123,7 @@
       import hashlib
       import hmac
       import json
+      import ssl
       import sys
       from urllib.error import HTTPError
       from urllib.request import Request, urlopen
@@ -111,10 +150,13 @@
           ).hexdigest()
           body = json.dumps(payload, separators=(',', ':')).encode() + b' ' * padding
           request = Request(
-              'http://127.0.0.1:9444/v1/pulse', data=body, method='POST'
+              'https://reverse.fixture.invalid:9444/v1/pulse', data=body, method='POST'
           )
           try:
-              with urlopen(request, timeout=5) as response:
+              context = ssl.create_default_context(
+                  cafile='/var/tmp/observability-deadman-fixture/pulse-ca.pem'
+              )
+              with urlopen(request, timeout=5, context=context) as response:
                   return response.status
           except HTTPError as error:
               return error.code
@@ -185,6 +227,8 @@
         - /etc/observability-deadman/credentials
         - /etc/observability-deadman/credentials/pulse-token
         - /etc/observability-deadman/credentials/telegram-bot-token
+        - /etc/observability-deadman/credentials/pulse-server.crt
+        - /etc/observability-deadman/credentials/pulse-server.key
         - /var/lib/observability-deadman
         - /etc/observability-deadman/deadman-current.json
       register: deadman_enabled_paths
@@ -196,16 +240,22 @@
           - deadman_enabled_paths.results[0].stat.mode == '0755'
           - deadman_enabled_paths.results[1].stat.isdir
           - deadman_enabled_paths.results[1].stat.mode == '0700'
+          - deadman_enabled_paths.results[4].stat.mode == '0600'
+          - deadman_enabled_paths.results[5].stat.mode == '0600'
           - deadman_enabled_paths.results[2].stat.isreg
           - deadman_enabled_paths.results[2].stat.mode == '0600'
           - deadman_enabled_paths.results[2].stat.pw_name == 'root'
           - deadman_enabled_paths.results[3].stat.isreg
           - deadman_enabled_paths.results[3].stat.mode == '0600'
           - deadman_enabled_paths.results[3].stat.pw_name == 'root'
-          - deadman_enabled_paths.results[4].stat.isdir
-          - deadman_enabled_paths.results[4].stat.mode == '0700'
-          - deadman_enabled_paths.results[4].stat.pw_name == 'observability-deadman'
-          - deadman_enabled_paths.results[5].stat.islnk
+          - deadman_enabled_paths.results[4].stat.isreg
+          - deadman_enabled_paths.results[4].stat.pw_name == 'root'
+          - deadman_enabled_paths.results[5].stat.isreg
+          - deadman_enabled_paths.results[5].stat.pw_name == 'root'
+          - deadman_enabled_paths.results[6].stat.isdir
+          - deadman_enabled_paths.results[6].stat.mode == '0700'
+          - deadman_enabled_paths.results[6].stat.pw_name == 'observability-deadman'
+          - deadman_enabled_paths.results[7].stat.islnk
 
     - name: Include token-only rotated dead-man role
       ansible.builtin.include_role:

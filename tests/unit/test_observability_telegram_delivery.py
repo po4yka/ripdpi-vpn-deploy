@@ -472,7 +472,9 @@ def test_relay_auth_is_a_distinct_private_secret_and_not_sender_derived() -> Non
         if task["name"] == "Materialize primary Telegram relay credentials for systemd"
     )
     relay_item = materialize["loop"][1]
-    assert relay_item["content"] == "{{ observability_secrets.telegram.relay_auth_token }}"
+    assert (
+        relay_item["content"] == "{{ observability_secrets.telegram.relay_auth_token }}"
+    )
     assert "sender_token" not in relay_item["content"]
     assert "hash('sha256')" not in relay_item["content"]
 
@@ -482,7 +484,7 @@ def test_relay_auth_is_a_distinct_private_secret_and_not_sender_derived() -> Non
     assert "silence_gateway.operators" in secret_contract
 
 
-@pytest.mark.parametrize("duplicate", ["sender", "operator", "bot"])
+@pytest.mark.parametrize("duplicate", ["sender", "operator", "bot", "pulse", "canary"])
 def test_duplicate_relay_auth_refuses_before_any_write(
     tmp_path: Path, duplicate: str
 ) -> None:
@@ -491,9 +493,13 @@ def test_duplicate_relay_auth_refuses_before_any_write(
         relay_auth = contract["alerting"]["silence_gateway"]["sender_token"]
     elif duplicate == "operator":
         relay_auth = contract["alerting"]["silence_gateway"]["operators"][0]["token"]
-    else:
+    elif duplicate == "bot":
         contract["alerting"]["telegram"]["bot_token"] = "f" * 64
         relay_auth = contract["alerting"]["telegram"]["bot_token"]
+    elif duplicate == "pulse":
+        relay_auth = "e5" * 32
+    else:
+        relay_auth = "f6" * 32
     marker = tmp_path / "must-not-write"
     playbook = tmp_path / "secret-contract.yml"
     playbook.write_text(
@@ -507,6 +513,14 @@ def test_duplicate_relay_auth_refuses_before_any_write(
                         "observability_control_plane": contract,
                         "observability_secrets": {
                             "telegram": {"relay_auth_token": relay_auth}
+                        },
+                        "observability_deadman_secrets": {
+                            "schema_version": 1,
+                            "pulse_token": "e5" * 32,
+                            "canary_token": "f6" * 32,
+                            "pulse_tls": {
+                                "ca_pem": "-----BEGIN CERTIFICATE-----\nfixture-ca\n-----END CERTIFICATE-----\n"
+                            },
                         },
                     },
                     "tasks": [
@@ -559,6 +573,14 @@ def test_distinct_relay_auth_contract_passes_without_changes(tmp_path: Path) -> 
                         "observability_control_plane": contract,
                         "observability_secrets": {
                             "telegram": {"relay_auth_token": relay_auth}
+                        },
+                        "observability_deadman_secrets": {
+                            "schema_version": 1,
+                            "pulse_token": "e5" * 32,
+                            "canary_token": "f6" * 32,
+                            "pulse_tls": {
+                                "ca_pem": "-----BEGIN CERTIFICATE-----\nfixture-ca\n-----END CERTIFICATE-----\n"
+                            },
                         },
                     },
                     "tasks": [

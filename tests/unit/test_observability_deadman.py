@@ -2,18 +2,28 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
 import io
 import importlib.util
 import json
+import os
 from pathlib import Path
+import socket
+import ssl
 import stat
+import subprocess
 import threading
+import time
 from urllib import error
+from urllib import request
 from urllib.parse import urlsplit
 
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 import pytest
 import yaml
 
@@ -43,8 +53,25 @@ def config() -> dict[str, object]:
         "retry_timeout_seconds": 5,
         "reminder_interval_seconds": 3600,
         "canary_interval_seconds": 86400,
-        "reverse_health_url": "https://reverse.example.test/v1/health",
+        "reverse_health_url": (
+            "https://reverse.example.test:9443/observability/v1/deadman/reverse"
+        ),
         "reverse_health_max_bytes": 1024,
+        "source_generation": "a" * 40,
+        "required_units": ["observability-deadman.service"],
+        "reverse_health_tls": {
+            "ca_credential": "reverse-health-ca",
+            "client_cert_credential": "reverse-health-client-cert",
+            "client_key_credential": "reverse-health-client-key",
+            "client_cn": "deadman-control",
+            "client_cert_fingerprint_sha256": "b" * 64,
+            "ca_fingerprint_sha256": "c" * 64,
+        },
+        "pulse_tls": {
+            "server_name": "deadman.example.test",
+            "server_cert_credential": "pulse-server-cert",
+            "server_key_credential": "pulse-server-key",
+        },
         "telegram": {"chat_id": "-100000000001", "topic_id": 7},
     }
 
@@ -77,6 +104,109 @@ def state() -> dict[str, object]:
     return deadman._empty_state()
 
 
+def _reverse_health_tls() -> dict[str, str]:
+    """Build a disposable mTLS identity matching the controller identity contract."""
+    now = datetime.now(UTC)
+    ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "deadman-fixture-ca")])
+    ca = (
+        x509.CertificateBuilder()
+        .subject_name(ca_name)
+        .issuer_name(ca_name)
+        .public_key(ca_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(minutes=1))
+        .not_valid_after(now + timedelta(days=1))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+        .sign(ca_key, hashes.SHA256())
+    )
+    client_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    client = (
+        x509.CertificateBuilder()
+        .subject_name(
+            x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "deadman-control")])
+        )
+        .issuer_name(ca_name)
+        .public_key(client_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(minutes=1))
+        .not_valid_after(now + timedelta(days=1))
+        .add_extension(
+            x509.ExtendedKeyUsage([ExtendedKeyUsageOID.CLIENT_AUTH]), critical=False
+        )
+        .sign(ca_key, hashes.SHA256())
+    )
+    return {
+        "ca_pem": ca.public_bytes(serialization.Encoding.PEM).decode(),
+        "client_cert_pem": client.public_bytes(serialization.Encoding.PEM).decode(),
+        "client_key_pem": client_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode(),
+        "ca_fingerprint_sha256": ca.fingerprint(hashes.SHA256()).hex(),
+        "client_cert_fingerprint_sha256": client.fingerprint(hashes.SHA256()).hex(),
+        "client_cn": "deadman-control",
+        "ca_credential": "reverse-health-ca",
+        "client_cert_credential": "reverse-health-client-cert",
+        "client_key_credential": "reverse-health-client-key",
+    }
+
+
+def _pulse_tls(
+    *,
+    purpose: x509.ObjectIdentifier = ExtendedKeyUsageOID.SERVER_AUTH,
+    expired: bool = False,
+) -> dict[str, str]:
+    """Build a disposable TLS server identity for loopback-only transport tests."""
+    now = datetime.now(UTC)
+    ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "pulse-fixture-ca")])
+    ca = (
+        x509.CertificateBuilder()
+        .subject_name(ca_name)
+        .issuer_name(ca_name)
+        .public_key(ca_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(minutes=1))
+        .not_valid_after(now + timedelta(days=1))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+        .sign(ca_key, hashes.SHA256())
+    )
+    server_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    server = (
+        x509.CertificateBuilder()
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")]))
+        .issuer_name(ca_name)
+        .public_key(server_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(
+            now - timedelta(days=2) if expired else now - timedelta(minutes=1)
+        )
+        .not_valid_after(
+            now - timedelta(days=1) if expired else now + timedelta(days=1)
+        )
+        .add_extension(
+            x509.SubjectAlternativeName([x509.DNSName("localhost")]), critical=False
+        )
+        .add_extension(x509.ExtendedKeyUsage([purpose]), critical=False)
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .sign(ca_key, hashes.SHA256())
+    )
+    return {
+        "ca_pem": ca.public_bytes(serialization.Encoding.PEM).decode(),
+        "server_cert_pem": server.public_bytes(serialization.Encoding.PEM).decode(),
+        "server_key_pem": server_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode(),
+        "server_name": "localhost",
+        "server_cert_credential": "pulse-server-cert",
+        "server_key_credential": "pulse-server-key",
+    }
+
+
 def test_defaults_are_inert_and_keep_status_loopback_only() -> None:
     defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())[
         "observability_deadman"
@@ -86,6 +216,7 @@ def test_defaults_are_inert_and_keep_status_loopback_only() -> None:
     assert defaults["status_listen"] == "127.0.0.1:19094"
     assert defaults["missed_pulse_limit"] == 5
     assert defaults["retry_attempts"] == 2
+    assert defaults["max_future_seconds"] == 30
 
 
 def test_dedicated_playbook_targets_only_the_deadman_inventory_group() -> None:
@@ -157,6 +288,19 @@ def test_future_and_expired_pulses_fail_closed() -> None:
     ):
         with pytest.raises(deadman.DeadmanError, match="invalid pulse"):
             deadman.accept_pulse(raw, TOKEN, state(), config(), NOW)
+
+
+def test_control_pipeline_pulse_expiry_accepts_thirty_seconds_but_not_thirty_one() -> (
+    None
+):
+    candidate = config()
+
+    accepted = deadman.accept_pulse(
+        pulse(expiry=NOW + 30), TOKEN, state(), candidate, NOW
+    )
+    assert accepted["last_expiry"] == NOW + 30
+    with pytest.raises(deadman.DeadmanError, match="invalid pulse"):
+        deadman.accept_pulse(pulse(expiry=NOW + 31), TOKEN, state(), candidate, NOW)
 
 
 def test_state_is_atomic_private_and_reloads(tmp_path: Path) -> None:
@@ -241,11 +385,80 @@ def test_missing_or_invalid_config_fails_closed(tmp_path: Path) -> None:
         deadman._load_config(invalid)
 
 
-def test_config_rejects_zero_future_tolerance(tmp_path: Path) -> None:
+@pytest.mark.parametrize("value", [0, 29, 31])
+def test_config_requires_exact_future_tolerance(tmp_path: Path, value: int) -> None:
     candidate = config()
-    candidate["max_future_seconds"] = 0
+    candidate["max_future_seconds"] = value
     path = tmp_path / "candidate.json"
     path.write_text(json.dumps(candidate))
+    with pytest.raises(deadman.DeadmanError, match="invalid config"):
+        deadman._load_config(path)
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda candidate: candidate["pulse_tls"].update(server_name="not/a-hostname"),
+        lambda candidate: candidate["pulse_tls"].update(
+            server_cert_credential="wrong-cert"
+        ),
+        lambda candidate: candidate["pulse_tls"].update(
+            server_key_credential="wrong-key"
+        ),
+    ],
+)
+def test_runtime_config_requires_exact_pulse_tls_identity(
+    tmp_path: Path, mutate: object
+) -> None:
+    candidate = config()
+    assert callable(mutate)
+    mutate(candidate)
+    path = tmp_path / "candidate.json"
+    path.write_text(json.dumps(candidate))
+
+    with pytest.raises(deadman.DeadmanError, match="invalid config"):
+        deadman._load_config(path)
+
+
+def test_runtime_config_accepts_exact_pulse_tls_identity(tmp_path: Path) -> None:
+    candidate = config()
+    path = tmp_path / "candidate.json"
+    path.write_text(json.dumps(candidate))
+
+    assert deadman._load_config(path) == candidate
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda candidate: candidate.update(
+            reverse_health_url="https://reverse.example.test:9443/v1/health"
+        ),
+        lambda candidate: candidate.update(
+            reverse_health_url=(
+                "https://reverse.example.test:9444/observability/v1/deadman/reverse"
+            )
+        ),
+        lambda candidate: candidate["reverse_health_tls"].update(
+            client_cn="foreign-control"
+        ),
+        lambda candidate: candidate["reverse_health_tls"].update(
+            client_cert_fingerprint_sha256="d" * 63
+        ),
+        lambda candidate: candidate["reverse_health_tls"].update(
+            ca_fingerprint_sha256="b" * 64
+        ),
+    ],
+)
+def test_runtime_config_rejects_foreign_reverse_route_or_identity_pin(
+    tmp_path: Path, mutate: object
+) -> None:
+    candidate = config()
+    assert callable(mutate)
+    mutate(candidate)
+    path = tmp_path / "candidate.json"
+    path.write_text(json.dumps(candidate))
+
     with pytest.raises(deadman.DeadmanError, match="invalid config"):
         deadman._load_config(path)
 
@@ -476,6 +689,8 @@ def test_templates_keep_credentials_systemd_only_and_harden_services() -> None:
     service = (ROLE / "templates/observability-deadman.service.j2").read_text()
     tick = (ROLE / "templates/observability-deadman-tick.service.j2").read_text()
     assert "LoadCredential=pulse-token:" in service
+    assert "LoadCredential=pulse-server-cert:" in service
+    assert "LoadCredential=pulse-server-key:" in service
     assert "LoadCredential=telegram-bot-token:" in service + tick
     assert "Environment=" not in service + tick
     for hardening in (
@@ -495,6 +710,11 @@ def test_canonical_deadman_config_renders_schema_one_telegram_destination() -> N
     )
 
     assert json.loads(rendered)["schema"] == 1
+    assert json.loads(rendered)["pulse_tls"] == {
+        "server_name": "",
+        "server_cert_credential": "pulse-server-cert",
+        "server_key_credential": "pulse-server-key",
+    }
     assert json.loads(rendered)["telegram"] == {"chat_id": "", "topic_id": 0}
 
 
@@ -549,21 +769,77 @@ def test_reverse_health_is_signed_bounded_and_redacted(
         def __exit__(self, *_args: object) -> None:
             return None
 
-    def post(request, timeout):  # type: ignore[no-untyped-def]
-        captured["url"] = request.full_url
-        captured["body"] = request.data
-        captured["timeout"] = timeout
-        return Response()
+    class Opener:
+        def open(self, outbound, timeout):  # type: ignore[no-untyped-def]
+            captured["url"] = outbound.full_url
+            captured["body"] = outbound.data
+            captured["timeout"] = timeout
+            return Response()
 
-    monkeypatch.setattr(deadman.request, "urlopen", post)
+    def opener(context):  # type: ignore[no-untyped-def]
+        captured["context"] = context
+        return Opener()
+
+    monkeypatch.setattr(deadman, "_reverse_opener", opener)
     current = state()
     current.update(last_sequence=4, last_pulse=NOW, last_delivery="recovery")
     assert deadman._reverse_health(config(), TOKEN, current, NOW) is True
+    assert captured["context"] is None
     body = captured["body"]
     assert isinstance(body, bytes) and len(body) <= 1024
     rendered = body.decode()
     assert TOKEN.decode() not in rendered
     assert "receiver" in rendered and "signature" in rendered
+
+
+def test_reverse_health_opener_disables_proxies_and_redirects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[request.BaseHandler] = []
+
+    class Opener:
+        pass
+
+    def build(*handlers: request.BaseHandler) -> Opener:
+        captured.extend(handlers)
+        return Opener()
+
+    monkeypatch.setattr(deadman.request, "build_opener", build)
+
+    assert isinstance(deadman._reverse_opener(None), Opener)
+    proxy = next(
+        handler for handler in captured if isinstance(handler, request.ProxyHandler)
+    )
+    redirects = next(
+        handler for handler in captured if isinstance(handler, deadman._RejectRedirects)
+    )
+    assert proxy.proxies == {}
+    assert redirects.redirect_request(None, None, None, None, None, None) is None
+
+
+@pytest.mark.parametrize("status", [301, 302, 307, 308])
+def test_reverse_health_redirect_is_rejected_without_retry(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    attempts = 0
+
+    class Opener:
+        def open(self, outbound, timeout):  # type: ignore[no-untyped-def]
+            nonlocal attempts
+            attempts += 1
+            assert timeout == 5
+            raise error.HTTPError(
+                outbound.full_url,
+                status,
+                "redirect refused",
+                {"Location": "https://foreign.example.test/collect"},
+                None,
+            )
+
+    monkeypatch.setattr(deadman, "_reverse_opener", lambda _context: Opener())
+
+    assert deadman._post_reverse(config(), TOKEN, {"schema": 1}, None) is False
+    assert attempts == 1
 
 
 def test_tick_completes_state_after_slow_429_body_then_publishes_reverse_health(
@@ -611,7 +887,12 @@ def test_tick_completes_state_after_slow_429_body_then_publishes_reverse_health(
             raise TimeoutError("bounded reverse-health timeout")
         return Response(204)
 
+    class ReverseOpener:
+        def open(self, outbound, timeout):  # type: ignore[no-untyped-def]
+            return post(outbound, timeout)
+
     monkeypatch.setattr(deadman.request, "urlopen", post)
+    monkeypatch.setattr(deadman, "_reverse_opener", lambda _context: ReverseOpener())
     monkeypatch.setattr(deadman.time, "sleep", sleeps.append)
 
     completed = deadman.tick(path, config(), TOKEN, TOKEN, NOW)
@@ -628,16 +909,214 @@ def test_tick_completes_state_after_slow_429_body_then_publishes_reverse_health(
     assert sleeps == [5]
 
 
+def test_each_tick_reserves_a_distinct_durable_reverse_sequence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "state.json"
+    current = state()
+    current.update(last_pulse=NOW, last_canary=NOW, last_canary_delivery="success")
+    deadman._save_state(path, current)
+    observed: list[int] = []
+
+    def reverse(_config, _token, snapshot, _now):  # type: ignore[no-untyped-def]
+        observed.append(snapshot["last_reverse_sequence"])
+        return True
+
+    monkeypatch.setattr(deadman, "_reverse_health", reverse)
+
+    deadman.tick(path, config(), TOKEN, TOKEN, NOW + 1)
+    deadman.tick(path, config(), TOKEN, TOKEN, NOW + 2)
+
+    assert observed == [1, 2]
+    assert deadman._state(path)["last_reverse_sequence"] == 2
+
+
 def test_role_contract_refuses_unbounded_or_nonprivate_configuration() -> None:
     source = (ROLE / "tasks/enable.yml").read_text()
     for expected in (
         "pulse_listen == '0.0.0.0:9444'",
         "status_listen == '127.0.0.1:19094'",
         "missed_pulse_limit | int == 5",
+        "max_future_seconds | int == 30",
         "retry_attempts | int <= 2",
         "no_log: true",
     ):
         assert expected in source
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_task"),
+    [
+        (
+            "reverse_health_url",
+            "https://control.example.test:9443/v1/health",
+            "Require complete bounded dead-man contract before host mutation",
+        ),
+        (
+            "client_cn",
+            "wrong-deadman",
+            "Require complete bounded dead-man contract before host mutation",
+        ),
+        (
+            "client_cert_fingerprint_sha256",
+            "0" * 64,
+            "Refuse a reverse-heartbeat certificate that differs from the controller identity",
+        ),
+        (
+            "ca_fingerprint_sha256",
+            "f" * 64,
+            "Refuse a reverse-heartbeat certificate that differs from the controller identity",
+        ),
+        (
+            "pulse_tls_server_name",
+            "wrong.example.test",
+            "Verify pulse TLS server certificate against the dedicated CA",
+        ),
+        (
+            "pulse_tls_server_key_pem",
+            "",
+            "Refuse pulse TLS material without the exact key and server identity",
+        ),
+        (
+            "pulse_tls_ca_pem",
+            "",
+            "Verify pulse TLS server certificate against the dedicated CA",
+        ),
+        (
+            "pulse_tls_non_ca_pem",
+            "",
+            "Refuse pulse TLS CA without an explicit CA constraint",
+        ),
+        (
+            "pulse_tls_client_auth_only",
+            "",
+            "Verify pulse TLS server certificate against the dedicated CA",
+        ),
+        (
+            "pulse_tls_expired",
+            "",
+            "Verify pulse TLS server certificate against the dedicated CA",
+        ),
+    ],
+)
+def test_reverse_heartbeat_contract_refuses_route_or_mtls_pin_before_host_writes(
+    tmp_path: Path, field: str, value: str, expected_task: str
+) -> None:
+    pulse_tls = _pulse_tls()
+    contract = {
+        "enabled": True,
+        "service_user": "observability-deadman-fixture",
+        "service_group": "observability-deadman-fixture",
+        "config_root": str(tmp_path / "config"),
+        "state_dir": str(tmp_path / "state"),
+        "pulse_credential_path": str(tmp_path / "credentials" / "pulse-token"),
+        "telegram_credential_path": str(
+            tmp_path / "credentials" / "telegram-bot-token"
+        ),
+        "pulse_listen": "0.0.0.0:9444",
+        "status_listen": "127.0.0.1:19094",
+        "pulse_path": "/v1/pulse",
+        "pulse_tls": {
+            "server_name": pulse_tls["server_name"],
+            "server_cert_credential": pulse_tls["server_cert_credential"],
+            "server_key_credential": pulse_tls["server_key_credential"],
+        },
+        "reverse_health_url": (
+            "https://control.example.test:9443/observability/v1/deadman/reverse"
+        ),
+        "reverse_health_max_bytes": 1024,
+        "source_generation": "a" * 40,
+        "required_units": ["observability-deadman.service"],
+        "reverse_health_tls": _reverse_health_tls(),
+        "pulse_interval_seconds": 60,
+        "missed_pulse_limit": 5,
+        "max_future_seconds": 30,
+        "max_pulse_bytes": 4096,
+        "retry_attempts": 2,
+        "retry_timeout_seconds": 5,
+        "reminder_interval_seconds": 3600,
+        "canary_interval_seconds": 86400,
+        "telegram": {"chat_id": "-100000000001", "topic_id": 7},
+    }
+    if field == "reverse_health_url":
+        contract[field] = value
+    elif field == "pulse_tls_server_name":
+        contract["pulse_tls"]["server_name"] = value
+    elif field == "pulse_tls_server_key_pem":
+        value = contract["reverse_health_tls"]["client_key_pem"]
+    elif field == "pulse_tls_ca_pem":
+        value = _pulse_tls()["ca_pem"]
+    elif field == "pulse_tls_non_ca_pem":
+        value = pulse_tls["server_cert_pem"]
+    elif field == "pulse_tls_client_auth_only":
+        replacement = _pulse_tls(purpose=ExtendedKeyUsageOID.CLIENT_AUTH)
+        pulse_tls["server_cert_pem"] = replacement["server_cert_pem"]
+        pulse_tls["server_key_pem"] = replacement["server_key_pem"]
+    elif field == "pulse_tls_expired":
+        replacement = _pulse_tls(expired=True)
+        pulse_tls["server_cert_pem"] = replacement["server_cert_pem"]
+        pulse_tls["server_key_pem"] = replacement["server_key_pem"]
+    else:
+        contract["reverse_health_tls"][field] = value
+    playbook = tmp_path / "deadman-contract.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "become": False,
+                    "vars": {
+                        "observability_contract": {
+                            "schema_version": 1,
+                            "credential_mode": "systemd",
+                        },
+                        "observability_deadman": contract,
+                        "observability_deadman_secrets": {
+                            "schema_version": 1,
+                            "pulse_token": "fixture-pulse-token-0123456789",
+                            "pulse_tls": {
+                                "ca_pem": (
+                                    value
+                                    if field
+                                    in {"pulse_tls_ca_pem", "pulse_tls_non_ca_pem"}
+                                    else pulse_tls["ca_pem"]
+                                ),
+                                "server_cert_pem": pulse_tls["server_cert_pem"],
+                                "server_key_pem": (
+                                    value
+                                    if field == "pulse_tls_server_key_pem"
+                                    else pulse_tls["server_key_pem"]
+                                ),
+                            },
+                            "telegram": {
+                                "bot_token": "fixture-telegram-token-012345678"
+                            },
+                        },
+                    },
+                    "roles": [{"role": "observability_deadman"}],
+                }
+            ]
+        )
+    )
+
+    result = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", str(playbook)],
+        cwd=ROOT,
+        env={**os.environ, "ANSIBLE_ROLES_PATH": str(ROOT / "ansible/roles")},
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert expected_task in result.stdout + result.stderr
+    assert "Create dedicated dead-man group" not in result.stdout + result.stderr
+    assert not (tmp_path / "config").exists()
+    assert not (tmp_path / "state").exists()
+    assert "fixture-pulse-token" not in result.stdout + result.stderr
 
 
 def test_molecule_lifecycle_scenarios_cover_deadman_enable_disable_and_refusal() -> (
@@ -673,6 +1152,24 @@ def test_molecule_lifecycle_scenarios_cover_deadman_enable_disable_and_refusal()
     assert "ansible.builtin.lineinfile" not in enabled_prepare
     assert "- files" in enabled_prepare
     assert "match('^127\\\\.0\\\\.0\\\\.1\\\\s')" in enabled_prepare
+    assert "client_cn: deadman-control" in enabled_converge + enabled_verify
+    assert "client_cert_fingerprint_sha256" in enabled_converge + enabled_verify
+    assert "ca_fingerprint_sha256" in enabled_converge + enabled_verify
+    assert "client.sha256" in enabled_prepare
+    assert "ca.sha256" in enabled_prepare
+    assert "pulse-server.pem" in enabled_prepare
+    assert "pulse-server.key" in enabled_prepare
+    assert "pulse-ca.pem" in enabled_prepare + enabled_converge + enabled_verify
+    assert "-CA /var/tmp/observability-deadman-fixture/pulse-ca.pem" in enabled_prepare
+    assert "set -euo pipefail" in enabled_prepare
+    exact_reverse_health_url = (
+        "https://reverse.fixture.invalid:9443/observability/v1/deadman/reverse"
+    )
+    assert enabled_converge.count(exact_reverse_health_url) == 1
+    assert enabled_verify.count(exact_reverse_health_url) == 3
+    assert "19445" not in enabled_converge + enabled_verify
+    assert "pulse_tls:" in enabled_converge + enabled_verify
+    assert "https://reverse.fixture.invalid:9444/v1/pulse" in enabled_verify
     assert "deadman_rotation_probe" in enabled_verify
     assert "expected = (400, 204)" in enabled_verify
     assert "expected = (400,)" in enabled_verify

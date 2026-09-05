@@ -7,13 +7,41 @@
       - observability_deadman.pulse_listen == '0.0.0.0:9444'
       - observability_deadman.status_listen == '127.0.0.1:19094'
       - observability_deadman.pulse_path == '/v1/pulse'
-      - observability_deadman.reverse_health_url is match('^https://')
+      - >-
+        observability_deadman.pulse_tls.server_name is
+        match('^(?:localhost|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:[.][a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?){1,4})$')
+      - observability_deadman.pulse_tls.server_cert_credential == 'pulse-server-cert'
+      - observability_deadman.pulse_tls.server_key_credential == 'pulse-server-key'
+      - >-
+        observability_deadman.reverse_health_url is
+        match('^https://[A-Za-z0-9][A-Za-z0-9.-]{0,252}:9443/observability/v1/deadman/reverse$')
+      - >-
+        observability_deadman.reverse_health_url.endswith(
+        '/observability/v1/deadman/reverse')
       - observability_deadman.reverse_health_max_bytes | int >= 256
       - observability_deadman.reverse_health_max_bytes | int <= 4096
+      - >-
+        observability_deadman.source_generation is
+        match('^(?:[0-9a-f]{40}|[0-9a-f]{64})$')
+      - observability_deadman.required_units | length >= 1
+      - observability_deadman.required_units | length <= 8
+      - observability_deadman.required_units | unique | length == observability_deadman.required_units | length
+      - observability_deadman.reverse_health_tls.ca_pem | length > 0
+      - observability_deadman.reverse_health_tls.client_cert_pem | length > 0
+      - observability_deadman.reverse_health_tls.client_key_pem | length > 0
+      - observability_deadman.reverse_health_tls.client_cn == 'deadman-control'
+      - >-
+        observability_deadman.reverse_health_tls.client_cert_fingerprint_sha256 is
+        match('^[0-9a-f]{64}$')
+      - >-
+        observability_deadman.reverse_health_tls.ca_fingerprint_sha256 is
+        match('^[0-9a-f]{64}$')
+      - observability_deadman.reverse_health_tls.ca_credential == 'reverse-health-ca'
+      - observability_deadman.reverse_health_tls.client_cert_credential == 'reverse-health-client-cert'
+      - observability_deadman.reverse_health_tls.client_key_credential == 'reverse-health-client-key'
       - observability_deadman.pulse_interval_seconds | int == 60
       - observability_deadman.missed_pulse_limit | int == 5
-      - observability_deadman.max_future_seconds | int >= 1
-      - observability_deadman.max_future_seconds | int <= 60
+      - observability_deadman.max_future_seconds | int == 30
       - observability_deadman.max_pulse_bytes | int >= 512
       - observability_deadman.max_pulse_bytes | int <= 4096
       - observability_deadman.retry_attempts | int >= 1
@@ -27,9 +55,174 @@
       - observability_deadman_secrets.schema_version | default(0) | int == 1
       - observability_deadman_secrets.pulse_token | default('') is match('^\\S{20,128}$')
       - observability_deadman_secrets.telegram.bot_token | default('') is match('^\\S{20,128}$')
+      - observability_deadman_secrets.pulse_tls.ca_pem | default('') | length > 0
+      - observability_deadman_secrets.pulse_tls.server_cert_pem | default('') | length > 0
+      - observability_deadman_secrets.pulse_tls.server_key_pem | default('') | length > 0
     fail_msg: >-
       Dead-man requires fixed public pulse and private status listeners, bounded
       reverse health, distinct systemd credentials, and fixed replay/expiry limits.
+  no_log: true
+
+- name: Read pulse TLS server certificate before host mutation
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - x509
+      - -noout
+      - -ext
+      - subjectAltName
+    stdin: "{{ observability_deadman_secrets.pulse_tls.server_cert_pem }}"
+    stdin_add_newline: false
+  register: _observability_deadman_pulse_tls_certificate
+  changed_when: false
+  no_log: true
+
+- name: Read dedicated pulse TLS CA constraints before host mutation
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - x509
+      - -noout
+      - -ext
+      - basicConstraints
+    stdin: "{{ observability_deadman_secrets.pulse_tls.ca_pem }}"
+    stdin_add_newline: false
+  register: _observability_deadman_pulse_tls_ca_constraints
+  changed_when: false
+  no_log: true
+
+- name: Refuse pulse TLS CA without an explicit CA constraint
+  ansible.builtin.assert:
+    that:
+      - _observability_deadman_pulse_tls_ca_constraints.rc == 0
+      - "'CA:TRUE' in _observability_deadman_pulse_tls_ca_constraints.stdout"
+    fail_msg: Pulse TLS requires a dedicated certificate authority.
+  no_log: true
+
+- name: Read pulse TLS server certificate purpose before host mutation
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - x509
+      - -noout
+      - -ext
+      - extendedKeyUsage
+    stdin: "{{ observability_deadman_secrets.pulse_tls.server_cert_pem }}"
+    stdin_add_newline: false
+  register: _observability_deadman_pulse_tls_purpose
+  changed_when: false
+  no_log: true
+
+- name: Read pulse TLS server certificate public material before host mutation
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - x509
+      - -noout
+      - -pubkey
+    stdin: "{{ observability_deadman_secrets.pulse_tls.server_cert_pem }}"
+    stdin_add_newline: false
+  register: _observability_deadman_pulse_tls_certificate_public
+  changed_when: false
+  no_log: true
+
+- name: Read pulse TLS server private-key public material before host mutation
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - pkey
+      - -pubout
+    stdin: "{{ observability_deadman_secrets.pulse_tls.server_key_pem }}"
+    stdin_add_newline: false
+  register: _observability_deadman_pulse_tls_key
+  changed_when: false
+  no_log: true
+
+- name: Verify pulse TLS server certificate against the dedicated CA
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      openssl verify \
+        -no-CAfile -no-CApath -no-CAstore \
+        -trusted <(printf '%s' "$PULSE_CA_PEM") \
+        -purpose sslserver \
+        -verify_hostname "$PULSE_SERVER_NAME" \
+        <(printf '%s' "$PULSE_SERVER_CERT_PEM")
+    executable: /bin/bash
+  environment:
+    PULSE_CA_PEM: "{{ observability_deadman_secrets.pulse_tls.ca_pem }}"
+    PULSE_SERVER_CERT_PEM: "{{ observability_deadman_secrets.pulse_tls.server_cert_pem }}"
+    PULSE_SERVER_NAME: "{{ observability_deadman.pulse_tls.server_name }}"
+  register: _observability_deadman_pulse_tls_chain
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Refuse pulse TLS material without the exact key and server identity
+  ansible.builtin.assert:
+    that:
+      - >-
+        (_observability_deadman_pulse_tls_certificate.stdout_lines |
+        select('match', '^\\s*DNS:' ~ observability_deadman.pulse_tls.server_name ~ '(?:,|$)') |
+        list | length) == 1
+      - >-
+        (_observability_deadman_pulse_tls_certificate_public.stdout | trim) ==
+        _observability_deadman_pulse_tls_key.stdout | trim
+      - >-
+        'TLS Web Server Authentication' in
+        _observability_deadman_pulse_tls_purpose.stdout
+      - _observability_deadman_pulse_tls_chain.rc == 0
+    fail_msg: Pulse TLS requires a matching private key and an exact DNS subject alternative name.
+  no_log: true
+
+- name: Read pinned reverse-health client certificate before host mutation
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - x509
+      - -noout
+      - -subject
+      - -nameopt
+      - RFC2253
+      - -fingerprint
+      - -sha256
+    stdin: "{{ observability_deadman.reverse_health_tls.client_cert_pem }}"
+    stdin_add_newline: false
+  register: _observability_deadman_reverse_client_certificate
+  changed_when: false
+  no_log: true
+
+- name: Read pinned reverse-health client CA fingerprint before host mutation
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - x509
+      - -noout
+      - -fingerprint
+      - -sha256
+    stdin: "{{ observability_deadman.reverse_health_tls.ca_pem }}"
+    stdin_add_newline: false
+  register: _observability_deadman_reverse_ca_certificate
+  changed_when: false
+  no_log: true
+
+- name: Refuse a reverse-heartbeat certificate that differs from the controller identity
+  ansible.builtin.assert:
+    that:
+      - >-
+        'subject=CN=' ~ observability_deadman.reverse_health_tls.client_cn in
+        _observability_deadman_reverse_client_certificate.stdout_lines
+      - >-
+        (_observability_deadman_reverse_client_certificate.stdout_lines |
+        select('match', '^sha256 Fingerprint=') | first |
+        regex_replace('^sha256 Fingerprint=', '') | lower | replace(':', '')) ==
+        observability_deadman.reverse_health_tls.client_cert_fingerprint_sha256
+      - >-
+        (_observability_deadman_reverse_ca_certificate.stdout_lines |
+        select('match', '^sha256 Fingerprint=') | first |
+        regex_replace('^sha256 Fingerprint=', '') | lower | replace(':', '')) ==
+        observability_deadman.reverse_health_tls.ca_fingerprint_sha256
+    fail_msg: Reverse heartbeat requires the exact controller ingest client certificate and CA pins.
   no_log: true
 
 - name: Create dedicated dead-man group
@@ -72,6 +265,16 @@
   loop:
     - {content: "{{ observability_deadman_secrets.pulse_token }}", path: "{{ observability_deadman.pulse_credential_path }}"}
     - {content: "{{ observability_deadman_secrets.telegram.bot_token }}", path: "{{ observability_deadman.telegram_credential_path }}"}
+    - content: "{{ observability_deadman_secrets.pulse_tls.server_cert_pem }}"
+      path: "{{ observability_deadman.config_root }}/credentials/pulse-server.crt"
+    - content: "{{ observability_deadman_secrets.pulse_tls.server_key_pem }}"
+      path: "{{ observability_deadman.config_root }}/credentials/pulse-server.key"
+    - content: "{{ observability_deadman.reverse_health_tls.ca_pem }}"
+      path: "{{ observability_deadman.config_root }}/credentials/reverse-health-ca.pem"
+    - content: "{{ observability_deadman.reverse_health_tls.client_cert_pem }}"
+      path: "{{ observability_deadman.config_root }}/credentials/reverse-health-client.crt"
+    - content: "{{ observability_deadman.reverse_health_tls.client_key_pem }}"
+      path: "{{ observability_deadman.config_root }}/credentials/reverse-health-client.key"
   no_log: true
   diff: false
   register: _observability_deadman_credentials

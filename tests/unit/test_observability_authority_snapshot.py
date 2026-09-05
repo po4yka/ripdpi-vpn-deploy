@@ -18,6 +18,7 @@ HELPER = (
 CONFIG = "etc/observability-control-plane"
 CREDENTIALS = CONFIG + "/credentials"
 SNAPSHOT = CONFIG + "/.authority-rollback/snapshot.json"
+DEADMAN_METRIC = "var/lib/node_exporter/textfile/observability-deadman.prom"
 SERVICES = {
     "observability-alertmanager.service": {
         "exists": True,
@@ -39,6 +40,31 @@ SERVICES = {
         "active": True,
         "enabled": True,
     },
+    "observability-deadman-pipeline.service": {
+        "exists": True,
+        "active": True,
+        "enabled": True,
+    },
+    "observability-deadman-pulse.service": {
+        "exists": True,
+        "active": False,
+        "enabled": False,
+    },
+    "observability-primary-canary.service": {
+        "exists": True,
+        "active": False,
+        "enabled": False,
+    },
+    "observability-deadman-pulse.timer": {
+        "exists": True,
+        "active": True,
+        "enabled": True,
+    },
+    "observability-primary-canary.timer": {
+        "exists": True,
+        "active": True,
+        "enabled": True,
+    },
 }
 
 
@@ -52,6 +78,8 @@ def root(tmp_path: Path) -> Path:
         CONFIG + "/generations",
         "etc/systemd/system",
         "usr/local/libexec",
+        "var/lib/observability-pipeline",
+        "var/lib/node_exporter/textfile",
     ):
         (root / relative).mkdir(parents=True, mode=0o700)
     return root
@@ -183,6 +211,94 @@ def test_restore_preserves_bytes_metadata_links_absence_and_private_output(
     finished = invoke(root, "finish", prepared["id"])
     assert finished.returncode == 0 and finished.stdout == ""
     assert not snapshot.parent.exists()
+
+
+def test_candidate_pipeline_receipts_are_restored_with_authority_rollback(
+    root: Path,
+) -> None:
+    state = root / "var/lib/observability-pipeline/canary.json"
+    original = json.dumps(
+        {
+            "schema": 1,
+            "kind": "alertmanager-watchdog",
+            "generation": "a" * 40,
+            "observed_at": 100,
+        },
+        separators=(",", ":"),
+    ).encode()
+    write(root, "var/lib/observability-pipeline/canary.json", original)
+    generation = json.dumps(
+        {"schema": 1, "generation": "a" * 40}, separators=(",", ":")
+    ).encode()
+    write(root, "var/lib/observability-pipeline/generation.json", generation)
+    metric = write(root, DEADMAN_METRIC, b"old_metric 1\n", 0o644)
+    prepared = prepare(root)
+    state.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "kind": "alertmanager-watchdog",
+                "generation": "b" * 40,
+                "observed_at": 200,
+            }
+        )
+    )
+    write(
+        root,
+        "var/lib/observability-pipeline/primary-canary.json",
+        b'{"generation":"b"}',
+    )
+    write(
+        root,
+        "var/lib/observability-pipeline/generation.json",
+        b'{"schema":1,"generation":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}',
+    )
+    metric.write_bytes(b"candidate_metric 1\n")
+
+    restored = invoke(root, "restore", prepared["id"])
+
+    assert restored.returncode == 0, restored.stderr
+    assert state.read_bytes() == original
+    assert (
+        root / "var/lib/observability-pipeline/generation.json"
+    ).read_bytes() == generation
+    assert not (root / "var/lib/observability-pipeline/primary-canary.json").exists()
+    assert metric.read_bytes() == b"old_metric 1\n"
+    assert stat.S_IMODE(metric.stat().st_mode) == 0o644
+
+
+def test_candidate_reverse_metric_created_after_snapshot_is_removed_on_rollback(
+    root: Path,
+) -> None:
+    metric = root / DEADMAN_METRIC
+    prepared = prepare(root)
+    write(root, DEADMAN_METRIC, b"candidate_metric 1\n", 0o644)
+
+    restored = invoke(root, "restore", prepared["id"])
+
+    assert restored.returncode == 0, restored.stderr
+    assert not metric.exists()
+
+
+@pytest.mark.parametrize("unsafe", ["wrong-mode", "symlink"])
+def test_prepare_refuses_unsafe_deadman_metric_without_touching_external_bytes(
+    root: Path, unsafe: str
+) -> None:
+    metric = root / DEADMAN_METRIC
+    external = root.parent / "external.prom"
+    external.write_bytes(b"external_metric 1\n")
+    external.chmod(0o600)
+    if unsafe == "wrong-mode":
+        write(root, DEADMAN_METRIC, b"unsafe_metric 1\n", 0o600)
+    else:
+        metric.symlink_to(external)
+
+    result = invoke(root, "prepare")
+
+    assert result.returncode != 0
+    assert result.stdout == ""
+    assert external.read_bytes() == b"external_metric 1\n"
+    assert not (root / SNAPSHOT).exists()
 
 
 @pytest.mark.parametrize(

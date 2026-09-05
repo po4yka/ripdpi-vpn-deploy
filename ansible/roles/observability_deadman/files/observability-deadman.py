@@ -19,7 +19,9 @@ import json
 import os
 from pathlib import Path
 import re
+import ssl
 import stat
+import subprocess
 import sys
 import tempfile
 import threading
@@ -31,8 +33,26 @@ import fcntl
 
 MAX_STATE_BYTES = 4096
 MAX_TELEGRAM_ERROR_BYTES = 1024
-GENERATION = re.compile(r"^[0-9a-f]{40,64}$")
+GENERATION = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 SIGNATURE = re.compile(r"^[0-9a-f]{64}$")
+REVERSE_HEALTH_URL = re.compile(
+    r"https://[A-Za-z0-9][A-Za-z0-9.-]{0,252}:9443/observability/v1/deadman/reverse"
+)
+CLIENT_CN = "deadman-control"
+PULSE_SERVER_NAME = re.compile(
+    r"(?:localhost|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:[.][a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?){1,4})"
+)
+HEALTH_AXES = {
+    "cpu",
+    "memory",
+    "disk",
+    "inode",
+    "clock",
+    "network",
+    "unit",
+    "collector",
+    "source",
+}
 
 
 class DeadmanError(RuntimeError):
@@ -110,17 +130,17 @@ def _load_config(path: Path) -> dict[str, Any]:
         "canary_interval_seconds",
         "reverse_health_url",
         "reverse_health_max_bytes",
+        "source_generation",
+        "required_units",
+        "pulse_tls",
+        "reverse_health_tls",
         "telegram",
     }
     if set(data) != required or data.get("schema") != 1:
         raise DeadmanError("invalid config")
     if data["pulse_path"] != "/v1/pulse" or data["pulse_interval_seconds"] != 60:
         raise DeadmanError("invalid config")
-    if (
-        data["missed_pulse_limit"] != 5
-        or not isinstance(data["max_future_seconds"], int)
-        or not 1 <= data["max_future_seconds"] <= 60
-    ):
+    if data["missed_pulse_limit"] != 5 or data["max_future_seconds"] != 30:
         raise DeadmanError("invalid config")
     if (
         not isinstance(data["max_pulse_bytes"], int)
@@ -136,11 +156,69 @@ def _load_config(path: Path) -> dict[str, Any]:
         or data["canary_interval_seconds"] != 86400
     ):
         raise DeadmanError("invalid config")
-    if not isinstance(data["reverse_health_url"], str) or not data[
-        "reverse_health_url"
-    ].startswith("https://"):
+    if not isinstance(
+        data["reverse_health_url"], str
+    ) or not REVERSE_HEALTH_URL.fullmatch(data["reverse_health_url"]):
         raise DeadmanError("invalid config")
     if data["reverse_health_max_bytes"] not in range(256, 4097):
+        raise DeadmanError("invalid config")
+    pulse_tls = data["pulse_tls"]
+    if (
+        not isinstance(pulse_tls, dict)
+        or set(pulse_tls)
+        != {"server_name", "server_cert_credential", "server_key_credential"}
+        or not isinstance(pulse_tls["server_name"], str)
+        or PULSE_SERVER_NAME.fullmatch(pulse_tls["server_name"]) is None
+        or pulse_tls["server_cert_credential"] != "pulse-server-cert"
+        or pulse_tls["server_key_credential"] != "pulse-server-key"
+    ):
+        raise DeadmanError("invalid config")
+    if not isinstance(data["source_generation"], str) or not GENERATION.fullmatch(
+        data["source_generation"]
+    ):
+        raise DeadmanError("invalid config")
+    if (
+        not isinstance(data["required_units"], list)
+        or not 1 <= len(data["required_units"]) <= 8
+        or len(set(data["required_units"])) != len(data["required_units"])
+        or any(
+            not isinstance(unit, str)
+            or re.fullmatch(r"[a-z0-9][a-z0-9@_.-]{0,63}[.]service", unit) is None
+            for unit in data["required_units"]
+        )
+    ):
+        raise DeadmanError("invalid config")
+    tls = data["reverse_health_tls"]
+    if (
+        not isinstance(tls, dict)
+        or set(tls)
+        != {
+            "ca_credential",
+            "client_cert_credential",
+            "client_key_credential",
+            "client_cn",
+            "client_cert_fingerprint_sha256",
+            "ca_fingerprint_sha256",
+        }
+        or any(
+            not isinstance(value, str)
+            or re.fullmatch(r"[a-z][a-z0-9-]{0,63}", value) is None
+            for value in (
+                tls["ca_credential"],
+                tls["client_cert_credential"],
+                tls["client_key_credential"],
+            )
+        )
+        or tls["client_cn"] != CLIENT_CN
+        or any(
+            not isinstance(tls[name], str) or SIGNATURE.fullmatch(tls[name]) is None
+            for name in (
+                "client_cert_fingerprint_sha256",
+                "ca_fingerprint_sha256",
+            )
+        )
+        or tls["client_cert_fingerprint_sha256"] == tls["ca_fingerprint_sha256"]
+    ):
         raise DeadmanError("invalid config")
     telegram = data["telegram"]
     if not isinstance(telegram, dict) or set(telegram) != {"chat_id", "topic_id"}:
@@ -158,6 +236,7 @@ def _empty_state() -> dict[str, Any]:
     return {
         "schema": 1,
         "last_sequence": 0,
+        "last_reverse_sequence": 0,
         "last_expiry": 0,
         "last_pulse": 0,
         "incident": False,
@@ -195,9 +274,15 @@ def _state(path: Path) -> dict[str, Any]:
     }
     prior_fields = oldest_fields | {"last_delivery_at", "last_canary"}
     current_fields = set(_empty_state())
+    legacy_current_fields = current_fields - {"last_reverse_sequence"}
     if not isinstance(data, dict):
         raise DeadmanError("unsafe state")
-    if set(data) == oldest_fields or set(data) == prior_fields:
+    observed_fields = frozenset(data)
+    if observed_fields in {
+        frozenset(oldest_fields),
+        frozenset(prior_fields),
+        frozenset(legacy_current_fields),
+    }:
         data = {**_empty_state(), **data}
     if set(data) != current_fields:
         raise DeadmanError("unsafe state")
@@ -207,6 +292,7 @@ def _state(path: Path) -> dict[str, Any]:
             isinstance(data[key], int) and data[key] >= 0
             for key in (
                 "last_sequence",
+                "last_reverse_sequence",
                 "last_expiry",
                 "last_pulse",
                 "last_delivery_at",
@@ -455,43 +541,171 @@ def _telegram(config: dict[str, Any], credential: bytes, event: str) -> bool:
     return False
 
 
+def _host_health(
+    config: dict[str, Any], state: dict[str, Any], now: int
+) -> dict[str, str]:
+    """Collect only one bounded categorical result for each owned health axis."""
+    health = {axis: "error" for axis in HEALTH_AXES}
+    try:
+        health["cpu"] = (
+            "ok" if all(value >= 0 for value in os.getloadavg()) else "error"
+        )
+    except OSError:
+        pass
+    try:
+        pages = os.sysconf("SC_AVPHYS_PAGES")
+        page_size = os.sysconf("SC_PAGE_SIZE")
+        health["memory"] = "ok" if pages > 0 and page_size > 0 else "error"
+    except (OSError, ValueError):
+        pass
+    try:
+        filesystem = os.statvfs(
+            str(config.get("state_dir", "/var/lib/observability-deadman"))
+        )
+        health["disk"] = "ok" if filesystem.f_bavail >= 0 else "error"
+        health["inode"] = "ok" if filesystem.f_favail >= 0 else "error"
+    except OSError:
+        pass
+    health["clock"] = "ok" if abs(int(time.time()) - now) <= 5 else "error"
+    try:
+        interfaces = Path("/sys/class/net")
+        health["network"] = (
+            "ok"
+            if any(
+                entry.name != "lo"
+                and (entry / "operstate").read_text("ascii").strip() == "up"
+                for entry in interfaces.iterdir()
+            )
+            else "error"
+        )
+    except (OSError, UnicodeError):
+        pass
+    try:
+        units = subprocess.run(
+            ["systemctl", "is-active", "--quiet", *config["required_units"]],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+            check=False,
+        )
+        health["unit"] = "ok" if units.returncode == 0 else "error"
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    health["collector"] = "ok" if state.get("schema") == 1 else "error"
+    health["source"] = (
+        "ok"
+        if GENERATION.fullmatch(str(config.get("source_generation", "")))
+        else "error"
+    )
+    return health
+
+
+def _reverse_context(config: dict[str, Any]) -> ssl.SSLContext:
+    credentials = Path(os.environ["CREDENTIALS_DIRECTORY"])
+    tls = config["reverse_health_tls"]
+    context = ssl.create_default_context(cafile=str(credentials / tls["ca_credential"]))
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain(
+        certfile=str(credentials / tls["client_cert_credential"]),
+        keyfile=str(credentials / tls["client_key_credential"]),
+    )
+    return context
+
+
+def _pulse_context(config: dict[str, Any]) -> ssl.SSLContext:
+    credentials = Path(os.environ.get("CREDENTIALS_DIRECTORY", ""))
+    tls = config["pulse_tls"]
+    if not credentials.is_dir():
+        raise DeadmanError("credential unavailable")
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    try:
+        context.load_cert_chain(
+            certfile=str(credentials / tls["server_cert_credential"]),
+            keyfile=str(credentials / tls["server_key_credential"]),
+        )
+    except (OSError, ssl.SSLError) as exc:
+        raise DeadmanError("credential unavailable") from exc
+    return context
+
+
+class _RejectRedirects(request.HTTPRedirectHandler):
+    """Keep reverse health bound to its configured origin and route."""
+
+    def redirect_request(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+
+def _reverse_opener(context: ssl.SSLContext | None) -> request.OpenerDirector:
+    handlers: list[request.BaseHandler] = [
+        request.ProxyHandler({}),
+        _RejectRedirects(),
+    ]
+    if context is not None:
+        handlers.append(request.HTTPSHandler(context=context))
+    return request.build_opener(*handlers)
+
+
+def _post_reverse(
+    config: dict[str, Any],
+    _token: bytes,
+    payload: dict[str, Any],
+    context: ssl.SSLContext | None,
+) -> bool:
+    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    if len(body) > config["reverse_health_max_bytes"]:
+        raise DeadmanError("invalid reverse health")
+    opener = _reverse_opener(context)
+    for _ in range(config["retry_attempts"]):
+        try:
+            outbound = request.Request(
+                config["reverse_health_url"],
+                data=body,
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with opener.open(
+                outbound, timeout=config["retry_timeout_seconds"]
+            ) as response:
+                if response.status == 204:
+                    return True
+        except error.HTTPError as exc:
+            if exc.code in {301, 302, 307, 308}:
+                return False
+        except (OSError, ValueError):
+            continue
+    return False
+
+
 def _reverse_health(
     config: dict[str, Any], token: bytes, state: dict[str, Any], now: int
 ) -> bool:
     """Publish the only reverse summary this role owns; no raw diagnostics leave it."""
+    host_health = _host_health(config, state, now)
     payload: dict[str, Any] = {
         "schema": 1,
+        "generation": str(config.get("source_generation", "a" * 40)),
         "issued_at": datetime.fromtimestamp(now, UTC)
         .isoformat()
         .replace("+00:00", "Z"),
-        "sequence": state["last_sequence"],
+        "sequence": state["last_reverse_sequence"],
         "health": {
             "receiver": "incident" if state["incident"] else "healthy",
             "delivery": state["last_delivery"],
+            **host_health,
         },
     }
     payload["signature"] = hmac.new(
         token, _canonical(payload), hashlib.sha256
     ).hexdigest()
-    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    if len(body) > config["reverse_health_max_bytes"]:
-        raise DeadmanError("invalid reverse health")
-    for _ in range(config["retry_attempts"]):
+    context = None
+    if "reverse_health_tls" in config and os.environ.get("CREDENTIALS_DIRECTORY"):
         try:
-            with request.urlopen(
-                request.Request(
-                    config["reverse_health_url"],
-                    data=body,
-                    method="POST",
-                    headers={"Content-Type": "application/json"},
-                ),
-                timeout=config["retry_timeout_seconds"],
-            ) as response:
-                if response.status == 204:
-                    return True
-        except (OSError, ValueError):
-            continue
-    return False
+            context = _reverse_context(config)
+        except (OSError, ssl.SSLError, KeyError) as exc:
+            raise DeadmanError("invalid reverse health") from exc
+    return _post_reverse(config, token, payload, context)
 
 
 def _reserve_delivery(
@@ -573,6 +787,16 @@ def _complete_delivery(
         return state
 
 
+def _reserve_reverse_sequence(path: Path) -> dict[str, Any]:
+    with _state_lock(path):
+        state = _state(path)
+        if state["last_reverse_sequence"] >= 2**63 - 1:
+            raise DeadmanError("reverse sequence exhausted")
+        state["last_reverse_sequence"] += 1
+        _save_state(path, state)
+        return state
+
+
 def tick(
     path: Path,
     config: dict[str, Any],
@@ -586,6 +810,7 @@ def tick(
         state = _complete_delivery(
             path, event, nonce, _telegram(config, telegram_token, event), now
         )
+    state = _reserve_reverse_sequence(path)
     _reverse_health(config, pulse_token, state, now)
     return state
 
@@ -605,7 +830,8 @@ def _status_payload(state: dict[str, Any]) -> bytes:
 
 def _serve(arguments: argparse.Namespace) -> int:
     config = _load_config(Path(arguments.config))
-    token = _read_token(Path(os.environ["CREDENTIALS_DIRECTORY"]) / "pulse-token")
+    credentials = Path(os.environ.get("CREDENTIALS_DIRECTORY", ""))
+    token = _read_token(credentials / "pulse-token")
     state_path = Path(arguments.state)
     host, port = arguments.listen.rsplit(":", 1)
     status_host, status_port = arguments.status_listen.rsplit(":", 1)
@@ -665,7 +891,11 @@ def _serve(arguments: argparse.Namespace) -> int:
 
     status_server = BoundedPulseServer((status_host, int(status_port)), StatusHandler)
     threading.Thread(target=status_server.serve_forever, daemon=True).start()
-    BoundedPulseServer((host, int(port)), Handler).serve_forever()
+    pulse_server = BoundedPulseServer((host, int(port)), Handler)
+    pulse_server.socket = _pulse_context(config).wrap_socket(
+        pulse_server.socket, server_side=True
+    )
+    pulse_server.serve_forever()
     return 0
 
 

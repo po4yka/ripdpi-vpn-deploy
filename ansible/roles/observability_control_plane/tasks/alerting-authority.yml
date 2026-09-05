@@ -7,12 +7,17 @@
       - item not in ansible_facts.services or ansible_facts.services[item].state in ['running', 'stopped',
         'active', 'inactive']
       - item not in ansible_facts.services or ansible_facts.services[item].status in ['enabled',
-        'disabled']
+        'disabled', 'static']
   loop:
     - observability-alertmanager.service
     - observability-telegram-relay.service
     - observability-silence-gateway.service
     - observability-prometheus.service
+    - observability-deadman-pipeline.service
+    - observability-deadman-pulse.service
+    - observability-primary-canary.service
+    - observability-deadman-pulse.timer
+    - observability-primary-canary.timer
 - name: Start exact previous service snapshot
   ansible.builtin.set_fact:
     _observability_authority_services: {}
@@ -27,6 +32,11 @@
     - observability-telegram-relay.service
     - observability-silence-gateway.service
     - observability-prometheus.service
+    - observability-deadman-pipeline.service
+    - observability-deadman-pulse.service
+    - observability-primary-canary.service
+    - observability-deadman-pulse.timer
+    - observability-primary-canary.timer
 - name: Require a coherent previous active authority chain before writes
   ansible.builtin.assert:
     that:
@@ -75,6 +85,31 @@
 
 - name: Activate validated Alertmanager generation with rollback
   block:
+    - name: Disable previous dead-man pipeline schedules
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        enabled: false
+        state: stopped
+      loop:
+        - observability-deadman-pulse.timer
+        - observability-primary-canary.timer
+      when:
+        - not ansible_check_mode
+        - _observability_authority.services[item].exists
+    - name: Stop previous dead-man pipeline workers
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        state: stopped
+      loop:
+        - observability-deadman-pulse.service
+        - observability-primary-canary.service
+        - observability-deadman-pipeline.service
+      when:
+        - not ansible_check_mode
+        - _observability_authority.services[item].exists
+    - name: Converge nested dead-man opt-out
+      ansible.builtin.include_tasks: alerting-deadman-disable.yml
+      when: not (observability_control_plane.alerting.deadman.enabled | bool)
     - name: Preserve previous ready Alertmanager generation
       ansible.builtin.file:
         src: '{{ _observability_alertmanager_current.stat.lnk_source }}'
@@ -106,6 +141,17 @@
       no_log: true
       diff: false
       register: _observability_telegram_credentials
+    - name: Materialize dedicated Alertmanager canary credential
+      ansible.builtin.copy:
+        content: '{{ observability_deadman_secrets.canary_token }}'
+        dest: '{{ observability_control_plane.alerting.deadman.canary_auth_path }}'
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+      diff: false
+      register: _observability_deadman_canary_credential
+      when: observability_control_plane.alerting.deadman.enabled | bool
     - name: Install bounded primary Telegram relay
       ansible.builtin.copy:
         content: '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/observability-telegram-relay.py'') }}'
@@ -122,6 +168,76 @@
         group: root
         mode: '0644'
       register: _observability_telegram_relay_unit
+    - name: Create private dead-man pipeline state directory
+      ansible.builtin.file:
+        path: '{{ observability_control_plane.alerting.deadman.state_dir }}'
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+      when: observability_control_plane.alerting.deadman.enabled | bool
+    - name: Materialize dedicated dead-man pulse credential
+      ansible.builtin.copy:
+        content: '{{ observability_deadman_secrets.pulse_token }}'
+        dest: '{{ observability_control_plane.alerting.deadman.pulse_credential_path }}'
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+      diff: false
+      register: _observability_deadman_pulse_credential
+      when: observability_control_plane.alerting.deadman.enabled | bool
+    - name: Materialize dedicated dead-man pulse CA credential
+      ansible.builtin.copy:
+        content: '{{ observability_deadman_secrets.pulse_tls.ca_pem }}'
+        dest: '{{ observability_control_plane.alerting.deadman.pulse_ca_path }}'
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+      diff: false
+      register: _observability_deadman_pulse_ca
+      when: observability_control_plane.alerting.deadman.enabled | bool
+    - name: Install bounded dead-man pipeline helper
+      ansible.builtin.copy:
+        content: '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/observability-deadman-pipeline.py'') }}'
+        dest: /usr/local/libexec/observability-deadman-pipeline.py
+        owner: root
+        group: root
+        mode: '0755'
+      register: _observability_deadman_pipeline_program
+      when: observability_control_plane.alerting.deadman.enabled | bool
+    - name: Install hardened dead-man pipeline units
+      ansible.builtin.template:
+        src: '{{ item }}'
+        dest: '/etc/systemd/system/{{ item | regex_replace(''[.]j2$'', '''') }}'
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - observability-deadman-pipeline.service.j2
+        - observability-deadman-pulse.service.j2
+        - observability-deadman-pulse.timer.j2
+        - observability-primary-canary.service.j2
+        - observability-primary-canary.timer.j2
+      register: _observability_deadman_pipeline_units
+      when: observability_control_plane.alerting.deadman.enabled | bool
+    - name: Reconcile generation-bound dead-man pipeline state
+      ansible.builtin.command:
+        argv:
+          - /usr/local/libexec/observability-deadman-pipeline.py
+          - reconcile-state
+          - --state-dir
+          - '{{ observability_control_plane.alerting.deadman.state_dir }}'
+          - --generation
+          - '{{ observability_control_plane.alerting.source_generation }}'
+      register: _observability_deadman_state_reconcile
+      changed_when: >-
+        (_observability_deadman_state_reconcile.stdout | from_json).changed | bool
+      no_log: true
+      when:
+        - not ansible_check_mode
+        - observability_control_plane.alerting.deadman.enabled | bool
     - name: Publish candidate silence authority
       ansible.builtin.include_tasks: silence-gateway.yml
     - name: Install hardened Alertmanager service
@@ -181,6 +297,7 @@
         enabled: true
         state: restarted
       when: not ansible_check_mode and (_observability_alertmanager_runtime_changed | bool or _observability_telegram_credentials.changed
+        or (_observability_deadman_canary_credential.changed | default(false))
         or _observability_silence_credentials.changed or _observability_silence_web.changed or _observability_alertmanager_unit.changed
         or _observability_alertmanager_current_link.changed)
     - name: Ensure unchanged Alertmanager generation is running
@@ -222,6 +339,54 @@
       no_log: true
       when:
         - not ansible_check_mode
+    - name: Restart changed authenticated dead-man pipeline
+      ansible.builtin.systemd_service:
+        name: observability-deadman-pipeline.service
+        daemon_reload: true
+        enabled: true
+        state: restarted
+      when:
+        - not ansible_check_mode
+        - observability_control_plane.alerting.deadman.enabled | bool
+        - >-
+          _observability_deadman_pulse_credential.changed or
+          _observability_deadman_pulse_ca.changed or
+          (_observability_deadman_canary_credential.changed | default(false)) or
+          _observability_telegram_credentials.changed or
+          _observability_deadman_pipeline_program.changed or
+          _observability_deadman_pipeline_units.changed
+    - name: Ensure authenticated dead-man pipeline is running
+      ansible.builtin.systemd_service:
+        name: observability-deadman-pipeline.service
+        enabled: true
+        state: started
+      when:
+        - not ansible_check_mode
+        - observability_control_plane.alerting.deadman.enabled | bool
+    - name: Restart changed dead-man canary schedules
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        daemon_reload: true
+        enabled: true
+        state: restarted
+      loop:
+        - observability-primary-canary.timer
+        - observability-deadman-pulse.timer
+      when:
+        - not ansible_check_mode
+        - observability_control_plane.alerting.deadman.enabled | bool
+        - _observability_deadman_pipeline_units.changed
+    - name: Ensure dead-man canary schedules are running
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        enabled: true
+        state: started
+      loop:
+        - observability-primary-canary.timer
+        - observability-deadman-pulse.timer
+      when:
+        - not ansible_check_mode
+        - observability_control_plane.alerting.deadman.enabled | bool
     - name: Reload existing active Prometheus sender snapshot inside authority boundary
       ansible.builtin.systemd_service:
         name: observability-prometheus
@@ -293,12 +458,24 @@
       block:
         - name: Gather current services before restoring authority
           ansible.builtin.service_facts: null
+        - name: Disable attempted dead-man persistent writers before rollback
+          ansible.builtin.systemd_service:
+            name: '{{ item }}'
+            enabled: false
+            state: stopped
+          loop:
+            - observability-deadman-pulse.timer
+            - observability-primary-canary.timer
+            - observability-deadman-pipeline.service
+          when: item in ansible_facts.services
         - name: Stop attempted gateway and Alertmanager before removing candidate files
           ansible.builtin.systemd_service:
             name: '{{ item }}'
             state: stopped
             enabled: '{{ false if not _observability_authority.services[item].exists else omit }}'
           loop:
+            - observability-deadman-pulse.service
+            - observability-primary-canary.service
             - observability-silence-gateway.service
             - observability-alertmanager.service
             - observability-telegram-relay.service
@@ -329,6 +506,11 @@
             - observability-alertmanager.service
             - observability-silence-gateway.service
             - observability-prometheus.service
+            - observability-deadman-pipeline.service
+            - observability-primary-canary.service
+            - observability-deadman-pulse.service
+            - observability-primary-canary.timer
+            - observability-deadman-pulse.timer
           when: _observability_authority.services[item].exists
         - name: Read restored sender token only for private readiness
           ansible.builtin.slurp:

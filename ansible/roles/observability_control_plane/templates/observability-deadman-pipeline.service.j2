@@ -1,0 +1,37 @@
+[Unit]
+Description=Receive bounded Alertmanager canary and dead-man reverse heartbeat
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=root
+Group=root
+LoadCredential=pulse-token:{{ observability_control_plane.alerting.deadman.pulse_credential_path }}
+LoadCredential=canary-token:{{ observability_control_plane.alerting.deadman.canary_auth_path }}
+ExecStart=/usr/local/libexec/observability-deadman-pipeline.py serve --canary-listen {{ observability_control_plane.alerting.deadman.canary_listen }} --reverse-listen {{ observability_control_plane.alerting.deadman.reverse_listen }} --state-dir {{ observability_control_plane.alerting.deadman.state_dir }} --metrics-path {{ observability_control_plane.alerting.deadman.metrics_path }} --generation {{ observability_control_plane.alerting.source_generation }} --pulse-credential pulse-token --canary-credential canary-token
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=15s
+TimeoutStopSec=20s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths={{ observability_control_plane.alerting.deadman.state_dir }} {{ observability_control_plane.expected_targets.textfile_directory }}
+ReadOnlyPaths=/usr/local/libexec/observability-deadman-pipeline.py
+MemoryMax=64M
+TasksMax=32
+LimitNOFILE=1024
+
+[Install]
+WantedBy=multi-user.target

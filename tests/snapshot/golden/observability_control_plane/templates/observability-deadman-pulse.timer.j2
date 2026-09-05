@@ -1,0 +1,13 @@
+[Unit]
+Description=Schedule the independent observability pipeline pulse
+
+[Timer]
+OnBootSec=60s
+OnUnitActiveSec=60s
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=true
+Unit=observability-deadman-pulse.service
+
+[Install]
+WantedBy=timers.target

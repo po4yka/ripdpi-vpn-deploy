@@ -1,0 +1,37 @@
+[Unit]
+Description=Receive bounded Alertmanager canary and dead-man reverse heartbeat
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=root
+Group=root
+LoadCredential=pulse-token:/etc/observability-control-plane/credentials/deadman-pulse-token
+LoadCredential=canary-token:/etc/observability-control-plane/credentials/deadman-canary-auth-token
+ExecStart=/usr/local/libexec/observability-deadman-pipeline.py serve --canary-listen 127.0.0.1:19093 --reverse-listen 127.0.0.1:19096 --state-dir /var/lib/observability-pipeline --metrics-path /var/lib/node_exporter/textfile/observability-deadman.prom --generation  --pulse-credential pulse-token --canary-credential canary-token
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=15s
+TimeoutStopSec=20s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/observability-pipeline /var/lib/node_exporter/textfile
+ReadOnlyPaths=/usr/local/libexec/observability-deadman-pipeline.py
+MemoryMax=64M
+TasksMax=32
+LimitNOFILE=1024
+
+[Install]
+WantedBy=multi-user.target

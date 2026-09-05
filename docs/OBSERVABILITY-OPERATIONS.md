@@ -27,7 +27,7 @@ export OBSERVABILITY_COMPONENT="control-plane"
 export OBSERVABILITY_KNOWN_HOSTS="$HOME/.ssh/known_hosts"
 ```
 
-`render`, `validate`, `rotate`, and `rollback` additionally require the
+`render`, `validate`, `deploy`, `rotate`, and `rollback` additionally require the
 materialized SOPS document and a role-variable file. Both must be same-owner,
 non-symlink regular files with mode `0600` in an owner-controlled path:
 
@@ -55,6 +55,7 @@ generation derived from agent credentials.
 | `make observability-validate` | private vars/secrets and role syntax | no host contact | no |
 | `make observability-status` | fixed systemd properties and loopback readiness on one host | no | no |
 | `make observability-drill` | authenticated local gateway on the staging control plane | submits one synthetic firing/resolved pair | **yes: private staging Telegram route** |
+| `make observability-deploy` | private vars/secrets and the absence of the component's primary unit | installs only the selected role on the exact host and may start or restart its units | no provider action |
 | `make observability-silence-create` | private bounded request and named owner credential | finite scoped notification suppression | no synthetic incident |
 | `make observability-silence-delete` | silence UUID and named owner credential | removes that owner's silence | existing incident delivery may resume |
 | `make observability-rotate` | replacement private vars/secrets | converges only the selected role and host | may restart that role's units |
@@ -62,9 +63,15 @@ generation derived from agent credentials.
 | `make observability-remove` | private deployment vars snapshot | converges `enabled: false` for only the selected role and host | no; control-plane TSDB retention remains intact |
 
 The status output is a bounded JSON object containing only the requested alias,
-component, categorical unit states and aggregate readiness. It is passive and needs no locally decrypted secrets. Control-plane readiness
-uses the existing remote sender credential without exposing it. `healthy` is local component readiness, not fresh fleet telemetry,
-outside-in VPN availability, Telegram receipt, or dead-man independence.
+component, categorical unit states and aggregate readiness. It is passive and
+needs no locally decrypted secrets. Control-plane status covers nginx,
+Prometheus, Alertmanager, the Telegram relay, silence gateway, both adapter
+timers, the dead-man pipeline, pulse timer and primary-canary timer. Timer-driven
+oneshot services are intentionally absent because they are normally inactive
+between runs. Control-plane readiness uses the existing remote sender credential
+without exposing it. `healthy` is local component readiness, not fresh fleet
+telemetry, outside-in VPN availability, Telegram receipt, or dead-man
+independence.
 
 ## Metric and alert contracts
 
@@ -133,6 +140,15 @@ log route labels when a webhook fails; the source contract guarantees only that
 bot and relay credentials are absent from its configuration and non-debug test
 logs. Never collect unreviewed debug logs as evidence.
 
+The public dead-man pulse endpoint uses a dedicated CA, leaf certificate and
+private key from `observability_deadman_secrets.pulse_tls`. The control-plane
+sender receives only that CA through `LoadCredential`, verifies the configured
+hostname, requires TLS 1.2 or newer, and never uses proxy, redirect, plaintext or
+the ambient public trust store. Rotation stops the pipeline and its timer-driven
+writers before generation reconciliation, then starts the new pipeline before
+its schedules. A rollback restores the captured generation and exact prior
+enabled/active unit states.
+
 API success and notification metrics prove an API-level attempt/outcome only.
 For acceptance, record separately observed, clearly labelled firing and
 resolved messages in the configured private primary topic and a loss/recovery
@@ -191,6 +207,19 @@ Validate syntax, then run the remote check-mode render:
 make observability-validate
 make observability-render
 ```
+
+For a new component, perform the explicit initial installation after both
+checks. `observability-deploy` refuses when the selected component's primary
+systemd unit already exists and never falls through to rotation semantics:
+
+```sh
+make observability-deploy
+make observability-status
+```
+
+Use `observability-rotate` for an existing deployment. If a partial initial
+installation published the primary unit, diagnose it and use the explicit
+removal path before another deploy attempt.
 
 Inspect one component without materializing secrets:
 

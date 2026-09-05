@@ -11,8 +11,26 @@ observability_deadman:
   pulse_listen: 0.0.0.0:9444
   status_listen: 127.0.0.1:19094
   pulse_path: /v1/pulse
+  pulse_tls:
+    server_name: ""
+    server_cert_credential: pulse-server-cert
+    server_key_credential: pulse-server-key
   reverse_health_url: ""
   reverse_health_max_bytes: 1024
+  source_generation: ""
+  required_units:
+    - observability-deadman.service
+  reverse_health_tls:
+    ca_pem: ""
+    client_cert_pem: ""
+    client_key_pem: ""
+    # These pins are supplied from the controller's ingest identity inventory.
+    client_cn: ""
+    client_cert_fingerprint_sha256: ""
+    ca_fingerprint_sha256: ""
+    ca_credential: reverse-health-ca
+    client_cert_credential: reverse-health-client-cert
+    client_key_credential: reverse-health-client-key
   pulse_interval_seconds: 60
   missed_pulse_limit: 5
   max_future_seconds: 30

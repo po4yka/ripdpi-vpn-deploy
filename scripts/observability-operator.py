@@ -28,9 +28,45 @@ COMPONENTS = {
     "control-plane": "observability_control_plane",
     "deadman": "observability_deadman",
 }
-SECRET_COMMANDS = frozenset({"render", "validate", "rotate", "rollback"})
+INSTALL_MARKERS = {
+    "agent": "/etc/systemd/system/observability-agent.service",
+    "control-plane": "/etc/systemd/system/observability-prometheus.service",
+    "deadman": "/etc/systemd/system/observability-deadman.service",
+}
+STATUS_UNITS = {
+    "agent": (
+        "observability-agent.service",
+        "observability-agent-adapter.timer",
+        "observability-agent-health-adapter.timer",
+    ),
+    "control-plane": (
+        "nginx.service",
+        "observability-prometheus.service",
+        "observability-alertmanager.service",
+        "observability-telegram-relay.service",
+        "observability-silence-gateway.service",
+        "observability-control-plane-adapter.timer",
+        "observability-protocol-liveness-adapter.timer",
+        "observability-deadman-pipeline.service",
+        "observability-deadman-pulse.timer",
+        "observability-primary-canary.timer",
+    ),
+    "deadman": (
+        "observability-deadman.service",
+        "observability-deadman-tick.timer",
+    ),
+}
+SECRET_COMMANDS = frozenset({"render", "validate", "deploy", "rotate", "rollback"})
 MUTATING_COMMANDS = frozenset(
-    {"drill", "rotate", "rollback", "remove", "silence-create", "silence-delete"}
+    {
+        "deploy",
+        "drill",
+        "rotate",
+        "rollback",
+        "remove",
+        "silence-create",
+        "silence-delete",
+    }
 )
 SAFE_GENERATION = re.compile(r"^[0-9a-f]{64}$")
 TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
@@ -367,6 +403,7 @@ def _playbook(
     component: str,
     host: str,
     *,
+    initial: bool = False,
     remove: bool = False,
     component_vars: dict[str, Any] | None = None,
 ) -> str:
@@ -387,6 +424,28 @@ def _playbook(
         play["vars"] = {role: component_vars}
     else:
         play["vars_files"] = ["{{ lookup('env', 'VPN_SECRETS_FILE') }}"]
+    if initial:
+        play["pre_tasks"] = [
+            {
+                "name": "Inspect primary observability installation marker",
+                "ansible.builtin.stat": {
+                    "path": INSTALL_MARKERS[component],
+                    "follow": False,
+                },
+                "register": "observability_install_marker",
+            },
+            {
+                "name": "Refuse replacing an existing observability deployment",
+                "ansible.builtin.assert": {
+                    "that": ["not observability_install_marker.stat.exists"],
+                    "fail_msg": (
+                        "initial observability deployment already exists; use "
+                        "observability-rotate or diagnose and observability-remove"
+                    ),
+                    "quiet": True,
+                },
+            },
+        ]
     play["roles"] = [{"role": role}]
     return yaml.safe_dump([play], sort_keys=False)
 
@@ -398,11 +457,16 @@ def _run_playbook(
     host: dict[str, Any],
     check: bool = False,
     syntax: bool = False,
+    initial: bool = False,
     remove: bool = False,
     component_vars: dict[str, Any] | None = None,
 ) -> None:
     payload = _playbook(
-        args.component, args.host, remove=remove, component_vars=component_vars
+        args.component,
+        args.host,
+        initial=initial,
+        remove=remove,
+        component_vars=component_vars,
     )
     revision, digest = _clean_source_identity()
     with tempfile.TemporaryDirectory(prefix="observability-operator-") as directory:
@@ -529,23 +593,7 @@ def gateway_request(path, data=None, method="GET"):
 
 
 def _status_program(component: str) -> bytes:
-    units = {
-        "agent": (
-            "observability-agent.service",
-            "observability-agent-adapter.timer",
-            "observability-agent-health-adapter.timer",
-        ),
-        "control-plane": (
-            "observability-prometheus.service",
-            "observability-alertmanager.service",
-            "observability-silence-gateway.service",
-            "observability-control-plane-adapter.timer",
-        ),
-        "deadman": (
-            "observability-deadman.service",
-            "observability-deadman-tick.timer",
-        ),
-    }[component]
+    units = STATUS_UNITS[component]
     readiness = {
         "agent": ("http://127.0.0.1:19090/-/ready",),
         "control-plane": (
@@ -698,23 +746,7 @@ def _remote(
     ):
         raise OperatorError("remote report rejected")
     if operation == "status":
-        expected_units = {
-            "agent": {
-                "observability-agent.service",
-                "observability-agent-adapter.timer",
-                "observability-agent-health-adapter.timer",
-            },
-            "control-plane": {
-                "observability-prometheus.service",
-                "observability-alertmanager.service",
-                "observability-silence-gateway.service",
-                "observability-control-plane-adapter.timer",
-            },
-            "deadman": {
-                "observability-deadman.service",
-                "observability-deadman-tick.timer",
-            },
-        }[args.component]
+        expected_units = set(STATUS_UNITS[args.component])
         units = value.get("units")
         if (
             set(value) != {"schema_version", "component", "state", "units"}
@@ -904,7 +936,7 @@ def _parser() -> argparse.ArgumentParser:
             silence.add_argument("--request", type=Path)
         else:
             silence.add_argument("--silence-id")
-    for command in ("rotate", "rollback", "remove"):
+    for command in ("deploy", "rotate", "rollback", "remove"):
         mutation = commands.add_parser(command, parents=[common])
         mutation.add_argument("--confirm", action="store_true")
     return parser
@@ -1003,6 +1035,14 @@ def main(argv: list[str] | None = None) -> int:
             result = _remote(
                 args, host, _status_program(args.component), operation="status"
             )
+        elif args.command == "deploy":
+            _run_playbook(args, secrets=secrets, host=host, initial=True)
+            result = {
+                "schema_version": 1,
+                "component": args.component,
+                "host": args.host,
+                "state": "deployed",
+            }
         elif args.command == "rotate":
             _run_playbook(args, secrets=secrets, host=host)
             result = {
