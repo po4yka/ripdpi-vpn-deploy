@@ -35,13 +35,7 @@
       - real_vps_awg_nat_runner_id is match('^[0-9a-f]{64}$')
       - real_vps_awg_nat_expected_source_sha is match('^[0-9a-f]{40}$')
       - real_vps_awg_nat_expected_source_archive_sha256 is match('^[0-9a-f]{64}$')
-      - real_vps_awg_nat_client_source_sha is match('^[0-9a-f]{40}$')
-      - real_vps_awg_nat_client_source_sha != '0000000000000000000000000000000000000000'
-      - real_vps_awg_nat_client_source_sha == real_vps_awg_nat_awg_go_commit
-      - real_vps_awg_nat_client_artifact_sha256 is match('^[0-9a-f]{64}$')
-      - >-
-        real_vps_awg_nat_client_artifact_sha256 !=
-        '0000000000000000000000000000000000000000000000000000000000000000'
+      - real_vps_awg_nat_client_acceptance_public_key is match('^/.+')
       - real_vps_awg_nat_source_bundle | length > 0
       - real_vps_awg_nat_source_bundle_sha256 is match('^[0-9a-f]{64}$')
       - real_vps_awg_nat_awg_go_source_bundle | length > 0
@@ -85,6 +79,7 @@
       - make
       - nftables
       - openssh-client
+      - openssl
       - pkg-config
       - python3
       - resolvconf
@@ -189,10 +184,8 @@
   ansible.builtin.assert:
     that:
       - _evidence_awg_toolchain_manifest.toolchainId is match('^[0-9a-f]{64}$')
+      - _evidence_awg_toolchain_manifest.inputs.goCommit == real_vps_awg_nat_awg_go_commit
       - _evidence_awg_toolchain_manifest.binaries['amneziawg-go'] is match('^[0-9a-f]{64}$')
-      - >-
-        _evidence_awg_toolchain_manifest.binaries['amneziawg-go'] ==
-        real_vps_awg_nat_client_artifact_sha256
       - _evidence_awg_toolchain_manifest.binaries.awg is match('^[0-9a-f]{64}$')
       - _evidence_awg_toolchain_manifest.binaries['awg-quick'] is match('^[0-9a-f]{64}$')
       - _evidence_awg_toolchain_manifest.changed is boolean
@@ -269,15 +262,36 @@
   no_log: true
   diff: false
 
-- name: Install exact RIPDPI client identity descriptor
-  ansible.builtin.template:
-    src: sentinel-client-identity.json.j2
-    dest: /etc/ripdpi/real-vps-awg-client-identity.json
+- name: Install RIPDPI client acceptance verification key
+  ansible.builtin.copy:
+    src: "{{ real_vps_awg_nat_client_acceptance_public_key }}"
+    dest: /etc/ripdpi/real-vps-awg-client-acceptance.pub
     owner: root
     group: root
     mode: "0600"
   no_log: true
   diff: false
+
+- name: Validate RIPDPI client acceptance verification key
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - pkey
+      - -pubin
+      - -in
+      - /etc/ripdpi/real-vps-awg-client-acceptance.pub
+      - -text
+      - -noout
+  register: _evidence_client_acceptance_key
+  changed_when: false
+  no_log: true
+
+- name: Require an Ed25519 RIPDPI client acceptance verification key
+  ansible.builtin.assert:
+    that:
+      - _evidence_client_acceptance_key.stdout is search('(?m)^ED25519 Public-Key:$')
+    fail_msg: refusing a non-Ed25519 client acceptance verification key
+  no_log: true
 
 - name: Copy exact source bundle to sentinel
   ansible.builtin.copy:
