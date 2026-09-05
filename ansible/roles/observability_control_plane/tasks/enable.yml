@@ -45,6 +45,10 @@
   loop: "{{ observability_control_plane.ingest_identities }}"
   no_log: true
 
+- name: Require the opt-in alerting secret contract before host mutation
+  ansible.builtin.include_tasks: alerting-secret-contract.yml
+  when: observability_control_plane.alerting.enabled | bool
+
 - name: Require the opt-in alerting contract before host mutation
   ansible.builtin.include_tasks: alerting-contract.yml
   when: observability_control_plane.alerting.enabled | bool

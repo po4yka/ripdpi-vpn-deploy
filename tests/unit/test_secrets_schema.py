@@ -154,7 +154,11 @@ def silence_doc(filled):
                 "private_key_pem": _fake_private_key("E"),
             }
         ],
-        "telegram": {"bot_token": "f" * 64, "chat_id": "-1001234567890"},
+        "telegram": {
+            "bot_token": "f" * 64,
+            "chat_id": "-1001234567890",
+            "relay_auth_token": "d" * 64,
+        },
         "silence_gateway": {
             "operators": [{"owner": "operator-a", "token": "a" * 64}],
             "sender_token": "b" * 64,
@@ -187,6 +191,7 @@ def test_silence_gateway_complete_credentials_validate_and_block_is_optional(
         "owner-newline",
         "operator-token",
         "sender-token",
+        "relay-auth-token",
         "token-newline",
         "unknown",
         "operator-unknown",
@@ -207,6 +212,8 @@ def test_silence_gateway_schema_rejects_malformed_credentials(silence_doc, mutat
         gateway["operators"][0]["token"] = "A" * 64
     elif mutation == "sender-token":
         gateway["sender_token"] = "a" * 63
+    elif mutation == "relay-auth-token":
+        silence_doc["observability_secrets"]["telegram"]["relay_auth_token"] = "D" * 64
     elif mutation == "token-newline":
         gateway["sender_token"] += "\n"
     elif mutation == "unknown":
@@ -241,6 +248,9 @@ def test_silence_gateway_schema_requires_complete_block(silence_doc, field):
         "owner",
         "operator-token",
         "sender-token",
+        "relay-auth-token",
+        "relay-auth-operator",
+        "relay-auth-bot",
         "receiver-ca",
         "ingress-key",
         "sender-cert",
@@ -261,6 +271,12 @@ def test_silence_gateway_reused_authorities_are_rejected_without_values(
         gateway["operators"][1]["token"] = gateway["operators"][0]["token"]
     elif mutation == "sender-token":
         gateway["sender_token"] = gateway["operators"][0]["token"]
+    elif mutation == "relay-auth-token":
+        control["telegram"]["relay_auth_token"] = gateway["sender_token"]
+    elif mutation == "relay-auth-operator":
+        control["telegram"]["relay_auth_token"] = gateway["operators"][0]["token"]
+    elif mutation == "relay-auth-bot":
+        control["telegram"]["relay_auth_token"] = control["telegram"]["bot_token"]
     elif mutation == "receiver-ca":
         gateway["backend_ca_pem"] = control["receiver_ca_pem"]
     elif mutation == "ingress-key":
@@ -314,7 +330,11 @@ def test_observability_duplicate_authority_is_rejected(filled, tmp_path, mutatio
             {"node_id": "node-a", "certificate_pem": cert_a + "A", "private_key_pem": pem_a + "A"},
             {"node_id": "node-b", "certificate_pem": cert_b + "B", "private_key_pem": pem_b + "B"},
         ],
-        "telegram": {"bot_token": "primary-bot-token-aaaaaaaa", "chat_id": "-100000000001"},
+        "telegram": {
+            "bot_token": "primary-bot-token-aaaaaaaa",
+            "chat_id": "-100000000001",
+            "relay_auth_token": "e" * 64,
+        },
         "ui_username": "operator",
         "ui_password": "observability-ui-password-dddddd",
     }
@@ -357,7 +377,11 @@ def test_observability_rotation_is_single_authority_complete_and_bounded(
         "senders": [
             {"node_id": "node-a", "certificate_pem": cert + "A", "private_key_pem": private + "A"}
         ],
-        "telegram": {"bot_token": "primary-bot-token-aaaaaaaa", "chat_id": "-100000000001"},
+        "telegram": {
+            "bot_token": "primary-bot-token-aaaaaaaa",
+            "chat_id": "-100000000001",
+            "relay_auth_token": "e" * 64,
+        },
         "rotation": {
             "authority": "sender",
             "sender_node_id": "node-a",
@@ -401,7 +425,11 @@ def test_one_bounded_observability_rotation_validates(filled, tmp_path):
         "senders": [
             {"node_id": "node-a", "certificate_pem": cert + "A", "private_key_pem": private + "A"}
         ],
-        "telegram": {"bot_token": "primary-bot-token-aaaaaaaa", "chat_id": "-100000000001"},
+        "telegram": {
+            "bot_token": "primary-bot-token-aaaaaaaa",
+            "chat_id": "-100000000001",
+            "relay_auth_token": "e" * 64,
+        },
         "rotation": {
             "authority": "sender",
             "sender_node_id": "node-a",
@@ -453,6 +481,7 @@ def test_strict_enabled_observability_requires_both_secret_blocks(
         "telegram": {
             "bot_token": "primary-bot-token-aaaaaaaa",
             "chat_id": "-100000000001",
+            "relay_auth_token": "e" * 64,
         },
     }
     deadman = {
@@ -495,6 +524,7 @@ def test_observability_ui_credentials_are_complete_when_enabled(
         "telegram": {
             "bot_token": "primary-bot-token-aaaaaaaa",
             "chat_id": "-100000000001",
+            "relay_auth_token": "e" * 64,
         },
         field: "operator" if field == "ui_username" else "ui-password-aaaaaaaaaaaa",
     }

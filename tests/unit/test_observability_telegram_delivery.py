@@ -334,7 +334,18 @@ def test_relay_retries_only_transient_failures_with_bounded_delay(
     assert sleeps == [expected_sleep]
 
 
-@pytest.mark.parametrize("failure", [_http_error(400), _Response(200, b"not-json")])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        _http_error(301),
+        _http_error(302),
+        _http_error(303),
+        _http_error(307),
+        _http_error(308),
+        _http_error(400),
+        _Response(200, b"not-json"),
+    ],
+)
 def test_relay_does_not_retry_semantic_or_malformed_responses(failure: object) -> None:
     relay = _relay()
     calls = 0
@@ -358,6 +369,200 @@ def test_relay_does_not_retry_semantic_or_malformed_responses(failure: object) -
             sleeper=lambda _seconds: None,
         )
     assert calls == 1
+
+
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+def test_relay_opener_never_forwards_telegram_body_across_redirects(
+    status: int,
+) -> None:
+    relay = _relay()
+    source_requests: list[bytes] = []
+    redirected_requests: list[bytes] = []
+
+    class RedirectTarget(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            redirected_requests.append(b"GET")
+            self.send_response(200)
+            self.end_headers()
+
+        def do_POST(self) -> None:  # noqa: N802
+            length = int(self.headers.get("Content-Length", "0"))
+            redirected_requests.append(self.rfile.read(length))
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+    target = ThreadingHTTPServer(("127.0.0.1", 0), RedirectTarget)
+
+    class RedirectSource(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802
+            length = int(self.headers.get("Content-Length", "0"))
+            source_requests.append(self.rfile.read(length))
+            self.send_response(status)
+            self.send_header(
+                "Location", f"http://127.0.0.1:{target.server_port}/captured"
+            )
+            self.end_headers()
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+    source = ThreadingHTTPServer(("127.0.0.1", 0), RedirectSource)
+    threads = [
+        threading.Thread(target=server.serve_forever, daemon=True)
+        for server in (target, source)
+    ]
+    for server, thread in zip((target, source), threads, strict=True):
+        thread.start()
+    outbound = request.Request(
+        f"http://127.0.0.1:{source.server_port}/sendMessage",
+        data=b'{"secret":"must-not-forward"}',
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with pytest.raises(error.HTTPError) as refused:
+            relay._open_without_redirect(outbound, timeout=1)
+        assert refused.value.code == status
+    finally:
+        for server in (source, target):
+            server.shutdown()
+            server.server_close()
+        for thread in threads:
+            thread.join(timeout=1)
+    assert source_requests == [b'{"secret":"must-not-forward"}']
+    assert redirected_requests == []
+
+
+def test_relay_auth_is_a_distinct_private_secret_and_not_sender_derived() -> None:
+    tasks = yaml.safe_load((ROLE / "tasks/alerting-authority.yml").read_text())
+    activation = next(
+        task["block"]
+        for task in tasks
+        if task["name"] == "Activate validated Alertmanager generation with rollback"
+    )
+    materialize = next(
+        task
+        for task in activation
+        if task["name"] == "Materialize primary Telegram relay credentials for systemd"
+    )
+    relay_item = materialize["loop"][1]
+    assert relay_item["content"] == "{{ observability_secrets.telegram.relay_auth_token }}"
+    assert "sender_token" not in relay_item["content"]
+    assert "hash('sha256')" not in relay_item["content"]
+
+    secret_contract = (ROLE / "tasks/alerting-secret-contract.yml").read_text()
+    assert "observability_secrets.telegram.relay_auth_token" in secret_contract
+    assert "silence_gateway.sender_token" in secret_contract
+    assert "silence_gateway.operators" in secret_contract
+
+
+@pytest.mark.parametrize("duplicate", ["sender", "operator", "bot"])
+def test_duplicate_relay_auth_refuses_before_any_write(
+    tmp_path: Path, duplicate: str
+) -> None:
+    contract = complete_contract()
+    if duplicate == "sender":
+        relay_auth = contract["alerting"]["silence_gateway"]["sender_token"]
+    elif duplicate == "operator":
+        relay_auth = contract["alerting"]["silence_gateway"]["operators"][0]["token"]
+    else:
+        contract["alerting"]["telegram"]["bot_token"] = "f" * 64
+        relay_auth = contract["alerting"]["telegram"]["bot_token"]
+    marker = tmp_path / "must-not-write"
+    playbook = tmp_path / "secret-contract.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "name": "secret authority refusal",
+                    "hosts": "localhost",
+                    "gather_facts": False,
+                    "vars": {
+                        "observability_control_plane": contract,
+                        "observability_secrets": {
+                            "telegram": {"relay_auth_token": relay_auth}
+                        },
+                    },
+                    "tasks": [
+                        {
+                            "name": "Exercise private relay authority contract",
+                            "ansible.builtin.include_tasks": str(
+                                ROLE / "tasks/alerting-secret-contract.yml"
+                            ),
+                        },
+                        {
+                            "name": "Forbidden write after invalid authority",
+                            "ansible.builtin.copy": {
+                                "content": "forbidden",
+                                "dest": str(marker),
+                            },
+                        },
+                    ],
+                }
+            ],
+            sort_keys=False,
+        )
+    )
+    completed = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", str(playbook)],
+        cwd=ROOT,
+        env={**os.environ, "ANSIBLE_ROLES_PATH": str(ROOT / "ansible/roles")},
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    assert completed.returncode != 0
+    assert "changed=0" in completed.stdout
+    assert not marker.exists()
+    assert relay_auth not in completed.stdout + completed.stderr
+
+
+def test_distinct_relay_auth_contract_passes_without_changes(tmp_path: Path) -> None:
+    contract = complete_contract()
+    relay_auth = "d4" * 32
+    playbook = tmp_path / "secret-contract.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "name": "secret authority acceptance",
+                    "hosts": "localhost",
+                    "gather_facts": False,
+                    "vars": {
+                        "observability_control_plane": contract,
+                        "observability_secrets": {
+                            "telegram": {"relay_auth_token": relay_auth}
+                        },
+                    },
+                    "tasks": [
+                        {
+                            "name": "Exercise private relay authority contract",
+                            "ansible.builtin.include_tasks": str(
+                                ROLE / "tasks/alerting-secret-contract.yml"
+                            ),
+                        }
+                    ],
+                }
+            ],
+            sort_keys=False,
+        )
+    )
+    completed = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", str(playbook)],
+        cwd=ROOT,
+        env={**os.environ, "ANSIBLE_ROLES_PATH": str(ROOT / "ansible/roles")},
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "changed=0" in completed.stdout
+    assert relay_auth not in completed.stdout + completed.stderr
 
 
 def test_alerting_contract_refuses_a_noncanonical_webhook_timeout(

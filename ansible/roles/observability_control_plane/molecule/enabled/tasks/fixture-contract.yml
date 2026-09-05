@@ -33,6 +33,9 @@
     observability_alert_policy: >-
       {{ (lookup('ansible.builtin.file',
           playbook_dir ~ '/../../../../group_vars/all.yml') | from_yaml).observability_alert_policy }}
+    observability_secrets:
+      telegram:
+        relay_auth_token: "{{ 'd4' * 32 }}"
     observability_control_plane:
       enabled: true
       service_user: prometheus
