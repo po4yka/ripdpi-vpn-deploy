@@ -675,6 +675,39 @@ def test_promtool_rule_cases_cover_firing_stale_recovery_and_absent(
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_authority_snapshot_keeps_private_output_secret_and_reports_only_category() -> None:
+    tasks = yaml.safe_load((ROLE / "tasks/alerting-authority.yml").read_text())
+    capture = next(
+        task
+        for task in tasks
+        if task["name"] == "Capture private authority snapshot before the first publication write"
+    )
+    classify = next(
+        task
+        for task in tasks
+        if task["name"] == "Classify authority snapshot refusal without exposing private state"
+    )
+    refuse = next(
+        task
+        for task in tasks
+        if task["name"] == "Refuse authority publication with a safe snapshot category"
+    )
+
+    assert capture["no_log"] is True
+    assert capture["failed_when"] is False
+    assert classify["no_log"] is True
+    expression = classify["ansible.builtin.set_fact"][
+        "_observability_authority_capture_category"
+    ]
+    assert "_observability_authority_capture.stdout | trim" in expression
+    assert "from_json" not in expression
+    assert "unsafe_parent" in expression
+    assert "internal" in expression
+    assert "no_log" not in refuse
+    assert "safe category" in refuse["ansible.builtin.assert"]["fail_msg"]
+    assert "stdout" not in refuse["ansible.builtin.assert"]["fail_msg"]
+
+
 def test_alerting_tasks_validate_before_activation_and_rollback() -> None:
     tasks = yaml.safe_load((ROLE / "tasks/alerting.yml").read_text())
     names = [task["name"] for task in tasks]

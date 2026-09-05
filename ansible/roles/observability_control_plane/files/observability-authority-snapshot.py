@@ -72,6 +72,27 @@ FIXED = (
 )
 LINKS = {CONFIG + "/alertmanager-current.yml", CONFIG + "/alertmanager-previous.yml"}
 ALIAS = re.compile(r"[a-z][a-z0-9_-]{0,63}\Z")
+SAFE_FAILURE_CATEGORIES = {
+    "root": "root",
+    "owner-set": "request",
+    "service-state": "request",
+    "manual-recovery-required": "recovery",
+    "untracked-owner-token": "namespace",
+    "unsafe-parent": "unsafe_parent",
+    "foreign-file": "unsafe_file",
+    "unsafe-link": "unsafe_file",
+    "unsupported-entry": "unsafe_file",
+    "unsafe-file": "unsafe_file",
+    "credential-mode": "credential_mode",
+    "textfile-mode": "textfile_mode",
+    "file-size": "file_size",
+    "snapshot-size": "snapshot_size",
+    "snapshot-mode": "snapshot",
+    "snapshot-file": "snapshot",
+    "snapshot-identity": "snapshot",
+    "snapshot-foreign-entry": "snapshot",
+    "action": "request",
+}
 
 
 def owners(values, limit=32):
@@ -85,6 +106,19 @@ def owners(values, limit=32):
     ):
         raise ValueError("owner-set")
     return values
+
+
+def safe_failure_category(error):
+    """Expose a fixed failure class without paths, bytes, or exception details."""
+    if isinstance(error, FileNotFoundError):
+        return "missing_parent"
+    if isinstance(error, (PermissionError, OSError)):
+        return "filesystem"
+    if isinstance(error, (json.JSONDecodeError, KeyError, TypeError)):
+        return "request"
+    if isinstance(error, ValueError):
+        return SAFE_FAILURE_CATEGORIES.get(str(error), "invalid_state")
+    return "internal"
 
 
 class Snapshot:
@@ -353,9 +387,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except Exception:
-        print(
-            "authority snapshot refused; private recovery may be required",
-            file=sys.stderr,
-        )
+    except Exception as error:
+        print(safe_failure_category(error))
         raise SystemExit(1) from None

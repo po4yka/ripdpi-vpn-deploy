@@ -121,6 +121,91 @@ def prepare(root: Path, owners: list[str] | None = None) -> dict:
     return json.loads(result.stdout)
 
 
+def refusal(
+    result: subprocess.CompletedProcess[str], category: str | None = None
+) -> None:
+    """Assert a failure is safely diagnosable without returning private state."""
+    assert result.returncode == 1
+    observed = result.stdout.strip()
+    assert observed in {
+        "credential_mode",
+        "file_size",
+        "filesystem",
+        "internal",
+        "invalid_state",
+        "missing_parent",
+        "namespace",
+        "recovery",
+        "request",
+        "root",
+        "snapshot",
+        "snapshot_size",
+        "textfile_mode",
+        "unsafe_file",
+        "unsafe_parent",
+    }
+    if category is not None:
+        assert observed == category
+    assert "fixture-secret" not in result.stdout + result.stderr
+
+
+def first_converge_root(tmp_path: Path) -> Path:
+    """Model the real role's owned first-converge namespace, not all-0700 tests."""
+    root = tmp_path / "first-converge-host"
+    root.mkdir(mode=0o700)
+    for relative, mode in (
+        ("etc", 0o755),
+        ("etc/systemd", 0o755),
+        ("etc/systemd/system", 0o755),
+        ("etc/observability-control-plane", 0o750),
+        (CREDENTIALS, 0o700),
+        (CONFIG + "/generations", 0o755),
+        ("usr", 0o755),
+        ("usr/local", 0o755),
+        ("usr/local/libexec", 0o755),
+        ("var", 0o755),
+        ("var/lib", 0o755),
+        ("var/lib/node_exporter", 0o755),
+        ("var/lib/node_exporter/textfile", 0o3775),
+    ):
+        path = root / relative
+        path.mkdir(exist_ok=True)
+        path.chmod(mode)
+    return root
+
+
+def test_first_converge_accepts_owned_sticky_textfile_namespace(tmp_path: Path) -> None:
+    root = first_converge_root(tmp_path)
+
+    prepared = prepare(root, ["operator-a"])
+
+    snapshot = root / SNAPSHOT
+    assert prepared["previous_owners"] == []
+    assert stat.S_IMODE(snapshot.parent.stat().st_mode) == 0o700
+    assert stat.S_IMODE(snapshot.stat().st_mode) == 0o600
+    assert not (root / DEADMAN_METRIC).exists()
+    assert not (root / "var/lib/observability-pipeline").exists()
+
+
+@pytest.mark.parametrize(
+    ("relative", "mode"),
+    [
+        ("var/lib/node_exporter/textfile", 0o775),
+        ("var/lib/node_exporter", 0o777),
+    ],
+)
+def test_first_converge_refuses_writable_textfile_namespace(
+    tmp_path: Path, relative: str, mode: int
+) -> None:
+    root = first_converge_root(tmp_path)
+    (root / relative).chmod(mode)
+
+    result = invoke(root, "prepare", owners=["operator-a"])
+
+    refusal(result, "unsafe_parent")
+    assert not (root / SNAPSHOT).exists()
+
+
 def test_snapshot_larger_than_one_source_file_remains_restorable(root: Path) -> None:
     payload = b"private-fixture-material\x00" * 9000
     path = write(root, CREDENTIALS + "/silence-backend-ca.pem", payload)
@@ -295,8 +380,7 @@ def test_prepare_refuses_unsafe_deadman_metric_without_touching_external_bytes(
 
     result = invoke(root, "prepare")
 
-    assert result.returncode != 0
-    assert result.stdout == ""
+    refusal(result)
     assert external.read_bytes() == b"external_metric 1\n"
     assert not (root / SNAPSHOT).exists()
 
@@ -333,8 +417,7 @@ def test_prepare_refuses_unsafe_paths_without_touching_external_bytes(
     else:
         os.link(external, credential)
     result = invoke(root, "prepare")
-    assert result.returncode == 1
-    assert result.stdout == ""
+    refusal(result)
     assert "secret" not in result.stderr
     assert external.read_bytes() == b"external-fixture-secret"
     assert not (root / SNAPSHOT).exists()
@@ -349,7 +432,7 @@ def test_foreign_identifier_cannot_read_restore_or_remove_snapshot(
     original = snapshot.read_bytes()
     result = invoke(root, action, "0" * 32)
     assert prepared["id"] != "0" * 32
-    assert result.returncode == 1 and result.stdout == ""
+    refusal(result)
     assert snapshot.read_bytes() == original
 
 
@@ -372,7 +455,7 @@ def test_foreign_snapshot_content_is_not_consumed_or_deleted(
         snapshot.unlink()
         snapshot.symlink_to(external)
     result = invoke(root, "finish", prepared["id"])
-    assert result.returncode == 1 and result.stdout == ""
+    refusal(result)
     assert snapshot.parent.exists()
     assert external.read_bytes() == b"unchanged"
 
@@ -386,20 +469,20 @@ def test_failed_restore_retains_manual_recovery_and_blocks_next_publication(
     token.unlink()
     token.symlink_to(external)
     result = invoke(root, "restore", prepared["id"])
-    assert result.returncode == 1 and result.stdout == ""
+    refusal(result)
     assert "private-fixture" not in result.stderr
     assert external.read_bytes() == b"external-private-fixture"
     snapshot = root / SNAPSHOT
     assert json.loads(snapshot.read_text())["phase"] == "manual-recovery"
     retry = invoke(root, "prepare")
-    assert retry.returncode == 1 and retry.stdout == ""
+    refusal(retry)
     assert snapshot.exists()
 
 
 def test_oversized_source_is_refused_before_snapshot_creation(root: Path) -> None:
     write(root, CREDENTIALS + "/silence-sender-token", b"x" * 262145)
     result = invoke(root, "prepare")
-    assert result.returncode == 1 and result.stdout == ""
+    refusal(result)
     assert not (root / SNAPSHOT).exists()
 
 
@@ -411,7 +494,7 @@ def test_mark_retains_snapshot_and_finish_removes_only_owned_evidence(
     result = invoke(root, "mark", prepared["id"])
     assert result.returncode == 0 and result.stdout == ""
     assert json.loads((root / SNAPSHOT).read_text())["phase"] == "manual-recovery"
-    assert invoke(root, "prepare").returncode == 1
+    refusal(invoke(root, "prepare"), "recovery")
     assert invoke(root, "finish", prepared["id"]).returncode == 0
     assert unrelated.read_bytes() == b"keep"
 
@@ -422,7 +505,7 @@ def test_oversized_snapshot_is_not_loaded_or_deleted(root: Path) -> None:
     payload = b" " * 8388609
     snapshot.write_bytes(payload)
     result = invoke(root, "finish", prepared["id"])
-    assert result.returncode == 1 and result.stdout == ""
+    refusal(result)
     assert snapshot.stat().st_size == len(payload)
 
 
@@ -431,11 +514,11 @@ def test_aggregate_write_limit_does_not_publish_truncated_recovery(root: Path) -
     for owner in owners:
         write(root, CREDENTIALS + f"/silence-owner-{owner}-token", b"x" * 262144)
     result = invoke(root, "prepare", owners=owners)
-    assert result.returncode == 1 and result.stdout == ""
+    refusal(result)
     snapshot = root / SNAPSHOT
     assert not snapshot.exists()
     assert snapshot.parent.exists()
-    assert invoke(root, "prepare", owners=owners).returncode == 1
+    refusal(invoke(root, "prepare", owners=owners), "recovery")
 
 
 def test_production_root_requires_effective_root_before_filesystem_access() -> None:
@@ -451,8 +534,5 @@ def test_production_root_requires_effective_root_before_filesystem_access() -> N
         timeout=10,
         check=False,
     )
-    assert result.returncode == 1 and result.stdout == ""
-    assert (
-        result.stderr
-        == "authority snapshot refused; private recovery may be required\n"
-    )
+    refusal(result, "root")
+    assert result.stderr == ""

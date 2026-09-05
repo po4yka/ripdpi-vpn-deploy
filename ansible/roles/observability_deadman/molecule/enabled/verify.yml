@@ -174,25 +174,30 @@
           except HTTPError as error:
               return error.code
 
+      def status_or_exit(token, sequence, padding=0, expiry_seconds=10):
+          try:
+              return post(token, sequence, padding, expiry_seconds)
+          except OSError:
+              raise SystemExit(20) from None
+
       if sys.argv[1] == 'token':
-          statuses = (
-              post(b'fixture-pulse-token-0123456789', 1),
-              post(b'fixture-rotated-pulse-token-012345678', 1),
-          )
-          expected = (400, 204)
+          if status_or_exit(b'fixture-rotated-pulse-token-012345678', 1) != 204:
+              raise SystemExit(21)
+          previous_status = status_or_exit(b'fixture-pulse-token-0123456789', 2)
+          if previous_status == 204:
+              raise SystemExit(22)
+          if previous_status != 400:
+              raise SystemExit(23)
       elif sys.argv[1] == 'config':
-          statuses = (
-              post(
-                  b'fixture-rotated-pulse-token-012345678',
-                  2,
-                  padding=600,
-                  expiry_seconds=20,
-              ),
-          )
-          expected = (400,)
+          if status_or_exit(
+              b'fixture-rotated-pulse-token-012345678',
+              2,
+              padding=600,
+              expiry_seconds=20,
+          ) != 400:
+              raise SystemExit(23)
       else:
-          raise SystemExit(2)
-      raise SystemExit(0 if statuses == expected else 1)
+          raise SystemExit(24)
   tasks:
     - name: Assert enabled dead-man units are active
       ansible.builtin.command:
@@ -299,7 +304,24 @@
           - "{{ deadman_rotation_probe }}"
           - token
       changed_when: false
+      failed_when: false
+      register: deadman_token_reload_probe
       no_log: true
+
+    - name: Classify token-only receiver credential reload
+      ansible.builtin.assert:
+        that:
+          - deadman_token_reload_probe.rc == 0
+        fail_msg: >-
+          Dead-man token credential reload failed category={{
+            {
+              20: 'tls-transport',
+              21: 'rotated-token-rejected',
+              22: 'previous-token-accepted',
+              23: 'unexpected-response',
+              24: 'probe-mode'
+            }.get(deadman_token_reload_probe.rc, 'probe-internal')
+          }}.
 
     - name: Include config-only rotated dead-man role
       ansible.builtin.include_role:
@@ -331,7 +353,24 @@
           - "{{ deadman_rotation_probe }}"
           - config
       changed_when: false
+      failed_when: false
+      register: deadman_config_reload_probe
       no_log: true
+
+    - name: Classify config-only receiver generation reload
+      ansible.builtin.assert:
+        that:
+          - deadman_config_reload_probe.rc == 0
+        fail_msg: >-
+          Dead-man config generation reload failed category={{
+            {
+              20: 'tls-transport',
+              21: 'rotated-token-rejected',
+              22: 'previous-token-accepted',
+              23: 'unexpected-response',
+              24: 'probe-mode'
+            }.get(deadman_config_reload_probe.rc, 'probe-internal')
+          }}.
 
     - name: Include disabled dead-man role
       ansible.builtin.include_role:

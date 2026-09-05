@@ -64,9 +64,43 @@
       | list, ''services'': _observability_authority_services} | to_json }}'
   register: _observability_authority_capture
   changed_when: false
+  failed_when: false
   no_log: true
   diff: false
   check_mode: false
+- name: Classify authority snapshot refusal without exposing private state
+  ansible.builtin.set_fact:
+    _observability_authority_capture_category: >-
+      {{
+        'success' if _observability_authority_capture.rc == 0 else
+        {
+          'root': 'root',
+          'request': 'request',
+          'recovery': 'recovery',
+          'namespace': 'namespace',
+          'unsafe_parent': 'unsafe_parent',
+          'unsafe_file': 'unsafe_file',
+          'credential_mode': 'credential_mode',
+          'textfile_mode': 'textfile_mode',
+          'missing_parent': 'missing_parent',
+          'file_size': 'file_size',
+          'snapshot_size': 'snapshot_size',
+          'snapshot': 'snapshot',
+          'filesystem': 'filesystem',
+          'invalid_state': 'invalid_state',
+          'internal': 'internal'
+        }.get(_observability_authority_capture.stdout | trim, 'internal')
+      }}
+  changed_when: false
+  no_log: true
+- name: Refuse authority publication with a safe snapshot category
+  ansible.builtin.assert:
+    that:
+      - _observability_authority_capture.rc == 0
+      - _observability_authority_capture_category == 'success'
+    fail_msg: >-
+      Authority snapshot preparation refused before publication
+      (safe category: {{ _observability_authority_capture_category }}).
 - name: Keep only non-secret snapshot identity and previous owner names in memory
   ansible.builtin.set_fact:
     _observability_authority: '{{ _observability_authority_capture.stdout | from_json }}'

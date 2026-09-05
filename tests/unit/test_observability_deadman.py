@@ -806,6 +806,113 @@ def test_http_server_has_bounded_queue_concurrency_and_read_timeout() -> None:
     assert "settimeout(5)" in SOURCE.read_text()
 
 
+def test_receiver_does_not_advertise_status_before_tls_listener_is_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+
+    class Server:
+        def __init__(self, address, _handler):  # type: ignore[no-untyped-def]
+            self.kind = "status" if address[1] == 19094 else "pulse"
+            self.socket = object()
+            events.append(f"{self.kind}-created")
+
+        def serve_forever(self) -> None:
+            events.append(f"{self.kind}-loop-entered")
+            if self.kind == "pulse":
+                self.service_actions()
+                self.service_actions()
+            events.append(f"{self.kind}-serving")
+
+        def service_actions(self) -> None:
+            events.append(f"{self.kind}-service-actions")
+
+        def server_close(self) -> None:
+            events.append(f"{self.kind}-closed")
+
+    class Context:
+        def wrap_socket(self, socket, *, server_side):  # type: ignore[no-untyped-def]
+            assert server_side is True
+            events.append("pulse-tls-ready")
+            return socket
+
+    class Thread:
+        def __init__(self, *, target, daemon):  # type: ignore[no-untyped-def]
+            assert daemon is True
+            self.target = target
+
+        def start(self) -> None:
+            events.append("status-thread-started")
+
+    monkeypatch.setattr(deadman, "_load_config", lambda _path: config())
+    monkeypatch.setattr(deadman, "_read_token", lambda _path: TOKEN)
+    monkeypatch.setattr(deadman, "BoundedPulseServer", Server)
+    monkeypatch.setattr(deadman, "_pulse_context", lambda _config: Context())
+    monkeypatch.setattr(deadman.threading, "Thread", Thread)
+
+    assert (
+        deadman._serve(
+            deadman.argparse.Namespace(
+                config="unused",
+                state="unused",
+                listen="127.0.0.1:9444",
+                status_listen="127.0.0.1:19094",
+            )
+        )
+        == 0
+    )
+    assert events.index("pulse-tls-ready") < events.index("pulse-loop-entered")
+    assert events.index("pulse-loop-entered") < events.index("status-thread-started")
+    assert events.index("status-thread-started") < events.index("pulse-serving")
+    assert events.count("status-thread-started") == 1
+    assert events[-2:] == ["pulse-closed", "status-closed"]
+
+
+def test_receiver_closes_unadvertised_servers_when_tls_setup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    servers: list[Server] = []
+
+    class Server:
+        def __init__(self, _address, _handler):  # type: ignore[no-untyped-def]
+            self.socket = object()
+            self.closed = False
+            servers.append(self)
+
+        def server_close(self) -> None:
+            self.closed = True
+
+    class Context:
+        def wrap_socket(self, _socket, *, server_side):  # type: ignore[no-untyped-def]
+            assert server_side is True
+            raise deadman.DeadmanError("credential unavailable")
+
+    class Thread:
+        def __init__(self, **_kwargs):  # type: ignore[no-untyped-def]
+            pass
+
+        def start(self) -> None:
+            pytest.fail("status readiness started before TLS setup completed")
+
+    monkeypatch.setattr(deadman, "_load_config", lambda _path: config())
+    monkeypatch.setattr(deadman, "_read_token", lambda _path: TOKEN)
+    monkeypatch.setattr(deadman, "BoundedPulseServer", Server)
+    monkeypatch.setattr(deadman, "_pulse_context", lambda _config: Context())
+    monkeypatch.setattr(deadman.threading, "Thread", Thread)
+
+    with pytest.raises(deadman.DeadmanError, match="credential unavailable"):
+        deadman._serve(
+            deadman.argparse.Namespace(
+                config="unused",
+                state="unused",
+                listen="127.0.0.1:9444",
+                status_listen="127.0.0.1:19094",
+            )
+        )
+    assert len(servers) == 2
+    assert all(server.closed for server in servers)
+
+
 def test_slow_or_short_pulse_body_fails_closed_without_state_write() -> None:
     class SlowReader:
         def read(self, _length: int) -> bytes:
@@ -1242,8 +1349,39 @@ def test_molecule_lifecycle_scenarios_cover_deadman_enable_disable_and_refusal()
     assert "pulse_tls:" in enabled_converge + enabled_verify
     assert "https://reverse.fixture.invalid:9444/v1/pulse" in enabled_verify
     assert "deadman_rotation_probe" in enabled_verify
-    assert "expected = (400, 204)" in enabled_verify
-    assert "expected = (400,)" in enabled_verify
+    assert (
+        "status_or_exit(b'fixture-rotated-pulse-token-012345678', 1)" in enabled_verify
+    )
+    assert "status_or_exit(b'fixture-pulse-token-0123456789', 2)" in enabled_verify
+    assert enabled_verify.index(
+        "status_or_exit(b'fixture-rotated-pulse-token-012345678', 1)"
+    ) < enabled_verify.index("status_or_exit(b'fixture-pulse-token-0123456789', 2)")
+    assert "statuses =" not in enabled_verify
+    assert "failed_when: false" in enabled_verify
+    assert "rotated-token-rejected" in enabled_verify
+    assert "previous-token-accepted" in enabled_verify
+    tasks_by_name = {task["name"]: task for task in enabled_verify_play["tasks"]}
+    for mode in ("token", "config"):
+        probe = tasks_by_name[
+            f"Require {mode}-only receiver "
+            + ("credential" if mode == "token" else "generation")
+            + " reload"
+        ]
+        result_name = f"deadman_{mode}_reload_probe"
+        assert probe["register"] == result_name
+        assert probe["failed_when"] is False
+        assert probe["no_log"] is True
+        classifier = tasks_by_name[
+            f"Classify {mode}-only receiver "
+            + ("credential" if mode == "token" else "generation")
+            + " reload"
+        ]
+        assert classifier["ansible.builtin.assert"]["that"] == [
+            f"{result_name}.rc == 0"
+        ]
+        failure = classifier["ansible.builtin.assert"]["fail_msg"]
+        assert "stdout" not in failure and "stderr" not in failure
+        assert "fixture-" not in failure
     rotation_names = [task["name"] for task in enabled_verify_play["tasks"]]
     assert (
         rotation_names.index("Include token-only rotated dead-man role")
