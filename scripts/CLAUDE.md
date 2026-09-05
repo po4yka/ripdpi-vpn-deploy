@@ -153,6 +153,10 @@ through Make and argv; no general site/backup task runs during installation.
 
 ## Pitfalls
 
+- **Mutation builds require sibling inputs** — `test-vpnd-mutants.sh` copies
+  tracked working-tree files before using cargo-mutants in-place in that owned
+  temporary tree. Never mutate the operator checkout or suppress its exit code.
+
 - **SOPS snapshot filenames preserve YAML format** — disposable onboarding
   copies encrypted YAML to a `.yaml` snapshot because the canonical decrypt
   command infers its store from the filename. Keep the real SOPS round-trip
