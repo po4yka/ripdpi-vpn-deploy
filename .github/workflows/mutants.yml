@@ -33,20 +33,37 @@ jobs:
           workspaces: vpnd
 
       - name: Install cargo-mutants
-        run: cargo install cargo-mutants --locked
+        run: cargo install cargo-mutants --version 27.0.0 --locked
 
       - name: Run mutation tests
         id: mutants
         working-directory: vpnd
-        # Full pass over examine_globs defined in .cargo-mutants.toml.
-        # --no-shuffle keeps output deterministic for diffing week-over-week.
-        # continue-on-error: surviving mutants are expected initially; they do
-        # NOT block anything — the tracking issue is the action signal.
-        continue-on-error: true
+        # Full pass over vpnd/.cargo/mutants.toml. Surviving mutants are
+        # reported below; baseline, timeout, usage and logging failures are red.
+        shell: bash
         run: |
-          cargo mutants --no-shuffle 2>&1 | tee /tmp/mutants-output.txt
-          # Capture exit code: 0 = clean, 2 = surviving mutants found
-          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          set +e
+          ../scripts/test-vpnd-mutants.sh 2>&1 | tee "$RUNNER_TEMP/mutants-output.txt"
+          status=("${PIPESTATUS[@]}")
+          set -e
+          echo "exit_code=${status[0]}" >> "$GITHUB_OUTPUT"
+          if (( status[1] != 0 )); then
+            exit "${status[1]}"
+          fi
+          case "${status[0]}" in
+            0|2) ;;
+            *) exit "${status[0]}" ;;
+          esac
+
+      - name: Retain mutation results and diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: vpnd-mutation-results
+          path: |
+            ${{ runner.temp }}/mutants-output.txt
+            vpnd/mutants.out/
+          retention-days: 14
 
       - name: Report surviving mutants to tracking issue
         if: steps.mutants.outputs.exit_code == '2'
@@ -54,7 +71,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const output = fs.readFileSync('/tmp/mutants-output.txt', 'utf8');
+            const output = fs.readFileSync(process.env.RUNNER_TEMP + '/mutants-output.txt', 'utf8');
             const label = 'automation:mutation-testing';
             const weekOf = new Date().toISOString().slice(0, 10);
             const title = `Surviving mutants — week of ${weekOf}`;

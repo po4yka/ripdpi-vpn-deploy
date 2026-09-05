@@ -53,6 +53,11 @@ against `^[A-Za-z0-9_-]+$` before use.
 
 ## Pitfalls
 
+- **Mutation tests need the repository layout** — use `make vpnd-mutants`:
+  its disposable tracked working-tree copy retains sibling docs, fixtures and
+  scripts. Stage new inputs first. `.cargo/mutants.toml` is the discovered
+  config; baseline and technical failures must never become successful CI.
+
 - **Don't add a shell-via-string surface** — every `Cmd` is argv-shaped. If you
   ever need a pipe or redirect, add a dedicated method to `Cmd`, don't smuggle
   `bash -c "…"` through.
