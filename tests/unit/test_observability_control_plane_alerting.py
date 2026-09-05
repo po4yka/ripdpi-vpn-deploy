@@ -936,6 +936,7 @@ def test_disable_tasks_remove_deadman_textfile_behaviorally(
                 {
                     "hosts": "localhost",
                     "connection": "local",
+                    "become": False,
                     "gather_facts": False,
                     "tasks": [isolated],
                 }

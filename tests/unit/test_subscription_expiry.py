@@ -82,9 +82,12 @@ def _issuer_env(tmp_path: Path) -> tuple[dict[str, str], Path, Path]:
         f"#!/bin/sh\ncase \"$*\" in *.meta*) cat > {meta_file} ;; *) cat > {payload_file} ;; esac\n",
     )
     env = os.environ.copy()
+    tool_path = os.pathsep.join(
+        entry for entry in env["PATH"].split(os.pathsep) if not entry.endswith("/mise/shims")
+    )
     env.update(
         {
-            "PATH": f"{bin_dir}:{STUBS_BIN}:{env['PATH']}",
+            "PATH": f"{bin_dir}:{STUBS_BIN}:{tool_path}",
             "HOME": str(tmp_path),
             "SOPS_FILE": str(secrets_file),
             "STUB_LOG": str(tmp_path / "stub.log"),
