@@ -106,6 +106,7 @@ def _vultr_guard_stub(root: Path) -> Path:
         'if [[ "$1" == validate-plan || "$1" == mark-apply-started ]]; then\n'
         '  fd=""; prev=""; for arg in "$@"; do [[ "$prev" == --fd-number ]] && fd="$arg"; prev="$arg"; done\n'
         '  printf "%s:%s\\n" "$1" "$(cat "/dev/fd/$fd")" >> "$GUARD_FD_LOG"\n'
+        '  /usr/bin/python3 -c "import os,sys; os.lseek(int(sys.argv[1]),0,os.SEEK_SET)" "$fd"\n'
         '  if [[ "$1" == mark-apply-started ]]; then while [[ $# -gt 0 ]]; do if [[ "$1" == --evidence-output ]]; then shift; printf apply_started > "$1"; chmod 600 "$1"; break; fi; shift; done; fi\n'
         "fi\n"
         'if [[ "$1" == rewind-plan-fd ]]; then shift; shift; /usr/bin/python3 -c "import os,sys; os.lseek(int(sys.argv[1]),0,os.SEEK_SET)" "$1"; fi\n'
@@ -1181,7 +1182,6 @@ def test_vultr_staging_destroy_keeps_one_fd_and_preserves_inventory(
         "validate-plan",
         "rewind-plan-fd",
         "mark-apply-started",
-        "rewind-plan-fd",
         "verify-vultr-absence",
     ]
     assert fd_log.read_text().splitlines() == [
@@ -1199,7 +1199,6 @@ def test_vultr_staging_destroy_keeps_one_fd_and_preserves_inventory(
     assert plan_fd.isdecimal()
     assert fd_number(parsed_calls[3]) == plan_fd
     assert fd_number(parsed_calls[4]) == plan_fd
-    assert fd_number(parsed_calls[5]) == plan_fd
     terraform_call_lines = (stub.parent / "terraform.log").read_text().splitlines()
     apply_call = next(
         shlex.split(line)

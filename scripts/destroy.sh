@@ -143,11 +143,21 @@ fi
 
 if [[ "$STAGING_GUARDED" == "true" ]]; then
   if [[ "$PROVIDER" == "vultr" ]]; then
-    "$STAGING_GUARD" recover-evidence \
+    RECOVERY_RESULT="$("$STAGING_GUARD" recover-evidence \
       --manifest "$STAGING_MANIFEST" \
       --evidence-output "$POST_DESTROY_EVIDENCE" \
       --expected-provider "$PROVIDER" \
-      --expected-environment "$ENV"
+      --expected-environment "$ENV")"
+    if [[ "$RECOVERY_RESULT" == "staging provider absence verified" ]]; then
+      env ENV="$ENV" PROVIDER="$PROVIDER" \
+        "${REPO_ROOT}/scripts/audit-log.sh" append-best-effort \
+          --action staging-destroy \
+          --env "$ENV" \
+          --provider "$PROVIDER" \
+          --note exact-owned-resources-absent
+      echo "previous staging destroy absence verified"
+      exit 0
+    fi
   fi
   "$STAGING_GUARD" authorize-reserve-evidence \
     --manifest "$STAGING_MANIFEST" \
@@ -240,9 +250,6 @@ if [[ "$STAGING_GUARDED" == "true" ]]; then
       --evidence-output "$POST_DESTROY_EVIDENCE" \
       --expected-provider "$PROVIDER" \
       --expected-environment "$ENV"
-  fi
-  if [[ "$PROVIDER" == "vultr" ]]; then
-    "$STAGING_GUARD" rewind-plan-fd --fd-number "$PLAN_FD"
   fi
 fi
 APPLY_STARTED=true

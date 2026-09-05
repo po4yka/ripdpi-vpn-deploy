@@ -216,6 +216,56 @@ def _private_write_new(path: Path, data: bytes, label: str) -> tuple[int, int]:
         os.close(parent)
 
 
+def _transition_pending_path(journal_path: Path) -> Path:
+    return journal_path.with_name(f".{journal_path.name}.pending")
+
+
+def _publish_transition_journal(
+    journal_path: Path, data: bytes, label: str
+) -> tuple[int, int]:
+    """Publish one complete transition journal, or leave only a discardable temp."""
+
+    pending_path = _transition_pending_path(journal_path)
+    pending_identity = _private_write_new(pending_path, data, label)
+    parent, name = _private_parent(journal_path, label)
+    try:
+        pending_name = pending_path.name
+        try:
+            if os.stat(name, dir_fd=parent, follow_symlinks=False):
+                raise GuardError(f"{label} already exists")
+        except FileNotFoundError:
+            pass
+        current = os.stat(pending_name, dir_fd=parent, follow_symlinks=False)
+        if (current.st_dev, current.st_ino) != pending_identity:
+            raise GuardError(f"{label} pending identity changed")
+        os.rename(pending_name, name, src_dir_fd=parent, dst_dir_fd=parent)
+        published = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        if (published.st_dev, published.st_ino) != pending_identity:
+            raise GuardError(f"{label} publication identity changed")
+        os.fsync(parent)
+        return pending_identity
+    except BaseException:
+        try:
+            _tombstone_unlink(pending_path, pending_identity, label)
+        except GuardError:
+            # A process crash can leave a complete, unreferenced pending file.
+            # Recovery discards only that exact private inode before any mutation.
+            pass
+        raise
+    finally:
+        os.close(parent)
+
+
+def _discard_pending_transition(journal_path: Path) -> None:
+    pending_path = _transition_pending_path(journal_path)
+    if not _path_present(pending_path, "evidence transition pending"):
+        return
+    _, identity = _private_read(
+        pending_path, "evidence transition pending", max_bytes=MAX_JSON_BYTES
+    )
+    _tombstone_unlink(pending_path, identity, "evidence transition pending")
+
+
 def _rewrite_private_inode(
     path: Path, expected_identity: tuple[int, int], data: bytes, label: str
 ) -> None:
@@ -289,7 +339,9 @@ def _transition_evidence(
         "old_evidence": old,
         "new_evidence": new,
     }
-    _private_write_new(journal_path, canonical_json(journal), "evidence transition")
+    _publish_transition_journal(
+        journal_path, canonical_json(journal), "evidence transition"
+    )
     _rewrite_private_inode(
         evidence_path, evidence_identity, canonical_json(new), "evidence"
     )
@@ -465,6 +517,7 @@ def _recover_pair_transition(
     """Finish a journaled evidence/reservation inode transition idempotently."""
 
     journal_path = _transition_path(evidence_path)
+    _discard_pending_transition(journal_path)
     if not _path_present(journal_path, "evidence transition"):
         return
     raw, journal_identity = _private_read(
@@ -807,8 +860,7 @@ def _extract_identity(state: dict[str, Any], hostname: str) -> dict[str, Any]:
                 raise GuardError("state SSH firewall rule source is invalid") from exc
             ip_type = "v4" if source.version == 4 else "v6"
             if (
-                source.prefixlen not in {32, 128}
-                or rule.get("protocol") != "tcp"
+                rule.get("protocol") != "tcp"
                 or rule.get("ip_type") != ip_type
                 or str(rule.get("port")) != str(ssh_port)
                 or rule.get("subnet") != str(source.network_address)
@@ -1129,7 +1181,9 @@ def release_evidence(
         "reservation_identity": [reservation_identity[0], reservation_identity[1]],
         "evidence": evidence,
     }
-    _private_write_new(journal_path, canonical_json(journal), "evidence transition")
+    _publish_transition_journal(
+        journal_path, canonical_json(journal), "evidence transition"
+    )
     journal_raw, journal_identity = _private_read(
         journal_path, "evidence transition", max_bytes=MAX_JSON_BYTES
     )
@@ -1149,10 +1203,15 @@ def recover_reserved_evidence(
     manifest_path: Path,
     evidence_path: Path,
     *,
+    request_json: JsonRequest | None = None,
     now: datetime | None = None,
     expected_environment: str | None = None,
-) -> None:
-    """Explicit crash recovery for an unused EEXIST reservation."""
+) -> str:
+    """Recover a pre-apply reservation or finish an already-started cleanup.
+
+    A retained ``apply_started`` receipt never permits a second Terraform
+    operation: it resumes only the provider absence observation.
+    """
 
     manifest = load_manifest(
         manifest_path,
@@ -1163,14 +1222,61 @@ def recover_reserved_evidence(
     _, manifest_identity = _private_read(
         manifest_path.absolute(), "manifest", max_bytes=MAX_JSON_BYTES
     )
+    reservation_path = _reservation_path(evidence_path)
+    if (
+        _path_present(evidence_path, "evidence")
+        and not _path_present(reservation_path, "evidence reservation")
+        and not _path_present(_transition_path(evidence_path), "evidence transition")
+    ):
+        raw, identity = _private_read(
+            evidence_path, "evidence", max_bytes=MAX_JSON_BYTES
+        )
+        receipt = _json(raw, "evidence")
+        if (
+            raw != canonical_json(receipt)
+            or _validate_lifecycle_receipt(receipt, manifest, manifest_identity)
+            != "reserved"
+        ):
+            raise GuardError("orphan evidence requires manual recovery")
+        _tombstone_unlink(evidence_path, identity, "evidence")
+        return "released"
     _recover_pair_transition(manifest, manifest_identity, evidence_path)
-    if _path_present(evidence_path, "evidence"):
+    if not _path_present(evidence_path, "evidence"):
+        return "none"
+    evidence, _ = _evidence(
+        manifest,
+        manifest_path,
+        evidence_path,
+        {
+            "reserved",
+            "plan_validated",
+            "apply_started",
+            "verified",
+            "verified_after_expiry",
+        },
+    )
+    if evidence["status"] in {"verified", "verified_after_expiry"}:
+        return "verified"
+    if evidence["status"] == "apply_started":
+        if request_json is None:
+            raise GuardError("apply-started recovery requires provider verification")
+        verify_vultr_absence(
+            manifest_path,
+            evidence_path,
+            request_json=request_json,
+            now=now,
+            expected_environment=expected_environment,
+        )
+        return "verified"
+    if evidence["status"] in {"reserved", "plan_validated"}:
         release_evidence(
             manifest_path,
             evidence_path,
             now=now,
             expected_environment=expected_environment,
         )
+        return "released"
+    raise GuardError("evidence lifecycle receipt is invalid")
 
 
 def _evidence(
@@ -1445,9 +1551,11 @@ def verify_vultr_absence(
     *,
     request_json: JsonRequest,
     now: datetime | None = None,
+    clock: Callable[[], datetime] | None = None,
     expected_environment: str | None = None,
 ) -> dict[str, Any]:
-    current = _time(now or datetime.now(timezone.utc), "current time")
+    read_clock = clock or (lambda: datetime.now(timezone.utc))
+    current = _time(now or read_clock(), "current time")
     manifest = load_manifest(
         manifest_path,
         now=current,
@@ -1481,19 +1589,24 @@ def verify_vultr_absence(
         status, _ = request_json(endpoint)
         if status != 404:
             raise GuardError(f"provider absence for {address} is ambiguous")
+    # Absence is timestamped only after every provider response. ``now`` is an
+    # initial validation instant; deterministic callers inject ``clock`` too.
+    observed = _time(read_clock(), "current time")
+    if observed < started_at:
+        raise GuardError("apply start receipt is invalid")
     expiry = _time(manifest["expiry_at"], "manifest expiry_at")
     verified = {
         "schema_version": SCHEMA_VERSION,
-        "status": "verified_after_expiry" if current >= expiry else "verified",
+        "status": "verified_after_expiry" if observed >= expiry else "verified",
         "deadline_status": (
-            "expired_after_apply" if current >= expiry else "within_deadline"
+            "expired_after_apply" if observed >= expiry else "within_deadline"
         ),
         "provider": "vultr",
         "environment": manifest["environment"],
         "manifest_sha256": started["manifest_sha256"],
         "manifest_identity": started["manifest_identity"],
         "apply_started_at": started["apply_started_at"],
-        "observed_at": _format_time(current),
+        "observed_at": _format_time(observed),
         "server_id": manifest["resources"]["server_id"],
         "root": manifest["resources"]["root"],
         "absent_addresses": sorted(endpoints),
@@ -1627,13 +1740,18 @@ def main(argv: list[str] | None = None) -> int:
         print("staging provider authorization reserved")
         return 0
     if args.command == "recover-evidence":
-        recover_reserved_evidence(
+        recovery = recover_reserved_evidence(
             args.manifest,
             args.evidence_output,
+            request_json=request_json,
             now=now,
             expected_environment=args.expected_environment,
         )
-        print("staging provider evidence recovered")
+        print(
+            "staging provider absence verified"
+            if recovery == "verified"
+            else "staging provider evidence recovered"
+        )
         return 0
     if args.command == "release-evidence":
         release_evidence(

@@ -538,6 +538,216 @@ def test_plan_apply_and_typed_absence_are_bound_to_manifest_and_account(
     assert reserved["status"] == "reserved"
 
 
+def test_apply_started_recovery_verifies_absence_without_a_second_plan_or_apply(
+    tmp_path: Path,
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    _, fd = _plan_files(manifest_path.parent, _plan())
+    try:
+        guard.validate_destroy_plan(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+        guard.mark_apply_started(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+    finally:
+        os.close(fd)
+
+    assert (
+        guard.recover_reserved_evidence(
+            manifest_path,
+            evidence_path,
+            request_json=_absent_request,
+            now=NOW + timedelta(minutes=1),
+            expected_environment=ENV,
+        )
+        == "verified"
+    )
+    assert guard._json(evidence_path.read_bytes(), "evidence")["status"] == "verified"
+
+
+def test_terminal_absence_receipt_recovery_is_idempotent_without_provider_calls(
+    tmp_path: Path,
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    _, fd = _plan_files(manifest_path.parent, _plan())
+    try:
+        guard.validate_destroy_plan(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+        guard.mark_apply_started(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+    finally:
+        os.close(fd)
+    guard.verify_vultr_absence(
+        manifest_path,
+        evidence_path,
+        request_json=_absent_request,
+        now=NOW,
+        clock=lambda: NOW + timedelta(minutes=1),
+        expected_environment=ENV,
+    )
+    before = evidence_path.read_bytes()
+    before_inode = evidence_path.stat().st_ino
+
+    def unexpected_request(path: str) -> tuple[int, dict[str, object]]:
+        raise AssertionError(f"terminal recovery must not request {path}")
+
+    assert (
+        guard.recover_reserved_evidence(
+            manifest_path,
+            evidence_path,
+            request_json=unexpected_request,
+            now=NOW + timedelta(minutes=2),
+            expected_environment=ENV,
+        )
+        == "verified"
+    )
+    assert evidence_path.read_bytes() == before
+    assert evidence_path.stat().st_ino == before_inode
+
+
+def test_absence_samples_observation_clock_after_all_provider_absence_reads(
+    tmp_path: Path,
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    _, fd = _plan_files(manifest_path.parent, _plan())
+    try:
+        guard.validate_destroy_plan(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+        guard.mark_apply_started(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+    finally:
+        os.close(fd)
+    observed = NOW + timedelta(minutes=2)
+    receipt = guard.verify_vultr_absence(
+        manifest_path,
+        evidence_path,
+        request_json=_absent_request,
+        now=NOW,
+        clock=lambda: observed,
+        expected_environment=ENV,
+    )
+    assert receipt["observed_at"] == guard._format_time(observed)
+
+
+def test_absence_default_clock_is_sampled_after_provider_reads(tmp_path: Path) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    _, fd = _plan_files(manifest_path.parent, _plan())
+    try:
+        guard.validate_destroy_plan(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+        guard.mark_apply_started(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+    finally:
+        os.close(fd)
+    provider_reads: list[datetime] = []
+
+    def absent(path: str) -> tuple[int, dict[str, object]]:
+        provider_reads.append(datetime.now(timezone.utc))
+        return _absent_request(path)
+
+    receipt = guard.verify_vultr_absence(
+        manifest_path,
+        evidence_path,
+        request_json=absent,
+        now=NOW,
+        expected_environment=ENV,
+    )
+    observed = guard._receipt_time(receipt["observed_at"], "observed_at")
+    assert provider_reads
+    assert observed >= provider_reads[-1].replace(microsecond=0)
+
+
+def test_manifest_accepts_a_terraform_valid_nonhost_ssh_cidr(tmp_path: Path) -> None:
+    state = _state()
+    ssh = next(
+        item
+        for item in state["resources"]
+        if item["type"] == "vultr_firewall_rule" and item["name"] == "ssh"
+    )
+    ssh["instances"][0]["index_key"] = "203.0.113.0/24"
+    ssh["instances"][0]["attributes"]["subnet"] = "203.0.113.0"
+    ssh["instances"][0]["attributes"]["subnet_size"] = 24
+    private = tmp_path / "private"
+    state_path = _private(private / "state.json", guard.canonical_json(state))
+    manifest = guard.create_manifest(
+        output_path=private / "manifest.json",
+        provider="vultr",
+        environment=ENV,
+        workspace=ENV,
+        state_path=state_path,
+        hostname=HOST,
+        request_json=_request,
+        now=NOW,
+    )
+    assert (
+        'vultr_firewall_rule.ssh["203.0.113.0/24"]'
+        in manifest["resources"]["firewall_rules"]
+    )
+
+
 @pytest.mark.parametrize("mutation", ["update", "foreign", "missing-rule"])
 def test_destroy_plan_refuses_nonexact_or_nondelete_actions(
     tmp_path: Path, mutation: str
@@ -1160,6 +1370,53 @@ def test_release_and_recovery_tombstone_only_the_owned_reservation(
     assert not guard._reservation_path(evidence_path).exists()
 
 
+def test_recovery_discards_unpublished_transition_temp_before_releasing_pair(
+    tmp_path: Path,
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    pending = guard._transition_pending_path(guard._transition_path(evidence_path))
+    guard._private_write_new(pending, b"partial", "evidence transition")
+
+    assert (
+        guard.recover_reserved_evidence(
+            manifest_path, evidence_path, now=NOW, expected_environment=ENV
+        )
+        == "released"
+    )
+    assert not pending.exists()
+    assert not evidence_path.exists()
+    assert not guard._reservation_path(evidence_path).exists()
+
+
+def test_recovery_releases_orphan_reserved_evidence_before_reservation_publish(
+    tmp_path: Path,
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    reservation_path = guard._reservation_path(evidence_path)
+    _, reservation_identity = guard._private_read(
+        reservation_path, "evidence reservation", max_bytes=guard.MAX_JSON_BYTES
+    )
+    guard._tombstone_unlink(
+        reservation_path, reservation_identity, "evidence reservation"
+    )
+
+    assert (
+        guard.recover_reserved_evidence(
+            manifest_path, evidence_path, now=NOW, expected_environment=ENV
+        )
+        == "released"
+    )
+    assert not evidence_path.exists()
+
+
 def test_release_accepts_plan_validated_evidence_before_apply(tmp_path: Path) -> None:
     manifest_path, manifest = _manifest(tmp_path)
     evidence_path = manifest_path.with_name("evidence.json")
@@ -1206,7 +1463,9 @@ def test_release_refuses_replaced_reservation_before_journal_without_unlinking_p
     def replace_reservation_before_journal(
         path: Path, data: bytes, label: str
     ) -> tuple[int, int]:
-        if path == guard._transition_path(evidence_path):
+        if path == guard._transition_pending_path(
+            guard._transition_path(evidence_path)
+        ):
             replacement = reservation_path.with_name("foreign-reservation.json")
             _private(replacement, original_reservation)
             replacement.replace(reservation_path)
@@ -1242,7 +1501,9 @@ def test_release_refuses_changed_reservation_bytes_before_unlinking_pair(
     def change_reservation_before_journal(
         path: Path, data: bytes, label: str
     ) -> tuple[int, int]:
-        if path == guard._transition_path(evidence_path):
+        if path == guard._transition_pending_path(
+            guard._transition_path(evidence_path)
+        ):
             guard._rewrite_private_inode(
                 reservation_path,
                 reservation_identity,
