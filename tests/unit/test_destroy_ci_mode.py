@@ -52,7 +52,16 @@ def _terraform_stub(tmp_path: Path, *, fail_apply: bool = False) -> Path:
     )
     stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
     python = tmp_path / "python3"
-    python.write_text("#!/usr/bin/env bash\nexit 0\n")
+    python.write_text(
+        "#!/usr/bin/env bash\n"
+        '[[ -n "${PYTHON_STUB_LOG:-}" ]] && printf \'%s\\n\' "$*" >> "$PYTHON_STUB_LOG"\n'
+        'if [[ "${FAIL_CONTROL_PLANE:-false}" == true ]]; then\n'
+        '  count=0; [[ ! -f "$CONTROL_PLANE_COUNT" ]] || read -r count < "$CONTROL_PLANE_COUNT"\n'
+        '  count=$((count + 1)); printf \'%s\\n\' "$count" > "$CONTROL_PLANE_COUNT"\n'
+        '  [[ "$count" -lt "${FAIL_CONTROL_PLANE_CALL:-1}" ]] || exit 9\n'
+        "fi\n"
+        "exit 0\n"
+    )
     python.chmod(python.stat().st_mode | stat.S_IXUSR)
     return stub
 
@@ -110,7 +119,7 @@ def _vultr_guard_stub(root: Path) -> Path:
         '  if [[ "$1" == mark-apply-started ]]; then while [[ $# -gt 0 ]]; do if [[ "$1" == --evidence-output ]]; then shift; printf apply_started > "$1"; chmod 600 "$1"; break; fi; shift; done; fi\n'
         "fi\n"
         'if [[ "$1" == rewind-plan-fd ]]; then shift; shift; /usr/bin/python3 -c "import os,sys; os.lseek(int(sys.argv[1]),0,os.SEEK_SET)" "$1"; fi\n'
-        'if [[ "$1" == release-evidence ]]; then while [[ $# -gt 0 ]]; do if [[ "$1" == --evidence-output ]]; then shift; rm -f "$1"; break; fi; shift; done; fi\n'
+        'if [[ "$1" == release-evidence ]]; then while [[ $# -gt 0 ]]; do if [[ "$1" == --evidence-output ]]; then shift; [[ ! -f "$1" || "$(cat "$1")" != apply_started ]] || exit 9; rm -f "$1"; break; fi; shift; done; fi\n'
     )
     guard.chmod(0o755)
     return guard
@@ -1273,6 +1282,109 @@ def test_vultr_staging_preapply_failure_releases_evidence(
     assert "never-log-this-token" not in result.stdout + result.stderr + "\n".join(
         guard_calls
     )
+
+
+def test_vultr_control_plane_failure_precedes_apply_started_receipt(
+    tmp_path: Path,
+) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-staging-vultr-preflight"
+    (root / f"terraform/providers/vultr/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci-staging.test"\n'
+    )
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    manifest = private / "manifest.json"
+    manifest.write_bytes(b"{}\n")
+    manifest.chmod(0o600)
+    evidence = private / "post-destroy.json"
+    _vultr_guard_stub(root)
+    stub = _terraform_stub(tmp_path)
+    guard_log = private / "guard.log"
+
+    result = _run(
+        root,
+        stub.parent,
+        env_name,
+        provider="vultr",
+        destroy_args=[
+            "--staging-manifest",
+            str(manifest),
+            "--post-destroy-evidence",
+            str(evidence),
+        ],
+        extra_env={
+            "VULTR_API_KEY": "never-log-this-token",
+            "GUARD_LOG": str(guard_log),
+            "GUARD_FD_LOG": str(private / "guard-fd.log"),
+            "FAIL_CONTROL_PLANE": "true",
+            "FAIL_CONTROL_PLANE_CALL": "2",
+            "CONTROL_PLANE_COUNT": str(private / "control-plane-count"),
+        },
+    )
+
+    assert result.returncode == 9
+    calls = [line.split()[0] for line in guard_log.read_text().splitlines()]
+    assert calls == [
+        "recover-evidence",
+        "authorize-reserve-evidence",
+        "validate-plan",
+        "rewind-plan-fd",
+        "release-evidence",
+    ]
+    assert " apply " not in f" {(stub.parent / 'terraform.log').read_text()} "
+    assert not evidence.exists()
+
+
+def test_vultr_apply_failure_retains_apply_started_receipt(
+    tmp_path: Path,
+) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-staging-vultr-apply-failure"
+    (root / f"terraform/providers/vultr/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci-staging.test"\n'
+    )
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    manifest = private / "manifest.json"
+    manifest.write_bytes(b"{}\n")
+    manifest.chmod(0o600)
+    evidence = private / "post-destroy.json"
+    _vultr_guard_stub(root)
+    stub = _terraform_stub(tmp_path)
+    guard_log = private / "guard.log"
+
+    result = _run(
+        root,
+        stub.parent,
+        env_name,
+        provider="vultr",
+        fail_apply=True,
+        destroy_args=[
+            "--staging-manifest",
+            str(manifest),
+            "--post-destroy-evidence",
+            str(evidence),
+        ],
+        extra_env={
+            "VULTR_API_KEY": "never-log-this-token",
+            "GUARD_LOG": str(guard_log),
+            "GUARD_FD_LOG": str(private / "guard-fd.log"),
+        },
+    )
+
+    assert result.returncode == 1
+    calls = [line.split()[0] for line in guard_log.read_text().splitlines()]
+    assert calls == [
+        "recover-evidence",
+        "authorize-reserve-evidence",
+        "validate-plan",
+        "rewind-plan-fd",
+        "mark-apply-started",
+        "release-evidence",
+    ]
+    assert evidence.read_text() == "apply_started"
+    assert "requires manual inspection" in result.stderr
 
 
 def test_staging_destroy_physicalizes_symlinked_tmpdir_before_plan_validation(

@@ -440,6 +440,34 @@ def test_manifest_requires_both_exact_icmp_families(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.parametrize("missing", ["ssh", "tcp_public"])
+def test_manifest_requires_every_firewall_rule_class(
+    tmp_path: Path, missing: str
+) -> None:
+    state = _state()
+    state["resources"] = [
+        item
+        for item in state["resources"]
+        if not (
+            item.get("type") == "vultr_firewall_rule" and item.get("name") == missing
+        )
+    ]
+    private = tmp_path / "private"
+    state_path = _private(private / "state.json", guard.canonical_json(state))
+
+    with pytest.raises(guard.GuardError, match="firewall rule class"):
+        guard.create_manifest(
+            output_path=private / "manifest.json",
+            provider="vultr",
+            environment=ENV,
+            workspace=ENV,
+            state_path=state_path,
+            hostname=HOST,
+            request_json=_request,
+            now=NOW,
+        )
+
+
 @pytest.mark.parametrize(
     ("rule_name", "index", "invalid_size"),
     [("ssh", 0, 0), ("tcp_public", 0, 32)],
@@ -538,6 +566,34 @@ def test_plan_apply_and_typed_absence_are_bound_to_manifest_and_account(
     assert reserved["status"] == "reserved"
 
 
+def test_plan_refuses_byte_identical_state_inode_replacement_after_reservation(
+    tmp_path: Path,
+) -> None:
+    manifest_path, manifest = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    state_path = Path(manifest["state"]["path"])
+    replacement = _private(
+        state_path.with_name("replacement.tfstate"), state_path.read_bytes()
+    )
+    replacement.replace(state_path)
+    _, fd = _plan_files(manifest_path.parent, _plan())
+    try:
+        with pytest.raises(guard.GuardError, match="state identity changed"):
+            guard.validate_destroy_plan(
+                manifest_path,
+                evidence_path,
+                request_json=_request,
+                plan_fd=fd,
+                now=NOW,
+                expected_environment=ENV,
+            )
+    finally:
+        os.close(fd)
+
+
 def test_apply_started_recovery_verifies_absence_without_a_second_plan_or_apply(
     tmp_path: Path,
 ) -> None:
@@ -566,6 +622,52 @@ def test_apply_started_recovery_verifies_absence_without_a_second_plan_or_apply(
         )
     finally:
         os.close(fd)
+
+    assert (
+        guard.recover_reserved_evidence(
+            manifest_path,
+            evidence_path,
+            request_json=_absent_request,
+            now=NOW + timedelta(minutes=1),
+            expected_environment=ENV,
+        )
+        == "verified"
+    )
+    assert guard._json(evidence_path.read_bytes(), "evidence")["status"] == "verified"
+
+
+def test_apply_started_recovery_accepts_destroyed_state_before_absence_verification(
+    tmp_path: Path,
+) -> None:
+    manifest_path, manifest = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    _, fd = _plan_files(manifest_path.parent, _plan())
+    try:
+        guard.validate_destroy_plan(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+        guard.mark_apply_started(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+    finally:
+        os.close(fd)
+
+    state_path = Path(manifest["state"]["path"])
+    state_path.write_bytes(b'{"version":4,"resources":[]}\n')
+    state_path.chmod(0o600)
 
     assert (
         guard.recover_reserved_evidence(
@@ -718,6 +820,61 @@ def test_absence_default_clock_is_sampled_after_provider_reads(tmp_path: Path) -
     observed = guard._receipt_time(receipt["observed_at"], "observed_at")
     assert provider_reads
     assert observed >= provider_reads[-1].replace(microsecond=0)
+
+
+def test_absence_refuses_manifest_replacement_during_provider_reads(
+    tmp_path: Path,
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    _, fd = _plan_files(manifest_path.parent, _plan())
+    try:
+        guard.validate_destroy_plan(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+        guard.mark_apply_started(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+    finally:
+        os.close(fd)
+    replaced = False
+
+    def replace_manifest(path: str) -> tuple[int, dict[str, object]]:
+        nonlocal replaced
+        if path != "/v2/account" and not replaced:
+            replacement = _private(
+                manifest_path.with_name("replacement-manifest.json"),
+                manifest_path.read_bytes(),
+            )
+            replacement.replace(manifest_path)
+            replaced = True
+        return _absent_request(path)
+
+    with pytest.raises(guard.GuardError, match="manifest identity changed"):
+        guard.verify_vultr_absence(
+            manifest_path,
+            evidence_path,
+            request_json=replace_manifest,
+            now=NOW,
+            clock=lambda: NOW + timedelta(minutes=1),
+            expected_environment=ENV,
+        )
+    assert (
+        guard._json(evidence_path.read_bytes(), "evidence")["status"] == "apply_started"
+    )
 
 
 def test_manifest_accepts_a_terraform_valid_nonhost_ssh_cidr(tmp_path: Path) -> None:
@@ -1417,6 +1574,34 @@ def test_recovery_releases_orphan_reserved_evidence_before_reservation_publish(
     assert not evidence_path.exists()
 
 
+@pytest.mark.parametrize("partial", ["evidence", "reservation"])
+def test_recovery_discards_partial_initial_evidence_publication(
+    tmp_path: Path, partial: str
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    reservation_path = guard._reservation_path(evidence_path)
+    if partial == "evidence":
+        reservation_path.unlink()
+        evidence_path.write_bytes(evidence_path.read_bytes()[:17])
+        evidence_path.chmod(0o600)
+    else:
+        reservation_path.write_bytes(reservation_path.read_bytes()[:17])
+        reservation_path.chmod(0o600)
+
+    assert (
+        guard.recover_reserved_evidence(
+            manifest_path, evidence_path, now=NOW, expected_environment=ENV
+        )
+        == "released"
+    )
+    assert not evidence_path.exists()
+    assert not reservation_path.exists()
+
+
 def test_release_accepts_plan_validated_evidence_before_apply(tmp_path: Path) -> None:
     manifest_path, manifest = _manifest(tmp_path)
     evidence_path = manifest_path.with_name("evidence.json")
@@ -2047,6 +2232,76 @@ def test_release_recovery_finishes_after_first_inode_unlink(
     assert not evidence_path.exists()
     assert not guard._reservation_path(evidence_path).exists()
     assert not guard._transition_path(evidence_path).exists()
+
+
+def test_direct_release_refuses_byte_identical_state_inode_replacement(
+    tmp_path: Path,
+) -> None:
+    manifest_path, manifest = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    reservation_path = guard._reservation_path(evidence_path)
+    evidence_before = evidence_path.read_bytes()
+    reservation_before = reservation_path.read_bytes()
+    state_path = Path(manifest["state"]["path"])
+    replacement = _private(
+        state_path.with_name("replacement-before-release.tfstate"),
+        state_path.read_bytes(),
+    )
+    replacement.replace(state_path)
+
+    with pytest.raises(guard.GuardError, match="state identity changed"):
+        guard.release_evidence(
+            manifest_path, evidence_path, now=NOW, expected_environment=ENV
+        )
+
+    assert evidence_path.read_bytes() == evidence_before
+    assert reservation_path.read_bytes() == reservation_before
+    assert not guard._transition_path(evidence_path).exists()
+
+
+def test_release_journal_recovery_refuses_replaced_state_without_unlinking_pair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path, manifest = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    reservation_path = guard._reservation_path(evidence_path)
+    original = guard._tombstone_unlink
+
+    def interrupt_before_unlink(*args: object, **kwargs: object) -> None:
+        raise guard.GuardError("simulated release interruption")
+
+    monkeypatch.setattr(guard, "_tombstone_unlink", interrupt_before_unlink)
+    with pytest.raises(guard.GuardError, match="simulated release interruption"):
+        guard.release_evidence(
+            manifest_path, evidence_path, now=NOW, expected_environment=ENV
+        )
+    monkeypatch.setattr(guard, "_tombstone_unlink", original)
+
+    journal_path = guard._transition_path(evidence_path)
+    evidence_before = evidence_path.read_bytes()
+    reservation_before = reservation_path.read_bytes()
+    journal_before = journal_path.read_bytes()
+    state_path = Path(manifest["state"]["path"])
+    replacement = _private(
+        state_path.with_name("replacement-before-recovery.tfstate"),
+        state_path.read_bytes(),
+    )
+    replacement.replace(state_path)
+
+    with pytest.raises(guard.GuardError, match="state identity changed"):
+        guard.recover_reserved_evidence(
+            manifest_path, evidence_path, now=NOW, expected_environment=ENV
+        )
+
+    assert evidence_path.read_bytes() == evidence_before
+    assert reservation_path.read_bytes() == reservation_before
+    assert journal_path.read_bytes() == journal_before
 
 
 def test_platform_without_nofollow_refuses_private_manifest_access(

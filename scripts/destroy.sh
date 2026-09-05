@@ -237,23 +237,29 @@ if [[ "$NON_INTERACTIVE" != "true" ]]; then
 fi
 
 if [[ "$STAGING_GUARDED" == "true" ]]; then
-  if [[ "$PROVIDER" == "vultr" ]]; then
-    "$STAGING_GUARD" mark-apply-started \
-      --manifest "$STAGING_MANIFEST" \
-      --evidence-output "$POST_DESTROY_EVIDENCE" \
-      --fd-number "$PLAN_FD" \
-      --expected-provider "$PROVIDER" \
-      --expected-environment "$ENV"
-  else
+  if [[ "$PROVIDER" != "vultr" ]]; then
     "$STAGING_GUARD" mark-apply-started \
       --manifest "$STAGING_MANIFEST" \
       --evidence-output "$POST_DESTROY_EVIDENCE" \
       --expected-provider "$PROVIDER" \
       --expected-environment "$ENV"
+    APPLY_STARTED=true
   fi
 fi
+if [[ "$STAGING_GUARDED" == "true" && "$PROVIDER" == "vultr" ]]; then
+  env \
+    PROVIDER="$PROVIDER" \
+    ENV="$ENV" \
+    VULTR_STAGING_MARK_APPLY=true \
+    VULTR_STAGING_PLAN_FD="$PLAN_FD" \
+    VULTR_STAGING_MANIFEST="$STAGING_MANIFEST" \
+    VULTR_STAGING_EVIDENCE="$POST_DESTROY_EVIDENCE" \
+    "${REPO_ROOT}/scripts/terraform-env.sh" apply "$PLAN_INPUT"
+else
+  env PROVIDER="$PROVIDER" ENV="$ENV" \
+    "${REPO_ROOT}/scripts/terraform-env.sh" apply "$PLAN_INPUT"
+fi
 APPLY_STARTED=true
-env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" apply "$PLAN_INPUT"
 if [[ -n "$PLAN_FD" ]]; then
   exec {PLAN_FD}<&-
 fi

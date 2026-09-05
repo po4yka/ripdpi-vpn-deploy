@@ -403,6 +403,20 @@ def _valid_plan_binding(value: Any) -> bool:
     )
 
 
+def _state_binding(manifest: dict[str, Any]) -> dict[str, Any]:
+    state_path = Path(manifest["state"]["path"])
+    raw, identity = _private_read(
+        state_path, "state", max_bytes=MAX_STATE_BYTES, exact_parent=False
+    )
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != manifest["state"]["sha256"]:
+        raise GuardError("state digest does not match manifest")
+    return {
+        "identity": [identity[0], identity[1]],
+        "sha256": digest,
+    }
+
+
 def _receipt_time(value: Any, label: str) -> datetime:
     try:
         parsed = _time(value, label)
@@ -428,7 +442,9 @@ def _validate_lifecycle_receipt(
     if any(receipt.get(key) != value for key, value in common.items()):
         raise GuardError("evidence lifecycle receipt is invalid")
     status = receipt.get("status")
-    base_keys = set(common) | {"status"}
+    if not _valid_plan_binding(receipt.get("state_binding")):
+        raise GuardError("evidence lifecycle receipt is invalid")
+    base_keys = set(common) | {"status", "state_binding"}
     if status == "reserved":
         if set(receipt) != base_keys:
             raise GuardError("evidence lifecycle receipt is invalid")
@@ -496,6 +512,8 @@ def _valid_lifecycle_successor(
 ) -> bool:
     """Require immutable transaction fields across durable receipt successors."""
 
+    if old_receipt["state_binding"] != new_receipt["state_binding"]:
+        return False
     if (old_status, new_status) not in {
         ("reserved", "plan_validated"),
         ("plan_validated", "apply_started"),
@@ -643,6 +661,8 @@ def _recover_release_transition(
         raise GuardError("evidence release transition is invalid") from exc
     if evidence_status not in {"reserved", "plan_validated"}:
         raise GuardError("evidence release transition is invalid")
+    if _state_binding(manifest) != journal["evidence"]["state_binding"]:
+        raise GuardError("state identity changed after authorization")
     evidence_identity = tuple(journal["evidence_identity"])
     reservation_identity = tuple(journal["reservation_identity"])
     evidence_present = _path_present(evidence_path, "evidence")
@@ -835,6 +855,8 @@ def _extract_identity(state: dict[str, Any], hostname: str) -> dict[str, Any]:
         raise GuardError("state SSH port binding is invalid")
     rules: dict[str, str] = {}
     icmp_keys: set[str] = set()
+    ssh_rules = 0
+    public_families: set[str] = set()
     for address in firewall_addresses:
         rule = indexed[address]
         match = re.fullmatch(
@@ -868,6 +890,7 @@ def _extract_identity(state: dict[str, Any], hostname: str) -> dict[str, Any]:
                 or rule.get("subnet_size") != source.prefixlen
             ):
                 raise GuardError("state SSH firewall rule is not exact")
+            ssh_rules += 1
         else:
             listener = re.fullmatch(r"(v[46])-(tcp|udp)-(\d{1,5})(?:-(\d{1,5}))?", key)
             if not listener:
@@ -886,12 +909,15 @@ def _extract_identity(state: dict[str, Any], hostname: str) -> dict[str, Any]:
                 or rule.get("subnet_size") != 0
             ):
                 raise GuardError("state public listener rule is not exact")
+            public_families.add(ip_type)
         rule_id = _decimal_id(rule.get("id"), "firewall rule ID")
         if rule.get("firewall_group_id") != firewall_group_id:
             raise GuardError("state firewall rule belongs to a foreign group")
         rules[address] = rule_id
     if icmp_keys != {"v4", "v6"}:
         raise GuardError("state must bind exact ICMP v4 and v6 rules")
+    if ssh_rules == 0 or public_families != {"v4", "v6"}:
+        raise GuardError("state must bind every firewall rule class")
     terraform_data_id = indexed["terraform_data.ssh_port"].get("id")
     if not isinstance(terraform_data_id, str) or not terraform_data_id:
         raise GuardError("state Terraform data binding is invalid")
@@ -1092,6 +1118,7 @@ def reserve_evidence(
         "environment": manifest["environment"],
         "manifest_sha256": hashlib.sha256(canonical_json(manifest)).hexdigest(),
         "manifest_identity": [identity[0], identity[1]],
+        "state_binding": _state_binding(manifest),
     }
     evidence_identity = _private_write_new(
         evidence_path.absolute(), canonical_json(evidence), "evidence"
@@ -1161,6 +1188,8 @@ def release_evidence(
         evidence_path,
         {"reserved", "plan_validated"},
     )
+    if _state_binding(manifest) != evidence["state_binding"]:
+        raise GuardError("state identity changed after authorization")
     expected_reservation = canonical_json(
         {"evidence_identity": [evidence_identity[0], evidence_identity[1]]}
     )
@@ -1218,30 +1247,68 @@ def recover_reserved_evidence(
         manifest_path,
         now=now,
         expected_environment=expected_environment,
+        verify_state=False,
         allow_expired=True,
     )
     _, manifest_identity = _private_read(
         manifest_path.absolute(), "manifest", max_bytes=MAX_JSON_BYTES
     )
+    _recover_pair_transition(manifest, manifest_identity, evidence_path)
     reservation_path = _reservation_path(evidence_path)
-    if (
-        _path_present(evidence_path, "evidence")
-        and not _path_present(reservation_path, "evidence reservation")
-        and not _path_present(_transition_path(evidence_path), "evidence transition")
-    ):
+    if _path_present(evidence_path, "evidence"):
         raw, identity = _private_read(
             evidence_path, "evidence", max_bytes=MAX_JSON_BYTES
         )
-        receipt = _json(raw, "evidence")
-        if (
-            raw != canonical_json(receipt)
-            or _validate_lifecycle_receipt(receipt, manifest, manifest_identity)
-            != "reserved"
-        ):
-            raise GuardError("orphan evidence requires manual recovery")
-        _tombstone_unlink(evidence_path, identity, "evidence")
-        return "released"
-    _recover_pair_transition(manifest, manifest_identity, evidence_path)
+        try:
+            candidate = _json(raw, "evidence")
+        except GuardError:
+            candidate = None
+        # Only an initial reserved publication can be recovered from a prefix.
+        # Later lifecycle receipts remain authoritative even though Terraform
+        # apply has legitimately replaced or removed the originally bound state.
+        if candidate is None or candidate.get("status") == "reserved":
+            expected = canonical_json(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "status": "reserved",
+                    "provider": "vultr",
+                    "environment": manifest["environment"],
+                    "manifest_sha256": hashlib.sha256(
+                        canonical_json(manifest)
+                    ).hexdigest(),
+                    "manifest_identity": [manifest_identity[0], manifest_identity[1]],
+                    "state_binding": _state_binding(manifest),
+                }
+            )
+            reservation_present = _path_present(
+                reservation_path, "evidence reservation"
+            )
+            reservation_raw = b""
+            reservation_identity: tuple[int, int] | None = None
+            if reservation_present:
+                reservation_raw, reservation_identity = _private_read(
+                    reservation_path,
+                    "evidence reservation",
+                    max_bytes=MAX_JSON_BYTES,
+                )
+            expected_reservation = canonical_json(
+                {"evidence_identity": [identity[0], identity[1]]}
+            )
+            incomplete_initial_pair = (
+                expected.startswith(raw)
+                and expected_reservation.startswith(reservation_raw)
+                and (raw != expected or reservation_raw != expected_reservation)
+            )
+            canonical_orphan = raw == expected and not reservation_present
+            if incomplete_initial_pair or canonical_orphan:
+                if reservation_identity is not None:
+                    _tombstone_unlink(
+                        reservation_path,
+                        reservation_identity,
+                        "evidence reservation",
+                    )
+                _tombstone_unlink(evidence_path, identity, "evidence")
+                return "released"
     if not _path_present(evidence_path, "evidence"):
         return "none"
     evidence, _ = _evidence(
@@ -1270,6 +1337,8 @@ def recover_reserved_evidence(
         )
         return "verified"
     if evidence["status"] in {"reserved", "plan_validated"}:
+        if _state_binding(manifest) != evidence["state_binding"]:
+            raise GuardError("state identity changed after authorization")
         release_evidence(
             manifest_path,
             evidence_path,
@@ -1406,6 +1475,8 @@ def validate_destroy_plan(
     evidence, evidence_identity = _evidence(
         manifest, manifest_path, evidence_path, "reserved"
     )
+    if _state_binding(manifest) != evidence["state_binding"]:
+        raise GuardError("state identity changed after authorization")
     if _account_binding(request_json) != manifest["provider_account_binding"]:
         raise GuardError("provider account identity changed")
     binding = bind_plan_fd(plan_fd)
@@ -1485,6 +1556,11 @@ def mark_apply_started(
     evidence, evidence_identity = _evidence(
         manifest, manifest_path, evidence_path, "plan_validated"
     )
+    if {
+        "identity": [state_identity[0], state_identity[1]],
+        "sha256": hashlib.sha256(state_before).hexdigest(),
+    } != evidence["state_binding"]:
+        raise GuardError("state identity changed after authorization")
     plan_value = evidence.get("plan_binding")
     if (
         not isinstance(plan_value, dict)
@@ -1595,6 +1671,14 @@ def verify_vultr_absence(
     observed = _time(read_clock(), "current time")
     if observed < started_at:
         raise GuardError("apply start receipt is invalid")
+    manifest_raw, manifest_identity = _private_read(
+        manifest_path.absolute(), "manifest", max_bytes=MAX_JSON_BYTES
+    )
+    if (
+        manifest_raw != canonical_json(manifest)
+        or [manifest_identity[0], manifest_identity[1]] != started["manifest_identity"]
+    ):
+        raise GuardError("manifest identity changed during absence verification")
     expiry = _time(manifest["expiry_at"], "manifest expiry_at")
     verified = {
         "schema_version": SCHEMA_VERSION,
@@ -1606,6 +1690,7 @@ def verify_vultr_absence(
         "environment": manifest["environment"],
         "manifest_sha256": started["manifest_sha256"],
         "manifest_identity": started["manifest_identity"],
+        "state_binding": started["state_binding"],
         "apply_started_at": started["apply_started_at"],
         "observed_at": _format_time(observed),
         "server_id": manifest["resources"]["server_id"],
