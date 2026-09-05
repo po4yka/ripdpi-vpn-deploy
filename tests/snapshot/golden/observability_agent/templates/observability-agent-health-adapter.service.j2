@@ -1,11 +1,12 @@
 [Unit]
-Description=RIPDPI watchdog and backup health adapter
+Description=RIPDPI watchdog, backup, and certificate health adapter
 After=vpn-watchdog.service vpn-backup.service vpn-backup-restore-drill.service
 
 [Service]
 Type=oneshot
 User=root
 Group=node_exporter_textfile
+LoadCredential=client.crt:/etc/observability-agent/credentials/generations/3333333333333333333333333333333333333333333333333333333333333333/client.crt
 ExecStart=/usr/local/libexec/observability-agent-health-adapter.py \
   --node-id  \
   --watchdog-state /var/lib/vpn-watchdog/state \
@@ -18,6 +19,7 @@ ExecStart=/usr/local/libexec/observability-agent-health-adapter.py \
   --restore-drill /var/lib/vpn-backup/restore-drill-last-success.json \
   --restore-drill-max-age-seconds 3024000 \
   --backup-snapshot-max-age-seconds 129600 \
+  --certificate %d/client.crt \
   --output /var/lib/node_exporter/textfile/observability-health.prom
 UMask=0027
 NoNewPrivileges=true

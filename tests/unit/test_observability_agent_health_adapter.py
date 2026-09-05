@@ -24,6 +24,25 @@ ADAPTER = (
     / "observability-agent-health-adapter.py"
 )
 
+TEST_CERTIFICATE = """-----BEGIN CERTIFICATE-----
+MIICvDCCAaQCCQDPLjjGiTxbyzANBgkqhkiG9w0BAQsFADAgMR4wHAYDVQQDDBVv
+YnNlcnZhYmlsaXR5LWZpeHR1cmUwHhcNMjYwOTA1MDAyNjU0WhcNMzYwOTAyMDAy
+NjU0WjAgMR4wHAYDVQQDDBVvYnNlcnZhYmlsaXR5LWZpeHR1cmUwggEiMA0GCSqG
+SIb3DQEBAQUAA4IBDwAwggEKAoIBAQC7b3bi8aYD6C2GS+J5q8qh7u8xItAxC3Yn
+iNh0fdfyqevTu0NfNKiQF3zqBnbHbQ0P0P02u8ozmTl9xCKpx6DZFa86iFMaRfx8
+BajfM/nzrVgCGUBAF1O7EA/UuuE+WPSQNGaCXClTnds093OvtBJL6vTS7tcTwg++
+cjYH5UuTvfTIIbfcXTCwrDobAomSfYlIQkiH9YS4qAMsn6WQeBUEMIO1DX3kjwV/
+GLlcIgnjRmkpoMuTF6YZRr7ln+A7ZpmQZ5hnMaZn6i44IWl8j6mlP9P3jdkgE+I2
+YDAOBnJmYDezvRI2i95SFnFd7dblTLAjKo3efDlxWG9SEYR6kLcHAgMBAAEwDQYJ
+KoZIhvcNAQELBQADggEBAIR8MevB6e4YQtuGWpo46PsEzpkeNdcCDezBnz2CnecT
+Y/ec+0fpGJXEz0CbiDBKpwTWyvfDNGJjIYE6JaYxad3TLNIAW5SmGdrTPeKl7TMw
+EctTjO4Ha4T7CRp8Hna7/Vi3DS/ag5Mhy2nSxuvQwTgJ1n1chxGpXo8UNeV68Kd3
+1SoUzS7TfjelQMABKHfYWkt9pVYuW+oHPt5fUcWGXshNxzgE/bpVjXJeI3336C1q
+M9Hn/0Bi3kgI3gr4Gurew/0P7dv7ccBBto5+1SDRw5KcaVn61+wcwiD1NW1c+Pp+
+B5gpOzyTwNBrxapJpEM/r44DE19ojingFHecLo60hF0=
+-----END CERTIFICATE-----
+"""
+
 
 def _adapter_module():
     spec = importlib.util.spec_from_file_location(
@@ -107,8 +126,14 @@ def _write_inputs(
     watchdog_path = root / "watchdog" / "state"
     stage_path = root / "backup" / "backup-stage-status.json"
     restore_path = root / "backup" / "restore-drill-last-success.json"
+    certificate_path = root / "credentials" / "client.crt"
     output = root / "textfile" / "observability-health.prom"
-    for directory in (watchdog_path.parent, stage_path.parent, output.parent):
+    for directory in (
+        watchdog_path.parent,
+        stage_path.parent,
+        certificate_path.parent,
+        output.parent,
+    ):
         directory.mkdir(mode=0o700, exist_ok=True)
     watchdog_path.write_text(watchdog if watchdog is not None else _watchdog_state())
     watchdog_path.chmod(0o640)
@@ -124,6 +149,10 @@ def _write_inputs(
         else json.dumps(restore_payload)
     )
     restore_path.chmod(0o600)
+    if certificate_path.exists():
+        certificate_path.chmod(0o600)
+    certificate_path.write_text(TEST_CERTIFICATE)
+    certificate_path.chmod(0o400)
     return watchdog_path, stage_path, restore_path, output
 
 
@@ -162,6 +191,8 @@ def _run(
             "3024000",
             "--backup-snapshot-max-age-seconds",
             "129600",
+            "--certificate",
+            str(root / "credentials" / "client.crt"),
             "--output",
             str(output),
         ],
@@ -200,7 +231,38 @@ def test_adapter_publishes_healthy_watchdog_and_backup_evidence(tmp_path: Path) 
         'vpn_backup_restore_source{node="edge-prod",role="restore-drill",state="remote"} 1'
         in metrics
     )
+    assert (
+        'vpn_certificate_collection_success{node="edge-prod",role="observability-sender"} 1'
+        in metrics
+    )
+    assert (
+        'vpn_certificate_not_after_timestamp_seconds{node="edge-prod",role="observability-sender"}'
+        in metrics
+    )
     assert output.stat().st_mode & 0o777 == 0o640
+
+
+def test_certificate_parse_failure_is_explicit_and_redacted(tmp_path: Path) -> None:
+    result, _metrics, paths = _run(tmp_path)
+    assert result.returncode == 0
+    certificate = tmp_path / "credentials" / "client.crt"
+    certificate.chmod(0o600)
+    certificate.write_text("private-certificate-content")
+    certificate.chmod(0o400)
+
+    rerun = subprocess.run(
+        result.args, cwd=ROOT, capture_output=True, text=True, timeout=10
+    )
+    metrics = paths[3].read_text()
+
+    assert rerun.returncode == 2
+    assert rerun.stderr == "observability-health-adapter: collection failed\n"
+    assert (
+        'vpn_certificate_collection_success{node="edge-prod",role="observability-sender"} 0'
+        in metrics
+    )
+    assert "vpn_certificate_not_after_timestamp_seconds" not in metrics
+    assert "private-certificate-content" not in metrics + rerun.stderr
 
 
 def test_watchdog_failure_restart_rate_limit_and_recovery_are_bounded(
@@ -459,7 +521,6 @@ def test_adapter_never_invokes_producer_commands_and_redacts_sensitive_values(
         assert sensitive not in combined
     source = ADAPTER.read_text()
     for forbidden in (
-        "subprocess",
         "systemctl",
         "restic",
         "vpn-watchdog.sh",

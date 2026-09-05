@@ -2,7 +2,7 @@ global:
   scrape_interval: {{ observability_agent.scrape_interval }}
   external_labels:
     environment: "{{ observability_agent.environment }}"
-    node_id: "{{ observability_agent.node_id }}"
+    node: "{{ observability_agent.node_id }}"
 
 scrape_configs:
   - job_name: node-exporter
@@ -14,7 +14,7 @@ scrape_configs:
       - targets: ["127.0.0.1:9100"]
     metric_relabel_configs:
       - source_labels: [__name__]
-        regex: "^(node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*|node_load(1|5|15)|vpn_(xray_stats|observability_).*)$"
+        regex: "^(node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*|node_load(1|5|15)|vpn_(xray_stats|observability_|watchdog_|backup_|certificate_|honeypot_|policy_ratelimit_|burn_).*)$"
         action: keep
       - source_labels: [mountpoint]
         regex: "^$|^/$"
@@ -22,7 +22,20 @@ scrape_configs:
       - source_labels: [device]
         regex: "^$|^(lo|eth[0-9]+|ens[0-9]+|enp[0-9a-z]+|vda[0-9]*|sda[0-9]*|nvme[0-9]+n[0-9]+p?[0-9]*)$"
         action: keep
-      - regex: "^(__name__|job|cpu|mode|device|fstype|mountpoint)$"
+      - regex: "^(__name__|job|cpu|mode|device|fstype|mountpoint|node|role|state)$"
+        action: labelkeep
+  - job_name: node-exporter-required-services
+    sample_limit: {{ observability_agent.scrape_sample_limit }}
+    label_limit: {{ observability_agent.scrape_label_limit }}
+    label_name_length_limit: {{ observability_agent.scrape_label_name_length_limit }}
+    label_value_length_limit: {{ observability_agent.scrape_label_value_length_limit }}
+    static_configs:
+      - targets: ["127.0.0.1:9100"]
+    metric_relabel_configs:
+      - source_labels: [__name__, name, state]
+        regex: "^node_systemd_unit_state;({% for unit in observability_alert_policy.required_systemd_units %}{{ unit | replace('.', '[.]') }}{% if not loop.last %}|{% endif %}{% endfor %});(active|failed)$"
+        action: keep
+      - regex: "^(__name__|job|name|state)$"
         action: labelkeep
   - job_name: observability-agent
     sample_limit: {{ observability_agent.scrape_sample_limit }}

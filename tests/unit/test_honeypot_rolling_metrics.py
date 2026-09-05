@@ -7,12 +7,13 @@ import re
 import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RENDERER = REPO_ROOT / "scripts" / "check-templates-render.py"
 TEMPLATE = REPO_ROOT / "ansible" / "roles" / "honeypot" / "templates" / "honeypot.py.j2"
 
-renderer_spec = importlib.util.spec_from_file_location("honeypot_metrics_renderer", RENDERER)
+renderer_spec = importlib.util.spec_from_file_location(
+    "honeypot_metrics_renderer", RENDERER
+)
 renderer = importlib.util.module_from_spec(renderer_spec)
 sys.modules[renderer_spec.name] = renderer
 renderer_spec.loader.exec_module(renderer)
@@ -51,6 +52,10 @@ def test_rolling_gauges_expire_events_after_sixty_calendar_minutes(
 
     metrics = (tmp_path / "textfile" / "vpn_honeypot.prom").read_text(encoding="utf-8")
     assert _metric(metrics, "vpn_honeypot_events_total") == 1
+    assert _metric(metrics, "vpn_honeypot_collection_success") == 1
+    assert _metric(metrics, "vpn_honeypot_last_success_timestamp_seconds") == 179 * 60
+    assert _metric(metrics, "vpn_honeypot_input_progress_total") == 1
+    assert _metric(metrics, "vpn_honeypot_input_errors_total") == 0
     assert _metric(metrics, "vpn_honeypot_events_last_minute") == 0
     assert _metric(metrics, "vpn_honeypot_events_60min") == 1
 
@@ -61,3 +66,36 @@ def test_rolling_gauges_expire_events_after_sixty_calendar_minutes(
     assert _metric(metrics, "vpn_honeypot_events_total") == 1
     assert _metric(metrics, "vpn_honeypot_events_last_minute") == 0
     assert _metric(metrics, "vpn_honeypot_events_60min") == 0
+    assert _metric(metrics, "vpn_honeypot_last_success_timestamp_seconds") == 180 * 60
+
+
+def test_input_failure_is_explicit_until_a_successful_publication(
+    tmp_path: Path, monkeypatch
+) -> None:
+    variables = renderer.merge_render_vars()
+    variables["honeypot"] = {
+        **variables["honeypot"],
+        "log_dir": str(tmp_path / "log"),
+        "textfile_dir": str(tmp_path / "textfile"),
+    }
+    source = renderer.render_template(TEMPLATE, variables)
+    module_path = tmp_path / "rendered_honeypot.py"
+    module_path.write_text(source, encoding="utf-8")
+    spec = importlib.util.spec_from_file_location(
+        "rendered_honeypot_errors", module_path
+    )
+    honeypot = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = honeypot
+    spec.loader.exec_module(honeypot)
+
+    monkeypatch.setattr(honeypot.time, "time", lambda: 181 * 60)
+    honeypot._record_input_error()
+    honeypot._flush_textfile()
+    metrics = (tmp_path / "textfile" / "vpn_honeypot.prom").read_text()
+    assert _metric(metrics, "vpn_honeypot_input_errors_total") == 1
+    assert 'vpn_honeypot_error_state{state="error"} 1' in metrics
+
+    honeypot._flush_textfile()
+    metrics = (tmp_path / "textfile" / "vpn_honeypot.prom").read_text()
+    assert _metric(metrics, "vpn_honeypot_input_errors_total") == 1
+    assert 'vpn_honeypot_error_state{state="ok"} 1' in metrics

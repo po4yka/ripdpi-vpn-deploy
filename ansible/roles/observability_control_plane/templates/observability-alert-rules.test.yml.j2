@@ -54,3 +54,75 @@ tests:
       - eval_time: 5m
         alertname: ObservabilityBackupEvidenceStale
         exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{environment="staging",node="vpn-p0",mountpoint="/"}'
+        values: '4x8'
+      - series: 'node_filesystem_size_bytes{environment="staging",node="vpn-p0",mountpoint="/"}'
+        values: '100x8'
+      - series: 'node_filesystem_readonly{environment="staging",node="vpn-p0",mountpoint="/"}'
+        values: '0x8'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ObservabilityNodeDiskSpaceCritical
+        exp_alerts:
+          - exp_labels: {component: node-filesystem, environment: staging, node: vpn-p0, severity: critical}
+            exp_annotations: {incident_family: node-disk, evidence_class: disk-available-critical, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem available space crossed the configured critical threshold., runbook: docs/RUNBOOK-incident.md}
+      - eval_time: 6m
+        alertname: ObservabilityNodeDiskSpaceLow
+        exp_alerts:
+          - exp_labels: {component: node-filesystem, environment: staging, node: vpn-p0, severity: warning}
+            exp_annotations: {incident_family: node-disk, evidence_class: disk-available-low, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem available space crossed the configured warning threshold., runbook: docs/RUNBOOK-incident.md}
+  - interval: 1m
+    input_series:
+      - series: 'node_systemd_unit_state{environment="staging",node="vpn-p0",name="nginx.service",state="active"}'
+        values: '0x5'
+      - series: 'node_systemd_unit_state{environment="staging",node="vpn-p0",name="nginx.service",state="failed"}'
+        values: '0x5'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ObservabilityRequiredServiceNotActive
+        exp_alerts:
+          - exp_labels: {component: service, environment: staging, node: vpn-p0, severity: critical}
+            exp_annotations: {incident_family: required-service, evidence_class: observed-service-not-active, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Fresh node telemetry reports a required systemd service is not active., runbook: docs/RUNBOOK-incident.md}
+  - interval: 1m
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ObservabilityRequiredServiceNotActive
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'vpn_policy_ratelimit_last_success_timestamp_seconds{environment="staging",node="vpn-p1"}'
+        values: '0x10'
+      - series: 'vpn_policy_ratelimit_dead_contract{environment="staging",node="vpn-p1"}'
+        values: '1x10'
+      - series: 'vpn_policy_ratelimit_input_progress_total{environment="staging",node="vpn-p1"}'
+        values: '10x10'
+      - series: 'vpn_honeypot_events_60min{environment="staging",node="vpn-p1"}'
+        values: '101x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ObservabilityDetectorInputStalled
+        exp_alerts:
+          - exp_labels: {component: detector, environment: staging, node: vpn-p1, severity: warning}
+            exp_annotations: {incident_family: detector-input, evidence_class: input-contract-stalled, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Detector input advanced without any recognized policy event., runbook: docs/RUNBOOK-incident.md}
+      - eval_time: 4m
+        alertname: ObservabilityDetectorEventThreshold
+        exp_alerts:
+          - exp_labels: {component: detector, environment: staging, node: vpn-p1, severity: warning}
+            exp_annotations: {incident_family: detector-events, evidence_class: event-threshold, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A security or reachability detector crossed its event threshold., runbook: docs/RUNBOOK-incident.md}
+      - eval_time: 7m
+        alertname: ObservabilityDetectorEvidenceStale
+        exp_alerts:
+          - exp_labels: {component: detector, environment: staging, node: vpn-p1, severity: warning}
+            exp_annotations: {incident_family: detector-health, evidence_class: evidence-stale, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A detector success timestamp exceeded its bounded cadence., runbook: docs/RUNBOOK-incident.md}
+  - interval: 1m
+    input_series:
+      - series: 'vpn_certificate_collection_success{environment="staging",node="vpn-p0",role="observability-sender"}'
+        values: '0x5'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ObservabilityCertificateCollectionFailed
+        exp_alerts:
+          - exp_labels: {component: certificate, environment: staging, node: vpn-p0, severity: warning}
+            exp_annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Managed certificate expiry collection failed., runbook: docs/RUNBOOK-incident.md}

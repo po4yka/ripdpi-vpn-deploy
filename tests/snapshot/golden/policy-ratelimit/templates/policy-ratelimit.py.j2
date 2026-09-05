@@ -127,6 +127,8 @@ class RateLimiter:
         self.lines = 0
         self.events = 0
         self.bans = 0
+        self.errors = 0
+        self.reported_errors = 0
 
     def observe(self, line: str, now: float) -> str | None:
         """Process one line at logical time `now`. Returns IP to ban or None."""
@@ -164,7 +166,7 @@ class RateLimiter:
         return self.lines >= min_lines and self.events == 0
 
 
-def add_offender(ip: str, ban_seconds: int) -> None:
+def add_offender(ip: str, ban_seconds: int) -> bool:
     family_set = "policy_offenders6" if ipaddress.ip_address(ip).version == 6 else "policy_offenders"
     cmd = [
         "nft", "add", "element", "inet", "filter", family_set,
@@ -173,8 +175,10 @@ def add_offender(ip: str, ban_seconds: int) -> None:
     rc = subprocess.run(cmd, capture_output=True).returncode
     if rc == 0:
         logging.info("banned %s for %ds", ip, ban_seconds)
+        return True
     else:
         logging.warning("nft add element failed for %s (rc=%d)", ip, rc)
+        return False
 
 
 def flush_textfile(limiter: RateLimiter) -> None:
@@ -183,7 +187,23 @@ def flush_textfile(limiter: RateLimiter) -> None:
         out = TEXTFILE_DIR / "vpn_policy_ratelimit.prom"
         tmp = out.with_suffix(".prom.tmp")
         dead = 1 if limiter.dead_contract(DEAD_CONTRACT_MIN_LINES) else 0
+        error_state = "error" if limiter.errors > limiter.reported_errors else "ok"
         tmp.write_text(
+            "# HELP vpn_policy_ratelimit_collection_success Whether the latest detector publication completed\n"
+            "# TYPE vpn_policy_ratelimit_collection_success gauge\n"
+            "vpn_policy_ratelimit_collection_success 1\n"
+            "# HELP vpn_policy_ratelimit_last_success_timestamp_seconds Unix timestamp of the latest detector publication\n"
+            "# TYPE vpn_policy_ratelimit_last_success_timestamp_seconds gauge\n"
+            f"vpn_policy_ratelimit_last_success_timestamp_seconds {int(time.time())}\n"
+            "# HELP vpn_policy_ratelimit_input_progress_total Access-log inputs consumed since service start\n"
+            "# TYPE vpn_policy_ratelimit_input_progress_total counter\n"
+            f"vpn_policy_ratelimit_input_progress_total {limiter.lines}\n"
+            "# HELP vpn_policy_ratelimit_input_errors_total Bounded enforcement errors since service start\n"
+            "# TYPE vpn_policy_ratelimit_input_errors_total counter\n"
+            f"vpn_policy_ratelimit_input_errors_total {limiter.errors}\n"
+            "# HELP vpn_policy_ratelimit_error_state Whether the detector has observed an enforcement error\n"
+            "# TYPE vpn_policy_ratelimit_error_state gauge\n"
+            'vpn_policy_ratelimit_error_state{state="' + error_state + '"} 1\n'
             "# HELP vpn_policy_ratelimit_bans_total Total IPs banned since service start\n"
             "# TYPE vpn_policy_ratelimit_bans_total counter\n"
             f"vpn_policy_ratelimit_bans_total {limiter.bans}\n"
@@ -198,6 +218,7 @@ def flush_textfile(limiter: RateLimiter) -> None:
             f"vpn_policy_ratelimit_dead_contract {dead}\n"
         )
         tmp.replace(out)
+        limiter.reported_errors = limiter.errors
     except OSError as exc:
         logging.debug("textfile flush skipped: %s", exc)
 
@@ -232,7 +253,8 @@ def main() -> None:
         now = time.time()
         ip = limiter.observe(line, now)
         if ip is not None:
-            add_offender(ip, BAN_SECONDS)
+            if not add_offender(ip, BAN_SECONDS):
+                limiter.errors += 1
         if now - last_flush > 15:
             flush_textfile(limiter)
             last_flush = now
