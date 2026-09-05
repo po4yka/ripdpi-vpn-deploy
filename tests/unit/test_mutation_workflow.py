@@ -48,7 +48,8 @@ def test_workflow_only_accepts_clean_or_surviving_mutants(tmp_path, code, log_fa
     assert not step.get("continue-on-error", False)
 
 
-def test_runner_preserves_repository_inputs_and_original_source(tmp_path):
+@pytest.mark.parametrize("missing_input", [False, True])
+def test_runner_preserves_repository_inputs_and_original_source(tmp_path, missing_input):
     repo = tmp_path / "repo"
     repo.mkdir()
     for name, content in {
@@ -63,12 +64,20 @@ def test_runner_preserves_repository_inputs_and_original_source(tmp_path):
         path.write_text(content)
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+    if missing_input:
+        (repo / "scripts/helper.sh").unlink()
     (repo / "docs/runbook.md").write_text("working tree docs\n")
     (repo / "untracked-private-file").write_text("not a build input")
     binary = tmp_path / "bin"
     binary.mkdir()
     cargo = binary / "cargo"
     marker = tmp_path / "scratch-path"
+    if missing_input:
+        # GNU tar uses 2 for fatal copy errors, the same code cargo-mutants
+        # uses for survivors. A setup error must never become a finding.
+        tar = binary / "tar"
+        tar.write_text("#!/bin/sh\nexit 2\n")
+        tar.chmod(0o755)
     cargo.write_text("""#!/usr/bin/env python3
 import os
 from pathlib import Path
@@ -91,6 +100,9 @@ sys.exit(4)
              "ORIGINAL_ROOT": str(repo), "SCRATCH_MARKER": str(marker)},
         capture_output=True, text=True, timeout=10,
     )
-    assert result.returncode == 4, result.stderr
+    assert result.returncode == (1 if missing_input else 4), result.stderr
     assert (repo / "vpnd/src/lib.rs").read_text() == "original source\n"
-    assert not Path(marker.read_text()).exists()
+    if missing_input:
+        assert not marker.exists()
+    else:
+        assert not Path(marker.read_text()).exists()

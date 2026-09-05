@@ -10,7 +10,10 @@ trap 'rm -rf "$scratch"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-git -C "$root" ls-files -z | tar -C "$root" --null -T - -cf - | tar -C "$scratch" -xf -
+if ! git -C "$root" ls-files -z | tar -C "$root" --null -T - -cf - | tar -C "$scratch" -xf -; then
+  echo "Cannot prepare mutation source tree" >&2
+  exit 1 # tar's exit 2 is a setup failure, never a surviving-mutant verdict.
+fi
 
 # Retain only build artifacts and mutation reports outside the temporary tree.
 # In-place execution is serial; compiler parallelism is bounded separately by
