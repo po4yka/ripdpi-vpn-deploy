@@ -36,6 +36,10 @@ HOST = "vpn-ci-staging-20260905"
 PLAN_VIEWS: dict[tuple[int, int], bytes] = {}
 
 
+def test_operator_guard_is_executable() -> None:
+    assert SCRIPT.stat().st_mode & stat.S_IXUSR
+
+
 def _private(path: Path, data: bytes) -> Path:
     path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
     path.parent.chmod(0o700)
