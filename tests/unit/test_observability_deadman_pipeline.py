@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from collections.abc import Generator
 from email.message import Message
 import hashlib
 import hmac
@@ -10,6 +11,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import socket
 import ssl
 import stat
@@ -36,6 +38,23 @@ DEADMAN_SOURCE = DEADMAN_ROLE / "files/observability-deadman.py"
 TOKEN = b"bounded-deadman-pulse-token"
 NOW = 1_800_000_000
 GENERATION = "a" * 40
+
+
+@pytest.fixture
+def tmp_path() -> Generator[Path, None, None]:
+    """Use a trusted owner-only root for positive pipeline fixtures.
+
+    The pipeline correctly refuses a world-writable ancestor such as CI's
+    ``/tmp``.  Negative cases below create unsafe descendants explicitly.
+    """
+    directory = Path(
+        tempfile.mkdtemp(prefix=".observability-pipeline-", dir=Path.home())
+    )
+    directory.chmod(0o700)
+    try:
+        yield directory
+    finally:
+        shutil.rmtree(directory)
 
 
 def _module(name: str, path: Path):  # type: ignore[no-untyped-def]
