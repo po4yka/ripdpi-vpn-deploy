@@ -129,6 +129,50 @@ $(error disposable liveness inputs must be literal values)
 endif
 endif
 
+# Unbound staging client retirement mutates one encrypted SOPS document.  Its
+# private evidence paths are data, never Make syntax, and provider credentials
+# have no place in this provider-read-free recovery operation.
+ifneq ($(filter retire-unbound-staging-client,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error unbound staging client retirement requires exactly one Make goal)
+endif
+_UNBOUND_RETIRE_ALLOWED_COMMAND_VARIABLES := UNBOUND_STAGING_INTENT STAGING_CLEANUP_MANIFEST STAGING_POST_DESTROY_EVIDENCE STAGING_CLEANUP_STATE SOPS_FILE UNBOUND_CLIENT_JOURNAL UNBOUND_CLIENT_RECEIPT
+_UNBOUND_RETIRE_COMMAND_VARIABLES := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
+_UNBOUND_RETIRE_FORBIDDEN_COMMAND_VARIABLES := $(filter-out $(_UNBOUND_RETIRE_ALLOWED_COMMAND_VARIABLES),$(_UNBOUND_RETIRE_COMMAND_VARIABLES))
+ifneq ($(filter-out undefined environment,$(origin SOPS_AGE_KEY_FILE) $(origin SOPS_AGE_KEY_CMD) $(origin UPCLOUD_USERNAME) $(origin UPCLOUD_PASSWORD) $(origin UPCLOUD_API_USERNAME) $(origin UPCLOUD_API_PASSWORD) $(origin UPCLOUD_TOKEN) $(origin TAILSCALE_AUTH_KEY)),)
+$(error unbound staging client retirement credentials must come from the environment)
+endif
+ifneq ($(strip $(_UNBOUND_RETIRE_FORBIDDEN_COMMAND_VARIABLES)),)
+$(error unbound staging client retirement accepts only its documented command-line fields)
+endif
+_UNBOUND_RETIRE_LITERAL_INPUTS := $(value UNBOUND_STAGING_INTENT)$(value STAGING_CLEANUP_MANIFEST)$(value STAGING_POST_DESTROY_EVIDENCE)$(value STAGING_CLEANUP_STATE)$(value SOPS_FILE)$(value UNBOUND_CLIENT_JOURNAL)$(value UNBOUND_CLIENT_RECEIPT)$(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)
+override UNBOUND_STAGING_INTENT := $(value UNBOUND_STAGING_INTENT)
+override STAGING_CLEANUP_MANIFEST := $(value STAGING_CLEANUP_MANIFEST)
+override STAGING_POST_DESTROY_EVIDENCE := $(value STAGING_POST_DESTROY_EVIDENCE)
+override STAGING_CLEANUP_STATE := $(value STAGING_CLEANUP_STATE)
+override SOPS_FILE := $(value SOPS_FILE)
+override UNBOUND_CLIENT_JOURNAL := $(value UNBOUND_CLIENT_JOURNAL)
+override UNBOUND_CLIENT_RECEIPT := $(value UNBOUND_CLIENT_RECEIPT)
+export UNBOUND_STAGING_INTENT STAGING_CLEANUP_MANIFEST STAGING_POST_DESTROY_EVIDENCE STAGING_CLEANUP_STATE SOPS_FILE UNBOUND_CLIENT_JOURNAL UNBOUND_CLIENT_RECEIPT
+override ENV := $(value ENV)
+override PROVIDER := $(value PROVIDER)
+override HOME := $(value HOME)
+override DEPLOY_SOURCE_REVISION :=
+override DEPLOYABLE_SOURCE_DIGEST :=
+MAKEOVERRIDES :=
+unexport MAKEFLAGS MFLAGS
+unexport UPCLOUD_USERNAME UPCLOUD_PASSWORD UPCLOUD_API_USERNAME UPCLOUD_API_PASSWORD UPCLOUD_TOKEN TAILSCALE_AUTH_KEY
+ifneq ($(findstring $$,$(_UNBOUND_RETIRE_LITERAL_INPUTS)),)
+$(error unbound staging client retirement inputs must be literal values)
+endif
+ifneq ($(findstring ",$(_UNBOUND_RETIRE_LITERAL_INPUTS)),)
+$(error unbound staging client retirement inputs must be literal values)
+endif
+ifneq ($(findstring ',$(_UNBOUND_RETIRE_LITERAL_INPUTS)),)
+$(error unbound staging client retirement inputs must be literal values)
+endif
+endif
+
 -include .fleet.mk
 
 # Capture deployment labels before the eager Terraform path assignments below.
@@ -320,6 +364,7 @@ help:
 	@echo "  install-disposable-liveness-sentinel …  Bind and onboard one disposable sentinel from stdin"
 	@echo "  protocol-liveness-disposable …  Evaluate one exact executor-bound report"
 	@echo "  deonboard-disposable-liveness …  Remove the exact assignment after guarded provider absence"
+	@echo "  retire-unbound-staging-client …  Remove one unbound issued staging identity after verified absence"
 	@echo "  watch-spare                Cron: probe blue, push OTP-gated promote alert"
 	@echo "  promote-spare OTP=…        Consume OTP and swing traffic to GREEN_ENV"
 	@echo ""
@@ -1084,6 +1129,21 @@ deonboard-disposable-liveness:
 	  --config "$${LIVENESS_CONFIG}" \
 	  --sops-file "$${SOPS_FILE}" \
 	  --output "$${DEONBOARD_EVIDENCE}"
+
+.PHONY: retire-unbound-staging-client
+retire-unbound-staging-client:
+	@test -n "$${UNBOUND_STAGING_INTENT}" -a -n "$${STAGING_CLEANUP_MANIFEST}" \
+	  -a -n "$${STAGING_POST_DESTROY_EVIDENCE}" -a -n "$${STAGING_CLEANUP_STATE}" \
+	  -a -n "$${SOPS_FILE}" -a -n "$${UNBOUND_CLIENT_JOURNAL}" \
+	  -a -n "$${UNBOUND_CLIENT_RECEIPT}" || { echo "usage: make retire-unbound-staging-client UNBOUND_STAGING_INTENT=… STAGING_CLEANUP_MANIFEST=… STAGING_POST_DESTROY_EVIDENCE=… STAGING_CLEANUP_STATE=… SOPS_FILE=… UNBOUND_CLIENT_JOURNAL=… UNBOUND_CLIENT_RECEIPT=…"; exit 1; }
+	@build-gate -- python3 ./scripts/retire-unbound-staging-client.py \
+	  --intent "$${UNBOUND_STAGING_INTENT}" \
+	  --cleanup-manifest "$${STAGING_CLEANUP_MANIFEST}" \
+	  --absence-evidence "$${STAGING_POST_DESTROY_EVIDENCE}" \
+	  --state "$${STAGING_CLEANUP_STATE}" \
+	  --sops-file "$${SOPS_FILE}" \
+	  --journal "$${UNBOUND_CLIENT_JOURNAL}" \
+	  --receipt "$${UNBOUND_CLIENT_RECEIPT}"
 
 probing-summary:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/probing-summary.sh

@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-09-06
+goal: SEC-1788639574108602 Retire unbound staging client identities after
+  verified cleanup
