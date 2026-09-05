@@ -1,10 +1,7 @@
-"""Unit tests for scripts/scan-reality-targets.sh.
+"""Scanner wrapper tests: installer, arguments, CSV filtering and ASN annotation.
 
-The script wraps a third-party binary (RealiTLScanner) that cannot be stubbed
-via PATH (the script resolves it by an absolute cached path, not via PATH).
-Tests here cover the argument-validation and early-exit paths that fire before
-the binary is invoked.  The actual scan logic is exercised in CI where the
-binary can be downloaded; those paths are skipped locally with a clear reason.
+Cached scanner/WHOIS fixtures exercise the shell pipeline offline. These tests
+are not evidence of a real TLS scan or public-target reachability.
 """
 from __future__ import annotations
 
@@ -166,13 +163,65 @@ def test_macos_installer_replaces_an_unlaunchable_cached_binary(tmp_path):
     assert cached.read_bytes() == scanner_source.read_bytes()
 
 
-@pytest.mark.skip(
-    reason=(
-        "Full scan requires RealiTLScanner binary and network access. "
-        "Run manually: scripts/scan-reality-targets.sh --seeds <file>"
+@pytest.mark.parametrize("top", [1, 3])
+def test_scan_csv_filtering_asn_status_and_top_limit(tmp_path, top):
+    cache = tmp_path / "tool-cache"
+    cache.mkdir()
+    csv = (
+        "IP,ORIGIN,CERT_DOMAIN,CERT_ISSUER,GEO_CODE\n"
+        '192.0.2.1,overused.example,"*.google.com",Fixture,ZZ\n'
+        "192.0.2.2,first.example,first.example,Fixture,ZZ\n"
+        "192.0.2.3,second.example,second.example,Fixture,ZZ\n"
+        "192.0.2.4,third.example,third.example,Fixture,ZZ\n"
     )
-)
-def test_full_scan_verdict_aggregation(tmp_path):
-    """Placeholder for a future integration test that exercises the full
-    post-filter + ASN-annotation pipeline against a real scan result."""
-    pass
+    fixture = tmp_path / "scan.csv"
+    fixture.write_text(csv)
+    scanner = cache / "RealiTLScanner-v0.2.1"
+    scanner.write_text(
+        '#!/bin/sh\nset -eu\n[ "$1" = -h ] && exit 0\n'
+        'while [ "$1" != -out ]; do shift; done\n'
+        'cp "$SCAN_CSV_FIXTURE" "$2"\n'
+    )
+    scanner.chmod(0o755)
+    commands = tmp_path / "commands"
+    commands.mkdir()
+    whois = commands / "whois"
+    whois.write_text(
+        '#!/bin/sh\ncase "$*" in\n'
+        '*192.0.2.2) echo "13335 | fixture";;\n'
+        '*192.0.2.3) echo "64501 | fixture";;\n'
+        '*192.0.2.4) echo "64500 | fixture";;\n'
+        '*) exit 1;;\nesac\n'
+    )
+    whois.chmod(0o755)
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "--cidr", "192.0.2.0/24", "--top", str(top)],
+        env={**os.environ, "TOOL_CACHE": str(cache),
+             "SCAN_CSV_FIXTURE": str(fixture), "VPS_ASN": "64500",
+             "PATH": f"{commands}:{os.environ['PATH']}"},
+        capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    rows = [line.split() for line in result.stdout.splitlines() if line.startswith("192.0.2.")]
+    assert len(rows) == top
+    assert rows[0][-2:] == ["AS13335", "AVOID-ASN"]
+    if top == 3:
+        assert rows[1][-2:] == ["AS64501", "ASN-mismatch"]
+        assert rows[2][-2:] == ["AS64500", "ok"]
+    assert "google.com" not in result.stdout
+    assert "candidates after over-template filter: 3 / 4" in result.stderr
+    assert (cache / "last-scan.csv").read_text() == csv
+
+
+def test_scan_without_csv_fails_and_preserves_previous_result(tmp_path):
+    cache = tmp_path / "tool-cache"
+    cache.mkdir()
+    prior = cache / "last-scan.csv"
+    prior.write_text("previous scan\n")
+    scanner = cache / "RealiTLScanner-v0.2.1"
+    scanner.write_text('#!/bin/sh\n[ "$1" = -h ] && exit 0\nexit 1\n')
+    scanner.chmod(0o755)
+    result = _run(["--cidr", "192.0.2.0/24"], tmp_path=tmp_path)
+    assert result.returncode != 0
+    assert "no candidates produced" in result.stderr
+    assert prior.read_text() == "previous scan\n"

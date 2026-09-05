@@ -1224,10 +1224,10 @@ def test_terraform_environment_is_canonical_and_sanitized():
         m._env("unsafe/value")
 
 
+@pytest.mark.native_runtime
 def test_adapter_command_uses_reviewed_terraform_fd_and_snapshot(tmp_path, monkeypatch):
     terraform = __import__("shutil").which("terraform")
-    if terraform is None:
-        pytest.skip("terraform unavailable")
+    assert terraform is not None, "native runtime lane requires Terraform"
     m = mod()
     raw = Path(terraform).read_bytes()
     fd = -1
@@ -1257,10 +1257,10 @@ def test_adapter_command_uses_reviewed_terraform_fd_and_snapshot(tmp_path, monke
             os.close(fd)
 
 
+@pytest.mark.native_runtime
 def test_actual_builtin_terraform_data_plan_can_be_saved_if_terraform_exists(tmp_path):
     terraform = __import__("shutil").which("terraform")
-    if terraform is None:
-        pytest.skip("terraform unavailable")
+    assert terraform is not None, "native runtime lane requires Terraform"
     # The fixture is local-only and uses Terraform's builtin provider.
     (tmp_path / "main.tf").write_text('resource "terraform_data" "x" { input = "x" }\n')
     env = {

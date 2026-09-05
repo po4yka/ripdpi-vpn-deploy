@@ -716,12 +716,12 @@ def _free_port() -> int:
         return int(listener.getsockname()[1])
 
 
+@pytest.mark.native_runtime
 def test_alertmanager_v0281_enforces_the_webhook_request_timeout(
     tmp_path: Path,
 ) -> None:
     binary_value = os.environ.get("ALERTMANAGER_BIN", "")
-    if not binary_value:
-        pytest.skip("ALERTMANAGER_BIN is required for the native notifier test")
+    assert binary_value, "native runtime lane requires ALERTMANAGER_BIN"
     binary = Path(binary_value)
     amtool = binary.with_name("amtool")
     version = subprocess.run(
