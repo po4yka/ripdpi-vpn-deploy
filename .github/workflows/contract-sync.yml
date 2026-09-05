@@ -17,17 +17,10 @@
 name: contract-sync
 
 on:
-  pull_request:
-    paths:
-      - "contract/**"
-      - ".github/workflows/contract-sync.yml"
-  push:
-    branches: [main]
-    paths:
-      - "contract/**"
-  schedule:
-    - cron: "17 4 * * 1"  # Mondays 04:17 UTC — catch drift even with no contract PR
+  workflow_call:
   workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"  # Mondays 04:17 UTC — detect external drift between CI runs
 
 permissions:
   contents: read
