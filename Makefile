@@ -145,7 +145,7 @@ ifneq ($(filter staging-cleanup-manifest staging-destroy,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error staging cleanup requires exactly one Make goal)
 endif
-ifneq ($(filter-out undefined environment,$(origin UPCLOUD_USERNAME) $(origin UPCLOUD_PASSWORD) $(origin UPCLOUD_API_USERNAME) $(origin UPCLOUD_API_PASSWORD) $(origin UPCLOUD_TOKEN) $(origin VULTR_API_KEY)),)
+ifneq ($(filter-out undefined environment,$(origin UPCLOUD_USERNAME) $(origin UPCLOUD_PASSWORD) $(origin UPCLOUD_API_USERNAME) $(origin UPCLOUD_API_PASSWORD) $(origin UPCLOUD_TOKEN) $(origin VULTR_API_KEY) $(origin TF_VAR_vultr_api_key)),)
 $(error staging cleanup credentials must come from the environment)
 endif
 ifeq ($(value PROVIDER),vultr)
@@ -179,6 +179,7 @@ endif
 unexport UPCLOUD_API_USERNAME UPCLOUD_API_PASSWORD
 unexport VULTR_API_KEY
 endif
+unexport TF_VAR_vultr_api_key
 endif
 
 # Tailnet enrollment is an ambient one-node capability. Reject command-line

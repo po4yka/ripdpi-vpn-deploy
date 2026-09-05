@@ -151,7 +151,8 @@ def _make_staging_repo(tmp_path: Path) -> Path:
         "'STAGING_CLEANUP_HOSTNAME', "
         "'STAGING_POST_DESTROY_EVIDENCE', 'DEPLOY_SOURCE_REVISION', "
         "'DEPLOYABLE_SOURCE_DIGEST', 'UPCLOUD_USERNAME', 'UPCLOUD_PASSWORD', "
-        "'UPCLOUD_API_USERNAME', 'UPCLOUD_API_PASSWORD', 'UPCLOUD_TOKEN', 'VULTR_API_KEY']}}) + '\\n')\n"
+        "'UPCLOUD_API_USERNAME', 'UPCLOUD_API_PASSWORD', 'UPCLOUD_TOKEN', "
+        "'VULTR_API_KEY', 'TF_VAR_vultr_api_key']}}) + '\\n')\n"
     )
     for name in (
         "staging-cleanup-guard.py",
@@ -219,6 +220,7 @@ def _run_staging_make(
         "UPCLOUD_API_PASSWORD",
         "UPCLOUD_TOKEN",
         "VULTR_API_KEY",
+        "TF_VAR_vultr_api_key",
     ],
 )
 def test_staging_make_refuses_command_line_credentials_before_expansion(
@@ -310,12 +312,17 @@ def test_staging_make_exports_only_the_selected_provider_credential(
         "staging-cleanup-manifest",
         *common,
         "PROVIDER=upcloud",
-        extra_env={"UPCLOUD_TOKEN": "upcloud-secret", "VULTR_API_KEY": "vultr-secret"},
+        extra_env={
+            "UPCLOUD_TOKEN": "upcloud-secret",
+            "VULTR_API_KEY": "vultr-secret",
+            "TF_VAR_vultr_api_key": "alternate-vultr-secret",
+        },
     )
     assert result.returncode == 0, result.stderr
     first = json.loads((tmp_path / "make-staging.jsonl").read_text().splitlines()[0])
     assert first["env"]["UPCLOUD_TOKEN"] == "upcloud-secret"
     assert first["env"]["VULTR_API_KEY"] is None
+    assert first["env"]["TF_VAR_vultr_api_key"] is None
 
     result = _run_staging_make(
         root,
@@ -323,12 +330,17 @@ def test_staging_make_exports_only_the_selected_provider_credential(
         "staging-cleanup-manifest",
         *common,
         "PROVIDER=vultr",
-        extra_env={"UPCLOUD_TOKEN": "upcloud-secret", "VULTR_API_KEY": "vultr-secret"},
+        extra_env={
+            "UPCLOUD_TOKEN": "upcloud-secret",
+            "VULTR_API_KEY": "vultr-secret",
+            "TF_VAR_vultr_api_key": "alternate-vultr-secret",
+        },
     )
     assert result.returncode == 0, result.stderr
     second = json.loads((tmp_path / "make-staging.jsonl").read_text().splitlines()[1])
     assert second["program"] == "vultr-staging-cleanup-guard.py"
     assert second["env"]["VULTR_API_KEY"] == "vultr-secret"
+    assert second["env"]["TF_VAR_vultr_api_key"] is None
     assert all(
         second["env"][name] is None
         for name in (
