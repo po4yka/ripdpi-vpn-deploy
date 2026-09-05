@@ -234,6 +234,7 @@ def _publish_transition_journal(
             if os.stat(name, dir_fd=parent, follow_symlinks=False):
                 raise GuardError(f"{label} already exists")
         except FileNotFoundError:
+            # Expected first-publication state: the final journal name is absent.
             pass
         current = os.stat(pending_name, dir_fd=parent, follow_symlinks=False)
         if (current.st_dev, current.st_ino) != pending_identity:
