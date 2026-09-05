@@ -43,6 +43,10 @@ config drift inside a role. Full-stack catches order/handler interactions.
 
 ## Pitfalls
 
+- **Release SBOM is the locked Cargo inventory** — CI and publication share
+  `.github/actions/vpnd-sbom`, which stages `dist/sbom.json`. The deployment
+  example emitter serves `make emit-sbom` and is not the vpnd release SBOM.
+
 - **Mutation CI distinguishes findings from execution failure** — only exit
   0 (caught) and 2 (survivors reported) are successful runs. The runtime tests
   exercise actual workflow shell error propagation and disposable-copy cleanup;
