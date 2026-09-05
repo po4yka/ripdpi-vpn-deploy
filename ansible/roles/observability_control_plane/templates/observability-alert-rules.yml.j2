@@ -143,10 +143,10 @@ groups:
         annotations: {incident_family: detector-input, evidence_class: input-contract-stalled, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Detector input advanced without any recognized policy event., runbook: docs/RUNBOOK-incident.md}
       - alert: ObservabilityDetectorError
         expr: >-
-          max by (environment, node) (vpn_honeypot_error_state{state="error"}) == 1
-          or max by (environment, node) (vpn_policy_ratelimit_error_state{state="error"}) == 1
+          sum by (environment, node) (increase(vpn_honeypot_input_errors_total[{{ policy.detector_hold }}])) > 0
+          or sum by (environment, node) (increase(vpn_policy_ratelimit_input_errors_total[{{ policy.detector_hold }}])) > 0
           or max by (environment, node) (vpn_burn_api_error) == 1
-        for: {{ policy.detector_hold }}
+        for: 0m
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: detector}
         annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A detector reports a bounded producer error., runbook: docs/RUNBOOK-incident.md}

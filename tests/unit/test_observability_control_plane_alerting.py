@@ -519,6 +519,15 @@ def test_rules_cover_node_resource_service_source_and_detector_families() -> Non
     assert "vpn_burn_last_run_unixtime" in str(
         alerts["ObservabilityDetectorEvidenceStale"]
     )
+    detector_error = alerts["ObservabilityDetectorError"]
+    assert (
+        "increase(vpn_honeypot_input_errors_total[3m])) > 0" in detector_error["expr"]
+    )
+    assert (
+        "increase(vpn_policy_ratelimit_input_errors_total[3m])) > 0"
+        in detector_error["expr"]
+    )
+    assert detector_error["for"] == "0m"
     assert "0.91" in alerts["ObservabilityNodeCpuPressure"]["expr"]
     assert alerts["ObservabilityNodeCpuPressure"]["for"] == "7m"
     service_expr = alerts["ObservabilityRequiredServiceNotActive"]["expr"]
