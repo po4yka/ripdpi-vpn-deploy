@@ -103,10 +103,18 @@ and validates and applies one already-opened, unlinked mode-0600 plan
 descriptor. Success requires authenticated typed absence for every bound
 resource before the redacted audit event; inventory remains byte-identical.
 
-This section records source intent only. The execution step remains unchecked
-until combined/full and exact-source hosted gates pass. No Vultr resource has
-been created or deleted by these checks, and there is no staging, absence,
-billing, Tailnet, DNS, host or VPN acceptance evidence yet.
+The exact source commit `623b90c` passed 110 focused provider-controller tests,
+independent security review and the canonical local `make -j1 check` gate:
+3,802 Python tests passed with three existing skips, all 55 Bats tests passed,
+and all 184 Rust tests, Clippy, Terraform mock, policy, schema and liveness
+checks passed. The mode-0600 full log has SHA-256
+`f10875a7d9a538517b6c0ad200fb14b9043051d1ae2239a7e5f996c28430104a`.
+
+This closes the source implementation step only. No Vultr resource has been
+created or deleted by these checks, and there is no staging, absence, billing,
+Tailnet, DNS, host or VPN acceptance evidence yet. Protected exact-head and
+exact-main hosted checks remain required before the adapter may gate a live
+staging lifecycle.
 
 The SSH foundation on base `2009b6f694e326fa1f6d99333da497544b115cdd`
 passed the full local `make -j1 check` gate on 2026-08-28: 1688 unit tests

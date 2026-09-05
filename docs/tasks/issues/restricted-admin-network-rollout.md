@@ -14,7 +14,7 @@ openspec_change: sec-1787916931540401-restricted-admin-network-rollout
 created: 2026-08-28
 updated: 2026-09-05
 related_tasks: [SEC-1787496881680472]
-status_detail: Five of eight execution steps are complete in protected source deliveries. The separate Vultr exact-resource cleanup adapter is implemented locally but remains open through combined/full and exact hosted gates. Real isolated staging deletion/disconnect/reboot/rollback and serial fleet emergency/VPN acceptance remain required.
+status_detail: Six of eight execution steps are complete in protected source deliveries. The Vultr exact-resource cleanup adapter passed focused review and the canonical local gate; protected hosted integration is pending. Real isolated staging deletion/disconnect/reboot/rollback and serial fleet emergency/VPN acceptance remain required.
 ---
 
 ## Goal
