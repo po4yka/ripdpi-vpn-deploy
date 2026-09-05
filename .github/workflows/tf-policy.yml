@@ -2,7 +2,7 @@
 name: tf-policy
 
 on:
-  pull_request:
+  workflow_call:
   workflow_dispatch:
 
 permissions:

@@ -103,6 +103,19 @@ jobs. The remaining individual contexts preserve explicit failure visibility
 and compatibility. If Settings shows fewer than 30 contexts, the remote rule
 is stale; rerun `branch-protection` after this documentation commit is green.
 
+The aggregate also requires the reusable `tf-policy`, `image-scan`,
+`contract-sync` and `reproducible-build` workflows. Main CI invokes all four
+on every PR, main push and manual CI run, without path filters or duplicate
+standalone PR runs. A failure, cancellation or skipped workflow makes
+`required checks` fail. Manual workflow entry points remain available;
+contract-sync also retains its weekly external-drift check. This extends the
+existing required context without changing repository protection settings.
+
+This gates the outcomes those workflows currently implement. In particular,
+`reproducible-build` still permits placeholder example pins and treats Xray
+rebuild mismatches as advisory; making it required does not strengthen that
+separate verification contract.
+
 ## Admin enforcement
 
 The workflow sets `enforce_admins: true`. This is deliberate: this repo deploys
