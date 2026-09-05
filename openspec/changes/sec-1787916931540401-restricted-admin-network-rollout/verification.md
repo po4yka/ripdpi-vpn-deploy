@@ -400,3 +400,28 @@ passes with the fix, using only generated fixture ciphertext and the existing
 public test age key. The whole adapter and SOPS round-trip modules pass 53 tests;
 collection is 3506 total / 3453 unit. These local results do not credit a staging
 deploy, protocol acceptance, MON, B2 or cleanup; those live gates remain open.
+
+## Final Vultr cleanup race closure
+
+The Vultr cleanup controller now binds Terraform state by inode and digest
+through planning, apply and release; re-reads the private manifest after every
+provider absence call; and refuses incomplete firewall policy classes. The
+Terraform apply-started transition is published inside the environment wrapper
+after workspace and control-plane checks and immediately before `terraform
+apply`. Recovery accepts only the exact bound state and releases reserved or
+plan-validated records only after the same binding is revalidated. Interrupted
+initial publication and release-journal cases are replayable without adopting
+foreign or replaced files.
+
+Tests first reproduced the state-swap, manifest-swap, partial-publication,
+firewall-class and post-destroy recovery defects. The final focused combined
+tree passed 168 cleanup, destroy, SBOM, real-VPS workflow and governance tests.
+The source commit `625d1789c13e56ccf339948f9e5d8529b59c8663`
+passed the canonical local gate before integration: 3855 Python tests with
+three existing skips, 55 BATS tests, 184 Rust tests plus Clippy, and all
+Terraform, policy, schema and render checks. The owned container profile
+stopped and its Docker context and configuration remained unchanged.
+
+This closes only the source safety boundary. No provider resource was created
+or deleted and no host, ACL, DNS, certificate or VPN path was changed. The two
+real staging and serial fleet execution steps remain open.
