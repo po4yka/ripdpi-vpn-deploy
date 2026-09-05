@@ -41,8 +41,7 @@ remain open under the existing approved budget and cleanup deadlines.
 | REQ-ADMIN-MIGRATION | SEC-1787917604306451 | 301 affected planner/core/adapter tests plus pinned Debian 13 and Ubuntu 24.04 packaged-main checks include real OpenSSH full effective parity, custom port, unknown-layout, bounded execution, read-set races and four-file crash boundaries | local source and packaged-main checks passed; complete local, hosted and staging pending |
 | REQ-ADMIN-ROLLBACK | SEC-1787917604868749 | Durable fixed-path recovery, interruption reconciliation, exact guest nftables rollback and provider-side timed executor | source and isolated native checks passed; staging reboot pending |
 | REQ-ADMIN-PROMOTION | SEC-1787917605886845 | Exact-node selector, frozen strict transport, required DNS/VPN probes, private capability-bound provider rollback and promotion receipt | source passed; staging and live pending |
-| REQ-ADMIN-EVIDENCE | SEC-1788028226822310 | 135 focused tests cover exact authenticated API-principal binding before Terraform, fixed 36/44/47-hour deadlines, ancestor-symlink and inode-replacement refusal, manifest permission/identity/state-digest failures, backup/secondary-IP/additional-resource refusal in state and refreshed plan, exact-environment binding, pre-Terraform evidence reservation/release, private same-inode plan inspection/apply, exact-ID delete-only checks, inventory preservation, categorical audit ordering and bounded authenticated provider-absence outcomes | focused and full local source gates passed; exact hosted CI, staging deletion and account billing observation remain pending |
-| REQ-ADMIN-EVIDENCE | SEC-1787917606418274 | Real isolated staging login, forced disconnect, reboot recovery and repeat rollback before fleet promotion | pending |
+| REQ-ADMIN-EVIDENCE | SEC-1788028226822310 | UpCloud cleanup coverage binds the authenticated API principal, server/root-storage resources and server-bound rules. The open Vultr extension `SEC-1788617074844018` separately binds the authenticated account, exact instance, SSH key, firewall group, every `for_each` firewall rule and embedded instance root. Both retain fixed 36/44/47-hour deadlines, no-follow private evidence, same-descriptor plan validation/apply, inventory preservation and typed provider absence. | UpCloud source is delivered; the Vultr source candidate still requires combined/full and exact hosted gates. Real deletion, provider absence and account billing observation remain pending. |
 
 ## Gates and remaining boundaries
 
@@ -90,6 +89,47 @@ fleet-inventory, Tailnet ACL or B2 change. Exact hosted CI remains required
 before source integration. A real staging destroy, exact provider-principal
 observation and post-destroy billing observation remain open and cannot be
 credited from source or fixture evidence.
+
+### Vultr exact-resource cleanup extension
+
+The open Vultr extension keeps its state schema and API adapter separate from
+UpCloud while reusing the guarded operator lifecycle. Its candidate manifest
+derives fixed 36/44/47-hour deadlines from authenticated provider creation
+time and binds the exact instance, SSH key, firewall group, every keyed ICMP,
+SSH and public-listener rule, plus the embedded instance-root identity. The
+operator path accepts only ambient `VULTR_API_KEY`, prevents either provider
+from inheriting the other's credentials, reserves evidence before Terraform,
+and validates and applies one already-opened, unlinked mode-0600 plan
+descriptor. Success requires authenticated typed absence for every bound
+resource before the redacted audit event; inventory remains byte-identical.
+
+The review follow-up models real Vultr firewall rules as positive decimal IDs,
+binds SSH rules to `terraform_data.ssh_port`, and renders the binary plan
+through the selected Vultr workspace while retaining the same inherited plan
+descriptor. Evidence transitions use a durable private journal and rewrite the
+original reservation inode in place; crash recovery completes either a
+not-yet-started, partial or already-published update, and pre-apply
+`plan_validated` evidence can be released without weakening the durable
+`apply_started` boundary. Replay validates the exact typed old and new receipts,
+manifest binding and allowed lifecycle successor before any mutation. Release
+revalidates the exact reservation inode and canonical binding before unlinking
+either member of the pair. Typed absence requires a complete canonical apply
+receipt with a strictly pre-expiry UTC timestamp before any provider lookup.
+The final pre-apply check reads the clock again and persists only that fresh,
+strictly pre-expiry timestamp.
+
+The exact source commit `623b90c` passed 110 focused provider-controller tests,
+independent security review and the canonical local `make -j1 check` gate:
+3,802 Python tests passed with three existing skips, all 55 Bats tests passed,
+and all 184 Rust tests, Clippy, Terraform mock, policy, schema and liveness
+checks passed. The mode-0600 full log has SHA-256
+`f10875a7d9a538517b6c0ad200fb14b9043051d1ae2239a7e5f996c28430104a`.
+
+This closes the source implementation step only. No Vultr resource has been
+created or deleted by these checks, and there is no staging, absence, billing,
+Tailnet, DNS, host or VPN acceptance evidence yet. Protected exact-head and
+exact-main hosted checks remain required before the adapter may gate a live
+staging lifecycle.
 
 The SSH foundation on base `2009b6f694e326fa1f6d99333da497544b115cdd`
 passed the full local `make -j1 check` gate on 2026-08-28: 1688 unit tests
@@ -360,3 +400,28 @@ passes with the fix, using only generated fixture ciphertext and the existing
 public test age key. The whole adapter and SOPS round-trip modules pass 53 tests;
 collection is 3506 total / 3453 unit. These local results do not credit a staging
 deploy, protocol acceptance, MON, B2 or cleanup; those live gates remain open.
+
+## Final Vultr cleanup race closure
+
+The Vultr cleanup controller now binds Terraform state by inode and digest
+through planning, apply and release; re-reads the private manifest after every
+provider absence call; and refuses incomplete firewall policy classes. The
+Terraform apply-started transition is published inside the environment wrapper
+after workspace and control-plane checks and immediately before `terraform
+apply`. Recovery accepts only the exact bound state and releases reserved or
+plan-validated records only after the same binding is revalidated. Interrupted
+initial publication and release-journal cases are replayable without adopting
+foreign or replaced files.
+
+Tests first reproduced the state-swap, manifest-swap, partial-publication,
+firewall-class and post-destroy recovery defects. The final focused combined
+tree passed 168 cleanup, destroy, SBOM, real-VPS workflow and governance tests.
+The source commit `625d1789c13e56ccf339948f9e5d8529b59c8663`
+passed the canonical local gate before integration: 3855 Python tests with
+three existing skips, 55 BATS tests, 184 Rust tests plus Clippy, and all
+Terraform, policy, schema and render checks. The owned container profile
+stopped and its Docker context and configuration remained unchanged.
+
+This closes only the source safety boundary. No provider resource was created
+or deleted and no host, ACL, DNS, certificate or VPN path was changed. The two
+real staging and serial fleet execution steps remain open.
