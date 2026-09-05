@@ -141,6 +141,22 @@ def test_published_scenario_explicitly_disables_unpublished_xray_fallback() -> N
     assert hosts["vpn-fullstack-debian13-published"]["xray_fallback_port"] == 0
 
 
+def test_standalone_p0_molecule_fixtures_declare_required_canonical_inputs() -> None:
+    """Standalone role scenarios must not depend on parent group-vars discovery."""
+    canonical = yaml.safe_load(
+        (REPO_ROOT / "ansible/group_vars/all.yml").read_text()
+    )
+    xray = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/xray/molecule/default/converge.yml").read_text()
+    )[0]["vars"]
+    watchdog = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/watchdog/molecule/default/converge.yml").read_text()
+    )[0]["vars"]
+
+    assert xray["p0_reality_shapes"] == canonical["p0_reality_shapes"]
+    assert watchdog["xray_fallback_port"] == canonical["xray_fallback_port"]
+
+
 def test_published_host_override_beats_repository_all_group_default(tmp_path) -> None:
     """Prove the scenario override with the same canonical group-vars discovery."""
     executable = shutil.which("ansible-inventory")

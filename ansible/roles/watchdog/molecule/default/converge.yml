@@ -24,6 +24,7 @@
           short_id: "55667788"
       cohorts: []
     xray_port: 443
+    xray_fallback_port: 2053
     hysteria_port: 443
     watchdog_secrets:
       ntfy_topic: "molecule-stub-topic"

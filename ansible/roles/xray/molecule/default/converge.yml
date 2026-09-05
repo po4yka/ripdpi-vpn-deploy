@@ -6,6 +6,15 @@
     xray_port: 443
     xray_fallback_port: 2053
     nginx_xhttp_port: 10085
+    p0_reality_shapes:
+      vision:
+        client_flow: "xtls-rprx-vision"
+        client_mux: false
+        finalmask: false
+      mux:
+        client_flow: ""
+        client_mux: true
+        finalmask: false
     vpn:
       enable_nginx_xhttp: true
       xray_flow_mode: mux
