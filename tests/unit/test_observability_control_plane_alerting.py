@@ -702,6 +702,14 @@ def test_authority_snapshot_keeps_private_output_secret_and_reports_only_categor
     assert "_observability_authority_capture.stdout | trim" in expression
     assert "from_json" not in expression
     assert "unsafe_parent" in expression
+    for category in (
+        "config_parent",
+        "systemd_parent",
+        "libexec_parent",
+        "pipeline_parent",
+        "textfile_parent",
+    ):
+        assert category in expression
     assert "internal" in expression
     assert "no_log" not in refuse
     assert "safe category" in refuse["ansible.builtin.assert"]["fail_msg"]
