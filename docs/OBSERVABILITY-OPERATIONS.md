@@ -66,6 +66,81 @@ component, categorical unit states and aggregate readiness. It is passive and ne
 uses the existing remote sender credential without exposing it. `healthy` is local component readiness, not fresh fleet telemetry,
 outside-in VPN availability, Telegram receipt, or dead-man independence.
 
+## Metric and alert contracts
+
+The authoritative family allowlist is
+`contract/observability-metric-manifest.example.json`; the expected-node/profile
+set is `contract/observability-expected-inventory.example.json`. Treat those as
+versioned contracts, not examples to extend ad hoc on a host. A new family,
+label, state, or cardinality bound requires a reviewed source change and its
+schema/redaction tests. Never forward journals, request destinations, peer
+addresses, SNI values, client identity, user traffic, or credential-derived
+values as metrics or annotations.
+
+| Contract group | Owned evidence | Truth boundary |
+|---|---|---|
+| `vpn_observability_adapter_*` and `vpn_observability_node_manifest_identity` | adapter completion and deployed source identity | local collection and identity comparison only |
+| `vpn_watchdog_*` | watchdog run, freshness, result, restart/rate limit and recovery state | local supervision; never outside-in client-path recovery |
+| `vpn_backup_*` | producer-published stage and restore timestamps/results | no inference from a timer, configured remote, repository ID or process state |
+| `vpn_observability_expected_target` | reviewed expected inventory | desired coverage, independent of currently arriving series |
+| `vpn_observability_evidence_state` | freshness/source/pipeline and canonical liveness adaptation | one-hot bounded state; stale, missing and unknown never become healthy |
+
+The checked alert catalog is rendered from
+`observability-alert-rules.yml.j2` and
+`observability-expected-target-rules.yml.j2`. It covers watchdog evidence and
+unresolved recovery, backup freshness/stage failure/restore readiness, the
+synthetic pipeline watchdog, required-family or expected-target absence,
+target staleness, source identity mismatch, and control-plane resource/pipeline
+health. Generated required-family alert names bind the exact expected target,
+role and family. A missing series stays an absence incident; it is not a
+resolved notification. `ObservabilityBackupStageFailed` alone inhibits its
+derivative stale-evidence alert for the same node and component.
+
+Before deployment, validate the manifest, expected inventory, rendered rules
+and templates together. A Prometheus query result proves central evaluation;
+it does not prove a sender captured current input or that Telegram delivered a
+message.
+
+## Telegram delivery contract
+
+The primary route is Alertmanager's native Telegram notifier. Both warning and
+critical routes use the same HTML-escaped allowlist template, send resolved
+notifications and cap a notification at five alerts; configuration validation
+refuses values above ten. Omitted alerts are reported through the deterministic
+`TruncatedAlerts` count. The route waits 30 seconds before its first group,
+regroups after five minutes, and repeats critical incidents after one hour and
+warnings after six hours. These bounds limit notification frequency; they do
+not shorten or resolve the source incident.
+
+Alertmanager retains its native retry semantics for 429, server and transport
+failures. The independent dead-man sender is deliberately smaller: at most two
+requests, at most five seconds per request, one bounded retry delay, and a
+`Retry-After` delay capped at five seconds. It retries transport errors, 429 and
+5xx responses; semantic 4xx rejection stops immediately. Neither sender logs a
+token, request body, chat/topic destination or Telegram response body.
+
+API success and notification metrics prove an API-level attempt/outcome only.
+For acceptance, record separately observed, clearly labelled firing and
+resolved messages in the configured private primary topic and a loss/recovery
+pair in the independent secondary topic. Preserve timestamps and the deployed
+source/config generations without copying message bodies or destinations into
+the repository.
+
+## Storage and retention
+
+The control plane fixes Prometheus retention at 30 days and 20 GB and refuses
+enablement unless at least 40 GiB is available before publication. The agent
+WAL is bounded to one hour by default. Alertmanager state and the Prometheus
+TSDB are runtime data, not a usage ledger; per-user traffic and billing claims
+are prohibited.
+
+Control-plane disable removes owned units, ingress and generated configuration
+but preserves the TSDB. Agent disable removes its owned WAL and runtime; it
+does not remove node_exporter or producer-owned watchdog/backup evidence.
+Dead-man disable removes its sender state because stale incident state cannot
+be adopted by a later independent deployment. Destructive TSDB removal,
+archive export and retention changes require a separate approved action.
+
 ## Workflow
 
 Validate syntax, then run the remote check-mode render:
@@ -131,6 +206,31 @@ acceptance is not human receipt. A dead-man loss/recovery drill, service or node
 failure injection, credential rotation proof, two-vantage VPN proof and live
 rollback remain separate approved staging steps.
 
+### Required staging matrix
+
+Run each row against the exact deployed source and record the categorical
+result plus generation digests. Restore normal state after every injected
+failure before moving to the next row.
+
+| Row | Controlled action | Required observation | Refusal/rollback check |
+|---|---|---|---|
+| ingestion | valid node mTLS write, then wrong certificate/path/method/body | valid samples arrive under the expected node; invalid writes are rejected | no public query/admin path and no cross-node identity |
+| agent/WAL | interrupt the receiver within the configured WAL window | queue age/error is visible and delivery resumes without an unbounded queue | expiry/drop is explicit; no unauthenticated fallback |
+| expected inventory | stop one sender and age one producer artifact | missing target/family and stale evidence fire separately | deletion or unknown input cannot resolve the incident |
+| watchdog/backup | publish failed, malformed, future and stale producer outcomes | exact watchdog, backup and restore-readiness alerts fire | timers and configured remotes never substitute for evidence |
+| protocol liveness | run REALITY, XHTTP, Hysteria2 and AmneziaWG from two approved distinct vantages | canonical evaluator transitions and central adapter agree | one vantage, self-dial or unknown control cannot claim outage/recovery |
+| grouping/inhibition | create node plus derivative failures and backup failure plus stale evidence | stable grouping and only the specified inhibition occur | fingerprints remain stable through updates |
+| finite silence | create, expire and delete a narrow staging silence | delivery is suppressed/resumed while source state and incident start remain unchanged | over-TTL, broad, foreign-owner and unknown-label requests fail |
+| primary Telegram | exercise firing, reminder, resolved, 429, 5xx and timeout paths | bounded route behavior and API outcome are visible; real firing/resolved messages are observed | source incident survives notification failure; secrets stay absent |
+| dead-man | stop pulses/control plane, then restore fresh advancing pulses | secondary firing/reminder/recovery and reverse-health loss/recovery occur | replay, future, expired and unhealthy pulses do not reset the incident |
+| credentials | rotate one sender, primary bot and secondary bot authority at a time | replacement works before old authority is revoked | failed rotation restores the prior generation |
+| generation | reject an invalid rule/template/config, then activate and roll back a valid candidate | only a complete generation becomes ready | previous service states and the exact last-known-good chain return |
+
+A deterministic HTTP stub may prove retry classification, bounds and
+redaction. It is fixture evidence, not real Telegram delivery. Likewise, API
+2xx, a green service, local self-dial and a single client vantage do not satisfy
+the live rows.
+
 ## Finite maintenance silences
 
 Alerting requires `observability_control_plane.alerting.silence_gateway.enabled`
@@ -195,3 +295,57 @@ restore the exact recorded authority under an exclusive maintenance window first
 Runtime binary installation and abrupt process/host loss are outside this
 configuration rollback guarantee. Check mode inspects and predicts changes without
 creating a snapshot, starting services, or performing readiness requests.
+
+## Migration, cutover, and rollback order
+
+Keep existing direct ntfy/Pushover paging authoritative while the central path
+is introduced. Use one bounded, recorded overlap window and this order:
+
+1. deploy the staging control plane and independent dead-man with no production
+   sender or paging cutover;
+2. onboard one canary agent, validate source identity/retention, and run the
+   complete staging matrix;
+3. onboard the remaining agents serially and require fresh expected-target
+   evidence after each node;
+4. evaluate central rules in shadow while direct paging remains active, then
+   compare stable firing and resolved lifecycles rather than message counts;
+5. observe real primary firing/resolved and secondary loss/recovery messages,
+   rotate each authority, and prove last-known-good rollback;
+6. approve one authoritative cutover, remove legacy delivery schedules and
+   credentials, and verify that exactly one route remains.
+
+If any central rule, Telegram delivery, freshness, rotation or rollback proof
+fails, stop the migration and leave legacy paging authoritative. Do not run two
+permanent paging implementations. Control-plane rollback uses the exact private
+manifest and retained `alertmanager-previous.yml` generation described above.
+Agent and dead-man activation failures restore their prior captured generation
+inside their role transaction; they do not yet expose the operator rollback
+command, so a failed live rollback keeps cutover blocked. A failed authority
+restore leaves the private recovery snapshot in place and forbids disable or a
+new publication until repaired in an exclusive window.
+
+## Evidence boundaries
+
+Record each class separately:
+
+- **source/local:** exact commit and generation digests, targeted tests, rule
+  tests, render/schema/security checks and full repository gate;
+- **hosted:** exact-head required CI and independent review;
+- **dry-run:** exact inventory aliases, clean source and check-mode result; no
+  telemetry or notification claim;
+- **staging:** the matrix above, including cleanup and rollback, on disposable
+  hosts at the deployed source;
+- **fleet:** fresh central evidence for every expected node/profile and absence
+  of unexpected public listeners;
+- **client:** authenticated traffic for all four protocols from two distinct
+  approved vantages;
+- **Telegram:** human-observed primary firing/resolved and independent
+  secondary firing/recovery, distinct from API outcome;
+- **cutover:** one authoritative route, legacy schedule/credential removal and
+  a successful exact-generation rollback proof.
+
+Queued jobs, fixture stubs, successful API responses, check mode, a healthy
+timer or a single vantage may support one evidence class but cannot be promoted
+to another. Leave the portfolio item open and name the exact missing class when
+staging access, credentials, sentinels, Telegram observation or a change window
+is unavailable.

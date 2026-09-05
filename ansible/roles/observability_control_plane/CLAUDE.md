@@ -22,6 +22,8 @@ Alerting is separately opt-in. Prometheus evaluates immutable validated rules;
 Alertmanager remains loopback-only and receives its primary Telegram token only
 through a systemd credential. Telegram routing contains only bounded technical
 aliases and cannot authorize maintenance or infrastructure actions. The
+native notifier owns request retries; fixed group and repeat intervals bound
+route frequency, while the template caps alert count and reports omissions.
 synthetic pipeline watchdog may target only an explicitly enabled loopback
 canary receiver; the independent dead-man sender remains a separate owner.
 Enabled alerting requires the private gateway on 127.0.0.1:19094. Only its

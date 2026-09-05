@@ -5,11 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import hashlib
 import hmac
+import io
 import importlib.util
 import json
 from pathlib import Path
 import stat
 import threading
+from urllib import error
 
 import pytest
 import yaml
@@ -331,6 +333,116 @@ def test_failed_canary_is_persisted_then_retried_at_the_bounded_reminder(
     )
 
 
+def test_telegram_rate_limit_honours_bounded_retry_after_without_secret_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, bytes, int]] = []
+    sleeps: list[int] = []
+
+    class Response:
+        status = 200
+
+        def __enter__(self):  # type: ignore[no-untyped-def]
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    def post(outbound, timeout):  # type: ignore[no-untyped-def]
+        calls.append((outbound.full_url, outbound.data, timeout))
+        if len(calls) == 1:
+            raise error.HTTPError(
+                outbound.full_url,
+                429,
+                "rate limited",
+                {},
+                io.BytesIO(
+                    b'{"ok":false,"error_code":429,"description":"bounded",'
+                    b'"parameters":{"retry_after":99}}'
+                ),
+            )
+        return Response()
+
+    monkeypatch.setattr(deadman.request, "urlopen", post)
+    monkeypatch.setattr(deadman.time, "sleep", sleeps.append)
+
+    assert deadman._telegram(config(), TOKEN, "firing") is True
+    assert len(calls) == 2
+    assert sleeps == [5]
+    assert all(timeout == 5 for _url, _body, timeout in calls)
+    assert all(TOKEN.decode() in url for url, _body, _timeout in calls)
+    payload = json.loads(calls[0][1])
+    assert payload == {
+        "chat_id": "-100000000001",
+        "text": "[secondary dead-man] monitoring-plane firing",
+        "disable_web_page_preview": True,
+        "message_thread_id": 7,
+    }
+    assert TOKEN.decode() not in json.dumps(payload)
+
+
+@pytest.mark.parametrize("failure", [TimeoutError("timeout"), OSError("network")])
+def test_telegram_transient_transport_failure_uses_bounded_backoff_then_recovers(
+    monkeypatch: pytest.MonkeyPatch, failure: OSError
+) -> None:
+    attempts = 0
+    sleeps: list[int] = []
+
+    class Response:
+        status = 200
+
+        def __enter__(self):  # type: ignore[no-untyped-def]
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    def post(*_args: object, **_kwargs: object) -> Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise failure
+        return Response()
+
+    monkeypatch.setattr(deadman.request, "urlopen", post)
+    monkeypatch.setattr(deadman.time, "sleep", sleeps.append)
+
+    assert deadman._telegram(config(), TOKEN, "recovery") is True
+    assert attempts == 2
+    assert sleeps == [1]
+
+
+def test_telegram_server_error_retries_but_client_rejection_does_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts: list[int] = []
+    sleeps: list[int] = []
+
+    def server_error(outbound, timeout):  # type: ignore[no-untyped-def]
+        assert timeout == 5
+        attempts.append(503)
+        raise error.HTTPError(outbound.full_url, 503, "unavailable", {}, None)
+
+    monkeypatch.setattr(deadman.request, "urlopen", server_error)
+    monkeypatch.setattr(deadman.time, "sleep", sleeps.append)
+    assert deadman._telegram(config(), TOKEN, "canary") is False
+    assert attempts == [503, 503]
+    assert sleeps == [1]
+
+    attempts.clear()
+    sleeps.clear()
+
+    def client_error(outbound, timeout):  # type: ignore[no-untyped-def]
+        assert timeout == 5
+        attempts.append(400)
+        raise error.HTTPError(outbound.full_url, 400, "bad request", {}, None)
+
+    monkeypatch.setattr(deadman.request, "urlopen", client_error)
+    assert deadman._telegram(config(), TOKEN, "canary") is False
+    assert attempts == [400]
+    assert sleeps == []
+
+
 def test_pulse_state_update_does_not_wait_for_outbound_delivery(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -372,6 +484,7 @@ def test_templates_keep_credentials_systemd_only_and_harden_services() -> None:
         "TasksMax=",
     ):
         assert hardening in service + tick
+    assert "TimeoutStartSec=30s" in tick
     assert "ReadWritePaths={{ observability_deadman.state_dir }}" in service + tick
 
 

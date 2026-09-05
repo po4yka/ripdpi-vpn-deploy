@@ -25,11 +25,12 @@ import tempfile
 import threading
 import time
 from typing import Any
-from urllib import request
+from urllib import error, request
 
 import fcntl
 
 MAX_STATE_BYTES = 4096
+MAX_TELEGRAM_ERROR_BYTES = 1024
 GENERATION = re.compile(r"^[0-9a-f]{40,64}$")
 SIGNATURE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -356,6 +357,41 @@ def _read_pulse_body(stream: Any, length: int, maximum: int) -> bytes:
     return body
 
 
+def _telegram_retry_after(body: bytes) -> int | None:
+    """Read only Telegram's bounded flood-control field from an error body."""
+    if not body or len(body) > MAX_TELEGRAM_ERROR_BYTES:
+        return None
+    try:
+        payload = json.loads(body.decode("utf-8"), object_pairs_hook=_pairs)
+    except (UnicodeDecodeError, json.JSONDecodeError, DeadmanError):
+        return None
+    if not isinstance(payload, dict) or set(payload) - {
+        "ok",
+        "error_code",
+        "description",
+        "parameters",
+    }:
+        return None
+    parameters = payload.get("parameters")
+    if not isinstance(parameters, dict):
+        return None
+    retry_after = parameters.get("retry_after")
+    if isinstance(retry_after, bool) or not isinstance(retry_after, int):
+        return None
+    return retry_after if 0 <= retry_after <= 999_999 else None
+
+
+def _telegram_retry_delay(headers: Any, body: bytes, attempt: int, maximum: int) -> int:
+    """Return a bounded retry delay without retaining response content."""
+    retry_after = headers.get("Retry-After") if headers is not None else None
+    if isinstance(retry_after, str) and re.fullmatch(r"[0-9]{1,6}", retry_after):
+        return min(int(retry_after), maximum)
+    body_delay = _telegram_retry_after(body)
+    if body_delay is not None:
+        return min(body_delay, maximum)
+    return min(1 << attempt, maximum)
+
+
 def _telegram(config: dict[str, Any], credential: bytes, event: str) -> bool:
     """Send a bounded, deliberately non-sensitive secondary message."""
     if event not in {"firing", "recovery", "canary"}:
@@ -372,7 +408,10 @@ def _telegram(config: dict[str, Any], credential: bytes, event: str) -> bool:
     endpoint = (
         "https://api.telegram.org/bot" + credential.decode("ascii") + "/sendMessage"
     )
-    for _ in range(config["retry_attempts"]):
+    attempts = config["retry_attempts"]
+    for attempt in range(attempts):
+        retry_headers = None
+        retry_body = b""
         try:
             with request.urlopen(
                 request.Request(
@@ -385,8 +424,34 @@ def _telegram(config: dict[str, Any], credential: bytes, event: str) -> bool:
             ) as response:
                 if response.status == 200:
                     return True
+                if response.status != 429 and not 500 <= response.status <= 599:
+                    return False
+                retry_headers = getattr(response, "headers", None)
+                if response.status == 429:
+                    try:
+                        retry_body = response.read(MAX_TELEGRAM_ERROR_BYTES + 1)
+                    except (AttributeError, OSError, ValueError):
+                        retry_body = b""
+        except error.HTTPError as exc:
+            if exc.code != 429 and not 500 <= exc.code <= 599:
+                return False
+            retry_headers = exc.headers
+            if exc.code == 429:
+                try:
+                    retry_body = exc.read(MAX_TELEGRAM_ERROR_BYTES + 1)
+                except (AttributeError, OSError, ValueError):
+                    retry_body = b""
         except (OSError, ValueError):
-            continue
+            pass
+        if attempt + 1 < attempts:
+            delay = _telegram_retry_delay(
+                retry_headers,
+                retry_body,
+                attempt,
+                config["retry_timeout_seconds"],
+            )
+            if delay:
+                time.sleep(delay)
     return False
 
 
