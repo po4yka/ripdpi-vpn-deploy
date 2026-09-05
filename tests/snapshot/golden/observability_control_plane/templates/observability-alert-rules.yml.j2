@@ -142,10 +142,10 @@ groups:
         annotations: {incident_family: detector-input, evidence_class: input-contract-stalled, source_generation: "", summary: Detector input advanced without any recognized policy event., runbook: docs/RUNBOOK-incident.md}
       - alert: ObservabilityDetectorError
         expr: >-
-          max by (environment, node) (vpn_honeypot_error_state{state="error"}) == 1
-          or max by (environment, node) (vpn_policy_ratelimit_error_state{state="error"}) == 1
+          sum by (environment, node) (increase(vpn_honeypot_input_errors_total[3m])) > 0
+          or sum by (environment, node) (increase(vpn_policy_ratelimit_input_errors_total[3m])) > 0
           or max by (environment, node) (vpn_burn_api_error) == 1
-        for: 3m
+        for: 0m
         keep_firing_for: 3m
         labels: {severity: "warning", component: detector}
         annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "", summary: A detector reports a bounded producer error., runbook: docs/RUNBOOK-incident.md}

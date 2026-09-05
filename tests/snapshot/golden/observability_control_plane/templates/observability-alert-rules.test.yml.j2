@@ -118,6 +118,26 @@ tests:
             exp_annotations: {incident_family: detector-health, evidence_class: evidence-stale, source_generation: "", summary: A detector success timestamp exceeded its bounded cadence., runbook: docs/RUNBOOK-incident.md}
   - interval: 1m
     input_series:
+      - series: 'vpn_honeypot_input_errors_total{environment="staging",node="vpn-p1"}'
+        values: '0 1 1 1 1 1 1 1 1'
+      - series: 'vpn_honeypot_collection_success{environment="staging",node="vpn-p1"}'
+        values: '1x9'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ObservabilityDetectorError
+        exp_alerts:
+          - exp_labels: {component: detector, environment: staging, node: vpn-p1, severity: warning}
+            exp_annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "", summary: A detector reports a bounded producer error., runbook: docs/RUNBOOK-incident.md}
+      - eval_time: 5m
+        alertname: ObservabilityDetectorError
+        exp_alerts:
+          - exp_labels: {component: detector, environment: staging, node: vpn-p1, severity: warning}
+            exp_annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "", summary: A detector reports a bounded producer error., runbook: docs/RUNBOOK-incident.md}
+      - eval_time: 8m
+        alertname: ObservabilityDetectorError
+        exp_alerts: []
+  - interval: 1m
+    input_series:
       - series: 'vpn_certificate_collection_success{environment="staging",node="vpn-p0",role="observability-sender"}'
         values: '0x5'
     alert_rule_test:
