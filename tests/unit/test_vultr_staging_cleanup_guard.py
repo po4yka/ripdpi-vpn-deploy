@@ -528,6 +528,56 @@ def test_manifest_refuses_duplicate_normalized_public_listeners(tmp_path: Path) 
         )
 
 
+def test_manifest_refuses_duplicate_provider_firewall_rule_ids(tmp_path: Path) -> None:
+    state = _state()
+    rules = [
+        item for item in state["resources"] if item["type"] == "vultr_firewall_rule"
+    ]
+    rules[1]["instances"][0]["attributes"]["id"] = rules[0]["instances"][0][
+        "attributes"
+    ]["id"]
+    private = tmp_path / "private"
+    state_path = _private(private / "state.json", guard.canonical_json(state))
+    with pytest.raises(guard.GuardError, match="firewall rule ID is duplicated"):
+        guard.create_manifest(
+            output_path=private / "manifest.json",
+            provider="vultr",
+            environment=ENV,
+            workspace=ENV,
+            state_path=state_path,
+            hostname=HOST,
+            request_json=_request,
+            now=NOW,
+        )
+
+
+def test_reservation_refuses_manifest_inode_replacement_after_initial_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    original = guard.load_manifest
+
+    def replace_after_load(*args: object, **kwargs: object) -> dict[str, object]:
+        value = original(*args, **kwargs)
+        replacement = _private(
+            manifest_path.with_name("replacement.json"), manifest_path.read_bytes()
+        )
+        replacement.replace(manifest_path)
+        return value
+
+    monkeypatch.setattr(guard, "load_manifest", replace_after_load)
+    with pytest.raises(
+        guard.GuardError, match="manifest changed during evidence reservation"
+    ):
+        guard.reserve_evidence(
+            manifest_path, evidence_path, now=NOW, expected_environment=ENV
+        )
+    assert not evidence_path.exists()
+    assert not guard._reservation_path(evidence_path).exists()
+    assert not guard._transition_path(evidence_path).exists()
+
+
 @pytest.mark.parametrize(
     ("rule_name", "index", "invalid_size"),
     [("ssh", 0, 0), ("tcp_public", 0, 32)],

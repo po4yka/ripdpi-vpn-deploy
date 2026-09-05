@@ -854,6 +854,7 @@ def _extract_identity(state: dict[str, Any], hostname: str) -> dict[str, Any]:
     ):
         raise GuardError("state SSH port binding is invalid")
     rules: dict[str, str] = {}
+    rule_ids: set[str] = set()
     icmp_keys: set[str] = set()
     ssh_rules = 0
     public_listeners: dict[str, set[tuple[str, int, int]]] = {
@@ -917,6 +918,9 @@ def _extract_identity(state: dict[str, Any], hostname: str) -> dict[str, Any]:
                 raise GuardError("state public listener rule is duplicated")
             public_listeners[ip_type].add(listener)
         rule_id = _decimal_id(rule.get("id"), "firewall rule ID")
+        if rule_id in rule_ids:
+            raise GuardError("state firewall rule ID is duplicated")
+        rule_ids.add(rule_id)
         if rule.get("firewall_group_id") != firewall_group_id:
             raise GuardError("state firewall rule belongs to a foreign group")
         rules[address] = rule_id
@@ -1006,9 +1010,12 @@ def load_manifest(
     expected_environment: str | None = None,
     verify_state: bool = True,
     allow_expired: bool = False,
-) -> dict[str, Any]:
+    return_identity: bool = False,
+) -> dict[str, Any] | tuple[dict[str, Any], tuple[int, int]]:
     current = _time(now or datetime.now(timezone.utc), "current time")
-    raw, _ = _private_read(path.absolute(), "manifest", max_bytes=MAX_JSON_BYTES)
+    raw, manifest_identity = _private_read(
+        path.absolute(), "manifest", max_bytes=MAX_JSON_BYTES
+    )
     manifest = _json(raw, "manifest")
     if (
         raw != canonical_json(manifest)
@@ -1064,7 +1071,7 @@ def load_manifest(
             raise GuardError("state digest does not match manifest")
     else:
         _validate_manifest_resources(resources)
-    return manifest
+    return (manifest, manifest_identity) if return_identity else manifest
 
 
 def _validate_manifest_resources(resources: dict[str, Any]) -> None:
@@ -1115,12 +1122,17 @@ def reserve_evidence(
     now: datetime | None = None,
     expected_environment: str | None = None,
 ) -> dict[str, Any]:
-    manifest = load_manifest(
-        manifest_path, now=now, expected_environment=expected_environment
+    manifest, loaded_identity = load_manifest(
+        manifest_path,
+        now=now,
+        expected_environment=expected_environment,
+        return_identity=True,
     )
-    _, identity = _private_read(
+    raw, identity = _private_read(
         manifest_path.absolute(), "manifest", max_bytes=MAX_JSON_BYTES
     )
+    if raw != canonical_json(manifest) or identity != loaded_identity:
+        raise GuardError("manifest changed during evidence reservation")
     evidence = {
         "schema_version": SCHEMA_VERSION,
         "status": "reserved",
