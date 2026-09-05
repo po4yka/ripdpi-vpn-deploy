@@ -631,6 +631,15 @@
             mode: "0644"
           when: _observability_agent_previous_generation.stat.islnk | default(false)
 
+        - name: Restore previous observability health adapter service unit
+          ansible.builtin.template:
+            src: observability-agent-health-adapter.service.j2
+            dest: /etc/systemd/system/observability-agent-health-adapter.service
+            owner: root
+            group: root
+            mode: "0644"
+          when: _observability_agent_previous_generation.stat.islnk | default(false)
+
         - name: Stop and disable failed first observability agent activation
           ansible.builtin.systemd_service:
             name: observability-agent.service

@@ -307,25 +307,19 @@ def test_alert_policy_rejects_invalid_thresholds_and_unit_selectors(
     assert "changed=0" in result.stdout
 
 
-def test_alertmanager_route_and_message_are_deterministic_and_secret_free() -> None:
+def test_alertmanager_routes_to_authenticated_relay_without_secrets() -> None:
     contract = _contract()
     first = render_template(
         ROLE / "templates/observability-alertmanager.yml.j2",
         {
             "observability_control_plane": contract,
-            "_observability_telegram_generation": "c" * 64,
         },
     )
     second = render_template(
         ROLE / "templates/observability-alertmanager.yml.j2",
         {
             "observability_control_plane": contract,
-            "_observability_telegram_generation": "c" * 64,
         },
-    )
-    message = render_template(
-        ROLE / "templates/observability-telegram.tmpl.j2",
-        {"observability_control_plane": contract},
     )
     parsed = yaml.safe_load(first)
 
@@ -346,37 +340,39 @@ def test_alertmanager_route_and_message_are_deterministic_and_secret_free() -> N
         receiver
         for receiver in parsed["receivers"]
         if receiver["name"] == "telegram-primary"
-    )["telegram_configs"][0]
-    assert primary["bot_token_file"] == (
-        "/run/credentials/observability-alertmanager.service/telegram-bot-token"
-    )
-    assert primary["chat_id"] == -100000000001
-    assert primary["message_thread_id"] == 42
+    )["webhook_configs"][0]
+    assert primary["url"] == "http://127.0.0.1:19095/alert"
     assert primary["send_resolved"] is True
     assert primary["max_alerts"] == 5
+    assert primary["http_config"]["authorization"] == {
+        "type": "Bearer",
+        "credentials_file": (
+            "/run/credentials/observability-alertmanager.service/"
+            "telegram-relay-auth-token"
+        ),
+    }
     assert parsed["inhibit_rules"][0] == {
         "source_matchers": ['alertname="ObservabilityBackupStageFailed"'],
         "target_matchers": ['alertname="ObservabilityBackupEvidenceStale"'],
         "equal": ["environment", "node", "component"],
     }
-    assert "fixture-token" not in first + message
-    assert message.count(".CommonAnnotations.") == 1
-    assert "reReplaceAll" in message
-    assert ".Annotations.summary" in message
-    assert ".Annotations.runbook" in message
-    assert ".CommonAnnotations.source_generation" in message
-    assert ".TruncatedAlerts" in message
+    assert "fixture-token" not in first
+    assert "telegram-bot-token" not in first
 
 
-def test_canonical_alertmanager_template_uses_exact_telegram_generation_path() -> None:
+def test_canonical_alertmanager_template_uses_relay_webhooks() -> None:
     vars_ = merge_render_vars()
     rendered = render_template(
         ROLE / "templates/observability-alertmanager.yml.j2", vars_
     )
 
-    assert yaml.safe_load(rendered)["templates"] == [
-        "/etc/observability-control-plane/generations/telegram-" + "4" * 64 + ".tmpl"
-    ]
+    receivers = yaml.safe_load(rendered)["receivers"]
+    assert all("telegram_configs" not in receiver for receiver in receivers)
+    assert all(
+        receiver["webhook_configs"][0]["url"] == "http://127.0.0.1:19095/alert"
+        for receiver in receivers
+        if receiver["name"].startswith("telegram-")
+    )
 
 
 def test_prometheus_loads_alert_rules_and_scrapes_only_loopback_alertmanager() -> None:
@@ -542,7 +538,6 @@ def test_alertmanager_inhibits_derivatives_but_not_known_detector_events() -> No
             ROLE / "templates/observability-alertmanager.yml.j2",
             {
                 "observability_control_plane": _contract(),
-                "_observability_telegram_generation": "c" * 64,
             },
         )
     )
@@ -670,7 +665,7 @@ def test_alerting_tasks_validate_before_activation_and_rollback() -> None:
     )
     assert restart["when"] == (
         "not ansible_check_mode and (_observability_alertmanager_runtime_changed | bool or "
-        "_observability_alertmanager_credential.changed or "
+            "_observability_telegram_credentials.changed or "
         "_observability_silence_credentials.changed or "
         "_observability_silence_web.changed or "
         "_observability_alertmanager_unit.changed or "
@@ -717,7 +712,7 @@ def test_alertmanager_restart_condition_uses_one_ansible_expression(
         msg: "restart-{{ item.name }}"
       vars:
         _observability_alertmanager_runtime_changed: "{{ item.runtime }}"
-        _observability_alertmanager_credential: {changed: "{{ item.credential }}"}
+        _observability_telegram_credentials: {changed: "{{ item.credential }}"}
         _observability_silence_credentials: {changed: "{{ item.silence | default(false) }}"}
         _observability_silence_web: {changed: "{{ item.web | default(false) }}"}
         _observability_alertmanager_unit: {changed: "{{ item.unit }}"}
@@ -753,7 +748,8 @@ def test_alerting_contract_precedes_first_control_plane_host_mutation() -> None:
 
 def test_alertmanager_unit_uses_systemd_credential_without_argv_secret() -> None:
     unit = (ROLE / "templates/observability-alertmanager.service.j2").read_text()
-    assert "LoadCredential=telegram-bot-token:" in unit
+    assert "LoadCredential=telegram-relay-auth-token:" in unit
+    assert "LoadCredential=telegram-bot-token:" not in unit
     assert "bot_token" not in next(
         line for line in unit.splitlines() if line.startswith("ExecStart=")
     )
@@ -996,11 +992,12 @@ def test_authority_rotation_failure_restores_files_and_service_snapshots(
     (generations / ("alertmanager-" + "a" * 64 + ".yml")).write_text("old\n")
     (generations / ("alertmanager-" + "b" * 64 + ".yml")).write_text("candidate\n")
     ports = {}
-    for name in ("alertmanager", "silence-gateway", "prometheus"):
+    for name in ("alertmanager", "telegram-relay", "silence-gateway", "prometheus"):
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
             ports[name] = listener.getsockname()[1]
     old_token, new_token = "a1" * 32, "b2" * 32
+    old_relay_token, new_relay_token = "c3" * 32, "d4" * 32
     contract = _contract()
     contract["config_root"] = str(credentials.parent)
     gateway = contract["alerting"]["silence_gateway"]
@@ -1008,6 +1005,11 @@ def test_authority_rotation_failure_restores_files_and_service_snapshots(
     gateway["operators"] = [{"owner": "operator-b", "token": "c3" * 32}]
     contract["alerting"]["credential_path"] = str(credentials / "telegram-bot-token")
     contract["alerting"]["silence_gateway"]["listen"] = "127.0.0.1:19094"
+    contract["alerting"]["telegram"]["relay_listen"] = "127.0.0.1:19095"
+    contract["alerting"]["telegram"]["relay_url"] = "http://127.0.0.1:19095/alert"
+    contract["alerting"]["telegram"]["relay_auth_path"] = str(
+        credentials / "telegram-relay-auth-token"
+    )
     prior = {
         "silence-auth.json": json.dumps(
             {
@@ -1019,6 +1021,7 @@ def test_authority_rotation_failure_restores_files_and_service_snapshots(
         "silence-sender-token": old_token,
         "silence-owner-operator-a-token": "d4" * 32,
         "telegram-bot-token": "previous-telegram-token",
+        "telegram-relay-auth-token": old_relay_token,
     }
     if initial != "absent":
         for name, content in prior.items():
@@ -1035,6 +1038,10 @@ def test_authority_rotation_failure_restores_files_and_service_snapshots(
             "prior program\n"
         )
         (root / "usr/local/libexec/observability-silence-gateway").chmod(0o755)
+        (root / "usr/local/libexec/observability-telegram-relay").write_text(
+            "prior relay program\n"
+        )
+        (root / "usr/local/libexec/observability-telegram-relay").chmod(0o755)
     facts = (
         {
             "observability-"
@@ -1068,6 +1075,7 @@ ports=json.loads((base/'ports.json').read_text()); creds=base/'root/etc/observab
 if action=='serve':
  name=sys.argv[3]
  token=(creds/'silence-sender-token').read_text() if name=='prometheus' and (creds/'silence-sender-token').exists() else ''
+ relay_token=(creds/'telegram-relay-auth-token').read_text() if name=='telegram-relay' and (creds/'telegram-relay-auth-token').exists() else ''
  digest=json.loads((creds/'silence-auth.json').read_text())['sender_token_sha256'] if name=='silence-gateway' else ''
  class Handler(BaseHTTPRequestHandler):
   def do_GET(self):
@@ -1076,6 +1084,9 @@ if action=='serve':
     supplied=self.headers.get('Authorization','').removeprefix('Bearer ')
     code=200 if hashlib.sha256(supplied.encode()).hexdigest()==digest else 403
     if (base/'fail-candidate').exists() and digest==hashlib.sha256(('b2'*32).encode()).hexdigest(): code=503
+   if name=='telegram-relay':
+    supplied=self.headers.get('Authorization','').removeprefix('Bearer ')
+    code=200 if supplied==relay_token else 403
    if name=='prometheus' and token:
     try:
      with urlopen(Request('http://127.0.0.1:'+str(ports['silence-gateway'])+'/-/ready',headers={'Authorization':'Bearer '+token}),timeout=1): pass
@@ -1140,6 +1151,9 @@ else:
                 "http://127.0.0.1:19094",
                 "http://127.0.0.1:" + str(ports["silence-gateway"]),
             ).replace(
+                "http://127.0.0.1:19095",
+                "http://127.0.0.1:" + str(ports["telegram-relay"]),
+            ).replace(
                 "http://127.0.0.1:9090", "http://127.0.0.1:" + str(ports["prometheus"])
             )
         if isinstance(value, list):
@@ -1199,6 +1213,7 @@ else:
     variables = {
         "ansible_python_interpreter": os.sys.executable,
         "observability_control_plane": contract,
+        "observability_secrets": {"telegram": {"relay_auth_token": new_relay_token}},
         "role_path": str(ROLE),
         "_observability_alertmanager_runtime_changed": False,
         "_observability_alertmanager_generation": "b" * 64,
@@ -1246,6 +1261,21 @@ else:
             with urlopen(
                 Request(
                     "http://127.0.0.1:" + str(ports["silence-gateway"]) + "/-/ready",
+                    headers={"Authorization": "Bearer " + token},
+                ),
+                timeout=2,
+            ) as response:
+                return response.status
+        except HTTPError as error:
+            return error.code
+
+    def relay_request(token):
+        try:
+            with urlopen(
+                Request(
+                    "http://127.0.0.1:"
+                    + str(ports["telegram-relay"])
+                    + "/-/ready",
                     headers={"Authorization": "Bearer " + token},
                 ),
                 timeout=2,
@@ -1409,14 +1439,19 @@ else:
             assert not (
                 root / "usr/local/libexec/observability-silence-gateway"
             ).exists()
+            assert not (root / "usr/local/libexec/observability-telegram-relay").exists()
         if initial == "active":
             assert request(old_token) == 200
             assert request(new_token) == 403
+            assert relay_request(old_relay_token) == 200
+            assert relay_request(new_relay_token) == 403
             (tmp_path / "fail-candidate").unlink()
             success = run()
             assert success.returncode == 0, success.stdout + success.stderr
             assert request(new_token) == 200
             assert request(old_token) == 403
+            assert relay_request(new_relay_token) == 200
+            assert relay_request(old_relay_token) == 403
             with urlopen(
                 "http://127.0.0.1:" + str(ports["prometheus"]) + "/-/ready", timeout=2
             ) as response:
