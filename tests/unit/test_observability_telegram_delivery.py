@@ -250,6 +250,29 @@ def test_relay_rejects_invalid_delivery_identity_before_serving() -> None:
         )
 
 
+def test_relay_delivery_constructs_the_exact_validated_telegram_origin() -> None:
+    relay = _relay()
+    captured: list[str] = []
+
+    def opener(outbound, timeout):  # type: ignore[no-untyped-def]
+        assert timeout == 5
+        captured.append(outbound.full_url)
+        return _Response(200, b'{"ok":true}')
+
+    relay.deliver(
+        api_url="https://api.telegram.org",
+        token="123456789:fixture-token-not-real",
+        chat_id="-100000000001",
+        topic_id=42,
+        message="bounded",
+        opener=opener,
+    )
+
+    assert captured == [
+        "https://api.telegram.org/bot123456789:fixture-token-not-real/sendMessage"
+    ]
+
+
 def test_relay_reads_only_single_line_ascii_systemd_credentials(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

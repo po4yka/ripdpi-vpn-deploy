@@ -8,6 +8,7 @@ import hashlib
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import importlib.util
 import ipaddress
+import io
 import json
 import os
 from pathlib import Path
@@ -82,14 +83,26 @@ def _tls(tmp_path: Path):
                 serialization.NoEncryption(),
             )
         )
-    server = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     server.minimum_version = ssl.TLSVersion.TLSv1_2
     server.load_cert_chain(tmp_path / "server.pem", tmp_path / "server.key")
     server.load_verify_locations(tmp_path / "ca.pem")
     server.verify_mode = ssl.CERT_REQUIRED
     client = ssl.create_default_context(cafile=str(tmp_path / "ca.pem"))
+    client.minimum_version = ssl.TLSVersion.TLSv1_2
     client.load_cert_chain(tmp_path / "client.pem", tmp_path / "client.key")
     return server, client
+
+
+def test_tls_fixture_requires_tls12_hostname_validation_and_client_identity(
+    tmp_path: Path,
+) -> None:
+    server, client = _tls(tmp_path)
+
+    assert server.minimum_version == ssl.TLSVersion.TLSv1_2
+    assert server.verify_mode == ssl.CERT_REQUIRED
+    assert client.minimum_version == ssl.TLSVersion.TLSv1_2
+    assert client.check_hostname is True
 
 
 @contextmanager
@@ -589,6 +602,28 @@ def test_backend_certificate_contract_rejects_ingestion_authority_and_wrong_key(
     gateway["backend_client_key_pem"] = gateway["backend_server_key_pem"]
     with pytest.raises(ValueError, match="key-separation"):
         module.validate(contract)
+
+
+def test_backend_preflight_refuses_expected_input_errors_without_hiding_bugs(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "silence_backend_preflight_main", ROLE / "files/validate-silence-backend.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module.sys, "stdin", io.StringIO("{}"))
+
+    assert module.main() == 1
+    assert capsys.readouterr().err == "silence-backend: certificate-contract-refused\n"
+
+    def unexpected_failure(_contract: object) -> None:
+        raise RuntimeError
+
+    monkeypatch.setattr(module, "validate", unexpected_failure)
+    monkeypatch.setattr(module.sys, "stdin", io.StringIO("{}"))
+    with pytest.raises(RuntimeError):
+        module.main()
 
 
 def test_backend_acceptance_then_audit_failure_never_reports_success(

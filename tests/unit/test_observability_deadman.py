@@ -12,6 +12,7 @@ from pathlib import Path
 import stat
 import threading
 from urllib import error
+from urllib.parse import urlsplit
 
 import pytest
 import yaml
@@ -595,7 +596,7 @@ def test_tick_completes_state_after_slow_429_body_then_publishes_reverse_health(
 
     def post(outbound, timeout):  # type: ignore[no-untyped-def]
         assert timeout == 5
-        if "api.telegram.org" in outbound.full_url:
+        if urlsplit(outbound.full_url).hostname == "api.telegram.org":
             calls.append("telegram")
             return (
                 Response(429, slow_body=True)
