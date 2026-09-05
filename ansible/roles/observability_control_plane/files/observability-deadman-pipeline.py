@@ -160,6 +160,9 @@ def _ensure_private_directory(path: Path) -> None:
             try:
                 os.mkdir(path.name, mode=0o700, dir_fd=parent)
             except FileExistsError:
+                # Another authorized process may win this create race.  The
+                # O_NOFOLLOW open and exact owner/mode checks below remain the
+                # authority for accepting the existing directory.
                 pass
             descriptor = os.open(
                 path.name,
@@ -207,16 +210,17 @@ def _atomic_bytes(
         descriptor = os.open(
             temporary,
             os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
-            mode,
+            0o600,
             dir_fd=parent,
         )
-        os.fchmod(descriptor, mode)
+        os.fchmod(descriptor, 0o600)
         offset = 0
         while offset < len(content):
             written = os.write(descriptor, content[offset:])
             if written <= 0:
                 raise PipelineError("state write failed")
             offset += written
+        os.fchmod(descriptor, mode)
         os.fsync(descriptor)
         os.close(descriptor)
         descriptor = -1
@@ -380,13 +384,14 @@ def reconcile_state(state_dir: Path, generation: str, *, disable: bool = False) 
 def _lock(state_dir: Path):  # type: ignore[no-untyped-def]
     _ensure_private_directory(state_dir)
     parent = _open_trusted_directory(state_dir)
-    descriptor = os.open(
-        ".pipeline.lock",
-        os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC,
-        0o600,
-        dir_fd=parent,
-    )
+    descriptor = -1
     try:
+        descriptor = os.open(
+            ".pipeline.lock",
+            os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o600,
+            dir_fd=parent,
+        )
         os.fchmod(descriptor, 0o600)
         metadata = os.fstat(descriptor)
         if (
@@ -398,11 +403,10 @@ def _lock(state_dir: Path):  # type: ignore[no-untyped-def]
         fcntl.flock(descriptor, fcntl.LOCK_EX)
         yield
     finally:
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
-        except OSError:
-            pass
-        os.close(descriptor)
+        # Closing the descriptor releases flock even when unwinding an error;
+        # a separate best-effort unlock would add an unobservable race here.
+        if descriptor >= 0:
+            os.close(descriptor)
         os.close(parent)
 
 

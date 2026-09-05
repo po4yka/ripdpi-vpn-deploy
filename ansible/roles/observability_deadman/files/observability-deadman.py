@@ -528,7 +528,9 @@ def _telegram(config: dict[str, Any], credential: bytes, event: str) -> bool:
                 except (AttributeError, OSError, ValueError):
                     retry_body = b""
         except (OSError, ValueError):
-            pass
+            # A transport failure has no trustworthy response metadata.
+            retry_headers = None
+            retry_body = b""
         if attempt + 1 < attempts:
             delay = _telegram_retry_delay(
                 retry_headers,
@@ -551,13 +553,13 @@ def _host_health(
             "ok" if all(value >= 0 for value in os.getloadavg()) else "error"
         )
     except OSError:
-        pass
+        health["cpu"] = "error"
     try:
         pages = os.sysconf("SC_AVPHYS_PAGES")
         page_size = os.sysconf("SC_PAGE_SIZE")
         health["memory"] = "ok" if pages > 0 and page_size > 0 else "error"
     except (OSError, ValueError):
-        pass
+        health["memory"] = "error"
     try:
         filesystem = os.statvfs(
             str(config.get("state_dir", "/var/lib/observability-deadman"))
@@ -565,7 +567,8 @@ def _host_health(
         health["disk"] = "ok" if filesystem.f_bavail >= 0 else "error"
         health["inode"] = "ok" if filesystem.f_favail >= 0 else "error"
     except OSError:
-        pass
+        health["disk"] = "error"
+        health["inode"] = "error"
     health["clock"] = "ok" if abs(int(time.time()) - now) <= 5 else "error"
     try:
         interfaces = Path("/sys/class/net")
@@ -579,7 +582,7 @@ def _host_health(
             else "error"
         )
     except (OSError, UnicodeError):
-        pass
+        health["network"] = "error"
     try:
         units = subprocess.run(
             ["systemctl", "is-active", "--quiet", *config["required_units"]],
@@ -591,7 +594,7 @@ def _host_health(
         )
         health["unit"] = "ok" if units.returncode == 0 else "error"
     except (OSError, subprocess.TimeoutExpired):
-        pass
+        health["unit"] = "error"
     health["collector"] = "ok" if state.get("schema") == 1 else "error"
     health["source"] = (
         "ok"
