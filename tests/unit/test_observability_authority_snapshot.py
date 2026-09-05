@@ -24,6 +24,11 @@ SERVICES = {
         "active": True,
         "enabled": True,
     },
+    "observability-telegram-relay.service": {
+        "exists": True,
+        "active": True,
+        "enabled": True,
+    },
     "observability-silence-gateway.service": {
         "exists": True,
         "active": True,

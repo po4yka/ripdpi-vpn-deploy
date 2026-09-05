@@ -484,7 +484,7 @@ def test_templates_keep_credentials_systemd_only_and_harden_services() -> None:
         "TasksMax=",
     ):
         assert hardening in service + tick
-    assert "TimeoutStartSec=30s" in tick
+    assert "TimeoutStartSec=60s" in tick
     assert "ReadWritePaths={{ observability_deadman.state_dir }}" in service + tick
 
 
@@ -565,6 +565,68 @@ def test_reverse_health_is_signed_bounded_and_redacted(
     assert "receiver" in rendered and "signature" in rendered
 
 
+def test_tick_completes_state_after_slow_429_body_then_publishes_reverse_health(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "state.json"
+    current = state()
+    current["last_pulse"] = NOW - 300
+    deadman._save_state(path, current)
+    calls: list[str] = []
+    sleeps: list[int] = []
+
+    class Response:
+        def __init__(self, status: int, *, slow_body: bool = False) -> None:
+            self.status = status
+            self.headers = {"Retry-After": "5"}
+            self.slow_body = slow_body
+
+        def read(self, _maximum: int) -> bytes:
+            calls.append("slow-429-body")
+            if self.slow_body:
+                raise TimeoutError("bounded response body timeout")
+            return b""
+
+        def __enter__(self):  # type: ignore[no-untyped-def]
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    def post(outbound, timeout):  # type: ignore[no-untyped-def]
+        assert timeout == 5
+        if "api.telegram.org" in outbound.full_url:
+            calls.append("telegram")
+            return (
+                Response(429, slow_body=True)
+                if calls.count("telegram") == 1
+                else Response(200)
+            )
+        calls.append("reverse-health")
+        persisted = deadman._state(path)
+        assert persisted["pending_event"] == "none"
+        assert persisted["last_delivery"] == "firing"
+        if calls.count("reverse-health") == 1:
+            raise TimeoutError("bounded reverse-health timeout")
+        return Response(204)
+
+    monkeypatch.setattr(deadman.request, "urlopen", post)
+    monkeypatch.setattr(deadman.time, "sleep", sleeps.append)
+
+    completed = deadman.tick(path, config(), TOKEN, TOKEN, NOW)
+
+    assert completed["pending_event"] == "none"
+    assert completed["last_delivery"] == "firing"
+    assert calls == [
+        "telegram",
+        "slow-429-body",
+        "telegram",
+        "reverse-health",
+        "reverse-health",
+    ]
+    assert sleeps == [5]
+
+
 def test_role_contract_refuses_unbounded_or_nonprivate_configuration() -> None:
     source = (ROLE / "tasks/enable.yml").read_text()
     for expected in (
@@ -577,7 +639,9 @@ def test_role_contract_refuses_unbounded_or_nonprivate_configuration() -> None:
         assert expected in source
 
 
-def test_molecule_lifecycle_scenarios_cover_deadman_enable_disable_and_refusal() -> None:
+def test_molecule_lifecycle_scenarios_cover_deadman_enable_disable_and_refusal() -> (
+    None
+):
     molecule = ROLE / "molecule"
     default = yaml.safe_load((molecule / "default/molecule.yml").read_text())
     enabled = yaml.safe_load((molecule / "enabled/molecule.yml").read_text())
@@ -618,7 +682,9 @@ def test_molecule_lifecycle_scenarios_cover_deadman_enable_disable_and_refusal()
         < rotation_names.index("Include config-only rotated dead-man role")
         < rotation_names.index("Require config-only receiver generation reload")
     )
-    assert enabled_verify_play["vars"]["token_rotated_deadman"]["max_pulse_bytes"] == 4096
+    assert (
+        enabled_verify_play["vars"]["token_rotated_deadman"]["max_pulse_bytes"] == 4096
+    )
     assert enabled_verify_play["vars"]["rotated_deadman"]["max_pulse_bytes"] == 512
 
 
@@ -633,7 +699,8 @@ def test_activation_restarts_changed_receiver_inputs_inside_rollback_block() -> 
     verifier = next(
         task
         for task in tasks
-        if task["name"] == "Install dead-man verifier and immutable candidate configuration"
+        if task["name"]
+        == "Install dead-man verifier and immutable candidate configuration"
     )
     activation = next(
         task
@@ -654,9 +721,11 @@ def test_activation_restarts_changed_receiver_inputs_inside_rollback_block() -> 
 
     assert credentials["register"] == "_observability_deadman_credentials"
     assert verifier["register"] == "_observability_deadman_verifier"
-    assert names.index("Point dead-man at validated generation") < names.index(
-        "Restart changed dead-man receiver before acceptance"
-    ) < names.index("Require activated dead-man private status readiness")
+    assert (
+        names.index("Point dead-man at validated generation")
+        < names.index("Restart changed dead-man receiver before acceptance")
+        < names.index("Require activated dead-man private status readiness")
+    )
     assert restart["when"] == [
         "not ansible_check_mode",
         "_observability_deadman_credentials.changed or _observability_deadman_verifier.changed or _observability_deadman_current_link.changed or _observability_deadman_units.changed",

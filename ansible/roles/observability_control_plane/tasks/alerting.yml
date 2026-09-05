@@ -71,12 +71,10 @@
 - name: Prepare isolated silence gateway account and state
   ansible.builtin.include_tasks: silence-gateway-prepare.yml
 
-- name: Derive immutable alert rule and Telegram template generations
+- name: Derive immutable alert rule generation
   ansible.builtin.set_fact:
     _observability_alert_rules_content: "{{ lookup('ansible.builtin.template', 'observability-alert-rules.yml.j2') }}"
     _observability_alert_rules_generation: "{{ lookup('ansible.builtin.template', 'observability-alert-rules.yml.j2') | hash('sha256') }}"
-    _observability_telegram_template_content: "{{ lookup('ansible.builtin.template', 'observability-telegram.tmpl.j2') }}"
-    _observability_telegram_generation: "{{ lookup('ansible.builtin.template', 'observability-telegram.tmpl.j2') | hash('sha256') }}"
   no_log: true
 
 - name: Derive immutable Alertmanager generation
@@ -93,8 +91,6 @@
   loop:
     - path: "{{ observability_control_plane.config_root }}/generations/alerts-{{ _observability_alert_rules_generation }}.rules.yml"
       checksum: "{{ _observability_alert_rules_generation }}"
-    - path: "{{ observability_control_plane.config_root }}/generations/telegram-{{ _observability_telegram_generation }}.tmpl"
-      checksum: "{{ _observability_telegram_generation }}"
     - path: "{{ observability_control_plane.config_root }}/generations/alertmanager-{{ _observability_alertmanager_generation }}.yml"
       checksum: "{{ _observability_alertmanager_generation }}"
   register: _observability_alerting_candidates
@@ -124,8 +120,6 @@
   loop:
     - content: "{{ _observability_alert_rules_content }}"
       path: "{{ observability_control_plane.config_root }}/generations/alerts-{{ _observability_alert_rules_generation }}.rules.yml"
-    - content: "{{ _observability_telegram_template_content }}"
-      path: "{{ observability_control_plane.config_root }}/generations/telegram-{{ _observability_telegram_generation }}.tmpl"
     - content: "{{ _observability_alertmanager_content }}"
       path: "{{ observability_control_plane.config_root }}/generations/alertmanager-{{ _observability_alertmanager_generation }}.yml"
   no_log: true

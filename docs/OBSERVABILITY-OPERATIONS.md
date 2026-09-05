@@ -103,21 +103,29 @@ message.
 
 ## Telegram delivery contract
 
-The primary route is Alertmanager's native Telegram notifier. Both warning and
-critical routes use the same HTML-escaped allowlist template, send resolved
-notifications and cap a notification at five alerts; configuration validation
-refuses values above ten. Omitted alerts are reported through the deterministic
-`TruncatedAlerts` count. The route waits 30 seconds before its first group,
-regroups after five minutes, and repeats critical incidents after one hour and
-warnings after six hours. These bounds limit notification frequency; they do
-not shorten or resolve the source incident.
+Alertmanager never receives the primary bot token. Both warning and critical
+routes send resolved notifications as authenticated webhooks to the dedicated
+relay on `127.0.0.1:19095`. Alertmanager supplies no more than five alerts and
+applies a fixed 20-second webhook timeout. The relay accepts only the bounded
+Alertmanager schema and configured bearer credential, HTML-escapes the technical
+allowlist, renders no more than five alerts, and reports Alertmanager's exact
+omitted count. The parent route waits 30 seconds before its first group and
+regroups after five minutes. Critical incidents repeat after one hour and
+warnings after six hours. These bounds limit notification frequency; they do not
+shorten or resolve the source incident.
 
-Alertmanager retains its native retry semantics for 429, server and transport
-failures. The independent dead-man sender is deliberately smaller: at most two
-requests, at most five seconds per request, one bounded retry delay, and a
-`Retry-After` delay capped at five seconds. It retries transport errors, 429 and
-5xx responses; semantic 4xx rejection stops immediately. Neither sender logs a
-token, request body, chat/topic destination or Telegram response body.
+The relay makes at most two Telegram requests, each with a five-second timeout,
+and permits one bounded delay. It retries only transport failures, HTTP 429 and
+5xx responses; `Retry-After` is capped at five seconds and any other 4xx or
+malformed response fails immediately. The independent dead-man sender uses the
+same two-attempt and five-second bounds. Its complete worst-case tick budget is
+35 seconds (two Telegram attempts, one five-second delay and two reverse-health
+attempts), inside the fixed 60-second systemd ceiling. Both senders read at most
+4096 response bytes and emit only categorical errors. Each bot token stays in
+its own systemd credential and outside generated configuration. Alertmanager may
+log route labels when a webhook fails; the source contract guarantees only that
+bot and relay credentials are absent from its configuration and non-debug test
+logs. Never collect unreviewed debug logs as evidence.
 
 API success and notification metrics prove an API-level attempt/outcome only.
 For acceptance, record separately observed, clearly labelled firing and
@@ -125,6 +133,34 @@ resolved messages in the configured private primary topic and a loss/recovery
 pair in the independent secondary topic. Preserve timestamps and the deployed
 source/config generations without copying message bodies or destinations into
 the repository.
+
+### Primary-route migration
+
+Treat a notification transport change as an authority migration, not a template
+edit. First validate the candidate Alertmanager config and relay binary against a
+deterministic local stub. In staging, exercise the relay directly with an
+authenticated synthetic payload while Alertmanager still uses the current
+generation; this is shadow validation and must not be recorded as a routed
+notification. Next activate the complete candidate authority transaction and
+run only the labelled staging canary. There is no dual-send period: overlap is
+limited to retaining the old immutable Alertmanager generation and its exact
+service/file snapshot while the new relay service is ready. Only one active
+Alertmanager route may own primary delivery.
+
+Cut over by moving the current generation link, starting the relay, checking its
+authenticated readiness, and restarting Alertmanager inside the existing
+rollback block. A candidate failure stops new units, restores exact prior bytes,
+links, credentials and enabled/active states, then rechecks the restored chain.
+Agent rollback remains a redeploy of its reviewed configuration; control-plane
+rollback uses its retained generation and authority snapshot; dead-man rollback
+requires its own immutable generation and never adopts control-plane state.
+
+Keep the legacy generation only for the approved rollback window. Remove it
+after staging firing/reminder/resolved and failure-path evidence is complete and
+the rollback window is explicitly closed. The role does not silently garbage
+collect that evidence. Legacy removal, bot revocation and any production cutover
+are separate operator actions; fixture validation or a successful API response
+does not authorize them.
 
 ## Storage and retention
 
@@ -221,7 +257,7 @@ failure before moving to the next row.
 | protocol liveness | run REALITY, XHTTP, Hysteria2 and AmneziaWG from two approved distinct vantages | canonical evaluator transitions and central adapter agree | one vantage, self-dial or unknown control cannot claim outage/recovery |
 | grouping/inhibition | create node plus derivative failures and backup failure plus stale evidence | stable grouping and only the specified inhibition occur | fingerprints remain stable through updates |
 | finite silence | create, expire and delete a narrow staging silence | delivery is suppressed/resumed while source state and incident start remain unchanged | over-TTL, broad, foreign-owner and unknown-label requests fail |
-| primary Telegram | exercise firing, reminder, resolved, 429, 5xx and timeout paths | bounded route behavior and API outcome are visible; real firing/resolved messages are observed | source incident survives notification failure; secrets stay absent |
+| primary Telegram | exercise firing, reminder, resolved, 429, 5xx and timeout paths | bounded relay behavior and API outcome are visible; real firing/resolved messages are observed | relay stays loopback-only and authenticated; source incident survives notification failure; secrets stay absent |
 | dead-man | stop pulses/control plane, then restore fresh advancing pulses | secondary firing/reminder/recovery and reverse-health loss/recovery occur | replay, future, expired and unhealthy pulses do not reset the incident |
 | credentials | rotate one sender, primary bot and secondary bot authority at a time | replacement works before old authority is revoked | failed rotation restores the prior generation |
 | generation | reject an invalid rule/template/config, then activate and roll back a valid candidate | only a complete generation becomes ready | previous service states and the exact last-known-good chain return |

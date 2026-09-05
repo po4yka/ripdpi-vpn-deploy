@@ -19,11 +19,12 @@ executes probes or recomputes sentinel, variant, profile, or quorum semantics.
 It is separately opt-in and owns only its adapter, units, timer, and one
 textfile; disable preserves the canonical evaluator evidence.
 Alerting is separately opt-in. Prometheus evaluates immutable validated rules;
-Alertmanager remains loopback-only and receives its primary Telegram token only
+Alertmanager remains loopback-only and sends bounded authenticated webhooks to
+a separate loopback relay. Only that relay receives the primary Telegram token
 through a systemd credential. Telegram routing contains only bounded technical
-aliases and cannot authorize maintenance or infrastructure actions. The
-native notifier owns request retries; fixed group and repeat intervals bound
-route frequency, while the template caps alert count and reports omissions.
+aliases and cannot authorize maintenance or infrastructure actions. The relay
+owns two bounded delivery attempts, escaping, redaction, truncation and exact
+omission counts; fixed group and repeat intervals bound route frequency. A
 synthetic pipeline watchdog may target only an explicitly enabled loopback
 canary receiver; the independent dead-man sender remains a separate owner.
 Enabled alerting requires the private gateway on 127.0.0.1:19094. Only its
@@ -57,8 +58,10 @@ liveness quorum logic here; protocol verdict adaptation remains external.
 Do not turn a stale, future, malformed, or unknown published verdict into a
 healthy, blocked, or rotation conclusion.
 Do not put Telegram tokens in Alertmanager YAML, argv, environment, metrics, or
-logs. A missing destination is a pre-mutation refusal, and disabling alerting
-removes its unit/config/credential surfaces without deleting Prometheus TSDB.
+logs. Alertmanager holds only the relay authentication credential. A missing
+destination is a pre-mutation refusal, and disabling alerting removes both
+alerting units, configuration and credential surfaces without deleting the
+Prometheus TSDB.
 
 Do not reuse ingestion CA or certificates for the backend, forward raw silence
 API routes, trust an owner in a request body, or grant Telegram authority.

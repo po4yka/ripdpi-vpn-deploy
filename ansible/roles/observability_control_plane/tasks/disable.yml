@@ -42,6 +42,15 @@
     - not ansible_check_mode
     - "'observability-alertmanager.service' in ansible_facts.services"
 
+- name: Stop and disable existing primary Telegram relay
+  ansible.builtin.systemd_service:
+    name: observability-telegram-relay
+    enabled: false
+    state: stopped
+  when:
+    - not ansible_check_mode
+    - "'observability-telegram-relay.service' in ansible_facts.services"
+
 - name: Stop and disable protocol-liveness adapter units
   ansible.builtin.systemd_service:
     name: "{{ item }}"
@@ -96,7 +105,9 @@
   loop:
     - /etc/systemd/system/observability-prometheus.service
     - /etc/systemd/system/observability-alertmanager.service
+    - /etc/systemd/system/observability-telegram-relay.service
     - /etc/systemd/system/observability-silence-gateway.service
+    - /usr/local/libexec/observability-telegram-relay
     - /usr/local/libexec/observability-silence-gateway
     - /etc/nginx/sites-enabled/observability-remote-write.conf
     - /etc/nginx/sites-available/observability-remote-write.conf
