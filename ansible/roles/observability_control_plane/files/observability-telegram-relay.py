@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import hmac
 import html
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -25,6 +24,7 @@ REQUEST_TIMEOUT_SECONDS = 5
 RETRY_ATTEMPTS = 2
 MAX_RETRY_AFTER_SECONDS = 5
 MAX_MESSAGE_CHARS = 4096
+TELEGRAM_API_URL = "https://api.telegram.org"
 TOKEN = re.compile(r"[0-9]{6,16}:[A-Za-z0-9_-]{20,128}\Z")
 CHAT = re.compile(r"-?[0-9]{1,20}\Z")
 SOURCE_ID = re.compile(r"[a-f0-9]{40,64}\Z")
@@ -227,7 +227,7 @@ def deliver(
     if topic_id:
         body["message_thread_id"] = topic_id
     outbound = request.Request(
-        api_url + "/bot" + parse.quote(token, safe=":_-") + "/sendMessage",
+        f"{TELEGRAM_API_URL}/bot{parse.quote(token, safe=':_-')}/sendMessage",
         data=json.dumps(body, separators=(",", ":")).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -279,7 +279,7 @@ def _credential(name: str) -> str:
 def validate_delivery_contract(
     api_url: str, token: str, chat_id: str, topic_id: int
 ) -> None:
-    if api_url != "https://api.telegram.org" or TOKEN.fullmatch(token) is None:
+    if api_url != TELEGRAM_API_URL or TOKEN.fullmatch(token) is None:
         raise Refusal("delivery-contract")
     if CHAT.fullmatch(chat_id) is None or not 0 <= topic_id <= 2**31 - 1:
         raise Refusal("delivery-contract")

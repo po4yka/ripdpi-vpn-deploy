@@ -7,6 +7,7 @@ import json
 import sys
 
 from cryptography import x509
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.x509.oid import ExtendedKeyUsageOID
 
@@ -80,9 +81,22 @@ def validate(contract):
             raise ValueError("server-san")
 
 
-if __name__ == "__main__":
+def main() -> int:
     try:
         validate(json.load(sys.stdin))
-    except Exception:
+    except (
+        InvalidSignature,
+        KeyError,
+        OSError,
+        TypeError,
+        UnicodeError,
+        ValueError,
+        x509.ExtensionNotFound,
+    ):
         print("silence-backend: certificate-contract-refused", file=sys.stderr)
-        raise SystemExit(1) from None
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

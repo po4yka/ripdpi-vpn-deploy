@@ -622,11 +622,14 @@ def test_alerting_tasks_validate_before_activation_and_rollback() -> None:
         for task in activation["block"]
         if task["name"] == "Preserve previous ready Alertmanager generation"
     )
-    assert preserve["when"] == [
-        "_observability_alertmanager_current.stat.exists | default(false)",
+    expected_previous_generation = (
         "_observability_alertmanager_current.stat.lnk_source != "
         "observability_control_plane.config_root ~ '/generations/alertmanager-' ~ "
-        "_observability_alertmanager_generation ~ '.yml'",
+        "_observability_alertmanager_generation ~ '.yml'"
+    )
+    assert preserve["when"] == [
+        "_observability_alertmanager_current.stat.exists | default(false)",
+        expected_previous_generation,
     ]
     rescue_names = [task["name"] for task in activation["rescue"]]
     assert (
@@ -1090,7 +1093,7 @@ if action=='serve':
    if name=='prometheus' and token:
     try:
      with urlopen(Request('http://127.0.0.1:'+str(ports['silence-gateway'])+'/-/ready',headers={'Authorization':'Bearer '+token}),timeout=1): pass
-    except Exception: code=503
+    except OSError: code=503
    self.send_response(code);self.end_headers()
   def log_message(self,*args): pass
  HTTPServer(('127.0.0.1',ports[name]),Handler).serve_forever()
@@ -1104,8 +1107,9 @@ else:
   target.symlink_to(base/'foreign-file')
  if state in ('restarted','stopped') and path.exists():
   try: os.kill(int(path.read_text()),signal.SIGTERM)
-  except ProcessLookupError: pass
-  path.unlink();time.sleep(.1);row['state']='stopped'
+  except ProcessLookupError: path.unlink(missing_ok=True)
+  else: path.unlink()
+  time.sleep(.1);row['state']='stopped'
  if state=='stopped': row['state']='stopped'
  if state in ('restarted','started') and not path.exists():
   child=subprocess.Popen([sys.executable,__file__,str(base),'serve',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)

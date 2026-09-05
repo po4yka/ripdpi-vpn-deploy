@@ -143,10 +143,12 @@
       changed_when: false
       no_log: true
 
-    - name: Require generated routing to reference only the systemd credential path
+    - name: Require generated routing to reference only the relay systemd credential
       ansible.builtin.assert:
         that:
-          - "'bot_token_file:' in alertmanager_fixture_config.stdout"
+          - >-
+            'credentials_file: /run/credentials/observability-alertmanager.service/telegram-relay-auth-token'
+            in alertmanager_fixture_config.stdout
           - "'molecule-token-not-real-value' not in alertmanager_fixture_config.stdout"
       no_log: true
 
