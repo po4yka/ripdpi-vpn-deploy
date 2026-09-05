@@ -144,9 +144,12 @@ printf '204'""",
         "WILDCARD_SAN",
     ):
         env.pop(variable, None)
+    tool_path = os.pathsep.join(
+        entry for entry in env["PATH"].split(os.pathsep) if not entry.endswith("/mise/shims")
+    )
     env.update(
         {
-            "PATH": f"{bin_dir}:{env['PATH']}",
+            "PATH": f"{bin_dir}:{tool_path}",
             "HOME": str(tmp_path / "home"),
             "XDG_STATE_HOME": str(tmp_path / "state"),
             "TMPDIR": str(tmp_dir),

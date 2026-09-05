@@ -1152,6 +1152,7 @@ state_path.write_text(json.dumps(state))
                 {
                     "hosts": "localhost",
                     "connection": "local",
+                    "become": False,
                     "gather_facts": False,
                     "vars": {
                         "observability_control_plane": {
@@ -1388,6 +1389,7 @@ else:
                     {
                         "hosts": "localhost",
                         "connection": "local",
+                        "become": False,
                         "gather_facts": False,
                         "vars": {
                             "ansible_python_interpreter": sys.executable,
