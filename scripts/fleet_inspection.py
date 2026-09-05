@@ -355,9 +355,11 @@ def _local_file(path, private=False):
     return str(Path(path).expanduser().absolute())
 
 
-def select_hosts(inventory_path, selected):
+def select_hosts(inventory_path, selected, *, primary_section="vpn", include_variables=False):
     if not selected or len(selected) != len(set(selected)) or any(not SAFE_NAME.fullmatch(s) or s == "all" for s in selected):
         raise InspectionError("explicit-host-subset-required")
+    if primary_section not in ("vpn", "vpn-observability-control", "vpn-observability-deadman"):
+        raise InspectionError("unsupported-inventory-section")
     try:
         with os.fdopen(_open_local_file(inventory_path), "rb") as stream:
             raw = stream.read(LIMIT + 1)
@@ -366,7 +368,7 @@ def select_hosts(inventory_path, selected):
         lines = raw.decode("utf-8").splitlines()
     except (OSError, UnicodeError):
         raise InspectionError("unreadable-inventory") from None
-    hosts, global_vars = {}, {}
+    hosts, global_vars, observability_vars = {}, {}, {}
     section = ""
     for line in lines:
         line = line.strip()
@@ -374,21 +376,25 @@ def select_hosts(inventory_path, selected):
             continue
         if line.startswith("[") and line.endswith("]"):
             section = line[1:-1]
-            if section != "vpn:vars" and not SAFE_NAME.fullmatch(section):
+            if section not in ("vpn:vars", "observability:vars", "observability:children") and not SAFE_NAME.fullmatch(section):
                 raise InspectionError("unsupported-inventory-section")
             continue
         try:
             words = shlex.split(line, comments=True)
         except ValueError:
             raise InspectionError("malformed-inventory") from None
-        if section == "vpn:vars":
-            target, assignments = global_vars, words
-        elif section == "vpn":
+        if section in ("vpn:vars", "observability:vars"):
+            target = global_vars if section == "vpn:vars" else observability_vars
+            assignments = words
+        elif section in ("vpn", "vpn-observability-control", "vpn-observability-deadman"):
             if not words or not SAFE_NAME.fullmatch(words[0]) or words[0] in hosts:
                 raise InspectionError("duplicate-or-invalid-host")
             target = hosts.setdefault(words[0], {})
+            target["__section"] = section
             assignments = words[1:]
-        elif section.startswith("vpn-") and len(words) == 1 and words[0] in hosts:
+        elif section == "observability:children" and len(words) == 1 and words[0] in ("vpn", "vpn-observability-control", "vpn-observability-deadman"):
+            continue
+        elif section.startswith("vpn-") and len(words) == 1 and SAFE_NAME.fullmatch(words[0]):
             continue
         else:
             raise InspectionError("unsupported-inventory")
@@ -401,11 +407,20 @@ def select_hosts(inventory_path, selected):
             target[key] = value
     result = []
     for name in selected:
-        if name not in hosts:
+        if name not in hosts or hosts[name].get("__section") != primary_section:
             raise InspectionError("host-not-found")
-        if global_vars.keys() & hosts[name].keys():
+        host_values = hosts[name]
+        if global_vars.keys() & host_values.keys():
             raise InspectionError("ambiguous-inventory-variable")
-        values = {**global_vars, **hosts[name]}
+        inherited = dict(global_vars)
+        if primary_section != "vpn":
+            for key, value in observability_vars.items():
+                if key in inherited and inherited[key] != value:
+                    raise InspectionError("ambiguous-inventory-variable")
+                inherited[key] = value
+        if inherited.keys() & host_values.keys():
+            raise InspectionError("ambiguous-inventory-variable")
+        values = {**inherited, **host_values}
         try:
             address = _connection_name(values["ansible_host"])
             user = values["ansible_user"]
@@ -418,9 +433,12 @@ def select_hosts(inventory_path, selected):
         override = "inspection_transport_host" in values
         if override != ("inspection_host_key_alias" in values):
             raise InspectionError("paired-transport-identity-required")
-        result.append({"name": name, "address": address, "port": port, "user": user, "key": key,
-                       "transport": _connection_name(values.get("inspection_transport_host", address)),
-                       "alias": _connection_name(values.get("inspection_host_key_alias", address))})
+        host = {"name": name, "address": address, "port": port, "user": user, "key": key,
+                "transport": _connection_name(values.get("inspection_transport_host", address)),
+                "alias": _connection_name(values.get("inspection_host_key_alias", address))}
+        if include_variables:
+            host["variables"] = {key: value for key, value in values.items() if key != "__section"}
+        result.append(host)
     for key in ("alias", "transport"):
         identities = {(host[key].lower(), host["port"]) for host in result}
         if len(identities) != len(result):

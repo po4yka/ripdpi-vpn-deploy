@@ -32,10 +32,27 @@ def operator(tmp_path: Path) -> dict[str, object]:
     inventory = _write(
         tmp_path / "inventory.ini",
         """[vpn]
-node-a ansible_host=fixture.invalid ansible_user=deploy ansible_port=22 ansible_ssh_private_key_file={key} env=staging observability_host_class=control-plane
+node-agent ansible_host=agent.fixture.invalid ansible_user=deploy ansible_port=22 env=staging observability_host_class=vpn
 
 [vpn-observability-control]
-node-a
+node-a ansible_host=fixture.invalid ansible_user=deploy ansible_port=22 env=staging observability_host_class=control-plane
+
+[vpn-observability-deadman]
+node-deadman ansible_host=deadman.fixture.invalid ansible_user=deploy ansible_port=22 env=staging observability_host_class=deadman
+
+[observability:children]
+vpn
+vpn-observability-control
+vpn-observability-deadman
+
+[vpn:vars]
+ansible_ssh_private_key_file={key}
+ansible_python_interpreter=/usr/bin/python3
+
+[observability:vars]
+ansible_ssh_private_key_file={key}
+ansible_python_interpreter=/usr/bin/python3
+observability_topology_b64=eyJzY2hlbWFfdmVyc2lvbiI6MX0=
 """.format(key=key),
         0o644,
     )
@@ -567,8 +584,75 @@ def test_host_must_match_explicit_environment_and_component_class(
     common[common.index("control-plane")] = "deadman"
     result = _run(operator, "status")
     assert result.returncode == 2
-    assert result.stderr == "observability-operator: inventory scope rejected\n"
+    assert result.stderr == "observability-operator: exact inventory host rejected\n"
     assert _calls(operator) == []
+
+
+@pytest.mark.parametrize(
+    ("component", "host", "expected_address"),
+    [
+        ("agent", "node-agent", "agent.fixture.invalid"),
+        ("control-plane", "node-a", "fixture.invalid"),
+        ("deadman", "node-deadman", "deadman.fixture.invalid"),
+    ],
+)
+def test_generated_style_inventory_selects_the_exact_component_section(
+    operator: dict[str, object], component: str, host: str, expected_address: str
+) -> None:
+    module = _operator_module()
+    common = operator["common"]
+    assert isinstance(common, list)
+    arguments = list(common)
+    arguments[arguments.index("node-a")] = host
+    arguments[arguments.index("control-plane")] = component
+    args = module._parser().parse_args(["status", *arguments])
+
+    selected = module._selected_host(args)
+    module._require_inventory_scope(args, selected)
+
+    assert selected["name"] == host
+    assert selected["address"] == expected_address
+    assert selected["variables"]["observability_host_class"] == (
+        "vpn" if component == "agent" else component
+    )
+    assert "ControlMaster=no" in module.fleet_inspection.ssh_command(
+        selected, Path(arguments[arguments.index("--known-hosts") + 1])
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        (
+            "[vpn-observability-control]\\n"
+            "node-a ansible_host=duplicate.fixture.invalid ansible_user=deploy ansible_port=22 env=staging observability_host_class=control-plane"
+        ),
+        "ansible_ssh_common_args='-o ProxyCommand=unsafe'",
+        "env=staging observability_host_class=deadman",
+    ],
+)
+def test_component_inventory_rejects_duplicate_unsafe_or_wrong_class(
+    operator: dict[str, object], mutation: str
+) -> None:
+    module = _operator_module()
+    common = operator["common"]
+    assert isinstance(common, list)
+    inventory = Path(common[common.index("--inventory") + 1])
+    source = inventory.read_text(encoding="utf-8")
+    if mutation.startswith("["):
+        source += "\\n" + mutation + "\\n"
+    else:
+        source = source.replace(
+            "node-a ansible_host=fixture.invalid ansible_user=deploy ansible_port=22 env=staging observability_host_class=control-plane",
+            "node-a ansible_host=fixture.invalid ansible_user=deploy ansible_port=22 "
+            + mutation,
+        )
+    inventory.write_text(source, encoding="utf-8")
+    args = module._parser().parse_args(["status", *common])
+
+    with pytest.raises(module.OperatorError):
+        selected = module._selected_host(args)
+        module._require_inventory_scope(args, selected)
 
 
 def test_makefile_exposes_only_narrow_observability_controller_targets() -> None:
