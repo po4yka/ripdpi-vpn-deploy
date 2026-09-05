@@ -25,7 +25,8 @@ provider credit and takes ~15-20 minutes per run. Three triggers:
   * **pull_request labeled `ci-real-deploy`** — a maintainer
     consciously adds the label when a PR touches provisioning,
     role ordering, or cloud-init.
-  * **schedule** — Mondays at 06:00 UTC.
+  * **schedule** — Mondays at 06:00 UTC. Missing required configuration fails
+    this run too; remove the schedule trigger to disable recurring deployment.
 
 Every trigger waits for a required reviewer to approve the deployment on the
 protected `ci-real-deploy` GitHub Environment before any job step runs. A PR
@@ -55,18 +56,24 @@ never race against the UpCloud account.
 | `CI_REALITY_SERVER_NAME` | TLS server name accepted by the owned REALITY target |
 | `CI_WATCHDOG_CANARY_URL` | Operator-owned HTTPS endpoint that returns exactly `204` |
 | `CI_UPCLOUD_TEMPLATE_UUID` | **Debian 13** minimal cloud-image template UUID. List candidates via `upctl storage list --public --template`. |
-| `CI_UPCLOUD_TEMPLATE_UUID_UBUNTU24` (optional) | **Ubuntu 24.04** minimal cloud-image template UUID. When set, the deploy matrix fans out to both distros in parallel; when empty, the Ubuntu matrix entry skips with a notice and only Debian runs. |
+| `CI_UPCLOUD_TEMPLATE_UUID_UBUNTU24` | **Ubuntu 24.04** minimal cloud-image template UUID. Required when the repository variable `CI_REAL_DEPLOY_UBUNTU24` is `true`. |
 
 ## Matrix fan-out across distros
 
-The deploy job runs as a `strategy.matrix` over `[debian13, ubuntu2404]`.
-Each matrix entry pulls a distinct UpCloud template (the `template_secret_name`
-column above), gets its own concurrency group key (`real-vps-deploy-debian13`
-vs. `real-vps-deploy-ubuntu2404`), and writes its own tfvars file with a
-distro-suffixed env name so the two provisions don't collide on UpCloud
-state. When an operator hasn't populated `CI_UPCLOUD_TEMPLATE_UUID_UBUNTU24`,
-that matrix entry short-circuits at the first step with a GitHub notice
-— no apply, no destroy, no cost.
+Debian 13 is always selected. To also run Ubuntu 24.04, set the **repository
+variable** `CI_REAL_DEPLOY_UBUNTU24=true` and configure its template secret.
+The variable must be repository-scoped because the matrix is expanded before
+the protected environment is entered. Setting the Ubuntu secret alone no
+longer enables that distro. Without the variable, no Ubuntu job is created;
+there is no successful placeholder deployment.
+
+Every selected distro fails before tooling or provisioning if its template
+secret is missing. This applies equally to manual, labelled and scheduled runs.
+Other required secrets are checked next. Each selected entry gets its own
+concurrency group and distro-suffixed tfvars, keeping parallel provisions apart.
+A selected job can succeed only after the Deploy step (including verify) and
+Destroy complete successfully. A skipped workflow or an absent Ubuntu job is
+not deployment evidence.
 
 Cost note: enabling Ubuntu doubles the run minutes + UpCloud credit per
 PR-labeled run. Use the label sparingly.

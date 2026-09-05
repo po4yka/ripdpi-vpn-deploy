@@ -34,7 +34,7 @@ def test_release_job_uses_one_validated_tag_for_all_dispatch_paths(tmp_path):
     assert 'bash scripts/validate-vpnd-release-tag.sh "$TAG" "$GITHUB_SHA"' in workflow
     assert "release-tag: ${{ steps.validate.outputs.release-tag }}" in workflow
     assert "RELEASE_TAG: ${{ needs.validate-tag.outputs.release-tag }}" in workflow
-    assert "SBOM_LABEL: ${{ needs.validate-tag.outputs.release-tag }}" in workflow
+    assert "uses: ./.github/actions/vpnd-sbom" in workflow
     assert "name: sbom-${{ needs.validate-tag.outputs.release-tag }}" in workflow
 
     environment = os.environ.copy()
