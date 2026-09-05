@@ -30,7 +30,7 @@ import time
 from collections import deque
 
 LISTEN_ADDR = "{{ honeypot_listen_addr | default('0.0.0.0') }}"
-LISTEN_PORT = {{ honeypot_port }}
+LISTEN_PORT = 4443
 LISTEN_IPV6 = False
 LOG_DIR = pathlib.Path("/var/log/honeypot")
 TEXTFILE_DIR = pathlib.Path("{{ (monitoring | default({})).node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}")
