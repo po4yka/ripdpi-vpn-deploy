@@ -856,7 +856,10 @@ def _extract_identity(state: dict[str, Any], hostname: str) -> dict[str, Any]:
     rules: dict[str, str] = {}
     icmp_keys: set[str] = set()
     ssh_rules = 0
-    public_families: set[str] = set()
+    public_listeners: dict[str, set[tuple[str, int, int]]] = {
+        "v4": set(),
+        "v6": set(),
+    }
     for address in firewall_addresses:
         rule = indexed[address]
         match = re.fullmatch(
@@ -909,14 +912,21 @@ def _extract_identity(state: dict[str, Any], hostname: str) -> dict[str, Any]:
                 or rule.get("subnet_size") != 0
             ):
                 raise GuardError("state public listener rule is not exact")
-            public_families.add(ip_type)
+            listener = (protocol, start, end)
+            if listener in public_listeners[ip_type]:
+                raise GuardError("state public listener rule is duplicated")
+            public_listeners[ip_type].add(listener)
         rule_id = _decimal_id(rule.get("id"), "firewall rule ID")
         if rule.get("firewall_group_id") != firewall_group_id:
             raise GuardError("state firewall rule belongs to a foreign group")
         rules[address] = rule_id
     if icmp_keys != {"v4", "v6"}:
         raise GuardError("state must bind exact ICMP v4 and v6 rules")
-    if ssh_rules == 0 or public_families != {"v4", "v6"}:
+    if (
+        ssh_rules == 0
+        or not public_listeners["v4"]
+        or public_listeners["v4"] != public_listeners["v6"]
+    ):
         raise GuardError("state must bind every firewall rule class")
     terraform_data_id = indexed["terraform_data.ssh_port"].get("id")
     if not isinstance(terraform_data_id, str) or not terraform_data_id:
@@ -1711,6 +1721,13 @@ def _vultr_request_from_environment(environment: Mapping[str, str] = os.environ)
 
 def _vultr_https_request(token: str) -> JsonRequest:
     """Return the bounded, redirect-free Vultr API reader used by the CLI."""
+
+    if (
+        not isinstance(token, str)
+        or not token
+        or any(ord(character) < 0x20 or ord(character) == 0x7F for character in token)
+    ):
+        raise GuardError("VULTR_API_KEY is invalid")
 
     def request(path: str) -> tuple[int, dict[str, Any]]:
         if not isinstance(path, str) or not path.startswith("/v2/"):

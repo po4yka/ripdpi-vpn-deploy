@@ -185,13 +185,13 @@ def _state(
                     },
                 },
                 {
-                    "index_key": "v6-udp-51820",
+                    "index_key": "v6-tcp-443",
                     "attributes": {
                         "id": RULE_SIX,
                         "firewall_group_id": FIREWALL,
-                        "protocol": "udp",
+                        "protocol": "tcp",
                         "ip_type": "v6",
-                        "port": "51820",
+                        "port": "443",
                         "subnet": "::",
                         "subnet_size": 0,
                     },
@@ -230,7 +230,7 @@ def _plan() -> dict[str, object]:
         'vultr_firewall_rule.ssh["203.0.113.1/32"]': RULE_TWO,
         'vultr_firewall_rule.ssh["2001:db8::1/128"]': RULE_FIVE,
         'vultr_firewall_rule.tcp_public["v4-tcp-443"]': RULE_THREE,
-        'vultr_firewall_rule.tcp_public["v6-udp-51820"]': RULE_SIX,
+        'vultr_firewall_rule.tcp_public["v6-tcp-443"]': RULE_SIX,
     }.items():
         changes.append(
             {
@@ -468,6 +468,66 @@ def test_manifest_requires_every_firewall_rule_class(
         )
 
 
+def test_manifest_requires_matching_public_listener_families(tmp_path: Path) -> None:
+    state = _state()
+    rules = next(
+        item
+        for item in state["resources"]
+        if item["type"] == "vultr_firewall_rule" and item["name"] == "tcp_public"
+    )
+    rules["instances"][1]["index_key"] = "v6-udp-51820"
+    rules["instances"][1]["attributes"]["protocol"] = "udp"
+    rules["instances"][1]["attributes"]["port"] = "51820"
+    private = tmp_path / "private"
+    state_path = _private(private / "state.json", guard.canonical_json(state))
+
+    with pytest.raises(guard.GuardError, match="firewall rule class"):
+        guard.create_manifest(
+            output_path=private / "manifest.json",
+            provider="vultr",
+            environment=ENV,
+            workspace=ENV,
+            state_path=state_path,
+            hostname=HOST,
+            request_json=_request,
+            now=NOW,
+        )
+
+
+def test_manifest_refuses_duplicate_normalized_public_listeners(tmp_path: Path) -> None:
+    state = _state()
+    rules = next(
+        item
+        for item in state["resources"]
+        if item["type"] == "vultr_firewall_rule" and item["name"] == "tcp_public"
+    )
+    source = rules["instances"][0]
+    rules["instances"].append(
+        {
+            "index_key": "v4-tcp-0443",
+            "attributes": {
+                **source["attributes"],
+                "id": "90112233",
+                "port": "0443",
+            },
+        }
+    )
+    private = tmp_path / "private"
+    state_path = _private(private / "state.json", guard.canonical_json(state))
+
+    with pytest.raises(guard.GuardError, match="listener rule is duplicated"):
+        guard.create_manifest(
+            output_path=private / "manifest.json",
+            provider="vultr",
+            environment=ENV,
+            workspace=ENV,
+            state_path=state_path,
+            hostname=HOST,
+            request_json=_request,
+            now=NOW,
+        )
+
+
 @pytest.mark.parametrize(
     ("rule_name", "index", "invalid_size"),
     [("ssh", 0, 0), ("tcp_public", 0, 32)],
@@ -549,7 +609,7 @@ def test_plan_apply_and_typed_absence_are_bound_to_manifest_and_account(
         'vultr_firewall_rule.ssh["2001:db8::1/128"]',
         'vultr_firewall_rule.ssh["203.0.113.1/32"]',
         'vultr_firewall_rule.tcp_public["v4-tcp-443"]',
-        'vultr_firewall_rule.tcp_public["v6-udp-51820"]',
+        'vultr_firewall_rule.tcp_public["v6-tcp-443"]',
         "vultr_instance.vpn",
         "vultr_ssh_key.admin",
     ]
@@ -1935,7 +1995,7 @@ def test_transition_recovery_refuses_invalid_lifecycle_journal_without_mutation(
                 'vultr_firewall_rule.ssh["2001:db8::1/128"]',
                 'vultr_firewall_rule.ssh["203.0.113.1/32"]',
                 'vultr_firewall_rule.tcp_public["v4-tcp-443"]',
-                'vultr_firewall_rule.tcp_public["v6-udp-51820"]',
+                'vultr_firewall_rule.tcp_public["v6-tcp-443"]',
                 "vultr_instance.vpn",
                 "vultr_ssh_key.admin",
             ],
@@ -2212,6 +2272,17 @@ def test_cli_create_manifest_uses_env_token_without_printing_it(
     captured = capsys.readouterr()
     assert "manifest created" in captured.out
     assert "secret-token" not in captured.out + captured.err
+
+
+@pytest.mark.parametrize("separator", ["\n", "\r"])
+def test_vultr_request_rejects_control_characters_without_echoing_token(
+    separator: str,
+) -> None:
+    token = f"secret{separator}must-not-print"
+    with pytest.raises(guard.GuardError) as raised:
+        guard._vultr_https_request(token)
+    assert "secret" not in str(raised.value)
+    assert "must-not-print" not in str(raised.value)
 
 
 def test_release_recovery_finishes_after_first_inode_unlink(
