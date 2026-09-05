@@ -676,6 +676,23 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Protective workflows share this graph so their failures reach the existing
+  # branch-required aggregate. Call every time; do not accept arbitrary skips.
+  tf-policy:
+    uses: ./.github/workflows/tf-policy.yml
+
+  image-scan:
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/image-scan.yml
+
+  contract-sync:
+    uses: ./.github/workflows/contract-sync.yml
+
+  reproducible-build:
+    uses: ./.github/workflows/reproducible-build.yml
+
   required:
     name: required checks
     if: always()
@@ -705,6 +722,10 @@ jobs:
       - vpnd-deny
       - vpnd-sbom
       - molecule-failure-scenarios
+      - tf-policy
+      - image-scan
+      - contract-sync
+      - reproducible-build
     runs-on: ubuntu-24.04
     steps:
       - env:

@@ -10,16 +10,7 @@ name: reproducible-build
 # pinned in v1 schema and are out of scope here.
 
 on:
-  push:
-    paths:
-      - "secrets/prod.secrets.example.yaml"
-      - "scripts/scan-reality-targets.sh"
-      - ".github/workflows/reproducible-build.yml"
-  pull_request:
-    paths:
-      - "secrets/prod.secrets.example.yaml"
-      - "scripts/scan-reality-targets.sh"
-      - ".github/workflows/reproducible-build.yml"
+  workflow_call:
   workflow_dispatch:
 
 permissions:
