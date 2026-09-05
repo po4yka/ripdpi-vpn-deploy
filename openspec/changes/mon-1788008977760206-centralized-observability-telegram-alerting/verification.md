@@ -1,11 +1,11 @@
 ---
 task_id: MON-1788008977760206
 change: mon-1788008977760206-centralized-observability-telegram-alerting
-commit_sha: null
-local: required
-local_evidence: null
-remote_ci: required
-remote_ci_evidence: null
+commit_sha: fe860a0941adfb5993bc6dbc58531779d1aea573
+local: passed
+local_evidence: "make -j1 check: 3760 passed, 3 existing skips; BATS 55/55; Rust and Clippy passed; log sha256 3aefbb718c257ca2e2448edb4797655e805dbb75c72c866f4bcc3b5306fbf559"
+remote_ci: passed
+remote_ci_evidence: "GitHub Actions CI 33966423515 and CodeQL 33966423427 succeeded on exact commit fe860a0941adfb5993bc6dbc58531779d1aea573"
 dry_run: required
 dry_run_evidence: null
 staging: required
@@ -227,16 +227,27 @@ authority rollback boundary. Final exact-commit and hosted results are pending.
 
 ## Integrated source gate, 2026-09-05
 
-The reviewed source candidate `390d18874032f335899c3d979c5c1ace96e5017f`
-completed every runtime, Terraform, policy, schema, shell, BATS and Rust check in
-the canonical local gate. Pytest reported 3,647 passing tests, three existing
-skips and one governance-only failure because `docs/TESTING.md` still named the
-pre-integration collection counts. The isolated Colima profile was removed and
-its Docker context and configuration were unchanged. The mode-0600 gate log has
-SHA256 `5eeb1815fd66cddf487c5e4ac2e5c7e44d51c2ff3ec056089c941eb86d8c4e50`.
+The reviewed exact source candidate
+`fe860a0941adfb5993bc6dbc58531779d1aea573` completed the canonical local
+`make -j1 check` gate. Pytest reported 3,760 passing tests and three existing
+skips in 1,942.52 seconds; all 55 Bats tests, 184 Rust tests, release Clippy,
+all four Terraform mock suites, 45 Conftest policies, cloud-init, rendering,
+schemas and the remaining `ci-fast` gates passed. The mode-0600 log has SHA256
+`3aefbb718c257ca2e2448edb4797655e805dbb75c72c866f4bcc3b5306fbf559`.
+The isolated Colima profile stopped successfully; its Docker context and
+configuration were unchanged.
 
-This evidence-only descendant updates the documented counts to 3,704 collected
-and 3,651 under `tests/unit`; the governance test then passed 2/2. No executable,
-role, template, test, contract or infrastructure source changed after the full
-candidate run. Exact-head hosted CI remains required before the source-gate step
-can close, and no staging or live acceptance is claimed here.
+The exact-head hosted CI run `33966423515` completed every required job,
+including pytest, the agent, control-plane and dead-man normal and failure
+Molecule scenarios, full-stack Molecule, Terraform, Bats and Rust. CodeQL run
+`33966423427` also succeeded. The final dead-man fixture correction passed 139
+focused tests, including 35 pipeline cases under `TMPDIR=/tmp`, and independent
+review found no P0-P2 issue. Earlier load-sensitive fixture failures and one
+provider-registry setup failure were not credited; they were corrected or
+re-run on this exact source.
+
+This evidence-only descendant marks only the source-gate execution step done.
+No executable, role, template, contract or infrastructure source changed after
+the tested candidate. Staging placement, fleet rollout, two-vantage protocol
+traffic, visibly observed Telegram firing/recovery, credential rotation,
+paging cutover and live rollback remain required and are not claimed here.
