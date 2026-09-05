@@ -1230,10 +1230,16 @@ def test_adapter_command_uses_reviewed_terraform_fd_and_snapshot(tmp_path, monke
     assert terraform is not None, "native runtime lane requires Terraform"
     m = mod()
     raw = Path(terraform).read_bytes()
+    # The adapter requires a binary owned by its effective user. CI installs
+    # Terraform as runner, while this isolated lane also exercises root UID/GID
+    # transitions. Stage the real pinned bytes under the test user's ownership.
+    reviewed_binary = tmp_path / "reviewed-terraform"
+    reviewed_binary.write_bytes(raw)
+    reviewed_binary.chmod(0o700)
     fd = -1
     trusted = target = adapter = None
     try:
-        fd = os.open(terraform, os.O_RDONLY)
+        fd = os.open(reviewed_binary, os.O_RDONLY)
         trusted = m.TrustedTerraform(fd, __import__("hashlib").sha256(raw).hexdigest())
         fd = -1
         source = _terraform_snapshot_source(tmp_path)
