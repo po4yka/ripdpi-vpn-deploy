@@ -128,6 +128,7 @@ def refusal(
     assert result.returncode == 1
     observed = result.stdout.strip()
     assert observed in {
+        "config_parent",
         "credential_mode",
         "file_size",
         "filesystem",
@@ -135,12 +136,16 @@ def refusal(
         "invalid_state",
         "missing_parent",
         "namespace",
+        "libexec_parent",
+        "pipeline_parent",
         "recovery",
         "request",
         "root",
         "snapshot",
         "snapshot_size",
         "textfile_mode",
+        "textfile_parent",
+        "systemd_parent",
         "unsafe_file",
         "unsafe_parent",
     }
@@ -188,22 +193,37 @@ def test_first_converge_accepts_owned_sticky_textfile_namespace(tmp_path: Path) 
 
 
 @pytest.mark.parametrize(
-    ("relative", "mode"),
+    ("relative", "mode", "category"),
     [
-        ("var/lib/node_exporter/textfile", 0o775),
-        ("var/lib/node_exporter", 0o777),
+        ("etc/observability-control-plane/credentials", 0o770, "config_parent"),
+        ("etc/systemd", 0o777, "systemd_parent"),
+        ("usr/local/libexec", 0o777, "libexec_parent"),
+        ("var/lib/observability-pipeline", 0o777, "pipeline_parent"),
+        ("var/lib/node_exporter/textfile", 0o775, "textfile_parent"),
+        ("var/lib/node_exporter", 0o777, "textfile_parent"),
     ],
 )
-def test_first_converge_refuses_writable_textfile_namespace(
-    tmp_path: Path, relative: str, mode: int
+def test_first_converge_refuses_unsafe_contract_surface_with_safe_category(
+    tmp_path: Path, relative: str, mode: int, category: str
 ) -> None:
     root = first_converge_root(tmp_path)
-    (root / relative).chmod(mode)
+    target = root / relative
+    target.mkdir(parents=True, exist_ok=True)
+    target.chmod(mode)
 
     result = invoke(root, "prepare", owners=["operator-a"])
 
-    refusal(result, "unsafe_parent")
+    refusal(result, category)
     assert not (root / SNAPSHOT).exists()
+
+
+def test_restore_unsafe_parent_keeps_the_general_safe_category(root: Path) -> None:
+    prepared = prepare(root)
+    (root / "etc").chmod(0o777)
+
+    result = invoke(root, "finish", prepared["id"])
+
+    refusal(result, "unsafe_parent")
 
 
 def test_snapshot_larger_than_one_source_file_remains_restorable(root: Path) -> None:

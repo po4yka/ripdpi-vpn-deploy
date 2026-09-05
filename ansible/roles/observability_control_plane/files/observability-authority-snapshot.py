@@ -79,6 +79,11 @@ SAFE_FAILURE_CATEGORIES = {
     "manual-recovery-required": "recovery",
     "untracked-owner-token": "namespace",
     "unsafe-parent": "unsafe_parent",
+    "config-parent": "config_parent",
+    "systemd-parent": "systemd_parent",
+    "libexec-parent": "libexec_parent",
+    "pipeline-parent": "pipeline_parent",
+    "textfile-parent": "textfile_parent",
     "foreign-file": "unsafe_file",
     "unsafe-link": "unsafe_file",
     "unsupported-entry": "unsafe_file",
@@ -121,6 +126,21 @@ def safe_failure_category(error):
     return "internal"
 
 
+def prepare_parent_category(relative):
+    """Classify only fixed write-set surfaces; never emit a filesystem path."""
+    if relative == DEADMAN_METRIC:
+        return "textfile-parent"
+    if relative in PIPELINE_STATE:
+        return "pipeline-parent"
+    if relative.startswith(CONFIG + "/"):
+        return "config-parent"
+    if relative.startswith("etc/systemd/"):
+        return "systemd-parent"
+    if relative.startswith("usr/local/libexec/"):
+        return "libexec-parent"
+    return "unsafe-parent"
+
+
 class Snapshot:
     def __init__(self, root):
         self.root = Path(root)
@@ -133,7 +153,14 @@ class Snapshot:
         self.directory = self.root / CONFIG / ".authority-rollback"
         self.path = self.directory / "snapshot.json"
 
-    def parent(self, path, *, allow_missing=False, allow_final_sticky=False):
+    def parent(
+        self,
+        path,
+        *,
+        allow_missing=False,
+        allow_final_sticky=False,
+        failure_category="unsafe-parent",
+    ):
         relative = path.parent.relative_to(self.root)
         current = self.root
         for part in ("", *relative.parts):
@@ -156,15 +183,27 @@ class Snapshot:
                 or info.st_uid != os.geteuid()
                 or (mode & 0o022 and not shared_textfile)
             ):
-                raise ValueError("unsafe-parent")
+                raise ValueError(failure_category)
         return True
 
-    def read(self, relative, limit=262144, *, allow_missing=False):
+    def read(
+        self,
+        relative,
+        limit=262144,
+        *,
+        allow_missing=False,
+        prepare_capture=False,
+    ):
         path = self.root / relative
         if not self.parent(
             path,
             allow_missing=allow_missing,
             allow_final_sticky=relative == DEADMAN_METRIC,
+            failure_category=(
+                prepare_parent_category(relative)
+                if prepare_capture
+                else "unsafe-parent"
+            ),
         ):
             return {"kind": "absent"}
         try:
@@ -214,11 +253,11 @@ class Snapshot:
             "content": base64.b64encode(content).decode(),
         }
 
-    def save(self, state):
+    def save(self, state, *, failure_category="unsafe-parent"):
         payload = json.dumps(state, sort_keys=True).encode()
         if len(payload) > 8388608:
             raise ValueError("snapshot-size")
-        self.parent(self.path)
+        self.parent(self.path, failure_category=failure_category)
         descriptor, temporary = tempfile.mkstemp(
             dir=self.directory, prefix=".snapshot-"
         )
@@ -258,7 +297,9 @@ class Snapshot:
             raise ValueError("manual-recovery-required")
         candidate = owners(request["owners"])
         old_auth = self.read(
-            CREDENTIALS + "silence-auth.json", allow_missing=inspect_only
+            CREDENTIALS + "silence-auth.json",
+            allow_missing=inspect_only,
+            prepare_capture=True,
         )
         previous = (
             owners(
@@ -303,6 +344,7 @@ class Snapshot:
                     allow_missing=(
                         inspect_only or path in PIPELINE_STATE or path == DEADMAN_METRIC
                     ),
+                    prepare_capture=True,
                 )
                 for path in paths
             },
@@ -310,9 +352,9 @@ class Snapshot:
         if inspect_only and len(json.dumps(state, sort_keys=True).encode()) > 8388608:
             raise ValueError("snapshot-size")
         if not inspect_only:
-            self.parent(self.directory)
+            self.parent(self.directory, failure_category="config-parent")
             self.directory.mkdir(mode=0o700)
-            self.save(state)
+            self.save(state, failure_category="config-parent")
         return {key: state[key] for key in ("id", "previous_owners", "services")}
 
     def restore(self, state):

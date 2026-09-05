@@ -122,10 +122,12 @@
       from datetime import UTC, datetime, timedelta
       import hashlib
       import hmac
+      from http.client import RemoteDisconnected
       import json
+      import socket
       import ssl
       import sys
-      from urllib.error import HTTPError
+      from urllib.error import HTTPError, URLError
       from urllib.request import (
           HTTPRedirectHandler,
           HTTPSHandler,
@@ -177,8 +179,21 @@
       def status_or_exit(token, sequence, padding=0, expiry_seconds=10):
           try:
               return post(token, sequence, padding, expiry_seconds)
-          except OSError:
-              raise SystemExit(20) from None
+          except OSError as error:
+              transport_error = error.reason if isinstance(error, URLError) else error
+              if isinstance(transport_error, ssl.SSLError):
+                  raise SystemExit(20) from None
+              if isinstance(transport_error, ConnectionRefusedError):
+                  raise SystemExit(25) from None
+              if isinstance(transport_error, TimeoutError):
+                  raise SystemExit(26) from None
+              if isinstance(transport_error, socket.gaierror):
+                  raise SystemExit(27) from None
+              if isinstance(
+                  transport_error, (RemoteDisconnected, ConnectionResetError)
+              ):
+                  raise SystemExit(28) from None
+              raise SystemExit(29) from None
 
       if sys.argv[1] == 'token':
           if status_or_exit(b'fixture-rotated-pulse-token-012345678', 1) != 204:
@@ -315,11 +330,16 @@
         fail_msg: >-
           Dead-man token credential reload failed category={{
             {
-              20: 'tls-transport',
+              20: 'tls-error',
               21: 'rotated-token-rejected',
               22: 'previous-token-accepted',
               23: 'unexpected-response',
-              24: 'probe-mode'
+              24: 'probe-mode',
+              25: 'connection-refused',
+              26: 'timeout',
+              27: 'dns-error',
+              28: 'connection-reset',
+              29: 'os-error'
             }.get(deadman_token_reload_probe.rc, 'probe-internal')
           }}.
 
@@ -364,11 +384,16 @@
         fail_msg: >-
           Dead-man config generation reload failed category={{
             {
-              20: 'tls-transport',
+              20: 'tls-error',
               21: 'rotated-token-rejected',
               22: 'previous-token-accepted',
               23: 'unexpected-response',
-              24: 'probe-mode'
+              24: 'probe-mode',
+              25: 'connection-refused',
+              26: 'timeout',
+              27: 'dns-error',
+              28: 'connection-reset',
+              29: 'os-error'
             }.get(deadman_config_reload_probe.rc, 'probe-internal')
           }}.
 

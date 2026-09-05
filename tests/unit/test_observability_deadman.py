@@ -1349,6 +1349,27 @@ def test_molecule_lifecycle_scenarios_cover_deadman_enable_disable_and_refusal()
     assert "pulse_tls:" in enabled_converge + enabled_verify
     assert "https://reverse.fixture.invalid:9444/v1/pulse" in enabled_verify
     assert "deadman_rotation_probe" in enabled_verify
+    assert "from http.client import RemoteDisconnected" in enabled_verify
+    assert "import socket" in enabled_verify
+    assert "error.reason if isinstance(error, URLError) else error" in enabled_verify
+    expected_transport_categories = {
+        "if isinstance(transport_error, ssl.SSLError):": (20, "tls-error"),
+        "if isinstance(transport_error, ConnectionRefusedError):": (
+            25,
+            "connection-refused",
+        ),
+        "if isinstance(transport_error, TimeoutError):": (26, "timeout"),
+        "if isinstance(transport_error, socket.gaierror):": (27, "dns-error"),
+        "transport_error, (RemoteDisconnected, ConnectionResetError)": (
+            28,
+            "connection-reset",
+        ),
+        "raise SystemExit(29) from None": (29, "os-error"),
+    }
+    for handler, (return_code, category) in expected_transport_categories.items():
+        assert handler in enabled_verify
+        assert f"raise SystemExit({return_code}) from None" in enabled_verify
+        assert enabled_verify.count(f"{return_code}: '{category}'") == 2
     assert (
         "status_or_exit(b'fixture-rotated-pulse-token-012345678', 1)" in enabled_verify
     )
