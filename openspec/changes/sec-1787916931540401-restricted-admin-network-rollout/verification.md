@@ -41,8 +41,7 @@ remain open under the existing approved budget and cleanup deadlines.
 | REQ-ADMIN-MIGRATION | SEC-1787917604306451 | 301 affected planner/core/adapter tests plus pinned Debian 13 and Ubuntu 24.04 packaged-main checks include real OpenSSH full effective parity, custom port, unknown-layout, bounded execution, read-set races and four-file crash boundaries | local source and packaged-main checks passed; complete local, hosted and staging pending |
 | REQ-ADMIN-ROLLBACK | SEC-1787917604868749 | Durable fixed-path recovery, interruption reconciliation, exact guest nftables rollback and provider-side timed executor | source and isolated native checks passed; staging reboot pending |
 | REQ-ADMIN-PROMOTION | SEC-1787917605886845 | Exact-node selector, frozen strict transport, required DNS/VPN probes, private capability-bound provider rollback and promotion receipt | source passed; staging and live pending |
-| REQ-ADMIN-EVIDENCE | SEC-1788028226822310 | 135 focused tests cover exact authenticated API-principal binding before Terraform, fixed 36/44/47-hour deadlines, ancestor-symlink and inode-replacement refusal, manifest permission/identity/state-digest failures, backup/secondary-IP/additional-resource refusal in state and refreshed plan, exact-environment binding, pre-Terraform evidence reservation/release, private same-inode plan inspection/apply, exact-ID delete-only checks, inventory preservation, categorical audit ordering and bounded authenticated provider-absence outcomes | focused and full local source gates passed; exact hosted CI, staging deletion and account billing observation remain pending |
-| REQ-ADMIN-EVIDENCE | SEC-1787917606418274 | Real isolated staging login, forced disconnect, reboot recovery and repeat rollback before fleet promotion | pending |
+| REQ-ADMIN-EVIDENCE | SEC-1788028226822310 | UpCloud cleanup coverage binds the authenticated API principal, server/root-storage resources and server-bound rules. The open Vultr extension `SEC-1788617074844018` separately binds the authenticated account, exact instance, SSH key, firewall group, every `for_each` firewall rule and embedded instance root. Both retain fixed 36/44/47-hour deadlines, no-follow private evidence, same-descriptor plan validation/apply, inventory preservation and typed provider absence. | UpCloud source is delivered; the Vultr source candidate still requires combined/full and exact hosted gates. Real deletion, provider absence and account billing observation remain pending. |
 
 ## Gates and remaining boundaries
 
@@ -90,6 +89,24 @@ fleet-inventory, Tailnet ACL or B2 change. Exact hosted CI remains required
 before source integration. A real staging destroy, exact provider-principal
 observation and post-destroy billing observation remain open and cannot be
 credited from source or fixture evidence.
+
+### Vultr exact-resource cleanup extension
+
+The open Vultr extension keeps its state schema and API adapter separate from
+UpCloud while reusing the guarded operator lifecycle. Its candidate manifest
+derives fixed 36/44/47-hour deadlines from authenticated provider creation
+time and binds the exact instance, SSH key, firewall group, every keyed ICMP,
+SSH and public-listener rule, plus the embedded instance-root identity. The
+operator path accepts only ambient `VULTR_API_KEY`, prevents either provider
+from inheriting the other's credentials, reserves evidence before Terraform,
+and validates and applies one already-opened, unlinked mode-0600 plan
+descriptor. Success requires authenticated typed absence for every bound
+resource before the redacted audit event; inventory remains byte-identical.
+
+This section records source intent only. The execution step remains unchecked
+until combined/full and exact-source hosted gates pass. No Vultr resource has
+been created or deleted by these checks, and there is no staging, absence,
+billing, Tailnet, DNS, host or VPN acceptance evidence yet.
 
 The SSH foundation on base `2009b6f694e326fa1f6d99333da497544b115cdd`
 passed the full local `make -j1 check` gate on 2026-08-28: 1688 unit tests

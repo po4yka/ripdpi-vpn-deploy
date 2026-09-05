@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1787916931540401-restricted-admin-network-rollout
 created: 2026-08-28
-updated: 2026-09-01
+updated: 2026-09-05
 related_tasks: [SEC-1787496881680472]
-status_detail: Five of seven source steps are implemented in the combined protected source delivery: durable SSH recovery, restricted Tailnet management, strict exact-node promotion with guest/provider rollback, and UUID-bound staging cleanup. Real isolated staging disconnect/reboot/rollback and serial fleet emergency/VPN acceptance remain required.
+status_detail: Five of eight execution steps are complete in protected source deliveries. The separate Vultr exact-resource cleanup adapter is implemented locally but remains open through combined/full and exact hosted gates. Real isolated staging deletion/disconnect/reboot/rollback and serial fleet emergency/VPN acceptance remain required.
 ---
 
 ## Goal
@@ -27,7 +27,7 @@ Preserve working OpenSSH access while removing confirmed legacy ownership overla
 - Persistent guest recovery handles interruption, timeout and reboot; fresh strict direct and Tailnet SSH proof is required before confirmation. Unknown or corrupted state is retained for explicit recovery, never silently overwritten.
 - Restricted Tailnet administration preserves public emergency access, DNS, routing, unrelated ACL access and VPN traffic. Cloud firewall changes have separately tested external rollback.
 - Local failure tests, pinned-distro validation and exact-source hosted CI pass. Real isolated staging rehearsal and serial fleet acceptance remain required; fixtures and source CI are not live proof.
-- Authorized temporary staging deletion is bound to a private exact-state manifest, authenticated API username, server/root-storage UUIDs and fixed 36/44/47-hour cleanup deadlines; delete-only plan and exact-account provider-absence checks fail closed without claiming cumulative billing reversal.
+- Authorized temporary staging deletion is bound to a private exact-state manifest, authenticated provider account, provider-specific exact resource IDs and fixed 36/44/47-hour cleanup deadlines; delete-only plan and exact-account typed provider-absence checks fail closed without claiming cumulative billing reversal.
 
 ## Implementation ownership
 
@@ -40,8 +40,8 @@ Preserve working OpenSSH access while removing confirmed legacy ownership overla
 
 ## Execution boundaries
 
-Local source implementation can proceed now. No host, provider or policy mutation belongs to the local implementation gate. Staging provisioning waits for the approved existing executor, verified account price/credit and the exact 36/44/47-hour cleanup schedule under the approved total cap. Tailnet ACL application needs a separately approved fresh diff. Production promotion requires observed staging recovery and an explicit serial maintenance window.
+Local source implementation can proceed now. No host, provider or policy mutation belongs to the local implementation gate. Staging provisioning waits for the approved existing executor, verified account price/credit and the exact 36/44/47-hour cleanup schedule under the approved total cap. The UpCloud and Vultr cleanup paths retain separate guards and ambient credential modes; Vultr binds the exact instance, SSH key, firewall group/rules and embedded instance root. Tailnet ACL application needs a separately approved fresh diff. Production promotion requires observed staging recovery and an explicit serial maintenance window.
 
-The UUID-bound cleanup source step is locally testable without creating or
-deleting a server. Passing it does not satisfy the staging rehearsal, provider
-billing review or serial fleet steps.
+The exact-resource cleanup source steps are locally testable without creating
+or deleting a server. Passing them does not satisfy the staging rehearsal,
+provider billing review or serial fleet steps.
