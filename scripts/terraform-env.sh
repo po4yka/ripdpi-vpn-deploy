@@ -58,4 +58,22 @@ if [[ "$PROVIDER" == "vultr" ]]; then
   esac
 fi
 
+if [[
+  "$PROVIDER" == "vultr" && "$1" == "apply" &&
+  "${VULTR_STAGING_MARK_APPLY:-false}" == "true"
+]]; then
+  [[ "${VULTR_STAGING_PLAN_FD:-}" =~ ^[0-9]+$ ]] || {
+    echo "VULTR_STAGING_PLAN_FD must be an open numeric descriptor" >&2
+    exit 2
+  }
+  "${REPO_ROOT}/scripts/vultr-staging-cleanup-guard.py" mark-apply-started \
+    --manifest "${VULTR_STAGING_MANIFEST:?VULTR_STAGING_MANIFEST is required}" \
+    --evidence-output "${VULTR_STAGING_EVIDENCE:?VULTR_STAGING_EVIDENCE is required}" \
+    --fd-number "$VULTR_STAGING_PLAN_FD" \
+    --expected-provider vultr \
+    --expected-environment "$ENV"
+  unset VULTR_STAGING_MARK_APPLY VULTR_STAGING_PLAN_FD \
+    VULTR_STAGING_MANIFEST VULTR_STAGING_EVIDENCE
+fi
+
 exec terraform "-chdir=${TF_DIR}" "$@"
