@@ -878,7 +878,7 @@ def _extract_identity(state: dict[str, Any], hostname: str) -> dict[str, Any]:
             icmp_keys.add(key)
         elif name == "ssh":
             try:
-                source = ipaddress.ip_network(key, strict=True)
+                source = ipaddress.ip_network(key, strict=False)
             except ValueError as exc:
                 raise GuardError("state SSH firewall rule source is invalid") from exc
             ip_type = "v4" if source.version == 4 else "v6"

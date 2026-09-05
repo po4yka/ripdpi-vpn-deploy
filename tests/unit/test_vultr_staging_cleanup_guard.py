@@ -877,16 +877,29 @@ def test_absence_refuses_manifest_replacement_during_provider_reads(
     )
 
 
-def test_manifest_accepts_a_terraform_valid_nonhost_ssh_cidr(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("instance_index", "key", "subnet", "prefix"),
+    [
+        (0, "203.0.113.42/24", "203.0.113.0", 24),
+        (1, "2001:db8::42/64", "2001:db8::", 64),
+    ],
+)
+def test_manifest_accepts_a_terraform_valid_ssh_cidr_with_host_bits(
+    tmp_path: Path,
+    instance_index: int,
+    key: str,
+    subnet: str,
+    prefix: int,
+) -> None:
     state = _state()
     ssh = next(
         item
         for item in state["resources"]
         if item["type"] == "vultr_firewall_rule" and item["name"] == "ssh"
     )
-    ssh["instances"][0]["index_key"] = "203.0.113.0/24"
-    ssh["instances"][0]["attributes"]["subnet"] = "203.0.113.0"
-    ssh["instances"][0]["attributes"]["subnet_size"] = 24
+    ssh["instances"][instance_index]["index_key"] = key
+    ssh["instances"][instance_index]["attributes"]["subnet"] = subnet
+    ssh["instances"][instance_index]["attributes"]["subnet_size"] = prefix
     private = tmp_path / "private"
     state_path = _private(private / "state.json", guard.canonical_json(state))
     manifest = guard.create_manifest(
@@ -900,8 +913,7 @@ def test_manifest_accepts_a_terraform_valid_nonhost_ssh_cidr(tmp_path: Path) -> 
         now=NOW,
     )
     assert (
-        'vultr_firewall_rule.ssh["203.0.113.0/24"]'
-        in manifest["resources"]["firewall_rules"]
+        f'vultr_firewall_rule.ssh["{key}"]' in manifest["resources"]["firewall_rules"]
     )
 
 
