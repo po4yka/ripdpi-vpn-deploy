@@ -186,6 +186,29 @@ def test_alerting_defaults_are_inert_and_secret_free() -> None:
     assert alerting["listen"] == "127.0.0.1:9093"
 
 
+def test_enabled_molecule_deadman_opt_out_has_complete_owned_paths() -> None:
+    fixture = yaml.safe_load(
+        (ROLE / "molecule/enabled/tasks/fixture-contract.yml").read_text()
+    )
+    deadman = fixture[-1]["ansible.builtin.set_fact"]["observability_control_plane"][
+        "alerting"
+    ]["deadman"]
+
+    assert deadman["state_dir"] == "/var/lib/observability-pipeline"
+    assert deadman["metrics_path"] == (
+        "/var/lib/node_exporter/textfile/observability-deadman.prom"
+    )
+    assert deadman["canary_auth_path"] == (
+        "/etc/observability-control-plane/credentials/deadman-canary-auth-token"
+    )
+    assert deadman["pulse_credential_path"] == (
+        "/etc/observability-control-plane/credentials/deadman-pulse-token"
+    )
+    assert deadman["pulse_ca_path"] == (
+        "/etc/observability-control-plane/credentials/deadman-pulse-ca.pem"
+    )
+
+
 def test_deadman_pulse_unit_loads_only_the_dedicated_ca_credential() -> None:
     contract = _contract()
     rendered = render_template(

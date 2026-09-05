@@ -161,5 +161,10 @@
         deadman:
           enabled: false
           receiver_url: http://127.0.0.1:19093/alerts
+          canary_auth_path: /etc/observability-control-plane/credentials/deadman-canary-auth-token
+          pulse_credential_path: /etc/observability-control-plane/credentials/deadman-pulse-token
+          pulse_ca_path: /etc/observability-control-plane/credentials/deadman-pulse-ca.pem
+          state_dir: /var/lib/observability-pipeline
+          metrics_path: /var/lib/node_exporter/textfile/observability-deadman.prom
           repeat_interval: 1m
   no_log: true
