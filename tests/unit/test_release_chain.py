@@ -17,6 +17,16 @@ def workflow():
     return yaml.safe_load((ROOT / ".github/workflows/release-please.yml").read_text())
 
 
+def test_release_version_updates_include_the_locked_root_package():
+    config = json.loads((ROOT / ".github/release-please-config.json").read_text())
+    files = config["packages"]["."]["extra-files"]
+    assert "vpnd/Cargo.toml" in files
+    assert {
+        "type": "toml", "path": "vpnd/Cargo.lock",
+        "jsonpath": "$.package[?(@.name.value=='vpnd')].version",
+    } in files
+
+
 def test_release_automation_is_enabled_by_default_and_errors_are_fatal():
     release = workflow()["jobs"]["release"]
     assert release["if"] == "${{ github.ref == 'refs/heads/main' && vars.RELEASE_PLEASE_ENABLED != 'false' }}"

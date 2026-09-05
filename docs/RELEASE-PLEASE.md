@@ -3,6 +3,12 @@
 The `release-please` workflow runs on `main` by default. It maintains the
 release PR from conventional commits. Merging that PR creates the `vpnd-vX.Y.Z`
 tag and GitHub Release. Release PR approval and merge remain operator decisions.
+The version updater changes both `vpnd/Cargo.toml` and the `vpnd` package entry
+in `vpnd/Cargo.lock`, preserving dependency versions and `--locked` builds.
+The lockfile JSONPath uses `name.value` because the pinned release-please TOML
+parser wraps scalar values with source positions. When upgrading the action,
+verify the actual updater against both files and run `cargo metadata --locked`
+on the resulting candidate; a plain `name` filter silently matches nothing.
 
 The repository must allow GitHub Actions to create pull requests under
 **Settings → Actions → General → Workflow permissions**. Missing permissions

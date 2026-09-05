@@ -13,7 +13,14 @@
       "component": "vpnd",
       "package-name": "vpn-deploy",
       "changelog-path": "CHANGELOG.md",
-      "extra-files": ["vpnd/Cargo.toml"],
+      "extra-files": [
+        "vpnd/Cargo.toml",
+        {
+          "type": "toml",
+          "path": "vpnd/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='vpnd')].version"
+        }
+      ],
       "bootstrap-sha": "1736c5632ff48f73f0f731ed80532f51b6600712",
       "last-release-sha": "1736c5632ff48f73f0f731ed80532f51b6600712"
     }
