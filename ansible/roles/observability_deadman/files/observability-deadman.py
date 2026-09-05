@@ -10,7 +10,7 @@ its separately supplied systemd credential.
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import UTC, datetime
 import hashlib
 import hmac
@@ -892,13 +892,29 @@ def _serve(arguments: argparse.Namespace) -> int:
         def log_message(self, _format: str, *_args: object) -> None:
             return
 
-    status_server = BoundedPulseServer((status_host, int(status_port)), StatusHandler)
-    threading.Thread(target=status_server.serve_forever, daemon=True).start()
-    pulse_server = BoundedPulseServer((host, int(port)), Handler)
-    pulse_server.socket = _pulse_context(config).wrap_socket(
-        pulse_server.socket, server_side=True
-    )
-    pulse_server.serve_forever()
+    status_started = False
+
+    class PulseServer(BoundedPulseServer):
+        def service_actions(self) -> None:
+            nonlocal status_started
+            if not status_started:
+                threading.Thread(
+                    target=status_server.serve_forever, daemon=True
+                ).start()
+                status_started = True
+            super().service_actions()
+
+    with ExitStack() as startup:
+        status_server = BoundedPulseServer(
+            (status_host, int(status_port)), StatusHandler
+        )
+        startup.callback(status_server.server_close)
+        pulse_server = PulseServer((host, int(port)), Handler)
+        startup.callback(pulse_server.server_close)
+        pulse_server.socket = _pulse_context(config).wrap_socket(
+            pulse_server.socket, server_side=True
+        )
+        pulse_server.serve_forever()
     return 0
 
 
