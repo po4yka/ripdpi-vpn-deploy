@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[2]
 ANSIBLE = ROOT / "ansible"
 
@@ -15,12 +14,21 @@ ANSIBLE = ROOT / "ansible"
 def test_roles_have_required_scaffold_and_distinct_namespaces() -> None:
     for role in ("cascade-ingress", "cascade-egress"):
         root = ANSIBLE / "roles" / role
-        for relative in ("CLAUDE.md", "tasks/main.yml", "defaults/main.yml", "handlers/main.yml"):
+        for relative in (
+            "CLAUDE.md",
+            "tasks/main.yml",
+            "defaults/main.yml",
+            "handlers/main.yml",
+        ):
             assert (root / relative).is_file()
         assert list((root / "templates").glob("*.j2"))
 
-    ingress_policy = (ANSIBLE / "roles/cascade-ingress/templates/cascade-ingress.nft.j2").read_text()
-    egress_policy = (ANSIBLE / "roles/cascade-egress/templates/cascade-egress.nft.j2").read_text()
+    ingress_policy = (
+        ANSIBLE / "roles/cascade-ingress/templates/cascade-ingress.nft.j2"
+    ).read_text()
+    egress_policy = (
+        ANSIBLE / "roles/cascade-egress/templates/cascade-egress.nft.j2"
+    ).read_text()
     assert "cascade_ingress" in ingress_policy
     assert "cascade_egress" in egress_policy
     assert "split_hop" not in ingress_policy + egress_policy
@@ -29,10 +37,35 @@ def test_roles_have_required_scaffold_and_distinct_namespaces() -> None:
 def test_ingress_preflights_dataset_before_serving_configuration() -> None:
     tasks = (ANSIBLE / "roles/cascade-ingress/tasks/main.yml").read_text()
 
-    assert tasks.index("Preflight classifier dataset") < tasks.index("Render disabled classifier integration contract")
-    assert tasks.index("Preflight classifier dataset") < tasks.index("Render cascade ingress tunnel")
+    assert tasks.index("Preflight classifier dataset") < tasks.index(
+        "Render disabled classifier integration contract"
+    )
+    assert tasks.index("Preflight classifier dataset") < tasks.index(
+        "Render cascade ingress tunnel"
+    )
     assert "--check-dataset" in tasks
     assert "systemd_service" not in tasks
+
+
+def test_ingress_default_route_is_inert_and_documents_scoped_mark_routing() -> None:
+    role = ANSIBLE / "roles/cascade-ingress"
+    config = (role / "templates/cascade-ingress.conf.j2").read_text()
+    policy = (role / "templates/cascade-ingress.nft.j2").read_text()
+
+    assert "AllowedIPs = {{ cascade_ingress.egress_allowed_ips }}" in config
+    assert "Table = off" in config
+    assert "fwmark {{ cascade_ingress.fwmark }}" in config
+    assert "table {{ cascade_ingress.routing_table }}" in config
+    assert "main routing table" in config
+    assert "Egress forwarding/NAT is a separate activation contract" in config
+    assert "ip route replace default" not in config
+    assert "ip rule add" not in config
+    assert "masquerade" not in policy
+    assert "forward" not in policy
+
+    contract = str(yaml.safe_load((role / "tasks/main.yml").read_text())[1])
+    assert "cascade_ingress.routing_table | int > 0" in contract
+    assert "cascade_ingress.fwmark | int > 0" in contract
 
 
 def test_ingress_installs_concrete_proxy_but_unit_is_repository_disabled() -> None:
@@ -73,8 +106,13 @@ def test_neither_role_has_an_operator_service_activation_switch() -> None:
 
 def test_each_role_starts_with_direct_execution_colocation_guard() -> None:
     for role in ("cascade-ingress", "cascade-egress"):
-        tasks = yaml.safe_load((ANSIBLE / "roles" / role / "tasks/main.yml").read_text())
-        assert tasks[0]["name"] == "Assert cascade and split-hop role families are not co-located"
+        tasks = yaml.safe_load(
+            (ANSIBLE / "roles" / role / "tasks/main.yml").read_text()
+        )
+        assert (
+            tasks[0]["name"]
+            == "Assert cascade and split-hop role families are not co-located"
+        )
         assert tasks[0]["tags"] == ["always"]
 
 
@@ -87,8 +125,12 @@ def test_each_role_starts_with_direct_execution_colocation_guard() -> None:
         ("cascade-egress", "enable_split_hop_egress"),
     ],
 )
-def test_direct_role_guard_covers_every_cross_family_pairing(cascade_role: str, split_toggle: str) -> None:
-    first = yaml.safe_load((ANSIBLE / "roles" / cascade_role / "tasks/main.yml").read_text())[0]
+def test_direct_role_guard_covers_every_cross_family_pairing(
+    cascade_role: str, split_toggle: str
+) -> None:
+    first = yaml.safe_load(
+        (ANSIBLE / "roles" / cascade_role / "tasks/main.yml").read_text()
+    )[0]
     guard = str(first)
 
     assert split_toggle in guard
@@ -137,7 +179,21 @@ def test_site_has_attestation_and_colocation_guards_before_roles() -> None:
     assert ".cascade_governance_status == 'live-authorized'" in site
     assert site.index("mutually exclusive") < first_role
     assert site.index("classifier owns every egress decision") < first_role
-    assert "enable_cascade_ingress" in site[site.index("classifier owns every egress decision") : site.index("verify cascade ASN attestation")]
-    assert "enable_warp_outbound" in site[site.index("classifier owns every egress decision") : site.index("verify cascade ASN attestation")]
+    assert (
+        "enable_cascade_ingress"
+        in site[
+            site.index("classifier owns every egress decision") : site.index(
+                "verify cascade ASN attestation"
+            )
+        ]
+    )
+    assert (
+        "enable_warp_outbound"
+        in site[
+            site.index("classifier owns every egress decision") : site.index(
+                "verify cascade ASN attestation"
+            )
+        ]
+    )
     assert site.index("role: cascade-ingress") > first_role
     assert site.index("role: cascade-egress") > first_role

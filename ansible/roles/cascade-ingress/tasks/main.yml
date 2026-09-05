@@ -24,6 +24,10 @@
       - cascade_ingress.egress_endpoint | length > 0
       - cascade_ingress.egress_port | int > 0
       - cascade_ingress.egress_port | int <= 65535
+      - cascade_ingress.routing_table | int > 0
+      - cascade_ingress.routing_table | int <= 4294967295
+      - cascade_ingress.fwmark | int > 0
+      - cascade_ingress.fwmark | int <= 4294967295
       - cascade_secrets.ingress_private_key | length > 0
       - cascade_secrets.egress_public_key | length > 0
       - cascade_secrets.classifier_proxy_password | length >= 43
