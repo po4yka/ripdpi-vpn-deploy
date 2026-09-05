@@ -1,6 +1,6 @@
 ---
 subscription:
-  port: 8444
+  port: "{{ subscription_port }}"
   rate_limit: "5r/m"   # per-IP request rate (nginx limit_req)
   rate_burst: 3        # burst allowance before queuing/rejecting
   revoked_tokens: []   # list of sha256 hex hashes; populated from secrets when revocation happens

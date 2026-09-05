@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+**Config validation is role-specific** — the unpublished bridge binary has no
+stable validation CLI. The shared bounded YAML validator rejects malformed or
+duplicate-key candidates and invalid nested listener, forwarder, morph, limit,
+or log values before publication; the restart handler then proves liveness.
+
 **Standalone listener, not an Xray inbound** — DNS-Morph requires line-rate
 packet inspection of every UDP/53 datagram to split handshake-shaped queries
 from probe traffic, then re-stitch fragmented payloads. That logic does not

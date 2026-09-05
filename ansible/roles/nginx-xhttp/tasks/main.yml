@@ -9,11 +9,11 @@
       - >-
         not (
           (vpn.enable_xray_reality | default(true) | bool)
-          and ((nginx_xhttp_public_port | default(8443) | int) == (xray_port | default(443) | int))
+          and ((nginx_xhttp_public_port | int) == (xray_port | int))
         )
     fail_msg: |
-      nginx_xhttp_public_port={{ nginx_xhttp_public_port | default(8443) }} collides with
-      xray_port={{ xray_port | default(443) }} while REALITY is enabled. Keep REALITY
+      nginx_xhttp_public_port={{ nginx_xhttp_public_port }} collides with
+      xray_port={{ xray_port }} while REALITY is enabled. Keep REALITY
       on TCP/443 for full-stack hosts and move nginx-xhttp to another public port,
       or disable REALITY for a direct-only cohort before using 443.
 
@@ -67,20 +67,20 @@
         not (
           (nginx_xhttp.fallback_enabled | default(false) | bool)
           and (
-            (nginx_xhttp_fallback_port | default(2083) | int) in [
-              xray_port | default(443) | int,
-              xray_fallback_port | default(0) | int,
-              nginx_xhttp_public_port | default(8443) | int,
-              cdn_front.port | default(8443) | int,
+            (nginx_xhttp_fallback_port | int) in [
+              xray_port | int,
+              xray_fallback_port | int,
+              nginx_xhttp_public_port | int,
+              cdn_front.port | default(cdn_front_port) | int,
             ]
           )
         )
     fail_msg: |
-      nginx_xhttp_fallback_port={{ nginx_xhttp_fallback_port | default(2083) }} collides
-      with an existing public listener (xray_port={{ xray_port | default(443) }},
-      xray_fallback_port={{ xray_fallback_port | default(0) }},
-      nginx_xhttp_public_port={{ nginx_xhttp_public_port | default(8443) }},
-      cdn_front.port={{ cdn_front.port | default(8443) }}). Pick a free port for the
+      nginx_xhttp_fallback_port={{ nginx_xhttp_fallback_port }} collides
+      with an existing public listener (xray_port={{ xray_port }},
+      xray_fallback_port={{ xray_fallback_port }},
+      nginx_xhttp_public_port={{ nginx_xhttp_public_port }},
+      cdn_front.port={{ cdn_front.port | default(cdn_front_port) }}). Pick a free port for the
       direct (non-CDN) XHTTP fallback frontend.
 
 - name: Install nginx

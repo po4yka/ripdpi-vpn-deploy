@@ -2,8 +2,8 @@
 # transport endpoint and the delivery endpoint topologically separated.
 
 server {
-    listen {{ subscription.port | default(8444) }} ssl http2;
-    listen [::]:{{ subscription.port | default(8444) }} ssl http2;
+    listen {{ subscription.port | default(subscription_port) }} ssl http2;
+    listen [::]:{{ subscription.port | default(subscription_port) }} ssl http2;
 
     server_name {{ subscription.server_name | default(nginx_xhttp.server_name) }};
 

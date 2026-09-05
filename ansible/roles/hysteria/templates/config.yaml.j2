@@ -1,7 +1,7 @@
-{% if hysteria_port_range | default('') %}
-listen: ":{{ hysteria_port | default(443) }},{{ hysteria_port_range }}"
+{% if hysteria_port_range %}
+listen: ":{{ hysteria_port }},{{ hysteria_port_range }}"
 {% else %}
-listen: ":{{ hysteria_port | default(443) }}"
+listen: ":{{ hysteria_port }}"
 {% endif %}
 
 tls:

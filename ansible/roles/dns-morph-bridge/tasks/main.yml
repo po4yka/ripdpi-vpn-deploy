@@ -45,9 +45,18 @@
   ansible.builtin.apt:
     name:
       - unbound
+      - python3-yaml
     state: present
     update_cache: true
     cache_valid_time: 3600
+
+- name: Install shared YAML mapping validator
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../runtime-release/files/validate_yaml_mapping.py"
+    dest: /usr/local/libexec/ripdpi-validate-yaml-mapping
+    owner: root
+    group: root
+    mode: "0755"
 
 - name: Render unbound forwarder config
   ansible.builtin.template:
@@ -95,6 +104,9 @@
     owner: root
     group: dns-morph-bridge
     mode: "0640"
+    validate: >-
+      /usr/local/libexec/ripdpi-validate-yaml-mapping
+      --profile dns-morph %s
   no_log: true
   diff: false
   notify: Restart dns-morph-bridge

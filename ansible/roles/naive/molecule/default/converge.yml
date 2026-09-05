@@ -54,9 +54,13 @@
         mode: "0755"
         content: |
           #!/bin/sh
-          # Molecule stub for caddy-naive. Accepts run/validate and exits 0.
+          # Molecule stub for caddy-naive with a deterministic validation refusal.
           case "$1" in
-            run|validate|version) echo "caddy-naive stub v{{ naive.caddy_version | default('v2.11.2') }}"; exit 0 ;;
+            validate)
+              grep -q 'INVALID_CONFIG' "$3" && exit 1
+              exit 0
+              ;;
+            run|version) echo "caddy-naive stub v{{ naive.caddy_version | default('v2.11.2') }}"; exit 0 ;;
             *) exit 0 ;;
           esac
 

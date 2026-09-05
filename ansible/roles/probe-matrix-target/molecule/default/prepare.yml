@@ -14,7 +14,10 @@
         mode: "0755"
         content: |
           #!/bin/sh
-          exit 0
+          if [ "$1" = run ] && [ "$2" = -test ]; then
+            exit 0
+          fi
+          exec /bin/sleep infinity
     - name: Build pinned Xray archive fixture
       ansible.builtin.command:
         argv:
@@ -32,4 +35,4 @@
         mode: "0755"
         content: |
           #!/bin/sh
-          exit 0
+          exec /bin/sleep infinity

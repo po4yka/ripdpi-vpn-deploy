@@ -9,7 +9,7 @@
   auto_https off
 }
 
-:443, vpn.example.com {
+:{{ naive_bind_port }}, vpn.example.com {
   tls /etc/naive/server.fullchain.pem /etc/naive/server.key
 
   # Compression response headers a real Chrome browser triggers. Required

@@ -67,6 +67,9 @@
         mode: "0755"
         content: |
           #!/bin/sh
+          if [ "$1" = "check" ]; then
+            exec /usr/bin/python3 -m json.tool "$3"
+          fi
           if [ "$1" = "run" ]; then
             trap 'exit 0' TERM INT
             while true; do

@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+**Config validation is role-specific** — Hysteria exposes no safe
+validation-only server command. The shared validator rejects malformed or
+duplicate-key YAML and validates the required nested types and values before
+publish; service liveness remains the runtime proof.
+
 **One port, one identity** — Hysteria2 listens on `hysteria_port` (default
 UDP/443). The server renders a per-client userpass map from `hysteria.clients`;
 sing-box carries each credential as `name:password` in its password field.

@@ -2,8 +2,8 @@
 # Converge for split-hop-egress static-verify scenario.
 # WireGuard userspace + nftables NAT both need kernel surface the
 # molecule container does not have. We stub the wg-quick@<iface>
-# systemd unit so the role's enable+start step passes; verify.yml
-# then only asserts the rendered config + sysctl drop-in shape.
+# systemd unit and nft command while retaining the role's observable
+# validate, absent-table load, and idempotent loaded-table behavior.
 
 - name: Converge split-hop-egress role (config-render only, stubbed wg-quick)
   hosts: all
@@ -18,6 +18,7 @@
       node_b_address: "10.200.0.2/30"
       node_a_address: "10.200.0.1/30"
       forward_iface: "eth0"
+      policy_path: /etc/wireguard/split-hop-egress.nft
       keepalive_seconds: 25
     split_hop_egress_secrets:
       node_b_private_key: "MOLECULE_STUB_PRIVATE_KEY_NOT_REAL_AAAAAAAAAAAAAAAA="
@@ -50,6 +51,31 @@
           ExecStop=/bin/true
           [Install]
           WantedBy=multi-user.target
+
+    - name: Stub nft validation and scoped table state (netlink absent in CI)
+      ansible.builtin.copy:
+        dest: /usr/local/sbin/nft
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          state=/run/molecule-split-hop-egress-policy-loaded
+          case "$*" in
+            "-c -f "*) exit 0 ;;
+            "-j list table inet split_hop_egress") test -f "$state" && cat "$state" ;;
+            "-f "*) cat > "$state" <<'JSON'
+          {"nftables":[
+            {"metainfo":{"version":"1.0","json_schema_version":1}},
+            {"table":{"family":"inet","name":"split_hop_egress","handle":1}},
+            {"chain":{"family":"inet","table":"split_hop_egress","name":"postrouting","type":"nat","hook":"postrouting","prio":"srcnat","policy":"accept","handle":1}},
+            {"rule":{"family":"inet","table":"split_hop_egress","chain":"postrouting","expr":[{"match":{"op":"==","left":{"meta":{"key":"iifname"}},"right":"shop0"}},{"match":{"op":"==","left":{"meta":{"key":"oifname"}},"right":"eth0"}},{"masquerade":null}],"handle":1}}
+          ]}
+          JSON
+            ;;
+            *) exit 64 ;;
+          esac
 
   roles:
     - role: split-hop-egress

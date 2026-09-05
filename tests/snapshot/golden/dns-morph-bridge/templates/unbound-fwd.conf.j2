@@ -1,7 +1,7 @@
 # Managed by Ansible role `dns-morph-bridge`. Hand edits will be overwritten.
 #
 # Active-probing-defense forwarder. The dns-morph bridge listens on
-# 0.0.0.0:53;
+# 0.0.0.0:{{ dns_morph_bridge_listen_port }};
 # every non-handshake query is forwarded here so the public listener
 # answers like a normal recursive resolver under probe.
 

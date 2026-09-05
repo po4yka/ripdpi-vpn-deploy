@@ -6,6 +6,10 @@
 SOT for the Reality inbound. Other roles (firewall, nginx-xhttp) read ports
 from `defaults/main.yml`; they never copy the inbound config.
 
+**P0 shape model is shared** — `p0_reality_shapes` in `group_vars/all.yml`
+defines the accepted Vision and mux client shape. Xray consumes the flow
+member while watchdog consumes flow and mux; unknown modes fail before render.
+
 **Pinned binary** — Xray version is pinned in `defaults/main.yml`; upgrades
 go through `docs/XRAY-RELEASE-LINE.md`. The release-line tracker exists
 because v26.2.6 → v26.5.3 had silent flow-mode breakage on some clients.

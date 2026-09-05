@@ -30,7 +30,7 @@ hysteria_realm:
   # (443/8443) and any subscription-host default (8444 collides only
   # if vpn.enable_subscription_host is also true on the same host;
   # operators that enable both must override one).
-  listen_port: 8444
+  listen_port: "{{ hysteria_realm_listen_port }}"
   listen_addr: "::"
 
   # TLS material for the rendezvous channel. With `share_hysteria_tls:

@@ -12,6 +12,9 @@ the production runtimes even though this role remains research-only.
 
 - Runtime users, configs, and logs are isolated from the family transport stack.
 - Secret-bearing templates use `no_log` and `diff: false`; all generated configs are root-owned or readable only by the relevant runtime group.
+- Both auxiliary runtimes use the transport sandbox floor with only
+  `CAP_NET_BIND_SERVICE`; Molecule boots the rendered units with inert pinned
+  executables so a directive that prevents service startup fails acceptance.
 
 ## Pitfalls
 

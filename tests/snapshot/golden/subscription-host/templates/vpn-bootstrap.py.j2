@@ -35,6 +35,7 @@ import os
 import pathlib
 import re
 import socket
+import stat
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -44,6 +45,8 @@ LISTEN_ADDR      = "127.0.0.1"
 LISTEN_PORT      = 8445
 READS_LOG        = pathlib.Path("/var/log/vpn-subscription/reads.log")
 REVOKED_FILE     = pathlib.Path("/var/lib/vpn-subscription/revoked")
+MIRROR_GENERATIONS = SUBSCRIPTION_DIR / ".vpn-sub-mirror-generations"
+MIRROR_CURRENT = SUBSCRIPTION_DIR / ".vpn-sub-mirror-current"
 
 PATH_RE = re.compile(r"^/(bootstrap|sub)/([A-Za-z0-9_-]{16,64})$")
 
@@ -103,6 +106,47 @@ def _now_utc() -> _dt.datetime:
     return _dt.datetime.now(tz=_dt.timezone.utc)
 
 
+def _payload_root() -> pathlib.Path | None:
+    """Use the mirror generation only when its private pointer is trustworthy.
+
+    Direct deployments never create this pointer and retain the legacy
+    `subscription_dir/{sub,bootstrap}` layout unchanged.
+    """
+    try:
+        pointer = MIRROR_CURRENT.lstat()
+    except FileNotFoundError:
+        try:
+            MIRROR_GENERATIONS.lstat()
+        except FileNotFoundError:
+            return SUBSCRIPTION_DIR
+        logging.error("mirror current pointer is missing")
+        return None
+    if not stat.S_ISLNK(pointer.st_mode):
+        logging.error("mirror current pointer is not a symlink")
+        return None
+    try:
+        target = pathlib.PurePath(os.readlink(MIRROR_CURRENT))
+        if target.is_absolute() or ".." in target.parts:
+            raise ValueError("pointer escapes generation root")
+        generation = SUBSCRIPTION_DIR / target
+        if generation.parent != MIRROR_GENERATIONS or not generation.name.startswith("generation-"):
+            raise ValueError("pointer has unexpected target")
+        root_meta = MIRROR_GENERATIONS.lstat()
+        generation_meta = generation.lstat()
+        for path, metadata in ((MIRROR_GENERATIONS, root_meta), (generation, generation_meta)):
+            if (
+                not stat.S_ISDIR(metadata.st_mode)
+                or stat.S_ISLNK(metadata.st_mode)
+                or metadata.st_uid != os.geteuid()
+                or metadata.st_mode & 0o077
+            ):
+                raise ValueError(f"unsafe mirror generation path: {path}")
+    except (OSError, ValueError) as exc:
+        logging.error("mirror generation is unavailable: %s", exc)
+        return None
+    return generation
+
+
 def _expired(meta_path: pathlib.Path) -> bool | None:
     if not meta_path.is_file():
         return False
@@ -151,9 +195,6 @@ class Handler(BaseHTTPRequestHandler):
         route, token = m.group(1), m.group(2)
         token_hash = _hash(token)
         src_ip = self._src_ip()
-        route_dir = SUBSCRIPTION_DIR / route
-        path = route_dir / token_hash
-        meta_path = route_dir / f"{token_hash}.meta"
         single_use = (route == "bootstrap")
 
         with _lock:
@@ -166,6 +207,14 @@ class Handler(BaseHTTPRequestHandler):
                 _audit(route, token_hash, "revoked", src_ip, 0)
                 self.send_error(410, "Gone")
                 return
+            payload_root = _payload_root()
+            if payload_root is None:
+                _audit(route, token_hash, "mirror-state-invalid", src_ip, 0)
+                self.send_error(503, "Service Unavailable")
+                return
+            route_dir = payload_root / route
+            path = route_dir / token_hash
+            meta_path = route_dir / f"{token_hash}.meta"
             try:
                 data = path.read_bytes()
             except FileNotFoundError:

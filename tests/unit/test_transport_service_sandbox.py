@@ -1,4 +1,5 @@
 """Internet-facing transport units must carry the uniform sandbox baseline."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,47 +8,83 @@ import pytest
 import yaml
 from jinja2 import Environment, StrictUndefined
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-BASELINE = (
-    "NoNewPrivileges=true",
-    "PrivateTmp=true",
-    "ProtectHome=true",
-    "ProtectSystem=strict",
-    "ProtectKernelTunables=yes",
-    "ProtectKernelModules=yes",
-    "ProtectControlGroups=yes",
-    "RestrictNamespaces=yes",
-    "MemoryDenyWriteExecute=yes",
-    "LockPersonality=yes",
-    "RestrictRealtime=",
-    "RestrictSUIDSGID=",
-    "SystemCallArchitectures=native",
-    "SystemCallFilter=@system-service",
-    "SystemCallFilter=~@privileged @resources",
-    "CapabilityBoundingSet=CAP_NET_BIND_SERVICE",
+BOOLEAN_BASELINE = (
+    "NoNewPrivileges",
+    "PrivateTmp",
+    "ProtectHome",
+    "ProtectKernelTunables",
+    "ProtectKernelModules",
+    "ProtectControlGroups",
+    "RestrictNamespaces",
+    "MemoryDenyWriteExecute",
+    "LockPersonality",
+    "RestrictRealtime",
+    "RestrictSUIDSGID",
 )
 
-UNITS = (
-    "ansible/roles/hysteria/templates/hysteria-server.service.j2",
-    "ansible/roles/hysteria-realm/templates/hysteria-realm.service.j2",
-    "ansible/roles/snell/templates/snell.service.j2",
+SCALAR_BASELINE = (
+    "ProtectSystem=strict",
+    "SystemCallArchitectures=native",
+    "SystemCallFilter=@system-service",
 )
+
+UNITS = {
+    "ansible/roles/hysteria/templates/hysteria-server.service.j2": "CAP_NET_BIND_SERVICE",
+    "ansible/roles/hysteria-realm/templates/hysteria-realm.service.j2": "CAP_NET_BIND_SERVICE",
+    "ansible/roles/snell/templates/snell.service.j2": "CAP_NET_BIND_SERVICE",
+    "ansible/roles/probe-matrix-target/templates/probe-matrix-xray.service.j2": "CAP_NET_BIND_SERVICE",
+    "ansible/roles/probe-matrix-target/templates/probe-matrix-mtg.service.j2": "CAP_NET_BIND_SERVICE",
+    "ansible/roles/real-vps-awg-nat/templates/server-awg.service.j2": "CAP_NET_ADMIN",
+    "ansible/roles/real-vps-awg-nat/templates/echo.service.j2": "",
+    "ansible/roles/real-vps-awg-nat/templates/firewall.service.j2": "CAP_NET_ADMIN",
+}
 
 
 def test_transport_units_carry_the_sandbox_baseline() -> None:
-    for rel in UNITS:
+    for rel, capability in UNITS.items():
         unit = (REPO_ROOT / rel).read_text()
-        for directive in BASELINE:
+        for name in BOOLEAN_BASELINE:
+            assert any(
+                line in unit for line in (f"{name}=true", f"{name}=yes")
+            ), f"{rel} lacks enabled {name}"
+        for directive in SCALAR_BASELINE:
             assert directive in unit, f"{rel} lacks {directive}"
+        if capability:
+            assert f"CapabilityBoundingSet={capability}" in unit
+            assert f"AmbientCapabilities={capability}" in unit
+        else:
+            assert "CapabilityBoundingSet=" not in unit
+            assert "AmbientCapabilities=" not in unit
+
+
+def test_non_net_admin_units_exclude_privileged_and_resource_syscalls() -> None:
+    for rel, capability in UNITS.items():
+        if capability == "CAP_NET_ADMIN":
+            continue
+        unit = (REPO_ROOT / rel).read_text()
+        assert "SystemCallFilter=~@privileged @resources" in unit, rel
+
+
+def test_net_admin_units_document_the_privileged_syscall_filter_exemption() -> None:
+    for rel, capability in UNITS.items():
+        if capability != "CAP_NET_ADMIN":
+            continue
+        unit = (REPO_ROOT / rel).read_text()
+        assert "CAP_NET_ADMIN workload: do not deny @privileged" in unit, rel
 
 
 def test_transport_units_run_as_dedicated_non_root_users() -> None:
-    for rel in UNITS:
+    non_root_units = {
+        rel for rel, capability in UNITS.items() if capability != "CAP_NET_ADMIN"
+    }
+    for rel in non_root_units:
         unit = (REPO_ROOT / rel).read_text()
         assert "User=root" not in unit
-        assert "\nUser=" in unit and "\nGroup=" in unit, rel
+        assert (
+            "\nUser=" in unit and "\nGroup=" in unit
+        ) or "\nDynamicUser=true" in unit, rel
 
 
 @pytest.mark.parametrize("shared_tls", [False, True])

@@ -147,8 +147,8 @@ probe_reality_listeners() {
 
 if [[ "${ENABLE_XRAY:-true}" == "true" ]]; then
   probe_unit "xray.service" "xray.service active" systemctl is-active --quiet xray
-  probe_unit "xray.service" "xray TCP/${XRAY_PORT:-443} listening" \
-    bash -c "ss -lnt | awk '{print \$4}' | grep -q ':${XRAY_PORT:-443}\$'"
+  probe_unit "xray.service" "xray TCP/${XRAY_PORT} listening" \
+    bash -c "ss -lnt | awk '{print \$4}' | grep -q ':${XRAY_PORT}\$'"
   probe_unit "xray.service" "xray config valid" \
     "$XRAY_BIN" run -test -config /etc/xray/config.json
   probe_unit "xray.service" "xray StatsService query" \
@@ -163,8 +163,8 @@ fi
 
 if [[ "${ENABLE_HYSTERIA:-false}" == "true" ]]; then
   probe_unit "hysteria-server.service" "hysteria-server active" systemctl is-active --quiet hysteria-server
-  probe_unit "hysteria-server.service" "hysteria UDP/${HYSTERIA_PORT:-443} listening" \
-    bash -c "ss -lnu | awk '{print \$4}' | grep -q ':${HYSTERIA_PORT:-443}\$'"
+  probe_unit "hysteria-server.service" "hysteria UDP/${HYSTERIA_PORT} listening" \
+    bash -c "ss -lnu | awk '{print \$4}' | grep -q ':${HYSTERIA_PORT}\$'"
 fi
 
 if [[ "${ENABLE_AMNEZIAWG:-false}" == "true" ]]; then
@@ -204,8 +204,8 @@ if [[ "${ENABLE_NGINX_XHTTP:-true}" == "true" && -r "$nginx_access" ]]; then
 fi
 
 if [[ "${ENABLE_XRAY:-true}" == "true" ]]; then
-  if ! timeout 2 bash -c "</dev/tcp/127.0.0.1/${XRAY_PORT:-443}" 2>/dev/null; then
-    classes[tcp_listen_wedge]="cannot open loopback TCP to xray :${XRAY_PORT:-443}"
+  if ! timeout 2 bash -c "</dev/tcp/127.0.0.1/${XRAY_PORT}" 2>/dev/null; then
+    classes[tcp_listen_wedge]="cannot open loopback TCP to xray :${XRAY_PORT}"
   fi
 fi
 

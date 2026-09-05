@@ -6,8 +6,8 @@
 include /etc/cdn-front/cloudflare.real_ip;
 
 server {
-    listen 8443 ssl http2;
-    listen [::]:8443 ssl http2;
+    listen {{ cdn_front_port }} ssl http2;
+    listen [::]:{{ cdn_front_port }} ssl http2;
 
     server_name {{ nginx_xhttp.server_name }};
 

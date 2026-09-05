@@ -1,0 +1,30 @@
+---
+- name: Prove malformed realm JSON fails native validation
+  hosts: all
+  become: true
+  tasks:
+    - name: Stage malformed realm candidate
+      ansible.builtin.copy:
+        dest: /var/tmp/hysteria-realm-invalid.json
+        mode: "0600"
+        content: "{\"inbounds\": [}\n"
+
+    - name: Reject malformed realm candidate
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/sing-box-realm
+          - check
+          - -c
+          - /var/tmp/hysteria-realm-invalid.json
+      register: _invalid_realm
+      changed_when: false
+      failed_when: false
+
+    - name: Require malformed realm candidate refusal
+      ansible.builtin.assert:
+        that: _invalid_realm.rc != 0
+
+    - name: Remove malformed realm candidate
+      ansible.builtin.file:
+        path: /var/tmp/hysteria-realm-invalid.json
+        state: absent

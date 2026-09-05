@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+**Shared YAML syntax gate** — `files/validate_yaml_mapping.py` is the bounded,
+duplicate-key rejecting validator for transport formats that have no safe
+native check command. Consumers install the same helper and select a strict
+role-specific semantic profile; native validators remain authoritative where
+present.
+
 **Internal role with a prefixed API** — consumers use `include_role` and pass
 only `runtime_release_*` inputs. The role remains inert until a consumer adopts
 it; it never appears directly in `site.yml`.

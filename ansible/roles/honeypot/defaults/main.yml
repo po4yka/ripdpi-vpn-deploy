@@ -15,7 +15,7 @@
 # Hysteria.
 
 honeypot:
-  port: 4443
+  port: "{{ honeypot_port }}"
   log_dir: /var/log/honeypot
   textfile_dir: "{{ (monitoring | default({})).node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}"
   textfile_group: "{{ (monitoring | default({})).node_exporter_textfile_group | default('node_exporter_textfile') }}"

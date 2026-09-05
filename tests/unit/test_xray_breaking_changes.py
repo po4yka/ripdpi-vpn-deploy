@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from jinja2 import UndefinedError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHECK_SCRIPT = REPO_ROOT / "scripts" / "check-xray-breaking-changes.py"
@@ -234,9 +235,27 @@ def test_pq_reality_hold_accepts_current_single_and_multi_cohort_renders(cohorts
     rendered = _render_xray(checker, cohorts)
 
     assert guard["activation"] == "always"
-    assert checker.evaluate_guards(
-        [guard], "v26.3.27", {"rendered-xray": rendered}
-    ) == []
+    assert (
+        checker.evaluate_guards([guard], "v26.3.27", {"rendered-xray": rendered}) == []
+    )
+
+
+def test_p0_server_config_refuses_an_unknown_shape() -> None:
+    checker = _load_checker()
+    variables = checker.merge_render_vars()
+    variables["xray_fallback_port"] = 0
+    variables["xray"]["cohorts"] = [
+        {
+            "name": "unknown-shape",
+            "port": 443,
+            "flow_mode": "unknown-shape",
+            "finalmask": False,
+            "clients": ["phone", "watchdog"],
+        }
+    ]
+
+    with pytest.raises(UndefinedError, match="unknown-shape"):
+        checker.render_template(checker.XRAY_TEMPLATE, variables)
 
 
 @pytest.mark.parametrize("violation_count", [1, 2])
@@ -252,9 +271,7 @@ def test_pq_reality_hold_reports_each_non_none_reality_inbound(violation_count):
     for inbound in reality_inbounds[:violation_count]:
         inbound["settings"]["decryption"] = "pq-enabled-test-value"
 
-    issues = checker.evaluate_guards(
-        [guard], "v26.3.27", {"rendered-xray": rendered}
-    )
+    issues = checker.evaluate_guards([guard], "v26.3.27", {"rendered-xray": rendered})
 
     assert len(issues) == violation_count
     for inbound in reality_inbounds[:violation_count]:
@@ -282,9 +299,9 @@ def test_pq_reality_hold_ignores_non_reality_vless_and_unrelated_protocols():
         ]
     )
 
-    assert checker.evaluate_guards(
-        [guard], "v26.3.27", {"rendered-xray": rendered}
-    ) == []
+    assert (
+        checker.evaluate_guards([guard], "v26.3.27", {"rendered-xray": rendered}) == []
+    )
 
 
 def test_malformed_pq_reality_hold_metadata_fails_closed():

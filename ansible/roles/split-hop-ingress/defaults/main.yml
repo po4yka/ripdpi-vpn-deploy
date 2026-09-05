@@ -3,7 +3,7 @@ split_hop_ingress:
   manage_service: true
   validate_policy: true
   wg_interface: shop0
-  listen_port: 51821
+  listen_port: "{{ split_hop_ingress_listen_port }}"
   node_a_address: 10.200.0.1/30
   node_b_address: 10.200.0.2/32
   routing_table: 200

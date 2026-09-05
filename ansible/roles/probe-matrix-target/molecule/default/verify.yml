@@ -56,3 +56,28 @@
           - (target_runtime_files.results[2].content | b64decode) is search('ProtectSystem=strict')
           - (target_runtime_files.results[3].content | b64decode) is search('NoNewPrivileges=true')
           - (target_runtime_files.results[3].content | b64decode) is search('ProtectSystem=strict')
+    - name: Start sandboxed probe runtimes
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: started
+        daemon_reload: true
+      loop:
+        - probe-matrix-xray.service
+        - probe-matrix-mtg.service
+    - name: Inspect sandboxed probe runtime state
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - --property=ActiveState
+          - --value
+          - "{{ item }}"
+      loop:
+        - probe-matrix-xray.service
+        - probe-matrix-mtg.service
+      register: probe_runtime_states
+      changed_when: false
+    - name: Assert sandboxed probe runtimes remain active
+      ansible.builtin.assert:
+        that:
+          - probe_runtime_states.results | map(attribute='stdout') | list == ['active', 'active']

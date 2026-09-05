@@ -106,7 +106,7 @@
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          ss -lnt | awk '{print $4}' | grep -q ':{{ xray_port | default(443) }}$'
+          ss -lnt | awk '{print $4}' | grep -q ':{{ xray_port }}$'
         executable: /bin/bash
       changed_when: false
       when:
@@ -117,21 +117,21 @@
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          ss -lnt | awk '{print $4}' | grep -q ':{{ xray_fallback_port | default(2053) }}$'
+          ss -lnt | awk '{print $4}' | grep -q ':{{ xray_fallback_port }}$'
         executable: /bin/bash
       changed_when: false
       when:
         - not (vpn_subscription_only | default(false))
         - vpn.enable_xray_reality | default(true)
         - (xray.cohorts | default([])) | length == 0
-        - xray_fallback_port | default(0) | int > 0
-        - xray_fallback_port | default(0) | int != xray_port | default(443) | int
+        - xray_fallback_port | int > 0
+        - xray_fallback_port | int != xray_port | int
 
     - name: nginx-xhttp fallback TCP listener active
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          ss -lnt | awk '{print $4}' | grep -q ':{{ nginx_xhttp_fallback_port | default(2083) }}$'
+          ss -lnt | awk '{print $4}' | grep -q ':{{ nginx_xhttp_fallback_port }}$'
         executable: /bin/bash
       changed_when: false
       when:
@@ -161,7 +161,7 @@
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          ss -lnt | awk '{print $4}' | grep -q ':{{ nginx_xhttp_public_port | default(8443) }}$'
+          ss -lnt | awk '{print $4}' | grep -q ':{{ nginx_xhttp_public_port }}$'
         executable: /bin/bash
       changed_when: false
       when:
@@ -276,7 +276,7 @@
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          ss -lnu | awk '{print $4}' | grep -q ':{{ hysteria_port | default(443) }}$'
+          ss -lnu | awk '{print $4}' | grep -q ':{{ hysteria_port }}$'
         executable: /bin/bash
       changed_when: false
       when:

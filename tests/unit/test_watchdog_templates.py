@@ -58,6 +58,14 @@ def test_probe_config_maps_every_cohort_to_a_distinct_socks_inbound():
     assert config["outbounds"][1]["streamSettings"]["sockopt"]["finalmask"] == "Sudoku"
 
 
+def test_probe_config_refuses_an_unknown_p0_shape() -> None:
+    variables = _multi_cohort_vars()
+    variables["watchdog_reality_probes"][0]["flow_mode"] = "unknown-shape"
+
+    with pytest.raises(UndefinedError, match="unknown-shape"):
+        render_template(TEMPLATES / "reality-probe.json.j2", variables)
+
+
 def test_environment_lists_every_probe_without_client_credentials():
     vars_ = _multi_cohort_vars()
     rendered = render_template(TEMPLATES / "vpn-watchdog.env.j2", vars_)

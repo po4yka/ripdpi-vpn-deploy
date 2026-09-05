@@ -43,3 +43,12 @@ Decryptable only with the audit-log key. See `scripts/sub-reads.sh`.
   successful responses and errors expose one authoritative public value.
 - **Mirror exclusions follow `revoked_file`** — changing its basename or
   nesting it inside the payload root must not let `rsync --delete` remove it.
+- **Restic restores must expose `DEST/sub` directly** — the mirror refuses a
+  missing or symlinked root `sub/` before recursive ownership or mode repair,
+  so unexpected snapshot nesting cannot leave stale payloads served silently.
+- **Mirror routes share one generation pointer** — `sub/` and `bootstrap/`
+  are validated, hardened and fsynced beneath one private immutable generation
+  before the single current-pointer rename. A prior generation is retained for
+  in-flight readers. The publisher lock serializes pull through cleanup; once
+  the generation root exists, a missing pointer fails closed instead of serving
+  stale legacy payload. Direct deployments create neither mirror artifact.

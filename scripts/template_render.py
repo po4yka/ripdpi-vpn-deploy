@@ -15,6 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ROLES_DIR = REPO_ROOT / "ansible" / "roles"
 GROUP_VARS = REPO_ROOT / "ansible" / "group_vars"
 EXAMPLE_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
+_EXACT_VARIABLE_REFERENCE = re.compile(r"^\s*{{\s*([A-Za-z_][A-Za-z0-9_]*)\s*}}\s*$")
 
 SYNTHETIC_FACTS = {
     "ansible_user": "deploy",
@@ -55,6 +56,7 @@ def merge_render_vars() -> dict:
         merged.update(yaml.safe_load(all_yml.read_text()) or {})
     if EXAMPLE_FILE.exists():
         merged.update(yaml.safe_load(EXAMPLE_FILE.read_text()) or {})
+    _resolve_exact_variable_references(merged)
     merged.update(SYNTHETIC_FACTS)
     merged.setdefault("xray_arch", "64")
     merged.setdefault("xray_sha256", "0" * 64)
@@ -158,6 +160,31 @@ def merge_render_vars() -> dict:
         }
     )
     return merged
+
+
+def _resolve_exact_variable_references(value: object, context: dict | None = None) -> object:
+    """Resolve only whole-value references used by role defaults.
+
+    Repository template snapshots load role defaults as YAML rather than through
+    Ansible.  Runtime listener defaults intentionally point at the canonical
+    flat group variable, so preserve that relationship without evaluating
+    arbitrary Jinja in the lightweight renderer.
+    """
+    if context is None:
+        context = value if isinstance(value, dict) else {}
+    if isinstance(value, dict):
+        for key, item in list(value.items()):
+            value[key] = _resolve_exact_variable_references(item, context)
+        return value
+    if isinstance(value, list):
+        return [_resolve_exact_variable_references(item, context) for item in value]
+    if isinstance(value, str):
+        match = _EXACT_VARIABLE_REFERENCE.fullmatch(value)
+        if match and match.group(1) in context:
+            referenced = context[match.group(1)]
+            if referenced is not value:
+                return _resolve_exact_variable_references(referenced, context)
+    return value
 
 
 def _sha256(value: str, algorithm: str) -> str:

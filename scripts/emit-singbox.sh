@@ -256,7 +256,10 @@ for i in "${!host_pairs[@]}"; do
   enable_xhttp="$(toggle_enabled "$vpn_json" enable_nginx_xhttp true)"
   enable_hysteria="$(toggle_enabled "$vpn_json" enable_hysteria false)"
   enable_snell="$(toggle_enabled "$vpn_json" enable_snell false)"
-  flow_mode="$(jq -r '.xray_flow_mode // "vision"' <<< "$vpn_json")"
+  flow_mode="$(jq -r '.xray_flow_mode // empty' <<< "$vpn_json")"
+  [[ -n "$flow_mode" ]] || flow_mode="$(jq -r '.p0_reality_flow_mode // "vision"' <<< "$host_json")"
+  p0_shapes_json="$(jq -c '.p0_reality_shapes // {}' <<< "$host_json")"
+  default_finalmask="false"
   xray_server_port="$(jq -r '.xray_port // 443' <<< "$host_json")"
   xray_fallback_port="$(jq -r '.xray_fallback_port // 0' <<< "$host_json")"
   xhttp_server_port="$(jq -r '.nginx_xhttp_public_port // 443' <<< "$host_json")"
@@ -288,6 +291,18 @@ for i in "${!host_pairs[@]}"; do
   # outbound per cohort the client is in, each on its own port + flow_mode.
   # Empty cohorts → single outbound on xray_port with vpn.xray_flow_mode.
   if [[ "$enable_reality" == "true" ]]; then
+    default_shape="$(jq -ce --arg flow "$flow_mode" '
+      .[$flow] | select(
+        type == "object"
+        and (.client_flow | type == "string")
+        and (.client_mux | type == "boolean")
+        and (.finalmask | type == "boolean")
+      )
+    ' <<< "$p0_shapes_json")" || {
+      echo "P0 REALITY flow mode '$flow_mode' has no valid p0_reality_shapes descriptor" >&2
+      exit 1
+    }
+    default_finalmask="$(jq -r --argjson shape "$default_shape" '.xray_finalmask // $shape.finalmask' <<< "$vpn_json")"
     reality_pubkey="$(jq -r '.xray.reality_public_key // empty' "$secrets_tmp")"
     sni="$(jq -r '.xray.server_names[0] // empty' "$secrets_tmp")"
     if [[ -z "$reality_pubkey" || -z "$sni" ]]; then
@@ -299,26 +314,53 @@ for i in "${!host_pairs[@]}"; do
     n_cohorts="$(jq 'length' <<< "$cohorts_json")"
 
     emit_reality_outbound() {
-      # args: tag_suffix port flow
-      local suffix="$1" port="$2" flow="$3"
+      # args: tag_suffix port flow finalmask
+      local suffix="$1" port="$2" flow="$3" finalmask="$4"
+      local shape client_flow client_mux
+      shape="$(jq -ce --arg flow "$flow" '
+        .[$flow] | select(
+          type == "object"
+          and (.client_flow | type == "string")
+          and (.client_mux | type == "boolean")
+          and (.finalmask | type == "boolean")
+        )
+      ' <<< "$p0_shapes_json")" || {
+        echo "P0 REALITY flow mode '$flow' has no valid p0_reality_shapes descriptor" >&2
+        exit 1
+      }
+      client_flow="$(jq -r '.client_flow' <<< "$shape")"
+      client_mux="$(jq -r '.client_mux' <<< "$shape")"
+      # finalmask is an Xray socket option. Official sing-box has no
+      # equivalent client field; fail closed rather than emitting an ignored
+      # or unsupported key that would silently diverge from the server shape.
+      if [[ "$finalmask" == "true" ]]; then
+        echo "P0 REALITY finalmask requires an Xray client; official sing-box cannot represent it" >&2
+        exit 1
+      fi
       local outb_args=(
         --arg tag "p0-reality-${tag_prefix}${suffix}"
         --arg ip "$server_ip" --arg uuid "$uuid"
         --arg sni "$sni" --arg pk "$reality_pubkey" --arg sid "$short_id"
-        --arg fp "$utls_fp"
+        --arg fp "$utls_fp" --arg flow "$client_flow"
         --argjson port "$port"
       )
-      if [[ "$flow" == "mux" ]]; then
+      if [[ "$client_mux" == "true" ]]; then
         OUTBOUNDS="$(echo "$OUTBOUNDS" | jq "${outb_args[@]}" \
           '. += [{type:"vless", tag:$tag, server:$ip, server_port:$port, uuid:$uuid,
                   multiplex:{enabled:true, protocol:"smux", max_streams:8},
                   tls:{enabled:true, server_name:$sni,
                        utls:{enabled:true, fingerprint:$fp},
                        reality:{enabled:true, public_key:$pk, short_id:$sid}}}]')"
+      elif [[ -n "$client_flow" ]]; then
+        OUTBOUNDS="$(echo "$OUTBOUNDS" | jq "${outb_args[@]}" \
+          '. += [{type:"vless", tag:$tag, server:$ip, server_port:$port, uuid:$uuid,
+                  flow:$flow,
+                  tls:{enabled:true, server_name:$sni,
+                       utls:{enabled:true, fingerprint:$fp},
+                       reality:{enabled:true, public_key:$pk, short_id:$sid}}}]')"
       else
         OUTBOUNDS="$(echo "$OUTBOUNDS" | jq "${outb_args[@]}" \
           '. += [{type:"vless", tag:$tag, server:$ip, server_port:$port, uuid:$uuid,
-                  flow:"xtls-rprx-vision",
                   tls:{enabled:true, server_name:$sni,
                        utls:{enabled:true, fingerprint:$fp},
                        reality:{enabled:true, public_key:$pk, short_id:$sid}}}]')"
@@ -332,9 +374,9 @@ for i in "${!host_pairs[@]}"; do
       # peer endpoints in its selector group so a TLS-cap-policed
       # port-443 path can roll over to the alt-port. Skip the second
       # outbound when fallback is unset or matches the primary port.
-      emit_reality_outbound "" "$xray_server_port" "$flow_mode"
+      emit_reality_outbound "" "$xray_server_port" "$flow_mode" "$default_finalmask"
       if (( xray_fallback_port > 0 )) && (( xray_fallback_port != xray_server_port )); then
-        emit_reality_outbound "-fallback" "$xray_fallback_port" "$flow_mode"
+        emit_reality_outbound "-fallback" "$xray_fallback_port" "$flow_mode" "$default_finalmask"
       fi
     else
       # Multi-cohort: emit one outbound per cohort that lists this client.
@@ -349,8 +391,9 @@ for i in "${!host_pairs[@]}"; do
         c="$(jq -c ".[$cohort_idx]" <<< "$client_cohorts")"
         c_name="$(jq -r '.name' <<< "$c")"
         c_port="$(jq -r '.port'  <<< "$c")"
-        c_flow="$(jq -r '.flow_mode // "vision"' <<< "$c")"
-        emit_reality_outbound "-${c_name}" "$c_port" "$c_flow"
+        c_flow="$(jq -r --arg default "$flow_mode" '.flow_mode // $default' <<< "$c")"
+        c_finalmask="$(jq -r --argjson default "$default_finalmask" '.finalmask // $default' <<< "$c")"
+        emit_reality_outbound "-${c_name}" "$c_port" "$c_flow" "$c_finalmask"
       done
     fi
   fi
