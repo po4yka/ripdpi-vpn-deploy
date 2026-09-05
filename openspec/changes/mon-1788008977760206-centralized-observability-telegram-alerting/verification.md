@@ -224,3 +224,19 @@ unsafe-namespace refusal. Managed bytes, inodes,
 modes and service state remained unchanged; no rollback snapshot was created.
 Runtime binary installation and abrupt process/host loss are outside the ordinary
 authority rollback boundary. Final exact-commit and hosted results are pending.
+
+## Integrated source gate, 2026-09-05
+
+The reviewed source candidate `390d18874032f335899c3d979c5c1ace96e5017f`
+completed every runtime, Terraform, policy, schema, shell, BATS and Rust check in
+the canonical local gate. Pytest reported 3,647 passing tests, three existing
+skips and one governance-only failure because `docs/TESTING.md` still named the
+pre-integration collection counts. The isolated Colima profile was removed and
+its Docker context and configuration were unchanged. The mode-0600 gate log has
+SHA256 `5eeb1815fd66cddf487c5e4ac2e5c7e44d51c2ff3ec056089c941eb86d8c4e50`.
+
+This evidence-only descendant updates the documented counts to 3,704 collected
+and 3,651 under `tests/unit`; the governance test then passed 2/2. No executable,
+role, template, test, contract or infrastructure source changed after the full
+candidate run. Exact-head hosted CI remains required before the source-gate step
+can close, and no staging or live acceptance is claimed here.
