@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Adapt producer-owned watchdog and backup state into bounded metrics."""
+"""Adapt producer-owned watchdog, backup, and certificate state into metrics."""
 
 from __future__ import annotations
 
@@ -11,12 +11,15 @@ import os
 from pathlib import Path
 import re
 import secrets
+import ssl
 import stat
+import subprocess
 import sys
 import time
 
 MAX_WATCHDOG_BYTES = 4096
 MAX_JSON_BYTES = 16 * 1024
+MAX_CERTIFICATE_BYTES = 32 * 1024
 MAX_COUNTER = 10_000_000_000
 FUTURE_TOLERANCE_SECONDS = 30
 NODE_ID = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
@@ -475,6 +478,54 @@ def _render_restore(node: str, evidence: RestoreEvidence | None) -> list[str]:
     return result
 
 
+def _parse_certificate_expiry(path: Path) -> int:
+    certificate = _secure_read(
+        path,
+        MAX_CERTIFICATE_BYTES,
+        {0o400, 0o440, 0o600, 0o640},
+    )
+    try:
+        result = subprocess.run(
+            ["/usr/bin/openssl", "x509", "-noout", "-enddate"],
+            input=certificate.content,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise HealthAdapterError("invalid certificate evidence") from error
+    if result.returncode != 0 or len(result.stdout) > 128:
+        raise HealthAdapterError("invalid certificate evidence")
+    try:
+        line = result.stdout.decode("ascii").strip()
+        if not line.startswith("notAfter=") or "\n" in line:
+            raise ValueError
+        return int(ssl.cert_time_to_seconds(line.removeprefix("notAfter=")))
+    except (ValueError, OverflowError) as error:
+        raise HealthAdapterError("invalid certificate evidence") from error
+
+
+def _render_certificate(node: str, expires_at: int | None) -> list[str]:
+    labels = {"node": node, "role": "observability-sender"}
+    result = [
+        _sample(
+            "vpn_certificate_collection_success",
+            int(expires_at is not None),
+            **labels,
+        )
+    ]
+    if expires_at is not None:
+        result.append(
+            _sample(
+                "vpn_certificate_not_after_timestamp_seconds",
+                expires_at,
+                **labels,
+            )
+        )
+    return result
+
+
 def _validate_existing_output(parent_fd: int, name: str) -> None:
     try:
         metadata = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
@@ -559,6 +610,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--restore-drill", type=Path, required=True)
     parser.add_argument("--restore-drill-max-age-seconds", type=int, required=True)
     parser.add_argument("--backup-snapshot-max-age-seconds", type=int, required=True)
+    parser.add_argument("--certificate", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     if (
@@ -604,11 +656,17 @@ def main(argv: list[str] | None = None) -> int:
     except HealthAdapterError:
         restore = None
         failed = True
+    try:
+        certificate_expiry = _parse_certificate_expiry(args.certificate)
+    except HealthAdapterError:
+        certificate_expiry = None
+        failed = True
     lines = [
         "# Managed by observability-agent-health-adapter.",
         *_render_watchdog(args.node_id, watchdog),
         *_render_backup_stage(args.node_id, backup),
         *_render_restore(args.node_id, restore),
+        *_render_certificate(args.node_id, certificate_expiry),
         "",
     ]
     try:

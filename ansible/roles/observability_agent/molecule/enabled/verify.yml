@@ -347,6 +347,12 @@
             'vpn_backup_restore_source{node="node-fixture",role="restore-drill",state="remote"} 1'
             in (observability_health_output.content | b64decode)
           - >-
+            'vpn_certificate_collection_success{node="node-fixture",role="observability-sender"} 1'
+            in (observability_health_output.content | b64decode)
+          - >-
+            'vpn_certificate_not_after_timestamp_seconds{node="node-fixture",role="observability-sender"}'
+            in (observability_health_output.content | b64decode)
+          - >-
             'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
             not in (observability_health_output.content | b64decode)
           - observability_health_stat.stat.uid | int == 0

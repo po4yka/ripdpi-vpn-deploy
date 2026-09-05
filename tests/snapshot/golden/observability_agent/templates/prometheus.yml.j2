@@ -2,7 +2,7 @@ global:
   scrape_interval: 30s
   external_labels:
     environment: ""
-    node_id: ""
+    node: ""
 
 scrape_configs:
   - job_name: node-exporter
@@ -14,7 +14,7 @@ scrape_configs:
       - targets: ["127.0.0.1:9100"]
     metric_relabel_configs:
       - source_labels: [__name__]
-        regex: "^(node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*|node_load(1|5|15)|vpn_(xray_stats|observability_).*)$"
+        regex: "^(node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*|node_load(1|5|15)|vpn_(xray_stats|observability_|watchdog_|backup_|certificate_|honeypot_|policy_ratelimit_|burn_).*)$"
         action: keep
       - source_labels: [mountpoint]
         regex: "^$|^/$"
@@ -22,7 +22,20 @@ scrape_configs:
       - source_labels: [device]
         regex: "^$|^(lo|eth[0-9]+|ens[0-9]+|enp[0-9a-z]+|vda[0-9]*|sda[0-9]*|nvme[0-9]+n[0-9]+p?[0-9]*)$"
         action: keep
-      - regex: "^(__name__|job|cpu|mode|device|fstype|mountpoint)$"
+      - regex: "^(__name__|job|cpu|mode|device|fstype|mountpoint|node|role|state)$"
+        action: labelkeep
+  - job_name: node-exporter-required-services
+    sample_limit: 2000
+    label_limit: 16
+    label_name_length_limit: 64
+    label_value_length_limit: 128
+    static_configs:
+      - targets: ["127.0.0.1:9100"]
+    metric_relabel_configs:
+      - source_labels: [__name__, name, state]
+        regex: "^node_systemd_unit_state;(caddy-naive[.]service|hysteria-server[.]service|nginx[.]service|observability-agent[.]service|observability-alertmanager[.]service|observability-deadman[.]service|observability-prometheus[.]service|xray[.]service);(active|failed)$"
+        action: keep
+      - regex: "^(__name__|job|name|state)$"
         action: labelkeep
   - job_name: observability-agent
     sample_limit: 2000

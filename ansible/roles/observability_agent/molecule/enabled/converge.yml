@@ -23,6 +23,9 @@
               private_key_pem: "{{ observability_fixture_credentials.results[2].content | b64decode }}"
       no_log: true
   vars:
+    observability_alert_policy: >-
+      {{ (lookup('ansible.builtin.file',
+          playbook_dir ~ '/../../../../group_vars/all.yml') | from_yaml).observability_alert_policy }}
     observability_contract:
       schema_version: 1
       credential_mode: systemd

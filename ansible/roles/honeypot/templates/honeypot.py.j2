@@ -60,6 +60,15 @@ _total_events = 0
 _unique_ips: set[str] = set()
 _unique_snis: set[str] = set()
 _slot_exhaustion_drops = 0
+_input_errors_total = 0
+_reported_input_errors = 0
+
+
+def _record_input_error() -> None:
+    """Record a bounded producer error without exporting error details."""
+    global _input_errors_total
+    with _events_lock:
+        _input_errors_total += 1
 
 
 def _prune_recent_minutes(now_min: int) -> None:
@@ -103,6 +112,7 @@ def _extract_sni(buf: bytes) -> str | None:
 
 def _flush_textfile() -> None:
     """Write a fresh prom textfile reflecting the rolling counters."""
+    global _reported_input_errors
     now_min = int(time.time()) // 60
     with _events_lock:
         _prune_recent_minutes(now_min)
@@ -111,13 +121,31 @@ def _flush_textfile() -> None:
         unique_ips = len(_unique_ips)
         unique_snis = len(_unique_snis)
         slot_drops = _slot_exhaustion_drops
+        input_errors = _input_errors_total
+        reported_input_errors = _reported_input_errors
     out = TEXTFILE_DIR / "vpn_honeypot.prom"
     tmp = out.with_suffix(".prom.tmp")
     last_minute_count = (
         per_min[-1][1] if per_min and per_min[-1][0] == now_min else 0
     )
     sixty_minute_count = sum(c for _, c in per_min)
+    error_state = "error" if input_errors > reported_input_errors else "ok"
     lines = [
+        "# HELP vpn_honeypot_collection_success Whether the latest detector publication completed",
+        "# TYPE vpn_honeypot_collection_success gauge",
+        "vpn_honeypot_collection_success 1",
+        "# HELP vpn_honeypot_last_success_timestamp_seconds Unix timestamp of the latest detector publication",
+        "# TYPE vpn_honeypot_last_success_timestamp_seconds gauge",
+        f"vpn_honeypot_last_success_timestamp_seconds {int(time.time())}",
+        "# HELP vpn_honeypot_input_progress_total Accepted detector inputs since service start",
+        "# TYPE vpn_honeypot_input_progress_total counter",
+        f"vpn_honeypot_input_progress_total {total}",
+        "# HELP vpn_honeypot_input_errors_total Bounded input processing errors since service start",
+        "# TYPE vpn_honeypot_input_errors_total counter",
+        f"vpn_honeypot_input_errors_total {input_errors}",
+        "# HELP vpn_honeypot_error_state Whether the detector has observed an input processing error",
+        "# TYPE vpn_honeypot_error_state gauge",
+        'vpn_honeypot_error_state{state="' + error_state + '"} 1',
         "# HELP vpn_honeypot_events_total Total probe events seen since service start",
         "# TYPE vpn_honeypot_events_total counter",
         f"vpn_honeypot_events_total {total}",
@@ -139,6 +167,8 @@ def _flush_textfile() -> None:
     ]
     tmp.write_text("\n".join(lines) + "\n")
     tmp.replace(out)
+    with _events_lock:
+        _reported_input_errors = max(_reported_input_errors, input_errors)
 
 
 def _bump(source_ip: str, sni: str | None) -> bool:
@@ -190,6 +220,7 @@ def _handle(conn: socket.socket, addr: tuple) -> None:
     except socket.timeout:
         pass  # deadline reached mid-read
     except Exception as exc:
+        _record_input_error()
         logging.debug("recv error from %s: %s", src_ip, exc)
     finally:
         try: conn.close()
@@ -207,8 +238,12 @@ def _handle(conn: socket.socket, addr: tuple) -> None:
         "sni": sni,
         "first16_hex": buf[:16].hex() if buf else "",
     }
-    with (LOG_DIR / "connections.log").open("a") as fh:
-        fh.write(json.dumps(event) + "\n")
+    try:
+        with (LOG_DIR / "connections.log").open("a") as fh:
+            fh.write(json.dumps(event) + "\n")
+    except OSError as exc:
+        _record_input_error()
+        logging.warning("event log write failed: %s", exc)
 
 
 def _create_listener_sockets() -> list[socket.socket]:

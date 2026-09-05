@@ -253,3 +253,40 @@ observability_contract:
   enabled: false
   schema_version: 1
   credential_mode: systemd
+
+# Validated alert policy shared verbatim by agents and the control plane. A
+# missing unit is not inferred as failed; expected-target evidence owns
+# absence, while node_systemd_unit_state supplies only observed failures.
+observability_alert_policy:
+  warning_severity: warning
+  critical_severity: critical
+  resource_hold: 5m
+  critical_hold: 3m
+  detector_hold: 3m
+  cpu_warning_ratio: 0.90
+  memory_warning_ratio: 0.90
+  swap_warning_ratio: 0.50
+  disk_warning_ratio: 0.10
+  disk_critical_ratio: 0.05
+  inode_warning_ratio: 0.10
+  inode_critical_ratio: 0.05
+  clock_skew_seconds: 60
+  certificate_warning_seconds: 1209600
+  certificate_critical_seconds: 259200
+  network_error_rate: 0
+  restart_attempts: 3
+  detector_stale_seconds: 180
+  burn_stale_seconds: 3900
+  honeypot_events_60min: 100
+  policy_events_5min: 10
+  filesystem_mountpoint: /
+  network_device_exclude_regex: ^lo$
+  required_systemd_units:
+    - caddy-naive.service
+    - hysteria-server.service
+    - nginx.service
+    - observability-agent.service
+    - observability-alertmanager.service
+    - observability-deadman.service
+    - observability-prometheus.service
+    - xray.service

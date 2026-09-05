@@ -30,6 +30,9 @@
 
 - name: Define complete enabled control-plane fixture contract
   ansible.builtin.set_fact:
+    observability_alert_policy: >-
+      {{ (lookup('ansible.builtin.file',
+          playbook_dir ~ '/../../../../group_vars/all.yml') | from_yaml).observability_alert_policy }}
     observability_control_plane:
       enabled: true
       service_user: prometheus

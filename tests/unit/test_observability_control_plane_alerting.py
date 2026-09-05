@@ -20,6 +20,36 @@ from scripts.template_render import merge_render_vars, render_template
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible/roles/observability_control_plane"
 PROMTOOL_VERSION = "3.14.0"
+REQUIRED_SYSTEMD_UNITS = ["nginx.service", "xray.service"]
+
+
+def _alert_policy() -> dict:
+    return {
+        "warning_severity": "warning",
+        "critical_severity": "critical",
+        "resource_hold": "5m",
+        "critical_hold": "3m",
+        "detector_hold": "3m",
+        "cpu_warning_ratio": 0.90,
+        "memory_warning_ratio": 0.90,
+        "swap_warning_ratio": 0.50,
+        "disk_warning_ratio": 0.10,
+        "disk_critical_ratio": 0.05,
+        "inode_warning_ratio": 0.10,
+        "inode_critical_ratio": 0.05,
+        "clock_skew_seconds": 60,
+        "certificate_warning_seconds": 1209600,
+        "certificate_critical_seconds": 259200,
+        "network_error_rate": 0,
+        "restart_attempts": 3,
+        "detector_stale_seconds": 180,
+        "burn_stale_seconds": 3900,
+        "honeypot_events_60min": 100,
+        "policy_events_5min": 10,
+        "filesystem_mountpoint": "/",
+        "network_device_exclude_regex": "^lo$",
+        "required_systemd_units": REQUIRED_SYSTEMD_UNITS,
+    }
 
 
 def _contract(*, token: str = "123456789:fixture-token-value-not-real") -> dict:
@@ -132,6 +162,7 @@ def test_missing_telegram_contract_refuses_without_changes_or_secret_output(
                     "gather_facts": False,
                     "vars": {
                         "observability_control_plane": _contract(token=secret),
+                        "observability_alert_policy": _alert_policy(),
                         "role_path": str(ROLE),
                     },
                     "tasks": [
@@ -189,6 +220,7 @@ def test_complete_alerting_contract_passes_without_changes_or_secret_output(
                     "gather_facts": False,
                     "vars": {
                         "observability_control_plane": _contract(token=secret),
+                        "observability_alert_policy": _alert_policy(),
                         "role_path": str(ROLE),
                     },
                     "tasks": [
@@ -217,6 +249,62 @@ def test_complete_alerting_contract_passes_without_changes_or_secret_output(
     assert result.returncode == 0, result.stdout + result.stderr
     assert "changed=0" in result.stdout
     assert secret not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    ("policy_patch", "required_units"),
+    [
+        ({"cpu_warning_ratio": 1.0}, REQUIRED_SYSTEMD_UNITS),
+        ({"disk_critical_ratio": 0.20}, REQUIRED_SYSTEMD_UNITS),
+        ({"resource_hold": "0m"}, REQUIRED_SYSTEMD_UNITS),
+        ({}, ["xray.service", ".*"]),
+    ],
+)
+def test_alert_policy_rejects_invalid_thresholds_and_unit_selectors(
+    tmp_path: Path, policy_patch: dict, required_units: list[str]
+) -> None:
+    contract = _contract()
+    policy = _alert_policy()
+    policy.update(policy_patch)
+    policy["required_systemd_units"] = required_units
+    playbook = tmp_path / "invalid-policy.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "name": "invalid alert policy",
+                    "hosts": "localhost",
+                    "gather_facts": False,
+                    "vars": {
+                        "observability_control_plane": contract,
+                        "observability_alert_policy": policy,
+                        "role_path": str(ROLE),
+                    },
+                    "tasks": [
+                        {
+                            "name": "Exercise production alerting contract",
+                            "ansible.builtin.include_tasks": str(
+                                ROLE / "tasks/alerting-contract.yml"
+                            ),
+                        }
+                    ],
+                }
+            ],
+            sort_keys=False,
+        )
+    )
+    result = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", str(playbook)],
+        cwd=ROOT,
+        env={**os.environ, "ANSIBLE_ROLES_PATH": str(ROOT / "ansible/roles")},
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "changed=0" in result.stdout
 
 
 def test_alertmanager_route_and_message_are_deterministic_and_secret_free() -> None:
@@ -266,13 +354,11 @@ def test_alertmanager_route_and_message_are_deterministic_and_secret_free() -> N
     assert primary["message_thread_id"] == 42
     assert primary["send_resolved"] is True
     assert primary["max_alerts"] == 5
-    assert parsed["inhibit_rules"] == [
-        {
-            "source_matchers": ['alertname="ObservabilityBackupStageFailed"'],
-            "target_matchers": ['alertname="ObservabilityBackupEvidenceStale"'],
-            "equal": ["node", "component"],
-        }
-    ]
+    assert parsed["inhibit_rules"][0] == {
+        "source_matchers": ['alertname="ObservabilityBackupStageFailed"'],
+        "target_matchers": ['alertname="ObservabilityBackupEvidenceStale"'],
+        "equal": ["environment", "node", "component"],
+    }
     assert "fixture-token" not in first + message
     assert message.count(".CommonAnnotations.") == 1
     assert "reReplaceAll" in message
@@ -327,7 +413,10 @@ def test_rules_have_fixed_severity_recovery_and_deadman_boundaries(
     contract = _contract()
     rules = render_template(
         ROLE / "templates/observability-alert-rules.yml.j2",
-        {"observability_control_plane": contract},
+        {
+            "observability_control_plane": contract,
+            "observability_alert_policy": _alert_policy(),
+        },
     )
     parsed = yaml.safe_load(rules)
     alerts = [rule for group in parsed["groups"] for rule in group["rules"]]
@@ -356,7 +445,6 @@ def test_rules_have_fixed_severity_recovery_and_deadman_boundaries(
         )["expr"]
         == "vector(1)"
     )
-
     promtool = shutil.which("promtool")
     assert promtool is not None, f"promtool {PROMTOOL_VERSION} is required"
     version = subprocess.run(
@@ -377,6 +465,107 @@ def test_rules_have_fixed_severity_recovery_and_deadman_boundaries(
     assert check.returncode == 0, check.stdout + check.stderr
 
 
+def test_rules_cover_node_resource_service_source_and_detector_families() -> None:
+    contract = _contract()
+    policy = _alert_policy()
+    policy.update({"cpu_warning_ratio": 0.91, "resource_hold": "7m"})
+    rules = yaml.safe_load(
+        render_template(
+            ROLE / "templates/observability-alert-rules.yml.j2",
+            {
+                "observability_control_plane": contract,
+                "observability_alert_policy": policy,
+            },
+        )
+    )
+    alerts = {
+        rule["alert"]: rule for group in rules["groups"] for rule in group["rules"]
+    }
+    required = {
+        "ObservabilityNodeCpuPressure",
+        "ObservabilityNodeMemoryPressure",
+        "ObservabilityNodeSwapPressure",
+        "ObservabilityNodeDiskSpaceLow",
+        "ObservabilityNodeDiskSpaceCritical",
+        "ObservabilityNodeInodesLow",
+        "ObservabilityNodeInodesCritical",
+        "ObservabilityRequiredServiceNotActive",
+        "ObservabilityNodeClockSkew",
+        "ObservabilityCertificateExpiresSoon",
+        "ObservabilityCertificateCollectionFailed",
+        "ObservabilityCertificateExpiresCritical",
+        "ObservabilityNodeNetworkErrors",
+        "ObservabilityNodeFilesystemReadOnly",
+        "ObservabilityServiceRestartLoop",
+        "ObservabilityDetectorCollectionFailed",
+        "ObservabilityDetectorEvidenceStale",
+        "ObservabilityDetectorInputStalled",
+        "ObservabilityDetectorError",
+        "ObservabilityDetectorEventThreshold",
+    }
+    assert required <= set(alerts)
+    for name in required:
+        rule = alerts[name]
+        assert rule["for"]
+        assert rule["keep_firing_for"] == "3m"
+        assert set(rule["labels"]) <= {"severity", "component", "environment"}
+        assert rule["annotations"]["source_generation"] == "c" * 40
+    assert "vpn_honeypot_collection_success" in str(
+        alerts["ObservabilityDetectorCollectionFailed"]
+    )
+    assert "vpn_policy_ratelimit_input_progress_total" in str(
+        alerts["ObservabilityDetectorInputStalled"]
+    )
+    assert "vpn_burn_last_run_unixtime" in str(
+        alerts["ObservabilityDetectorEvidenceStale"]
+    )
+    assert "0.91" in alerts["ObservabilityNodeCpuPressure"]["expr"]
+    assert alerts["ObservabilityNodeCpuPressure"]["for"] == "7m"
+    service_expr = alerts["ObservabilityRequiredServiceNotActive"]["expr"]
+    assert "xray[.]service" in service_expr
+    assert 'state="active"' in service_expr
+    assert 'state="failed"' in service_expr
+
+
+def test_alertmanager_inhibits_derivatives_but_not_known_detector_events() -> None:
+    parsed = yaml.safe_load(
+        render_template(
+            ROLE / "templates/observability-alertmanager.yml.j2",
+            {
+                "observability_control_plane": _contract(),
+                "_observability_telegram_generation": "c" * 64,
+            },
+        )
+    )
+    pairs = {
+        (item["source_matchers"][0], item["target_matchers"][0])
+        for item in parsed["inhibit_rules"]
+    }
+    for inhibition in parsed["inhibit_rules"]:
+        assert {"environment", "node", "component"} <= set(inhibition["equal"])
+    assert (
+        'alertname="ObservabilityNodeDiskSpaceCritical"',
+        'alertname="ObservabilityNodeDiskSpaceLow"',
+    ) in pairs
+    assert (
+        'alertname="ObservabilityNodeInodesCritical"',
+        'alertname="ObservabilityNodeInodesLow"',
+    ) in pairs
+    assert (
+        'alertname="ObservabilityDetectorEvidenceStale"',
+        'alertname="ObservabilityDetectorInputStalled"',
+    ) in pairs
+    assert (
+        'alertname="ObservabilityDetectorCollectionFailed"',
+        'alertname="ObservabilityDetectorEvidenceStale"',
+    ) in pairs
+    assert (
+        'alertname="ObservabilityDetectorCollectionFailed"',
+        'alertname="ObservabilityDetectorInputStalled"',
+    ) in pairs
+    assert all("DetectorEventThreshold" not in target for _source, target in pairs)
+
+
 def test_promtool_rule_cases_cover_firing_stale_recovery_and_absent(
     tmp_path: Path,
 ) -> None:
@@ -385,7 +574,10 @@ def test_promtool_rule_cases_cover_firing_stale_recovery_and_absent(
     rules_path.write_text(
         render_template(
             ROLE / "templates/observability-alert-rules.yml.j2",
-            {"observability_control_plane": contract},
+            {
+                "observability_control_plane": contract,
+                "observability_alert_policy": _alert_policy(),
+            },
         )
     )
     test_path = tmp_path / "alerts.test.yml"
@@ -685,6 +877,7 @@ def test_gateway_contract_rejects_trailing_newline_before_host_changes(tmp_path,
                     "gather_facts": False,
                     "vars": {
                         "observability_control_plane": contract,
+                        "observability_alert_policy": _alert_policy(),
                         "role_path": str(ROLE),
                     },
                     "tasks": [

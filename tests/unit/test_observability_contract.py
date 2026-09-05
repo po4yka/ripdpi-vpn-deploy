@@ -729,6 +729,33 @@ def test_manifest_declares_every_renderer_owned_family_with_bounded_labels() -> 
     )
 
 
+def test_manifest_declares_detector_liveness_input_and_error_families() -> None:
+    manifest = json.loads(
+        (CONTRACT / "observability-metric-manifest.example.json").read_text()
+    )
+    families = {family["name"]: family for family in manifest["families"]}
+
+    for prefix, owner in (
+        ("vpn_honeypot", "honeypot"),
+        ("vpn_policy_ratelimit", "policy_ratelimit"),
+    ):
+        for suffix in (
+            "collection_success",
+            "last_success_timestamp_seconds",
+            "input_progress_total",
+            "input_errors_total",
+            "error_state",
+        ):
+            family = families[f"{prefix}_{suffix}"]
+            assert family["owner"] == owner
+            assert family["alert_use"] is True
+            assert family["stale_after_seconds"] == 180
+        assert families[f"{prefix}_error_state"]["labels"] == ["state"]
+
+    assert families["vpn_burn_last_run_unixtime"]["stale_after_seconds"] == 3900
+    assert families["vpn_xray_stats_collection_success"]["owner"] == "monitoring"
+
+
 def test_validation_failure_withdraws_previous_fresh_output(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

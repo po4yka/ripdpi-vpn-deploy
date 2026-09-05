@@ -72,6 +72,32 @@ def test_private_credentials_do_not_depend_on_system_credstore_traversal() -> No
     )
 
 
+def test_required_systemd_allowlist_matches_control_plane_policy() -> None:
+    group_vars = yaml.safe_load((ROOT / "ansible/group_vars/all.yml").read_text())
+    required = group_vars["observability_alert_policy"]["required_systemd_units"]
+    assert required == sorted(set(required))
+    assert (
+        "observability_alert_policy.required_systemd_units"
+        in (ROLE / "templates/prometheus.yml.j2").read_text()
+    )
+    assert (
+        "{% set policy = observability_alert_policy -%}"
+        in (
+            ROOT
+            / "ansible/roles/observability_control_plane/templates/observability-alert-rules.yml.j2"
+        ).read_text()
+    )
+    for caller in (
+        ROLE / "molecule/enabled/converge.yml",
+        ROOT
+        / "ansible/roles/observability_control_plane/molecule/enabled/tasks/fixture-contract.yml",
+    ):
+        source = caller.read_text()
+        assert "group_vars/all.yml" in source
+        assert ").observability_alert_policy" in source
+        assert "required_systemd_units:" not in source
+
+
 def test_sender_is_fail_closed_and_uses_runtime_release() -> None:
     tasks = (ROLE / "tasks" / "main.yml").read_text(encoding="utf-8")
 
@@ -113,6 +139,9 @@ def test_sender_template_renders_node_path_without_credential_values() -> None:
         Environment(undefined=StrictUndefined, autoescape=True)
         .from_string(template)
         .render(
+            observability_alert_policy={
+                "required_systemd_units": ["nginx.service", "xray.service"]
+            },
             observability_agent={
                 "scrape_interval": "30s",
                 "scrape_sample_limit": 2000,
@@ -127,11 +156,15 @@ def test_sender_template_renders_node_path_without_credential_values() -> None:
                 "queue_capacity": 5000,
                 "queue_max_samples_per_send": 1000,
                 "queue_batch_send_deadline": "5s",
-            }
+            },
         )
     )
 
     document = yaml.safe_load(rendered)
+    assert document["global"]["external_labels"] == {
+        "environment": "prod",
+        "node": "edge-prod",
+    }
     receiver = document["remote_write"][0]
     assert receiver["url"] == "https://receiver.test/remote-write/v1/nodes/edge-prod"
     assert receiver["tls_config"]["server_name"] == "ingest.internal.test"
@@ -181,13 +214,13 @@ def test_scrapes_have_explicit_sample_and_label_bounds() -> None:
 
     assert (
         template.count("sample_limit: {{ observability_agent.scrape_sample_limit }}")
-        == 2
+        == 3
     )
     assert (
-        template.count("label_limit: {{ observability_agent.scrape_label_limit }}") == 2
+        template.count("label_limit: {{ observability_agent.scrape_label_limit }}") == 3
     )
-    assert template.count("label_name_length_limit:") == 2
-    assert template.count("label_value_length_limit:") == 2
+    assert template.count("label_name_length_limit:") == 3
+    assert template.count("label_value_length_limit:") == 3
     assert "node_metric_name_allowlist" not in template
     assert "node_metric_label_allowlist" not in template
     assert "node_device_allowlist" not in template
@@ -195,7 +228,67 @@ def test_scrapes_have_explicit_sample_and_label_bounds() -> None:
     assert "self_metric_name_allowlist" not in template
     assert "^(node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*" in template
     assert "node_load(1|5|15)" in template
-    assert "^(__name__|job|cpu|mode|device|fstype|mountpoint)$" in template
+    assert (
+        "^(__name__|job|cpu|mode|device|fstype|mountpoint|node|role|state)$" in template
+    )
+    assert 'node: "{{ observability_agent.node_id }}"' in template
+    for family_prefix in (
+        "watchdog_",
+        "backup_",
+        "certificate_",
+        "honeypot_",
+        "policy_ratelimit_",
+        "burn_",
+    ):
+        assert family_prefix in template
+
+
+def test_required_systemd_scrape_is_exactly_allowlisted() -> None:
+    template = (ROLE / "templates" / "prometheus.yml.j2").read_text(encoding="utf-8")
+    rendered = (
+        Environment(undefined=StrictUndefined, autoescape=True)
+        .from_string(template)
+        .render(
+            observability_alert_policy={
+                "required_systemd_units": ["nginx.service", "xray.service"]
+            },
+            observability_agent={
+                "scrape_interval": "30s",
+                "scrape_sample_limit": 2000,
+                "scrape_label_limit": 16,
+                "scrape_label_name_length_limit": 64,
+                "scrape_label_value_length_limit": 128,
+                "environment": "prod",
+                "node_id": "edge-prod",
+                "web_listen": "127.0.0.1:19090",
+                "receiver_origin": "https://receiver.test",
+                "receiver_sni": "ingest.internal.test",
+                "queue_capacity": 5000,
+                "queue_max_samples_per_send": 1000,
+                "queue_batch_send_deadline": "5s",
+            },
+        )
+    )
+    document = yaml.safe_load(rendered)
+    service_scrape = next(
+        job
+        for job in document["scrape_configs"]
+        if job["job_name"] == "node-exporter-required-services"
+    )
+
+    assert service_scrape["static_configs"] == [{"targets": ["127.0.0.1:9100"]}]
+    assert service_scrape["metric_relabel_configs"][0] == {
+        "source_labels": ["__name__", "name", "state"],
+        "regex": (
+            "^node_systemd_unit_state;(nginx[.]service|xray[.]service);"
+            "(active|failed)$"
+        ),
+        "action": "keep",
+    }
+    assert service_scrape["metric_relabel_configs"][1]["regex"] == (
+        "^(__name__|job|name|state)$"
+    )
+    assert "ssh.service" not in service_scrape["metric_relabel_configs"][0]["regex"]
 
 
 def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch() -> (

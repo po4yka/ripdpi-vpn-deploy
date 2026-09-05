@@ -106,10 +106,21 @@
           - observability_agent_backup_stage_max_age_seconds | int <= 604800
           - observability_agent_restore_drill_max_age_seconds | int >= 86400
           - observability_agent_restore_drill_max_age_seconds | int <= 3888000
+          - observability_alert_policy.required_systemd_units | length >= 1
+          - observability_alert_policy.required_systemd_units | length <= 64
+          - >-
+            observability_alert_policy.required_systemd_units | unique | length ==
+            observability_alert_policy.required_systemd_units | length
         fail_msg: >-
           Observability agent requires schema-1 systemd credentials, exact Prometheus
           archive pins, technical node identity, HTTPS receiver origin, separate SNI,
           and a bounded WAL retention window.
+
+    - name: Validate each required systemd selector
+      ansible.builtin.assert:
+        that:
+          - item is match('^[a-z0-9][a-z0-9@_-]{0,62}[.]service$')
+      loop: "{{ observability_alert_policy.required_systemd_units }}"
 
     - name: Select exact node mTLS sender authority
       ansible.builtin.set_fact:

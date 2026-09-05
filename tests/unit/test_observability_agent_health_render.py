@@ -20,6 +20,8 @@ def test_health_adapter_service_reads_only_fixed_producer_state() -> None:
     assert "--watchdog-state {{ observability_agent_watchdog_state_path }}" in service
     assert "--backup-stage {{ observability_agent_backup_stage_path }}" in service
     assert "--restore-drill {{ observability_agent_restore_drill_path }}" in service
+    assert "LoadCredential=client.crt:" in service
+    assert "--certificate %d/client.crt" in service
     assert "backup_snapshot_max_age_hours | default(36)" in service
     assert "ProtectSystem=strict" in service
     assert "RestrictAddressFamilies=AF_UNIX" in service
@@ -92,6 +94,8 @@ def test_metric_manifest_declares_every_health_adapter_family() -> None:
         "vpn_backup_failed_timestamp_seconds",
         "vpn_backup_snapshot_timestamp_seconds",
         "vpn_backup_restore_source",
+        "vpn_certificate_collection_success",
+        "vpn_certificate_not_after_timestamp_seconds",
     }
     assert expected <= families.keys()
     for name in expected:
@@ -112,6 +116,8 @@ def test_enabled_molecule_uses_root_private_fixtures_and_proves_redaction() -> N
     assert "observability_health_stat.stat.mode == '0640'" in verify
     assert "vpn_watchdog_recovery_outcome" in verify
     assert "vpn_backup_restore_source" in verify
+    assert "vpn_certificate_collection_success" in verify
+    assert "vpn_certificate_not_after_timestamp_seconds" in verify
     assert (
         "'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'" in verify
     )

@@ -1,4 +1,164 @@
+{% set policy = observability_alert_policy -%}
 groups:
+  - name: observability_node_resource_service
+    rules:
+      - alert: ObservabilityNodeCpuPressure
+        expr: >-
+          (sum by (environment, node) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
+          / sum by (environment, node) (rate(node_cpu_seconds_total[5m]))) > {{ policy.cpu_warning_ratio }}
+        for: {{ policy.resource_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: node-resource}
+        annotations: {incident_family: node-cpu, evidence_class: sustained-cpu-pressure, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Node CPU utilization is above the bounded warning threshold., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityNodeMemoryPressure
+        expr: >-
+          (1 - (max by (environment, node) (node_memory_MemAvailable_bytes)
+          / max by (environment, node) (node_memory_MemTotal_bytes))) > {{ policy.memory_warning_ratio }}
+        for: {{ policy.resource_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: node-resource}
+        annotations: {incident_family: node-memory, evidence_class: memory-available-low, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Node available memory is below the bounded warning threshold., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityNodeSwapPressure
+        expr: >-
+          max by (environment, node) (node_memory_SwapTotal_bytes) > 0
+          and on (environment, node)
+          ((max by (environment, node) (node_memory_SwapTotal_bytes)
+          - max by (environment, node) (node_memory_SwapFree_bytes))
+          / max by (environment, node) (node_memory_SwapTotal_bytes)) > {{ policy.swap_warning_ratio }}
+        for: {{ policy.resource_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: node-resource}
+        annotations: {incident_family: node-swap, evidence_class: sustained-swap-pressure, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Node swap utilization is above the bounded warning threshold., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityNodeDiskSpaceLow
+        expr: >-
+          min by (environment, node) (node_filesystem_avail_bytes{mountpoint="{{ policy.filesystem_mountpoint }}"} / node_filesystem_size_bytes{mountpoint="{{ policy.filesystem_mountpoint }}"}) < {{ policy.disk_warning_ratio }}
+          and on (environment, node)
+          max by (environment, node) (node_filesystem_readonly{mountpoint="{{ policy.filesystem_mountpoint }}"}) == 0
+        for: {{ policy.resource_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: node-filesystem}
+        annotations: {incident_family: node-disk, evidence_class: disk-available-low, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem available space crossed the configured warning threshold., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityNodeDiskSpaceCritical
+        expr: >-
+          min by (environment, node) (node_filesystem_avail_bytes{mountpoint="{{ policy.filesystem_mountpoint }}"} / node_filesystem_size_bytes{mountpoint="{{ policy.filesystem_mountpoint }}"}) < {{ policy.disk_critical_ratio }}
+        for: {{ policy.critical_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.critical_severity }}", component: node-filesystem}
+        annotations: {incident_family: node-disk, evidence_class: disk-available-critical, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem available space crossed the configured critical threshold., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityNodeInodesLow
+        expr: >-
+          min by (environment, node) (node_filesystem_files_free{mountpoint="{{ policy.filesystem_mountpoint }}"} / node_filesystem_files{mountpoint="{{ policy.filesystem_mountpoint }}"}) < {{ policy.inode_warning_ratio }}
+        for: {{ policy.resource_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: node-filesystem}
+        annotations: {incident_family: node-inodes, evidence_class: inode-available-low, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem free inodes crossed the configured warning threshold., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityNodeInodesCritical
+        expr: >-
+          min by (environment, node) (node_filesystem_files_free{mountpoint="{{ policy.filesystem_mountpoint }}"} / node_filesystem_files{mountpoint="{{ policy.filesystem_mountpoint }}"}) < {{ policy.inode_critical_ratio }}
+        for: {{ policy.critical_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.critical_severity }}", component: node-filesystem}
+        annotations: {incident_family: node-inodes, evidence_class: inode-available-critical, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem free inodes crossed the configured critical threshold., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityRequiredServiceNotActive
+        expr: >-
+          min by (environment, node) (node_systemd_unit_state{name=~"^({% for unit in policy.required_systemd_units %}{{ unit | replace('.', '[.]') }}{% if not loop.last %}|{% endif %}{% endfor %})$",state="active"}) == 0
+          or max by (environment, node) (node_systemd_unit_state{name=~"^({% for unit in policy.required_systemd_units %}{{ unit | replace('.', '[.]') }}{% if not loop.last %}|{% endif %}{% endfor %})$",state="failed"}) == 1
+        for: {{ policy.critical_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.critical_severity }}", component: service}
+        annotations: {incident_family: required-service, evidence_class: observed-service-not-active, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Fresh node telemetry reports a required systemd service is not active., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityNodeClockSkew
+        expr: max by (environment, node) (abs(node_time_seconds - time())) > {{ policy.clock_skew_seconds }}
+        for: {{ policy.critical_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: node-clock}
+        annotations: {incident_family: node-clock, evidence_class: wall-clock-skew, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Node wall clock differs from control-plane evaluation time., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityCertificateExpiresSoon
+        expr: min by (environment, node) (vpn_certificate_not_after_timestamp_seconds - time()) < {{ policy.certificate_warning_seconds }}
+        for: {{ policy.critical_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: certificate}
+        annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-warning, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A managed certificate crossed the configured expiry warning threshold., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityCertificateCollectionFailed
+        expr: max by (environment, node) (vpn_certificate_collection_success) == 0
+        for: {{ policy.detector_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: certificate}
+        annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Managed certificate expiry collection failed., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityCertificateExpiresCritical
+        expr: min by (environment, node) (vpn_certificate_not_after_timestamp_seconds - time()) < {{ policy.certificate_critical_seconds }}
+        for: {{ policy.critical_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.critical_severity }}", component: certificate}
+        annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-critical, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A managed certificate crossed the configured expiry critical threshold., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityNodeNetworkErrors
+        expr: >-
+          sum by (environment, node) (rate(node_network_receive_errs_total{device!~"{{ policy.network_device_exclude_regex }}"}[5m]) + rate(node_network_transmit_errs_total{device!~"{{ policy.network_device_exclude_regex }}"}[5m])) > {{ policy.network_error_rate }}
+        for: {{ policy.critical_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: node-network}
+        annotations: {incident_family: node-network, evidence_class: sustained-interface-errors, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A node reports sustained interface errors., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityNodeFilesystemReadOnly
+        expr: max by (environment, node) (node_filesystem_readonly{mountpoint="{{ policy.filesystem_mountpoint }}"}) == 1
+        for: {{ policy.critical_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.critical_severity }}", component: node-filesystem}
+        annotations: {incident_family: node-filesystem, evidence_class: root-filesystem-read-only, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: The root filesystem is read only., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityServiceRestartLoop
+        expr: max by (environment, node) (vpn_watchdog_restart_attempts) >= {{ policy.restart_attempts }}
+        for: {{ policy.critical_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: service}
+        annotations: {incident_family: service-restart-loop, evidence_class: bounded-restart-limit, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Bounded watchdog restart attempts reached the configured limit., runbook: docs/RUNBOOK-incident.md}
+  - name: observability_security_detectors
+    rules:
+      - alert: ObservabilityDetectorCollectionFailed
+        expr: >-
+          max by (environment, node) (vpn_honeypot_collection_success) == 0
+          or max by (environment, node) (vpn_policy_ratelimit_collection_success) == 0
+          or max by (environment, node) (vpn_xray_stats_collection_success) == 0
+          or max by (environment, node) (vpn_burn_run_error) == 1
+        for: {{ policy.detector_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: detector}
+        annotations: {incident_family: detector-health, evidence_class: collection-failed, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A bounded detector collection failed., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityDetectorEvidenceStale
+        expr: >-
+          max by (environment, node) (time() - vpn_honeypot_last_success_timestamp_seconds) > {{ policy.detector_stale_seconds }}
+          or max by (environment, node) (time() - vpn_policy_ratelimit_last_success_timestamp_seconds) > {{ policy.detector_stale_seconds }}
+          or max by (environment, node) (time() - vpn_xray_stats_collected_timestamp_seconds) > {{ policy.detector_stale_seconds }}
+          or max by (environment, node) (time() - vpn_burn_last_run_unixtime) > {{ policy.burn_stale_seconds }}
+        for: {{ policy.detector_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: detector}
+        annotations: {incident_family: detector-health, evidence_class: evidence-stale, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A detector success timestamp exceeded its bounded cadence., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityDetectorInputStalled
+        expr: >-
+          max by (environment, node) (vpn_policy_ratelimit_dead_contract) == 1
+          and on (environment, node)
+          max by (environment, node) (vpn_policy_ratelimit_input_progress_total) > 0
+        for: {{ policy.detector_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: detector}
+        annotations: {incident_family: detector-input, evidence_class: input-contract-stalled, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Detector input advanced without any recognized policy event., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityDetectorError
+        expr: >-
+          max by (environment, node) (vpn_honeypot_error_state{state="error"}) == 1
+          or max by (environment, node) (vpn_policy_ratelimit_error_state{state="error"}) == 1
+          or max by (environment, node) (vpn_burn_api_error) == 1
+        for: {{ policy.detector_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: detector}
+        annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A detector reports a bounded producer error., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityDetectorEventThreshold
+        expr: >-
+          max by (environment, node) (vpn_honeypot_events_60min) > {{ policy.honeypot_events_60min }}
+          or sum by (environment, node) (increase(vpn_policy_ratelimit_events_total[5m])) > {{ policy.policy_events_5min }}
+          or max by (environment, node) (vpn_burn_failed_nodes) > 0
+        for: {{ policy.detector_hold }}
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: detector}
+        annotations: {incident_family: detector-events, evidence_class: event-threshold, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A security or reachability detector crossed its event threshold., runbook: docs/RUNBOOK-incident.md}
   - name: observability_watchdog_backup
     rules:
       - alert: ObservabilityWatchdogEvidenceStale
