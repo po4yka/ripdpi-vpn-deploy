@@ -145,9 +145,17 @@ ifneq ($(filter staging-cleanup-manifest staging-destroy,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error staging cleanup requires exactly one Make goal)
 endif
-ifneq ($(filter-out undefined environment,$(origin UPCLOUD_USERNAME) $(origin UPCLOUD_PASSWORD) $(origin UPCLOUD_API_USERNAME) $(origin UPCLOUD_API_PASSWORD) $(origin UPCLOUD_TOKEN)),)
+ifneq ($(filter-out undefined environment,$(origin UPCLOUD_USERNAME) $(origin UPCLOUD_PASSWORD) $(origin UPCLOUD_API_USERNAME) $(origin UPCLOUD_API_PASSWORD) $(origin UPCLOUD_TOKEN) $(origin VULTR_API_KEY)),)
 $(error staging cleanup credentials must come from the environment)
 endif
+ifeq ($(value PROVIDER),vultr)
+ifeq ($(origin VULTR_API_KEY),undefined)
+$(error Vultr staging cleanup requires VULTR_API_KEY from the environment)
+endif
+override VULTR_API_KEY := $(value VULTR_API_KEY)
+export VULTR_API_KEY
+unexport UPCLOUD_USERNAME UPCLOUD_PASSWORD UPCLOUD_API_USERNAME UPCLOUD_API_PASSWORD UPCLOUD_TOKEN
+else
 _STAGING_PRIMARY_CREDENTIALS := $(if $(value UPCLOUD_USERNAME),1,0)$(if $(value UPCLOUD_PASSWORD),1,0)
 _STAGING_ALIAS_CREDENTIALS := $(if $(value UPCLOUD_API_USERNAME),1,0)$(if $(value UPCLOUD_API_PASSWORD),1,0)
 _STAGING_TOKEN_CREDENTIAL := $(if $(value UPCLOUD_TOKEN),1,0)
@@ -169,6 +177,8 @@ else
 $(error staging cleanup requires exactly one UpCloud credential mode)
 endif
 unexport UPCLOUD_API_USERNAME UPCLOUD_API_PASSWORD
+unexport VULTR_API_KEY
+endif
 endif
 
 # Tailnet enrollment is an ambient one-node capability. Reject command-line
@@ -287,7 +297,7 @@ help:
 	@echo "  inspect INSPECT_HOSTS=…    Passive SSH observation of exact comma-separated inventory names"
 	@echo "  source-drift               Require live deployable digest to match the clean checkout"
 	@echo "  security-verify            Host hardening checks (SSH/sysctl/firewall/services)"
-	@echo "  staging-cleanup-manifest   Bind one ci-staging UpCloud state to a private cleanup manifest"
+	@echo "  staging-cleanup-manifest   Bind one provider-owned ci-staging state to a private cleanup manifest"
 	@echo "  staging-destroy            Destroy only the exact manifest-bound staging resources"
 	@echo "  awg-evidence-provision     Provision the three-host AWG evidence lane (after decrypt)"
 	@echo "  smoke-test                 End-to-end traffic test through every enabled profile"
@@ -650,7 +660,8 @@ staging-cleanup-manifest staging-destroy: override DEPLOY_SOURCE_REVISION :=
 staging-cleanup-manifest staging-destroy: override DEPLOYABLE_SOURCE_DIGEST :=
 
 staging-cleanup-manifest:
-	@./scripts/staging-cleanup-guard.py create-manifest \
+	@case "$${PROVIDER}" in upcloud) guard=./scripts/staging-cleanup-guard.py ;; vultr) guard=./scripts/vultr-staging-cleanup-guard.py ;; *) echo "unsupported staging provider" >&2; exit 2 ;; esac; \
+	"$$guard" create-manifest \
 	  --output "$${STAGING_CLEANUP_MANIFEST}" \
 	  --provider "$${PROVIDER}" \
 	  --environment "$${ENV}" \

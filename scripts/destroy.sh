@@ -50,9 +50,12 @@ STAGING_GUARDED=false
 
 if [[ "$ENV" =~ ^ci-staging-[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
   STAGING_GUARDED=true
-  if [[ "$PROVIDER" != "upcloud" ]]; then
-    echo "UUID-bound staging cleanup currently supports only upcloud" >&2
+  if [[ "$PROVIDER" != "upcloud" && "$PROVIDER" != "vultr" ]]; then
+    echo "UUID-bound staging cleanup supports only upcloud or vultr" >&2
     exit 2
+  fi
+  if [[ "$PROVIDER" == "vultr" ]]; then
+    STAGING_GUARD="${REPO_ROOT}/scripts/vultr-staging-cleanup-guard.py"
   fi
   if [[ -z "$STAGING_MANIFEST" || -z "$POST_DESTROY_EVIDENCE" ]]; then
     echo "ci-staging cleanup requires --staging-manifest and --post-destroy-evidence" >&2
@@ -139,6 +142,13 @@ else
 fi
 
 if [[ "$STAGING_GUARDED" == "true" ]]; then
+  if [[ "$PROVIDER" == "vultr" ]]; then
+    "$STAGING_GUARD" recover-evidence \
+      --manifest "$STAGING_MANIFEST" \
+      --evidence-output "$POST_DESTROY_EVIDENCE" \
+      --expected-provider "$PROVIDER" \
+      --expected-environment "$ENV"
+  fi
   "$STAGING_GUARD" authorize-reserve-evidence \
     --manifest "$STAGING_MANIFEST" \
     --evidence-output "$POST_DESTROY_EVIDENCE" \
@@ -179,15 +189,24 @@ if [[ "$STAGING_GUARDED" == "true" ]]; then
   exec {PLAN_FD}<"$PLAN_PATH"
   rm -f "$PLAN_PATH"
   PLAN_INPUT="/dev/fd/${PLAN_FD}"
-  PLAN_VIEW="${PRIVATE_PLAN_DIR}/destroy-plan.json"
-  env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" show -json "$PLAN_INPUT" > "$PLAN_VIEW"
-  chmod 0600 "$PLAN_VIEW"
-  "$STAGING_GUARD" validate-plan \
-    --manifest "$STAGING_MANIFEST" \
-    --plan-view "$PLAN_VIEW" \
-    --evidence-output "$POST_DESTROY_EVIDENCE" \
-    --expected-provider "$PROVIDER" \
-    --expected-environment "$ENV"
+  if [[ "$PROVIDER" == "vultr" ]]; then
+    "$STAGING_GUARD" validate-plan \
+      --manifest "$STAGING_MANIFEST" \
+      --evidence-output "$POST_DESTROY_EVIDENCE" \
+      --fd-number "$PLAN_FD" \
+      --expected-provider "$PROVIDER" \
+      --expected-environment "$ENV"
+  else
+    PLAN_VIEW="${PRIVATE_PLAN_DIR}/destroy-plan.json"
+    env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" show -json "$PLAN_INPUT" > "$PLAN_VIEW"
+    chmod 0600 "$PLAN_VIEW"
+    "$STAGING_GUARD" validate-plan \
+      --manifest "$STAGING_MANIFEST" \
+      --plan-view "$PLAN_VIEW" \
+      --evidence-output "$POST_DESTROY_EVIDENCE" \
+      --expected-provider "$PROVIDER" \
+      --expected-environment "$ENV"
+  fi
   "$STAGING_GUARD" rewind-plan-fd --fd-number "$PLAN_FD"
 else
   if ! env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" show -json "$PLAN_INPUT" \
@@ -208,11 +227,23 @@ if [[ "$NON_INTERACTIVE" != "true" ]]; then
 fi
 
 if [[ "$STAGING_GUARDED" == "true" ]]; then
-  "$STAGING_GUARD" mark-apply-started \
-    --manifest "$STAGING_MANIFEST" \
-    --evidence-output "$POST_DESTROY_EVIDENCE" \
-    --expected-provider "$PROVIDER" \
-    --expected-environment "$ENV"
+  if [[ "$PROVIDER" == "vultr" ]]; then
+    "$STAGING_GUARD" mark-apply-started \
+      --manifest "$STAGING_MANIFEST" \
+      --evidence-output "$POST_DESTROY_EVIDENCE" \
+      --fd-number "$PLAN_FD" \
+      --expected-provider "$PROVIDER" \
+      --expected-environment "$ENV"
+  else
+    "$STAGING_GUARD" mark-apply-started \
+      --manifest "$STAGING_MANIFEST" \
+      --evidence-output "$POST_DESTROY_EVIDENCE" \
+      --expected-provider "$PROVIDER" \
+      --expected-environment "$ENV"
+  fi
+  if [[ "$PROVIDER" == "vultr" ]]; then
+    "$STAGING_GUARD" rewind-plan-fd --fd-number "$PLAN_FD"
+  fi
 fi
 APPLY_STARTED=true
 env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" apply "$PLAN_INPUT"
@@ -221,7 +252,12 @@ if [[ -n "$PLAN_FD" ]]; then
 fi
 
 if [[ "$STAGING_GUARDED" == "true" ]]; then
-  "$STAGING_GUARD" verify-upcloud-absence \
+  if [[ "$PROVIDER" == "upcloud" ]]; then
+    STAGING_VERIFY="verify-upcloud-absence"
+  else
+    STAGING_VERIFY="verify-vultr-absence"
+  fi
+  "$STAGING_GUARD" "$STAGING_VERIFY" \
     --manifest "$STAGING_MANIFEST" \
     --evidence-output "$POST_DESTROY_EVIDENCE" \
     --expected-provider "$PROVIDER" \

@@ -27,6 +27,7 @@ def _test_repo(tmp_path: Path) -> Path:
         "check-vultr-control-plane.py",
         "destroy.sh",
         "staging-cleanup-guard.py",
+        "vultr-staging-cleanup-guard.py",
         "terraform-env.sh",
     ):
         shutil.copy2(REPO_ROOT / "scripts" / name, scripts / name)
@@ -92,6 +93,28 @@ def _guard_stub(root: Path, *, fail_command: str = "") -> Path:
     return guard
 
 
+def _vultr_guard_stub(root: Path) -> Path:
+    guard = root / "scripts/vultr-staging-cleanup-guard.py"
+    guard.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        '{ printf \'%q\' "$1"; for arg in "${@:2}"; do printf \' %q\' "$arg"; done; printf \'\\n\'; } >> "$GUARD_LOG"\n'
+        'if [[ "$1" == "${GUARD_FAIL_COMMAND:-}" ]]; then exit 9; fi\n'
+        'if [[ "$1" == authorize-reserve-evidence ]]; then\n'
+        '  while [[ $# -gt 0 ]]; do if [[ "$1" == --evidence-output ]]; then shift; printf reserved > "$1"; chmod 600 "$1"; break; fi; shift; done\n'
+        "fi\n"
+        'if [[ "$1" == validate-plan || "$1" == mark-apply-started ]]; then\n'
+        '  fd=""; prev=""; for arg in "$@"; do [[ "$prev" == --fd-number ]] && fd="$arg"; prev="$arg"; done\n'
+        '  printf "%s:%s\\n" "$1" "$(cat "/dev/fd/$fd")" >> "$GUARD_FD_LOG"\n'
+        '  if [[ "$1" == mark-apply-started ]]; then while [[ $# -gt 0 ]]; do if [[ "$1" == --evidence-output ]]; then shift; printf apply_started > "$1"; chmod 600 "$1"; break; fi; shift; done; fi\n'
+        "fi\n"
+        'if [[ "$1" == rewind-plan-fd ]]; then shift; shift; /usr/bin/python3 -c "import os,sys; os.lseek(int(sys.argv[1]),0,os.SEEK_SET)" "$1"; fi\n'
+        'if [[ "$1" == release-evidence ]]; then while [[ $# -gt 0 ]]; do if [[ "$1" == --evidence-output ]]; then shift; rm -f "$1"; break; fi; shift; done; fi\n'
+    )
+    guard.chmod(0o755)
+    return guard
+
+
 def _audit_stub(root: Path) -> Path:
     audit = root / "scripts/audit-log.sh"
     audit.write_text(
@@ -118,9 +141,13 @@ def _make_staging_repo(tmp_path: Path) -> Path:
         "'STAGING_CLEANUP_HOSTNAME', "
         "'STAGING_POST_DESTROY_EVIDENCE', 'DEPLOY_SOURCE_REVISION', "
         "'DEPLOYABLE_SOURCE_DIGEST', 'UPCLOUD_USERNAME', 'UPCLOUD_PASSWORD', "
-        "'UPCLOUD_API_USERNAME', 'UPCLOUD_API_PASSWORD', 'UPCLOUD_TOKEN']}}) + '\\n')\n"
+        "'UPCLOUD_API_USERNAME', 'UPCLOUD_API_PASSWORD', 'UPCLOUD_TOKEN', 'VULTR_API_KEY']}}) + '\\n')\n"
     )
-    for name in ("staging-cleanup-guard.py", "destroy.sh"):
+    for name in (
+        "staging-cleanup-guard.py",
+        "vultr-staging-cleanup-guard.py",
+        "destroy.sh",
+    ):
         path = scripts / name
         path.write_text(logger)
         path.chmod(0o755)
@@ -181,6 +208,7 @@ def _run_staging_make(
         "UPCLOUD_API_USERNAME",
         "UPCLOUD_API_PASSWORD",
         "UPCLOUD_TOKEN",
+        "VULTR_API_KEY",
     ],
 )
 def test_staging_make_refuses_command_line_credentials_before_expansion(
@@ -253,6 +281,53 @@ def test_staging_make_canonicalizes_one_literal_ambient_credential_mode(
     assert record["env"]["UPCLOUD_API_PASSWORD"] is None
     assert record["env"]["UPCLOUD_TOKEN"] == (
         literal_secret if mode == "token" else None
+    )
+
+
+def test_staging_make_exports_only_the_selected_provider_credential(
+    tmp_path: Path,
+) -> None:
+    root = _make_staging_repo(tmp_path)
+    common = [
+        "ENV=ci-staging-make",
+        "STAGING_CLEANUP_MANIFEST=/private/manifest.json",
+        "STAGING_CLEANUP_STATE=/private/state.json",
+        "STAGING_CLEANUP_HOSTNAME=vpn-ci-staging.test",
+    ]
+    result = _run_staging_make(
+        root,
+        tmp_path,
+        "staging-cleanup-manifest",
+        *common,
+        "PROVIDER=upcloud",
+        extra_env={"UPCLOUD_TOKEN": "upcloud-secret", "VULTR_API_KEY": "vultr-secret"},
+    )
+    assert result.returncode == 0, result.stderr
+    first = json.loads((tmp_path / "make-staging.jsonl").read_text().splitlines()[0])
+    assert first["env"]["UPCLOUD_TOKEN"] == "upcloud-secret"
+    assert first["env"]["VULTR_API_KEY"] is None
+
+    result = _run_staging_make(
+        root,
+        tmp_path,
+        "staging-cleanup-manifest",
+        *common,
+        "PROVIDER=vultr",
+        extra_env={"UPCLOUD_TOKEN": "upcloud-secret", "VULTR_API_KEY": "vultr-secret"},
+    )
+    assert result.returncode == 0, result.stderr
+    second = json.loads((tmp_path / "make-staging.jsonl").read_text().splitlines()[1])
+    assert second["program"] == "vultr-staging-cleanup-guard.py"
+    assert second["env"]["VULTR_API_KEY"] == "vultr-secret"
+    assert all(
+        second["env"][name] is None
+        for name in (
+            "UPCLOUD_USERNAME",
+            "UPCLOUD_PASSWORD",
+            "UPCLOUD_API_USERNAME",
+            "UPCLOUD_API_PASSWORD",
+            "UPCLOUD_TOKEN",
+        )
     )
 
 
@@ -1053,6 +1128,146 @@ def test_staging_destroy_validates_manifest_and_plan_before_apply_then_verifies_
     assert SERVER_UUID not in audit_call
     assert STORAGE_UUID not in audit_call
     assert apply_index > 0
+
+
+def test_vultr_staging_destroy_keeps_one_fd_and_preserves_inventory(
+    tmp_path: Path,
+) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-staging-vultr"
+    (root / f"terraform/providers/vultr/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci-staging.test"\n'
+    )
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    manifest = private / "manifest.json"
+    manifest.write_text("{}\n")
+    manifest.chmod(0o600)
+    evidence = private / "post-destroy.json"
+    inventory = root / "ansible/inventory/generated.ini"
+    inventory.parent.mkdir(parents=True)
+    inventory.write_text("[vpn]\nvpn-staging\n")
+    before = inventory.read_bytes()
+    _vultr_guard_stub(root)
+    _audit_stub(root)
+    stub = _terraform_stub(tmp_path)
+    guard_log = private / "guard.log"
+    fd_log = private / "guard-fd.log"
+    audit_log = private / "audit.log"
+
+    result = _run(
+        root,
+        stub.parent,
+        env_name,
+        provider="vultr",
+        destroy_args=[
+            "--staging-manifest",
+            str(manifest),
+            "--post-destroy-evidence",
+            str(evidence),
+        ],
+        extra_env={
+            "VULTR_API_KEY": "never-log-this-token",
+            "GUARD_LOG": str(guard_log),
+            "GUARD_FD_LOG": str(fd_log),
+            "AUDIT_LOG_STUB": str(audit_log),
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    calls = guard_log.read_text().splitlines()
+    assert [line.split()[0] for line in calls] == [
+        "recover-evidence",
+        "authorize-reserve-evidence",
+        "validate-plan",
+        "rewind-plan-fd",
+        "mark-apply-started",
+        "rewind-plan-fd",
+        "verify-vultr-absence",
+    ]
+    assert fd_log.read_text().splitlines() == [
+        "validate-plan:guarded-plan",
+        "mark-apply-started:guarded-plan",
+    ]
+    parsed_calls = [shlex.split(call) for call in calls]
+
+    def fd_number(call: list[str]) -> str:
+        return call[call.index("--fd-number") + 1]
+
+    # Contents alone are insufficient: all guard boundaries and Terraform apply
+    # must retain the one inherited, unlinked binary plan descriptor.
+    plan_fd = fd_number(parsed_calls[2])
+    assert plan_fd.isdecimal()
+    assert fd_number(parsed_calls[3]) == plan_fd
+    assert fd_number(parsed_calls[4]) == plan_fd
+    assert fd_number(parsed_calls[5]) == plan_fd
+    terraform_call_lines = (stub.parent / "terraform.log").read_text().splitlines()
+    apply_call = next(
+        shlex.split(line)
+        for line in terraform_call_lines
+        if "apply" in shlex.split(line)
+    )
+    assert apply_call[apply_call.index("apply") :] == ["apply", f"/dev/fd/{plan_fd}"]
+    assert "apply-plan-content=guarded-plan" in "\n".join(terraform_call_lines)
+    assert inventory.read_bytes() == before
+    assert audit_log.read_text().strip() == (
+        f"append-best-effort --action staging-destroy --env {env_name} "
+        "--provider vultr --note exact-owned-resources-absent"
+    )
+    assert "never-log-this-token" not in (
+        result.stdout + result.stderr + guard_log.read_text() + audit_log.read_text()
+    )
+
+
+def test_vultr_staging_preapply_failure_releases_evidence(tmp_path: Path) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-staging-vultr-failure"
+    (root / f"terraform/providers/vultr/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci-staging.test"\n'
+    )
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    manifest = private / "manifest.json"
+    manifest.write_text("{}\n")
+    manifest.chmod(0o600)
+    evidence = private / "post-destroy.json"
+    inventory = root / "ansible/inventory/generated.ini"
+    inventory.parent.mkdir(parents=True)
+    inventory.write_text("[vpn]\nvpn-staging\n")
+    before = inventory.read_bytes()
+    _vultr_guard_stub(root)
+    stub = _terraform_stub(tmp_path)
+    result = _run(
+        root,
+        stub.parent,
+        env_name,
+        provider="vultr",
+        destroy_args=[
+            "--staging-manifest",
+            str(manifest),
+            "--post-destroy-evidence",
+            str(evidence),
+        ],
+        extra_env={
+            "VULTR_API_KEY": "never-log-this-token",
+            "GUARD_LOG": str(private / "guard.log"),
+            "GUARD_FD_LOG": str(private / "guard-fd.log"),
+            "GUARD_FAIL_COMMAND": "validate-plan",
+        },
+    )
+    assert result.returncode == 9
+    assert not evidence.exists()
+    guard_calls = (private / "guard.log").read_text().splitlines()
+    assert [line.split()[0] for line in guard_calls] == [
+        "recover-evidence",
+        "authorize-reserve-evidence",
+        "validate-plan",
+        "release-evidence",
+    ]
+    assert " apply " not in f" {(stub.parent / 'terraform.log').read_text()} "
+    assert inventory.read_bytes() == before
+    assert "never-log-this-token" not in result.stdout + result.stderr + "\n".join(
+        guard_calls
+    )
 
 
 def test_staging_destroy_physicalizes_symlinked_tmpdir_before_plan_validation(
