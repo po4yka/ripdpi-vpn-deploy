@@ -31,6 +31,10 @@ from urllib import error, request
 
 import fcntl
 
+# Keep the retry delay injectable without mutating the process-wide ``time``
+# module.  The receiver itself always gets the standard implementation.
+_sleep = time.sleep
+
 MAX_STATE_BYTES = 4096
 MAX_TELEGRAM_ERROR_BYTES = 1024
 GENERATION = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
@@ -539,7 +543,7 @@ def _telegram(config: dict[str, Any], credential: bytes, event: str) -> bool:
                 config["retry_timeout_seconds"],
             )
             if delay:
-                time.sleep(delay)
+                _sleep(delay)
     return False
 
 

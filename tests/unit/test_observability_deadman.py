@@ -13,6 +13,7 @@ from pathlib import Path
 import stat
 import subprocess
 import threading
+import time
 from urllib import error
 from urllib import request
 from urllib.parse import urlsplit
@@ -575,7 +576,9 @@ def test_telegram_rate_limit_honours_bounded_retry_after_without_secret_output(
         return Response()
 
     monkeypatch.setattr(deadman.request, "urlopen", post)
-    monkeypatch.setattr(deadman.time, "sleep", sleeps.append)
+    standard_sleep = time.sleep
+    monkeypatch.setattr(deadman, "_sleep", sleeps.append)
+    assert time.sleep is standard_sleep
 
     assert deadman._telegram(config(), TOKEN, "firing") is True
     assert len(calls) == 2
@@ -619,7 +622,7 @@ def test_telegram_transient_transport_failure_uses_bounded_backoff_then_recovers
         return Response()
 
     monkeypatch.setattr(deadman.request, "urlopen", post)
-    monkeypatch.setattr(deadman.time, "sleep", sleeps.append)
+    monkeypatch.setattr(deadman, "_sleep", sleeps.append)
 
     assert deadman._telegram(config(), TOKEN, "recovery") is True
     assert attempts == 2
@@ -703,7 +706,7 @@ def test_telegram_server_error_retries_but_client_rejection_does_not(
         raise error.HTTPError(outbound.full_url, 503, "unavailable", {}, None)
 
     monkeypatch.setattr(deadman.request, "urlopen", server_error)
-    monkeypatch.setattr(deadman.time, "sleep", sleeps.append)
+    monkeypatch.setattr(deadman, "_sleep", sleeps.append)
     assert deadman._telegram(config(), TOKEN, "canary") is False
     assert attempts == [503, 503]
     assert sleeps == [1]
@@ -1065,7 +1068,7 @@ def test_tick_completes_state_after_slow_429_body_then_publishes_reverse_health(
 
     monkeypatch.setattr(deadman.request, "urlopen", post)
     monkeypatch.setattr(deadman, "_reverse_opener", lambda _context: ReverseOpener())
-    monkeypatch.setattr(deadman.time, "sleep", sleeps.append)
+    monkeypatch.setattr(deadman, "_sleep", sleeps.append)
 
     completed = deadman.tick(path, config(), TOKEN, TOKEN, NOW)
 
