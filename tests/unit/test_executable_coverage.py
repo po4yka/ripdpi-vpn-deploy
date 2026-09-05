@@ -43,7 +43,7 @@ def test_native_and_go_lanes_are_unconditional_and_required():
 
 def test_local_and_ci_partition_native_tests_without_silent_skips():
     makefile = (ROOT / "Makefile").read_text()
-    assert 'pytest tests/unit/ -m "not native_runtime" --fail-on-skip' in makefile
+    assert 'pytest tests/unit/ scripts/tests/ -m "not native_runtime" --fail-on-skip' in makefile
     assert "pytest tests/unit/ -m native_runtime --fail-on-skip" in makefile
     assert "$(MAKE) test-probe-matrix-mtproto" in makefile.split("ci-fast:", 1)[1]
     assert "go test -mod=readonly -count=1" in makefile
@@ -61,7 +61,7 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
     }
 
 
-def test_make_test_unit_does_not_contaminate_nested_make_json(tmp_path):
+def test_make_test_unit_covers_both_suites_without_nested_make_noise(tmp_path):
     unit = tmp_path / "tests/unit"
     unit.mkdir(parents=True)
     (tmp_path / "tests/conftest.py").write_text((ROOT / "tests/conftest.py").read_text())
@@ -71,6 +71,11 @@ def test_make_test_unit_does_not_contaminate_nested_make_json(tmp_path):
         "def test_json():\n"
         "    result = subprocess.run(['make', '-f', 'json.mk'], capture_output=True, text=True, check=True)\n"
         "    assert json.loads(result.stdout) == {'ok': True}\n"
+    )
+    auxiliary = tmp_path / "scripts/tests"
+    auxiliary.mkdir(parents=True)
+    (auxiliary / "test_auxiliary.py").write_text(
+        (unit / "test_json.py").read_text().replace("test_json", "test_auxiliary")
     )
     import os
     env = dict(os.environ)
@@ -82,3 +87,4 @@ def test_make_test_unit_does_not_contaminate_nested_make_json(tmp_path):
         cwd=tmp_path, env=env, capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "2 passed" in result.stdout, result.stdout

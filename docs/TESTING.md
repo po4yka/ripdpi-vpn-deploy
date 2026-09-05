@@ -370,7 +370,8 @@ When you add a role, the checklist is:
 
 ### Required test selection
 
-`make test-unit` and the main pytest CI job select `not native_runtime`;
+`make test-unit` and the main pytest CI job select `not native_runtime` from
+`tests/unit/` and `scripts/tests/` (including all 53 taskctl regressions);
 `make test-native-runtime` selects the complementary four native tests on an
 isolated Linux runner as root. Both fail if any selected test is skipped.
 The native lane is required by `required checks` and deliberately separate from

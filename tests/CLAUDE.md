@@ -44,7 +44,8 @@ config drift inside a role. Full-stack catches order/handler interactions.
 ## Pitfalls
 
 - **Selected skips fail required pytest lanes** — portable tests use
-  `make test-unit`; four `native_runtime` tests run separately with pinned
+  `make test-unit` (both `tests/unit/` and `scripts/tests/`); four
+  `native_runtime` tests run separately with pinned
   Terraform/Alertmanager and UID/GID capabilities on a disposable Linux runner.
   Both use `--fail-on-skip`. Never run the full workstation suite as root.
 - **Compiled helper coverage is real Go execution** — `ci-fast` includes

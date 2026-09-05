@@ -709,7 +709,7 @@ test-probe-matrix-mtproto:
 # Tests invoke operator Make targets and parse their stdout as JSON. Do not
 # inherit recursive Make directory chatter, overrides or jobserver descriptors.
 test-unit:
-	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ -m "not native_runtime" --fail-on-skip -q
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ scripts/tests/ -m "not native_runtime" --fail-on-skip -q
 
 snapshot-check:
 	python3 scripts/render-snapshots.py

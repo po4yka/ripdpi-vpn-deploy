@@ -26,6 +26,7 @@ Go helper tests in required CI, with explicit portable/native test selection.
 
 - Four native tests execute with pinned tools and actual UID/GID capabilities;
   missing dependencies and skipped selected tests fail the required lane.
+- All 53 taskctl tests in `scripts/tests/` join the mandatory portable pytest gate.
 - Six Go helper tests run locally through Make and in required CI without network
   probes, dependency lockfile mutation or cached test results.
 - Scanner post-processing has executable offline regressions; public TLS scanning
