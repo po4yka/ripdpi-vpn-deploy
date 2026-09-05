@@ -66,10 +66,6 @@
       owner: probe-xray
       group: probe-xray
       mode: "0750"
-    - path: /opt/probe-matrix/mtg
-      owner: root
-      group: root
-      mode: "0755"
 
 - name: Install probe matrix TLS certificate
   ansible.builtin.copy:
@@ -117,26 +113,37 @@
 - name: Validate mtg release asset pin
   ansible.builtin.assert:
     that:
+      - probe_matrix_target_secrets.mtg_version | length > 0
       - _probe_mtg_url | length > 0
       - _probe_mtg_sha256 is match('^[0-9a-fA-F]{64}$')
     fail_msg: mtg v2.2.8 release URL and architecture SHA256 are required.
 
-- name: Download pinned mtg binary
-  ansible.builtin.get_url:
-    url: "{{ _probe_mtg_url }}"
-    dest: "/opt/probe-matrix/mtg/mtg-{{ probe_matrix_target_secrets.mtg_version }}"
-    checksum: "sha256:{{ _probe_mtg_sha256 }}"
-    owner: root
-    group: root
-    mode: "0755"
+- name: Install pinned mtg runtime through runtime-release
+  ansible.builtin.include_role:
+    name: runtime-release
+  vars:
+    runtime_release_version: "{{ probe_matrix_target_secrets.mtg_version }}"
+    runtime_release_install_root: /opt/probe-matrix/mtg
+    runtime_release_binary_name: mtg
+    runtime_release_public_link: /usr/local/bin/probe-matrix-mtg
+    runtime_release_urls:
+      amd64: "{{ probe_matrix_target_secrets.mtg_linux_amd64_url }}"
+      arm64: "{{ probe_matrix_target_secrets.mtg_linux_arm64_url }}"
+    runtime_release_sha256:
+      amd64: "{{ probe_matrix_target_secrets.mtg_linux_amd64_sha256 }}"
+      arm64: "{{ probe_matrix_target_secrets.mtg_linux_arm64_sha256 }}"
+    runtime_release_arch_slugs:
+      amd64: amd64
+      arm64: arm64
+    runtime_release_artifact_filename: mtg
+    runtime_release_artifact_type: binary
 
-- name: Link pinned mtg binary
-  ansible.builtin.file:
-    src: "/opt/probe-matrix/mtg/mtg-{{ probe_matrix_target_secrets.mtg_version }}"
-    dest: /usr/local/bin/probe-matrix-mtg
-    state: link
-    force: true
+- name: Notify probe matrix mtg restart after runtime release activation
+  ansible.builtin.debug:
+    msg: Probe matrix mtg runtime release activation changed={{ runtime_release_changed | bool }}
+  changed_when: runtime_release_changed | bool
   notify: Restart probe matrix mtg
+  when: not ansible_check_mode
 
 - name: Render mtg configuration
   ansible.builtin.template:

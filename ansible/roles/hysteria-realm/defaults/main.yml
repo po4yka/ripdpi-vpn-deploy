@@ -66,3 +66,13 @@ hysteria_realm_secrets:
   # exchange. Treat as a long-lived secret; rotation invalidates every
   # peer that has cached the value.
   auth_token: ""
+
+hysteria_realm_release_urls:
+  amd64: >-
+    https://github.com/SagerNet/sing-box/releases/download/{{ hysteria_realm.version
+    }}/sing-box-{{ hysteria_realm.version | regex_replace('^v', '')
+    }}-linux-amd64.tar.gz
+  arm64: >-
+    https://github.com/SagerNet/sing-box/releases/download/{{ hysteria_realm.version
+    }}/sing-box-{{ hysteria_realm.version | regex_replace('^v', '')
+    }}-linux-arm64.tar.gz

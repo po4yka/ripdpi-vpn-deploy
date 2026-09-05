@@ -58,15 +58,33 @@
     mode: "0644"
   notify: Restart unbound
 
-- name: Fetch bridge binary by sha256
-  ansible.builtin.get_url:
-    url: "{{ dns_morph_bridge_secrets.binary_url }}"
-    dest: "{{ dns_morph_bridge.bin_path }}"
-    checksum: "sha256:{{ dns_morph_bridge_secrets.binary_sha256 }}"
-    owner: root
-    group: root
-    mode: "0755"
+- name: Install pinned DNS-Morph bridge through runtime-release
+  ansible.builtin.include_role:
+    name: runtime-release
+  vars:
+    runtime_release_version: "sha256-{{ dns_morph_bridge_secrets.binary_sha256 | lower }}"
+    runtime_release_install_root: "{{ dns_morph_bridge.install_root }}"
+    runtime_release_binary_name: dns-morph-bridge
+    runtime_release_public_link: "{{ dns_morph_bridge.bin_path }}"
+    runtime_release_urls:
+      amd64: "{{ dns_morph_bridge_secrets.binary_url }}"
+      arm64: "{{ dns_morph_bridge_secrets.binary_url }}"
+    runtime_release_sha256:
+      amd64: "{{ dns_morph_bridge_secrets.binary_sha256 }}"
+      arm64: "{{ dns_morph_bridge_secrets.binary_sha256 }}"
+    runtime_release_arch_slugs:
+      amd64: amd64
+      arm64: arm64
+    runtime_release_artifact_filename: dns-morph-bridge
+    runtime_release_artifact_type: binary
+
+- name: Notify DNS-Morph bridge restart after runtime release activation
+  ansible.builtin.debug:
+    msg: >-
+      DNS-Morph bridge runtime release activation changed={{ runtime_release_changed | bool }}
+  changed_when: runtime_release_changed | bool
   notify: Restart dns-morph-bridge
+  when: not ansible_check_mode
 
 - name: Render bridge config
   # Carries the signing key; repo-wide secret-render discipline keeps the

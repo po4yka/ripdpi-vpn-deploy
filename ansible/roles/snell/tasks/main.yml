@@ -60,43 +60,42 @@
     group: "{{ item.group }}"
     mode: "{{ item.mode }}"
   loop:
-    - {path: "{{ snell.install_root }}/releases", owner: root, group: root, mode: "0755"}
     - {path: "{{ snell.config_dir }}", owner: root, group: snell, mode: "0750"}
     - {path: "{{ snell.log_dir }}", owner: snell, group: snell, mode: "0750"}
     - {path: "{{ snell.evaluation_root }}", owner: root, group: root, mode: "0755"}
 
-- name: Check pinned Snell binary
-  ansible.builtin.stat:
-    path: "{{ snell.install_root }}/releases/{{ snell.version }}/sing-box"
-  register: snell_release_binary
+- name: Install pinned Snell runtime through runtime-release
+  ansible.builtin.include_role:
+    name: runtime-release
+  vars:
+    runtime_release_version: "{{ snell.version }}"
+    runtime_release_install_root: "{{ snell.install_root }}"
+    runtime_release_binary_name: sing-box
+    runtime_release_public_link: /usr/local/bin/sing-box-snell
+    runtime_release_urls:
+      amd64: "{{ snell_release_urls.amd64 }}"
+      arm64: "{{ snell_release_urls.arm64 }}"
+    runtime_release_sha256:
+      amd64: "{{ snell_secrets.linux_amd64_sha256 }}"
+      arm64: "{{ snell_secrets.linux_arm64_sha256 }}"
+    runtime_release_arch_slugs:
+      amd64: amd64
+      arm64: arm64
+    runtime_release_artifact_filename: sing-box.tar.gz
+    runtime_release_artifact_type: archive
+    runtime_release_archive_members:
+      amd64: >-
+        sing-box-{{ snell.version | regex_replace('^v', '') }}-linux-amd64/sing-box
+      arm64: >-
+        sing-box-{{ snell.version | regex_replace('^v', '') }}-linux-arm64/sing-box
+    runtime_release_archive_strip_components: 1
 
-- name: Download pinned Snell sing-box archive
-  ansible.builtin.get_url:
-    url: "{{ snell.download_url }}"
-    dest: "/tmp/sing-box-{{ snell.version }}-linux-{{ snell_arch }}.tar.gz"
-    checksum: "sha256:{{ snell_sha256 }}"
-    mode: "0644"
-  when: not snell_release_binary.stat.exists
-
-- name: Ensure pinned Snell release directory
-  ansible.builtin.file:
-    path: "{{ snell.install_root }}/releases/{{ snell.version }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: Extract pinned Snell binary
-  ansible.builtin.unarchive:
-    src: "/tmp/sing-box-{{ snell.version }}-linux-{{ snell_arch }}.tar.gz"
-    dest: "{{ snell.install_root }}/releases/{{ snell.version }}"
-    remote_src: true
-    extra_opts: ["--strip-components=1", "--wildcards", "*/sing-box"]
-    owner: root
-    group: root
-    mode: "0755"
-    creates: "{{ snell.install_root }}/releases/{{ snell.version }}/sing-box"
-  when: not snell_release_binary.stat.exists
+- name: Notify Snell restart after runtime release activation
+  ansible.builtin.debug:
+    msg: Snell runtime release activation changed={{ runtime_release_changed | bool }}
+  changed_when: runtime_release_changed | bool
+  notify: Restart snell
+  when: not ansible_check_mode
 
 - name: Render validated Snell configuration
   ansible.builtin.template:
@@ -109,37 +108,6 @@
   no_log: true
   diff: false
   notify: Restart snell
-
-- name: Inspect active Snell release symlink
-  ansible.builtin.stat:
-    path: "{{ snell.install_root }}/current"
-    follow: false
-  register: snell_current_release
-
-- name: Preserve previous Snell release symlink
-  ansible.builtin.file:
-    src: "{{ snell_current_release.stat.lnk_source }}"
-    dest: "{{ snell.install_root }}/previous"
-    state: link
-    force: true
-  when:
-    - snell_current_release.stat.islnk | default(false)
-    - snell_current_release.stat.lnk_source != snell.install_root ~ '/releases/' ~ snell.version
-
-- name: Point Snell current symlink at validated release
-  ansible.builtin.file:
-    src: "{{ snell.install_root }}/releases/{{ snell.version }}"
-    dest: "{{ snell.install_root }}/current"
-    state: link
-    force: true
-  notify: Restart snell
-
-- name: Link Snell sing-box binary
-  ansible.builtin.file:
-    src: "{{ snell.install_root }}/current/sing-box"
-    dest: /usr/local/bin/sing-box-snell
-    state: link
-    force: true
 
 - name: Generate exact-size Snell evaluation fixtures
   ansible.builtin.command:

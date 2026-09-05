@@ -33,11 +33,7 @@
     owner: root
     group: root
     mode: "0755"
-
-- name: Check pinned Xray binary
-  ansible.builtin.stat:
-    path: "{{ xray_install_dir }}/releases/{{ xray.version }}/xray"
-  register: _xray_runtime_binary
+  when: xray_runtime_build_from_source | bool
 
 - name: Clone pinned Xray source
   ansible.builtin.git:
@@ -101,25 +97,30 @@
           expected_sha256: "{{ xray_runtime_source_sha256 }}"
   when: xray_runtime_build_from_source | bool
 
-- name: Download pinned Xray archive
-  ansible.builtin.get_url:
-    url: "https://github.com/XTLS/Xray-core/releases/download/{{ xray.version }}/Xray-linux-{{ xray_runtime_arch }}.zip"
-    dest: "/tmp/xray-{{ xray.version }}-linux-{{ xray_runtime_arch }}.zip"
-    checksum: "sha256:{{ xray_runtime_sha256 }}"
-    mode: "0644"
-  when:
-    - not xray_runtime_build_from_source | bool
-    - not _xray_runtime_binary.stat.exists
-
-- name: Unpack pinned Xray archive
-  ansible.builtin.unarchive:
-    src: "/tmp/xray-{{ xray.version }}-linux-{{ xray_runtime_arch }}.zip"
-    dest: "{{ xray_install_dir }}/releases/{{ xray.version }}"
-    remote_src: true
-    creates: "{{ xray_install_dir }}/releases/{{ xray.version }}/xray"
-  when:
-    - not xray_runtime_build_from_source | bool
-    - not _xray_runtime_binary.stat.exists
+- name: Install pinned Xray archive through runtime-release
+  ansible.builtin.include_role:
+    name: runtime-release
+  vars:
+    runtime_release_version: "{{ xray.version }}"
+    runtime_release_install_root: "{{ xray_install_dir }}"
+    runtime_release_binary_name: xray
+    runtime_release_public_link: /usr/local/bin/xray
+    runtime_release_urls:
+      amd64: "{{ xray_runtime_release_urls.amd64 }}"
+      arm64: "{{ xray_runtime_release_urls.arm64 }}"
+    runtime_release_sha256:
+      amd64: "{{ xray.linux_amd64_sha256 }}"
+      arm64: "{{ xray.linux_arm64_sha256 }}"
+    runtime_release_arch_slugs:
+      amd64: "64"
+      arm64: arm64-v8a
+    runtime_release_artifact_filename: xray.zip
+    runtime_release_artifact_type: archive
+    runtime_release_archive_members:
+      amd64: xray
+      arm64: xray
+    runtime_release_archive_strip_components: 0
+  when: not xray_runtime_build_from_source | bool
 
 - name: Ensure pinned Xray binary permissions
   ansible.builtin.file:
@@ -127,6 +128,7 @@
     owner: root
     group: root
     mode: "0755"
+  when: xray_runtime_build_from_source | bool
 
 - name: Point current Xray runtime at pinned release
   ansible.builtin.file:
@@ -135,6 +137,7 @@
     state: link
     force: true
   register: _xray_runtime_current
+  when: xray_runtime_build_from_source | bool
 
 - name: Expose pinned Xray runtime
   ansible.builtin.file:
@@ -142,17 +145,19 @@
     dest: /usr/local/bin/xray
     state: link
     force: true
+  when: xray_runtime_build_from_source | bool
 
 - name: Publish Xray runtime change state
   ansible.builtin.set_fact:
     xray_runtime_changed: >-
       {{
-        (_xray_runtime_current.changed | bool)
-        or (
-          (xray_runtime_build_from_source | bool)
-          and (
+        (
+          (_xray_runtime_current.changed | bool)
+          or (
             (runtime_build_results | default({})).get('xray-core', {}).get('changed', false)
             | bool
           )
         )
+        if (xray_runtime_build_from_source | bool)
+        else (runtime_release_changed | default(false) | bool)
       }}

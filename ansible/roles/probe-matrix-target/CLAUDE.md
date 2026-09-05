@@ -4,6 +4,10 @@
 
 One research-only role owns the complete target surface: an auxiliary Xray process for VLESS-XHTTP and both Trojan shapes, mtg for MTProto, and an nginx TLS control listener. All five ports are explicit and must match Terraform's listener contract.
 
+The mtg executable uses the shared `runtime-release` contract, so checksum
+validation, immutable receipts, and current/public/previous publication match
+the production runtimes even though this role remains research-only.
+
 ## What's done well
 
 - Runtime users, configs, and logs are isolated from the family transport stack.

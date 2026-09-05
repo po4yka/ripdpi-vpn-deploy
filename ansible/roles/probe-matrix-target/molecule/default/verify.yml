@@ -27,6 +27,17 @@
           - (target_xray.content | b64decode) is search('11443')
           - (target_xray.content | b64decode) is search('12443')
           - (target_xray.content | b64decode) is search('13443')
+    - name: Inspect shared runtime release receipts
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /opt/xray/releases/vtest/.runtime-release.json
+        - /opt/probe-matrix/mtg/releases/v2.2.8/.runtime-release.json
+      register: runtime_release_receipts
+    - name: Assert shared runtime releases were committed
+      ansible.builtin.assert:
+        that:
+          - runtime_release_receipts.results | map(attribute='stat.exists') | list == [true, true]
     - name: Read mtg and TLS listener configurations
       ansible.builtin.slurp:
         src: "{{ item }}"

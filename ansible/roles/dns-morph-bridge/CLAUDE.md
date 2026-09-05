@@ -28,9 +28,9 @@ enough to absorb the scanner volume that comes with a public resolver.
 
 ## What's done well
 
-- **`get_url` with checksum** — the bridge binary is verified against its
-  pinned sha256 before being installed, matching the discipline of the
-  `xray` and `hysteria` roles.
+- **Shared runtime publication** — the bridge artifact SHA256 is also its
+  immutable release identity. `runtime-release` verifies the bytes, records a
+  receipt, and publishes the configured binary link with rollback compensation.
 - **Localhost recursor isolated from the public listener** — unbound binds
   127.0.0.1:5353 only; the bridge is the sole public listener. No risk of
   the recursor becoming an open resolver if the bridge crashes.

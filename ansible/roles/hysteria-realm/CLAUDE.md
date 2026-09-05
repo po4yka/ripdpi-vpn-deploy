@@ -29,13 +29,10 @@ Ansible rejects `append: true` without a `groups` argument.
 
 ## What's done well
 
-- **`get_url` with checksum** — the sing-box tarball is verified against
-  its pinned sha256 before being extracted, matching the `hysteria` and
-  `xray` roles. Tar extraction is constrained with `--strip-components=1
-  --wildcards '*/sing-box'` so only the binary lands on disk.
-- **Symlink rollback** — `/opt/hysteria-realm/current` is a symlink to a
-  versioned release directory; rolling back is `ln -sfn <prev> current`
-  followed by a service restart.
+- **Shared runtime publication** — `runtime-release` verifies the pinned
+  sing-box tarball, extracts only its architecture-bound member, records the
+  installed digest, and publishes `current`, public, and `previous` links as
+  one compensated transaction.
 - **`MemoryDenyWriteExecute=true` in the systemd unit** — sing-box is a
   static Go binary so JIT pressure does not apply; lock down W^X.
 

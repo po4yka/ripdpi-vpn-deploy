@@ -59,7 +59,11 @@ def test_xray_molecule_repeat_preserves_runtime_links(tmp_path):
     playbook.write_text(yaml.safe_dump([{
         "name": "Replay Xray scenario filesystem convergence",
         "hosts": "localhost", "gather_facts": False, "become": False,
-        "vars": {"xray": converge["vars"]["xray"], "xray_install_dir": str(install)},
+        "vars": {
+            "xray": converge["vars"]["xray"],
+            "xray_install_dir": str(install),
+            "xray_runtime_build_from_source": True,
+        },
         "tasks": [*setup, *links],
     }], sort_keys=False))
     config = tmp_path / "ansible.cfg"

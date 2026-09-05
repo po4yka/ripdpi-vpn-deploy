@@ -44,8 +44,12 @@ def test_snell_role_guards_the_exported_production_environment() -> None:
     tasks = (ROOT / "ansible/roles/snell/tasks/main.yml").read_text()
     assert "lookup('env', 'ENV')" in tasks
     assert "staging-only; refusing ENV=prod" in tasks
-    assert tasks.index("Render validated Snell configuration") < tasks.index("Point Snell current symlink at validated release")
-    assert "Preserve previous Snell release symlink" in tasks
+    assert tasks.index(
+        "Install pinned Snell runtime through runtime-release"
+    ) < tasks.index("Render validated Snell configuration")
+    assert "runtime_release_public_link: /usr/local/bin/sing-box-snell" in tasks
+    assert "Point Snell current symlink" not in tasks
+    assert "Preserve previous Snell release symlink" not in tasks
 
 
 def test_enabled_snell_surfaces_three_listener_contract_entries() -> None:

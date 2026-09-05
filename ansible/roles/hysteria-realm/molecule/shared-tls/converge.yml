@@ -32,6 +32,10 @@
       linux_arm64_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
       auth_token: "MOLECULE_STUB_AUTH_TOKEN_NOT_REAL"
 
+    hysteria_realm_release_urls:
+      amd64: file:///var/tmp/hysteria-realm-molecule/sing-box.tar.gz
+      arm64: file:///var/tmp/hysteria-realm-molecule/sing-box.tar.gz
+
   pre_tasks:
     - name: Create the hysteria group (normally owned by the hysteria role)
       ansible.builtin.group:
@@ -65,17 +69,17 @@
             STUB_SHARED_KEY_FOR_MOLECULE
             -----END PRIVATE KEY-----
 
-    - name: Stub release directory
+    - name: Create deterministic hysteria-realm archive member directory
       ansible.builtin.file:
-        path: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}"
+        path: /var/tmp/hysteria-realm-molecule/sing-box-1.14.0-alpha.22-linux-amd64
         state: directory
         owner: root
         group: root
         mode: "0755"
 
-    - name: Drop stub sing-box binary
+    - name: Write deterministic hysteria-realm binary
       ansible.builtin.copy:
-        dest: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}/sing-box"
+        dest: /var/tmp/hysteria-realm-molecule/sing-box-1.14.0-alpha.22-linux-amd64/sing-box
         owner: root
         group: root
         mode: "0755"
@@ -89,6 +93,30 @@
             done
           fi
           exit 0
+
+    - name: Build deterministic hysteria-realm release archive
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/tar
+          - -czf
+          - /var/tmp/hysteria-realm-molecule/sing-box.tar.gz
+          - sing-box-1.14.0-alpha.22-linux-amd64
+        chdir: /var/tmp/hysteria-realm-molecule
+        creates: /var/tmp/hysteria-realm-molecule/sing-box.tar.gz
+
+    - name: Inspect deterministic hysteria-realm archive
+      ansible.builtin.stat:
+        path: /var/tmp/hysteria-realm-molecule/sing-box.tar.gz
+        checksum_algorithm: sha256
+      register: _hysteria_realm_archive
+
+    - name: Pin deterministic hysteria-realm archive
+      ansible.builtin.set_fact:
+        hysteria_realm_secrets: >-
+          {{ hysteria_realm_secrets | combine({
+               'linux_amd64_sha256': _hysteria_realm_archive.stat.checksum,
+               'linux_arm64_sha256': _hysteria_realm_archive.stat.checksum
+             }) }}
 
   roles:
     - role: hysteria-realm

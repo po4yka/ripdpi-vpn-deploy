@@ -3,18 +3,29 @@
   hosts: all
   become: true
   tasks:
-    - name: Create pinned Xray stub directory
+    - name: Create pinned Xray archive fixture directory
       ansible.builtin.file:
-        path: /opt/xray/releases/vtest
+        path: /var/tmp/probe-matrix-xray-fixture
         state: directory
         mode: "0755"
     - name: Install Xray validation stub
       ansible.builtin.copy:
-        dest: /opt/xray/releases/vtest/xray
+        dest: /var/tmp/probe-matrix-xray-fixture/xray
         mode: "0755"
         content: |
           #!/bin/sh
           exit 0
+    - name: Build pinned Xray archive fixture
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -m
+          - zipfile
+          - -c
+          - /var/tmp/probe-matrix-xray.zip
+          - xray
+        chdir: /var/tmp/probe-matrix-xray-fixture
+        creates: /var/tmp/probe-matrix-xray.zip
     - name: Install mtg download stub
       ansible.builtin.copy:
         dest: /tmp/mtg-stub
