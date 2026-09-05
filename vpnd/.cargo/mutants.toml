@@ -1,8 +1,9 @@
 # cargo-mutants configuration for vpnd
 # See: https://mutants.rs/configuration.html
 
-# 5-minute timeout per mutant (recommended for the first month; tune from data)
+# Five times the observed baseline test duration, not a fixed minute budget.
 timeout_multiplier = 5.0
+additional_cargo_args = ["--locked"]
 
 # Focus mutation testing on the highest-value surfaces
 examine_globs = [

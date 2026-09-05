@@ -1211,7 +1211,7 @@ vpnd-clippy:
 	cd vpnd && cargo clippy --release --all-targets --locked -- -D warnings
 
 vpnd-mutants:
-	cd vpnd && cargo mutants --no-shuffle
+	./scripts/test-vpnd-mutants.sh
 
 tf-policy:
 	@for p in upcloud hetzner vultr scaleway; do \

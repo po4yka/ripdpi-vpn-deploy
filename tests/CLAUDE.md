@@ -43,6 +43,11 @@ config drift inside a role. Full-stack catches order/handler interactions.
 
 ## Pitfalls
 
+- **Mutation CI distinguishes findings from execution failure** — only exit
+  0 (caught) and 2 (survivors reported) are successful runs. The runtime tests
+  exercise actual workflow shell error propagation and disposable-copy cleanup;
+  real cargo-mutants baseline and mutation execution remain the acceptance gate.
+
 - **Snapshot files are committed** — never gitignore `tests/snapshot/golden/`.
   PR diff is the review surface.
 - **Molecule needs Docker** — CI runners and operator workstations vary.
