@@ -90,5 +90,7 @@ Thumbs.db
 .omc/
 .omo/
 
-# SBOM artifacts (reproducible from secrets schema via make emit-sbom)
+# Generated deployment and Cargo SBOMs, and staged release assets
 sbom/*.json
+/vpnd/sbom.json
+/dist/
