@@ -8,6 +8,9 @@ User={{ observability_deadman.service_user }}
 Group={{ observability_deadman.service_group }}
 LoadCredential=pulse-token:{{ observability_deadman.pulse_credential_path }}
 LoadCredential=telegram-bot-token:{{ observability_deadman.telegram_credential_path }}
+LoadCredential=reverse-health-ca:{{ observability_deadman.config_root }}/credentials/reverse-health-ca.pem
+LoadCredential=reverse-health-client-cert:{{ observability_deadman.config_root }}/credentials/reverse-health-client.crt
+LoadCredential=reverse-health-client-key:{{ observability_deadman.config_root }}/credentials/reverse-health-client.key
 ExecStart=/usr/local/libexec/observability-deadman.py tick --config {{ observability_deadman.config_root }}/deadman-current.json --state {{ observability_deadman.state_dir }}/state.json
 # Two Telegram request/read bounds, one capped retry delay, two reverse-health
 # request bounds, and durable state updates fit below this fail-closed ceiling.

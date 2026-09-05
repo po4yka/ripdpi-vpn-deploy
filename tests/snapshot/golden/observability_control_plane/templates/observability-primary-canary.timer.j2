@@ -1,0 +1,13 @@
+[Unit]
+Description=Schedule a low-frequency primary Telegram canary
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=86400s
+AccuracySec=1m
+RandomizedDelaySec=0
+Persistent=true
+Unit=observability-primary-canary.service
+
+[Install]
+WantedBy=timers.target

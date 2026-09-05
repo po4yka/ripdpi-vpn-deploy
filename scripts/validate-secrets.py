@@ -375,6 +375,10 @@ def _semantic_errors(
         (observability.get("telegram") or {}).get("bot_token"),
         (observability.get("telegram") or {}).get("relay_auth_token"),
         deadman.get("pulse_token"),
+        deadman.get("canary_token"),
+        (deadman.get("pulse_tls") or {}).get("ca_pem"),
+        (deadman.get("pulse_tls") or {}).get("server_cert_pem"),
+        (deadman.get("pulse_tls") or {}).get("server_key_pem"),
         (deadman.get("telegram") or {}).get("bot_token"),
     ]
     authorities.extend(

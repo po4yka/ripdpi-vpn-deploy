@@ -73,6 +73,7 @@ def _contract(*, token: str = "123456789:fixture-token-value-not-real") -> dict:
         ingest_ca = (tls_dir / "ca.pem").read_text()
     return {
         "tls": {"client_ca_pem": ingest_ca},
+        "ingest_identities": [{"node_id": "deadman-control"}],
         "service_user": "prometheus",
         "service_group": "prometheus",
         "config_root": "/etc/observability-control-plane",
@@ -128,7 +129,39 @@ def _contract(*, token: str = "123456789:fixture-token-value-not-real") -> dict:
             "deadman": {
                 "enabled": True,
                 "receiver_url": "http://127.0.0.1:19093/alerts",
+                "canary_auth_path": (
+                    "/etc/observability-control-plane/credentials/"
+                    "deadman-canary-auth-token"
+                ),
+                "canary_auth_credential": (
+                    "/run/credentials/observability-alertmanager.service/"
+                    "deadman-canary-auth-token"
+                ),
                 "repeat_interval": "1m",
+                "canary_listen": "127.0.0.1:19093",
+                "reverse_listen": "127.0.0.1:19096",
+                "reverse_path": "/observability/v1/deadman/reverse",
+                "node_id": "deadman-control",
+                "pulse_url": "https://deadman.example.test:9444/v1/pulse",
+                "pulse_credential_path": (
+                    "/etc/observability-control-plane/credentials/deadman-pulse-token"
+                ),
+                "pulse_ca_path": (
+                    "/etc/observability-control-plane/credentials/deadman-pulse-ca.pem"
+                ),
+                "pulse_ca_credential": (
+                    "/run/credentials/observability-deadman-pulse.service/"
+                    "deadman-pulse-ca.pem"
+                ),
+                "state_dir": "/var/lib/observability-pipeline",
+                "metrics_path": (
+                    "/var/lib/node_exporter/textfile/observability-deadman.prom"
+                ),
+                "freshness_seconds": 180,
+                "primary_canary_freshness_seconds": 90000,
+                "request_timeout_seconds": 5,
+                "pulse_interval_seconds": 60,
+                "primary_canary_interval_seconds": 86400,
             },
         },
     }
@@ -145,7 +178,31 @@ def test_alerting_defaults_are_inert_and_secret_free() -> None:
     assert alerting["telegram"]["bot_token"] == ""
     assert alerting["telegram"]["chat_id"] == ""
     assert alerting["deadman"]["enabled"] is False
+    assert alerting["deadman"]["canary_auth_path"].endswith(
+        "/deadman-canary-auth-token"
+    )
+    assert alerting["deadman"]["pulse_ca_path"].endswith("/deadman-pulse-ca.pem")
+    assert alerting["deadman"]["pulse_ca_credential"].endswith("/deadman-pulse-ca.pem")
     assert alerting["listen"] == "127.0.0.1:9093"
+
+
+def test_deadman_pulse_unit_loads_only_the_dedicated_ca_credential() -> None:
+    contract = _contract()
+    rendered = render_template(
+        ROLE / "templates/observability-deadman-pulse.service.j2",
+        {"observability_control_plane": contract},
+    )
+
+    assert (
+        "LoadCredential=deadman-pulse-ca.pem:"
+        "/etc/observability-control-plane/credentials/deadman-pulse-ca.pem" in rendered
+    )
+    exec_start = next(
+        line for line in rendered.splitlines() if line.startswith("ExecStart=")
+    )
+    assert "--pulse-ca-credential deadman-pulse-ca.pem" in exec_start
+    assert "SSL_CERT_FILE" not in rendered
+    assert "SSL_CERT_DIR" not in rendered
 
 
 def test_missing_telegram_contract_refuses_without_changes_or_secret_output(
@@ -358,6 +415,19 @@ def test_alertmanager_routes_to_authenticated_relay_without_secrets() -> None:
     }
     assert "fixture-token" not in first
     assert "telegram-bot-token" not in first
+    deadman = next(
+        receiver
+        for receiver in parsed["receivers"]
+        if receiver["name"] == "deadman-canary"
+    )["webhook_configs"][0]
+    assert deadman["send_resolved"] is False
+    assert deadman["http_config"]["authorization"] == {
+        "type": "Bearer",
+        "credentials_file": (
+            "/run/credentials/observability-alertmanager.service/"
+            "deadman-canary-auth-token"
+        ),
+    }
 
 
 def test_canonical_alertmanager_template_uses_relay_webhooks() -> None:
@@ -424,6 +494,8 @@ def test_rules_have_fixed_severity_recovery_and_deadman_boundaries(
         "ObservabilityBackupStageFailed",
         "ObservabilityRestoreReadinessStale",
         "ObservabilityPipelineWatchdog",
+        "ObservabilityDeadmanReverseMissing",
+        "ObservabilityDeadmanReverseUnhealthy",
     }
     for rule in alerts:
         assert rule["labels"]["severity"] in {"warning", "critical", "watchdog"}
@@ -668,12 +740,21 @@ def test_alerting_tasks_validate_before_activation_and_rollback() -> None:
     )
     assert restart["when"] == (
         "not ansible_check_mode and (_observability_alertmanager_runtime_changed | bool or "
-            "_observability_telegram_credentials.changed or "
+        "_observability_telegram_credentials.changed or "
+        "(_observability_deadman_canary_credential.changed | default(false)) or "
         "_observability_silence_credentials.changed or "
         "_observability_silence_web.changed or "
         "_observability_alertmanager_unit.changed or "
         "_observability_alertmanager_current_link.changed)"
     )
+    relay_restart = next(
+        task
+        for task in activation["block"]
+        if task["name"] == "Restart changed primary Telegram relay"
+    )
+    relay_condition = " ".join(relay_restart["when"])
+    assert "_observability_telegram_credentials.changed" in relay_condition
+    assert "_observability_deadman_canary_credential" not in relay_condition
     assert "Capture Alertmanager runtime publication change" in names
     assert names.index("Capture Alertmanager runtime publication change") < names.index(
         "Install pinned amtool through runtime-release"
@@ -708,6 +789,7 @@ def test_alertmanager_restart_condition_uses_one_ansible_expression(
       - {name: all_false, runtime: false, credential: false, unit: false, link: false, expected: false}
       - {name: runtime, runtime: true, credential: false, unit: false, link: false, expected: true}
       - {name: credential, runtime: false, credential: true, unit: false, link: false, expected: true}
+      - {name: canary_credential, runtime: false, credential: false, canary_credential: true, unit: false, link: false, expected: true}
       - {name: unit, runtime: false, credential: false, unit: true, link: false, expected: true}
       - {name: link, runtime: false, credential: false, unit: false, link: true, expected: true}
   tasks:
@@ -716,6 +798,7 @@ def test_alertmanager_restart_condition_uses_one_ansible_expression(
       vars:
         _observability_alertmanager_runtime_changed: "{{ item.runtime }}"
         _observability_telegram_credentials: {changed: "{{ item.credential }}"}
+        _observability_deadman_canary_credential: {changed: "{{ item.canary_credential | default(false) }}"}
         _observability_silence_credentials: {changed: "{{ item.silence | default(false) }}"}
         _observability_silence_web: {changed: "{{ item.web | default(false) }}"}
         _observability_alertmanager_unit: {changed: "{{ item.unit }}"}
@@ -818,7 +901,61 @@ def test_alerting_disable_removes_owned_runtime_but_preserves_tsdb() -> None:
     assert "Remove disabled alerting surfaces" in names
     assert "observability-alertmanager.service" in text
     assert "observability_control_plane.alerting.credential_path" in text
+    assert "observability_control_plane.alerting.deadman.metrics_path" in text
     assert "/var/lib/observability-prometheus" not in text
+
+
+@pytest.mark.parametrize(
+    ("source", "task_name"),
+    [
+        ("alerting-disable.yml", "Remove disabled alerting surfaces"),
+        ("disable.yml", "Remove control-plane units and ingress only"),
+    ],
+)
+def test_disable_tasks_remove_deadman_textfile_behaviorally(
+    tmp_path: Path, source: str, task_name: str
+) -> None:
+    production = yaml.safe_load((ROLE / "tasks" / source).read_text())
+    task = next(row for row in production if row["name"] == task_name)
+    assert "observability_control_plane.alerting.deadman.metrics_path" in str(
+        task["loop"]
+    )
+    metric = tmp_path / "textfile" / "observability-deadman.prom"
+    metric.parent.mkdir(mode=0o700)
+    metric.write_text("candidate_metric 1\n")
+    metric.chmod(0o644)
+    isolated = {
+        "name": task_name,
+        "ansible.builtin.file": task["ansible.builtin.file"],
+        "loop": [str(metric)],
+    }
+    playbook = tmp_path / f"{source}.play.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "tasks": [isolated],
+                }
+            ],
+            sort_keys=False,
+        )
+    )
+
+    completed = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", str(playbook)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "changed=1" in completed.stdout
+    assert not metric.exists()
 
 
 def test_silence_gateway_is_the_only_authenticated_alertmanager_route() -> None:
@@ -1002,6 +1139,9 @@ def test_authority_rotation_failure_restores_files_and_service_snapshots(
     old_token, new_token = "a1" * 32, "b2" * 32
     old_relay_token, new_relay_token = "c3" * 32, "d4" * 32
     contract = _contract()
+    # This transaction matrix predates the independent dead-man pipeline and
+    # exercises only the Alertmanager/relay/silence authority topology.
+    contract["alerting"]["deadman"]["enabled"] = False
     contract["config_root"] = str(credentials.parent)
     gateway = contract["alerting"]["silence_gateway"]
     gateway["sender_token"] = new_token
@@ -1151,14 +1291,19 @@ else:
             for prefix in ("/etc/", "/usr/local/"):
                 if value.startswith(prefix):
                     value = str(root) + value
-            return value.replace(
-                "http://127.0.0.1:19094",
-                "http://127.0.0.1:" + str(ports["silence-gateway"]),
-            ).replace(
-                "http://127.0.0.1:19095",
-                "http://127.0.0.1:" + str(ports["telegram-relay"]),
-            ).replace(
-                "http://127.0.0.1:9090", "http://127.0.0.1:" + str(ports["prometheus"])
+            return (
+                value.replace(
+                    "http://127.0.0.1:19094",
+                    "http://127.0.0.1:" + str(ports["silence-gateway"]),
+                )
+                .replace(
+                    "http://127.0.0.1:19095",
+                    "http://127.0.0.1:" + str(ports["telegram-relay"]),
+                )
+                .replace(
+                    "http://127.0.0.1:9090",
+                    "http://127.0.0.1:" + str(ports["prometheus"]),
+                )
             )
         if isinstance(value, list):
             return [adapt(item) for item in value]
@@ -1277,9 +1422,7 @@ else:
         try:
             with urlopen(
                 Request(
-                    "http://127.0.0.1:"
-                    + str(ports["telegram-relay"])
-                    + "/-/ready",
+                    "http://127.0.0.1:" + str(ports["telegram-relay"]) + "/-/ready",
                     headers={"Authorization": "Bearer " + token},
                 ),
                 timeout=2,
@@ -1443,7 +1586,9 @@ else:
             assert not (
                 root / "usr/local/libexec/observability-silence-gateway"
             ).exists()
-            assert not (root / "usr/local/libexec/observability-telegram-relay").exists()
+            assert not (
+                root / "usr/local/libexec/observability-telegram-relay"
+            ).exists()
         if initial == "active":
             assert request(old_token) == 200
             assert request(new_token) == 403

@@ -7,6 +7,9 @@ sequence and bounded expiry. It has neither fleet credentials nor primary
 Telegram authority. Its secondary token enters only through `LoadCredential`.
 The pulse receiver binds at its explicit ingestion port; all local state and
 administrative semantics stay private to the role account.
+The public pulse listener uses a dedicated SOPS-owned CA and an exact server
+SAN. The control plane receives only that CA as a systemd credential and never
+falls back to the public trust store, plaintext, proxy, or redirect handling.
 Secondary Telegram transport retries only timeouts, transport errors, 429 and
 5xx responses. Retry-After and exponential delay are capped by the same
 validated five-second request bound; other 4xx responses fail immediately.

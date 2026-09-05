@@ -1,0 +1,100 @@
+---
+- name: Gather nested dead-man service state before opt-out
+  ansible.builtin.service_facts:
+
+- name: Stop and disable nested dead-man pipeline
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop:
+    - observability-deadman-pulse.timer
+    - observability-primary-canary.timer
+    - observability-deadman-pulse.service
+    - observability-primary-canary.service
+    - observability-deadman-pipeline.service
+  when:
+    - not ansible_check_mode
+    - item in ansible_facts.services
+
+- name: Inspect nested dead-man helper before state reset
+  ansible.builtin.stat:
+    path: /usr/local/libexec/observability-deadman-pipeline.py
+    follow: false
+  register: _observability_nested_deadman_helper
+  changed_when: false
+
+- name: Inspect nested dead-man state directory before reset
+  ansible.builtin.stat:
+    path: "{{ observability_control_plane.alerting.deadman.state_dir }}"
+    follow: false
+  register: _observability_nested_deadman_state
+  changed_when: false
+
+- name: Inspect nested dead-man state entries before reset
+  ansible.builtin.find:
+    paths: "{{ observability_control_plane.alerting.deadman.state_dir }}"
+    file_type: any
+    hidden: true
+    follow: false
+    recurse: false
+  register: _observability_nested_deadman_state_entries
+  changed_when: false
+  when: _observability_nested_deadman_state.stat.isdir | default(false)
+
+- name: Refuse unsafe nested dead-man runtime ownership
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (_observability_nested_deadman_helper.stat.exists | default(false)) or
+        ((_observability_nested_deadman_helper.stat.isreg | default(false)) and
+         _observability_nested_deadman_helper.stat.uid == 0 and
+         _observability_nested_deadman_helper.stat.mode == '0755')
+      - >-
+        not (_observability_nested_deadman_state.stat.exists | default(false)) or
+        ((_observability_nested_deadman_state.stat.isdir | default(false)) and
+         _observability_nested_deadman_state.stat.uid == 0 and
+         _observability_nested_deadman_state.stat.mode == '0700' and
+         ((_observability_nested_deadman_helper.stat.isreg | default(false)) or
+          (_observability_nested_deadman_state_entries.matched | default(0) | int == 0)))
+    fail_msg: Nested dead-man opt-out refused an unsafe or unrecoverable runtime state.
+
+- name: Reconcile nested dead-man state before removing its helper
+  ansible.builtin.command:
+    argv:
+      - /usr/local/libexec/observability-deadman-pipeline.py
+      - reconcile-state
+      - --state-dir
+      - "{{ observability_control_plane.alerting.deadman.state_dir }}"
+      - --generation
+      - '0000000000000000000000000000000000000000'
+      - --disable
+  register: _observability_nested_deadman_reconcile
+  changed_when: >-
+    (_observability_nested_deadman_reconcile.stdout | from_json).changed | bool
+  no_log: true
+  when:
+    - not ansible_check_mode
+    - _observability_nested_deadman_helper.stat.isreg | default(false)
+
+- name: Remove nested dead-man pipeline surfaces
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/observability-deadman-pipeline.service
+    - /etc/systemd/system/observability-deadman-pulse.service
+    - /etc/systemd/system/observability-deadman-pulse.timer
+    - /etc/systemd/system/observability-primary-canary.service
+    - /etc/systemd/system/observability-primary-canary.timer
+    - /usr/local/libexec/observability-deadman-pipeline.py
+    - "{{ observability_control_plane.alerting.deadman.pulse_credential_path }}"
+    - "{{ observability_control_plane.alerting.deadman.pulse_ca_path }}"
+    - "{{ observability_control_plane.alerting.deadman.canary_auth_path }}"
+    - "{{ observability_control_plane.alerting.deadman.metrics_path }}"
+    - "{{ observability_control_plane.alerting.deadman.state_dir }}/.pipeline.lock"
+
+- name: Reload systemd after nested dead-man opt-out
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: not ansible_check_mode

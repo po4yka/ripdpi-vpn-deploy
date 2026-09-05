@@ -28,7 +28,11 @@ aliases and cannot authorize maintenance or infrastructure actions. The relay
 owns two bounded delivery attempts, escaping, redaction, truncation and exact
 omission counts; fixed group and repeat intervals bound route frequency. A
 synthetic pipeline watchdog may target only an explicitly enabled loopback
-canary receiver; the independent dead-man sender remains a separate owner.
+canary receiver; the independent dead-man sender remains a separate owner. Its
+HTTPS pulse client trusts only the dedicated dead-man CA credential and binds
+the URL hostname to certificate verification. Authority rotation quiesces all
+pipeline writers before generation reconciliation and restores their exact
+enabled/active states if publication rolls back.
 Enabled alerting requires the private gateway on 127.0.0.1:19094. Only its
 separate UID receives the dedicated backend client certificate; Alertmanager
 requires that CA on HTTPS 127.0.0.1:9093. Prometheus holds only a sender token.

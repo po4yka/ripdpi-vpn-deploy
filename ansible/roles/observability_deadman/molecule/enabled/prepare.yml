@@ -3,6 +3,53 @@
   hosts: all
   become: true
   tasks:
+    - name: Generate fixture reverse-health client trust material
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          install -d -m 0700 /var/tmp/observability-deadman-fixture
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -subj /CN=deadman-fixture-ca \
+            -keyout /var/tmp/observability-deadman-fixture/ca.key \
+            -out /var/tmp/observability-deadman-fixture/ca.pem >/dev/null 2>&1
+          openssl req -newkey rsa:2048 -nodes \
+            -subj /CN=deadman-control \
+            -keyout /var/tmp/observability-deadman-fixture/client.key \
+            -out /var/tmp/observability-deadman-fixture/client.csr >/dev/null 2>&1
+          openssl x509 -req -days 1 \
+            -in /var/tmp/observability-deadman-fixture/client.csr \
+            -CA /var/tmp/observability-deadman-fixture/ca.pem \
+            -CAkey /var/tmp/observability-deadman-fixture/ca.key \
+            -CAcreateserial \
+            -out /var/tmp/observability-deadman-fixture/client.pem >/dev/null 2>&1
+          openssl req -newkey rsa:2048 -nodes \
+            -subj /CN=reverse.fixture.invalid \
+            -addext 'subjectAltName=DNS:reverse.fixture.invalid' \
+            -addext 'extendedKeyUsage=serverAuth' \
+            -addext 'basicConstraints=critical,CA:FALSE' \
+            -keyout /var/tmp/observability-deadman-fixture/pulse-server.key \
+            -out /var/tmp/observability-deadman-fixture/pulse-server.csr >/dev/null 2>&1
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -subj /CN=pulse-fixture-ca \
+            -keyout /var/tmp/observability-deadman-fixture/pulse-ca.key \
+            -out /var/tmp/observability-deadman-fixture/pulse-ca.pem >/dev/null 2>&1
+          openssl x509 -req -days 1 \
+            -in /var/tmp/observability-deadman-fixture/pulse-server.csr \
+            -CA /var/tmp/observability-deadman-fixture/pulse-ca.pem \
+            -CAkey /var/tmp/observability-deadman-fixture/pulse-ca.key \
+            -CAcreateserial -copy_extensions copy \
+            -out /var/tmp/observability-deadman-fixture/pulse-server.pem >/dev/null 2>&1
+          openssl x509 -in /var/tmp/observability-deadman-fixture/client.pem \
+            -noout -fingerprint -sha256 | sed 's/^sha256 Fingerprint=//; s/://g' | \
+            tr 'A-F' 'a-f' > /var/tmp/observability-deadman-fixture/client.sha256
+          openssl x509 -in /var/tmp/observability-deadman-fixture/ca.pem \
+            -noout -fingerprint -sha256 | sed 's/^sha256 Fingerprint=//; s/://g' | \
+            tr 'A-F' 'a-f' > /var/tmp/observability-deadman-fixture/ca.sha256
+          chmod 0600 /var/tmp/observability-deadman-fixture/*
+        creates: /var/tmp/observability-deadman-fixture/client.pem
+        executable: /bin/bash
+      changed_when: false
+
     - name: Resolve fixture-only notification destinations through hosts files
       ansible.builtin.command:
         argv:

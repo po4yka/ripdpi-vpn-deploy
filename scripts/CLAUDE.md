@@ -10,6 +10,11 @@ data shaping are Python and use only stdlib + pinned `PyYAML`, `Jinja2`, or
 **One file per operator verb** — `bootstrap-secrets.sh`, `rotate-secrets.sh`,
 `fleet-rotate.sh`. The Makefile wraps these with `make <target>` shorthand.
 
+**Observability lifecycle shares one exact-host controller** — its public Make
+verbs remain distinct, while one bounded Python controller centralizes private
+input validation, literal scope, strict SSH and one-role Ansible execution.
+Initial `deploy` refuses an existing primary unit and never aliases `rotate`.
+
 **Container schema checks keep inputs mount-free** — the cloud-init fallback
 passes rendered YAML and the pinned public CA bundle through a private tar
 stream to a digest-pinned image. APT uses HTTPS with peer/host verification and

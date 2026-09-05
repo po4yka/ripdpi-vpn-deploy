@@ -248,4 +248,34 @@ groups:
           source_generation: "{{ observability_control_plane.alerting.source_generation }}"
           summary: Synthetic observability pipeline watchdog is firing.
           runbook: docs/RUNBOOK-incident.md
+      - alert: ObservabilityDeadmanReverseMissing
+        expr: >-
+          absent(vpn_observability_deadman_reverse_timestamp_seconds{generation="{{ observability_control_plane.alerting.source_generation }}"})
+          or (time() - vpn_observability_deadman_reverse_timestamp_seconds{generation="{{ observability_control_plane.alerting.source_generation }}"}) > 300
+        for: 1m
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels:
+          severity: critical
+          component: observability-pipeline
+        annotations:
+          incident_family: observability-deadman
+          evidence_class: reverse-heartbeat-missing
+          source_generation: "{{ observability_control_plane.alerting.source_generation }}"
+          summary: Independent dead-man reverse health is missing or stale.
+          runbook: docs/RUNBOOK-incident.md
+      - alert: ObservabilityDeadmanReverseUnhealthy
+        expr: >-
+          max by (check, state)
+          (vpn_observability_deadman_health{generation="{{ observability_control_plane.alerting.source_generation }}",state=~"error|failed|incident|never"}) == 1
+        for: 1m
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels:
+          severity: critical
+          component: observability-pipeline
+        annotations:
+          incident_family: observability-deadman
+          evidence_class: reverse-heartbeat-unhealthy
+          source_generation: "{{ observability_control_plane.alerting.source_generation }}"
+          summary: Independent dead-man reported an unhealthy bounded subsystem.
+          runbook: docs/RUNBOOK-incident.md
 {% endif -%}

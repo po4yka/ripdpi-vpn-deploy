@@ -44,9 +44,13 @@ receivers:
   - name: deadman-canary
     webhook_configs:
       - url: {{ observability_control_plane.alerting.deadman.receiver_url }}
-        send_resolved: true
+        send_resolved: false
         max_alerts: 1
         timeout: 5s
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: {{ observability_control_plane.alerting.deadman.canary_auth_credential }}
 {% endif %}
 inhibit_rules:
   - source_matchers: ['alertname="ObservabilityBackupStageFailed"']

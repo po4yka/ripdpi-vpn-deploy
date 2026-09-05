@@ -140,6 +140,14 @@ def test_observability_secret_authorities_are_versioned_and_distinct(example_doc
         assert schema["properties"][name]["properties"]["schema_version"] == {"const": 1}
 
 
+@pytest.mark.parametrize("field", ["ca_pem", "server_cert_pem", "server_key_pem"])
+def test_deadman_pulse_tls_requires_complete_authority(example_doc, field):
+    doc = deepcopy(example_doc)
+    del doc["observability_deadman_secrets"]["pulse_tls"][field]
+
+    assert list(_validator().iter_errors(doc))
+
+
 @pytest.fixture
 def silence_doc(filled):
     filled["observability_secrets"] = {
@@ -313,6 +321,7 @@ def test_silence_gateway_reused_authorities_are_rejected_without_values(
         "sender-private-key",
         "bot-token",
         "pulse-token",
+        "canary-token",
         "ui-password",
     ],
 )
@@ -341,6 +350,12 @@ def test_observability_duplicate_authority_is_rejected(filled, tmp_path, mutatio
     filled["observability_deadman_secrets"] = {
         "schema_version": 1,
         "pulse_token": "deadman-pulse-token-bbbbbbbb",
+        "canary_token": "deadman-canary-token-eeeeeee",
+        "pulse_tls": {
+            "ca_pem": _fake_private_key("C"),
+            "server_cert_pem": _fake_private_key("T"),
+            "server_key_pem": _fake_private_key("K"),
+        },
         "telegram": {"bot_token": "secondary-bot-token-cccccc", "chat_id": "-100000000002"},
     }
     senders = filled["observability_secrets"]["senders"]
@@ -354,6 +369,8 @@ def test_observability_duplicate_authority_is_rejected(filled, tmp_path, mutatio
         filled["observability_deadman_secrets"]["telegram"]["bot_token"] = filled["observability_secrets"]["telegram"]["bot_token"]
     elif mutation == "pulse-token":
         filled["observability_deadman_secrets"]["pulse_token"] = filled["observability_secrets"]["telegram"]["bot_token"]
+    elif mutation == "canary-token":
+        filled["observability_deadman_secrets"]["canary_token"] = filled["observability_secrets"]["telegram"]["bot_token"]
     elif mutation == "ui-password":
         filled["observability_secrets"]["ui_password"] = filled["observability_secrets"]["telegram"]["bot_token"]
 
@@ -394,6 +411,12 @@ def test_observability_rotation_is_single_authority_complete_and_bounded(
     filled["observability_deadman_secrets"] = {
         "schema_version": 1,
         "pulse_token": "deadman-pulse-token-bbbbbbbb",
+        "canary_token": "deadman-canary-token-eeeeeee",
+        "pulse_tls": {
+            "ca_pem": _fake_private_key("C"),
+            "server_cert_pem": _fake_private_key("T"),
+            "server_key_pem": _fake_private_key("K"),
+        },
         "telegram": {"bot_token": "secondary-bot-token-cccccc", "chat_id": "-100000000002"},
     }
     if mutation == "partial":
@@ -442,6 +465,12 @@ def test_one_bounded_observability_rotation_validates(filled, tmp_path):
     filled["observability_deadman_secrets"] = {
         "schema_version": 1,
         "pulse_token": "deadman-pulse-token-bbbbbbbb",
+        "canary_token": "deadman-canary-token-eeeeeee",
+        "pulse_tls": {
+            "ca_pem": _fake_private_key("C"),
+            "server_cert_pem": _fake_private_key("T"),
+            "server_key_pem": _fake_private_key("K"),
+        },
         "telegram": {"bot_token": "secondary-bot-token-cccccc", "chat_id": "-100000000002"},
     }
 
@@ -487,6 +516,12 @@ def test_strict_enabled_observability_requires_both_secret_blocks(
     deadman = {
         "schema_version": 1,
         "pulse_token": "deadman-pulse-token-bbbbbbbb",
+        "canary_token": "deadman-canary-token-eeeeeee",
+        "pulse_tls": {
+            "ca_pem": _fake_private_key("C"),
+            "server_cert_pem": _fake_private_key("T"),
+            "server_key_pem": _fake_private_key("K"),
+        },
         "telegram": {
             "bot_token": "secondary-bot-token-cccccc",
             "chat_id": "-100000000002",

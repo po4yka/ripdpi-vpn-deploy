@@ -101,4 +101,21 @@ observability_control_plane:
     deadman:
       enabled: false
       receiver_url: http://127.0.0.1:19093/alerts
+      canary_auth_path: /etc/observability-control-plane/credentials/deadman-canary-auth-token
+      canary_auth_credential: /run/credentials/observability-alertmanager.service/deadman-canary-auth-token
       repeat_interval: 1m
+      canary_listen: 127.0.0.1:19093
+      reverse_listen: 127.0.0.1:19096
+      reverse_path: /observability/v1/deadman/reverse
+      node_id: ""
+      pulse_url: ""
+      pulse_credential_path: /etc/observability-control-plane/credentials/deadman-pulse-token
+      pulse_ca_path: /etc/observability-control-plane/credentials/deadman-pulse-ca.pem
+      pulse_ca_credential: /run/credentials/observability-deadman-pulse.service/deadman-pulse-ca.pem
+      state_dir: /var/lib/observability-pipeline
+      metrics_path: /var/lib/node_exporter/textfile/observability-deadman.prom
+      freshness_seconds: 180
+      primary_canary_freshness_seconds: 90000
+      request_timeout_seconds: 5
+      pulse_interval_seconds: 60
+      primary_canary_interval_seconds: 86400

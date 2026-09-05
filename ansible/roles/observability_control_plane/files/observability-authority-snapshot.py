@@ -15,9 +15,13 @@ import uuid
 
 CONFIG = "etc/observability-control-plane"
 CREDENTIALS = CONFIG + "/credentials/"
+DEADMAN_METRIC = "var/lib/node_exporter/textfile/observability-deadman.prom"
 NAMES = [
     "telegram-bot-token",
     "telegram-relay-auth-token",
+    "deadman-pulse-token",
+    "deadman-pulse-ca.pem",
+    "deadman-canary-auth-token",
     "silence-policy.json",
     "silence-auth.json",
     "silence-sender-token",
@@ -27,22 +31,45 @@ NAMES = [
     "silence-backend-client.crt",
     "silence-backend-client.key",
 ]
+PIPELINE_STATE = [
+    "var/lib/observability-pipeline/generation.json",
+    "var/lib/observability-pipeline/canary.json",
+    "var/lib/observability-pipeline/primary-canary.json",
+    "var/lib/observability-pipeline/pulse-state.json",
+    "var/lib/observability-pipeline/reverse-state.json",
+]
 SERVICES = [
     "observability-alertmanager.service",
     "observability-telegram-relay.service",
     "observability-silence-gateway.service",
     "observability-prometheus.service",
+    "observability-deadman-pipeline.service",
+    "observability-deadman-pulse.service",
+    "observability-primary-canary.service",
+    "observability-deadman-pulse.timer",
+    "observability-primary-canary.timer",
 ]
-FIXED = [CREDENTIALS + name for name in NAMES] + [
-    CONFIG + "/alertmanager-web.yml",
-    "etc/systemd/system/observability-alertmanager.service",
-    "etc/systemd/system/observability-telegram-relay.service",
-    "etc/systemd/system/observability-silence-gateway.service",
-    "usr/local/libexec/observability-silence-gateway",
-    "usr/local/libexec/observability-telegram-relay",
-    CONFIG + "/alertmanager-current.yml",
-    CONFIG + "/alertmanager-previous.yml",
-]
+FIXED = (
+    [CREDENTIALS + name for name in NAMES]
+    + [
+        CONFIG + "/alertmanager-web.yml",
+        "etc/systemd/system/observability-alertmanager.service",
+        "etc/systemd/system/observability-telegram-relay.service",
+        "etc/systemd/system/observability-silence-gateway.service",
+        "etc/systemd/system/observability-deadman-pipeline.service",
+        "etc/systemd/system/observability-deadman-pulse.service",
+        "etc/systemd/system/observability-deadman-pulse.timer",
+        "etc/systemd/system/observability-primary-canary.service",
+        "etc/systemd/system/observability-primary-canary.timer",
+        "usr/local/libexec/observability-silence-gateway",
+        "usr/local/libexec/observability-telegram-relay",
+        "usr/local/libexec/observability-deadman-pipeline.py",
+        CONFIG + "/alertmanager-current.yml",
+        CONFIG + "/alertmanager-previous.yml",
+        DEADMAN_METRIC,
+    ]
+    + PIPELINE_STATE
+)
 LINKS = {CONFIG + "/alertmanager-current.yml", CONFIG + "/alertmanager-previous.yml"}
 ALIAS = re.compile(r"[a-z][a-z0-9_-]{0,63}\Z")
 
@@ -127,8 +154,12 @@ class Snapshot:
                 or metadata["mode"] & 0o022
             ):
                 raise ValueError("unsafe-file")
-            if relative.startswith(CREDENTIALS) and metadata["mode"] != 0o600:
+            if (
+                relative.startswith(CREDENTIALS) or relative in PIPELINE_STATE
+            ) and metadata["mode"] != 0o600:
                 raise ValueError("credential-mode")
+            if relative == DEADMAN_METRIC and metadata["mode"] != 0o644:
+                raise ValueError("textfile-mode")
             content = stream.read(limit + 1)
         if len(content) > limit:
             raise ValueError("file-size")
@@ -222,7 +253,13 @@ class Snapshot:
             "previous_owners": previous,
             "services": services,
             "files": {
-                path: self.read(path, allow_missing=inspect_only) for path in paths
+                path: self.read(
+                    path,
+                    allow_missing=(
+                        inspect_only or path in PIPELINE_STATE or path == DEADMAN_METRIC
+                    ),
+                )
+                for path in paths
             },
         }
         if inspect_only and len(json.dumps(state, sort_keys=True).encode()) > 8388608:
@@ -239,7 +276,7 @@ class Snapshot:
         for relative, row in state["files"].items():
             path = self.root / relative
             self.read(
-                relative
+                relative, allow_missing=row["kind"] == "absent"
             )  # Refuse foreign/symlink replacement before any overwrite.
             if row["kind"] == "absent":
                 if os.path.lexists(path):

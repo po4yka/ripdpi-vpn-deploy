@@ -48,7 +48,7 @@ runs. Archive is forbidden while any category is `required` or `blocked`.
 | REQ-OBS-SECRETS | MON-1788009838945651 | required SOPS schema/coverage/round-trip, duplicate-authority, runtime-mode, rotation and leakage tests | required |
 | REQ-OBS-CONFIG | MON-1788009844659393 | required agent, control-plane and dead-man invalid candidate, atomic generation, readiness failure and last-known-good rollback tests | required |
 | REQ-OBS-MIGRATION | MON-1788009846690094 | required shadow/canary/overlap/cutover/fallback removal and rollback evidence with exactly one paging authority | required |
-| REQ-OBS-OPERATIONS | MON-1788009843647612 | required explicit-scope and side-effect contract tests for render, validate, status, drill, rotate, rollback and remove commands | required |
+| REQ-OBS-OPERATIONS | MON-1788009843647612 | required explicit-scope and side-effect contract tests for render, validate, initial-only deploy, complete role-owned status, drill, rotate, rollback and remove commands | required |
 | REQ-OBS-ACCEPTANCE | MON-1788009846690094 | required reconciled local, exact-SHA hosted, dry-run, staging, live, client, Telegram and artifact evidence with no open substitution | required |
 
 ## Local and hosted test matrix
