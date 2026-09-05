@@ -37,6 +37,7 @@ UUID_RE = re.compile(
 ENV_RE = re.compile(r"^ci-staging-[A-Za-z0-9][A-Za-z0-9-]{0,47}$")
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{0,62}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+DECIMAL_ID_RE = re.compile(r"^[1-9][0-9]*$")
 ALLOWED_BASE_ADDRESSES = {
     "terraform_data.ssh_port",
     "vultr_ssh_key.admin",
@@ -96,6 +97,12 @@ def _uuid(value: Any, label: str) -> str:
     return value
 
 
+def _decimal_id(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not DECIMAL_ID_RE.fullmatch(value):
+        raise GuardError(f"{label} is not a positive decimal ID")
+    return value
+
+
 def _json(data: bytes, label: str) -> dict[str, Any]:
     try:
         value = json.loads(data)
@@ -123,6 +130,8 @@ def _private_parent(path: Path, label: str, *, exact: bool = True) -> tuple[int,
         try:
             os.close(fd)
         except UnboundLocalError:
+            # Opening the filesystem anchor itself failed, so no descriptor
+            # exists to close on this expected cleanup path.
             pass
         raise GuardError(f"{label} parent is unavailable or unsafe") from exc
     info = os.fstat(fd)
@@ -207,61 +216,47 @@ def _private_write_new(path: Path, data: bytes, label: str) -> tuple[int, int]:
         os.close(parent)
 
 
-def _replace_private(
-    path: Path,
-    expected_identity: tuple[int, int],
-    old: dict[str, Any],
-    new: dict[str, Any],
-) -> tuple[int, int]:
-    data, identity = _private_read(path, "evidence", max_bytes=MAX_JSON_BYTES)
-    if identity != expected_identity or data != canonical_json(old):
-        raise GuardError("evidence identity changed")
-    parent, name = _private_parent(path, "evidence")
+def _rewrite_private_inode(
+    path: Path, expected_identity: tuple[int, int], data: bytes, label: str
+) -> None:
+    """Durably rewrite one reserved private inode without changing its identity."""
+
+    parent, name = _private_parent(path, label)
     try:
-        temp_name = f".{name}.next-{secrets.token_hex(16)}"
-        tombstone = f".{name}.previous-{secrets.token_hex(16)}"
-        fd = os.open(
-            temp_name,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-            0o600,
-            dir_fd=parent,
-        )
-        temp_info = os.fstat(fd)
         try:
-            os.fchmod(fd, 0o600)
-            encoded = canonical_json(new)
-            view = memoryview(encoded)
+            before = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            fd = os.open(
+                name,
+                os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=parent,
+            )
+        except OSError as exc:
+            raise GuardError(f"{label} is unavailable") from exc
+        try:
+            opened = os.fstat(fd)
+            identity = (opened.st_dev, opened.st_ino)
+            if (
+                identity != expected_identity
+                or identity != (before.st_dev, before.st_ino)
+                or not stat.S_ISREG(opened.st_mode)
+                or opened.st_uid != os.getuid()
+                or stat.S_IMODE(opened.st_mode) != 0o600
+            ):
+                raise GuardError(f"{label} identity changed")
+            os.ftruncate(fd, 0)
+            view = memoryview(data)
             while view:
                 count = os.write(fd, view)
                 if count <= 0:
-                    raise GuardError("evidence write failed")
+                    raise GuardError(f"{label} write failed")
                 view = view[count:]
             os.fsync(fd)
+            current = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            if (current.st_dev, current.st_ino) != expected_identity:
+                raise GuardError(f"{label} identity changed")
         finally:
             os.close(fd)
-        current = os.stat(name, dir_fd=parent, follow_symlinks=False)
-        if (current.st_dev, current.st_ino) != expected_identity:
-            _tombstone_unlink(
-                path.with_name(temp_name),
-                (temp_info.st_dev, temp_info.st_ino),
-                "evidence temporary",
-            )
-            raise GuardError("evidence identity changed")
-        os.rename(name, tombstone, src_dir_fd=parent, dst_dir_fd=parent)
-        moved = os.stat(tombstone, dir_fd=parent, follow_symlinks=False)
-        if (moved.st_dev, moved.st_ino) != expected_identity:
-            raise GuardError("evidence rename race requires manual recovery")
-        os.rename(temp_name, name, src_dir_fd=parent, dst_dir_fd=parent)
         os.fsync(parent)
-        retained = os.stat(tombstone, dir_fd=parent, follow_symlinks=False)
-        if (retained.st_dev, retained.st_ino) != expected_identity:
-            raise GuardError("evidence cleanup race requires manual recovery")
-        os.unlink(tombstone, dir_fd=parent)
-        os.fsync(parent)
-        published = os.stat(name, dir_fd=parent, follow_symlinks=False)
-        if not stat.S_ISREG(published.st_mode):
-            raise GuardError("evidence replacement is unsafe")
-        return published.st_dev, published.st_ino
     finally:
         os.close(parent)
 
@@ -272,6 +267,11 @@ def _transition_evidence(
     old: dict[str, Any],
     new: dict[str, Any],
 ) -> tuple[int, int]:
+    current_raw, current_identity = _private_read(
+        evidence_path, "evidence", max_bytes=MAX_JSON_BYTES
+    )
+    if current_identity != evidence_identity or current_raw != canonical_json(old):
+        raise GuardError("evidence identity or bytes changed")
     reservation_path = _reservation_path(evidence_path)
     raw, reservation_identity = _private_read(
         reservation_path, "evidence reservation", max_bytes=MAX_JSON_BYTES
@@ -284,39 +284,27 @@ def _transition_evidence(
     journal_path = _transition_path(evidence_path)
     journal = {
         "operation": "transition",
-        "old_evidence_identity": [evidence_identity[0], evidence_identity[1]],
-        "old_evidence_sha256": hashlib.sha256(canonical_json(old)).hexdigest(),
-        "old_reservation_identity": [reservation_identity[0], reservation_identity[1]],
-        "new_evidence_sha256": hashlib.sha256(canonical_json(new)).hexdigest(),
-        "new_evidence_identity": None,
+        "evidence_identity": [evidence_identity[0], evidence_identity[1]],
+        "reservation_identity": [reservation_identity[0], reservation_identity[1]],
+        "old_evidence": old,
+        "new_evidence": new,
     }
     _private_write_new(journal_path, canonical_json(journal), "evidence transition")
-    new_identity = _replace_private(evidence_path, evidence_identity, old, new)
-    journal_raw, journal_identity = _private_read(
-        journal_path, "evidence transition", max_bytes=MAX_JSON_BYTES
+    _rewrite_private_inode(
+        evidence_path, evidence_identity, canonical_json(new), "evidence"
     )
-    if journal_raw != canonical_json(journal):
-        raise GuardError("evidence transition changed")
-    journal["new_evidence_identity"] = [new_identity[0], new_identity[1]]
-    journal_identity = _replace_private(
-        journal_path,
-        journal_identity,
-        _json(journal_raw, "evidence transition"),
-        journal,
+    published_raw, published_identity = _private_read(
+        evidence_path, "evidence", max_bytes=MAX_JSON_BYTES
     )
-    _replace_private(
-        reservation_path,
-        reservation_identity,
-        reservation,
-        {"evidence_identity": [new_identity[0], new_identity[1]]},
-    )
+    if published_identity != evidence_identity or published_raw != canonical_json(new):
+        raise GuardError("evidence publication could not be verified")
     journal_raw, journal_identity = _private_read(
         journal_path, "evidence transition", max_bytes=MAX_JSON_BYTES
     )
     if journal_raw != canonical_json(journal):
         raise GuardError("evidence transition changed")
     _tombstone_unlink(journal_path, journal_identity, "evidence transition")
-    return new_identity
+    return evidence_identity
 
 
 def _reservation_path(evidence_path: Path) -> Path:
@@ -339,7 +327,141 @@ def _path_present(path: Path, label: str) -> bool:
         os.close(parent)
 
 
-def _recover_pair_transition(manifest: dict[str, Any], evidence_path: Path) -> None:
+def _valid_identity(value: Any) -> bool:
+    return (
+        isinstance(value, list)
+        and len(value) == 2
+        and not isinstance(value[0], bool)
+        and isinstance(value[0], int)
+        and value[0] >= 0
+        and not isinstance(value[1], bool)
+        and isinstance(value[1], int)
+        and value[1] > 0
+    )
+
+
+def _valid_plan_binding(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and set(value) == {"identity", "sha256"}
+        and _valid_identity(value.get("identity"))
+        and isinstance(value.get("sha256"), str)
+        and SHA256_RE.fullmatch(value["sha256"]) is not None
+    )
+
+
+def _receipt_time(value: Any, label: str) -> datetime:
+    try:
+        parsed = _time(value, label)
+    except GuardError as exc:
+        raise GuardError("evidence lifecycle receipt is invalid") from exc
+    if not isinstance(value, str) or _format_time(parsed) != value:
+        raise GuardError("evidence lifecycle receipt is invalid")
+    return parsed
+
+
+def _validate_lifecycle_receipt(
+    receipt: dict[str, Any],
+    manifest: dict[str, Any],
+    manifest_identity: tuple[int, int],
+) -> str:
+    common = {
+        "schema_version": SCHEMA_VERSION,
+        "provider": "vultr",
+        "environment": manifest["environment"],
+        "manifest_sha256": hashlib.sha256(canonical_json(manifest)).hexdigest(),
+        "manifest_identity": [manifest_identity[0], manifest_identity[1]],
+    }
+    if any(receipt.get(key) != value for key, value in common.items()):
+        raise GuardError("evidence lifecycle receipt is invalid")
+    status = receipt.get("status")
+    base_keys = set(common) | {"status"}
+    if status == "reserved":
+        if set(receipt) != base_keys:
+            raise GuardError("evidence lifecycle receipt is invalid")
+        return status
+    if status == "plan_validated":
+        if set(receipt) != base_keys | {"plan_binding"} or not _valid_plan_binding(
+            receipt.get("plan_binding")
+        ):
+            raise GuardError("evidence lifecycle receipt is invalid")
+        return status
+    expiry = _time(manifest["expiry_at"], "manifest expiry_at")
+    if status == "apply_started":
+        if set(receipt) != base_keys | {"plan_binding", "apply_started_at"} or not (
+            _valid_plan_binding(receipt.get("plan_binding"))
+        ):
+            raise GuardError("evidence lifecycle receipt is invalid")
+        if _receipt_time(receipt.get("apply_started_at"), "apply_started_at") >= expiry:
+            raise GuardError("evidence lifecycle receipt is invalid")
+        return status
+    if status in {"verified", "verified_after_expiry"}:
+        verified_keys = base_keys | {
+            "deadline_status",
+            "apply_started_at",
+            "observed_at",
+            "server_id",
+            "root",
+            "absent_addresses",
+            "billing_status",
+        }
+        started = _receipt_time(receipt.get("apply_started_at"), "apply_started_at")
+        observed = _receipt_time(receipt.get("observed_at"), "observed_at")
+        expected_addresses = sorted(
+            {
+                "vultr_instance.vpn",
+                "vultr_ssh_key.admin",
+                "vultr_firewall_group.vpn",
+                *manifest["resources"]["firewall_rules"],
+            }
+        )
+        expected_deadline = (
+            "within_deadline" if status == "verified" else "expired_after_apply"
+        )
+        if (
+            set(receipt) != verified_keys
+            or started >= expiry
+            or observed < started
+            or (status == "verified" and observed >= expiry)
+            or (status == "verified_after_expiry" and observed < expiry)
+            or receipt.get("deadline_status") != expected_deadline
+            or receipt.get("server_id") != manifest["resources"]["server_id"]
+            or receipt.get("root") != manifest["resources"]["root"]
+            or receipt.get("absent_addresses") != expected_addresses
+            or receipt.get("billing_status") != "no-active-owned-resources"
+        ):
+            raise GuardError("evidence lifecycle receipt is invalid")
+        return status
+    raise GuardError("evidence lifecycle receipt is invalid")
+
+
+def _valid_lifecycle_successor(
+    old_status: str,
+    new_status: str,
+    old_receipt: dict[str, Any],
+    new_receipt: dict[str, Any],
+) -> bool:
+    """Require immutable transaction fields across durable receipt successors."""
+
+    if (old_status, new_status) not in {
+        ("reserved", "plan_validated"),
+        ("plan_validated", "apply_started"),
+        ("apply_started", "verified"),
+        ("apply_started", "verified_after_expiry"),
+    }:
+        return False
+    if old_status == "plan_validated":
+        return old_receipt["plan_binding"] == new_receipt["plan_binding"]
+    if old_status == "apply_started":
+        return old_receipt["apply_started_at"] == new_receipt["apply_started_at"]
+    return True
+
+
+def _recover_pair_transition(
+    manifest: dict[str, Any],
+    manifest_identity: tuple[int, int],
+    evidence_path: Path,
+) -> None:
     """Finish a journaled evidence/reservation inode transition idempotently."""
 
     journal_path = _transition_path(evidence_path)
@@ -351,30 +473,48 @@ def _recover_pair_transition(manifest: dict[str, Any], evidence_path: Path) -> N
     journal = _json(raw, "evidence transition")
     if journal.get("operation") == "release":
         _recover_release_transition(
-            journal_path, journal, journal_identity, evidence_path
+            journal_path,
+            journal,
+            journal_identity,
+            evidence_path,
+            manifest,
+            manifest_identity,
         )
         return
     if (
         set(journal)
         != {
             "operation",
-            "old_evidence_identity",
-            "old_evidence_sha256",
-            "old_reservation_identity",
-            "new_evidence_sha256",
-            "new_evidence_identity",
+            "evidence_identity",
+            "reservation_identity",
+            "old_evidence",
+            "new_evidence",
         }
         or journal.get("operation") != "transition"
         or not all(
             isinstance(journal.get(key), list)
             and len(journal[key]) == 2
             and all(isinstance(value, int) for value in journal[key])
-            for key in ("old_evidence_identity", "old_reservation_identity")
+            for key in ("evidence_identity", "reservation_identity")
         )
-        or not all(
-            isinstance(journal.get(key), str) and SHA256_RE.fullmatch(journal[key])
-            for key in ("old_evidence_sha256", "new_evidence_sha256")
+        or not isinstance(journal.get("old_evidence"), dict)
+        or not isinstance(journal.get("new_evidence"), dict)
+    ):
+        raise GuardError("evidence transition is invalid")
+    try:
+        old_status = _validate_lifecycle_receipt(
+            journal["old_evidence"], manifest, manifest_identity
         )
+        new_status = _validate_lifecycle_receipt(
+            journal["new_evidence"], manifest, manifest_identity
+        )
+    except GuardError as exc:
+        raise GuardError("evidence transition is invalid") from exc
+    if not _valid_lifecycle_successor(
+        old_status,
+        new_status,
+        journal["old_evidence"],
+        journal["new_evidence"],
     ):
         raise GuardError("evidence transition is invalid")
     evidence_raw, evidence_identity = _private_read(
@@ -385,53 +525,33 @@ def _recover_pair_transition(manifest: dict[str, Any], evidence_path: Path) -> N
         reservation_path, "evidence reservation", max_bytes=MAX_JSON_BYTES
     )
     reservation = _json(reservation_raw, "evidence reservation")
-    old_identity = tuple(journal["old_evidence_identity"])
-    old_reservation_identity = tuple(journal["old_reservation_identity"])
-    old_evidence = (
-        hashlib.sha256(evidence_raw).hexdigest() == journal["old_evidence_sha256"]
-    )
-    new_evidence = (
-        hashlib.sha256(evidence_raw).hexdigest() == journal["new_evidence_sha256"]
-    )
-    old_reservation = (
-        reservation_identity == old_reservation_identity
-        and reservation == {"evidence_identity": list(old_identity)}
-    )
-    expected_identity_value = journal.get("new_evidence_identity")
-    if expected_identity_value is None:
-        if (
-            tuple(evidence_identity) == old_identity
-            and old_evidence
-            and old_reservation
-        ):
-            _tombstone_unlink(journal_path, journal_identity, "evidence transition")
-            return
-        raise GuardError("evidence transition requires manual recovery")
+    expected_evidence_identity = tuple(journal["evidence_identity"])
+    expected_reservation_identity = tuple(journal["reservation_identity"])
     if (
-        not isinstance(expected_identity_value, list)
-        or len(expected_identity_value) != 2
-        or not all(isinstance(value, int) for value in expected_identity_value)
+        tuple(evidence_identity) != expected_evidence_identity
+        or reservation_identity != expected_reservation_identity
+        or reservation != {"evidence_identity": list(expected_evidence_identity)}
     ):
-        raise GuardError("evidence transition is invalid")
-    expected_new_identity = tuple(expected_identity_value)
-    if tuple(evidence_identity) != expected_new_identity:
         raise GuardError("evidence transition requires manual recovery")
-    new_reservation = reservation == {
-        "evidence_identity": [evidence_identity[0], evidence_identity[1]]
-    }
-    if old_evidence and old_reservation:
-        _tombstone_unlink(journal_path, journal_identity, "evidence transition")
-        return
-    if not new_evidence:
+    old_raw = canonical_json(journal["old_evidence"])
+    new_raw = canonical_json(journal["new_evidence"])
+    if (
+        evidence_raw != old_raw
+        and evidence_raw != new_raw
+        and not new_raw.startswith(evidence_raw)
+    ):
         raise GuardError("evidence transition requires manual recovery")
-    if old_reservation:
-        _replace_private(
-            reservation_path,
-            reservation_identity,
-            reservation,
-            {"evidence_identity": [evidence_identity[0], evidence_identity[1]]},
+    if evidence_raw != new_raw:
+        _rewrite_private_inode(
+            evidence_path,
+            expected_evidence_identity,
+            new_raw,
+            "evidence",
         )
-    elif not new_reservation:
+    recovered_raw, recovered_identity = _private_read(
+        evidence_path, "evidence", max_bytes=MAX_JSON_BYTES
+    )
+    if recovered_identity != expected_evidence_identity or recovered_raw != new_raw:
         raise GuardError("evidence transition requires manual recovery")
     _tombstone_unlink(journal_path, journal_identity, "evidence transition")
 
@@ -441,24 +561,65 @@ def _recover_release_transition(
     journal: dict[str, Any],
     journal_identity: tuple[int, int],
     evidence_path: Path,
+    manifest: dict[str, Any],
+    manifest_identity: tuple[int, int],
 ) -> None:
-    if set(journal) != {
-        "operation",
-        "evidence_identity",
-        "reservation_identity",
-    } or not all(
-        isinstance(journal.get(key), list)
-        and len(journal[key]) == 2
-        and all(isinstance(value, int) for value in journal[key])
-        for key in ("evidence_identity", "reservation_identity")
+    if (
+        set(journal)
+        != {
+            "operation",
+            "evidence_identity",
+            "reservation_identity",
+            "evidence",
+        }
+        or not all(
+            isinstance(journal.get(key), list)
+            and len(journal[key]) == 2
+            and all(isinstance(value, int) for value in journal[key])
+            for key in ("evidence_identity", "reservation_identity")
+        )
+        or not isinstance(journal.get("evidence"), dict)
     ):
+        raise GuardError("evidence release transition is invalid")
+    try:
+        evidence_status = _validate_lifecycle_receipt(
+            journal["evidence"], manifest, manifest_identity
+        )
+    except GuardError as exc:
+        raise GuardError("evidence release transition is invalid") from exc
+    if evidence_status not in {"reserved", "plan_validated"}:
         raise GuardError("evidence release transition is invalid")
     evidence_identity = tuple(journal["evidence_identity"])
     reservation_identity = tuple(journal["reservation_identity"])
-    if _path_present(evidence_path, "evidence"):
-        _tombstone_unlink(evidence_path, evidence_identity, "evidence")
+    evidence_present = _path_present(evidence_path, "evidence")
     reservation_path = _reservation_path(evidence_path)
-    if _path_present(reservation_path, "evidence reservation"):
+    reservation_present = _path_present(reservation_path, "evidence reservation")
+    if evidence_present:
+        evidence_raw, actual_evidence_identity = _private_read(
+            evidence_path, "evidence", max_bytes=MAX_JSON_BYTES
+        )
+        if (
+            actual_evidence_identity != evidence_identity
+            or evidence_raw != canonical_json(journal["evidence"])
+        ):
+            raise GuardError("evidence release transition requires manual recovery")
+    if reservation_present:
+        reservation_raw, actual_reservation_identity = _private_read(
+            reservation_path, "evidence reservation", max_bytes=MAX_JSON_BYTES
+        )
+        expected_reservation = canonical_json(
+            {"evidence_identity": list(evidence_identity)}
+        )
+        if (
+            actual_reservation_identity != reservation_identity
+            or reservation_raw != expected_reservation
+        ):
+            raise GuardError("evidence release transition requires manual recovery")
+    if evidence_present and not reservation_present:
+        raise GuardError("evidence release transition requires manual recovery")
+    if evidence_present:
+        _tombstone_unlink(evidence_path, evidence_identity, "evidence")
+    if reservation_present:
         _tombstone_unlink(
             reservation_path, reservation_identity, "evidence reservation"
         )
@@ -611,6 +772,13 @@ def _extract_identity(state: dict[str, Any], hostname: str) -> dict[str, Any]:
     ssh_ids = instance.get("ssh_key_ids")
     if not isinstance(ssh_ids, list) or ssh_ids != [ssh_id]:
         raise GuardError("state SSH key binding is not exact")
+    ssh_port = indexed["terraform_data.ssh_port"].get("input")
+    if (
+        isinstance(ssh_port, bool)
+        or not isinstance(ssh_port, int)
+        or not 1 <= ssh_port <= 65535
+    ):
+        raise GuardError("state SSH port binding is invalid")
     rules: dict[str, str] = {}
     icmp_keys: set[str] = set()
     for address in firewall_addresses:
@@ -642,7 +810,7 @@ def _extract_identity(state: dict[str, Any], hostname: str) -> dict[str, Any]:
                 source.prefixlen not in {32, 128}
                 or rule.get("protocol") != "tcp"
                 or rule.get("ip_type") != ip_type
-                or str(rule.get("port")) != "22"
+                or str(rule.get("port")) != str(ssh_port)
                 or rule.get("subnet") != str(source.network_address)
                 or rule.get("subnet_size") != source.prefixlen
             ):
@@ -665,7 +833,7 @@ def _extract_identity(state: dict[str, Any], hostname: str) -> dict[str, Any]:
                 or rule.get("subnet_size") != 0
             ):
                 raise GuardError("state public listener rule is not exact")
-        rule_id = _uuid(rule.get("id"), "firewall rule ID")
+        rule_id = _decimal_id(rule.get("id"), "firewall rule ID")
         if rule.get("firewall_group_id") != firewall_group_id:
             raise GuardError("state firewall rule belongs to a foreign group")
         rules[address] = rule_id
@@ -676,6 +844,7 @@ def _extract_identity(state: dict[str, Any], hostname: str) -> dict[str, Any]:
         raise GuardError("state Terraform data binding is invalid")
     return {
         "terraform_data_ssh_port_id": terraform_data_id,
+        "ssh_port": ssh_port,
         "server_id": server_id,
         "root": {
             "kind": "instance-root",
@@ -812,6 +981,7 @@ def load_manifest(
 def _validate_manifest_resources(resources: dict[str, Any]) -> None:
     required = {
         "terraform_data_ssh_port_id",
+        "ssh_port",
         "server_id",
         "root",
         "ssh_key_id",
@@ -831,6 +1001,13 @@ def _validate_manifest_resources(resources: dict[str, Any]) -> None:
     _uuid(resources.get("firewall_group_id"), "firewall group ID")
     if not isinstance(resources.get("terraform_data_ssh_port_id"), str):
         raise GuardError("manifest Terraform data binding is invalid")
+    ssh_port = resources.get("ssh_port")
+    if (
+        isinstance(ssh_port, bool)
+        or not isinstance(ssh_port, int)
+        or not 1 <= ssh_port <= 65535
+    ):
+        raise GuardError("manifest SSH port binding is invalid")
     rules = resources.get("firewall_rules")
     if not isinstance(rules, dict) or not rules:
         raise GuardError("manifest firewall rule binding is invalid")
@@ -839,7 +1016,7 @@ def _validate_manifest_resources(resources: dict[str, Any]) -> None:
             "vultr_firewall_rule."
         ):
             raise GuardError("manifest firewall rule binding is invalid")
-        _uuid(rule_id, "firewall rule ID")
+        _decimal_id(rule_id, "firewall rule ID")
 
 
 def reserve_evidence(
@@ -911,19 +1088,46 @@ def release_evidence(
     """Release an unused reserved evidence pair after a pre-apply failure."""
 
     manifest = load_manifest(
-        manifest_path, now=now, expected_environment=expected_environment
+        manifest_path,
+        now=now,
+        expected_environment=expected_environment,
+        allow_expired=True,
     )
-    _, evidence_identity = _evidence(manifest, manifest_path, evidence_path, "reserved")
-    _, reservation_identity = _private_read(
-        _reservation_path(evidence_path),
+    _, manifest_identity = _private_read(
+        manifest_path.absolute(), "manifest", max_bytes=MAX_JSON_BYTES
+    )
+    reservation_path = _reservation_path(evidence_path)
+    reservation_raw, reservation_identity = _private_read(
+        reservation_path,
         "evidence reservation",
         max_bytes=MAX_JSON_BYTES,
     )
+    evidence, evidence_identity = _evidence(
+        manifest,
+        manifest_path,
+        evidence_path,
+        {"reserved", "plan_validated"},
+    )
+    expected_reservation = canonical_json(
+        {"evidence_identity": [evidence_identity[0], evidence_identity[1]]}
+    )
+    confirmed_reservation_raw, confirmed_reservation_identity = _private_read(
+        reservation_path,
+        "evidence reservation",
+        max_bytes=MAX_JSON_BYTES,
+    )
+    if (
+        reservation_raw != expected_reservation
+        or confirmed_reservation_raw != expected_reservation
+        or confirmed_reservation_identity != reservation_identity
+    ):
+        raise GuardError("evidence reservation identity or bytes changed")
     journal_path = _transition_path(evidence_path)
     journal = {
         "operation": "release",
         "evidence_identity": [evidence_identity[0], evidence_identity[1]],
         "reservation_identity": [reservation_identity[0], reservation_identity[1]],
+        "evidence": evidence,
     }
     _private_write_new(journal_path, canonical_json(journal), "evidence transition")
     journal_raw, journal_identity = _private_read(
@@ -931,7 +1135,14 @@ def release_evidence(
     )
     if journal_raw != canonical_json(journal):
         raise GuardError("evidence transition changed")
-    _recover_release_transition(journal_path, journal, journal_identity, evidence_path)
+    _recover_release_transition(
+        journal_path,
+        journal,
+        journal_identity,
+        evidence_path,
+        manifest,
+        manifest_identity,
+    )
 
 
 def recover_reserved_evidence(
@@ -944,9 +1155,15 @@ def recover_reserved_evidence(
     """Explicit crash recovery for an unused EEXIST reservation."""
 
     manifest = load_manifest(
-        manifest_path, now=now, expected_environment=expected_environment
+        manifest_path,
+        now=now,
+        expected_environment=expected_environment,
+        allow_expired=True,
     )
-    _recover_pair_transition(manifest, evidence_path)
+    _, manifest_identity = _private_read(
+        manifest_path.absolute(), "manifest", max_bytes=MAX_JSON_BYTES
+    )
+    _recover_pair_transition(manifest, manifest_identity, evidence_path)
     if _path_present(evidence_path, "evidence"):
         release_evidence(
             manifest_path,
@@ -957,27 +1174,26 @@ def recover_reserved_evidence(
 
 
 def _evidence(
-    manifest: dict[str, Any], manifest_path: Path, evidence_path: Path, status: str
+    manifest: dict[str, Any],
+    manifest_path: Path,
+    evidence_path: Path,
+    status: str | set[str],
 ) -> tuple[dict[str, Any], tuple[int, int]]:
-    _recover_pair_transition(manifest, evidence_path)
+    _, manifest_identity = _private_read(
+        manifest_path.absolute(), "manifest", max_bytes=MAX_JSON_BYTES
+    )
+    _recover_pair_transition(manifest, manifest_identity, evidence_path)
     raw, identity = _private_read(
         evidence_path.absolute(), "evidence", max_bytes=MAX_JSON_BYTES
     )
     value = _json(raw, "evidence")
-    expected_hash = hashlib.sha256(canonical_json(manifest)).hexdigest()
-    if (
-        raw != canonical_json(value)
-        or value.get("status") != status
-        or value.get("provider") != "vultr"
-        or value.get("environment") != manifest["environment"]
-        or value.get("manifest_sha256") != expected_hash
-    ):
+    expected_statuses = {status} if isinstance(status, str) else status
+    try:
+        actual_status = _validate_lifecycle_receipt(value, manifest, manifest_identity)
+    except GuardError as exc:
+        raise GuardError("evidence reservation is invalid") from exc
+    if raw != canonical_json(value) or actual_status not in expected_statuses:
         raise GuardError("evidence reservation is invalid")
-    _, manifest_identity = _private_read(
-        manifest_path.absolute(), "manifest", max_bytes=MAX_JSON_BYTES
-    )
-    if value.get("manifest_identity") != [manifest_identity[0], manifest_identity[1]]:
-        raise GuardError("manifest identity changed")
     reservation_raw, _ = _private_read(
         _reservation_path(evidence_path).absolute(),
         "evidence reservation",
@@ -1043,14 +1259,18 @@ def _read_bound_plan(fd: int, binding: PlanBinding) -> bytes:
     return data
 
 
-def _terraform_show_json(plan_fd: int) -> bytes:
+def _terraform_show_json(plan_fd: int, environment: str) -> bytes:
     """Render the JSON view from the same inherited Terraform binary-plan FD."""
 
     bind_plan_fd(plan_fd)
+    terraform_env = Path(__file__).resolve().with_name("terraform-env.sh")
+    child_environment = os.environ.copy()
+    child_environment.update({"PROVIDER": "vultr", "ENV": environment})
     try:
         result = subprocess.run(
-            ["terraform", "show", "-json", f"/dev/fd/{plan_fd}"],
+            [str(terraform_env), "show", "-json", f"/dev/fd/{plan_fd}"],
             check=False,
+            env=child_environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -1082,7 +1302,9 @@ def validate_destroy_plan(
     if _account_binding(request_json) != manifest["provider_account_binding"]:
         raise GuardError("provider account identity changed")
     binding = bind_plan_fd(plan_fd)
-    plan = _json(_terraform_show_json(plan_fd), "destroy plan view")
+    plan = _json(
+        _terraform_show_json(plan_fd, manifest["environment"]), "destroy plan view"
+    )
     changes = plan.get("resource_changes")
     if not isinstance(changes, list):
         raise GuardError("destroy plan lacks resource changes")
@@ -1138,9 +1360,11 @@ def mark_apply_started(
     request_json: JsonRequest,
     plan_fd: int,
     now: datetime | None = None,
+    clock: Callable[[], datetime] | None = None,
     expected_environment: str | None = None,
 ) -> dict[str, Any]:
-    current = _time(now or datetime.now(timezone.utc), "current time")
+    read_clock = clock or (lambda: datetime.now(timezone.utc))
+    current = _time(now or read_clock(), "current time")
     raw_before, manifest_identity = _private_read(
         manifest_path.absolute(), "manifest", max_bytes=MAX_JSON_BYTES
     )
@@ -1202,9 +1426,14 @@ def mark_apply_started(
         plan_fd,
         PlanBinding(tuple(plan_value["identity"]), plan_value["sha256"]),
     )
+    final_current = _time(
+        read_clock() if clock is not None or now is None else now, "current time"
+    )
+    if final_current >= _time(manifest["expiry_at"], "manifest expiry_at"):
+        raise GuardError("manifest cleanup schedule is invalid or expired")
     started = dict(evidence)
     started.update(
-        {"status": "apply_started", "apply_started_at": _format_time(current)}
+        {"status": "apply_started", "apply_started_at": _format_time(final_current)}
     )
     _transition_evidence(evidence_path, evidence_identity, evidence, started)
     return started
@@ -1226,9 +1455,15 @@ def verify_vultr_absence(
         verify_state=False,
         allow_expired=True,
     )
-    started, identity = _evidence(
-        manifest, manifest_path, evidence_path, "apply_started"
-    )
+    try:
+        started, identity = _evidence(
+            manifest, manifest_path, evidence_path, "apply_started"
+        )
+    except GuardError as exc:
+        raise GuardError("apply start receipt is invalid") from exc
+    started_at = _receipt_time(started["apply_started_at"], "apply_started_at")
+    if started_at > current:
+        raise GuardError("apply start receipt is invalid")
     if _account_binding(request_json) != manifest["provider_account_binding"]:
         raise GuardError("provider account identity changed")
     endpoints = {
@@ -1264,7 +1499,7 @@ def verify_vultr_absence(
         "absent_addresses": sorted(endpoints),
         "billing_status": "no-active-owned-resources",
     }
-    _replace_private(evidence_path, identity, started, verified)
+    _transition_evidence(evidence_path, identity, started, verified)
     return verified
 
 
@@ -1426,7 +1661,6 @@ def main(argv: list[str] | None = None) -> int:
             args.evidence_output,
             request_json=request_json,
             plan_fd=args.fd_number,
-            now=now,
             expected_environment=args.expected_environment,
         )
         print("staging provider apply start recorded")

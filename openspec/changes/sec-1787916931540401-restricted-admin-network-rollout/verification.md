@@ -103,6 +103,21 @@ and validates and applies one already-opened, unlinked mode-0600 plan
 descriptor. Success requires authenticated typed absence for every bound
 resource before the redacted audit event; inventory remains byte-identical.
 
+The review follow-up models real Vultr firewall rules as positive decimal IDs,
+binds SSH rules to `terraform_data.ssh_port`, and renders the binary plan
+through the selected Vultr workspace while retaining the same inherited plan
+descriptor. Evidence transitions use a durable private journal and rewrite the
+original reservation inode in place; crash recovery completes either a
+not-yet-started, partial or already-published update, and pre-apply
+`plan_validated` evidence can be released without weakening the durable
+`apply_started` boundary. Replay validates the exact typed old and new receipts,
+manifest binding and allowed lifecycle successor before any mutation. Release
+revalidates the exact reservation inode and canonical binding before unlinking
+either member of the pair. Typed absence requires a complete canonical apply
+receipt with a strictly pre-expiry UTC timestamp before any provider lookup.
+The final pre-apply check reads the clock again and persists only that fresh,
+strictly pre-expiry timestamp.
+
 The exact source commit `623b90c` passed 110 focused provider-controller tests,
 independent security review and the canonical local `make -j1 check` gate:
 3,802 Python tests passed with three existing skips, all 55 Bats tests passed,

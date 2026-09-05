@@ -23,12 +23,12 @@ REAL_TERRAFORM_SHOW = guard._terraform_show_json
 SERVER = "00112233-4455-4677-8899-aabbccddeeff"
 SSH_RESOURCE = "10112233-4455-4677-8899-aabbccddeeff"
 FIREWALL = "20112233-4455-4677-8899-aabbccddeeff"
-RULE_ONE = "30112233-4455-4677-8899-aabbccddeeff"
-RULE_TWO = "40112233-4455-4677-8899-aabbccddeeff"
-RULE_THREE = "50112233-4455-4677-8899-aabbccddeeff"
-RULE_FOUR = "60112233-4455-4677-8899-aabbccddeeff"
-RULE_FIVE = "70112233-4455-4677-8899-aabbccddeeff"
-RULE_SIX = "80112233-4455-4677-8899-aabbccddeeff"
+RULE_ONE = "30112233"
+RULE_TWO = "40112233"
+RULE_THREE = "50112233"
+RULE_FOUR = "60112233"
+RULE_FIVE = "70112233"
+RULE_SIX = "80112233"
 NOW = datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc)
 CREATED = NOW - timedelta(hours=2)
 ENV = "ci-staging-20260905"
@@ -68,13 +68,15 @@ def _absent_request(path: str) -> tuple[int, dict[str, object]]:
     raise AssertionError(path)
 
 
-def _state(*, extras: list[dict[str, object]] | None = None) -> dict[str, object]:
+def _state(
+    *, ssh_port: int = 22, extras: list[dict[str, object]] | None = None
+) -> dict[str, object]:
     records: list[dict[str, object]] = [
         {
             "mode": "managed",
             "type": "terraform_data",
             "name": "ssh_port",
-            "instances": [{"attributes": {"id": "local"}}],
+            "instances": [{"attributes": {"id": "local", "input": ssh_port}}],
         },
         {
             "mode": "managed",
@@ -146,7 +148,7 @@ def _state(*, extras: list[dict[str, object]] | None = None) -> dict[str, object
                         "firewall_group_id": FIREWALL,
                         "protocol": "tcp",
                         "ip_type": "v4",
-                        "port": "22",
+                        "port": str(ssh_port),
                         "subnet": "203.0.113.1",
                         "subnet_size": 32,
                     },
@@ -158,7 +160,7 @@ def _state(*, extras: list[dict[str, object]] | None = None) -> dict[str, object
                         "firewall_group_id": FIREWALL,
                         "protocol": "tcp",
                         "ip_type": "v6",
-                        "port": "22",
+                        "port": str(ssh_port),
                         "subnet": "2001:db8::1",
                         "subnet_size": 128,
                     },
@@ -255,7 +257,8 @@ def _plan_files(parent: Path, view: dict[str, object]) -> tuple[Path, int]:
 def _same_fd_terraform_show(monkeypatch: pytest.MonkeyPatch) -> None:
     PLAN_VIEWS.clear()
 
-    def render(plan_fd: int) -> bytes:
+    def render(plan_fd: int, environment: str) -> bytes:
+        assert environment == ENV
         info = os.fstat(plan_fd)
         try:
             return PLAN_VIEWS[(info.st_dev, info.st_ino)]
@@ -276,6 +279,7 @@ def test_manifest_is_private_canonical_and_binds_exact_vultr_resources(
         "server_id": SERVER,
         "separate_storage_id": None,
     }
+    assert manifest["resources"]["ssh_port"] == 22
     assert manifest["created_at"] == "2026-09-05T10:00:00Z"
     assert manifest["target_at"] == "2026-09-06T22:00:00Z"
     assert manifest["escalation_at"] == "2026-09-07T06:00:00Z"
@@ -285,6 +289,60 @@ def test_manifest_is_private_canonical_and_binds_exact_vultr_resources(
         == hashlib.sha256(b"vultr-account-v1:cleanup@example.test").hexdigest()
     )
     assert "cleanup@example.test" not in path.read_text()
+
+
+def test_manifest_binds_configured_ssh_port_and_decimal_firewall_rule_ids(
+    tmp_path: Path,
+) -> None:
+    private = tmp_path / "private"
+    state_path = _private(
+        private / "terraform.tfstate", guard.canonical_json(_state(ssh_port=2222))
+    )
+    manifest = guard.create_manifest(
+        output_path=private / "manifest.json",
+        provider="vultr",
+        environment=ENV,
+        workspace=ENV,
+        state_path=state_path,
+        hostname=HOST,
+        request_json=_request,
+        now=NOW,
+    )
+
+    assert manifest["resources"]["ssh_port"] == 2222
+    assert set(manifest["resources"]["firewall_rules"].values()) == {
+        RULE_ONE,
+        RULE_TWO,
+        RULE_THREE,
+        RULE_FOUR,
+        RULE_FIVE,
+        RULE_SIX,
+    }
+
+
+@pytest.mark.parametrize("rule_id", ["0", "-1", "1.5", "rule-123", 123])
+def test_manifest_refuses_non_decimal_firewall_rule_ids(
+    tmp_path: Path, rule_id: object
+) -> None:
+    state = _state()
+    rule = next(
+        item for item in state["resources"] if item["type"] == "vultr_firewall_rule"
+    )["instances"][0]["attributes"]
+    rule["id"] = rule_id
+    private = tmp_path / "private"
+    state_path = _private(private / "state.json", guard.canonical_json(state))
+
+    with pytest.raises(guard.GuardError, match="positive decimal ID"):
+        guard.create_manifest(
+            output_path=private / "manifest.json",
+            provider="vultr",
+            environment=ENV,
+            workspace=ENV,
+            state_path=state_path,
+            hostname=HOST,
+            request_json=_request,
+            now=NOW,
+        )
 
 
 @pytest.mark.parametrize("kind", ["backup", "ip", "dns", "foreign"])
@@ -424,6 +482,8 @@ def test_plan_apply_and_typed_absence_are_bound_to_manifest_and_account(
     reserved = guard.reserve_evidence(
         manifest_path, evidence_path, now=NOW, expected_environment=ENV
     )
+    reserved_inode = evidence_path.stat().st_ino
+    evidence_fd = os.open(evidence_path, os.O_RDONLY)
     _, fd = _plan_files(manifest_path.parent, _plan())
     try:
         result = guard.validate_destroy_plan(
@@ -466,6 +526,14 @@ def test_plan_apply_and_typed_absence_are_bound_to_manifest_and_account(
         "vultr_ssh_key.admin",
     ]
     assert "balance" not in evidence_path.read_text()
+    assert evidence_path.stat().st_ino == reserved_inode
+    os.lseek(evidence_fd, 0, os.SEEK_SET)
+    try:
+        assert os.read(evidence_fd, guard.MAX_JSON_BYTES) == guard.canonical_json(
+            verified
+        )
+    finally:
+        os.close(evidence_fd)
     assert manifest["resources"]["server_id"] == SERVER
     assert reserved["status"] == "reserved"
 
@@ -540,7 +608,7 @@ def test_preapply_reauth_and_evidence_inode_replacement_refuse(tmp_path: Path) -
     os.close(fd)
 
 
-def test_evidence_status_uses_atomic_inode_replacement(tmp_path: Path) -> None:
+def test_preapply_same_inode_evidence_byte_change_refuses(tmp_path: Path) -> None:
     manifest_path, _ = _manifest(tmp_path)
     evidence_path = manifest_path.with_name("evidence.json")
     guard.reserve_evidence(
@@ -555,7 +623,43 @@ def test_evidence_status_uses_atomic_inode_replacement(tmp_path: Path) -> None:
         now=NOW,
         expected_environment=ENV,
     )
+    original_inode = evidence_path.stat().st_ino
+    with evidence_path.open("r+b") as stream:
+        stream.seek(0)
+        stream.write(b"{}\n")
+        stream.truncate()
+        os.fsync(stream.fileno())
+    assert evidence_path.stat().st_ino == original_inode
+    try:
+        with pytest.raises(guard.GuardError, match="evidence"):
+            guard.mark_apply_started(
+                manifest_path,
+                evidence_path,
+                request_json=_request,
+                plan_fd=fd,
+                now=NOW,
+                expected_environment=ENV,
+            )
+    finally:
+        os.close(fd)
+
+
+def test_evidence_status_preserves_the_reserved_inode(tmp_path: Path) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
     reserved_inode = evidence_path.stat().st_ino
+    _, fd = _plan_files(manifest_path.parent, _plan())
+    guard.validate_destroy_plan(
+        manifest_path,
+        evidence_path,
+        request_json=_request,
+        plan_fd=fd,
+        now=NOW,
+        expected_environment=ENV,
+    )
     try:
         guard.mark_apply_started(
             manifest_path,
@@ -567,8 +671,74 @@ def test_evidence_status_uses_atomic_inode_replacement(tmp_path: Path) -> None:
         )
     finally:
         os.close(fd)
-    assert evidence_path.stat().st_ino != reserved_inode
+    assert evidence_path.stat().st_ino == reserved_inode
     assert not list(evidence_path.parent.glob(".evidence.json.previous-*"))
+
+
+def test_apply_start_rereads_clock_and_refuses_at_expiry(tmp_path: Path) -> None:
+    manifest_path, manifest = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    _, fd = _plan_files(manifest_path.parent, _plan())
+    guard.validate_destroy_plan(
+        manifest_path,
+        evidence_path,
+        request_json=_request,
+        plan_fd=fd,
+        now=NOW,
+        expected_environment=ENV,
+    )
+    expiry = datetime.fromisoformat(manifest["expiry_at"].replace("Z", "+00:00"))
+    try:
+        with pytest.raises(guard.GuardError, match="expired"):
+            guard.mark_apply_started(
+                manifest_path,
+                evidence_path,
+                request_json=_request,
+                plan_fd=fd,
+                now=expiry - timedelta(seconds=1),
+                clock=lambda: expiry,
+                expected_environment=ENV,
+            )
+    finally:
+        os.close(fd)
+    assert (
+        guard._json(evidence_path.read_bytes(), "evidence")["status"]
+        == "plan_validated"
+    )
+
+
+def test_apply_start_persists_the_final_clock_read(tmp_path: Path) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    _, fd = _plan_files(manifest_path.parent, _plan())
+    guard.validate_destroy_plan(
+        manifest_path,
+        evidence_path,
+        request_json=_request,
+        plan_fd=fd,
+        now=NOW,
+        expected_environment=ENV,
+    )
+    final = NOW + timedelta(minutes=3)
+    try:
+        started = guard.mark_apply_started(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            clock=lambda: final,
+            expected_environment=ENV,
+        )
+    finally:
+        os.close(fd)
+    assert started["apply_started_at"] == "2026-09-05T12:03:00Z"
 
 
 def test_absence_requires_every_id_to_return_404_and_account_to_match(
@@ -613,6 +783,79 @@ def test_absence_requires_every_id_to_return_404_and_account_to_match(
             now=NOW,
             expected_environment=ENV,
         )
+
+
+@pytest.mark.parametrize(
+    "receipt_mutation",
+    [
+        "missing-started-at",
+        "malformed-started-at",
+        "expiry-started-at",
+        "after-expiry-started-at",
+        "missing-plan-binding",
+    ],
+)
+def test_absence_refuses_untyped_or_late_apply_receipt_before_provider_lookup(
+    tmp_path: Path, receipt_mutation: str
+) -> None:
+    manifest_path, manifest = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    _, fd = _plan_files(manifest_path.parent, _plan())
+    try:
+        guard.validate_destroy_plan(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+        guard.mark_apply_started(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+    finally:
+        os.close(fd)
+    raw, identity = guard._private_read(
+        evidence_path, "evidence", max_bytes=guard.MAX_JSON_BYTES
+    )
+    started = guard._json(raw, "evidence")
+    expiry = datetime.fromisoformat(manifest["expiry_at"].replace("Z", "+00:00"))
+    if receipt_mutation == "missing-started-at":
+        started.pop("apply_started_at")
+    elif receipt_mutation == "malformed-started-at":
+        started["apply_started_at"] = "not-a-time"
+    elif receipt_mutation == "expiry-started-at":
+        started["apply_started_at"] = guard._format_time(expiry)
+    elif receipt_mutation == "after-expiry-started-at":
+        started["apply_started_at"] = guard._format_time(expiry + timedelta(seconds=1))
+    else:
+        started.pop("plan_binding")
+    guard._rewrite_private_inode(
+        evidence_path, identity, guard.canonical_json(started), "evidence"
+    )
+    calls: list[str] = []
+
+    def unexpected_provider_lookup(path: str) -> tuple[int, dict[str, object]]:
+        calls.append(path)
+        return 404, {}
+
+    with pytest.raises(guard.GuardError, match="apply start"):
+        guard.verify_vultr_absence(
+            manifest_path,
+            evidence_path,
+            request_json=unexpected_provider_lookup,
+            now=expiry + timedelta(minutes=1),
+            expected_environment=ENV,
+        )
+    assert calls == []
 
 
 def test_post_apply_empty_terraform_state_does_not_block_typed_provider_absence(
@@ -747,7 +990,7 @@ def test_same_plan_fd_must_survive_from_validation_to_apply(tmp_path: Path) -> N
     )
     _, fd = _plan_files(manifest_path.parent, _plan())
     try:
-        result = guard.validate_destroy_plan(
+        guard.validate_destroy_plan(
             manifest_path,
             evidence_path,
             request_json=_request,
@@ -781,7 +1024,7 @@ def test_different_plan_bytes_fail_at_apply_boundary(tmp_path: Path) -> None:
     second = _private(manifest_path.parent / "second.tfplan", b"TFPLAN\x00other\n")
     second_fd = os.open(second, os.O_RDONLY)
     try:
-        result = guard.validate_destroy_plan(
+        guard.validate_destroy_plan(
             manifest_path,
             evidence_path,
             request_json=_request,
@@ -917,6 +1160,108 @@ def test_release_and_recovery_tombstone_only_the_owned_reservation(
     assert not guard._reservation_path(evidence_path).exists()
 
 
+def test_release_accepts_plan_validated_evidence_before_apply(tmp_path: Path) -> None:
+    manifest_path, manifest = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    _, fd = _plan_files(manifest_path.parent, _plan())
+    try:
+        guard.validate_destroy_plan(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+    finally:
+        os.close(fd)
+    expiry = datetime.fromisoformat(manifest["expiry_at"].replace("Z", "+00:00"))
+    guard.release_evidence(
+        manifest_path,
+        evidence_path,
+        now=expiry + timedelta(minutes=1),
+        expected_environment=ENV,
+    )
+    assert not evidence_path.exists()
+    assert not guard._reservation_path(evidence_path).exists()
+    assert not guard._transition_path(evidence_path).exists()
+
+
+def test_release_refuses_replaced_reservation_before_journal_without_unlinking_pair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    reservation_path = guard._reservation_path(evidence_path)
+    original_evidence_inode = evidence_path.stat().st_ino
+    original_reservation = reservation_path.read_bytes()
+    original_write = guard._private_write_new
+
+    def replace_reservation_before_journal(
+        path: Path, data: bytes, label: str
+    ) -> tuple[int, int]:
+        if path == guard._transition_path(evidence_path):
+            replacement = reservation_path.with_name("foreign-reservation.json")
+            _private(replacement, original_reservation)
+            replacement.replace(reservation_path)
+        return original_write(path, data, label)
+
+    monkeypatch.setattr(guard, "_private_write_new", replace_reservation_before_journal)
+    with pytest.raises(guard.GuardError, match="identity changed|manual recovery"):
+        guard.release_evidence(
+            manifest_path, evidence_path, now=NOW, expected_environment=ENV
+        )
+    assert evidence_path.stat().st_ino == original_evidence_inode
+    assert reservation_path.read_bytes() == original_reservation
+    assert guard._transition_path(evidence_path).exists()
+
+
+def test_release_refuses_changed_reservation_bytes_before_unlinking_pair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    reservation_path = guard._reservation_path(evidence_path)
+    evidence_inode = evidence_path.stat().st_ino
+    _, reservation_identity = guard._private_read(
+        reservation_path,
+        "evidence reservation",
+        max_bytes=guard.MAX_JSON_BYTES,
+    )
+    original_write = guard._private_write_new
+
+    def change_reservation_before_journal(
+        path: Path, data: bytes, label: str
+    ) -> tuple[int, int]:
+        if path == guard._transition_path(evidence_path):
+            guard._rewrite_private_inode(
+                reservation_path,
+                reservation_identity,
+                b"{}\n",
+                "evidence reservation",
+            )
+        return original_write(path, data, label)
+
+    monkeypatch.setattr(guard, "_private_write_new", change_reservation_before_journal)
+    with pytest.raises(guard.GuardError, match="manual recovery"):
+        guard.release_evidence(
+            manifest_path, evidence_path, now=NOW, expected_environment=ENV
+        )
+    assert evidence_path.stat().st_ino == evidence_inode
+    assert reservation_path.stat().st_ino == reservation_identity[1]
+    assert reservation_path.read_bytes() == b"{}\n"
+    assert guard._transition_path(evidence_path).exists()
+
+
 def test_reservation_second_write_failure_tombstones_only_new_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -941,7 +1286,7 @@ def test_reservation_second_write_failure_tombstones_only_new_evidence(
     assert not guard._reservation_path(evidence_path).exists()
 
 
-def test_transition_recovery_finishes_after_reservation_inode_replace_failure(
+def test_transition_recovery_finishes_after_evidence_publish_before_return(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     manifest_path, manifest = _manifest(tmp_path)
@@ -950,16 +1295,20 @@ def test_transition_recovery_finishes_after_reservation_inode_replace_failure(
         manifest_path, evidence_path, now=NOW, expected_environment=ENV
     )
     _, fd = _plan_files(manifest_path.parent, _plan())
-    original = guard._replace_private
+    original = guard._rewrite_private_inode
+    crashed = False
 
-    def fail_second(*args: object, **kwargs: object) -> tuple[int, int]:
-        if args[0] == guard._reservation_path(evidence_path):
-            raise guard.GuardError("simulated reservation replacement failure")
-        return original(*args, **kwargs)
+    def crash_after_publish(*args: object, **kwargs: object) -> None:
+        nonlocal crashed
+        original(*args, **kwargs)
+        if args[0] == evidence_path and not crashed:
+            crashed = True
+            raise guard.GuardError("simulated post-publish crash")
 
-    monkeypatch.setattr(guard, "_replace_private", fail_second)
+    reserved_inode = evidence_path.stat().st_ino
+    monkeypatch.setattr(guard, "_rewrite_private_inode", crash_after_publish)
     try:
-        with pytest.raises(guard.GuardError, match="simulated reservation"):
+        with pytest.raises(guard.GuardError, match="post-publish"):
             guard.validate_destroy_plan(
                 manifest_path,
                 evidence_path,
@@ -969,14 +1318,15 @@ def test_transition_recovery_finishes_after_reservation_inode_replace_failure(
                 expected_environment=ENV,
             )
     finally:
-        monkeypatch.setattr(guard, "_replace_private", original)
+        monkeypatch.setattr(guard, "_rewrite_private_inode", original)
         os.close(fd)
     value, _ = guard._evidence(manifest, manifest_path, evidence_path, "plan_validated")
     assert value["status"] == "plan_validated"
+    assert evidence_path.stat().st_ino == reserved_inode
     assert not guard._transition_path(evidence_path).exists()
 
 
-def test_transition_recovery_discards_prepublication_journal_only_for_old_pair(
+def test_transition_recovery_completes_prepublication_journal_on_reserved_inode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     manifest_path, manifest = _manifest(tmp_path)
@@ -985,16 +1335,17 @@ def test_transition_recovery_discards_prepublication_journal_only_for_old_pair(
         manifest_path, evidence_path, now=NOW, expected_environment=ENV
     )
     _, fd = _plan_files(manifest_path.parent, _plan())
-    original = guard._replace_private
+    original = guard._rewrite_private_inode
 
-    def fail_evidence_replace(*args: object, **kwargs: object) -> tuple[int, int]:
+    def fail_evidence_rewrite(*args: object, **kwargs: object) -> None:
         if args[0] == evidence_path:
-            raise guard.GuardError("simulated evidence replacement failure")
+            raise guard.GuardError("simulated evidence rewrite failure")
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(guard, "_replace_private", fail_evidence_replace)
+    reserved_inode = evidence_path.stat().st_ino
+    monkeypatch.setattr(guard, "_rewrite_private_inode", fail_evidence_rewrite)
     try:
-        with pytest.raises(guard.GuardError, match="simulated evidence"):
+        with pytest.raises(guard.GuardError, match="simulated evidence rewrite"):
             guard.validate_destroy_plan(
                 manifest_path,
                 evidence_path,
@@ -1004,14 +1355,15 @@ def test_transition_recovery_discards_prepublication_journal_only_for_old_pair(
                 expected_environment=ENV,
             )
     finally:
-        monkeypatch.setattr(guard, "_replace_private", original)
+        monkeypatch.setattr(guard, "_rewrite_private_inode", original)
         os.close(fd)
-    value, _ = guard._evidence(manifest, manifest_path, evidence_path, "reserved")
-    assert value["status"] == "reserved"
+    value, _ = guard._evidence(manifest, manifest_path, evidence_path, "plan_validated")
+    assert value["status"] == "plan_validated"
+    assert evidence_path.stat().st_ino == reserved_inode
     assert not guard._transition_path(evidence_path).exists()
 
 
-def test_prepublication_recovery_refuses_same_bytes_foreign_evidence_inode(
+def test_prepublication_recovery_refuses_foreign_evidence_inode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     manifest_path, manifest = _manifest(tmp_path)
@@ -1020,21 +1372,19 @@ def test_prepublication_recovery_refuses_same_bytes_foreign_evidence_inode(
         manifest_path, evidence_path, now=NOW, expected_environment=ENV
     )
     _, fd = _plan_files(manifest_path.parent, _plan())
-    original = guard._replace_private
+    original = guard._rewrite_private_inode
 
-    def swap_before_evidence_replace(
-        *args: object, **kwargs: object
-    ) -> tuple[int, int]:
+    def swap_before_evidence_rewrite(*args: object, **kwargs: object) -> None:
         if args[0] == evidence_path:
             replacement = evidence_path.with_name("old-evidence-copy.json")
             _private(replacement, evidence_path.read_bytes())
             replacement.replace(evidence_path)
-            raise guard.GuardError("simulated evidence replacement failure")
+            raise guard.GuardError("simulated evidence rewrite failure")
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(guard, "_replace_private", swap_before_evidence_replace)
+    monkeypatch.setattr(guard, "_rewrite_private_inode", swap_before_evidence_rewrite)
     try:
-        with pytest.raises(guard.GuardError, match="simulated evidence"):
+        with pytest.raises(guard.GuardError, match="simulated evidence rewrite"):
             guard.validate_destroy_plan(
                 manifest_path,
                 evidence_path,
@@ -1044,14 +1394,14 @@ def test_prepublication_recovery_refuses_same_bytes_foreign_evidence_inode(
                 expected_environment=ENV,
             )
     finally:
-        monkeypatch.setattr(guard, "_replace_private", original)
+        monkeypatch.setattr(guard, "_rewrite_private_inode", original)
         os.close(fd)
     with pytest.raises(guard.GuardError, match="manual recovery"):
         guard._evidence(manifest, manifest_path, evidence_path, "reserved")
     assert guard._transition_path(evidence_path).exists()
 
 
-def test_transition_recovery_refuses_same_bytes_foreign_evidence_inode(
+def test_transition_recovery_repairs_partial_new_evidence_on_reserved_inode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     manifest_path, manifest = _manifest(tmp_path)
@@ -1060,20 +1410,19 @@ def test_transition_recovery_refuses_same_bytes_foreign_evidence_inode(
         manifest_path, evidence_path, now=NOW, expected_environment=ENV
     )
     _, fd = _plan_files(manifest_path.parent, _plan())
-    original = guard._replace_private
+    original = guard._rewrite_private_inode
+    reserved_inode = evidence_path.stat().st_ino
 
-    def replace_then_swap(*args: object, **kwargs: object) -> tuple[int, int]:
-        path = args[0]
-        if path == guard._reservation_path(evidence_path):
-            replacement = evidence_path.with_name("evidence-copy.json")
-            _private(replacement, evidence_path.read_bytes())
-            replacement.replace(evidence_path)
-            raise guard.GuardError("simulated reservation replacement failure")
+    def partial_then_fail(*args: object, **kwargs: object) -> None:
+        if args[0] == evidence_path:
+            partial = args[2][: len(args[2]) // 2]
+            original(args[0], args[1], partial, args[3])
+            raise guard.GuardError("simulated partial evidence write")
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(guard, "_replace_private", replace_then_swap)
+    monkeypatch.setattr(guard, "_rewrite_private_inode", partial_then_fail)
     try:
-        with pytest.raises(guard.GuardError, match="simulated reservation"):
+        with pytest.raises(guard.GuardError, match="simulated partial"):
             guard.validate_destroy_plan(
                 manifest_path,
                 evidence_path,
@@ -1083,15 +1432,218 @@ def test_transition_recovery_refuses_same_bytes_foreign_evidence_inode(
                 expected_environment=ENV,
             )
     finally:
-        monkeypatch.setattr(guard, "_replace_private", original)
+        monkeypatch.setattr(guard, "_rewrite_private_inode", original)
         os.close(fd)
-    with pytest.raises(guard.GuardError, match="manual recovery"):
-        guard._evidence(manifest, manifest_path, evidence_path, "plan_validated")
-    assert evidence_path.exists()
-    assert guard._transition_path(evidence_path).exists()
+    value, identity = guard._evidence(
+        manifest, manifest_path, evidence_path, "plan_validated"
+    )
+    assert value["status"] == "plan_validated"
+    assert identity[1] == reserved_inode
+    assert not guard._transition_path(evidence_path).exists()
 
 
-def test_terraform_show_uses_same_fd_and_redacts_subprocess_failures(
+@pytest.mark.parametrize("mutation", ["malformed", "cross-status", "foreign-manifest"])
+def test_transition_recovery_refuses_invalid_lifecycle_journal_without_mutation(
+    tmp_path: Path, mutation: str
+) -> None:
+    manifest_path, manifest = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    evidence_raw, evidence_identity = guard._private_read(
+        evidence_path, "evidence", max_bytes=guard.MAX_JSON_BYTES
+    )
+    reservation_path = guard._reservation_path(evidence_path)
+    _, reservation_identity = guard._private_read(
+        reservation_path,
+        "evidence reservation",
+        max_bytes=guard.MAX_JSON_BYTES,
+    )
+    old = guard._json(evidence_raw, "evidence")
+    if mutation == "cross-status":
+        new = {
+            **old,
+            "status": "verified",
+            "deadline_status": "within_deadline",
+            "apply_started_at": guard._format_time(NOW),
+            "observed_at": guard._format_time(NOW + timedelta(minutes=1)),
+            "server_id": manifest["resources"]["server_id"],
+            "root": manifest["resources"]["root"],
+            "absent_addresses": [
+                "vultr_firewall_group.vpn",
+                'vultr_firewall_rule.icmp["v4"]',
+                'vultr_firewall_rule.icmp["v6"]',
+                'vultr_firewall_rule.ssh["2001:db8::1/128"]',
+                'vultr_firewall_rule.ssh["203.0.113.1/32"]',
+                'vultr_firewall_rule.tcp_public["v4-tcp-443"]',
+                'vultr_firewall_rule.tcp_public["v6-udp-51820"]',
+                "vultr_instance.vpn",
+                "vultr_ssh_key.admin",
+            ],
+            "billing_status": "no-active-owned-resources",
+        }
+    else:
+        new = {
+            **old,
+            "status": "plan_validated",
+            "plan_binding": {
+                "identity": [evidence_identity[0], evidence_identity[1]],
+                "sha256": "a" * 64,
+            },
+        }
+        if mutation == "malformed":
+            new.pop("plan_binding")
+        else:
+            new["manifest_sha256"] = "f" * 64
+    journal_path = guard._transition_path(evidence_path)
+    journal = {
+        "operation": "transition",
+        "evidence_identity": [evidence_identity[0], evidence_identity[1]],
+        "reservation_identity": [
+            reservation_identity[0],
+            reservation_identity[1],
+        ],
+        "old_evidence": old,
+        "new_evidence": new,
+    }
+    guard._private_write_new(
+        journal_path, guard.canonical_json(journal), "evidence transition"
+    )
+    journal_bytes = journal_path.read_bytes()
+
+    with pytest.raises(guard.GuardError, match="invalid"):
+        guard._evidence(manifest, manifest_path, evidence_path, "reserved")
+    assert evidence_path.read_bytes() == evidence_raw
+    assert evidence_path.stat().st_ino == evidence_identity[1]
+    assert journal_path.read_bytes() == journal_bytes
+
+
+@pytest.mark.parametrize(
+    "transition",
+    ["plan-binding", "apply-started-at"],
+)
+def test_transition_recovery_refuses_mismatched_successor_fields_without_mutation(
+    tmp_path: Path, transition: str
+) -> None:
+    manifest_path, manifest = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    _, fd = _plan_files(manifest_path.parent, _plan())
+    try:
+        guard.validate_destroy_plan(
+            manifest_path,
+            evidence_path,
+            request_json=_request,
+            plan_fd=fd,
+            now=NOW,
+            expected_environment=ENV,
+        )
+        if transition == "apply-started-at":
+            guard.mark_apply_started(
+                manifest_path,
+                evidence_path,
+                request_json=_request,
+                plan_fd=fd,
+                now=NOW,
+                expected_environment=ENV,
+            )
+    finally:
+        os.close(fd)
+    evidence_raw, evidence_identity = guard._private_read(
+        evidence_path, "evidence", max_bytes=guard.MAX_JSON_BYTES
+    )
+    old = guard._json(evidence_raw, "evidence")
+    if transition == "plan-binding":
+        new = {
+            **old,
+            "status": "apply_started",
+            "plan_binding": {
+                "identity": [evidence_identity[0], evidence_identity[1] + 1],
+                "sha256": old["plan_binding"]["sha256"],
+            },
+            "apply_started_at": guard._format_time(NOW),
+        }
+    else:
+        new = {
+            "schema_version": guard.SCHEMA_VERSION,
+            "status": "verified",
+            "deadline_status": "within_deadline",
+            "provider": "vultr",
+            "environment": manifest["environment"],
+            "manifest_sha256": old["manifest_sha256"],
+            "manifest_identity": old["manifest_identity"],
+            "apply_started_at": guard._format_time(NOW + timedelta(minutes=1)),
+            "observed_at": guard._format_time(NOW + timedelta(minutes=2)),
+            "server_id": manifest["resources"]["server_id"],
+            "root": manifest["resources"]["root"],
+            "absent_addresses": sorted(
+                {
+                    "vultr_instance.vpn",
+                    "vultr_ssh_key.admin",
+                    "vultr_firewall_group.vpn",
+                    *manifest["resources"]["firewall_rules"],
+                }
+            ),
+            "billing_status": "no-active-owned-resources",
+        }
+    reservation_path = guard._reservation_path(evidence_path)
+    _, reservation_identity = guard._private_read(
+        reservation_path,
+        "evidence reservation",
+        max_bytes=guard.MAX_JSON_BYTES,
+    )
+    journal_path = guard._transition_path(evidence_path)
+    journal = {
+        "operation": "transition",
+        "evidence_identity": [evidence_identity[0], evidence_identity[1]],
+        "reservation_identity": [
+            reservation_identity[0],
+            reservation_identity[1],
+        ],
+        "old_evidence": old,
+        "new_evidence": new,
+    }
+    guard._private_write_new(
+        journal_path, guard.canonical_json(journal), "evidence transition"
+    )
+    journal_bytes = journal_path.read_bytes()
+
+    with pytest.raises(guard.GuardError, match="invalid"):
+        guard._evidence(manifest, manifest_path, evidence_path, old["status"])
+    assert evidence_path.read_bytes() == evidence_raw
+    assert evidence_path.stat().st_ino == evidence_identity[1]
+    assert journal_path.read_bytes() == journal_bytes
+
+
+@pytest.mark.parametrize("status", ["reserved", "plan_validated"])
+def test_evidence_refuses_nonexact_preapply_status_schema(
+    tmp_path: Path, status: str
+) -> None:
+    manifest_path, manifest = _manifest(tmp_path)
+    evidence_path = manifest_path.with_name("evidence.json")
+    guard.reserve_evidence(
+        manifest_path, evidence_path, now=NOW, expected_environment=ENV
+    )
+    raw, identity = guard._private_read(
+        evidence_path, "evidence", max_bytes=guard.MAX_JSON_BYTES
+    )
+    value = guard._json(raw, "evidence")
+    if status == "reserved":
+        value["unexpected"] = True
+    else:
+        value["status"] = "plan_validated"
+    guard._rewrite_private_inode(
+        evidence_path, identity, guard.canonical_json(value), "evidence"
+    )
+
+    with pytest.raises(guard.GuardError, match="evidence reservation is invalid"):
+        guard._evidence(manifest, manifest_path, evidence_path, status)
+
+
+def test_terraform_show_uses_routed_provider_workspace_same_fd_and_redacts_failures(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     plan = _private(tmp_path / "private" / "destroy.tfplan", b"TFPLAN\x00")
@@ -1105,8 +1657,15 @@ def test_terraform_show_uses_same_fd_and_redacts_subprocess_failures(
 
     monkeypatch.setattr(guard.subprocess, "run", success)
     try:
-        assert REAL_TERRAFORM_SHOW(fd) == b"{}"
-        assert seen["argv"] == ["terraform", "show", "-json", f"/dev/fd/{fd}"]
+        assert REAL_TERRAFORM_SHOW(fd, ENV) == b"{}"
+        assert seen["argv"] == [
+            str(ROOT / "scripts/terraform-env.sh"),
+            "show",
+            "-json",
+            f"/dev/fd/{fd}",
+        ]
+        assert seen["env"]["PROVIDER"] == "vultr"
+        assert seen["env"]["ENV"] == ENV
         assert seen["pass_fds"] == (fd,)
         assert seen["timeout"] == 30
         monkeypatch.setattr(
@@ -1115,7 +1674,7 @@ def test_terraform_show_uses_same_fd_and_redacts_subprocess_failures(
             lambda *args, **kwargs: SimpleNamespace(returncode=1, stdout=b"secret"),
         )
         with pytest.raises(guard.GuardError, match="JSON view is unavailable"):
-            REAL_TERRAFORM_SHOW(fd)
+            REAL_TERRAFORM_SHOW(fd, ENV)
         monkeypatch.setattr(
             guard.subprocess,
             "run",
@@ -1124,14 +1683,14 @@ def test_terraform_show_uses_same_fd_and_redacts_subprocess_failures(
             ),
         )
         with pytest.raises(guard.GuardError, match="JSON view is unavailable"):
-            REAL_TERRAFORM_SHOW(fd)
+            REAL_TERRAFORM_SHOW(fd, ENV)
         monkeypatch.setattr(
             guard.subprocess,
             "run",
             lambda *args, **kwargs: (_ for _ in ()).throw(OSError("secret")),
         )
         with pytest.raises(guard.GuardError, match="JSON view is unavailable"):
-            REAL_TERRAFORM_SHOW(fd)
+            REAL_TERRAFORM_SHOW(fd, ENV)
     finally:
         os.close(fd)
 
@@ -1145,7 +1704,9 @@ def test_malformed_controller_generated_plan_view_refuses_without_fallback(
         manifest_path, evidence_path, now=NOW, expected_environment=ENV
     )
     _, fd = _plan_files(manifest_path.parent, _plan())
-    monkeypatch.setattr(guard, "_terraform_show_json", lambda _fd: b"not-json")
+    monkeypatch.setattr(
+        guard, "_terraform_show_json", lambda _fd, _environment: b"not-json"
+    )
     try:
         with pytest.raises(
             guard.GuardError, match="destroy plan view is not valid JSON"

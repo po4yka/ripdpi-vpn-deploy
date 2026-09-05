@@ -1218,7 +1218,10 @@ def test_vultr_staging_destroy_keeps_one_fd_and_preserves_inventory(
     )
 
 
-def test_vultr_staging_preapply_failure_releases_evidence(tmp_path: Path) -> None:
+@pytest.mark.parametrize("failed_command", ["validate-plan", "mark-apply-started"])
+def test_vultr_staging_preapply_failure_releases_evidence(
+    tmp_path: Path, failed_command: str
+) -> None:
     root = _test_repo(tmp_path)
     env_name = "ci-staging-vultr-failure"
     (root / f"terraform/providers/vultr/environments/{env_name}.tfvars").write_text(
@@ -1251,18 +1254,21 @@ def test_vultr_staging_preapply_failure_releases_evidence(tmp_path: Path) -> Non
             "VULTR_API_KEY": "never-log-this-token",
             "GUARD_LOG": str(private / "guard.log"),
             "GUARD_FD_LOG": str(private / "guard-fd.log"),
-            "GUARD_FAIL_COMMAND": "validate-plan",
+            "GUARD_FAIL_COMMAND": failed_command,
         },
     )
     assert result.returncode == 9
     assert not evidence.exists()
     guard_calls = (private / "guard.log").read_text().splitlines()
-    assert [line.split()[0] for line in guard_calls] == [
+    expected = [
         "recover-evidence",
         "authorize-reserve-evidence",
         "validate-plan",
-        "release-evidence",
     ]
+    if failed_command == "mark-apply-started":
+        expected.extend(["rewind-plan-fd", "mark-apply-started"])
+    expected.append("release-evidence")
+    assert [line.split()[0] for line in guard_calls] == expected
     assert " apply " not in f" {(stub.parent / 'terraform.log').read_text()} "
     assert inventory.read_bytes() == before
     assert "never-log-this-token" not in result.stdout + result.stderr + "\n".join(
