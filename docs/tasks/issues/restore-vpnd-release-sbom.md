@@ -2,7 +2,7 @@
 id: CIC-1788630270264106
 title: Restore vpnd release SBOM generation
 kind: bug
-status: review
+status: done
 area: ci
 priority: high
 risk: standard
@@ -16,6 +16,9 @@ updated: 2026-09-06
 spec_reason: tooling-only
 related_tasks: []
 status_detail: Release SBOM generation delivered to protected main 9af50afe.
+closed_at: "2026-09-05T23:43:59Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Protected main 9af5a963255614ff6851b79b4acd9aa9bc399886; GitHub checks 29 success, 1 neutral.
 ---
 
 ## Goal
