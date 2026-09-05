@@ -246,7 +246,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         observability-drill observability-deploy observability-rotate observability-rollback \
         observability-remove observability-silence-create observability-silence-delete \
         awg-evidence-provision \
-        test-unit snapshot-check snapshot-update validate-secrets \
+        test-native-runtime test-probe-matrix-mtproto test-unit snapshot-check snapshot-update validate-secrets \
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
         ci-fast bats-test vpnd-test vpnd-clippy vpnd-deny vpnd-msrv vpnd-mutants tf-policy tf-policy-verify \
         task-tools task-check task-list task-ready task-graph task-federation \
@@ -364,7 +364,9 @@ help:
 	@echo "  pyinfra-audit              Experimental read-only host audit (requires PYINFRA_HOSTS=host[,host])"
 	@echo ""
 	@echo "── TEST / CI ──────────────────────────────────────────────────────────"
-	@echo "  test-unit                  Run pytest unit tests (tests/unit/)"
+	@echo "  test-unit                  Run portable pytest tests; selected skips fail"
+	@echo "  test-native-runtime        Run native integration tests in disposable Linux root environment"
+	@echo "  test-probe-matrix-mtproto   Run the compiled Go helper tests"
 	@echo "  snapshot-check             Diff every Jinja render against tests/snapshot/golden/"
 	@echo "  snapshot-update            Refresh the goldens (run after intentional change)"
 	@echo "  validate-secrets           jsonschema check (strict if SECRETS_FILE is set)"
@@ -375,7 +377,7 @@ help:
 	@echo "  tf-test                    terraform test for all provider roots"
 	@echo "  yamllint-check             Lint repository YAML with the CI configuration"
 	@echo "  shellcheck                 Lint every operator shell script"
-	@echo "  ci-fast                    Portable CI-parity bundle (excludes Molecule and validate)"
+	@echo "  ci-fast                    Portable CI-parity bundle (excludes native Linux lane, Molecule and validate)"
 	@echo "  bats-test                  Run bats shell tests (tests/bats/)"
 	@echo "  vpnd-test                  cargo test --release --locked inside vpnd/"
 	@echo "  vpnd-clippy                cargo clippy --release --locked (deny warnings) inside vpnd/"
@@ -708,8 +710,18 @@ install-hooks:
 	pre-commit install
 	pre-commit install --hook-type commit-msg
 
+# Explicit Linux-only lane; run as root in a disposable runner/container.
+test-native-runtime:
+	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 || { echo "native runtime tests require a disposable Linux root environment" >&2; exit 1; }
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ -m native_runtime --fail-on-skip -v
+
+test-probe-matrix-mtproto:
+	cd tools/probe-matrix-mtproto && go test -mod=readonly -count=1 -v -timeout=2m -p=2 ./...
+
+# Tests invoke operator Make targets and parse their stdout as JSON. Do not
+# inherit recursive Make directory chatter, overrides or jobserver descriptors.
 test-unit:
-	python3 -m pytest tests/unit/ -q
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ scripts/tests/ -m "not native_runtime" --fail-on-skip -q
 
 snapshot-check:
 	python3 scripts/render-snapshots.py
@@ -815,8 +827,9 @@ task-federation:
 	@test -n "$(PEER_ROOT)" || { echo "PEER_ROOT=<RIPDPI checkout> required" >&2; exit 1; }
 	OPENSPEC_TELEMETRY=0 ./taskctl federation validate --peer-root "$(PEER_ROOT)"
 
-# Portable pre-PR bundle for operators. Mirrors required CI jobs that can run
+# Portable pre-PR bundle for operators. Mirrors portable required CI jobs that can run
 # without provider credentials, GitHub services, or Molecule containers.
+# Native Linux runtime coverage is a separate required CI lane.
 # `make check` adds validate (fmt, gitleaks, ansible-lint). Missing local
 # tooling is a failure rather than a misleading green gate.
 .PHONY: liveness-profile-check
@@ -824,6 +837,7 @@ liveness-profile-check:
 	python3 scripts/check-liveness-profile-compatibility.py --sing-box-version 1.13.16 --xray-version 26.3.27
 
 ci-fast:
+	@$(MAKE) test-probe-matrix-mtproto
 	@$(MAKE) actionlint-check
 	@$(MAKE) zizmor-check
 	@$(MAKE) zizmor-test
@@ -847,7 +861,7 @@ ci-fast:
 	@$(MAKE) liveness-profile-check
 	@command -v promtool >/dev/null 2>&1 || { echo "missing: promtool $(PROMTOOL_VERSION) (run: mise install)" >&2; exit 1; }
 	@promtool --version 2>&1 | grep -F "version $(PROMTOOL_VERSION)" >/dev/null || { echo "promtool $(PROMTOOL_VERSION) required (run: mise install)" >&2; exit 1; }
-	@echo "== unit tests =="; python3 -m pytest tests/unit/ -q
+	@$(MAKE) test-unit
 	@echo "== bats shell tests =="; bats tests/bats/
 	@command -v cargo >/dev/null 2>&1 || { echo "missing: cargo" >&2; exit 1; }
 	@echo "== vpnd clippy =="; cd vpnd && cargo clippy --release --all-targets --locked -- -D warnings

@@ -12,3 +12,21 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+
+def pytest_addoption(parser):
+    parser.addoption("--fail-on-skip", action="store_true",
+                     help="Fail a required lane if any selected test is skipped")
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "native_runtime: Linux integration with Terraform, Alertmanager and UID/GID capabilities"
+    )
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if session.config.getoption("--fail-on-skip"):
+        reporter = session.config.pluginmanager.getplugin("terminalreporter")
+        if reporter and reporter.stats.get("skipped"):
+            session.exitstatus = 1

@@ -17,7 +17,7 @@
 **`ci-fast` is the portable pre-PR gate** — runs the credential-free required
 CI checks, including workflow/YAML/shell lint, cloud-init schema, all Terraform
 tests, pytest/bats, cargo-deny, MSRV, clippy, and Rust tests. `make check` adds
-Terraform fmt/validate, gitleaks, and ansible-lint. Molecule, GitHub-native
+Terraform fmt/validate, gitleaks, and ansible-lint. Native Linux runtime integration, Molecule, GitHub-native
 security services, and credentialed deploy jobs remain CI-only or explicit.
 
 **Snapshots, not mocks, for templates** — `tests/snapshot/golden/` holds
@@ -42,6 +42,14 @@ config drift inside a role. Full-stack catches order/handler interactions.
 - **`shellcheck` in CI** — every `.sh` file. Warnings break the build.
 
 ## Pitfalls
+
+- **Selected skips fail required pytest lanes** — portable tests use
+  `make test-unit` (both `tests/unit/` and `scripts/tests/`); four
+  `native_runtime` tests run separately with pinned
+  Terraform/Alertmanager and UID/GID capabilities on a disposable Linux runner.
+  Both use `--fail-on-skip`. Never run the full workstation suite as root.
+- **Compiled helper coverage is real Go execution** — `ci-fast` includes
+  `make test-probe-matrix-mtproto`; Python driver tests cannot replace it.
 
 - **Release SBOM is the locked Cargo inventory** — CI and publication share
   `.github/actions/vpnd-sbom`, which stages `dist/sbom.json`. The deployment

@@ -1224,16 +1224,22 @@ def test_terraform_environment_is_canonical_and_sanitized():
         m._env("unsafe/value")
 
 
+@pytest.mark.native_runtime
 def test_adapter_command_uses_reviewed_terraform_fd_and_snapshot(tmp_path, monkeypatch):
     terraform = __import__("shutil").which("terraform")
-    if terraform is None:
-        pytest.skip("terraform unavailable")
+    assert terraform is not None, "native runtime lane requires Terraform"
     m = mod()
     raw = Path(terraform).read_bytes()
+    # The adapter requires a binary owned by its effective user. CI installs
+    # Terraform as runner, while this isolated lane also exercises root UID/GID
+    # transitions. Stage the real pinned bytes under the test user's ownership.
+    reviewed_binary = tmp_path / "reviewed-terraform"
+    reviewed_binary.write_bytes(raw)
+    reviewed_binary.chmod(0o700)
     fd = -1
     trusted = target = adapter = None
     try:
-        fd = os.open(terraform, os.O_RDONLY)
+        fd = os.open(reviewed_binary, os.O_RDONLY)
         trusted = m.TrustedTerraform(fd, __import__("hashlib").sha256(raw).hexdigest())
         fd = -1
         source = _terraform_snapshot_source(tmp_path)
@@ -1257,10 +1263,10 @@ def test_adapter_command_uses_reviewed_terraform_fd_and_snapshot(tmp_path, monke
             os.close(fd)
 
 
+@pytest.mark.native_runtime
 def test_actual_builtin_terraform_data_plan_can_be_saved_if_terraform_exists(tmp_path):
     terraform = __import__("shutil").which("terraform")
-    if terraform is None:
-        pytest.skip("terraform unavailable")
+    assert terraform is not None, "native runtime lane requires Terraform"
     # The fixture is local-only and uses Terraform's builtin provider.
     (tmp_path / "main.tf").write_text('resource "terraform_data" "x" { input = "x" }\n')
     env = {

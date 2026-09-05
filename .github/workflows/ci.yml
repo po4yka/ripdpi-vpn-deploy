@@ -466,7 +466,55 @@ jobs:
       - name: Check canonical sentinel profiles with real pinned runtimes
         run: make liveness-profile-check
       - name: pytest tests/unit/
-        run: python3 -m pytest tests/unit/ -v
+        run: make test-unit
+
+  native-runtime:
+    name: native runtime integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: pip install --require-hashes --no-deps -r requirements.txt
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.0
+        with:
+          terraform_version: "1.15.2"
+          terraform_wrapper: false
+      - name: Install checksum-verified Alertmanager and amtool
+        env:
+          ALERTMANAGER_SHA256: 5ac7ab5e4b8ee5ce4d8fb0988f9cb275efcc3f181b4b408179fafee121693311
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/alertmanager.tar.gz"
+          curl -fsSL --connect-timeout 10 --max-time 120 \
+            https://github.com/prometheus/alertmanager/releases/download/v0.28.1/alertmanager-0.28.1.linux-amd64.tar.gz \
+            -o "$archive"
+          echo "${ALERTMANAGER_SHA256}  ${archive}" | sha256sum -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP" \
+            alertmanager-0.28.1.linux-amd64/alertmanager alertmanager-0.28.1.linux-amd64/amtool
+      - name: Execute native tests with UID and GID capabilities
+        run: |
+          sudo env "PATH=$PATH" \
+            "ALERTMANAGER_BIN=$RUNNER_TEMP/alertmanager-0.28.1.linux-amd64/alertmanager" \
+            make test-native-runtime
+
+  go-helper:
+    name: MTProxy Go helper tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.1"
+          cache-dependency-path: tools/probe-matrix-mtproto/go.sum
+      - run: make test-probe-matrix-mtproto
 
   bats-test:
     name: bats shell tests
@@ -712,6 +760,8 @@ jobs:
       - templates-render
       - yaml
       - unit-tests
+      - native-runtime
+      - go-helper
       - bats-test
       - snapshot
       - validate-schema

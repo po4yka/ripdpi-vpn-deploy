@@ -258,6 +258,7 @@ def test_adapter_template_consumes_only_published_evidence() -> None:
     assert "vpn-protocol-liveness" not in service
 
 
+@pytest.mark.native_runtime
 def test_adapter_accepts_shared_textfile_directory_and_publishes_collector_readable_output(
     tmp_path: Path,
     request: pytest.FixtureRequest,
@@ -328,8 +329,6 @@ def test_adapter_accepts_shared_textfile_directory_and_publishes_collector_reada
         capture_output=True,
         text=True,
     )
-    if read_result.returncode == 77 and "capability-unavailable" in read_result.stderr:
-        pytest.skip("root runtime lacks setgroups/setgid/setuid capability")
     assert read_result.returncode == 0, read_result.stderr
 
 
