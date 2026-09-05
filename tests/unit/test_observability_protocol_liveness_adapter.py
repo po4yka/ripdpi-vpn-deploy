@@ -410,11 +410,25 @@ def test_enabled_molecule_proves_distinct_supplementary_group_read_access() -> N
         for item in textfile_directories["loop"]
         if item["path"] == "/var/lib/node_exporter/textfile"
     )
+    node_exporter_parent = next(
+        item
+        for item in textfile_directories["loop"]
+        if item["path"] == "/var/lib/node_exporter"
+    )
+    assert node_exporter_parent == {
+        "path": "/var/lib/node_exporter",
+        "group": "root",
+        "mode": "0755",
+    }
     assert textfile_item == {
         "path": "/var/lib/node_exporter/textfile",
         "group": "observability-textfile",
         "mode": "3775",
     }
+    paths = [item["path"] for item in textfile_directories["loop"]]
+    assert paths.index("/var/lib/node_exporter") < paths.index(
+        "/var/lib/node_exporter/textfile"
+    )
 
     side_effect = yaml.safe_load(
         (ROLE / "molecule/enabled/side_effect.yml").read_text()

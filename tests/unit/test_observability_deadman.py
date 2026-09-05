@@ -1416,6 +1416,25 @@ def test_molecule_lifecycle_scenarios_cover_deadman_enable_disable_and_refusal()
     assert enabled_verify_play["vars"]["rotated_deadman"]["max_pulse_bytes"] == 512
 
 
+def test_enabled_molecule_pulse_ca_is_strict_server_trust_material() -> None:
+    prepare = (ROLE / "molecule/enabled/prepare.yml").read_text()
+
+    assert "-addext 'basicConstraints=critical,CA:TRUE'" in prepare
+    assert "-addext 'keyUsage=critical,keyCertSign,cRLSign'" in prepare
+    assert "-addext 'subjectAltName=DNS:reverse.fixture.invalid'" in prepare
+    assert "-addext 'extendedKeyUsage=serverAuth'" in prepare
+    strict_verify = """openssl verify -x509_strict \\
+            -no-CAfile -no-CApath -no-CAstore \\
+            -trusted /var/tmp/observability-deadman-fixture/pulse-ca.pem \\
+            -purpose sslserver \\
+            -verify_hostname reverse.fixture.invalid \\
+            /var/tmp/observability-deadman-fixture/pulse-server.pem"""
+    assert strict_verify in prepare
+    assert prepare.index("keyUsage=critical,keyCertSign,cRLSign") < prepare.index(
+        "openssl verify -x509_strict"
+    )
+
+
 def test_activation_restarts_changed_receiver_inputs_inside_rollback_block() -> None:
     tasks = yaml.safe_load((ROLE / "tasks/enable.yml").read_text())
     handlers = (ROLE / "handlers/main.yml").read_text()
