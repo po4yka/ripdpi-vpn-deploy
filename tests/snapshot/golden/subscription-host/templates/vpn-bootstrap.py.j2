@@ -28,6 +28,7 @@ Managed by Ansible role subscription-host; do not hand-edit.
 from __future__ import annotations
 
 import datetime as _dt
+import errno
 import hashlib
 import json
 import logging
@@ -47,10 +48,14 @@ READS_LOG        = pathlib.Path("/var/log/vpn-subscription/reads.log")
 REVOKED_FILE     = pathlib.Path("/var/lib/vpn-subscription/revoked")
 MIRROR_GENERATIONS = SUBSCRIPTION_DIR / ".vpn-sub-mirror-generations"
 MIRROR_CURRENT = SUBSCRIPTION_DIR / ".vpn-sub-mirror-current"
+CONSUMED_BOOTSTRAP_DIR = SUBSCRIPTION_DIR / ".vpn-bootstrap-consumed"
 
 PATH_RE = re.compile(r"^/(bootstrap|sub)/([A-Za-z0-9_-]{16,64})$")
 
 _lock = threading.Lock()
+# The tombstone directory is immutable for this service process. A replacement
+# after startup is unsafe because it could hide a previously consumed token.
+_consumption_directory_identity: tuple[int, int] | None = None
 
 logging.basicConfig(
     format="vpn-bootstrap[%(process)d]: %(levelname)s %(message)s",
@@ -147,6 +152,154 @@ def _payload_root() -> pathlib.Path | None:
     return generation
 
 
+def _consumption_tombstone(token_hash: str) -> pathlib.Path:
+    if not re.fullmatch(r"[0-9a-f]{64}", token_hash):
+        raise ValueError("invalid bootstrap token digest")
+    return CONSUMED_BOOTSTRAP_DIR / token_hash
+
+
+def _open_consumption_directory() -> int | None:
+    """Open the service-owned tombstone directory through retained fds."""
+    global _consumption_directory_identity
+    flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0)
+    root: int | None = None
+    directory: int | None = None
+    retained = False
+    try:
+        root = os.open(SUBSCRIPTION_DIR, flags)
+        directory = os.open(".vpn-bootstrap-consumed", flags, dir_fd=root)
+        root_metadata = os.fstat(root)
+        directory_metadata = os.fstat(directory)
+        named_root = SUBSCRIPTION_DIR.lstat()
+        identity = (directory_metadata.st_dev, directory_metadata.st_ino)
+        if (
+            not stat.S_ISDIR(root_metadata.st_mode)
+            or root_metadata.st_uid != os.geteuid()
+            or root_metadata.st_mode & 0o077
+            or (root_metadata.st_dev, root_metadata.st_ino)
+            != (named_root.st_dev, named_root.st_ino)
+            or not stat.S_ISDIR(directory_metadata.st_mode)
+            or directory_metadata.st_uid != os.geteuid()
+            or directory_metadata.st_mode & 0o077
+            or (
+                _consumption_directory_identity is not None
+                and _consumption_directory_identity != identity
+            )
+        ):
+            logging.error("bootstrap consumption state is unsafe")
+            return None
+        if _consumption_directory_identity is None:
+            _consumption_directory_identity = identity
+        retained = True
+        return directory
+    except OSError as exc:
+        logging.error("bootstrap consumption state is unavailable: %s", exc)
+        return None
+    finally:
+        if root is not None:
+            os.close(root)
+        if directory is not None and not retained:
+            os.close(directory)
+
+
+def _trusted_consumption_directory() -> bool:
+    directory = _open_consumption_directory()
+    if directory is None:
+        return False
+    os.close(directory)
+    return True
+
+
+def _bootstrap_consumed(token_hash: str) -> bool | None:
+    """Read a durable one-token marker without following a supplied path."""
+    try:
+        name = _consumption_tombstone(token_hash).name
+    except ValueError as exc:
+        logging.error("bootstrap consumption state read failed: %s", exc)
+        return None
+    directory = _open_consumption_directory()
+    if directory is None:
+        return None
+    try:
+        try:
+            metadata = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        except FileNotFoundError:
+            return False
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or metadata.st_nlink != 1
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+        ):
+            logging.error("bootstrap consumption marker is unsafe")
+            return None
+        return True
+    except OSError as exc:
+        logging.error("bootstrap consumption state read failed: %s", exc)
+        return None
+    finally:
+        os.close(directory)
+
+
+def _record_bootstrap_consumption(token_hash: str) -> bool | None:
+    """Durably consume one bootstrap token before its payload is delivered."""
+    try:
+        name = _consumption_tombstone(token_hash).name
+    except ValueError as exc:
+        logging.error("bootstrap consumption state write failed: %s", exc)
+        return None
+    directory = _open_consumption_directory()
+    if directory is None:
+        return None
+    descriptor: int | None = None
+    try:
+        try:
+            descriptor = os.open(
+                name,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+                dir_fd=directory,
+            )
+        except FileExistsError:
+            # A second service process won the durable consume race. Do not
+            # deliver the bytes this process already read.
+            os.close(directory)
+            directory = None
+            consumed = _bootstrap_consumed(token_hash)
+            return False if consumed else None
+        os.fchmod(descriptor, 0o600)
+        os.fsync(descriptor)
+    except OSError as exc:
+        logging.error("bootstrap consumption state write failed: %s", exc)
+        if descriptor is not None:
+            try:
+                os.unlink(name, dir_fd=directory)
+            except OSError:
+                pass
+        os.close(directory)
+        directory = None
+        return None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    try:
+        os.fsync(directory)
+    except OSError as exc:
+        # The macOS fixture filesystem rejects directory fsync; production
+        # Linux must acknowledge the durability boundary.
+        if not (sys.platform != "linux" and exc.errno == errno.EINVAL):
+            logging.error("bootstrap consumption directory sync failed: %s", exc)
+            return None
+    finally:
+        os.close(directory)
+    # Reopen through the named namespace. This catches a directory swap after
+    # the marker write; the process identity also blocks later resurrection.
+    if _bootstrap_consumed(token_hash) is not True:
+        logging.error("bootstrap consumption marker readback failed")
+        return None
+    return True
+
+
 def _expired(meta_path: pathlib.Path) -> bool | None:
     if not meta_path.is_file():
         return False
@@ -207,6 +360,16 @@ class Handler(BaseHTTPRequestHandler):
                 _audit(route, token_hash, "revoked", src_ip, 0)
                 self.send_error(410, "Gone")
                 return
+            if single_use:
+                consumed = _bootstrap_consumed(token_hash)
+                if consumed is None:
+                    _audit(route, token_hash, "consumption-unavailable", src_ip, 0)
+                    self.send_error(503, "Service Unavailable")
+                    return
+                if consumed:
+                    _audit(route, token_hash, "consumed", src_ip, 0)
+                    self.send_error(410, "Gone")
+                    return
             payload_root = _payload_root()
             if payload_root is None:
                 _audit(route, token_hash, "mirror-state-invalid", src_ip, 0)
@@ -239,7 +402,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(410, "Gone")
                 return
             if single_use:
-                # Atomic consume — payload first, then meta best-effort.
+                # Record the external no-follow tombstone before delivery.
+                # Mirror generations may restore this payload on a later pull.
+                consumed = _record_bootstrap_consumption(token_hash)
+                if consumed is None:
+                    _audit(route, token_hash, "consumption-unavailable", src_ip, 0)
+                    self.send_error(503, "Service Unavailable")
+                    return
+                if not consumed:
+                    _audit(route, token_hash, "consumed", src_ip, 0)
+                    self.send_error(410, "Gone")
+                    return
                 try: path.unlink()
                 except FileNotFoundError: pass
                 if meta_path.is_file():
@@ -260,6 +433,8 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     for sub in ("bootstrap", "sub"):
         (SUBSCRIPTION_DIR / sub).mkdir(parents=True, exist_ok=True)
+    if not _trusted_consumption_directory():
+        raise RuntimeError("bootstrap consumption state is not safely provisioned")
     READS_LOG.parent.mkdir(parents=True, exist_ok=True)
     REVOKED_FILE.parent.mkdir(parents=True, exist_ok=True)
     if not REVOKED_FILE.exists():
