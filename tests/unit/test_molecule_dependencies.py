@@ -1,6 +1,7 @@
 """Fail-closed checks for Molecule's offline dependencies and scenario inputs."""
 
 import base64
+from hashlib import sha256
 import importlib.util
 import json
 import os
@@ -149,12 +150,47 @@ def test_standalone_p0_molecule_fixtures_declare_required_canonical_inputs() -> 
     xray = yaml.safe_load(
         (REPO_ROOT / "ansible/roles/xray/molecule/default/converge.yml").read_text()
     )[0]["vars"]
-    watchdog = yaml.safe_load(
-        (REPO_ROOT / "ansible/roles/watchdog/molecule/default/converge.yml").read_text()
-    )[0]["vars"]
+    scenarios = {
+        "watchdog/default": REPO_ROOT / "ansible/roles/watchdog/molecule/default/converge.yml",
+        "watchdog/failure": REPO_ROOT / "ansible/roles/watchdog/molecule/failure/converge.yml",
+        "nginx-xhttp/default": REPO_ROOT / "ansible/roles/nginx-xhttp/molecule/default/converge.yml",
+        "honeypot/default": REPO_ROOT / "ansible/roles/honeypot/molecule/default/converge.yml",
+        "hysteria/default": REPO_ROOT / "ansible/roles/hysteria/molecule/default/converge.yml",
+        "hysteria/check-mode": REPO_ROOT / "ansible/roles/hysteria/molecule/default/check-mode.yml",
+    }
+    variables = {
+        name: yaml.safe_load(path.read_text())[0].get("vars", {})
+        for name, path in scenarios.items()
+    }
 
     assert xray["p0_reality_shapes"] == canonical["p0_reality_shapes"]
-    assert watchdog["xray_fallback_port"] == canonical["xray_fallback_port"]
+    for name in ("watchdog/default", "watchdog/failure"):
+        assert variables[name]["xray_port"] == canonical["xray_port"]
+        assert variables[name]["xray_fallback_port"] == canonical["xray_fallback_port"]
+        assert variables[name]["p0_reality_shapes"] == canonical["p0_reality_shapes"]
+    assert variables["nginx-xhttp/default"]["xray_port"] == canonical["xray_port"]
+    assert variables["honeypot/default"]["honeypot_port"] == canonical["honeypot_port"]
+    for name in ("hysteria/default", "hysteria/check-mode"):
+        assert variables[name]["hysteria_port_range"] == canonical["hysteria_port_range"]
+
+
+def test_xray_molecule_uses_a_hash_pinned_local_runtime_archive() -> None:
+    converge = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/xray/molecule/default/converge.yml").read_text()
+    )[0]
+    variables = converge["vars"]
+    artifact = next(
+        task["ansible.builtin.copy"]
+        for task in converge["pre_tasks"]
+        if task["name"] == "Create hash-pinned Xray runtime archive fixture"
+    )
+
+    assert variables["xray_runtime_release_urls"]["amd64"].startswith("file://")
+    assert variables["xray_runtime_release_urls"]["arm64"].startswith("file://")
+    assert artifact["dest"].endswith("xray-v26.3.27.zip")
+    assert sha256(base64.b64decode(artifact["content"])).hexdigest() == (
+        variables["xray"]["linux_amd64_sha256"]
+    )
 
 
 def test_published_host_override_beats_repository_all_group_default(tmp_path) -> None:

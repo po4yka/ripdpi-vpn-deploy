@@ -37,7 +37,10 @@ def test_xray_molecule_repeat_preserves_runtime_links(tmp_path):
     converge = yaml.safe_load((ROOT / "ansible/roles/xray/molecule/default/converge.yml").read_text())[0]
     runtime = yaml.safe_load((ROOT / "ansible/roles/xray-runtime/tasks/main.yml").read_text())
     setup = [task for task in converge["pre_tasks"]
-             if "ansible.builtin.copy" in task or "ansible.builtin.file" in task]
+             if task["name"] in {
+                 "Pre-create release dir for runtime link idempotence coverage",
+                 "Seed Xray binary for runtime link idempotence coverage",
+             }]
     links = [task for task in runtime if task["name"] in (
         "Point current Xray runtime at pinned release", "Expose pinned Xray runtime")]
     assert setup and len(links) == 2

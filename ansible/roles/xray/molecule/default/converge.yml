@@ -6,6 +6,9 @@
     xray_port: 443
     xray_fallback_port: 2053
     nginx_xhttp_port: 10085
+    xray_runtime_release_urls:
+      amd64: file:///var/tmp/xray-molecule/xray-v26.3.27.zip
+      arm64: file:///var/tmp/xray-molecule/xray-v26.3.27.zip
     p0_reality_shapes:
       vision:
         client_flow: "xtls-rprx-vision"
@@ -21,7 +24,8 @@
       xray_finalmask: true
     xray:
       version: "v26.3.27"
-      linux_amd64_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+      linux_amd64_sha256: "9b7d7bd8f815f68a0c646e84f9e572e416fc4aca539811b235627892b323e970"
+      linux_arm64_sha256: "9b7d7bd8f815f68a0c646e84f9e572e416fc4aca539811b235627892b323e970"
       reality_private_key: "MOLECULE_TEST_PRIVATE_KEY_NOT_REAL"
       target: "www.cloudflare.com:443"
       server_names:
@@ -35,6 +39,14 @@
           uuid: "22222222-2222-2222-2222-222222222222"
           short_id: "cafebabe"
   pre_tasks:
+    - name: Create hash-pinned Xray runtime archive fixture
+      ansible.builtin.copy:
+        dest: /var/tmp/xray-molecule/xray-v26.3.27.zip
+        content: "UEsDBBQAAAAIAAAgIQBtGfD4rQAAABMBAAAEAAAAeHJheXWOPQuCQBzGdz/F0yVSQ2oKNhwtQUNDDWUQRIPZ3zywO9FT69tnOlRQ6+95HQ6cs5BOmRoiwRHMnDLMwYpKMpxgWR3zOjbRVOqWcuiUJOguNFyORHxHaypKoeSHMU4V2KGIHtiF+wVqL7B925thdFMZxVVGY8b/1v18EiuZiOt7QhdRDtZXMITL7RqrTcjRpCKjVq2I46JQZkQ5/MB1YaGJWrc5eAmSut0+bzwBUEsBAh4DFAAAAAgAACAhAG0Z8PitAAAAEwEAAAQAAAAAAAAAAQAAAO2BAAAAAHhyYXlQSwUGAAAAAAEAAQAyAAAAzwAAAAAA"
+        owner: root
+        group: root
+        mode: "0600"
+        directory_mode: "0755"
     - name: Install jq (needed by molecule verify)
       ansible.builtin.apt:
         name: jq
@@ -50,7 +62,7 @@
         home: /var/lib/xray
         create_home: true
 
-    - name: Pre-create release dir so role's get_url+unarchive can be skipped
+    - name: Pre-create release dir for runtime link idempotence coverage
       ansible.builtin.file:
         path: /opt/xray/releases/v26.3.27
         state: directory
@@ -58,7 +70,7 @@
         group: root
         mode: "0755"
 
-    - name: Stub xray binary in release dir
+    - name: Seed Xray binary for runtime link idempotence coverage
       ansible.builtin.copy:
         dest: /opt/xray/releases/v26.3.27/xray
         owner: root
@@ -66,26 +78,6 @@
         mode: "0755"
         content: |
           #!/bin/sh
-          if [ "$1" = "run" ] && [ "$2" = "-test" ]; then
-            shift 2
-            while [ $# -gt 0 ]; do
-              if [ "$1" = "-config" ]; then
-                test -f "$2" && exit 0 || exit 1
-              fi
-              shift
-            done
-          fi
-          if [ "$1" = "version" ]; then
-            echo "Xray STUB v26.3.27 (molecule)"
-            exit 0
-          fi
-          if [ "$1" = "run" ] && [ "$2" = "-config" ]; then
-            trap 'exit 0' TERM INT
-            while true; do
-              sleep 3600 &
-              wait $!
-            done
-          fi
           exit 0
 
   # Use `roles:` (static binding) instead of `include_role` so the role's
@@ -94,8 +86,3 @@
   roles:
     - role: xray
       vars:
-        # Force the role's get_url checksum lookup to find an
-        # already-staged binary at the pinned release path; the
-        # stat-then-skip pattern in tasks/main.yml handles the rest.
-        xray_arch: "64"
-        xray_sha256: "0000000000000000000000000000000000000000000000000000000000000000"

@@ -25,6 +25,15 @@
       cohorts: []
     xray_port: 443
     xray_fallback_port: 2053
+    p0_reality_shapes:
+      vision:
+        client_flow: "xtls-rprx-vision"
+        client_mux: false
+        finalmask: false
+      mux:
+        client_flow: ""
+        client_mux: true
+        finalmask: false
     hysteria_port: 443
     watchdog_secrets:
       ntfy_topic: "molecule-stub-topic"

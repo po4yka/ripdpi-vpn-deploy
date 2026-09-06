@@ -7,6 +7,7 @@
     hysteria_config_dir: /etc/hysteria
     hysteria_log_dir: /var/log/hysteria
     hysteria_port: 443
+    hysteria_port_range: ""
     public_site_canonical_url: "https://vpn.example.test"
     hysteria_release_urls:
       amd64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.4
