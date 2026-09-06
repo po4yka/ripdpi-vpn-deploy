@@ -379,6 +379,8 @@ longest measured tests first. The committed `tests/pytest-durations.json.gz` see
 comes from a complete Linux CI run. Gzip keeps the complete measured dataset
 small; each group decompresses it before pytest-split reads it. New tests use the plugin's average duration
 until the profile is refreshed. Collection order is preserved inside each group.
+A test stalled for two minutes emits its Python stack; each CI group has a
+15-minute deadline. Timeouts fail the required aggregate.
 Run one group locally with `PYTEST_GROUP=1 make test-unit-shard` (1 through 4);
 `make test-unit` still executes the complete portable suite.
 

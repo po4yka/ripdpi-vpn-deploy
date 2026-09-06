@@ -736,7 +736,7 @@ test-unit-shard:
 	@case "$${PYTEST_GROUP:-}" in 1|2|3|4) ;; *) echo "PYTEST_GROUP must be 1, 2, 3 or 4" >&2; exit 2 ;; esac
 	mkdir -p .pytest-shards
 	python3 -c 'import gzip; from pathlib import Path; Path(".pytest-shards/durations.json").write_bytes(gzip.decompress(Path("tests/pytest-durations.json.gz").read_bytes()))'
-	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ scripts/tests/ -m "not native_runtime" --fail-on-skip -q --splits 4 --group "$$PYTEST_GROUP" --splitting-algorithm least_duration --durations-path .pytest-shards/durations.json --store-durations --clean-durations --shard-report .pytest-shards/report.json
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ scripts/tests/ -m "not native_runtime" --fail-on-skip -q --splits 4 --group "$$PYTEST_GROUP" --splitting-algorithm least_duration --durations-path .pytest-shards/durations.json --store-durations --clean-durations --shard-report .pytest-shards/report.json -o faulthandler_timeout=120
 
 snapshot-check:
 	python3 scripts/render-snapshots.py

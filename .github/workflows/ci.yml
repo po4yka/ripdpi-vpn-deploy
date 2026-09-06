@@ -366,6 +366,7 @@ jobs:
   unit-tests:
     name: pytest group ${{ matrix.group }}/4
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       max-parallel: 4
