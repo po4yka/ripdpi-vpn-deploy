@@ -5,33 +5,83 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Top-level permissions are read-only by default; the release job
-# elevates to write at job level so OSSF-Scorecard's
-# Token-Permissions check still passes.
 permissions:
   contents: read
+
+concurrency:
+  group: release-please-main
+  cancel-in-progress: false
 
 jobs:
   release:
     name: release-please
     runs-on: ubuntu-24.04
-    # release-please needs two prerequisites the workflow can't enable
-    # for itself:
-    #   1. Settings → Actions → General → "Allow GitHub Actions to
-    #      create and approve pull requests" (toggle on).
-    #   2. Repo variable `RELEASE_PLEASE_ENABLED=true` (Settings →
-    #      Secrets and variables → Actions → Variables).
-    # Until both are set the job is skipped — the run reports
-    # "skipped", not "failed", so it doesn't pollute the run summary.
-    if: ${{ vars.RELEASE_PLEASE_ENABLED == 'true' }}
+    # Enabled by default; an explicit false remains the operator pause switch.
+    if: ${{ github.ref == 'refs/heads/main' && vars.RELEASE_PLEASE_ENABLED != 'false' }}
     permissions:
       contents: write
       pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      sha: ${{ steps.release.outputs.sha }}
+      prs_created: ${{ steps.release.outputs.prs_created }}
+      pr: ${{ steps.release.outputs.pr }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5
-        # Even with the Settings toggle on, transient release-please
-        # parser issues shouldn't fail CI; this job is informational.
-        continue-on-error: true
+        id: release
         with:
           config-file: .github/release-please-config.json
           manifest-file: .github/release-please-manifest.json
+
+  dispatch-checks:
+    name: dispatch release PR checks
+    needs: release
+    if: ${{ needs.release.outputs.prs_created == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Run required workflows on the generated release branch
+        env:
+          RELEASE_PR: ${{ needs.release.outputs.pr }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          branch="$(jq -er '
+            select(.baseBranchName == "main") | .headBranchName |
+            select(. == "release-please--branches--main--components--vpnd")
+          ' <<< "$RELEASE_PR")"
+          gh workflow run ci.yml --ref "$branch"
+          gh workflow run codeql.yml --ref "$branch"
+
+  dispatch-binaries:
+    name: dispatch vpnd binaries
+    needs: release
+    if: ${{ needs.release.outputs.release_created == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout release validator and tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Dispatch binaries for the created release
+        env:
+          TAG: ${{ needs.release.outputs.tag_name }}
+          RELEASE_SHA: ${{ needs.release.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          bash scripts/validate-vpnd-release-tag.sh "$TAG" "$RELEASE_SHA"
+          # GITHUB_TOKEN tag pushes do not trigger workflows; dispatch does.
+          # Run on the tag so every build, attestation and SBOM uses its SHA.
+          gh workflow run release-vpnd.yml --ref "$TAG" -f "tag=$TAG"
