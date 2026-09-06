@@ -26,13 +26,14 @@ def test_required_lane_rejects_skips_and_failures(tmp_path, body, expected):
     assert result.returncode == expected, result.stdout + result.stderr
 
 
-def test_native_and_go_lanes_are_unconditional_and_required():
+def test_native_and_go_lanes_remain_executable_and_dependency_gated():
     jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
     for name, target in [("native-runtime", "test-native-runtime"),
                          ("go-helper", "test-probe-matrix-mtproto")]:
         job = jobs[name]
         assert name in jobs["required"]["needs"]
-        assert "if" not in job and "continue-on-error" not in job
+        assert job["if"] == "${{ fromJSON(needs.selection.outputs.checks)['" + name + "'] }}"
+        assert "continue-on-error" not in job
         assert any(f"make {target}" in step.get("run", "") for step in job["steps"])
     native = jobs["native-runtime"]["steps"]
     terraform = next(s for s in native if "setup-terraform@" in s.get("uses", ""))

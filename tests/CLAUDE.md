@@ -51,6 +51,12 @@ absolute `ANSIBLE_COLLECTIONS_PATH` as the action's isolated collection cache.
 OS, architecture, Python and both requirements files determine its exact key.
 The `python validators` job preserves seven checks behind one required context.
 
+**CI selection follows complete consumers** — common Python/static checks always
+run; costly PR lanes follow the selector's path graph. Docs are compiled into
+Rust. Keep Ansible scenarios together for cross-role inputs, and full CI for
+main/manual/shared/unknown changes. The final gate requires every selected job
+and permits only planned skips; adding a job must update the selector and tests.
+
 ## What's done well
 
 - **Quirk-named tests** — `test_xhttp_path_matches_both_slash_and_unslashed`,
