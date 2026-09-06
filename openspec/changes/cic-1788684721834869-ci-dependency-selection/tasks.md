@@ -14,7 +14,7 @@ untouched. The change affects CI admission controls but does not alter deployed 
 ## Execution
 
 - [x] CIC-1788684721858733 Define implementation and verification #chore !high @item:CIC-1788684721834869
-- [ ] CIC-1788686155608641 Deliver protected main and verify the pushed full CI run #chore !high @item:CIC-1788684721834869
+- [x] CIC-1788686155608641 Deliver protected main and verify the pushed full CI run #chore !high @item:CIC-1788684721834869
 
 ## Verification
 
@@ -33,5 +33,6 @@ untouched. The change affects CI admission controls but does not alter deployed 
 - Live protection readback matched all nine canonical required contexts with
   app_id 15368 and strict mode enabled. Full before/after comparison confirmed
   every unrelated protection setting unchanged.
-- Protected main delivery and exact-main full CI remain pending. This task is
-  not closed on branch-only evidence.
+- Protected main a5fc27c44fd217743469283cb181cbc413874a96 matches the checked
+  PR tree and remote ref. Main selected all 28 groups and passed all 75 CI jobs;
+  CodeQL, Scorecard and release-please also succeeded.
