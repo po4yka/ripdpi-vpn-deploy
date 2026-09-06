@@ -1,9 +1,12 @@
 """Keep sensitive operator identifiers and forbidden labels out of git."""
 
+import gzip
 import ipaddress
 import re
 import subprocess
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,6 +36,8 @@ def _read_tracked_content(path: Path) -> str:
     """Read the tracked blob shape without following repository symlinks."""
     if path.is_symlink():
         return path.readlink().as_posix().lower()
+    if path.suffix == ".gz":
+        return gzip.decompress(path.read_bytes()).decode("utf-8").lower()
     return path.read_text(errors="ignore").lower()
 
 
@@ -48,6 +53,23 @@ def test_policy_reads_a_tracked_directory_symlink_without_following_it():
 
     assert group_vars_link.is_symlink()
     assert _read_tracked_content(group_vars_link) == "../group_vars"
+
+
+
+def test_policy_scans_decompressed_gzip_content(tmp_path):
+    path = tmp_path / "durations.json.gz"
+    content = '{"tests/test_' + FORBIDDEN[0].upper() + '.py::test_case": 0.25}'
+    path.write_bytes(gzip.compress(content.encode(), mtime=0))
+    assert _should_scan(path.name)
+    assert _read_tracked_content(path) == content.lower()
+    assert FORBIDDEN[0] in _read_tracked_content(path)
+
+
+def test_policy_rejects_corrupt_gzip_content(tmp_path):
+    path = tmp_path / "durations.json.gz"
+    path.write_bytes(b"invalid gzip")
+    with pytest.raises(gzip.BadGzipFile):
+        _read_tracked_content(path)
 
 
 def test_tracked_files_do_not_contain_forbidden_identifiers():
