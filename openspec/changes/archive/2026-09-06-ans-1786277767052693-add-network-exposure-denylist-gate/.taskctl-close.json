@@ -1,0 +1,11 @@
+{
+  "change": "ans-1786277767052693-add-network-exposure-denylist-gate",
+  "evidence_summary": "Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.",
+  "execution_sha256": "1460bd3056fbe3492150847a13ec7054d6ead90ce8bf5bb7f4e140857298e91d",
+  "issue_sha256": "9a09c7f2f70490f04d65362a3ebfc86dc88593d07f37dab8b1edb6105f42d51b",
+  "outcome": "dropped",
+  "prepared_at": "2026-09-06T17:40:41Z",
+  "reason": "Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.",
+  "schema": 1,
+  "task_id": "ANS-1786277767052693"
+}

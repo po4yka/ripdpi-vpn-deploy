@@ -1,0 +1,11 @@
+{
+  "change": "vpd-1787497317352770-vpnd-deploy-reconverge-lifecycle-safety",
+  "evidence_summary": "Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.",
+  "execution_sha256": "bde7111308f3e44f40eb8326f1ee66b05baf5547b7e89084999960a0ecadce40",
+  "issue_sha256": "ded8b931cdad68a19f68abe378040ad9f787b515ef0e494f5a8270e3d1630d4e",
+  "outcome": "dropped",
+  "prepared_at": "2026-09-06T17:42:12Z",
+  "reason": "Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.",
+  "schema": 1,
+  "task_id": "VPD-1787497317352770"
+}

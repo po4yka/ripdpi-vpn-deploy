@@ -797,11 +797,17 @@ def _load_state(
             dropped_step_ids = set(raw_dropped_ids)
             for dropped_step_id in dropped_step_ids:
                 prefix = ID_RE.fullmatch(dropped_step_id).group(1)  # type: ignore[union-attr]
-                if config.prefix_areas.get(prefix) != document.values["area"]:
-                    fail(f"{document.path}: dropped step prefix does not match task area")
+                if prefix not in config.prefix_areas:
+                    fail(f"{document.path}: dropped step prefix is not a configured area")
                 if dropped_step_id in all_dropped_step_ids:
                     fail(f"duplicate dropped execution step ID {dropped_step_id}")
                 all_dropped_step_ids[dropped_step_id] = document.task_id
+            preserved_ids = re.findall(
+                r"(?m)^- ([A-Z][A-Z0-9]*-\d{16}) DROPPED: ",
+                path.read_text(encoding="utf-8"),
+            )
+            if sorted(raw_dropped_ids) != sorted(preserved_ids):
+                fail(f"{document.path}: dropped receipt IDs do not match execution records")
         if not steps and document.values["status"] != "dropped" and not authoring:
             fail(f"{path}: no mdtask execution steps")
         for step in steps:

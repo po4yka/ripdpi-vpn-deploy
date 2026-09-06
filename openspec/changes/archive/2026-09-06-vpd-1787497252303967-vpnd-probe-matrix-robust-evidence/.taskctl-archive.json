@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-09-06T17:43:09Z",
+  "change": "vpd-1787497252303967-vpnd-probe-matrix-robust-evidence",
+  "commit_sha": "ca5be8c841139ffa3d2a544e64d13b76f57bc694",
+  "outcome": "dropped",
+  "schema": 1,
+  "task_id": "VPD-1787497252303967"
+}
