@@ -78,8 +78,15 @@ sops_file="${SOPS_FILE:-${HOME}/.config/vpn-provision/${ENV}.secrets.sops.yaml}"
 sub_host="$(sops --decrypt --output-type json "$sops_file" \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('subscription') or {}).get('server_name') or (d.get('nginx_xhttp') or {}).get('server_name') or '')")"
 [[ -n "$sub_host" ]] || sub_host="$server_hostname"
-sub_port="$(sops --decrypt --output-type json "$sops_file" \
-  | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('subscription') or {}).get('port') or 8444)")"
+sub_port="$(python3 "${REPO_ROOT}/scripts/resolve-subscription-port.py" --host "$server_hostname")"
+
+# See issue-sub-token.sh: mirrored generations do not consume legacy direct
+# writes, so fail closed before installing a bearer payload.
+if ! ssh "${admin_user}@${server_ip}" \
+  "sudo test ! -e '${SUBSCRIPTION_DIR}/.vpn-sub-mirror-generations' -a ! -L '${SUBSCRIPTION_DIR}/.vpn-sub-mirror-current'"; then
+  echo "error: subscription mirror mode is active; direct token issuance is unavailable" >&2
+  exit 1
+fi
 
 printf '%s' "$payload" | ssh "${admin_user}@${server_ip}" \
   "sudo install -o vpn-bootstrap -g vpn-bootstrap -m 0600 /dev/stdin '${remote_path}'"

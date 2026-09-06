@@ -49,6 +49,22 @@ def _render_helper(tmp_path: Path, dest: Path, **mirror: str) -> Path:
     return helper
 
 
+def _render_bootstrap(tmp_path: Path, dest: Path) -> dict[str, object]:
+    """Load the delivery handler with all writable state below the fixture."""
+    variables = renderer.merge_render_vars()
+    variables["subscription"].update(
+        {
+            "subscription_dir": str(dest),
+            "reads_log": str(tmp_path / "reads.log"),
+            "revoked_file": str(tmp_path / "revoked"),
+        }
+    )
+    (tmp_path / "revoked").write_text("", encoding="ascii")
+    bootstrap = tmp_path / "vpn-bootstrap.py"
+    bootstrap.write_text(renderer.render_template(BOOTSTRAP_HELPER, variables))
+    return runpy.run_path(str(bootstrap))
+
+
 def _run(
     helper: Path, *, environment: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
@@ -139,6 +155,88 @@ def test_crash_after_pointer_switch_keeps_complete_generation_and_next_run_recon
     assert second.is_dir()
 
 
+def test_bootstrap_consumption_tombstone_survives_later_mirror_generation(
+    tmp_path: Path,
+) -> None:
+    """A restored bootstrap payload must never resurrect a consumed token."""
+    token = "a" * 24
+    source = tmp_path / "source"
+    _write_source(source, "first")
+    dest = _private_directory(tmp_path / "destination")
+    _private_directory(dest / ".vpn-bootstrap-consumed")
+    helper = _render_helper(tmp_path, dest, source=str(source) + "/")
+    assert _run(helper).returncode == 0
+
+    namespace = _render_bootstrap(tmp_path, dest)
+    token_hash = namespace["_hash"](token)
+    assert namespace["_bootstrap_consumed"](token_hash) is False
+    assert namespace["_record_bootstrap_consumption"](token_hash) is True
+    tombstone = dest / ".vpn-bootstrap-consumed" / token_hash
+    assert tombstone.is_file()
+    assert tombstone.stat().st_mode & 0o777 == 0o600
+
+    _write_source(source, "second")
+    assert _run(helper).returncode == 0
+    current = _current_generation(dest)
+    (current / "bootstrap" / token_hash).write_text("must-not-resurrect")
+    (current / "bootstrap" / token_hash).chmod(0o600)
+
+    handler = object.__new__(namespace["Handler"])
+    handler.path = f"/bootstrap/{token}"
+    handler.headers = {}
+    handler.client_address = ("127.0.0.1", 0)
+    status: list[int] = []
+    handler.send_error = lambda code, *_args: status.append(code)
+    handler.do_GET()
+
+    assert status == [410]
+    assert namespace["_bootstrap_consumed"](token_hash) is True
+    assert (current / "bootstrap" / token_hash).exists()
+
+
+def test_bootstrap_consumption_refuses_symlinked_tombstone_directory(
+    tmp_path: Path,
+) -> None:
+    dest = _private_directory(tmp_path / "destination")
+    external = tmp_path / "external"
+    _private_directory(external)
+    (dest / ".vpn-bootstrap-consumed").symlink_to(external, target_is_directory=True)
+    namespace = _render_bootstrap(tmp_path, dest)
+
+    assert namespace["_bootstrap_consumed"]("a" * 64) is None
+
+
+def test_bootstrap_consumption_refuses_directory_swap_after_marker_create(
+    tmp_path: Path,
+) -> None:
+    """A marker written into a detached tombstone directory cannot succeed."""
+    dest = _private_directory(tmp_path / "destination")
+    consumed = _private_directory(dest / ".vpn-bootstrap-consumed")
+    namespace = _render_bootstrap(tmp_path, dest)
+    token_hash = "a" * 64
+    module_os = namespace["os"]
+    original_open = module_os.open
+    swapped = False
+
+    def swap_before_marker(path, flags, mode=0o777, *, dir_fd=None):
+        nonlocal swapped
+        if path == token_hash and dir_fd is not None and not swapped:
+            swapped = True
+            consumed.rename(dest / ".vpn-bootstrap-consumed.detached")
+            _private_directory(dest / ".vpn-bootstrap-consumed")
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    module_os.open = swap_before_marker
+    try:
+        assert namespace["_record_bootstrap_consumption"](token_hash) is None
+    finally:
+        module_os.open = original_open
+
+    assert swapped
+    assert namespace["_bootstrap_consumed"](token_hash) is None
+
+
+
 @pytest.mark.parametrize("unsafe_kind", ["symlink", "fifo"])
 def test_unsafe_nested_staged_payload_refuses_before_pointer_publish(
     tmp_path: Path, unsafe_kind: str
@@ -187,6 +285,30 @@ def test_failed_pull_preserves_direct_payload_and_local_state(tmp_path: Path) ->
     assert (dest / "bootstrap/current").read_text() == "direct bootstrap"
     assert known_hosts.read_text() == "pinned synthetic host key"
     assert revoked.read_text() == "synthetic revoked hash"
+
+
+def test_interrupted_pulled_stage_with_nonprivate_payload_modes_is_reclaimed(
+    tmp_path: Path,
+) -> None:
+    """Only a private stage root is required for stale-stage cleanup."""
+    source = tmp_path / "source"
+    _write_source(source, "next")
+    dest = _private_directory(tmp_path / "destination")
+    generation_root = _private_directory(dest / ".vpn-sub-mirror-generations")
+    stage = _private_directory(generation_root / ".stage-interrupted")
+    pulled_route = stage / "sub"
+    pulled_route.mkdir()
+    pulled_route.chmod(0o755)
+    pulled_payload = pulled_route / "payload"
+    pulled_payload.write_text("pulled-before-hardening")
+    pulled_payload.chmod(0o644)
+
+    helper = _render_helper(tmp_path, dest, source=str(source) + "/")
+    result = _run(helper)
+
+    assert result.returncode == 0, result.stderr
+    assert not stage.exists()
+    assert (_current_generation(dest) / "sub" / "payload").read_text() == "next:sub"
 
 
 @pytest.mark.parametrize("valid_layout", [True, False])

@@ -70,6 +70,7 @@ fi
 server_ip="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
 admin_user="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user 2>/dev/null || echo admin)"
 server_hostname="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_hostname 2>/dev/null || echo "$server_ip")"
+sub_port="$(python3 "${REPO_ROOT}/scripts/resolve-subscription-port.py" --host "$server_hostname")"
 
 if [[ -n "$REFRESH_TOKEN" ]]; then
   token="$REFRESH_TOKEN"
@@ -191,6 +192,16 @@ fi
 
 remote_path="${SUBSCRIPTION_DIR}/sub/${token_hash}"
 
+# A mirrored delivery host serves only its private current generation.  The
+# operator-side issuer has no authenticated shared source publisher, so direct
+# installation into the legacy tree would create a token URL that cannot be
+# fetched. Refuse before writing instead of reporting a broken credential.
+if ! ssh "${admin_user}@${server_ip}" \
+  "sudo test ! -e '${SUBSCRIPTION_DIR}/.vpn-sub-mirror-generations' -a ! -L '${SUBSCRIPTION_DIR}/.vpn-sub-mirror-current'"; then
+  echo "error: subscription mirror mode is active; direct token issuance is unavailable" >&2
+  exit 1
+fi
+
 printf '%s' "$payload" | ssh "${admin_user}@${server_ip}" \
   "sudo install -o vpn-bootstrap -g vpn-bootstrap -m 0600 /dev/stdin '${remote_path}'"
 
@@ -301,8 +312,6 @@ REGISTRY_TEMP=""
 sub_host="$(sops --decrypt --output-type json "$sops_file" | \
   python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('subscription') or {}).get('server_name') or (d.get('nginx_xhttp') or {}).get('server_name') or '')")"
 [[ -n "$sub_host" ]] || sub_host="$server_hostname"
-sub_port="$(sops --decrypt --output-type json "$sops_file" | \
-  python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('subscription') or {}).get('port') or 8444)")"
 
 url="https://${sub_host}:${sub_port}/sub/${token}"
 

@@ -69,7 +69,7 @@
     home: "{{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}"
     create_home: false
 
-- name: Ensure subscription dir + per-route subdirs
+- name: Ensure subscription dir, routes, and durable bootstrap consumption state
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -80,6 +80,7 @@
     - "{{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}"
     - "{{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}/sub"
     - "{{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}/bootstrap"
+    - "{{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}/.vpn-bootstrap-consumed"
 
 - name: Ensure reads-log directory
   ansible.builtin.file:

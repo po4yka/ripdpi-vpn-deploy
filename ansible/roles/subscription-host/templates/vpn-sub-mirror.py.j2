@@ -110,11 +110,35 @@ def _remove_private_tree(path: Path) -> None:
 
 def _remove_stage_tree(path: Path) -> None:
     """Discard only this invocation's stage without following hostile nodes."""
+    if path.parent != GENERATION_ROOT or not path.name.startswith(STAGE_PREFIX):
+        raise MirrorError(f"unsafe stage cleanup target: {path}")
     metadata = _lstat(path)
     if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
         raise MirrorError(f"unsafe stage cleanup root: {path}")
-    # shutil.rmtree removes child symlinks as links and does not traverse them.
-    shutil.rmtree(path)
+    flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(GENERATION_ROOT, flags)
+    try:
+        opened = os.fstat(descriptor)
+        named = _lstat(GENERATION_ROOT)
+        if (
+            not stat.S_ISDIR(opened.st_mode)
+            or opened.st_uid != PAYLOAD_UID
+            or opened.st_mode & 0o077
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+        ):
+            raise MirrorError("unsafe generation root during stage cleanup")
+        if not shutil.rmtree.avoids_symlink_attacks:
+            raise MirrorError("safe stage cleanup is unavailable")
+        # The fd-relative implementation removes child symlinks as links and
+        # refuses a replaced root rather than resolving it through a pathname.
+        shutil.rmtree(path.name, dir_fd=descriptor)
+        try:
+            os.fsync(descriptor)
+        except OSError as exc:
+            if not (sys.platform != "linux" and exc.errno == errno.EINVAL):
+                raise
+    finally:
+        os.close(descriptor)
 
 
 def _prepare_generation_root() -> None:
@@ -129,7 +153,12 @@ def _prepare_generation_root() -> None:
             raise MirrorError(f"unexpected generation-root entry: {child.name}")
         _private_directory(child)
         if child.name.startswith(STAGE_PREFIX):
-            _remove_private_tree(child)
+            # A pull can be interrupted before _validate_and_harden converts
+            # rsync/restic's 0755/0644 payload nodes to private modes. Its
+            # root is still this publisher's 0700 stage, so reclaim it with
+            # the stage-only no-follow cleaner rather than applying the
+            # immutable generation payload contract to untrusted pull data.
+            _remove_stage_tree(child)
 
 
 def _publisher_lock() -> int:
