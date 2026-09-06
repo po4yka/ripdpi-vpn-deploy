@@ -2,7 +2,7 @@
 id: CIC-1788625996198006
 title: Restore trustworthy vpnd mutation testing
 kind: bug
-status: review
+status: done
 area: ci
 priority: high
 risk: standard
@@ -16,6 +16,9 @@ updated: 2026-09-06
 spec_reason: tooling-only
 related_tasks: []
 status_detail: Mutation baseline and failure propagation delivered to protected main 08b4a97d.
+closed_at: "2026-09-06T05:04:11Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Protected main 08b98bfe441b3e5d6c991ec5c92899054706bd2c; GitHub checks 30 success.
 ---
 
 ## Goal
