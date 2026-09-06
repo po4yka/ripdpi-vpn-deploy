@@ -1065,6 +1065,12 @@ def test_make_boundary_keeps_every_operator_path_literal(tmp_path: Path, field: 
         "UPCLOUD_API_USERNAME",
         "UPCLOUD_API_PASSWORD",
         "UPCLOUD_TOKEN",
+        "VULTR_API_KEY",
+        "TF_VAR_vultr_api_key",
+        "HCLOUD_TOKEN",
+        "SCW_ACCESS_KEY",
+        "SCW_SECRET_KEY",
+        "SCW_DEFAULT_PROJECT_ID",
         "TAILSCALE_AUTH_KEY",
     ],
 )
@@ -1132,6 +1138,48 @@ def test_make_target_forwards_only_documented_literal_paths(tmp_path: Path):
         "--receipt",
         "/private/f",
     ]
+
+
+def test_make_target_scrubs_unrelated_provider_credentials(tmp_path: Path):
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    captured = tmp_path / "environment"
+    build_gate = binary / "build-gate"
+    build_gate.write_text('#!/bin/sh\nenv > "$CAPTURED_ENV"\n')
+    build_gate.chmod(0o700)
+    argv = _make_args()
+    argv.remove("-n")
+    credentials = {
+        "UPCLOUD_USERNAME": "provider-secret",
+        "UPCLOUD_PASSWORD": "provider-secret",
+        "UPCLOUD_API_USERNAME": "provider-secret",
+        "UPCLOUD_API_PASSWORD": "provider-secret",
+        "UPCLOUD_TOKEN": "provider-secret",
+        "VULTR_API_KEY": "provider-secret",
+        "TF_VAR_vultr_api_key": "provider-secret",
+        "HCLOUD_TOKEN": "provider-secret",
+        "SCW_ACCESS_KEY": "provider-secret",
+        "SCW_SECRET_KEY": "provider-secret",
+        "SCW_DEFAULT_PROJECT_ID": "provider-secret",
+        "TAILSCALE_AUTH_KEY": "provider-secret",
+    }
+    result = subprocess.run(
+        argv,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env={
+            **os.environ,
+            **credentials,
+            "CAPTURED_ENV": str(captured),
+            "PATH": f"{binary}:{os.environ['PATH']}",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    child_environment = captured.read_text().splitlines()
+    for name in credentials:
+        assert not any(line.startswith(f"{name}=") for line in child_environment)
 
 
 def test_make_target_rejects_unknown_command_variable_before_recipe():
