@@ -205,6 +205,7 @@ class TerminalHistoryIndex:
     revisions: tuple[str, ...]
     by_revision: dict[str, dict[str, HistoricalTaskSnapshot]]
     merged_lanes: tuple[tuple[str, ...], ...]
+    merge_side_parents: dict[str, tuple[str, ...]]
 
 @dataclass
 class TerminalHistoryResolver:
@@ -1971,6 +1972,9 @@ def build_terminal_history_index(
         line.split() for line in (history.stdout or "").splitlines() if line
     ]
     revisions = (start, *(entry[0] for entry in history_entries))
+    merge_side_parents = {
+        entry[0]: tuple(entry[2:]) for entry in history_entries if len(entry) > 2
+    }
     merged_lanes: list[tuple[str, ...]] = []
     seen_lanes: set[tuple[str, ...]] = set()
     inspected_merges: set[str] = set()
@@ -2031,6 +2035,7 @@ def build_terminal_history_index(
         revisions=revisions,
         by_revision=by_revision,
         merged_lanes=tuple(merged_lanes),
+        merge_side_parents=merge_side_parents,
     )
 
 
@@ -2260,24 +2265,48 @@ def resolve_terminal_task(
             return resolved
         if history_index.by_revision[history_index.revisions[-1]].get(task_id) is not None:
             return None
+    candidate_lanes = history_index.merged_lanes
     if primary_error is not None:
-        raise primary_error
+        primary_timeline = [
+            history_index.by_revision[revision].get(task_id)
+            for revision in history_index.revisions
+        ]
+        deletion_indexes = [
+            index
+            for index in range(1, len(primary_timeline))
+            if primary_timeline[index - 1] is not None
+            and primary_timeline[index] is None
+        ]
+        deletion_ref = (
+            history_index.revisions[deletion_indexes[-1]]
+            if deletion_indexes
+            else None
+        )
+        integration_parents = set(
+            history_index.merge_side_parents.get(str(deletion_ref), ())
+        )
+        if not integration_parents:
+            raise primary_error
+        candidate_lanes = tuple(
+            lane for lane in candidate_lanes if lane[-1] in integration_parents
+        )
 
-    candidate_lanes = [
+    deleted_candidate_lanes = [
         lane
-        for lane in history_index.merged_lanes
+        for lane in candidate_lanes
         if timeline_contains_deleted_task(history_index, lane, task_id)
     ]
-    if len(candidate_lanes) > 1:
+    if len(deleted_candidate_lanes) > 1:
         fail(f"{config.project}#{task_id}: ambiguous merged terminal history")
-    if candidate_lanes:
+    if deleted_candidate_lanes:
         lane_index = TerminalHistoryIndex(
             root=history_index.root,
             project=history_index.project,
             federation_contract=history_index.federation_contract,
-            revisions=candidate_lanes[0],
+            revisions=deleted_candidate_lanes[0],
             by_revision=history_index.by_revision,
             merged_lanes=(),
+            merge_side_parents={},
         )
         return resolve_terminal_task_from_index(
             root,
@@ -2285,6 +2314,8 @@ def resolve_terminal_task(
             config,
             history_index=lane_index,
         )
+    if primary_error is not None:
+        raise primary_error
     return None
 
 
@@ -2615,17 +2646,30 @@ def validate_deleted_history(root: Path, base: str) -> None:
     if history.returncode != 0:
         fail(f"cannot inspect task history: {(history.stdout or '').rstrip()}")
     revisions = [base, *filter(None, (history.stdout or "").splitlines())]
+    terminal_index = build_terminal_history_index(root, load_project_config(root))
 
     with tempfile.TemporaryDirectory(prefix="ripdpi-task-history-") as directory:
         scratch = Path(directory)
-        by_revision = {
-            revision: historical_task_snapshots(root, revision, scratch)
-            for revision in revisions
-        }
+        by_revision = dict(terminal_index.by_revision)
+        for revision in revisions:
+            if revision not in by_revision:
+                by_revision[revision] = historical_task_snapshots(
+                    root, revision, scratch
+                )
         head_ids = set(by_revision[revisions[-1]])
         candidate_ids: set[str] = set()
-        for snapshots in by_revision.values():
-            candidate_ids.update(snapshots)
+        for revision in revisions:
+            candidate_ids.update(by_revision[revision])
+        candidate_ids.update(
+            task_id
+            for lane in terminal_index.merged_lanes
+            for task_id in {
+                candidate
+                for revision in lane
+                for candidate in by_revision[revision]
+            }
+            if timeline_contains_deleted_task(terminal_index, lane, task_id)
+        )
         config_cache: dict[str, ProjectConfig] = {}
 
         def config_at(ref: str) -> ProjectConfig:
@@ -2642,6 +2686,45 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 for index in range(1, len(timeline))
                 if timeline[index - 1][1] is not None and timeline[index][1] is None
             ]
+            candidate_lanes: list[tuple[str, ...]] = []
+            if deletion_indexes:
+                primary_deletion = timeline[deletion_indexes[-1]][0]
+                primary_final = timeline[deletion_indexes[-1] - 1][1]
+                assert primary_final is not None
+                if primary_final.document.values.get("status") not in {
+                    "done",
+                    "dropped",
+                }:
+                    integration_parents = set(
+                        terminal_index.merge_side_parents.get(primary_deletion, ())
+                    )
+                    candidate_lanes = [
+                        lane
+                        for lane in terminal_index.merged_lanes
+                        if lane[-1] in integration_parents
+                        and timeline_contains_deleted_task(
+                            terminal_index, lane, task_id
+                        )
+                    ]
+            else:
+                candidate_lanes = [
+                    lane
+                    for lane in terminal_index.merged_lanes
+                    if timeline_contains_deleted_task(terminal_index, lane, task_id)
+                ]
+            if len(candidate_lanes) > 1:
+                fail(f"{task_id}: ambiguous merged terminal history")
+            if candidate_lanes:
+                timeline = [
+                    (revision, by_revision[revision].get(task_id))
+                    for revision in candidate_lanes[0]
+                ]
+                deletion_indexes = [
+                    index
+                    for index in range(1, len(timeline))
+                    if timeline[index - 1][1] is not None
+                    and timeline[index][1] is None
+                ]
             if not deletion_indexes:
                 fail(f"{task_id}: cannot resolve disappearance commit")
             deletion_index = deletion_indexes[-1]
@@ -2986,27 +3069,6 @@ def validate_deleted_history(root: Path, base: str) -> None:
                         fail(
                             f"{relative}: archived drop receipt differs from terminal commit"
                         )
-
-        terminal_index = build_terminal_history_index(root, load_project_config(root))
-        merged_deleted_ids = {
-            task_id
-            for lane in terminal_index.merged_lanes
-            for task_id in {
-                candidate
-                for revision in lane
-                for candidate in terminal_index.by_revision[revision]
-            }
-            if timeline_contains_deleted_task(terminal_index, lane, task_id)
-        }
-        for task_id in sorted(merged_deleted_ids - candidate_ids - head_ids):
-            if resolve_terminal_task(
-                root,
-                task_id,
-                load_project_config(root),
-                history_index=terminal_index,
-            ) is None:
-                fail(f"{task_id}: cannot resolve merged terminal history")
-
 
 def validate_repository(root: Path, *, base: str | None, upstreams: bool = True) -> tuple[list[Document], list[Step]]:
     documents, steps = load_state(root)

@@ -2310,6 +2310,46 @@ class TaskctlHistoryTest(TaskctlFixture):
         self.assertEqual(deletion, historical["deletion_revision"])
         taskctl.validate_deleted_history(self.root, base)
 
+    def test_merge_lane_can_complete_task_active_on_first_parent(self) -> None:
+        source_task = "CIC-1786234567890001"
+        owner_task = "CIC-1786234567890003"
+        source = self.add_simple_task(task_id=source_task, status="review")
+        self.add_simple_task(task_id=owner_task, related=[source_task])
+        self.write_board()
+        base = self.commit_all("add active source and evidence owner")
+        integration_branch = self.git("branch", "--show-current")
+
+        self.git("switch", "-c", "complete-active-source")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        terminal = self.commit_all("complete active source in lane")
+        taskctl.command_close_purge(
+            argparse.Namespace(root=self.root, query=source_task)
+        )
+        self.write_board()
+        deletion = self.commit_all("purge active source in lane")
+
+        self.git("switch", integration_branch)
+        self.git(
+            "merge",
+            "--no-ff",
+            "complete-active-source",
+            "-m",
+            "merge active source lifecycle",
+        )
+
+        taskctl.load_state(self.root)
+        resolved = taskctl.resolve_terminal_task(
+            self.root,
+            source_task,
+            taskctl.load_project_config(self.root),
+        )
+        self.assertIsNotNone(resolved)
+        assert resolved is not None
+        self.assertEqual(terminal, resolved["terminal_revision"])
+        self.assertEqual(deletion, resolved["deletion_revision"])
+        taskctl.validate_deleted_history(self.root, base)
+
     def test_terminal_history_rejects_ambiguous_completed_merged_lanes(self) -> None:
         source_task = "CIC-1786234567890001"
         owner_task = "CIC-1786234567890003"
