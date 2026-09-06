@@ -1,6 +1,11 @@
 [Interface]
 PrivateKey = 
 Address = 10.203.0.1/30
+Table = off
+# Activation intent: only classifier-owned foreign connections receive
+# fwmark 203; table 203 routes that mark through
+# csi0. Never install this peer default in the main routing table.
+# Egress forwarding/NAT is a separate activation contract; this scaffold installs none.
 PostUp = nft -f /etc/wireguard/cascade-ingress.nft
 PostDown = nft delete table inet cascade_ingress 2>/dev/null || true
 

@@ -21,10 +21,10 @@
 # Off by default. Read CDN-DECISION.md before enabling.
 
 cdn_front:
-  port: 8443
+  port: "{{ cdn_front_port }}"
   server_name: "{{ nginx_xhttp.server_name }}"
   upstream_addr: "127.0.0.1"
-  upstream_port: "{{ nginx_xhttp_port | default(10085) }}"
+  upstream_port: "{{ nginx_xhttp_port }}"
   xhttp_path: "{{ xray.xhttp_path | default('/app-sync') }}"
   cf_prefix_dir: /etc/cdn-front
   cf_refresh_cron_hour: 4    # daily at 04:00 to follow CF list updates

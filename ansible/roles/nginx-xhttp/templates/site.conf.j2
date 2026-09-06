@@ -1,13 +1,13 @@
 # Managed by Ansible role `nginx-xhttp`. Direct (no CDN) baseline.
 # CDN-fronted variant lives in docs/CDN-DECISION.md as opt-in.
-{% set nginx_redirect_port = nginx_xhttp_public_port | default(8443) | int %}
+{% set nginx_redirect_port = nginx_xhttp_public_port | int %}
 {% if (vpn.enable_snell | default(false)) and (snell | default({})).evaluation_enabled | default(false) %}
 limit_req_zone $binary_remote_addr zone=snell_evaluation:1m rate=10r/s;
 {% endif %}
 
 server {
-    listen {{ nginx_xhttp_public_port | default(8443) }} ssl http2;
-    listen [::]:{{ nginx_xhttp_public_port | default(8443) }} ssl http2;
+    listen {{ nginx_xhttp_public_port }} ssl http2;
+    listen [::]:{{ nginx_xhttp_public_port }} ssl http2;
 
     server_name {{ nginx_xhttp.server_name }};
 
@@ -58,7 +58,7 @@ server {
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
 
-        proxy_pass http://127.0.0.1:{{ nginx_xhttp_port | default(10085) }};
+        proxy_pass http://127.0.0.1:{{ nginx_xhttp_port }};
     }
 
     error_page 404 /404.html;
@@ -91,8 +91,8 @@ server {
 # path, reachable by anyone, so it serves the same public site and never uses
 # a silent-close response.
 server {
-    listen {{ nginx_xhttp_fallback_port | default(2083) }} ssl http2;
-    listen [::]:{{ nginx_xhttp_fallback_port | default(2083) }} ssl http2;
+    listen {{ nginx_xhttp_fallback_port }} ssl http2;
+    listen [::]:{{ nginx_xhttp_fallback_port }} ssl http2;
 
     server_name {{ nginx_fallback_name }};
 
@@ -131,7 +131,7 @@ server {
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
 
-        proxy_pass http://127.0.0.1:{{ nginx_xhttp_port | default(10085) }};
+        proxy_pass http://127.0.0.1:{{ nginx_xhttp_port }};
     }
 
     error_page 404 /404.html;
@@ -162,7 +162,7 @@ server {
     listen [::]:80;
     server_name {{ nginx_fallback_name }};
     server_tokens off;
-    return 301 https://$host:{{ nginx_xhttp_fallback_port | default(2083) }}$request_uri;
+    return 301 https://$host:{{ nginx_xhttp_fallback_port }}$request_uri;
 }
 {% endif %}
 {% endif %}

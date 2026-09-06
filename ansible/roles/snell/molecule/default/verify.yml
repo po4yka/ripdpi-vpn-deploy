@@ -45,24 +45,47 @@
       ansible.builtin.command: {cmd: systemctl is-active snell.service}
       changed_when: false
 
-    - name: Create upgraded test release directory
+    - name: Create upgraded test archive member directory
       ansible.builtin.file:
-        path: /opt/snell/releases/v1.14.0-alpha.43
+        path: /var/tmp/snell-upgrade/sing-box-1.14.0-alpha.43-linux-amd64
         state: directory
         mode: "0755"
-    - name: Copy test binary into upgraded release
+    - name: Copy test binary into upgraded archive member
       ansible.builtin.copy:
         src: /opt/snell/releases/v1.14.0-alpha.42/sing-box
-        dest: /opt/snell/releases/v1.14.0-alpha.43/sing-box
+        dest: /var/tmp/snell-upgrade/sing-box-1.14.0-alpha.43-linux-amd64/sing-box
         remote_src: true
         mode: "0755"
+    - name: Build upgraded test archive
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/tar
+          - -czf
+          - /var/tmp/snell-upgrade/sing-box.tar.gz
+          - sing-box-1.14.0-alpha.43-linux-amd64
+        chdir: /var/tmp/snell-upgrade
+        creates: /var/tmp/snell-upgrade/sing-box.tar.gz
+    - name: Inspect upgraded test archive
+      ansible.builtin.stat:
+        path: /var/tmp/snell-upgrade/sing-box.tar.gz
+        checksum_algorithm: sha256
+      register: _snell_upgrade_archive
+    - name: Pin upgraded test archive
+      ansible.builtin.set_fact:
+        snell_secrets: >-
+          {{ snell_secrets | combine({
+               'linux_amd64_sha256': _snell_upgrade_archive.stat.checksum,
+               'linux_arm64_sha256': _snell_upgrade_archive.stat.checksum
+             }) }}
     - name: Converge an upgraded validated release
       ansible.builtin.include_role: {name: snell}
       vars:
         env: staging
+        snell_release_urls:
+          amd64: file:///var/tmp/snell-upgrade/sing-box.tar.gz
+          arm64: file:///var/tmp/snell-upgrade/sing-box.tar.gz
         snell:
           version: v1.14.0-alpha.43
-          download_url: unused
           install_root: /opt/snell
           config_dir: /etc/snell
           log_dir: /var/log/snell
@@ -113,9 +136,11 @@
           ansible.builtin.include_role: {name: snell}
           vars:
             env: staging
+            snell_release_urls:
+              amd64: file:///tmp/snell-checksum-fixture.tar.gz
+              arm64: file:///tmp/snell-checksum-fixture.tar.gz
             snell:
               version: v1.14.0
-              download_url: file:///tmp/snell-checksum-fixture.tar.gz
               install_root: /opt/snell-checksum-test
               config_dir: /etc/snell
               log_dir: /var/log/snell
@@ -137,14 +162,40 @@
               - ansible_failed_result.msg != 'checksum mismatch unexpectedly succeeded'
               - "'checksum' in (ansible_failed_result.msg | lower)"
 
-    - name: Replace test binary with a rejecting config validator
+    - name: Create rejecting validator archive member directory
+      ansible.builtin.file:
+        path: /var/tmp/snell-invalid/sing-box-1.14.0-alpha.44-linux-amd64
+        state: directory
+        mode: "0755"
+    - name: Write rejecting config validator
       ansible.builtin.copy:
-        dest: /opt/snell/releases/v1.14.0-alpha.42/sing-box
+        dest: /var/tmp/snell-invalid/sing-box-1.14.0-alpha.44-linux-amd64/sing-box
         mode: "0755"
         content: |
           #!/bin/sh
           if [ "$1" = check ]; then exit 1; fi
           exit 0
+    - name: Build rejecting validator archive
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/tar
+          - -czf
+          - /var/tmp/snell-invalid/sing-box.tar.gz
+          - sing-box-1.14.0-alpha.44-linux-amd64
+        chdir: /var/tmp/snell-invalid
+        creates: /var/tmp/snell-invalid/sing-box.tar.gz
+    - name: Inspect rejecting validator archive
+      ansible.builtin.stat:
+        path: /var/tmp/snell-invalid/sing-box.tar.gz
+        checksum_algorithm: sha256
+      register: _snell_invalid_archive
+    - name: Pin rejecting validator archive
+      ansible.builtin.set_fact:
+        snell_secrets: >-
+          {{ snell_secrets | combine({
+               'linux_amd64_sha256': _snell_invalid_archive.stat.checksum,
+               'linux_arm64_sha256': _snell_invalid_archive.stat.checksum
+             }) }}
     - name: Remove configuration to force validation
       ansible.builtin.file: {path: /etc/snell/config.json, state: absent}
     - name: Verify invalid configuration stops convergence
@@ -153,6 +204,23 @@
           ansible.builtin.include_role: {name: snell}
           vars:
             env: staging
+            snell_release_urls:
+              amd64: file:///var/tmp/snell-invalid/sing-box.tar.gz
+              arm64: file:///var/tmp/snell-invalid/sing-box.tar.gz
+            snell:
+              version: v1.14.0-alpha.44
+              install_root: /opt/snell
+              config_dir: /etc/snell
+              log_dir: /var/log/snell
+              listen_addr: "::"
+              evaluation_enabled: false
+              evaluation_root: /var/lib/snell-evaluation
+              smoke_port_base: 31100
+              evaluation_sizes: [1024]
+              variants:
+                - {id: v4-stream, listen_port: 2443, server_version: 5, client_version: 4, obfs_mode: none}
+                - {id: v6-default, listen_port: 2444, server_version: 6, client_version: 6, mode: default}
+                - {id: v6-unshaped, listen_port: 2445, server_version: 6, client_version: 6, mode: unshaped}
         - name: Fail when invalid configuration was accepted
           ansible.builtin.fail: {msg: "invalid configuration unexpectedly succeeded"}
       rescue:

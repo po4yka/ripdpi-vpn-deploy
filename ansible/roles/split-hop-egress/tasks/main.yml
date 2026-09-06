@@ -19,6 +19,7 @@
     name:
       - wireguard
       - wireguard-tools
+      - nftables
     state: present
     update_cache: true
     cache_valid_time: 3600
@@ -33,6 +34,121 @@
       # Managed by Ansible role `split-hop-egress`. Hand edits will be overwritten.
       net.ipv4.ip_forward = 1
   notify: Reload sysctl
+
+- name: Render validated split-hop egress policy
+  ansible.builtin.template:
+    src: split-hop-egress.nft.j2
+    dest: "{{ split_hop_egress.policy_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: nft -c -f %s
+  register: split_hop_egress_policy_render
+
+- name: Inspect loaded split-hop egress policy
+  ansible.builtin.command:
+    cmd: nft -j list table inet split_hop_egress
+  register: split_hop_egress_policy_state
+  changed_when: false
+  failed_when: false
+
+- name: Check exact split-hop egress policy shape
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json
+        import sys
+
+        interface, forward_iface = sys.argv[1:]
+        try:
+            objects = json.load(sys.stdin)["nftables"]
+        except (json.JSONDecodeError, KeyError, TypeError):
+            raise SystemExit(1)
+
+        metainfo = [item["metainfo"] for item in objects if set(item) == {"metainfo"}]
+        tables = [item["table"] for item in objects if set(item) == {"table"}]
+        chains = [item["chain"] for item in objects if set(item) == {"chain"}]
+        rules = [item["rule"] for item in objects if set(item) == {"rule"}]
+        if len(metainfo) > 1 or len(objects) != len(metainfo) + len(tables) + len(chains) + len(rules):
+            raise SystemExit(1)
+        if len(tables) != 1 or len(chains) != 1 or len(rules) != 1:
+            raise SystemExit(1)
+        if metainfo:
+            info = metainfo[0]
+            if (
+                not isinstance(info, dict)
+                or set(info) - {"version", "release_name", "json_schema_version"}
+                or not isinstance(info.get("version"), str)
+                or not info["version"]
+                or (
+                    "json_schema_version" in info
+                    and (
+                        isinstance(info["json_schema_version"], bool)
+                        or not isinstance(info["json_schema_version"], int)
+                        or info["json_schema_version"] < 1
+                    )
+                )
+            ):
+                raise SystemExit(1)
+        table, chain, rule = tables[0], chains[0], rules[0]
+        if table.get("family") != "inet" or table.get("name") != "split_hop_egress":
+            raise SystemExit(1)
+        if (
+            chain.get("family"), chain.get("table"), chain.get("name"),
+            chain.get("type"), chain.get("hook"), chain.get("policy"),
+        ) != ("inet", "split_hop_egress", "postrouting", "nat", "postrouting", "accept"):
+            raise SystemExit(1)
+        if chain.get("prio") not in (100, "srcnat"):
+            raise SystemExit(1)
+        if (
+            rule.get("family"), rule.get("table"), rule.get("chain"),
+        ) != ("inet", "split_hop_egress", "postrouting"):
+            raise SystemExit(1)
+        expected = [
+            {"match": {"op": "==", "left": {"meta": {"key": "iifname"}}, "right": interface}},
+            {"match": {"op": "==", "left": {"meta": {"key": "oifname"}}, "right": forward_iface}},
+            {"masquerade": None},
+        ]
+        if rule.get("expr") != expected:
+            raise SystemExit(1)
+      - "{{ split_hop_egress.wg_interface }}"
+      - "{{ split_hop_egress.forward_iface }}"
+    stdin: "{{ split_hop_egress_policy_state.stdout }}"
+  register: split_hop_egress_policy_shape
+  changed_when: false
+  failed_when: false
+
+- name: Detect split-hop egress policy drift
+  ansible.builtin.set_fact:
+    split_hop_egress_policy_drifted: >-
+      {{
+        split_hop_egress_policy_state.rc == 0
+        and split_hop_egress_policy_shape.rc != 0
+      }}
+  changed_when: false
+
+- name: Load split-hop egress policy
+  ansible.builtin.command:
+    cmd: nft -f {{ split_hop_egress.policy_path }}
+  when:
+    - split_hop_egress_policy_render.changed or split_hop_egress_policy_state.rc != 0 or split_hop_egress_policy_drifted
+  changed_when: true
+
+- name: Install split-hop egress boot policy loader
+  ansible.builtin.template:
+    src: split-hop-egress-policy.service.j2
+    dest: /etc/systemd/system/split-hop-egress-policy.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable split-hop egress boot policy loader
+  ansible.builtin.systemd_service:
+    name: split-hop-egress-policy.service
+    enabled: true
+    daemon_reload: true
 
 - name: Render WireGuard config for Node B
   ansible.builtin.template:

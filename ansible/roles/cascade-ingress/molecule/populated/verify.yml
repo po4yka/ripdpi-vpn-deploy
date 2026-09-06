@@ -45,7 +45,12 @@
           - (classifier_ready.stdout | from_json).state == 'ready'
           - (ingress_config.content | b64decode) is search('Endpoint =')
           - (ingress_config.content | b64decode) is not search('ListenPort')
+          - (ingress_config.content | b64decode) is search('(?m)^Table = off$')
+          - (ingress_config.content | b64decode) is search('fwmark 203')
+          - (ingress_config.content | b64decode) is search('table 203')
+          - (ingress_config.content | b64decode) is not search('ip route replace default')
           - (ingress_policy.content | b64decode) is search('table inet cascade_ingress')
+          - (ingress_policy.content | b64decode) is not search('masquerade')
           - ((classifier_interface.content | b64decode | from_json).outcomes.ru) == 'direct'
           - ((classifier_interface.content | b64decode | from_json).outcomes.foreign) == 'cascade-egress'
           - ((classifier_interface.content | b64decode | from_json).outcomes['dataset-unavailable']) == 'block-serving'

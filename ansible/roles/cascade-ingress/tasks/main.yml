@@ -24,6 +24,10 @@
       - cascade_ingress.egress_endpoint | length > 0
       - cascade_ingress.egress_port | int > 0
       - cascade_ingress.egress_port | int <= 65535
+      - cascade_ingress.routing_table | int > 0
+      - cascade_ingress.routing_table | int <= 4294967295
+      - cascade_ingress.fwmark | int > 0
+      - cascade_ingress.fwmark | int <= 4294967295
       - cascade_secrets.ingress_private_key | length > 0
       - cascade_secrets.egress_public_key | length > 0
       - cascade_secrets.classifier_proxy_password | length >= 43
@@ -35,6 +39,81 @@
     that:
       - not (vpn.enable_warp_outbound | default(false) | bool)
     fail_msg: Cascade ingress cannot coexist with WARP routing because every client connection must pass through the classifier.
+  tags:
+    - always
+
+# A prior live cascade deployment is not an input this inert scaffold can
+# safely reconcile.  Refuse before package or filesystem writes so an operator
+# can recover the historical transaction explicitly instead of mixing states.
+- name: Inspect historical cascade WireGuard service state
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - --quiet
+      - "wg-quick@{{ cascade_ingress.wg_interface }}.service"
+  register: cascade_ingress_historical_service
+  changed_when: false
+  failed_when: cascade_ingress_historical_service.rc not in [0, 3, 4]
+  check_mode: false
+
+- name: Inspect historical cascade WireGuard interface state
+  ansible.builtin.command:
+    argv: [ip, link, show, dev, "{{ cascade_ingress.wg_interface }}"]
+  register: cascade_ingress_historical_interface
+  changed_when: false
+  failed_when: cascade_ingress_historical_interface.rc not in [0, 1]
+  check_mode: false
+
+- name: Inspect historical cascade policy-routing state
+  ansible.builtin.command:
+    argv: [ip, rule, show, table, "{{ cascade_ingress.routing_table | string }}"]
+  register: cascade_ingress_historical_rules
+  changed_when: false
+  failed_when: cascade_ingress_historical_rules.rc != 0
+  check_mode: false
+
+- name: Inspect historical cascade routing-table state
+  ansible.builtin.command:
+    argv: [ip, route, show, table, "{{ cascade_ingress.routing_table | string }}"]
+  register: cascade_ingress_historical_routes
+  changed_when: false
+  # iproute2 returns rc=2 when the requested IPv4 FIB table has never been
+  # created. That exact empty-table reply is clean state; every other command
+  # failure still prevents the inert scaffold from writing over unknown state.
+  failed_when: >-
+    cascade_ingress_historical_routes.rc != 0 and not (
+      cascade_ingress_historical_routes.rc == 2 and
+      cascade_ingress_historical_routes.stdout | trim | length == 0 and
+      cascade_ingress_historical_routes.stderr_lines == [
+        'Error: ipv4: FIB table does not exist.',
+        'Dump terminated'
+      ]
+    )
+  check_mode: false
+
+- name: Inspect historical cascade nftables state
+  ansible.builtin.command:
+    argv: [nft, list, tables]
+  register: cascade_ingress_historical_nft_tables
+  changed_when: false
+  failed_when: cascade_ingress_historical_nft_tables.rc != 0
+  check_mode: false
+
+- name: Refuse historical cascade ingress state
+  ansible.builtin.assert:
+    that:
+      - cascade_ingress_historical_service.rc != 0
+      - cascade_ingress_historical_interface.rc != 0
+      - cascade_ingress_historical_rules.stdout | trim | length == 0
+      - cascade_ingress_historical_routes.stdout | trim | length == 0
+      - >-
+        cascade_ingress_historical_nft_tables.stdout is not
+        search('(?m)^table inet cascade_ingress$')
+    fail_msg: >-
+      Refusing cascade-ingress because historical WireGuard, policy-routing,
+      or nftables state exists. Recover it explicitly before applying this
+      implementation-only scaffold.
   tags:
     - always
 

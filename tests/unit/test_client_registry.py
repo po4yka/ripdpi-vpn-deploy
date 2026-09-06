@@ -6,9 +6,11 @@ REQ-REGISTRY-LIFECYCLE:
   * an unregistered token fails closed before any remote write;
   * a successful issuance records status/options in the encrypted document.
 """
+
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -20,6 +22,8 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ISSUER = REPO_ROOT / "scripts" / "issue-sub-token.sh"
+BOOTSTRAP_ISSUER = REPO_ROOT / "scripts" / "issue-bootstrap.sh"
+PORT_RESOLVER = REPO_ROOT / "scripts" / "resolve-subscription-port.py"
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "secrets-sample.yml"
 STUBS_BIN = REPO_ROOT / "tests" / "stubs" / "bin"
 REGISTERED_TOKEN = "fixture-token-for-contract-test"
@@ -53,8 +57,9 @@ PY
 fi
 cat @SECRETS_FILE@
 """
-    return body.replace("${ARG1:-}", "${1:-}").replace("@SECRETS_FILE@", str(secrets_file))
-
+    return body.replace("${ARG1:-}", "${1:-}").replace(
+        "@SECRETS_FILE@", str(secrets_file)
+    )
 
 
 def _harness(tmp_path: Path) -> tuple[dict[str, str], Path, Path, Path]:
@@ -75,13 +80,21 @@ def _harness(tmp_path: Path) -> tuple[dict[str, str], Path, Path, Path]:
     _write_executable(
         bin_dir / "ssh",
         f"""#!/bin/sh
+case "$*" in
+  *'.vpn-sub-mirror-current'*)
+    [ "${{MIRROR_MODE:-0}}" = 1 ] && exit 1
+    exit 0
+    ;;
+esac
 touch {ssh_marker}
 case "$*" in *.meta*) cat > {meta_file} ;; *) cat > {payload_file} ;; esac
 """,
     )
     env = os.environ.copy()
     tool_path = os.pathsep.join(
-        entry for entry in env["PATH"].split(os.pathsep) if not entry.endswith("/mise/shims")
+        entry
+        for entry in env["PATH"].split(os.pathsep)
+        if not entry.endswith("/mise/shims")
     )
     env.update(
         {
@@ -127,6 +140,53 @@ def test_refresh_unregistered_token_fails_closed(tmp_path: Path) -> None:
     assert "client_registry entry" in result.stderr
     assert not payload_file.exists()
     assert not ssh_marker.exists()
+
+
+@pytest.mark.parametrize("issuer", [ISSUER, BOOTSTRAP_ISSUER])
+def test_issuers_refuse_direct_write_when_mirror_generation_is_active(
+    tmp_path: Path, issuer: Path
+) -> None:
+    """A legacy write must not claim delivery once the mirror pointer is live."""
+    env, payload_file, ssh_marker, _ = _harness(tmp_path)
+    env["MIRROR_MODE"] = "1"
+    result = subprocess.run(
+        ["bash", str(issuer), "phone"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=REPO_ROOT,
+    )
+    assert result.returncode != 0
+    assert "mirror mode is active" in result.stderr
+    assert not payload_file.exists()
+    assert not ssh_marker.exists()
+
+
+def _load_port_resolver():
+    spec = importlib.util.spec_from_file_location(
+        "resolve_subscription_port", PORT_RESOLVER
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_subscription_port_resolver_matches_effective_cohort_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issued URLs follow the same all/vpn/cohort precedence as the role."""
+    module = _load_port_resolver()
+    group_vars = tmp_path / "group_vars"
+    group_vars.mkdir()
+    (group_vars / "all.yml").write_text("subscription_port: 18444\n")
+    (group_vars / "vpn.yml").write_text("subscription_port: 19444\n")
+    (group_vars / "vpn-edge.yml").write_text("subscription_port: 20444\n")
+    inventory = tmp_path / "generated.ini"
+    inventory.write_text("[vpn-edge]\nnode.example.test\n")
+    monkeypatch.setattr(module, "GROUP_VARS", group_vars)
+    monkeypatch.setattr(module, "INVENTORY", inventory)
+    assert module.resolve("node.example.test", 8444) == 20444
 
 
 def test_refresh_explicit_override_wins_and_is_logged(tmp_path: Path) -> None:
@@ -203,69 +263,101 @@ def test_issuer_revoke_hint_names_the_key_the_role_consumes() -> None:
     `subscription.revoked_token_hashes`, which nothing reads — so a leaked
     token stayed valid after a by-the-book revocation.
     """
-    role_tasks = (REPO_ROOT / "ansible/roles/subscription-host/tasks/main.yml").read_text()
+    role_tasks = (
+        REPO_ROOT / "ansible/roles/subscription-host/tasks/main.yml"
+    ).read_text()
     iterated = set(re.findall(r"for \w+ in subscription\.(\w+)", role_tasks))
     assert iterated == {"revoked_tokens"}
-    assert set(re.findall(r"subscription\.(revoked_\w+)", ISSUER.read_text())) == iterated
+    assert (
+        set(re.findall(r"subscription\.(revoked_\w+)", ISSUER.read_text())) == iterated
+    )
 
 
-@pytest.mark.parametrize('script_name,arguments,artifact', [
-    ('issue-sub-token.sh', ['--qr'], 'phone.sub.qr.png'),
-    ('issue-bootstrap.sh', ['--qr'], 'phone.bootstrap.qr.png'),
-    ('emit-qr.sh', [], 'phone.qr.png'),
-])
-@pytest.mark.parametrize('legacy_output', [False, True])
-def test_qr_output_is_private_at_creation(tmp_path, script_name, arguments, artifact, legacy_output):
+@pytest.mark.parametrize(
+    "script_name,arguments,artifact",
+    [
+        ("issue-sub-token.sh", ["--qr"], "phone.sub.qr.png"),
+        ("issue-bootstrap.sh", ["--qr"], "phone.bootstrap.qr.png"),
+        ("emit-qr.sh", [], "phone.qr.png"),
+    ],
+)
+@pytest.mark.parametrize("legacy_output", [False, True])
+def test_qr_output_is_private_at_creation(
+    tmp_path, script_name, arguments, artifact, legacy_output
+):
     env, _, _, _ = _harness(tmp_path)
-    env['QR_MODE_LOG'] = str(tmp_path / 'qr-mode')
+    env["QR_MODE_LOG"] = str(tmp_path / "qr-mode")
     if legacy_output:
-        (tmp_path / artifact).write_text('old credential')
+        (tmp_path / artifact).write_text("old credential")
         (tmp_path / artifact).chmod(0o644)
-    _write_executable(tmp_path / 'bin/qrencode', '''#!/usr/bin/env python3
+    _write_executable(
+        tmp_path / "bin/qrencode",
+        """#!/usr/bin/env python3
 import os, pathlib, stat, sys
 output = pathlib.Path(sys.argv[sys.argv.index('-o') + 1])
 with output.open('wb') as stream:
     stream.write(sys.stdin.buffer.read())
     pathlib.Path(os.environ['QR_MODE_LOG']).write_text(str(stat.S_IMODE(os.fstat(stream.fileno()).st_mode)))
-''')
+""",
+    )
     result = subprocess.run(
-        ['bash', str(REPO_ROOT / 'scripts' / script_name), 'phone', *arguments],
-        env=env, cwd=tmp_path, text=True, capture_output=True, timeout=20, umask=0o022,
+        ["bash", str(REPO_ROOT / "scripts" / script_name), "phone", *arguments],
+        env=env,
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        timeout=20,
+        umask=0o022,
     )
     assert result.returncode == 0, result.stderr
-    assert int((tmp_path / 'qr-mode').read_text()) == 0o600
+    assert int((tmp_path / "qr-mode").read_text()) == 0o600
     assert (tmp_path / artifact).stat().st_mode & 0o777 == 0o600
 
 
-@pytest.mark.parametrize('script_name', ['issue-sub-token.sh', 'issue-bootstrap.sh'])
-@pytest.mark.parametrize('directory', ["/opt/o'brien", 'relative/path', '/opt/../evil', '/opt/$(id)', '/opt/space dir'])
-def test_subscription_directory_rejected_before_external_commands(tmp_path, script_name, directory):
-    scripts = tmp_path / 'scripts'
+@pytest.mark.parametrize("script_name", ["issue-sub-token.sh", "issue-bootstrap.sh"])
+@pytest.mark.parametrize(
+    "directory",
+    ["/opt/o'brien", "relative/path", "/opt/../evil", "/opt/$(id)", "/opt/space dir"],
+)
+def test_subscription_directory_rejected_before_external_commands(
+    tmp_path, script_name, directory
+):
+    scripts = tmp_path / "scripts"
     scripts.mkdir()
     script = scripts / script_name
-    script.write_text((REPO_ROOT / 'scripts' / script_name).read_text())
-    marker = tmp_path / 'external-call'
-    _write_executable(scripts / 'terraform-env.sh', f'#!/bin/sh\ntouch {marker}\nexit 73\n')
+    script.write_text((REPO_ROOT / "scripts" / script_name).read_text())
+    marker = tmp_path / "external-call"
+    _write_executable(
+        scripts / "terraform-env.sh", f"#!/bin/sh\ntouch {marker}\nexit 73\n"
+    )
     result = subprocess.run(
-        ['bash', str(script), 'phone'], env={**os.environ, 'SUBSCRIPTION_DIR': directory},
-        capture_output=True, text=True, timeout=5,
+        ["bash", str(script), "phone"],
+        env={**os.environ, "SUBSCRIPTION_DIR": directory},
+        capture_output=True,
+        text=True,
+        timeout=5,
     )
     assert result.returncode == 2, result.stderr
-    assert 'SUBSCRIPTION_DIR must be' in result.stderr
+    assert "SUBSCRIPTION_DIR must be" in result.stderr
     assert not marker.exists()
 
 
-@pytest.mark.parametrize('script_name', ['issue-sub-token.sh', 'issue-bootstrap.sh'])
+@pytest.mark.parametrize("script_name", ["issue-sub-token.sh", "issue-bootstrap.sh"])
 def test_safe_subscription_directory_reaches_next_stage(tmp_path, script_name):
-    scripts = tmp_path / 'scripts'
+    scripts = tmp_path / "scripts"
     scripts.mkdir()
     script = scripts / script_name
-    script.write_text((REPO_ROOT / 'scripts' / script_name).read_text())
-    marker = tmp_path / 'external-call'
-    _write_executable(scripts / 'terraform-env.sh', f'#!/bin/sh\ntouch {marker}\nexit 73\n')
+    script.write_text((REPO_ROOT / "scripts" / script_name).read_text())
+    marker = tmp_path / "external-call"
+    _write_executable(
+        scripts / "terraform-env.sh", f"#!/bin/sh\ntouch {marker}\nexit 73\n"
+    )
     result = subprocess.run(
-        ['bash', str(script), 'phone'], env={**os.environ, 'SUBSCRIPTION_DIR': '/var/lib/vpn-subscription'},
-        capture_output=True, text=True, timeout=5,
+        ["bash", str(script), "phone"],
+        env={**os.environ, "SUBSCRIPTION_DIR": "/var/lib/vpn-subscription"},
+        capture_output=True,
+        text=True,
+        timeout=5,
     )
     assert result.returncode == 73, result.stderr
     assert marker.exists()

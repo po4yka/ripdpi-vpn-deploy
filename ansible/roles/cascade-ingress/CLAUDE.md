@@ -4,6 +4,15 @@
 
 The role owns the disabled client-termination integration contract and tri-state per-connection classifier adapter. It renders the private egress-leg scaffold but exposes no foreign-facing tunnel listener and has no service-start task. The unchanged SHA256-pinned geodata role output at `geoip.dat` is the only production dataset source. Both the loopback SOCKS adapter and authenticated per-leg probe are installed as implementation artifacts behind literal false systemd execution conditions.
 
+The ingress WireGuard scaffold keeps `AllowedIPs = 0.0.0.0/0` for the future
+foreign leg but pins `Table = off`, so bringing up the interface cannot replace
+the host default route. Its configuration records the activation contract:
+only classifier-owned foreign flows may receive the dedicated mark and routing
+table. The repository-disabled scaffold deliberately installs no such rules.
+Convergence refuses before writes when it observes an active or residual
+historical ingress service, interface, route, rule, or nftables table; removing
+that state requires a separately authorized recovery.
+
 ## What's done well
 
 - Dataset preflight runs before the integration contract or tunnel scaffold is rendered.
@@ -19,3 +28,6 @@ The role owns the disabled client-termination integration contract and tri-state
 - Do not add a service-management toggle, remove either false execution condition, or enable either timer/service without a reviewed live-authorization decision and live-node evidence.
 - The direct and tunnel interfaces must remain distinct; otherwise a default route through the tunnel could make a nominal RU-direct classification egress through the foreign leg.
 - Do not import split-hop responder, keepalive, conntrack-direction, or no-listen invariants; they defend a different threat model.
+- Egress forwarding/NAT remains outside this implementation-only ingress
+  scaffold. Live authorization must add and prove a scoped egress forwarding
+  contract; it must not widen the empty ingress table or install a host default.

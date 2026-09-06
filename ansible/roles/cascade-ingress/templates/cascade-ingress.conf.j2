@@ -1,6 +1,11 @@
 [Interface]
 PrivateKey = {{ cascade_secrets.ingress_private_key }}
 Address = {{ cascade_ingress.tunnel_address }}
+Table = off
+# Activation intent: only classifier-owned foreign connections receive
+# fwmark {{ cascade_ingress.fwmark }}; table {{ cascade_ingress.routing_table }} routes that mark through
+# {{ cascade_ingress.wg_interface }}. Never install this peer default in the main routing table.
+# Egress forwarding/NAT is a separate activation contract; this scaffold installs none.
 PostUp = nft -f {{ cascade_ingress.policy_path }}
 PostDown = nft delete table inet cascade_ingress 2>/dev/null || true
 

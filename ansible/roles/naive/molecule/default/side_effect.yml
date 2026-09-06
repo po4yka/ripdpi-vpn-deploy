@@ -1,0 +1,32 @@
+---
+- name: Prove malformed Caddyfile fails native validation
+  hosts: all
+  become: true
+  tasks:
+    - name: Stage malformed Caddyfile candidate
+      ansible.builtin.copy:
+        dest: /var/tmp/naive-invalid.Caddyfile
+        mode: "0600"
+        content: "INVALID_CONFIG {\n"
+
+    - name: Reject malformed Caddyfile candidate
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/caddy-naive
+          - validate
+          - --config
+          - /var/tmp/naive-invalid.Caddyfile
+          - --adapter
+          - caddyfile
+      register: _invalid_naive
+      changed_when: false
+      failed_when: false
+
+    - name: Require malformed Caddyfile candidate refusal
+      ansible.builtin.assert:
+        that: _invalid_naive.rc != 0
+
+    - name: Remove malformed Caddyfile candidate
+      ansible.builtin.file:
+        path: /var/tmp/naive-invalid.Caddyfile
+        state: absent

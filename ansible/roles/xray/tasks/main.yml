@@ -11,6 +11,31 @@
       linux_amd64_sha256 / linux_arm64_sha256) in your secrets file or
       group_vars before running this role.
 
+- name: Resolve the effective P0 REALITY shape
+  ansible.builtin.set_fact:
+    p0_reality_effective_flow_mode: >-
+      {{ vpn.xray_flow_mode | default(p0_reality_flow_mode) }}
+  when: vpn.enable_xray_reality | default(true) | bool
+
+- name: Pre-flight — default P0 REALITY shape must be declared
+  ansible.builtin.assert:
+    that:
+      - p0_reality_effective_flow_mode in p0_reality_shapes
+    fail_msg: >-
+      The effective P0 REALITY flow_mode must name a declared
+      p0_reality_shapes entry; unknown shapes are not rendered.
+  when: vpn.enable_xray_reality | default(true) | bool
+
+- name: Pre-flight — cohort P0 REALITY shapes must be declared
+  ansible.builtin.assert:
+    that:
+      - item.flow_mode | default(p0_reality_effective_flow_mode) in p0_reality_shapes
+    fail_msg: >-
+      Every P0 REALITY cohort flow_mode must name a declared p0_reality_shapes
+      entry; unknown shapes are not rendered.
+  loop: "{{ xray.cohorts | default([]) }}"
+  when: vpn.enable_xray_reality | default(true) | bool
+
 - name: Pre-flight — Xray StatsService must remain loopback-only
   ansible.builtin.assert:
     that:
@@ -19,7 +44,7 @@
       - (xray_api_listen | split(':') | last | int) < 65536
       - >-
         not (vpn.enable_nginx_xhttp | default(false) | bool) or
-        (xray_api_listen | split(':') | last | int) != (nginx_xhttp_port | default(10085) | int)
+        (xray_api_listen | split(':') | last | int) != (nginx_xhttp_port | int)
     fail_msg: >-
       xray_api_listen must be a valid 127.0.0.1 TCP endpoint and must not
       collide with the localhost XHTTP inbound.
@@ -27,6 +52,10 @@
 - name: Install shared pinned Xray runtime
   ansible.builtin.include_role:
     name: xray-runtime
+  vars:
+    xray_runtime_publish_geoip: >-
+      {{ not (vpn.enable_geodata | default(false) | bool) }}
+    xray_runtime_asset_public_dir: "{{ xray_asset_dir }}"
 
 - name: Schedule primary Xray restart after runtime change
   ansible.builtin.debug:
@@ -115,11 +144,16 @@
     owner: root
     group: "{{ xray_runtime_group }}"
     mode: "0640"
-    validate: "/usr/local/bin/xray run -test -config %s"
+    validate: >-
+      /usr/bin/env XRAY_LOCATION_ASSET={{ xray_asset_dir }}
+      /usr/local/bin/xray run -test -config %s
   check_mode: true
   register: _xray_config_change
   no_log: true
   diff: false
+  vars:
+    p0_reality_shape_template: >-
+      {{ role_path }}/../../templates/p0-reality-shape.json.j2
 
 - name: Backup previous Xray config if exists
   ansible.builtin.copy:
@@ -141,10 +175,15 @@
     owner: root
     group: "{{ xray_runtime_group }}"
     mode: "0640"
-    validate: "/usr/local/bin/xray run -test -config %s"
+    validate: >-
+      /usr/bin/env XRAY_LOCATION_ASSET={{ xray_asset_dir }}
+      /usr/local/bin/xray run -test -config %s
   no_log: true
   diff: false
   notify: Restart xray
+  vars:
+    p0_reality_shape_template: >-
+      {{ role_path }}/../../templates/p0-reality-shape.json.j2
 
 - name: Ensure xray is enabled and started
   ansible.builtin.systemd_service:

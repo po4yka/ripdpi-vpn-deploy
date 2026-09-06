@@ -1,3 +1,8 @@
 ---
 xray_install_dir: "{{ xray_install_root | default('/opt/xray') }}"
 xray_runtime_build_from_source: "{{ vpn.build_xray_from_source | default(false) }}"
+xray_runtime_publish_geoip: false
+xray_runtime_asset_public_dir: "{{ xray_install_dir }}/bundled-assets"
+xray_runtime_release_urls:
+  amd64: "https://github.com/XTLS/Xray-core/releases/download/{{ xray.version }}/Xray-linux-64.zip"
+  arm64: "https://github.com/XTLS/Xray-core/releases/download/{{ xray.version }}/Xray-linux-arm64-v8a.zip"

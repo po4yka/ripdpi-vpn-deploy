@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -24,6 +23,21 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
             (
                 "Restart hysteria-realm",
                 "Wait for hysteria-realm to become active",
+            ),
+        ),
+        (
+            "naive",
+            (
+                "Restart caddy-naive",
+                "Wait for caddy-naive to become active",
+            ),
+        ),
+        (
+            "dns-morph-bridge",
+            (
+                "Restart dns-morph-bridge",
+                "Wait for dns-morph-bridge to become active",
+                "Restart unbound",
             ),
         ),
     ],

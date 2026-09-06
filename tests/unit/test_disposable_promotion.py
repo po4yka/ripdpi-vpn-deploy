@@ -243,6 +243,8 @@ def capabilities(intent, tmp_path):
 def test_capabilities_bind_state_and_snapshot_exact_secrets_before_deployment(
     capabilities, monkeypatch
 ):
+    import hashlib
+
     helper = module()
     original = copy.deepcopy(capabilities["intent"])
     calls = []
@@ -255,6 +257,14 @@ def test_capabilities_bind_state_and_snapshot_exact_secrets_before_deployment(
 
     monkeypatch.setattr(helper, "_decrypt", decrypt)
     prepared = helper.prepare_intent(**capabilities)
+    source = Path(original["inputs"]["sops_file"])
+    source_info = source.stat()
+    assert prepared["sops_source_identity"] == {
+        "path": str(source),
+        "device": source_info.st_dev,
+        "inode": source_info.st_ino,
+        "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+    }
     assert len(calls) == 1
     for name, source in original["inputs"].items():
         snapshot = Path(prepared["inputs"][name])
@@ -263,6 +273,150 @@ def test_capabilities_bind_state_and_snapshot_exact_secrets_before_deployment(
         assert snapshot.stat().st_mode & 0o777 == 0o600
     assert prepared["outputs"] == original["outputs"]
     assert not (capabilities["directory"] / "onboarding-secrets.yaml").exists()
+
+
+def test_real_preparation_retains_original_sops_lock_for_retirement_contention(
+    capabilities, monkeypatch
+):
+    import subprocess
+
+    helper = module()
+    original_sops = Path(capabilities["intent"]["inputs"]["sops_file"])
+    original_payload = original_sops.read_bytes()
+
+    def decrypt(_sops, _age, output, _environment):
+        output.write_bytes(capabilities["deployed_secrets"])
+        output.chmod(0o600)
+
+    monkeypatch.setattr(helper, "_decrypt", decrypt)
+    prepared = helper.prepare_intent(**capabilities)
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import importlib.util, pathlib, sys; "
+                "path=pathlib.Path(sys.argv[1]); "
+                "spec=importlib.util.spec_from_file_location('retirement_holder', path); "
+                "module=importlib.util.module_from_spec(spec); "
+                "spec.loader.exec_module(module); "
+                "locks=module.lock_paths(pathlib.Path(sys.argv[2]), sys.argv[3]); "
+                "ctx=module._locks(locks); ctx.__enter__(); "
+                "print('ready', flush=True); sys.stdin.buffer.read(1); "
+                "ctx.__exit__(None, None, None)"
+            ),
+            str(ROOT / "scripts/retire-unbound-staging-client.py"),
+            str(original_sops),
+            prepared["client"],
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None
+        assert holder.stdout.readline() == "ready\n"
+        with pytest.raises(
+            helper.OnboardingError, match="^onboarding-finalization-refused$"
+        ):
+            helper.finalize(prepared, {}, clock=lambda: 1_800_000_000)
+    finally:
+        assert holder.stdin is not None
+        holder.stdin.close()
+        assert holder.wait(timeout=5) == 0
+
+    assert original_sops.read_bytes() == original_payload
+    assert all(not Path(path).exists() for path in prepared["outputs"].values())
+
+
+def test_prepared_finalizer_refuses_post_snapshot_retirement_without_artifacts(
+    capabilities, monkeypatch
+):
+    helper = module()
+    original_sops = Path(capabilities["intent"]["inputs"]["sops_file"])
+
+    def decrypt(_sops, _age, output, _environment):
+        output.write_bytes(capabilities["deployed_secrets"])
+        output.chmod(0o600)
+
+    monkeypatch.setattr(helper, "_decrypt", decrypt)
+    prepared = helper.prepare_intent(**capabilities)
+    original_sops.write_bytes(b"retired synthetic ciphertext\n")
+    original_sops.chmod(0o600)
+
+    with pytest.raises(
+        helper.OnboardingError, match="^onboarding-finalization-refused$"
+    ):
+        helper.finalize(prepared, {}, clock=lambda: 1_800_000_000)
+
+    assert all(not Path(path).exists() for path in prepared["outputs"].values())
+
+
+def test_first_finalization_refuses_same_bytes_replaced_source_inode(
+    capabilities, monkeypatch
+):
+    helper = module()
+    original_sops = Path(capabilities["intent"]["inputs"]["sops_file"])
+
+    def decrypt(_sops, _age, output, _environment):
+        output.write_bytes(capabilities["deployed_secrets"])
+        output.chmod(0o600)
+
+    monkeypatch.setattr(helper, "_decrypt", decrypt)
+    prepared = helper.prepare_intent(**capabilities)
+    original_inode = original_sops.stat().st_ino
+    replacement = original_sops.with_name("same-bytes-replacement.yaml")
+    replacement.write_bytes(original_sops.read_bytes())
+    replacement.chmod(0o600)
+
+    prepared["inputs"]["sops_source_file"] = str(replacement)
+    with pytest.raises(
+        helper.OnboardingError, match="^onboarding-finalization-refused$"
+    ):
+        helper.finalize(prepared, {}, clock=lambda: 1_800_000_000)
+    assert all(not Path(path).exists() for path in prepared["outputs"].values())
+
+    prepared["inputs"]["sops_source_file"] = str(original_sops)
+    replacement.replace(original_sops)
+    assert original_sops.stat().st_ino != original_inode
+
+    with pytest.raises(
+        helper.OnboardingError, match="^onboarding-finalization-refused$"
+    ):
+        helper.finalize(prepared, {}, clock=lambda: 1_800_000_000)
+
+    assert all(not Path(path).exists() for path in prepared["outputs"].values())
+
+
+def test_prepared_intent_refuses_malformed_source_identity(finalization):
+    helper, intent, _state = finalization
+    invalid = []
+
+    missing = copy.deepcopy(intent)
+    del missing["sops_source_identity"]["sha256"]
+    invalid.append(missing)
+
+    extra = copy.deepcopy(intent)
+    extra["sops_source_identity"]["generation"] = 1
+    invalid.append(extra)
+
+    for key, value in (
+        (
+            "path",
+            str(Path(intent["sops_source_identity"]["path"]).with_suffix(".other")),
+        ),
+        ("device", True),
+        ("inode", 0),
+        ("sha256", "A" * 64),
+    ):
+        candidate = copy.deepcopy(intent)
+        candidate["sops_source_identity"][key] = value
+        invalid.append(candidate)
+
+    for candidate in invalid:
+        with pytest.raises(helper.OnboardingError, match="^onboarding-intent-refused$"):
+            helper.validate_intent(candidate)
 
 
 def test_capability_snapshot_decrypts_with_real_sops_yaml(capabilities, tmp_path):
@@ -360,7 +514,20 @@ def finalization(capabilities, monkeypatch):
 
     helper = module()
     state = {"installs": 0, "reads": 0, "live": 0, "receipt": None}
-    intent = capabilities["intent"]
+    intent = copy.deepcopy(capabilities["intent"])
+    source_sops = Path(intent["inputs"]["sops_file"])
+    snapshot_sops = source_sops.with_name("prepared-sops-file.yaml")
+    snapshot_sops.write_bytes(source_sops.read_bytes())
+    snapshot_sops.chmod(0o600)
+    intent["inputs"]["sops_source_file"] = str(source_sops)
+    intent["inputs"]["sops_file"] = str(snapshot_sops)
+    source_info = source_sops.stat()
+    intent["sops_source_identity"] = {
+        "path": str(source_sops),
+        "device": source_info.st_dev,
+        "inode": source_info.st_ino,
+        "sha256": hashlib.sha256(source_sops.read_bytes()).hexdigest(),
+    }
     config_path = Path(intent["outputs"]["liveness_config"])
     binding_path = Path(intent["outputs"]["binding"])
     registry_path = Path(intent["outputs"]["registry"])
@@ -459,11 +626,59 @@ def test_finalizer_publishes_real_epoch_and_reuses_exact_receipt_without_reinsta
     }
 
 
+def test_finalizer_interlocks_an_active_retirement_without_writes(finalization):
+    import subprocess
+
+    helper, intent, state = finalization
+    sops_file = Path(intent["inputs"]["sops_source_file"])
+    before = sops_file.read_bytes()
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import importlib.util, pathlib, sys; "
+                "path=pathlib.Path(sys.argv[1]); "
+                "spec=importlib.util.spec_from_file_location('retirement_holder', path); "
+                "module=importlib.util.module_from_spec(spec); "
+                "spec.loader.exec_module(module); "
+                "locks=module.lock_paths(pathlib.Path(sys.argv[2]), sys.argv[3]); "
+                "ctx=module._locks(locks); ctx.__enter__(); "
+                "print('ready', flush=True); sys.stdin.buffer.read(1); "
+                "ctx.__exit__(None, None, None)"
+            ),
+            str(ROOT / "scripts/retire-unbound-staging-client.py"),
+            str(sops_file),
+            intent["client"],
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None
+        assert holder.stdout.readline() == "ready\n"
+        with pytest.raises(
+            helper.OnboardingError, match="^onboarding-finalization-refused$"
+        ):
+            helper.finalize(intent, {}, clock=lambda: 1_800_000_000)
+    finally:
+        assert holder.stdin is not None
+        holder.stdin.close()
+        assert holder.wait(timeout=5) == 0
+
+    assert sops_file.read_bytes() == before
+    assert state["installs"] == 0
+    assert all(not Path(path).exists() for path in intent["outputs"].values())
+
+
 @pytest.mark.parametrize(
     "case",
     [
         "foreign-output",
         "changed-sops",
+        "changed-sops-source",
         "foreign-receipt",
         "no-remote-receipt",
         "changed-target",
@@ -478,6 +693,12 @@ def test_finalizer_reuse_never_overwrites_foreign_or_unproven_generation(
         Path(intent["outputs"]["promotion_config"]).write_text('{"foreign":true}')
     elif case == "changed-sops":
         Path(intent["inputs"]["sops_file"]).write_text("different ciphertext")
+    elif case == "changed-sops-source":
+        source = Path(intent["inputs"]["sops_source_file"])
+        replacement = source.with_name("same-bytes-foreign-source.yaml")
+        replacement.write_bytes(source.read_bytes())
+        replacement.chmod(0o600)
+        intent["inputs"]["sops_source_file"] = str(replacement)
     elif case == "foreign-receipt":
         state["receipt"] = dict(
             state["receipt"], generation_id="00000000-0000-4000-8000-000000000002"
@@ -644,6 +865,13 @@ def test_finalizer_rejects_existing_output_without_its_authority(finalization):
 @pytest.mark.parametrize("suffix", [".pending.json", ".lock"])
 def test_intent_rejects_derived_registry_paths_aliasing_key(intent, suffix):
     intent["inputs"]["awg_key_file"] = intent["outputs"]["registry"] + suffix
+    helper = module()
+    with pytest.raises(helper.OnboardingError):
+        helper.validate_intent(intent)
+
+
+def test_intent_rejects_output_aliasing_the_shared_sops_project_lock(intent):
+    intent["outputs"]["binding"] = intent["inputs"]["sops_file"] + ".new-client.lock"
     helper = module()
     with pytest.raises(helper.OnboardingError):
         helper.validate_intent(intent)

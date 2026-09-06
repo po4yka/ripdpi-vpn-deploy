@@ -6,11 +6,23 @@
 SOT for the Reality inbound. Other roles (firewall, nginx-xhttp) read ports
 from `defaults/main.yml`; they never copy the inbound config.
 
+**P0 shape rendering is shared** — `ansible/templates/p0-reality-shape.json.j2`
+is the sole renderer for the accepted Vision and mux shape declarations in
+`group_vars/all.yml`. Xray and watchdog pass raw overrides to that template;
+unknown modes fail before render.
+
 **Pinned binary** — Xray version is pinned in `defaults/main.yml`; upgrades
 go through `docs/XRAY-RELEASE-LINE.md`. The release-line tracker exists
 because v26.2.6 → v26.5.3 had silent flow-mode breakage on some clients.
 Binary acquisition is delegated to `xray-runtime`; this role owns only the
 primary service user, configuration, logs, and lifecycle.
+
+**Explicit asset lookup** — template validation, restart validation, and the
+systemd service use the same `XRAY_LOCATION_ASSET` directory. The geodata role
+populates it when enabled; otherwise `xray-runtime` publishes the
+archive-bundled GeoIP file below the Xray install root. The two modes keep
+disjoint path ownership so an enable/disable transition cannot replace one
+role's regular file with the other role's symlink.
 
 **XHTTP can run without REALITY** — the role runs when either transport is enabled. The XHTTP inbound binds only to `127.0.0.1`; when `vpn.enable_xray_reality` is false, no public REALITY inbound or REALITY target validation is emitted.
 

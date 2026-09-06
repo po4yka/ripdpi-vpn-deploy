@@ -41,6 +41,10 @@ split_hop_egress:
   # way out.
   forward_iface: "eth0"
 
+  # Ansible owns the scoped NAT table independently from wg-quick. The
+  # rendered file is syntax-checked before it can replace the live table.
+  policy_path: /etc/wireguard/split-hop-egress.nft
+
   # PersistentKeepalive (seconds). B is the initiator, so its
   # keepalive maintains the tunnel through any NAT in front of A.
   # 25s is the standard WG figure — short enough to keep NAT

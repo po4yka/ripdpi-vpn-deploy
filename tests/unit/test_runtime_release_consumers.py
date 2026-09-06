@@ -1,0 +1,351 @@
+"""Contracts for roles that delegate pinned binary publication to runtime-release."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+import yaml
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _tasks(role: str) -> list[dict]:
+    return yaml.safe_load(
+        (ROOT / "ansible" / "roles" / role / "tasks" / "main.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def _runtime_task(role: str, name: str | None = None) -> dict:
+    matches = []
+    for task in _tasks(role):
+        candidates = [task, *task.get("block", [])]
+        matches.extend(
+            candidate
+            for candidate in candidates
+            if candidate.get("ansible.builtin.include_role", {}).get("name")
+            == "runtime-release"
+            and "tasks_from" not in candidate["ansible.builtin.include_role"]
+        )
+    if name is not None:
+        matches = [task for task in matches if task.get("name") == name]
+    assert len(matches) == 1, (role, name)
+    return matches[0]
+
+
+def _task(role: str, name: str) -> dict:
+    matches = [task for task in _tasks(role) if task.get("name") == name]
+    assert len(matches) == 1, (role, name)
+    return matches[0]
+
+
+@pytest.mark.parametrize(
+    ("role", "install_root", "binary_name", "public_link", "artifact_type"),
+    [
+        (
+            "hysteria-realm",
+            "{{ hysteria_realm.install_root }}",
+            "sing-box",
+            "/usr/local/bin/sing-box-realm",
+            "archive",
+        ),
+        (
+            "snell",
+            "{{ snell.install_root }}",
+            "sing-box",
+            "/usr/local/bin/sing-box-snell",
+            "archive",
+        ),
+        (
+            "probe-matrix-target",
+            "/opt/probe-matrix/mtg",
+            "mtg",
+            "/usr/local/bin/probe-matrix-mtg",
+            "binary",
+        ),
+        (
+            "dns-morph-bridge",
+            "{{ dns_morph_bridge.install_root }}",
+            "dns-morph-bridge",
+            "{{ dns_morph_bridge.bin_path }}",
+            "binary",
+        ),
+    ],
+)
+def test_binary_consumers_delegate_publication_to_runtime_release(
+    role: str,
+    install_root: str,
+    binary_name: str,
+    public_link: str,
+    artifact_type: str,
+) -> None:
+    task = _runtime_task(role)
+    contract = task["vars"]
+
+    assert contract["runtime_release_install_root"] == install_root
+    assert contract["runtime_release_binary_name"] == binary_name
+    assert contract["runtime_release_public_link"] == public_link
+    assert contract["runtime_release_artifact_type"] == artifact_type
+    assert set(contract["runtime_release_urls"]) == {"amd64", "arm64"}
+    assert set(contract["runtime_release_sha256"]) == {"amd64", "arm64"}
+    assert set(contract["runtime_release_arch_slugs"]) == {"amd64", "arm64"}
+
+    source = (
+        ROOT / "ansible" / "roles" / role / "tasks" / "main.yml"
+    ).read_text(encoding="utf-8")
+    assert "ansible.builtin.get_url:" not in source
+    assert "ansible.builtin.unarchive:" not in source
+
+
+@pytest.mark.parametrize(
+    ("role", "name", "handler"),
+    [
+        (
+            "hysteria-realm",
+            "Notify hysteria-realm restart after runtime release activation",
+            "Restart hysteria-realm",
+        ),
+        (
+            "snell",
+            "Notify Snell restart after runtime release activation",
+            "Restart snell",
+        ),
+        (
+            "probe-matrix-target",
+            "Notify probe matrix mtg restart after runtime release activation",
+            "Restart probe matrix mtg",
+        ),
+        (
+            "dns-morph-bridge",
+            "Notify DNS-Morph bridge restart after runtime release activation",
+            "Restart dns-morph-bridge",
+        ),
+    ],
+)
+def test_consumers_propagate_real_activation_without_check_mode_handlers(
+    role: str, name: str, handler: str
+) -> None:
+    task = _task(role, name)
+    assert task["changed_when"] == "runtime_release_changed | bool"
+    assert task["when"] == "not ansible_check_mode"
+    assert task["notify"] == handler
+
+
+def test_archive_consumers_pin_one_exact_member_for_each_architecture() -> None:
+    realm = _runtime_task("hysteria-realm")["vars"]
+    snell = _runtime_task("snell")["vars"]
+
+    for contract, version in (
+        (realm, "hysteria_realm.version"),
+        (snell, "snell.version"),
+    ):
+        assert contract["runtime_release_archive_strip_components"] == 1
+        assert contract["runtime_release_archive_members"] == {
+            "amd64": (
+                "sing-box-{{ "
+                + version
+                + " | regex_replace('^v', '') }}-linux-amd64/sing-box"
+            ),
+            "arm64": (
+                "sing-box-{{ "
+                + version
+                + " | regex_replace('^v', '') }}-linux-arm64/sing-box"
+            ),
+        }
+
+
+def test_xray_prebuilt_path_delegates_archive_activation_only() -> None:
+    task = _runtime_task(
+        "xray-runtime", "Install pinned Xray archive through runtime-release"
+    )
+    contract = task["vars"]
+
+    assert task["when"] == "not xray_runtime_build_from_source | bool"
+    assert contract["runtime_release_version"] == "{{ xray.version }}"
+    assert contract["runtime_release_install_root"] == "{{ xray_install_dir }}"
+    assert contract["runtime_release_binary_name"] == "xray"
+    assert contract["runtime_release_public_link"] == "/usr/local/bin/xray"
+    assert contract["runtime_release_artifact_type"] == "archive"
+    assert contract["runtime_release_archive_members"] == {
+        "amd64": "xray",
+        "arm64": "xray",
+    }
+    assert contract["runtime_release_archive_strip_components"] == 0
+
+    source = (
+        ROOT / "ansible" / "roles" / "xray-runtime" / "tasks" / "main.yml"
+    ).read_text(encoding="utf-8")
+    assert "ansible.builtin.get_url:" not in source
+    assert "ansible.builtin.unarchive:" not in source
+
+
+def test_xray_publishes_required_geoip_as_a_pinned_read_only_runtime_asset() -> None:
+    xray_defaults = yaml.safe_load(
+        (ROOT / "ansible/roles/xray/defaults/main.yml").read_text(encoding="utf-8")
+    )
+    runtime_defaults = yaml.safe_load(
+        (ROOT / "ansible/roles/xray-runtime/defaults/main.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    asset = _task("xray-runtime", "Install bundled GeoIP asset through runtime-release")
+    contract = asset["vars"]
+
+    assert xray_defaults["xray_bundled_asset_dir"] == (
+        "{{ xray_install_dir }}/bundled-assets"
+    )
+    assert "vpn.enable_geodata" in xray_defaults["xray_asset_dir"]
+    assert "xray_bundled_asset_dir" in xray_defaults["xray_asset_dir"]
+    assert runtime_defaults["xray_runtime_asset_public_dir"] == (
+        "{{ xray_install_dir }}/bundled-assets"
+    )
+    assert asset["when"] == "xray_runtime_publish_geoip | bool"
+    assert contract["runtime_release_version"] == "{{ xray.version }}"
+    assert contract["runtime_release_install_root"] == (
+        "{{ xray_install_dir }}/assets/geoip"
+    )
+    assert contract["runtime_release_binary_name"] == "geoip.dat"
+    assert contract["runtime_release_public_link"] == (
+        "{{ xray_runtime_asset_public_dir }}/geoip.dat"
+    )
+    assert contract["runtime_release_candidate_mode"] == "0644"
+    assert contract["runtime_release_artifact_type"] == "archive"
+    assert contract["runtime_release_archive_members"] == {
+        "amd64": "geoip.dat",
+        "arm64": "geoip.dat",
+    }
+    assert contract["runtime_release_urls"] == {
+        "amd64": "{{ xray_runtime_release_urls.amd64 }}",
+        "arm64": "{{ xray_runtime_release_urls.arm64 }}",
+    }
+    assert contract["runtime_release_sha256"] == {
+        "amd64": "{{ xray.linux_amd64_sha256 }}",
+        "arm64": "{{ xray.linux_arm64_sha256 }}",
+    }
+
+    caller = _task("xray", "Install shared pinned Xray runtime")
+    assert caller["vars"]["xray_runtime_publish_geoip"] == (
+        "{{ not (vpn.enable_geodata | default(false) | bool) }}"
+    )
+    assert caller["vars"]["xray_runtime_asset_public_dir"] == (
+        "{{ xray_asset_dir }}"
+    )
+
+    validation_commands = [
+        task["ansible.builtin.template"]["validate"]
+        for task in _tasks("xray")
+        if task.get("name") in {
+            "Detect Xray config change before preserving rollback state",
+            "Render and validate Xray config",
+        }
+    ]
+    expected = (
+        "/usr/bin/env XRAY_LOCATION_ASSET={{ xray_asset_dir }} "
+        "/usr/local/bin/xray run -test -config %s"
+    )
+    assert validation_commands == [expected, expected]
+    service = (
+        ROOT / "ansible/roles/xray/templates/xray.service.j2"
+    ).read_text(encoding="utf-8")
+    assert "Environment=XRAY_LOCATION_ASSET={{ xray_asset_dir }}" in service
+
+    handlers = yaml.safe_load(
+        (ROOT / "ansible/roles/xray/handlers/main.yml").read_text(encoding="utf-8")
+    )
+    validate_handler = next(
+        handler
+        for handler in handlers
+        if handler["name"] == "Test Xray config before restart"
+    )
+    assert validate_handler["ansible.builtin.command"]["argv"] == [
+        "/usr/bin/env",
+        "XRAY_LOCATION_ASSET={{ xray_asset_dir }}",
+        "/usr/local/bin/xray",
+        "run",
+        "-test",
+        "-config",
+        "{{ xray_etc_dir }}/config.json",
+    ]
+
+    full_stack_verify = yaml.safe_load(
+        (ROOT / "ansible/molecule/full-stack/verify.yml").read_text(encoding="utf-8")
+    )
+    verify_task = next(
+        task
+        for task in full_stack_verify[0]["tasks"]
+        if task["name"] == "xray config validates"
+    )
+    assert verify_task["ansible.builtin.command"]["argv"] == [
+        "/usr/bin/env",
+        "XRAY_LOCATION_ASSET=/opt/xray/bundled-assets",
+        "/usr/local/bin/xray",
+        "run",
+        "-test",
+        "-config",
+        "/etc/xray/config.json",
+    ]
+
+
+def test_xray_source_publication_remains_separate_and_idempotent() -> None:
+    current = _task("xray-runtime", "Point current Xray runtime at pinned release")
+    public = _task("xray-runtime", "Expose pinned Xray runtime")
+    publish = _task("xray-runtime", "Publish Xray runtime change state")
+    expression = publish["ansible.builtin.set_fact"]["xray_runtime_changed"]
+
+    assert current["when"] == "xray_runtime_build_from_source | bool"
+    assert public["when"] == "xray_runtime_build_from_source | bool"
+    assert "_xray_runtime_binary_changed | default(false)" in expression
+    assert "_xray_runtime_geoip_changed | default(false)" in expression
+    assert "runtime_build_results | default({})" in expression
+    assert "xray_runtime_build_from_source" in expression
+
+
+def test_direct_binary_consumers_bind_version_to_immutable_identity() -> None:
+    mtg = _runtime_task("probe-matrix-target")["vars"]
+    bridge = _runtime_task("dns-morph-bridge")["vars"]
+
+    assert mtg["runtime_release_version"] == (
+        "{{ probe_matrix_target_secrets.mtg_version }}"
+    )
+    assert bridge["runtime_release_version"] == (
+        "sha256-{{ dns_morph_bridge_secrets.binary_sha256 | lower }}"
+    )
+
+
+def test_dns_morph_bridge_migrates_only_verified_legacy_regular_binary() -> None:
+    tasks = _tasks("dns-morph-bridge")
+    names = [task["name"] for task in tasks]
+    inspect = _task("dns-morph-bridge", "Inspect legacy DNS-Morph public binary")
+    verify = _task("dns-morph-bridge", "Verify legacy DNS-Morph binary before migration")
+    backup = _task("dns-morph-bridge", "Save verified legacy DNS-Morph binary")
+    interrupted = _task("dns-morph-bridge", "Verify interrupted DNS-Morph migration backup identity")
+    saved = _task("dns-morph-bridge", "Assert saved DNS-Morph migration backup identity")
+    resume = _task("dns-morph-bridge", "Classify resumable DNS-Morph legacy migration")
+    remove = _task("dns-morph-bridge", "Remove verified legacy DNS-Morph public binary")
+    runtime = _runtime_task("dns-morph-bridge")
+
+    assert inspect["ansible.builtin.stat"]["follow"] is False
+    assertions = verify["ansible.builtin.assert"]["that"]
+    assert "_dns_morph_legacy_binary.stat.isreg" in assertions
+    assert "not _dns_morph_legacy_binary.stat.islnk" in assertions
+    assert any("_dns_morph_legacy_binary.stat.checksum" in item for item in assertions)
+    assert backup["ansible.builtin.copy"]["remote_src"] is True
+    assert backup["ansible.builtin.copy"]["mode"] == "0700"
+    assert "not (_dns_morph_legacy_backup.stat.exists | default(false))" in backup["when"]
+    assert any("_dns_morph_legacy_backup.stat.checksum" in item for item in interrupted["ansible.builtin.assert"]["that"])
+    assert any("_dns_morph_legacy_saved_backup.stat.checksum" in item for item in saved["ansible.builtin.assert"]["that"])
+    assert "_dns_morph_legacy_backup.stat.exists" in resume["ansible.builtin.set_fact"]["_dns_morph_legacy_migration_active"]
+    assert remove["ansible.builtin.file"]["state"] == "absent"
+    assert names.index(backup["name"]) < names.index(remove["name"]) < names.index(
+        "Install pinned DNS-Morph bridge through runtime-release"
+    )
+    assert "_dns_morph_legacy_backup_url" in runtime["vars"]["runtime_release_urls"]["amd64"]
+    assert "_dns_morph_legacy_migration_active" in runtime["vars"]["runtime_release_urls"]["amd64"]
+    classifier = _task("dns-morph-bridge", "Classify legacy DNS-Morph public binary")
+    facts = classifier["ansible.builtin.set_fact"]
+    assert "legacy- " not in facts["_dns_morph_legacy_backup_path"]
+    assert "legacy- " not in facts["_dns_morph_legacy_backup_url"]
+    assert "rescue:" in (ROOT / "ansible/roles/dns-morph-bridge/tasks/main.yml").read_text()

@@ -26,7 +26,7 @@ dns_morph_bridge:
   # is unauthenticated and any address-specific bind would require a
   # second public IP (out of scope for v1 single-VPS deploys).
   listen_addr: "0.0.0.0"
-  listen_port: 53
+  listen_port: "{{ dns_morph_bridge_listen_port }}"
 
   # Localhost recursor used for the active-probing-defense forwarder.
   # Unbound binds 127.0.0.1:5353 so it does not collide with the bridge.

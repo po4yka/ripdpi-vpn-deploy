@@ -345,6 +345,8 @@ def _awg_context(secrets, sentinel, mapping, environment):
         if group == "vpn" and not path.exists():
             continue
         _merge(merged, _yaml(path, allow_empty=True))
+    if merged.get("amneziawg", {}).get("listen_port") == "{{ amneziawg_listen_port }}":
+        merged["amneziawg"]["listen_port"] = merged.get("amneziawg_listen_port")
     if merged.get("vpn", {}).get("enable_amneziawg") is not True:
         raise InstallError("awg-disabled-for-bound-host")
     cohort = merged.get("amneziawg_cohort", {})

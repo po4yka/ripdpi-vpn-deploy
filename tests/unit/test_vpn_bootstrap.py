@@ -89,6 +89,10 @@ def service(tmp_path):
 
         for route in ("bootstrap", "sub"):
             (sub_dir / route).mkdir(parents=True, exist_ok=True)
+        sub_dir.chmod(0o700)
+        consumed_dir = sub_dir / ".vpn-bootstrap-consumed"
+        consumed_dir.mkdir(mode=0o700)
+        consumed_dir.chmod(0o700)
         reads_log.parent.mkdir(parents=True, exist_ok=True)
         revoked_file.parent.mkdir(parents=True, exist_ok=True)
         if not revoked_file.exists():
@@ -211,7 +215,7 @@ def test_bootstrap_consumes_once(service):
     assert resp2.status == 410
 
     recs = service.reads()
-    assert [r["outcome"] for r in recs] == ["consumed", "unknown"]
+    assert [r["outcome"] for r in recs] == ["consumed", "consumed"]
 
 
 def test_bootstrap_purges_meta_with_payload(service):

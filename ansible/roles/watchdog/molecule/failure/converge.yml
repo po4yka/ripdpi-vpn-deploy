@@ -22,7 +22,18 @@
           short_id: "55667788"
       cohorts: []
     xray_port: 443
+    xray_fallback_port: 2053
+    p0_reality_flow_mode: vision
     hysteria_port: 443
+    p0_reality_shapes:
+      vision:
+        client_flow: "xtls-rprx-vision"
+        client_mux: false
+        finalmask: false
+      mux:
+        client_flow: ""
+        client_mux: true
+        finalmask: false
     watchdog:
       interval: "5min"
       fail_threshold: 1            # first failed probe → alert
@@ -39,9 +50,9 @@
       reality_probe_url: "https://canary.example.test/healthz"
 
   pre_tasks:
-    - name: Install curl + python3 (stub listener + alert delivery)
+    - name: Install curl, jq, and python3 (stub listener + alert delivery)
       ansible.builtin.apt:
-        name: [curl, python3]
+        name: [curl, jq, python3]
         state: present
         update_cache: true
 

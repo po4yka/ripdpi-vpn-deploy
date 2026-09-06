@@ -3,6 +3,22 @@
   hosts: all
   become: true
   tasks:
+    - name: Install deterministic nftables preflight fixture
+      ansible.builtin.copy:
+        dest: /usr/local/bin/nft
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          if [ "$1 $2" = "list tables" ]; then
+            exit 0
+          fi
+          if [ -x /usr/sbin/nft ]; then
+            exec /usr/sbin/nft "$@"
+          fi
+          exit 64
+
     - name: Ensure geodata fixture directory
       ansible.builtin.file:
         path: /usr/local/share/xray

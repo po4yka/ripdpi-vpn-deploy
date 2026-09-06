@@ -47,6 +47,7 @@
       - "'//' not in runtime_release_public_link"
       - "'//' not in runtime_release_download_dir"
       - runtime_release_artifact_type in ['binary', 'archive']
+      - runtime_release_candidate_mode in ['0644', '0755']
       - runtime_release_urls[_runtime_release_arch_key] | default('') | length > 0
       - runtime_release_urls[_runtime_release_arch_key] is match('^https://|^file://')
       - runtime_release_sha256[_runtime_release_arch_key] | default('') is match('^[0-9a-fA-F]{64}$')
@@ -161,7 +162,8 @@
       - not (_runtime_release_candidate.stat.islnk | default(false))
       - >-
         not (_runtime_release_candidate.stat.exists | default(false)) or
-        (_runtime_release_candidate.stat.executable | default(false))
+        (runtime_release_candidate_mode == '0644' or
+         (_runtime_release_candidate.stat.executable | default(false)))
       - >-
         not (_runtime_release_candidate.stat.exists | default(false)) or
         _runtime_release_candidate.stat.nlink == 1
@@ -173,7 +175,7 @@
         _runtime_release_candidate.stat.gr_name == runtime_release_storage_group
       - >-
         not (_runtime_release_candidate.stat.exists | default(false)) or
-        _runtime_release_candidate.stat.mode == '0755'
+        _runtime_release_candidate.stat.mode == runtime_release_candidate_mode
       - >-
         not (_runtime_release_receipt_stat.stat.exists | default(false)) or
         (_runtime_release_receipt.keys() | list | sort ==
@@ -466,7 +468,9 @@
         that:
           - _runtime_release_verified_candidate.stat.exists
           - _runtime_release_verified_candidate.stat.isreg
-          - _runtime_release_verified_candidate.stat.executable
+          - >-
+            runtime_release_candidate_mode == '0644' or
+            _runtime_release_verified_candidate.stat.executable
           - _runtime_release_verified_candidate.stat.nlink == 1
           - >-
             runtime_release_artifact_type != 'binary' or
@@ -507,6 +511,8 @@
           - "{{ _runtime_release_stage_name }}"
           - --artifact-type
           - "{{ runtime_release_artifact_type }}"
+          - --candidate-mode
+          - "{{ runtime_release_candidate_mode }}"
           - --arch-key
           - "{{ _runtime_release_arch_key }}"
           - --arch-slug

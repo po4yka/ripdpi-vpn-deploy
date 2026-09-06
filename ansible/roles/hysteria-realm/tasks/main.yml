@@ -1,16 +1,6 @@
 ---
-# Hysteria Realm rendezvous — see defaults/main.yml for rationale.
-
-- name: Pre-flight — hysteria-realm port must not collide with subscription-host
-  ansible.builtin.assert:
-    that:
-      - not (vpn.enable_subscription_host | default(false) and
-             hysteria_realm.listen_port == (subscription | default({})).port | default(8444))
-    fail_msg: >-
-      hysteria_realm.listen_port ({{ hysteria_realm.listen_port }}) collides
-      with subscription.port ({{ (subscription | default({})).port | default(8444) }}). Both
-      are enabled on this host. Override one of the ports in host_vars or
-      group_vars before deploying. See roles/hysteria-realm/CLAUDE.md pitfalls.
+# Hysteria Realm rendezvous — see defaults/main.yml for rationale. The global
+# listener manifest guard in site.yml owns every protocol/port collision.
 
 - name: Pre-flight — sing-box archive sha256 must be pinned in secrets
   ansible.builtin.assert:
@@ -59,10 +49,6 @@
     group: "{{ item.group }}"
     mode: "{{ item.mode }}"
   loop:
-    - path: "{{ hysteria_realm.install_root }}/releases"
-      owner: root
-      group: root
-      mode: "0755"
     - path: "{{ hysteria_realm.config_dir }}"
       owner: root
       group: hysteria-realm
@@ -72,64 +58,39 @@
       group: hysteria-realm
       mode: "0750"
 
-- name: Check whether the pinned sing-box release is already on disk
-  ansible.builtin.stat:
-    path: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}/sing-box"
-  register: sing_box_release_binary
+- name: Install pinned hysteria-realm runtime through runtime-release
+  ansible.builtin.include_role:
+    name: runtime-release
+  vars:
+    runtime_release_version: "{{ hysteria_realm.version }}"
+    runtime_release_install_root: "{{ hysteria_realm.install_root }}"
+    runtime_release_binary_name: sing-box
+    runtime_release_public_link: /usr/local/bin/sing-box-realm
+    runtime_release_urls:
+      amd64: "{{ hysteria_realm_release_urls.amd64 }}"
+      arm64: "{{ hysteria_realm_release_urls.arm64 }}"
+    runtime_release_sha256:
+      amd64: "{{ hysteria_realm_secrets.linux_amd64_sha256 }}"
+      arm64: "{{ hysteria_realm_secrets.linux_arm64_sha256 }}"
+    runtime_release_arch_slugs:
+      amd64: amd64
+      arm64: arm64
+    runtime_release_artifact_filename: sing-box.tar.gz
+    runtime_release_artifact_type: archive
+    runtime_release_archive_members:
+      amd64: >-
+        sing-box-{{ hysteria_realm.version | regex_replace('^v', '') }}-linux-amd64/sing-box
+      arm64: >-
+        sing-box-{{ hysteria_realm.version | regex_replace('^v', '') }}-linux-arm64/sing-box
+    runtime_release_archive_strip_components: 1
 
-- name: Compose sing-box archive URL
-  ansible.builtin.set_fact:
-    sing_box_archive_url: >-
-      https://github.com/SagerNet/sing-box/releases/download/{{ hysteria_realm.version
-      }}/sing-box-{{ hysteria_realm.version | regex_replace('^v', '')
-      }}-linux-{{ sing_box_arch }}.tar.gz
-
-- name: Download pinned sing-box release archive
-  ansible.builtin.get_url:
-    url: "{{ sing_box_archive_url }}"
-    dest: "/tmp/sing-box-{{ hysteria_realm.version }}-linux-{{ sing_box_arch }}.tar.gz"
-    checksum: "sha256:{{ sing_box_sha256 }}"
-    mode: "0644"
-  when: not sing_box_release_binary.stat.exists
-
-- name: Create release directory
-  ansible.builtin.file:
-    path: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-  when: not sing_box_release_binary.stat.exists
-
-- name: Extract sing-box binary
-  ansible.builtin.unarchive:
-    src: "/tmp/sing-box-{{ hysteria_realm.version }}-linux-{{ sing_box_arch }}.tar.gz"
-    dest: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}"
-    remote_src: true
-    extra_opts:
-      - "--strip-components=1"
-      - "--wildcards"
-      - "*/sing-box"
-    owner: root
-    group: root
-    mode: "0755"
-    creates: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}/sing-box"
-  when: not sing_box_release_binary.stat.exists
-
-- name: Point current symlink at pinned release
-  ansible.builtin.file:
-    src: "{{ hysteria_realm.install_root }}/releases/{{ hysteria_realm.version }}"
-    dest: "{{ hysteria_realm.install_root }}/current"
-    state: link
-    force: true
+- name: Notify hysteria-realm restart after runtime release activation
+  ansible.builtin.debug:
+    msg: >-
+      hysteria-realm runtime release activation changed={{ runtime_release_changed | bool }}
+  changed_when: runtime_release_changed | bool
   notify: Restart hysteria-realm
-
-- name: Link sing-box into local bin
-  ansible.builtin.file:
-    src: "{{ hysteria_realm.install_root }}/current/sing-box"
-    dest: /usr/local/bin/sing-box-realm
-    state: link
-    force: true
+  when: not ansible_check_mode
 
 - name: Drop TLS material when not sharing the hysteria cert
   ansible.builtin.copy:
@@ -169,6 +130,7 @@
     owner: root
     group: hysteria-realm
     mode: "0640"
+    validate: /usr/local/bin/sing-box-realm check -c %s
   no_log: true
   diff: false
   notify: Restart hysteria-realm

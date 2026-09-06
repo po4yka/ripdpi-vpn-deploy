@@ -28,7 +28,10 @@ RestrictSUIDSGID=yes
 LockPersonality=true
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
+# Keep resource mutations denied except rsync's startup setrlimit call. The
+# default seccomp action is SIGSYS, so denying that call prevents every pull.
 SystemCallFilter=~@privileged @resources
+SystemCallFilter=setrlimit
 
 [Install]
 WantedBy=multi-user.target

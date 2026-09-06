@@ -68,6 +68,16 @@ provisioner:
         hysteria_port: 443
         hysteria_port_range: ""
         hysteria_hop_interval: "30s"
+        xray_fallback_port: 2053
+        nginx_xhttp_fallback_port: 2083
+        amneziawg_listen_port: 51820
+        subscription_port: 8444
+        honeypot_port: 4443
+        dns_morph_bridge_listen_port: 53
+        hysteria_realm_listen_port: 8444
+        cdn_front_port: 8443
+        naive_bind_port: 443
+        split_hop_ingress_listen_port: 51821
         xray_install_root: /opt/xray
         xray_config_dir: /etc/xray
         xray_log_dir: /var/log/xray

@@ -7,6 +7,7 @@ Wants=network-online.target
 [Service]
 User={{ xray_runtime_user }}
 Group={{ xray_runtime_group }}
+Environment=XRAY_LOCATION_ASSET={{ xray_asset_dir }}
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true

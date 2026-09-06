@@ -1,0 +1,30 @@
+---
+- name: Prove malformed DNS-Morph YAML fails before publication
+  hosts: all
+  become: true
+  tasks:
+    - name: Stage malformed DNS-Morph candidate
+      ansible.builtin.copy:
+        dest: /var/tmp/dns-morph-invalid.yaml
+        mode: "0600"
+        content: "listen: {address: 0.0.0.0, port: '53'}\n"
+
+    - name: Reject malformed DNS-Morph candidate
+      ansible.builtin.command:
+        argv:
+          - /usr/local/libexec/ripdpi-validate-yaml-mapping
+          - --profile
+          - dns-morph
+          - /var/tmp/dns-morph-invalid.yaml
+      register: _invalid_dns_morph
+      changed_when: false
+      failed_when: false
+
+    - name: Require malformed DNS-Morph candidate refusal
+      ansible.builtin.assert:
+        that: _invalid_dns_morph.rc != 0
+
+    - name: Remove malformed DNS-Morph candidate
+      ansible.builtin.file:
+        path: /var/tmp/dns-morph-invalid.yaml
+        state: absent

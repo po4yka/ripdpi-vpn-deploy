@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+**Config validation is role-specific** — the unpublished bridge binary has no
+stable validation CLI. The shared bounded YAML validator rejects malformed or
+duplicate-key candidates and invalid nested listener, forwarder, morph, limit,
+or log values before publication; the restart handler then proves liveness.
+
 **Standalone listener, not an Xray inbound** — DNS-Morph requires line-rate
 packet inspection of every UDP/53 datagram to split handshake-shaped queries
 from probe traffic, then re-stitch fragmented payloads. That logic does not
@@ -28,9 +33,9 @@ enough to absorb the scanner volume that comes with a public resolver.
 
 ## What's done well
 
-- **`get_url` with checksum** — the bridge binary is verified against its
-  pinned sha256 before being installed, matching the discipline of the
-  `xray` and `hysteria` roles.
+- **Shared runtime publication** — the bridge artifact SHA256 is also its
+  immutable release identity. `runtime-release` verifies the bytes, records a
+  receipt, and publishes the configured binary link with rollback compensation.
 - **Localhost recursor isolated from the public listener** — unbound binds
   127.0.0.1:5353 only; the bridge is the sole public listener. No risk of
   the recursor becoming an open resolver if the bridge crashes.

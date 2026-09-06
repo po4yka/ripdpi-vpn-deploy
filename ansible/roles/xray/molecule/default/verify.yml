@@ -31,10 +31,10 @@
           ' /etc/xray/config.json
       changed_when: false
 
-    - name: config.json is valid JSON and contains a REALITY inbound
+    - name: REALITY inbounds use the shared mux and finalmask shape
       # Single jq invocation replaces three earlier shell+grep tasks and
       # the python json.load sanity check. If jq parses the file and finds
-      # a vless+reality inbound with xtls-rprx-vision flow, all three
+      # vless+reality inbounds with no Vision flow and enabled finalmask, all three
       # invariants are met. Failure exits non-zero with the jq error.
       ansible.builtin.command:
         cmd: >-
@@ -42,8 +42,10 @@
             [.inbounds[]?
              | select(.protocol == "vless")
              | select(.streamSettings?.security == "reality")
-             | select(.settings?.clients[]?.flow == "xtls-rprx-vision")
-            ] | length > 0
+            ] as $inbounds
+            | ($inbounds | length == 2)
+              and ([$inbounds[].settings.clients[] | has("flow")] | all(. == false))
+              and ([$inbounds[].streamSettings.sockopt.finalmask] | all(. == "Sudoku"))
           ' /etc/xray/config.json
       changed_when: false
 
@@ -97,7 +99,7 @@
       changed_when: false
 
     - name: All real REALITY shortIds have even length (odd length breaks sing-box <= 1.10)
-      # Stub fixtures render REPLACE_WITH_8HEX placeholders that the jq
+      # Stub fixtures render eight-hex placeholders that the jq
       # filter above drops; the assertion then has nothing to check. On
       # production deploys with real secrets, every shortId must have
       # an even hex length.

@@ -8,6 +8,8 @@ cascade_ingress:
   egress_port: 51831
   egress_allowed_ips: 0.0.0.0/0
   keepalive_seconds: 25
+  routing_table: 203
+  fwmark: 203
   geodata_path: /usr/local/share/xray/geoip.dat
   classifier_path: /usr/local/libexec/cascade-classifier.py
   classifier_library_path: /usr/local/libexec/cascade_classifier_lib.py

@@ -2,6 +2,8 @@
 {% set subscription_only = vpn_subscription_only | default(false) %}
 {% set xray_enabled = (vpn.enable_xray_reality | default(true)) and not subscription_only %}
 {% set xray_cohorts = (xray.cohorts | default([])) if xray is defined else [] %}
+{# Terraform edge contract is intentionally independent; site.yml compares it
+   with this pre-task runtime manifest before any listener is converged. #}
 {% if xray_enabled and (xray_cohorts | length > 0) %}
 {% for cohort in xray_cohorts %}
 {% set _ = ns.listeners.append({
@@ -16,11 +18,11 @@
 {% set _ = ns.listeners.append({
   "role": "xray",
   "protocol": "tcp",
-  "port": xray_port | default(443) | int,
+  "port": xray_port | int,
   "enabled": xray_enabled,
   "reason": "P0 REALITY primary listener"
 }) %}
-{% set _xray_fallback_port = xray_fallback_port | default(0) | int %}
+{% set _xray_fallback_port = xray_fallback_port | int %}
 {% set _ = ns.listeners.append({
   "role": "xray-fallback",
   "protocol": "tcp",
@@ -40,25 +42,25 @@
 {% set _ = ns.listeners.append({
   "role": "nginx-xhttp-fallback",
   "protocol": "tcp",
-  "port": nginx_xhttp_fallback_port | default(2083) | int,
+  "port": nginx_xhttp_fallback_port | int,
   "enabled": (vpn.enable_nginx_xhttp | default(true)) and not subscription_only and _nginx_xhttp_fallback,
   "reason": "P1 direct XHTTP fallback listener"
 }) %}
 {% set _ = ns.listeners.append({
   "role": "nginx-xhttp",
   "protocol": "tcp",
-  "port": nginx_xhttp_public_port | default(8443) | int,
+  "port": nginx_xhttp_public_port | int,
   "enabled": (vpn.enable_nginx_xhttp | default(true)) and not subscription_only,
   "reason": "P1 direct XHTTP listener"
 }) %}
 {% set _ = ns.listeners.append({
   "role": "hysteria",
   "protocol": "udp",
-  "port": hysteria_port | default(443) | int,
+  "port": hysteria_port | int,
   "enabled": (vpn.enable_hysteria | default(false)) and not subscription_only,
   "reason": "P2 Hysteria2 listener"
 }) %}
-{% set _hysteria_range = hysteria_port_range | default('') | string %}
+{% set _hysteria_range = hysteria_port_range | string %}
 {% set _ = ns.listeners.append({
   "role": "hysteria",
   "protocol": "udp",
@@ -81,7 +83,7 @@
 {% set _ = ns.listeners.append({
   "role": "amneziawg",
   "protocol": "udp",
-  "port": (amneziawg | default({})).listen_port | default(51820) | int,
+  "port": (amneziawg | default({})).listen_port | default(amneziawg_listen_port) | int,
   "enabled": (vpn.enable_amneziawg | default(false)) and not subscription_only,
   "reason": "P2 AmneziaWG listener"
 }) %}
@@ -111,28 +113,28 @@
 {% set _ = ns.listeners.append({
   "role": "subscription-host",
   "protocol": "tcp",
-  "port": (subscription | default({})).port | default(8444) | int,
+  "port": (subscription | default({})).port | default(subscription_port) | int,
   "enabled": (vpn.enable_subscription_host | default(false)) or subscription_only,
   "reason": "subscription delivery HTTPS listener"
 }) %}
 {% set _ = ns.listeners.append({
   "role": "honeypot",
   "protocol": "tcp",
-  "port": (honeypot | default({})).port | default(4443) | int,
+  "port": (honeypot | default({})).port | default(honeypot_port) | int,
   "enabled": (vpn.enable_honeypot | default(false)) and not subscription_only,
   "reason": "active-probing canary listener"
 }) %}
 {% set _ = ns.listeners.append({
   "role": "dns-morph-bridge",
   "protocol": "udp",
-  "port": (dns_morph_bridge | default({})).listen_port | default(53) | int,
+  "port": (dns_morph_bridge | default({})).listen_port | default(dns_morph_bridge_listen_port) | int,
   "enabled": (vpn.enable_dns_morph_bridge | default(false)) and not subscription_only,
   "reason": "DNS-Morph bootstrap listener"
 }) %}
 {% set _ = ns.listeners.append({
   "role": "hysteria-realm",
   "protocol": "tcp",
-  "port": (hysteria_realm | default({})).listen_port | default(8444) | int,
+  "port": (hysteria_realm | default({})).listen_port | default(hysteria_realm_listen_port) | int,
   "enabled": (vpn.enable_hysteria_realm | default(false)) and not subscription_only,
   "reason": "Hysteria Realm rendezvous listener"
 }) %}
@@ -148,14 +150,14 @@
 {% set _ = ns.listeners.append({
   "role": "cdn-front",
   "protocol": "tcp",
-  "port": (cdn_front | default({})).port | default(8443) | int,
+  "port": (cdn_front | default({})).port | default(cdn_front_port) | int,
   "enabled": (vpn.enable_cdn_front | default(false)) and not subscription_only,
   "reason": "CDN-fronted XHTTP listener"
 }) %}
 {% set _ = ns.listeners.append({
   "role": "naive",
   "protocol": "tcp",
-  "port": (naive | default({})).bind_port | default(443) | int,
+  "port": (naive | default({})).bind_port | default(naive_bind_port) | int,
   "enabled": (vpn.enable_naive | default(false)) and not subscription_only,
   "reason": "NaiveProxy public listener"
 }) %}
@@ -180,7 +182,7 @@
 {% set _ = ns.listeners.append({
   "role": "split-hop-ingress",
   "protocol": "udp",
-  "port": (split_hop_ingress | default({})).listen_port | default(51821) | int,
+  "port": (split_hop_ingress | default({})).listen_port | default(split_hop_ingress_listen_port) | int,
   "enabled": (vpn.enable_split_hop_ingress | default(false)) and not subscription_only,
   "reason": "split-hop responder listener"
 }) %}

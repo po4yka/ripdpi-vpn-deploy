@@ -15,9 +15,9 @@
       - >-
         (reality_self_steal_port | int) not in
         [
-          xray_port | default(443) | int,
-          xray_fallback_port | default(0) | int,
-          nginx_xhttp_port | default(10085) | int
+          xray_port | int,
+          xray_fallback_port | int,
+          nginx_xhttp_port | int
         ]
       - (reality_self_steal_port | int) not in reality_self_steal_public_tcp_ports
     fail_msg: reality_self_steal_port must be a private, non-conflicting TCP port.

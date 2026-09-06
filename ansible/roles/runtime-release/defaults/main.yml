@@ -15,6 +15,7 @@ runtime_release_arch_slugs:
   arm64: arm64
 runtime_release_artifact_filename: artifact
 runtime_release_artifact_type: binary
+runtime_release_candidate_mode: "0755"
 runtime_release_archive_members:
   amd64: ""
   arm64: ""

@@ -31,7 +31,7 @@ def _molecule_sequence(path: Path) -> list[str]:
 
 
 def _documented_sequence(row: str, scenario: str) -> list[str]:
-    match = re.search(rf"{re.escape(scenario)} sequence: ([a-z, ]+?)(?=;|\)| \|)", row)
+    match = re.search(rf"{re.escape(scenario)} sequence: ([a-z_, ]+?)(?=;|\)| \|)", row)
     assert match, f"missing {scenario} sequence in documentation: {row}"
     return [phase.strip() for phase in match.group(1).split(",")]
 
