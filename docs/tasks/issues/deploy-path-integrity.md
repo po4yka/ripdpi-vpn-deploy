@@ -14,7 +14,7 @@ openspec_change: ops-1787496414433523-deploy-path-integrity
 created: 2026-08-23
 updated: 2026-09-01
 related_tasks: []
-status_detail: All fourteen source execution steps are integrated and covered by recorded local and hosted checks. The task remains blocked on the required consolidated dry-run and live deploy-path cycle: bootstrap wait, rotation, rollback rehearsal, and serial inventory acceptance. Source and CI evidence do not substitute for host proof.
+status_detail: All source steps are integrated. A bounded 2026-09-06 passive recheck returned unknown/command-failed for all three inventory aliases; the only online Tailnet peer is not an inventory endpoint, and the strict SSH-context mapping is unavailable. The required dry-run and live deploy-path cycle remains open.
 ---
 
 ## Goal

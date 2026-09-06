@@ -14,7 +14,7 @@ openspec_change: vpd-1787497317352770-vpnd-deploy-reconverge-lifecycle-safety
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
-status_detail: Implementation tests passed. All three management SSH endpoints timed out; Tailscale login expired, and no staging target is configured. Dry-run/staging/live acceptance remains outstanding.
+status_detail: Source tests are complete. A bounded 2026-09-06 passive recheck returned unknown/command-failed for all three inventory aliases; Tailscale is running but its only online peer is not an inventory endpoint, and the strict SSH-context mapping is unavailable. Dry-run, staging, and live acceptance remain open.
 ---
 
 ## Goal
