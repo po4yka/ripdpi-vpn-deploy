@@ -8,8 +8,14 @@ permissions:
   contents: read
   pull-requests: read
 
+# Keep scheduled runs independent; only revisions of the same PR share a group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   check:
+    timeout-minutes: 5
     name: warn if CLAUDE.md not touched
     runs-on: ubuntu-24.04
     steps:

@@ -12,8 +12,14 @@ on:
 permissions:
   contents: read
 
+# Keep scheduled runs independent; only revisions of the same PR share a group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   lychee:
+    timeout-minutes: 10
     name: lychee
     runs-on: ubuntu-24.04
     steps:
