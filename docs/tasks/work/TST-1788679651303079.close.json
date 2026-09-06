@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Implementation b4cdc0da7e3ecb060961fbdfb1fde3c59ca5040b: 14 affected tests passed, actionlint/zizmor/pre-commit passed. Hosted CI run 34019345569: full-stack and full-stack-published both passed on separate runners, starting together at 07:30:41Z and completing at 07:37:13Z and 07:36:47Z. The required aggregator retains the matrix dependency.",
+  "execution_sha256": "f2da2031918f993476f336576929dd55bce20857a091387299d6bcc636681d00",
+  "issue_sha256": "f506a09b7c62be28f845bf38a315474417d7169b47420293ad52f5cbd7a8ab0e",
+  "outcome": "done",
+  "prepared_at": "2026-09-06T07:38:07Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "TST-1788679651303079"
+}
