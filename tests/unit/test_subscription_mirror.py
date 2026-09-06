@@ -24,6 +24,9 @@ MIRROR_HELPER = (
 BOOTSTRAP_HELPER = (
     REPO_ROOT / "ansible/roles/subscription-host/templates/vpn-bootstrap.py.j2"
 )
+MIRROR_UNIT = (
+    REPO_ROOT / "ansible/roles/subscription-host/templates/vpn-sub-mirror.service.j2"
+)
 
 
 def _private_directory(path: Path) -> Path:
@@ -63,6 +66,17 @@ def _write_source(source: Path, label: str) -> None:
         route_path = source / route
         route_path.mkdir(parents=True, exist_ok=True)
         (route_path / "payload").write_text(f"{label}:{route}")
+
+
+def test_mirror_unit_allows_only_rsyncs_setrlimit_resource_call() -> None:
+    """Keep the resource deny-list while permitting the rsync startup syscall."""
+    unit = MIRROR_UNIT.read_text()
+
+    assert "SystemCallFilter=~@privileged @resources" in unit
+    assert "SystemCallFilter=setrlimit" in unit
+    assert unit.index("SystemCallFilter=~@privileged @resources") < unit.index(
+        "SystemCallFilter=setrlimit"
+    )
 
 
 def test_mirror_publishes_one_private_generation_and_preserves_local_state(
