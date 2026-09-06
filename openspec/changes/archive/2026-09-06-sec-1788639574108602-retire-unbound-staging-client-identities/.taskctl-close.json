@@ -1,0 +1,11 @@
+{
+  "change": "sec-1788639574108602-retire-unbound-staging-client-identities",
+  "evidence_summary": "Protected main ea94beef; 196 focused tests, full local make check and exact-main CI 34024059323 passed; source-only OpenSpec archived.",
+  "execution_sha256": "e0ff03e6e088b2c3fe82ce6b4051cd4199c9b4f1b35c58f715d56cc1024348cf",
+  "issue_sha256": "a53a26669f8e5d14641d5beb28492945c2184f061cc698dd2d31a007ea2bde32",
+  "outcome": "done",
+  "prepared_at": "2026-09-06T10:20:44Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1788639574108602"
+}

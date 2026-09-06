@@ -2,7 +2,7 @@
 id: SEC-1788639574108602
 title: Retire unbound staging client identities after verified cleanup
 kind: feature
-status: doing
+status: done
 area: security
 priority: high
 risk: high
@@ -14,6 +14,10 @@ openspec_change: sec-1788639574108602-retire-unbound-staging-client-identities
 created: 2026-09-06
 updated: 2026-09-06
 related_tasks: []
+status_detail: Protected main ea94beef contains the source-only retirement controller; 196 focused tests, full local make check and exact-main CI 34024059323 passed. No real secret or provider mutation is in scope.
+closed_at: "2026-09-06T10:20:44Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Protected main ea94beef; 196 focused tests, full local make check and exact-main CI 34024059323 passed; source-only OpenSpec archived.
 ---
 
 ## Goal

@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Protected main ea94beef; exact-main CI 34024059323 passed four pytest groups and required aggregate; full local make check passed.",
+  "execution_sha256": "57b4d979d3fa25bc8184ee6dfed0a2ed76cf97fe32e3c4f88f54858a1bdb420e",
+  "issue_sha256": "dad4a8778321888f46e2c99eaa1641f80b602c3f2ebcfabc40d5e475b7fbf132",
+  "outcome": "done",
+  "prepared_at": "2026-09-06T10:20:43Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1788672821616865"
+}
