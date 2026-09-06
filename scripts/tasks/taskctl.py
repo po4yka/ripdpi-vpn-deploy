@@ -202,6 +202,7 @@ class TerminalHistoryIndex:
     root: Path
     project: str
     federation_contract: int
+    strict_start: str
     revisions: tuple[str, ...]
     by_revision: dict[str, dict[str, HistoricalTaskSnapshot]]
     merged_lanes: tuple[tuple[str, ...], ...]
@@ -1992,6 +1993,13 @@ def build_terminal_history_index(
             )
             if already_integrated.returncode == 0:
                 continue
+            merge_base = run_command(
+                ("git", "merge-base", first_parent, side_parent),
+                root=root,
+            )
+            lane_start = (merge_base.stdout or "").strip()
+            if merge_base.returncode != 0 or not SHA_RE.fullmatch(lane_start):
+                fail(f"cannot resolve merged task-history base for {side_parent}")
             unique_history = run_command(
                 (
                     "git",
@@ -2000,7 +2008,7 @@ def build_terminal_history_index(
                     "--reverse",
                     "--ancestry-path",
                     "--parents",
-                    f"{start}..{side_parent}",
+                    f"{lane_start}..{side_parent}",
                 ),
                 root=root,
             )
@@ -2011,7 +2019,7 @@ def build_terminal_history_index(
                 for line in (unique_history.stdout or "").splitlines()
                 if line
             ]
-            lane = (start, *(entry[0] for entry in lane_entries))
+            lane = (lane_start, *(entry[0] for entry in lane_entries))
             if lane in seen_lanes:
                 continue
             seen_lanes.add(lane)
@@ -2032,6 +2040,7 @@ def build_terminal_history_index(
         root=resolved_root,
         project=config.project,
         federation_contract=config.federation_contract,
+        strict_start=start,
         revisions=revisions,
         by_revision=by_revision,
         merged_lanes=tuple(merged_lanes),
@@ -2138,7 +2147,8 @@ def resolve_terminal_task_from_index(
         if terminal_transition is None or terminal_index is None:
             fail(f"{config.project}#{task_id}: terminal transition commit is missing")
         initial_strict_terminal = (
-            terminal_index == 0 and incarnation[0][0] == revisions[0]
+            terminal_index == 0
+            and incarnation[0][0] == history_index.strict_start
         )
         if not initial_strict_terminal and (
             previous_status is None or not transition_allowed(previous_status, outcome)
@@ -2303,6 +2313,7 @@ def resolve_terminal_task(
             root=history_index.root,
             project=history_index.project,
             federation_contract=history_index.federation_contract,
+            strict_start=history_index.strict_start,
             revisions=deleted_candidate_lanes[0],
             by_revision=history_index.by_revision,
             merged_lanes=(),
