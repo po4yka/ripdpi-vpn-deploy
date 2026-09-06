@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-09-06T13:55:13Z",
+  "change": "sec-1787496747898735-secrets-perimeter-hardening",
+  "commit_sha": "984b4528b634b4b48fa74fac0b4cbb22b8b7b887",
+  "outcome": "review",
+  "schema": 1,
+  "task_id": "SEC-1787496747898735"
+}

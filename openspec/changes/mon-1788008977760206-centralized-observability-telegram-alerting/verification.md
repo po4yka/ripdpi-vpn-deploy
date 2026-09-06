@@ -6,12 +6,12 @@ local: passed
 local_evidence: "make -j1 check: 3760 passed, 3 existing skips; BATS 55/55; Rust and Clippy passed; log sha256 3aefbb718c257ca2e2448edb4797655e805dbb75c72c866f4bcc3b5306fbf559"
 remote_ci: passed
 remote_ci_evidence: "GitHub Actions CI 33966423515 and CodeQL 33966423427 succeeded on exact commit fe860a0941adfb5993bc6dbc58531779d1aea573"
-dry_run: required
-dry_run_evidence: null
+dry_run: not_applicable
+dry_run_evidence: "Rendered and refusal-path behavior is covered by source gates; positive delivery is owned by staging."
 staging: required
 staging_evidence: null
-live: required
-live_evidence: null
+live: not_applicable
+live_evidence: "A staging control plane, canary and observed primary/dead-man delivery are sufficient; full fleet rollout is optional."
 client: required
 client_evidence: null
 artifact: required
@@ -251,3 +251,7 @@ No executable, role, template, contract or infrastructure source changed after
 the tested candidate. Staging placement, fleet rollout, two-vantage protocol
 traffic, visibly observed Telegram firing/recovery, credential rotation,
 paging cutover and live rollback remain required and are not claimed here.
+
+## Proportional verification decision — 2026-09-06
+
+Verification follows the portfolio proportional-evidence policy. Source closure does not claim staging or live operation; any delegated operational requirement remains open in the task named in the front matter evidence above.

@@ -2,7 +2,7 @@
 id: SEC-1787496747898735
 title: Close secrets-handling and perimeter hardening gaps
 kind: bug
-status: blocked
+status: done
 area: security
 priority: critical
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1787496747898735-secrets-perimeter-hardening
 created: 2026-08-23
-updated: 2026-08-27
+updated: 2026-09-06
 related_tasks: [ANS-1787463116251274]
-status_detail: Implementation, full local check, and hosted Molecule passed at 984b452; security-verify check-mode and live fleet acceptance blocked by unavailable management access.
+status_detail: Source hardening and protected-main checks are complete. Shared host acceptance is consolidated in SEC-1787916931540401; this task makes no live rollout claim.
+closed_at: "2026-09-06T13:56:46Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Secrets and perimeter source hardening passed local and protected-main checks; shared host acceptance remains in SEC-1787916931540401.
 ---
 
 ## Goal

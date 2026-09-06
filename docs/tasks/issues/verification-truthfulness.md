@@ -2,7 +2,7 @@
 id: TST-1787497001212692
 title: Make verification reflect deployed state
 kind: bug
-status: blocked
+status: done
 area: testing
 priority: high
 risk: standard
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: tst-1787497001212692-verification-truthfulness
 created: 2026-08-23
-updated: 2026-08-30
+updated: 2026-09-06
 related_tasks: []
-status_detail: Nine of ten execution steps are complete. Full-stack and published idempotence passed on exact 4580f9927ed808b4f71b8fa5e0e036890f6daaf2 with changed=0; documentation parity and socket-activated single-SSH-listener acceptance passed on exact b9858085df8073f725670e2acfa0f0bb9cda41da. The remaining blocker is an authorized live verify/source-drift cycle against the deployed exact revision.
+status_detail: Verification tooling and full-stack source gates are complete. Representative external observation is consolidated in TST-1787850553468536 and OPS-1787496414433523.
+closed_at: "2026-09-06T13:56:47Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Verification tooling and full-stack source gates passed; representative external observation remains in TST-1787850553468536 and OPS-1787496414433523.
 ---
 
 ## Goal

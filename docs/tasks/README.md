@@ -55,6 +55,36 @@ The numeric suffix is UTC epoch milliseconds multiplied by 1000 plus three rando
 
 Required changes use `ripdpi-deploy-change`: `proposal.md -> delta specs -> design.md -> tasks.md -> verification.md`. Verification records exact-SHA evidence for `local`, `remote_ci`, `dry_run`, `staging`, `live`, `client`, and `artifact`, each in `required`, `passed`, `not_applicable`, or `blocked` state.
 
+## Portfolio objective and proportional evidence
+
+The portfolio optimizes for a working, protected `main` and the shortest safe
+path to an operator-usable result. Evidence is required at the layer changed by
+the task, not repeated in every source task that contributes to a shared
+deployment:
+
+- Source-only bug fixes and refactors close on focused local coverage plus
+  successful exact-SHA protected-main checks. They do not require a redundant
+  live run when a linked operational acceptance task owns that behavior.
+- Disabled-by-default features close when their source contract, refusal paths,
+  rendering and protected-main checks pass. Enabling or promoting the feature
+  remains a separate operator decision and is never implied by source closure.
+- Dry-run is required only when the task changes the deploy controller or
+  rendered deployment input and a dry-run exercises that change without a
+  provider mutation.
+- Staging or live evidence remains required when the task's positive capability
+  is inherently external: provider mutation, real SSH migration, authenticated
+  client traffic, remote restore, alert delivery or production rollout.
+- One exact-SHA operational observation may satisfy multiple linked tasks when
+  each mapped requirement is named. Duplicate fleet runs, duplicate vantages
+  and duplicate provider rehearsals are not required without a distinct risk.
+- An unavailable account, credential, client, host or provider blocks only the
+  operational acceptance task that needs it. It does not keep an otherwise
+  complete source task open.
+
+This proportional policy does not relax authentication, authorization,
+secret-handling, rollback, destructive-action confirmation, fail-closed input
+validation or the distinction between source/CI, staging and live evidence.
+
 ## Lifecycle
 
 ```bash

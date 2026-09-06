@@ -2,7 +2,7 @@
 id: SEC-1787496881680472
 title: Establish single-owner sshd configuration layers
 kind: bug
-status: blocked
+status: done
 area: security
 priority: high
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1787496881680472-sshd-config-ownership
 created: 2026-08-23
-updated: 2026-09-01
+updated: 2026-09-06
 related_tasks: [SEC-1787916931540401]
-status_detail: Five of six source steps are implemented in the combined protected source delivery: single-owner bootstrap and managed layers, duplicate-owner refusal, assembled effective validation, and exact algorithm pins. The remaining blocker is the required scratch-node custom-port and pinned-algorithm lockout rehearsal followed by fleet verification.
+status_detail: Single-owner SSH source behavior and both-distro protected checks are complete. The real SSH migration rehearsal is consolidated in SEC-1787916931540401.
+closed_at: "2026-09-06T13:56:47Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Single-owner SSH source and both-distro checks passed; real SSH migration rehearsal remains in SEC-1787916931540401.
 ---
 
 ## Goal

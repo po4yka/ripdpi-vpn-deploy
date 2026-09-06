@@ -1,0 +1,11 @@
+{
+  "change": "sec-1787496747898735-secrets-perimeter-hardening",
+  "evidence_summary": "Secrets and perimeter source hardening passed local and protected-main checks; shared host acceptance remains in SEC-1787916931540401.",
+  "execution_sha256": "a3355584e2278ae234bd8e760bd21a71d188a2ca855b484ae94b68a8b625378d",
+  "issue_sha256": "c8130c2ea6d0c0f42c1e61532c5ae0689b9fab8f90f78e0cfb38e3b3ce921f56",
+  "outcome": "done",
+  "prepared_at": "2026-09-06T13:56:46Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1787496747898735"
+}

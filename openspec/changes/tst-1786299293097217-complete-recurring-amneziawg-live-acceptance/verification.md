@@ -6,12 +6,12 @@ local: passed
 local_evidence: focused AWG identity and refusal tests plus the combined-tree make -j1 check passed; the full gate recorded 2969 Python tests, one existing skip, 55 Bats tests, 184 Rust release tests and Clippy; log SHA256 0f31ada651e9c771887691eebb5701add05ac7894f25f0f37840385f38454fe5; no live client or VPS was used
 remote_ci: required
 remote_ci_evidence: null
-dry_run: required
-dry_run_evidence: null
+dry_run: not_applicable
+dry_run_evidence: "Protocol acceptance does not require a deployment-controller dry-run."
 staging: required
 staging_evidence: null
-live: required
-live_evidence: null
+live: not_applicable
+live_evidence: "One current-revision isolated client/server staging run plus one repeated observation is sufficient; production use is not required."
 client: required
 client_evidence: null
 artifact: required
@@ -44,3 +44,7 @@ Focused local contract evidence passed in
 `tests/unit/test_real_vps_awg_nat_lane.py`. This is offline source evidence only;
 it does not provide a client descriptor, artifact, VPS, provider credentials,
 real traffic, or an observed recurring run.
+
+## Proportional verification decision — 2026-09-06
+
+Verification follows the portfolio proportional-evidence policy. Source closure does not claim staging or live operation; any delegated operational requirement remains open in the task named in the front matter evidence above.

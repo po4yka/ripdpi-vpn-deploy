@@ -12,9 +12,9 @@ blocked_by: [TST-1786299293097217]
 spec_mode: required
 openspec_change: scr-1786299499104067-version-amneziawg-protocol-revision-contract
 created: 2026-08-09
-updated: 2026-08-27
+updated: 2026-09-06
 related_tasks: ["po4yka/RIPDPI#TRN-1786299802611226"]
-status_detail: Blocked on TST-1786299293097217 current-client live acceptance; no wire-revision compatibility claim is emitted from substitute evidence.
+status_detail: "Implement the versioned contract after one current-client AWG acceptance from TST-1786299293097217. A second staging or production run is not required."
 ---
 
 ## Goal

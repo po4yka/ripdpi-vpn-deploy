@@ -6,12 +6,12 @@ local: passed
 local_evidence: "Final configuration candidate based on main 7da8b74: serialized build-gate -- make check exited 0. Python: 1524 passed, 1 skipped in 486.86 seconds. Bats: 55 passed. Rust: 169 release tests and strict release Clippy passed. Task/OpenSpec, four-provider Terraform validation/mocks, Conftest policy, cloud-init schema, production Ansible lint/syntax, gitleaks, render/snapshots, secret/bundle schemas and real pinned liveness parsers passed."
 remote_ci: passed
 remote_ci_evidence: "Exact-main CI 33357404456 passed 51/51 on 5f32a28b2fb3b789493e9b691c0ec8a9b26331bf, including molecule (backup) job 99382076199, pytest, and required contract gates."
-dry_run: required
-dry_run_evidence: null
+dry_run: not_applicable
+dry_run_evidence: "This task owns external observation rather than deployment rendering."
 staging: required
 staging_evidence: null
-live: required
-live_evidence: null
+live: not_applicable
+live_evidence: "One isolated or existing authorized node is sufficient under staging; a production fleet rollout is not required."
 client: required
 client_evidence: null
 artifact: required
@@ -126,3 +126,7 @@ artifact_evidence: null
   `5932777ffcbca8e9ede20e068d5429c781127ecb8a6607654276f6ee02a65397`. The executor remains allocated for the approved one-shot
   run; this proves preparation only, not client tool installation, credentials,
   protocol traffic, de-onboarding, production or recurring acceptance.
+
+## Proportional verification decision — 2026-09-06
+
+Verification follows the portfolio proportional-evidence policy. Source closure does not claim staging or live operation; any delegated operational requirement remains open in the task named in the front matter evidence above.
