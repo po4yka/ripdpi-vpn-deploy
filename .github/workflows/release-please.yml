@@ -25,8 +25,6 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
       sha: ${{ steps.release.outputs.sha }}
-      prs_created: ${{ steps.release.outputs.prs_created }}
-      pr: ${{ steps.release.outputs.pr }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5
         id: release
@@ -34,28 +32,17 @@ jobs:
           config-file: .github/release-please-config.json
           manifest-file: .github/release-please-manifest.json
 
-  dispatch-checks:
-    name: dispatch release PR checks
-    needs: release
-    if: ${{ needs.release.outputs.prs_created == 'true' }}
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      actions: write
-    steps:
-      - name: Run required workflows on the generated release branch
-        env:
-          RELEASE_PR: ${{ needs.release.outputs.pr }}
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
+      - name: Report required release PR approval
+        if: ${{ steps.release.outputs.prs_created == 'true' }}
         run: |
-          set -euo pipefail
-          branch="$(jq -er '
-            select(.baseBranchName == "main") | .headBranchName |
-            select(. == "release-please--branches--main--components--vpnd")
-          ' <<< "$RELEASE_PR")"
-          gh workflow run ci.yml --ref "$branch"
-          gh workflow run codeql.yml --ref "$branch"
+          cat >> "$GITHUB_STEP_SUMMARY" <<'NOTICE'
+          ### Release PR requires CI approval
+          Open the generated release PR and select **Approve workflows to run**.
+          GitHub requires this approval for PRs created with GITHUB_TOKEN.
+          Wait for the native required PR checks before reviewing and merging.
+          A separate workflow_dispatch run does not replace this approval.
+          See docs/RELEASE-PLEASE.md for the release handoff and recovery.
+          NOTICE
 
   dispatch-binaries:
     name: dispatch vpnd binaries
