@@ -29,6 +29,4 @@ vpn:
   enable_cascade_ingress: false
   enable_cascade_egress: false
   warp_outbound_routes: []
-  xray_flow_mode: vision
-  xray_finalmask: false
   awg_cohort: ''

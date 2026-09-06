@@ -200,6 +200,7 @@ def test_existing_wrong_table_is_reconciled_once_then_becomes_idempotent(
                     "hosts": "localhost",
                     "gather_facts": False,
                     "connection": "local",
+                    "become": False,
                     "vars": {
                         "ansible_python_interpreter": sys.executable,
                         "split_hop_egress": {
@@ -214,11 +215,19 @@ def test_existing_wrong_table_is_reconciled_once_then_becomes_idempotent(
             sort_keys=False,
         )
     )
-    environment = os.environ | {
-        "PATH": f"{fake_bin}:{os.environ['PATH']}",
-        "NFT_STATE": str(state),
-        "NFT_EXPECTED": json.dumps(expected_policy),
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\nretry_files_enabled = False\n")
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("ANSIBLE_")
     }
+    environment.update(
+        {
+            "ANSIBLE_CONFIG": str(config),
+            "PATH": f"{fake_bin}:{environment['PATH']}",
+            "NFT_STATE": str(state),
+            "NFT_EXPECTED": json.dumps(expected_policy),
+        }
+    )
     command = [
         sys.executable,
         "-m",
@@ -229,10 +238,10 @@ def test_existing_wrong_table_is_reconciled_once_then_becomes_idempotent(
     ]
 
     first = subprocess.run(command, capture_output=True, text=True, env=environment)
-    assert first.returncode == 0, first.stderr
+    assert first.returncode == 0, first.stdout + first.stderr
     assert "changed=2" in first.stdout
     assert json.loads(state.read_text()) == expected_policy
 
     second = subprocess.run(command, capture_output=True, text=True, env=environment)
-    assert second.returncode == 0, second.stderr
+    assert second.returncode == 0, second.stdout + second.stderr
     assert "changed=0" in second.stdout
