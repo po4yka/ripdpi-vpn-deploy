@@ -9,11 +9,10 @@ risk: standard
 owner: Codex
 parent: null
 blocked_by: []
-spec_mode: not-required
-openspec_change: null
+spec_mode: required
+openspec_change: cic-1788684721834869-ci-dependency-selection
 created: 2026-09-06
 updated: 2026-09-06
-spec_reason: tooling-only
 related_tasks: []
 ---
 
