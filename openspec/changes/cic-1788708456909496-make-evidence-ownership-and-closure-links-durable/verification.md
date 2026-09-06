@@ -1,11 +1,11 @@
 ---
 task_id: CIC-1788708456909496
 change: cic-1788708456909496-make-evidence-ownership-and-closure-links-durable
-commit_sha: 6af10ddc1e01294c19e8add67158797a8baa1c15
+commit_sha: 69802e0063d04fb1637702222829d51def9afebb
 local: passed
-local_evidence: "Exact source 6af10ddc1e01294c19e8add67158797a8baa1c15 passed 78 focused taskctl tests and 9 subtests, the two governance-count tests, make task-check, Python compilation, and diff hygiene. A detached synthetic merge with origin/main as first parent passed base-aware task validation with 30 tasks and 161 steps, covering the same merge topology used by protected PR checks."
-remote_ci: passed
-remote_ci_evidence: "PR #186 exact source head 6af10ddc1e01294c19e8add67158797a8baa1c15 passed CI run 34059169265: all 75 jobs succeeded. The full check rollup contained 80 successful checks, including task-contract, four pytest shards, all selected Molecule jobs, Rust, Terraform, required checks, CodeQL and gitleaks; the separate Trivy SARIF report was neutral while both image scans passed."
+local_evidence: "Exact source 69802e0063d04fb1637702222829d51def9afebb passed all 80 taskctl unit tests, including new merged-lane archive-readiness and purged-related-target transfer regressions. Python compilation, diff hygiene, and base-aware task validation also passed with 30 tasks and 163 steps."
+remote_ci: blocked
+remote_ci_evidence: "Exact source 69802e0063d04fb1637702222829d51def9afebb has not yet run on protected pull-request CI; the earlier green run covered the superseded head only."
 dry_run: not_applicable
 dry_run_evidence: repository-local task tooling does not render or invoke deployment input
 staging: not_applicable
@@ -29,6 +29,8 @@ artifact_evidence: no release artifact is produced
 | REQ-CIC-1788708456909496-003 | CIC-1788708671983805 | Pre/post-purge success plus dirty issue, execution, verification, receipt, parent, blocker, and no-write rejection tests passed | passed |
 | REQ-CIC-1788708456909496-004 | CIC-1788708672560736 | Structured source/owner mappings and pre-archive historical-transfer rejection passed | passed |
 | REQ-CIC-1788708456909496-005 | CIC-1788708672560736 | Client-evidence policy and legacy activation-boundary regressions passed | passed |
+| REQ-CIC-1788708456909496-004 | CIC-1788729192473052 | RED tests reproduced an unmapped transfer accepted from a merged lane and from a purged historical related target; both pass after the fix | passed |
+| REQ-CIC-1788708456909496-002 | CIC-1788729193073535 | Contributing merged lanes and terminal related-task resolution now share historical transfer validation; all 80 taskctl tests passed | passed |
 
 The implementation steps, local gates, clean-history review, and exact-head
 protected checks are recorded above. Protected-main integration remains a
