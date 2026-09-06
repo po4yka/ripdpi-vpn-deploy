@@ -2,7 +2,7 @@
 id: CIC-1788684721834869
 title: Select CI checks from changed-file dependencies
 kind: chore
-status: doing
+status: review
 area: ci
 priority: high
 risk: standard
@@ -14,6 +14,7 @@ openspec_change: cic-1788684721834869-ci-dependency-selection
 created: 2026-09-06
 updated: 2026-09-06
 related_tasks: []
+status_detail: Protected main a5fc27c44fd217743469283cb181cbc413874a96 passed all 75 CI jobs; full and selective hosted modes and protection readback verified.
 ---
 
 ## Goal
