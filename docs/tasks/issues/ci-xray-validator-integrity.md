@@ -2,7 +2,7 @@
 id: CIC-1788668056138767
 title: Verify shared Xray CI validator integrity
 kind: bug
-status: doing
+status: done
 area: ci
 priority: high
 risk: standard
@@ -15,6 +15,10 @@ created: 2026-09-06
 updated: 2026-09-06
 spec_reason: tooling-only
 related_tasks: []
+status_detail: Protected main ea94beef passed both shared Xray validator consumers, molecule xray, both full-stack scenarios and required checks in exact-main CI 34024059323.
+closed_at: "2026-09-06T10:20:44Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Protected main ea94beef; exact-main CI 34024059323 passed both Xray validator consumers, Xray Molecule, full-stack and required checks.
 ---
 
 ## Goal
