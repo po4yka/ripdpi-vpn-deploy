@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+import zipfile
 
 import yaml
 
@@ -188,9 +189,12 @@ def test_xray_molecule_uses_a_hash_pinned_local_runtime_archive() -> None:
     assert variables["xray_runtime_release_urls"]["amd64"].startswith("file://")
     assert variables["xray_runtime_release_urls"]["arm64"].startswith("file://")
     assert artifact["dest"].endswith("xray-v26.3.27.zip")
-    assert sha256(base64.b64decode(artifact["content"])).hexdigest() == (
-        variables["xray"]["linux_amd64_sha256"]
-    )
+    assert artifact["src"] == "{{ playbook_dir }}/files/xray-v26.3.27.zip"
+    archive = REPO_ROOT / "ansible/roles/xray/molecule/default/files/xray-v26.3.27.zip"
+    assert sha256(archive.read_bytes()).hexdigest() == variables["xray"]["linux_amd64_sha256"]
+    with zipfile.ZipFile(archive) as payload:
+        assert payload.namelist() == ["xray"]
+        assert payload.read("xray").startswith(b"#!/bin/sh\n")
 
 
 def test_published_host_override_beats_repository_all_group_default(tmp_path) -> None:

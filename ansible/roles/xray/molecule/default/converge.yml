@@ -42,7 +42,7 @@
     - name: Create hash-pinned Xray runtime archive fixture
       ansible.builtin.copy:
         dest: /var/tmp/xray-molecule/xray-v26.3.27.zip
-        content: "UEsDBBQAAAAIAAAgIQBtGfD4rQAAABMBAAAEAAAAeHJheXWOPQuCQBzGdz/F0yVSQ2oKNhwtQUNDDWUQRIPZ3zywO9FT69tnOlRQ6+95HQ6cs5BOmRoiwRHMnDLMwYpKMpxgWR3zOjbRVOqWcuiUJOguNFyORHxHaypKoeSHMU4V2KGIHtiF+wVqL7B925thdFMZxVVGY8b/1v18EiuZiOt7QhdRDtZXMITL7RqrTcjRpCKjVq2I46JQZkQ5/MB1YaGJWrc5eAmSut0+bzwBUEsBAh4DFAAAAAgAACAhAG0Z8PitAAAAEwEAAAQAAAAAAAAAAQAAAO2BAAAAAHhyYXlQSwUGAAAAAAEAAQAyAAAAzwAAAAAA"
+        src: "{{ playbook_dir }}/files/xray-v26.3.27.zip"
         owner: root
         group: root
         mode: "0600"
@@ -85,4 +85,3 @@
   # `notify:` from the role tasks resolves correctly.
   roles:
     - role: xray
-      vars:
