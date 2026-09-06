@@ -1,0 +1,11 @@
+{
+  "change": "cic-1788684721834869-ci-dependency-selection",
+  "evidence_summary": "Exact protected main a5fc27c44fd217743469283cb181cbc413874a96 passed all 75 CI jobs and CodeQL; selective mode passed 19 jobs with 14 planned group skips; nine required contexts, strict mode, app bindings and unrelated protection settings verified.",
+  "execution_sha256": "19975cfcbdc3aed5251a5d54148f723bd6c41110f431546ab769c5b2fd093481",
+  "issue_sha256": "28129574f76b5a7a711cbf1791453f2dcf281faa68ad8355fabacede15651bd3",
+  "outcome": "done",
+  "prepared_at": "2026-09-06T10:06:00Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1788684721834869"
+}

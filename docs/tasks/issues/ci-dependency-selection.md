@@ -2,7 +2,7 @@
 id: CIC-1788684721834869
 title: Select CI checks from changed-file dependencies
 kind: chore
-status: review
+status: done
 area: ci
 priority: high
 risk: standard
@@ -15,6 +15,9 @@ created: 2026-09-06
 updated: 2026-09-06
 related_tasks: []
 status_detail: Protected main a5fc27c44fd217743469283cb181cbc413874a96 passed all 75 CI jobs; full and selective hosted modes and protection readback verified.
+closed_at: "2026-09-06T10:06:00Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Exact protected main a5fc27c44fd217743469283cb181cbc413874a96 passed all 75 CI jobs and CodeQL; selective mode passed 19 jobs with 14 planned group skips; nine required contexts, strict mode, app bindings and unrelated protection settings verified.
 ---
 
 ## Goal
