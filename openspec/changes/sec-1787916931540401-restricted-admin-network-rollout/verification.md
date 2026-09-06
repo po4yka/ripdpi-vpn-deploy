@@ -4,14 +4,14 @@ change: sec-1787916931540401-restricted-admin-network-rollout
 commit_sha: e265689c83ca3ea16b8d84b19574000ea597bd3d
 local: passed
 local_evidence: the combined-tree make -j1 check passed with 2969 Python tests, one existing skip, 55 Bats tests, 184 Rust release tests and Clippy; isolated profile stopped and context and config were unchanged; log SHA256 0f31ada651e9c771887691eebb5701add05ac7894f25f0f37840385f38454fe5
-remote_ci: required
-remote_ci_evidence: null
+remote_ci: passed
+remote_ci_evidence: "The delivered source is present on protected main 0da5dae31e12242baebde842ab632cd1e1843140; exact-main CI passed all 75 jobs: https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/34030183169."
 dry_run: required
 dry_run_evidence: null
 staging: required
 staging_evidence: null
-live: required
-live_evidence: null
+live: not_applicable
+live_evidence: "One isolated staging SSH migration, disconnect, reboot, rollback and teardown is sufficient; production rollout is optional."
 client: not_applicable
 client_evidence: no Android or client contract change; actual SSH and VPN path probes belong to staging and live evidence
 artifact: not_applicable
@@ -425,3 +425,7 @@ stopped and its Docker context and configuration remained unchanged.
 This closes only the source safety boundary. No provider resource was created
 or deleted and no host, ACL, DNS, certificate or VPN path was changed. The two
 real staging and serial fleet execution steps remain open.
+
+## Proportional verification decision — 2026-09-06
+
+Verification follows the portfolio proportional-evidence policy. Source closure does not claim staging or live operation; any delegated operational requirement remains open in the task named in the front matter evidence above.

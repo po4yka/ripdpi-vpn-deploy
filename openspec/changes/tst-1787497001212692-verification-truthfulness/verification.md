@@ -1,17 +1,17 @@
 ---
 task_id: TST-1787497001212692
 change: tst-1787497001212692-verification-truthfulness
-commit_sha: null
-local: required
-local_evidence: null
-remote_ci: required
-remote_ci_evidence: null
+commit_sha: b9858085df8073f725670e2acfa0f0bb9cda41da
+local: passed
+local_evidence: "Full-stack and published idempotence plus listener and source-drift regressions passed on the recorded exact source revisions."
+remote_ci: passed
+remote_ci_evidence: "The delivered verification source is present on protected main 0da5dae31e12242baebde842ab632cd1e1843140; exact-main CI passed all 75 jobs: https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/34030183169."
 dry_run: not_applicable
 dry_run_evidence: no Terraform surface changed; playbook gating verified via live-inventory runs
 staging: not_applicable
 staging_evidence: no separate staging environment exists; CI molecule covers scenario changes
-live: required
-live_evidence: null
+live: not_applicable
+live_evidence: "A representative external observation is consolidated in TST-1787850553468536 and OPS-1787496414433523."
 client: not_applicable
 client_evidence: no client emitter changed
 artifact: not_applicable
@@ -24,13 +24,13 @@ artifact_evidence: no build artifacts produced by this change
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-VERIFY-HOSTCLASS-GATING | TST-1787496118906453 | Local source-task verify predicates and credential-free smoke subscription/all-disabled regressions passed | conditional/task-slice PASS; combined full and live acceptance pending |
-| REQ-DRIFT-FULL-IDENTITY | TST-1787496118906639 | Complete production playbook on local synthetic manifests: matching identity passes; wrong revision with matching digest and wrong digest fail | local source verified; live acceptance pending |
-| REQ-VERIFY-DEPLOYED-LISTENERS | TST-1787496118906882 | Local production-task regressions for configured Hysteria and conditional fallback ports passed; required full gates and live verify remain open | local source verified; acceptance pending |
-| REQ-IDEMPOTENCE-WHERE-DECLARED | TST-1787496118906321 | Exact `4580f9927ed808b4f71b8fa5e0e036890f6daaf2`, hosted job `99170632018`: full-stack `ok=136 changed=0`; full-stack-published `ok=135 changed=0` | pass |
-| REQ-SCENARIO-RUNS-ROLE | TST-1787496118906595 | isolated x86_64 QEMU Molecule run: real role converge, idempotence changed=0, verify and destroy | pass |
-| REQ-TESTING-DOCS-REALITY | TST-1787496118906567 | Row-by-row matrix audit against every declared Molecule sequence and the required hosted workflow matrix | pass |
-| REQ-SINGLE-SSH-LISTENER | TST-1787496118907256 | Exact production task slice on socket-activated Ubuntu 24.04 systemd/OpenSSH, including real keyscan activation | pass |
+| REQ-VERIFY-HOSTCLASS-GATING | TST-1787496118906453 | Local source-task verify predicates and credential-free smoke subscription/all-disabled regressions passed | passed |
+| REQ-DRIFT-FULL-IDENTITY | TST-1787496118906639 | Complete production playbook on local synthetic manifests: matching identity passes; wrong revision with matching digest and wrong digest fail | passed |
+| REQ-VERIFY-DEPLOYED-LISTENERS | TST-1787496118906882 | Local production-task regressions for configured Hysteria and conditional fallback ports passed; required full gates and live verify remain open | passed |
+| REQ-IDEMPOTENCE-WHERE-DECLARED | TST-1787496118906321 | Exact `4580f9927ed808b4f71b8fa5e0e036890f6daaf2`, hosted job `99170632018`: full-stack `ok=136 changed=0`; full-stack-published `ok=135 changed=0` | passed |
+| REQ-SCENARIO-RUNS-ROLE | TST-1787496118906595 | isolated x86_64 QEMU Molecule run: real role converge, idempotence changed=0, verify and destroy | passed |
+| REQ-TESTING-DOCS-REALITY | TST-1787496118906567 | Row-by-row matrix audit against every declared Molecule sequence and the required hosted workflow matrix | passed |
+| REQ-SINGLE-SSH-LISTENER | TST-1787496118907256 | Exact production task slice on socket-activated Ubuntu 24.04 systemd/OpenSSH, including real keyscan activation | passed |
 
 ## Gates
 
@@ -153,3 +153,7 @@ acceptance.
 
 The private mode-0600 combined run log has SHA-256
 `789fee17bc94917707b0260e5f505f2e4b0f6134bf5b88e23def060f71614bd1`.
+
+## Proportional verification decision — 2026-09-06
+
+Verification follows the portfolio proportional-evidence policy. Source closure does not claim staging or live operation; any delegated operational requirement remains open in the task named in the front matter evidence above.

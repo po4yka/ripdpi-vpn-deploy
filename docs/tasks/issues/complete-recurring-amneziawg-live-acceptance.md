@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: tst-1786299293097217-complete-recurring-amneziawg-live-acceptance
 created: 2026-08-09
-updated: 2026-09-01
+updated: 2026-09-06
 related_tasks: ["po4yka/RIPDPI#TRN-1786264762917677"]
-status_detail: Offline deploy-side evidence now requires a private final-component-no-follow current RIPDPI source/artifact identity descriptor and records redacted INFRA_UNAVAILABLE launcher refusals without replacing latest PASS. No client-produced descriptor, disposable staging target, provider inputs, or recurring acceptance observation is available. Existing amneziawg-go evidence does not prove current RIPDPI client acceptance.
+status_detail: "One current-revision isolated client/server staging run plus one repeated observation is sufficient. Production deployment is not required; current client identity material and an executor remain unavailable."
 ---
 
 ## Goal

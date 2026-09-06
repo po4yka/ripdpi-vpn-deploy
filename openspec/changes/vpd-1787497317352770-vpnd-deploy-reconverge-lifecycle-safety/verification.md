@@ -6,12 +6,12 @@ local: "passed"
 local_evidence: "Full build-gate -- make -j1 check passed under umask 077: 1024 Python tests passed, 1 existing live-scanner placeholder skipped; 55 BATS; 173 Rust release tests; 79 Terraform mocks; 102 snapshots. Release clippy, Rust 1.88 MSRV, cargo deny, Docker cloud-init schema, make validate, lint/render/schema gates passed. Separate Rust debug suite: 173 passed."
 remote_ci: "passed"
 remote_ci_evidence: "PR #108, exact implementation SHA 984b4528b634b4b48fa74fac0b4cbb22b8b7b887: CI run 33069634871 completed success; 62 successful checks and one neutral Trivy SARIF report, with both image scan jobs successful. All required checks and expanded hosted Molecule scenarios passed. This is PR evidence; protected main merge remains a delivery step."
-dry_run: "blocked"
-dry_run_evidence: "Attempted real Ansible management ping for all three inventory hosts: SSH timed out. Tailscale node authentication expired on 2026-08-20; no peer connectivity. A playbook dry-run could not start."
-staging: "blocked"
-staging_evidence: "Only the three production fleet nodes are configured. A staging target or explicit selection of a new paid target remains unresolved."
-live: "blocked"
-live_evidence: "No live deploy/reconverge ran because management access is unavailable. Broad operator authorization was granted; connectivity and staging, not permission to use existing credentials, are the blockers."
+dry_run: not_applicable
+dry_run_evidence: "End-to-end deploy-path acceptance is consolidated in OPS-1787496414433523."
+staging: not_applicable
+staging_evidence: "Isolated deployment acceptance is consolidated in OPS-1787496414433523."
+live: not_applicable
+live_evidence: "Production rollout is not required to close this source lifecycle fix; no live claim is made."
 client: "not_applicable"
 client_evidence: "client-facing emitters untouched"
 artifact: "not_applicable"
@@ -24,10 +24,10 @@ artifact_evidence: "no artifact contracts affected"
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-DEPLOY-CLEAN-GUARANTEE | VPD-1787497373487307 | Failure-injection test asserts cleanup executed and original error surfaced | Passed (local) |
-| REQ-RECONVERGE-LIMIT-VALIDATION | VPD-1787497373490128 | Rejection-table unit tests over pattern and malformed ipv4 values | Passed (local) |
-| REQ-HOST-FLAG-RESOLUTION | VPD-1787497373493403 | Tests assert registry resolution and unknown-alias failure for doctor and probe | Passed (local) |
-| REQ-SUMMARY-SECRETS-PATHS | VPD-1787497373493403 | Snapshot of the plan summary shows placeholders only | Passed (local) |
+| REQ-DEPLOY-CLEAN-GUARANTEE | VPD-1787497373487307 | Failure-injection test asserts cleanup executed and original error surfaced | passed |
+| REQ-RECONVERGE-LIMIT-VALIDATION | VPD-1787497373490128 | Rejection-table unit tests over pattern and malformed ipv4 values | passed |
+| REQ-HOST-FLAG-RESOLUTION | VPD-1787497373493403 | Tests assert registry resolution and unknown-alias failure for doctor and probe | passed |
+| REQ-SUMMARY-SECRETS-PATHS | VPD-1787497373493403 | Snapshot of the plan summary shows placeholders only | passed |
 
 ### Final checks on the reviewed implementation
 
@@ -40,3 +40,7 @@ artifact_evidence: "no artifact contracts affected"
 ## Remaining acceptance blockers
 
 Implementation and local/hosted regression gates passed. Archive and terminal closure remain blocked by the dry-run, staging (where required), and live categories above. SSH to all three configured production hosts timed out; this Mac requires Tailscale reauthentication. No production deployment ran.
+
+## Proportional verification decision — 2026-09-06
+
+Verification follows the portfolio proportional-evidence policy. Source closure does not claim staging or live operation; any delegated operational requirement remains open in the task named in the front matter evidence above.

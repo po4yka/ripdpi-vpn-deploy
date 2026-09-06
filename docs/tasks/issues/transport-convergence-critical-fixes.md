@@ -2,7 +2,7 @@
 id: ANS-1787495907091073
 title: Fix production-breaking transport convergence defects
 kind: bug
-status: blocked
+status: review
 area: ansible
 priority: critical
 risk: high
@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: ans-1787495907091073-transport-convergence-critical-fixes
 created: 2026-08-23
-updated: 2026-08-27
+updated: 2026-09-06
 related_tasks: []
-status_detail: Implementation, full local check, and hosted Molecule passed at 984b452; fleet dry-run/live acceptance blocked by SSH timeouts and expired Tailscale authentication.
+status_detail: All source fixes and protected-main checks are complete. Shared deploy and external protocol acceptance are consolidated in OPS-1787496414433523 and TST-1787850553468536.
 ---
 
 ## Goal

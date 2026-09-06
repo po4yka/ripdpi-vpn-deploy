@@ -2,7 +2,7 @@
 id: TST-1787850553468536
 title: Deliver authenticated fleet probes and passive inspection
 kind: feature
-status: review
+status: blocked
 area: testing
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: tst-1787850553468536-fleet-observation
 created: 2026-08-27
-updated: 2026-08-28
+updated: 2026-09-06
 related_tasks: []
+status_detail: "One authorized schema-2 node, one current client vantage and only profiles enabled on that target are sufficient. Blocked on current client material, target manifest and restore input; full-fleet and second-vantage proof are no longer required."
 ---
 
 ## Goal

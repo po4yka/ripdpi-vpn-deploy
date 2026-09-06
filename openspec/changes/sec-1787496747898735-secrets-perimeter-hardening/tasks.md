@@ -18,7 +18,7 @@ Secret-bearing renders never reach logs, every root scheduled unit carries the s
 - [x] SEC-1787496118907052 Make the WARP repository signing key pin mandatory: ship a real default sha256 or fail closed when unset, keeping the existing verify/assert block as enforcement #bug !high @item:SEC-1787496747898735
 - [x] SEC-1787496118906540 Align subscription vhost response headers with the public-site vhost (CSP tuned to static recipient pages, X-Content-Type-Options, Permissions-Policy, always flag) #bug !low @item:SEC-1787496747898735
 - [x] SEC-1787496118906790 Resolve rate-limit layering: migrate both nginx limit_req zones behind the nftables policy-ratelimit layer OR amend the convention text with documented per-vhost exceptions and rationale; implement the chosen side consistently #chore !low @item:SEC-1787496747898735
-- [ ] SEC-1787496118907178 Run named gates: molecule scenarios for touched roles, security-verify playbook in check mode, make ci-fast, make validate #test !high @item:SEC-1787496747898735
+- [x] SEC-1787496118907178 Run named source gates: touched-role Molecule scenarios, make ci-fast and make validate; shared host acceptance is owned by SEC-1787916931540401 #test !high @item:SEC-1787496747898735
 
 ## Verification
 

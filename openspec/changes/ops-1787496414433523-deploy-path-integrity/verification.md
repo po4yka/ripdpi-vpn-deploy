@@ -8,10 +8,10 @@ remote_ci: required
 remote_ci_evidence: null
 dry_run: required
 dry_run_evidence: null
-staging: not_applicable
-staging_evidence: no separate staging environment exists; CI molecule plus a live-inventory dry-run cover gate behavior
-live: required
-live_evidence: null
+staging: required
+staging_evidence: "One isolated exact-main deploy-path cycle is sufficient: preflight, bootstrap wait, rotation, rollback and teardown."
+live: not_applicable
+live_evidence: "Production fleet rollout is optional after isolated staging acceptance and is not required for task closure."
 client: not_applicable
 client_evidence: no client-facing emitter or vpnd surface changed
 artifact: not_applicable
@@ -177,3 +177,7 @@ artifact_evidence: no build artifacts produced by this change
 - The shell now executes one controller for the entire wait. Each SSH command still has its own process group and deadline; all 30 cloud attempts and real remote GNU timeout calls remain. Production session/remote bounds, signal cleanup, and the test bounds are unchanged. Missing executables now fail immediately with a categorical `command unavailable` message; diagnostics no longer include the target address.
 - Tests first: the new controller-launch assertion in the existing successful-bootstrap test failed on the old source with two launches instead of one (2.09 seconds). After the source transfer, the entire `test_render_inventory.py` module passed all 20 tests in 40.47 seconds under the pinned Python 3.12.13 environment, including both remote-deadline cases, connected-session timeout, INT/TERM cleanup, and spawn-window cancellation. The count assertion also covers both cloud-init error outcomes. Independent read-only review found no actionable issues.
 - This proves the bounded local behavior and removes repeated controller interpreter startup. A complete combined local gate and exact-source hosted checks are still required before protected integration; there is no new host, provider, staging, or live acceptance evidence.
+
+## Proportional verification decision — 2026-09-06
+
+Verification follows the portfolio proportional-evidence policy. Source closure does not claim staging or live operation; any delegated operational requirement remains open in the task named in the front matter evidence above.

@@ -2,7 +2,7 @@
 id: SEC-1787916931540401
 title: Preserve SSH access during restricted management network rollout
 kind: feature
-status: doing
+status: blocked
 area: security
 priority: high
 risk: high
@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1787916931540401-restricted-admin-network-rollout
 created: 2026-08-28
-updated: 2026-09-05
+updated: 2026-09-06
 related_tasks: [SEC-1787496881680472]
-status_detail: Six of eight execution steps are complete in protected source deliveries. The Vultr exact-resource cleanup adapter passed focused review and the canonical local gate; protected hosted integration is pending. Real isolated staging deletion/disconnect/reboot/rollback and serial fleet emergency/VPN acceptance remain required.
+status_detail: "Source is complete. One isolated staging SSH migration with disconnect, reboot, rollback and teardown is sufficient; production fleet rollout is optional. Blocked on a staging target plus provider template and private inputs."
 ---
 
 ## Goal

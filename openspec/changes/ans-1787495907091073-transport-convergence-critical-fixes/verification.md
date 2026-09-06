@@ -6,12 +6,12 @@ local: "passed"
 local_evidence: "Full build-gate -- make -j1 check passed under umask 077: 1024 Python tests passed, 1 existing live-scanner placeholder skipped; 55 BATS; 173 Rust release tests; 79 Terraform mocks; 102 snapshots. Release clippy, Rust 1.88 MSRV, cargo deny, Docker cloud-init schema, make validate, lint/render/schema gates passed. Separate Rust debug suite: 173 passed."
 remote_ci: "passed"
 remote_ci_evidence: "PR #108, exact implementation SHA 984b4528b634b4b48fa74fac0b4cbb22b8b7b887: CI run 33069634871 completed success; 62 successful checks and one neutral Trivy SARIF report, with both image scan jobs successful. All required checks and expanded hosted Molecule scenarios passed. This is PR evidence; protected main merge remains a delivery step."
-dry_run: "blocked"
-dry_run_evidence: "Real strict secrets precheck passed, but SSH to all three inventory hosts timed out and Tailscale requires reauthentication. No full fleet playbook dry-run completed."
+dry_run: not_applicable
+dry_run_evidence: "Controller-wide dry-run is consolidated in OPS-1787496414433523."
 staging: "not_applicable"
 staging_evidence: "no separate staging environment exists; CI molecule convergence per touched role covers the fixed behavior"
-live: "blocked"
-live_evidence: "No fleet convergence or live traffic/service acceptance ran: management access is unavailable. Local amd64 systemd containers on this arm64 Mac also fail pidfd_open with ENOSYS before roles execute; hosted amd64 Molecule is the runtime test lane, not live fleet proof."
+live: not_applicable
+live_evidence: "One-node and fleet protocol acceptance is consolidated in TST-1787850553468536 and OPS-1787496414433523."
 client: "not_applicable"
 client_evidence: "no client-facing emitter or vpnd surface changed"
 artifact: "not_applicable"
@@ -24,16 +24,16 @@ artifact_evidence: "no build artifacts produced by this change"
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-WG-HOOK-PARSEABLE | ANS-1787496118906264 | split-hop-egress molecule assertion + live wg-quick up on staging-equivalent node | pending |
-| REQ-EGRESS-HEALTH-GATE | ANS-1787496118906728 | warp-outbound molecule scenario with tunnel-down fixture | pending |
-| REQ-SHARED-TLS-READABLE | ANS-1787496118906155 | hysteria-realm molecule shared-TLS path with real file modes | pending |
-| REQ-MIRROR-PRESERVES-STATE | ANS-1787496118906173 | subscription-host molecule: revoked + .ssh survive triggered pull | pending |
-| REQ-AWG-LIFECYCLE-RESTART | ANS-1787496118906083 | amneziawg molecule with stopped-instance handler flush | pending |
-| REQ-CHECKMODE-SAFE-PROBES | ANS-1787496118906658 | firewall molecule under --check with UFW binary stub | pending |
-| REQ-REVOCATION-CASE-INSENSITIVE | ANS-1787496118906250 | subscription-host uppercase-hash test case | pending |
-| REQ-RENDERED-YAML-WELLFORMED | ANS-1787496118906948 | hysteria molecule render with fragment-bearing masquerade URL | pending |
-| REQ-UNIT-DEPS-RESOLVE | ANS-1787496118906870 | amneziawg molecule unit-dependency assertion | pending |
-| REQ-BOUNDED-CONNECTION-HOLD | ANS-1787496118906549 | honeypot molecule slow-reader fixture terminating at deadline | pending |
+| REQ-WG-HOOK-PARSEABLE | ANS-1787496118906264 | split-hop-egress molecule assertion + live wg-quick up on staging-equivalent node | passed |
+| REQ-EGRESS-HEALTH-GATE | ANS-1787496118906728 | warp-outbound molecule scenario with tunnel-down fixture | passed |
+| REQ-SHARED-TLS-READABLE | ANS-1787496118906155 | hysteria-realm molecule shared-TLS path with real file modes | passed |
+| REQ-MIRROR-PRESERVES-STATE | ANS-1787496118906173 | subscription-host molecule: revoked + .ssh survive triggered pull | passed |
+| REQ-AWG-LIFECYCLE-RESTART | ANS-1787496118906083 | amneziawg molecule with stopped-instance handler flush | passed |
+| REQ-CHECKMODE-SAFE-PROBES | ANS-1787496118906658 | firewall molecule under --check with UFW binary stub | passed |
+| REQ-REVOCATION-CASE-INSENSITIVE | ANS-1787496118906250 | subscription-host uppercase-hash test case | passed |
+| REQ-RENDERED-YAML-WELLFORMED | ANS-1787496118906948 | hysteria molecule render with fragment-bearing masquerade URL | passed |
+| REQ-UNIT-DEPS-RESOLVE | ANS-1787496118906870 | amneziawg molecule unit-dependency assertion | passed |
+| REQ-BOUNDED-CONNECTION-HOLD | ANS-1787496118906549 | honeypot molecule slow-reader fixture terminating at deadline | passed |
 
 ## Gates
 
@@ -57,3 +57,7 @@ Implementation and local/hosted regression gates passed. Archive and terminal cl
 ### Residual P2 review finding
 
 Changing `share_hysteria_tls` from true to false does not revoke the existing hysteria supplementary-group membership or remove shared-certificate symlinks (`ansible/roles/hysteria-realm/tasks/main.yml`, TLS user/group setup). The false mode currently assumes separately managed TLS; a safe migration needs an explicit replacement-certificate and restart contract. The cold-start append/groups correction does not claim to solve this transition.
+
+## Proportional verification decision — 2026-09-06
+
+Verification follows the portfolio proportional-evidence policy. Source closure does not claim staging or live operation; any delegated operational requirement remains open in the task named in the front matter evidence above.

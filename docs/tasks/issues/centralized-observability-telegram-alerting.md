@@ -12,7 +12,8 @@ blocked_by: [TST-1787850553468536, ANS-1787497148207353]
 spec_mode: required
 openspec_change: mon-1788008977760206-centralized-observability-telegram-alerting
 created: 2026-08-29
-updated: 2026-09-04
+updated: 2026-09-06
+status_detail: "Complete a staging control plane, canary, and observed primary/dead-man firing and recovery. Full-fleet rollout, two vantages and production paging cutover are optional after this working-state milestone."
 related_tasks: [SEC-1787916931540401, TST-1787497001212692]
 ---
 

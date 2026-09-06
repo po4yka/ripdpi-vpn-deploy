@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: vpd-1787497252303967-vpnd-probe-matrix-robust-evidence
 created: 2026-08-23
-updated: 2026-09-01
+updated: 2026-09-06
 related_tasks: []
-status_detail: Probe durability, schema-3 producer, byte-identical client mirror, protected integration, and exact-main hosted checks are delivered. The task remains in review pending required staging and live four-protocol probe evidence; fixtures and source CI are not live acceptance.
+status_detail: Process cleanup, timeout, durability, schema and client mirror behavior are source-complete. External probe acceptance is consolidated in TST-1787850553468536.
 ---
 
 ## Goal
