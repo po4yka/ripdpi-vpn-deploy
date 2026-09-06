@@ -2,7 +2,7 @@
 id: TST-1788679651303079
 title: Run full-stack CI scenarios in parallel matrix jobs
 kind: chore
-status: doing
+status: review
 area: testing
 priority: medium
 risk: standard
@@ -15,6 +15,7 @@ created: 2026-09-06
 updated: 2026-09-06
 spec_reason: tooling-only
 related_tasks: []
+status_detail: Both matrix scenarios passed in hosted CI run 34019345569 on b4cdc0da; full CI and 14 affected local tests passed.
 ---
 
 ## Goal
