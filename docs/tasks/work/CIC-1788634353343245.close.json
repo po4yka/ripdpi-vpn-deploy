@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Protected main dad8d9dcef7d1009bb56230ff0ca56c46d82044e; GitHub checks 30 success.",
+  "execution_sha256": "62dca90e2ba8a6575dd357d33764e3de757f4c9559be1fda914343f8b0fce6f6",
+  "issue_sha256": "201fcfe021dd1d6a0dfede7c12891509207426efe6f8837fff1797b351d9e2cd",
+  "outcome": "done",
+  "prepared_at": "2026-09-06T05:02:08Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1788634353343245"
+}

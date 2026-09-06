@@ -2,7 +2,7 @@
 id: CIC-1788632749680598
 title: Fail real-VPS deploy when selected templates are missing
 kind: bug
-status: doing
+status: done
 area: ci
 priority: high
 risk: standard
@@ -12,9 +12,13 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-06
 spec_reason: tooling-only
 related_tasks: []
+status_detail: Real-VPS missing-template failures delivered to protected main 49f83c9b.
+closed_at: "2026-09-06T05:02:07Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Protected main 49f83c9b7e3d4c96f5f07a724b3db6dc86c371be; GitHub checks 29 success, 1 neutral.
 ---
 
 ## Goal

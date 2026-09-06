@@ -2,7 +2,7 @@
 id: CIC-1788634353343245
 title: Require protective workflows before merge
 kind: bug
-status: doing
+status: done
 area: ci
 priority: high
 risk: standard
@@ -12,9 +12,13 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-06
 spec_reason: tooling-only
 related_tasks: []
+status_detail: Protective workflow requirements delivered to protected main dad8d9dc.
+closed_at: "2026-09-06T05:02:08Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Protected main dad8d9dcef7d1009bb56230ff0ca56c46d82044e; GitHub checks 30 success.
 ---
 
 ## Goal
