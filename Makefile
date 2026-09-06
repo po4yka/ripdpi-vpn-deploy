@@ -246,7 +246,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         observability-drill observability-deploy observability-rotate observability-rollback \
         observability-remove observability-silence-create observability-silence-delete \
         awg-evidence-provision \
-        test-native-runtime test-probe-matrix-mtproto test-unit test-unit-profile snapshot-check snapshot-update validate-secrets \
+        test-native-runtime test-probe-matrix-mtproto test-unit test-unit-profile test-unit-shard snapshot-check snapshot-update validate-secrets \
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
         ci-fast bats-test vpnd-test vpnd-clippy vpnd-deny vpnd-msrv vpnd-mutants tf-policy tf-policy-verify \
         task-tools task-check task-list task-ready task-graph task-federation \
@@ -365,6 +365,8 @@ help:
 	@echo ""
 	@echo "── TEST / CI ──────────────────────────────────────────────────────────"
 	@echo "  test-unit                  Run portable pytest tests; selected skips fail"
+	@echo "  test-unit-shard            Run one balanced pytest group (PYTEST_GROUP=1..4)"
+	@echo "  test-unit-profile          Refresh durations with a complete portable run"
 	@echo "  test-native-runtime        Run native integration tests in disposable Linux root environment"
 	@echo "  test-probe-matrix-mtproto   Run the compiled Go helper tests"
 	@echo "  snapshot-check             Diff every Jinja render against tests/snapshot/golden/"
@@ -725,7 +727,16 @@ test-unit:
 
 # Refresh measured balancing data with a complete portable suite run.
 test-unit-profile:
-	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ scripts/tests/ -m "not native_runtime" --fail-on-skip -q --store-durations --durations-path tests/pytest-durations.json
+	mkdir -p .pytest-shards
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ scripts/tests/ -m "not native_runtime" --fail-on-skip -q --store-durations --clean-durations --durations-path .pytest-shards/durations.json
+	python3 -c 'import gzip; from pathlib import Path; Path("tests/pytest-durations.json.gz").write_bytes(gzip.compress(Path(".pytest-shards/durations.json").read_bytes(), mtime=0))'
+
+# Each CI runner executes one group against the same immutable duration seed.
+test-unit-shard:
+	@case "$${PYTEST_GROUP:-}" in 1|2|3|4) ;; *) echo "PYTEST_GROUP must be 1, 2, 3 or 4" >&2; exit 2 ;; esac
+	mkdir -p .pytest-shards
+	python3 -c 'import gzip; from pathlib import Path; Path(".pytest-shards/durations.json").write_bytes(gzip.decompress(Path("tests/pytest-durations.json.gz").read_bytes()))'
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ scripts/tests/ -m "not native_runtime" --fail-on-skip -q --splits 4 --group "$$PYTEST_GROUP" --splitting-algorithm least_duration --durations-path .pytest-shards/durations.json --store-durations --clean-durations --shard-report .pytest-shards/report.json
 
 snapshot-check:
 	python3 scripts/render-snapshots.py

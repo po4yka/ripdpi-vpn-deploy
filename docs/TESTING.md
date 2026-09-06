@@ -83,7 +83,7 @@ uses Python's standard library for local SSH deadlines.
 | **Native runtime integration** | required `native-runtime` CI lane; `make test-native-runtime` in disposable Linux root environment | Terraform 1.15.2 FD-backed commands and saved-plan lifecycle | Alertmanager 0.28.1 webhook timeout; supplementary-group metrics reader | Four `native_runtime` tests; SHA256-verified Alertmanager/amtool; missing tools or UID/GID capabilities fail. No cloud credentials or provider resources. |
 | **MTProxy Go helper** | required `go-helper` CI lane; `make test-probe-matrix-mtproto` in `ci-fast` | six Go tests with locked module resolution and uncached execution | injected connector; no Telegram traffic | Go 1.27.1, dependency cache keyed by `go.sum`; native helper tests supplement Python driver coverage. |
 | **REALITY scanner wrapper** | pytest | installer, CSV filtering, ASN status, top limit, empty-output failure | offline scanner/WHOIS fixtures | Full public TLS scan remains an explicit operator integration (`scripts/scan-reality-targets.sh --seeds <file>`), not automated coverage. No placeholder or unconditional skipped test. |
-| **Python tests (3979 collected)** | pytest (CI and local; 3926 under `tests/unit/`) | n/a | n/a | Covers emit-singbox, SOPS round-trip, render-inventory including custom SSH ports, replacement safety, Vultr control-plane preflight and guest IPv4 convergence, rolling OS maintenance and recurring security-update policy, relay/fallback, subscription token revocation lifecycle, client registry refresh/drift contracts, probe-matrix drivers/contracts/provisioning, cascade attestation freshness, tri-state per-connection classification, authenticated per-leg probe state and health freshness, inert Terraform and role/profile guards, in-cohort rule-drift canary classification, Snell refinement classification, singbox kill-switch, policy-ratelimit ban logic, burn-check error metrics, listener-collision guard, node manifest source parity, receipt-owned transactional runtime releases and serialized publication, crash-recoverable source-build write-ahead journals, AmneziaWG check-mode build receipts and arm64 version-floor tracking, recurring real-VPS AWG/NAT source binding, generation transitions, transactional rotation, cleanup, and fail-closed evidence, cloud-init completion and restart acceptance, deployment profiles, strict live-inventory and extra-vars gates, injected-fact removal, watchdog bounded recovery, Xray StatsService and redacted exporter contracts, check-mode-safe service handlers, restricted Tailnet enrollment and deploy-controller credential isolation, exact-resource staging cleanup, Molecule dependency-path and driver-pin guards, honeypot log retention, calendar-window metrics, dual-stack binding, public-site behavior, P1 node-local hostname resolution, XHTTP-only backend rendering, REALITY self-steal contracts, repository symlink scanning, and protocol-liveness evaluation, sentinel cleanup, onboarding, and OTP rotation gates. (Shell orchestrator dry-runs migrated to bats — see below.) |
+| **Python tests (3996 collected)** | pytest (CI and local; 3943 under `tests/unit/`) | n/a | n/a | Covers emit-singbox, SOPS round-trip, render-inventory including custom SSH ports, replacement safety, Vultr control-plane preflight and guest IPv4 convergence, rolling OS maintenance and recurring security-update policy, relay/fallback, subscription token revocation lifecycle, client registry refresh/drift contracts, probe-matrix drivers/contracts/provisioning, cascade attestation freshness, tri-state per-connection classification, authenticated per-leg probe state and health freshness, inert Terraform and role/profile guards, in-cohort rule-drift canary classification, Snell refinement classification, singbox kill-switch, policy-ratelimit ban logic, burn-check error metrics, listener-collision guard, node manifest source parity, receipt-owned transactional runtime releases and serialized publication, crash-recoverable source-build write-ahead journals, AmneziaWG check-mode build receipts and arm64 version-floor tracking, recurring real-VPS AWG/NAT source binding, generation transitions, transactional rotation, cleanup, and fail-closed evidence, cloud-init completion and restart acceptance, deployment profiles, strict live-inventory and extra-vars gates, injected-fact removal, watchdog bounded recovery, Xray StatsService and redacted exporter contracts, check-mode-safe service handlers, restricted Tailnet enrollment and deploy-controller credential isolation, exact-resource staging cleanup, Molecule dependency-path and driver-pin guards, honeypot log retention, calendar-window metrics, dual-stack binding, public-site behavior, P1 node-local hostname resolution, XHTTP-only backend rendering, REALITY self-steal contracts, repository symlink scanning, and protocol-liveness evaluation, sentinel cleanup, onboarding, and OTP rotation gates. (Shell orchestrator dry-runs migrated to bats — see below.) |
 | **Shell-orchestrator bats tests (55 tests)** | `bats tests/bats/` (CI, blocking) | n/a | n/a | Covers `blue-green.sh --dry-run`, `fleet-rotate.sh --dry-run`, `age-recovery-combine.sh` 3-of-5 round-trip, `restore.sh --dry-run` (path-A + path-B including secrets-before-playbook ordering), operator cron rendering, and atomic optional Snell client updates. Uses the same `tests/stubs/bin/` PATH-prepend harness as the Python tests. bats-support v0.3.0 + bats-assert v2.1.0 vendored under `tests/bats/test_helper/`. |
 | **Terraform policy (cross-provider, Conftest)** | `.github/workflows/tf-policy.yml` per PR | n/a | n/a | Runs each provider's native Terraform tests with `mock_provider`, then `conftest verify --rego-version v0 -p terraform/policy/` for Rego syntax/unit-test validation. The workflow intentionally does not run real provider plans against example tfvars because those require operator credentials and provider API access. `make tf-policy` for local; pinned Conftest 0.57.0 is mandatory for `make ci-fast` and `make check` (see `mise.toml`). |
 | **Container image scanning (Trivy)** | `.github/workflows/image-scan.yml` per PR | n/a | n/a | Every PR scans the complete deduplicated set of digest-pinned images from all Molecule scenarios, independent of changed paths. Uploads HIGH/CRITICAL SARIF to the Security tab. Escalate only with rationale + expiry + owner in `.trivyignore`. |
@@ -361,7 +361,7 @@ When you add a role, the checklist is:
 
 ### Required test selection
 
-`make test-unit` and the main pytest CI job select `not native_runtime` from
+`make test-unit` and the four pytest CI groups select `not native_runtime` from
 `tests/unit/` and `scripts/tests/` (including all 53 taskctl regressions);
 `make test-native-runtime` selects the complementary four native tests on an
 isolated Linux runner as root. Both fail if any selected test is skipped.
@@ -370,3 +370,28 @@ the portable `ci-fast` / `check` bundle: never elevate the full local test suite
 For local native verification, provide Terraform 1.15.2 on PATH and
 `ALERTMANAGER_BIN` pointing to Alertmanager 0.28.1 with sibling `amtool` inside
 a disposable Linux environment, then run `make test-native-runtime` there.
+
+
+### Balanced pytest groups
+
+CI uses `pytest-split` with four groups and `least_duration`, assigning the
+longest measured tests first. The committed `tests/pytest-durations.json.gz` seed
+comes from a complete Linux CI run. Gzip keeps the complete measured dataset
+small; each group decompresses it before pytest-split reads it. New tests use the plugin's average duration
+until the profile is refreshed. Collection order is preserved inside each group.
+Run one group locally with `PYTEST_GROUP=1 make test-unit-shard` (1 through 4);
+`make test-unit` still executes the complete portable suite.
+
+The required `pytest unit tests` status waits for all four groups, then checks
+that every portable test was selected and finished exactly once. Missing groups,
+overlaps, inconsistent collections/profiles, incomplete execution, skips and
+failed tests fail the gate. Native runtime tests retain their separate lane.
+
+After a successful CI run, download its `pytest-durations` artifact to a temporary
+directory and review the measured JSON. Compress it with
+`gzip -n -c pytest-durations.json > tests/pytest-durations.json.gz` from the
+repository root (adjust the source path to the downloaded file), then include
+the refreshed seed in a normal commit. The aggregate produces this fresh profile only after full
+coverage passes. `make test-unit-profile` can also regenerate the profile with a
+complete serial run; use a comparable Linux environment for representative CI
+timings. Group reports and temporary profiles live in ignored `.pytest-shards/`.

@@ -94,3 +94,6 @@ Thumbs.db
 sbom/*.json
 /vpnd/sbom.json
 /dist/
+
+# Local pytest group reports and mutable copies of duration data.
+.pytest-shards/
