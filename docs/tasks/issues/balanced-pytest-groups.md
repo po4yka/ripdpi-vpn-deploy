@@ -2,7 +2,7 @@
 id: CIC-1788672821616865
 title: Balance portable pytest across four CI groups
 kind: chore
-status: doing
+status: done
 area: ci
 priority: high
 risk: standard
@@ -15,6 +15,10 @@ created: 2026-09-06
 updated: 2026-09-06
 spec_reason: tooling-only
 related_tasks: []
+status_detail: Protected main ea94beef passed all four pytest groups and required aggregate in exact-main CI 34024059323; observed group wall times were 6m02s, 6m01s, 4m47s and 5m44s.
+closed_at: "2026-09-06T10:20:43Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Protected main ea94beef; exact-main CI 34024059323 passed four pytest groups and required aggregate; full local make check passed.
 ---
 
 ## Goal
