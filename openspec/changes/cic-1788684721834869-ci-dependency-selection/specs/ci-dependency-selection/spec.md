@@ -17,7 +17,7 @@ original rename/deletion paths, embedded documentation and shared dependencies.
 #### Scenario: Embedded documentation
 
 - **WHEN** Rust-embedded documentation changes
-- **THEN** Rust and native runtime consumers run together with baseline checks.
+- **THEN** all Rust consumers run together with baseline checks.
 
 ### Requirement: REQ-CI-FALLBACK — Conservative execution
 

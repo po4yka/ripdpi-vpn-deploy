@@ -25,11 +25,13 @@ untouched. The change affects CI admission controls but does not alter deployed 
 - Independent specification review found no correctness defects. Standards
   review found stale Terraform/Trivy frequency claims; the follow-up fixes those
   and Renovate guidance and adds the advanced-base merge regression.
-- Full hosted CI on 8dec2d47d38f4617f2f2058e02ce32eae3070e01 selected all 28
-  consumer job groups and passed: GitHub Actions run 34023710390 (success).
+- Full hosted CI on 87f1c33de83216f926d806f1c306b7b6aada06ee selected all 28
+  consumer job groups: 75 successful jobs, zero failed jobs, final gate success.
 - Selective hosted CI on 76f7b8db381513ca0f862ebc3bd78b41758856b7 selected Rust
-  and native runtime for two actual docs/test changes. It passed with 19 executed
-  jobs and 14 planned group skips, including the strict final gate:
-  GitHub Actions run 34023851656 (success).
-- Live protection migration, protected main delivery and exact-main full CI
-  remain pending. This task is not closed on branch-only evidence.
+  for embedded docs and native runtime for a changed unit test. Observed outcome:
+  19 successful executed jobs, 14 planned group skips and final gate success.
+- Live protection readback matched all nine canonical required contexts with
+  app_id 15368 and strict mode enabled. Full before/after comparison confirmed
+  every unrelated protection setting unchanged.
+- Protected main delivery and exact-main full CI remain pending. This task is
+  not closed on branch-only evidence.
