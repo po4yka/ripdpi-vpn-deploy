@@ -164,6 +164,7 @@ def test_standalone_p0_molecule_fixtures_declare_required_canonical_inputs() -> 
         "policy-ratelimit/default": REPO_ROOT / "ansible/roles/policy-ratelimit/molecule/default/converge.yml",
         "hysteria/default": REPO_ROOT / "ansible/roles/hysteria/molecule/default/converge.yml",
         "hysteria/check-mode": REPO_ROOT / "ansible/roles/hysteria/molecule/default/check-mode.yml",
+        "hysteria/verify": REPO_ROOT / "ansible/roles/hysteria/molecule/default/verify.yml",
     }
     variables = {
         name: yaml.safe_load(path.read_text())[0].get("vars", {})
@@ -177,6 +178,7 @@ def test_standalone_p0_molecule_fixtures_declare_required_canonical_inputs() -> 
         assert variables[name]["p0_reality_flow_mode"] == canonical["p0_reality_flow_mode"]
         assert variables[name]["p0_reality_shapes"] == canonical["p0_reality_shapes"]
     assert variables["nginx-xhttp/default"]["xray_port"] == canonical["xray_port"]
+    assert variables["nginx-xhttp/default"]["xray_fallback_port"] == canonical["xray_fallback_port"]
     assert variables["nginx-xhttp/default"]["nginx_xhttp_fallback_port"] == canonical["nginx_xhttp_fallback_port"]
     assert variables["honeypot/default"]["honeypot_port"] == canonical["honeypot_port"]
     assert variables["monitoring/default"]["honeypot_port"] == canonical["honeypot_port"]
@@ -187,8 +189,9 @@ def test_standalone_p0_molecule_fixtures_declare_required_canonical_inputs() -> 
         "network-exposure-gate/default",
         "policy-ratelimit/default",
     ):
+        assert variables[name]["xray_port"] == canonical["xray_port"]
         assert variables[name]["xray_fallback_port"] == canonical["xray_fallback_port"]
-    for name in ("hysteria/default", "hysteria/check-mode"):
+    for name in ("hysteria/default", "hysteria/check-mode", "hysteria/verify"):
         assert variables[name]["hysteria_port_range"] == canonical["hysteria_port_range"]
 
 
@@ -224,6 +227,9 @@ def test_xray_molecule_uses_a_hash_pinned_local_runtime_archive() -> None:
     with zipfile.ZipFile(archive) as payload:
         assert payload.namelist() == ["xray"]
         assert payload.read("xray").startswith(b"#!/bin/sh\n")
+    pre_task_names = {task["name"] for task in converge["pre_tasks"]}
+    assert "Pre-create release dir for runtime link idempotence coverage" not in pre_task_names
+    assert "Seed Xray binary for runtime link idempotence coverage" not in pre_task_names
 
 
 def test_published_host_override_beats_repository_all_group_default(tmp_path) -> None:

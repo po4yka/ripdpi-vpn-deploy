@@ -5,6 +5,7 @@
   vars_files:
     - "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/exposure-fixture/vars.json"
   vars:
+    xray_port: 443
     xray_fallback_port: 2053
     allowed_ssh_cidrs: "{{ exposure_test_ssh_cidrs }}"
     vpn:

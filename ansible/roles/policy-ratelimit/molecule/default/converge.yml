@@ -3,6 +3,7 @@
   hosts: all
   become: true
   vars:
+    xray_port: 443
     xray_fallback_port: 2053
     vpn:
       enable_policy_ratelimit: true

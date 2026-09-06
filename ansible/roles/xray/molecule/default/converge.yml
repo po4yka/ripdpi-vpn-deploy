@@ -70,24 +70,6 @@
         home: /var/lib/xray
         create_home: true
 
-    - name: Pre-create release dir for runtime link idempotence coverage
-      ansible.builtin.file:
-        path: /opt/xray/releases/v26.3.27
-        state: directory
-        owner: root
-        group: root
-        mode: "0755"
-
-    - name: Seed Xray binary for runtime link idempotence coverage
-      ansible.builtin.copy:
-        dest: /opt/xray/releases/v26.3.27/xray
-        owner: root
-        group: root
-        mode: "0755"
-        content: |
-          #!/bin/sh
-          exit 0
-
   # Use `roles:` (static binding) instead of `include_role` so the role's
   # handlers (Restart xray, Reload systemd) register with the play and
   # `notify:` from the role tasks resolves correctly.
