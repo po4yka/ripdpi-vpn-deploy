@@ -95,6 +95,30 @@ def test_mirror_unit_allows_only_rsyncs_setrlimit_resource_call() -> None:
     )
 
 
+def test_unprivileged_mirror_never_requests_chown_for_its_own_payload(
+    tmp_path: Path,
+) -> None:
+    """The service owns every created node and must keep @chown denied."""
+    source = tmp_path / "source"
+    _write_source(source, "next")
+    dest = _private_directory(tmp_path / "destination")
+    helper = _render_helper(tmp_path, dest, source=str(source) + "/")
+    namespace = runpy.run_path(str(helper))
+    module_os = namespace["os"]
+    original_chown = module_os.chown
+
+    def forbidden_chown(*_args, **_kwargs):
+        raise AssertionError("mirror requested a privileged chown syscall")
+
+    module_os.chown = forbidden_chown
+    try:
+        assert namespace["main"]() == 0
+    finally:
+        module_os.chown = original_chown
+
+    namespace["_private_tree"](_current_generation(dest))
+
+
 def test_mirror_publishes_one_private_generation_and_preserves_local_state(
     tmp_path: Path,
 ) -> None:
