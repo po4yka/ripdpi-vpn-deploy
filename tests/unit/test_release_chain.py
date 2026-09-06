@@ -55,6 +55,53 @@ def test_handoff_requires_a_new_root_release_and_narrow_dispatch_permissions():
     assert dispatch["env"]["GH_REPO"] == "${{ github.repository }}"
 
 
+def test_release_pr_dispatches_all_required_workflows():
+    jobs = workflow()["jobs"]
+    checks = jobs["dispatch-checks"]
+    assert checks["needs"] == "release"
+    assert checks["if"] == "${{ needs.release.outputs.prs_created == 'true' }}"
+    assert checks["permissions"] == {"contents": "read", "actions": "write"}
+    assert jobs["release"]["outputs"]["pr"] == "${{ steps.release.outputs.pr }}"
+    assert jobs["release"]["outputs"]["prs_created"] == "${{ steps.release.outputs.prs_created }}"
+    for name in ("ci", "codeql"):
+        parsed = yaml.safe_load((ROOT / f".github/workflows/{name}.yml").read_text())
+        assert "workflow_dispatch" in parsed[True]  # YAML 1.1 maps 'on' to True.
+
+
+@pytest.mark.parametrize("case", ["created", "wrong-base", "wrong-head", "ci-error", "codeql-error"])
+def test_release_pr_dispatch_command_and_error_propagation(tmp_path, case):
+    step = workflow()["jobs"]["dispatch-checks"]["steps"][0]
+    assert step["env"]["RELEASE_PR"] == "${{ needs.release.outputs.pr }}"
+    assert step["env"]["GH_TOKEN"] == "${{ github.token }}"
+    assert step["env"]["GH_REPO"] == "${{ github.repository }}"
+    branch = "release-please--branches--main--components--vpnd"
+    pr = {"baseBranchName": "main", "headBranchName": branch}
+    if case == "wrong-base":
+        pr["baseBranchName"] = "other"
+    elif case == "wrong-head":
+        pr["headBranchName"] = "main"
+    gh = tmp_path / "gh"
+    gh.write_text("#!/usr/bin/env python3\nimport json, os, sys\n"
+                  "with open(os.environ['CALL_LOG'], 'a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
+                  "sys.exit(23 if sys.argv[3] == os.environ['FAIL_WORKFLOW'] else 0)\n")
+    gh.chmod(0o755)
+    log = tmp_path / "calls.jsonl"
+    env = dict(os.environ, PATH=f"{tmp_path}{os.pathsep}{os.environ['PATH']}",
+               CALL_LOG=str(log), RELEASE_PR=json.dumps(pr),
+               FAIL_WORKFLOW={"ci-error": "ci.yml", "codeql-error": "codeql.yml"}.get(case, ""))
+    result = subprocess.run(["bash", "-c", step["run"]], cwd=tmp_path, env=env,
+                            text=True, capture_output=True, check=False)
+    if case.startswith("wrong-"):
+        assert result.returncode != 0
+        assert not log.exists()
+    else:
+        assert result.returncode == (0 if case == "created" else 23), result.stderr
+        expected = [["workflow", "run", name, "--ref", branch] for name in ("ci.yml", "codeql.yml")]
+        assert [json.loads(line) for line in log.read_text().splitlines()] == (
+            expected[:1] if case == "ci-error" else expected
+        )
+
+
 @pytest.mark.parametrize("case", ["created", "mismatched", "missing", "invalid", "empty-sha", "dispatch-error"])
 def test_handoff_validates_real_git_tag_before_dispatch(tmp_path, case):
     handoff = workflow()["jobs"]["dispatch-binaries"]

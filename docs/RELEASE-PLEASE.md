@@ -15,6 +15,18 @@ The repository must allow GitHub Actions to create pull requests under
 or release-please errors fail the workflow; they are not informational success.
 The default token remains read-only, with write permissions scoped to each job.
 
+## Release PR checks
+
+Creating or updating the root release PR explicitly dispatches `ci.yml` and
+`codeql.yml` on the generated release branch. The handoff accepts only the
+configured vpnd release branch targeting main, and dispatch errors fail the
+parent workflow. These runs produce the same required check names and Actions
+app identity as ordinary PR checks; branch protection is unchanged.
+
+This avoids relying on `GITHUB_TOKEN` pull-request events, which can require
+manual workflow approval. CI runs for an unchanged release PR are not dispatched
+again. Review and merge the release PR only after its required checks succeed.
+
 ## Binary handoff
 
 When the root package reports `release_created=true`, a separate job verifies
@@ -36,7 +48,9 @@ build was requested; publication is complete only when `release-vpnd` succeeds.
 
 1. After a conventional commit reaches `main`, check that `release-please`
    succeeds and creates or updates the release PR. Review its version and files.
-2. After that PR is merged, check `dispatch vpnd binaries` and find the
+2. Check `dispatch release PR checks` and the CI/CodeQL runs on its head SHA.
+   If a PR event also requires approval, its banner does not replace the
+   explicitly dispatched checks. After that PR is merged, check `dispatch vpnd binaries` and find the
    `release-vpnd` run on the created tag and SHA.
 3. Check all build, attestation, SBOM and asset-upload jobs before consuming
    the release. The release metadata can exist before binaries are attached.
