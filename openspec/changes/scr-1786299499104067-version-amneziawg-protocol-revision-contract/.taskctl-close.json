@@ -1,0 +1,11 @@
+{
+  "change": "scr-1786299499104067-version-amneziawg-protocol-revision-contract",
+  "evidence_summary": "Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.",
+  "execution_sha256": "d6034031d4805dc2bf411d02b36ab68f283eccebe5a422f5f11521964cde29a9",
+  "issue_sha256": "921f088c5bbd2db49788c06eb28657df10e5b26973453b60ed116f2921fd08e1",
+  "outcome": "dropped",
+  "prepared_at": "2026-09-06T17:42:12Z",
+  "reason": "Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.",
+  "schema": 1,
+  "task_id": "SCR-1786299499104067"
+}

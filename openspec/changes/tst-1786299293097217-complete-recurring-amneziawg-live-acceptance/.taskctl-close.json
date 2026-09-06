@@ -1,0 +1,11 @@
+{
+  "change": "tst-1786299293097217-complete-recurring-amneziawg-live-acceptance",
+  "evidence_summary": "Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.",
+  "execution_sha256": "ed4bf7c6122d788e2858d97b9fcc06fb033a67ee278a68e29985348c7acced79",
+  "issue_sha256": "479735c5f4dc0387a834fb4163b8d8f5f9ccad42755d085894b2660648b31bbc",
+  "outcome": "dropped",
+  "prepared_at": "2026-09-06T17:40:41Z",
+  "reason": "Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.",
+  "schema": 1,
+  "task_id": "TST-1786299293097217"
+}

@@ -2,7 +2,7 @@
 id: TST-1786299293097217
 title: Complete recurring AmneziaWG live acceptance
 kind: feature
-status: blocked
+status: dropped
 area: testing
 priority: high
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: tst-1786299293097217-complete-recurring-amneziawg-live-acceptance
 created: 2026-08-09
-updated: 2026-09-01
+updated: 2026-09-06
 related_tasks: ["po4yka/RIPDPI#TRN-1786264762917677"]
-status_detail: Deploy-side manifest v4 is an offline source candidate that separates immutable amneziawg-go engine provenance from a fresh Ed25519-signed, nonce/invocation-bound RIPDPI acceptance handoff and preserves a prior latest PASS on unavailable infrastructure. The client signer/relay is not implemented here, and no disposable staging target or initial plus recurring live observation has been supplied; the task remains open and engine evidence is not client acceptance.
+status_detail: Offline deploy-side evidence now requires a private final-component-no-follow current RIPDPI source/artifact identity descriptor and records redacted INFRA_UNAVAILABLE launcher refusals without replacing latest PASS. No client-produced descriptor, disposable staging target, provider inputs, or recurring acceptance observation is available. Existing amneziawg-go evidence does not prove current RIPDPI client acceptance.
+closed_at: "2026-09-06T17:40:41Z"
+closed_reason: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.
+evidence_summary: Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.
 ---
 
 ## Goal

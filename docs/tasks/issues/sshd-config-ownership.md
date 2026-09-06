@@ -2,7 +2,7 @@
 id: SEC-1787496881680472
 title: Establish single-owner sshd configuration layers
 kind: bug
-status: blocked
+status: dropped
 area: security
 priority: high
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1787496881680472-sshd-config-ownership
 created: 2026-08-23
-updated: 2026-09-01
-related_tasks: [SEC-1787916931540401]
-status_detail: Five of six source steps are implemented in the combined protected source delivery: single-owner bootstrap and managed layers, duplicate-owner refusal, assembled effective validation, and exact algorithm pins. The remaining blocker is the required scratch-node custom-port and pinned-algorithm lockout rehearsal followed by fleet verification.
+updated: 2026-09-06
+related_tasks: []
+status_detail: "Five of six source steps are implemented in the combined protected source delivery: single-owner bootstrap and managed layers, duplicate-owner refusal, assembled effective validation, and exact algorithm pins. The remaining blocker is the required scratch-node custom-port and pinned-algorithm lockout rehearsal followed by fleet verification."
+closed_at: "2026-09-06T17:42:11Z"
+closed_reason: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.
+evidence_summary: Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.
 ---
 
 ## Goal
