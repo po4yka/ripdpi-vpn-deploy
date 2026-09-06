@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Protected main e59cf6d529d4e9ea141e9de80512079d6262ee26; exact-main CI 33998219035, CodeQL 33998218924 and Scorecard 33998218864 succeeded.",
+  "execution_sha256": "82a431f7c6452e15ef1fe2384feb7858385e5758828333538a301684c2e35c71",
+  "issue_sha256": "2e83da16a9e6432961056fbe3a56346259d64c3341767d081a4c74fec1ca9590",
+  "outcome": "done",
+  "prepared_at": "2026-09-06T05:04:10Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1788643607572240"
+}
