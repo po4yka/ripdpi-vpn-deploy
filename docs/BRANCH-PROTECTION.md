@@ -39,7 +39,7 @@ GitHub → Actions → **branch-protection** → Run workflow → leave default
 (`main`) → Run.
 
 Verify it succeeded; the job logs should print the required-status-check
-count (currently 30 in the repository manifest).
+count (currently 26 in the repository manifest).
 
 ### 4. Verify in Settings
 
@@ -49,7 +49,7 @@ Settings → Branches → `main` → see:
 - Required approvals: **0** ✅
 - Require review from Code Owners: **disabled** ✅
 - Require status checks to pass before merging ✅
-- 30 status checks listed after the current workflow has been applied
+- 26 status checks listed after the current workflow has been applied
 - Require branches to be up to date before merging ✅
 - Require conversation resolution before merging ✅
 - Require linear history ✅
@@ -79,12 +79,8 @@ Settings → Branches → `main` → see:
 | ci.yml | `molecule (backup)` |
 | ci.yml | `molecule (subscription-host)` |
 | ci.yml | `shellcheck` |
-| ci.yml | `secrets-coverage` |
-| ci.yml | `templates-render` |
-| ci.yml | `yamllint` |
+| ci.yml | `python validators` |
 | ci.yml | `pytest unit tests` |
-| ci.yml | `jinja snapshot diff` |
-| ci.yml | `secrets schema (lenient on example)` |
 | ci.yml | `terraform test (upcloud)` |
 | ci.yml | `terraform test (hetzner)` |
 | ci.yml | `terraform test (vultr)` |
@@ -99,9 +95,14 @@ indefinitely.
 
 The aggregate `required checks` context is the forward-compatible gate: it
 depends on the complete current CI graph, including Scaleway and newer test
-jobs. The remaining individual contexts preserve explicit failure visibility
-and compatibility. If Settings shows fewer than 30 contexts, the remote rule
-is stale; rerun `branch-protection` after this documentation commit is green.
+jobs. The remaining individual contexts continue to gate their named checks.
+If Settings does not match the 26 contexts above, follow the migration procedure
+below; renamed checks must be migrated before their PR merges.
+
+`python validators` combines yamllint, secrets coverage, template/Xray checks,
+snapshot comparison, and secrets/bundle schema checks. Migrate their five former
+required contexts before merging, only after the combined job passes on the PR branch; retain
+the strict `required checks` aggregate and all unrelated protection settings.
 
 The aggregate also requires the reusable `tf-policy`, `image-scan`,
 `contract-sync` and `reproducible-build` workflows. Main CI invokes all four
@@ -136,10 +137,20 @@ workflow reasserts the rule, which is useful after CI matrix changes.
 
 ## Re-running after a CI matrix change
 
-1. Update `CONTEXTS` in `.github/workflows/branch-protection.yml`.
-2. Update the table above.
-3. Push.
-4. After CI is green on `main`, run the **branch-protection** workflow.
+1. Update the CI jobs, `CONTEXTS` in `.github/workflows/branch-protection.yml`,
+   and the table above together.
+2. Push the PR branch and wait for its new jobs and `required checks` to pass.
+   Removed context names can still block merging at this point.
+3. **Before merging**, apply the reviewed context migration to `main` through
+   the `required_status_checks` API endpoint. Preserve strict mode, GitHub
+   Actions app bindings, and every unrelated protection setting.
+4. Read back protection and confirm the exact contexts and unchanged settings.
+   Confirm the PR's required checks pass, then merge.
+
+Do not wait for a green `main` run to migrate renamed checks: the old names
+would prevent that revision from reaching `main`. Use the full
+**branch-protection** workflow for initial setup or deliberate reconciliation
+of the complete codified rule.
 
 ## Informational (NOT required)
 

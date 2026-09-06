@@ -207,25 +207,16 @@ jobs:
   ansible:
     name: ansible-lint + syntax-check
     runs-on: ubuntu-24.04
+    env:
+      ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/.ansible/collections
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      - uses: ./.github/actions/setup-ci-python
         with:
-          python-version: "3.12"
-
-      - name: Install pinned tooling
-        run: |
-          pip install --require-hashes --no-deps -r requirements.txt
-          for attempt in 1 2 3; do
-            ansible-galaxy collection install -r requirements.yml && break
-            if [ "${attempt}" -eq 3 ]; then
-              exit 1
-            fi
-            sleep $((attempt * 10))
-          done
+          galaxy: "true"
 
       - name: ansible-lint
         working-directory: ansible
@@ -244,6 +235,8 @@ jobs:
   molecule:
     name: molecule (${{ matrix.role }})
     runs-on: ubuntu-24.04
+    env:
+      ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/.ansible/collections
     strategy:
       fail-fast: false
       matrix:
@@ -276,20 +269,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      - uses: ./.github/actions/setup-ci-python
         with:
-          python-version: "3.12"
-
-      - name: Install pinned tooling
-        run: |
-          pip install --require-hashes --no-deps -r requirements.txt
-          for attempt in 1 2 3; do
-            ansible-galaxy collection install -r requirements.yml && break
-            if [ "${attempt}" -eq 3 ]; then
-              exit 1
-            fi
-            sleep $((attempt * 10))
-          done
+          galaxy: "true"
 
       - name: molecule test
         working-directory: ansible/roles/${{ matrix.role }}
@@ -311,57 +293,42 @@ jobs:
           sudo apt-get install -y shellcheck
           shellcheck -s bash -S warning scripts/*.sh terraform/exception/cascade-ingress/*.sh
 
-  secrets-coverage:
-    name: secrets-coverage
+  python-validators:
+    name: python validators
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
-        with:
-          python-version: "3.12"
-      - name: Install deps
-        run: pip install --require-hashes --no-deps -r requirements.txt
-      - name: check-secrets-coverage
-        run: python3 scripts/check-secrets-coverage.py
-
-  templates-render:
-    name: templates-render
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
-        with:
-          python-version: "3.12"
-      - name: Install deps
+      - uses: ./.github/actions/setup-ci-python
+      - name: Install nginx validator
         run: |
-          pip install --require-hashes --no-deps -r requirements.txt
           sudo apt-get update
           sudo apt-get install -y nginx-light
       - name: Install pinned Xray semantic validator
         uses: ./.github/actions/install-xray
+      - name: yamllint
+        if: ${{ !cancelled() }}
+        run: yamllint -c .yamllint.yml .
+      - name: check-secrets-coverage
+        if: ${{ !cancelled() }}
+        run: python3 scripts/check-secrets-coverage.py
       - name: check-templates-render
+        if: ${{ !cancelled() }}
         run: python3 scripts/check-templates-render.py
       - name: check-xray-breaking-changes
+        if: ${{ !cancelled() }}
         run: python3 scripts/check-xray-breaking-changes.py
-
-  yaml:
-    name: yamllint
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
-        with:
-          python-version: "3.12"
-      - name: Install yamllint
-        run: pip install --require-hashes --no-deps -r requirements.txt
-      - name: yamllint
-        run: yamllint -c .yamllint.yml .
+      - name: render-snapshots check
+        if: ${{ !cancelled() }}
+        run: python3 scripts/render-snapshots.py
+      - name: validate-secrets (lenient on example schema)
+        if: ${{ !cancelled() }}
+        run: python3 scripts/validate-secrets.py
+      - name: validate-bundle (ripdpi contract vs client)
+        if: ${{ !cancelled() }}
+        run: python3 scripts/validate-bundle.py
 
   unit-tests:
     name: pytest group ${{ matrix.group }}/4
@@ -405,11 +372,7 @@ jobs:
           tar -xzf "$archive" -C "$bin_dir" gitleaks
           sudo install -m 0755 "$bin_dir/gitleaks" /usr/local/bin/gitleaks
           gitleaks version
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
-        with:
-          python-version: "3.12"
-      - name: Install pinned tooling
-        run: pip install --require-hashes --no-deps -r requirements.txt
+      - uses: ./.github/actions/setup-ci-python
       - name: Install checksum-verified Prometheus rule parser
         run: |
           set -euo pipefail
@@ -504,10 +467,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
-        with:
-          python-version: "3.12"
-      - run: pip install --require-hashes --no-deps -r requirements.txt
+      - uses: ./.github/actions/setup-ci-python
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.0
         with:
           terraform_version: "1.15.2"
@@ -555,38 +515,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y bats ssss
       - name: bats tests/bats/
         run: bats tests/bats/
-
-  snapshot:
-    name: jinja snapshot diff
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
-        with:
-          python-version: "3.12"
-      - name: Install pinned tooling
-        run: pip install --require-hashes --no-deps -r requirements.txt
-      - name: render-snapshots check
-        run: python3 scripts/render-snapshots.py
-
-  validate-schema:
-    name: secrets schema (lenient on example)
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
-        with:
-          python-version: "3.12"
-      - name: Install pinned tooling
-        run: pip install --require-hashes --no-deps -r requirements.txt
-      - name: validate-secrets (lenient on example schema)
-        run: python3 scripts/validate-secrets.py
-      - name: validate-bundle (ripdpi contract vs client)
-        run: python3 scripts/validate-bundle.py
 
   tf-test:
     name: terraform test (${{ matrix.provider }})
@@ -655,6 +583,8 @@ jobs:
     # and forced-empty are required; happy-path alone is not promotion evidence.
     name: molecule failure (${{ matrix.role }})
     runs-on: ubuntu-24.04
+    env:
+      ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/.ansible/collections
     strategy:
       fail-fast: false
       matrix:
@@ -677,19 +607,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      - uses: ./.github/actions/setup-ci-python
         with:
-          python-version: "3.12"
-      - name: Install pinned tooling
-        run: |
-          pip install --require-hashes --no-deps -r requirements.txt
-          for attempt in 1 2 3; do
-            ansible-galaxy collection install -r requirements.yml && break
-            if [ "${attempt}" -eq 3 ]; then
-              exit 1
-            fi
-            sleep $((attempt * 10))
-          done
+          galaxy: "true"
       - name: molecule test -s ${{ matrix.scenario }}
         working-directory: ansible/roles/${{ matrix.role }}
         run: molecule test -s ${{ matrix.scenario }}
@@ -700,6 +620,8 @@ jobs:
   molecule-full-stack:
     name: molecule full-stack (${{ matrix.scenario }})
     runs-on: ubuntu-24.04
+    env:
+      ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/.ansible/collections
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -710,20 +632,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      - uses: ./.github/actions/setup-ci-python
         with:
-          python-version: "3.12"
-
-      - name: Install pinned tooling
-        run: |
-          pip install --require-hashes --no-deps -r requirements.txt
-          for attempt in 1 2 3; do
-            ansible-galaxy collection install -r requirements.yml && break
-            if [ "${attempt}" -eq 3 ]; then
-              exit 1
-            fi
-            sleep $((attempt * 10))
-          done
+          galaxy: "true"
 
       # The only CI surface exercising role ORDERING across site.yml — the
       # per-role matrix cannot catch cross-role interactions.
@@ -788,16 +699,12 @@ jobs:
       - molecule
       - molecule-full-stack
       - shellcheck
-      - secrets-coverage
-      - templates-render
-      - yaml
+      - python-validators
       - unit-tests
       - pytest-required
       - native-runtime
       - go-helper
       - bats-test
-      - snapshot
-      - validate-schema
       - tf-test
       - vpnd-test
       - vpnd-clippy

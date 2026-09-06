@@ -45,6 +45,12 @@ config drift inside a role. Full-stack catches order/handler interactions.
 The two full-stack scenarios run on separate matrix runners with fail-fast
 disabled; `required checks` requires both to succeed.
 
+**CI Python tooling shares one cached setup** — `setup-ci-python` always checks
+hash-pinned requirements, even on a pip cache hit. Galaxy consumers set the same
+absolute `ANSIBLE_COLLECTIONS_PATH` as the action's isolated collection cache.
+OS, architecture, Python and both requirements files determine its exact key.
+The `python validators` job preserves seven checks behind one required context.
+
 ## What's done well
 
 - **Quirk-named tests** — `test_xhttp_path_matches_both_slash_and_unslashed`,

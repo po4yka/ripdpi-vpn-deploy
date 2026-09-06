@@ -20,7 +20,7 @@ def installer():
 
 def test_ci_xray_consumers_share_one_reviewed_pin():
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
-    for job in ("templates-render", "unit-tests"):
+    for job in ("python-validators", "unit-tests"):
         steps = workflow["jobs"][job]["steps"]
         installs = [s for s in steps if s.get("uses") == "./.github/actions/install-xray"]
         assert len(installs) == 1
