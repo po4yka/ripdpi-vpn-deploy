@@ -1085,6 +1085,25 @@ class TaskctlHistoryTest(TaskctlFixture):
 
         taskctl.validate_deleted_history(self.root, base)
 
+    def test_terminal_task_in_first_strict_revision_resolves(self) -> None:
+        path = self.add_simple_task(status="review")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.prepare_simple_terminal(path)
+        self.write_board()
+        self.commit_all("bootstrap strict contract with terminal task")
+        self.purge_simple_task(path)
+        self.write_board()
+        self.commit_all("purge initial terminal task")
+
+        resolved = taskctl.resolve_terminal_task(
+            self.root,
+            "CIC-1786234567890001",
+            taskctl.load_project_config(self.root),
+        )
+
+        self.assertIsNotNone(resolved)
+        self.assertEqual("done", resolved["status"])
+
     def test_required_evidence_cannot_be_reclassified_not_applicable_before_purge(
         self,
     ) -> None:
@@ -1360,6 +1379,112 @@ class TaskctlHistoryTest(TaskctlFixture):
                 base,
                 context="fixture",
             )
+
+    def test_shared_requirement_must_exist_at_recorded_source_revision(self) -> None:
+        source_task = "ANS-1786234567890101"
+        owner_task = "OPS-1786234567890201"
+        source_change = f"{source_task.casefold()}-change"
+        self.add_active_spec_task(
+            status="review",
+            done=True,
+            task_id=source_task,
+            slug="source",
+        )
+        self.add_active_spec_task(
+            status="review",
+            done=True,
+            task_id=owner_task,
+            slug="owner",
+            related=[source_task],
+        )
+        source_verification = (
+            self.root / "openspec/changes" / source_change / "verification.md"
+        )
+        verification = taskctl.read_document(source_verification)
+        values = dict(verification.values)
+        values["local"] = "passed"
+        values["local_evidence"] = "Source checks passed."
+        values["live"] = "blocked"
+        values["live_evidence"] = "External acceptance is pending."
+        source_verification.write_text(
+            taskctl.render_document(
+                values,
+                verification.body.replace(
+                    "| Pending | required |", "| Source passed. | passed |"
+                ),
+                order=tuple(values),
+            ),
+            encoding="utf-8",
+        )
+        owner_verification = (
+            self.root
+            / "openspec/changes"
+            / f"{owner_task.casefold()}-change"
+            / "verification.md"
+        )
+        owner_document = taskctl.read_document(owner_verification)
+        owner_values = dict(owner_document.values)
+        owner_values["live"] = "blocked"
+        owner_values["live_evidence"] = "Owned external acceptance is pending."
+        owner_verification.write_text(
+            taskctl.render_document(
+                owner_values,
+                owner_document.body,
+                order=tuple(owner_values),
+            ),
+            encoding="utf-8",
+        )
+        self.write_board()
+        source_revision = self.commit_all("record source contract")
+
+        source_document = taskctl.read_document(source_verification)
+        source_values = dict(source_document.values)
+        source_values["commit_sha"] = source_revision
+        second_requirement = f"REQ-{source_task}-002"
+        second_step = "ANS-1786234567890103"
+        source_spec = (
+            self.root
+            / "openspec/changes"
+            / source_change
+            / "specs/change/spec.md"
+        )
+        source_spec.write_text(
+            source_spec.read_text(encoding="utf-8")
+            + f"\n### Requirement: {second_requirement} — Added later\n",
+            encoding="utf-8",
+        )
+        source_tasks = self.root / "openspec/changes" / source_change / "tasks.md"
+        source_tasks.write_text(
+            source_tasks.read_text(encoding="utf-8")
+            + f"- [x] {second_step} Verify later requirement @item:{source_task}\n",
+            encoding="utf-8",
+        )
+        source_verification.write_text(
+            taskctl.render_document(
+                source_values,
+                source_document.body.rstrip()
+                + f"\n| {second_requirement} | {second_step} | Passed later. | passed |\n",
+                order=tuple(source_values),
+            ),
+            encoding="utf-8",
+        )
+        for requirement in (f"REQ-{source_task}-001", second_requirement):
+            mapping = {
+                "source_task": source_task,
+                "owner_task": owner_task,
+                "requirement": requirement,
+                "command": "make verify LIMIT=fixture",
+                "category": "live",
+                "source_revision": source_revision,
+            }
+            self.add_shared_evidence_mapping(source_verification, **mapping)
+            self.add_shared_evidence_mapping(owner_verification, **mapping)
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "shared live mapping names unknown requirement at source revision",
+        ):
+            taskctl.load_state(self.root)
 
     def test_late_owner_mapping_cannot_retroactively_validate_transfer(self) -> None:
         source_task = "ANS-1786234567890101"

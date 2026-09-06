@@ -1000,14 +1000,22 @@ def validate_active_shared_evidence(
             )
         if source_record is not None:
             assert source is not None
-            _, source_values, source_change = source_record
+            _, source_values, _ = source_record
             source_path = source.path
-            source_requirements = requirement_ids(source_change)
+            source_document = source
         else:
             assert historical_source is not None
             source_values = historical_source.get("_verification", {})
             source_path = historical_source["path"]
-            source_requirements = set(historical_source.get("_requirements", []))
+            source_document = Document(
+                path=Path(str(source_path)),
+                values={
+                    "id": mapping.source_task,
+                    "spec_mode": "required",
+                    "openspec_change": historical_source["openspec_change"],
+                },
+                body="",
+            )
         if source_values["commit_sha"] != mapping.source_revision:
             fail(
                 f"{source_path}: shared {mapping.category} mapping source revision "
@@ -1024,9 +1032,15 @@ def validate_active_shared_evidence(
             descendant_ref,
             context=str(source_path),
         )
+        source_requirements = historical_requirement_ids(
+            root,
+            mapping.source_revision,
+            source_document,
+        )
         if mapping.requirement not in source_requirements:
             fail(
-                f"{source_path}: shared {mapping.category} mapping names unknown requirement "
+                f"{source_path}: shared {mapping.category} mapping names unknown "
+                "requirement at source revision "
                 f"{mapping.requirement}"
             )
         if source_values[mapping.category] == "not_applicable":
@@ -1851,7 +1865,9 @@ def resolve_terminal_task(
             previous_status = status
         if terminal_transition is None or terminal_index is None:
             fail(f"{config.project}#{task_id}: terminal transition commit is missing")
-        initial_strict_terminal = terminal_index == 0 and incarnation[0][0] == start
+        initial_strict_terminal = (
+            terminal_index == 0 and incarnation[0][0] == revisions[0]
+        )
         if not initial_strict_terminal and (
             previous_status is None or not transition_allowed(previous_status, outcome)
         ):
