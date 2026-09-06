@@ -19,7 +19,7 @@ from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[2]
@@ -2292,6 +2292,12 @@ def resolve_terminal_task_from_index(
             default=-1,
         )
         incarnation = timeline[last_absent + 1 : deletion_index]
+        validate_historical_incarnation(
+            incarnation,
+            config_at=lambda revision: historical_project_config(
+                root, revision, scratch
+            ),
+        )
         previous_status: str | None = None
         terminal_transition: str | None = None
         terminal_index: int | None = None
@@ -2806,6 +2812,16 @@ def historical_project_config(root: Path, ref: str, scratch: Path) -> ProjectCon
     return parse_project_config(raw, path)
 
 
+def validate_historical_incarnation(
+    incarnation: Sequence[tuple[str, HistoricalTaskSnapshot | None]],
+    *,
+    config_at: Callable[[str], ProjectConfig],
+) -> None:
+    for revision, snapshot in incarnation:
+        assert snapshot is not None
+        validate_issue_shape(snapshot.document, config_at(revision))
+
+
 def validate_deleted_history(root: Path, base: str) -> None:
     ancestry = run_command(
         ("git", "merge-base", "--is-ancestor", base, "HEAD"), root=root
@@ -2936,6 +2952,7 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 default=-1,
             )
             incarnation = timeline[last_absent + 1 : deletion_index]
+            validate_historical_incarnation(incarnation, config_at=config_at)
             if (
                 last_absent == -1
                 and incarnation

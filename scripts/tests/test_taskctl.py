@@ -944,6 +944,45 @@ class TaskctlHistoryTest(TaskctlFixture):
         with self.assertRaisesRegex(taskctl.ContractError, "title must be a non-empty string"):
             taskctl.validate_deleted_history(self.root, base)
 
+    def test_repaired_malformed_intermediate_snapshot_is_rejected(self) -> None:
+        source_task = "CIC-1786234567890101"
+        source = self.add_simple_task(task_id=source_task, status="review")
+        self.add_simple_task(
+            task_id="CIC-1786234567890201",
+            related=[source_task],
+        )
+        self.write_board()
+        base = self.commit_all("add source and related owner")
+
+        document = taskctl.read_document(source)
+        values = dict(document.values)
+        del values["title"]
+        source.write_text(
+            taskctl.render_document(values, document.body), encoding="utf-8"
+        )
+        self.commit_all("publish malformed intermediate source")
+
+        values["title"] = "Repaired source"
+        source.write_text(
+            taskctl.render_document(values, document.body), encoding="utf-8"
+        )
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("repair and complete source")
+        self.purge_simple_task(source)
+        self.commit_all("purge repaired source")
+
+        for action in (
+            lambda: taskctl.load_state(self.root),
+            lambda: taskctl.command_graph(
+                argparse.Namespace(root=self.root, json=True)
+            ),
+            lambda: taskctl.validate_deleted_history(self.root, base),
+        ):
+            with self.subTest(action=action):
+                with self.assertRaisesRegex(taskctl.ContractError, "title"):
+                    action()
+
     def test_terminal_task_cannot_reopen_before_final_purge(self) -> None:
         path = self.add_simple_task(status="review")
         self.write_board()

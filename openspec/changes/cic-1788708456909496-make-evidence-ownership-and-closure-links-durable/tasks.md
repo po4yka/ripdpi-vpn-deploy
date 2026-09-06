@@ -30,3 +30,4 @@ Terraform, Ansible, secrets, providers, hosts, and clients are out of scope.
   applicable because this change modifies repository-local task tooling only.
 - [x] CIC-1788729192473052 Add RED regressions for unmapped evidence transfers in merged lanes and purged historical related targets #bug !high @item:CIC-1788708456909496
 - [x] CIC-1788729193073535 Validate evidence-transfer history consistently across active merged lanes and terminal related-task resolution #bug !high @item:CIC-1788708456909496
+- [x] CIC-1788731559342267 Reject repaired malformed intermediate snapshots in historical resolution and deletion validation #bug !high @item:CIC-1788708456909496

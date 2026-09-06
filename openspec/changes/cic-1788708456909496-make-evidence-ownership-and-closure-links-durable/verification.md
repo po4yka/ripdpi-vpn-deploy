@@ -25,12 +25,10 @@ artifact_evidence: no release artifact is produced
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
 | REQ-CIC-1788708456909496-001 | CIC-1788708671983805 | First-parent, side-only, active-at-merge, graph, and synthetic GitHub merge lifecycle tests passed on exact source 6af10ddc1e01294c19e8add67158797a8baa1c15 | passed |
-| REQ-CIC-1788708456909496-002 | CIC-1788708673268654 | Missing, dropped, malformed, ambiguous, stale-side, invalid-latest-incarnation, masked-first-parent, and incomplete-history rejection tests passed | passed |
+| REQ-CIC-1788708456909496-002 | CIC-1788729193073535 | Missing, dropped, malformed terminal, ambiguous, stale-side, invalid-latest-incarnation, masked-first-parent, incomplete-history, and unmapped purged-target rejection tests passed | passed |
 | REQ-CIC-1788708456909496-003 | CIC-1788708671983805 | Pre/post-purge success plus dirty issue, execution, verification, receipt, parent, blocker, and no-write rejection tests passed | passed |
-| REQ-CIC-1788708456909496-004 | CIC-1788708672560736 | Structured source/owner mappings and pre-archive historical-transfer rejection passed | passed |
+| REQ-CIC-1788708456909496-004 | CIC-1788729192473052 | Structured reciprocal source/owner mappings, pre-archive historical-transfer rejection, and merged-lane plus purged-target transfer regressions passed | passed |
 | REQ-CIC-1788708456909496-005 | CIC-1788708672560736 | Client-evidence policy and legacy activation-boundary regressions passed | passed |
-| REQ-CIC-1788708456909496-004 | CIC-1788729192473052 | RED tests reproduced an unmapped transfer accepted from a merged lane and from a purged historical related target; both pass after the fix | passed |
-| REQ-CIC-1788708456909496-002 | CIC-1788729193073535 | Contributing merged lanes and terminal related-task resolution now share historical transfer validation; all 80 taskctl tests passed | passed |
 
 The implementation steps, local gates, clean-history review, and exact-head
 protected checks are recorded above. Protected-main integration remains a
