@@ -1,21 +1,21 @@
 ---
 task_id: TST-1787497001212692
 change: tst-1787497001212692-verification-truthfulness
-commit_sha: b9858085df8073f725670e2acfa0f0bb9cda41da
-local: passed
-local_evidence: "Full-stack and published idempotence plus listener and source-drift regressions passed on the recorded exact source revisions."
-remote_ci: passed
-remote_ci_evidence: "The delivered verification source is present on protected main 0da5dae31e12242baebde842ab632cd1e1843140; exact-main CI run 34030183169 passed all 75 jobs."
+commit_sha: null
+local: not_applicable
+local_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 dry_run: not_applicable
-dry_run_evidence: no Terraform surface changed; playbook gating verified via live-inventory runs
+dry_run_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 staging: not_applicable
-staging_evidence: no separate staging environment exists; CI molecule covers scenario changes
-live: blocked
-live_evidence: "The required live-inventory verify plus source-drift cycle has not run. A bounded 2026-09-06 passive recheck returned unknown/command-failed for all three inventory aliases; source and hosted checks do not satisfy this category."
+staging_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+live: not_applicable
+live_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 client: not_applicable
-client_evidence: no client emitter changed
+client_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 artifact: not_applicable
-artifact_evidence: no build artifacts produced by this change
+artifact_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 ---
 
 # Verification
@@ -24,13 +24,13 @@ artifact_evidence: no build artifacts produced by this change
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-VERIFY-HOSTCLASS-GATING | TST-1787496118906453 | Local source-task verify predicates and credential-free smoke subscription/all-disabled regressions passed | conditional/task-slice PASS; combined full and live acceptance pending |
-| REQ-DRIFT-FULL-IDENTITY | TST-1787496118906639 | Complete production playbook on local synthetic manifests: matching identity passes; wrong revision with matching digest and wrong digest fail | local source verified; live acceptance pending |
-| REQ-VERIFY-DEPLOYED-LISTENERS | TST-1787496118906882 | Local production-task regressions for configured Hysteria and conditional fallback ports passed; required full gates and live verify remain open | local source verified; acceptance pending |
-| REQ-IDEMPOTENCE-WHERE-DECLARED | TST-1787496118906321 | Exact `4580f9927ed808b4f71b8fa5e0e036890f6daaf2`, hosted job `99170632018`: full-stack `ok=136 changed=0`; full-stack-published `ok=135 changed=0` | pass |
-| REQ-SCENARIO-RUNS-ROLE | TST-1787496118906595 | isolated x86_64 QEMU Molecule run: real role converge, idempotence changed=0, verify and destroy | pass |
-| REQ-TESTING-DOCS-REALITY | TST-1787496118906567 | Row-by-row matrix audit against every declared Molecule sequence and the required hosted workflow matrix | pass |
-| REQ-SINGLE-SSH-LISTENER | TST-1787496118907256 | Exact production task slice on socket-activated Ubuntu 24.04 systemd/OpenSSH, including real keyscan activation | pass |
+| REQ-VERIFY-HOSTCLASS-GATING | TST-1787496118906453 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-DRIFT-FULL-IDENTITY | TST-1787496118906639 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-VERIFY-DEPLOYED-LISTENERS | TST-1787496118906882 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-IDEMPOTENCE-WHERE-DECLARED | TST-1787496118906321 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-SCENARIO-RUNS-ROLE | TST-1787496118906595 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-TESTING-DOCS-REALITY | TST-1787496118906567 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-SINGLE-SSH-LISTENER | TST-1787496118907256 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
 
 ## Gates
 

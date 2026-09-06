@@ -1,0 +1,11 @@
+{
+  "change": "sec-1787496747898735-secrets-perimeter-hardening",
+  "evidence_summary": "Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.",
+  "execution_sha256": "f783950d63e660cb910956c94d44f117e323ad14387266aabbfe77a1661bb32e",
+  "issue_sha256": "cb0ec5849e8e83e410506eb8375c46c19b5b525c7f1bf3bfbfa6bfa7e5938c7a",
+  "outcome": "dropped",
+  "prepared_at": "2026-09-06T17:42:11Z",
+  "reason": "Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.",
+  "schema": 1,
+  "task_id": "SEC-1787496747898735"
+}

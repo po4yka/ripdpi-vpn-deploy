@@ -12,24 +12,19 @@ tests, and operator scheduling. Serialize shared evidence and secrets contracts.
 
 ## Execution
 
-- [ ] TST-1786299379836822 Extend the acceptance manifest with exact-source, freshness, recovery, and teardown outcomes #feature !high @item:TST-1786299293097217
-- [ ] TST-1786299379854550 Prove negative keys, partial evidence, unavailable infrastructure, and cleanup fail closed #feature !high @item:TST-1786299293097217 @blocked_by:TST-1786299379836822
-- [ ] TST-1786299379871208 Run one isolated current-revision client and server acceptance plus one recurring observation #feature !high @item:TST-1786299293097217 @blocked_by:TST-1786299379854550
-- [ ] DOC-1786299379888954 Record redacted exact-SHA evidence and the remaining external limitations #feature !high @item:TST-1786299293097217 @blocked_by:TST-1786299379871208
+- TST-1786299379836822 DROPPED: Extend the acceptance manifest with exact-source, freshness, recovery, and teardown outcomes #feature !high @item:TST-1786299293097217
+- TST-1786299379854550 DROPPED: Prove negative keys, partial evidence, unavailable infrastructure, and cleanup fail closed #feature !high @item:TST-1786299293097217 @blocked_by:TST-1786299379836822
+- TST-1786299379871208 DROPPED: Run one isolated current-revision client and server acceptance plus one recurring observation #feature !high @item:TST-1786299293097217 @blocked_by:TST-1786299379854550
+- DOC-1786299379888954 DROPPED: Record redacted exact-SHA evidence and the remaining external limitations #feature !high @item:TST-1786299293097217 @blocked_by:TST-1786299379871208
 
 ## Offline implementation note
 
-The deploy-side v4 source candidate creates a fresh root-private nonce request
-per invocation and fails closed unless it consumes a canonical Ed25519-signed,
-nonce/invocation-bound handoff supplying a fresh correlated RIPDPI acceptance
-with exact source, APK and report digests plus every traffic/recovery/cleanup
-outcome.
-Standalone `amneziawg-go` provenance is recorded separately as engine identity.
-Launcher preflight and runtime `INFRA_UNAVAILABLE` outcomes retain an existing
-`latest.json`; a replacement PASS must be later and use distinct invocation,
-report and correlation identities. These offline safeguards do not supply the
-client signer/relay, client artifact, provider inputs, disposable VPS, or either
-live observation, so no execution step is closed here.
+The deploy-side runner now fails closed unless a root-private descriptor with
+final-component symlink rejection binds the RIPDPI 40-hex source revision and
+immutable client artifact SHA-256. Launcher preflight refusals emit redacted
+`INFRA_UNAVAILABLE` records and retain an existing `latest.json`. These offline
+safeguards do not supply the descriptor, client artifact, provider inputs,
+disposable VPS, or recurring observation.
 
 ## Verification
 
