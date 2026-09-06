@@ -270,6 +270,24 @@ def test_xray_publishes_required_geoip_as_a_pinned_read_only_runtime_asset() -> 
         "{{ xray_etc_dir }}/config.json",
     ]
 
+    full_stack_verify = yaml.safe_load(
+        (ROOT / "ansible/molecule/full-stack/verify.yml").read_text(encoding="utf-8")
+    )
+    verify_task = next(
+        task
+        for task in full_stack_verify[0]["tasks"]
+        if task["name"] == "xray config validates"
+    )
+    assert verify_task["ansible.builtin.command"]["argv"] == [
+        "/usr/bin/env",
+        "XRAY_LOCATION_ASSET=/opt/xray/bundled-assets",
+        "/usr/local/bin/xray",
+        "run",
+        "-test",
+        "-config",
+        "/etc/xray/config.json",
+    ]
+
 
 def test_xray_source_publication_remains_separate_and_idempotent() -> None:
     current = _task("xray-runtime", "Point current Xray runtime at pinned release")
