@@ -19,7 +19,7 @@ def _tasks(role: str) -> list[dict]:
     )
 
 
-def _runtime_task(role: str) -> dict:
+def _runtime_task(role: str, name: str | None = None) -> dict:
     matches = []
     for task in _tasks(role):
         candidates = [task, *task.get("block", [])]
@@ -30,7 +30,9 @@ def _runtime_task(role: str) -> dict:
             == "runtime-release"
             and "tasks_from" not in candidate["ansible.builtin.include_role"]
         )
-    assert len(matches) == 1, role
+    if name is not None:
+        matches = [task for task in matches if task.get("name") == name]
+    assert len(matches) == 1, (role, name)
     return matches[0]
 
 
@@ -156,7 +158,9 @@ def test_archive_consumers_pin_one_exact_member_for_each_architecture() -> None:
 
 
 def test_xray_prebuilt_path_delegates_archive_activation_only() -> None:
-    task = _runtime_task("xray-runtime")
+    task = _runtime_task(
+        "xray-runtime", "Install pinned Xray archive through runtime-release"
+    )
     contract = task["vars"]
 
     assert task["when"] == "not xray_runtime_build_from_source | bool"
@@ -178,6 +182,77 @@ def test_xray_prebuilt_path_delegates_archive_activation_only() -> None:
     assert "ansible.builtin.unarchive:" not in source
 
 
+def test_xray_publishes_required_geoip_as_a_pinned_read_only_runtime_asset() -> None:
+    xray_defaults = yaml.safe_load(
+        (ROOT / "ansible/roles/xray/defaults/main.yml").read_text(encoding="utf-8")
+    )
+    runtime_defaults = yaml.safe_load(
+        (ROOT / "ansible/roles/xray-runtime/defaults/main.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    asset = _task("xray-runtime", "Install bundled GeoIP asset through runtime-release")
+    contract = asset["vars"]
+
+    assert xray_defaults["xray_bundled_asset_dir"] == (
+        "{{ xray_install_dir }}/bundled-assets"
+    )
+    assert "vpn.enable_geodata" in xray_defaults["xray_asset_dir"]
+    assert "xray_bundled_asset_dir" in xray_defaults["xray_asset_dir"]
+    assert runtime_defaults["xray_runtime_asset_public_dir"] == (
+        "{{ xray_install_dir }}/bundled-assets"
+    )
+    assert asset["when"] == "xray_runtime_publish_geoip | bool"
+    assert contract["runtime_release_version"] == "{{ xray.version }}"
+    assert contract["runtime_release_install_root"] == (
+        "{{ xray_install_dir }}/assets/geoip"
+    )
+    assert contract["runtime_release_binary_name"] == "geoip.dat"
+    assert contract["runtime_release_public_link"] == (
+        "{{ xray_runtime_asset_public_dir }}/geoip.dat"
+    )
+    assert contract["runtime_release_candidate_mode"] == "0644"
+    assert contract["runtime_release_artifact_type"] == "archive"
+    assert contract["runtime_release_archive_members"] == {
+        "amd64": "geoip.dat",
+        "arm64": "geoip.dat",
+    }
+    assert contract["runtime_release_urls"] == {
+        "amd64": "{{ xray_runtime_release_urls.amd64 }}",
+        "arm64": "{{ xray_runtime_release_urls.arm64 }}",
+    }
+    assert contract["runtime_release_sha256"] == {
+        "amd64": "{{ xray.linux_amd64_sha256 }}",
+        "arm64": "{{ xray.linux_arm64_sha256 }}",
+    }
+
+    caller = _task("xray", "Install shared pinned Xray runtime")
+    assert caller["vars"]["xray_runtime_publish_geoip"] == (
+        "{{ not (vpn.enable_geodata | default(false) | bool) }}"
+    )
+    assert caller["vars"]["xray_runtime_asset_public_dir"] == (
+        "{{ xray_asset_dir }}"
+    )
+
+    validation_commands = [
+        task["ansible.builtin.template"]["validate"]
+        for task in _tasks("xray")
+        if task.get("name") in {
+            "Detect Xray config change before preserving rollback state",
+            "Render and validate Xray config",
+        }
+    ]
+    expected = (
+        "/usr/bin/env XRAY_LOCATION_ASSET={{ xray_asset_dir }} "
+        "/usr/local/bin/xray run -test -config %s"
+    )
+    assert validation_commands == [expected, expected]
+    service = (
+        ROOT / "ansible/roles/xray/templates/xray.service.j2"
+    ).read_text(encoding="utf-8")
+    assert "Environment=XRAY_LOCATION_ASSET={{ xray_asset_dir }}" in service
+
+
 def test_xray_source_publication_remains_separate_and_idempotent() -> None:
     current = _task("xray-runtime", "Point current Xray runtime at pinned release")
     public = _task("xray-runtime", "Expose pinned Xray runtime")
@@ -186,7 +261,8 @@ def test_xray_source_publication_remains_separate_and_idempotent() -> None:
 
     assert current["when"] == "xray_runtime_build_from_source | bool"
     assert public["when"] == "xray_runtime_build_from_source | bool"
-    assert "runtime_release_changed | default(false)" in expression
+    assert "_xray_runtime_binary_changed | default(false)" in expression
+    assert "_xray_runtime_geoip_changed | default(false)" in expression
     assert "runtime_build_results | default({})" in expression
     assert "xray_runtime_build_from_source" in expression
 

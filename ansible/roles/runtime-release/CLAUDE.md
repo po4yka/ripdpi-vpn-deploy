@@ -28,6 +28,10 @@ release directories, candidates, receipts, and public publication parents are
 all owned by `root:root`. The role rejects consumer overrides, so an untrusted
 runtime identity never controls a pathname that root later writes through.
 
+**Candidates are typed by final mode** — consumers select only executable
+`0755` binaries or read-only `0644` runtime assets. The locked helper validates
+the matching staged shape and publishes the exact configured mode.
+
 **Source builds publish from a private transaction** — source consumers provide
 a stable project identity, canonical recipe, and staged-to-live output map. The
 helper builds below a fixed root-only project directory, verifies every staged
@@ -71,6 +75,9 @@ cleanup. A third receipt state refuses without mutating any inode.
   provide exact `amd64` and `arm64` members plus at most four stripped path
   components. The selected remaining path must be exactly
   `runtime_release_binary_name`; unrelated members are never extracted.
+- **One include publishes one archive member** — a consumer that needs a
+  binary plus bundled data includes the role once per member under separate
+  install roots so each receipt and activation link remains single-purpose.
 - **Existing release directories are immutable by receipt** — matching receipt
   and binary digests skip download/extraction. A changed pin or binary refuses
   before writes; version bumps, never in-place replacement, are the update path.

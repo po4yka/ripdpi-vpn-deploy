@@ -24,8 +24,8 @@
       xray_finalmask: true
     xray:
       version: "v26.3.27"
-      linux_amd64_sha256: "9b7d7bd8f815f68a0c646e84f9e572e416fc4aca539811b235627892b323e970"
-      linux_arm64_sha256: "9b7d7bd8f815f68a0c646e84f9e572e416fc4aca539811b235627892b323e970"
+      linux_amd64_sha256: "96b7d6441dfc2f8d685b12e155bcbd22c5c553bbf15998681413d4926bc2e3fd"
+      linux_arm64_sha256: "96b7d6441dfc2f8d685b12e155bcbd22c5c553bbf15998681413d4926bc2e3fd"
       reality_private_key: "MOLECULE_TEST_PRIVATE_KEY_NOT_REAL"
       target: "www.cloudflare.com:443"
       server_names:

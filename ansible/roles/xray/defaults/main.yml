@@ -6,6 +6,9 @@ xray_runtime_group: xray
 xray_install_dir: "{{ xray_install_root | default('/opt/xray') }}"
 xray_etc_dir: "{{ xray_config_dir | default('/etc/xray') }}"
 xray_log_path: "{{ xray_log_dir | default('/var/log/xray') }}"
+xray_geodata_asset_dir: "{{ geodata.install_dir | default('/usr/local/share/xray') }}"
+xray_bundled_asset_dir: "{{ xray_install_dir }}/bundled-assets"
+xray_asset_dir: "{{ xray_geodata_asset_dir if (vpn.enable_geodata | default(false) | bool) else xray_bundled_asset_dir }}"
 
 # Local-only gRPC endpoint for StatsService. The monitoring collector and
 # watchdog query it on-host; it must never be exposed on a public address.

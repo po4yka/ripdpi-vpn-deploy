@@ -67,6 +67,7 @@ def test_runtime_release_defaults_are_a_complete_prefixed_api() -> None:
         "runtime_release_arch_slugs": {"amd64": "amd64", "arm64": "arm64"},
         "runtime_release_artifact_filename": "artifact",
         "runtime_release_artifact_type": "binary",
+        "runtime_release_candidate_mode": "0755",
         "runtime_release_archive_members": {"amd64": "", "arm64": ""},
         "runtime_release_archive_strip_components": 0,
         "runtime_release_download_dir": (
@@ -133,6 +134,7 @@ def test_contract_refuses_unpinned_or_unsafe_paths_and_artifact_shapes() -> None
     assert "_runtime_release_archive_member.split('/')" in serialized
     assert "runtime_release_archive_members is mapping" in serialized
     assert "[runtime_release_binary_name]" in serialized
+    assert "runtime_release_candidate_mode in ['0644', '0755']" in serialized
     assert "runtime_release_archive_strip_components | int >= 0" in serialized
     assert "runtime_release_archive_strip_components | int <= 4" in serialized
     for unsafe in ("/../", "/./", "//"):
@@ -164,7 +166,8 @@ def test_download_is_checksum_verified_and_guarded_by_candidate_stat() -> None:
     assertions = verify["ansible.builtin.assert"]["that"]
     assert "_runtime_release_verified_candidate.stat.exists" in assertions
     assert "_runtime_release_verified_candidate.stat.isreg" in assertions
-    assert "_runtime_release_verified_candidate.stat.executable" in assertions
+    assert any("runtime_release_candidate_mode == '0644'" in item for item in assertions)
+    assert any("_runtime_release_verified_candidate.stat.executable" in item for item in assertions)
 
 
 def test_release_receipt_binds_existing_candidate_to_pin_and_binary_digest() -> None:
@@ -196,6 +199,8 @@ def test_release_receipt_binds_existing_candidate_to_pin_and_binary_digest() -> 
         "{{ _runtime_release_staged_candidate_path }}",
         "--artifact-type",
         "{{ runtime_release_artifact_type }}",
+        "--candidate-mode",
+        "{{ runtime_release_candidate_mode }}",
     ):
         assert argument in argv
     assert "Publish immutable runtime release receipt" not in [
@@ -319,7 +324,7 @@ def test_candidate_permissions_are_published_only_by_the_locked_helper() -> None
     assert "def _atomic_install_candidate(" in source
     assert "src_dir_fd=release.descriptor" in source
     assert "dst_dir_fd=release.descriptor" in source
-    assert "os.fchmod(destination, 0o755)" in source
+    assert "os.fchmod(destination, candidate_mode)" in source
     assert (
         "Normalize installed runtime release candidate permissions"
         not in TASKS.read_text()
@@ -863,6 +868,7 @@ def _run_archive_member_role_slice(
                         },
                         "runtime_release_artifact_filename": artifact.name,
                         "runtime_release_artifact_type": "archive",
+                        "runtime_release_candidate_mode": "0755",
                         "runtime_release_archive_members": archive_members,
                         "runtime_release_archive_strip_components": 1,
                         "runtime_release_download_dir": str(
@@ -1159,6 +1165,7 @@ def _run_helper_fixture(
     archive_strip_components: int = 0,
     install_root: Path | None = None,
     run_label: str = "",
+    candidate_mode: int = 0o755,
 ) -> subprocess.CompletedProcess[str]:
     """Exercise activation with a non-root fixture identity.
 
@@ -1194,6 +1201,7 @@ def _run_helper_fixture(
                 public,
                 check=True,
                 requires_artifact=not candidate.exists() or not receipt.exists(),
+                candidate_mode=candidate_mode,
             )
         except Exception as error:
             return subprocess.CompletedProcess([], 1, "", f"{error}\n")
@@ -1269,6 +1277,7 @@ def _run_helper_fixture(
             artifact_name=artifact_name if needs_artifact else None,
             stage_name=stage_name if needs_artifact else None,
             requires_artifact=needs_artifact,
+            candidate_mode=candidate_mode,
         )
     except Exception as error:
         outcome = subprocess.CompletedProcess([], 1, "", f"{error}\n")
@@ -1292,6 +1301,34 @@ def _run_helper_fixture(
                 group=group,
             )
     return outcome
+
+
+def test_helper_publishes_read_only_runtime_asset_idempotently(tmp_path: Path) -> None:
+    (tmp_path / "bin").mkdir()
+    asset = tmp_path / "geoip.dat"
+    asset.write_bytes(b"pinned geoip fixture\n")
+
+    published = _run_helper_fixture(
+        tmp_path,
+        "v1",
+        asset,
+        candidate_mode=0o644,
+    )
+
+    assert published.returncode == 0, published.stdout + published.stderr
+    candidate = tmp_path / "install/releases/v1/runtime-fixture"
+    public = tmp_path / "bin/runtime-fixture"
+    assert candidate.stat().st_mode & 0o777 == 0o644
+    assert public.resolve().read_bytes() == asset.read_bytes()
+
+    repeated = _run_helper_fixture(
+        tmp_path,
+        "v1",
+        asset,
+        candidate_mode=0o644,
+    )
+    assert repeated.returncode == 0, repeated.stdout + repeated.stderr
+    assert "changed=0" in repeated.stdout
 
 
 def test_helper_install_upgrade_and_activation_failure_rollback(tmp_path: Path) -> None:

@@ -122,6 +122,51 @@
     runtime_release_archive_strip_components: 0
   when: not xray_runtime_build_from_source | bool
 
+- name: Capture pinned Xray binary publication state
+  ansible.builtin.set_fact:
+    _xray_runtime_binary_changed: "{{ runtime_release_changed | bool }}"
+  when: not xray_runtime_build_from_source | bool
+
+- name: Ensure bundled Xray asset publication directory
+  ansible.builtin.file:
+    path: "{{ xray_runtime_asset_public_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: xray_runtime_publish_geoip | bool
+
+- name: Install bundled GeoIP asset through runtime-release
+  ansible.builtin.include_role:
+    name: runtime-release
+  vars:
+    runtime_release_version: "{{ xray.version }}"
+    runtime_release_install_root: "{{ xray_install_dir }}/assets/geoip"
+    runtime_release_binary_name: geoip.dat
+    runtime_release_public_link: "{{ xray_runtime_asset_public_dir }}/geoip.dat"
+    runtime_release_candidate_mode: "0644"
+    runtime_release_urls:
+      amd64: "{{ xray_runtime_release_urls.amd64 }}"
+      arm64: "{{ xray_runtime_release_urls.arm64 }}"
+    runtime_release_sha256:
+      amd64: "{{ xray.linux_amd64_sha256 }}"
+      arm64: "{{ xray.linux_arm64_sha256 }}"
+    runtime_release_arch_slugs:
+      amd64: "64"
+      arm64: arm64-v8a
+    runtime_release_artifact_filename: xray.zip
+    runtime_release_artifact_type: archive
+    runtime_release_archive_members:
+      amd64: geoip.dat
+      arm64: geoip.dat
+    runtime_release_archive_strip_components: 0
+  when: xray_runtime_publish_geoip | bool
+
+- name: Capture bundled GeoIP publication state
+  ansible.builtin.set_fact:
+    _xray_runtime_geoip_changed: "{{ runtime_release_changed | bool }}"
+  when: xray_runtime_publish_geoip | bool
+
 - name: Ensure pinned Xray binary permissions
   ansible.builtin.file:
     path: "{{ xray_install_dir }}/releases/{{ xray.version }}/xray"
@@ -157,7 +202,11 @@
             (runtime_build_results | default({})).get('xray-core', {}).get('changed', false)
             | bool
           )
+          or (_xray_runtime_geoip_changed | default(false) | bool)
         )
         if (xray_runtime_build_from_source | bool)
-        else (runtime_release_changed | default(false) | bool)
+        else (
+          (_xray_runtime_binary_changed | default(false) | bool)
+          or (_xray_runtime_geoip_changed | default(false) | bool)
+        )
       }}

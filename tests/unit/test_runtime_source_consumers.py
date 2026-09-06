@@ -470,7 +470,7 @@ def test_source_publication_changes_drive_service_restart_state(tmp_path: Path) 
                             "runtime_build_results": {
                                 "xray-core": {"changed": runtime_build_changed}
                             },
-                            "runtime_release_changed": xray_link_changed,
+                            "_xray_runtime_binary_changed": xray_link_changed,
                             "xray_runtime_build_from_source": xray_source_enabled,
                             "_xray_runtime_current": {"changed": xray_link_changed},
                             "expected_xray_changed": expected_xray_changed,

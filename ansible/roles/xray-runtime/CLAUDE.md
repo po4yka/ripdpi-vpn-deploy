@@ -16,6 +16,11 @@ compilation targets the private transaction stage; the helper publishes only
 verified native bytes. The existing
 `vpn.build_xray_from_source` boolean remains the selection input.
 
+When the separately pinned geodata role is disabled, this role publishes the
+archive's bundled `geoip.dat` as a hash-pinned read-only runtime asset below
+the Xray install root. The geodata role remains the sole owner of
+`/usr/local/share/xray`; toggling it cannot collide with a fallback symlink.
+
 ## What's done well
 
 - Release selection remains driven by the existing SOPS `xray.version` and architecture checksums.
@@ -26,3 +31,5 @@ verified native bytes. The existing
 
 - Do not add transport configuration or service restarts here; callers own those lifecycles.
 - Keep both the prebuilt archive and explicit source-build paths here; adding an installation path to a caller would recreate pin drift.
+- Capture binary and asset publication results separately; the final change
+  signal must not be overwritten by the second shared-role include.
