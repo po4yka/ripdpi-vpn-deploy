@@ -759,13 +759,11 @@ def test_sensitive_files_are_root_only_and_installer_is_exact_source() -> None:
     assert "rotated_client_config" not in server_vars
 
 
-def test_sentinel_provisions_exact_client_identity_before_activation() -> None:
+def test_sentinel_installs_client_acceptance_verification_key() -> None:
     defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
     tasks = yaml.safe_load((ROLE / "tasks/sentinel.yml").read_text())
-    template = (ROLE / "templates/sentinel-client-identity.json.j2").read_text()
 
-    assert defaults["real_vps_awg_nat_client_source_sha"] == ""
-    assert defaults["real_vps_awg_nat_client_artifact_sha256"] == ""
+    assert defaults["real_vps_awg_nat_client_acceptance_public_key"] == ""
     validation = next(
         task
         for task in tasks
@@ -773,29 +771,28 @@ def test_sentinel_provisions_exact_client_identity_before_activation() -> None:
         == "Validate private sentinel material and exact source contract"
     )
     assertions = "\n".join(validation["ansible.builtin.assert"]["that"])
-    assert "real_vps_awg_nat_client_source_sha is match('^[0-9a-f]{40}$')" in assertions
     assert (
-        "real_vps_awg_nat_client_artifact_sha256 is match('^[0-9a-f]{64}$')"
-        in assertions
+        "real_vps_awg_nat_client_acceptance_public_key is match('^/.+')" in assertions
     )
-    assert (
-        "real_vps_awg_nat_client_source_sha == real_vps_awg_nat_awg_go_commit"
-        in assertions
-    )
-    assert assertions.count("'" + "0" * 40 + "'") == 1
-    assert assertions.count("'" + "0" * 64 + "'") == 1
+    assert "real_vps_awg_nat_client_source_sha" not in assertions
+    assert "real_vps_awg_nat_client_artifact_sha256" not in assertions
 
     identity_index = next(
         index
         for index, task in enumerate(tasks)
-        if task["name"] == "Install exact RIPDPI client identity descriptor"
+        if task["name"] == "Install RIPDPI client acceptance verification key"
+    )
+    validation_key_index = next(
+        index
+        for index, task in enumerate(tasks)
+        if task["name"] == "Validate RIPDPI client acceptance verification key"
     )
     install_index = next(
         index
         for index, task in enumerate(tasks)
         if task["name"] == "Install exact-source local runner and timer"
     )
-    identity = tasks[identity_index]["ansible.builtin.template"]
+    identity = tasks[identity_index]["ansible.builtin.copy"]
     disable_index = next(
         index
         for index, task in enumerate(tasks)
@@ -813,16 +810,37 @@ def test_sentinel_provisions_exact_client_identity_before_activation() -> None:
         if task["name"] == "Install private runner config"
     )
     assert disable_index < wait_index < runner_config_index < install_index
-    assert identity_index < install_index
+    assert identity_index < validation_key_index < install_index
     assert identity == {
-        "src": "sentinel-client-identity.json.j2",
-        "dest": "/etc/ripdpi/real-vps-awg-client-identity.json",
+        "src": "{{ real_vps_awg_nat_client_acceptance_public_key }}",
+        "dest": "/etc/ripdpi/real-vps-awg-client-acceptance.pub",
         "owner": "root",
         "group": "root",
         "mode": "0600",
     }
     assert tasks[identity_index]["no_log"] is True
     assert tasks[identity_index]["diff"] is False
+    key_validation = tasks[validation_key_index]
+    assert key_validation["ansible.builtin.command"]["argv"] == [
+        "openssl",
+        "pkey",
+        "-pubin",
+        "-in",
+        "/etc/ripdpi/real-vps-awg-client-acceptance.pub",
+        "-text",
+        "-noout",
+    ]
+    assert key_validation["changed_when"] is False
+    assert key_validation["no_log"] is True
+    algorithm_assertion = next(
+        task
+        for task in tasks
+        if task["name"]
+        == "Require an Ed25519 RIPDPI client acceptance verification key"
+    )
+    assert algorithm_assertion["ansible.builtin.assert"]["that"] == [
+        "_evidence_client_acceptance_key.stdout is search('(?m)^ED25519 Public-Key:$')"
+    ]
     disable = tasks[disable_index]["ansible.builtin.systemd_service"]
     assert disable == {
         "name": "ripdpi-real-vps-awg-nat.timer",
@@ -845,18 +863,14 @@ def test_sentinel_provisions_exact_client_identity_before_activation() -> None:
     )
     provenance_assertions = "\n".join(provenance["ansible.builtin.assert"]["that"])
     assert (
-        "_evidence_awg_toolchain_manifest.binaries['amneziawg-go'] == "
-        "real_vps_awg_nat_client_artifact_sha256"
+        "_evidence_awg_toolchain_manifest.inputs.goCommit == "
+        "real_vps_awg_nat_awg_go_commit"
     ) in provenance_assertions
     assert not any(
         task.get("ansible.builtin.systemd_service", {}).get("enabled") is True
         for task in tasks[:install_index]
     )
-    assert template == (
-        '{"artifactSha256":{{ real_vps_awg_nat_client_artifact_sha256 | to_json }},'
-        '"ripdpiSourceSha":{{ real_vps_awg_nat_client_source_sha | to_json }},'
-        '"version":"ripdpi_awg_client_identity_v1"}\n'
-    )
+    assert not (ROLE / "templates/sentinel-client-identity.json.j2").exists()
     role_notes = (ROLE / "CLAUDE.md").read_text()
     runbook = (ROOT / "docs/REAL-VPS-AWG-NAT.md").read_text()
     assert "explicit disruptive maintenance" in role_notes

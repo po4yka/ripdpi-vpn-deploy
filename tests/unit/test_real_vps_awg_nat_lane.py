@@ -2,23 +2,30 @@
 
 from __future__ import annotations
 
+import base64
 import copy
+import hashlib
 import importlib.util
 import json
 import os
 import re
+import fcntl
 import shutil
 import shlex
+import stat
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from scripts.template_render import merge_render_vars, render_template
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "real-vps-awg-nat.py"
 FIREWALL_TEMPLATE = REPO_ROOT / "ansible/roles/firewall/templates/nftables.conf.j2"
+CLIENT_ACCEPTANCE_NAME = "real-vps-awg-client-acceptance.json"
 
 
 def load_module():
@@ -30,6 +37,106 @@ def load_module():
 
 
 lane = load_module()
+
+
+def live_client_acceptance(**overrides) -> dict:
+    value = {
+        "format": "ripdpi_awg_live_acceptance_v1",
+        "ripdpiSourceSha": "d" * 40,
+        "apkSha256": "e" * 64,
+        "reportSha256": "f" * 64,
+        "startedAtEpoch": 1_999_999_940,
+        "finishedAtEpoch": 1_999_999_980,
+        "transport": "amneziawg",
+        "pass": True,
+        "outcomes": {
+            "routedTcp": True,
+            "routedUdp": True,
+            "recovery": True,
+            "staleKeyRejected": True,
+            "cleanup": True,
+        },
+    }
+    value.update(overrides)
+    correlation_payload = (
+        json.dumps(
+            value,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+        + b"\n"
+    )
+    value["correlationSha256"] = hashlib.sha256(correlation_payload).hexdigest()
+    return value
+
+
+def signed_client_handoff(
+    tmp_path: Path,
+    acceptance: dict,
+    *,
+    nonce: str,
+    invocation_id: str,
+    invocation_attempt: int = 1,
+) -> tuple[Path, Path]:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    tmp_path.chmod(0o700)
+    private_key = tmp_path / "client-signing-key.pem"
+    public_key = tmp_path / "client-signing-key.pub.pem"
+    subprocess.run(
+        ["openssl", "genpkey", "-algorithm", "ED25519", "-out", private_key],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "openssl",
+            "pkey",
+            "-in",
+            private_key,
+            "-pubout",
+            "-out",
+            public_key,
+        ],
+        check=True,
+        capture_output=True,
+    )
+    private_key.chmod(0o600)
+    public_key.chmod(0o600)
+    envelope = {
+        "format": "ripdpi_awg_live_acceptance_handoff_v1",
+        "invocationId": invocation_id,
+        "invocationAttempt": invocation_attempt,
+        "nonce": nonce,
+        "signatureAlgorithm": "ed25519",
+        "acceptance": acceptance,
+    }
+    payload_path = tmp_path / "payload.json"
+    signature_path = tmp_path / "signature.bin"
+    payload_path.write_bytes(lane.client_acceptance_signature_payload(envelope))
+    subprocess.run(
+        [
+            "openssl",
+            "pkeyutl",
+            "-sign",
+            "-inkey",
+            private_key,
+            "-rawin",
+            "-in",
+            payload_path,
+            "-out",
+            signature_path,
+        ],
+        check=True,
+        capture_output=True,
+    )
+    envelope["signatureBase64"] = base64.b64encode(signature_path.read_bytes()).decode(
+        "ascii"
+    )
+    descriptor = tmp_path / f"{nonce}.json"
+    descriptor.write_bytes(lane.canonical_json_bytes(envelope))
+    descriptor.chmod(0o600)
+    return descriptor, public_key
 
 
 class FakeExecutor:
@@ -58,13 +165,15 @@ class FakeExecutor:
         self.nat_bytes = 0
         self.reload_target = "next"
         self.capture_index = 0
+        self.deployed_source = "1" * 40
+        self.deployed_archive = "2" * 64
 
     def _status(self) -> dict:
         return {
             "serviceActive": True,
             "interfaceUp": True,
-            "deployedSourceSha": "1" * 40,
-            "deployedArchiveSha256": "2" * 64,
+            "deployedSourceSha": self.deployed_source,
+            "deployedArchiveSha256": self.deployed_archive,
             "serviceInvocationSha256": self.service_generation,
             "configGenerationSha256": self.config_generation,
             "peerConfigSha256": self.current_peer,
@@ -88,6 +197,8 @@ class FakeExecutor:
 
     def deploy_source(self, source_sha: str, archive_sha256: str) -> dict:
         self.calls.append("deploy_source")
+        self.deployed_source = source_sha
+        self.deployed_archive = archive_sha256
         return {
             "deployedSourceSha": source_sha,
             "deployedArchiveSha256": archive_sha256,
@@ -184,10 +295,11 @@ def metadata() -> dict:
 
 def config() -> dict:
     return {
-        "clientIdentity": {
-            "ripdpiSourceSha": "d" * 40,
-            "artifactSha256": "e" * 64,
+        "engineIdentity": {
+            "amneziawgGoCommit": "a" * 40,
+            "amneziawgGoBinarySha256": "b" * 64,
         },
+        "clientAcceptance": live_client_acceptance(),
         "runnerIdSha256": "2" * 64,
         "serverControlHookSha256": "5" * 64,
         "serverDeployHookSha256": "6" * 64,
@@ -242,19 +354,16 @@ def write_private_runner_config(
             path.write_text(default_contents if contents is None else contents)
             path.chmod(mode)
     config_path = tmp_path / "runner.json"
-    client_identity = tmp_path / lane.CLIENT_IDENTITY_DESCRIPTOR_NAME
+    client_identity = tmp_path / CLIENT_ACCEPTANCE_NAME
     if include_client_identity:
-        client_identity.write_text(
-            json.dumps(
-                {
-                    "version": "ripdpi_awg_client_identity_v1",
-                    "ripdpiSourceSha": "d" * 40,
-                    "artifactSha256": "e" * 64,
-                },
-                sort_keys=True,
-                separators=(",", ":"),
+        acceptance_now = int(time.time())
+        client_identity.write_bytes(
+            lane.canonical_json_bytes(
+                live_client_acceptance(
+                    startedAtEpoch=acceptance_now - 40,
+                    finishedAtEpoch=acceptance_now - 10,
+                )
             )
-            + "\n"
         )
         client_identity.chmod(0o600)
     value = {
@@ -281,22 +390,21 @@ def write_private_runner_config(
     return config_path, source_archive
 
 
-def test_private_client_identity_descriptor_is_required_and_bound(
+def test_private_client_acceptance_descriptor_is_required_and_bound(
     tmp_path: Path,
 ) -> None:
     config_path, _source_archive = write_private_runner_config(
         tmp_path, include_client_identity=True
     )
 
-    loaded = lane.load_config(config_path)
+    loaded = lane.load_config(config_path, config_path.parent / CLIENT_ACCEPTANCE_NAME)
 
-    assert loaded["clientIdentity"] == {
-        "ripdpiSourceSha": "d" * 40,
-        "artifactSha256": "e" * 64,
-    }
+    assert loaded["clientAcceptance"]["format"] == lane.CLIENT_ACCEPTANCE_FORMAT
+    assert loaded["clientAcceptance"]["ripdpiSourceSha"] == "d" * 40
+    assert loaded["clientAcceptance"]["apkSha256"] == "e" * 64
 
 
-def test_client_identity_descriptor_missing_or_symlink_fails_closed(
+def test_client_acceptance_descriptor_missing_or_symlink_fails_closed(
     tmp_path: Path,
 ) -> None:
     config_path, source_archive = write_private_runner_config(
@@ -307,57 +415,24 @@ def test_client_identity_descriptor_missing_or_symlink_fails_closed(
     )
     assert manifest["classification"] == "INFRA_UNAVAILABLE"
     assert manifest["reasonCode"] == "CONFIG_INVALID"
-    assert manifest["clientIdentity"] == {
-        "ripdpiSourceSha": "0" * 40,
-        "artifactSha256": "0" * 64,
-    }
+    assert manifest["clientAcceptance"]["pass"] is False
+    assert manifest["clientAcceptance"]["ripdpiSourceSha"] == "0" * 40
 
     symlink_root = tmp_path / "symlink"
     symlink_root.mkdir()
     config_path, _source_archive = write_private_runner_config(symlink_root)
-    descriptor = config_path.parent / lane.CLIENT_IDENTITY_DESCRIPTOR_NAME
+    descriptor = config_path.parent / CLIENT_ACCEPTANCE_NAME
     replacement = config_path.parent / "replacement.json"
     replacement.write_text(descriptor.read_text())
     replacement.chmod(0o600)
     descriptor.unlink()
     descriptor.symlink_to(replacement)
     with pytest.raises(ValueError, match="absolute regular file"):
-        lane.load_config(config_path)
+        lane.load_config(config_path, descriptor)
 
 
-def test_client_identity_descriptor_rejects_replaced_valid_inode(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    descriptor = tmp_path / lane.CLIENT_IDENTITY_DESCRIPTOR_NAME
-    original = {
-        "version": lane.CLIENT_IDENTITY_VERSION,
-        "ripdpiSourceSha": "d" * 40,
-        "artifactSha256": "e" * 64,
-    }
-    replacement = {
-        "version": lane.CLIENT_IDENTITY_VERSION,
-        "ripdpiSourceSha": "a" * 40,
-        "artifactSha256": "b" * 64,
-    }
-    descriptor.write_text(json.dumps(original))
-    descriptor.chmod(0o600)
-    swapped = tmp_path / "replacement.json"
-    swapped.write_text(json.dumps(replacement))
-    swapped.chmod(0o600)
-    real_open = os.open
-
-    def replacing_open(path, flags, mode=0o600):
-        if Path(path) == descriptor:
-            os.replace(swapped, descriptor)
-        return real_open(path, flags, mode)
-
-    monkeypatch.setattr(os, "open", replacing_open)
-    with pytest.raises(ValueError, match="descriptor is unavailable"):
-        lane.client_identity_descriptor(str(descriptor))
-
-
-def test_client_identity_requires_manifest_v3() -> None:
-    assert lane.MANIFEST_VERSION == "real_vps_awg_nat_evidence_v3"
+def test_client_acceptance_requires_manifest_v4() -> None:
+    assert lane.MANIFEST_VERSION == "real_vps_awg_nat_evidence_v4"
     manifest = lane.run_lane(
         config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
     )
@@ -369,7 +444,7 @@ def test_client_identity_requires_manifest_v3() -> None:
         )
 
 
-def test_loaded_client_identity_is_retained_in_preflight_failure(
+def test_loaded_client_acceptance_is_retained_in_preflight_failure(
     tmp_path: Path,
 ) -> None:
     config_path, source_archive = write_private_runner_config(tmp_path)
@@ -379,18 +454,16 @@ def test_loaded_client_identity_is_retained_in_preflight_failure(
 
     assert manifest["classification"] == "INFRA_UNAVAILABLE"
     assert manifest["reasonCode"] == "PREREQUISITE_MISSING"
-    assert manifest["clientIdentity"] == {
-        "ripdpiSourceSha": "d" * 40,
-        "artifactSha256": "e" * 64,
-    }
+    assert manifest["clientAcceptance"]["ripdpiSourceSha"] == "d" * 40
+    assert manifest["clientAcceptance"]["apkSha256"] == "e" * 64
 
 
-def test_loaded_client_identity_is_retained_when_executor_start_fails(
+def test_loaded_client_acceptance_is_retained_when_executor_start_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     config_path, source_archive = write_private_runner_config(tmp_path)
-    loaded = lane.load_config(config_path)
-    monkeypatch.setattr(lane, "load_config", lambda _path: loaded)
+    loaded = lane.load_config(config_path, config_path.parent / CLIENT_ACCEPTANCE_NAME)
+    monkeypatch.setattr(lane, "load_config", lambda _path, _descriptor=None: loaded)
     monkeypatch.setattr(lane.os, "geteuid", lambda: 0)
     monkeypatch.setattr(lane.shutil, "which", lambda _command: "/usr/bin/tool")
 
@@ -404,28 +477,22 @@ def test_loaded_client_identity_is_retained_when_executor_start_fails(
     )
 
     assert manifest["reasonCode"] == "RUNNER_EXCEPTION"
-    assert manifest["clientIdentity"] == {
-        "ripdpiSourceSha": "d" * 40,
-        "artifactSha256": "e" * 64,
-    }
+    assert manifest["clientAcceptance"]["ripdpiSourceSha"] == "d" * 40
+    assert manifest["clientAcceptance"]["apkSha256"] == "e" * 64
 
 
-def test_client_identity_descriptor_rejects_placeholder_digests(tmp_path: Path) -> None:
+def test_client_acceptance_descriptor_rejects_placeholder_digests(
+    tmp_path: Path,
+) -> None:
     config_path, _source_archive = write_private_runner_config(tmp_path)
-    descriptor = config_path.parent / lane.CLIENT_IDENTITY_DESCRIPTOR_NAME
-    descriptor.write_text(
-        json.dumps(
-            {
-                "version": lane.CLIENT_IDENTITY_VERSION,
-                "ripdpiSourceSha": "0" * 40,
-                "artifactSha256": "e" * 64,
-            }
-        )
+    descriptor = config_path.parent / CLIENT_ACCEPTANCE_NAME
+    descriptor.write_bytes(
+        lane.canonical_json_bytes(live_client_acceptance(ripdpiSourceSha="0" * 40))
     )
     descriptor.chmod(0o600)
 
-    with pytest.raises(ValueError, match="must bind a real artifact"):
-        lane.load_config(config_path)
+    with pytest.raises(ValueError, match="real source, APK, and report"):
+        lane.load_config(config_path, descriptor)
 
 
 def run_with_private_config(
@@ -447,6 +514,8 @@ def run_with_private_config(
                 "1",
                 "--source-archive",
                 str(source_archive),
+                "--client-acceptance-descriptor",
+                str(config_path.parent / CLIENT_ACCEPTANCE_NAME),
             ]
         )
         == 1
@@ -540,26 +609,66 @@ def test_stale_manifest_is_rejected() -> None:
         raise AssertionError("stale manifest was accepted")
 
 
-def test_manifest_client_identity_is_bound_to_expected_artifact() -> None:
+def test_manifest_client_acceptance_is_bound_to_expected_artifacts() -> None:
     manifest = lane.run_lane(
         config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
     )
     lane.validate_manifest(
         manifest,
         expected_source_sha="1" * 40,
+        expected_engine_commit="a" * 40,
+        expected_engine_binary_sha256="b" * 64,
         expected_client_source_sha="d" * 40,
-        expected_client_artifact_sha256="e" * 64,
+        expected_client_apk_sha256="e" * 64,
+        expected_client_report_sha256="f" * 64,
+        expected_client_correlation_sha256=manifest["clientAcceptance"][
+            "correlationSha256"
+        ],
         now=2_000_000_000,
     )
-    manifest["clientIdentity"]["artifactSha256"] = "f" * 64
-    with pytest.raises(ValueError, match="client artifact SHA mismatch"):
+    manifest["clientAcceptance"]["apkSha256"] = "a" * 64
+    manifest["clientAcceptance"]["correlationSha256"] = (
+        lane.client_acceptance_correlation(manifest["clientAcceptance"])
+    )
+    with pytest.raises(ValueError, match="client APK SHA mismatch"):
         lane.validate_manifest(
             manifest,
             expected_source_sha="1" * 40,
             expected_client_source_sha="d" * 40,
-            expected_client_artifact_sha256="e" * 64,
+            expected_client_apk_sha256="e" * 64,
             now=2_000_000_000,
         )
+
+
+def test_manifest_rejects_missing_short_or_mismatched_engine_digests() -> None:
+    baseline = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    for mutate, error in (
+        (
+            lambda value: value["engineIdentity"].pop("amneziawgGoCommit"),
+            "fields differ",
+        ),
+        (
+            lambda value: value["engineIdentity"].update(
+                amneziawgGoBinarySha256="b" * 63
+            ),
+            "engine binary SHA",
+        ),
+        (
+            lambda value: None,
+            "engine commit mismatch",
+        ),
+    ):
+        manifest = copy.deepcopy(baseline)
+        mutate(manifest)
+        with pytest.raises(ValueError, match=error):
+            lane.validate_manifest(
+                manifest,
+                expected_source_sha="1" * 40,
+                expected_engine_commit="c" * 40,
+                now=2_000_000_000,
+            )
 
 
 def test_optional_workflow_is_manual_fail_closed_and_uploads_evidence() -> None:
@@ -573,9 +682,32 @@ def test_optional_workflow_is_manual_fail_closed_and_uploads_evidence() -> None:
     assert "git archive --format=tar" in workflow
     assert "--source-archive" in workflow
     assert "--expected-source-archive-sha256" in workflow
+    assert "create-client-acceptance-request" in workflow
+    assert "consume-client-acceptance" in workflow
+    assert "--request" in workflow
+    assert workflow.count('--invocation-attempt "$invocation_attempt"') >= 3
+    assert "grep -Fx 'ED25519 Public-Key:'" in workflow
+    assert '"$inbox_dir/${nonce}.json"' in workflow
+    assert "umask 077" in workflow
+    assert "--client-acceptance-descriptor" in workflow
+    assert "real-vps-awg-client-acceptance.pub" in workflow
     assert "--executor github_actions" in workflow
     assert "--expected-executor github_actions" in workflow
-    assert "Remove private source archive" in workflow
+    assert "trap cleanup EXIT" in workflow
+    assert "record-recurring" in workflow
+    assert "run_status=$?" in workflow
+    assert "validate_status=$?" in workflow
+    assert "--allow-non-pass" in workflow
+    assert "if (( run_status == 0 && validate_status == 0 )); then" in workflow
+    assert "if (( structural_status == 0 )); then" in workflow
+    assert (
+        "evidence_dir=/var/lib/ripdpi-real-vps-awg-nat/evidence/github-actions"
+        in workflow
+    )
+    assert 'LOCK_DIR="/run/lock/ripdpi-real-vps-awg-nat"' in workflow
+    assert "flock -n 9" in workflow
+    assert 'install -o root -g root -m 0600 "$current"' not in workflow
+    assert 'mv -f -- "$temporary" "$latest"' not in workflow
 
 
 def test_provenance_is_executor_neutral_and_binds_entrypoint() -> None:
@@ -622,6 +754,37 @@ def test_provenance_rejects_executor_entrypoint_substitution() -> None:
         raise AssertionError("executor entrypoint substitution was accepted")
 
 
+def test_public_schema_rejects_executor_entrypoint_substitution() -> None:
+    schema = json.loads(
+        (REPO_ROOT / "contract/real-vps-awg-nat-evidence.schema.json").read_text()
+    )
+    manifest = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    manifest["provenance"]["entrypointPath"] = lane.LOCAL_ENTRYPOINT_PATH
+    assert list(Draft202012Validator(schema).iter_errors(manifest))
+
+    manifest["provenance"]["executor"] = "local_systemd"
+    manifest["provenance"]["entrypointPath"] = lane.WORKFLOW_PATH
+    assert list(Draft202012Validator(schema).iter_errors(manifest))
+
+
+def test_manifest_rejects_reversed_client_and_run_windows() -> None:
+    manifest = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    manifest["clientAcceptance"]["startedAtEpoch"] = manifest["finishedAtEpoch"] + 61
+    manifest["clientAcceptance"]["finishedAtEpoch"] = manifest["finishedAtEpoch"] + 62
+    manifest["clientAcceptance"]["correlationSha256"] = (
+        lane.client_acceptance_correlation(manifest["clientAcceptance"])
+    )
+
+    with pytest.raises(ValueError, match="outside the run window"):
+        lane.validate_manifest(
+            manifest, expected_source_sha="1" * 40, now=2_000_000_120
+        )
+
+
 def test_legacy_workflow_flags_map_to_github_executor(tmp_path: Path) -> None:
     archive = tmp_path / "source.tar"
     archive.write_bytes(b"exact source archive")
@@ -642,6 +805,8 @@ def test_legacy_workflow_flags_map_to_github_executor(tmp_path: Path) -> None:
             "42",
             "--workflow-run-attempt",
             "3",
+            "--client-acceptance-descriptor",
+            str(tmp_path / "missing-client-acceptance.json"),
         ]
     )
 
@@ -671,6 +836,9 @@ def test_local_launcher_archives_exact_sha_and_validates_before_publish() -> Non
     assert 'git -C "$REPO_ROOT" diff-index --quiet HEAD' in launcher
     assert "--executor local_systemd" in launcher
     assert "--expected-executor local_systemd" in launcher
+    assert '--invocation-attempt "$invocation_attempt"' in launcher
+    assert "${safe_invocation}.json" in launcher
+    assert "grep -Fx 'ED25519 Public-Key:'" in launcher
     assert 'CONFIG="/etc/ripdpi/real-vps-awg-nat-local.json"' in launcher
     assert "accepts no arguments" in launcher
     assert 'cmp -s "$RUNNER"' in launcher
@@ -680,21 +848,30 @@ def test_local_launcher_archives_exact_sha_and_validates_before_publish() -> Non
         "/usr/lib/tmpfiles.d/ripdpi-real-vps-awg-nat.conf",
     ):
         assert f"cmp -s {installed_path}" in launcher
-    assert "latest.json" in launcher
-    assert launcher.index('rm -f -- "$evidence_dir/latest.json"') < launcher.index(
-        '"$RUNNER" run'
-    )
+    assert 'rm -f -- "$evidence_dir/latest.json"' not in launcher
+    assert "record-recurring" in launcher
+    assert "--lock-fd 9" in launcher
+    assert 'mv -f -- "$evidence_dir/.latest.json.tmp"' not in launcher
     assert "--allow-non-pass" in launcher
     assert 'quarantine="$quarantine_dir/invalid-' in launcher
     assert "run_status == 0 && validate_status == 0" in launcher
     assert "validate-client-runtime" in launcher
+    assert "validate-client-acceptance" in launcher
+    assert "create-client-acceptance-request" in launcher
+    assert "consume-client-acceptance" in launcher
+    assert '--client-acceptance-descriptor "$consumed_acceptance"' in launcher
+    assert launcher.index("create-client-acceptance-request") < launcher.index(
+        "consume-client-acceptance"
+    )
     assert 'PATH="$(dirname "$client_binary"):$PATH"' in launcher
-    assert launcher.count("--expected-client-source-sha") == 2
-    assert launcher.count("--expected-client-artifact-sha256") == 2
+    assert launcher.count("--expected-client-source-sha") == 3
+    assert launcher.count("--expected-client-apk-sha256") == 3
+    assert launcher.count("--expected-client-report-sha256") == 3
+    assert launcher.count("--expected-client-correlation-sha256") == 3
     assert "GITHUB_" not in launcher
 
 
-def test_runtime_client_identity_binds_actual_toolchain_binary(tmp_path: Path) -> None:
+def test_runtime_engine_identity_binds_actual_toolchain_binary(tmp_path: Path) -> None:
     toolchain = tmp_path / "toolchains" / ("a" * 64)
     binary_dir = toolchain / "bin"
     binary_dir.mkdir(parents=True, mode=0o700)
@@ -722,59 +899,13 @@ def test_runtime_client_identity_binds_actual_toolchain_binary(tmp_path: Path) -
     manifest_path = toolchain / "manifest.json"
     manifest_path.write_bytes(lane.canonical_json_bytes(manifest))
     manifest_path.chmod(0o600)
-    identity_path = tmp_path / "client-identity.json"
-    identity_path.write_bytes(
-        lane.canonical_json_bytes(
-            {
-                "artifactSha256": artifact_sha,
-                "ripdpiSourceSha": source_sha,
-                "version": lane.CLIENT_IDENTITY_VERSION,
-            }
-        )
-    )
-    identity_path.chmod(0o600)
-
-    assert lane.validate_runtime_client_identity(identity_path, binary) == {
-        "artifactSha256": artifact_sha,
-        "ripdpiSourceSha": source_sha,
+    assert lane.validate_runtime_engine_identity(binary) == {
+        "amneziawgGoBinarySha256": artifact_sha,
+        "amneziawgGoCommit": source_sha,
     }
-
-    identity_path.write_bytes(
-        lane.canonical_json_bytes(
-            {
-                "artifactSha256": "4" * 64,
-                "ripdpiSourceSha": source_sha,
-                "version": lane.CLIENT_IDENTITY_VERSION,
-            }
-        )
-    )
-    with pytest.raises(ValueError, match="artifact identity mismatch"):
-        lane.validate_runtime_client_identity(identity_path, binary)
-
-    identity_path.write_bytes(
-        lane.canonical_json_bytes(
-            {
-                "artifactSha256": artifact_sha,
-                "ripdpiSourceSha": "5" * 40,
-                "version": lane.CLIENT_IDENTITY_VERSION,
-            }
-        )
-    )
-    with pytest.raises(ValueError, match="source identity mismatch"):
-        lane.validate_runtime_client_identity(identity_path, binary)
-
-    identity_path.write_bytes(
-        lane.canonical_json_bytes(
-            {
-                "artifactSha256": artifact_sha,
-                "ripdpiSourceSha": source_sha,
-                "version": lane.CLIENT_IDENTITY_VERSION,
-            }
-        )
-    )
     binary.write_bytes(b"replaced-runtime")
     with pytest.raises(ValueError, match="artifact digest mismatch"):
-        lane.validate_runtime_client_identity(identity_path, binary)
+        lane.validate_runtime_engine_identity(binary)
 
 
 def test_preflight_failures_are_redacted_nonpass_evidence_without_latest_mutation() -> (
@@ -799,9 +930,9 @@ def test_preflight_failures_are_redacted_nonpass_evidence_without_latest_mutatio
         "PREFLIGHT_SOURCE_MISMATCH",
     ):
         assert category in launcher
-    assert launcher.index('rm -f -- "$evidence_dir/latest.json"') > launcher.index(
-        'git -C "$REPO_ROOT" diff-index --quiet HEAD'
-    )
+    assert 'rm -f -- "$evidence_dir/latest.json"' not in launcher
+    assert 'rm -f -- "$evidence_dir/.latest.json.tmp"' not in launcher
+    assert "record-recurring" in launcher
     assert "preflight_fail PREFLIGHT_LOCK_BUSY" in launcher
     assert "preflight_fail PREFLIGHT_CONFIG_INVALID" in launcher
     assert "preflight_fail PREFLIGHT_RUNNER_INVALID" in launcher
@@ -823,9 +954,11 @@ def test_missing_readlink_emits_preflight_evidence(tmp_path: Path) -> None:
         "install",
         "mkdir",
         "mv",
+        "openssl",
         "python3",
         "rm",
         "sha256sum",
+        "sleep",
         "stat",
     ):
         resolved = shutil.which(name)
@@ -873,9 +1006,11 @@ def test_unresolvable_repo_root_emits_source_unsafe_evidence(tmp_path: Path) -> 
         "install",
         "mkdir",
         "mv",
+        "openssl",
         "python3",
         "rm",
         "sha256sum",
+        "sleep",
         "stat",
     ):
         resolved = shutil.which(name)
@@ -946,10 +1081,10 @@ emit_preflight_failure PREFLIGHT_CONFIG_INVALID
     )
     assert manifest["classification"] == "INFRA_UNAVAILABLE"
     assert manifest["reasonCode"] == "PREFLIGHT_CONFIG_INVALID"
-    assert manifest["clientIdentity"] == {
-        "ripdpiSourceSha": "0" * 40,
-        "artifactSha256": "0" * 64,
-    }
+    assert manifest["clientAcceptance"]["ripdpiSourceSha"] == "0" * 40
+    assert manifest["clientAcceptance"]["apkSha256"] == "0" * 64
+    assert manifest["clientAcceptance"]["pass"] is False
+    assert manifest["engineIdentity"]["amneziawgGoCommit"] == "0" * 40
 
 
 def test_local_installer_pins_root_owned_source_and_fixed_units() -> None:
@@ -970,7 +1105,32 @@ def test_local_installer_pins_root_owned_source_and_fixed_units() -> None:
     assert "root-owned mode 0600" in installer
     assert 'LOCK_DIR="/run/lock/ripdpi-real-vps-awg-nat"' in installer
     assert "flock -n 9" in installer
-    assert "/var/lib/ripdpi-real-vps-awg-nat/evidence/latest.json" in installer
+    assert 'latest="$evidence_dir/latest.json"' in installer
+    assert "archive_legacy_latest()" in installer
+    assert "prepare-retained-state" in installer
+    assert '--expected-source-sha "$source_sha"' in installer
+    assert (
+        'CLIENT_ACCEPTANCE_PUBLIC_KEY="/etc/ripdpi/real-vps-awg-client-acceptance.pub"'
+        in installer
+    )
+    assert (
+        'openssl pkey -pubin -in "$CLIENT_ACCEPTANCE_PUBLIC_KEY" -text -noout'
+        in installer
+    )
+    assert "grep -Fx 'ED25519 Public-Key:'" in installer
+    install_success = installer.index(
+        "systemctl enable --now ripdpi-real-vps-awg-nat.timer"
+    )
+    archive_call = installer.rindex(
+        '\nif ! archive_legacy_latest || ! "$RUNNER" prepare-retained-state \\\n'
+    )
+    assert archive_call < install_success
+    assert installer.count('latest="$evidence_dir/latest.json"') == 1
+    assert "archive_legacy_latest;" not in installer[:archive_call]
+    assert (
+        "rm -f -- \\\n  /var/lib/ripdpi-real-vps-awg-nat/evidence/latest.json"
+        not in installer
+    )
     assert "validate_root_hook" in installer
     assert "/usr/local/libexec/ripdpi-real-vps-awg-nat-hooks" in installer
     assert 'value["serverControlHook"] = control' in installer
@@ -1014,6 +1174,1006 @@ def test_private_path_rejects_writable_parent_chain(tmp_path: Path) -> None:
         assert "parent has unsafe owner or mode" in str(exc)
     else:
         raise AssertionError("private hook below writable parent was accepted")
+
+
+def test_manifest_v4_separates_engine_from_real_ripdpi_client_acceptance() -> None:
+    acceptance = live_client_acceptance()
+    engine = {
+        "amneziawgGoCommit": "a" * 40,
+        "amneziawgGoBinarySha256": "b" * 64,
+    }
+    cfg = config()
+    cfg.update({"engineIdentity": engine, "clientAcceptance": acceptance})
+
+    manifest = lane.run_lane(cfg, FakeExecutor(), metadata(), now=lambda: 2_000_000_000)
+
+    assert manifest["version"] == "real_vps_awg_nat_evidence_v4"
+    assert manifest["engineIdentity"] == engine
+    assert manifest["clientAcceptance"] == acceptance
+    assert "clientIdentity" not in manifest
+    lane.validate_manifest(manifest, expected_source_sha="1" * 40, now=2_000_000_000)
+
+
+def test_public_manifest_schema_accepts_v4_and_rejects_engine_as_client() -> None:
+    schema = json.loads(
+        (REPO_ROOT / "contract/real-vps-awg-nat-evidence.schema.json").read_text()
+    )
+    Draft202012Validator.check_schema(schema)
+    manifest = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    Draft202012Validator(schema).validate(manifest)
+
+    manifest["clientAcceptance"] = manifest["engineIdentity"]
+    errors = list(Draft202012Validator(schema).iter_errors(manifest))
+    assert errors
+
+
+def test_schema_and_python_share_strict_pass_semantics() -> None:
+    schema = json.loads(
+        (REPO_ROOT / "contract/real-vps-awg-nat-evidence.schema.json").read_text()
+    )
+    validator = Draft202012Validator(schema)
+    baseline = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    for mutate in (
+        lambda value: value["clientAcceptance"].update({"pass": False}),
+        lambda value: value["clientAcceptance"]["outcomes"].update(routedTcp=False),
+        lambda value: value["clientAcceptance"].update(ripdpiSourceSha="0" * 40),
+        lambda value: value["clientAcceptance"].update(apkSha256="0" * 64),
+        lambda value: value["clientAcceptance"].update(reportSha256="0" * 64),
+        lambda value: value.update(runnerIdSha256="0" * 64),
+        lambda value: value["provenance"].update(sourceArchiveSha256="0" * 64),
+        lambda value: value["producerDigests"].update(runnerSha256="0" * 64),
+        lambda value: value.update(privateLogSha256="0" * 64),
+        lambda value: value["serverDeployment"].update(receiptSha256="0" * 64),
+        lambda value: value["captureDigests"].__setitem__(0, "0" * 64),
+        lambda value: value["phases"][1]["tcp"].update(ok=False, durationMs=None),
+        lambda value: value["phases"][3]["server"].update(handshakeFresh=True),
+        lambda value: value["phases"][3]["server"].update(peerRxDelta=1),
+        lambda value: value["phases"][2]["server"].update(
+            serviceGenerationChanged=False
+        ),
+        lambda value: value["phases"][3]["server"].update(
+            configGenerationChanged=False
+        ),
+    ):
+        manifest = copy.deepcopy(baseline)
+        mutate(manifest)
+        manifest["clientAcceptance"]["correlationSha256"] = (
+            lane.client_acceptance_correlation(manifest["clientAcceptance"])
+        )
+        assert list(validator.iter_errors(manifest))
+        with pytest.raises(ValueError):
+            lane.validate_manifest(
+                manifest, expected_source_sha="1" * 40, now=2_000_000_000
+            )
+
+
+def test_schema_is_structural_and_executable_validator_owns_cross_field_rules() -> None:
+    schema = json.loads(
+        (REPO_ROOT / "contract/real-vps-awg-nat-evidence.schema.json").read_text()
+    )
+    validator = Draft202012Validator(schema)
+    assert "Structural validation only" in schema["$comment"]
+    assert "canonical executable validator" in schema["$comment"]
+    baseline = lane.run_lane(
+        config(), FakeExecutor(), metadata(), now=lambda: 2_000_000_000
+    )
+    for mutate, error in (
+        (
+            lambda value: value["clientAcceptance"].update(correlationSha256="a" * 64),
+            "correlation",
+        ),
+        (
+            lambda value: value.update(
+                startedAtEpoch=2_000_000_001,
+                finishedAtEpoch=2_000_000_000,
+                generatedAtEpoch=2_000_000_000,
+            ),
+            "timestamps",
+        ),
+        (
+            lambda value: value["clientAcceptance"].update(
+                startedAtEpoch=2_000_000_001,
+                finishedAtEpoch=2_000_000_000,
+            ),
+            "timestamps",
+        ),
+    ):
+        manifest = copy.deepcopy(baseline)
+        mutate(manifest)
+        assert list(validator.iter_errors(manifest)) == []
+        with pytest.raises(ValueError, match=error):
+            lane.validate_manifest(
+                manifest, expected_source_sha="1" * 40, now=2_000_000_100
+            )
+
+
+def test_signed_nonce_handoff_supports_initial_then_recurring_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "runner").mkdir(mode=0o700)
+    config_path, source_archive = write_private_runner_config(
+        tmp_path / "runner", include_client_identity=False
+    )
+    real_euid = os.geteuid()
+    real_load_config = lane.load_config
+
+    def load_user_owned_config(*args):
+        root_geteuid = lane.os.geteuid
+        lane.os.geteuid = lambda: real_euid
+        try:
+            return real_load_config(*args)
+        finally:
+            lane.os.geteuid = root_geteuid
+
+    manifests = []
+    current = int(time.time())
+    for index, (started, finished) in enumerate(
+        ((current - 100, current - 80), (current - 40, current - 20)),
+        start=1,
+    ):
+        invocation_id = f"local-{index}"
+        request = tmp_path / str(index) / "request.json"
+        request.parent.mkdir(parents=True, exist_ok=True)
+        request.parent.chmod(0o700)
+        nonce = lane.create_client_acceptance_request(
+            request, invocation_id, now=started - 10, valid_seconds=300
+        )
+        acceptance = live_client_acceptance(
+            reportSha256=str(index) * 64,
+            startedAtEpoch=started,
+            finishedAtEpoch=finished,
+        )
+        descriptor, public_key = signed_client_handoff(
+            tmp_path / str(index),
+            acceptance,
+            nonce=nonce,
+            invocation_id=invocation_id,
+        )
+        output = descriptor.parent / "consumed.json"
+        assert (
+            lane.main(
+                [
+                    "consume-client-acceptance",
+                    "--descriptor",
+                    str(descriptor),
+                    "--public-key",
+                    str(public_key),
+                    "--request",
+                    str(request),
+                    "--invocation-id",
+                    invocation_id,
+                    "--invocation-attempt",
+                    "1",
+                    "--output",
+                    str(output),
+                ]
+            )
+            == 0
+        )
+        assert not descriptor.exists()
+        assert not request.exists()
+        assert stat.S_IMODE(output.stat().st_mode) == 0o600
+        manifest_path = descriptor.parent / "manifest.json"
+        with monkeypatch.context() as root_context:
+            root_context.setattr(lane.os, "geteuid", lambda: 0)
+            root_context.setattr(lane.time, "time", lambda value=finished + 10: value)
+            root_context.setattr(lane, "load_config", load_user_owned_config)
+            root_context.setattr(lane.shutil, "which", lambda _command: "/usr/bin/tool")
+            root_context.setattr(
+                lane,
+                "validate_runtime_engine_identity",
+                lambda _path: {
+                    "amneziawgGoCommit": "c" * 40,
+                    "amneziawgGoBinarySha256": "d" * 64,
+                },
+            )
+            root_context.setattr(lane, "SystemExecutor", lambda _config: FakeExecutor())
+            assert (
+                lane.main(
+                    [
+                        "run",
+                        "--config",
+                        str(config_path),
+                        "--output",
+                        str(manifest_path),
+                        "--source-sha",
+                        "1" * 40,
+                        "--source-archive",
+                        str(source_archive),
+                        "--executor",
+                        "local_systemd",
+                        "--entrypoint-path",
+                        lane.LOCAL_ENTRYPOINT_PATH,
+                        "--invocation-id",
+                        invocation_id,
+                        "--invocation-attempt",
+                        "1",
+                        "--client-acceptance-descriptor",
+                        str(output),
+                    ]
+                )
+                == 0
+            )
+        manifests.append(json.loads(manifest_path.read_text()))
+
+    lane.validate_recurring_pair(manifests[0], manifests[1], now=current)
+
+
+def test_client_acceptance_requests_are_unique_private_and_bounded(
+    tmp_path: Path,
+) -> None:
+    first_path = tmp_path / "first.json"
+    second_path = tmp_path / "second.json"
+    first = lane.create_client_acceptance_request(
+        first_path, "local-first", now=2_000_000_000, valid_seconds=300
+    )
+    second = lane.create_client_acceptance_request(
+        second_path, "local-second", now=2_000_000_001, valid_seconds=1
+    )
+
+    assert first != second
+    assert first != "0" * 64 and second != "0" * 64
+    assert stat.S_IMODE(first_path.stat().st_mode) == 0o600
+    assert json.loads(first_path.read_text()) == {
+        "format": "ripdpi_awg_live_acceptance_request_v1",
+        "invocationId": "local-first",
+        "invocationAttempt": 1,
+        "nonce": first,
+        "generatedAtEpoch": 2_000_000_000,
+        "expiresAtEpoch": 2_000_000_300,
+    }
+    with pytest.raises(ValueError, match="lifetime"):
+        lane.create_client_acceptance_request(
+            tmp_path / "invalid.json", "local-invalid", valid_seconds=301
+        )
+    unsafe_parent = tmp_path / "unsafe"
+    unsafe_parent.mkdir(mode=0o755)
+    unsafe_parent.chmod(0o755)
+    with pytest.raises(ValueError, match="output directory is unsafe"):
+        lane.create_client_acceptance_request(
+            unsafe_parent / "request.json", "local-unsafe"
+        )
+
+
+def test_signed_handoff_rejects_replay_mutation_and_wrong_nonce(tmp_path: Path) -> None:
+    request = tmp_path / "request.json"
+    nonce = lane.create_client_acceptance_request(
+        request, "local-a", now=1_999_999_900, valid_seconds=300
+    )
+    descriptor, public_key = signed_client_handoff(
+        tmp_path,
+        live_client_acceptance(),
+        nonce=nonce,
+        invocation_id="local-a",
+        invocation_attempt=2,
+    )
+    envelope = json.loads(descriptor.read_text())
+    for mutate in (
+        lambda value: value.update(nonce="b" * 64),
+        lambda value: value.update(invocationId="local-b"),
+        lambda value: value.update(invocationAttempt=1),
+        lambda value: value["acceptance"].update(reportSha256="1" * 64),
+    ):
+        candidate = copy.deepcopy(envelope)
+        mutate(candidate)
+        descriptor.write_bytes(lane.canonical_json_bytes(candidate))
+        with pytest.raises(ValueError):
+            lane.consume_client_acceptance_handoff(
+                descriptor,
+                public_key,
+                request=request,
+                expected_invocation_id="local-a",
+                expected_invocation_attempt=2,
+                output=tmp_path / "consumed.json",
+                now=2_000_000_000,
+            )
+        assert descriptor.exists()
+        assert request.exists()
+        assert not (tmp_path / "consumed.json").exists()
+
+
+def test_signed_handoff_rejects_non_ed25519_public_key(tmp_path: Path) -> None:
+    request = tmp_path / "request.json"
+    nonce = lane.create_client_acceptance_request(
+        request, "local-a", invocation_attempt=1, now=1_999_999_900
+    )
+    descriptor, _ed25519_key = signed_client_handoff(
+        tmp_path / "handoff",
+        live_client_acceptance(),
+        nonce=nonce,
+        invocation_id="local-a",
+    )
+    rsa_private = tmp_path / "rsa-private.pem"
+    rsa_public = tmp_path / "rsa-public.pem"
+    subprocess.run(
+        ["openssl", "genpkey", "-algorithm", "RSA", "-out", rsa_private],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["openssl", "pkey", "-in", rsa_private, "-pubout", "-out", rsa_public],
+        check=True,
+        capture_output=True,
+    )
+    rsa_public.chmod(0o600)
+
+    with pytest.raises(ValueError, match="Ed25519"):
+        lane.consume_client_acceptance_handoff(
+            descriptor,
+            rsa_public,
+            request=request,
+            expected_invocation_id="local-a",
+            expected_invocation_attempt=1,
+            output=tmp_path / "consumed.json",
+            now=2_000_000_000,
+        )
+
+
+def test_github_rerun_uses_distinct_signed_invocation_attempts(tmp_path: Path) -> None:
+    current = 2_000_000_000
+    manifests = []
+    for attempt in (1, 2):
+        root = tmp_path / str(attempt)
+        root.mkdir(mode=0o700)
+        request = root / "request.json"
+        nonce = lane.create_client_acceptance_request(
+            request, "github-42", invocation_attempt=attempt, now=current - 20
+        )
+        descriptor, public_key = signed_client_handoff(
+            root,
+            live_client_acceptance(
+                reportSha256=str(attempt) * 64,
+                startedAtEpoch=current - 30 + attempt * 15,
+                finishedAtEpoch=current - 25 + attempt * 15,
+            ),
+            nonce=nonce,
+            invocation_id="github-42",
+            invocation_attempt=attempt,
+        )
+        output = root / "consumed.json"
+        lane.consume_client_acceptance_handoff(
+            descriptor,
+            public_key,
+            request=request,
+            expected_invocation_id="github-42",
+            expected_invocation_attempt=attempt,
+            output=output,
+            now=current,
+        )
+        manifest = lane.run_lane(
+            config(),
+            FakeExecutor(),
+            {**metadata(), "invocationId": "github-42", "invocationAttempt": attempt},
+            now=lambda value=current + attempt: value,
+        )
+        manifest["clientAcceptance"] = json.loads(output.read_text())
+        manifests.append(manifest)
+    lane.validate_recurring_pair(manifests[0], manifests[1], now=current + 10)
+
+
+def recurring_manifest(index: int, *, source: str = "1" * 40) -> dict:
+    started = 2_000_000_000 + index * 100
+    manifest = lane.run_lane(
+        config(),
+        FakeExecutor(),
+        {
+            **metadata(),
+            "sourceSha": source,
+            "invocationId": f"recurring-{index}",
+            "invocationAttempt": index,
+        },
+        now=lambda: started,
+    )
+    acceptance = live_client_acceptance(
+        reportSha256=f"{index % 10}" * 64,
+        startedAtEpoch=started - 20,
+        finishedAtEpoch=started - 10,
+    )
+    manifest["clientAcceptance"] = acceptance
+    return manifest
+
+
+def test_recurring_state_requires_valid_initial_then_valid_pair(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    lock = tmp_path / "lane.lock"
+    first = recurring_manifest(1)
+    second = recurring_manifest(2)
+
+    assert (
+        lane.record_recurring_state(first, state, lock_path=lock, now=2_000_000_300)
+        == "pending"
+    )
+    assert json.loads((state / "pending-initial.json").read_text()) == first
+    assert not (state / "latest.json").exists()
+    assert (
+        lane.record_recurring_state(second, state, lock_path=lock, now=2_000_000_300)
+        == "published"
+    )
+    assert json.loads((state / "latest.json").read_text()) == second
+    assert not (state / "pending-initial.json").exists()
+    assert stat.S_IMODE((state / "latest.json").stat().st_mode) == 0o600
+
+
+def test_recurring_state_accepts_weekly_timer_jitter(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    lock = tmp_path / "lane.lock"
+    first = recurring_manifest(1)
+    later = recurring_manifest(2)
+    later_epoch = first["generatedAtEpoch"] + 7 * 24 * 60 * 60 + 30 * 60
+    later.update(
+        startedAtEpoch=later_epoch,
+        finishedAtEpoch=later_epoch,
+        generatedAtEpoch=later_epoch,
+    )
+    later["clientAcceptance"].update(
+        startedAtEpoch=later_epoch - 20,
+        finishedAtEpoch=later_epoch - 10,
+    )
+    later["clientAcceptance"]["correlationSha256"] = lane.client_acceptance_correlation(
+        later["clientAcceptance"]
+    )
+
+    assert (
+        lane.record_recurring_state(
+            first, state, lock_path=lock, now=first["generatedAtEpoch"]
+        )
+        == "pending"
+    )
+    assert (
+        lane.record_recurring_state(later, state, lock_path=lock, now=later_epoch)
+        == "published"
+    )
+
+
+@pytest.mark.parametrize("retained_name", ["pending-initial.json", "latest.json"])
+@pytest.mark.parametrize("prior_age", [300, 16 * 24 * 60 * 60])
+def test_recurring_state_archives_prior_source_generation(
+    tmp_path: Path, retained_name: str, prior_age: int
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    prior = recurring_manifest(1, source="1" * 40)
+    prior_epoch = 2_000_000_300 - prior_age
+    prior.update(
+        startedAtEpoch=prior_epoch - 100,
+        finishedAtEpoch=prior_epoch,
+        generatedAtEpoch=prior_epoch,
+    )
+    prior["clientAcceptance"].update(
+        startedAtEpoch=prior_epoch - 120,
+        finishedAtEpoch=prior_epoch - 110,
+    )
+    prior["clientAcceptance"]["correlationSha256"] = lane.client_acceptance_correlation(
+        prior["clientAcceptance"]
+    )
+    retained = state / retained_name
+    retained.write_bytes(lane.canonical_json_bytes(prior))
+    retained.chmod(0o600)
+    current = recurring_manifest(2, source="2" * 40)
+
+    assert (
+        lane.record_recurring_state(
+            current,
+            state,
+            lock_path=tmp_path / "lane.lock",
+            now=2_000_000_300,
+        )
+        == "pending"
+    )
+
+    assert json.loads((state / "pending-initial.json").read_text()) == current
+    assert not (state / "latest.json").exists()
+    archived = list((state / "history").glob(f"{retained.stem}-*.json"))
+    assert len(archived) == 1
+    assert archived[0].read_bytes() == lane.canonical_json_bytes(prior)
+    assert stat.S_IMODE(archived[0].stat().st_mode) == 0o600
+
+
+def test_invalid_initial_cannot_poison_pending_or_latest(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manifest = recurring_manifest(1)
+    manifest["clientAcceptance"]["correlationSha256"] = "a" * 64
+
+    with pytest.raises(ValueError, match="correlation"):
+        lane.record_recurring_state(
+            manifest, state, lock_path=tmp_path / "lane.lock", now=2_000_000_300
+        )
+
+    assert list(state.iterdir()) == []
+
+
+def test_invalid_recurring_attempt_preserves_exact_pending_bytes(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    lock = tmp_path / "lane.lock"
+    first = recurring_manifest(1)
+    lane.record_recurring_state(first, state, lock_path=lock, now=2_000_000_300)
+    before = (state / "pending-initial.json").read_bytes()
+    invalid = recurring_manifest(2)
+    invalid["clientAcceptance"]["correlationSha256"] = "a" * 64
+
+    with pytest.raises(ValueError, match="correlation"):
+        lane.record_recurring_state(invalid, state, lock_path=lock, now=2_000_000_300)
+
+    assert (state / "pending-initial.json").read_bytes() == before
+    assert not (state / "latest.json").exists()
+
+
+def test_recurring_state_replays_durable_latest_before_pending_cleanup(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    first = recurring_manifest(1)
+    second = recurring_manifest(2)
+    lane.record_recurring_state(
+        first, state, lock_path=tmp_path / "lane.lock", now=2_000_000_300
+    )
+
+    with pytest.raises(lane.RecurringStateInterrupted):
+        lane.record_recurring_state(
+            second,
+            state,
+            lock_path=tmp_path / "lane.lock",
+            now=2_000_000_300,
+            failpoint="after-latest-replace",
+        )
+
+    assert (state / "pending-initial.json").exists()
+    assert json.loads((state / "latest.json").read_text()) == second
+    assert (
+        lane.record_recurring_state(
+            second, state, lock_path=tmp_path / "lane.lock", now=2_000_000_300
+        )
+        == "published"
+    )
+    assert not (state / "pending-initial.json").exists()
+
+
+def test_recurring_state_recovers_fsynced_initial_and_truncated_temporary(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    first = recurring_manifest(1)
+    lock = tmp_path / "lane.lock"
+    with pytest.raises(lane.RecurringStateInterrupted):
+        lane.record_recurring_state(
+            first,
+            state,
+            lock_path=lock,
+            now=2_000_000_300,
+            failpoint="after-pending-initial-temp-fsync",
+        )
+    assert not (state / "pending-initial.json").exists()
+    assert (state / ".pending-initial.json.tmp").exists()
+    assert (
+        lane.record_recurring_state(first, state, lock_path=lock, now=2_000_000_300)
+        == "pending"
+    )
+
+    (state / ".latest.json.tmp").write_text("{")
+    (state / ".latest.json.tmp").chmod(0o600)
+    second = recurring_manifest(2)
+    assert (
+        lane.record_recurring_state(second, state, lock_path=lock, now=2_000_000_300)
+        == "published"
+    )
+    assert not (state / ".latest.json.tmp").exists()
+
+
+def test_recurring_state_replays_pending_replace_idempotently(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    first = recurring_manifest(1)
+    lock = tmp_path / "lane.lock"
+    with pytest.raises(lane.RecurringStateInterrupted):
+        lane.record_recurring_state(
+            first,
+            state,
+            lock_path=lock,
+            now=2_000_000_300,
+            failpoint="after-pending-initial-replace",
+        )
+    before = (state / "pending-initial.json").read_bytes()
+    assert (
+        lane.record_recurring_state(first, state, lock_path=lock, now=2_000_000_300)
+        == "pending"
+    )
+    assert (state / "pending-initial.json").read_bytes() == before
+
+
+def test_recurring_state_refuses_foreign_recovery_and_invalid_latest(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    first = recurring_manifest(1)
+    lock = tmp_path / "lane.lock"
+    lane.record_recurring_state(first, state, lock_path=lock, now=2_000_000_300)
+    bad = state / ".latest.json.tmp"
+    bad.write_text("{}\n")
+    bad.chmod(0o644)
+    before = (state / "pending-initial.json").read_bytes()
+    with pytest.raises(ValueError, match="unsafe metadata"):
+        lane.record_recurring_state(
+            recurring_manifest(2), state, lock_path=lock, now=2_000_000_300
+        )
+    assert (state / "pending-initial.json").read_bytes() == before
+    assert bad.exists()
+
+    bad.unlink()
+    invalid = json.loads(before)
+    invalid["clientAcceptance"]["correlationSha256"] = "a" * 64
+    (state / "pending-initial.json").write_bytes(lane.canonical_json_bytes(invalid))
+    with pytest.raises(ValueError, match="correlation"):
+        lane.record_recurring_state(
+            recurring_manifest(2), state, lock_path=lock, now=2_000_000_300
+        )
+
+
+def test_recurring_state_lock_blocks_parallel_controller(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    lock = tmp_path / "lane.lock"
+    descriptor = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
+    os.fchmod(descriptor, 0o600)
+    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        with pytest.raises(lane.RecurringStateBusy):
+            lane.record_recurring_state(
+                recurring_manifest(1), state, lock_path=lock, now=2_000_000_300
+            )
+    finally:
+        os.close(descriptor)
+    assert list(state.iterdir()) == []
+
+
+def test_retained_v4_manifest_uses_executable_semantic_validator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(lane.time, "time", lambda: 2_000_000_300)
+    manifest = recurring_manifest(1)
+    path = tmp_path / "latest.json"
+    path.write_bytes(lane.canonical_json_bytes(manifest))
+    path.chmod(0o600)
+    assert lane.main(["validate-retained-pass", "--manifest", str(path)]) == 0
+
+    manifest["clientAcceptance"]["correlationSha256"] = "a" * 64
+    path.write_bytes(lane.canonical_json_bytes(manifest))
+    assert lane.main(["validate-retained-pass", "--manifest", str(path)]) == 1
+
+
+def test_installer_prepares_both_retained_generation_slots(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    lock = tmp_path / "lane.lock"
+    for index, name in enumerate(("pending-initial.json", "latest.json"), start=1):
+        retained = recurring_manifest(index, source="1" * 40)
+        path = state / name
+        path.write_bytes(lane.canonical_json_bytes(retained))
+        path.chmod(0o600)
+
+    lane.prepare_retained_state(
+        state,
+        current_source_sha="2" * 40,
+        lock_path=lock,
+        now=2_000_000_300,
+    )
+
+    assert not (state / "pending-initial.json").exists()
+    assert not (state / "latest.json").exists()
+    assert len(list((state / "history").glob("*.json"))) == 2
+
+
+def test_installer_refuses_stale_current_generation_state(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    retained = recurring_manifest(1)
+    path = state / "latest.json"
+    path.write_bytes(lane.canonical_json_bytes(retained))
+    path.chmod(0o600)
+
+    with pytest.raises(ValueError, match="stale"):
+        lane.prepare_retained_state(
+            state,
+            current_source_sha="1" * 40,
+            lock_path=tmp_path / "lane.lock",
+            now=retained["generatedAtEpoch"] + lane.RECURRING_PAIR_MAX_AGE_SECONDS + 1,
+        )
+
+    assert path.read_bytes() == lane.canonical_json_bytes(retained)
+
+
+def test_signed_handoff_rejects_expired_request(tmp_path: Path) -> None:
+    request = tmp_path / "request.json"
+    nonce = lane.create_client_acceptance_request(
+        request, "local-expired", now=1_999_999_000, valid_seconds=300
+    )
+    descriptor, public_key = signed_client_handoff(
+        tmp_path,
+        live_client_acceptance(),
+        nonce=nonce,
+        invocation_id="local-expired",
+    )
+
+    with pytest.raises(ValueError, match="request expired"):
+        lane.consume_client_acceptance_handoff(
+            descriptor,
+            public_key,
+            request=request,
+            expected_invocation_id="local-expired",
+            output=tmp_path / "consumed.json",
+            now=2_000_000_000,
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation,error",
+    [
+        (lambda value: value.update(format="ripdpi_awg_client_identity_v1"), "format"),
+        (lambda value: value.update(ripdpiSourceSha="a" * 39), "source"),
+        (lambda value: value.update(apkSha256="a" * 63), "APK"),
+        (lambda value: value.update(reportSha256="a" * 63), "report"),
+        (lambda value: value.update(correlationSha256="a" * 64), "correlation"),
+        (lambda value: value.update(startedAtEpoch=2_000_000_001), "timestamps"),
+        (lambda value: value.update(finishedAtEpoch=2_000_000_061), "future"),
+        (
+            lambda value: value.update(
+                startedAtEpoch=1_999_989_900, finishedAtEpoch=1_999_990_000
+            ),
+            "stale",
+        ),
+        (lambda value: value.update(transport="wireguard"), "transport"),
+        (lambda value: value.update({"pass": False}), "PASS"),
+        (
+            lambda value: value["outcomes"].update(routedTcp=False),
+            "outcomes",
+        ),
+        (
+            lambda value: value["outcomes"].update(routedUdp=False),
+            "outcomes",
+        ),
+        (
+            lambda value: value["outcomes"].update(recovery=False),
+            "outcomes",
+        ),
+        (
+            lambda value: value["outcomes"].update(staleKeyRejected=False),
+            "outcomes",
+        ),
+        (
+            lambda value: value["outcomes"].update(cleanup=False),
+            "outcomes",
+        ),
+    ],
+)
+def test_client_acceptance_negative_matrix(mutation, error: str) -> None:
+    value = live_client_acceptance()
+    mutation(value)
+    with pytest.raises(ValueError, match=error):
+        lane.validate_client_acceptance(value, now=2_000_000_000, max_age_seconds=300)
+
+
+def test_client_acceptance_rejects_zero_report_with_recomputed_correlation() -> None:
+    value = live_client_acceptance(reportSha256="0" * 64)
+    with pytest.raises(ValueError, match="real source, APK, and report"):
+        lane.validate_client_acceptance(value, now=2_000_000_000)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "ripdpiSourceSha",
+        "apkSha256",
+        "reportSha256",
+        "correlationSha256",
+    ],
+)
+def test_client_acceptance_rejects_missing_digest(field: str) -> None:
+    value = live_client_acceptance()
+    del value[field]
+
+    with pytest.raises(ValueError, match="fields differ"):
+        lane.validate_client_acceptance(value, now=2_000_000_000)
+
+
+def test_client_acceptance_descriptor_is_canonical_private_and_inode_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    descriptor = tmp_path / "real-vps-awg-client-acceptance.json"
+    value = live_client_acceptance()
+    descriptor.write_bytes(lane.canonical_json_bytes(value))
+    descriptor.chmod(0o600)
+    assert lane.client_acceptance_descriptor(descriptor, now=2_000_000_000) == value
+
+    descriptor.chmod(0o644)
+    with pytest.raises(ValueError, match="unsafe|unavailable"):
+        lane.client_acceptance_descriptor(descriptor, now=2_000_000_000)
+    descriptor.chmod(0o600)
+    descriptor.write_bytes(b"{" + b"x" * 4096 + b"}")
+    with pytest.raises(ValueError, match="unavailable"):
+        lane.client_acceptance_descriptor(descriptor, now=2_000_000_000)
+
+    descriptor.write_bytes(lane.canonical_json_bytes(value))
+    replacement = tmp_path / "replacement.json"
+    replacement.write_bytes(lane.canonical_json_bytes(value))
+    replacement.chmod(0o600)
+    real_open = os.open
+
+    def replacing_open(path, flags, mode=0o600):
+        if Path(path) == descriptor:
+            os.replace(replacement, descriptor)
+        return real_open(path, flags, mode)
+
+    monkeypatch.setattr(os, "open", replacing_open)
+    with pytest.raises(ValueError, match="unavailable"):
+        lane.client_acceptance_descriptor(descriptor, now=2_000_000_000)
+
+
+def test_client_acceptance_descriptor_rejects_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "target.json"
+    target.write_bytes(lane.canonical_json_bytes(live_client_acceptance()))
+    target.chmod(0o600)
+    descriptor = tmp_path / "descriptor.json"
+    descriptor.symlink_to(target)
+    with pytest.raises(ValueError, match="absolute regular file"):
+        lane.client_acceptance_descriptor(descriptor, now=2_000_000_000)
+
+
+def test_client_acceptance_descriptor_rejects_unapproved_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    descriptor = tmp_path / "descriptor.json"
+    descriptor.write_bytes(lane.canonical_json_bytes(live_client_acceptance()))
+    descriptor.chmod(0o600)
+    real_stat = Path.stat
+
+    def unowned_descriptor_stat(path: Path, *args, **kwargs):
+        observed = real_stat(path, *args, **kwargs)
+        if path == descriptor:
+            fields = list(observed)
+            fields[4] = os.getuid() + 1
+            return os.stat_result(fields)
+        return observed
+
+    monkeypatch.setattr(Path, "stat", unowned_descriptor_stat)
+
+    with pytest.raises(ValueError, match="private path has unsafe owner"):
+        lane.client_acceptance_descriptor(descriptor, now=2_000_000_000)
+
+
+def test_manifest_rejects_report_or_correlation_mutation_and_engine_substitution() -> (
+    None
+):
+    cfg = config()
+    cfg.update(
+        {
+            "engineIdentity": {
+                "amneziawgGoCommit": "a" * 40,
+                "amneziawgGoBinarySha256": "b" * 64,
+            },
+            "clientAcceptance": live_client_acceptance(),
+        }
+    )
+    manifest = lane.run_lane(cfg, FakeExecutor(), metadata(), now=lambda: 2_000_000_000)
+    for mutate in (
+        lambda copy_: copy_["clientAcceptance"].update(reportSha256="0" * 64),
+        lambda copy_: copy_["clientAcceptance"].update(correlationSha256="0" * 64),
+        lambda copy_: copy_.update(clientAcceptance=copy_["engineIdentity"]),
+    ):
+        candidate = copy.deepcopy(manifest)
+        mutate(candidate)
+        with pytest.raises(ValueError):
+            lane.validate_manifest(
+                candidate, expected_source_sha="1" * 40, now=2_000_000_000
+            )
+
+
+def test_manifest_rejects_client_acceptance_outside_lane_window() -> None:
+    cfg = config()
+    cfg["clientAcceptance"] = live_client_acceptance(
+        startedAtEpoch=1_999_998_000,
+        finishedAtEpoch=1_999_998_100,
+    )
+    manifest = lane.run_lane(cfg, FakeExecutor(), metadata(), now=lambda: 2_000_000_000)
+
+    with pytest.raises(ValueError, match="outside the run window"):
+        lane.validate_manifest(
+            manifest,
+            expected_source_sha="1" * 40,
+            now=2_000_000_000,
+            max_age_seconds=10_000,
+        )
+
+
+def test_recurring_acceptance_requires_distinct_ordered_reports() -> None:
+    cfg = config()
+    cfg.update(
+        {
+            "engineIdentity": {
+                "amneziawgGoCommit": "a" * 40,
+                "amneziawgGoBinarySha256": "b" * 64,
+            },
+            "clientAcceptance": live_client_acceptance(),
+        }
+    )
+    first = lane.run_lane(cfg, FakeExecutor(), metadata(), now=lambda: 2_000_000_000)
+    later_acceptance = live_client_acceptance(
+        reportSha256="1" * 64,
+        startedAtEpoch=2_000_000_040,
+        finishedAtEpoch=2_000_000_080,
+    )
+    later_cfg = {**cfg, "clientAcceptance": later_acceptance}
+    later_metadata = {**metadata(), "invocationId": "43"}
+    later = lane.run_lane(
+        later_cfg, FakeExecutor(), later_metadata, now=lambda: 2_000_000_100
+    )
+    lane.validate_recurring_pair(first, later, now=2_000_000_100)
+
+    replay = copy.deepcopy(later)
+    replay["clientAcceptance"]["reportSha256"] = first["clientAcceptance"][
+        "reportSha256"
+    ]
+    replay["clientAcceptance"]["correlationSha256"] = (
+        lane.client_acceptance_correlation(replay["clientAcceptance"])
+    )
+    with pytest.raises(ValueError, match="distinct"):
+        lane.validate_recurring_pair(first, replay, now=2_000_000_100)
+
+    replay = copy.deepcopy(later)
+    replay["clientAcceptance"]["correlationSha256"] = first["clientAcceptance"][
+        "correlationSha256"
+    ]
+    with pytest.raises(ValueError, match="correlation"):
+        lane.validate_recurring_pair(first, replay, now=2_000_000_100)
+
+    for mutate, error in (
+        (lambda copy_: copy_.update(sourceSha="3" * 40), "deploy source"),
+        (
+            lambda copy_: copy_["engineIdentity"].update(amneziawgGoCommit="4" * 40),
+            "engine identity",
+        ),
+        (
+            lambda copy_: copy_["clientAcceptance"].update(ripdpiSourceSha="5" * 40),
+            "client ripdpiSourceSha",
+        ),
+        (
+            lambda copy_: copy_["clientAcceptance"].update(apkSha256="6" * 64),
+            "client apkSha256",
+        ),
+    ):
+        mismatched = copy.deepcopy(later)
+        mutate(mismatched)
+        mismatched["clientAcceptance"]["correlationSha256"] = (
+            lane.client_acceptance_correlation(mismatched["clientAcceptance"])
+        )
+        with pytest.raises(ValueError, match=error):
+            lane.validate_recurring_pair(first, mismatched, now=2_000_000_100)
+
+
+def test_recurring_pair_orders_embedded_client_acceptance_windows() -> None:
+    first = recurring_manifest(1)
+    later = recurring_manifest(2)
+    later["clientAcceptance"].update(
+        startedAtEpoch=1_999_999_900,
+        finishedAtEpoch=1_999_999_920,
+    )
+    later["clientAcceptance"]["correlationSha256"] = lane.client_acceptance_correlation(
+        later["clientAcceptance"]
+    )
+
+    with pytest.raises(ValueError, match="client acceptance is not ordered"):
+        lane.validate_recurring_pair(first, later, now=2_000_000_300)
 
 
 def test_private_path_executes_resolved_target_not_mutable_parent_symlink(
@@ -1070,7 +2230,7 @@ def test_private_config_accepts_same_server_peer_and_hashes_owned_producers(
 ) -> None:
     config_path, _source_archive = write_private_runner_config(tmp_path)
 
-    loaded = lane.load_config(config_path)
+    loaded = lane.load_config(config_path, config_path.parent / CLIENT_ACCEPTANCE_NAME)
 
     assert loaded["runnerIdSha256"] != "a" * 64
     assert loaded["serverControlHookSha256"] == lane.sha256_bytes(b"private\n")

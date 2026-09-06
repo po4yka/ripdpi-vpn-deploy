@@ -31,16 +31,23 @@ artifact_evidence: null
 
 ## Offline deploy-side safeguards
 
-The combined source candidate requires a root-private, no-follow client
-identity descriptor beside the local runner configuration. The descriptor binds
-a 40-hex RIPDPI source SHA and immutable artifact SHA-256 into every runner
-manifest, and validators can bind both expected values. Invalid or absent
-descriptors fail as non-PASS. Local launcher preflight refusals for missing
-tools, lock contention, invalid configuration or runner, unsafe source, and
-source mismatches create redacted `INFRA_UNAVAILABLE` evidence without replacing
-`latest.json`.
+The deploy-side v4 candidate provisions only a root-private Ed25519 verification
+key. Each invocation creates an atomic five-minute nonce request and consumes
+one canonical, single-link, mode-`0600` signed handoff bound to that nonce and
+invocation. Its embedded acceptance binds exact
+RIPDPI source, APK, report and correlation digests, a bounded time window,
+AmneziaWG transport and all required outcomes. Engine commit/binary identity is
+derived separately from the immutable `amneziawg-go` toolchain. Invalid,
+mutated, stale, replayed or incomplete descriptors fail as non-PASS. Local
+launcher preflight and runtime unavailable outcomes do not replace
+`latest.json`; recurring publication also requires a later, distinct
+invocation/report/correlation.
+
+The client signer/relay is not implemented by this deploy-side candidate.
+Therefore this is not live client evidence and neither the initial nor recurring
+acceptance execution step is closed.
 
 Focused local contract evidence passed in
 `tests/unit/test_real_vps_awg_nat_lane.py`. This is offline source evidence only;
-it does not provide a client descriptor, artifact, VPS, provider credentials,
+it does not provide the client signer/relay, artifact, VPS, provider credentials,
 real traffic, or an observed recurring run.

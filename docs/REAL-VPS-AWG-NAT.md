@@ -183,15 +183,43 @@ place. `amneziawg-go`, `awg`, and
 while holding the recurring lane's lock, so a timer cannot observe a mixed
 toolchain.
 
-The non-secret placement vars must also bind the exact client under test with
-`real_vps_awg_nat_client_source_sha` (40 lowercase hex) and
-`real_vps_awg_nat_client_artifact_sha256` (64 lowercase hex). Sentinel
-provisioning validates both, rejects all-zero placeholders, and installs the
-root-owned mode-`0600` descriptor consumed by every scheduled run. The source
-value must equal the pinned `amneziawg-go` commit, and the artifact value must
-equal the installed immutable toolchain manifest. Each invocation resolves and
-hashes the executable it will launch, validates those bindings, and supplies
-both values to structural and PASS-manifest validation.
+The non-secret placement vars must name
+`real_vps_awg_nat_client_acceptance_public_key`, an operator-provided Ed25519
+public key. Sentinel provisioning copies it root-owned mode `0600`; it never
+synthesizes client acceptance from the standalone engine build. Each invocation
+atomically publishes a root-private
+`ripdpi_awg_live_acceptance_request_v1` containing a fresh 256-bit nonce,
+invocation ID, and five-minute expiry. A separately owned client signer/relay
+must answer atomically with one canonical
+`ripdpi_awg_live_acceptance_handoff_v1`, binding that nonce and invocation ID to
+a signed `ripdpi_awg_live_acceptance_v1`. The runner verifies Ed25519 through
+OpenSSL, consumes the handoff exactly once, and only then runs the lane. Replay,
+mutation, the wrong nonce or invocation, unsafe metadata, and a missing or
+invalid signature fail closed.
+
+The acceptance binds the exact RIPDPI source commit, APK/report/correlation
+SHA-256 values, timestamps, `transport=amneziawg`, `pass=true`, and positive
+routed TCP, routed UDP, recovery, stale-key rejection, and cleanup outcomes.
+The correlation digest is SHA-256 of canonical JSON (sorted keys, compact ASCII,
+one trailing newline) over every acceptance field except
+`correlationSha256`. Zero source, APK, or report digests are invalid for PASS.
+
+Separately, each invocation resolves and hashes the `amneziawg-go` executable
+and validates its immutable toolchain manifest. Manifest v4 records that as
+`engineIdentity.amneziawgGoCommit` and
+`engineIdentity.amneziawgGoBinarySha256`; those values are not RIPDPI client
+evidence. A PASS requires a fresh descriptor within the lane window and the
+public schema at `contract/real-vps-awg-nat-evidence.schema.json`. A recurring
+PASS must follow the previous PASS and use distinct invocation, report, and
+correlation identities. The schema checks structure only; the canonical
+executable validator is mandatory because correlation and timestamp relations
+cannot be expressed as JSON Schema comparisons. The locked state machine first
+records a valid initial PASS as pending and publishes latest only after a valid
+pair; an unavailable attempt cannot poison pending or replace the prior PASS.
+The deploy repository implements verification and one-time consumption only;
+the client signer/relay is not implemented here. Until the client repository
+produces this signed receipt and a real initial plus recurring run is observed,
+this source cannot be presented as live client acceptance.
 
 ## Offline exact-source installation
 

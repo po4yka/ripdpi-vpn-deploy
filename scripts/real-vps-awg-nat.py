@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import contextlib
+import fcntl
 import hashlib
 import ipaddress
 import json
@@ -22,9 +25,11 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 CONFIG_VERSION = "real_vps_awg_nat_runner_v1"
-MANIFEST_VERSION = "real_vps_awg_nat_evidence_v3"
-CLIENT_IDENTITY_VERSION = "ripdpi_awg_client_identity_v1"
-CLIENT_IDENTITY_DESCRIPTOR_NAME = "real-vps-awg-client-identity.json"
+MANIFEST_VERSION = "real_vps_awg_nat_evidence_v4"
+CLIENT_ACCEPTANCE_FORMAT = "ripdpi_awg_live_acceptance_v1"
+CLIENT_ACCEPTANCE_HANDOFF_FORMAT = "ripdpi_awg_live_acceptance_handoff_v1"
+CLIENT_ACCEPTANCE_REQUEST_FORMAT = "ripdpi_awg_live_acceptance_request_v1"
+RECURRING_PAIR_MAX_AGE_SECONDS = 15 * 24 * 60 * 60
 WORKFLOW_PATH = ".github/workflows/real-vps-awg-nat.yml"
 LOCAL_ENTRYPOINT_PATH = "scripts/run-real-vps-awg-nat-local.sh"
 EXECUTOR_ENTRYPOINTS = {
@@ -103,7 +108,8 @@ CONFIG_FIELDS = {
 MANIFEST_FIELDS = {
     "version",
     "sourceSha",
-    "clientIdentity",
+    "engineIdentity",
+    "clientAcceptance",
     "startedAtEpoch",
     "finishedAtEpoch",
     "generatedAtEpoch",
@@ -126,7 +132,43 @@ PROVENANCE_FIELDS = {
     "invocationAttempt",
     "sourceArchiveSha256",
 }
-CLIENT_IDENTITY_FIELDS = {"version", "ripdpiSourceSha", "artifactSha256"}
+ENGINE_IDENTITY_FIELDS = {"amneziawgGoCommit", "amneziawgGoBinarySha256"}
+CLIENT_ACCEPTANCE_FIELDS = {
+    "format",
+    "ripdpiSourceSha",
+    "apkSha256",
+    "reportSha256",
+    "correlationSha256",
+    "startedAtEpoch",
+    "finishedAtEpoch",
+    "transport",
+    "pass",
+    "outcomes",
+}
+CLIENT_ACCEPTANCE_OUTCOME_FIELDS = {
+    "routedTcp",
+    "routedUdp",
+    "recovery",
+    "staleKeyRejected",
+    "cleanup",
+}
+CLIENT_ACCEPTANCE_HANDOFF_FIELDS = {
+    "format",
+    "invocationId",
+    "invocationAttempt",
+    "nonce",
+    "signatureAlgorithm",
+    "signatureBase64",
+    "acceptance",
+}
+CLIENT_ACCEPTANCE_REQUEST_FIELDS = {
+    "format",
+    "invocationId",
+    "invocationAttempt",
+    "nonce",
+    "generatedAtEpoch",
+    "expiresAtEpoch",
+}
 PRODUCER_FIELDS = {
     "runnerSha256",
     "serverControlHookSha256",
@@ -249,6 +291,14 @@ class MissingCredentials(RuntimeError):
     """Required AWG client credential material is absent or incomplete."""
 
 
+class RecurringStateBusy(RuntimeError):
+    """Another authorized executor owns the AWG evidence lane."""
+
+
+class RecurringStateInterrupted(RuntimeError):
+    """Test-only interruption after a durable recurring-state transition."""
+
+
 def canonical_json_bytes(value: Any) -> bytes:
     return (
         json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
@@ -286,9 +336,11 @@ def require_invocation_id(value: Any, context: str = "invocation id") -> str:
     return value
 
 
-def client_identity_descriptor(path_value: Any) -> dict[str, str]:
-    """Read the private, immutable identity of the actual RIPDPI client artifact."""
-    path = _secure_path(path_value, executable=False)
+def _private_json_descriptor(
+    path_value: Any, context: str, *, max_bytes: int = 4096
+) -> dict[str, Any]:
+    """Read a small private JSON descriptor through one inode-bound descriptor."""
+    path = _secure_path(str(path_value), executable=False)
     expected = path.stat()
     descriptor = -1
     try:
@@ -302,49 +354,376 @@ def client_identity_descriptor(path_value: Any) -> dict[str, str]:
             or observed.st_nlink != 1
             or observed.st_uid not in {0, os.geteuid()}
             or stat.S_IMODE(observed.st_mode) & 0o077
-            or not 0 < observed.st_size <= 4096
+            or not 0 < observed.st_size <= max_bytes
             or (observed.st_dev, observed.st_ino) != (expected.st_dev, expected.st_ino)
         ):
-            raise ValueError("client identity descriptor is unavailable")
+            raise ValueError(f"{context} descriptor is unavailable")
         chunks = []
         remaining = observed.st_size
         while remaining:
             chunk = os.read(descriptor, remaining)
             if not chunk:
-                raise ValueError("client identity descriptor is unavailable")
+                raise ValueError(f"{context} descriptor is unavailable")
             chunks.append(chunk)
             remaining -= len(chunk)
         raw = b"".join(chunks)
     except OSError as exc:
-        raise ValueError("client identity descriptor is unavailable") from exc
+        raise ValueError(f"{context} descriptor is unavailable") from exc
     finally:
         if descriptor >= 0:
             os.close(descriptor)
-    if not 0 < len(raw) <= 4096:
-        raise ValueError("client identity descriptor is invalid")
+    if not 0 < len(raw) <= max_bytes:
+        raise ValueError(f"{context} descriptor is invalid")
     try:
         value = json.loads(raw)
     except (ValueError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ValueError("client identity descriptor is invalid") from exc
+        raise ValueError(f"{context} descriptor is invalid") from exc
     if not isinstance(value, dict):
-        raise ValueError("client identity descriptor is invalid")
-    require_fields(value, CLIENT_IDENTITY_FIELDS, "client identity descriptor")
-    if value["version"] != CLIENT_IDENTITY_VERSION:
-        raise ValueError("unsupported client identity descriptor")
+        raise ValueError(f"{context} descriptor is invalid")
+    if raw != canonical_json_bytes(value):
+        raise ValueError(f"{context} descriptor is not canonical JSON")
+    return value
+
+
+def client_acceptance_correlation(value: dict[str, Any]) -> str:
+    payload = {key: item for key, item in value.items() if key != "correlationSha256"}
+    return sha256_bytes(canonical_json_bytes(payload))
+
+
+def validate_client_acceptance(
+    value: Any,
+    *,
+    now: int | None = None,
+    max_age_seconds: int = 604800,
+    require_pass: bool = True,
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError("client acceptance must be an object")
+    require_fields(value, CLIENT_ACCEPTANCE_FIELDS, "client acceptance")
+    if value["format"] != CLIENT_ACCEPTANCE_FORMAT:
+        raise ValueError("client acceptance format is invalid")
     source_sha = require_sha(value["ripdpiSourceSha"], SHA1_RE, "client source SHA")
-    artifact_sha256 = require_sha(
-        value["artifactSha256"], SHA256_RE, "client artifact SHA"
+    apk_sha = require_sha(value["apkSha256"], SHA256_RE, "client APK SHA")
+    report_sha = require_sha(value["reportSha256"], SHA256_RE, "client report SHA")
+    require_sha(value["correlationSha256"], SHA256_RE, "client correlation SHA")
+    if require_pass and (
+        source_sha == "0" * 40 or apk_sha == "0" * 64 or report_sha == "0" * 64
+    ):
+        raise ValueError("client acceptance must bind a real source, APK, and report")
+    if value["transport"] != "amneziawg":
+        raise ValueError("client acceptance transport is invalid")
+    started = require_int(value["startedAtEpoch"], "client acceptance timestamps", 1)
+    finished = require_int(value["finishedAtEpoch"], "client acceptance timestamps", 1)
+    if finished < started or finished - started > 3600:
+        raise ValueError("client acceptance timestamps are inconsistent")
+    current = int(time.time()) if now is None else now
+    if require_pass and finished > current + 60:
+        raise ValueError("client acceptance is from the future")
+    if require_pass and current - finished > max_age_seconds:
+        raise ValueError("client acceptance is stale")
+    outcomes = value["outcomes"]
+    if not isinstance(outcomes, dict):
+        raise ValueError("client acceptance outcomes must be an object")
+    require_fields(
+        outcomes, CLIENT_ACCEPTANCE_OUTCOME_FIELDS, "client acceptance outcomes"
     )
-    if source_sha == "0" * 40 or artifact_sha256 == "0" * 64:
-        raise ValueError("client identity descriptor must bind a real artifact")
-    return {"ripdpiSourceSha": source_sha, "artifactSha256": artifact_sha256}
+    if not isinstance(value["pass"], bool) or not all(
+        isinstance(outcomes[field], bool) for field in CLIENT_ACCEPTANCE_OUTCOME_FIELDS
+    ):
+        raise ValueError("client acceptance PASS outcomes must be boolean")
+    if require_pass and (value["pass"] is not True or not all(outcomes.values())):
+        raise ValueError("client acceptance PASS outcomes are incomplete")
+    if value["correlationSha256"] != client_acceptance_correlation(value):
+        raise ValueError("client acceptance correlation mismatch")
+    return value
 
 
-def validate_runtime_client_identity(
-    identity_path: Path, binary_path: Path
-) -> dict[str, str]:
-    """Bind the reported identity to the immutable toolchain binary in use."""
-    identity = client_identity_descriptor(str(identity_path))
+def client_acceptance_descriptor(
+    path_value: Any, *, now: int | None = None, max_age_seconds: int = 604800
+) -> dict[str, Any]:
+    value = _private_json_descriptor(path_value, "client acceptance")
+    return validate_client_acceptance(
+        value, now=now, max_age_seconds=max_age_seconds, require_pass=True
+    )
+
+
+def client_acceptance_signature_payload(envelope: dict[str, Any]) -> bytes:
+    """Return the canonical client-signed handoff bytes."""
+    return canonical_json_bytes(
+        {key: value for key, value in envelope.items() if key != "signatureBase64"}
+    )
+
+
+def _write_exact_private_file(path: Path, payload: bytes) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.fchmod(descriptor, 0o600)
+        written = 0
+        while written < len(payload):
+            count = os.write(descriptor, payload[written:])
+            if count <= 0:
+                raise OSError("short private file write")
+            written += count
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def validate_client_acceptance_handoff(
+    value: Any,
+    public_key_path: Path,
+    *,
+    expected_nonce: str,
+    expected_invocation_id: str,
+    expected_invocation_attempt: int = 1,
+    now: int | None = None,
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError("client acceptance handoff must be an object")
+    require_fields(value, CLIENT_ACCEPTANCE_HANDOFF_FIELDS, "client acceptance handoff")
+    if value["format"] != CLIENT_ACCEPTANCE_HANDOFF_FORMAT:
+        raise ValueError("client acceptance handoff format is invalid")
+    if value["signatureAlgorithm"] != "ed25519":
+        raise ValueError("client acceptance signature algorithm is invalid")
+    nonce = require_sha(value["nonce"], SHA256_RE, "client acceptance nonce")
+    if nonce == "0" * 64 or nonce != require_sha(
+        expected_nonce, SHA256_RE, "expected client acceptance nonce"
+    ):
+        raise ValueError("client acceptance nonce mismatch")
+    invocation_id = require_invocation_id(
+        value["invocationId"], "client acceptance invocation id"
+    )
+    if invocation_id != require_invocation_id(expected_invocation_id):
+        raise ValueError("client acceptance invocation mismatch")
+    invocation_attempt = require_int(
+        value["invocationAttempt"], "client acceptance invocation attempt", 1
+    )
+    if invocation_attempt != require_int(
+        expected_invocation_attempt, "expected client acceptance invocation attempt", 1
+    ):
+        raise ValueError("client acceptance invocation attempt mismatch")
+    try:
+        signature = base64.b64decode(value["signatureBase64"], validate=True)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("client acceptance signature is invalid") from exc
+    if len(signature) != 64:
+        raise ValueError("client acceptance signature is invalid")
+    public_key = _secure_path(str(public_key_path), executable=False)
+    try:
+        algorithm = subprocess.run(
+            ["openssl", "pkey", "-pubin", "-in", str(public_key), "-text", "-noout"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(
+            "client acceptance public key verification unavailable"
+        ) from exc
+    if (
+        algorithm.returncode != 0
+        or "ED25519 Public-Key:" not in algorithm.stdout.splitlines()
+    ):
+        raise ValueError("client acceptance public key is not Ed25519")
+    with tempfile.TemporaryDirectory(prefix="ripdpi-awg-signature-") as temporary:
+        temporary_path = Path(temporary)
+        temporary_path.chmod(0o700)
+        payload_path = temporary_path / "payload.json"
+        signature_path = temporary_path / "signature.bin"
+        _write_exact_private_file(
+            payload_path, client_acceptance_signature_payload(value)
+        )
+        _write_exact_private_file(signature_path, signature)
+        try:
+            completed = subprocess.run(
+                [
+                    "openssl",
+                    "pkeyutl",
+                    "-verify",
+                    "-pubin",
+                    "-inkey",
+                    str(public_key),
+                    "-rawin",
+                    "-in",
+                    str(payload_path),
+                    "-sigfile",
+                    str(signature_path),
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ValueError(
+                "client acceptance signature verification unavailable"
+            ) from exc
+    if completed.returncode != 0:
+        raise ValueError("client acceptance signature verification failed")
+    return validate_client_acceptance(value["acceptance"], now=now, require_pass=True)
+
+
+def validate_client_acceptance_request(
+    value: Any,
+    *,
+    expected_invocation_id: str,
+    expected_invocation_attempt: int = 1,
+    now: int | None = None,
+) -> str:
+    if not isinstance(value, dict):
+        raise ValueError("client acceptance request must be an object")
+    require_fields(value, CLIENT_ACCEPTANCE_REQUEST_FIELDS, "client acceptance request")
+    if value["format"] != CLIENT_ACCEPTANCE_REQUEST_FORMAT:
+        raise ValueError("client acceptance request format is invalid")
+    invocation_id = require_invocation_id(
+        value["invocationId"], "client acceptance request invocation id"
+    )
+    if invocation_id != require_invocation_id(expected_invocation_id):
+        raise ValueError("client acceptance request invocation mismatch")
+    invocation_attempt = require_int(
+        value["invocationAttempt"], "client acceptance request invocation attempt", 1
+    )
+    if invocation_attempt != require_int(
+        expected_invocation_attempt, "expected client acceptance invocation attempt", 1
+    ):
+        raise ValueError("client acceptance request invocation attempt mismatch")
+    nonce = require_sha(value["nonce"], SHA256_RE, "client acceptance request nonce")
+    if nonce == "0" * 64:
+        raise ValueError("client acceptance request nonce is invalid")
+    generated = require_int(
+        value["generatedAtEpoch"], "client acceptance request generated timestamp", 1
+    )
+    expires = require_int(
+        value["expiresAtEpoch"], "client acceptance request expiry timestamp", 1
+    )
+    if expires <= generated or expires - generated > 300:
+        raise ValueError("client acceptance request lifetime is invalid")
+    current = int(time.time()) if now is None else now
+    if generated > current:
+        raise ValueError("client acceptance request is from the future")
+    if current > expires:
+        raise ValueError("client acceptance request expired")
+    return nonce
+
+
+def _write_private_json_atomic(path: Path, value: Any) -> None:
+    if not path.is_absolute() or path.parent.is_symlink():
+        raise ValueError("client acceptance output directory is unsafe")
+    try:
+        parent = path.parent.resolve(strict=True)
+        parent_info = parent.stat()
+    except OSError as exc:
+        raise ValueError("client acceptance output directory is unsafe") from exc
+    if (
+        not parent.is_dir()
+        or parent_info.st_uid not in {0, os.geteuid()}
+        or stat.S_IMODE(parent_info.st_mode) & 0o077
+    ):
+        raise ValueError("client acceptance output directory is unsafe")
+    if path.exists() or path.is_symlink():
+        raise ValueError("client acceptance output already exists")
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=parent)
+    try:
+        os.fchmod(descriptor, 0o600)
+        payload = canonical_json_bytes(value)
+        written = 0
+        while written < len(payload):
+            count = os.write(descriptor, payload[written:])
+            if count <= 0:
+                raise OSError("short client acceptance write")
+            written += count
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        os.replace(temporary, path)
+        parent_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(parent_fd)
+        finally:
+            os.close(parent_fd)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(temporary)
+
+
+def consume_client_acceptance_handoff(
+    descriptor: Path,
+    public_key: Path,
+    *,
+    request: Path,
+    expected_invocation_id: str,
+    expected_invocation_attempt: int = 1,
+    output: Path,
+    now: int | None = None,
+) -> dict[str, Any]:
+    """Verify and consume one root-private, nonce-bound client handoff."""
+    if output.exists() or output.is_symlink():
+        raise ValueError("client acceptance output already exists")
+    request_value = _private_json_descriptor(request, "client acceptance request")
+    expected_nonce = validate_client_acceptance_request(
+        request_value,
+        expected_invocation_id=expected_invocation_id,
+        expected_invocation_attempt=expected_invocation_attempt,
+        now=now,
+    )
+    envelope = _private_json_descriptor(descriptor, "client acceptance handoff")
+    acceptance = validate_client_acceptance_handoff(
+        envelope,
+        public_key,
+        expected_nonce=expected_nonce,
+        expected_invocation_id=expected_invocation_id,
+        expected_invocation_attempt=expected_invocation_attempt,
+        now=now,
+    )
+    consumed = descriptor.with_name(f".{descriptor.name}.consumed-{os.getpid()}")
+    if consumed.exists() or consumed.is_symlink():
+        raise ValueError("client acceptance consume path is unavailable")
+    os.replace(descriptor, consumed)
+    if (
+        _private_json_descriptor(consumed, "consumed client acceptance handoff")
+        != envelope
+    ):
+        raise ValueError("client acceptance handoff changed during consume")
+    _write_private_json_atomic(output, acceptance)
+    request.unlink()
+    consumed.unlink()
+    return acceptance
+
+
+def create_client_acceptance_request(
+    output: Path,
+    invocation_id: str,
+    *,
+    invocation_attempt: int = 1,
+    now: int | None = None,
+    valid_seconds: int = 300,
+) -> str:
+    if not 1 <= valid_seconds <= 300:
+        raise ValueError("client acceptance request lifetime is invalid")
+    current = int(time.time()) if now is None else now
+    nonce = secrets.token_hex(32)
+    request = {
+        "format": CLIENT_ACCEPTANCE_REQUEST_FORMAT,
+        "invocationId": require_invocation_id(invocation_id),
+        "invocationAttempt": require_int(
+            invocation_attempt, "client acceptance request invocation attempt", 1
+        ),
+        "nonce": nonce,
+        "generatedAtEpoch": current,
+        "expiresAtEpoch": current + valid_seconds,
+    }
+    _write_private_json_atomic(output, request)
+    return nonce
+
+
+def validate_runtime_engine_identity(binary_path: Path) -> dict[str, str]:
+    """Bind the engine identity to the immutable toolchain binary in use."""
     binary = _secure_path(str(binary_path), executable=True)
     if binary.name != "amneziawg-go":
         raise ValueError("client runtime binary is invalid")
@@ -392,11 +771,10 @@ def validate_runtime_client_identity(
     )
     if sha256_bytes(binary.read_bytes()) != artifact_sha256:
         raise ValueError("client runtime artifact digest mismatch")
-    if identity["ripdpiSourceSha"] != source_sha:
-        raise ValueError("client runtime source identity mismatch")
-    if identity["artifactSha256"] != artifact_sha256:
-        raise ValueError("client runtime artifact identity mismatch")
-    return identity
+    return {
+        "amneziawgGoCommit": source_sha,
+        "amneziawgGoBinarySha256": artifact_sha256,
+    }
 
 
 def provenance_from_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -883,7 +1261,8 @@ def run_lane(
     return {
         "version": MANIFEST_VERSION,
         "sourceSha": metadata["sourceSha"],
-        "clientIdentity": config["clientIdentity"],
+        "engineIdentity": config["engineIdentity"],
+        "clientAcceptance": config["clientAcceptance"],
         "startedAtEpoch": started,
         "finishedAtEpoch": finished,
         "generatedAtEpoch": finished,
@@ -940,8 +1319,12 @@ def validate_manifest(
     expected_invocation_id: str | None = None,
     expected_invocation_attempt: int | None = None,
     expected_source_archive_sha256: str | None = None,
+    expected_engine_commit: str | None = None,
+    expected_engine_binary_sha256: str | None = None,
     expected_client_source_sha: str | None = None,
-    expected_client_artifact_sha256: str | None = None,
+    expected_client_apk_sha256: str | None = None,
+    expected_client_report_sha256: str | None = None,
+    expected_client_correlation_sha256: str | None = None,
 ) -> None:
     if not isinstance(manifest, dict):
         raise ValueError("manifest must be an object")
@@ -951,31 +1334,62 @@ def validate_manifest(
     require_sha(expected_source_sha, SHA1_RE, "expected source SHA")
     if manifest["sourceSha"] != expected_source_sha:
         raise ValueError("manifest source SHA mismatch")
-    client_identity = manifest["clientIdentity"]
-    if not isinstance(client_identity, dict):
-        raise ValueError("client identity must be an object")
-    require_fields(
-        client_identity, {"ripdpiSourceSha", "artifactSha256"}, "client identity"
+    engine_identity = manifest["engineIdentity"]
+    if not isinstance(engine_identity, dict):
+        raise ValueError("engine identity must be an object")
+    require_fields(engine_identity, ENGINE_IDENTITY_FIELDS, "engine identity")
+    require_sha(engine_identity["amneziawgGoCommit"], SHA1_RE, "engine commit")
+    require_sha(
+        engine_identity["amneziawgGoBinarySha256"], SHA256_RE, "engine binary SHA"
     )
-    require_sha(client_identity["ripdpiSourceSha"], SHA1_RE, "client source SHA")
-    require_sha(client_identity["artifactSha256"], SHA256_RE, "client artifact SHA")
+    if expected_engine_commit is not None and (
+        engine_identity["amneziawgGoCommit"]
+        != require_sha(expected_engine_commit, SHA1_RE, "expected engine commit")
+    ):
+        raise ValueError("manifest engine commit mismatch")
+    if expected_engine_binary_sha256 is not None and (
+        engine_identity["amneziawgGoBinarySha256"]
+        != require_sha(
+            expected_engine_binary_sha256, SHA256_RE, "expected engine binary SHA"
+        )
+    ):
+        raise ValueError("manifest engine binary SHA mismatch")
+    client_acceptance = validate_client_acceptance(
+        manifest["clientAcceptance"],
+        now=now,
+        max_age_seconds=max_age_seconds,
+        require_pass=manifest.get("classification") == "PASS",
+    )
     if expected_client_source_sha is not None:
         require_sha(expected_client_source_sha, SHA1_RE, "expected client source SHA")
-        if client_identity["ripdpiSourceSha"] != expected_client_source_sha:
+        if client_acceptance["ripdpiSourceSha"] != expected_client_source_sha:
             raise ValueError("manifest client source SHA mismatch")
-    if expected_client_artifact_sha256 is not None:
+    if expected_client_apk_sha256 is not None:
         require_sha(
-            expected_client_artifact_sha256,
+            expected_client_apk_sha256,
             SHA256_RE,
-            "expected client artifact SHA",
+            "expected client APK SHA",
         )
-        if client_identity["artifactSha256"] != expected_client_artifact_sha256:
-            raise ValueError("manifest client artifact SHA mismatch")
+        if client_acceptance["apkSha256"] != expected_client_apk_sha256:
+            raise ValueError("manifest client APK SHA mismatch")
+    for key, expected, label in (
+        ("reportSha256", expected_client_report_sha256, "report"),
+        ("correlationSha256", expected_client_correlation_sha256, "correlation"),
+    ):
+        if expected is not None and client_acceptance[key] != require_sha(
+            expected, SHA256_RE, f"expected client {label} SHA"
+        ):
+            raise ValueError(f"manifest client {label} SHA mismatch")
     started = require_int(manifest["startedAtEpoch"], "startedAtEpoch", 1)
     finished = require_int(manifest["finishedAtEpoch"], "finishedAtEpoch", 1)
     generated = require_int(manifest["generatedAtEpoch"], "generatedAtEpoch", 1)
     if finished < started or generated != finished:
         raise ValueError("manifest timestamps are inconsistent")
+    if manifest.get("classification") == "PASS" and (
+        client_acceptance["finishedAtEpoch"] < started - 900
+        or client_acceptance["startedAtEpoch"] > finished + 60
+    ):
+        raise ValueError("client acceptance is outside the run window")
     current = int(time.time()) if now is None else now
     if generated > current + 60:
         raise ValueError("manifest is from the future")
@@ -1096,11 +1510,22 @@ def validate_manifest(
     if not all(value is True for value in cleanup.values()):
         raise ValueError("cleanup evidence is incomplete")
     if classification == "PASS":
+        pass_digests = [
+            manifest["sourceSha"],
+            provenance["sourceArchiveSha256"],
+            manifest["runnerIdSha256"],
+            *producers.values(),
+            *captures,
+            manifest["privateLogSha256"],
+            deployment["receiptSha256"],
+        ]
+        if any(set(digest) == {"0"} for digest in pass_digests):
+            raise ValueError("PASS manifest contains a placeholder digest")
         if (
-            client_identity["ripdpiSourceSha"] == "0" * 40
-            or client_identity["artifactSha256"] == "0" * 64
+            engine_identity["amneziawgGoCommit"] == "0" * 40
+            or engine_identity["amneziawgGoBinarySha256"] == "0" * 64
         ):
-            raise ValueError("PASS manifest lacks client identity")
+            raise ValueError("PASS manifest lacks engine identity")
         if (
             reason_code != "NONE"
             or [phase["id"] for phase in phases] != EXPECTED_PHASES
@@ -1137,6 +1562,420 @@ def validate_manifest(
             raise ValueError("PASS manifest did not observe config reload")
     elif reason_code == "NONE":
         raise ValueError("non-PASS manifest requires a reason code")
+
+
+def validate_recurring_pair(
+    initial: Any,
+    recurring: Any,
+    *,
+    now: int | None = None,
+    max_age_seconds: int = RECURRING_PAIR_MAX_AGE_SECONDS,
+) -> None:
+    """Require two complete, ordered and independently correlated PASS runs."""
+    if not isinstance(initial, dict) or not isinstance(recurring, dict):
+        raise ValueError("recurring evidence must contain two manifests")
+    validate_manifest(
+        initial,
+        expected_source_sha=initial.get("sourceSha", ""),
+        now=now,
+        max_age_seconds=max_age_seconds,
+    )
+    validate_manifest(
+        recurring,
+        expected_source_sha=recurring.get("sourceSha", ""),
+        now=now,
+        max_age_seconds=max_age_seconds,
+    )
+    if initial["classification"] != "PASS" or recurring["classification"] != "PASS":
+        raise ValueError("recurring evidence requires PASS manifests")
+    if initial["sourceSha"] != recurring["sourceSha"]:
+        raise ValueError("recurring deploy source must remain exact")
+    if initial["engineIdentity"] != recurring["engineIdentity"]:
+        raise ValueError("recurring engine identity must remain exact")
+    for field in ("ripdpiSourceSha", "apkSha256"):
+        if initial["clientAcceptance"][field] != recurring["clientAcceptance"][field]:
+            raise ValueError(f"recurring client {field} must remain exact")
+    if initial["finishedAtEpoch"] >= recurring["startedAtEpoch"]:
+        raise ValueError("recurring evidence is not ordered")
+    if (
+        initial["clientAcceptance"]["finishedAtEpoch"]
+        >= recurring["clientAcceptance"]["startedAtEpoch"]
+    ):
+        raise ValueError("recurring client acceptance is not ordered")
+    if (
+        initial["provenance"]["invocationId"],
+        initial["provenance"]["invocationAttempt"],
+    ) == (
+        recurring["provenance"]["invocationId"],
+        recurring["provenance"]["invocationAttempt"],
+    ):
+        raise ValueError("recurring evidence invocation must be distinct")
+    for field in ("reportSha256", "correlationSha256"):
+        if initial["clientAcceptance"][field] == recurring["clientAcceptance"][field]:
+            raise ValueError(f"recurring client {field} must be distinct")
+
+
+def _read_state_manifest(
+    path: Path,
+    *,
+    now: int | None = None,
+    max_age_seconds: int = RECURRING_PAIR_MAX_AGE_SECONDS,
+) -> dict[str, Any]:
+    value = _private_json_descriptor(str(path), "recurring evidence", max_bytes=262144)
+    validate_manifest(
+        value,
+        expected_source_sha=value.get("sourceSha", ""),
+        now=now,
+        max_age_seconds=max_age_seconds,
+    )
+    if value["classification"] != "PASS":
+        raise ValueError("recurring state requires PASS evidence")
+    return value
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _atomic_state_manifest(
+    state_dir: Path,
+    name: str,
+    manifest: dict[str, Any],
+    *,
+    failpoint: str | None = None,
+) -> None:
+    target = state_dir / name
+    temporary = state_dir / f".{name}.tmp"
+    payload = canonical_json_bytes(manifest)
+    descriptor = os.open(
+        temporary,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    try:
+        os.fchmod(descriptor, 0o600)
+        written = 0
+        while written < len(payload):
+            count = os.write(descriptor, payload[written:])
+            if count <= 0:
+                raise OSError("short recurring state write")
+            written += count
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    if failpoint == f"after-{name.removesuffix('.json')}-temp-fsync":
+        raise RecurringStateInterrupted(failpoint)
+    os.replace(temporary, target)
+    _fsync_directory(state_dir)
+    if failpoint == f"after-{name.removesuffix('.json')}-replace":
+        raise RecurringStateInterrupted(failpoint)
+
+
+def _unlink_state(path: Path) -> None:
+    path.unlink()
+    _fsync_directory(path.parent)
+
+
+def _state_entry_exists(path: Path) -> bool:
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _archive_prior_generation(
+    path: Path,
+    manifest: dict[str, Any],
+    *,
+    current_source_sha: str,
+) -> bool:
+    """Move valid evidence from another source generation into private history."""
+    if manifest["sourceSha"] == current_source_sha:
+        return False
+    state_dir = path.parent
+    history_dir = state_dir / "history"
+    try:
+        history_dir.mkdir(mode=0o700)
+    except FileExistsError as exc:
+        if not _state_entry_exists(history_dir):
+            raise ValueError("recurring state history creation raced") from exc
+    else:
+        _fsync_directory(state_dir)
+    history_info = history_dir.lstat()
+    if (
+        not stat.S_ISDIR(history_info.st_mode)
+        or history_info.st_uid not in {0, os.geteuid()}
+        or stat.S_IMODE(history_info.st_mode) != 0o700
+    ):
+        raise ValueError("recurring state history directory has unsafe metadata")
+    payload = canonical_json_bytes(manifest)
+    digest = hashlib.sha256(payload).hexdigest()
+    archived = history_dir / f"{path.stem}-{digest}.json"
+    if _state_entry_exists(archived):
+        observed = archived.lstat()
+        if (
+            not stat.S_ISREG(observed.st_mode)
+            or observed.st_nlink != 1
+            or observed.st_uid not in {0, os.geteuid()}
+            or stat.S_IMODE(observed.st_mode) != 0o600
+            or archived.read_bytes() != payload
+        ):
+            raise ValueError("recurring state history entry is unsafe or conflicting")
+        _unlink_state(path)
+        return True
+    os.replace(path, archived)
+    _fsync_directory(history_dir)
+    _fsync_directory(state_dir)
+    return True
+
+
+def _recover_state_temporary(path: Path, *, now: int | None) -> dict[str, Any] | None:
+    try:
+        observed = path.lstat()
+    except FileNotFoundError:
+        return None
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or observed.st_nlink != 1
+        or observed.st_uid not in {0, os.geteuid()}
+        or stat.S_IMODE(observed.st_mode) != 0o600
+        or observed.st_size > 262144
+    ):
+        raise ValueError("recurring state recovery file has unsafe metadata")
+    try:
+        return _read_state_manifest(path, now=now)
+    except (OSError, ValueError, json.JSONDecodeError):
+        # The fixed private temporary name is owned exclusively under the lane
+        # lock. A truncated pre-rename write is not evidence and is discarded.
+        _unlink_state(path)
+        return None
+
+
+def _acquire_recurring_lock(lock_path: Path, lock_fd: int | None) -> tuple[int, bool]:
+    opened = lock_fd is None
+    descriptor = (
+        os.open(
+            lock_path,
+            os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        if opened
+        else lock_fd
+    )
+    assert descriptor is not None
+    try:
+        observed = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(observed.st_mode)
+            or observed.st_nlink != 1
+            or observed.st_uid not in {0, os.geteuid()}
+            or stat.S_IMODE(observed.st_mode) != 0o600
+        ):
+            raise ValueError("recurring lane lock has unsafe metadata")
+        named = os.stat(lock_path, follow_symlinks=False)
+        if (named.st_dev, named.st_ino) != (observed.st_dev, observed.st_ino):
+            raise ValueError("recurring lane lock identity changed")
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as exc:
+        if opened:
+            os.close(descriptor)
+        raise RecurringStateBusy("recurring lane lock is busy") from exc
+    except Exception:
+        if opened:
+            os.close(descriptor)
+        raise
+    return descriptor, opened
+
+
+def record_recurring_state(
+    current: dict[str, Any],
+    state_dir: Path,
+    *,
+    lock_path: Path,
+    lock_fd: int | None = None,
+    now: int | None = None,
+    failpoint: str | None = None,
+    expected: dict[str, Any] | None = None,
+) -> str:
+    """Validate and durably advance initial/recurring PASS evidence."""
+    descriptor, opened = _acquire_recurring_lock(lock_path, lock_fd)
+    pending_path = state_dir / "pending-initial.json"
+    latest_path = state_dir / "latest.json"
+    try:
+        validation = dict(expected or {})
+        validation.setdefault("expected_source_sha", current.get("sourceSha", ""))
+        validate_manifest(current, now=now, **validation)
+        if current["classification"] != "PASS":
+            raise ValueError("recurring state requires PASS evidence")
+        state_info = state_dir.lstat()
+        if (
+            not stat.S_ISDIR(state_info.st_mode)
+            or state_info.st_uid not in {0, os.geteuid()}
+            or stat.S_IMODE(state_info.st_mode) != 0o700
+        ):
+            raise ValueError("recurring state directory has unsafe metadata")
+        pending_tmp = state_dir / ".pending-initial.json.tmp"
+        latest_tmp = state_dir / ".latest.json.tmp"
+        if _state_entry_exists(pending_tmp):
+            recovered = _recover_state_temporary(pending_tmp, now=now)
+            if recovered is not None:
+                if _state_entry_exists(pending_path) or _state_entry_exists(
+                    latest_path
+                ):
+                    raise ValueError("ambiguous pending state recovery")
+                os.replace(pending_tmp, pending_path)
+                _fsync_directory(state_dir)
+        if _state_entry_exists(latest_tmp):
+            recovered = _recover_state_temporary(latest_tmp, now=now)
+            if recovered is not None:
+                prior_path = (
+                    latest_path if _state_entry_exists(latest_path) else pending_path
+                )
+                if not _state_entry_exists(prior_path):
+                    raise ValueError("ambiguous latest state recovery")
+                prior = _read_state_manifest(prior_path, now=now)
+                validate_recurring_pair(prior, recovered, now=now)
+                os.replace(latest_tmp, latest_path)
+                _fsync_directory(state_dir)
+        # Read retained manifests without a freshness cutoff first so a valid
+        # older generation cannot wedge a newly installed source forever.
+        # Unsafe, malformed, non-PASS and future-dated state still fails closed.
+        retained_max_age = 2**63 - 1
+        pending = (
+            _read_state_manifest(
+                pending_path, now=now, max_age_seconds=retained_max_age
+            )
+            if _state_entry_exists(pending_path)
+            else None
+        )
+        latest = (
+            _read_state_manifest(latest_path, now=now, max_age_seconds=retained_max_age)
+            if _state_entry_exists(latest_path)
+            else None
+        )
+        current_source_sha = current["sourceSha"]
+        if pending is not None and _archive_prior_generation(
+            pending_path,
+            pending,
+            current_source_sha=current_source_sha,
+        ):
+            pending = None
+        if latest is not None and _archive_prior_generation(
+            latest_path,
+            latest,
+            current_source_sha=current_source_sha,
+        ):
+            latest = None
+        for retained in (pending, latest):
+            if retained is not None:
+                validate_manifest(
+                    retained,
+                    expected_source_sha=current_source_sha,
+                    now=now,
+                    max_age_seconds=RECURRING_PAIR_MAX_AGE_SECONDS,
+                )
+        if pending is not None and latest is not None:
+            validate_recurring_pair(pending, latest, now=now)
+            _unlink_state(pending_path)
+            pending = None
+        if latest is not None:
+            if canonical_json_bytes(latest) == canonical_json_bytes(current):
+                return "published"
+            validate_recurring_pair(latest, current, now=now)
+            _atomic_state_manifest(
+                state_dir, "latest.json", current, failpoint=failpoint
+            )
+            return "published"
+        if pending is not None:
+            if canonical_json_bytes(pending) == canonical_json_bytes(current):
+                return "pending"
+            validate_recurring_pair(pending, current, now=now)
+            _atomic_state_manifest(
+                state_dir, "latest.json", current, failpoint=failpoint
+            )
+            _unlink_state(pending_path)
+            return "published"
+        _atomic_state_manifest(
+            state_dir, "pending-initial.json", current, failpoint=failpoint
+        )
+        return "pending"
+    finally:
+        if opened:
+            os.close(descriptor)
+
+
+def prepare_retained_state(
+    state_dir: Path,
+    *,
+    current_source_sha: str,
+    lock_path: Path,
+    lock_fd: int | None = None,
+    now: int | None = None,
+) -> None:
+    """Validate current-generation state and archive older source generations."""
+    current_source_sha = require_sha(current_source_sha, SHA1_RE, "current source SHA")
+    descriptor, opened = _acquire_recurring_lock(lock_path, lock_fd)
+    try:
+        if not _state_entry_exists(state_dir):
+            return
+        state_info = state_dir.lstat()
+        if (
+            not stat.S_ISDIR(state_info.st_mode)
+            or state_info.st_uid not in {0, os.geteuid()}
+            or stat.S_IMODE(state_info.st_mode) != 0o700
+        ):
+            raise ValueError("recurring state directory has unsafe metadata")
+        for name in ("pending-initial.json", "latest.json"):
+            path = state_dir / name
+            if not _state_entry_exists(path):
+                continue
+            retained = _read_state_manifest(path, now=now, max_age_seconds=2**63 - 1)
+            if _archive_prior_generation(
+                path,
+                retained,
+                current_source_sha=current_source_sha,
+            ):
+                continue
+            validate_manifest(
+                retained,
+                expected_source_sha=current_source_sha,
+                now=now,
+                max_age_seconds=RECURRING_PAIR_MAX_AGE_SECONDS,
+            )
+    finally:
+        if opened:
+            os.close(descriptor)
+
+
+def record_recurring_manifest_path(
+    manifest_path: Path,
+    state_dir: Path,
+    *,
+    lock_path: Path,
+    lock_fd: int | None = None,
+    expected: dict[str, Any],
+) -> str:
+    """Read and publish the current manifest while holding the host-lane lock."""
+    descriptor, opened = _acquire_recurring_lock(lock_path, lock_fd)
+    try:
+        current = _private_json_descriptor(
+            manifest_path, "current evidence", max_bytes=262144
+        )
+        return record_recurring_state(
+            current,
+            state_dir,
+            lock_path=lock_path,
+            lock_fd=descriptor,
+            expected=expected,
+        )
+    finally:
+        if opened:
+            os.close(descriptor)
 
 
 def _secure_path(path_value: Any, *, executable: bool) -> Path:
@@ -1213,7 +2052,7 @@ def _client_config_credentials(
     return path, raw, private_key_values[0], public_key_values[0], psk_values[0]
 
 
-def load_config(path: Path) -> dict[str, Any]:
+def load_config(path: Path, client_acceptance_path: Path) -> dict[str, Any]:
     config_path = _secure_path(str(path), executable=False)
     value = json.loads(config_path.read_text())
     if not isinstance(value, dict):
@@ -1222,9 +2061,7 @@ def load_config(path: Path) -> dict[str, Any]:
     if value["version"] != CONFIG_VERSION:
         raise ValueError("unsupported runner config version")
     runner_id = require_sha(value["runnerId"], SHA256_RE, "runnerId")
-    client_identity = client_identity_descriptor(
-        str(config_path.parent / CLIENT_IDENTITY_DESCRIPTOR_NAME)
-    )
+    client_acceptance = client_acceptance_descriptor(client_acceptance_path)
     client, _, client_private, client_public, client_psk = _client_config_credentials(
         value["clientConfigPath"]
     )
@@ -1277,7 +2114,7 @@ def load_config(path: Path) -> dict[str, Any]:
         "serverDeployHook": str(deploy_hook),
         "rotationHook": str(rotation_hook),
         "runnerIdSha256": sha256_bytes(f"ripdpi:awg-runner:v1:{runner_id}".encode()),
-        "clientIdentity": client_identity,
+        "clientAcceptance": client_acceptance,
         "serverControlHookSha256": sha256_bytes(control_hook.read_bytes()),
         "serverDeployHookSha256": sha256_bytes(deploy_hook.read_bytes()),
         "rotationHookSha256": sha256_bytes(rotation_hook.read_bytes()),
@@ -1718,14 +2555,30 @@ def failure_manifest(
     metadata: dict[str, Any],
     producer_sha: str,
     reason_code: str = "CONFIG_INVALID",
-    client_identity: dict[str, str] | None = None,
+    engine_identity: dict[str, str] | None = None,
+    client_acceptance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = int(time.time())
+    empty_acceptance = {
+        "format": CLIENT_ACCEPTANCE_FORMAT,
+        "ripdpiSourceSha": "0" * 40,
+        "apkSha256": "0" * 64,
+        "reportSha256": "0" * 64,
+        "startedAtEpoch": now,
+        "finishedAtEpoch": now,
+        "transport": "amneziawg",
+        "pass": False,
+        "outcomes": {field: False for field in CLIENT_ACCEPTANCE_OUTCOME_FIELDS},
+    }
+    empty_acceptance["correlationSha256"] = client_acceptance_correlation(
+        empty_acceptance
+    )
     return {
         "version": MANIFEST_VERSION,
         "sourceSha": metadata["sourceSha"],
-        "clientIdentity": client_identity
-        or {"ripdpiSourceSha": "0" * 40, "artifactSha256": "0" * 64},
+        "engineIdentity": engine_identity
+        or {"amneziawgGoCommit": "0" * 40, "amneziawgGoBinarySha256": "0" * 64},
+        "clientAcceptance": client_acceptance or empty_acceptance,
         "startedAtEpoch": now,
         "finishedAtEpoch": now,
         "generatedAtEpoch": now,
@@ -1777,6 +2630,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--workflow-run-id", type=int)
     run.add_argument("--workflow-run-attempt", type=int)
     run.add_argument("--source-archive", type=Path, required=True)
+    run.add_argument("--client-acceptance-descriptor", type=Path, required=True)
     validate = subparsers.add_parser("validate")
     validate.add_argument("--manifest", type=Path, required=True)
     validate.add_argument("--expected-source-sha", required=True)
@@ -1786,23 +2640,174 @@ def main(argv: list[str] | None = None) -> int:
     validate.add_argument("--expected-run-id", type=int)
     validate.add_argument("--expected-run-attempt", type=int)
     validate.add_argument("--expected-source-archive-sha256", required=True)
+    validate.add_argument("--expected-engine-commit")
+    validate.add_argument("--expected-engine-binary-sha256")
     validate.add_argument("--expected-client-source-sha")
-    validate.add_argument("--expected-client-artifact-sha256")
+    validate.add_argument("--expected-client-apk-sha256")
+    validate.add_argument("--expected-client-report-sha256")
+    validate.add_argument("--expected-client-correlation-sha256")
     validate.add_argument("--allow-non-pass", action="store_true")
     runtime_identity = subparsers.add_parser("validate-client-runtime")
-    runtime_identity.add_argument("--identity", type=Path, required=True)
     runtime_identity.add_argument("--binary", type=Path, required=True)
+    acceptance = subparsers.add_parser("validate-client-acceptance")
+    acceptance.add_argument("--descriptor", type=Path, required=True)
+    consume_acceptance = subparsers.add_parser("consume-client-acceptance")
+    consume_acceptance.add_argument("--descriptor", type=Path, required=True)
+    consume_acceptance.add_argument("--public-key", type=Path, required=True)
+    consume_acceptance.add_argument("--request", type=Path, required=True)
+    consume_acceptance.add_argument("--invocation-id", required=True)
+    consume_acceptance.add_argument("--invocation-attempt", type=int, required=True)
+    consume_acceptance.add_argument("--output", type=Path, required=True)
+    request_acceptance = subparsers.add_parser("create-client-acceptance-request")
+    request_acceptance.add_argument("--output", type=Path, required=True)
+    request_acceptance.add_argument("--invocation-id", required=True)
+    request_acceptance.add_argument("--invocation-attempt", type=int, required=True)
+    request_acceptance.add_argument("--valid-seconds", type=int, default=300)
+    recurring = subparsers.add_parser("validate-recurring")
+    recurring.add_argument("--initial", type=Path, required=True)
+    recurring.add_argument("--recurring", type=Path, required=True)
+    retained = subparsers.add_parser("validate-retained-pass")
+    retained.add_argument("--manifest", type=Path, required=True)
+    prepare_retained = subparsers.add_parser("prepare-retained-state")
+    prepare_retained.add_argument("--state-dir", type=Path, required=True)
+    prepare_retained.add_argument("--lock-path", type=Path, required=True)
+    prepare_retained.add_argument("--lock-fd", type=int)
+    prepare_retained.add_argument("--expected-source-sha", required=True)
+    record = subparsers.add_parser("record-recurring")
+    record.add_argument("--manifest", type=Path, required=True)
+    record.add_argument("--state-dir", type=Path, required=True)
+    record.add_argument("--lock-path", type=Path, required=True)
+    record.add_argument("--lock-fd", type=int)
+    record.add_argument("--expected-source-sha", required=True)
+    record.add_argument("--expected-source-archive-sha256", required=True)
+    record.add_argument("--expected-executor", choices=sorted(EXECUTOR_ENTRYPOINTS))
+    record.add_argument("--expected-invocation-id")
+    record.add_argument("--expected-invocation-attempt", type=int)
+    record.add_argument("--expected-engine-commit")
+    record.add_argument("--expected-engine-binary-sha256")
+    record.add_argument("--expected-client-source-sha")
+    record.add_argument("--expected-client-apk-sha256")
+    record.add_argument("--expected-client-report-sha256")
+    record.add_argument("--expected-client-correlation-sha256")
     subparsers.add_parser("probe-child")
     args = parser.parse_args(argv)
     if args.command == "probe-child":
         return probe_child()
     if args.command == "validate-client-runtime":
         try:
-            identity = validate_runtime_client_identity(args.identity, args.binary)
+            identity = validate_runtime_engine_identity(args.binary)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
-            print(f"real-VPS AWG/NAT client identity invalid: {exc}", file=sys.stderr)
+            print(f"real-VPS AWG/NAT engine identity invalid: {exc}", file=sys.stderr)
             return 1
         sys.stdout.buffer.write(canonical_json_bytes(identity))
+        return 0
+    if args.command == "validate-client-acceptance":
+        try:
+            value = client_acceptance_descriptor(args.descriptor)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"real-VPS AWG/NAT client acceptance invalid: {exc}", file=sys.stderr)
+            return 1
+        sys.stdout.buffer.write(canonical_json_bytes(value))
+        return 0
+    if args.command == "consume-client-acceptance":
+        try:
+            consume_client_acceptance_handoff(
+                args.descriptor,
+                args.public_key,
+                request=args.request,
+                expected_invocation_id=args.invocation_id,
+                expected_invocation_attempt=args.invocation_attempt,
+                output=args.output,
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"real-VPS AWG/NAT client handoff invalid: {exc}", file=sys.stderr)
+            return 1
+        return 0
+    if args.command == "create-client-acceptance-request":
+        try:
+            nonce = create_client_acceptance_request(
+                args.output,
+                args.invocation_id,
+                invocation_attempt=args.invocation_attempt,
+                valid_seconds=args.valid_seconds,
+            )
+        except (OSError, ValueError) as exc:
+            print(f"real-VPS AWG/NAT client request invalid: {exc}", file=sys.stderr)
+            return 1
+        print(nonce)
+        return 0
+    if args.command == "validate-recurring":
+        try:
+            initial_raw = args.initial.read_bytes()
+            recurring_raw = args.recurring.read_bytes()
+            initial = json.loads(initial_raw)
+            recurring_value = json.loads(recurring_raw)
+            if initial_raw != canonical_json_bytes(
+                initial
+            ) or recurring_raw != canonical_json_bytes(recurring_value):
+                raise ValueError("recurring evidence is not canonical JSON")
+            validate_recurring_pair(initial, recurring_value)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(
+                f"real-VPS AWG/NAT recurring evidence invalid: {exc}", file=sys.stderr
+            )
+            return 1
+        return 0
+    if args.command == "validate-retained-pass":
+        try:
+            value = _private_json_descriptor(
+                args.manifest, "retained evidence", max_bytes=262144
+            )
+            validate_manifest(
+                value,
+                expected_source_sha=value.get("sourceSha", ""),
+                max_age_seconds=RECURRING_PAIR_MAX_AGE_SECONDS,
+            )
+            if value["classification"] != "PASS":
+                raise ValueError("retained evidence is not PASS")
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"real-VPS AWG/NAT retained evidence invalid: {exc}", file=sys.stderr)
+            return 1
+        return 0
+    if args.command == "prepare-retained-state":
+        try:
+            prepare_retained_state(
+                args.state_dir,
+                current_source_sha=args.expected_source_sha,
+                lock_path=args.lock_path,
+                lock_fd=args.lock_fd,
+            )
+        except (OSError, ValueError, json.JSONDecodeError, RecurringStateBusy) as exc:
+            print(f"real-VPS AWG/NAT retained state invalid: {exc}", file=sys.stderr)
+            return 1
+        return 0
+    if args.command == "record-recurring":
+        try:
+            state = record_recurring_manifest_path(
+                args.manifest,
+                args.state_dir,
+                lock_path=args.lock_path,
+                lock_fd=args.lock_fd,
+                expected={
+                    "expected_source_sha": args.expected_source_sha,
+                    "expected_source_archive_sha256": args.expected_source_archive_sha256,
+                    "expected_executor": args.expected_executor,
+                    "expected_invocation_id": args.expected_invocation_id,
+                    "expected_invocation_attempt": args.expected_invocation_attempt,
+                    "expected_engine_commit": args.expected_engine_commit,
+                    "expected_engine_binary_sha256": args.expected_engine_binary_sha256,
+                    "expected_client_source_sha": args.expected_client_source_sha,
+                    "expected_client_apk_sha256": args.expected_client_apk_sha256,
+                    "expected_client_report_sha256": args.expected_client_report_sha256,
+                    "expected_client_correlation_sha256": args.expected_client_correlation_sha256,
+                },
+            )
+        except (OSError, ValueError, json.JSONDecodeError, RecurringStateBusy) as exc:
+            print(f"real-VPS AWG/NAT recurring state invalid: {exc}", file=sys.stderr)
+            return 1
+        if state == "pending":
+            print("initial recurring observation is pending", file=sys.stderr)
+            return 1
         return 0
     if args.command == "validate":
         try:
@@ -1826,8 +2831,12 @@ def main(argv: list[str] | None = None) -> int:
                 expected_invocation_id=expected_invocation_id,
                 expected_invocation_attempt=expected_invocation_attempt,
                 expected_source_archive_sha256=args.expected_source_archive_sha256,
+                expected_engine_commit=args.expected_engine_commit,
+                expected_engine_binary_sha256=args.expected_engine_binary_sha256,
                 expected_client_source_sha=args.expected_client_source_sha,
-                expected_client_artifact_sha256=args.expected_client_artifact_sha256,
+                expected_client_apk_sha256=args.expected_client_apk_sha256,
+                expected_client_report_sha256=args.expected_client_report_sha256,
+                expected_client_correlation_sha256=args.expected_client_correlation_sha256,
             )
             return (
                 0 if args.allow_non_pass or manifest["classification"] == "PASS" else 1
@@ -1867,7 +2876,7 @@ def main(argv: list[str] | None = None) -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     producer_sha = sha256_bytes(Path(__file__).read_bytes())
     try:
-        config = load_config(args.config)
+        config = load_config(args.config, args.client_acceptance_descriptor)
     except MissingCredentials:
         manifest = failure_manifest(
             metadata, producer_sha, reason_code="MISSING_CREDENTIALS"
@@ -1885,10 +2894,14 @@ def main(argv: list[str] | None = None) -> int:
                 metadata,
                 producer_sha,
                 reason_code="PREREQUISITE_MISSING",
-                client_identity=config["clientIdentity"],
+                client_acceptance=config["clientAcceptance"],
             )
         else:
             try:
+                engine_binary = Path(shutil.which("amneziawg-go") or "")
+                config["engineIdentity"] = validate_runtime_engine_identity(
+                    engine_binary
+                )
                 config["sourceArchivePath"] = str(source_archive)
                 executor = SystemExecutor(config)
 
@@ -1898,12 +2911,13 @@ def main(argv: list[str] | None = None) -> int:
                 signal.signal(signal.SIGTERM, interrupt_lane)
                 signal.signal(signal.SIGINT, interrupt_lane)
                 manifest = run_lane(config, executor, metadata)
-            except OSError:
+            except (OSError, ValueError):
                 manifest = failure_manifest(
                     metadata,
                     producer_sha,
                     reason_code="RUNNER_EXCEPTION",
-                    client_identity=config["clientIdentity"],
+                    engine_identity=config.get("engineIdentity"),
+                    client_acceptance=config["clientAcceptance"],
                 )
     write_canonical_json(args.output, manifest)
     validate_manifest(manifest, expected_source_sha=args.source_sha)
