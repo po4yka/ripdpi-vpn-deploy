@@ -246,7 +246,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         observability-drill observability-deploy observability-rotate observability-rollback \
         observability-remove observability-silence-create observability-silence-delete \
         awg-evidence-provision \
-        test-native-runtime test-probe-matrix-mtproto test-unit snapshot-check snapshot-update validate-secrets \
+        test-native-runtime test-probe-matrix-mtproto test-unit test-unit-profile snapshot-check snapshot-update validate-secrets \
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
         ci-fast bats-test vpnd-test vpnd-clippy vpnd-deny vpnd-msrv vpnd-mutants tf-policy tf-policy-verify \
         task-tools task-check task-list task-ready task-graph task-federation \
@@ -722,6 +722,10 @@ test-probe-matrix-mtproto:
 # inherit recursive Make directory chatter, overrides or jobserver descriptors.
 test-unit:
 	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ scripts/tests/ -m "not native_runtime" --fail-on-skip -q
+
+# Refresh measured balancing data with a complete portable suite run.
+test-unit-profile:
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ scripts/tests/ -m "not native_runtime" --fail-on-skip -q --store-durations --durations-path tests/pytest-durations.json
 
 snapshot-check:
 	python3 scripts/render-snapshots.py

@@ -449,7 +449,14 @@ jobs:
       - name: Check canonical sentinel profiles with real pinned runtimes
         run: make liveness-profile-check
       - name: pytest tests/unit/
-        run: make test-unit
+        run: make test-unit-profile
+      - name: Upload measured pytest durations
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: pytest-durations
+          path: tests/pytest-durations.json
+          if-no-files-found: error
+          retention-days: 7
 
   native-runtime:
     name: native runtime integration
