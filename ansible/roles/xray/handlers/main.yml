@@ -11,7 +11,14 @@
 
 - name: Test Xray config before restart
   ansible.builtin.command:
-    cmd: /usr/local/bin/xray run -test -config {{ xray_etc_dir }}/config.json
+    argv:
+      - /usr/bin/env
+      - XRAY_LOCATION_ASSET={{ xray_asset_dir }}
+      - /usr/local/bin/xray
+      - run
+      - -test
+      - -config
+      - "{{ xray_etc_dir }}/config.json"
   changed_when: false
   when: not ansible_check_mode
   listen: Restart xray

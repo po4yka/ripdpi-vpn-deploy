@@ -252,6 +252,24 @@ def test_xray_publishes_required_geoip_as_a_pinned_read_only_runtime_asset() -> 
     ).read_text(encoding="utf-8")
     assert "Environment=XRAY_LOCATION_ASSET={{ xray_asset_dir }}" in service
 
+    handlers = yaml.safe_load(
+        (ROOT / "ansible/roles/xray/handlers/main.yml").read_text(encoding="utf-8")
+    )
+    validate_handler = next(
+        handler
+        for handler in handlers
+        if handler["name"] == "Test Xray config before restart"
+    )
+    assert validate_handler["ansible.builtin.command"]["argv"] == [
+        "/usr/bin/env",
+        "XRAY_LOCATION_ASSET={{ xray_asset_dir }}",
+        "/usr/local/bin/xray",
+        "run",
+        "-test",
+        "-config",
+        "{{ xray_etc_dir }}/config.json",
+    ]
+
 
 def test_xray_source_publication_remains_separate_and_idempotent() -> None:
     current = _task("xray-runtime", "Point current Xray runtime at pinned release")

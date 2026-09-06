@@ -17,12 +17,12 @@ because v26.2.6 → v26.5.3 had silent flow-mode breakage on some clients.
 Binary acquisition is delegated to `xray-runtime`; this role owns only the
 primary service user, configuration, logs, and lifecycle.
 
-**Explicit asset lookup** — config validation and the systemd service use the
-same `XRAY_LOCATION_ASSET` directory. The geodata role populates it when
-enabled; otherwise `xray-runtime` publishes the archive-bundled GeoIP file
-below the Xray install root. The two modes keep disjoint path ownership so an
-enable/disable transition cannot replace one role's regular file with the
-other role's symlink.
+**Explicit asset lookup** — template validation, restart validation, and the
+systemd service use the same `XRAY_LOCATION_ASSET` directory. The geodata role
+populates it when enabled; otherwise `xray-runtime` publishes the
+archive-bundled GeoIP file below the Xray install root. The two modes keep
+disjoint path ownership so an enable/disable transition cannot replace one
+role's regular file with the other role's symlink.
 
 **XHTTP can run without REALITY** — the role runs when either transport is enabled. The XHTTP inbound binds only to `127.0.0.1`; when `vpn.enable_xray_reality` is false, no public REALITY inbound or REALITY target validation is emitted.
 
