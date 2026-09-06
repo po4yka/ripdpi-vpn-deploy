@@ -121,10 +121,9 @@ if (
     raise SystemExit(1)
 print(value["version"] + ":PASS")
 PY
-)" || return 1
+  )" || return 1
   if [[ "$identity" == "real_vps_awg_nat_evidence_v4:PASS" ]]; then
-    "$RUNNER" validate-retained-pass --manifest "$latest" >/dev/null
-    return
+    return 0
   fi
   digest="$(sha256sum "$latest" | awk '{print $1}')"
   [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || return 1
@@ -228,7 +227,11 @@ systemd-analyze verify \
 # manifest. Retained v4 evidence must pass the canonical executable semantics
 # before the periodic executor can be enabled.
 systemctl disable --now ripdpi-real-vps-awg-nat.timer
-if ! archive_legacy_latest; then
+if ! archive_legacy_latest || ! "$RUNNER" prepare-retained-state \
+  --state-dir /var/lib/ripdpi-real-vps-awg-nat/evidence \
+  --lock-path "$LOCK_DIR/lane.lock" \
+  --lock-fd 9 \
+  --expected-source-sha "$source_sha"; then
   echo "unable to preserve incompatible prior evidence; timer disabled" >&2
   exit 1
 fi

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import fcntl
 import hashlib
 import ipaddress
@@ -28,6 +29,7 @@ MANIFEST_VERSION = "real_vps_awg_nat_evidence_v4"
 CLIENT_ACCEPTANCE_FORMAT = "ripdpi_awg_live_acceptance_v1"
 CLIENT_ACCEPTANCE_HANDOFF_FORMAT = "ripdpi_awg_live_acceptance_handoff_v1"
 CLIENT_ACCEPTANCE_REQUEST_FORMAT = "ripdpi_awg_live_acceptance_request_v1"
+RECURRING_PAIR_MAX_AGE_SECONDS = 15 * 24 * 60 * 60
 WORKFLOW_PATH = ".github/workflows/real-vps-awg-nat.yml"
 LOCAL_ENTRYPOINT_PATH = "scripts/run-real-vps-awg-nat-local.sh"
 EXECUTOR_ENTRYPOINTS = {
@@ -646,10 +648,8 @@ def _write_private_json_atomic(path: Path, value: Any) -> None:
     finally:
         if descriptor >= 0:
             os.close(descriptor)
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(temporary)
-        except FileNotFoundError:
-            pass
 
 
 def consume_client_acceptance_handoff(
@@ -1569,7 +1569,7 @@ def validate_recurring_pair(
     recurring: Any,
     *,
     now: int | None = None,
-    max_age_seconds: int = 604800,
+    max_age_seconds: int = RECURRING_PAIR_MAX_AGE_SECONDS,
 ) -> None:
     """Require two complete, ordered and independently correlated PASS runs."""
     if not isinstance(initial, dict) or not isinstance(recurring, dict):
@@ -1598,6 +1598,11 @@ def validate_recurring_pair(
     if initial["finishedAtEpoch"] >= recurring["startedAtEpoch"]:
         raise ValueError("recurring evidence is not ordered")
     if (
+        initial["clientAcceptance"]["finishedAtEpoch"]
+        >= recurring["clientAcceptance"]["startedAtEpoch"]
+    ):
+        raise ValueError("recurring client acceptance is not ordered")
+    if (
         initial["provenance"]["invocationId"],
         initial["provenance"]["invocationAttempt"],
     ) == (
@@ -1610,9 +1615,19 @@ def validate_recurring_pair(
             raise ValueError(f"recurring client {field} must be distinct")
 
 
-def _read_state_manifest(path: Path, *, now: int | None = None) -> dict[str, Any]:
+def _read_state_manifest(
+    path: Path,
+    *,
+    now: int | None = None,
+    max_age_seconds: int = RECURRING_PAIR_MAX_AGE_SECONDS,
+) -> dict[str, Any]:
     value = _private_json_descriptor(str(path), "recurring evidence", max_bytes=262144)
-    validate_manifest(value, expected_source_sha=value.get("sourceSha", ""), now=now)
+    validate_manifest(
+        value,
+        expected_source_sha=value.get("sourceSha", ""),
+        now=now,
+        max_age_seconds=max_age_seconds,
+    )
     if value["classification"] != "PASS":
         raise ValueError("recurring state requires PASS evidence")
     return value
@@ -1670,6 +1685,50 @@ def _state_entry_exists(path: Path) -> bool:
         path.lstat()
     except FileNotFoundError:
         return False
+    return True
+
+
+def _archive_prior_generation(
+    path: Path,
+    manifest: dict[str, Any],
+    *,
+    current_source_sha: str,
+) -> bool:
+    """Move valid evidence from another source generation into private history."""
+    if manifest["sourceSha"] == current_source_sha:
+        return False
+    state_dir = path.parent
+    history_dir = state_dir / "history"
+    try:
+        history_dir.mkdir(mode=0o700)
+        _fsync_directory(state_dir)
+    except FileExistsError:
+        pass
+    history_info = history_dir.lstat()
+    if (
+        not stat.S_ISDIR(history_info.st_mode)
+        or history_info.st_uid not in {0, os.geteuid()}
+        or stat.S_IMODE(history_info.st_mode) != 0o700
+    ):
+        raise ValueError("recurring state history directory has unsafe metadata")
+    payload = canonical_json_bytes(manifest)
+    digest = hashlib.sha256(payload).hexdigest()
+    archived = history_dir / f"{path.stem}-{digest}.json"
+    if _state_entry_exists(archived):
+        observed = archived.lstat()
+        if (
+            not stat.S_ISREG(observed.st_mode)
+            or observed.st_nlink != 1
+            or observed.st_uid not in {0, os.geteuid()}
+            or stat.S_IMODE(observed.st_mode) != 0o600
+            or archived.read_bytes() != payload
+        ):
+            raise ValueError("recurring state history entry is unsafe or conflicting")
+        _unlink_state(path)
+        return True
+    os.replace(path, archived)
+    _fsync_directory(history_dir)
+    _fsync_directory(state_dir)
     return True
 
 
@@ -1781,16 +1840,43 @@ def record_recurring_state(
                 validate_recurring_pair(prior, recovered, now=now)
                 os.replace(latest_tmp, latest_path)
                 _fsync_directory(state_dir)
+        # Read retained manifests without a freshness cutoff first so a valid
+        # older generation cannot wedge a newly installed source forever.
+        # Unsafe, malformed, non-PASS and future-dated state still fails closed.
+        retained_max_age = 2**63 - 1
         pending = (
-            _read_state_manifest(pending_path, now=now)
+            _read_state_manifest(
+                pending_path, now=now, max_age_seconds=retained_max_age
+            )
             if _state_entry_exists(pending_path)
             else None
         )
         latest = (
-            _read_state_manifest(latest_path, now=now)
+            _read_state_manifest(latest_path, now=now, max_age_seconds=retained_max_age)
             if _state_entry_exists(latest_path)
             else None
         )
+        current_source_sha = current["sourceSha"]
+        if pending is not None and _archive_prior_generation(
+            pending_path,
+            pending,
+            current_source_sha=current_source_sha,
+        ):
+            pending = None
+        if latest is not None and _archive_prior_generation(
+            latest_path,
+            latest,
+            current_source_sha=current_source_sha,
+        ):
+            latest = None
+        for retained in (pending, latest):
+            if retained is not None:
+                validate_manifest(
+                    retained,
+                    expected_source_sha=current_source_sha,
+                    now=now,
+                    max_age_seconds=RECURRING_PAIR_MAX_AGE_SECONDS,
+                )
         if pending is not None and latest is not None:
             validate_recurring_pair(pending, latest, now=now)
             _unlink_state(pending_path)
@@ -1816,6 +1902,49 @@ def record_recurring_state(
             state_dir, "pending-initial.json", current, failpoint=failpoint
         )
         return "pending"
+    finally:
+        if opened:
+            os.close(descriptor)
+
+
+def prepare_retained_state(
+    state_dir: Path,
+    *,
+    current_source_sha: str,
+    lock_path: Path,
+    lock_fd: int | None = None,
+    now: int | None = None,
+) -> None:
+    """Validate current-generation state and archive older source generations."""
+    current_source_sha = require_sha(current_source_sha, SHA1_RE, "current source SHA")
+    descriptor, opened = _acquire_recurring_lock(lock_path, lock_fd)
+    try:
+        if not _state_entry_exists(state_dir):
+            return
+        state_info = state_dir.lstat()
+        if (
+            not stat.S_ISDIR(state_info.st_mode)
+            or state_info.st_uid not in {0, os.geteuid()}
+            or stat.S_IMODE(state_info.st_mode) != 0o700
+        ):
+            raise ValueError("recurring state directory has unsafe metadata")
+        for name in ("pending-initial.json", "latest.json"):
+            path = state_dir / name
+            if not _state_entry_exists(path):
+                continue
+            retained = _read_state_manifest(path, now=now, max_age_seconds=2**63 - 1)
+            if _archive_prior_generation(
+                path,
+                retained,
+                current_source_sha=current_source_sha,
+            ):
+                continue
+            validate_manifest(
+                retained,
+                expected_source_sha=current_source_sha,
+                now=now,
+                max_age_seconds=RECURRING_PAIR_MAX_AGE_SECONDS,
+            )
     finally:
         if opened:
             os.close(descriptor)
@@ -2537,6 +2666,11 @@ def main(argv: list[str] | None = None) -> int:
     recurring.add_argument("--recurring", type=Path, required=True)
     retained = subparsers.add_parser("validate-retained-pass")
     retained.add_argument("--manifest", type=Path, required=True)
+    prepare_retained = subparsers.add_parser("prepare-retained-state")
+    prepare_retained.add_argument("--state-dir", type=Path, required=True)
+    prepare_retained.add_argument("--lock-path", type=Path, required=True)
+    prepare_retained.add_argument("--lock-fd", type=int)
+    prepare_retained.add_argument("--expected-source-sha", required=True)
     record = subparsers.add_parser("record-recurring")
     record.add_argument("--manifest", type=Path, required=True)
     record.add_argument("--state-dir", type=Path, required=True)
@@ -2622,11 +2756,27 @@ def main(argv: list[str] | None = None) -> int:
             value = _private_json_descriptor(
                 args.manifest, "retained evidence", max_bytes=262144
             )
-            validate_manifest(value, expected_source_sha=value.get("sourceSha", ""))
+            validate_manifest(
+                value,
+                expected_source_sha=value.get("sourceSha", ""),
+                max_age_seconds=RECURRING_PAIR_MAX_AGE_SECONDS,
+            )
             if value["classification"] != "PASS":
                 raise ValueError("retained evidence is not PASS")
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             print(f"real-VPS AWG/NAT retained evidence invalid: {exc}", file=sys.stderr)
+            return 1
+        return 0
+    if args.command == "prepare-retained-state":
+        try:
+            prepare_retained_state(
+                args.state_dir,
+                current_source_sha=args.expected_source_sha,
+                lock_path=args.lock_path,
+                lock_fd=args.lock_fd,
+            )
+        except (OSError, ValueError, json.JSONDecodeError, RecurringStateBusy) as exc:
+            print(f"real-VPS AWG/NAT retained state invalid: {exc}", file=sys.stderr)
             return 1
         return 0
     if args.command == "record-recurring":

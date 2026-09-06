@@ -1107,7 +1107,8 @@ def test_local_installer_pins_root_owned_source_and_fixed_units() -> None:
     assert "flock -n 9" in installer
     assert 'latest="$evidence_dir/latest.json"' in installer
     assert "archive_legacy_latest()" in installer
-    assert "validate-retained-pass" in installer
+    assert "prepare-retained-state" in installer
+    assert '--expected-source-sha "$source_sha"' in installer
     assert (
         'CLIENT_ACCEPTANCE_PUBLIC_KEY="/etc/ripdpi/real-vps-awg-client-acceptance.pub"'
         in installer
@@ -1120,7 +1121,9 @@ def test_local_installer_pins_root_owned_source_and_fixed_units() -> None:
     install_success = installer.index(
         "systemctl enable --now ripdpi-real-vps-awg-nat.timer"
     )
-    archive_call = installer.rindex("\nif ! archive_legacy_latest; then\n")
+    archive_call = installer.rindex(
+        '\nif ! archive_legacy_latest || ! "$RUNNER" prepare-retained-state \\\n'
+    )
     assert archive_call < install_success
     assert installer.count('latest="$evidence_dir/latest.json"') == 1
     assert "archive_legacy_latest;" not in installer[:archive_call]
@@ -1524,8 +1527,8 @@ def test_github_rerun_uses_distinct_signed_invocation_attempts(tmp_path: Path) -
             root,
             live_client_acceptance(
                 reportSha256=str(attempt) * 64,
-                startedAtEpoch=current - 15 + attempt,
-                finishedAtEpoch=current - 10 + attempt,
+                startedAtEpoch=current - 30 + attempt * 15,
+                finishedAtEpoch=current - 25 + attempt * 15,
             ),
             nonce=nonce,
             invocation_id="github-42",
@@ -1594,6 +1597,82 @@ def test_recurring_state_requires_valid_initial_then_valid_pair(tmp_path: Path) 
     assert json.loads((state / "latest.json").read_text()) == second
     assert not (state / "pending-initial.json").exists()
     assert stat.S_IMODE((state / "latest.json").stat().st_mode) == 0o600
+
+
+def test_recurring_state_accepts_weekly_timer_jitter(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    lock = tmp_path / "lane.lock"
+    first = recurring_manifest(1)
+    later = recurring_manifest(2)
+    later_epoch = first["generatedAtEpoch"] + 7 * 24 * 60 * 60 + 30 * 60
+    later.update(
+        startedAtEpoch=later_epoch,
+        finishedAtEpoch=later_epoch,
+        generatedAtEpoch=later_epoch,
+    )
+    later["clientAcceptance"].update(
+        startedAtEpoch=later_epoch - 20,
+        finishedAtEpoch=later_epoch - 10,
+    )
+    later["clientAcceptance"]["correlationSha256"] = lane.client_acceptance_correlation(
+        later["clientAcceptance"]
+    )
+
+    assert (
+        lane.record_recurring_state(
+            first, state, lock_path=lock, now=first["generatedAtEpoch"]
+        )
+        == "pending"
+    )
+    assert (
+        lane.record_recurring_state(later, state, lock_path=lock, now=later_epoch)
+        == "published"
+    )
+
+
+@pytest.mark.parametrize("retained_name", ["pending-initial.json", "latest.json"])
+@pytest.mark.parametrize("prior_age", [300, 16 * 24 * 60 * 60])
+def test_recurring_state_archives_prior_source_generation(
+    tmp_path: Path, retained_name: str, prior_age: int
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    prior = recurring_manifest(1, source="1" * 40)
+    prior_epoch = 2_000_000_300 - prior_age
+    prior.update(
+        startedAtEpoch=prior_epoch - 100,
+        finishedAtEpoch=prior_epoch,
+        generatedAtEpoch=prior_epoch,
+    )
+    prior["clientAcceptance"].update(
+        startedAtEpoch=prior_epoch - 120,
+        finishedAtEpoch=prior_epoch - 110,
+    )
+    prior["clientAcceptance"]["correlationSha256"] = lane.client_acceptance_correlation(
+        prior["clientAcceptance"]
+    )
+    retained = state / retained_name
+    retained.write_bytes(lane.canonical_json_bytes(prior))
+    retained.chmod(0o600)
+    current = recurring_manifest(2, source="2" * 40)
+
+    assert (
+        lane.record_recurring_state(
+            current,
+            state,
+            lock_path=tmp_path / "lane.lock",
+            now=2_000_000_300,
+        )
+        == "pending"
+    )
+
+    assert json.loads((state / "pending-initial.json").read_text()) == current
+    assert not (state / "latest.json").exists()
+    archived = list((state / "history").glob(f"{retained.stem}-*.json"))
+    assert len(archived) == 1
+    assert archived[0].read_bytes() == lane.canonical_json_bytes(prior)
+    assert stat.S_IMODE(archived[0].stat().st_mode) == 0o600
 
 
 def test_invalid_initial_cannot_poison_pending_or_latest(tmp_path: Path) -> None:
@@ -1772,6 +1851,47 @@ def test_retained_v4_manifest_uses_executable_semantic_validator(
     manifest["clientAcceptance"]["correlationSha256"] = "a" * 64
     path.write_bytes(lane.canonical_json_bytes(manifest))
     assert lane.main(["validate-retained-pass", "--manifest", str(path)]) == 1
+
+
+def test_installer_prepares_both_retained_generation_slots(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    lock = tmp_path / "lane.lock"
+    for index, name in enumerate(("pending-initial.json", "latest.json"), start=1):
+        retained = recurring_manifest(index, source="1" * 40)
+        path = state / name
+        path.write_bytes(lane.canonical_json_bytes(retained))
+        path.chmod(0o600)
+
+    lane.prepare_retained_state(
+        state,
+        current_source_sha="2" * 40,
+        lock_path=lock,
+        now=2_000_000_300,
+    )
+
+    assert not (state / "pending-initial.json").exists()
+    assert not (state / "latest.json").exists()
+    assert len(list((state / "history").glob("*.json"))) == 2
+
+
+def test_installer_refuses_stale_current_generation_state(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    retained = recurring_manifest(1)
+    path = state / "latest.json"
+    path.write_bytes(lane.canonical_json_bytes(retained))
+    path.chmod(0o600)
+
+    with pytest.raises(ValueError, match="stale"):
+        lane.prepare_retained_state(
+            state,
+            current_source_sha="1" * 40,
+            lock_path=tmp_path / "lane.lock",
+            now=retained["generatedAtEpoch"] + lane.RECURRING_PAIR_MAX_AGE_SECONDS + 1,
+        )
+
+    assert path.read_bytes() == lane.canonical_json_bytes(retained)
 
 
 def test_signed_handoff_rejects_expired_request(tmp_path: Path) -> None:
@@ -2039,6 +2159,21 @@ def test_recurring_acceptance_requires_distinct_ordered_reports() -> None:
         )
         with pytest.raises(ValueError, match=error):
             lane.validate_recurring_pair(first, mismatched, now=2_000_000_100)
+
+
+def test_recurring_pair_orders_embedded_client_acceptance_windows() -> None:
+    first = recurring_manifest(1)
+    later = recurring_manifest(2)
+    later["clientAcceptance"].update(
+        startedAtEpoch=1_999_999_900,
+        finishedAtEpoch=1_999_999_920,
+    )
+    later["clientAcceptance"]["correlationSha256"] = lane.client_acceptance_correlation(
+        later["clientAcceptance"]
+    )
+
+    with pytest.raises(ValueError, match="client acceptance is not ordered"):
+        lane.validate_recurring_pair(first, later, now=2_000_000_300)
 
 
 def test_private_path_executes_resolved_target_not_mutable_parent_symlink(
