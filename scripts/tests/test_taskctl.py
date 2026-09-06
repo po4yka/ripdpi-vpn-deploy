@@ -174,15 +174,23 @@ class TaskctlFixture(TestCase):
             taskctl.render_board(self.root, documents, steps), encoding="utf-8"
         )
 
-    def add_archived_spec_task(self, *, receipt: bool) -> Path:
-        task_id = "ANS-1786234567890101"
-        change = "ans-1786234567890101-change"
+    def add_archived_spec_task(
+        self,
+        *,
+        receipt: bool,
+        task_id: str = "ANS-1786234567890101",
+        kind: str = "feature",
+        area: str = "ansible",
+    ) -> Path:
+        change = f"{task_id.casefold()}-change"
+        prefix, suffix = task_id.split("-", 1)
+        step_id = f"{prefix}-{int(suffix) + 1:016d}"
         values = {
             "id": task_id,
             "title": "Change ansible behavior",
-            "kind": "feature",
+            "kind": kind,
             "status": "review",
-            "area": "ansible",
+            "area": area,
             "priority": "high",
             "risk": "high",
             "owner": "test",
@@ -194,10 +202,14 @@ class TaskctlFixture(TestCase):
             "updated": "2026-08-09",
         }
         issue = self.root / "docs/tasks/issues/change-ansible.md"
-        issue.write_text(taskctl.render_document(values, "## Goal\n\nFixture.\n"), encoding="utf-8")
+        issue.write_text(
+            taskctl.render_document(values, "## Goal\n\nFixture.\n"), encoding="utf-8"
+        )
         archive = self.root / "openspec/changes/archive" / f"2026-08-09-{change}"
         archive.mkdir(parents=True)
-        (archive / ".openspec.yaml").write_text("schema: ripdpi-deploy-change\n", encoding="utf-8")
+        (archive / ".openspec.yaml").write_text(
+            "schema: ripdpi-deploy-change\n", encoding="utf-8"
+        )
         (archive / "proposal.md").write_text(
             f"Task ID: `{task_id}`\n", encoding="utf-8"
         )
@@ -208,7 +220,7 @@ class TaskctlFixture(TestCase):
             encoding="utf-8",
         )
         (archive / "tasks.md").write_text(
-            f"- [x] ANS-1786234567890102 Implement fixture @item:{task_id}\n",
+            f"- [x] {step_id} Implement fixture @item:{task_id}\n",
             encoding="utf-8",
         )
         verification = {
@@ -217,7 +229,9 @@ class TaskctlFixture(TestCase):
             "commit_sha": "a" * 40,
         }
         for category in DEPLOY_EVIDENCE_CATEGORIES:
-            verification[category] = "passed" if category == "local" else "not_applicable"
+            verification[category] = (
+                "passed" if category == "local" else "not_applicable"
+            )
             verification[f"{category}_evidence"] = "Fixture evidence."
         verification_body = f"""# Verification
 
@@ -225,7 +239,7 @@ class TaskctlFixture(TestCase):
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-{task_id}-001 | ANS-1786234567890102 | Fixture evidence. | passed |
+| REQ-{task_id}-001 | {step_id} | Fixture evidence. | passed |
 """
         (archive / "verification.md").write_text(
             taskctl.render_document(
@@ -251,44 +265,65 @@ class TaskctlFixture(TestCase):
             )
         return issue
 
-    def add_active_spec_task(self, *, status: str = "review", done: bool = False) -> Path:
-        task_id = "ANS-1786234567890101"
-        change = "ans-1786234567890101-change"
+    def add_active_spec_task(
+        self,
+        *,
+        status: str = "review",
+        done: bool = False,
+        task_id: str = "ANS-1786234567890101",
+        slug: str = "change-ansible",
+        related: list[str] | None = None,
+    ) -> Path:
+        change = f"{task_id.casefold()}-change"
+        prefix, suffix = task_id.split("-", 1)
         values = {
             "id": task_id,
             "title": "Change ansible behavior",
             "kind": "feature",
             "status": status,
-            "area": "ansible",
+            "area": DEPLOY_PREFIX_AREAS[prefix],
             "priority": "high",
             "risk": "high",
             "owner": "test",
             "parent": None,
             "blocked_by": [],
+            "related_tasks": related or [],
             "spec_mode": "required",
             "openspec_change": change,
             "created": "2026-08-09",
             "updated": "2026-08-09",
         }
-        issue = self.root / "docs/tasks/issues/change-ansible.md"
-        issue.write_text(taskctl.render_document(values, "## Goal\n\nFixture.\n"), encoding="utf-8")
+        issue = self.root / "docs/tasks/issues" / f"{slug}.md"
+        issue.write_text(
+            taskctl.render_document(values, "## Goal\n\nFixture.\n"), encoding="utf-8"
+        )
         change_dir = self.root / "openspec/changes" / change
         spec = change_dir / "specs/change/spec.md"
         spec.parent.mkdir(parents=True)
-        (change_dir / ".openspec.yaml").write_text("schema: ripdpi-deploy-change\n", encoding="utf-8")
-        (change_dir / "proposal.md").write_text(f"Task ID: `{task_id}`\n", encoding="utf-8")
-        spec.write_text(f"### Requirement: REQ-{task_id}-001 — Fixture\n", encoding="utf-8")
+        (change_dir / ".openspec.yaml").write_text(
+            "schema: ripdpi-deploy-change\n", encoding="utf-8"
+        )
+        (change_dir / "proposal.md").write_text(
+            f"Task ID: `{task_id}`\n", encoding="utf-8"
+        )
+        spec.write_text(
+            f"### Requirement: REQ-{task_id}-001 — Fixture\n", encoding="utf-8"
+        )
         mark = "x" if done else " "
-        step_id = "ANS-1786234567890102"
+        step_id = f"{prefix}-{int(suffix) + 1:016d}"
         (change_dir / "tasks.md").write_text(
             f"- [{mark}] {step_id} Implement fixture @item:{task_id}\n",
             encoding="utf-8",
         )
         verification = {"task_id": task_id, "change": change, "commit_sha": None}
         for category in DEPLOY_EVIDENCE_CATEGORIES:
-            verification[category] = "required" if category == "local" else "not_applicable"
+            verification[category] = (
+                "required" if category == "local" else "not_applicable"
+            )
             verification[f"{category}_evidence"] = (
-                None if category == "local" else "Fixture does not require this evidence."
+                None
+                if category == "local"
+                else "Fixture does not require this evidence."
             )
         body = f"""# Verification
 
@@ -303,6 +338,49 @@ class TaskctlFixture(TestCase):
             encoding="utf-8",
         )
         return issue
+
+    def add_shared_evidence_mapping(
+        self,
+        verification_path: Path,
+        *,
+        source_task: str,
+        owner_task: str,
+        requirement: str,
+        command: str,
+        category: str,
+        source_revision: str,
+    ) -> None:
+        verification = taskctl.read_document(verification_path)
+        row = (
+            f"| {source_task} | {owner_task} | {requirement} | `{command}` | "
+            f"{category} | {source_revision} |"
+        )
+        heading = "## Shared operational evidence ownership"
+        if heading in verification.body:
+            lines = verification.body.rstrip().splitlines()
+            heading_index = lines.index(heading)
+            index = heading_index + 3
+            while index < len(lines) and lines[index].lstrip().startswith("|"):
+                index += 1
+            lines.insert(index, row)
+            body = "\n".join(lines) + "\n"
+        else:
+            body = verification.body.rstrip() + f"""
+
+{heading}
+
+| Source task | Operational owner | Requirement | Acceptance command | Evidence category | Source revision |
+|---|---|---|---|---|---|
+{row}
+"""
+        verification_path.write_text(
+            taskctl.render_document(
+                dict(verification.values),
+                body,
+                order=tuple(verification.values),
+            ),
+            encoding="utf-8",
+        )
 
 
 class TaskctlContractTest(TaskctlFixture):
@@ -343,6 +421,62 @@ class TaskctlContractTest(TaskctlFixture):
         self.add_simple_task(blockers=["CIC-1786234567890999"])
 
         with self.assertRaisesRegex(taskctl.ContractError, "missing or self blocker"):
+            taskctl.load_state(self.root)
+
+
+    def test_shared_evidence_mapping_must_match_source_and_owner_records(self) -> None:
+        source_task = "ANS-1786234567890101"
+        owner_task = "OPS-1786234567890201"
+        self.add_active_spec_task(
+            task_id=source_task,
+            slug="source",
+            done=True,
+        )
+        self.add_active_spec_task(
+            task_id=owner_task,
+            slug="owner",
+            done=True,
+            related=[source_task],
+        )
+        for task_id, category_state in (
+            (source_task, "blocked"),
+            (owner_task, "blocked"),
+        ):
+            verification_path = (
+                self.root
+                / "openspec/changes"
+                / f"{task_id.casefold()}-change"
+                / "verification.md"
+            )
+            verification = taskctl.read_document(verification_path)
+            values = dict(verification.values)
+            values["commit_sha"] = "a" * 40 if task_id == source_task else None
+            values["live"] = category_state
+            values["live_evidence"] = "External acceptance is pending."
+            verification_path.write_text(
+                taskctl.render_document(values, verification.body, order=tuple(values)),
+                encoding="utf-8",
+            )
+        owner_verification = (
+            self.root
+            / "openspec/changes"
+            / f"{owner_task.casefold()}-change"
+            / "verification.md"
+        )
+        self.add_shared_evidence_mapping(
+            owner_verification,
+            source_task=source_task,
+            owner_task=owner_task,
+            requirement=f"REQ-{source_task}-001",
+            command="make verify LIMIT=fixture",
+            category="live",
+            source_revision="a" * 40,
+        )
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "shared live mapping does not match source record",
+        ):
             taskctl.load_state(self.root)
 
     def test_text_ready_reports_unresolved_external_blocker(self) -> None:
@@ -730,9 +864,13 @@ class TaskctlHistoryTest(TaskctlFixture):
                 "evidence_summary": "Unit fixture passed.",
             }
         )
-        path.write_text(taskctl.render_document(values, document.body), encoding="utf-8")
-        work = self.root / "docs/tasks/work/CIC-1786234567890001.md"
-        work.write_text(work.read_text(encoding="utf-8").replace("- [ ]", "- [x]"), encoding="utf-8")
+        path.write_text(
+            taskctl.render_document(values, document.body), encoding="utf-8"
+        )
+        work = self.root / "docs/tasks/work" / f"{document.task_id}.md"
+        work.write_text(
+            work.read_text(encoding="utf-8").replace("- [ ]", "- [x]"), encoding="utf-8"
+        )
         terminal = taskctl.read_document(path)
         taskctl.write_lifecycle_receipt(
             self.root,
@@ -750,8 +888,9 @@ class TaskctlHistoryTest(TaskctlFixture):
         )
 
     def purge_simple_task(self, path: Path) -> None:
+        task_id = taskctl.read_document(path).task_id
         path.unlink()
-        work = self.root / "docs/tasks/work/CIC-1786234567890001.md"
+        work = self.root / "docs/tasks/work" / f"{task_id}.md"
         work.unlink()
         work.with_suffix(".close.json").unlink()
 
@@ -946,7 +1085,320 @@ class TaskctlHistoryTest(TaskctlFixture):
 
         taskctl.validate_deleted_history(self.root, base)
 
-    def test_purge_rejects_incoming_related_task(self) -> None:
+    def test_required_evidence_cannot_be_reclassified_not_applicable_before_purge(
+        self,
+    ) -> None:
+        issue = self.add_active_spec_task(status="review", done=True)
+        change = "ans-1786234567890101-change"
+        active = self.root / "openspec/changes" / change
+        verification_path = active / "verification.md"
+        verification = taskctl.read_document(verification_path)
+        values = dict(verification.values)
+        values["local"] = "blocked"
+        values["local_evidence"] = "Required isolated acceptance is unavailable."
+        body = verification.body.replace(
+            "| Pending | required |", "| Source passed. | passed |"
+        )
+        verification_path.write_text(
+            taskctl.render_document(values, body, order=tuple(values)),
+            encoding="utf-8",
+        )
+        self.write_board()
+        base = self.commit_all("record blocked acceptance")
+
+        archive = self.root / "openspec/changes/archive" / f"2026-08-09-{change}"
+        active.rename(archive)
+        verification_path = archive / "verification.md"
+        verification = taskctl.read_document(verification_path)
+        values = dict(verification.values)
+        values["commit_sha"] = "a" * 40
+        values["local"] = "not_applicable"
+        values["local_evidence"] = "Delegated elsewhere."
+        verification_path.write_text(
+            taskctl.render_document(values, verification.body, order=tuple(values)),
+            encoding="utf-8",
+        )
+        (archive / ".taskctl-archive.json").write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "task_id": "ANS-1786234567890101",
+                    "change": change,
+                    "outcome": "review",
+                    "commit_sha": "a" * 40,
+                    "archived_at": "2026-08-09T00:00:00Z",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        taskctl.command_close_prepare(
+            argparse.Namespace(
+                root=self.root,
+                query="ANS-1786234567890101",
+                outcome="done",
+                reason="All acceptance passed.",
+                evidence="Source and delegated checks passed.",
+            )
+        )
+        self.commit_all("record invalid terminal closure")
+        taskctl.command_close_purge(
+            argparse.Namespace(root=self.root, query="ANS-1786234567890101")
+        )
+        self.commit_all("purge invalid closure")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "local evidence changed from blocked to not_applicable without a shared mapping",
+        ):
+            taskctl.validate_deleted_history(self.root, base)
+
+    def test_exact_shared_mapping_allows_evidence_ownership_transfer(self) -> None:
+        source_task = "ANS-1786234567890101"
+        owner_task = "OPS-1786234567890201"
+        change = f"{source_task.casefold()}-change"
+        source = self.add_active_spec_task(
+            status="review",
+            done=True,
+            task_id=source_task,
+            slug="source",
+        )
+        self.add_active_spec_task(
+            status="review",
+            done=True,
+            task_id=owner_task,
+            slug="owner",
+            related=[source_task],
+        )
+        active = self.root / "openspec/changes" / change
+        second_requirement = f"REQ-{source_task}-002"
+        second_step = "ANS-1786234567890103"
+        source_spec = active / "specs/change/spec.md"
+        source_spec.write_text(
+            source_spec.read_text(encoding="utf-8")
+            + f"\n### Requirement: {second_requirement} — Second fixture\n",
+            encoding="utf-8",
+        )
+        source_tasks = active / "tasks.md"
+        source_tasks.write_text(
+            source_tasks.read_text(encoding="utf-8")
+            + f"- [x] {second_step} Verify second fixture @item:{source_task}\n",
+            encoding="utf-8",
+        )
+        source_verification = active / "verification.md"
+        verification = taskctl.read_document(source_verification)
+        values = dict(verification.values)
+        values["local"] = "passed"
+        values["local_evidence"] = "Source checks passed."
+        values["live"] = "blocked"
+        values["live_evidence"] = "Exact operational acceptance is unavailable."
+        body = (
+            verification.body.replace(
+                "| Pending | required |", "| Source passed. | passed |"
+            ).rstrip()
+            + f"\n| {second_requirement} | {second_step} | Source passed. | passed |\n"
+        )
+        source_verification.write_text(
+            taskctl.render_document(values, body, order=tuple(values)),
+            encoding="utf-8",
+        )
+        self.write_board()
+        base = self.commit_all("record blocked source acceptance")
+
+        archive = self.root / "openspec/changes/archive" / f"2026-08-09-{change}"
+        active.rename(archive)
+        source_verification = archive / "verification.md"
+        verification = taskctl.read_document(source_verification)
+        values = dict(verification.values)
+        values["commit_sha"] = "a" * 40
+        values["live"] = "not_applicable"
+        values["live_evidence"] = f"Transferred to {owner_task}."
+        source_verification.write_text(
+            taskctl.render_document(values, verification.body, order=tuple(values)),
+            encoding="utf-8",
+        )
+        mapping = {
+            "source_task": source_task,
+            "owner_task": owner_task,
+            "requirement": f"REQ-{source_task}-001",
+            "command": "make verify LIMIT=fixture",
+            "category": "live",
+            "source_revision": "a" * 40,
+        }
+        self.add_shared_evidence_mapping(source_verification, **mapping)
+        owner_verification = (
+            self.root
+            / "openspec/changes"
+            / f"{owner_task.casefold()}-change"
+            / "verification.md"
+        )
+        owner_document = taskctl.read_document(owner_verification)
+        owner_values = dict(owner_document.values)
+        owner_values["live"] = "blocked"
+        owner_values["live_evidence"] = "Owned external acceptance is pending."
+        owner_verification.write_text(
+            taskctl.render_document(
+                owner_values,
+                owner_document.body,
+                order=tuple(owner_values),
+            ),
+            encoding="utf-8",
+        )
+        self.add_shared_evidence_mapping(owner_verification, **mapping)
+        second_mapping = dict(mapping, requirement=second_requirement)
+        self.add_shared_evidence_mapping(source_verification, **second_mapping)
+        self.add_shared_evidence_mapping(owner_verification, **second_mapping)
+        (archive / ".taskctl-archive.json").write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "task_id": source_task,
+                    "change": change,
+                    "outcome": "review",
+                    "commit_sha": "a" * 40,
+                    "archived_at": "2026-08-09T00:00:00Z",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        taskctl.command_close_prepare(
+            argparse.Namespace(
+                root=self.root,
+                query=source_task,
+                outcome="done",
+                reason="Source acceptance transferred.",
+                evidence="Exact operational ownership mapping retained.",
+            )
+        )
+        self.commit_all("record mapped terminal closure")
+        taskctl.command_close_purge(
+            argparse.Namespace(root=self.root, query=source_task)
+        )
+        self.commit_all("purge mapped source")
+
+        documents, _ = taskctl.load_state(self.root)
+        self.assertEqual([owner_task], [document.task_id for document in documents])
+        taskctl.validate_deleted_history(self.root, base)
+
+        owner_document = taskctl.read_document(owner_verification)
+        owner_body = owner_document.body.split(
+            "\n## Shared operational evidence ownership\n", 1
+        )[0].rstrip() + "\n"
+        owner_verification.write_text(
+            taskctl.render_document(
+                dict(owner_document.values),
+                owner_body,
+                order=tuple(owner_document.values),
+            ),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "shared live mapping does not match historical source record",
+        ):
+            taskctl.load_state(self.root)
+
+    def test_purge_preserves_incoming_related_task_as_historical_done(self) -> None:
+        target = self.add_simple_task(status="review")
+        self.add_simple_task(
+            task_id="CIC-1786234567890003",
+            related=["CIC-1786234567890001"],
+        )
+        self.write_board()
+        base = self.commit_all("add related tasks")
+        self.prepare_simple_terminal(target)
+        self.commit_all("prepare terminal target")
+
+        self.assertEqual(
+            0,
+            taskctl.command_close_purge(
+                argparse.Namespace(root=self.root, query="CIC-1786234567890001")
+            ),
+        )
+        output = StringIO()
+        with redirect_stdout(output):
+            taskctl.command_graph(argparse.Namespace(root=self.root, json=True))
+        precommit = json.loads(output.getvalue())
+        historical = next(
+            node for node in precommit["graph"] if node["id"] == "CIC-1786234567890001"
+        )
+        consumer = next(
+            node for node in precommit["graph"] if node["id"] == "CIC-1786234567890003"
+        )
+        self.assertTrue(historical["historical"])
+        self.assertEqual("done", historical["status"])
+        self.assertEqual(["CIC-1786234567890001"], consumer["related_tasks"])
+
+        self.write_board()
+        deletion = self.commit_all("purge terminal target")
+        taskctl.validate_repository(self.root, base=base, upstreams=False)
+        output = StringIO()
+        with redirect_stdout(output):
+            taskctl.command_graph(argparse.Namespace(root=self.root, json=True))
+        committed = json.loads(output.getvalue())
+        historical = next(
+            node for node in committed["graph"] if node["id"] == "CIC-1786234567890001"
+        )
+        self.assertEqual(deletion, historical["deletion_revision"])
+
+    def test_graph_reuses_one_terminal_history_index_for_multiple_related_tasks(
+        self,
+    ) -> None:
+        first_id = "CIC-1786234567890001"
+        second_id = "CIC-1786234567890010"
+        first = self.add_simple_task(task_id=first_id, status="review")
+        second = self.add_simple_task(task_id=second_id, status="review")
+        self.add_simple_task(
+            task_id="CIC-1786234567890020",
+            related=[first_id, second_id],
+        )
+        self.write_board()
+        self.commit_all("add two related source tasks")
+        self.prepare_simple_terminal(first)
+        self.prepare_simple_terminal(second)
+        self.commit_all("prepare both terminal sources")
+        taskctl.command_close_purge(argparse.Namespace(root=self.root, query=first_id))
+        taskctl.command_close_purge(argparse.Namespace(root=self.root, query=second_id))
+        self.write_board()
+        self.commit_all("purge both terminal sources")
+
+        original = taskctl.run_command
+        history_walks = 0
+
+        def tracked(command, *, root, capture=True):
+            nonlocal history_walks
+            if tuple(command[:4]) == (
+                "git",
+                "rev-list",
+                "--reverse",
+                "--ancestry-path",
+            ):
+                history_walks += 1
+            return original(command, root=root, capture=capture)
+
+        with mock.patch.object(taskctl, "run_command", side_effect=tracked):
+            taskctl.command_graph(argparse.Namespace(root=self.root, json=True))
+
+        self.assertEqual(1, history_walks)
+
+    def test_missing_local_related_task_fails_closed(self) -> None:
+        self.add_simple_task()
+        self.write_board()
+        self.commit_all("add history anchor")
+        self.add_simple_task(
+            task_id="CIC-1786234567890003",
+            related=["CIC-1786234567890999"],
+        )
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "missing or incomplete related task.*CIC-1786234567890999",
+        ):
+            taskctl.load_state(self.root)
+
+    def test_partial_manual_purge_cannot_resolve_related_task(self) -> None:
         target = self.add_simple_task(status="review")
         self.add_simple_task(
             task_id="CIC-1786234567890003",
@@ -956,10 +1408,86 @@ class TaskctlHistoryTest(TaskctlFixture):
         self.commit_all("add related tasks")
         self.prepare_simple_terminal(target)
         self.commit_all("prepare terminal target")
+        target.unlink()
+        work = self.root / "docs/tasks/work/CIC-1786234567890001.md"
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "missing or incomplete related task.*CIC-1786234567890001",
+        ):
+            taskctl.load_state(self.root)
+        self.assertTrue(work.is_file())
+        self.assertTrue(work.with_suffix(".close.json").is_file())
+
+    def test_dropped_target_with_incoming_related_task_cannot_be_purged(self) -> None:
+        target = self.add_simple_task(status="review")
+        self.add_simple_task(
+            task_id="CIC-1786234567890003",
+            related=["CIC-1786234567890001"],
+        )
+        self.write_board()
+        self.commit_all("add related tasks")
+        taskctl.command_close_prepare(
+            argparse.Namespace(
+                root=self.root,
+                query="CIC-1786234567890001",
+                outcome="dropped",
+                reason="Capability cancelled.",
+                evidence="Cancellation decision recorded.",
+            )
+        )
+        self.commit_all("prepare dropped target")
+        before = target.read_bytes()
 
         with self.assertRaisesRegex(taskctl.ContractError, "incoming reference"):
             taskctl.command_close_purge(
                 argparse.Namespace(root=self.root, query="CIC-1786234567890001")
+            )
+        self.assertEqual(before, target.read_bytes())
+
+    def test_incoming_blocker_still_prevents_done_task_purge(self) -> None:
+        target = self.add_simple_task(status="review")
+        self.add_simple_task(
+            task_id="CIC-1786234567890003",
+            blockers=["CIC-1786234567890001"],
+        )
+        self.write_board()
+        self.commit_all("add blocked task")
+        self.prepare_simple_terminal(target)
+        self.commit_all("prepare terminal blocker")
+
+        with self.assertRaisesRegex(taskctl.ContractError, "incoming reference"):
+            taskctl.command_close_purge(
+                argparse.Namespace(root=self.root, query="CIC-1786234567890001")
+            )
+
+    def test_incoming_parent_still_prevents_done_task_purge(self) -> None:
+        self.add_archived_spec_task(
+            receipt=True,
+            task_id="EPC-1786234567890101",
+            kind="epic",
+            area="epic",
+        )
+        self.add_simple_task(
+            task_id="CIC-1786234567890003",
+            parent="EPC-1786234567890101",
+        )
+        self.write_board()
+        self.commit_all("add parent and child")
+        taskctl.command_close_prepare(
+            argparse.Namespace(
+                root=self.root,
+                query="EPC-1786234567890101",
+                outcome="done",
+                reason="Verified.",
+                evidence="Archived fixture evidence passed.",
+            )
+        )
+        self.commit_all("prepare terminal parent")
+
+        with self.assertRaisesRegex(taskctl.ContractError, "incoming reference"):
+            taskctl.command_close_purge(
+                argparse.Namespace(root=self.root, query="EPC-1786234567890101")
             )
 
     def test_latest_reintroduced_incarnation_repairs_published_invalid_transition(self) -> None:

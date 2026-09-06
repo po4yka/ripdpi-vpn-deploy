@@ -72,11 +72,17 @@ deployment:
   rendered deployment input and a dry-run exercises that change without a
   provider mutation.
 - Staging or live evidence remains required when the task's positive capability
-  is inherently external: provider mutation, real SSH migration, authenticated
-  client traffic, remote restore, alert delivery or production rollout.
+  is inherently external: provider mutation, real SSH migration, remote
+  restore, alert delivery or production rollout.
+- Authenticated client traffic requires `client: passed` in addition to every
+  applicable staging or live category. Host-side staging or live evidence does
+  not substitute for client evidence.
 - One exact-SHA operational observation may satisfy multiple linked tasks when
   each mapped requirement and acceptance command is named in the owning
   verification records. The task graph must retain the corresponding links.
+  An active operational owner may retain a `related_tasks` edge to a locally
+  purged `done` source task; `taskctl` resolves that edge only through validated
+  terminal Git history. Missing, dropped or malformed history fails closed.
   Existing `required` or `blocked` evidence cannot become `not_applicable`
   merely because another task exists. Duplicate fleet runs, duplicate vantages
   and duplicate provider rehearsals are not required without a distinct risk.
@@ -85,9 +91,11 @@ deployment:
   still owns such a requirement remains open until the evidence passes or an
   OpenSpec update moves and maps that requirement before closure.
 
-This proportional policy does not relax authentication, authorization,
+This policy is owned by `CIC-1788708456909496` and its linked OpenSpec change.
+It does not relax authentication, authorization,
 secret-handling, rollback, destructive-action confirmation, fail-closed input
-validation or the distinction between source/CI, staging and live evidence.
+validation or the distinction between local, remote CI, dry-run, staging, live,
+client and artifact evidence.
 
 ## Lifecycle
 

@@ -187,6 +187,46 @@ class HistoricalTaskSnapshot:
     text: str
 
 
+@dataclass(frozen=True, order=True)
+class SharedEvidenceMapping:
+    source_task: str
+    owner_task: str
+    requirement: str
+    command: str
+    category: str
+    source_revision: str
+
+@dataclass(frozen=True)
+class TerminalHistoryIndex:
+    root: Path
+    project: str
+    federation_contract: int
+    revisions: tuple[str, ...]
+    by_revision: dict[str, dict[str, HistoricalTaskSnapshot]]
+
+@dataclass
+class TerminalHistoryResolver:
+    root: Path
+    config: ProjectConfig
+    index: TerminalHistoryIndex | None = None
+
+    def resolve(
+        self,
+        task_id: str,
+        *,
+        allow_uncommitted_purge: bool = False,
+    ) -> dict[str, Any] | None:
+        if self.index is None:
+            self.index = build_terminal_history_index(self.root, self.config)
+        return resolve_terminal_task(
+            self.root,
+            task_id,
+            self.config,
+            allow_uncommitted_purge=allow_uncommitted_purge,
+            history_index=self.index,
+        )
+
+
 def fail(message: str) -> None:
     raise ContractError(message)
 
@@ -647,6 +687,108 @@ def evidence_values(path: Path, config: ProjectConfig | None = None) -> dict[str
     return document.values
 
 
+def shared_evidence_mappings(
+    verification: Document,
+    config: ProjectConfig,
+) -> tuple[SharedEvidenceMapping, ...]:
+    heading = "## Shared operational evidence ownership"
+    header = (
+        "| Source task | Operational owner | Requirement | Acceptance command | "
+        "Evidence category | Source revision |"
+    )
+    separator = "|---|---|---|---|---|---|"
+    lines = verification.body.splitlines()
+    indexes = [index for index, line in enumerate(lines) if line.strip() == heading]
+    if not indexes:
+        return ()
+    if len(indexes) != 1:
+        fail(f"{verification.path}: duplicate shared operational evidence section")
+    index = indexes[0] + 1
+    while index < len(lines) and not lines[index].strip():
+        index += 1
+    if index >= len(lines) or lines[index].strip() != header:
+        fail(f"{verification.path}: malformed shared operational evidence header")
+    index += 1
+    if index >= len(lines) or lines[index].strip() != separator:
+        fail(f"{verification.path}: malformed shared operational evidence separator")
+    index += 1
+    mappings: list[SharedEvidenceMapping] = []
+    while index < len(lines) and lines[index].lstrip().startswith("|"):
+        line = lines[index].strip()
+        cells = (
+            [cell.strip() for cell in line[1:-1].split("|")]
+            if line.endswith("|")
+            else []
+        )
+        if len(cells) != 6:
+            fail(
+                f"{verification.path}:{index + 1}: malformed shared operational evidence row"
+            )
+        (
+            source_task,
+            owner_task,
+            requirement,
+            command_cell,
+            category,
+            source_revision,
+        ) = cells
+        if ID_RE.fullmatch(source_task) is None or ID_RE.fullmatch(owner_task) is None:
+            fail(
+                f"{verification.path}:{index + 1}: shared evidence task IDs must be local stable IDs"
+            )
+        if source_task == owner_task:
+            fail(
+                f"{verification.path}:{index + 1}: shared evidence source and owner must differ"
+            )
+        if re.fullmatch(r"REQ-[A-Z0-9-]+", requirement) is None:
+            fail(
+                f"{verification.path}:{index + 1}: invalid shared evidence requirement"
+            )
+        if (
+            len(command_cell) < 3
+            or not command_cell.startswith("`")
+            or not command_cell.endswith("`")
+        ):
+            fail(
+                f"{verification.path}:{index + 1}: acceptance command must be one backtick-delimited command"
+            )
+        command = command_cell[1:-1].strip()
+        if not command or "`" in command or "\n" in command:
+            fail(f"{verification.path}:{index + 1}: invalid acceptance command")
+        if category not in config.evidence_categories:
+            fail(
+                f"{verification.path}:{index + 1}: invalid shared evidence category {category!r}"
+            )
+        if SHA_RE.fullmatch(source_revision) is None:
+            fail(
+                f"{verification.path}:{index + 1}: source revision must be an exact 40-character SHA"
+            )
+        verification_task = verification.values.get("task_id")
+        if verification_task not in {source_task, owner_task}:
+            fail(
+                f"{verification.path}:{index + 1}: shared evidence row does not include "
+                f"verification task {verification_task}"
+            )
+        mappings.append(
+            SharedEvidenceMapping(
+                source_task=source_task,
+                owner_task=owner_task,
+                requirement=requirement,
+                command=command,
+                category=category,
+                source_revision=source_revision,
+            )
+        )
+        index += 1
+    if not mappings:
+        fail(
+            f"{verification.path}: shared operational evidence section has no mappings"
+        )
+    if len(mappings) != len(set(mappings)):
+        fail(f"{verification.path}: duplicate shared operational evidence mapping")
+    return tuple(sorted(mappings))
+
+
 def validate_requirement_evidence(
     change_dir: Path,
     steps: Sequence[Step],
@@ -692,6 +834,145 @@ def validate_requirement_evidence(
             fail(f"{verification.path}: {requirement_id} lacks resolved archive evidence")
 
 
+def requirement_ids(change_dir: Path) -> set[str]:
+    found: list[str] = []
+    for spec in sorted((change_dir / "specs").glob("**/*.md")):
+        found.extend(
+            re.findall(
+                r"(?m)^### Requirement: (REQ-[A-Z0-9-]+)(?:\s|$)",
+                spec.read_text(encoding="utf-8"),
+            )
+        )
+    return set(found)
+
+
+def validate_active_shared_evidence(
+    root: Path,
+    documents: Sequence[Document],
+    config: ProjectConfig,
+    historical: dict[str, dict[str, Any]] | None = None,
+    *,
+    authoring_task_id: str | None = None,
+) -> None:
+    historical = historical or {}
+    by_id = {document.task_id: document for document in documents}
+    verifications: dict[str, tuple[Document, dict[str, Any], Path]] = {}
+    mappings_by_task: dict[str, set[SharedEvidenceMapping]] = {}
+    for document in documents:
+        if document.values["spec_mode"] != "required":
+            continue
+        change_dir = expected_execution_path(root, document).parent
+        verification_path = change_dir / "verification.md"
+        if document.task_id == authoring_task_id and not verification_path.is_file():
+            continue
+        verification = read_document(verification_path)
+        values = evidence_values(verification.path, config)
+        verifications[document.task_id] = (verification, values, change_dir)
+        mappings_by_task[document.task_id] = set(
+            shared_evidence_mappings(verification, config)
+        )
+
+    mappings = sorted(
+        {
+            mapping
+            for task_mappings in mappings_by_task.values()
+            for mapping in task_mappings
+        }
+    )
+
+    # A purged source record is immutable, so every still-active owner that
+    # retains its historical edge must also retain the matching mapping rows.
+    # Otherwise an owner could silently erase the requirement-level contract
+    # after the source disappeared from the working tree.
+    for source_task, historical_source in historical.items():
+        historical_mappings = {
+            SharedEvidenceMapping(**raw)
+            for raw in historical_source.get("_shared_evidence_mappings", [])
+        }
+        for mapping in historical_mappings:
+            owner = by_id.get(mapping.owner_task)
+            if owner is None:
+                continue
+            owner_related = {
+                local
+                for related in owner.values.get("related_tasks", [])
+                if (local := local_reference(related, config)) is not None
+            }
+            if (
+                source_task in owner_related
+                and mapping not in mappings_by_task.get(mapping.owner_task, set())
+            ):
+                fail(
+                    f"{mapping.owner_task}: shared {mapping.category} mapping "
+                    "does not match historical source record"
+                )
+
+    for mapping in mappings:
+        source = by_id.get(mapping.source_task)
+        owner = by_id.get(mapping.owner_task)
+        if owner is None:
+            fail(
+                f"{mapping.source_task}: shared {mapping.category} mapping owner "
+                f"{mapping.owner_task} is not active"
+            )
+        source_record = verifications.get(mapping.source_task)
+        owner_record = verifications.get(mapping.owner_task)
+        historical_source = historical.get(mapping.source_task)
+        if (
+            source_record is None and historical_source is None
+        ) or owner_record is None:
+            fail("shared operational evidence requires OpenSpec source and owner tasks")
+        source_mappings = (
+            mappings_by_task[mapping.source_task]
+            if source_record is not None
+            else {
+                SharedEvidenceMapping(**raw)
+                for raw in historical_source.get("_shared_evidence_mappings", [])
+            }
+        )
+        if mapping not in source_mappings:
+            fail(
+                f"{mapping.owner_task}: shared {mapping.category} mapping does not match source record"
+            )
+        if mapping not in mappings_by_task[mapping.owner_task]:
+            fail(
+                f"{mapping.source_task}: shared {mapping.category} mapping does not match owner record"
+            )
+        if mapping.source_task not in {
+            local
+            for related in owner.values.get("related_tasks", [])
+            if (local := local_reference(related, config)) is not None
+        }:
+            fail(
+                f"{owner.path}: shared evidence owner lacks related task {mapping.source_task}"
+            )
+        if source_record is not None:
+            assert source is not None
+            _, source_values, source_change = source_record
+            source_path = source.path
+            source_requirements = requirement_ids(source_change)
+        else:
+            assert historical_source is not None
+            source_values = historical_source.get("_verification", {})
+            source_path = historical_source["path"]
+            source_requirements = set(historical_source.get("_requirements", []))
+        if source_values["commit_sha"] != mapping.source_revision:
+            fail(
+                f"{source_path}: shared {mapping.category} mapping source revision "
+                "does not match verification commit_sha"
+            )
+        if mapping.requirement not in source_requirements:
+            fail(
+                f"{source_path}: shared {mapping.category} mapping names unknown requirement "
+                f"{mapping.requirement}"
+            )
+        _, owner_values, _ = owner_record
+        if owner_values[mapping.category] == "not_applicable":
+            fail(
+                f"{owner.path}: shared {mapping.category} evidence owner cannot be not_applicable"
+            )
+
+
 def expected_execution_path(root: Path, document: Document) -> Path:
     if document.values["spec_mode"] == "required":
         change = document.values["openspec_change"]
@@ -714,9 +995,14 @@ def load_state(root: Path, config: ProjectConfig | None = None) -> tuple[list[Do
 
 
 def _load_state(
-    root: Path, config: ProjectConfig | None = None, *, authoring_task_id: str | None = None,
+    root: Path,
+    config: ProjectConfig | None = None,
+    *,
+    authoring_task_id: str | None = None,
+    history_resolver: TerminalHistoryResolver | None = None,
 ) -> tuple[list[Document], list[Step]]:
     config = config or load_project_config(root)
+    history_resolver = history_resolver or TerminalHistoryResolver(root, config)
     documents = [read_document(path) for path in issue_paths(root)]
     if not documents:
         fail("portfolio is empty")
@@ -732,22 +1018,30 @@ def _load_state(
         ids[document.task_id] = document
         suffix = ID_RE.fullmatch(document.task_id).group(2)  # type: ignore[union-attr]
         if suffix in suffixes:
-            fail(f"numeric ID suffix {suffix} reused by {suffixes[suffix]} and {document.task_id}")
+            fail(
+                f"numeric ID suffix {suffix} reused by {suffixes[suffix]} and {document.task_id}"
+            )
         suffixes[suffix] = document.task_id
         change = document.values["openspec_change"]
         if change is not None:
             if change in changes:
-                fail(f"OpenSpec change {change!r} linked by {changes[change]} and {document.task_id}")
+                fail(
+                    f"OpenSpec change {change!r} linked by {changes[change]} and {document.task_id}"
+                )
             changes[change] = document.task_id
 
     parent_edges: dict[str, list[str]] = {}
     blocker_edges: dict[str, list[str]] = {}
+    historical_related: dict[str, dict[str, Any]] = {}
     for document in documents:
         parent = document.values["parent"]
         if parent is not None:
             local_parent = local_reference(parent, config)
             if local_parent is None:
-                if qualify_reference(parent, config) == f"{config.project}#{document.task_id}":
+                if (
+                    qualify_reference(parent, config)
+                    == f"{config.project}#{document.task_id}"
+                ):
                     fail(f"{document.path}: self parent {parent!r}")
             elif local_parent == document.task_id or local_parent not in ids:
                 fail(f"{document.path}: missing or self parent {parent!r}")
@@ -758,7 +1052,9 @@ def _load_state(
         blockers = document.values["blocked_by"]
         for blocker in blockers:
             local_blocker = local_reference(blocker, config)
-            if local_blocker is not None and (local_blocker == document.task_id or local_blocker not in ids):
+            if local_blocker is not None and (
+                local_blocker == document.task_id or local_blocker not in ids
+            ):
                 fail(f"{document.path}: missing or self blocker {blocker!r}")
         blocker_edges[document.task_id] = [
             local
@@ -767,8 +1063,20 @@ def _load_state(
         ]
         for related in document.values.get("related_tasks", []):
             local_related = local_reference(related, config)
-            if local_related is not None and (local_related == document.task_id or local_related not in ids):
+            if local_related == document.task_id:
                 fail(f"{document.path}: missing or self related task {related!r}")
+            if local_related is not None and local_related not in ids:
+                historical = historical_related.get(local_related)
+                if historical is None:
+                    historical = history_resolver.resolve(
+                        local_related,
+                        allow_uncommitted_purge=True,
+                    )
+                if historical is None or historical["status"] != "done":
+                    fail(
+                        f"{document.path}: missing or incomplete related task {related!r}"
+                    )
+                historical_related[local_related] = historical
     assert_acyclic(parent_edges, "parent")
     assert_acyclic(blocker_edges, "blocker")
 
@@ -791,14 +1099,19 @@ def _load_state(
             drop_receipt = read_lifecycle_receipt(root, document, path, "drop")
             raw_dropped_ids = drop_receipt.get("dropped_step_ids")
             if not isinstance(raw_dropped_ids, list) or not all(
-                isinstance(item, str) and ID_RE.fullmatch(item) for item in raw_dropped_ids
+                isinstance(item, str) and ID_RE.fullmatch(item)
+                for item in raw_dropped_ids
             ):
-                fail(f"{lifecycle_receipt_path(root, document, path, 'drop')}: invalid dropped_step_ids")
+                fail(
+                    f"{lifecycle_receipt_path(root, document, path, 'drop')}: invalid dropped_step_ids"
+                )
             dropped_step_ids = set(raw_dropped_ids)
             for dropped_step_id in dropped_step_ids:
                 prefix = ID_RE.fullmatch(dropped_step_id).group(1)  # type: ignore[union-attr]
                 if config.prefix_areas.get(prefix) != document.values["area"]:
-                    fail(f"{document.path}: dropped step prefix does not match task area")
+                    fail(
+                        f"{document.path}: dropped step prefix does not match task area"
+                    )
                 if dropped_step_id in all_dropped_step_ids:
                     fail(f"duplicate dropped execution step ID {dropped_step_id}")
                 all_dropped_step_ids[dropped_step_id] = document.task_id
@@ -807,7 +1120,9 @@ def _load_state(
         for step in steps:
             if step.item_id != document.task_id:
                 fail(f"{path}:{step.line}: @item must be {document.task_id}")
-        if document.values["status"] in {"done", "dropped"} and any(not step.done for step in steps):
+        if document.values["status"] in {"done", "dropped"} and any(
+            not step.done for step in steps
+        ):
             fail(f"{document.path}: terminal task contains open execution steps")
         all_steps.extend(steps)
         if document.values["spec_mode"] == "required":
@@ -816,16 +1131,25 @@ def _load_state(
             verification = change_dir / "verification.md"
             metadata = change_dir / ".openspec.yaml"
             for required_path in (proposal, verification, metadata):
-                if authoring and required_path == verification and not verification.exists():
+                if (
+                    authoring
+                    and required_path == verification
+                    and not verification.exists()
+                ):
                     continue
                 if not required_path.is_file():
                     fail(f"{document.path}: missing {required_path.relative_to(root)}")
-            if f"Task ID: `{document.task_id}`" not in proposal.read_text(encoding="utf-8"):
+            if f"Task ID: `{document.task_id}`" not in proposal.read_text(
+                encoding="utf-8"
+            ):
                 fail(f"{proposal}: missing exact portfolio backlink")
             if authoring and not verification.exists():
                 continue
             evidence = evidence_values(verification, config)
-            if evidence["task_id"] != document.task_id or evidence["change"] != document.values["openspec_change"]:
+            if (
+                evidence["task_id"] != document.task_id
+                or evidence["change"] != document.values["openspec_change"]
+            ):
                 fail(f"{verification}: backlink does not match portfolio task")
             archived = change_dir.parent.name == "archive"
             validate_requirement_evidence(
@@ -840,19 +1164,39 @@ def _load_state(
             if archived:
                 if any(not step.done for step in steps):
                     fail(f"{change_dir}: archived change contains open execution steps")
-                if any(evidence[category] in {"required", "blocked"} for category in config.evidence_categories):
-                    fail(f"{verification}: archived change contains incomplete evidence")
-                if not isinstance(evidence["commit_sha"], str) or not SHA_RE.fullmatch(evidence["commit_sha"]):
+                if any(
+                    evidence[category] in {"required", "blocked"}
+                    for category in config.evidence_categories
+                ):
+                    fail(
+                        f"{verification}: archived change contains incomplete evidence"
+                    )
+                if not isinstance(evidence["commit_sha"], str) or not SHA_RE.fullmatch(
+                    evidence["commit_sha"]
+                ):
                     fail(f"{verification}: archived change lacks an exact commit SHA")
                 receipt_path = change_dir / ".taskctl-archive.json"
                 if not receipt_path.is_file():
                     fail(f"{change_dir}: archive was not created by taskctl")
                 receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-                if receipt.get("task_id") != document.task_id or receipt.get("change") != document.values["openspec_change"]:
+                if (
+                    receipt.get("task_id") != document.task_id
+                    or receipt.get("change") != document.values["openspec_change"]
+                ):
                     fail(f"{receipt_path}: archive receipt backlink mismatch")
+    validate_active_shared_evidence(
+        root,
+        documents,
+        config,
+        historical_related,
+        authoring_task_id=authoring_task_id,
+    )
     extras = discovered_paths - expected_paths
     if extras:
-        fail("orphan execution files: " + ", ".join(str(path.relative_to(root)) for path in sorted(extras)))
+        fail(
+            "orphan execution files: "
+            + ", ".join(str(path.relative_to(root)) for path in sorted(extras))
+        )
 
     step_ids: dict[str, Step] = {}
     for step in all_steps:
@@ -861,7 +1205,9 @@ def _load_state(
             fail(f"{step.path}:{step.line}: invalid step ID {step.task_id}")
         suffix = match.group(2)
         if suffix in suffixes:
-            fail(f"numeric ID suffix {suffix} reused by {suffixes[suffix]} and {step.task_id}")
+            fail(
+                f"numeric ID suffix {suffix} reused by {suffixes[suffix]} and {step.task_id}"
+            )
         suffixes[suffix] = step.task_id
         if step.task_id in step_ids:
             fail(f"duplicate execution step ID {step.task_id}")
@@ -869,10 +1215,14 @@ def _load_state(
     for dropped_step_id, item_id in all_dropped_step_ids.items():
         suffix = ID_RE.fullmatch(dropped_step_id).group(2)  # type: ignore[union-attr]
         if suffix in suffixes:
-            fail(f"numeric ID suffix {suffix} reused by {suffixes[suffix]} and {dropped_step_id}")
+            fail(
+                f"numeric ID suffix {suffix} reused by {suffixes[suffix]} and {dropped_step_id}"
+            )
         suffixes[suffix] = dropped_step_id
         if dropped_step_id in step_ids:
-            fail(f"dropped execution step ID {dropped_step_id} is still active for {item_id}")
+            fail(
+                f"dropped execution step ID {dropped_step_id} is still active for {item_id}"
+            )
     for step in all_steps:
         for blocker in step.blockers:
             if blocker not in step_ids:
@@ -937,10 +1287,18 @@ def validate_export_checkout(root: Path) -> None:
         fail("task export requires committed portfolio, OpenSpec, project config, and federation contract state")
 
 
-def export_payload(root: Path) -> dict[str, Any]:
+def export_payload(
+    root: Path,
+    history_resolver: TerminalHistoryResolver | None = None,
+) -> dict[str, Any]:
     validate_export_checkout(root)
     config = load_project_config(root)
-    documents, steps = load_state(root, config)
+    history_resolver = history_resolver or TerminalHistoryResolver(root, config)
+    documents, steps = _load_state(
+        root,
+        config,
+        history_resolver=history_resolver,
+    )
     progress = progress_by_item(steps)
     tasks: list[dict[str, Any]] = []
     for document in sorted(documents, key=lambda item: item.task_id):
@@ -955,8 +1313,13 @@ def export_payload(root: Path) -> dict[str, Any]:
                 "risk": document.values["risk"],
                 "status": document.values["status"],
                 "progress": {"done": done, "total": total},
-                "parent": qualify_reference(parent, config) if parent is not None else None,
-                "blocked_by": sorted(qualify_reference(value, config) for value in document.values["blocked_by"]),
+                "parent": (
+                    qualify_reference(parent, config) if parent is not None else None
+                ),
+                "blocked_by": sorted(
+                    qualify_reference(value, config)
+                    for value in document.values["blocked_by"]
+                ),
                 "related_tasks": sorted(
                     qualify_reference(value, config)
                     for value in document.values.get("related_tasks", [])
@@ -1001,6 +1364,127 @@ def historical_execution_path(root: Path, ref: str, document: Document) -> str:
     if len(matches) != 1:
         fail(f"{document.task_id}: terminal history has no unique OpenSpec execution file")
     return matches[0]
+
+
+def historical_verification_document(
+    root: Path,
+    ref: str,
+    document: Document,
+    scratch: Path,
+) -> Document:
+    execution = historical_execution_path(root, ref, document)
+    verification_text = git_show_text(
+        root,
+        ref,
+        f"{execution.rsplit('/', 1)[0]}/verification.md",
+    )
+    if verification_text is None:
+        fail(f"{document.task_id}: historical verification record is missing at {ref}")
+    verification_path = scratch / "historical-verification.md"
+    verification_path.write_text(verification_text, encoding="utf-8")
+    return read_document(verification_path)
+
+def historical_verification_values(
+    root: Path,
+    ref: str,
+    document: Document,
+    config: ProjectConfig,
+    scratch: Path,
+) -> dict[str, Any]:
+    verification = historical_verification_document(root, ref, document, scratch)
+    return evidence_values(verification.path, config)
+
+def historical_requirement_ids(root: Path, ref: str, document: Document) -> set[str]:
+    execution = historical_execution_path(root, ref, document)
+    change_root = execution.rsplit("/", 1)[0]
+    requirements: set[str] = set()
+    for path in git_tree_paths(root, ref, f"{change_root}/specs"):
+        if not path.endswith(".md"):
+            continue
+        text = git_show_text(root, ref, path)
+        if text is not None:
+            requirements.update(
+                re.findall(r"(?m)^### Requirement: (REQ-[A-Z0-9-]+)(?:\s|$)", text)
+            )
+    return requirements
+
+def validate_historical_shared_transfer(
+    root: Path,
+    *,
+    task_id: str,
+    category: str,
+    previous_state: str,
+    source_ref: str,
+    deletion_ref: str,
+    source_snapshot: HistoricalTaskSnapshot,
+    snapshots_at_deletion: dict[str, HistoricalTaskSnapshot],
+    config: ProjectConfig,
+    scratch: Path,
+) -> None:
+    source_verification = historical_verification_document(
+        root,
+        source_ref,
+        source_snapshot.document,
+        scratch,
+    )
+    source_values = evidence_values(source_verification.path, config)
+    candidates = [
+        mapping
+        for mapping in shared_evidence_mappings(source_verification, config)
+        if mapping.source_task == task_id and mapping.category == category
+    ]
+    if not candidates:
+        fail(
+            f"{source_snapshot.relative}: {category} evidence changed from {previous_state} "
+            "to not_applicable without a shared mapping"
+        )
+    source_requirements = historical_requirement_ids(
+        root,
+        source_ref,
+        source_snapshot.document,
+    )
+    owner_config = historical_project_config(root, deletion_ref, scratch)
+    for mapping in candidates:
+        if mapping.source_revision != source_values["commit_sha"]:
+            fail(
+                f"{source_snapshot.relative}: shared {category} mapping source revision "
+                "does not match verification commit_sha"
+            )
+        if mapping.requirement not in source_requirements:
+            fail(
+                f"{source_snapshot.relative}: shared {category} mapping names unknown requirement "
+                f"{mapping.requirement}"
+            )
+        owner_snapshot = snapshots_at_deletion.get(mapping.owner_task)
+        if owner_snapshot is None:
+            fail(
+                f"{source_snapshot.relative}: shared {category} mapping owner "
+                f"{mapping.owner_task} is not active at deletion"
+            )
+        owner_document = owner_snapshot.document
+        if task_id not in {
+            local
+            for related in owner_document.values.get("related_tasks", [])
+            if (local := local_reference(related, owner_config)) is not None
+        }:
+            fail(
+                f"{owner_snapshot.relative}: shared evidence owner lacks related task {task_id}"
+            )
+        owner_verification = historical_verification_document(
+            root,
+            deletion_ref,
+            owner_document,
+            scratch,
+        )
+        owner_values = evidence_values(owner_verification.path, owner_config)
+        if mapping not in shared_evidence_mappings(owner_verification, owner_config):
+            fail(
+                f"{owner_snapshot.relative}: shared {category} mapping does not match source record"
+            )
+        if owner_values[category] == "not_applicable":
+            fail(
+                f"{owner_snapshot.relative}: shared {category} evidence owner cannot be not_applicable"
+            )
 
 
 def validate_terminal_snapshot(
@@ -1106,7 +1590,11 @@ def validate_terminal_snapshot(
     return execution_text, terminal_steps
 
 
-def resolve_terminal_task(root: Path, task_id: str, config: ProjectConfig) -> dict[str, Any] | None:
+def build_terminal_history_index(
+    root: Path,
+    config: ProjectConfig,
+) -> TerminalHistoryIndex:
+    resolved_root = root.resolve()
     shallow = run_command(("git", "rev-parse", "--is-shallow-repository"), root=root)
     if shallow.returncode != 0:
         fail(f"cannot inspect Git history for {root}")
@@ -1126,20 +1614,71 @@ def resolve_terminal_task(root: Path, task_id: str, config: ProjectConfig) -> di
     )
     if history.returncode != 0:
         fail(f"cannot inspect task state transitions in {root}")
-    revisions = [start, *filter(None, (history.stdout or "").splitlines())]
-
-    with tempfile.TemporaryDirectory(prefix="taskctl-federation-history-") as directory:
+    revisions = (start, *filter(None, (history.stdout or "").splitlines()))
+    with tempfile.TemporaryDirectory(prefix="taskctl-terminal-history-") as directory:
         scratch = Path(directory)
         by_revision = {
             revision: historical_task_snapshots(root, revision, scratch)
             for revision in revisions
         }
+    return TerminalHistoryIndex(
+        root=resolved_root,
+        project=config.project,
+        federation_contract=config.federation_contract,
+        revisions=revisions,
+        by_revision=by_revision,
+    )
+
+
+def resolve_terminal_task(
+    root: Path,
+    task_id: str,
+    config: ProjectConfig,
+    *,
+    allow_uncommitted_purge: bool = False,
+    history_index: TerminalHistoryIndex | None = None,
+) -> dict[str, Any] | None:
+    history_index = history_index or build_terminal_history_index(root, config)
+    if (
+        history_index.root != root.resolve()
+        or history_index.project != config.project
+        or history_index.federation_contract != config.federation_contract
+    ):
+        fail(f"terminal history index does not match {root}")
+    revisions = history_index.revisions
+    by_revision = history_index.by_revision
+
+    with tempfile.TemporaryDirectory(prefix="taskctl-federation-history-") as directory:
+        scratch = Path(directory)
         timeline = [
-            (revision, by_revision[revision].get(task_id))
-            for revision in revisions
+            (revision, by_revision[revision].get(task_id)) for revision in revisions
         ]
+        synthetic_deletion = False
         if timeline[-1][1] is not None:
-            return None
+            if not allow_uncommitted_purge:
+                return None
+            final_snapshot = timeline[-1][1]
+            assert final_snapshot is not None
+            if (root / final_snapshot.relative).exists():
+                return None
+            document = final_snapshot.document
+            if document.values.get("spec_mode") == "required":
+                change = document.values.get("openspec_change")
+                if (root / "openspec/changes" / str(change)).exists():
+                    return None
+                archives = list((root / "openspec/changes/archive").glob(f"*-{change}"))
+                if len(archives) != 1:
+                    return None
+            else:
+                work = root / f"docs/tasks/work/{task_id}.md"
+                if (
+                    work.exists()
+                    or work.with_suffix(".close.json").exists()
+                    or work.with_suffix(".drop.json").exists()
+                ):
+                    return None
+            timeline.append((revisions[-1], None))
+            synthetic_deletion = True
         deletion_indexes = [
             index
             for index in range(1, len(timeline))
@@ -1186,9 +1725,7 @@ def resolve_terminal_task(root: Path, task_id: str, config: ProjectConfig) -> di
             previous_status = status
         if terminal_transition is None or terminal_index is None:
             fail(f"{config.project}#{task_id}: terminal transition commit is missing")
-        initial_strict_terminal = (
-            terminal_index == 0 and incarnation[0][0] == start
-        )
+        initial_strict_terminal = terminal_index == 0 and incarnation[0][0] == start
         if not initial_strict_terminal and (
             previous_status is None or not transition_allowed(previous_status, outcome)
         ):
@@ -1199,7 +1736,9 @@ def resolve_terminal_task(root: Path, task_id: str, config: ProjectConfig) -> di
         for _, snapshot in incarnation[terminal_index:]:
             assert snapshot is not None
             if snapshot.document.values.get("status") != outcome:
-                fail(f"{config.project}#{task_id}: task transitioned out of terminal state")
+                fail(
+                    f"{config.project}#{task_id}: task transitioned out of terminal state"
+                )
 
         _, parsed_steps = validate_terminal_snapshot(
             root,
@@ -1211,10 +1750,37 @@ def resolve_terminal_task(root: Path, task_id: str, config: ProjectConfig) -> di
             issue_text=final_snapshot.text,
         )
         done = sum(1 for step in parsed_steps if step.done)
-        terminal_sha_result = run_command(("git", "rev-parse", terminal_transition), root=root)
+        terminal_sha_result = run_command(
+            ("git", "rev-parse", terminal_transition), root=root
+        )
         terminal_sha = (terminal_sha_result.stdout or "").strip()
         if terminal_sha_result.returncode != 0 or not SHA_RE.fullmatch(terminal_sha):
             fail(f"{config.project}#{task_id}: cannot resolve terminal revision")
+        historical_evidence: dict[str, Any] = {}
+        historical_mappings: list[dict[str, str]] = []
+        historical_requirements: list[str] = []
+        if document.values["spec_mode"] == "required":
+            verification = historical_verification_document(
+                root,
+                final_ref,
+                document,
+                scratch,
+            )
+            historical_evidence = evidence_values(verification.path, historical_config)
+            historical_mappings = [
+                {
+                    "source_task": mapping.source_task,
+                    "owner_task": mapping.owner_task,
+                    "requirement": mapping.requirement,
+                    "command": mapping.command,
+                    "category": mapping.category,
+                    "source_revision": mapping.source_revision,
+                }
+                for mapping in shared_evidence_mappings(verification, historical_config)
+            ]
+            historical_requirements = sorted(
+                historical_requirement_ids(root, final_ref, document)
+            )
         return {
             "id": f"{config.project}#{task_id}",
             "task_id": task_id,
@@ -1239,7 +1805,10 @@ def resolve_terminal_task(root: Path, task_id: str, config: ProjectConfig) -> di
             "openspec_change": document.values["openspec_change"],
             "historical": True,
             "terminal_revision": terminal_sha,
-            "deletion_revision": deletion,
+            "deletion_revision": None if synthetic_deletion else deletion,
+            "_verification": historical_evidence,
+            "_shared_evidence_mappings": historical_mappings,
+            "_requirements": historical_requirements,
         }
 
 
@@ -1247,11 +1816,21 @@ def federation_payload(root: Path, peer_root: Path) -> dict[str, Any]:
     roots = {root.resolve(), peer_root.resolve()}
     if len(roots) != 2:
         fail("federation requires a distinct peer checkout")
-    exports = [export_payload(candidate) for candidate in sorted(roots, key=str)]
-    configs = {load_project_config(candidate).project: load_project_config(candidate) for candidate in roots}
-    roots_by_project = {load_project_config(candidate).project: candidate for candidate in roots}
+    configs_by_root = {candidate: load_project_config(candidate) for candidate in roots}
+    configs = {config.project: config for config in configs_by_root.values()}
+    roots_by_project = {
+        config.project: candidate for candidate, config in configs_by_root.items()
+    }
     if len(configs) != 2:
         fail("federation projects must have distinct identities")
+    history_resolvers = {
+        project: TerminalHistoryResolver(roots_by_project[project], config)
+        for project, config in configs.items()
+    }
+    exports = [
+        export_payload(candidate, history_resolvers[configs_by_root[candidate].project])
+        for candidate in sorted(roots, key=str)
+    ]
     for payload in exports:
         if payload["contract_version"] != FEDERATION_CONTRACT_VERSION:
             fail(f"{payload['project']}: incompatible federation contract")
@@ -1262,11 +1841,7 @@ def federation_payload(root: Path, peer_root: Path) -> dict[str, Any]:
     contract_hashes = {payload["contract_sha256"] for payload in exports}
     if len(contract_hashes) != 1:
         fail("federation contract artifacts differ between repositories")
-    nodes = {
-        task["id"]: dict(task)
-        for payload in exports
-        for task in payload["tasks"]
-    }
+    nodes = {task["id"]: dict(task) for payload in exports for task in payload["tasks"]}
     pending = {
         reference
         for node in nodes.values()
@@ -1284,7 +1859,7 @@ def federation_payload(root: Path, peer_root: Path) -> dict[str, Any]:
             if match is None or match.group(1) not in roots_by_project:
                 fail(f"unknown federated task reference {reference!r}")
             project, task_id = match.groups()
-            historical = resolve_terminal_task(roots_by_project[project], task_id, configs[project])
+            historical = history_resolvers[project].resolve(task_id)
             if historical is None:
                 fail(f"missing federated task {reference}")
             nodes[reference] = historical
@@ -1298,7 +1873,11 @@ def federation_payload(root: Path, peer_root: Path) -> dict[str, Any]:
     reverse_blocks: dict[str, list[str]] = {identity: [] for identity in nodes}
     children: dict[str, list[str]] = {identity: [] for identity in nodes}
     for identity, node in nodes.items():
-        relations = ([node["parent"]] if node["parent"] else []) + node["blocked_by"] + node["related_tasks"]
+        relations = (
+            ([node["parent"]] if node["parent"] else [])
+            + node["blocked_by"]
+            + node["related_tasks"]
+        )
         if identity in relations:
             fail(f"self federated reference {identity}")
         if node["parent"] is not None:
@@ -1537,7 +2116,9 @@ def historical_project_config(root: Path, ref: str, scratch: Path) -> ProjectCon
 
 
 def validate_deleted_history(root: Path, base: str) -> None:
-    ancestry = run_command(("git", "merge-base", "--is-ancestor", base, "HEAD"), root=root)
+    ancestry = run_command(
+        ("git", "merge-base", "--is-ancestor", base, "HEAD"), root=root
+    )
     if ancestry.returncode != 0:
         fail(f"cannot validate task history: {base} is not an ancestor of HEAD")
     history = run_command(
@@ -1567,8 +2148,7 @@ def validate_deleted_history(root: Path, base: str) -> None:
 
         for task_id in sorted(candidate_ids - head_ids):
             timeline = [
-                (revision, by_revision[revision].get(task_id))
-                for revision in revisions
+                (revision, by_revision[revision].get(task_id)) for revision in revisions
             ]
             deletion_indexes = [
                 index
@@ -1587,7 +2167,9 @@ def validate_deleted_history(root: Path, base: str) -> None:
             validate_issue_shape(final_document, config_at(final_ref))
             outcome = final_document.values.get("status")
             if outcome not in {"done", "dropped"}:
-                fail(f"{relative}: deleted without a preceding committed terminal state")
+                fail(
+                    f"{relative}: deleted without a preceding committed terminal state"
+                )
             for field in ("closed_at", "closed_reason", "evidence_summary"):
                 if not final_document.values.get(field):
                     fail(f"{relative}: terminal state before deletion lacks {field}")
@@ -1608,7 +2190,8 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 last_absent == -1
                 and incarnation
                 and incarnation[0][1] is not None
-                and incarnation[0][1].document.values.get("status") in {"done", "dropped"}
+                and incarnation[0][1].document.values.get("status")
+                in {"done", "dropped"}
             ):
                 terminal_transition_ref, terminal_transition_snapshot = incarnation[0]
             else:
@@ -1640,11 +2223,55 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 and prior_status != "review"
                 and terminal_transition_ref != base
             ):
-                fail(f"{relative}: invalid terminal transition {prior_status or 'missing'} -> done")
-            if outcome == "dropped" and terminal_transition_ref != base and (
-                prior_status not in STATUSES or not transition_allowed(prior_status, "dropped")
+                fail(
+                    f"{relative}: invalid terminal transition {prior_status or 'missing'} -> done"
+                )
+            if (
+                outcome == "dropped"
+                and terminal_transition_ref != base
+                and (
+                    prior_status not in STATUSES
+                    or not transition_allowed(prior_status, "dropped")
+                )
             ):
-                fail(f"{relative}: invalid terminal transition {prior_status or 'missing'} -> dropped")
+                fail(
+                    f"{relative}: invalid terminal transition {prior_status or 'missing'} -> dropped"
+                )
+
+            if (
+                outcome == "done"
+                and final_document.values.get("spec_mode") == "required"
+            ):
+                prior_evidence: dict[str, str] = {}
+                for revision, snapshot in incarnation:
+                    assert snapshot is not None
+                    evidence = historical_verification_values(
+                        root,
+                        revision,
+                        snapshot.document,
+                        config_at(revision),
+                        scratch,
+                    )
+                    for category in config_at(revision).evidence_categories:
+                        previous = prior_evidence.get(category)
+                        current = evidence[category]
+                        if (
+                            previous in {"required", "blocked"}
+                            and current == "not_applicable"
+                        ):
+                            validate_historical_shared_transfer(
+                                root,
+                                task_id=task_id,
+                                category=category,
+                                previous_state=previous,
+                                source_ref=revision,
+                                deletion_ref=deletion_sha,
+                                source_snapshot=snapshot,
+                                snapshots_at_deletion=by_revision[deletion_sha],
+                                config=config_at(revision),
+                                scratch=scratch,
+                            )
+                        prior_evidence[category] = current
 
             terminal_ref = final_ref
             terminal_document = final_document
@@ -1664,7 +2291,15 @@ def validate_deleted_history(root: Path, base: str) -> None:
             if terminal_document.values.get("spec_mode") == "required":
                 change = terminal_document.values.get("openspec_change")
                 tree = run_command(
-                    ("git", "ls-tree", "-r", "--name-only", terminal_ref, "--", "openspec/changes"),
+                    (
+                        "git",
+                        "ls-tree",
+                        "-r",
+                        "--name-only",
+                        terminal_ref,
+                        "--",
+                        "openspec/changes",
+                    ),
                     root=root,
                 )
                 execution_candidates = [
@@ -1674,7 +2309,9 @@ def validate_deleted_history(root: Path, base: str) -> None:
                     or (item.endswith(f"-{change}/tasks.md") and "/archive/" in item)
                 ]
                 if len(execution_candidates) != 1:
-                    fail(f"{relative}: terminal commit has no unique OpenSpec execution snapshot")
+                    fail(
+                        f"{relative}: terminal commit has no unique OpenSpec execution snapshot"
+                    )
                 execution_path = execution_candidates[0]
                 receipt_root = execution_path.rsplit("/", 1)[0]
                 close_receipt_path = f"{receipt_root}/.taskctl-close.json"
@@ -1683,7 +2320,9 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 receipt_root = f"docs/tasks/work/{terminal_document.task_id}"
                 close_receipt_path = f"{receipt_root}.close.json"
 
-            execution_result = run_command(("git", "show", f"{terminal_ref}:{execution_path}"), root=root)
+            execution_result = run_command(
+                ("git", "show", f"{terminal_ref}:{execution_path}"), root=root
+            )
             if execution_result.returncode != 0:
                 fail(f"{relative}: terminal execution snapshot is missing")
             execution_file = scratch / "execution.md"
@@ -1694,7 +2333,9 @@ def validate_deleted_history(root: Path, base: str) -> None:
             if any(not step.done for step in terminal_steps):
                 fail(f"{relative}: terminal commit contains open execution steps")
 
-            close_result = run_command(("git", "show", f"{terminal_ref}:{close_receipt_path}"), root=root)
+            close_result = run_command(
+                ("git", "show", f"{terminal_ref}:{close_receipt_path}"), root=root
+            )
             if close_result.returncode != 0:
                 fail(f"{relative}: close receipt is missing from terminal commit")
             close_receipt = json.loads(close_result.stdout or "{}")
@@ -1714,17 +2355,30 @@ def validate_deleted_history(root: Path, base: str) -> None:
                     if terminal_document.values.get("spec_mode") == "required"
                     else f"{receipt_root}.drop.json"
                 )
-                drop_result = run_command(("git", "show", f"{terminal_ref}:{drop_receipt_path}"), root=root)
+                drop_result = run_command(
+                    ("git", "show", f"{terminal_ref}:{drop_receipt_path}"), root=root
+                )
                 if drop_result.returncode != 0:
                     fail(f"{relative}: drop receipt is missing from terminal commit")
                 drop_receipt = json.loads(drop_result.stdout or "{}")
-                if drop_receipt.get("task_id") != terminal_document.task_id or drop_receipt.get("outcome") != "dropped":
+                if (
+                    drop_receipt.get("task_id") != terminal_document.task_id
+                    or drop_receipt.get("outcome") != "dropped"
+                ):
                     fail(f"{relative}: invalid drop receipt in terminal commit")
 
             if terminal_document.values.get("spec_mode") == "required":
                 change = terminal_document.values.get("openspec_change")
                 tree = run_command(
-                    ("git", "ls-tree", "-r", "--name-only", deletion_sha, "--", "openspec/changes/archive"),
+                    (
+                        "git",
+                        "ls-tree",
+                        "-r",
+                        "--name-only",
+                        deletion_sha,
+                        "--",
+                        "openspec/changes/archive",
+                    ),
                     root=root,
                 )
                 archive_roots = {
@@ -1733,22 +2387,41 @@ def validate_deleted_history(root: Path, base: str) -> None:
                     if item.endswith(f"-{change}/.taskctl-archive.json")
                 }
                 if len(archive_roots) != 1:
-                    fail(f"{relative}: terminal OpenSpec change was not archived before deletion")
+                    fail(
+                        f"{relative}: terminal OpenSpec change was not archived before deletion"
+                    )
                 archive_root = next(iter(archive_roots))
                 archived_close_result = run_command(
-                    ("git", "show", f"{deletion_sha}:{archive_root}/.taskctl-close.json"), root=root
+                    (
+                        "git",
+                        "show",
+                        f"{deletion_sha}:{archive_root}/.taskctl-close.json",
+                    ),
+                    root=root,
                 )
-                if archived_close_result.returncode != 0 or json.loads(
-                    archived_close_result.stdout or "{}"
-                ) != close_receipt:
-                    fail(f"{relative}: archived close receipt differs from terminal commit")
+                if (
+                    archived_close_result.returncode != 0
+                    or json.loads(archived_close_result.stdout or "{}") != close_receipt
+                ):
+                    fail(
+                        f"{relative}: archived close receipt differs from terminal commit"
+                    )
                 archive_result = run_command(
-                    ("git", "show", f"{deletion_sha}:{archive_root}/.taskctl-archive.json"), root=root
+                    (
+                        "git",
+                        "show",
+                        f"{deletion_sha}:{archive_root}/.taskctl-archive.json",
+                    ),
+                    root=root,
                 )
                 if archive_result.returncode != 0:
-                    fail(f"{relative}: archived lifecycle receipt missing: .taskctl-archive.json")
+                    fail(
+                        f"{relative}: archived lifecycle receipt missing: .taskctl-archive.json"
+                    )
                 archive_receipt = json.loads(archive_result.stdout or "{}")
-                expected_archive_outcome = "dropped" if outcome == "dropped" else "review"
+                expected_archive_outcome = (
+                    "dropped" if outcome == "dropped" else "review"
+                )
                 if (
                     archive_receipt.get("schema") != 1
                     or archive_receipt.get("task_id") != terminal_document.task_id
@@ -1758,27 +2431,42 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 ):
                     fail(f"{relative}: invalid OpenSpec archive receipt")
                 verification_result = run_command(
-                    ("git", "show", f"{deletion_sha}:{archive_root}/verification.md"), root=root
+                    ("git", "show", f"{deletion_sha}:{archive_root}/verification.md"),
+                    root=root,
                 )
                 if verification_result.returncode != 0:
                     fail(f"{relative}: archived verification record is missing")
                 verification_file = scratch / "archived-verification.md"
-                verification_file.write_text(verification_result.stdout or "", encoding="utf-8")
+                verification_file.write_text(
+                    verification_result.stdout or "", encoding="utf-8"
+                )
                 verification = read_document(verification_file)
                 if (
                     verification.values.get("task_id") != terminal_document.task_id
                     or verification.values.get("change") != change
-                    or verification.values.get("commit_sha") != archive_receipt.get("commit_sha")
+                    or verification.values.get("commit_sha")
+                    != archive_receipt.get("commit_sha")
                 ):
-                    fail(f"{relative}: archive receipt does not match verification record")
+                    fail(
+                        f"{relative}: archive receipt does not match verification record"
+                    )
                 if outcome == "dropped":
                     archived_drop_result = run_command(
-                        ("git", "show", f"{deletion_sha}:{archive_root}/.taskctl-drop.json"), root=root
+                        (
+                            "git",
+                            "show",
+                            f"{deletion_sha}:{archive_root}/.taskctl-drop.json",
+                        ),
+                        root=root,
                     )
-                    if archived_drop_result.returncode != 0 or json.loads(
-                        archived_drop_result.stdout or "{}"
-                    ) != drop_receipt:
-                        fail(f"{relative}: archived drop receipt differs from terminal commit")
+                    if (
+                        archived_drop_result.returncode != 0
+                        or json.loads(archived_drop_result.stdout or "{}")
+                        != drop_receipt
+                    ):
+                        fail(
+                            f"{relative}: archived drop receipt differs from terminal commit"
+                        )
 
 
 def validate_repository(root: Path, *, base: str | None, upstreams: bool = True) -> tuple[list[Document], list[Step]]:
@@ -1927,16 +2615,23 @@ def command_ready(args: argparse.Namespace) -> int:
 
 def command_graph(args: argparse.Namespace) -> int:
     config = load_project_config(args.root)
-    documents, _ = load_state(args.root, config)
+    history_resolver = TerminalHistoryResolver(args.root, config)
+    documents, _ = _load_state(
+        args.root,
+        config,
+        history_resolver=history_resolver,
+    )
     reverse: dict[str, list[str]] = {document.task_id: [] for document in documents}
     for document in documents:
         for blocker in document.values["blocked_by"]:
             local_blocker = local_reference(blocker, config)
             if local_blocker is not None:
                 reverse[local_blocker].append(document.task_id)
-    graph = [
+    graph: list[dict[str, Any]] = [
         {
             "id": document.task_id,
+            "status": document.values["status"],
+            "historical": False,
             "parent": document.values["parent"],
             "blocked_by": document.values["blocked_by"],
             "related_tasks": document.values.get("related_tasks", []),
@@ -1944,11 +2639,53 @@ def command_graph(args: argparse.Namespace) -> int:
         }
         for document in documents
     ]
+    active_ids = {document.task_id for document in documents}
+    historical_ids = sorted(
+        {
+            local
+            for document in documents
+            for related in document.values.get("related_tasks", [])
+            if (local := local_reference(related, config)) is not None
+            and local not in active_ids
+        }
+    )
+
+    def localize(reference: str) -> str:
+        prefix = f"{config.project}#"
+        return reference[len(prefix) :] if reference.startswith(prefix) else reference
+
+    for task_id in historical_ids:
+        historical = history_resolver.resolve(
+            task_id,
+            allow_uncommitted_purge=True,
+        )
+        if historical is None or historical["status"] != "done":
+            fail(f"missing or incomplete historical related task {task_id}")
+        graph.append(
+            {
+                "id": task_id,
+                "status": historical["status"],
+                "historical": True,
+                "parent": (
+                    localize(historical["parent"]) if historical["parent"] else None
+                ),
+                "blocked_by": [localize(value) for value in historical["blocked_by"]],
+                "related_tasks": [
+                    localize(value) for value in historical["related_tasks"]
+                ],
+                "blocks": [],
+                "terminal_revision": historical["terminal_revision"],
+                "deletion_revision": historical["deletion_revision"],
+            }
+        )
+    graph.sort(key=lambda node: node["id"])
     if args.json:
         print(json.dumps({"schema": 1, "graph": graph}, sort_keys=True))
     else:
         for node in graph:
-            print(f"{node['id']}: blocked_by={','.join(node['blocked_by']) or '-'} blocks={','.join(node['blocks']) or '-'}")
+            print(
+                f"{node['id']}: blocked_by={','.join(node['blocked_by']) or '-'} blocks={','.join(node['blocks']) or '-'}"
+            )
     return 0
 
 
@@ -2493,19 +3230,35 @@ def command_close_purge(args: argparse.Namespace) -> int:
         if (
             candidate.values["parent"] == document.task_id
             or document.task_id in candidate.values["blocked_by"]
-            or document.task_id in candidate.values.get("related_tasks", [])
+        ):
+            fail(f"{document.task_id}: incoming reference from {candidate.task_id}")
+        if (
+            document.task_id in candidate.values.get("related_tasks", [])
+            and document.values["status"] != "done"
         ):
             fail(f"{document.task_id}: incoming reference from {candidate.task_id}")
     execution = expected_execution_path(args.root, document)
-    receipt_kinds = ("close", "drop") if document.values["status"] == "dropped" else ("close",)
+    receipt_kinds = (
+        ("close", "drop") if document.values["status"] == "dropped" else ("close",)
+    )
     for kind in receipt_kinds:
         receipt = lifecycle_receipt_path(args.root, document, execution, kind)
         receipt_relative = receipt.relative_to(args.root).as_posix()
-        committed_receipt = run_command(("git", "cat-file", "-e", f"HEAD:{receipt_relative}"), root=args.root)
-        if committed_receipt.returncode != 0 and document.values["spec_mode"] == "required":
+        committed_receipt = run_command(
+            ("git", "cat-file", "-e", f"HEAD:{receipt_relative}"), root=args.root
+        )
+        if (
+            committed_receipt.returncode != 0
+            and document.values["spec_mode"] == "required"
+        ):
             change = document.values["openspec_change"]
             committed_receipt = run_command(
-                ("git", "cat-file", "-e", f"HEAD:openspec/changes/{change}/.taskctl-{kind}.json"),
+                (
+                    "git",
+                    "cat-file",
+                    "-e",
+                    f"HEAD:openspec/changes/{change}/.taskctl-{kind}.json",
+                ),
                 root=args.root,
             )
         if committed_receipt.returncode != 0:
@@ -2521,7 +3274,9 @@ def command_close_purge(args: argparse.Namespace) -> int:
         if execution.exists():
             execution.unlink()
         for kind in receipt_kinds:
-            lifecycle_receipt_path(args.root, document, execution, kind).unlink(missing_ok=True)
+            lifecycle_receipt_path(args.root, document, execution, kind).unlink(
+                missing_ok=True
+            )
     document.path.unlink()
     print(f"Purged {document.task_id}; commit this deletion separately")
     return 0
