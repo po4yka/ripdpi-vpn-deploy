@@ -30,4 +30,5 @@ runs:
         unzip -q "$archive" -d "$install_dir"
         chmod 0755 "$install_dir/xray"
         "$install_dir/xray" version
+        sudo install -m 0644 "$install_dir/geoip.dat" "$install_dir/geosite.dat" /usr/local/bin
         sudo install -m 0755 "$install_dir/xray" /usr/local/bin/xray

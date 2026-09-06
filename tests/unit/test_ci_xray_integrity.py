@@ -46,6 +46,8 @@ def test_installer_never_executes_or_installs_unverified_bytes(tmp_path, case):
     with zipfile.ZipFile(archive, "w") as fixture:
         fixture.writestr("xray", '#!/bin/sh\necho executed >> "$EXEC_LOG"\nexit ' +
                          ("7" if case == "runtime-error" else "0") + "\n")
+        fixture.writestr("geoip.dat", b"fixture geoip")
+        fixture.writestr("geosite.dat", b"fixture geosite")
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     if case == "corrupt":
         with archive.open("ab") as stream:
@@ -65,19 +67,23 @@ def test_installer_never_executes_or_installs_unverified_bytes(tmp_path, case):
     curl.chmod(0o755)
     sudo = bin_dir / "sudo"
     sudo.write_text(
-        '#!/usr/bin/env python3\nimport os, shutil, sys\n'
-        'assert sys.argv[1:4] == ["install", "-m", "0755"]\n'
-        'assert sys.argv[5:] == ["/usr/local/bin/xray"]\n'
-        'shutil.copyfile(sys.argv[4], os.environ["INSTALLED"])\n'
+        '#!/usr/bin/env python3\nimport os, subprocess, sys\n'
+        'args = sys.argv[1:]\n'
+        'assert args[:2] == ["install", "-m"] and args[2] in {"0755", "0644"}\n'
+        'assert args[-1] in {"/usr/local/bin/xray", "/usr/local/bin"}\n'
+        'args[-1] = args[-1].replace("/usr/local/bin", os.environ["INSTALL_ROOT"])\n'
+        'subprocess.run(args, check=True)\n'
     )
     sudo.chmod(0o755)
     runner_temp = tmp_path / "runner temp"
     runner_temp.mkdir()
-    installed = tmp_path / "installed-xray"
+    install_root = tmp_path / "installed"
+    install_root.mkdir()
+    installed = install_root / "xray"
     installed.write_text("existing runtime")
     env = dict(os.environ, **step["env"])
     env.update(XRAY_SHA256=digest, PATH=f"{bin_dir}:{os.environ['PATH']}",
-               RUNNER_TEMP=str(runner_temp), INSTALLED=str(installed),
+               RUNNER_TEMP=str(runner_temp), INSTALL_ROOT=str(install_root),
                FIXTURE=str(archive), EXEC_LOG=str(tmp_path / "executed"),
                DOWNLOAD_LOG=str(tmp_path / "downloaded"),
                DOWNLOAD_ERROR=str(case == "download-error").lower())
@@ -87,7 +93,8 @@ def test_installer_never_executes_or_installs_unverified_bytes(tmp_path, case):
     assert (tmp_path / "executed").exists() == (case in {"valid", "runtime-error"})
     if case == "valid":
         with zipfile.ZipFile(archive) as fixture:
-            assert installed.read_bytes() == fixture.read("xray")
+            for name in ("xray", "geoip.dat", "geosite.dat"):
+                assert (install_root / name).read_bytes() == fixture.read(name)
     else:
         assert installed.read_text() == "existing runtime"
     if case in {"corrupt", "download-error"}:
