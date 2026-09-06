@@ -15,6 +15,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  selection:
+    name: CI dependency selection
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    outputs:
+      checks: ${{ steps.plan.outputs.checks }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select complete changed-file consumer groups
+        id: plan
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 scripts/select-ci-checks.py
+
   gitleaks:
     name: gitleaks
     runs-on: ubuntu-24.04
@@ -138,6 +155,8 @@ jobs:
           ./taskctl validate "${args[@]}"
 
   terraform:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['terraform'] }}
     name: terraform fmt + validate
     runs-on: ubuntu-24.04
     strategy:
@@ -166,6 +185,8 @@ jobs:
         run: terraform validate
 
   terraform-exception:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['terraform-exception'] }}
     name: terraform inert exception root
     runs-on: ubuntu-24.04
     steps:
@@ -186,6 +207,8 @@ jobs:
         run: terraform validate
 
   cloud-init:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['cloud-init'] }}
     name: cloud-init schema
     runs-on: ubuntu-24.04
     steps:
@@ -205,6 +228,8 @@ jobs:
         run: cloud-init schema --config-file /tmp/cloud-init.rendered.yaml
 
   ansible:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['ansible'] }}
     name: ansible-lint + syntax-check
     runs-on: ubuntu-24.04
     env:
@@ -233,6 +258,8 @@ jobs:
         run: ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,'
 
   molecule:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['molecule'] }}
     name: molecule (${{ matrix.role }})
     runs-on: ubuntu-24.04
     env:
@@ -460,6 +487,8 @@ jobs:
           retention-days: 7
 
   native-runtime:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['native-runtime'] }}
     name: native runtime integration
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -491,6 +520,8 @@ jobs:
             make test-native-runtime
 
   go-helper:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['go-helper'] }}
     name: MTProxy Go helper tests
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -505,6 +536,8 @@ jobs:
       - run: make test-probe-matrix-mtproto
 
   bats-test:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['bats-test'] }}
     name: bats shell tests
     runs-on: ubuntu-24.04
     steps:
@@ -517,6 +550,8 @@ jobs:
         run: bats tests/bats/
 
   tf-test:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['tf-test'] }}
     name: terraform test (${{ matrix.provider }})
     runs-on: ubuntu-24.04
     strategy:
@@ -538,6 +573,8 @@ jobs:
         run: terraform test
 
   vpnd-test:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['vpnd-test'] }}
     name: vpnd cargo test
     uses: ./.github/workflows/_rust.yml
     with:
@@ -545,6 +582,8 @@ jobs:
       cargo-command: test --release --locked
 
   vpnd-clippy:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['vpnd-clippy'] }}
     name: vpnd cargo clippy
     uses: ./.github/workflows/_rust.yml
     with:
@@ -552,6 +591,8 @@ jobs:
       cargo-command: clippy --release --all-targets --locked -- -D warnings
 
   vpnd-msrv:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['vpnd-msrv'] }}
     name: vpnd MSRV check
     runs-on: ubuntu-24.04
     steps:
@@ -565,6 +606,8 @@ jobs:
         working-directory: vpnd
 
   vpnd-deny:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['vpnd-deny'] }}
     name: vpnd dependency policy
     runs-on: ubuntu-24.04
     steps:
@@ -578,6 +621,8 @@ jobs:
           rust-version: "1.88.0"
 
   molecule-failure-scenarios:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['molecule-failure-scenarios'] }}
     # Non-default Molecule scenarios that exercise red-path / failure
     # injection, shared TLS permissions, and paired cascade classifiers. Both populated
     # and forced-empty are required; happy-path alone is not promotion evidence.
@@ -618,6 +663,8 @@ jobs:
           ANSIBLE_FORCE_COLOR: "1"
 
   molecule-full-stack:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['molecule-full-stack'] }}
     name: molecule full-stack (${{ matrix.scenario }})
     runs-on: ubuntu-24.04
     env:
@@ -652,6 +699,8 @@ jobs:
           ANSIBLE_FORCE_COLOR: "1"
 
   vpnd-sbom:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['vpnd-sbom'] }}
     name: vpnd release SBOM
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -667,27 +716,36 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # Protective workflows share this graph so their failures reach the existing
-  # branch-required aggregate. Call every time; do not accept arbitrary skips.
+  # Protective workflows share the dependency plan and required aggregate.
+  # A selected failure or an unplanned skip always rejects the merge.
   tf-policy:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['tf-policy'] }}
     uses: ./.github/workflows/tf-policy.yml
 
   image-scan:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['image-scan'] }}
     permissions:
       contents: read
       security-events: write
     uses: ./.github/workflows/image-scan.yml
 
   contract-sync:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['contract-sync'] }}
     uses: ./.github/workflows/contract-sync.yml
 
   reproducible-build:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['reproducible-build'] }}
     uses: ./.github/workflows/reproducible-build.yml
 
   required:
     name: required checks
     if: always()
     needs:
+      - selection
       - gitleaks
       - actionlint
       - zizmor
@@ -718,6 +776,10 @@ jobs:
       - reproducible-build
     runs-on: ubuntu-24.04
     steps:
-      - env:
-          RESULTS: ${{ toJSON(needs.*.result) }}
-        run: jq -e 'all(.[]; . == "success")' <<< "$RESULTS"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Require every planned check and reject unexpected skips
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/check-ci-results.py

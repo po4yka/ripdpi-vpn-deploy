@@ -39,7 +39,7 @@ GitHub → Actions → **branch-protection** → Run workflow → leave default
 (`main`) → Run.
 
 Verify it succeeded; the job logs should print the required-status-check
-count (currently 26 in the repository manifest).
+count (currently 9 in the repository manifest).
 
 ### 4. Verify in Settings
 
@@ -49,7 +49,7 @@ Settings → Branches → `main` → see:
 - Required approvals: **0** ✅
 - Require review from Code Owners: **disabled** ✅
 - Require status checks to pass before merging ✅
-- 26 status checks listed after the current workflow has been applied
+- 9 status checks listed after the current workflow has been applied
 - Require branches to be up to date before merging ✅
 - Require conversation resolution before merging ✅
 - Require linear history ✅
@@ -62,29 +62,12 @@ Settings → Branches → `main` → see:
 | Workflow | Job name |
 |---|---|
 | ci.yml | `required checks` |
+| ci.yml | `CI dependency selection` |
 | ci.yml | `task-contract` |
 | ci.yml | `gitleaks` |
-| ci.yml | `terraform fmt + validate (upcloud)` |
-| ci.yml | `terraform fmt + validate (hetzner)` |
-| ci.yml | `terraform fmt + validate (vultr)` |
-| ci.yml | `cloud-init schema` |
-| ci.yml | `ansible-lint + syntax-check` |
-| ci.yml | `molecule (baseline)` |
-| ci.yml | `molecule (firewall)` |
-| ci.yml | `molecule (xray)` |
-| ci.yml | `molecule (hysteria)` |
-| ci.yml | `molecule (nginx-xhttp)` |
-| ci.yml | `molecule (watchdog)` |
-| ci.yml | `molecule (monitoring)` |
-| ci.yml | `molecule (backup)` |
-| ci.yml | `molecule (subscription-host)` |
 | ci.yml | `shellcheck` |
 | ci.yml | `python validators` |
 | ci.yml | `pytest unit tests` |
-| ci.yml | `terraform test (upcloud)` |
-| ci.yml | `terraform test (hetzner)` |
-| ci.yml | `terraform test (vultr)` |
-| ci.yml | `molecule failure (watchdog)` |
 | codeql.yml | `codeql (python)` |
 | codeql.yml | `codeql (actions)` |
 
@@ -93,24 +76,28 @@ If you rename a CI job, update both the matrix in this workflow and the
 old name as a "missing" required check and the merge is blocked
 indefinitely.
 
-The aggregate `required checks` context is the forward-compatible gate: it
-depends on the complete current CI graph, including Scaleway and newer test
-jobs. The remaining individual contexts continue to gate their named checks.
-If Settings does not match the 26 contexts above, follow the migration procedure
-below; renamed checks must be migrated before their PR merges.
+The aggregate `required checks` depends on every CI job, including the
+`CI dependency selection` planner. It checks the complete named result map
+against that planner: selected jobs must succeed, and only explicitly unselected
+jobs may be skipped. Missing jobs, failed selection, malformed plans, failures,
+cancellations and unexpected skips reject the merge.
 
-`python validators` combines yamllint, secrets coverage, template/Xray checks,
-snapshot comparison, and secrets/bundle schema checks. Migrate their five former
-required contexts before merging, only after the combined job passes on the PR branch; retain
-the strict `required checks` aggregate and all unrelated protection settings.
+PRs select complete consumer groups from the changed-file dependency graph.
+Main pushes and manual CI runs execute every group. Unknown paths, shared
+configuration, unavailable history and empty diffs also request the full graph.
+See [Testing: CI dependency selection](TESTING.md#ci-dependency-selection).
 
-The aggregate also requires the reusable `tf-policy`, `image-scan`,
-`contract-sync` and `reproducible-build` workflows. Main CI invokes all four
-on every PR, main push and manual CI run, without path filters or duplicate
-standalone PR runs. A failure, cancellation or skipped workflow makes
-`required checks` fail. Manual workflow entry points remain available;
-contract-sync also retains its weekly external-drift check. This extends the
-existing required context without changing repository protection settings.
+The optional matrix contexts are enforced through the aggregate, not as separate
+branch requirements: a skipped matrix does not emit each expanded job name.
+After the full PR CI passes, migrate the live context list to the nine names
+above **before merging**, preserving strict mode, app bindings and unrelated
+settings. Leaving old matrix contexts required would block selective PRs.
+
+`python validators` still executes all seven validators. Pytest, static lint and
+task contracts are unconditional. The reusable `tf-policy`, `image-scan`,
+`contract-sync` and `reproducible-build` workflows remain in the result gate and
+must succeed whenever selected. Their manual entry points remain available;
+contract-sync retains its weekly external-drift check.
 
 This gates the outcomes those workflows currently implement. In particular,
 `reproducible-build` still permits placeholder example pins and treats Xray
