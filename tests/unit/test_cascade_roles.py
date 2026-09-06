@@ -520,3 +520,20 @@ def test_site_has_attestation_and_colocation_guards_before_roles() -> None:
     )
     assert site.index("role: cascade-ingress") > first_role
     assert site.index("role: cascade-egress") > first_role
+
+
+def test_cascade_molecule_prepares_deterministic_nft_preflight_fixture() -> None:
+    """Molecule must not confuse an unavailable netlink socket with host state."""
+    for scenario in ("forced-empty", "populated"):
+        prepare = yaml.safe_load(
+            (ANSIBLE / f"roles/cascade-ingress/molecule/{scenario}/prepare.yml").read_text()
+        )[0]
+        task = next(
+            item for item in prepare["tasks"]
+            if item["name"] == "Install deterministic nftables preflight fixture"
+        )
+        copy_task = task["ansible.builtin.copy"]
+        assert copy_task["dest"] == "/usr/local/bin/nft"
+        assert copy_task["mode"] == "0755"
+        assert '"$1 $2" = "list tables"' in copy_task["content"]
+        assert "exit 64" in copy_task["content"]

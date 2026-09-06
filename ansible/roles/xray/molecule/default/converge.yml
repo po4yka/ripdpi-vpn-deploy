@@ -39,6 +39,14 @@
           uuid: "22222222-2222-2222-2222-222222222222"
           short_id: "cafebabe"
   pre_tasks:
+    - name: Create Xray runtime fixture directory
+      ansible.builtin.file:
+        path: /var/tmp/xray-molecule
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
     - name: Create hash-pinned Xray runtime archive fixture
       ansible.builtin.copy:
         dest: /var/tmp/xray-molecule/xray-v26.3.27.zip

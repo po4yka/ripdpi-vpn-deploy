@@ -25,6 +25,7 @@
       cohorts: []
     xray_port: 443
     xray_fallback_port: 2053
+    p0_reality_flow_mode: vision
     p0_reality_shapes:
       vision:
         client_flow: "xtls-rprx-vision"
@@ -38,5 +39,12 @@
     watchdog_secrets:
       ntfy_topic: "molecule-stub-topic"
       reality_probe_url: "https://canary.example.test/healthz"
+  pre_tasks:
+    - name: Install jq for structured REALITY probe verification
+      ansible.builtin.apt:
+        name: jq
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
   roles:
     - role: watchdog

@@ -4,6 +4,7 @@
   become: true
   vars:
     nginx_xhttp_public_port: 8443
+    nginx_xhttp_fallback_port: 2083
     nginx_xhttp_port: 10085
     xray_port: 443
     vpn_service_address: 127.0.0.1

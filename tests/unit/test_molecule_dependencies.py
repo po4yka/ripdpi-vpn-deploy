@@ -156,6 +156,12 @@ def test_standalone_p0_molecule_fixtures_declare_required_canonical_inputs() -> 
         "watchdog/failure": REPO_ROOT / "ansible/roles/watchdog/molecule/failure/converge.yml",
         "nginx-xhttp/default": REPO_ROOT / "ansible/roles/nginx-xhttp/molecule/default/converge.yml",
         "honeypot/default": REPO_ROOT / "ansible/roles/honeypot/molecule/default/converge.yml",
+        "monitoring/default": REPO_ROOT / "ansible/roles/monitoring/molecule/default/converge.yml",
+        "cdn-front/default": REPO_ROOT / "ansible/roles/cdn-front/molecule/default/converge.yml",
+        "cdn-front/cdn-on": REPO_ROOT / "ansible/roles/cdn-front/molecule/cdn-on/converge.yml",
+        "firewall/default": REPO_ROOT / "ansible/roles/firewall/molecule/default/converge.yml",
+        "network-exposure-gate/default": REPO_ROOT / "ansible/roles/network-exposure-gate/molecule/default/converge.yml",
+        "policy-ratelimit/default": REPO_ROOT / "ansible/roles/policy-ratelimit/molecule/default/converge.yml",
         "hysteria/default": REPO_ROOT / "ansible/roles/hysteria/molecule/default/converge.yml",
         "hysteria/check-mode": REPO_ROOT / "ansible/roles/hysteria/molecule/default/check-mode.yml",
     }
@@ -168,9 +174,20 @@ def test_standalone_p0_molecule_fixtures_declare_required_canonical_inputs() -> 
     for name in ("watchdog/default", "watchdog/failure"):
         assert variables[name]["xray_port"] == canonical["xray_port"]
         assert variables[name]["xray_fallback_port"] == canonical["xray_fallback_port"]
+        assert variables[name]["p0_reality_flow_mode"] == canonical["p0_reality_flow_mode"]
         assert variables[name]["p0_reality_shapes"] == canonical["p0_reality_shapes"]
     assert variables["nginx-xhttp/default"]["xray_port"] == canonical["xray_port"]
+    assert variables["nginx-xhttp/default"]["nginx_xhttp_fallback_port"] == canonical["nginx_xhttp_fallback_port"]
     assert variables["honeypot/default"]["honeypot_port"] == canonical["honeypot_port"]
+    assert variables["monitoring/default"]["honeypot_port"] == canonical["honeypot_port"]
+    for name in (
+        "cdn-front/default",
+        "cdn-front/cdn-on",
+        "firewall/default",
+        "network-exposure-gate/default",
+        "policy-ratelimit/default",
+    ):
+        assert variables[name]["xray_fallback_port"] == canonical["xray_fallback_port"]
     for name in ("hysteria/default", "hysteria/check-mode"):
         assert variables[name]["hysteria_port_range"] == canonical["hysteria_port_range"]
 
@@ -185,11 +202,23 @@ def test_xray_molecule_uses_a_hash_pinned_local_runtime_archive() -> None:
         for task in converge["pre_tasks"]
         if task["name"] == "Create hash-pinned Xray runtime archive fixture"
     )
+    artifact_index = next(
+        index for index, task in enumerate(converge["pre_tasks"])
+        if task["name"] == "Create hash-pinned Xray runtime archive fixture"
+    )
+    parent = converge["pre_tasks"][artifact_index - 1]
 
     assert variables["xray_runtime_release_urls"]["amd64"].startswith("file://")
     assert variables["xray_runtime_release_urls"]["arm64"].startswith("file://")
     assert artifact["dest"].endswith("xray-v26.3.27.zip")
     assert artifact["src"] == "{{ playbook_dir }}/files/xray-v26.3.27.zip"
+    assert parent["ansible.builtin.file"] == {
+        "path": "/var/tmp/xray-molecule",
+        "state": "directory",
+        "owner": "root",
+        "group": "root",
+        "mode": "0755",
+    }
     archive = REPO_ROOT / "ansible/roles/xray/molecule/default/files/xray-v26.3.27.zip"
     assert sha256(archive.read_bytes()).hexdigest() == variables["xray"]["linux_amd64_sha256"]
     with zipfile.ZipFile(archive) as payload:
