@@ -2,7 +2,7 @@
 id: CIC-1788634353343245
 title: Require protective workflows before merge
 kind: bug
-status: doing
+status: review
 area: ci
 priority: high
 risk: standard
@@ -12,9 +12,10 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-06
 spec_reason: tooling-only
 related_tasks: []
+status_detail: Protective workflow aggregation delivered to protected main dad8f989.
 ---
 
 ## Goal

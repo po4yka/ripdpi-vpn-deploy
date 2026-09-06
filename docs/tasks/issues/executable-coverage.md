@@ -2,7 +2,7 @@
 id: CIC-1788643607572240
 title: Execute native runtime and Go coverage in required CI
 kind: bug
-status: doing
+status: review
 area: ci
 priority: high
 risk: standard
@@ -15,6 +15,7 @@ created: 2026-09-06
 updated: 2026-09-06
 spec_reason: tooling-only
 related_tasks: []
+status_detail: Native and Go required coverage delivered to protected main e59cf6d5 with exact-main CI 33998219035.
 ---
 
 ## Goal
