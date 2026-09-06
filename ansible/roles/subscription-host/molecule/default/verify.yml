@@ -126,9 +126,10 @@
       # error case we want to catch.
       failed_when: mirror_oneshot.stdout == "failed"
 
-    - name: Mirror produced the sub payload under subscription_dir
+    - name: Mirror produced the sub payload in the active generation
       ansible.builtin.stat:
-        path: "/var/lib/vpn-subscription/sub/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        path: >-
+          /var/lib/vpn-subscription/.vpn-sub-mirror-current/sub/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
       register: mirrored_payload
       failed_when: not mirrored_payload.stat.exists
 

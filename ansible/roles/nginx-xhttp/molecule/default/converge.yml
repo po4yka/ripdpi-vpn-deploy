@@ -8,6 +8,7 @@
     nginx_xhttp_port: 10085
     xray_port: 443
     xray_fallback_port: 2053
+    cdn_front_port: 8443
     vpn_service_address: 127.0.0.1
     public_site_canonical_url: "https://vpn.example.test"
     xray:

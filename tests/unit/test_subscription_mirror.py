@@ -27,6 +27,9 @@ BOOTSTRAP_HELPER = (
 MIRROR_UNIT = (
     REPO_ROOT / "ansible/roles/subscription-host/templates/vpn-sub-mirror.service.j2"
 )
+MOLECULE_VERIFY = (
+    REPO_ROOT / "ansible/roles/subscription-host/molecule/default/verify.yml"
+)
 
 
 def _private_directory(path: Path) -> Path:
@@ -75,6 +78,13 @@ def _run(
 
 def _current_generation(dest: Path) -> Path:
     return dest / os.readlink(dest / ".vpn-sub-mirror-current")
+
+
+def test_molecule_verifies_payload_through_the_active_generation_pointer() -> None:
+    verify = MOLECULE_VERIFY.read_text()
+
+    assert "/.vpn-sub-mirror-current/sub/" in verify
+    assert "/vpn-subscription/sub/" not in verify
 
 
 def _write_source(source: Path, label: str) -> None:

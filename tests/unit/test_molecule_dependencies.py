@@ -161,6 +161,7 @@ def test_standalone_p0_molecule_fixtures_declare_required_canonical_inputs() -> 
         "cdn-front/cdn-on": REPO_ROOT / "ansible/roles/cdn-front/molecule/cdn-on/converge.yml",
         "firewall/default": REPO_ROOT / "ansible/roles/firewall/molecule/default/converge.yml",
         "network-exposure-gate/default": REPO_ROOT / "ansible/roles/network-exposure-gate/molecule/default/converge.yml",
+        "network-exposure-gate/verify": REPO_ROOT / "ansible/roles/network-exposure-gate/molecule/default/verify.yml",
         "policy-ratelimit/default": REPO_ROOT / "ansible/roles/policy-ratelimit/molecule/default/converge.yml",
         "hysteria/default": REPO_ROOT / "ansible/roles/hysteria/molecule/default/converge.yml",
         "hysteria/check-mode": REPO_ROOT / "ansible/roles/hysteria/molecule/default/check-mode.yml",
@@ -180,6 +181,8 @@ def test_standalone_p0_molecule_fixtures_declare_required_canonical_inputs() -> 
     assert variables["nginx-xhttp/default"]["xray_port"] == canonical["xray_port"]
     assert variables["nginx-xhttp/default"]["xray_fallback_port"] == canonical["xray_fallback_port"]
     assert variables["nginx-xhttp/default"]["nginx_xhttp_fallback_port"] == canonical["nginx_xhttp_fallback_port"]
+    assert variables["nginx-xhttp/default"]["cdn_front_port"] == canonical["cdn_front_port"]
+    assert variables["firewall/default"]["nginx_xhttp_public_port"] == canonical["nginx_xhttp_public_port"]
     assert variables["honeypot/default"]["honeypot_port"] == canonical["honeypot_port"]
     assert variables["monitoring/default"]["honeypot_port"] == canonical["honeypot_port"]
     for name in (
@@ -187,6 +190,7 @@ def test_standalone_p0_molecule_fixtures_declare_required_canonical_inputs() -> 
         "cdn-front/cdn-on",
         "firewall/default",
         "network-exposure-gate/default",
+        "network-exposure-gate/verify",
         "policy-ratelimit/default",
     ):
         assert variables[name]["xray_port"] == canonical["xray_port"]
@@ -225,8 +229,9 @@ def test_xray_molecule_uses_a_hash_pinned_local_runtime_archive() -> None:
     archive = REPO_ROOT / "ansible/roles/xray/molecule/default/files/xray-v26.3.27.zip"
     assert sha256(archive.read_bytes()).hexdigest() == variables["xray"]["linux_amd64_sha256"]
     with zipfile.ZipFile(archive) as payload:
-        assert payload.namelist() == ["xray"]
+        assert payload.namelist() == ["xray", "geoip.dat"]
         assert payload.read("xray").startswith(b"#!/bin/sh\n")
+        assert payload.read("geoip.dat") == b"MOLECULE_GEOIP_FIXTURE\n"
     pre_task_names = {task["name"] for task in converge["pre_tasks"]}
     assert "Pre-create release dir for runtime link idempotence coverage" not in pre_task_names
     assert "Seed Xray binary for runtime link idempotence coverage" not in pre_task_names
