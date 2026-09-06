@@ -78,7 +78,18 @@
     argv: [ip, route, show, table, "{{ cascade_ingress.routing_table | string }}"]
   register: cascade_ingress_historical_routes
   changed_when: false
-  failed_when: cascade_ingress_historical_routes.rc != 0
+  # iproute2 returns rc=2 when the requested IPv4 FIB table has never been
+  # created. That exact empty-table reply is clean state; every other command
+  # failure still prevents the inert scaffold from writing over unknown state.
+  failed_when: >-
+    cascade_ingress_historical_routes.rc != 0 and not (
+      cascade_ingress_historical_routes.rc == 2 and
+      cascade_ingress_historical_routes.stdout | trim | length == 0 and
+      cascade_ingress_historical_routes.stderr_lines == [
+        'Error: ipv4: FIB table does not exist.',
+        'Dump terminated'
+      ]
+    )
   check_mode: false
 
 - name: Inspect historical cascade nftables state
