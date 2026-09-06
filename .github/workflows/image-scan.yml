@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   enumerate-images:
+    timeout-minutes: 5
     name: enumerate base images
     runs-on: ubuntu-24.04
     permissions:
@@ -40,6 +41,7 @@ jobs:
           echo "matrix=${images}" >> "$GITHUB_OUTPUT"
 
   scan:
+    timeout-minutes: 15
     name: trivy (${{ matrix.image }})
     needs: enumerate-images
     runs-on: ubuntu-24.04

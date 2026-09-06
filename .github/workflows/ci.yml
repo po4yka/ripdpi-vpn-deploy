@@ -33,6 +33,7 @@ jobs:
         run: python3 scripts/select-ci-checks.py
 
   gitleaks:
+    timeout-minutes: 5
     name: gitleaks
     runs-on: ubuntu-24.04
     steps:
@@ -50,6 +51,7 @@ jobs:
           GITLEAKS_ENABLE_COMMENTS: "false"
 
   actionlint:
+    timeout-minutes: 5
     name: actionlint
     runs-on: ubuntu-24.04
     steps:
@@ -155,6 +157,7 @@ jobs:
           ./taskctl validate "${args[@]}"
 
   terraform:
+    timeout-minutes: 10
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['terraform'] }}
     name: terraform fmt + validate
@@ -185,6 +188,7 @@ jobs:
         run: terraform validate
 
   terraform-exception:
+    timeout-minutes: 10
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['terraform-exception'] }}
     name: terraform inert exception root
@@ -207,6 +211,7 @@ jobs:
         run: terraform validate
 
   cloud-init:
+    timeout-minutes: 10
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['cloud-init'] }}
     name: cloud-init schema
@@ -228,6 +233,7 @@ jobs:
         run: cloud-init schema --config-file /tmp/cloud-init.rendered.yaml
 
   ansible:
+    timeout-minutes: 15
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['ansible'] }}
     name: ansible-lint + syntax-check
@@ -258,6 +264,7 @@ jobs:
         run: ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,'
 
   molecule:
+    timeout-minutes: 20
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['molecule'] }}
     name: molecule (${{ matrix.role }})
@@ -308,6 +315,7 @@ jobs:
           ANSIBLE_FORCE_COLOR: "1"
 
   shellcheck:
+    timeout-minutes: 5
     name: shellcheck
     runs-on: ubuntu-24.04
     steps:
@@ -459,6 +467,7 @@ jobs:
           retention-days: 7
 
   pytest-required:
+    timeout-minutes: 5
     name: pytest unit tests
     if: always()
     needs: [unit-tests]
@@ -536,6 +545,7 @@ jobs:
       - run: make test-probe-matrix-mtproto
 
   bats-test:
+    timeout-minutes: 10
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['bats-test'] }}
     name: bats shell tests
@@ -550,6 +560,7 @@ jobs:
         run: bats tests/bats/
 
   tf-test:
+    timeout-minutes: 10
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['tf-test'] }}
     name: terraform test (${{ matrix.provider }})
@@ -591,6 +602,7 @@ jobs:
       cargo-command: clippy --release --all-targets --locked -- -D warnings
 
   vpnd-msrv:
+    timeout-minutes: 20
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['vpnd-msrv'] }}
     name: vpnd MSRV check
@@ -606,6 +618,7 @@ jobs:
         working-directory: vpnd
 
   vpnd-deny:
+    timeout-minutes: 10
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['vpnd-deny'] }}
     name: vpnd dependency policy
@@ -621,6 +634,7 @@ jobs:
           rust-version: "1.88.0"
 
   molecule-failure-scenarios:
+    timeout-minutes: 20
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['molecule-failure-scenarios'] }}
     # Non-default Molecule scenarios that exercise red-path / failure
@@ -742,6 +756,7 @@ jobs:
     uses: ./.github/workflows/reproducible-build.yml
 
   required:
+    timeout-minutes: 3
     name: required checks
     if: always()
     needs:

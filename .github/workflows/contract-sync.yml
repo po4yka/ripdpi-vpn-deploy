@@ -27,6 +27,7 @@ permissions:
 
 jobs:
   drift:
+    timeout-minutes: 5
     name: client vendored copy matches SoT
     runs-on: ubuntu-24.04
     steps:
