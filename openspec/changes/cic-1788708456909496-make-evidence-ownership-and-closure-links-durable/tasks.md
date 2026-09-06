@@ -34,3 +34,4 @@ Terraform, Ansible, secrets, providers, hosts, and clients are out of scope.
 - [x] CIC-1788733500688116 Reject later malformed merged reincarnations after a valid first-parent purge #bug !high @item:CIC-1788708456909496
 - [x] CIC-1788733501332318 Validate archived OpenSpec requirement evidence before resolving historical links #bug !high @item:CIC-1788708456909496
 - [x] CIC-1788733501927997 Parse escaped Markdown delimiters in shared evidence acceptance commands #bug !high @item:CIC-1788708456909496
+- [x] CIC-1788737705846578 Validate multiple purged task IDs without corrupting the shared terminal-history index #bug !high @item:CIC-1788708456909496

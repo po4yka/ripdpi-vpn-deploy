@@ -2425,6 +2425,29 @@ class TaskctlHistoryTest(TaskctlFixture):
 
         taskctl.validate_deleted_history(self.root, base)
 
+    def test_deleted_history_validates_multiple_purged_tasks(self) -> None:
+        first = self.add_simple_task(
+            task_id="CIC-1786234567890001",
+            status="review",
+        )
+        second = self.add_simple_task(
+            task_id="CIC-1786234567890003",
+            status="review",
+        )
+        self.add_simple_task(task_id="CIC-1786234567890005")
+        self.write_board()
+        base = self.commit_all("add two reviewed tasks")
+        for task in (first, second):
+            self.prepare_simple_terminal(task)
+        self.write_board()
+        self.commit_all("complete two reviewed tasks")
+        for task in (first, second):
+            self.purge_simple_task(task)
+        self.write_board()
+        self.commit_all("purge two completed tasks")
+
+        taskctl.validate_deleted_history(self.root, base)
+
     def test_reintroduced_task_cannot_skip_committed_review_state(self) -> None:
         path = self.add_simple_task(status="doing")
         self.write_board()

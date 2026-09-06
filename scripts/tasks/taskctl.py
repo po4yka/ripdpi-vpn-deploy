@@ -3080,12 +3080,12 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 terminal_transition_snapshot.document,
                 config_at(terminal_transition_ref),
             )
-            terminal_index = next(
+            terminal_transition_index = next(
                 index
                 for index, (revision, _) in enumerate(incarnation)
                 if revision == terminal_transition_ref
             )
-            for _, snapshot in incarnation[terminal_index:]:
+            for _, snapshot in incarnation[terminal_transition_index:]:
                 assert snapshot is not None
                 if snapshot.document.values.get("status") != outcome:
                     fail(f"{relative}: task transitioned out of terminal state")
