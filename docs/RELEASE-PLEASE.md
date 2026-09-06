@@ -17,15 +17,21 @@ The default token remains read-only, with write permissions scoped to each job.
 
 ## Release PR checks
 
-Creating or updating the root release PR explicitly dispatches `ci.yml` and
-`codeql.yml` on the generated release branch. The handoff accepts only the
-configured vpnd release branch targeting main, and dispatch errors fail the
-parent workflow. These runs produce the same required check names and Actions
-app identity as ordinary PR checks; branch protection is unchanged.
+GitHub holds native `pull_request` workflows in `action_required` when the PR
+was created by `GITHUB_TOKEN`. A repository writer must open the release PR and
+select **Approve workflows to run**. The release-please run summary explicitly
+reports this required action. Then wait for all native required checks before
+reviewing and merging the release PR. This approval is needed again when GitHub
+requests it for an updated bot commit.
 
-This avoids relying on `GITHUB_TOKEN` pull-request events, which can require
-manual workflow approval. CI runs for an unchanged release PR are not dispatched
-again. Review and merge the release PR only after its required checks succeed.
+Do not substitute `workflow_dispatch` checks on the release branch: those runs
+can be green while GitHub excludes them from the protected PR's check rollup.
+The native CI and CodeQL workflows keep their normal PR triggers and required
+check identities. Main protection and workflow approval policy are unchanged.
+
+For unattended release-PR CI, use a separately authorized, repository-scoped
+GitHub App identity. That requires provisioning and managing an App credential;
+it is not configured by this token-only release handoff.
 
 ## Binary handoff
 
@@ -48,9 +54,8 @@ build was requested; publication is complete only when `release-vpnd` succeeds.
 
 1. After a conventional commit reaches `main`, check that `release-please`
    succeeds and creates or updates the release PR. Review its version and files.
-2. Check `dispatch release PR checks` and the CI/CodeQL runs on its head SHA.
-   If a PR event also requires approval, its banner does not replace the
-   explicitly dispatched checks. After that PR is merged, check `dispatch vpnd binaries` and find the
+2. Approve the native PR workflows and wait for the required CI/CodeQL checks.
+   After that PR is merged, check `dispatch vpnd binaries` and find the
    `release-vpnd` run on the created tag and SHA.
 3. Check all build, attestation, SBOM and asset-upload jobs before consuming
    the release. The release metadata can exist before binaries are attached.

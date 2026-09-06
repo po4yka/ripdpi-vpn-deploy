@@ -24,7 +24,7 @@ Enable release-please on main and explicitly hand newly created vpnd releases to
 ## Acceptance criteria
 
 - Release-please runs without a required opt-in variable and fails on errors.
-- Generated release PRs receive the existing required CI and CodeQL checks through explicit dispatch.
+- Generated release PRs clearly report the required native-workflow approval; CI and CodeQL must pass before the operator merges.
 - Only a newly created root release dispatches publication, using the validated tag and SHA.
 - Wrong or missing tags, missing SHA, and dispatch failures cannot report success.
 - Existing manual/tag publication and Cargo SBOM remain intact; delivery uses protected main and observed CI.
