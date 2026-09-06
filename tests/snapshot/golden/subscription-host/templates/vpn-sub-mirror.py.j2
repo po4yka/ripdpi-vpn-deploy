@@ -146,8 +146,8 @@ def _prepare_generation_root() -> None:
         _private_directory(GENERATION_ROOT)
     else:
         GENERATION_ROOT.mkdir(mode=0o700)
-        os.chown(GENERATION_ROOT, PAYLOAD_UID, PAYLOAD_GID)
         os.chmod(GENERATION_ROOT, 0o700)
+        _private_directory(GENERATION_ROOT)
     for child in GENERATION_ROOT.iterdir():
         if not child.name.startswith((GENERATION_PREFIX, STAGE_PREFIX)):
             raise MirrorError(f"unexpected generation-root entry: {child.name}")
@@ -206,8 +206,8 @@ def _read_current_generation() -> Path | None:
 def _new_stage() -> Path:
     stage = GENERATION_ROOT / f"{STAGE_PREFIX}{uuid.uuid4().hex}"
     stage.mkdir(mode=0o700)
-    os.chown(stage, PAYLOAD_UID, PAYLOAD_GID)
     os.chmod(stage, 0o700)
+    _private_directory(stage)
     return stage
 
 
@@ -255,15 +255,14 @@ def _validate_and_harden(stage: Path) -> None:
                 raise MirrorError(f"staged payload contains symlink: {path}")
             if not stat.S_ISDIR(metadata.st_mode) and not stat.S_ISREG(metadata.st_mode):
                 raise MirrorError(f"staged payload contains non-regular entry: {path}")
+            if metadata.st_uid != PAYLOAD_UID or metadata.st_gid != PAYLOAD_GID:
+                raise MirrorError(f"staged payload has unexpected owner: {path}")
     for root, directories, files in os.walk(stage, followlinks=False):
         root_path = Path(root)
-        os.chown(root_path, PAYLOAD_UID, PAYLOAD_GID)
         os.chmod(root_path, 0o700)
         for name in directories:
-            os.chown(root_path / name, PAYLOAD_UID, PAYLOAD_GID)
             os.chmod(root_path / name, 0o700)
         for name in files:
-            os.chown(root_path / name, PAYLOAD_UID, PAYLOAD_GID)
             os.chmod(root_path / name, 0o600)
     _private_tree(stage)
     _fsync_tree(stage)
