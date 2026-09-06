@@ -13,7 +13,7 @@ spec_mode: required
 openspec_change: sec-1787916931540401-restricted-admin-network-rollout
 created: 2026-08-28
 updated: 2026-09-06
-related_tasks: [SEC-1787496881680472]
+related_tasks: []
 status_detail: "Source is complete. One isolated staging SSH migration with disconnect, reboot, rollback and teardown is sufficient; production fleet rollout is optional. Blocked on a staging target plus provider template and private inputs."
 ---
 
