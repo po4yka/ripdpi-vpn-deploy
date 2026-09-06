@@ -12,8 +12,8 @@ staging: blocked
 staging_evidence: "No authorized isolated target with the complete current client and target input set is available."
 live: blocked
 live_evidence: "A 2026-09-06 current-client check proved Hysteria2 with HTTP 204; two REALITY profiles were connection-refused, and XHTTP plus AWG traffic were not observed. Required four-transport external evidence remains open. Private mode-0600 summary SHA-256: 0d3e75791a4b9023248424b3fa2c91e56c68f6f00c204e66d60988af8729bbc8."
-client: "passed"
-client_evidence: "RIPDPI PR #460 mirrored the schema byte-for-byte without runtime, network-exposure or schema-2 window changes. Tested PR head 10f209b1a8f6c51f7c85ae9bde54467c2798f986 passed 47 checks with 18 expected skips and CodeQL. Protected rebase integration produced client main ec7f670cdd97277d468496338dafbe3eb69ddefb; exact-main CI run 33247910603 passed 44 jobs with 17 expected skips, and CodeQL 33247910600, Secret Scan 33247910597 and fleet-fixtures 33247910592 passed."
+client: "blocked"
+client_evidence: "The schema-3 client mirror is integrated and passed protected checks, but that is client source/CI evidence rather than authenticated traffic proof. A 2026-09-06 current-client check proved Hysteria2 with HTTP 204; two REALITY profiles were connection-refused, and XHTTP plus AWG traffic were not observed. Required four-transport client evidence remains open because the complete current client and target input set is unavailable."
 artifact: not_applicable
 artifact_evidence: No release artifact is published; report schema validation is covered by local and client evidence categories.
 ---
