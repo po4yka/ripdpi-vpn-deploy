@@ -1,0 +1,11 @@
+{
+  "change": "ans-1787463116251274-systemd-hardening-parity",
+  "evidence_summary": "Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.",
+  "execution_sha256": "34f1cf1a33ac664a96b8625b89460a9b6f91db6f28ea55b52f3a21e9cb55c9a6",
+  "issue_sha256": "c80704a63269b476f4c1905182a6d8c4221304bf539fdf05bc4c17111f961caa",
+  "outcome": "dropped",
+  "prepared_at": "2026-09-06T17:42:12Z",
+  "reason": "Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.",
+  "schema": 1,
+  "task_id": "ANS-1787463116251274"
+}

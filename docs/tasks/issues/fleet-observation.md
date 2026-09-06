@@ -2,7 +2,7 @@
 id: TST-1787850553468536
 title: Deliver authenticated fleet probes and passive inspection
 kind: feature
-status: review
+status: dropped
 area: testing
 priority: high
 risk: high
@@ -12,8 +12,11 @@ blocked_by: []
 spec_mode: required
 openspec_change: tst-1787850553468536-fleet-observation
 created: 2026-08-27
-updated: 2026-08-28
+updated: 2026-09-06
 related_tasks: []
+closed_at: "2026-09-06T17:42:11Z"
+closed_reason: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.
+evidence_summary: Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.
 ---
 
 ## Goal

@@ -1,21 +1,21 @@
 ---
 task_id: MON-1788008977760206
 change: mon-1788008977760206-centralized-observability-telegram-alerting
-commit_sha: fe860a0941adfb5993bc6dbc58531779d1aea573
-local: passed
-local_evidence: "make -j1 check: 3760 passed, 3 existing skips; BATS 55/55; Rust and Clippy passed; log sha256 3aefbb718c257ca2e2448edb4797655e805dbb75c72c866f4bcc3b5306fbf559"
-remote_ci: passed
-remote_ci_evidence: "GitHub Actions CI 33966423515 and CodeQL 33966423427 succeeded on exact commit fe860a0941adfb5993bc6dbc58531779d1aea573"
-dry_run: required
-dry_run_evidence: null
-staging: required
-staging_evidence: null
-live: required
-live_evidence: null
-client: required
-client_evidence: null
-artifact: required
-artifact_evidence: null
+commit_sha: null
+local: not_applicable
+local_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+staging: not_applicable
+staging_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+live: not_applicable
+live_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+client: not_applicable
+client_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+artifact: not_applicable
+artifact_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 ---
 
 # Verification
@@ -29,27 +29,27 @@ runs. Archive is forbidden while any category is `required` or `blocked`.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-OBS-TOPOLOGY | MON-1788009838945651 | required topology render, independence validation, listener test, staging placement and exact-source artifact | required |
-| REQ-OBS-HOST-CLASS | MON-1788009844659393 | required agent, control-plane and dead-man enabled, idempotent, failure and convergent-disable Molecule plus staged lifecycle | required |
-| REQ-OBS-INGEST | MON-1788009840041404 | required TLS, wrong-path, unknown, revoked, plaintext, method, body-limit and backend-isolation tests plus staged remote write | required |
-| REQ-OBS-METRICS | MON-1788009822802454 | required metric-manifest schema, allowlist, secret-corpus, cardinality and atomic exposition tests | required |
-| REQ-OBS-FRESHNESS | MON-1788009822802454 | required fresh, stale, absent, never-seen, future, malformed, disabled and retired state-table tests with no false recovery | required |
-| REQ-OBS-NODE | MON-1788009840567973 | required promtool node, service, resource, source and telemetry-pipeline rule tests for VPN, control-plane and dead-man hosts plus staging failures | required |
-| REQ-OBS-VPN | MON-1788009841087711 | required evaluator parity state table and staged/live two-vantage authenticated profile transitions | required |
-| REQ-OBS-WATCHDOG | MON-1788009841599763 | required adapter ownership tests and staged bounded local recovery proving service and client alerts remain separate | required |
-| REQ-OBS-DETECTORS | MON-1788009841599763 | required producer success/input/staleness/error fixtures and detector-dead inhibition tests | required |
-| REQ-OBS-BACKUP | MON-1788010842186450 | required producer-owned atomic marker, attempt/result/source/freshness/malformed/future/local/remote/integrity/restore tests plus staged stale evidence | required |
-| REQ-OBS-RULES | MON-1788009842115523 | required promtool fingerprint, pending, keep-firing, inhibition, grouping, reminder, absent and authoritative recovery tests | required |
-| REQ-OBS-TELEGRAM | MON-1788009842624414 | required stub retry/rate-limit/timeout/escaping/truncation/redaction and primary-canary tests plus visibly observed live firing/resolved pair | required |
-| REQ-OBS-DEADMAN | MON-1788009843138508 | required pulse auth/replay/expiry/canary-receipt, reverse-heartbeat and staged/live control-plane/dead-man loss and stable recovery via separate routes | required |
-| REQ-OBS-PRIVATE-UI | MON-1788009843647612 | required private-bind/public-listener rejection, authentication and redacted status-view coverage | required |
-| REQ-OBS-MAINTENANCE | MON-1788009842115523 | required enforced-gateway owner/reason/exact-scope/TTL validation, direct-write rejection, expiry-under-outage and no-Telegram-authority tests | required |
-| REQ-OBS-RETENTION | MON-1788009840041404 | required time/size/resource-limit render tests and staged reserve alert without destructive cleanup | required |
-| REQ-OBS-SECRETS | MON-1788009838945651 | required SOPS schema/coverage/round-trip, duplicate-authority, runtime-mode, rotation and leakage tests | required |
-| REQ-OBS-CONFIG | MON-1788009844659393 | required agent, control-plane and dead-man invalid candidate, atomic generation, readiness failure and last-known-good rollback tests | required |
-| REQ-OBS-MIGRATION | MON-1788009846690094 | required shadow/canary/overlap/cutover/fallback removal and rollback evidence with exactly one paging authority | required |
-| REQ-OBS-OPERATIONS | MON-1788009843647612 | required explicit-scope and side-effect contract tests for render, validate, initial-only deploy, complete role-owned status, drill, rotate, rollback and remove commands | required |
-| REQ-OBS-ACCEPTANCE | MON-1788009846690094 | required reconciled local, exact-SHA hosted, dry-run, staging, live, client, Telegram and artifact evidence with no open substitution | required |
+| REQ-OBS-TOPOLOGY | MON-1788009838945651 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-HOST-CLASS | MON-1788009844659393 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-INGEST | MON-1788009840041404 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-METRICS | MON-1788009822802454 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-FRESHNESS | MON-1788009822802454 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-NODE | MON-1788009840567973 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-VPN | MON-1788009841087711 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-WATCHDOG | MON-1788009841599763 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-DETECTORS | MON-1788009841599763 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-BACKUP | MON-1788010842186450 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-RULES | MON-1788009842115523 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-TELEGRAM | MON-1788009842624414 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-DEADMAN | MON-1788009843138508 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-PRIVATE-UI | MON-1788009843647612 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-MAINTENANCE | MON-1788009842115523 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-RETENTION | MON-1788009840041404 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-SECRETS | MON-1788009838945651 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-CONFIG | MON-1788009844659393 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-MIGRATION | MON-1788009846690094 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-OPERATIONS | MON-1788009843647612 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-OBS-ACCEPTANCE | MON-1788009846690094 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
 
 ## Local and hosted test matrix
 

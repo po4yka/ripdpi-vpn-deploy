@@ -46,10 +46,10 @@ task open.
 - [x] MON-1788009843647612 Implement private fleet status views and explicit render validate status drill rotate rollback and removal commands #feature @item:MON-1788008977760206 @blocked_by:MON-1788009843138508
 - [x] MON-1788009844150923 Deliver operator metric alert Telegram migration retention incident drill and rollback documentation with redaction checks #feature @item:MON-1788008977760206 @blocked_by:MON-1788009843647612
 - [x] MON-1788009844659393 Pass targeted tests full local gates hosted exact-source CI and independent security and correctness review #feature !high @item:MON-1788008977760206 @blocked_by:MON-1788009844150923
-- [ ] MON-1788009845171889 Deploy staging control plane dead-man and canary agent and complete the controlled failure recovery rotation and rollback matrix #feature !high @item:MON-1788008977760206 @blocked_by:MON-1788009844659393
-- [ ] MON-1788009845679050 Roll out agents and canonical liveness scheduling serially and prove fresh exact-source metrics for every expected fleet node #feature !high @item:MON-1788008977760206 @blocked_by:MON-1788009845171889
-- [ ] MON-1788009846182502 Prove two-vantage authenticated profile traffic and observed primary and dead-man Telegram firing and recovery lifecycles #feature !high @item:MON-1788008977760206 @blocked_by:MON-1788009845679050
-- [ ] MON-1788009846690094 Cut over authoritative paging remove direct legacy delivery and complete final rollback exact-SHA and evidence reconciliation #feature !high @item:MON-1788008977760206 @blocked_by:MON-1788009846182502
+- MON-1788009845171889 DROPPED: Deploy staging control plane dead-man and canary agent and complete the controlled failure recovery rotation and rollback matrix #feature !high @item:MON-1788008977760206 @blocked_by:MON-1788009844659393
+- MON-1788009845679050 DROPPED: Roll out agents and canonical liveness scheduling serially and prove fresh exact-source metrics for every expected fleet node #feature !high @item:MON-1788008977760206 @blocked_by:MON-1788009845171889
+- MON-1788009846182502 DROPPED: Prove two-vantage authenticated profile traffic and observed primary and dead-man Telegram firing and recovery lifecycles #feature !high @item:MON-1788008977760206 @blocked_by:MON-1788009845679050
+- MON-1788009846690094 DROPPED: Cut over authoritative paging remove direct legacy delivery and complete final rollback exact-SHA and evidence reconciliation #feature !high @item:MON-1788008977760206 @blocked_by:MON-1788009846182502
 
 ## Verification
 

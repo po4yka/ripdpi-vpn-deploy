@@ -2,7 +2,7 @@
 id: OPS-1787496414433523
 title: "Harden deploy-path integrity: guards, rollback, rotation"
 kind: bug
-status: blocked
+status: dropped
 area: operations
 priority: high
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: ops-1787496414433523-deploy-path-integrity
 created: 2026-08-23
-updated: 2026-09-01
+updated: 2026-09-06
 related_tasks: []
-status_detail: All fourteen source execution steps are integrated and covered by recorded local and hosted checks. The task remains blocked on the required consolidated dry-run and live deploy-path cycle: bootstrap wait, rotation, rollback rehearsal, and serial inventory acceptance. Source and CI evidence do not substitute for host proof.
+status_detail: "All fourteen source execution steps are integrated and covered by recorded local and hosted checks. The task remains blocked on the required consolidated dry-run and live deploy-path cycle: bootstrap wait, rotation, rollback rehearsal, and serial inventory acceptance. Source and CI evidence do not substitute for host proof."
+closed_at: "2026-09-06T17:42:11Z"
+closed_reason: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.
+evidence_summary: Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.
 ---
 
 ## Goal

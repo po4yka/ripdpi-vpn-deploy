@@ -16,7 +16,7 @@ Every sshd setting on a managed node has exactly one owning file, cross-file dup
 - [x] SEC-1787496118906968 Add a pre-write baseline task that parses both drop-ins and fails when any directive key appears in more than one file #bug !high @item:SEC-1787496881680472
 - [x] SEC-1787496118907241 Switch the baseline template validation from fragment-only sshd -t to an effective-config check after assembly (sshd -T parse diff of the managed keys) #bug !high @item:SEC-1787496881680472
 - [x] SEC-1787496118907162 Add a managed Ciphers/MACs/KexAlgorithms allowlist sized for the pinned Debian 13 / Ubuntu 24.04 images and assert the effective set in verify.yml next to the existing effective-config checks #bug !low @item:SEC-1787496881680472
-- [ ] SEC-1787496118907080 Run named gates: baseline molecule matrix (both distros), lockout rehearsal on a scratch node (custom port + hardened algorithms), make ci-fast, make validate #test !high @item:SEC-1787496881680472
+- SEC-1787496118907080 DROPPED: Run named gates: baseline molecule matrix (both distros), lockout rehearsal on a scratch node (custom port + hardened algorithms), make ci-fast, make validate #test !high @item:SEC-1787496881680472
 
 ## Verification
 

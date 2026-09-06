@@ -1,0 +1,11 @@
+{
+  "change": "sec-1787496881680472-sshd-config-ownership",
+  "dropped_step_ids": [
+    "SEC-1787496118907080"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-09-06T17:42:11Z",
+  "reason": "Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.",
+  "schema": 1,
+  "task_id": "SEC-1787496881680472"
+}

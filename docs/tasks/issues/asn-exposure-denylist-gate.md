@@ -2,7 +2,7 @@
 id: ANS-1786277767052693
 title: Implement a disabled-by-default network exposure denylist gate
 kind: feature
-status: review
+status: dropped
 area: ansible
 priority: high
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: ans-1786277767052693-add-network-exposure-denylist-gate
 created: 2026-08-09
-updated: 2026-09-01
+updated: 2026-09-06
 related_tasks: []
 status_detail: All five source steps, the client contract mirror, protected integration, and exact-main hosted checks are delivered. Enforcement remains disabled by default; staging log-only observation and any provider firewall apply remain separate live acceptance, and PR110 stays draft/no-apply.
+closed_at: "2026-09-06T17:40:41Z"
+closed_reason: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.
+evidence_summary: Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.
 ---
 
 # Implement a disabled-by-default network exposure denylist gate

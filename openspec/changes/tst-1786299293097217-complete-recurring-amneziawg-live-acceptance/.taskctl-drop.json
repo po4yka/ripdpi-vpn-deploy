@@ -1,0 +1,14 @@
+{
+  "change": "tst-1786299293097217-complete-recurring-amneziawg-live-acceptance",
+  "dropped_step_ids": [
+    "DOC-1786299379888954",
+    "TST-1786299379836822",
+    "TST-1786299379854550",
+    "TST-1786299379871208"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-09-06T17:40:41Z",
+  "reason": "Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.",
+  "schema": 1,
+  "task_id": "TST-1786299293097217"
+}

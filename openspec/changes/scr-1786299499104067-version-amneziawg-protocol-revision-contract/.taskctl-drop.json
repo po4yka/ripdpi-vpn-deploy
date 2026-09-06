@@ -1,0 +1,14 @@
+{
+  "change": "scr-1786299499104067-version-amneziawg-protocol-revision-contract",
+  "dropped_step_ids": [
+    "DOC-1786299506682712",
+    "SCR-1786299506619776",
+    "SCR-1786299506639578",
+    "TST-1786299506659645"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-09-06T17:42:12Z",
+  "reason": "Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.",
+  "schema": 1,
+  "task_id": "SCR-1786299499104067"
+}

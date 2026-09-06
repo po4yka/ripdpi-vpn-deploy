@@ -1,21 +1,21 @@
 ---
 task_id: SEC-1787496881680472
 change: sec-1787496881680472-sshd-config-ownership
-commit_sha: 501a27bbddd7e0c62378223ded801f6db77ef859
-local: passed
-local_evidence: the combined-tree make -j1 check passed with 2951 Python tests, one existing skip, 55 Bats tests, Rust release tests and Clippy; log SHA256 5daca6ec5b2403c80f3101956af6c463c4dbdfacb18b04c92b1ec03c7ff31af2
-remote_ci: required
-remote_ci_evidence: null
+commit_sha: null
+local: not_applicable
+local_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 dry_run: not_applicable
-dry_run_evidence: covered by the live lockout rehearsal; check-mode adds no signal beyond molecule for this surface
+dry_run_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 staging: not_applicable
-staging_evidence: no separate staging environment exists; the scratch-node lockout rehearsal is the staging equivalent
-live: required
-live_evidence: null
+staging_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+live: not_applicable
+live_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 client: not_applicable
-client_evidence: no client emitter changed
+client_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 artifact: not_applicable
-artifact_evidence: no build artifacts produced by this change
+artifact_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 ---
 
 # Verification
@@ -24,9 +24,9 @@ artifact_evidence: no build artifacts produced by this change
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-SSHD-SINGLE-OWNER | SEC-1787496118906968 | duplicate-directive negative tests and exact four-file ownership planner checks | source passed; live pending |
-| REQ-SSHD-EFFECTIVE-VALIDATION | SEC-1787496118907241 | assembled effective-policy checks across every publish and rollback prefix | source passed; live pending |
-| REQ-SSHD-ALGO-PIN | SEC-1787496118907162 | exact Ciphers, MACs and KexAlgorithms assertions in baseline and verify | source passed; live pending |
+| REQ-SSHD-SINGLE-OWNER | SEC-1787496118906968 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-SSHD-EFFECTIVE-VALIDATION | SEC-1787496118907241 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-SSHD-ALGO-PIN | SEC-1787496118907162 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
 
 ## Gates
 

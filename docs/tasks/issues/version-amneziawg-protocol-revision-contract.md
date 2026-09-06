@@ -2,19 +2,22 @@
 id: SCR-1786299499104067
 title: Emit a versioned AmneziaWG protocol-revision contract
 kind: feature
-status: blocked
+status: dropped
 area: scripts
 priority: high
 risk: high
 owner: AWG contract
 parent: null
-blocked_by: [TST-1786299293097217]
+blocked_by: []
 spec_mode: required
 openspec_change: scr-1786299499104067-version-amneziawg-protocol-revision-contract
 created: 2026-08-09
-updated: 2026-08-27
+updated: 2026-09-06
 related_tasks: ["po4yka/RIPDPI#TRN-1786299802611226"]
 status_detail: Blocked on TST-1786299293097217 current-client live acceptance; no wire-revision compatibility claim is emitted from substitute evidence.
+closed_at: "2026-09-06T17:42:12Z"
+closed_reason: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.
+evidence_summary: Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.
 ---
 
 ## Goal

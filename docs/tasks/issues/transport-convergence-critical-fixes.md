@@ -2,7 +2,7 @@
 id: ANS-1787495907091073
 title: Fix production-breaking transport convergence defects
 kind: bug
-status: blocked
+status: dropped
 area: ansible
 priority: critical
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: ans-1787495907091073-transport-convergence-critical-fixes
 created: 2026-08-23
-updated: 2026-08-27
+updated: 2026-09-06
 related_tasks: []
 status_detail: Implementation, full local check, and hosted Molecule passed at 984b452; fleet dry-run/live acceptance blocked by SSH timeouts and expired Tailscale authentication.
+closed_at: "2026-09-06T17:42:12Z"
+closed_reason: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.
+evidence_summary: Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.
 ---
 
 ## Goal

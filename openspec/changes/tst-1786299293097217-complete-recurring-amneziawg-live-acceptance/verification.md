@@ -1,21 +1,21 @@
 ---
 task_id: TST-1786299293097217
 change: tst-1786299293097217-complete-recurring-amneziawg-live-acceptance
-commit_sha: e265689c83ca3ea16b8d84b19574000ea597bd3d
-local: passed
-local_evidence: focused AWG identity and refusal tests plus the combined-tree make -j1 check passed; the full gate recorded 2969 Python tests, one existing skip, 55 Bats tests, 184 Rust release tests and Clippy; log SHA256 0f31ada651e9c771887691eebb5701add05ac7894f25f0f37840385f38454fe5; no live client or VPS was used
-remote_ci: required
-remote_ci_evidence: null
-dry_run: required
-dry_run_evidence: null
-staging: required
-staging_evidence: null
-live: required
-live_evidence: null
-client: required
-client_evidence: null
-artifact: required
-artifact_evidence: null
+commit_sha: null
+local: not_applicable
+local_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+staging: not_applicable
+staging_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+live: not_applicable
+live_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+client: not_applicable
+client_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+artifact: not_applicable
+artifact_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 ---
 
 # Verification
@@ -24,10 +24,10 @@ artifact_evidence: null
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-TST-1786299293097217-001 | TST-1786299379871208 | Pending | required |
-| REQ-TST-1786299293097217-002 | TST-1786299379871208 | Pending | required |
-| REQ-TST-1786299293097217-003 | TST-1786299379854550 | Pending | required |
-| REQ-TST-1786299293097217-004 | TST-1786299379836822 | Pending | required |
+| REQ-TST-1786299293097217-001 | TST-1786299379871208 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-TST-1786299293097217-002 | TST-1786299379871208 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-TST-1786299293097217-003 | TST-1786299379854550 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-TST-1786299293097217-004 | TST-1786299379836822 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
 
 ## Offline deploy-side safeguards
 

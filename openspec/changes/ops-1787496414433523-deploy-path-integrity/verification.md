@@ -2,20 +2,20 @@
 task_id: OPS-1787496414433523
 change: ops-1787496414433523-deploy-path-integrity
 commit_sha: null
-local: required
-local_evidence: null
-remote_ci: required
-remote_ci_evidence: null
-dry_run: required
-dry_run_evidence: null
+local: not_applicable
+local_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 staging: not_applicable
-staging_evidence: no separate staging environment exists; CI molecule plus a live-inventory dry-run cover gate behavior
-live: required
-live_evidence: null
+staging_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+live: not_applicable
+live_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 client: not_applicable
-client_evidence: no client-facing emitter or vpnd surface changed
+client_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 artifact: not_applicable
-artifact_evidence: no build artifacts produced by this change
+artifact_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 ---
 
 # Verification
@@ -24,19 +24,19 @@ artifact_evidence: no build artifacts produced by this change
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-TAGGED-GUARDS | OPS-1787496118906514 | `test_tagged_convergence_executes_source_preflight_guards`: real Ansible executes the unchanged source pre-tasks with `--tags p0`; missing secrets, empty SSH allowlist and unapproved research/exception roles stop before the sentinel, while valid and approved-research inputs proceed | local and exact-main hosted PASS; live gate pending |
-| REQ-BOOTSTRAP-GATED-DEPLOY | OPS-1787496118906556 | Actual Make/controller fixtures for immutable subset selection, strict transport, all-input validation before SSH, source recheck and source-drift/audit ordering; actual Ansible per-host cohort/override/delegation parity and ambient authority rejection; bounded process cancellation | focused local and independent review PASS; full, remote and live gates pending |
-| REQ-BOUNDED-WAIT | OPS-1787496118906208 | Real wait-script regressions cover cloud-init 0/1/2, missing marker, remote deadline retries, connected SSH deadline, and interruption cleanup | local PASS; full, remote and live gates pending |
-| REQ-COHORT-SLUG-VALIDATION | OPS-1787496118906369 | `test_unknown_cohort_fails_before_terraform_and_preserves_inventory`: unknown profile, traversal-shaped slug, and malformed group name all fail before Terraform and preserve the last inventory | local and exact-main hosted PASS; live gate pending |
-| REQ-SSH-ALLOWLIST-FAILFAST | OPS-1787496118906156 | Native `rejects_empty_ssh_allowlist` mock-plan regression in all four provider roots; existing real-Ansible `test_tagged_convergence_executes_source_preflight_guards` rejects an empty allowlist under `--tags p0` | local PASS; remote and live gates pending |
-| REQ-UNIQUE-HOST-ALIASES | OPS-1787496118906901 | `test_duplicate_host_alias_preserves_last_inventory`: both conflicting provider/environment pairs are diagnosed and the last inventory survives | local and exact-main hosted PASS; live gate pending |
-| REQ-ROTATION-PREV-CONTRACT | OPS-1787496118906340 | Real Ansible source tasks preserve outgoing bytes on change and retain the restore point for unchanged, disabled and check-mode runs; XHTTP-only is covered | local PASS; full/hosted and live gates pending |
-| REQ-ROLLBACK-VALIDATE-FIRST | OPS-1787496118906432 | Real Ansible source tasks reject an incompatible test binary before link/restart, including check mode; same-version, traversal and invalid binaries fail before mutation | local PASS; full/hosted and live gates pending |
-| REQ-SMOKE-CLEANUP | OPS-1787496118906646 | actual source-task fixtures exercise success, start/wait/curl/cleanup errors, retained-claim retries, ownership collisions, occupied ports, own-unit death and inherited proxy bypass | local control-flow PASS; Linux systemd, dry-run, remote and live gates pending |
-| REQ-MAINTENANCE-SERVICE-GATE | OPS-1787496118906956 | Real Ansible source-task execution without the external service, with enabled/disabled transport coverage and managed-service failure controls | local task-slice PASS; combined, hosted and live pending |
-| REQ-TOGGLE-DEFAULT-PARITY | OPS-1787496118906821 | YAML source-expression sweep evaluates missing and explicit boolean values against all.yml in five ordinary transport playbooks | local expression/render PASS; combined and hosted pending |
-| REQ-LOCALE-INDEPENDENT-GATE | OPS-1787496118906614 | Real Ansible simulation/assertion tasks override a non-English ambient locale; zero backlog passes and nonzero backlog fails | local task-slice PASS; combined, hosted and live pending |
-| REQ-DECLARED-TOGGLE-SURFACE | OPS-1787496118906731 | Both cascade defaults are false; family profiles stay disabled/unauthorized and both legs retain enabled/allowlisted negative controls | local contract PASS; combined and hosted pending |
+| REQ-TAGGED-GUARDS | OPS-1787496118906514 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-BOOTSTRAP-GATED-DEPLOY | OPS-1787496118906556 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-BOUNDED-WAIT | OPS-1787496118906208 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-COHORT-SLUG-VALIDATION | OPS-1787496118906369 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-SSH-ALLOWLIST-FAILFAST | OPS-1787496118906156 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-UNIQUE-HOST-ALIASES | OPS-1787496118906901 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-ROTATION-PREV-CONTRACT | OPS-1787496118906340 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-ROLLBACK-VALIDATE-FIRST | OPS-1787496118906432 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-SMOKE-CLEANUP | OPS-1787496118906646 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-MAINTENANCE-SERVICE-GATE | OPS-1787496118906956 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-TOGGLE-DEFAULT-PARITY | OPS-1787496118906821 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-LOCALE-INDEPENDENT-GATE | OPS-1787496118906614 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-DECLARED-TOGGLE-SURFACE | OPS-1787496118906731 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
 
 ## Gates
 

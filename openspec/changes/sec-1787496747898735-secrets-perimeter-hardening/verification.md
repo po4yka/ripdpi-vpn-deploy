@@ -1,21 +1,21 @@
 ---
-task_id: "SEC-1787496747898735"
-change: "sec-1787496747898735-secrets-perimeter-hardening"
-commit_sha: "984b4528b634b4b48fa74fac0b4cbb22b8b7b887"
-local: "passed"
-local_evidence: "Full build-gate -- make -j1 check passed under umask 077: 1024 Python tests passed, 1 existing live-scanner placeholder skipped; 55 BATS; 173 Rust release tests; 79 Terraform mocks; 102 snapshots. Release clippy, Rust 1.88 MSRV, cargo deny, Docker cloud-init schema, make validate, lint/render/schema gates passed. Separate Rust debug suite: 173 passed."
-remote_ci: "passed"
-remote_ci_evidence: "PR #108, exact implementation SHA 984b4528b634b4b48fa74fac0b4cbb22b8b7b887: CI run 33069634871 completed success; 62 successful checks and one neutral Trivy SARIF report, with both image scan jobs successful. All required checks and expanded hosted Molecule scenarios passed. This is PR evidence; protected main merge remains a delivery step."
-dry_run: "blocked"
-dry_run_evidence: "Real strict secrets precheck passed, but SSH to all three inventory hosts timed out and Tailscale requires reauthentication. No full fleet playbook dry-run completed."
-staging: "not_applicable"
-staging_evidence: "No separate staging environment is configured; hosted Molecule covers role controls. Required fleet security-verify check-mode acceptance remains blocked under dry_run."
-live: "blocked"
-live_evidence: "No fleet convergence or live traffic/service acceptance ran: management access is unavailable. Local amd64 systemd containers on this arm64 Mac also fail pidfd_open with ENOSYS before roles execute; hosted amd64 Molecule is the runtime test lane, not live fleet proof."
-client: "not_applicable"
-client_evidence: "No client emitter changed; required live vhost header curl verification remains blocked under live."
-artifact: "not_applicable"
-artifact_evidence: "no build artifacts produced by this change"
+task_id: SEC-1787496747898735
+change: sec-1787496747898735-secrets-perimeter-hardening
+commit_sha: null
+local: not_applicable
+local_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+staging: not_applicable
+staging_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+live: not_applicable
+live_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+client: not_applicable
+client_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+artifact: not_applicable
+artifact_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 ---
 
 # Verification
@@ -24,13 +24,13 @@ artifact_evidence: "no build artifacts produced by this change"
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-SECRET-RENDER-SILENT | SEC-1787496118906943 | verbose dry-run capture showing redacted dns-morph render task | pending |
-| REQ-ROOT-UNIT-FLOOR | SEC-1787496118906423 | systemd-analyze verify + molecule run of both units | pending |
-| REQ-ICMP-SHAPED | SEC-1787496118907048 | rendered ruleset assertion + security-verify check + NDP smoke | pending |
-| REQ-TIMER-ONLY-SCHEDULING | SEC-1787496118907149 | list-timers output; absence of cron.daily file post-converge | pending |
-| REQ-MANDATORY-REPO-PIN | SEC-1787496118907052 | negative converge with empty pin failing closed | pending |
-| REQ-VHOST-HEADER-PARITY | SEC-1787496118906540 | curl -I header diff vs public-site vhost | pending |
-| REQ-RATELIMIT-SINGLE-LAYER | SEC-1787496118906790 | inventory of enforcement layers matching synced docs | pending |
+| REQ-SECRET-RENDER-SILENT | SEC-1787496118906943 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-ROOT-UNIT-FLOOR | SEC-1787496118906423 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-ICMP-SHAPED | SEC-1787496118907048 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-TIMER-ONLY-SCHEDULING | SEC-1787496118907149 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-MANDATORY-REPO-PIN | SEC-1787496118907052 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-VHOST-HEADER-PARITY | SEC-1787496118906540 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-RATELIMIT-SINGLE-LAYER | SEC-1787496118906790 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
 
 ## Gates
 

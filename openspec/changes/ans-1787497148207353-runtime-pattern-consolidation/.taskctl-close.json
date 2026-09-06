@@ -1,0 +1,11 @@
+{
+  "change": "ans-1787497148207353-runtime-pattern-consolidation",
+  "evidence_summary": "Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.",
+  "execution_sha256": "dd55d2786295d71997eb71364fdce8100b78d4531ab1be5f1fe6cb053d392fb2",
+  "issue_sha256": "6f55327e8df82b1e5ad7a390fb88eb07909af3e1c92847810e4271e10c53b020",
+  "outcome": "dropped",
+  "prepared_at": "2026-09-06T17:42:11Z",
+  "reason": "Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.",
+  "schema": 1,
+  "task_id": "ANS-1787497148207353"
+}

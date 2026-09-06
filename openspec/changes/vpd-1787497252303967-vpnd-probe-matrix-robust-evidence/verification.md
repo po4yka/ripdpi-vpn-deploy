@@ -1,21 +1,21 @@
 ---
 task_id: VPD-1787497252303967
 change: vpd-1787497252303967-vpnd-probe-matrix-robust-evidence
-commit_sha: "ef688f2a785173913e6e22c42a4843f1c97451bb"
-local: "passed"
-local_evidence: "Combined candidate f29ca8e72e2c5d9803ce21da0f9b3cab144a3b4d passed make check: 2050 Python tests passed with 1 existing skip, 55 BATS passed, 184 release-profile Rust tests passed, Clippy passed with warnings denied, and all Terraform, policy, cloud-init, render, schema, Ansible and ci-fast gates passed. The isolated profile stopped successfully. A wrapper-only context comparison returned false after the successful make process, while a bounded follow-up start/stop proved the Docker context and config hash unchanged. Staging and live gates remain pending."
-remote_ci: "passed"
-remote_ci_evidence: "PR #116 exact ef688f2a785173913e6e22c42a4843f1c97451bb: CI run 33244798098 passed all 51 jobs; CodeQL run 33244798079 passed; PR rollup reached 64 successful checks and one neutral report. Contract-sync run 33244798075 initially failed against client schema 2, then its failed job passed after the exact schema 3 mirror reached RIPDPI main."
+commit_sha: null
+local: not_applicable
+local_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 dry_run: not_applicable
-dry_run_evidence: no Terraform surface
-staging: required
-staging_evidence: ""
-live: required
-live_evidence: ""
-client: "passed"
-client_evidence: "RIPDPI PR #460 mirrored the schema byte-for-byte without runtime, network-exposure or schema-2 window changes. Tested PR head 10f209b1a8f6c51f7c85ae9bde54467c2798f986 passed 47 checks with 18 expected skips and CodeQL. Protected rebase integration produced client main ec7f670cdd97277d468496338dafbe3eb69ddefb; exact-main CI run 33247910603 passed 44 jobs with 17 expected skips, and CodeQL 33247910600, Secret Scan 33247910597 and fleet-fixtures 33247910592 passed."
+dry_run_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+staging: not_applicable
+staging_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+live: not_applicable
+live_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+client: not_applicable
+client_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 artifact: not_applicable
-artifact_evidence: No release artifact is published; report schema validation is covered by local and client evidence categories.
+artifact_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 ---
 
 # Verification
@@ -24,10 +24,10 @@ artifact_evidence: No release artifact is published; report schema validation is
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-MATRIX-CELL-TIMEOUT-KILL | VPD-1787497252661429 | Actual Cmd → GNU Make → shell → sleep PID-handshake regression fails before the fix and passes after; eight direct/foreground SIGINT/TERM cases exercise probe jobs and doctor captures | Focused local pass; broad gates pending |
-| REQ-MATRIX-CONTROL-TIMEOUT | VPD-1787497252679177 | Actual hanging Make control records Unknown/control_timeout and both cells complete; this test already passes on the base implementation | Existing behavior verified locally; broad gates pending |
-| REQ-MATRIX-DURABILITY | VPD-1787497252698055 | Real CLI fixtures prove mode-0600 atomic per-tick checkpoints, synchronized JSONL, exclusive output locks, SIGINT/SIGTERM partial flush with 130/143, scheduled-wait flush, descendant cleanup, and fail-closed checkpoint errors preserving the prior report | Local, hosted and client contract pass; staging/live pending |
-| REQ-MATRIX-EVIDENCE-SEMANTICS | VPD-1787497252715025 | No-impairment and gap/recovery tests pass; schema-2 snapshot removes six all-Ok phantom windows, with fields and observations unchanged | Focused local pass; broad gates pending |
+| REQ-MATRIX-CELL-TIMEOUT-KILL | VPD-1787497252661429 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-MATRIX-CONTROL-TIMEOUT | VPD-1787497252679177 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-MATRIX-DURABILITY | VPD-1787497252698055 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-MATRIX-EVIDENCE-SEMANTICS | VPD-1787497252715025 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
 
 ## Bounded runtime evidence — 2026-08-28
 

@@ -2,7 +2,7 @@
 id: VPD-1787497252303967
 title: Fix probe-matrix process leaks, timeouts, durability, and evidence semantics
 kind: bug
-status: review
+status: dropped
 area: vpnd
 priority: high
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: vpd-1787497252303967-vpnd-probe-matrix-robust-evidence
 created: 2026-08-23
-updated: 2026-09-01
+updated: 2026-09-06
 related_tasks: []
 status_detail: Probe durability, schema-3 producer, byte-identical client mirror, protected integration, and exact-main hosted checks are delivered. The task remains in review pending required staging and live four-protocol probe evidence; fixtures and source CI are not live acceptance.
+closed_at: "2026-09-06T17:42:12Z"
+closed_reason: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.
+evidence_summary: Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.
 ---
 
 ## Goal

@@ -2,7 +2,7 @@
 id: VPD-1787497317352770
 title: Guarantee secrets cleanup and scoped targeting on deploy paths
 kind: bug
-status: blocked
+status: dropped
 area: vpnd
 priority: critical
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: vpd-1787497317352770-vpnd-deploy-reconverge-lifecycle-safety
 created: 2026-08-23
-updated: 2026-08-27
+updated: 2026-09-06
 related_tasks: []
 status_detail: Implementation tests passed. All three management SSH endpoints timed out; Tailscale login expired, and no staging target is configured. Dry-run/staging/live acceptance remains outstanding.
+closed_at: "2026-09-06T17:42:12Z"
+closed_reason: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.
+evidence_summary: Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.
 ---
 
 ## Goal

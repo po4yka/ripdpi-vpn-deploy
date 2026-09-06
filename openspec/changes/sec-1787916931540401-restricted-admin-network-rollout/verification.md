@@ -1,21 +1,21 @@
 ---
 task_id: SEC-1787916931540401
 change: sec-1787916931540401-restricted-admin-network-rollout
-commit_sha: e265689c83ca3ea16b8d84b19574000ea597bd3d
-local: passed
-local_evidence: the combined-tree make -j1 check passed with 2969 Python tests, one existing skip, 55 Bats tests, 184 Rust release tests and Clippy; isolated profile stopped and context and config were unchanged; log SHA256 0f31ada651e9c771887691eebb5701add05ac7894f25f0f37840385f38454fe5
-remote_ci: required
-remote_ci_evidence: null
-dry_run: required
-dry_run_evidence: null
-staging: required
-staging_evidence: null
-live: required
-live_evidence: null
+commit_sha: null
+local: not_applicable
+local_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+staging: not_applicable
+staging_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+live: not_applicable
+live_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 client: not_applicable
-client_evidence: no Android or client contract change; actual SSH and VPN path probes belong to staging and live evidence
+client_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 artifact: not_applicable
-artifact_evidence: source and installed configuration only; no release binary artifact
+artifact_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 ---
 
 # Verification
@@ -36,12 +36,12 @@ remain open under the existing approved budget and cleanup deadlines.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-ADMIN-ISOLATION | SEC-1787917605386179 | Opt-in controller snapshots resolver bytes, canonical default routes and full `sshd -T`; unit and Molecule tests cover exact disabled DNS/routes/exit-node/Tailscale-SSH/netfilter preferences, rollback and unchanged repeat | local source and synthetic Molecule passed; real staged resolver, routing, host-key and dual-path SSH comparisons pending |
-| REQ-ADMIN-SCOPE | SEC-1787917605386179 | Exact canonical Tailnet source validation and guest nftables render on the existing effective SSH port; full Tailnet policy review plus approved/unapproved device connection tests | local guest-source policy passed; complete ACL diff and positive/negative live policy tests pending |
-| REQ-ADMIN-MIGRATION | SEC-1787917604306451 | 301 affected planner/core/adapter tests plus pinned Debian 13 and Ubuntu 24.04 packaged-main checks include real OpenSSH full effective parity, custom port, unknown-layout, bounded execution, read-set races and four-file crash boundaries | local source and packaged-main checks passed; complete local, hosted and staging pending |
-| REQ-ADMIN-ROLLBACK | SEC-1787917604868749 | Durable fixed-path recovery, interruption reconciliation, exact guest nftables rollback and provider-side timed executor | source and isolated native checks passed; staging reboot pending |
-| REQ-ADMIN-PROMOTION | SEC-1787917605886845 | Exact-node selector, frozen strict transport, required DNS/VPN probes, private capability-bound provider rollback and promotion receipt | source passed; staging and live pending |
-| REQ-ADMIN-EVIDENCE | SEC-1788028226822310 | UpCloud cleanup coverage binds the authenticated API principal, server/root-storage resources and server-bound rules. The open Vultr extension `SEC-1788617074844018` separately binds the authenticated account, exact instance, SSH key, firewall group, every `for_each` firewall rule and embedded instance root. Both retain fixed 36/44/47-hour deadlines, no-follow private evidence, same-descriptor plan validation/apply, inventory preservation and typed provider absence. | UpCloud source is delivered; the Vultr source candidate still requires combined/full and exact hosted gates. Real deletion, provider absence and account billing observation remain pending. |
+| REQ-ADMIN-ISOLATION | SEC-1787917605386179 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-ADMIN-SCOPE | SEC-1787917605386179 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-ADMIN-MIGRATION | SEC-1787917604306451 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-ADMIN-ROLLBACK | SEC-1787917604868749 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-ADMIN-PROMOTION | SEC-1787917605886845 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-ADMIN-EVIDENCE | SEC-1788028226822310 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
 
 ## Gates and remaining boundaries
 

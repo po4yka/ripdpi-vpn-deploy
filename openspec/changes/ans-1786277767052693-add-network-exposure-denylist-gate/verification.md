@@ -1,21 +1,21 @@
 ---
 task_id: ANS-1786277767052693
 change: ans-1786277767052693-add-network-exposure-denylist-gate
-commit_sha: ff944aece15746a7ae212808fa47d28effb806df
-local: passed
-local_evidence: "Canonical make -j1 check passed on the reviewed input-trust fix after integrating current deploy main: 2756 Python tests passed with one existing skip, 55 BATS passed, 184 Rust tests and release Clippy passed, plus Terraform 87, Conftest 45, cloud-init, schema, render, security, and real pinned liveness gates. External manifest, inventory, and evidence inputs reject duplicate keys, symlink or writable ancestry, unsafe ownership or mode, and hard links. Independent review found no P0-P2 blockers. Log SHA256 3591e354c0816fb751388c4b5fe3a281951c1aa02f0f61d9f22350444ef47629."
-remote_ci: required
-remote_ci_evidence: null
-dry_run: passed
-dry_run_evidence: "Controller and Molecule regressions exercise disabled parity, review-only and log-only outcomes, exact canary scoping, expiry refusal, redaction, and rollback without invoking firewall mutation."
-staging: required
-staging_evidence: null
+commit_sha: null
+local: not_applicable
+local_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+staging: not_applicable
+staging_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 live: not_applicable
-live_evidence: Live enforcement requires a later owner-authorized change.
+live_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 client: not_applicable
-client_evidence: No client behavior is owned by this change.
-artifact: passed
-artifact_evidence: "Schema-bound placeholder fixtures and reviewed artifacts are accepted only through exact digest/signature/host binding; hard links, symlinks, unsafe modes, foreign owners, and mutable parent paths fail closed. No production artifact or address data is committed."
+client_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
+artifact: not_applicable
+artifact_evidence: "Task dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed."
 ---
 
 # Verification
@@ -24,11 +24,11 @@ artifact_evidence: "Schema-bound placeholder fixtures and reviewed artifacts are
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-ANS-1786277767052693-001 | TST-1786277767052610 | Disabled render parity, invalid-input refusal, no-follow artifact checks, idempotence, and rollback regressions; canonical full gate passed | passed |
-| REQ-ANS-1786277767052693-002 | ANS-1786277767052243 | Strict feed/policy/artifact validation precedes the disabled-default Ansible role; exact host and listener intent are bound before any handoff | passed |
-| REQ-ANS-1786277767052693-003 | ANS-1786277767052018 | Versioned directional policy and feed metadata schemas use non-deployable placeholder examples and reject undeclared or ambiguous fields | passed |
-| REQ-ANS-1786277767052693-004 | ANS-1786277767052707 | Review controller emits bounded redacted results for review-only, log-only, canary, expiry, and rollback states without applying firewall policy | passed |
-| REQ-ANS-1786277767052693-005 | DOC-1786277767052241 | Operator documentation records reviewed-artifact refresh, promotion criteria, traffic scope, disabled default, and the absence of a hidden apply path | passed |
+| REQ-ANS-1786277767052693-001 | TST-1786277767052610 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-ANS-1786277767052693-002 | ANS-1786277767052243 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-ANS-1786277767052693-003 | ANS-1786277767052018 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-ANS-1786277767052693-004 | ANS-1786277767052707 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
+| REQ-ANS-1786277767052693-005 | DOC-1786277767052241 | Dropped: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed. | not_applicable |
 
 ## Evidence boundary
 

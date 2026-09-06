@@ -2,18 +2,21 @@
 id: MON-1788008977760206
 title: Deliver centralized observability and Telegram alerting
 kind: feature
-status: doing
+status: dropped
 area: monitoring
 priority: high
 risk: high
 owner: primary
 parent: null
-blocked_by: [TST-1787850553468536, ANS-1787497148207353]
+blocked_by: []
 spec_mode: required
 openspec_change: mon-1788008977760206-centralized-observability-telegram-alerting
 created: 2026-08-29
-updated: 2026-09-04
-related_tasks: [SEC-1787916931540401, TST-1787497001212692]
+updated: 2026-09-06
+related_tasks: []
+closed_at: "2026-09-06T17:40:41Z"
+closed_reason: Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.
+evidence_summary: Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.
 ---
 
 ## Goal
