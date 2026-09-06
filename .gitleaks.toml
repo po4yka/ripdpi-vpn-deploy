@@ -4,6 +4,15 @@ title = "vpn-deploy custom rules"
 useDefault = true
 
 [[rules]]
+id = "jfrog-identity-token"
+[[rules.allowlists]]
+description = "Public Xray v26.3.27 Linux amd64 release archive SHA-256"
+condition = "AND"
+paths = ['''^\.github/actions/install-xray/action\.yml$''']
+regexTarget = "line"
+regexes = ['''^\s*XRAY_SHA256: 23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae\s*$''']
+
+[[rules]]
 id = "vless-uri"
 description = "VLESS subscription URI"
 regex = '''vless://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+'''

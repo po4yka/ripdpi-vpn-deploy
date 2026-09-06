@@ -9,6 +9,7 @@ import tomllib
 from pathlib import Path
 
 import yaml
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -96,6 +97,23 @@ def test_gitleaks_history_ignores_code_identifier_false_positive(tmp_path: Path)
     repo = _temporary_repo(tmp_path)
 
     assert _gitleaks(repo).returncode == 0
+
+
+@pytest.mark.parametrize("case", ["public-pin", "different-value", "different-path", "different-key"])
+def test_xray_public_digest_exception_is_exact(tmp_path: Path, case: str) -> None:
+    repo = _temporary_repo(tmp_path)
+    pin = yaml.safe_load((REPO_ROOT / ".github/actions/install-xray/action.yml").read_text())
+    digest = pin["runs"]["steps"][0]["env"]["XRAY_SHA256"]
+    if case == "different-value":
+        digest = digest[:-1] + ("a" if digest[-1] != "a" else "b")
+    path = ".github/actions/install-xray/action.yml" if case != "different-path" else "other.yml"
+    key = "XRAY_SHA256" if case != "different-key" else "JFROG_TOKEN"
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(f"        {key}: {digest}\n")
+    _git(repo, "add", path)
+    _git(repo, "commit", "-qm", "public digest boundary")
+    assert (_gitleaks(repo).returncode == 0) == (case == "public-pin")
 
 
 def test_gitleaks_history_detects_committed_secret(tmp_path: Path) -> None:
