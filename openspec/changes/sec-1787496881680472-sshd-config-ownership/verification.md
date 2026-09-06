@@ -4,14 +4,14 @@ change: sec-1787496881680472-sshd-config-ownership
 commit_sha: 501a27bbddd7e0c62378223ded801f6db77ef859
 local: passed
 local_evidence: the combined-tree make -j1 check passed with 2951 Python tests, one existing skip, 55 Bats tests, Rust release tests and Clippy; log SHA256 5daca6ec5b2403c80f3101956af6c463c4dbdfacb18b04c92b1ec03c7ff31af2
-remote_ci: required
-remote_ci_evidence: null
+remote_ci: passed
+remote_ci_evidence: "The delivered source is present on protected main 0da5dae31e12242baebde842ab632cd1e1843140; exact-main CI run 34030183169 passed all 75 jobs."
 dry_run: not_applicable
 dry_run_evidence: covered by the live lockout rehearsal; check-mode adds no signal beyond molecule for this surface
 staging: not_applicable
 staging_evidence: no separate staging environment exists; the scratch-node lockout rehearsal is the staging equivalent
-live: required
-live_evidence: null
+live: blocked
+live_evidence: "The required scratch-node custom-port and pinned-algorithm lockout rehearsal followed by fleet verification has not run. A bounded 2026-09-06 passive recheck returned unknown/command-failed for all three inventory aliases, and no isolated staging target is available."
 client: not_applicable
 client_evidence: no client emitter changed
 artifact: not_applicable

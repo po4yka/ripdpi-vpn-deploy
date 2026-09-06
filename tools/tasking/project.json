@@ -27,6 +27,7 @@
     "client",
     "artifact"
   ],
+  "evidence_transfer_policy": 1,
   "openspec_schema": "ripdpi-deploy-change",
   "allowed_peers": [
     "po4yka/RIPDPI"
