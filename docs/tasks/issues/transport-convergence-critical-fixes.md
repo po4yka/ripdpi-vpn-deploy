@@ -2,7 +2,7 @@
 id: ANS-1787495907091073
 title: Fix production-breaking transport convergence defects
 kind: bug
-status: review
+status: done
 area: ansible
 priority: critical
 risk: high
@@ -15,6 +15,9 @@ created: 2026-08-23
 updated: 2026-09-06
 related_tasks: []
 status_detail: All source fixes and protected-main checks are complete. Shared deploy and external protocol acceptance are consolidated in OPS-1787496414433523 and TST-1787850553468536.
+closed_at: "2026-09-06T14:01:25Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Transport convergence fixes passed local and protected-main checks; shared deploy and profile acceptance remain in OPS-1787496414433523 and TST-1787850553468536.
 ---
 
 ## Goal

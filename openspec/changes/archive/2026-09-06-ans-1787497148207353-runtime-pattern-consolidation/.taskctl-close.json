@@ -1,0 +1,11 @@
+{
+  "change": "ans-1787497148207353-runtime-pattern-consolidation",
+  "evidence_summary": "Runtime consolidation and consumer migration passed PR 167 and protected-main checks; shared external acceptance remains in OPS-1787496414433523 and TST-1787850553468536.",
+  "execution_sha256": "252948515a7b4ac4bc57411fa9cf6f445650e8177d47928e7d518916a351c842",
+  "issue_sha256": "845551d7266b410923ed0d14323cf6fabc6ac5ace3d9454b949e09c847366bbb",
+  "outcome": "done",
+  "prepared_at": "2026-09-06T14:01:25Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1787497148207353"
+}

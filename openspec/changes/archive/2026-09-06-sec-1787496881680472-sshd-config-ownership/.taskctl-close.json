@@ -1,0 +1,11 @@
+{
+  "change": "sec-1787496881680472-sshd-config-ownership",
+  "evidence_summary": "Single-owner SSH source and both-distro checks passed; real SSH migration rehearsal remains in SEC-1787916931540401.",
+  "execution_sha256": "421334238ee726188f7dbadc91e8b57aadf60775604e174887ce9247b648e170",
+  "issue_sha256": "308b49ea6375201d5754b5ae5e5c5288ed1b38b36819216fdf4f8df7c9c44dfb",
+  "outcome": "done",
+  "prepared_at": "2026-09-06T14:01:25Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1787496881680472"
+}

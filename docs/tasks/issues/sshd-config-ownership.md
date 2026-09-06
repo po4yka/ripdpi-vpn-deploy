@@ -2,7 +2,7 @@
 id: SEC-1787496881680472
 title: Establish single-owner sshd configuration layers
 kind: bug
-status: review
+status: done
 area: security
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-08-23
 updated: 2026-09-06
 related_tasks: [SEC-1787916931540401]
 status_detail: Single-owner SSH source behavior and both-distro protected checks are complete. The real SSH migration rehearsal is consolidated in SEC-1787916931540401.
+closed_at: "2026-09-06T14:01:25Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Single-owner SSH source and both-distro checks passed; real SSH migration rehearsal remains in SEC-1787916931540401.
 ---
 
 ## Goal

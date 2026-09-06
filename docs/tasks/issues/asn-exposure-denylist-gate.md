@@ -2,7 +2,7 @@
 id: ANS-1786277767052693
 title: Implement a disabled-by-default network exposure denylist gate
 kind: feature
-status: review
+status: done
 area: ansible
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-08-09
 updated: 2026-09-06
 related_tasks: []
 status_detail: Source-complete disabled-by-default gate. Local, artifact, dry-run contract and protected-main CI evidence are sufficient under proportional verification; enabling or provider apply remains a separate operator action.
+closed_at: "2026-09-06T14:01:25Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Disabled-by-default gate source, refusal paths, artifacts and protected-main checks passed; enablement remains a separate operator action.
 ---
 
 # Implement a disabled-by-default network exposure denylist gate

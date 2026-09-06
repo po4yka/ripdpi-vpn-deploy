@@ -2,7 +2,7 @@
 id: ANS-1787497148207353
 title: Consolidate duplicated runtime patterns across roles
 kind: chore
-status: review
+status: done
 area: ansible
 priority: medium
 risk: high
@@ -15,6 +15,9 @@ created: 2026-08-23
 updated: 2026-09-06
 related_tasks: [ANS-1787463116251274]
 status_detail: Runtime consumers, validators, unit floors, shared templates and restore guards are integrated through PR 167 with protected-main checks. Shared external acceptance is consolidated in OPS-1787496414433523 and TST-1787850553468536.
+closed_at: "2026-09-06T14:01:25Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Runtime consolidation and consumer migration passed PR 167 and protected-main checks; shared external acceptance remains in OPS-1787496414433523 and TST-1787850553468536.
 ---
 
 ## Goal

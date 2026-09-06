@@ -1,0 +1,11 @@
+{
+  "change": "vpd-1787497317352770-vpnd-deploy-reconverge-lifecycle-safety",
+  "evidence_summary": "Deploy lifecycle source behavior passed local and protected-main checks; end-to-end deployment acceptance remains in OPS-1787496414433523.",
+  "execution_sha256": "bde7111308f3e44f40eb8326f1ee66b05baf5547b7e89084999960a0ecadce40",
+  "issue_sha256": "979f226889dd49f06d43678199d19d5fa75308fae0752423c339c864629a4552",
+  "outcome": "done",
+  "prepared_at": "2026-09-06T14:01:25Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "VPD-1787497317352770"
+}

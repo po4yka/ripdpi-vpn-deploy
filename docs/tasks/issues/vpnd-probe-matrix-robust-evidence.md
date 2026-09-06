@@ -2,7 +2,7 @@
 id: VPD-1787497252303967
 title: Fix probe-matrix process leaks, timeouts, durability, and evidence semantics
 kind: bug
-status: review
+status: done
 area: vpnd
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-08-23
 updated: 2026-09-06
 related_tasks: []
 status_detail: Process cleanup, timeout, durability, schema and client mirror behavior are source-complete. External probe acceptance is consolidated in TST-1787850553468536.
+closed_at: "2026-09-06T14:01:25Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Probe process, timeout, durability, schema and client mirror checks passed; external profile acceptance remains in TST-1787850553468536.
 ---
 
 ## Goal

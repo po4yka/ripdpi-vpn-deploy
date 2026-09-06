@@ -1,0 +1,11 @@
+{
+  "change": "tst-1787497001212692-verification-truthfulness",
+  "evidence_summary": "Verification tooling and full-stack source gates passed; representative external observation remains in TST-1787850553468536 and OPS-1787496414433523.",
+  "execution_sha256": "ff56054576e008c91920bd6bb489f30b301c7d4c5f89f3488e64b427aa5d7f0a",
+  "issue_sha256": "be9ac1c4c410eccd1684796c4a20bd273c2affd0edd22e17b3c4eac801d15b52",
+  "outcome": "done",
+  "prepared_at": "2026-09-06T14:01:25Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "TST-1787497001212692"
+}

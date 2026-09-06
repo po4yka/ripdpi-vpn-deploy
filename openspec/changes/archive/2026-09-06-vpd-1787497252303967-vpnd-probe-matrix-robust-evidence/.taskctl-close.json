@@ -1,0 +1,11 @@
+{
+  "change": "vpd-1787497252303967-vpnd-probe-matrix-robust-evidence",
+  "evidence_summary": "Probe process, timeout, durability, schema and client mirror checks passed; external profile acceptance remains in TST-1787850553468536.",
+  "execution_sha256": "bea0395ab39012546d011f356888477ada3288527075d04ca0a547be09b35483",
+  "issue_sha256": "9f19a55ac59ee799c1992e5b0d3364a9f217604366817e70b1ac31e6629c4b42",
+  "outcome": "done",
+  "prepared_at": "2026-09-06T14:01:25Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "VPD-1787497252303967"
+}

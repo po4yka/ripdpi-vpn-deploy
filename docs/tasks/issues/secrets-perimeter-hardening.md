@@ -2,7 +2,7 @@
 id: SEC-1787496747898735
 title: Close secrets-handling and perimeter hardening gaps
 kind: bug
-status: review
+status: done
 area: security
 priority: critical
 risk: high
@@ -15,6 +15,9 @@ created: 2026-08-23
 updated: 2026-09-06
 related_tasks: [ANS-1787463116251274]
 status_detail: Source hardening and protected-main checks are complete. Shared host acceptance is consolidated in SEC-1787916931540401; this task makes no live rollout claim.
+closed_at: "2026-09-06T14:01:25Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Secrets and perimeter source hardening passed local and protected-main checks; shared host acceptance remains in SEC-1787916931540401.
 ---
 
 ## Goal

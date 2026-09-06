@@ -2,7 +2,7 @@
 id: VPD-1787497317352770
 title: Guarantee secrets cleanup and scoped targeting on deploy paths
 kind: bug
-status: review
+status: done
 area: vpnd
 priority: critical
 risk: high
@@ -15,6 +15,9 @@ created: 2026-08-23
 updated: 2026-09-06
 related_tasks: []
 status_detail: Deploy and reconverge lifecycle source behavior is complete and protected-main tested. End-to-end deploy-path acceptance is consolidated in OPS-1787496414433523.
+closed_at: "2026-09-06T14:01:25Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Deploy lifecycle source behavior passed local and protected-main checks; end-to-end deployment acceptance remains in OPS-1787496414433523.
 ---
 
 ## Goal

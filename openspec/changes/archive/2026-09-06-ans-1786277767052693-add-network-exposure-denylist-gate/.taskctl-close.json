@@ -1,0 +1,11 @@
+{
+  "change": "ans-1786277767052693-add-network-exposure-denylist-gate",
+  "evidence_summary": "Disabled-by-default gate source, refusal paths, artifacts and protected-main checks passed; enablement remains a separate operator action.",
+  "execution_sha256": "1460bd3056fbe3492150847a13ec7054d6ead90ce8bf5bb7f4e140857298e91d",
+  "issue_sha256": "f52d7079e46cbf9a22e48f54d48e6f9b3c572873767054c34938a4d3c5c85e5d",
+  "outcome": "done",
+  "prepared_at": "2026-09-06T14:01:25Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1786277767052693"
+}

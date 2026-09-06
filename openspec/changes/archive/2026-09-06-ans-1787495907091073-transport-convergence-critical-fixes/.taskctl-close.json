@@ -1,0 +1,11 @@
+{
+  "change": "ans-1787495907091073-transport-convergence-critical-fixes",
+  "evidence_summary": "Transport convergence fixes passed local and protected-main checks; shared deploy and profile acceptance remain in OPS-1787496414433523 and TST-1787850553468536.",
+  "execution_sha256": "394db2966820d7236e6c0aa2bab6d4c74f97ebdd255bc9703c28b00c31dffa9d",
+  "issue_sha256": "fa06a11c7c5916f7acb9129264241c449c06ba0a243fa446fc5a21a9e8149af0",
+  "outcome": "done",
+  "prepared_at": "2026-09-06T14:01:25Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1787495907091073"
+}

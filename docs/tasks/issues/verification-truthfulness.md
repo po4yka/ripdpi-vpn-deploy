@@ -2,7 +2,7 @@
 id: TST-1787497001212692
 title: Make verification reflect deployed state
 kind: bug
-status: review
+status: done
 area: testing
 priority: high
 risk: standard
@@ -15,6 +15,9 @@ created: 2026-08-23
 updated: 2026-09-06
 related_tasks: []
 status_detail: Verification tooling and full-stack source gates are complete. Representative external observation is consolidated in TST-1787850553468536 and OPS-1787496414433523.
+closed_at: "2026-09-06T14:01:25Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Verification tooling and full-stack source gates passed; representative external observation remains in TST-1787850553468536 and OPS-1787496414433523.
 ---
 
 ## Goal
