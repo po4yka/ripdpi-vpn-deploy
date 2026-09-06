@@ -9,6 +9,9 @@ foreign leg but pins `Table = off`, so bringing up the interface cannot replace
 the host default route. Its configuration records the activation contract:
 only classifier-owned foreign flows may receive the dedicated mark and routing
 table. The repository-disabled scaffold deliberately installs no such rules.
+Convergence refuses before writes when it observes an active or residual
+historical ingress service, interface, route, rule, or nftables table; removing
+that state requires a separately authorized recovery.
 
 ## What's done well
 

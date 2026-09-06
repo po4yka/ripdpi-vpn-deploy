@@ -42,6 +42,70 @@
   tags:
     - always
 
+# A prior live cascade deployment is not an input this inert scaffold can
+# safely reconcile.  Refuse before package or filesystem writes so an operator
+# can recover the historical transaction explicitly instead of mixing states.
+- name: Inspect historical cascade WireGuard service state
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - --quiet
+      - "wg-quick@{{ cascade_ingress.wg_interface }}.service"
+  register: cascade_ingress_historical_service
+  changed_when: false
+  failed_when: cascade_ingress_historical_service.rc not in [0, 3, 4]
+  check_mode: false
+
+- name: Inspect historical cascade WireGuard interface state
+  ansible.builtin.command:
+    argv: [ip, link, show, dev, "{{ cascade_ingress.wg_interface }}"]
+  register: cascade_ingress_historical_interface
+  changed_when: false
+  failed_when: cascade_ingress_historical_interface.rc not in [0, 1]
+  check_mode: false
+
+- name: Inspect historical cascade policy-routing state
+  ansible.builtin.command:
+    argv: [ip, rule, show, table, "{{ cascade_ingress.routing_table | string }}"]
+  register: cascade_ingress_historical_rules
+  changed_when: false
+  failed_when: cascade_ingress_historical_rules.rc != 0
+  check_mode: false
+
+- name: Inspect historical cascade routing-table state
+  ansible.builtin.command:
+    argv: [ip, route, show, table, "{{ cascade_ingress.routing_table | string }}"]
+  register: cascade_ingress_historical_routes
+  changed_when: false
+  failed_when: cascade_ingress_historical_routes.rc != 0
+  check_mode: false
+
+- name: Inspect historical cascade nftables state
+  ansible.builtin.command:
+    argv: [nft, list, tables]
+  register: cascade_ingress_historical_nft_tables
+  changed_when: false
+  failed_when: cascade_ingress_historical_nft_tables.rc != 0
+  check_mode: false
+
+- name: Refuse historical cascade ingress state
+  ansible.builtin.assert:
+    that:
+      - cascade_ingress_historical_service.rc != 0
+      - cascade_ingress_historical_interface.rc != 0
+      - cascade_ingress_historical_rules.stdout | trim | length == 0
+      - cascade_ingress_historical_routes.stdout | trim | length == 0
+      - >-
+        cascade_ingress_historical_nft_tables.stdout is not
+        search('(?m)^table inet cascade_ingress$')
+    fail_msg: >-
+      Refusing cascade-ingress because historical WireGuard, policy-routing,
+      or nftables state exists. Recover it explicitly before applying this
+      implementation-only scaffold.
+  tags:
+    - always
+
 - name: Install cascade ingress packages
   ansible.builtin.apt:
     name: [wireguard, wireguard-tools, nftables, python3, python3-jsonschema]

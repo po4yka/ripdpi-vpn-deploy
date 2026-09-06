@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import copy
+import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -45,6 +50,214 @@ def test_ingress_preflights_dataset_before_serving_configuration() -> None:
     )
     assert "--check-dataset" in tasks
     assert "systemd_service" not in tasks
+
+
+@pytest.mark.parametrize(
+    "historical_state",
+    ["service", "interface", "rule", "route", "nft", "probe-error"],
+)
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_installed_ansible_refuses_historical_cascade_state_before_writes(
+    tmp_path: Path, historical_state: str, check_mode: bool
+) -> None:
+    """The live read-only preflight must gate every later role write."""
+    executable = shutil.which("ansible-playbook")
+    assert executable, "ansible-playbook is required for cascade preflight proof"
+
+    tasks = yaml.safe_load(
+        (ANSIBLE / "roles/cascade-ingress/tasks/main.yml").read_text(encoding="utf-8")
+    )
+    names = [task["name"] for task in tasks]
+    selected = copy.deepcopy(
+        tasks[
+            names.index(
+                "Inspect historical cascade WireGuard service state"
+            ) : names.index("Install cascade ingress packages")
+        ]
+    )
+    marker = tmp_path / "unexpected-role-write"
+    selected.append(
+        {
+            "name": "Fixture later role write",
+            "ansible.builtin.command": {"argv": ["cascade-write-marker"]},
+            "check_mode": False,
+        }
+    )
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    scripts = {
+        "systemctl": """#!/bin/sh
+if [ \"$CASCADE_STATE\" = service ]; then exit 0; fi
+exit 3
+""",
+        "ip": """#!/bin/sh
+case \"$1\" in
+  link) [ \"$CASCADE_STATE\" = interface ] && exit 0; exit 1 ;;
+  rule)
+    [ \"$CASCADE_STATE\" = probe-error ] && exit 77
+    [ \"$CASCADE_STATE\" = rule ] && printf '1000: from all lookup 203\\n'
+    exit 0 ;;
+  route)
+    [ \"$CASCADE_STATE\" = route ] && printf 'default dev csi0\\n'
+    exit 0 ;;
+  *) exit 64 ;;
+esac
+""",
+        "nft": """#!/bin/sh
+[ \"$1 $2 $3\" = \"list tables \" ] || exit 64
+[ \"$CASCADE_STATE\" = nft ] && printf 'table inet cascade_ingress\\n'
+exit 0
+""",
+        "cascade-write-marker": """#!/bin/sh
+: > \"$CASCADE_MARKER\"
+""",
+    }
+    for name, content in scripts.items():
+        path = bin_dir / name
+        path.write_text(content, encoding="utf-8")
+        path.chmod(0o700)
+
+    playbook = tmp_path / "cascade-preflight.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "become": False,
+                    "vars": {
+                        "ansible_python_interpreter": sys.executable,
+                        "cascade_ingress": {
+                            "wg_interface": "csi0",
+                            "routing_table": 203,
+                        },
+                    },
+                    "tasks": selected,
+                }
+            ],
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\nretry_files_enabled = False\n", encoding="utf-8")
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("ANSIBLE_")
+    }
+    environment.update(
+        {
+            "ANSIBLE_CONFIG": str(config),
+            "PATH": f"{bin_dir}{os.pathsep}{environment['PATH']}",
+            "CASCADE_STATE": historical_state,
+            "CASCADE_MARKER": str(marker),
+        }
+    )
+    command = [executable, "-i", "localhost,", "-c", "local", str(playbook)]
+    if check_mode:
+        command.append("--check")
+    result = subprocess.run(
+        command, capture_output=True, text=True, env=environment, timeout=15
+    )
+
+    assert result.returncode != 0
+    assert not marker.exists()
+    if historical_state == "probe-error":
+        assert "Inspect historical cascade policy-routing state" in result.stdout
+    else:
+        assert "Refusing cascade-ingress because historical" in result.stdout
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_installed_ansible_allows_clean_cascade_preflight_before_later_write(
+    tmp_path: Path, check_mode: bool
+) -> None:
+    """A clean host proceeds through the same real task slice, including --check."""
+    # Reuse the parametrized regression's fixture implementation with its
+    # deterministic command stubs; its clean-state assertion is intentionally
+    # separate so both success and every refusal case remain visible.
+    executable = shutil.which("ansible-playbook")
+    assert executable, "ansible-playbook is required for cascade preflight proof"
+
+    tasks = yaml.safe_load(
+        (ANSIBLE / "roles/cascade-ingress/tasks/main.yml").read_text(encoding="utf-8")
+    )
+    names = [task["name"] for task in tasks]
+    selected = copy.deepcopy(
+        tasks[
+            names.index(
+                "Inspect historical cascade WireGuard service state"
+            ) : names.index("Install cascade ingress packages")
+        ]
+    )
+    marker = tmp_path / "later-role-write"
+    selected.append(
+        {
+            "name": "Fixture later role write",
+            "ansible.builtin.command": {"argv": ["cascade-write-marker"]},
+            "check_mode": False,
+        }
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for name, content in {
+        "systemctl": "#!/bin/sh\nexit 3\n",
+        "ip": '#!/bin/sh\n[ "$1" = link ] && exit 1\nexit 0\n',
+        "nft": "#!/bin/sh\nexit 0\n",
+        "cascade-write-marker": '#!/bin/sh\n: > "$CASCADE_MARKER"\n',
+    }.items():
+        path = bin_dir / name
+        path.write_text(content, encoding="utf-8")
+        path.chmod(0o700)
+    playbook = tmp_path / "cascade-clean-preflight.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "become": False,
+                    "vars": {
+                        "ansible_python_interpreter": sys.executable,
+                        "cascade_ingress": {
+                            "wg_interface": "csi0",
+                            "routing_table": 203,
+                        },
+                    },
+                    "tasks": selected,
+                }
+            ],
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\nretry_files_enabled = False\n", encoding="utf-8")
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("ANSIBLE_")
+    }
+    environment.update(
+        {
+            "ANSIBLE_CONFIG": str(config),
+            "PATH": f"{bin_dir}{os.pathsep}{environment['PATH']}",
+            "CASCADE_MARKER": str(marker),
+        }
+    )
+    command = [executable, "-i", "localhost,", "-c", "local", str(playbook)]
+    if check_mode:
+        command.append("--check")
+    result = subprocess.run(
+        command, capture_output=True, text=True, env=environment, timeout=15
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert marker.is_file()
 
 
 def test_ingress_default_route_is_inert_and_documents_scoped_mark_routing() -> None:

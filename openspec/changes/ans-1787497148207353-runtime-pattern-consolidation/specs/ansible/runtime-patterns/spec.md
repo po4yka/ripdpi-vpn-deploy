@@ -113,6 +113,11 @@ Scaffold configurations that would alter host-wide routing when activated MUST p
 - **WHEN** an operator activates the ingress leg using the scaffolded configuration
 - **THEN** host-originated traffic and SSH replies keep their direct path
 
+#### Scenario: converging over historical active ingress state
+
+- **WHEN** convergence observes an existing cascade WireGuard service or interface, policy route or rule, or role-owned nftables table
+- **THEN** it refuses before package or filesystem writes and leaves recovery to a separately authorized migration
+
 ### Requirement: REQ-MIRROR-RESTORE-ASSERTED — Mirror restore layout MUST be asserted before serving
 
 The mirror script MUST verify restored payloads land at the layout the delivery service reads and fail loudly otherwise.
