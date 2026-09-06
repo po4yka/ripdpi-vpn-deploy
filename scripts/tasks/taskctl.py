@@ -789,6 +789,58 @@ def shared_evidence_mappings(
     return tuple(sorted(mappings))
 
 
+def validate_source_revision(
+    root: Path,
+    source_revision: str,
+    descendant_ref: str,
+    *,
+    context: str,
+) -> None:
+    commit = run_command(
+        ("git", "cat-file", "-e", f"{source_revision}^{{commit}}"), root=root
+    )
+    if commit.returncode != 0:
+        fail(f"{context}: source revision is not a commit")
+    reachable = run_command(
+        ("git", "merge-base", "--is-ancestor", source_revision, descendant_ref),
+        root=root,
+    )
+    if reachable.returncode != 0:
+        fail(f"{context}: source revision is not reachable from {descendant_ref}")
+
+
+def validate_shared_requirement_coverage(
+    context: str,
+    category: str,
+    source_requirements: set[str],
+    mappings: Sequence[SharedEvidenceMapping],
+) -> None:
+    mapped_requirements = {mapping.requirement for mapping in mappings}
+    if mapped_requirements != source_requirements:
+        missing = sorted(source_requirements - mapped_requirements)
+        extra = sorted(mapped_requirements - source_requirements)
+        fail(
+            f"{context}: shared {category} evidence does not map every source "
+            f"requirement missing={missing}, extra={extra}"
+        )
+
+
+def archived_source_mappings(
+    root: Path,
+    config: ProjectConfig,
+) -> dict[str, set[SharedEvidenceMapping]]:
+    result: dict[str, set[SharedEvidenceMapping]] = {}
+    for path in sorted(
+        (root / "openspec/changes/archive").glob("*/verification.md")
+    ):
+        verification = read_document(path)
+        task_id = verification.values.get("task_id")
+        for mapping in shared_evidence_mappings(verification, config):
+            if task_id == mapping.source_task:
+                result.setdefault(mapping.source_task, set()).add(mapping)
+    return result
+
+
 def validate_requirement_evidence(
     change_dir: Path,
     steps: Sequence[Step],
@@ -961,10 +1013,33 @@ def validate_active_shared_evidence(
                 f"{source_path}: shared {mapping.category} mapping source revision "
                 "does not match verification commit_sha"
             )
+        descendant_ref = (
+            "HEAD"
+            if source_record is not None
+            else str(historical_source["terminal_revision"])
+        )
+        validate_source_revision(
+            root,
+            mapping.source_revision,
+            descendant_ref,
+            context=str(source_path),
+        )
         if mapping.requirement not in source_requirements:
             fail(
                 f"{source_path}: shared {mapping.category} mapping names unknown requirement "
                 f"{mapping.requirement}"
+            )
+        if source_values[mapping.category] == "not_applicable":
+            validate_shared_requirement_coverage(
+                str(source_path),
+                mapping.category,
+                source_requirements,
+                [
+                    candidate
+                    for candidate in source_mappings
+                    if candidate.source_task == mapping.source_task
+                    and candidate.category == mapping.category
+                ],
             )
         _, owner_values, _ = owner_record
         if owner_values[mapping.category] == "not_applicable":
@@ -1033,6 +1108,32 @@ def _load_state(
     parent_edges: dict[str, list[str]] = {}
     blocker_edges: dict[str, list[str]] = {}
     historical_related: dict[str, dict[str, Any]] = {}
+    for source_task, mappings in archived_source_mappings(root, config).items():
+        if source_task in ids:
+            continue
+        active_owners = {
+            mapping.owner_task for mapping in mappings if mapping.owner_task in ids
+        }
+        if not active_owners:
+            continue
+        historical = history_resolver.resolve(
+            source_task,
+            allow_uncommitted_purge=True,
+        )
+        if historical is None or historical["status"] != "done":
+            fail(f"{source_task}: archived shared mapping lacks valid terminal history")
+        historical_related[source_task] = historical
+        for owner_task in sorted(active_owners):
+            owner_related = {
+                local
+                for related in ids[owner_task].values.get("related_tasks", [])
+                if (local := local_reference(related, config)) is not None
+            }
+            if source_task not in owner_related:
+                fail(
+                    f"{owner_task}: historical source record requires retained related task "
+                    f"{source_task}"
+                )
     for document in documents:
         parent = document.values["parent"]
         if parent is not None:
@@ -1442,12 +1543,24 @@ def validate_historical_shared_transfer(
         source_ref,
         source_snapshot.document,
     )
+    validate_shared_requirement_coverage(
+        source_snapshot.relative,
+        category,
+        source_requirements,
+        candidates,
+    )
     for mapping in candidates:
         if mapping.source_revision != source_values["commit_sha"]:
             fail(
                 f"{source_snapshot.relative}: shared {category} mapping source revision "
                 "does not match verification commit_sha"
             )
+        validate_source_revision(
+            root,
+            mapping.source_revision,
+            source_ref,
+            context=source_snapshot.relative,
+        )
         if mapping.requirement not in source_requirements:
             fail(
                 f"{source_snapshot.relative}: shared {category} mapping names unknown requirement "
@@ -2139,7 +2252,14 @@ def validate_deleted_history(root: Path, base: str) -> None:
     if ancestry.returncode != 0:
         fail(f"cannot validate task history: {base} is not an ancestor of HEAD")
     history = run_command(
-        ("git", "rev-list", "--reverse", "--ancestry-path", f"{base}..HEAD"),
+        (
+            "git",
+            "rev-list",
+            "--first-parent",
+            "--reverse",
+            "--ancestry-path",
+            f"{base}..HEAD",
+        ),
         root=root,
     )
     if history.returncode != 0:

@@ -1111,7 +1111,7 @@ class TaskctlHistoryTest(TaskctlFixture):
         verification_path = archive / "verification.md"
         verification = taskctl.read_document(verification_path)
         values = dict(verification.values)
-        values["commit_sha"] = "a" * 40
+        values["commit_sha"] = base
         values["local"] = "not_applicable"
         values["local_evidence"] = "Delegated elsewhere."
         verification_path.write_text(
@@ -1125,7 +1125,7 @@ class TaskctlHistoryTest(TaskctlFixture):
                     "task_id": "ANS-1786234567890101",
                     "change": change,
                     "outcome": "review",
-                    "commit_sha": "a" * 40,
+                    "commit_sha": base,
                     "archived_at": "2026-08-09T00:00:00Z",
                 }
             )
@@ -1210,7 +1210,7 @@ class TaskctlHistoryTest(TaskctlFixture):
         source_verification = archive / "verification.md"
         verification = taskctl.read_document(source_verification)
         values = dict(verification.values)
-        values["commit_sha"] = "a" * 40
+        values["commit_sha"] = base
         values["live"] = "not_applicable"
         values["live_evidence"] = f"Transferred to {owner_task}."
         source_verification.write_text(
@@ -1223,7 +1223,7 @@ class TaskctlHistoryTest(TaskctlFixture):
             "requirement": f"REQ-{source_task}-001",
             "command": "make verify LIMIT=fixture",
             "category": "live",
-            "source_revision": "a" * 40,
+            "source_revision": base,
         }
         self.add_shared_evidence_mapping(source_verification, **mapping)
         owner_verification = (
@@ -1245,9 +1245,6 @@ class TaskctlHistoryTest(TaskctlFixture):
             encoding="utf-8",
         )
         self.add_shared_evidence_mapping(owner_verification, **mapping)
-        second_mapping = dict(mapping, requirement=second_requirement)
-        self.add_shared_evidence_mapping(source_verification, **second_mapping)
-        self.add_shared_evidence_mapping(owner_verification, **second_mapping)
         (archive / ".taskctl-archive.json").write_text(
             json.dumps(
                 {
@@ -1255,13 +1252,21 @@ class TaskctlHistoryTest(TaskctlFixture):
                     "task_id": source_task,
                     "change": change,
                     "outcome": "review",
-                    "commit_sha": "a" * 40,
+                    "commit_sha": base,
                     "archived_at": "2026-08-09T00:00:00Z",
                 }
             )
             + "\n",
             encoding="utf-8",
         )
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "does not map every source requirement"
+        ):
+            taskctl.load_state(self.root)
+
+        second_mapping = dict(mapping, requirement=second_requirement)
+        self.add_shared_evidence_mapping(source_verification, **second_mapping)
+        self.add_shared_evidence_mapping(owner_verification, **second_mapping)
         taskctl.command_close_prepare(
             argparse.Namespace(
                 root=self.root,
@@ -1281,6 +1286,35 @@ class TaskctlHistoryTest(TaskctlFixture):
         self.assertEqual([owner_task], [document.task_id for document in documents])
         taskctl.validate_deleted_history(self.root, base)
 
+        owner_issue = self.root / "docs/tasks/issues/owner.md"
+        original_issue = owner_issue.read_bytes()
+        original_verification = owner_verification.read_bytes()
+        owner = taskctl.read_document(owner_issue)
+        owner_values = dict(owner.values)
+        owner_values["related_tasks"] = []
+        owner_issue.write_text(
+            taskctl.render_document(owner_values, owner.body), encoding="utf-8"
+        )
+        owner_document = taskctl.read_document(owner_verification)
+        owner_body = owner_document.body.split(
+            "\n## Shared operational evidence ownership\n", 1
+        )[0].rstrip() + "\n"
+        owner_verification.write_text(
+            taskctl.render_document(
+                dict(owner_document.values),
+                owner_body,
+                order=tuple(owner_document.values),
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "historical source record requires retained related task",
+        ):
+            taskctl.load_state(self.root)
+        owner_issue.write_bytes(original_issue)
+        owner_verification.write_bytes(original_verification)
+
         owner_document = taskctl.read_document(owner_verification)
         owner_body = owner_document.body.split(
             "\n## Shared operational evidence ownership\n", 1
@@ -1299,6 +1333,33 @@ class TaskctlHistoryTest(TaskctlFixture):
             "shared live mapping does not match historical source record",
         ):
             taskctl.load_state(self.root)
+
+    def test_source_revision_must_be_a_reachable_commit(self) -> None:
+        base = self.commit_all("record integration history")
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "source revision is not a commit"
+        ):
+            taskctl.validate_source_revision(
+                self.root,
+                "a" * 40,
+                base,
+                context="fixture",
+            )
+
+        integration_branch = self.git("branch", "--show-current")
+        self.git("switch", "-c", "unmerged-source")
+        (self.root / "unmerged.txt").write_text("unmerged\n", encoding="utf-8")
+        unreachable = self.commit_all("record unmerged source")
+        self.git("switch", integration_branch)
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "source revision is not reachable"
+        ):
+            taskctl.validate_source_revision(
+                self.root,
+                unreachable,
+                base,
+                context="fixture",
+            )
 
     def test_late_owner_mapping_cannot_retroactively_validate_transfer(self) -> None:
         source_task = "ANS-1786234567890101"
@@ -1341,7 +1402,7 @@ class TaskctlHistoryTest(TaskctlFixture):
         source_verification = archive / "verification.md"
         verification = taskctl.read_document(source_verification)
         values = dict(verification.values)
-        values["commit_sha"] = "a" * 40
+        values["commit_sha"] = base
         values["live"] = "not_applicable"
         values["live_evidence"] = f"Transferred to {owner_task}."
         source_verification.write_text(
@@ -1354,7 +1415,7 @@ class TaskctlHistoryTest(TaskctlFixture):
             "requirement": f"REQ-{source_task}-001",
             "command": "make verify LIMIT=fixture",
             "category": "live",
-            "source_revision": "a" * 40,
+            "source_revision": base,
         }
         self.add_shared_evidence_mapping(source_verification, **mapping)
         self.commit_all("reclassify before owner accepts transfer")
@@ -1392,7 +1453,7 @@ class TaskctlHistoryTest(TaskctlFixture):
                     "task_id": source_task,
                     "change": change,
                     "outcome": "review",
-                    "commit_sha": "a" * 40,
+                    "commit_sha": base,
                     "archived_at": "2026-08-09T00:00:00Z",
                 }
             )
@@ -1700,7 +1761,7 @@ class TaskctlHistoryTest(TaskctlFixture):
     def test_terminal_history_ignores_stale_merged_side_branch_snapshot(self) -> None:
         path = self.add_simple_task(status="review")
         self.write_board()
-        self.commit_all("add active task")
+        base = self.commit_all("add active task")
         integration_branch = self.git("branch", "--show-current")
         self.git("branch", "stale-side")
 
@@ -1724,6 +1785,7 @@ class TaskctlHistoryTest(TaskctlFixture):
         self.assertIsNotNone(resolved)
         assert resolved is not None
         self.assertEqual("done", resolved["status"])
+        taskctl.validate_deleted_history(self.root, base)
 
     def test_dropped_openspec_change_archives_without_syncing_normative_specs(self) -> None:
         self.add_active_spec_task(status="review", done=False)
