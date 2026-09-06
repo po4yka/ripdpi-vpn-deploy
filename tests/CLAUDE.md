@@ -42,6 +42,8 @@ Give clock-dependent parameter values stable IDs so collection agrees across run
 
 **Molecule per role > monolithic test** — role-level scenarios catch
 config drift inside a role. Full-stack catches order/handler interactions.
+The two full-stack scenarios run on separate matrix runners with fail-fast
+disabled; `required checks` requires both to succeed.
 
 ## What's done well
 
