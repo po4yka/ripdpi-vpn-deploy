@@ -4,13 +4,14 @@
 
 **Research only** — Snell is a staging evaluation surface, not a family-profile transport. `vpn.enable_snell` is false everywhere and the role is tagged RESEARCH. A lab host must explicitly list `snell` in `allow_research_roles`.
 
-**One pinned binary, three server variants** — a single checksum-pinned sing-box release serves the v4-compatible stream and the v6 default/unshaped variants on separate TCP listeners. Separate listeners keep evaluation attribution explicit without multiplying daemons.
+**One pinned binary, three server variants** — a single checksum-pinned sing-box release serves the v4-compatible stream and the v6 default/unshaped variants on separate TCP listeners. The shared `runtime-release` role owns extraction, receipts, and compensated current/public/previous link publication. Separate listeners keep evaluation attribution explicit without multiplying daemons.
 
 **No automatic selection** — emitted Snell outbounds live in a nested `snell-evaluation` selector and never enter the primary `auto` urltest. Promotion requires a separate tier/policy change after field evidence and a stable upstream release.
 
 ## What's done well
 
-- Versioned release directories plus a `current` symlink keep rollback atomic.
+- Versioned release receipts plus shared link compensation keep ordinary
+  activation failures from consuming the previous rollback target.
 - `sing-box check` validates the rendered candidate before systemd restarts it.
 - Configuration and logs are owned by a dedicated unprivileged user; the config is `0640` and never diffed or logged by Ansible.
 

@@ -1,0 +1,15 @@
+{#
+  Shared P0 REALITY shape contract.
+
+  Input `p0_reality_shape_input` is a raw cohort/probe mapping.  Its optional
+  overrides take precedence over the profile, which takes precedence over the
+  canonical shape declaration.  Consumers receive the JSON object unchanged.
+#}
+{%- set _flow_mode = p0_reality_shape_input.flow_mode | default(vpn.xray_flow_mode | default(p0_reality_flow_mode)) -%}
+{%- set _shape = p0_reality_shapes[_flow_mode] -%}
+{
+  "flow_mode": {{ _flow_mode | to_json }},
+  "client_flow": {{ _shape.client_flow | to_json }},
+  "client_mux": {{ _shape.client_mux | to_json }},
+  "finalmask": {{ p0_reality_shape_input.finalmask | default(vpn.xray_finalmask | default(_shape.finalmask)) | to_json }}
+}

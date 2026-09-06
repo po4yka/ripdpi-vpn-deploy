@@ -25,15 +25,18 @@
         - {id: v4-stream, psk: MOLECULE-V4-PSK, users: [{name: probe, userkey: MOLECULE-V4-USERKEY}]}
         - {id: v6-default, psk: MOLECULE-V6-DEFAULT-PSK, users: [{name: probe, userkey: MOLECULE-V6-DEFAULT-USERKEY}]}
         - {id: v6-unshaped, psk: MOLECULE-V6-UNSHAPED-PSK, users: [{name: probe, userkey: MOLECULE-V6-UNSHAPED-USERKEY}]}
+    snell_release_urls:
+      amd64: file:///var/tmp/snell-molecule/sing-box.tar.gz
+      arm64: file:///var/tmp/snell-molecule/sing-box.tar.gz
   pre_tasks:
-    - name: Create stub release
+    - name: Create deterministic Snell archive member directory
       ansible.builtin.file:
-        path: /opt/snell/releases/v1.14.0-alpha.42
+        path: /var/tmp/snell-molecule/sing-box-1.14.0-alpha.42-linux-amd64
         state: directory
         mode: "0755"
-    - name: Install stub sing-box
+    - name: Write deterministic Snell binary
       ansible.builtin.copy:
-        dest: /opt/snell/releases/v1.14.0-alpha.42/sing-box
+        dest: /var/tmp/snell-molecule/sing-box-1.14.0-alpha.42-linux-amd64/sing-box
         mode: "0755"
         content: |
           #!/bin/sh
@@ -42,4 +45,25 @@
             while true; do sleep 3600 & wait $!; done
           fi
           exit 0
+    - name: Build deterministic Snell release archive
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/tar
+          - -czf
+          - /var/tmp/snell-molecule/sing-box.tar.gz
+          - sing-box-1.14.0-alpha.42-linux-amd64
+        chdir: /var/tmp/snell-molecule
+        creates: /var/tmp/snell-molecule/sing-box.tar.gz
+    - name: Inspect deterministic Snell archive
+      ansible.builtin.stat:
+        path: /var/tmp/snell-molecule/sing-box.tar.gz
+        checksum_algorithm: sha256
+      register: _snell_archive
+    - name: Pin deterministic Snell archive
+      ansible.builtin.set_fact:
+        snell_secrets: >-
+          {{ snell_secrets | combine({
+               'linux_amd64_sha256': _snell_archive.stat.checksum,
+               'linux_arm64_sha256': _snell_archive.stat.checksum
+             }) }}
   roles: [{role: snell}]

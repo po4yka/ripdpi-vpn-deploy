@@ -13,6 +13,25 @@ if [[ ! -f "$SOPS_FILE" ]]; then
   exit 1
 fi
 
+# Use the project-wide writer lock shared by new-client, token issuance and
+# retirement.  updatekeys rewrites the encrypted document, so running it
+# alongside any of those transactions could otherwise resurrect or lose a
+# completed client change.
+SOPS_LOCK="${SOPS_FILE}.new-client.lock"
+exec 9> "$SOPS_LOCK"
+if command -v flock >/dev/null 2>&1; then
+  lock_command=(flock -n 9)
+elif command -v lockf >/dev/null 2>&1; then
+  lock_command=(lockf -s -t 0 9)
+else
+  echo "error: rotate-secrets requires flock (Linux) or lockf (macOS)" >&2
+  exit 1
+fi
+if ! "${lock_command[@]}"; then
+  echo "error: another secrets transaction is active for $SOPS_FILE" >&2
+  exit 1
+fi
+
 # sops updatekeys reads the recipient list from .sops.yaml or env (SOPS_AGE_RECIPIENTS)
 # and re-encrypts the data key without rewriting the payload.
 sops updatekeys "$SOPS_FILE"

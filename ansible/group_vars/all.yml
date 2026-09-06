@@ -101,26 +101,8 @@ vpn:
                                   # the dual-role single-IP flow that
                                   # FOCI 2026 detects).
 
-  # P0 flow mode — switches the VLESS+REALITY inbound between two shapes:
-  #   vision (default) — `xtls-rprx-vision` flow, no mux. Best on
-  #                       networks not policing per-IP TLS concurrency.
-  #   mux              — drops vision-flow, enables mux on the inbound.
-  #                       Use on home ISPs hitting the ~12-concurrent-TLS
-  #                       rule documented in tls-policing-home-isps
-  #                       (observed across 50+ ASNs as of 2026-05). The block lasts 60-120 s
-  #                       after the threshold is crossed; mux holds
-  #                       concurrent TLS sessions below the threshold by
-  #                       multiplexing application streams over fewer
-  #                       physical TLS connections.
   # To disable the P0 listener entirely, set enable_xray_reality: false
   # and rely on enable_nginx_xhttp for transport.
-  xray_flow_mode: vision
-
-  # Optional Xray Finalmask obfuscation (Sudoku) on the P0 inbound.
-  # Disabled by default — turning it on changes the byte distribution
-  # signature, so flip it only after a target network stops accepting
-  # the vanilla REALITY shape.
-  xray_finalmask: false
 
   # AmneziaWG cohort profile selector. Slug must match a file under
   # `ansible/roles/amneziawg/vars/cohorts/<slug>.yml` (e.g.
@@ -174,7 +156,30 @@ public_site_canonical_url: "https://vpn.example.com"
 # Each item is either "tcp/8443" or a mapping like {protocol: udp, range: "20000-40000", reason: "..."}.
 listener_collision_allowlist: []
 
+# P0's two accepted REALITY client shapes are declared once here. This lives
+# outside `vpn` because cohort profiles deliberately replace their complete
+# `vpn` mapping. Xray consumes the flow member and watchdog consumes both
+# members when it builds the authenticated client probe.
+p0_reality_shapes:
+  vision:
+    client_flow: "xtls-rprx-vision"
+    client_mux: false
+    finalmask: false
+  mux:
+    client_flow: ""
+    client_mux: true
+    finalmask: false
+
+# P0 flow default is deliberately outside the replaceable `vpn` mapping.
+# A profile may override it with vpn.xray_flow_mode; a cohort may override it
+# with flow_mode. Both inherit this canonical default when omitted.
+p0_reality_flow_mode: vision
+
 # Ports
+# These are the runtime defaults used by pre-task listener rendering and all
+# transport consumers. Terraform's resolved public_listener_contract is
+# intentionally independent: it is the provider-edge policy and site.yml
+# compares it with the rendered runtime manifest before a role can converge.
 xray_port: 443
 # Secondary VLESS+REALITY+Vision inbound on a non-443 port. Lets a
 # client carry both endpoints in its selector group and roll over to
@@ -220,6 +225,17 @@ hysteria_port: 443
 # hop_interval into client configs. Empty = no port-hopping.
 hysteria_port_range: ""
 hysteria_hop_interval: "30s"
+
+# Runtime listener defaults for optional roles. Role-owned nested settings may
+# override these, but pre-task rendering must not rely on role defaults.
+cdn_front_port: 8443
+naive_bind_port: 443
+amneziawg_listen_port: 51820
+subscription_port: 8444
+honeypot_port: 4443
+dns_morph_bridge_listen_port: 53
+hysteria_realm_listen_port: 8444
+split_hop_ingress_listen_port: 51821
 
 # Paths
 xray_install_root: /opt/xray

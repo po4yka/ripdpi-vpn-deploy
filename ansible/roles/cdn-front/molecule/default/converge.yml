@@ -3,6 +3,8 @@
   hosts: all
   become: true
   vars:
+    xray_port: 443
+    xray_fallback_port: 2053
     allowed_ssh_cidrs:
       - "10.0.0.0/8"
       - "2001:db8:100::/48"

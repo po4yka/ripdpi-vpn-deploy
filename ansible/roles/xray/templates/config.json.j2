@@ -1,6 +1,6 @@
 {%- set _client_by_name = {} %}
 {%- for _c in xray.clients %}{%- set _ = _client_by_name.update({_c.name: _c}) %}{%- endfor %}
-{%- set _fallback_port = (xray_fallback_port | default(0) | int) %}
+{%- set _fallback_port = (xray_fallback_port | int) %}
 {%- set _reality_enabled = vpn.enable_xray_reality | default(true) %}
 {%- if not _reality_enabled %}
   {%- set _cohorts = [] %}
@@ -8,21 +8,17 @@
 {%- elif (xray.cohorts | default([])) | length > 0 %}
   {%- set _cohorts = xray.cohorts %}
   {%- set _multi = true %}
-{%- elif _fallback_port > 0 and _fallback_port != (xray_port | default(443) | int) %}
+{%- elif _fallback_port > 0 and _fallback_port != (xray_port | int) %}
   {%- set _all_clients = (xray.clients | map(attribute='name') | list) %}
   {%- set _cohorts = [
     {
       "name": "primary",
-      "port": (xray_port | default(443)),
-      "flow_mode": (vpn.xray_flow_mode | default('vision')),
-      "finalmask": (vpn.xray_finalmask | default(false)),
+      "port": (xray_port | int),
       "clients": _all_clients,
     },
     {
       "name": "fallback",
       "port": _fallback_port,
-      "flow_mode": (vpn.xray_flow_mode | default('vision')),
-      "finalmask": (vpn.xray_finalmask | default(false)),
       "clients": _all_clients,
     },
   ] %}
@@ -30,9 +26,7 @@
 {%- else %}
   {%- set _cohorts = [{
       "name": "default",
-      "port": (xray_port | default(443)),
-      "flow_mode": (vpn.xray_flow_mode | default('vision')),
-      "finalmask": (vpn.xray_finalmask | default(false)),
+      "port": (xray_port | int),
       "clients": (xray.clients | map(attribute='name') | list),
   }] %}
   {%- set _multi = false %}
@@ -66,6 +60,11 @@
   "inbounds": [
     {%- for _coh in _cohorts %}
     {%- set _coh_clients = _coh.clients | map('extract', _client_by_name) | list %}
+    {%- set _shape = lookup(
+      'ansible.builtin.template',
+      p0_reality_shape_template,
+      template_vars={'p0_reality_shape_input': _coh}
+    ) | from_json %}
     {
       "tag": "{% if _multi %}vless-reality-{{ _coh.name }}{% else %}vless-reality{% endif %}",
       "listen": "0.0.0.0",
@@ -76,8 +75,8 @@
           {%- for client in _coh_clients %}
           {
             "id": "{{ client.uuid }}",
-            {%- if _coh.flow_mode == 'vision' %}
-            "flow": "xtls-rprx-vision",
+            {%- if _shape.client_flow %}
+            "flow": "{{ _shape.client_flow }}",
             {%- endif %}
             "email": "{{ client.name }}{% if _multi %}-{{ _coh.name }}{% endif %}"
           }{% if not loop.last %},{% endif %}
@@ -99,7 +98,7 @@
             "{{ client.short_id }}"{% if not loop.last %},{% endif %}
             {%- endfor %}
           ]
-        }{% if _coh.finalmask | default(false) %},
+        }{% if _shape.finalmask %},
         "sockopt": {
           "finalmask": "Sudoku"
         }{% endif %}
@@ -116,7 +115,7 @@
     {
       "tag": "vless-xhttp-localhost",
       "listen": "127.0.0.1",
-      "port": {{ nginx_xhttp_port | default(10085) }},
+      "port": {{ nginx_xhttp_port }},
       "protocol": "vless",
       "settings": {
         "clients": [

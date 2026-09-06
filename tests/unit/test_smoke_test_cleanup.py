@@ -194,13 +194,23 @@ def smoke_run(tmp_path):
         _replace_waits(source['tasks'], remove_failure)
         source.update(hosts='localhost', become=False, gather_facts=False)
         source['vars']['ansible_python_interpreter'] = sys.executable
+        shared_vars = yaml.safe_load(
+            (ROOT / 'ansible/group_vars/all.yml').read_text()
+        )
+        source['vars']['p0_reality_flow_mode'] = shared_vars['p0_reality_flow_mode']
+        source['vars']['p0_reality_shapes'] = shared_vars['p0_reality_shapes']
+        source['vars']['xray_port'] = shared_vars['xray_port']
+        source['vars']['hysteria_port'] = shared_vars['hysteria_port']
+        source['vars']['p0_reality_shape_template'] = str(
+            ROOT / 'ansible/templates/p0-reality-shape.json.j2'
+        )
         source['vars']['vpn'] = {
             toggle: subscription_only or (not disabled and name == protocol)
             for name, toggle in TOGGLES.items()
         }
         source['vars']['vpn_subscription_only'] = subscription_only
         secrets = {} if subscription_only or disabled else {
-            'xray': {'clients': [{'uuid': 'fixture-private-client', 'short_id': 'fixture-short'}],
+            'xray': {'clients': [{'name': 'fixture', 'uuid': 'fixture-private-client', 'short_id': 'fixture-short'}],
                      'reality_public_key': 'fixture-public-key', 'server_names': ['example.invalid']},
             'hysteria': {'clients': [{'name': 'fixture', 'password': 'fixture-private-password'}]},
             'nginx_xhttp': {'server_name': 'example.invalid'},

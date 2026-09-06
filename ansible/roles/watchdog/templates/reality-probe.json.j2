@@ -14,6 +14,11 @@
   ],
   "outbounds": [
     {%- for probe in watchdog_reality_probes %}
+    {%- set _shape = lookup(
+      'ansible.builtin.template',
+      p0_reality_shape_template,
+      template_vars={'p0_reality_shape_input': probe.p0_reality_shape_input}
+    ) | from_json %}
     {
       "tag": "watchdog-reality-{{ loop.index0 }}",
       "protocol": "vless",
@@ -23,8 +28,8 @@
           "port": {{ probe.port }},
           "users": [{
             "id": "{{ _client.uuid }}",
-            "encryption": "none"{% if probe.flow_mode != "mux" %},
-            "flow": "xtls-rprx-vision"{% endif %}
+            "encryption": "none"{% if _shape.client_flow %},
+            "flow": "{{ _shape.client_flow }}"{% endif %}
           }]
         }]
       },
@@ -36,9 +41,9 @@
           "serverName": "{{ xray.server_names[0] }}",
           "publicKey": "{{ xray.reality_public_key }}",
           "shortId": "{{ _client.short_id }}"
-        }{% if probe.finalmask %},
+        }{% if _shape.finalmask %},
         "sockopt": {"finalmask": "Sudoku"}{% endif %}
-      }{% if probe.flow_mode == "mux" %},
+      }{% if _shape.client_mux %},
       "mux": {"enabled": true, "concurrency": 8}{% endif %}
     }{% if not loop.last %},{% endif %}
     {%- endfor %}

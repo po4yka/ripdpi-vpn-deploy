@@ -18,7 +18,14 @@
 
     - name: xray config validates
       ansible.builtin.command:
-        cmd: /usr/local/bin/xray run -test -config /etc/xray/config.json
+        argv:
+          - /usr/bin/env
+          - XRAY_LOCATION_ASSET=/opt/xray/bundled-assets
+          - /usr/local/bin/xray
+          - run
+          - -test
+          - -config
+          - /etc/xray/config.json
       changed_when: false
 
     - name: nftables ruleset has the REALITY port open

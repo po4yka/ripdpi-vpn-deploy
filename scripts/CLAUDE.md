@@ -129,6 +129,20 @@ installer and requires fresh evidence even for unchanged SSH policy. Exact
 completed binding/receipt reuse avoids generating a conflicting executor
 assignment on retry; unknown state preserves evidence and refuses.
 
+**Unbound staging retirement is a separate encrypted transaction** — an
+`issued` client whose executor never acquired binding/promotion state may be
+removed only after the original disposable intent, canonical cleanup manifest,
+verified provider absence and empty Terraform state agree exactly. Keep the
+canonical `.new-client.lock` shared by all supported SOPS writers and the
+retirement client lock across the final input check, Xray cohort-reference
+cleanup, sibling SOPS edit, compare-and-replace, semantic reread and durable
+receipt. Disposable onboarding retains the original SOPS path beside its
+snapshot, binds its device, inode, and ciphertext digest during preparation,
+then reopens and compares that exact source under the original project lock
+before publishing;
+duplicate YAML mappings refuse before mutation. Normal de-onboarding must not
+inherit this recovery exception.
+
 **SSH recovery installation has an early privacy guard** — the dedicated
 controller rejects enabled Ansible debug before inventory processing, forwards
 `ANSIBLE_DEBUG=false` to override config defaults, and validates exact aliases
@@ -178,6 +192,11 @@ through Make and argv; no general site/backup task runs during installation.
 - **Shell-injection on operator-supplied input** — any script taking a host
   name, client name, or path uses `"$1"` quoting and `printf '%q'` when
   forwarding to nested shells. Never `eval`.
+- **Encrypted retirement receipts are phase-bound** — a terminal receipt beside
+  a prepared or candidate journal is foreign state and must refuse before the
+  SOPS candidate is created or published. Reject orphan candidate siblings;
+  do not infer recovery from ciphertext content without the exact journaled
+  inode and before/after digests.
 - **`mktemp` differs on macOS vs Linux** — operator workstations are both.
   When a controller owns cleanup, use an explicit template under its `TMPDIR`:
   macOS `mktemp -t` prefers the Darwin user temp directory over `TMPDIR`.

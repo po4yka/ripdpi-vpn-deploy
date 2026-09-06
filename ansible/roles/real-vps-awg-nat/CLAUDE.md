@@ -39,6 +39,9 @@ root-only variables file, and only then publishes source SHA/digest state.
   client-config, source, archive, capture, and private-log digests.
 - TCP/UDP echo is application- and firewall-allowlisted to the sentinel public
   address, rate-limited, capped at 4096 bytes, and never amplifies a datagram.
+- Evidence services share the transport sandbox floor. Echo runs without
+  capabilities, while AWG and nft loaders retain only `CAP_NET_ADMIN`; those
+  two units deliberately do not deny the systemd `@privileged` syscall group.
 
 ## Pitfalls
 

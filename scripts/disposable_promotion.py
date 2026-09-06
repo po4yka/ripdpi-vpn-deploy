@@ -27,6 +27,8 @@ INPUTS = {
     "executor_manifest",
     "cleanup_manifest",
 }
+PREPARED_INPUTS = INPUTS | {"sops_source_file"}
+SOURCE_IDENTITY = {"path", "device", "inode", "sha256"}
 OUTPUTS = {
     "liveness_config",
     "registry",
@@ -67,8 +69,7 @@ def _paths(value, fields):
             raise ValueError
 
 
-def validate_intent(value):
-    """Validate without reading capabilities or touching the executor/filesystem."""
+def _validate_intent(value, input_fields):
     fields = {
         "schema_version",
         "kind",
@@ -80,6 +81,8 @@ def validate_intent(value):
         "inputs",
         "outputs",
     }
+    if input_fields == PREPARED_INPUTS:
+        fields.add("sops_source_identity")
     try:
         if (
             not isinstance(value, dict)
@@ -99,14 +102,18 @@ def validate_intent(value):
             raise ValueError
         if len(json.dumps(value).encode()) > 32768:
             raise ValueError
-        _paths(value["inputs"], INPUTS)
+        _paths(value["inputs"], input_fields)
         _paths(value["outputs"], OUTPUTS)
+        sops_source = value["inputs"].get(
+            "sops_source_file", value["inputs"]["sops_file"]
+        )
         paths = [
             *value["inputs"].values(),
             *value["outputs"].values(),
             value["outputs"]["registry"] + ".pending.json",
             value["outputs"]["registry"] + ".lock",
             value["outputs"]["authority"] + ".lock",
+            sops_source + ".new-client.lock",
         ]
         if len(paths) != len(set(paths)):
             raise ValueError
@@ -140,6 +147,41 @@ def validate_intent(value):
         return copy.deepcopy(value)
     except (ValueError, TypeError, KeyError, jsonschema.ValidationError):
         raise OnboardingError("onboarding-intent-refused") from None
+
+
+def validate_intent(value):
+    """Validate an operator or controller-prepared intent without file I/O."""
+    if isinstance(value, dict) and isinstance(value.get("inputs"), dict):
+        if set(value["inputs"]) == PREPARED_INPUTS:
+            return _validate_prepared_intent(value)
+    return _validate_intent(value, INPUTS)
+
+
+def _validate_prepared_intent(value):
+    """Validate the controller-only snapshot plus its canonical SOPS source."""
+    prepared = _validate_intent(value, PREPARED_INPUTS)
+    identity = prepared["sops_source_identity"]
+    source = prepared["inputs"]["sops_source_file"]
+    try:
+        if (
+            not isinstance(identity, dict)
+            or set(identity) != SOURCE_IDENTITY
+            or identity["path"] != source
+            or not isinstance(identity["path"], str)
+            or not Path(identity["path"]).is_absolute()
+            or str(Path(identity["path"])) != identity["path"]
+            or type(identity["device"]) is not int
+            or not 0 <= identity["device"] <= 2**64 - 1
+            or type(identity["inode"]) is not int
+            or not 1 <= identity["inode"] <= 2**64 - 1
+            or not isinstance(identity["sha256"], str)
+            or re.fullmatch(r"[0-9a-f]{64}", identity["sha256"]) is None
+            or source == prepared["inputs"]["sops_file"]
+        ):
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
+        raise OnboardingError("onboarding-intent-refused")
+    return prepared
 
 
 def _decrypt(sops, age, output, environment):
@@ -198,7 +240,9 @@ def prepare_intent(intent, host, memberships, directory, deployed_secrets, envir
     import os
     import yaml
 
-    value = validate_intent(intent)
+    # Only the controller may add the canonical source SOPS path after it has
+    # snapshotted the original operator intent.
+    value = _validate_intent(intent, INPUTS)
     guard = _module("staging-cleanup-guard")
     plaintext = directory / "onboarding-secrets.yaml"
     try:
@@ -218,13 +262,30 @@ def prepare_intent(intent, host, memberships, directory, deployed_secrets, envir
             os.close(fd)
             if os.path.lexists(output):
                 guard._private_read(output, "onboarding output", max_bytes=262144)
+        sops_source_file = value["inputs"]["sops_file"]
+        source_raw, source_identity = guard._private_snapshot(
+            Path(sops_source_file), "onboarding input", max_bytes=262144
+        )
         for name, path in value["inputs"].items():
-            raw = guard._private_read(Path(path), "onboarding input", max_bytes=262144)
+            raw = (
+                source_raw
+                if name == "sops_file"
+                else guard._private_read(
+                    Path(path), "onboarding input", max_bytes=262144
+                )
+            )
             # SOPS infers its store from the filename; this capability is YAML.
             suffix = ".yaml" if name == "sops_file" else ""
             snapshot = directory / ("onboarding-" + name + suffix)
             guard._private_write_new(snapshot, raw, "onboarding snapshot")
             value["inputs"][name] = str(snapshot)
+        value["inputs"]["sops_source_file"] = sops_source_file
+        value["sops_source_identity"] = {
+            "path": sops_source_file,
+            "device": source_identity[0],
+            "inode": source_identity[1],
+            "sha256": hashlib.sha256(source_raw).hexdigest(),
+        }
         _cleanup_target(value, host)
         import disposable_liveness_executor as executor
         import time
@@ -291,15 +352,18 @@ def finalize(intent, environment, *, clock=None):
     fresh evaluator must still pass before SSH prepare and after SSH apply.
     """
     import hashlib
+    import hmac
     import io
     import os
     import time
+    from contextlib import ExitStack
     import install_liveness_sentinel as installer
     import disposable_liveness_executor as executor
 
     guard = _module("staging-cleanup-guard")
+    project_locks = ExitStack()
     try:
-        value = validate_intent(intent)
+        value = _validate_prepared_intent(intent)
         outputs = {name: Path(path) for name, path in value["outputs"].items()}
         inputs = {name: Path(path) for name, path in value["inputs"].items()}
         sentinel = value["liveness"]["sentinels"][0]
@@ -334,11 +398,32 @@ def finalize(intent, environment, *, clock=None):
         # The ciphertext binds the enrolled private key; decryption capability
         # and its key were compared with deployment plaintext by preflight.
         # Completed reuse therefore never reopens the AWG private key.
+        source_identity = value["sops_source_identity"]
+        source_path = Path(source_identity["path"])
+        project_lock = source_path.with_name(source_path.name + ".new-client.lock")
+        # Retirement and every supported SOPS writer use this lock. Acquire it
+        # before the first ciphertext read and retain it through publication.
+        project_locks.enter_context(executor._exclusive_locks((project_lock,)))
         scope = {key: value[key] for key in value if key != "inputs"}
         raw_inputs = {
             key: guard._private_read(inputs[key], "onboarding input", max_bytes=262144)
             for key in ("sops_file", "executor_manifest", "cleanup_manifest")
         }
+        source_sops, observed_source_identity = guard._private_snapshot(
+            source_path, "onboarding input", max_bytes=262144
+        )
+        if (
+            observed_source_identity
+            != (source_identity["device"], source_identity["inode"])
+            or not hmac.compare_digest(
+                hashlib.sha256(source_sops).hexdigest(), source_identity["sha256"]
+            )
+            or not hmac.compare_digest(source_sops, raw_inputs["sops_file"])
+        ):
+            raise ValueError
+        scope["sops_project_lock_sha256"] = hashlib.sha256(
+            str(project_lock).encode("utf-8")
+        ).hexdigest()
         scope["input_sha256"] = {
             key: hashlib.sha256(raw).hexdigest() for key, raw in raw_inputs.items()
         }
@@ -361,8 +446,10 @@ def finalize(intent, environment, *, clock=None):
         runner = lambda command, **kwargs: installer._run(
             list(command), environment=clean, **kwargs
         )
-        lock = outputs["authority"].with_name(outputs["authority"].name + ".lock")
-        with executor._exclusive_locks((lock,)):
+        authority_lock = outputs["authority"].with_name(
+            outputs["authority"].name + ".lock"
+        )
+        with executor._exclusive_locks((authority_lock,)):
             if os.path.lexists(outputs["authority"]):
                 authority, _ = executor._read_private(outputs["authority"])
                 if (
@@ -506,3 +593,5 @@ def finalize(intent, environment, *, clock=None):
             return outputs["promotion_config"]
     except (ValueError, KeyError, TypeError, OSError):
         raise OnboardingError("onboarding-finalization-refused") from None
+    finally:
+        project_locks.close()

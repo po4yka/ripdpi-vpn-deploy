@@ -16,3 +16,33 @@
       environment:
         ANSIBLE_ROLES_PATH: "{{ lookup('env', 'MOLECULE_SCENARIO_DIRECTORY') }}/../../.."
       changed_when: false
+
+- name: Prove malformed Hysteria YAML fails before publication
+  hosts: all
+  become: true
+  tasks:
+    - name: Stage malformed Hysteria candidate
+      ansible.builtin.copy:
+        dest: /var/tmp/hysteria-invalid.yaml
+        mode: "0600"
+        content: "listen: {}\n"
+
+    - name: Reject malformed Hysteria candidate
+      ansible.builtin.command:
+        argv:
+          - /usr/local/libexec/ripdpi-validate-yaml-mapping
+          - --profile
+          - hysteria
+          - /var/tmp/hysteria-invalid.yaml
+      register: _invalid_hysteria
+      changed_when: false
+      failed_when: false
+
+    - name: Require malformed Hysteria candidate refusal
+      ansible.builtin.assert:
+        that: _invalid_hysteria.rc != 0
+
+    - name: Remove malformed Hysteria candidate
+      ansible.builtin.file:
+        path: /var/tmp/hysteria-invalid.yaml
+        state: absent

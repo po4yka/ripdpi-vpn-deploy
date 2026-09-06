@@ -23,7 +23,7 @@ server {
     # rewrites X-Forwarded-For from CF-Connecting-IP via the real-IP
     # restoration above, so Xray sees the visitor IP, not the CF egress.
     location {{ xray.xhttp_path | default('/app-sync') }} {
-        proxy_pass http://127.0.0.1:{{ nginx_xhttp_port | default(10085) }};
+        proxy_pass http://127.0.0.1:10085;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

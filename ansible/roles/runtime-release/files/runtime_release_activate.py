@@ -984,6 +984,7 @@ def _candidate_digest(
     *,
     uid: int | None = None,
     gid: int | None = None,
+    candidate_mode: int = 0o755,
 ) -> str:
     _revalidate_directory(release)
     _validate_name(binary_name)
@@ -996,12 +997,14 @@ def _candidate_digest(
         info = os.fstat(descriptor)
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
             raise UnsafeState("unsafe-candidate")
-        if not info.st_mode & stat.S_IXUSR:
+        if candidate_mode not in {0o644, 0o755}:
+            raise UnsafeState("unsafe-candidate-mode")
+        if candidate_mode == 0o755 and not info.st_mode & stat.S_IXUSR:
             raise UnsafeState("non-executable-candidate")
         if uid is not None and (
             info.st_uid != uid
             or info.st_gid != gid
-            or stat.S_IMODE(info.st_mode) != 0o755
+            or stat.S_IMODE(info.st_mode) != candidate_mode
         ):
             raise UnsafeState("unsafe-candidate")
         digest = hashlib.sha256()
@@ -1119,7 +1122,10 @@ def _atomic_install_candidate(
     expected_digest: str,
     uid: int,
     gid: int,
+    candidate_mode: int = 0o755,
 ) -> None:
+    if candidate_mode not in {0o644, 0o755}:
+        raise UnsafeState("unsafe-candidate-mode")
     try:
         os.stat(binary_name, dir_fd=release.descriptor, follow_symlinks=False)
     except FileNotFoundError:
@@ -1133,7 +1139,7 @@ def _atomic_install_candidate(
         if (
             not stat.S_ISREG(source_info.st_mode)
             or source_info.st_nlink != 1
-            or not source_info.st_mode & stat.S_IXUSR
+            or (candidate_mode == 0o755 and not source_info.st_mode & stat.S_IXUSR)
         ):
             raise UnsafeState("unsafe-staged-candidate")
         os.lseek(source, 0, os.SEEK_SET)
@@ -1155,7 +1161,7 @@ def _atomic_install_candidate(
             if digest.hexdigest() != expected_digest:
                 raise UnsafeState("staged-candidate-digest-mismatch")
             os.fchown(destination, uid, gid)
-            os.fchmod(destination, 0o755)
+            os.fchmod(destination, candidate_mode)
             os.fsync(destination)
         finally:
             os.close(destination)
@@ -1187,6 +1193,7 @@ def _validate_or_publish_receipt(
     owner: str,
     group: str,
     staged_candidate: int | None,
+    candidate_mode: int = 0o755,
 ) -> _PublicationOutcome:
     _validate_digest(artifact_sha256)
     _validate_digest(candidate_sha256)
@@ -1223,10 +1230,15 @@ def _validate_or_publish_receipt(
                 candidate_sha256,
                 uid,
                 gid,
+                candidate_mode,
             )
             candidate_installed = True
         actual_candidate_digest = _candidate_digest(
-            release, binary_name, uid=uid, gid=gid
+            release,
+            binary_name,
+            uid=uid,
+            gid=gid,
+            candidate_mode=candidate_mode,
         )
         if actual_candidate_digest != candidate_sha256:
             raise UnsafeState("candidate-digest-mismatch")
@@ -1291,6 +1303,7 @@ def _open_staged_candidate(
     candidate_sha256: str,
     uid: int,
     gid: int,
+    candidate_mode: int = 0o755,
 ) -> int:
     """Open the receipt-bound candidate without following any path component."""
     root, staging, transaction = _open_transaction(
@@ -1340,7 +1353,7 @@ def _open_staged_candidate(
                 or info.st_nlink != 1
                 or info.st_uid != uid
                 or info.st_gid != gid
-                or not info.st_mode & stat.S_IXUSR
+                or (candidate_mode == 0o755 and not info.st_mode & stat.S_IXUSR)
             ):
                 raise UnsafeState("unsafe-staged-candidate")
             digest = hashlib.sha256()
@@ -1384,11 +1397,14 @@ def activate(
     artifact_name: str | None = None,
     stage_name: str | None = None,
     requires_artifact: bool = False,
+    candidate_mode: int = 0o755,
 ) -> dict[str, object]:
     _validate_absolute(install_root)
     _validate_absolute(public_link)
     _validate_name(version)
     _validate_name(binary_name)
+    if candidate_mode not in {0o644, 0o755}:
+        raise UnsafeState("unsafe-candidate-mode")
     if public_link == install_root or install_root in public_link.parents:
         raise UnsafeState("public-link-inside-install-root")
     if (owner is None) != (group is None):
@@ -1512,6 +1528,7 @@ def activate(
                 owner,
                 group,
                 None,
+                candidate_mode,
             )
             if outcome is _PublicationOutcome.NEEDS_STAGED_CANDIDATE:
                 if not requires_artifact:
@@ -1538,6 +1555,7 @@ def activate(
                     candidate_sha256,
                     storage_uid,
                     storage_gid,
+                    candidate_mode,
                 )
                 try:
                     outcome = _validate_or_publish_receipt(
@@ -1552,6 +1570,7 @@ def activate(
                         owner,
                         group,
                         staged_descriptor,
+                        candidate_mode,
                     )
                 finally:
                     os.close(staged_descriptor)
@@ -1562,7 +1581,11 @@ def activate(
             releases = _open_child_directory(root_directory, "releases")
             release_directory = _open_child_directory(releases, version)
             try:
-                _candidate_digest(release_directory, binary_name)
+                _candidate_digest(
+                    release_directory,
+                    binary_name,
+                    candidate_mode=candidate_mode,
+                )
             finally:
                 release_directory.close()
                 releases.close()
@@ -1678,6 +1701,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--artifact-sha256")
     parser.add_argument("--candidate-sha256")
     parser.add_argument("--artifact-type")
+    parser.add_argument("--candidate-mode", choices=("0644", "0755"), default="0755")
     parser.add_argument("--arch-key")
     parser.add_argument("--arch-slug")
     parser.add_argument("--owner")
@@ -1800,6 +1824,7 @@ def main(argv: list[str] | None = None) -> int:
                 artifact_name=args.artifact_name,
                 stage_name=args.stage_name,
                 requires_artifact=args.requires_artifact == "true",
+                candidate_mode=int(args.candidate_mode, 8),
             )
     except CompensationIncomplete:
         print(json.dumps({"status": "compensation_incomplete", "changed": False}))

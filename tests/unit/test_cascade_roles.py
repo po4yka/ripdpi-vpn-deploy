@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import copy
+import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[2]
 ANSIBLE = ROOT / "ansible"
@@ -15,12 +19,21 @@ ANSIBLE = ROOT / "ansible"
 def test_roles_have_required_scaffold_and_distinct_namespaces() -> None:
     for role in ("cascade-ingress", "cascade-egress"):
         root = ANSIBLE / "roles" / role
-        for relative in ("CLAUDE.md", "tasks/main.yml", "defaults/main.yml", "handlers/main.yml"):
+        for relative in (
+            "CLAUDE.md",
+            "tasks/main.yml",
+            "defaults/main.yml",
+            "handlers/main.yml",
+        ):
             assert (root / relative).is_file()
         assert list((root / "templates").glob("*.j2"))
 
-    ingress_policy = (ANSIBLE / "roles/cascade-ingress/templates/cascade-ingress.nft.j2").read_text()
-    egress_policy = (ANSIBLE / "roles/cascade-egress/templates/cascade-egress.nft.j2").read_text()
+    ingress_policy = (
+        ANSIBLE / "roles/cascade-ingress/templates/cascade-ingress.nft.j2"
+    ).read_text()
+    egress_policy = (
+        ANSIBLE / "roles/cascade-egress/templates/cascade-egress.nft.j2"
+    ).read_text()
     assert "cascade_ingress" in ingress_policy
     assert "cascade_egress" in egress_policy
     assert "split_hop" not in ingress_policy + egress_policy
@@ -29,10 +42,353 @@ def test_roles_have_required_scaffold_and_distinct_namespaces() -> None:
 def test_ingress_preflights_dataset_before_serving_configuration() -> None:
     tasks = (ANSIBLE / "roles/cascade-ingress/tasks/main.yml").read_text()
 
-    assert tasks.index("Preflight classifier dataset") < tasks.index("Render disabled classifier integration contract")
-    assert tasks.index("Preflight classifier dataset") < tasks.index("Render cascade ingress tunnel")
+    assert tasks.index("Preflight classifier dataset") < tasks.index(
+        "Render disabled classifier integration contract"
+    )
+    assert tasks.index("Preflight classifier dataset") < tasks.index(
+        "Render cascade ingress tunnel"
+    )
     assert "--check-dataset" in tasks
     assert "systemd_service" not in tasks
+
+
+@pytest.mark.parametrize(
+    "historical_state",
+    [
+        "service",
+        "interface",
+        "rule",
+        "route",
+        "nft",
+        "probe-error",
+        "route-probe-error",
+    ],
+)
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_installed_ansible_refuses_historical_cascade_state_before_writes(
+    tmp_path: Path, historical_state: str, check_mode: bool
+) -> None:
+    """The live read-only preflight must gate every later role write."""
+    executable = shutil.which("ansible-playbook")
+    assert executable, "ansible-playbook is required for cascade preflight proof"
+
+    tasks = yaml.safe_load(
+        (ANSIBLE / "roles/cascade-ingress/tasks/main.yml").read_text(encoding="utf-8")
+    )
+    names = [task["name"] for task in tasks]
+    selected = copy.deepcopy(
+        tasks[
+            names.index(
+                "Inspect historical cascade WireGuard service state"
+            ) : names.index("Install cascade ingress packages")
+        ]
+    )
+    marker = tmp_path / "unexpected-role-write"
+    selected.append(
+        {
+            "name": "Fixture later role write",
+            "ansible.builtin.command": {"argv": ["cascade-write-marker"]},
+            "check_mode": False,
+        }
+    )
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    scripts = {
+        "systemctl": """#!/bin/sh
+if [ \"$CASCADE_STATE\" = service ]; then exit 0; fi
+exit 3
+""",
+        "ip": """#!/bin/sh
+case \"$1\" in
+  link) [ \"$CASCADE_STATE\" = interface ] && exit 0; exit 1 ;;
+  rule)
+    [ \"$CASCADE_STATE\" = probe-error ] && exit 77
+    [ \"$CASCADE_STATE\" = rule ] && printf '1000: from all lookup 203\\n'
+    exit 0 ;;
+  route)
+    [ \"$CASCADE_STATE\" = route-probe-error ] && {
+      printf 'RTNETLINK answers: Operation not permitted\\n' >&2
+      exit 2
+    }
+    [ \"$CASCADE_STATE\" = route ] && printf 'default dev csi0\\n'
+    exit 0 ;;
+  *) exit 64 ;;
+esac
+""",
+        "nft": """#!/bin/sh
+[ \"$1 $2 $3\" = \"list tables \" ] || exit 64
+[ \"$CASCADE_STATE\" = nft ] && printf 'table inet cascade_ingress\\n'
+exit 0
+""",
+        "cascade-write-marker": """#!/bin/sh
+: > \"$CASCADE_MARKER\"
+""",
+    }
+    for name, content in scripts.items():
+        path = bin_dir / name
+        path.write_text(content, encoding="utf-8")
+        path.chmod(0o700)
+
+    playbook = tmp_path / "cascade-preflight.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "become": False,
+                    "vars": {
+                        "ansible_python_interpreter": sys.executable,
+                        "cascade_ingress": {
+                            "wg_interface": "csi0",
+                            "routing_table": 203,
+                        },
+                    },
+                    "tasks": selected,
+                }
+            ],
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\nretry_files_enabled = False\n", encoding="utf-8")
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("ANSIBLE_")
+    }
+    environment.update(
+        {
+            "ANSIBLE_CONFIG": str(config),
+            "PATH": f"{bin_dir}{os.pathsep}{environment['PATH']}",
+            "CASCADE_STATE": historical_state,
+            "CASCADE_MARKER": str(marker),
+        }
+    )
+    command = [executable, "-i", "localhost,", "-c", "local", str(playbook)]
+    if check_mode:
+        command.append("--check")
+    result = subprocess.run(
+        command, capture_output=True, text=True, env=environment, timeout=15
+    )
+
+    assert result.returncode != 0
+    assert not marker.exists()
+    if historical_state in {"probe-error", "route-probe-error"}:
+        expected = (
+            "Inspect historical cascade policy-routing state"
+            if historical_state == "probe-error"
+            else "Inspect historical cascade routing-table state"
+        )
+        assert expected in result.stdout
+    else:
+        assert "Refusing cascade-ingress because historical" in result.stdout
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_installed_ansible_allows_clean_cascade_preflight_before_later_write(
+    tmp_path: Path, check_mode: bool
+) -> None:
+    """A clean host proceeds through the same real task slice, including --check."""
+    # Reuse the parametrized regression's fixture implementation with its
+    # deterministic command stubs; its clean-state assertion is intentionally
+    # separate so both success and every refusal case remain visible.
+    executable = shutil.which("ansible-playbook")
+    assert executable, "ansible-playbook is required for cascade preflight proof"
+
+    tasks = yaml.safe_load(
+        (ANSIBLE / "roles/cascade-ingress/tasks/main.yml").read_text(encoding="utf-8")
+    )
+    names = [task["name"] for task in tasks]
+    selected = copy.deepcopy(
+        tasks[
+            names.index(
+                "Inspect historical cascade WireGuard service state"
+            ) : names.index("Install cascade ingress packages")
+        ]
+    )
+    marker = tmp_path / "later-role-write"
+    selected.append(
+        {
+            "name": "Fixture later role write",
+            "ansible.builtin.command": {"argv": ["cascade-write-marker"]},
+            "check_mode": False,
+        }
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for name, content in {
+        "systemctl": "#!/bin/sh\nexit 3\n",
+        "ip": '#!/bin/sh\n[ "$1" = link ] && exit 1\nexit 0\n',
+        "nft": "#!/bin/sh\nexit 0\n",
+        "cascade-write-marker": '#!/bin/sh\n: > "$CASCADE_MARKER"\n',
+    }.items():
+        path = bin_dir / name
+        path.write_text(content, encoding="utf-8")
+        path.chmod(0o700)
+    playbook = tmp_path / "cascade-clean-preflight.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "become": False,
+                    "vars": {
+                        "ansible_python_interpreter": sys.executable,
+                        "cascade_ingress": {
+                            "wg_interface": "csi0",
+                            "routing_table": 203,
+                        },
+                    },
+                    "tasks": selected,
+                }
+            ],
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\nretry_files_enabled = False\n", encoding="utf-8")
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("ANSIBLE_")
+    }
+    environment.update(
+        {
+            "ANSIBLE_CONFIG": str(config),
+            "PATH": f"{bin_dir}{os.pathsep}{environment['PATH']}",
+            "CASCADE_MARKER": str(marker),
+        }
+    )
+    command = [executable, "-i", "localhost,", "-c", "local", str(playbook)]
+    if check_mode:
+        command.append("--check")
+    result = subprocess.run(
+        command, capture_output=True, text=True, env=environment, timeout=15
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert marker.is_file()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_installed_ansible_allows_only_the_kernel_empty_route_table_reply(
+    tmp_path: Path, check_mode: bool
+) -> None:
+    """A missing FIB table is a clean host, not historical route state."""
+    executable = shutil.which("ansible-playbook")
+    assert executable, "ansible-playbook is required for cascade preflight proof"
+
+    tasks = yaml.safe_load(
+        (ANSIBLE / "roles/cascade-ingress/tasks/main.yml").read_text(encoding="utf-8")
+    )
+    names = [task["name"] for task in tasks]
+    selected = copy.deepcopy(
+        tasks[
+            names.index("Inspect historical cascade WireGuard service state") : names.index(
+                "Install cascade ingress packages"
+            )
+        ]
+    )
+    marker = tmp_path / "later-role-write"
+    selected.append(
+        {
+            "name": "Fixture later role write",
+            "ansible.builtin.command": {"argv": ["cascade-write-marker"]},
+            "check_mode": False,
+        }
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for name, content in {
+        "systemctl": "#!/bin/sh\nexit 3\n",
+        "ip": """#!/bin/sh
+case \"$1\" in
+  link) exit 1 ;;
+  rule) exit 0 ;;
+  route)
+    printf 'Error: ipv4: FIB table does not exist.\\nDump terminated\\n' >&2
+    exit 2 ;;
+  *) exit 64 ;;
+esac
+""",
+        "nft": "#!/bin/sh\nexit 0\n",
+        "cascade-write-marker": '#!/bin/sh\n: > "$CASCADE_MARKER"\n',
+    }.items():
+        path = bin_dir / name
+        path.write_text(content, encoding="utf-8")
+        path.chmod(0o700)
+    playbook = tmp_path / "cascade-empty-route-table.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "become": False,
+                    "vars": {
+                        "ansible_python_interpreter": sys.executable,
+                        "cascade_ingress": {
+                            "wg_interface": "csi0",
+                            "routing_table": 203,
+                        },
+                    },
+                    "tasks": selected,
+                }
+            ],
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\nretry_files_enabled = False\n", encoding="utf-8")
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("ANSIBLE_")
+    }
+    environment.update(
+        {
+            "ANSIBLE_CONFIG": str(config),
+            "PATH": f"{bin_dir}{os.pathsep}{environment['PATH']}",
+            "CASCADE_MARKER": str(marker),
+        }
+    )
+    command = [executable, "-i", "localhost,", "-c", "local", str(playbook)]
+    if check_mode:
+        command.append("--check")
+    result = subprocess.run(
+        command, capture_output=True, text=True, env=environment, timeout=15
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert marker.is_file()
+
+
+def test_ingress_default_route_is_inert_and_documents_scoped_mark_routing() -> None:
+    role = ANSIBLE / "roles/cascade-ingress"
+    config = (role / "templates/cascade-ingress.conf.j2").read_text()
+    policy = (role / "templates/cascade-ingress.nft.j2").read_text()
+
+    assert "AllowedIPs = {{ cascade_ingress.egress_allowed_ips }}" in config
+    assert "Table = off" in config
+    assert "fwmark {{ cascade_ingress.fwmark }}" in config
+    assert "table {{ cascade_ingress.routing_table }}" in config
+    assert "main routing table" in config
+    assert "Egress forwarding/NAT is a separate activation contract" in config
+    assert "ip route replace default" not in config
+    assert "ip rule add" not in config
+    assert "masquerade" not in policy
+    assert "forward" not in policy
+
+    contract = str(yaml.safe_load((role / "tasks/main.yml").read_text())[1])
+    assert "cascade_ingress.routing_table | int > 0" in contract
+    assert "cascade_ingress.fwmark | int > 0" in contract
 
 
 def test_ingress_installs_concrete_proxy_but_unit_is_repository_disabled() -> None:
@@ -73,8 +429,13 @@ def test_neither_role_has_an_operator_service_activation_switch() -> None:
 
 def test_each_role_starts_with_direct_execution_colocation_guard() -> None:
     for role in ("cascade-ingress", "cascade-egress"):
-        tasks = yaml.safe_load((ANSIBLE / "roles" / role / "tasks/main.yml").read_text())
-        assert tasks[0]["name"] == "Assert cascade and split-hop role families are not co-located"
+        tasks = yaml.safe_load(
+            (ANSIBLE / "roles" / role / "tasks/main.yml").read_text()
+        )
+        assert (
+            tasks[0]["name"]
+            == "Assert cascade and split-hop role families are not co-located"
+        )
         assert tasks[0]["tags"] == ["always"]
 
 
@@ -87,8 +448,12 @@ def test_each_role_starts_with_direct_execution_colocation_guard() -> None:
         ("cascade-egress", "enable_split_hop_egress"),
     ],
 )
-def test_direct_role_guard_covers_every_cross_family_pairing(cascade_role: str, split_toggle: str) -> None:
-    first = yaml.safe_load((ANSIBLE / "roles" / cascade_role / "tasks/main.yml").read_text())[0]
+def test_direct_role_guard_covers_every_cross_family_pairing(
+    cascade_role: str, split_toggle: str
+) -> None:
+    first = yaml.safe_load(
+        (ANSIBLE / "roles" / cascade_role / "tasks/main.yml").read_text()
+    )[0]
     guard = str(first)
 
     assert split_toggle in guard
@@ -137,7 +502,38 @@ def test_site_has_attestation_and_colocation_guards_before_roles() -> None:
     assert ".cascade_governance_status == 'live-authorized'" in site
     assert site.index("mutually exclusive") < first_role
     assert site.index("classifier owns every egress decision") < first_role
-    assert "enable_cascade_ingress" in site[site.index("classifier owns every egress decision") : site.index("verify cascade ASN attestation")]
-    assert "enable_warp_outbound" in site[site.index("classifier owns every egress decision") : site.index("verify cascade ASN attestation")]
+    assert (
+        "enable_cascade_ingress"
+        in site[
+            site.index("classifier owns every egress decision") : site.index(
+                "verify cascade ASN attestation"
+            )
+        ]
+    )
+    assert (
+        "enable_warp_outbound"
+        in site[
+            site.index("classifier owns every egress decision") : site.index(
+                "verify cascade ASN attestation"
+            )
+        ]
+    )
     assert site.index("role: cascade-ingress") > first_role
     assert site.index("role: cascade-egress") > first_role
+
+
+def test_cascade_molecule_prepares_deterministic_nft_preflight_fixture() -> None:
+    """Molecule must not confuse an unavailable netlink socket with host state."""
+    for scenario in ("forced-empty", "populated"):
+        prepare = yaml.safe_load(
+            (ANSIBLE / f"roles/cascade-ingress/molecule/{scenario}/prepare.yml").read_text()
+        )[0]
+        task = next(
+            item for item in prepare["tasks"]
+            if item["name"] == "Install deterministic nftables preflight fixture"
+        )
+        copy_task = task["ansible.builtin.copy"]
+        assert copy_task["dest"] == "/usr/local/bin/nft"
+        assert copy_task["mode"] == "0755"
+        assert '"$1 $2" = "list tables"' in copy_task["content"]
+        assert "exit 64" in copy_task["content"]

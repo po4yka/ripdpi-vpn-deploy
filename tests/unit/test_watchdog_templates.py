@@ -22,15 +22,19 @@ def _multi_cohort_vars() -> dict:
         {
             "name": "primary",
             "port": 443,
-            "flow_mode": "vision",
-            "finalmask": False,
+            "p0_reality_shape_input": {
+                "flow_mode": "vision",
+                "finalmask": False,
+            },
             "clients": ["watchdog"],
         },
         {
             "name": "alternate",
             "port": 8443,
-            "flow_mode": "mux",
-            "finalmask": True,
+            "p0_reality_shape_input": {
+                "flow_mode": "mux",
+                "finalmask": True,
+            },
             "clients": ["watchdog"],
         },
     ]
@@ -56,6 +60,16 @@ def test_probe_config_maps_every_cohort_to_a_distinct_socks_inbound():
     assert "flow" not in config["outbounds"][1]["settings"]["vnext"][0]["users"][0]
     assert config["outbounds"][1]["mux"]["enabled"] is True
     assert config["outbounds"][1]["streamSettings"]["sockopt"]["finalmask"] == "Sudoku"
+
+
+def test_probe_config_refuses_an_unknown_p0_shape() -> None:
+    variables = _multi_cohort_vars()
+    variables["watchdog_reality_probes"][0]["p0_reality_shape_input"][
+        "flow_mode"
+    ] = "unknown-shape"
+
+    with pytest.raises(UndefinedError, match="unknown-shape"):
+        render_template(TEMPLATES / "reality-probe.json.j2", variables)
 
 
 def test_environment_lists_every_probe_without_client_credentials():

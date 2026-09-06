@@ -23,6 +23,7 @@
   ansible.builtin.apt:
     name:
       - restic
+      - rsync
     state: present
   when: (subscription.mirror.backend | default('rsync')) == 'restic'
 
@@ -68,6 +69,15 @@
   ansible.builtin.template:
     src: vpn-sub-mirror.sh.j2
     dest: /usr/local/bin/vpn-sub-mirror.sh
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart vpn-sub-mirror timer
+
+- name: Render atomic mirror publisher
+  ansible.builtin.template:
+    src: vpn-sub-mirror.py.j2
+    dest: /usr/local/lib/vpn-sub-mirror.py
     owner: root
     group: root
     mode: "0755"

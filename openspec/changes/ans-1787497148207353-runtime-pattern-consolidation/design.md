@@ -14,7 +14,7 @@ Ten duplication clusters and two scaffold hazards, quantified with per-site cita
 - Port defaults move to all.yml rather than a facts-computed manifest: pre_task scope cannot load role defaults (the manifest comment documents why), and group_vars is already the declared surface.
 - split-hop egress adopts the standalone validated-policy pattern (same family as cascade/split-hop-ingress) instead of extending hook syntax: restores validate-before-load discipline.
 - Collision asserts retire only after the checker demonstrably covers each pair (proof recorded in the commit), keeping defense-in-depth documentation.
-- Cascade scaffold safety prefers Table = off + documented intent over narrowing AllowedIPs: preserves the topology's activation design space.
+- Cascade scaffold safety prefers Table = off + documented intent over narrowing AllowedIPs: preserves the topology's activation design space. Convergence refuses before writes when an active or residual historical ingress service, interface, routing entry, or nftables table is present; cleanup is a separately authorized recovery action.
 
 ## Contracts and ownership
 

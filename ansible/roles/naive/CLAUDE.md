@@ -2,12 +2,16 @@
 
 ## Design decisions
 
+**Native validation and liveness are one lifecycle** — Caddyfile publication
+uses the pinned caddy-naive `validate` command and the restart handler waits for
+the service to become active before convergence may succeed.
+
 **Optional, off by default** — `vpn.enable_naive: false`. NaiveProxy is a
 useful tactical option for HTTP/2 + Chromium TLS fingerprint, but its v147
 preamble change (see `docs/CLIENT-NOTES.md`) burned an upgrade cycle.
 
-**Mutually exclusive with nginx-xhttp** — both want 443/tcp; a pre-flight
-assert blocks deployment if `vpn.enable_nginx_xhttp` is also true. The role
+**Mutually exclusive with nginx-xhttp** — both want 443/tcp; the global
+listener manifest guard rejects the pair before any role runs. The role
 runs caddy-naive standalone with its own cert (from SOPS) on port 443 —
 there is no shared listener.
 

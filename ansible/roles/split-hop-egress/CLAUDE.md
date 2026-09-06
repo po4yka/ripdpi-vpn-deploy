@@ -15,10 +15,11 @@ do not anticipate at the inter-VPS hop. Standard WG is the minimum-
 surface tunnel. An AWG-shaped variant can drop in later by swapping
 the config template + adding a cohort file.
 
-**Scoped nft table, not global** — PostUp adds a table named
-`split_hop_egress` and PostDown deletes it. This does not preempt the
-`firewall` role's owned tables; the tables compose. The firewall role
-still owns its input filter and NAT tables; this role only adds
+**Scoped nft table, not global** — Ansible validates the standalone policy
+before loading a table named `split_hop_egress`. A transactional nft batch
+replaces only that table, independently from wg-quick lifecycle. This does not
+preempt the `firewall` role's owned tables; the tables compose. The firewall
+role still owns its input filter and NAT tables; this role only adds
 postrouting NAT for forwarded traffic.
 
 ## What's done well
@@ -32,6 +33,11 @@ postrouting NAT for forwarded traffic.
 - **Idempotent at the systemd level** — `wg-quick@<iface>.service`
   picks up config changes on restart; the handler chain handles the
   reload.
+- **Policy load is drift-aware** — Ansible loads the validated policy when its
+  file changes, its scoped table is absent, or its observed NAT shape drifts;
+  an unchanged converge is a no-op. The JSON shape validator accepts nft's
+  versioned metadata and runtime handle fields while requiring one exact NAT
+  table, chain and rule.
 
 ## Pitfalls
 

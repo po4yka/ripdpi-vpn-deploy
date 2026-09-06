@@ -1,6 +1,7 @@
 """Fail-closed checks for Molecule's offline dependencies and scenario inputs."""
 
 import base64
+from hashlib import sha256
 import importlib.util
 import json
 import os
@@ -9,6 +10,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+import zipfile
 
 import yaml
 
@@ -69,6 +71,32 @@ def _published_variables() -> dict:
     }
 
 
+def test_full_stack_inventories_mirror_listener_defaults() -> None:
+    canonical = yaml.safe_load(
+        (REPO_ROOT / "ansible/group_vars/all.yml").read_text()
+    )
+    names = {
+        "xray_port",
+        "xray_fallback_port",
+        "nginx_xhttp_public_port",
+        "nginx_xhttp_fallback_port",
+        "hysteria_port",
+        "amneziawg_listen_port",
+        "subscription_port",
+        "honeypot_port",
+        "dns_morph_bridge_listen_port",
+        "hysteria_realm_listen_port",
+        "cdn_front_port",
+        "naive_bind_port",
+        "split_hop_ingress_listen_port",
+    }
+    expected = {name: canonical[name] for name in names}
+
+    for scenario in (_full_stack_scenario(), _published_scenario()):
+        variables = scenario["provisioner"]["inventory"]["group_vars"]["all"]
+        assert {name: variables.get(name) for name in names} == expected
+
+
 def test_full_stack_scenarios_repeat_convergence_before_verification() -> None:
     expected = [
         "dependency", "syntax", "create", "prepare", "converge",
@@ -112,13 +140,110 @@ def test_published_requirements_resolve_to_current_checkout_from_documented_cwd(
 
 
 def test_published_scenario_explicitly_disables_unpublished_xray_fallback() -> None:
+    canonical = yaml.safe_load(
+        (REPO_ROOT / "ansible/group_vars/all.yml").read_text()
+    )
     inventory = _published_scenario()["provisioner"]["inventory"]
     groups = inventory["group_vars"]
     hosts = inventory["hosts"]["vpn"]["hosts"]
 
-    assert "xray_fallback_port" not in groups["all"]
+    assert groups["all"]["xray_fallback_port"] == canonical["xray_fallback_port"] == 2053
     assert "xray_fallback_port" not in groups["vpn"]
     assert hosts["vpn-fullstack-debian13-published"]["xray_fallback_port"] == 0
+
+
+def test_standalone_p0_molecule_fixtures_declare_required_canonical_inputs() -> None:
+    """Standalone role scenarios must not depend on parent group-vars discovery."""
+    canonical = yaml.safe_load(
+        (REPO_ROOT / "ansible/group_vars/all.yml").read_text()
+    )
+    xray = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/xray/molecule/default/converge.yml").read_text()
+    )[0]["vars"]
+    scenarios = {
+        "watchdog/default": REPO_ROOT / "ansible/roles/watchdog/molecule/default/converge.yml",
+        "watchdog/failure": REPO_ROOT / "ansible/roles/watchdog/molecule/failure/converge.yml",
+        "nginx-xhttp/default": REPO_ROOT / "ansible/roles/nginx-xhttp/molecule/default/converge.yml",
+        "honeypot/default": REPO_ROOT / "ansible/roles/honeypot/molecule/default/converge.yml",
+        "monitoring/default": REPO_ROOT / "ansible/roles/monitoring/molecule/default/converge.yml",
+        "cdn-front/default": REPO_ROOT / "ansible/roles/cdn-front/molecule/default/converge.yml",
+        "cdn-front/cdn-on": REPO_ROOT / "ansible/roles/cdn-front/molecule/cdn-on/converge.yml",
+        "firewall/default": REPO_ROOT / "ansible/roles/firewall/molecule/default/converge.yml",
+        "network-exposure-gate/default": REPO_ROOT / "ansible/roles/network-exposure-gate/molecule/default/converge.yml",
+        "network-exposure-gate/verify": REPO_ROOT / "ansible/roles/network-exposure-gate/molecule/default/verify.yml",
+        "policy-ratelimit/default": REPO_ROOT / "ansible/roles/policy-ratelimit/molecule/default/converge.yml",
+        "hysteria/default": REPO_ROOT / "ansible/roles/hysteria/molecule/default/converge.yml",
+        "hysteria/check-mode": REPO_ROOT / "ansible/roles/hysteria/molecule/default/check-mode.yml",
+        "hysteria/verify": REPO_ROOT / "ansible/roles/hysteria/molecule/default/verify.yml",
+    }
+    variables = {
+        name: yaml.safe_load(path.read_text())[0].get("vars", {})
+        for name, path in scenarios.items()
+    }
+
+    assert xray["p0_reality_shapes"] == canonical["p0_reality_shapes"]
+    for name in ("watchdog/default", "watchdog/failure"):
+        assert variables[name]["xray_port"] == canonical["xray_port"]
+        assert variables[name]["xray_fallback_port"] == canonical["xray_fallback_port"]
+        assert variables[name]["p0_reality_flow_mode"] == canonical["p0_reality_flow_mode"]
+        assert variables[name]["p0_reality_shapes"] == canonical["p0_reality_shapes"]
+    assert variables["nginx-xhttp/default"]["xray_port"] == canonical["xray_port"]
+    assert variables["nginx-xhttp/default"]["xray_fallback_port"] == canonical["xray_fallback_port"]
+    assert variables["nginx-xhttp/default"]["nginx_xhttp_fallback_port"] == canonical["nginx_xhttp_fallback_port"]
+    assert variables["nginx-xhttp/default"]["cdn_front_port"] == canonical["cdn_front_port"]
+    assert variables["firewall/default"]["nginx_xhttp_public_port"] == canonical["nginx_xhttp_public_port"]
+    assert variables["honeypot/default"]["honeypot_port"] == canonical["honeypot_port"]
+    assert variables["monitoring/default"]["honeypot_port"] == canonical["honeypot_port"]
+    for name in (
+        "cdn-front/default",
+        "cdn-front/cdn-on",
+        "firewall/default",
+        "network-exposure-gate/default",
+        "network-exposure-gate/verify",
+        "policy-ratelimit/default",
+    ):
+        assert variables[name]["xray_port"] == canonical["xray_port"]
+        assert variables[name]["xray_fallback_port"] == canonical["xray_fallback_port"]
+    for name in ("hysteria/default", "hysteria/check-mode", "hysteria/verify"):
+        assert variables[name]["hysteria_port_range"] == canonical["hysteria_port_range"]
+
+
+def test_xray_molecule_uses_a_hash_pinned_local_runtime_archive() -> None:
+    converge = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/xray/molecule/default/converge.yml").read_text()
+    )[0]
+    variables = converge["vars"]
+    artifact = next(
+        task["ansible.builtin.copy"]
+        for task in converge["pre_tasks"]
+        if task["name"] == "Create hash-pinned Xray runtime archive fixture"
+    )
+    artifact_index = next(
+        index for index, task in enumerate(converge["pre_tasks"])
+        if task["name"] == "Create hash-pinned Xray runtime archive fixture"
+    )
+    parent = converge["pre_tasks"][artifact_index - 1]
+
+    assert variables["xray_runtime_release_urls"]["amd64"].startswith("file://")
+    assert variables["xray_runtime_release_urls"]["arm64"].startswith("file://")
+    assert artifact["dest"].endswith("xray-v26.3.27.zip")
+    assert artifact["src"] == "{{ playbook_dir }}/files/xray-v26.3.27.zip"
+    assert parent["ansible.builtin.file"] == {
+        "path": "/var/tmp/xray-molecule",
+        "state": "directory",
+        "owner": "root",
+        "group": "root",
+        "mode": "0755",
+    }
+    archive = REPO_ROOT / "ansible/roles/xray/molecule/default/files/xray-v26.3.27.zip"
+    assert sha256(archive.read_bytes()).hexdigest() == variables["xray"]["linux_amd64_sha256"]
+    with zipfile.ZipFile(archive) as payload:
+        assert payload.namelist() == ["xray", "geoip.dat"]
+        assert payload.read("xray").startswith(b"#!/bin/sh\n")
+        assert payload.read("geoip.dat") == b"MOLECULE_GEOIP_FIXTURE\n"
+    pre_task_names = {task["name"] for task in converge["pre_tasks"]}
+    assert "Pre-create release dir for runtime link idempotence coverage" not in pre_task_names
+    assert "Seed Xray binary for runtime link idempotence coverage" not in pre_task_names
 
 
 def test_published_host_override_beats_repository_all_group_default(tmp_path) -> None:

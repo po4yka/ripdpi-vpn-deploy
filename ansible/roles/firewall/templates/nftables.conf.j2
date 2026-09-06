@@ -11,16 +11,16 @@ destroy table inet nat
 {% set ssh_v6_cidrs = ssh_cidrs | select('match', '.*:.*') | list %}
 {% set ssh_port = firewall_effective_ssh_ports | first | int %}
 {% set _xray_cohorts = (xray.cohorts | default([])) if xray is defined else [] %}
-{% set _xray_fallback_port = xray_fallback_port | default(0) | int %}
+{% set _xray_fallback_port = xray_fallback_port | int %}
 {% if _xray_cohorts | length > 0 %}
 {%   set xray_tcp_ports = _xray_cohorts | map(attribute='port') | map('int') | list %}
 {% else %}
-{%   set xray_tcp_ports = [xray_port | default(443) | int] %}
+{%   set xray_tcp_ports = [xray_port | int] %}
 {%   if _xray_fallback_port > 0 and _xray_fallback_port not in xray_tcp_ports %}
 {%     set _ = xray_tcp_ports.append(_xray_fallback_port) %}
 {%   endif %}
 {% endif %}
-{% set nginx_tcp_port = nginx_xhttp_public_port | default(8443) | int %}
+{% set nginx_tcp_port = nginx_xhttp_public_port | int %}
 {% set nginx_collides_with_xray = (vpn.enable_xray_reality | default(true)) and (nginx_tcp_port in xray_tcp_ports) %}
 {% set _awg_inst = (amneziawg_secrets.instances | default([])) if amneziawg_secrets is defined else [] %}
 {% set awg_uplink_interface = firewall_awg_uplink_interface | default(ansible_facts.get('default_ipv4', {}).get('interface', 'eth0')) %}

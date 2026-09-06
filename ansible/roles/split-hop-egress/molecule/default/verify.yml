@@ -17,14 +17,53 @@
       register: sysctl
       failed_when: not sysctl.stat.exists
 
+    - name: Dedicated loader reconciled the scoped policy
+      ansible.builtin.stat:
+        path: /run/molecule-split-hop-egress-policy-loaded
+      register: policy_loaded
+      failed_when: not policy_loaded.stat.exists
+
+    - name: Re-read the policy through the production JSON command
+      ansible.builtin.command:
+        cmd: nft -j list table inet split_hop_egress
+      register: policy_json
+      changed_when: false
+
+    - name: Assert loaded policy JSON has the expected scoped NAT rule
+      vars:
+        policy_objects: "{{ (policy_json.stdout | from_json).nftables }}"
+      ansible.builtin.assert:
+        that:
+          - policy_objects | selectattr('table', 'defined') | list | length == 1
+          - policy_objects | selectattr('chain', 'defined') | list | length == 1
+          - policy_objects | selectattr('rule', 'defined') | list | length == 1
+        fail_msg: "the nft stub must model the production JSON policy inspection"
+
     - name: Read WG config content
       ansible.builtin.slurp:
         src: /etc/wireguard/shop0.conf
       register: cfg_raw
 
+    - name: Read scoped nft policy
+      ansible.builtin.slurp:
+        src: /etc/wireguard/split-hop-egress.nft
+      register: policy_raw
+
     - name: Decode WG config
       ansible.builtin.set_fact:
         cfg_text: "{{ cfg_raw.content | b64decode }}"
+
+    - name: Assert nft policy is separate and scoped
+      vars:
+        policy_text: "{{ policy_raw.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - cfg_text is not search('(?m)^PostUp\s*=')
+          - cfg_text is not search('(?m)^PostDown\s*=')
+          - policy_text is search('destroy table inet split_hop_egress')
+          - policy_text is search('iifname "shop0" oifname "eth0" masquerade')
+          - policy_text is not search('flush ruleset')
+        fail_msg: "split-hop NAT must remain in its validated role-scoped policy"
 
     - name: PersistentKeepalive is set (initiator direction)
       # Load-bearing — see roles/split-hop-egress/CLAUDE.md pitfall.

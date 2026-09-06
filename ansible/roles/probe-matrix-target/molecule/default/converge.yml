@@ -2,11 +2,25 @@
 - name: Converge probe matrix target rendering
   hosts: all
   become: true
+  pre_tasks:
+    - name: Inspect pinned Xray archive fixture
+      ansible.builtin.stat:
+        path: /var/tmp/probe-matrix-xray.zip
+        checksum_algorithm: sha256
+      register: _probe_matrix_xray_archive
+    - name: Pin Xray archive fixture checksum
+      ansible.builtin.set_fact:
+        xray: >-
+          {{ xray | combine({
+               'linux_amd64_sha256': _probe_matrix_xray_archive.stat.checksum,
+               'linux_arm64_sha256': _probe_matrix_xray_archive.stat.checksum
+             }) }}
   vars:
     xray:
       version: vtest
-      linux_amd64_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
-      linux_arm64_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+    xray_runtime_release_urls:
+      amd64: file:///var/tmp/probe-matrix-xray.zip
+      arm64: file:///var/tmp/probe-matrix-xray.zip
     probe_matrix_runtime_users:
       xray_uid: 971
       mtg_uid: 972

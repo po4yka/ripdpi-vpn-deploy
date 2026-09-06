@@ -163,6 +163,21 @@ def test_four_profiles_use_one_decrypt_and_receipt_before_assignment(setup):
     assert not any("scp" == Path(c[0][0]).name for c in calls)
 
 
+def test_awg_context_resolves_canonical_listener_default(monkeypatch):
+    module = load(ROOT / "scripts/install_liveness_sentinel.py", "installer_awg_context")
+    monkeypatch.setattr(module, "_run", lambda *_args, **_kwargs: b"192.0.2.3\n")
+
+    defaults, _cohort, endpoint = module._awg_context(
+        {"amneziawg_secrets": {"instances": []}},
+        {"awg_target": {"provider": "vultr", "environment": "probe"}},
+        {"vultr:probe": "p2-udp"},
+        {"PATH": os.environ["PATH"]},
+    )
+
+    assert defaults["listen_port"] == 51820
+    assert endpoint == "192.0.2.3"
+
+
 def test_bound_executor_routes_fixed_command_through_colima_not_host_ssh(setup):
     s = setup
     captured = []

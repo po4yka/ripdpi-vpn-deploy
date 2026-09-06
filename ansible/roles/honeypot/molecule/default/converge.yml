@@ -2,5 +2,7 @@
 - name: Converge honeypot role
   hosts: all
   become: true
+  vars:
+    honeypot_port: 4443
   roles:
     - role: honeypot

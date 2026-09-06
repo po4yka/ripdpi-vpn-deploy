@@ -1,12 +1,6 @@
 ---
-- name: Pre-flight — naive and nginx-xhttp must not both be on (port 443 conflict)
-  ansible.builtin.assert:
-    that:
-      - not (vpn.enable_nginx_xhttp | default(true))
-    fail_msg: |
-      `vpn.enable_naive` is true but `vpn.enable_nginx_xhttp` is also true. They
-      cannot coexist on the same host (both want 443/tcp). Set
-      `vpn.enable_nginx_xhttp: false` in group_vars or host_vars.
+# The global listener manifest guard in site.yml owns every protocol/port
+# collision, including naive versus nginx-xhttp.
 
 - name: Pre-flight — require caddy-naive checksum pin
   ansible.builtin.assert:
@@ -186,6 +180,7 @@
     owner: root
     group: naive
     mode: "0640"
+    validate: /usr/local/bin/caddy-naive validate --config %s --adapter caddyfile
   no_log: true
   diff: false
   notify: Restart caddy-naive

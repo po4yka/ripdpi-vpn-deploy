@@ -8,6 +8,7 @@ emit-singbox.sh calls `sops --decrypt --output-type json`.  The stub ignores
 --output-type, so we supply a JSON-format copy of the fixture and point
 SOPS_FILE at it directly.
 """
+
 from __future__ import annotations
 
 import json
@@ -33,6 +34,7 @@ KILLSWITCH_SCRIPT = REPO_ROOT / "scripts" / "check-singbox-killswitch.py"
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _require_tool(name: str) -> None:
     if not shutil.which(name):
         pytest.skip(f"required binary not found on PATH: {name}")
@@ -43,16 +45,16 @@ def _secrets_as_json(tmp_path: Path) -> Path:
     raw = yaml.safe_load(FIXTURES.joinpath("secrets-sample.yml").read_text())
     # A syntactically valid X25519 public key lets the official sing-box
     # parser exercise the complete generated document.
-    raw["xray"]["reality_public_key"] = (
-        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    )
+    raw["xray"]["reality_public_key"] = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
     # The fixture already has "laptop" in xray.clients.
     # Ensure "laptop" also appears in hysteria.clients so emit-singbox.sh
     # doesn't bail out when hysteria is enabled (it is by default in all.yml).
     hy_clients = raw.get("hysteria", {}).get("clients", [])
     if not any(c.get("name") == "laptop" for c in hy_clients):
-        hy_clients.append({"name": "laptop", "password": "fixture-hysteria-password-laptop-001"})
+        hy_clients.append(
+            {"name": "laptop", "password": "fixture-hysteria-password-laptop-001"}
+        )
         raw["hysteria"]["clients"] = hy_clients
 
     out = tmp_path / "secrets-fixture.json"
@@ -77,13 +79,13 @@ def _make_sops_stub(bin_dir: Path, sops_file: Path) -> None:
         "set -eu\n"
         "# Custom test sops stub: prints SOPS_FILE to stdout on --decrypt.\n"
         "decrypt=0\n"
-        "for arg in \"$@\"; do\n"
-        "  case \"$arg\" in\n"
+        'for arg in "$@"; do\n'
+        '  case "$arg" in\n'
         "    --decrypt|-d) decrypt=1 ;;\n"
         "  esac\n"
         "done\n"
-        "if [ \"$decrypt\" -eq 1 ]; then\n"
-        f"  cat \"${{SOPS_FILE:-{sops_file}}}\"\n"
+        'if [ "$decrypt" -eq 1 ]; then\n'
+        f'  cat "${{SOPS_FILE:-{sops_file}}}"\n'
         "  exit 0\n"
         "fi\n"
         "exit 0\n"
@@ -104,7 +106,14 @@ def _build_env(tmp_path: Path, sops_file: Path) -> dict[str, str]:
     env["SOPS_FILE"] = str(sops_file)
     env["STUB_LOG"] = str(tmp_path / "stub.log")
     # Clear multi-host vars so the script uses single-host SOPS_FILE path.
-    for var in ("HOSTS", "SOPS_FILES", "COHORTS", "PROVIDER", "ENV", "VPN_SECRETS_FILE"):
+    for var in (
+        "HOSTS",
+        "SOPS_FILES",
+        "COHORTS",
+        "PROVIDER",
+        "ENV",
+        "VPN_SECRETS_FILE",
+    ):
         env.pop(var, None)
     return env
 
@@ -157,15 +166,22 @@ def _run_bundle(
     )
 
 
-def _run_snell_only_script(tmp_path: Path, *, omit_variant: str | None = None) -> subprocess.CompletedProcess:
+def _run_snell_only_script(
+    tmp_path: Path, *, omit_variant: str | None = None
+) -> subprocess.CompletedProcess:
     repo = tmp_path / "snell-repo"
     (repo / "scripts").mkdir(parents=True)
     (repo / "ansible/group_vars").mkdir(parents=True)
     (repo / "ansible/roles/snell/defaults").mkdir(parents=True)
     (repo / "terraform/providers/upcloud").mkdir(parents=True)
     shutil.copy2(SCRIPT, repo / "scripts/emit-singbox.sh")
-    shutil.copy2(REPO_ROOT / "scripts/terraform-env.sh", repo / "scripts/terraform-env.sh")
-    shutil.copy2(REPO_ROOT / "ansible/roles/snell/defaults/main.yml", repo / "ansible/roles/snell/defaults/main.yml")
+    shutil.copy2(
+        REPO_ROOT / "scripts/terraform-env.sh", repo / "scripts/terraform-env.sh"
+    )
+    shutil.copy2(
+        REPO_ROOT / "ansible/roles/snell/defaults/main.yml",
+        repo / "ansible/roles/snell/defaults/main.yml",
+    )
     (repo / "ansible/group_vars/all.yml").write_text(
         yaml.safe_dump(
             {
@@ -179,9 +195,21 @@ def _run_snell_only_script(tmp_path: Path, *, omit_variant: str | None = None) -
         )
     )
     variants = [
-        {"id": "v4-stream", "psk": "v4-key", "users": [{"name": "laptop", "userkey": "v4-user-key-123"}]},
-        {"id": "v6-default", "psk": "v6-default-key", "users": [{"name": "laptop", "userkey": "v6-default-user"}]},
-        {"id": "v6-unshaped", "psk": "v6-unshaped-key", "users": [{"name": "laptop", "userkey": "v6-unshaped-user"}]},
+        {
+            "id": "v4-stream",
+            "psk": "v4-key",
+            "users": [{"name": "laptop", "userkey": "v4-user-key-123"}],
+        },
+        {
+            "id": "v6-default",
+            "psk": "v6-default-key",
+            "users": [{"name": "laptop", "userkey": "v6-default-user"}],
+        },
+        {
+            "id": "v6-unshaped",
+            "psk": "v6-unshaped-key",
+            "users": [{"name": "laptop", "userkey": "v6-unshaped-user"}],
+        },
     ]
     if omit_variant:
         variants = [variant for variant in variants if variant["id"] != omit_variant]
@@ -189,10 +217,10 @@ def _run_snell_only_script(tmp_path: Path, *, omit_variant: str | None = None) -
     secrets.write_text(json.dumps({"snell_secrets": {"variants": variants}}))
     fake_bin = tmp_path / "snell-bin"
     fake_bin.mkdir()
-    (fake_bin / "sops").write_text("#!/bin/sh\ncat \"$SOPS_FILE\"\n")
+    (fake_bin / "sops").write_text('#!/bin/sh\ncat "$SOPS_FILE"\n')
     (fake_bin / "terraform").write_text(
         "#!/bin/sh\n"
-        "case \"$*\" in\n"
+        'case "$*" in\n'
         "  *'workspace select'*) exit 0 ;;\n"
         "  *'server_ipv4'*) printf '203.0.113.10' ;;\n"
         "  *'server_hostname'*) printf 'snell-test-node' ;;\n"
@@ -204,7 +232,126 @@ def _run_snell_only_script(tmp_path: Path, *, omit_variant: str | None = None) -
     environment = os.environ.copy()
     for var in ("HOSTS", "SOPS_FILES", "COHORTS", "VPN_SECRETS_FILE"):
         environment.pop(var, None)
-    environment.update({"PATH": f"{fake_bin}:{environment['PATH']}", "SOPS_FILE": str(secrets), "PROVIDER": "upcloud", "ENV": "staging"})
+    environment.update(
+        {
+            "PATH": f"{fake_bin}:{environment['PATH']}",
+            "SOPS_FILE": str(secrets),
+            "PROVIDER": "upcloud",
+            "ENV": "staging",
+        }
+    )
+    return subprocess.run(
+        ["bash", str(repo / "scripts/emit-singbox.sh"), "laptop"],
+        capture_output=True,
+        text=True,
+        env=environment,
+        cwd=repo,
+    )
+
+
+def _run_shape_only_emitter(
+    tmp_path: Path,
+    *,
+    flow: str,
+    finalmask: bool = False,
+    cohort_finalmask: bool | None = None,
+) -> subprocess.CompletedProcess:
+    """Exercise the emitted P0 client shape from a self-contained group-vars tree."""
+    repo = tmp_path / "shape-repo"
+    (repo / "scripts").mkdir(parents=True)
+    (repo / "ansible/group_vars").mkdir(parents=True)
+    (repo / "ansible/roles/snell/defaults").mkdir(parents=True)
+    (repo / "terraform/providers/upcloud").mkdir(parents=True)
+    shutil.copy2(SCRIPT, repo / "scripts/emit-singbox.sh")
+    shutil.copy2(
+        REPO_ROOT / "scripts/terraform-env.sh", repo / "scripts/terraform-env.sh"
+    )
+    shutil.copy2(
+        REPO_ROOT / "ansible/roles/snell/defaults/main.yml",
+        repo / "ansible/roles/snell/defaults/main.yml",
+    )
+    (repo / "ansible/group_vars/all.yml").write_text(
+        yaml.safe_dump(
+            {
+                "vpn": {
+                    "enable_xray_reality": True,
+                    "enable_nginx_xhttp": False,
+                    "enable_hysteria": False,
+                    "enable_snell": False,
+                    "xray_flow_mode": flow,
+                },
+                "p0_reality_flow_mode": "vision",
+                "p0_reality_shapes": {
+                    "vision": {
+                        "client_flow": "xtls-rprx-vision",
+                        "client_mux": False,
+                        "finalmask": False,
+                    },
+                    "mux": {"client_flow": "", "client_mux": True, "finalmask": False},
+                },
+                "xray_port": 1443,
+                "xray_fallback_port": 0,
+                "nginx_xhttp_public_port": 8443,
+                "hysteria_port": 443,
+                "hysteria_port_range": "",
+                "hysteria_hop_interval": "30s",
+                "xray_utls_fingerprint": "chrome",
+            }
+        )
+    )
+    secrets = _secrets_as_json(tmp_path)
+    payload = json.loads(secrets.read_text())
+    payload["xray"].pop("cohorts", None)
+    if finalmask:
+        (repo / "ansible/group_vars/all.yml").write_text(
+            yaml.safe_dump(
+                {
+                    **yaml.safe_load((repo / "ansible/group_vars/all.yml").read_text()),
+                    "vpn": {
+                        "enable_xray_reality": True,
+                        "enable_nginx_xhttp": False,
+                        "enable_hysteria": False,
+                        "enable_snell": False,
+                        "xray_flow_mode": flow,
+                        "xray_finalmask": True,
+                    },
+                }
+            )
+        )
+    if cohort_finalmask is not None:
+        payload["xray"]["cohorts"] = [
+            {
+                "name": "explicit-shape",
+                "port": 1443,
+                "flow_mode": flow,
+                "finalmask": cohort_finalmask,
+                "clients": ["laptop"],
+            }
+        ]
+    secrets.write_text(json.dumps(payload))
+    bin_dir = tmp_path / "shape-bin"
+    bin_dir.mkdir()
+    (bin_dir / "sops").write_text('#!/bin/sh\ncat "$SOPS_FILE"\n')
+    (bin_dir / "terraform").write_text(
+        '#!/bin/sh\ncase "$*" in\n'
+        "  *'workspace select'*) exit 0 ;;\n"
+        "  *'server_ipv4'*) printf '203.0.113.10' ;;\n"
+        "  *'server_hostname'*) printf 'shape-test-node' ;;\n"
+        "  *) exit 0 ;;\nesac\n"
+    )
+    for command in (bin_dir / "sops", bin_dir / "terraform"):
+        command.chmod(0o700)
+    environment = os.environ.copy()
+    for var in ("HOSTS", "SOPS_FILES", "COHORTS", "VPN_SECRETS_FILE"):
+        environment.pop(var, None)
+    environment.update(
+        {
+            "PATH": f"{bin_dir}:{environment['PATH']}",
+            "SOPS_FILE": str(secrets),
+            "PROVIDER": "upcloud",
+            "ENV": "staging",
+        }
+    )
     return subprocess.run(
         ["bash", str(repo / "scripts/emit-singbox.sh"), "laptop"],
         capture_output=True,
@@ -228,6 +375,7 @@ def _utls_fingerprints(bundle: dict) -> list[str]:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 def _plaintext_emitter(tmp_path, *, mode=0o600):
     source = _secrets_as_json(tmp_path)
     secrets = json.loads(source.read_text())
@@ -249,8 +397,12 @@ def _plaintext_emitter(tmp_path, *, mode=0o600):
 
 def _run_plaintext_emitter(env):
     return subprocess.run(
-        ["bash", str(SCRIPT), "laptop"], capture_output=True, text=True,
-        env=env, cwd=REPO_ROOT, timeout=20,
+        ["bash", str(SCRIPT), "laptop"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=REPO_ROOT,
+        timeout=20,
     )
 
 
@@ -263,15 +415,21 @@ def test_emit_singbox_uses_explicit_plaintext_without_sops(tmp_path, mode, hosts
     result = _run_plaintext_emitter(env)
     assert result.returncode == 0, result.stderr
     outbounds = json.loads(result.stdout)["outbounds"]
-    passwords = [item["password"] for item in outbounds if item.get("type") == "hysteria2"]
-    assert passwords == ["laptop:authoritative-plaintext-password"] * len(hosts.split(","))
+    passwords = [
+        item["password"] for item in outbounds if item.get("type") == "hysteria2"
+    ]
+    assert passwords == ["laptop:authoritative-plaintext-password"] * len(
+        hosts.split(",")
+    )
     assert "unexpected decrypt" not in Path(env["STUB_LOG"]).read_text()
     assert plaintext.read_bytes() == before
     assert plaintext.stat().st_mode & 0o777 == mode
     assert not list(Path(env["TMPDIR"]).iterdir())
 
 
-@pytest.mark.parametrize("kind", ["missing", "symlink", "directory", "fifo", "loose", "yaml", "empty"])
+@pytest.mark.parametrize(
+    "kind", ["missing", "symlink", "directory", "fifo", "loose", "yaml", "empty"]
+)
 def test_emit_singbox_rejects_invalid_plaintext_without_fallback(tmp_path, kind):
     plaintext, env = _plaintext_emitter(tmp_path)
     if kind in {"missing", "symlink", "directory", "fifo"}:
@@ -288,7 +446,7 @@ def test_emit_singbox_rejects_invalid_plaintext_without_fallback(tmp_path, kind)
     elif kind == "loose":
         plaintext.chmod(0o644)
     elif kind == "yaml":
-        plaintext.write_text('private-value: [secret-content-marker')
+        plaintext.write_text("private-value: [secret-content-marker")
     elif kind == "empty":
         env["VPN_SECRETS_FILE"] = ""
     result = _run_plaintext_emitter(env)
@@ -319,18 +477,31 @@ def test_make_decrypt_then_emit_singbox_decrypts_exactly_once(tmp_path):
         '#!/bin/sh\nprintf "decrypt\\n" >> "$STUB_LOG"\ncat "$SOPS_FILE"\n'
     )
     args = [
-        "make", "--no-print-directory", f"SECRETS_FILE={plaintext}",
-        f"SOPS_FILE={source}", "HOSTS=", "SOPS_FILES=", "CLIENT=laptop",
+        "make",
+        "--no-print-directory",
+        f"SECRETS_FILE={plaintext}",
+        f"SOPS_FILE={source}",
+        "HOSTS=",
+        "SOPS_FILES=",
+        "CLIENT=laptop",
     ]
     decrypt = subprocess.run(
-        [*args, "decrypt"], env=env, cwd=REPO_ROOT, capture_output=True, text=True,
+        [*args, "decrypt"],
+        env=env,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
         timeout=20,
     )
     assert decrypt.returncode == 0, decrypt.stderr
     # Prove the emitter needs neither the encrypted input nor another decrypt.
     source.unlink()
     emitted = subprocess.run(
-        [*args, "emit-singbox"], env=env, cwd=REPO_ROOT, capture_output=True, text=True,
+        [*args, "emit-singbox"],
+        env=env,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
         timeout=20,
     )
     assert emitted.returncode == 0, emitted.stderr
@@ -343,9 +514,19 @@ def test_make_emit_singbox_rejects_missing_explicit_plaintext(tmp_path):
     plaintext.unlink()
     env.pop("VPN_SECRETS_FILE")
     result = subprocess.run(
-        ["make", "--no-print-directory", "emit-singbox", "CLIENT=laptop",
-         f"SECRETS_FILE={plaintext}", "SOPS_FILES="],
-        env=env, cwd=REPO_ROOT, capture_output=True, text=True, timeout=20,
+        [
+            "make",
+            "--no-print-directory",
+            "emit-singbox",
+            "CLIENT=laptop",
+            f"SECRETS_FILE={plaintext}",
+            "SOPS_FILES=",
+        ],
+        env=env,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=20,
     )
     assert result.returncode != 0
     assert "plaintext secrets" in result.stderr
@@ -382,13 +563,46 @@ def test_emit_singbox_json_structure(tmp_path):
     # Standard sing-box has no XHTTP transport. P1 remains available only in
     # the explicit RIPDPI extended bundle.
     assert not any(
-        outbound.get("transport", {}).get("type") == "xhttp"
-        for outbound in outbounds
+        outbound.get("transport", {}).get("type") == "xhttp" for outbound in outbounds
     )
 
     # At least one supported protocol outbound (P0 or P2).
-    proto_obs = [ob for ob in outbounds if ob.get("tag", "").startswith(("p0-", "p1-", "p2-"))]
+    proto_obs = [
+        ob for ob in outbounds if ob.get("tag", "").startswith(("p0-", "p1-", "p2-"))
+    ]
     assert proto_obs, "no protocol outbounds (p0/p1/p2) found"
+
+
+def test_emit_singbox_p0_mux_uses_the_declared_shape(tmp_path: Path) -> None:
+    _require_tool("jq")
+    result = _run_shape_only_emitter(tmp_path, flow="mux")
+    assert result.returncode == 0, result.stderr
+    p0 = next(
+        item
+        for item in json.loads(result.stdout)["outbounds"]
+        if item.get("tag", "").startswith("p0-reality-")
+    )
+    assert p0["server_port"] == 1443
+    assert p0["multiplex"] == {"enabled": True, "protocol": "smux", "max_streams": 8}
+    assert "flow" not in p0
+
+
+def test_emit_singbox_refuses_finalmask_without_an_official_client_mapping(
+    tmp_path: Path,
+) -> None:
+    _require_tool("jq")
+    result = _run_shape_only_emitter(tmp_path, flow="vision", finalmask=True)
+    assert result.returncode != 0
+    assert "finalmask requires an Xray client" in result.stderr
+
+
+def test_emit_singbox_preserves_explicit_false_cohort_finalmask(tmp_path: Path) -> None:
+    """A cohort-level false must override a true global finalmask default."""
+    _require_tool("jq")
+    result = _run_shape_only_emitter(
+        tmp_path, flow="vision", finalmask=True, cohort_finalmask=False
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_emit_singbox_is_accepted_by_official_parser(tmp_path):
@@ -422,17 +636,14 @@ def test_emit_singbox_hysteria_uses_server_userpass_contract(tmp_path):
         if outbound.get("type") == "hysteria2"
     )
 
-    assert hysteria["password"] == (
-        "laptop:fixture-hysteria-password-laptop-001"
-    )
+    assert hysteria["password"] == ("laptop:fixture-hysteria-password-laptop-001")
 
 
 def test_smoke_hysteria_uses_server_userpass_contract():
     smoke = (REPO_ROOT / "ansible" / "playbooks" / "smoke-test.yml").read_text()
 
     assert (
-        'auth: "{{ hysteria.clients[0].name }}:'
-        '{{ hysteria.clients[0].password }}"'
+        'auth: "{{ hysteria.clients[0].name }}:' '{{ hysteria.clients[0].password }}"'
     ) in smoke
 
 
@@ -445,21 +656,43 @@ def test_emit_singbox_snell_matrix_is_manual_only(tmp_path):
     result = _run_snell_only_script(tmp_path)
     assert result.returncode == 0, result.stderr
     bundle = json.loads(result.stdout)
-    candidates = [outbound for outbound in bundle["outbounds"] if outbound.get("type") == "snell"]
+    candidates = [
+        outbound for outbound in bundle["outbounds"] if outbound.get("type") == "snell"
+    ]
     assert len(candidates) == 6
     assert {outbound["reuse"] for outbound in candidates} == {False, True}
     v4 = [outbound for outbound in candidates if "v4-stream" in outbound["tag"]]
-    assert len(v4) == 2 and all(outbound["version"] == 4 and outbound["obfs_mode"] == "none" for outbound in v4)
-    v6_default = [outbound for outbound in candidates if "v6-default" in outbound["tag"]]
-    assert len(v6_default) == 2 and all(outbound["version"] == 6 and outbound["mode"] == "default" for outbound in v6_default)
-    v6_unshaped = [outbound for outbound in candidates if "v6-unshaped" in outbound["tag"]]
-    assert len(v6_unshaped) == 2 and all(outbound["version"] == 6 and outbound["mode"] == "unshaped" for outbound in v6_unshaped)
-    nested = next(outbound for outbound in bundle["outbounds"] if outbound.get("tag") == "snell-evaluation")
+    assert len(v4) == 2 and all(
+        outbound["version"] == 4 and outbound["obfs_mode"] == "none" for outbound in v4
+    )
+    v6_default = [
+        outbound for outbound in candidates if "v6-default" in outbound["tag"]
+    ]
+    assert len(v6_default) == 2 and all(
+        outbound["version"] == 6 and outbound["mode"] == "default"
+        for outbound in v6_default
+    )
+    v6_unshaped = [
+        outbound for outbound in candidates if "v6-unshaped" in outbound["tag"]
+    ]
+    assert len(v6_unshaped) == 2 and all(
+        outbound["version"] == 6 and outbound["mode"] == "unshaped"
+        for outbound in v6_unshaped
+    )
+    nested = next(
+        outbound
+        for outbound in bundle["outbounds"]
+        if outbound.get("tag") == "snell-evaluation"
+    )
     assert set(nested["outbounds"]) == {outbound["tag"] for outbound in candidates}
-    selector = next(outbound for outbound in bundle["outbounds"] if outbound.get("tag") == "select")
+    selector = next(
+        outbound for outbound in bundle["outbounds"] if outbound.get("tag") == "select"
+    )
     assert selector["default"] == "direct"
     assert "snell-evaluation" in selector["outbounds"]
-    assert not any(outbound.get("type") == "urltest" for outbound in bundle["outbounds"])
+    assert not any(
+        outbound.get("type") == "urltest" for outbound in bundle["outbounds"]
+    )
 
 
 def test_emit_singbox_snell_missing_variant_credentials_fails(tmp_path):
@@ -487,9 +720,10 @@ def test_emit_singbox_dns_non_empty_and_detour(tmp_path):
     assert remote["server"] == "1.1.1.1"
     assert "address" not in remote
     detour = remote.get("detour", "")
-    assert detour not in ("", "direct"), (
-        f"remote DNS detour is {detour!r} — leaks DNS traffic to ISP"
-    )
+    assert detour not in (
+        "",
+        "direct",
+    ), f"remote DNS detour is {detour!r} — leaks DNS traffic to ISP"
 
 
 def test_emit_singbox_default_is_strict_dual_stack_killswitch(tmp_path):
@@ -506,10 +740,7 @@ def test_emit_singbox_default_is_strict_dual_stack_killswitch(tmp_path):
     assert "inet6_address" not in tun
     assert "sniff" not in tun
     assert any(rule.get("action") == "sniff" for rule in bundle["route"]["rules"])
-    assert any(
-        rule.get("action") == "hijack-dns"
-        for rule in bundle["route"]["rules"]
-    )
+    assert any(rule.get("action") == "hijack-dns" for rule in bundle["route"]["rules"])
 
     check = subprocess.run(
         ["python3", str(KILLSWITCH_SCRIPT), "-"],
@@ -662,6 +893,6 @@ def test_emit_singbox_missing_client_exits_nonzero(tmp_path):
     _require_tool("jq")
 
     result = _run_script("nonexistent-client-xyz", tmp_path)
-    assert result.returncode != 0, (
-        "script should exit non-zero for an unknown client name"
-    )
+    assert (
+        result.returncode != 0
+    ), "script should exit non-zero for an unknown client name"

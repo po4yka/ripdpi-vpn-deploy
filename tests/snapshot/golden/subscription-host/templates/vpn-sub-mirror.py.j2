@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+"""Build and atomically publish one subscription payload generation.
+
+The delivery service reads either the direct legacy layout or the single
+`.vpn-sub-mirror-current` pointer.  A pointer switch is one rename, so readers
+never combine `sub/` from one mirror pull with `bootstrap/` from another.
+"""
+from __future__ import annotations
+
+import errno
+import fcntl
+import os
+import pwd
+import shlex
+import shutil
+import stat
+import subprocess
+import sys
+import uuid
+from pathlib import Path
+
+DEST = Path("/var/lib/vpn-subscription")
+BACKEND = "rsync"
+SOURCE = ""
+RSYNC_OPTIONS = "-az --delete"
+SSH_KEY = "/etc/vpn-subscription/mirror_ssh_key"
+SSH_OPTIONS = "-o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+RESTIC_REPO = ""
+RESTIC_SNAPSHOT_PATH = ""
+RESTIC_PASSWORD_FILE = "/etc/vpn-subscription/mirror_restic_password"
+
+GENERATION_ROOT = DEST / ".vpn-sub-mirror-generations"
+CURRENT_POINTER = DEST / ".vpn-sub-mirror-current"
+PUBLISH_LOCK = DEST / ".vpn-sub-mirror.lock"
+GENERATION_PREFIX = "generation-"
+STAGE_PREFIX = ".stage-"
+
+
+class MirrorError(RuntimeError):
+    pass
+
+
+def _payload_uid_gid() -> tuple[int, int]:
+    if os.geteuid() != 0:
+        return os.geteuid(), os.getegid()
+    account = pwd.getpwnam("vpn-bootstrap")
+    return account.pw_uid, account.pw_gid
+
+
+PAYLOAD_UID, PAYLOAD_GID = _payload_uid_gid()
+
+
+def _lstat(path: Path) -> os.stat_result:
+    try:
+        return path.lstat()
+    except FileNotFoundError as exc:
+        raise MirrorError(f"required path is missing: {path}") from exc
+
+
+def _private_directory(path: Path, *, owner: int = PAYLOAD_UID) -> None:
+    metadata = _lstat(path)
+    if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+        raise MirrorError(f"expected non-symlink directory: {path}")
+    if metadata.st_uid != owner or metadata.st_mode & 0o077:
+        raise MirrorError(f"directory is not private and owner-bound: {path}")
+
+
+def _private_tree(path: Path) -> None:
+    for root, directories, files in os.walk(path, followlinks=False):
+        root_path = Path(root)
+        _private_directory(root_path)
+        for name in [*directories, *files]:
+            child = root_path / name
+            metadata = _lstat(child)
+            if stat.S_ISLNK(metadata.st_mode):
+                raise MirrorError(f"payload contains symlink: {child}")
+            if stat.S_ISDIR(metadata.st_mode):
+                continue
+            if not stat.S_ISREG(metadata.st_mode):
+                raise MirrorError(f"payload contains non-regular entry: {child}")
+            if metadata.st_uid != PAYLOAD_UID or metadata.st_mode & 0o077:
+                raise MirrorError(f"payload file is not private and owner-bound: {child}")
+
+
+def _fsync_path(path: Path, flags: int) -> None:
+    descriptor = os.open(path, os.O_RDONLY | flags)
+    try:
+        os.fsync(descriptor)
+    except OSError as exc:
+        # Local macOS fixture filesystems reject directory fsync. Linux hosts
+        # must acknowledge every durability boundary before publication.
+        if not (sys.platform != "linux" and exc.errno == errno.EINVAL):
+            raise
+    finally:
+        os.close(descriptor)
+
+
+def _fsync_tree(path: Path) -> None:
+    for root, _directories, files in os.walk(path, topdown=False, followlinks=False):
+        root_path = Path(root)
+        for name in files:
+            _fsync_path(root_path / name, getattr(os, "O_NOFOLLOW", 0))
+        _fsync_path(root_path, os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0))
+
+
+def _remove_private_tree(path: Path) -> None:
+    _private_tree(path)
+    shutil.rmtree(path)
+
+
+def _remove_stage_tree(path: Path) -> None:
+    """Discard only this invocation's stage without following hostile nodes."""
+    if path.parent != GENERATION_ROOT or not path.name.startswith(STAGE_PREFIX):
+        raise MirrorError(f"unsafe stage cleanup target: {path}")
+    metadata = _lstat(path)
+    if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+        raise MirrorError(f"unsafe stage cleanup root: {path}")
+    flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(GENERATION_ROOT, flags)
+    try:
+        opened = os.fstat(descriptor)
+        named = _lstat(GENERATION_ROOT)
+        if (
+            not stat.S_ISDIR(opened.st_mode)
+            or opened.st_uid != PAYLOAD_UID
+            or opened.st_mode & 0o077
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+        ):
+            raise MirrorError("unsafe generation root during stage cleanup")
+        if not shutil.rmtree.avoids_symlink_attacks:
+            raise MirrorError("safe stage cleanup is unavailable")
+        # The fd-relative implementation removes child symlinks as links and
+        # refuses a replaced root rather than resolving it through a pathname.
+        shutil.rmtree(path.name, dir_fd=descriptor)
+        try:
+            os.fsync(descriptor)
+        except OSError as exc:
+            if not (sys.platform != "linux" and exc.errno == errno.EINVAL):
+                raise
+    finally:
+        os.close(descriptor)
+
+
+def _prepare_generation_root() -> None:
+    if GENERATION_ROOT.exists() or GENERATION_ROOT.is_symlink():
+        _private_directory(GENERATION_ROOT)
+    else:
+        GENERATION_ROOT.mkdir(mode=0o700)
+        os.chmod(GENERATION_ROOT, 0o700)
+        _private_directory(GENERATION_ROOT)
+    for child in GENERATION_ROOT.iterdir():
+        if not child.name.startswith((GENERATION_PREFIX, STAGE_PREFIX)):
+            raise MirrorError(f"unexpected generation-root entry: {child.name}")
+        _private_directory(child)
+        if child.name.startswith(STAGE_PREFIX):
+            # A pull can be interrupted before _validate_and_harden converts
+            # rsync/restic's 0755/0644 payload nodes to private modes. Its
+            # root is still this publisher's 0700 stage, so reclaim it with
+            # the stage-only no-follow cleaner rather than applying the
+            # immutable generation payload contract to untrusted pull data.
+            _remove_stage_tree(child)
+
+
+def _publisher_lock() -> int:
+    """Serialize the complete pull, publish and cleanup transaction."""
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(PUBLISH_LOCK, flags, 0o600)
+    try:
+        os.fchmod(descriptor, 0o600)
+        opened = os.fstat(descriptor)
+        named = PUBLISH_LOCK.lstat()
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_uid != PAYLOAD_UID
+            or stat.S_IMODE(opened.st_mode) != 0o600
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+        ):
+            raise MirrorError("mirror publisher lock is unsafe")
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        current = PUBLISH_LOCK.lstat()
+        if (opened.st_dev, opened.st_ino) != (current.st_dev, current.st_ino):
+            raise MirrorError("mirror publisher lock changed while acquiring")
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _read_current_generation() -> Path | None:
+    try:
+        pointer = CURRENT_POINTER.lstat()
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISLNK(pointer.st_mode):
+        raise MirrorError("mirror current pointer is not a symlink")
+    target = os.readlink(CURRENT_POINTER)
+    if Path(target).is_absolute() or ".." in Path(target).parts:
+        raise MirrorError("mirror current pointer escapes generation root")
+    generation = DEST / target
+    if generation.parent != GENERATION_ROOT or not generation.name.startswith(GENERATION_PREFIX):
+        raise MirrorError("mirror current pointer has an unexpected target")
+    _private_tree(generation)
+    return generation
+
+
+def _new_stage() -> Path:
+    stage = GENERATION_ROOT / f"{STAGE_PREFIX}{uuid.uuid4().hex}"
+    stage.mkdir(mode=0o700)
+    os.chmod(stage, 0o700)
+    _private_directory(stage)
+    return stage
+
+
+def _pull_into(stage: Path) -> None:
+    if BACKEND == "rsync":
+        if not SOURCE:
+            raise MirrorError("rsync backend selected but mirror.source is empty")
+        ssh = ["ssh", "-i", SSH_KEY, *shlex.split(SSH_OPTIONS)]
+        subprocess.run(
+            ["rsync", *shlex.split(RSYNC_OPTIONS), "-e", shlex.join(ssh), SOURCE, f"{stage}/"],
+            check=True,
+        )
+        return
+    if BACKEND != "restic":
+        raise MirrorError(f"unsupported mirror backend: {BACKEND}")
+    if not RESTIC_REPO:
+        raise MirrorError("restic backend selected but mirror.restic_repo is empty")
+    environment = os.environ | {"RESTIC_PASSWORD_FILE": RESTIC_PASSWORD_FILE}
+    command = ["restic", "-r", RESTIC_REPO, "restore", "latest", "--target", str(stage)]
+    if RESTIC_SNAPSHOT_PATH:
+        command.extend(["--include", RESTIC_SNAPSHOT_PATH])
+    subprocess.run(command, check=True, env=environment)
+
+
+def _validate_and_harden(stage: Path) -> None:
+    entries = {entry.name for entry in stage.iterdir()}
+    unexpected = entries - {"sub", "bootstrap"}
+    if unexpected:
+        raise MirrorError(f"staged payload has unexpected root entry: {sorted(unexpected)[0]}")
+    if "sub" not in entries:
+        raise MirrorError("staged payload is missing root sub/")
+    if "bootstrap" not in entries:
+        (stage / "bootstrap").mkdir(mode=0o700)
+    for route in ("sub", "bootstrap"):
+        route_path = stage / route
+        metadata = _lstat(route_path)
+        if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+            raise MirrorError(f"staged route is not a directory: {route}")
+    for root, directories, files in os.walk(stage, followlinks=False):
+        root_path = Path(root)
+        for name in [*directories, *files]:
+            path = root_path / name
+            metadata = _lstat(path)
+            if stat.S_ISLNK(metadata.st_mode):
+                raise MirrorError(f"staged payload contains symlink: {path}")
+            if not stat.S_ISDIR(metadata.st_mode) and not stat.S_ISREG(metadata.st_mode):
+                raise MirrorError(f"staged payload contains non-regular entry: {path}")
+            if metadata.st_uid != PAYLOAD_UID or metadata.st_gid != PAYLOAD_GID:
+                raise MirrorError(f"staged payload has unexpected owner: {path}")
+    for root, directories, files in os.walk(stage, followlinks=False):
+        root_path = Path(root)
+        os.chmod(root_path, 0o700)
+        for name in directories:
+            os.chmod(root_path / name, 0o700)
+        for name in files:
+            os.chmod(root_path / name, 0o600)
+    _private_tree(stage)
+    _fsync_tree(stage)
+
+
+def _switch_current(stage: Path, previous: Path | None) -> Path:
+    generation = GENERATION_ROOT / f"{GENERATION_PREFIX}{uuid.uuid4().hex}"
+    os.replace(stage, generation)
+    _fsync_path(GENERATION_ROOT, os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0))
+    target = str(generation.relative_to(DEST))
+    temporary = DEST / f".vpn-sub-mirror-current.{uuid.uuid4().hex}"
+    os.symlink(target, temporary)
+    os.replace(temporary, CURRENT_POINTER)
+    _fsync_path(DEST, os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0))
+    if os.environ.get("VPN_SUB_MIRROR_TEST_CRASH_AFTER_POINTER") == "1":
+        os._exit(86)
+    _cleanup_generations(generation, previous)
+    return generation
+
+
+def _cleanup_generations(current: Path, previous: Path | None) -> None:
+    keep = {current}
+    if previous is not None:
+        keep.add(previous)
+    for candidate in GENERATION_ROOT.iterdir():
+        if candidate in keep:
+            continue
+        if not candidate.name.startswith(GENERATION_PREFIX):
+            continue
+        _remove_private_tree(candidate)
+    _fsync_path(GENERATION_ROOT, os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0))
+
+
+def main() -> int:
+    lock_descriptor: int | None = None
+    try:
+        _private_directory(DEST)
+        lock_descriptor = _publisher_lock()
+        _prepare_generation_root()
+        previous = _read_current_generation()
+        stage = _new_stage()
+        try:
+            _pull_into(stage)
+            _validate_and_harden(stage)
+            _switch_current(stage, previous)
+        except BaseException:
+            if stage.exists() and not stage.is_symlink():
+                _remove_stage_tree(stage)
+            raise
+    except (MirrorError, OSError, subprocess.CalledProcessError) as exc:
+        print(f"vpn-sub-mirror: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        if lock_descriptor is not None:
+            os.close(lock_descriptor)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

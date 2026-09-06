@@ -1,0 +1,7 @@
+destroy table inet split_hop_egress
+table inet split_hop_egress {
+  chain postrouting {
+    type nat hook postrouting priority 100; policy accept;
+    iifname "shop0" oifname "eth0" masquerade
+  }
+}

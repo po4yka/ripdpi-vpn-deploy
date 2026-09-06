@@ -5,7 +5,7 @@
   ansible.builtin.assert:
     that:
       - (dns_morph_bridge_secrets.binary_url | default('') | length) > 0
-      - (dns_morph_bridge_secrets.binary_sha256 | default('') | length) > 0
+      - dns_morph_bridge_secrets.binary_sha256 | default('') is match('^[0-9a-fA-F]{64}$')
     fail_msg: |
       dns-morph-bridge requires dns_morph_bridge_secrets.binary_url and
       dns_morph_bridge_secrets.binary_sha256 to be set. Build the bridge
@@ -45,9 +45,18 @@
   ansible.builtin.apt:
     name:
       - unbound
+      - python3-yaml
     state: present
     update_cache: true
     cache_valid_time: 3600
+
+- name: Install shared YAML mapping validator
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../runtime-release/files/validate_yaml_mapping.py"
+    dest: /usr/local/libexec/ripdpi-validate-yaml-mapping
+    owner: root
+    group: root
+    mode: "0755"
 
 - name: Render unbound forwarder config
   ansible.builtin.template:
@@ -58,15 +67,189 @@
     mode: "0644"
   notify: Restart unbound
 
-- name: Fetch bridge binary by sha256
-  ansible.builtin.get_url:
-    url: "{{ dns_morph_bridge_secrets.binary_url }}"
-    dest: "{{ dns_morph_bridge.bin_path }}"
-    checksum: "sha256:{{ dns_morph_bridge_secrets.binary_sha256 }}"
+- name: Inspect legacy DNS-Morph public binary
+  ansible.builtin.stat:
+    path: "{{ dns_morph_bridge.bin_path }}"
+    follow: false
+    checksum_algorithm: sha256
+  register: _dns_morph_legacy_binary
+
+- name: Classify legacy DNS-Morph public binary
+  ansible.builtin.set_fact:
+    _dns_morph_legacy_regular: >-
+      {{ (_dns_morph_legacy_binary.stat.exists | default(false)) and
+         not (_dns_morph_legacy_binary.stat.islnk | default(false)) }}
+    _dns_morph_legacy_backup_path: >-
+      {{ dns_morph_bridge.install_root ~ '/.dns-morph-bridge-legacy-' ~
+         (dns_morph_bridge_secrets.binary_sha256 | lower) }}
+    _dns_morph_legacy_backup_url: >-
+      {{ 'file://' ~ dns_morph_bridge.install_root ~
+         '/.dns-morph-bridge-legacy-' ~
+         (dns_morph_bridge_secrets.binary_sha256 | lower) }}
+    _dns_morph_legacy_migration_committed: false
+    _dns_morph_legacy_migration_restored: false
+
+- name: Verify legacy DNS-Morph binary before migration
+  ansible.builtin.assert:
+    that:
+      - _dns_morph_legacy_binary.stat.isreg
+      - not _dns_morph_legacy_binary.stat.islnk
+      - _dns_morph_legacy_binary.stat.executable
+      - _dns_morph_legacy_binary.stat.nlink == 1
+      - _dns_morph_legacy_binary.stat.pw_name == 'root'
+      - _dns_morph_legacy_binary.stat.gr_name == 'root'
+      - _dns_morph_legacy_binary.stat.mode == '0755'
+      - >-
+        _dns_morph_legacy_binary.stat.checksum ==
+        (dns_morph_bridge_secrets.binary_sha256 | lower)
+    fail_msg: >-
+      Refusing unmanaged DNS-Morph public binary before runtime-release
+      activation. Only the exact root-owned pinned executable can migrate.
+  when: _dns_morph_legacy_regular | bool
+
+- name: Inspect legacy DNS-Morph migration backup path
+  ansible.builtin.stat:
+    path: "{{ _dns_morph_legacy_backup_path }}"
+    follow: false
+    checksum_algorithm: sha256
+  register: _dns_morph_legacy_backup
+
+- name: Verify interrupted DNS-Morph migration backup identity
+  ansible.builtin.assert:
+    that:
+      - _dns_morph_legacy_backup.stat.isreg
+      - not _dns_morph_legacy_backup.stat.islnk
+      - _dns_morph_legacy_backup.stat.executable
+      - _dns_morph_legacy_backup.stat.nlink == 1
+      - _dns_morph_legacy_backup.stat.pw_name == 'root'
+      - _dns_morph_legacy_backup.stat.gr_name == 'root'
+      - _dns_morph_legacy_backup.stat.mode == '0700'
+      - >-
+        _dns_morph_legacy_backup.stat.checksum ==
+        (dns_morph_bridge_secrets.binary_sha256 | lower)
+    fail_msg: >-
+      DNS-Morph legacy migration backup is not the exact protected binary;
+      refusing to overwrite recovery state.
+  when: _dns_morph_legacy_backup.stat.exists | default(false)
+
+- name: Save verified legacy DNS-Morph binary
+  ansible.builtin.copy:
+    src: "{{ dns_morph_bridge.bin_path }}"
+    dest: "{{ _dns_morph_legacy_backup_path }}"
+    remote_src: true
     owner: root
     group: root
-    mode: "0755"
+    mode: "0700"
+  when:
+    - _dns_morph_legacy_regular | bool
+    - not (_dns_morph_legacy_backup.stat.exists | default(false))
+
+- name: Verify saved DNS-Morph migration backup
+  ansible.builtin.stat:
+    path: "{{ _dns_morph_legacy_backup_path }}"
+    follow: false
+    checksum_algorithm: sha256
+  register: _dns_morph_legacy_saved_backup
+  when: _dns_morph_legacy_regular | bool
+
+- name: Assert saved DNS-Morph migration backup identity
+  ansible.builtin.assert:
+    that:
+      - _dns_morph_legacy_saved_backup.stat.isreg
+      - not _dns_morph_legacy_saved_backup.stat.islnk
+      - _dns_morph_legacy_saved_backup.stat.executable
+      - _dns_morph_legacy_saved_backup.stat.nlink == 1
+      - _dns_morph_legacy_saved_backup.stat.pw_name == 'root'
+      - _dns_morph_legacy_saved_backup.stat.gr_name == 'root'
+      - _dns_morph_legacy_saved_backup.stat.mode == '0700'
+      - >-
+        _dns_morph_legacy_saved_backup.stat.checksum ==
+        (dns_morph_bridge_secrets.binary_sha256 | lower)
+    fail_msg: >-
+      DNS-Morph legacy migration backup changed before runtime-release
+      activation; leaving the public executable untouched.
+  when: _dns_morph_legacy_regular | bool
+
+- name: Classify resumable DNS-Morph legacy migration
+  ansible.builtin.set_fact:
+    _dns_morph_legacy_migration_active: >-
+      {{ (_dns_morph_legacy_regular | bool) or
+         (_dns_morph_legacy_backup.stat.exists | default(false)) }}
+
+- name: Remove verified legacy DNS-Morph public binary
+  ansible.builtin.file:
+    path: "{{ dns_morph_bridge.bin_path }}"
+    state: absent
+  when: _dns_morph_legacy_regular | bool
+
+- name: Install pinned DNS-Morph bridge through runtime-release
+  block:
+    - name: Activate pinned DNS-Morph runtime release
+      ansible.builtin.include_role:
+        name: runtime-release
+      vars:
+        runtime_release_version: "sha256-{{ dns_morph_bridge_secrets.binary_sha256 | lower }}"
+        runtime_release_install_root: "{{ dns_morph_bridge.install_root }}"
+        runtime_release_binary_name: dns-morph-bridge
+        runtime_release_public_link: "{{ dns_morph_bridge.bin_path }}"
+        runtime_release_urls:
+          amd64: >-
+            {{ (_dns_morph_legacy_migration_active | bool) |
+               ternary(_dns_morph_legacy_backup_url,
+                       dns_morph_bridge_secrets.binary_url) }}
+          arm64: >-
+            {{ (_dns_morph_legacy_migration_active | bool) |
+               ternary(_dns_morph_legacy_backup_url,
+                       dns_morph_bridge_secrets.binary_url) }}
+        runtime_release_sha256:
+          amd64: "{{ dns_morph_bridge_secrets.binary_sha256 }}"
+          arm64: "{{ dns_morph_bridge_secrets.binary_sha256 }}"
+        runtime_release_arch_slugs:
+          amd64: amd64
+          arm64: arm64
+        runtime_release_artifact_filename: dns-morph-bridge
+        runtime_release_artifact_type: binary
+
+    - name: Record completed DNS-Morph legacy migration
+      ansible.builtin.set_fact:
+        _dns_morph_legacy_migration_committed: true
+  rescue:
+    - name: Restore verified legacy DNS-Morph public binary after failed activation
+      ansible.builtin.copy:
+        src: "{{ _dns_morph_legacy_backup_path }}"
+        dest: "{{ dns_morph_bridge.bin_path }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0755"
+      when: _dns_morph_legacy_migration_active | bool
+
+    - name: Record restored DNS-Morph legacy migration
+      ansible.builtin.set_fact:
+        _dns_morph_legacy_migration_restored: true
+      when: _dns_morph_legacy_migration_active | bool
+
+    - name: Fail after DNS-Morph legacy migration recovery
+      ansible.builtin.fail:
+        msg: DNS-Morph runtime-release activation failed; verified legacy binary restored.
+  always:
+    - name: Remove completed DNS-Morph legacy migration backup
+      ansible.builtin.file:
+        path: "{{ _dns_morph_legacy_backup_path }}"
+        state: absent
+      when:
+        - _dns_morph_legacy_migration_active | bool
+        - >-
+          _dns_morph_legacy_migration_committed | bool or
+          _dns_morph_legacy_migration_restored | bool
+
+- name: Notify DNS-Morph bridge restart after runtime release activation
+  ansible.builtin.debug:
+    msg: >-
+      DNS-Morph bridge runtime release activation changed={{ runtime_release_changed | bool }}
+  changed_when: runtime_release_changed | bool
   notify: Restart dns-morph-bridge
+  when: not ansible_check_mode
 
 - name: Render bridge config
   # Carries the signing key; repo-wide secret-render discipline keeps the
@@ -77,6 +260,9 @@
     owner: root
     group: dns-morph-bridge
     mode: "0640"
+    validate: >-
+      /usr/local/libexec/ripdpi-validate-yaml-mapping
+      --profile dns-morph %s
   no_log: true
   diff: false
   notify: Restart dns-morph-bridge

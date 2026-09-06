@@ -22,6 +22,8 @@
         lookup('env', 'VPN_SECRETS_FILE')
         | default(playbook_dir ~ '/../../secrets/prod.secrets.example.yaml', true)
       }}
+    p0_reality_shape_template: >-
+      {{ playbook_dir }}/../templates/p0-reality-shape.json.j2
 
   vars_files:
     - "{{ vpn_secrets_file }}"
@@ -71,9 +73,50 @@
                     fail_msg: "secrets are missing client/REALITY data; cannot smoke-test"
                   no_log: true
 
-                - name: Select REALITY smoke client
+                - name: Select populated REALITY smoke cohorts
                   ansible.builtin.set_fact:
-                    smoketest_client: "{{ xray.clients[0] }}"
+                    smoketest_reality_populated_cohorts: >-
+                      {{ xray.cohorts | default([])
+                         | selectattr('clients', 'defined')
+                         | selectattr('clients') | list }}
+                  no_log: true
+
+                - name: Select REALITY smoke cohort
+                  ansible.builtin.set_fact:
+                    smoketest_reality_cohort: >-
+                      {{ (smoketest_reality_populated_cohorts | first | default({}))
+                         if (xray.cohorts | default([]) | length > 0)
+                         else {
+                           'port': xray_port,
+                           'flow_mode': vpn.xray_flow_mode | default(p0_reality_flow_mode),
+                           'clients': [xray.clients[0].name]
+                         } }}
+                  no_log: true
+
+                - name: Require valid REALITY smoke cohort
+                  ansible.builtin.assert:
+                    that:
+                      - smoketest_reality_cohort is mapping
+                      - smoketest_reality_cohort.clients | default([]) | length > 0
+                      - smoketest_reality_cohort.port | int > 0
+                      - smoketest_reality_cohort.port | int <= 65535
+                    fail_msg: "REALITY cohort has no smoke-testable client or listener"
+
+                - name: Select REALITY smoke client from cohort
+                  ansible.builtin.set_fact:
+                    smoketest_client: >-
+                      {{ xray.clients
+                         | selectattr('name', 'equalto', smoketest_reality_cohort.clients[0])
+                         | list | first | default({}) }}
+                  no_log: true
+
+                - name: Require REALITY smoke client belongs to selected cohort
+                  ansible.builtin.assert:
+                    that:
+                      - smoketest_client is mapping
+                      - smoketest_client.uuid | default('') | length > 0
+                      - smoketest_client.short_id | default('') | length > 0
+                    fail_msg: "selected REALITY cohort references an unknown or incomplete client"
                   no_log: true
 
                 - name: Render Xray client config (REALITY)
@@ -83,6 +126,11 @@
                     group: root
                     mode: "0600"
                     content: |
+                      {% set _smoke_shape = lookup(
+                        'ansible.builtin.template',
+                        p0_reality_shape_template,
+                        template_vars={'p0_reality_shape_input': smoketest_reality_cohort}
+                      ) | from_json %}
                       {
                         "log": { "loglevel": "warning" },
                         "inbounds": [{
@@ -98,11 +146,11 @@
                           "settings": {
                             "vnext": [{
                               "address": "127.0.0.1",
-                              "port": 443,
+                              "port": {{ smoketest_reality_cohort.port }},
                               "users": [{
                                 "id": "{{ smoketest_client.uuid }}",
-                                "encryption": "none",
-                                "flow": "xtls-rprx-vision"
+                                "encryption": "none"{% if _smoke_shape.client_flow %},
+                                "flow": "{{ _smoke_shape.client_flow }}"{% endif %}
                               }]
                             }]
                           },
@@ -114,8 +162,10 @@
                               "serverName": "{{ xray.server_names[0] }}",
                               "publicKey": "{{ xray.reality_public_key }}",
                               "shortId": "{{ smoketest_client.short_id }}"
-                            }
-                          }
+                            }{% if _smoke_shape.finalmask %},
+                            "sockopt": {"finalmask": "Sudoku"}{% endif %}
+                          }{% if _smoke_shape.client_mux %},
+                          "mux": {"enabled": true, "concurrency": 8}{% endif %}
                         }]
                       }
                   no_log: true
@@ -205,7 +255,7 @@
                     group: root
                     mode: "0600"
                     content: |
-                      server: 127.0.0.1:{{ hysteria_port | default(443) }}
+                      server: 127.0.0.1:{{ hysteria_port }}
                       auth: "{{ hysteria.clients[0].name }}:{{ hysteria.clients[0].password }}"
                       tls:
                         sni: "{{ nginx_xhttp.server_name | default(xray.server_names[0]) }}"

@@ -16,7 +16,7 @@ naive:
   install_dir: /opt/naive
   config_dir: /etc/naive
   log_dir: /var/log/naive
-  bind_port: 443        # must be 443 to look like a real HTTPS site
+  bind_port: "{{ naive_bind_port }}" # must be 443 to look like a real HTTPS site
   decoy_root: /var/www/naive-decoy
   # Required post-build sha256 of the caddy-naive binary. When set the
   # role asserts the freshly-built binary matches this hash so a supply-chain

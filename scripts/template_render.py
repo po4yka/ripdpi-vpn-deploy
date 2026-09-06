@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+from copy import deepcopy
 from pathlib import Path
 
 import yaml
@@ -15,6 +16,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ROLES_DIR = REPO_ROOT / "ansible" / "roles"
 GROUP_VARS = REPO_ROOT / "ansible" / "group_vars"
 EXAMPLE_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
+SHARED_TEMPLATES_DIR = REPO_ROOT / "ansible" / "templates"
+_EXACT_VARIABLE_REFERENCE = re.compile(r"^\s*{{\s*([A-Za-z_][A-Za-z0-9_]*)\s*}}\s*$")
 
 SYNTHETIC_FACTS = {
     "ansible_user": "deploy",
@@ -55,6 +58,7 @@ def merge_render_vars() -> dict:
         merged.update(yaml.safe_load(all_yml.read_text()) or {})
     if EXAMPLE_FILE.exists():
         merged.update(yaml.safe_load(EXAMPLE_FILE.read_text()) or {})
+    _resolve_exact_variable_references(merged)
     merged.update(SYNTHETIC_FACTS)
     merged.setdefault("xray_arch", "64")
     merged.setdefault("xray_sha256", "0" * 64)
@@ -62,17 +66,30 @@ def merge_render_vars() -> dict:
     merged.setdefault("hysteria_sha256", "0" * 64)
     merged.setdefault("node_manifest_source_revision", "1" * 40)
     merged.setdefault("node_manifest_deployable_digest", "2" * 64)
+    merged.setdefault(
+        "p0_reality_shape_template",
+        str(SHARED_TEMPLATES_DIR / "p0-reality-shape.json.j2"),
+    )
     merged["_observability_agent_service_generation"] = "3" * 64
     merged["_observability_telegram_generation"] = "4" * 64
     merged.setdefault(
         "watchdog_reality_probes",
         [
-            {"name": "primary", "port": 443, "flow_mode": "vision", "finalmask": False},
+            {
+                "name": "primary",
+                "port": 443,
+                "p0_reality_shape_input": {
+                    "flow_mode": "vision",
+                    "finalmask": False,
+                },
+            },
             {
                 "name": "fallback",
                 "port": 2053,
-                "flow_mode": "vision",
-                "finalmask": False,
+                "p0_reality_shape_input": {
+                    "flow_mode": "vision",
+                    "finalmask": False,
+                },
             },
         ],
     )
@@ -160,6 +177,31 @@ def merge_render_vars() -> dict:
     return merged
 
 
+def _resolve_exact_variable_references(value: object, context: dict | None = None) -> object:
+    """Resolve only whole-value references used by role defaults.
+
+    Repository template snapshots load role defaults as YAML rather than through
+    Ansible.  Runtime listener defaults intentionally point at the canonical
+    flat group variable, so preserve that relationship without evaluating
+    arbitrary Jinja in the lightweight renderer.
+    """
+    if context is None:
+        context = value if isinstance(value, dict) else {}
+    if isinstance(value, dict):
+        for key, item in list(value.items()):
+            value[key] = _resolve_exact_variable_references(item, context)
+        return value
+    if isinstance(value, list):
+        return [_resolve_exact_variable_references(item, context) for item in value]
+    if isinstance(value, str):
+        match = _EXACT_VARIABLE_REFERENCE.fullmatch(value)
+        if match and match.group(1) in context:
+            referenced = context[match.group(1)]
+            if referenced is not value:
+                return _resolve_exact_variable_references(referenced, context)
+    return value
+
+
 def _sha256(value: str, algorithm: str) -> str:
     """The single Ansible hash operation required by credential templates."""
     if algorithm != "sha256" or not isinstance(value, str):
@@ -189,6 +231,24 @@ def render_template(path: Path, vars_: dict) -> str:
         else ""
     )
     env.filters["extract"] = lambda key, container: container[key]
+    env.filters["from_json"] = json.loads
+
+    def lookup(plugin: str, term: str, *, template_vars: dict | None = None) -> str:
+        """Render a shared Ansible template used by repository fixtures only."""
+        if plugin not in {"template", "ansible.builtin.template"}:
+            raise ValueError(f"unsupported template lookup plugin: {plugin}")
+        candidate = Path(term)
+        if not candidate.is_absolute():
+            candidate = SHARED_TEMPLATES_DIR / candidate
+        resolved = candidate.resolve(strict=True)
+        shared_root = SHARED_TEMPLATES_DIR.resolve()
+        if not resolved.is_relative_to(shared_root) or resolved.suffix != ".j2":
+            raise ValueError("template lookup is limited to shared Ansible templates")
+        context = deepcopy(vars_)
+        context.update(template_vars or {})
+        return render_template(resolved, context)
+
+    env.globals["lookup"] = lookup
     env.tests["match"] = lambda value, pattern: bool(re.search(pattern, str(value)))
     env.tests["search"] = lambda value, pattern: bool(re.search(pattern, str(value)))
     return env.get_template(path.name).render(**vars_)

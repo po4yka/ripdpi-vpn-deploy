@@ -19,3 +19,13 @@ snell:
     - {id: v6-unshaped, listen_port: 2445, server_version: 6, client_version: 6, mode: unshaped}
 
 snell_secrets: {}
+
+snell_release_urls:
+  amd64: >-
+    https://github.com/SagerNet/sing-box/releases/download/{{ snell.version
+    }}/sing-box-{{ snell.version | regex_replace('^v', '')
+    }}-linux-amd64.tar.gz
+  arm64: >-
+    https://github.com/SagerNet/sing-box/releases/download/{{ snell.version
+    }}/sing-box-{{ snell.version | regex_replace('^v', '')
+    }}-linux-arm64.tar.gz

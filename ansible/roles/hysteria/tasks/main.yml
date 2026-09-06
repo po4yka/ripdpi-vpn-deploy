@@ -19,6 +19,21 @@
       - hysteria.masquerade_url == public_site_canonical_url
     fail_msg: Set hysteria.masquerade_url to public_site_canonical_url so probes see the owned public site.
 
+- name: Install Hysteria configuration validation dependency
+  ansible.builtin.apt:
+    name: python3-yaml
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install shared YAML mapping validator
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../runtime-release/files/validate_yaml_mapping.py"
+    dest: /usr/local/libexec/ripdpi-validate-yaml-mapping
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Create hysteria system user
   ansible.builtin.user:
     name: hysteria
@@ -85,7 +100,7 @@
       dest: "{{ hysteria_config_dir }}/server.key"
   no_log: true
   diff: false
-  notify: Restart hysteria-server
+  notify: Restart hysteria
 
 - name: Check if previous Hysteria config exists
   ansible.builtin.stat:
@@ -124,6 +139,9 @@
     owner: root
     group: hysteria
     mode: "0640"
+    validate: >-
+      /usr/local/libexec/ripdpi-validate-yaml-mapping
+      --profile hysteria %s
   no_log: true
   diff: false
   notify: Restart hysteria

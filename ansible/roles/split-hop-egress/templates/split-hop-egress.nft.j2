@@ -1,0 +1,7 @@
+destroy table inet split_hop_egress
+table inet split_hop_egress {
+  chain postrouting {
+    type nat hook postrouting priority 100; policy accept;
+    iifname "{{ split_hop_egress.wg_interface }}" oifname "{{ split_hop_egress.forward_iface }}" masquerade
+  }
+}

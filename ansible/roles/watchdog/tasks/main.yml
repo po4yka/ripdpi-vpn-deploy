@@ -20,8 +20,7 @@
       {{ watchdog_reality_probes + [{
         'name': item.name,
         'port': item.port,
-        'flow_mode': item.flow_mode | default('vision'),
-        'finalmask': item.finalmask | default(false),
+        'p0_reality_shape_input': item,
       }] }}
   loop: "{{ xray.cohorts | default([]) }}"
   loop_control:
@@ -35,9 +34,8 @@
     watchdog_reality_probes: >-
       {{ watchdog_reality_probes + [{
         'name': 'primary',
-        'port': xray_port | default(443),
-        'flow_mode': vpn.xray_flow_mode | default('vision'),
-        'finalmask': vpn.xray_finalmask | default(false),
+        'port': xray_port,
+        'p0_reality_shape_input': {},
       }] }}
   when:
     - vpn.enable_xray_reality | default(true)
@@ -50,15 +48,26 @@
       {{ watchdog_reality_probes + [{
         'name': 'fallback',
         'port': xray_fallback_port,
-        'flow_mode': vpn.xray_flow_mode | default('vision'),
-        'finalmask': vpn.xray_finalmask | default(false),
+        'p0_reality_shape_input': {},
       }] }}
   when:
     - vpn.enable_xray_reality | default(true)
     - not (vpn_subscription_only | default(false))
     - (xray.cohorts | default([])) | length == 0
-    - (xray_fallback_port | default(0) | int) > 0
-    - (xray_fallback_port | int) != (xray_port | default(443) | int)
+    - (xray_fallback_port | int) > 0
+    - (xray_fallback_port | int) != (xray_port | int)
+
+- name: Validate every watchdog REALITY probe shape
+  ansible.builtin.assert:
+    that:
+      - >-
+        (item.p0_reality_shape_input.flow_mode
+        | default(vpn.xray_flow_mode | default(p0_reality_flow_mode)))
+        in p0_reality_shapes
+    fail_msg: >-
+      watchdog REALITY probe {{ item.name }} uses an unknown P0 shape.
+  loop: "{{ watchdog_reality_probes }}"
+  when: vpn.enable_xray_reality | default(true) | bool
 
 - name: Validate watchdog data-plane service address
   ansible.builtin.assert:
@@ -147,6 +156,9 @@
   no_log: true
   diff: false
   notify: Restart watchdog timer
+  vars:
+    p0_reality_shape_template: >-
+      {{ role_path }}/../../templates/p0-reality-shape.json.j2
 
 - name: Remove authenticated REALITY probe config when Xray is disabled
   ansible.builtin.file:

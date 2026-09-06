@@ -242,6 +242,9 @@ def test_enabled_role_rejects_a_public_listener_port_collision(tmp_path: Path) -
   gather_facts: false
   become: false
   vars:
+    xray_port: 443
+    xray_fallback_port: 2053
+    nginx_xhttp_port: 10085
     vpn:
       enable_xray_reality: true
       enable_reality_self_steal: true
