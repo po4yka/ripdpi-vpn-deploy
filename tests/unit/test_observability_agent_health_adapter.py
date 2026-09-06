@@ -301,6 +301,7 @@ def test_watchdog_failure_restart_rate_limit_and_recovery_are_bounded(
         _watchdog_state(consecutive_fails=-1),
         _watchdog_state().replace("alerts_this_hour=0", "alerts_this_hour=secret"),
     ],
+    ids=["missing-fields", "unknown-field", "duplicate-field", "negative-count", "nonnumeric-count"],
 )
 def test_watchdog_malformed_state_fails_closed_without_raw_content(
     tmp_path: Path, watchdog: str

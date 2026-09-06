@@ -38,6 +38,7 @@ version command succeeds. Template routing rules need the adjacent data files.
 committed Linux profile. Keep `pytest unit tests` as the required aggregate: it
 checks identical collections/profiles, disjoint selections and full execution.
 Refresh the profile from the verified artifact; local `test-unit` stays complete.
+Give clock-dependent parameter values stable IDs so collection agrees across runners.
 
 **Molecule per role > monolithic test** — role-level scenarios catch
 config drift inside a role. Full-stack catches order/handler interactions.

@@ -149,3 +149,31 @@ def test_shard_make_target_rejects_an_invalid_group_without_execution(tmp_path):
                             cwd=tmp_path, env=env, capture_output=True, text=True, timeout=10)
     assert result.returncode != 0
     assert "PYTEST_GROUP must be 1, 2, 3 or 4" in result.stderr
+
+
+def test_full_collection_has_stable_ids_across_runner_clocks():
+    script = '''
+import datetime
+import json
+import sys
+import pytest
+original = datetime.datetime
+class RunnerClock(original):
+    @classmethod
+    def now(cls, tz=None):
+        return original.fromtimestamp(int(sys.argv[1]), tz)
+datetime.datetime = RunnerClock
+class Collection:
+    def pytest_collection_finish(self, session):
+        print("COLLECTION_JSON=" + json.dumps(sorted(item.nodeid for item in session.items)))
+raise SystemExit(pytest.main(["--collect-only", "-q"], plugins=[Collection()]))
+'''
+    collections = []
+    for clock in (1700000000, 1700003600):
+        result = subprocess.run([sys.executable, "-c", script, str(clock)], cwd=ROOT,
+                                capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0, result.stdout + result.stderr
+        payload = next(line.removeprefix("COLLECTION_JSON=") for line in result.stdout.splitlines()
+                       if line.startswith("COLLECTION_JSON="))
+        collections.append(json.loads(payload))
+    assert collections[0] == collections[1]
