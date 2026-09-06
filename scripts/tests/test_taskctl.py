@@ -1240,6 +1240,198 @@ class TaskctlHistoryTest(TaskctlFixture):
         self.assertTrue((self.root / "openspec/changes" / change).is_dir())
         self.assertFalse(marker.exists())
 
+    def test_archive_ready_rejects_unmapped_transfer_created_in_merged_lane(
+        self,
+    ) -> None:
+        owner_task = "CIC-1786234567890001"
+        source_task = "ANS-1786234567890101"
+        self.add_simple_task(task_id=owner_task)
+        self.write_board()
+        self.commit_all("bootstrap strict contract")
+        integration_branch = self.git("branch", "--show-current")
+
+        self.git("switch", "-c", "unmapped-transfer")
+        self.add_active_spec_task(
+            status="review",
+            done=True,
+            task_id=source_task,
+            slug="source",
+        )
+        change = f"{source_task.casefold()}-change"
+        verification_path = (
+            self.root / "openspec/changes" / change / "verification.md"
+        )
+        verification = taskctl.read_document(verification_path)
+        values = dict(verification.values)
+        values["local"] = "passed"
+        values["local_evidence"] = "Local checks passed."
+        values["live"] = "blocked"
+        values["live_evidence"] = "Live acceptance is unavailable."
+        verification_path.write_text(
+            taskctl.render_document(
+                values,
+                verification.body.replace(
+                    "| Pending | required |", "| Local checks passed. | passed |"
+                ),
+                order=tuple(values),
+            ),
+            encoding="utf-8",
+        )
+        self.write_board()
+        source_revision = self.commit_all("record blocked live evidence")
+
+        verification = taskctl.read_document(verification_path)
+        values = dict(verification.values)
+        values["commit_sha"] = source_revision
+        values["live"] = "not_applicable"
+        values["live_evidence"] = "Delegated elsewhere without mapping."
+        verification_path.write_text(
+            taskctl.render_document(values, verification.body, order=tuple(values)),
+            encoding="utf-8",
+        )
+        self.write_board()
+        self.commit_all("reclassify live evidence without mapping")
+
+        self.git("switch", integration_branch)
+        self.git(
+            "merge",
+            "--no-ff",
+            "unmapped-transfer",
+            "-m",
+            "merge unmapped transfer",
+        )
+        openspec = self.root / "tools/tasking/node_modules/.bin/openspec"
+        openspec.parent.mkdir(parents=True)
+        openspec.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        openspec.chmod(0o755)
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "live evidence changed from blocked to not_applicable without a shared mapping",
+        ):
+            taskctl.command_verify(
+                argparse.Namespace(
+                    root=self.root,
+                    query=source_task,
+                    archive_ready=True,
+                )
+            )
+
+    def test_historical_related_task_rejects_unmapped_evidence_transfer(
+        self,
+    ) -> None:
+        source_task = "ANS-1786234567890101"
+        owner_task = "CIC-1786234567890001"
+        source = self.add_active_spec_task(
+            status="review",
+            done=True,
+            task_id=source_task,
+            slug="source",
+        )
+        self.add_simple_task(task_id=owner_task, related=[source_task])
+        change = f"{source_task.casefold()}-change"
+        verification_path = (
+            self.root / "openspec/changes" / change / "verification.md"
+        )
+        verification = taskctl.read_document(verification_path)
+        values = dict(verification.values)
+        values["local"] = "passed"
+        values["local_evidence"] = "Local checks passed."
+        values["live"] = "blocked"
+        values["live_evidence"] = "Live acceptance is unavailable."
+        verification_path.write_text(
+            taskctl.render_document(
+                values,
+                verification.body.replace(
+                    "| Pending | required |", "| Local checks passed. | passed |"
+                ),
+                order=tuple(values),
+            ),
+            encoding="utf-8",
+        )
+        self.write_board()
+        source_revision = self.commit_all("record blocked source evidence")
+
+        active = self.root / "openspec/changes" / change
+        archive = (
+            self.root
+            / "openspec/changes/archive"
+            / f"2026-08-09-{change}"
+        )
+        active.rename(archive)
+        verification_path = archive / "verification.md"
+        verification = taskctl.read_document(verification_path)
+        values = dict(verification.values)
+        values["commit_sha"] = source_revision
+        values["live"] = "not_applicable"
+        values["live_evidence"] = "Delegated elsewhere without mapping."
+        verification_path.write_text(
+            taskctl.render_document(values, verification.body, order=tuple(values)),
+            encoding="utf-8",
+        )
+        (archive / ".taskctl-archive.json").write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "task_id": source_task,
+                    "change": change,
+                    "outcome": "review",
+                    "commit_sha": source_revision,
+                    "archived_at": "2026-08-09T00:00:00Z",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        source_document = taskctl.read_document(source)
+        source_values = dict(source_document.values)
+        source_values.update(
+            {
+                "status": "done",
+                "closed_at": "2026-08-09T00:00:00Z",
+                "closed_reason": "Forged closure after unmapped transfer.",
+                "evidence_summary": "Structurally valid receipts only.",
+            }
+        )
+        source.write_text(
+            taskctl.render_document(source_values, source_document.body),
+            encoding="utf-8",
+        )
+        execution = archive / "tasks.md"
+        (archive / ".taskctl-close.json").write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "task_id": source_task,
+                    "change": change,
+                    "outcome": "done",
+                    "issue_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                    "execution_sha256": hashlib.sha256(
+                        execution.read_bytes()
+                    ).hexdigest(),
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        self.write_board()
+        self.commit_all("forge structurally valid terminal snapshot")
+        source.unlink()
+        self.commit_all("purge source with unmapped transfer")
+
+        for action in (
+            lambda: taskctl.load_state(self.root),
+            lambda: taskctl.command_graph(
+                argparse.Namespace(root=self.root, json=True)
+            ),
+        ):
+            with self.subTest(action=action):
+                with self.assertRaisesRegex(
+                    taskctl.ContractError,
+                    "live evidence changed from blocked to not_applicable without a shared mapping",
+                ):
+                    action()
+
     def test_legacy_not_applicable_evidence_survives_policy_activation(self) -> None:
         self.write_project_config(evidence_transfer_policy=0)
         task_id = "ANS-1786234567890101"

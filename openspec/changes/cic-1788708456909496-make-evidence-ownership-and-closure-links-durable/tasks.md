@@ -28,3 +28,5 @@ Terraform, Ansible, secrets, providers, hosts, and clients are out of scope.
 - The final clean-history pull-request head must pass every protected required
   check. Dry-run, staging, live, client, and artifact execution are not
   applicable because this change modifies repository-local task tooling only.
+- [x] CIC-1788729192473052 Add RED regressions for unmapped evidence transfers in merged lanes and purged historical related targets #bug !high @item:CIC-1788708456909496
+- [x] CIC-1788729193073535 Validate evidence-transfer history consistently across active merged lanes and terminal related-task resolution #bug !high @item:CIC-1788708456909496

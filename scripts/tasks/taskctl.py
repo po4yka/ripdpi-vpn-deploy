@@ -1717,6 +1717,203 @@ def validate_current_shared_transfer(
             )
 
 
+def historical_task_signature(
+    root: Path,
+    revision: str,
+    snapshot: HistoricalTaskSnapshot | None,
+) -> tuple[str, str | None] | None:
+    if snapshot is None:
+        return None
+    verification_text: str | None = None
+    if snapshot.document.values.get("spec_mode") == "required":
+        execution = historical_execution_path(root, revision, snapshot.document)
+        verification_text = git_show_text(
+            root,
+            revision,
+            f"{execution.rsplit('/', 1)[0]}/verification.md",
+        )
+    return snapshot.text, verification_text
+
+
+def contributing_task_history_timelines(
+    root: Path,
+    task_id: str,
+    history_index: TerminalHistoryIndex,
+) -> tuple[tuple[str, ...], ...]:
+    lanes_by_tip: dict[str, list[tuple[str, ...]]] = {}
+    for lane in history_index.merged_lanes:
+        lanes_by_tip.setdefault(lane[-1], []).append(lane)
+
+    selected: list[tuple[str, ...]] = [history_index.revisions]
+    seen = {history_index.revisions}
+    index = 0
+    while index < len(selected):
+        timeline = selected[index]
+        index += 1
+        for position in range(1, len(timeline)):
+            revision = timeline[position]
+            side_parents = history_index.merge_side_parents.get(revision, ())
+            if not side_parents:
+                continue
+            previous_revision = timeline[position - 1]
+            previous = history_index.by_revision[previous_revision].get(task_id)
+            current = history_index.by_revision[revision].get(task_id)
+            if current is None or historical_task_signature(
+                root, previous_revision, previous
+            ) == historical_task_signature(root, revision, current):
+                continue
+            for side_parent in side_parents:
+                for lane in lanes_by_tip.get(side_parent, []):
+                    if (
+                        lane not in seen
+                        and history_index.by_revision[side_parent].get(task_id)
+                        is not None
+                    ):
+                        seen.add(lane)
+                        selected.append(lane)
+    return tuple(selected)
+
+
+def evidence_observation_revisions(
+    root: Path,
+    *,
+    task_id: str,
+    incarnation: Sequence[tuple[str, HistoricalTaskSnapshot]],
+    history_index: TerminalHistoryIndex,
+) -> set[str]:
+    if not incarnation:
+        return set()
+    change = incarnation[-1][1].document.values.get("openspec_change")
+    active_verification = f"openspec/changes/{change}/verification.md"
+    archived_verification = (
+        f":(glob)openspec/changes/archive/*-{change}/verification.md"
+    )
+    changed = {incarnation[0][0], incarnation[-1][0]}
+    if len(incarnation) > 1:
+        history = run_command(
+            (
+                "git",
+                "log",
+                "--first-parent",
+                "--full-history",
+                "--format=%H",
+                f"{incarnation[0][0]}..{incarnation[-1][0]}",
+                "--",
+                active_verification,
+                archived_verification,
+                str(PROJECT_CONFIG_PATH),
+            ),
+            root=root,
+        )
+        if history.returncode != 0:
+            fail(f"cannot inspect evidence history for {task_id}")
+        changed.update(filter(None, (history.stdout or "").splitlines()))
+    for index in range(1, len(incarnation)):
+        revision, snapshot = incarnation[index]
+        previous_revision, previous = incarnation[index - 1]
+        if snapshot.text != previous.text:
+            changed.add(revision)
+        if (
+            revision in history_index.merge_side_parents
+            and historical_task_signature(root, previous_revision, previous)
+            != historical_task_signature(root, revision, snapshot)
+        ):
+            changed.add(revision)
+    return changed
+
+
+def validate_historical_evidence_transfer_timeline(
+    root: Path,
+    *,
+    task_id: str,
+    revisions: Sequence[str],
+    history_index: TerminalHistoryIndex,
+    scratch: Path,
+    require_survival: bool,
+) -> dict[str, str]:
+    timeline = [
+        (revision, history_index.by_revision[revision].get(task_id))
+        for revision in revisions
+    ]
+    last_absent = max(
+        (index for index, (_, snapshot) in enumerate(timeline) if snapshot is None),
+        default=-1,
+    )
+    incarnation = [
+        (revision, snapshot)
+        for revision, snapshot in timeline[last_absent + 1 :]
+        if snapshot is not None
+    ]
+    observations: list[
+        tuple[str, HistoricalTaskSnapshot, dict[str, Any], ProjectConfig]
+    ] = []
+    observation_revisions = evidence_observation_revisions(
+        root,
+        task_id=task_id,
+        incarnation=incarnation,
+        history_index=history_index,
+    )
+    for revision, snapshot in incarnation:
+        if revision not in observation_revisions:
+            continue
+        revision_config = historical_project_config(root, revision, scratch)
+        observations.append(
+            (
+                revision,
+                snapshot,
+                historical_verification_values(
+                    root,
+                    revision,
+                    snapshot.document,
+                    revision_config,
+                    scratch,
+                ),
+                revision_config,
+            )
+        )
+
+    transferred: dict[str, str] = {}
+    for index in range(1, len(observations)):
+        previous = observations[index - 1][2]
+        revision, snapshot, current, revision_config = observations[index]
+        if revision_config.evidence_transfer_policy == 0:
+            continue
+        for category in revision_config.evidence_categories:
+            previous_state = previous.get(category)
+            if (
+                previous_state in {"required", "blocked"}
+                and current[category] == "not_applicable"
+            ):
+                validate_historical_shared_transfer(
+                    root,
+                    task_id=task_id,
+                    category=category,
+                    previous_state=previous_state,
+                    source_ref=revision,
+                    source_snapshot=snapshot,
+                    snapshots_at_source=history_index.by_revision[revision],
+                    config=revision_config,
+                    scratch=scratch,
+                )
+                transferred[category] = previous_state
+
+    if require_survival and transferred:
+        final_revision, final_snapshot, _, final_config = observations[-1]
+        for category, previous_state in sorted(transferred.items()):
+            validate_historical_shared_transfer(
+                root,
+                task_id=task_id,
+                category=category,
+                previous_state=previous_state,
+                source_ref=final_revision,
+                source_snapshot=final_snapshot,
+                snapshots_at_source=history_index.by_revision[final_revision],
+                config=final_config,
+                scratch=scratch,
+            )
+    return transferred
+
+
 def validate_current_evidence_transfers(
     root: Path,
     document: Document,
@@ -1729,91 +1926,52 @@ def validate_current_evidence_transfers(
     ):
         return
     history_index = build_terminal_history_index(root, config)
-    timeline = [
-        (revision, history_index.by_revision[revision].get(document.task_id))
-        for revision in history_index.revisions
-    ]
-    last_absent = max(
-        (index for index, (_, snapshot) in enumerate(timeline) if snapshot is None),
-        default=-1,
-    )
-    committed_incarnation = [
-        (revision, snapshot)
-        for revision, snapshot in timeline[last_absent + 1 :]
-        if snapshot is not None
-    ]
-    observations: list[
-        tuple[str, HistoricalTaskSnapshot | None, dict[str, Any], ProjectConfig]
-    ] = []
     with tempfile.TemporaryDirectory(prefix="taskctl-current-transfer-") as directory:
         scratch = Path(directory)
-        for revision, snapshot in committed_incarnation:
-            assert snapshot is not None
-            revision_config = historical_project_config(root, revision, scratch)
-            observations.append(
-                (
-                    revision,
-                    snapshot,
-                    historical_verification_values(
-                        root,
-                        revision,
-                        snapshot.document,
-                        revision_config,
-                        scratch,
-                    ),
-                    revision_config,
+        transferred: dict[str, str] = {}
+        for revisions in contributing_task_history_timelines(
+            root, document.task_id, history_index
+        ):
+            transferred.update(
+                validate_historical_evidence_transfer_timeline(
+                    root,
+                    task_id=document.task_id,
+                    revisions=revisions,
+                    history_index=history_index,
+                    scratch=scratch,
+                    require_survival=False,
                 )
             )
+
+        committed_snapshot = history_index.by_revision[
+            history_index.revisions[-1]
+        ].get(document.task_id)
         current_verification = expected_execution_path(root, document).parent / "verification.md"
-        observations.append(
-            (
-                "WORKTREE",
-                None,
-                evidence_values(current_verification, config),
-                config,
+        current = evidence_values(current_verification, config)
+        if committed_snapshot is not None:
+            committed_config = historical_project_config(
+                root, history_index.revisions[-1], scratch
             )
-        )
-        activation_index = next(
-            (
-                index
-                for index, (_, _, _, revision_config) in enumerate(observations)
-                if revision_config.evidence_transfer_policy == 1
-            ),
-            None,
-        )
-        if activation_index is None:
-            return
-        transferred: dict[str, str] = {}
-        for index in range(max(1, activation_index), len(observations)):
-            previous = observations[index - 1][2]
-            revision, snapshot, current, revision_config = observations[index]
-            for category in revision_config.evidence_categories:
+            previous = historical_verification_values(
+                root,
+                history_index.revisions[-1],
+                committed_snapshot.document,
+                committed_config,
+                scratch,
+            )
+            for category in config.evidence_categories:
                 previous_state = previous.get(category)
                 if (
                     previous_state in {"required", "blocked"}
                     and current[category] == "not_applicable"
                 ):
-                    if revision == "WORKTREE":
-                        validate_current_shared_transfer(
-                            root,
-                            document=document,
-                            category=category,
-                            previous_state=previous_state,
-                            config=config,
-                        )
-                    else:
-                        assert snapshot is not None
-                        validate_historical_shared_transfer(
-                            root,
-                            task_id=document.task_id,
-                            category=category,
-                            previous_state=previous_state,
-                            source_ref=revision,
-                            source_snapshot=snapshot,
-                            snapshots_at_source=history_index.by_revision[revision],
-                            config=revision_config,
-                            scratch=scratch,
-                        )
+                    validate_current_shared_transfer(
+                        root,
+                        document=document,
+                        category=category,
+                        previous_state=previous_state,
+                        config=config,
+                    )
                     transferred[category] = previous_state
         for category, previous_state in transferred.items():
             validate_current_shared_transfer(
@@ -1985,6 +2143,7 @@ def build_terminal_history_index(
         if len(parents) < 2 or revision in inspected_merges:
             continue
         inspected_merges.add(revision)
+        merge_side_parents.setdefault(revision, tuple(parents[1:]))
         first_parent = parents[0]
         for side_parent in parents[1:]:
             already_integrated = run_command(
@@ -2163,6 +2322,16 @@ def resolve_terminal_task_from_index(
                 fail(
                     f"{config.project}#{task_id}: task transitioned out of terminal state"
                 )
+
+        if outcome == "done" and document.values.get("spec_mode") == "required":
+            validate_historical_evidence_transfer_timeline(
+                root,
+                task_id=task_id,
+                revisions=tuple(revision for revision, _ in incarnation),
+                history_index=history_index,
+                scratch=scratch,
+                require_survival=True,
+            )
 
         _, parsed_steps = validate_terminal_snapshot(
             root,
