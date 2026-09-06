@@ -79,12 +79,8 @@ Settings → Branches → `main` → see:
 | ci.yml | `molecule (backup)` |
 | ci.yml | `molecule (subscription-host)` |
 | ci.yml | `shellcheck` |
-| ci.yml | `secrets-coverage` |
-| ci.yml | `templates-render` |
-| ci.yml | `yamllint` |
+| ci.yml | `python validators` |
 | ci.yml | `pytest unit tests` |
-| ci.yml | `jinja snapshot diff` |
-| ci.yml | `secrets schema (lenient on example)` |
 | ci.yml | `terraform test (upcloud)` |
 | ci.yml | `terraform test (hetzner)` |
 | ci.yml | `terraform test (vultr)` |
@@ -99,9 +95,13 @@ indefinitely.
 
 The aggregate `required checks` context is the forward-compatible gate: it
 depends on the complete current CI graph, including Scaleway and newer test
-jobs. The remaining individual contexts preserve explicit failure visibility
-and compatibility. If Settings shows fewer than 30 contexts, the remote rule
+jobs. The remaining individual contexts continue to gate their named checks. If Settings shows fewer than 26 contexts, the remote rule
 is stale; rerun `branch-protection` after this documentation commit is green.
+
+`python validators` combines yamllint, secrets coverage, template/Xray checks,
+snapshot comparison, and secrets/bundle schema checks. Migrate their five former
+required contexts to this context only after the combined job passes; retain
+the strict `required checks` aggregate and all unrelated protection settings.
 
 The aggregate also requires the reusable `tf-policy`, `image-scan`,
 `contract-sync` and `reproducible-build` workflows. Main CI invokes all four

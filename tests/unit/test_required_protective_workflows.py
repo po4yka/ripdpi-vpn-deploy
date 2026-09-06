@@ -57,6 +57,15 @@ def _run_gate(gate, results):
     )
 
 
+@pytest.mark.parametrize("outcome", ("failure", "cancelled", "skipped"))
+def test_unsuccessful_python_validators_reject_merge(outcome):
+    gate = _workflow("ci")["jobs"]["required"]
+    outcomes = {name: "success" for name in gate["needs"]}
+    assert "python-validators" in outcomes
+    outcomes["python-validators"] = outcome
+    assert _run_gate(gate, list(outcomes.values())).returncode != 0
+
+
 def test_successful_ci_emits_the_existing_branch_required_context():
     ci = _workflow("ci")
     gate = ci["jobs"]["required"]
