@@ -136,6 +136,20 @@
     - split_hop_egress_policy_render.changed or split_hop_egress_policy_state.rc != 0 or split_hop_egress_policy_drifted
   changed_when: true
 
+- name: Install split-hop egress boot policy loader
+  ansible.builtin.template:
+    src: split-hop-egress-policy.service.j2
+    dest: /etc/systemd/system/split-hop-egress-policy.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable split-hop egress boot policy loader
+  ansible.builtin.systemd_service:
+    name: split-hop-egress-policy.service
+    enabled: true
+    daemon_reload: true
+
 - name: Render WireGuard config for Node B
   ansible.builtin.template:
     src: split-hop-egress.conf.j2

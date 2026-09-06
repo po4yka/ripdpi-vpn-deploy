@@ -100,7 +100,7 @@
       dest: "{{ hysteria_config_dir }}/server.key"
   no_log: true
   diff: false
-  notify: Restart hysteria-server
+  notify: Restart hysteria
 
 - name: Check if previous Hysteria config exists
   ansible.builtin.stat:

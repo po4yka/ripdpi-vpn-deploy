@@ -20,13 +20,16 @@ def _tasks(role: str) -> list[dict]:
 
 
 def _runtime_task(role: str) -> dict:
-    matches = [
-        task
-        for task in _tasks(role)
-        if task.get("ansible.builtin.include_role", {}).get("name")
-        == "runtime-release"
-        and "tasks_from" not in task["ansible.builtin.include_role"]
-    ]
+    matches = []
+    for task in _tasks(role):
+        candidates = [task, *task.get("block", [])]
+        matches.extend(
+            candidate
+            for candidate in candidates
+            if candidate.get("ansible.builtin.include_role", {}).get("name")
+            == "runtime-release"
+            and "tasks_from" not in candidate["ansible.builtin.include_role"]
+        )
     assert len(matches) == 1, role
     return matches[0]
 
@@ -198,3 +201,39 @@ def test_direct_binary_consumers_bind_version_to_immutable_identity() -> None:
     assert bridge["runtime_release_version"] == (
         "sha256-{{ dns_morph_bridge_secrets.binary_sha256 | lower }}"
     )
+
+
+def test_dns_morph_bridge_migrates_only_verified_legacy_regular_binary() -> None:
+    tasks = _tasks("dns-morph-bridge")
+    names = [task["name"] for task in tasks]
+    inspect = _task("dns-morph-bridge", "Inspect legacy DNS-Morph public binary")
+    verify = _task("dns-morph-bridge", "Verify legacy DNS-Morph binary before migration")
+    backup = _task("dns-morph-bridge", "Save verified legacy DNS-Morph binary")
+    interrupted = _task("dns-morph-bridge", "Verify interrupted DNS-Morph migration backup identity")
+    saved = _task("dns-morph-bridge", "Assert saved DNS-Morph migration backup identity")
+    resume = _task("dns-morph-bridge", "Classify resumable DNS-Morph legacy migration")
+    remove = _task("dns-morph-bridge", "Remove verified legacy DNS-Morph public binary")
+    runtime = _runtime_task("dns-morph-bridge")
+
+    assert inspect["ansible.builtin.stat"]["follow"] is False
+    assertions = verify["ansible.builtin.assert"]["that"]
+    assert "_dns_morph_legacy_binary.stat.isreg" in assertions
+    assert "not _dns_morph_legacy_binary.stat.islnk" in assertions
+    assert any("_dns_morph_legacy_binary.stat.checksum" in item for item in assertions)
+    assert backup["ansible.builtin.copy"]["remote_src"] is True
+    assert backup["ansible.builtin.copy"]["mode"] == "0700"
+    assert "not (_dns_morph_legacy_backup.stat.exists | default(false))" in backup["when"]
+    assert any("_dns_morph_legacy_backup.stat.checksum" in item for item in interrupted["ansible.builtin.assert"]["that"])
+    assert any("_dns_morph_legacy_saved_backup.stat.checksum" in item for item in saved["ansible.builtin.assert"]["that"])
+    assert "_dns_morph_legacy_backup.stat.exists" in resume["ansible.builtin.set_fact"]["_dns_morph_legacy_migration_active"]
+    assert remove["ansible.builtin.file"]["state"] == "absent"
+    assert names.index(backup["name"]) < names.index(remove["name"]) < names.index(
+        "Install pinned DNS-Morph bridge through runtime-release"
+    )
+    assert "_dns_morph_legacy_backup_url" in runtime["vars"]["runtime_release_urls"]["amd64"]
+    assert "_dns_morph_legacy_migration_active" in runtime["vars"]["runtime_release_urls"]["amd64"]
+    classifier = _task("dns-morph-bridge", "Classify legacy DNS-Morph public binary")
+    facts = classifier["ansible.builtin.set_fact"]
+    assert "legacy- " not in facts["_dns_morph_legacy_backup_path"]
+    assert "legacy- " not in facts["_dns_morph_legacy_backup_url"]
+    assert "rescue:" in (ROOT / "ansible/roles/dns-morph-bridge/tasks/main.yml").read_text()

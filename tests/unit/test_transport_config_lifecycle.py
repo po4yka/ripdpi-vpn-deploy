@@ -182,6 +182,12 @@ def test_restart_only_handlers_wait_for_service_liveness() -> None:
         assert wait["when"] == "not ansible_check_mode"
 
 
+def test_hysteria_tls_rotation_uses_the_liveness_restart_topic() -> None:
+    """TLS-only changes must restart Hysteria and prove the service is active."""
+    tls = _named(_tasks("hysteria"), "Drop TLS material")
+    assert tls["notify"] == "Restart hysteria"
+
+
 def test_every_transport_molecule_runs_a_negative_validation_case() -> None:
     for role in ("hysteria", "hysteria-realm", "naive", "dns-morph-bridge"):
         scenario = yaml.safe_load(

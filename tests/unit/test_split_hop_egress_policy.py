@@ -71,6 +71,37 @@ def test_policy_is_validated_then_loaded_when_changed_missing_or_drifted() -> No
     ]
 
 
+def test_validated_policy_loader_is_enabled_for_boot_before_wireguard() -> None:
+    tasks = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
+    names = [task["name"] for task in tasks]
+    install = tasks[names.index("Install split-hop egress boot policy loader")]
+    enable = tasks[names.index("Enable split-hop egress boot policy loader")]
+
+    assert install["ansible.builtin.template"] == {
+        "src": "split-hop-egress-policy.service.j2",
+        "dest": "/etc/systemd/system/split-hop-egress-policy.service",
+        "owner": "root",
+        "group": "root",
+        "mode": "0644",
+    }
+    service = enable["ansible.builtin.systemd_service"]
+    assert service == {
+        "name": "split-hop-egress-policy.service",
+        "enabled": True,
+        "daemon_reload": True,
+    }
+    assert names.index("Enable split-hop egress boot policy loader") < names.index(
+        "Enable + start wg-quick for the tunnel"
+    )
+
+    unit = (ROLE / "templates/split-hop-egress-policy.service.j2").read_text()
+    assert "ExecStart=/usr/sbin/nft -c -f {{ split_hop_egress.policy_path }}" in unit
+    assert "ExecStart=/usr/sbin/nft -f {{ split_hop_egress.policy_path }}" in unit
+    assert "After=local-fs.target systemd-sysctl.service nftables.service" in unit
+    assert "Before=wg-quick@{{ split_hop_egress.wg_interface }}.service" in unit
+    assert "WantedBy=multi-user.target" in unit
+
+
 def test_scoped_policy_replaces_only_its_table_and_nat_path() -> None:
     variables = merge_render_vars()
     rendered = render_template(ROLE / "templates/split-hop-egress.nft.j2", variables)
@@ -89,7 +120,7 @@ def test_existing_wrong_table_is_reconciled_once_then_becomes_idempotent(
     selected = copy.deepcopy(
         tasks[
             names.index("Render validated split-hop egress policy") : names.index(
-                "Render WireGuard config for Node B"
+                "Install split-hop egress boot policy loader"
             )
         ]
     )

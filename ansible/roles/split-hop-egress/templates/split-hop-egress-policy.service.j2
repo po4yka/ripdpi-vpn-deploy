@@ -1,0 +1,13 @@
+[Unit]
+Description=Load validated split-hop egress NAT policy
+After=local-fs.target systemd-sysctl.service nftables.service
+Wants=nftables.service
+Before=wg-quick@{{ split_hop_egress.wg_interface }}.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nft -c -f {{ split_hop_egress.policy_path }}
+ExecStart=/usr/sbin/nft -f {{ split_hop_egress.policy_path }}
+
+[Install]
+WantedBy=multi-user.target
