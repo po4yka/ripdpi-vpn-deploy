@@ -2480,6 +2480,23 @@ def timeline_contains_deleted_task(
     )
 
 
+def merged_lane_integrated_after_revision(
+    root: Path,
+    history_index: TerminalHistoryIndex,
+    lane: Sequence[str],
+    revision: str,
+) -> bool:
+    try:
+        revision_index = history_index.revisions.index(revision)
+    except ValueError:
+        fail(f"cannot locate {revision} in first-parent task history")
+    return any(
+        revision_is_ancestor(root, lane[-1], side_parent)
+        for merge_revision in history_index.revisions[revision_index + 1 :]
+        for side_parent in history_index.merge_side_parents.get(merge_revision, ())
+    )
+
+
 def resolve_terminal_task(
     root: Path,
     task_id: str,
@@ -2518,7 +2535,12 @@ def resolve_terminal_task(
             lane
             for lane in candidate_lanes
             if timeline_contains_deleted_task(history_index, lane, task_id)
-            and revision_is_ancestor(root, primary_deletion, lane[-1])
+            and merged_lane_integrated_after_revision(
+                root,
+                history_index,
+                lane,
+                primary_deletion,
+            )
         )
         if not candidate_lanes:
             return primary_resolved
@@ -2962,7 +2984,12 @@ def validate_deleted_history(root: Path, base: str) -> None:
                     lane
                     for lane in terminal_index.merged_lanes
                     if timeline_contains_deleted_task(terminal_index, lane, task_id)
-                    and revision_is_ancestor(root, primary_deletion, lane[-1])
+                    and merged_lane_integrated_after_revision(
+                        root,
+                        terminal_index,
+                        lane,
+                        primary_deletion,
+                    )
                 ]
                 if not candidate_lanes and primary_final.document.values.get("status") not in {
                     "done",
