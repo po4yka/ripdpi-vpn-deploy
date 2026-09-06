@@ -205,6 +205,41 @@ failure; a live deploy does not turn that false failure into a passing test.
 | `make smoke-test` | end-to-end real-traffic dial through every enabled profile |
 | `make check-killswitch BUNDLE=…` | per-client validation of emitted sing-box bundle (5 rules: auto_route, strict_route, sniff, final ≠ direct, DNS detour ≠ direct, no IPv6-only outbound) |
 
+## CI runtime limits and superseded runs
+
+Every concrete job in the standard CI graph, including reusable workflows and
+CodeQL/documentation helpers, has an explicit `timeout-minutes`. Reusable calls
+keep the limit inside the called job; GitHub does not accept it on a `uses` job.
+The limits bound running jobs, not time waiting for a runner.
+
+| Work | Limit in minutes |
+|---|---:|
+| Final CI gate / selector | 3 |
+| Gitleaks, actionlint, shellcheck, pytest aggregate, contract sync, image enumeration, CLAUDE coverage | 5 |
+| Task contracts | 8 |
+| Terraform validation/tests, cloud-init, Bats, native runtime, Python validators, Rust dependency policy/SBOM, Markdown links | 10 |
+| Pytest groups, Ansible lint, Go helper, Terraform policy, image scans | 15 |
+| Role/failure Molecule scenarios, CodeQL, Rust MSRV | 20 |
+| Full-stack Molecule scenarios | 30 |
+| Shared Rust build/test/clippy job, including release cross-build callers | 45 |
+
+The limits leave headroom over five recent full executions: the maximum
+observed job runtime was 409 seconds for pytest, 389 for failure/full-stack
+Molecule, 199 for role Molecule and 152 for Rust tests. This small sample includes
+setup and execution but mostly benefits from warm caches. The larger shared
+Rust limit accommodates cold cross-builds; these measurements do not establish
+a release-build upper bound. Existing bounded reproducible-build jobs retain
+their per-component limits of 20, 15 and 5 minutes.
+
+`markdown-link-check` and `claude-md-touch` use workflow/event/PR concurrency
+keys and cancel older runs of that PR. The run-ID fallback keeps scheduled
+Markdown checks independent. Different workflows and different PRs do not share
+a key. Main CI and CodeQL retain their existing cancellation policies; the
+reusable Terraform, image and contract checks are cancelled with their CI caller,
+without a second concurrency group that could cancel sibling calls. Release,
+deployment and cleanup cancellation policies remain unchanged. A selected job
+that times out or is cancelled cannot satisfy the strict CI aggregate.
+
 ## Dependency updates
 
 Renovate opens weekly PRs for the ecosystems it supports, and each PR runs

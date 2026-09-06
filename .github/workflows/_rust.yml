@@ -30,6 +30,7 @@ permissions:
 
 jobs:
   rust:
+    timeout-minutes: 45
     name: rust (${{ inputs.target }})
     runs-on: ${{ contains(inputs.target, 'apple') && 'macos-latest' || 'ubuntu-24.04' }}
     env:

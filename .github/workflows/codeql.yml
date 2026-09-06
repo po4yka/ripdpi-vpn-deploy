@@ -21,6 +21,7 @@ concurrency:
 
 jobs:
   analyze:
+    timeout-minutes: 20
     name: codeql (${{ matrix.language }})
     runs-on: ubuntu-24.04
     permissions:
