@@ -60,5 +60,4 @@ def test_ci_installs_the_production_pinned_xray_binary() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
     assert "Install pinned Xray semantic validator" in workflow
-    assert "releases/download/${XRAY_VERSION}/Xray-linux-64.zip" in workflow
-    assert 'echo "${XRAY_DIR}" >> "${GITHUB_PATH}"' in workflow
+    assert "uses: ./.github/actions/install-xray" in workflow
