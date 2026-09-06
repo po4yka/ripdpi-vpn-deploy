@@ -110,15 +110,24 @@ def test_full_stack_scenarios_repeat_convergence_before_verification() -> None:
 
 def test_hosted_full_stack_job_runs_both_idempotence_scenarios() -> None:
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
-    steps = workflow["jobs"]["molecule-full-stack"]["steps"]
+    job = workflow["jobs"]["molecule-full-stack"]
+    assert job["strategy"]["matrix"]["scenario"] == [
+        "full-stack", "full-stack-published",
+    ]
+    assert job["strategy"]["fail-fast"] is False
+    assert "max-parallel" not in job["strategy"]
+    assert "${{ matrix.scenario }}" in job["name"]
+    assert "molecule-full-stack" in workflow["jobs"]["required"]["needs"]
+    steps = job["steps"]
     run = next(step["run"] for step in steps
                if step.get("name") == "molecule full-stack test")
 
-    assert run.count("molecule -c molecule/full-stack/molecule.yml test -s full-stack") == 1
+    assert run.count("molecule -c ") == 1
     assert run.count(
-        "molecule -c molecule/full-stack-published/molecule.yml "
-        "test -s full-stack-published"
+        'molecule -c "molecule/${SCENARIO}/molecule.yml" test -s "$SCENARIO"'
     ) == 1
+    step = next(step for step in steps if step.get("name") == "molecule full-stack test")
+    assert step["env"]["SCENARIO"] == "${{ matrix.scenario }}"
 
 
 def test_published_requirements_resolve_to_current_checkout_from_documented_cwd() -> None:

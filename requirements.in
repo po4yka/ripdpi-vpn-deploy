@@ -19,6 +19,7 @@ rkn-block-checker==0.5.1
 
 # Test-only; installed from the hash-pinned lock in CI.
 pytest==9.1.1
+pytest-split==0.11.0
 
 # Developer tooling — installed by `make install-hooks` through the
 # hash-pinned requirements.txt lock.

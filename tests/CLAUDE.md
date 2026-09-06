@@ -34,8 +34,16 @@ together and aligned with the example version. Verify before extracting or
 executing; install the runtime and its bundled geodata together after its
 version command succeeds. Template routing rules need the adjacent data files.
 
+**Pytest groups use measured durations** — four `pytest-split` groups share a
+committed Linux profile. Keep `pytest unit tests` as the required aggregate: it
+checks identical collections/profiles, disjoint selections and full execution.
+Refresh the profile from the verified artifact; local `test-unit` stays complete.
+Give clock-dependent parameter values stable IDs so collection agrees across runners.
+
 **Molecule per role > monolithic test** — role-level scenarios catch
 config drift inside a role. Full-stack catches order/handler interactions.
+The two full-stack scenarios run on separate matrix runners with fail-fast
+disabled; `required checks` requires both to succeed.
 
 ## What's done well
 

@@ -157,7 +157,8 @@ def test_testing_documentation_matches_molecule_sequences_and_hosted_matrix():
     assert documented_defaults == expected_defaults
     assert documented_non_defaults == expected_non_defaults
 
-    full_stack_run = ci["jobs"]["molecule-full-stack"]["steps"][-1]["run"]
-    expected_full_stack_scenarios = set(re.findall(r"-s ([a-z-]+)", full_stack_run))
+    expected_full_stack_scenarios = set(
+        ci["jobs"]["molecule-full-stack"]["strategy"]["matrix"]["scenario"]
+    )
     assert expected_full_stack_scenarios == {"full-stack", "full-stack-published"}
     assert documented_full_stack_scenarios == expected_full_stack_scenarios
