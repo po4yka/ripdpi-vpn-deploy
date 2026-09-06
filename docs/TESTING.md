@@ -191,7 +191,7 @@ Renovate config lives at `renovate.json` at the repo root. Key behaviors:
 | Rust crates | yes | `vpnd/Cargo.toml` + `vpnd/Cargo.lock` | weekly, grouped |
 | Python tooling | yes | `requirements.txt` | weekly, grouped |
 | Hysteria Realm / Snell sing-box binaries | yes (via regex managers) | role defaults | per upstream release; human review required |
-| Xray / AmneziaWG binaries | **no** | secrets/example pin and role defaults | manual, after release-policy and platform validation |
+| Xray / AmneziaWG binaries | **no** | secrets/example pin and role defaults; Xray CI version/hash in `.github/actions/install-xray/action.yml` | manual, after release-policy and platform validation |
 | Ansible Galaxy collections | **no** (Renovate gap) | exact versions in `requirements.yml` | manual quarterly review (see below) |
 | geodata (geosite/geoip) | n/a | concrete URLs + sha256 values in the deployed vars file | daily systemd timer on the VPS via `geodata` role |
 

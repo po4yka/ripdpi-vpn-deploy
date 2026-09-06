@@ -28,6 +28,11 @@ visible in PR diffs.
 official sing-box binary and checks the complete standard emitter output.
 Shape-only assertions supplement this gate; they do not replace it.
 
+**Xray CI consumers share one verified installer** — template and sentinel
+validation use `.github/actions/install-xray`. Keep its version/archive hash
+together and aligned with the example version. Verify before extracting or
+executing; install the runtime only after its version command succeeds.
+
 **Molecule per role > monolithic test** — role-level scenarios catch
 config drift inside a role. Full-stack catches order/handler interactions.
 
