@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-09-06T17:43:02Z",
+  "change": "sec-1787916931540401-restricted-admin-network-rollout",
+  "commit_sha": "ca5be8c841139ffa3d2a544e64d13b76f57bc694",
+  "outcome": "dropped",
+  "schema": 1,
+  "task_id": "SEC-1787916931540401"
+}

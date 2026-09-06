@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-09-06T17:43:05Z",
+  "change": "ans-1787463116251274-systemd-hardening-parity",
+  "commit_sha": "ca5be8c841139ffa3d2a544e64d13b76f57bc694",
+  "outcome": "dropped",
+  "schema": 1,
+  "task_id": "ANS-1787463116251274"
+}
