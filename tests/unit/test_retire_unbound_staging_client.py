@@ -669,6 +669,10 @@ def test_retirement_interlocks_the_canonical_sops_writer_lock(setup):
         in (ROOT / "scripts/issue-sub-token.sh").read_text()
     )
     assert (
+        'SOPS_LOCK="${SOPS_FILE}.new-client.lock"'
+        in (ROOT / "scripts/rotate-secrets.sh").read_text()
+    )
+    assert (
         'sops_file.with_name(sops_file.name + ".new-client.lock")'
         in (ROOT / "scripts/disposable_liveness_executor.py").read_text()
     )
@@ -702,6 +706,27 @@ def test_retirement_interlocks_the_canonical_sops_writer_lock(setup):
         assert holder.wait(timeout=5) == 0
     assert setup["paths"]["sops_file"].read_bytes() == before
     assert setup["runner"].calls == []
+
+
+def test_rotate_secrets_refuses_the_canonical_sops_writer_lock(tmp_path: Path):
+    """Recipient rotation cannot race a retirement or client-registry edit."""
+    secrets = _private(tmp_path / "prod.secrets.sops.yaml", b"fixture\n")
+    lock = Path(str(secrets) + ".new-client.lock")
+    fd = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        result = subprocess.run(
+            ["bash", str(ROOT / "scripts/rotate-secrets.sh")],
+            env={**os.environ, "SOPS_FILE": str(secrets)},
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    finally:
+        os.close(fd)
+    assert result.returncode != 0
+    assert "another secrets transaction is active" in result.stderr
 
 
 def test_new_client_controller_cannot_cross_an_active_retirement(setup):

@@ -392,7 +392,9 @@ for i in "${!host_pairs[@]}"; do
         c_name="$(jq -r '.name' <<< "$c")"
         c_port="$(jq -r '.port'  <<< "$c")"
         c_flow="$(jq -r --arg default "$flow_mode" '.flow_mode // $default' <<< "$c")"
-        c_finalmask="$(jq -r --argjson default "$default_finalmask" '.finalmask // $default' <<< "$c")"
+        # jq's `//` treats false as absent.  A cohort's explicit false must
+        # override a true global default, exactly as the server renderer does.
+        c_finalmask="$(jq -r --argjson default "$default_finalmask" 'if has("finalmask") then .finalmask else $default end' <<< "$c")"
         emit_reality_outbound "-${c_name}" "$c_port" "$c_flow" "$c_finalmask"
       done
     fi

@@ -899,7 +899,7 @@ def retire(
             if _candidate_names(paths["sops_file"]):
                 raise RetirementError("retirement-candidate")
             document = _decrypt(paths["sops_file"], runner)
-            secret_paths, expected = _secret_plan(document, client, intent["host"])
+            _secret_plan(document, client, intent["host"])
             request = {**request_base, "ciphertext_before_sha256": _sha(current)}
             journal = _journal("prepared", request)
             _write_new(paths["journal_path"], _canonical(journal), "retirement-journal")
@@ -912,8 +912,6 @@ def retire(
             if {key: request.get(key) for key in request_base} != request_base:
                 raise RetirementError("retirement-journal")
             _validate_journal(journal, request)
-            secret_paths = []
-            expected = {}
 
         before_digest = request["ciphertext_before_sha256"]
         state = journal["state"]

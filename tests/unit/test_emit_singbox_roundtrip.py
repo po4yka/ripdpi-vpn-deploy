@@ -250,7 +250,11 @@ def _run_snell_only_script(
 
 
 def _run_shape_only_emitter(
-    tmp_path: Path, *, flow: str, finalmask: bool = False
+    tmp_path: Path,
+    *,
+    flow: str,
+    finalmask: bool = False,
+    cohort_finalmask: bool | None = None,
 ) -> subprocess.CompletedProcess:
     """Exercise the emitted P0 client shape from a self-contained group-vars tree."""
     repo = tmp_path / "shape-repo"
@@ -314,6 +318,16 @@ def _run_shape_only_emitter(
                 }
             )
         )
+    if cohort_finalmask is not None:
+        payload["xray"]["cohorts"] = [
+            {
+                "name": "explicit-shape",
+                "port": 1443,
+                "flow_mode": flow,
+                "finalmask": cohort_finalmask,
+                "clients": ["laptop"],
+            }
+        ]
     secrets.write_text(json.dumps(payload))
     bin_dir = tmp_path / "shape-bin"
     bin_dir.mkdir()
@@ -580,6 +594,15 @@ def test_emit_singbox_refuses_finalmask_without_an_official_client_mapping(
     result = _run_shape_only_emitter(tmp_path, flow="vision", finalmask=True)
     assert result.returncode != 0
     assert "finalmask requires an Xray client" in result.stderr
+
+
+def test_emit_singbox_preserves_explicit_false_cohort_finalmask(tmp_path: Path) -> None:
+    """A cohort-level false must override a true global finalmask default."""
+    _require_tool("jq")
+    result = _run_shape_only_emitter(
+        tmp_path, flow="vision", finalmask=True, cohort_finalmask=False
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_emit_singbox_is_accepted_by_official_parser(tmp_path):
