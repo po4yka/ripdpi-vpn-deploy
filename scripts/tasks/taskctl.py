@@ -1601,7 +1601,15 @@ def build_terminal_history_index(
     if (shallow.stdout or "").strip() == "true":
         fail(f"peer checkout {root} is shallow; full history is required")
     config_history = run_command(
-        ("git", "log", "--reverse", "--format=%H", "--", str(PROJECT_CONFIG_PATH)),
+        (
+            "git",
+            "log",
+            "--first-parent",
+            "--reverse",
+            "--format=%H",
+            "--",
+            str(PROJECT_CONFIG_PATH),
+        ),
         root=root,
     )
     config_revisions = list(filter(None, (config_history.stdout or "").splitlines()))
@@ -1609,7 +1617,14 @@ def build_terminal_history_index(
         fail(f"cannot locate strict task contract history in {root}")
     start = config_revisions[0]
     history = run_command(
-        ("git", "rev-list", "--reverse", "--ancestry-path", f"{start}..HEAD"),
+        (
+            "git",
+            "rev-list",
+            "--first-parent",
+            "--reverse",
+            "--ancestry-path",
+            f"{start}..HEAD",
+        ),
         root=root,
     )
     if history.returncode != 0:

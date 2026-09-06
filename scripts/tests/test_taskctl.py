@@ -1369,9 +1369,10 @@ class TaskctlHistoryTest(TaskctlFixture):
 
         def tracked(command, *, root, capture=True):
             nonlocal history_walks
-            if tuple(command[:4]) == (
+            if tuple(command[:5]) == (
                 "git",
                 "rev-list",
+                "--first-parent",
                 "--reverse",
                 "--ancestry-path",
             ):
@@ -1575,6 +1576,34 @@ class TaskctlHistoryTest(TaskctlFixture):
                 "CIC-1786234567890001",
                 taskctl.load_project_config(self.root),
             )
+
+    def test_terminal_history_ignores_stale_merged_side_branch_snapshot(self) -> None:
+        path = self.add_simple_task(status="review")
+        self.write_board()
+        self.commit_all("add active task")
+        integration_branch = self.git("branch", "--show-current")
+        self.git("branch", "stale-side")
+
+        self.prepare_simple_terminal(path)
+        self.commit_all("complete task on integration branch")
+        self.purge_simple_task(path)
+        self.commit_all("purge task on integration branch")
+
+        self.git("switch", "stale-side")
+        (self.root / "side.txt").write_text("unrelated side work\n", encoding="utf-8")
+        self.commit_all("finish stale side work")
+        self.git("switch", integration_branch)
+        self.git("merge", "--no-ff", "stale-side", "-m", "merge stale side work")
+
+        resolved = taskctl.resolve_terminal_task(
+            self.root,
+            "CIC-1786234567890001",
+            taskctl.load_project_config(self.root),
+        )
+
+        self.assertIsNotNone(resolved)
+        assert resolved is not None
+        self.assertEqual("done", resolved["status"])
 
     def test_dropped_openspec_change_archives_without_syncing_normative_specs(self) -> None:
         self.add_active_spec_task(status="review", done=False)
