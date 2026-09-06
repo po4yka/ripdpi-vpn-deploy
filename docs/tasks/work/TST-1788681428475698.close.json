@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "c4598713f1b4d0f401107500a7edb5527fafaf09: full hosted CI run 34020979760 passed; attempt 2 reran observability_agent with exact pip and Galaxy cache hits and passed. Setup decreased from 32s to 16s; seven Python validator commands passed in one 29s job versus 93s summed prior jobs. 44 local tests, actionlint, zizmor and pre-commit passed. Live required contexts migrated from five legacy names to python validators; all other protection fields and strict mode verified unchanged.",
+  "execution_sha256": "f6e9845c4e27820d8f4e9b04efc25897019196f8fdc08c162c7cb98e7ac6c8cd",
+  "issue_sha256": "caa9cf3e254d5025055d7264447bb5ccfd771270f4e2a95da481123ce0c92901",
+  "outcome": "done",
+  "prepared_at": "2026-09-06T08:18:43Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "TST-1788681428475698"
+}
