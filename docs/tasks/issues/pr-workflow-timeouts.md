@@ -2,7 +2,7 @@
 id: CIC-1788690361800575
 title: Bound CI runtime and cancel superseded auxiliary PR checks
 kind: chore
-status: review
+status: done
 area: ci
 priority: high
 risk: standard
@@ -16,6 +16,9 @@ updated: 2026-09-06
 spec_reason: tooling-only
 related_tasks: []
 status_detail: Protected main 0469ddabee7d25bf8c00ae5abafc7510f17d70e0 passed all 75 CI jobs; both old helper runs cancelled and newer runs succeeded.
+closed_at: "2026-09-06T11:05:39Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Protected main 0469ddabee7d25bf8c00ae5abafc7510f17d70e0 passed all 75 CI jobs and CodeQL; all 35 concrete job templates bounded; both superseded helper executions cancelled and newer executions succeeded; local workflow, regression and hook checks passed.
 ---
 
 ## Goal
