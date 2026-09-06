@@ -567,6 +567,15 @@ class TaskctlContractTest(TaskctlFixture):
         listed = json.loads(output.getvalue())
         self.assertEqual({"done": 0, "total": 0}, listed["tasks"][0]["progress"])
 
+        receipt_path = execution.parent / ".taskctl-drop.json"
+        original_ids = list(receipt["dropped_step_ids"])
+        for invalid_ids in (original_ids + ["CIC-1786234567890104"], original_ids[:1]):
+            with self.subTest(dropped_ids=invalid_ids):
+                receipt["dropped_step_ids"] = invalid_ids
+                receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+                with self.assertRaisesRegex(taskctl.ContractError, "do not match execution"):
+                    taskctl.load_state(self.root)
+        receipt["dropped_step_ids"] = original_ids
         receipt["dropped_step_ids"].append("UNKNOWN-1786234567890104")
         (execution.parent / ".taskctl-drop.json").write_text(json.dumps(receipt), encoding="utf-8")
         with self.assertRaisesRegex(taskctl.ContractError, "not a configured area"):

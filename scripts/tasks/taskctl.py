@@ -802,6 +802,12 @@ def _load_state(
                 if dropped_step_id in all_dropped_step_ids:
                     fail(f"duplicate dropped execution step ID {dropped_step_id}")
                 all_dropped_step_ids[dropped_step_id] = document.task_id
+            preserved_ids = re.findall(
+                r"(?m)^- ([A-Z][A-Z0-9]*-\d{16}) DROPPED: ",
+                path.read_text(encoding="utf-8"),
+            )
+            if sorted(raw_dropped_ids) != sorted(preserved_ids):
+                fail(f"{document.path}: dropped receipt IDs do not match execution records")
         if not steps and document.values["status"] != "dropped" and not authoring:
             fail(f"{path}: no mdtask execution steps")
         for step in steps:
