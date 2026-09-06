@@ -518,6 +518,9 @@ class TaskctlContractTest(TaskctlFixture):
 
     def test_prepare_dropped_spec_preserves_open_step_as_dropped(self) -> None:
         self.add_active_spec_task(status="review", done=False)
+        execution = self.root / "openspec/changes/ans-1786234567890101-change/tasks.md"
+        with execution.open("a", encoding="utf-8") as handle:
+            handle.write("- [ ] DOC-1786234567890103 Document fixture @item:ANS-1786234567890101\n")
         self.add_simple_task()
         args = argparse.Namespace(
             root=self.root,
@@ -546,7 +549,7 @@ class TaskctlContractTest(TaskctlFixture):
                 / "openspec/changes/ans-1786234567890101-change/.taskctl-drop.json"
             ).read_text(encoding="utf-8")
         )
-        self.assertEqual(["ANS-1786234567890102"], receipt["dropped_step_ids"])
+        self.assertEqual(["ANS-1786234567890102", "DOC-1786234567890103"], receipt["dropped_step_ids"])
         output = StringIO()
         with redirect_stdout(output):
             self.assertEqual(
@@ -563,6 +566,11 @@ class TaskctlContractTest(TaskctlFixture):
             )
         listed = json.loads(output.getvalue())
         self.assertEqual({"done": 0, "total": 0}, listed["tasks"][0]["progress"])
+
+        receipt["dropped_step_ids"].append("UNKNOWN-1786234567890104")
+        (execution.parent / ".taskctl-drop.json").write_text(json.dumps(receipt), encoding="utf-8")
+        with self.assertRaisesRegex(taskctl.ContractError, "not a configured area"):
+            taskctl.load_state(self.root)
 
     def test_new_simple_task_uses_global_allocator_and_execution_contract(self) -> None:
         self.add_simple_task()

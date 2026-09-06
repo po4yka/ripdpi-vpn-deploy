@@ -797,8 +797,8 @@ def _load_state(
             dropped_step_ids = set(raw_dropped_ids)
             for dropped_step_id in dropped_step_ids:
                 prefix = ID_RE.fullmatch(dropped_step_id).group(1)  # type: ignore[union-attr]
-                if config.prefix_areas.get(prefix) != document.values["area"]:
-                    fail(f"{document.path}: dropped step prefix does not match task area")
+                if prefix not in config.prefix_areas:
+                    fail(f"{document.path}: dropped step prefix is not a configured area")
                 if dropped_step_id in all_dropped_step_ids:
                     fail(f"duplicate dropped execution step ID {dropped_step_id}")
                 all_dropped_step_ids[dropped_step_id] = document.task_id
