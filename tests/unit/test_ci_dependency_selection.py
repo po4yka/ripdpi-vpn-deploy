@@ -103,6 +103,27 @@ def test_empty_diff_and_nonancestor_base_force_full_run(repo):
     assert all(selection.plan_from_git(repo, "pull_request", unrelated)["checks"].values())
 
 
+def test_merge_checkout_compares_with_advanced_base_without_losing_pr_changes(repo):
+    initial = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-qb", "base")
+    (repo / "terraform").mkdir()
+    (repo / "terraform/base.tf").write_text("# base-only change\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "advance base")
+    base = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-qb", "pr", initial)
+    (repo / "docs").mkdir()
+    (repo / "docs/guide.md").write_text("PR documentation\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "PR change")
+    git(repo, "checkout", "base")
+    git(repo, "merge", "--no-ff", "-qm", "test PR merge", "pr")
+    result = selection.plan_from_git(repo, "pull_request", base)
+    assert result["changed_files"] == 1
+    assert result["checks"]["vpnd-test"]
+    assert not result["checks"]["terraform"]
+
+
 def needs_for(paths):
     checks = selection.plan(paths)["checks"]
     return {
