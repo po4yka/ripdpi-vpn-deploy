@@ -1415,9 +1415,8 @@ def validate_historical_shared_transfer(
     category: str,
     previous_state: str,
     source_ref: str,
-    deletion_ref: str,
     source_snapshot: HistoricalTaskSnapshot,
-    snapshots_at_deletion: dict[str, HistoricalTaskSnapshot],
+    snapshots_at_source: dict[str, HistoricalTaskSnapshot],
     config: ProjectConfig,
     scratch: Path,
 ) -> None:
@@ -1443,7 +1442,6 @@ def validate_historical_shared_transfer(
         source_ref,
         source_snapshot.document,
     )
-    owner_config = historical_project_config(root, deletion_ref, scratch)
     for mapping in candidates:
         if mapping.source_revision != source_values["commit_sha"]:
             fail(
@@ -1455,29 +1453,29 @@ def validate_historical_shared_transfer(
                 f"{source_snapshot.relative}: shared {category} mapping names unknown requirement "
                 f"{mapping.requirement}"
             )
-        owner_snapshot = snapshots_at_deletion.get(mapping.owner_task)
+        owner_snapshot = snapshots_at_source.get(mapping.owner_task)
         if owner_snapshot is None:
             fail(
                 f"{source_snapshot.relative}: shared {category} mapping owner "
-                f"{mapping.owner_task} is not active at deletion"
+                f"{mapping.owner_task} is not active at transfer"
             )
         owner_document = owner_snapshot.document
         if task_id not in {
             local
             for related in owner_document.values.get("related_tasks", [])
-            if (local := local_reference(related, owner_config)) is not None
+            if (local := local_reference(related, config)) is not None
         }:
             fail(
                 f"{owner_snapshot.relative}: shared evidence owner lacks related task {task_id}"
             )
         owner_verification = historical_verification_document(
             root,
-            deletion_ref,
+            source_ref,
             owner_document,
             scratch,
         )
-        owner_values = evidence_values(owner_verification.path, owner_config)
-        if mapping not in shared_evidence_mappings(owner_verification, owner_config):
+        owner_values = evidence_values(owner_verification.path, config)
+        if mapping not in shared_evidence_mappings(owner_verification, config):
             fail(
                 f"{owner_snapshot.relative}: shared {category} mapping does not match source record"
             )
@@ -1877,7 +1875,11 @@ def federation_payload(root: Path, peer_root: Path) -> dict[str, Any]:
             historical = history_resolvers[project].resolve(task_id)
             if historical is None:
                 fail(f"missing federated task {reference}")
-            nodes[reference] = historical
+            nodes[reference] = {
+                key: value
+                for key, value in historical.items()
+                if not key.startswith("_")
+            }
             pending.update(
                 ([historical["parent"]] if historical["parent"] else [])
                 + historical["blocked_by"]
@@ -2280,9 +2282,8 @@ def validate_deleted_history(root: Path, base: str) -> None:
                                 category=category,
                                 previous_state=previous,
                                 source_ref=revision,
-                                deletion_ref=deletion_sha,
                                 source_snapshot=snapshot,
-                                snapshots_at_deletion=by_revision[deletion_sha],
+                                snapshots_at_source=by_revision[revision],
                                 config=config_at(revision),
                                 scratch=scratch,
                             )

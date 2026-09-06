@@ -1088,7 +1088,7 @@ class TaskctlHistoryTest(TaskctlFixture):
     def test_required_evidence_cannot_be_reclassified_not_applicable_before_purge(
         self,
     ) -> None:
-        issue = self.add_active_spec_task(status="review", done=True)
+        self.add_active_spec_task(status="review", done=True)
         change = "ans-1786234567890101-change"
         active = self.root / "openspec/changes" / change
         verification_path = active / "verification.md"
@@ -1157,7 +1157,7 @@ class TaskctlHistoryTest(TaskctlFixture):
         source_task = "ANS-1786234567890101"
         owner_task = "OPS-1786234567890201"
         change = f"{source_task.casefold()}-change"
-        source = self.add_active_spec_task(
+        self.add_active_spec_task(
             status="review",
             done=True,
             task_id=source_task,
@@ -1299,6 +1299,126 @@ class TaskctlHistoryTest(TaskctlFixture):
             "shared live mapping does not match historical source record",
         ):
             taskctl.load_state(self.root)
+
+    def test_late_owner_mapping_cannot_retroactively_validate_transfer(self) -> None:
+        source_task = "ANS-1786234567890101"
+        owner_task = "OPS-1786234567890201"
+        change = f"{source_task.casefold()}-change"
+        self.add_active_spec_task(
+            status="review",
+            done=True,
+            task_id=source_task,
+            slug="source",
+        )
+        owner = self.add_active_spec_task(
+            status="review",
+            done=True,
+            task_id=owner_task,
+            slug="owner",
+        )
+        source_verification = (
+            self.root / "openspec/changes" / change / "verification.md"
+        )
+        verification = taskctl.read_document(source_verification)
+        values = dict(verification.values)
+        values["local"] = "passed"
+        values["local_evidence"] = "Source checks passed."
+        values["live"] = "blocked"
+        values["live_evidence"] = "External acceptance is unavailable."
+        body = verification.body.replace(
+            "| Pending | required |", "| Source passed. | passed |"
+        )
+        source_verification.write_text(
+            taskctl.render_document(values, body, order=tuple(values)),
+            encoding="utf-8",
+        )
+        self.write_board()
+        base = self.commit_all("record blocked source evidence")
+
+        active = self.root / "openspec/changes" / change
+        archive = self.root / "openspec/changes/archive" / f"2026-08-09-{change}"
+        active.rename(archive)
+        source_verification = archive / "verification.md"
+        verification = taskctl.read_document(source_verification)
+        values = dict(verification.values)
+        values["commit_sha"] = "a" * 40
+        values["live"] = "not_applicable"
+        values["live_evidence"] = f"Transferred to {owner_task}."
+        source_verification.write_text(
+            taskctl.render_document(values, verification.body, order=tuple(values)),
+            encoding="utf-8",
+        )
+        mapping = {
+            "source_task": source_task,
+            "owner_task": owner_task,
+            "requirement": f"REQ-{source_task}-001",
+            "command": "make verify LIMIT=fixture",
+            "category": "live",
+            "source_revision": "a" * 40,
+        }
+        self.add_shared_evidence_mapping(source_verification, **mapping)
+        self.commit_all("reclassify before owner accepts transfer")
+
+        owner_document = taskctl.read_document(owner)
+        owner_values = dict(owner_document.values)
+        owner_values["related_tasks"] = [source_task]
+        owner.write_text(
+            taskctl.render_document(owner_values, owner_document.body),
+            encoding="utf-8",
+        )
+        owner_verification = (
+            self.root
+            / "openspec/changes"
+            / f"{owner_task.casefold()}-change"
+            / "verification.md"
+        )
+        owner_document = taskctl.read_document(owner_verification)
+        owner_values = dict(owner_document.values)
+        owner_values["live"] = "blocked"
+        owner_values["live_evidence"] = "Owned external acceptance is pending."
+        owner_verification.write_text(
+            taskctl.render_document(
+                owner_values,
+                owner_document.body,
+                order=tuple(owner_values),
+            ),
+            encoding="utf-8",
+        )
+        self.add_shared_evidence_mapping(owner_verification, **mapping)
+        (archive / ".taskctl-archive.json").write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "task_id": source_task,
+                    "change": change,
+                    "outcome": "review",
+                    "commit_sha": "a" * 40,
+                    "archived_at": "2026-08-09T00:00:00Z",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        taskctl.command_close_prepare(
+            argparse.Namespace(
+                root=self.root,
+                query=source_task,
+                outcome="done",
+                reason="Late ownership mapping added.",
+                evidence="Source and owner records now match.",
+            )
+        )
+        self.commit_all("add owner mapping after transfer")
+        taskctl.command_close_purge(
+            argparse.Namespace(root=self.root, query=source_task)
+        )
+        self.commit_all("purge source after late mapping")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "shared evidence owner lacks related task",
+        ):
+            taskctl.validate_deleted_history(self.root, base)
 
     def test_purge_preserves_incoming_related_task_as_historical_done(self) -> None:
         target = self.add_simple_task(status="review")
@@ -2009,6 +2129,7 @@ class TaskctlFederationTest(TaskctlFixture):
         historical = next(node for node in payload["tasks"] if node["id"].endswith(f"#{blocker_id}"))
         self.assertTrue(historical["historical"])
         self.assertEqual("done", historical["status"])
+        self.assertFalse(any(key.startswith("_") for key in historical))
 
     def test_renamed_done_blocker_resolves_by_id_history(self) -> None:
         blocker_id = "CIC-1786234567890001"
