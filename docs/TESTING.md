@@ -12,6 +12,10 @@ uses Python's standard library for local SSH deadlines.
 
 ## Coverage matrix
 
+PR jobs run according to the dependency selection described below; this table
+describes their coverage when selected. Main pushes and manual runs execute all
+CI jobs. Operator-only and live checks remain separate.
+
 | Artifact | Static check | Render check | Functional test (molecule) | Notes |
 |---|---|---|---|---|
 | **Terraform provider roots** | `terraform fmt -check` + `terraform validate` + `terraform test` (CI) | n/a | n/a | CI matrix runs UpCloud, Hetzner, Vultr, and Scaleway. |
@@ -83,10 +87,10 @@ uses Python's standard library for local SSH deadlines.
 | **Native runtime integration** | required `native-runtime` CI lane; `make test-native-runtime` in disposable Linux root environment | Terraform 1.15.2 FD-backed commands and saved-plan lifecycle | Alertmanager 0.28.1 webhook timeout; supplementary-group metrics reader | Four `native_runtime` tests; SHA256-verified Alertmanager/amtool; missing tools or UID/GID capabilities fail. No cloud credentials or provider resources. |
 | **MTProxy Go helper** | required `go-helper` CI lane; `make test-probe-matrix-mtproto` in `ci-fast` | six Go tests with locked module resolution and uncached execution | injected connector; no Telegram traffic | Go 1.27.1, dependency cache keyed by `go.sum`; native helper tests supplement Python driver coverage. |
 | **REALITY scanner wrapper** | pytest | installer, CSV filtering, ASN status, top limit, empty-output failure | offline scanner/WHOIS fixtures | Full public TLS scan remains an explicit operator integration (`scripts/scan-reality-targets.sh --seeds <file>`), not automated coverage. No placeholder or unconditional skipped test. |
-| **Python tests (4208 collected)** | pytest (CI and local; 4155 under `tests/unit/`) | n/a | n/a | Covers emit-singbox, SOPS round-trip, render-inventory including custom SSH ports, replacement safety, Vultr control-plane preflight and guest IPv4 convergence, rolling OS maintenance and recurring security-update policy, relay/fallback, subscription token revocation lifecycle, client registry refresh/drift contracts, probe-matrix drivers/contracts/provisioning, cascade attestation freshness, tri-state per-connection classification, authenticated per-leg probe state and health freshness, inert Terraform and role/profile guards, in-cohort rule-drift canary classification, Snell refinement classification, singbox kill-switch, policy-ratelimit ban logic, burn-check error metrics, listener-collision guard, node manifest source parity, receipt-owned transactional runtime releases and serialized publication, crash-recoverable source-build write-ahead journals, AmneziaWG check-mode build receipts and arm64 version-floor tracking, recurring real-VPS AWG/NAT source binding, generation transitions, transactional rotation, cleanup, and fail-closed evidence, cloud-init completion and restart acceptance, deployment profiles, strict live-inventory and extra-vars gates, injected-fact removal, watchdog bounded recovery, Xray StatsService and redacted exporter contracts, check-mode-safe service handlers, restricted Tailnet enrollment and deploy-controller credential isolation, exact-resource staging cleanup, Molecule dependency-path and driver-pin guards, honeypot log retention, calendar-window metrics, dual-stack binding, public-site behavior, P1 node-local hostname resolution, XHTTP-only backend rendering, REALITY self-steal contracts, repository symlink scanning, and protocol-liveness evaluation, sentinel cleanup, onboarding, and OTP rotation gates. (Shell orchestrator dry-runs migrated to bats — see below.) |
+| **Python tests (4255 collected)** | pytest (CI and local; 4202 under `tests/unit/`) | n/a | n/a | Covers emit-singbox, SOPS round-trip, render-inventory including custom SSH ports, replacement safety, Vultr control-plane preflight and guest IPv4 convergence, rolling OS maintenance and recurring security-update policy, relay/fallback, subscription token revocation lifecycle, client registry refresh/drift contracts, probe-matrix drivers/contracts/provisioning, cascade attestation freshness, tri-state per-connection classification, authenticated per-leg probe state and health freshness, inert Terraform and role/profile guards, in-cohort rule-drift canary classification, Snell refinement classification, singbox kill-switch, policy-ratelimit ban logic, burn-check error metrics, listener-collision guard, node manifest source parity, receipt-owned transactional runtime releases and serialized publication, crash-recoverable source-build write-ahead journals, AmneziaWG check-mode build receipts and arm64 version-floor tracking, recurring real-VPS AWG/NAT source binding, generation transitions, transactional rotation, cleanup, and fail-closed evidence, cloud-init completion and restart acceptance, deployment profiles, strict live-inventory and extra-vars gates, injected-fact removal, watchdog bounded recovery, Xray StatsService and redacted exporter contracts, check-mode-safe service handlers, restricted Tailnet enrollment and deploy-controller credential isolation, exact-resource staging cleanup, Molecule dependency-path and driver-pin guards, honeypot log retention, calendar-window metrics, dual-stack binding, public-site behavior, P1 node-local hostname resolution, XHTTP-only backend rendering, REALITY self-steal contracts, repository symlink scanning, and protocol-liveness evaluation, sentinel cleanup, onboarding, and OTP rotation gates. (Shell orchestrator dry-runs migrated to bats — see below.) |
 | **Shell-orchestrator bats tests (55 tests)** | `bats tests/bats/` (CI, blocking) | n/a | n/a | Covers `blue-green.sh --dry-run`, `fleet-rotate.sh --dry-run`, `age-recovery-combine.sh` 3-of-5 round-trip, `restore.sh --dry-run` (path-A + path-B including secrets-before-playbook ordering), operator cron rendering, and atomic optional Snell client updates. Uses the same `tests/stubs/bin/` PATH-prepend harness as the Python tests. bats-support v0.3.0 + bats-assert v2.1.0 vendored under `tests/bats/test_helper/`. |
-| **Terraform policy (cross-provider, Conftest)** | `.github/workflows/tf-policy.yml` per PR | n/a | n/a | Runs each provider's native Terraform tests with `mock_provider`, then `conftest verify --rego-version v0 -p terraform/policy/` for Rego syntax/unit-test validation. The workflow intentionally does not run real provider plans against example tfvars because those require operator credentials and provider API access. `make tf-policy` for local; pinned Conftest 0.57.0 is mandatory for `make ci-fast` and `make check` (see `mise.toml`). |
-| **Container image scanning (Trivy)** | `.github/workflows/image-scan.yml` per PR | n/a | n/a | Every PR scans the complete deduplicated set of digest-pinned images from all Molecule scenarios, independent of changed paths. Uploads HIGH/CRITICAL SARIF to the Security tab. Escalate only with rationale + expiry + owner in `.trivyignore`. |
+| **Terraform policy (cross-provider, Conftest)** | `.github/workflows/tf-policy.yml` when selected; always on main/manual CI | n/a | n/a | Runs each provider's native Terraform tests with `mock_provider`, then `conftest verify --rego-version v0 -p terraform/policy/` for Rego syntax/unit-test validation. Hetzner and Vultr additionally render offline plans with credential-shaped dummy inputs for policy checks; UpCloud and Scaleway retain operator-side plan evaluation. `make tf-policy` for local; pinned Conftest 0.57.0 is mandatory for `make ci-fast` and `make check` (see `mise.toml`). |
+| **Container image scanning (Trivy)** | `.github/workflows/image-scan.yml` when selected; always on main/manual CI | n/a | n/a | When the image consumer group is selected, scans the complete deduplicated set of digest-pinned images from all Molecule scenarios; selection never narrows the image inventory. Uploads HIGH/CRITICAL SARIF to the Security tab. Escalate only with rationale + expiry + owner in `.trivyignore`. |
 | **Repo drift (weekly)** | `.github/workflows/drift.yml` | `scripts/drift-since-tag.sh --repo-only` | n/a | Scheduled Monday 12:00 UTC. Diffs the repository against the last known-good tag. Updates a single rolling issue labelled `automation:drift` when drift is detected; silent when clean. Operator-side cron (against live servers) is unchanged and uses the script without `--repo-only`. |
 | **Task and OpenSpec contract** | `make task-check` + required `task-contract` CI job | strict portfolio, mdtask, OpenSpec, generated-asset, board, and deletion-history validation | peer checkout in CI | Federation resolves qualified RIPDPI task references, terminal Git history, and cross-repository cycles. |
 | **Jinja2 snapshot diff (140 templates)** | `scripts/render-snapshots.py` | golden-file diff | n/a | Fails on any unintended render change. Run `make snapshot-update` after intentional template edits. |
@@ -133,10 +137,45 @@ exercise `--no-cache --no-lock cat config` with valid, wrong-password, and damag
 configuration inputs; a missing binary is a failure, not a skip. The separate
 backup Molecule scenario is required to prove systemd/package behavior on Linux.
 
+## CI dependency selection
+
+`ci.yml` always starts for PRs. `scripts/select-ci-checks.py` compares the PR base
+with the checked-out merge commit and follows downstream consumer groups:
+
+| Changed paths | Additional checks beyond the common checks |
+|---|---|
+| `docs/`, `vpnd/` | Rust tests, clippy, MSRV, dependency policy and SBOM; Rust embeds all of `docs/` |
+| `ansible/`, `images/` | All Ansible/Molecule scenarios, native runtime and image scanning |
+| `terraform/` | All provider validation/tests/policies, cloud-init and native runtime |
+| `secrets/` | Binary pin verification plus Ansible, native/image and Rust consumers |
+| `contract/` | Client contract synchronization plus Ansible, native/image and Rust consumers |
+| `tools/probe-matrix-mtproto/` | Compiled Go helper tests |
+| `tests/unit/` | Native runtime tests, alongside the complete common pytest suite |
+| `tests/bats/` | Bats tests |
+| Shared scripts, fixtures, tooling/configuration, CI or any unmapped path | Full graph |
+
+The common checks are gitleaks, actionlint, zizmor, task contracts, shellcheck,
+all Python validators and all four pytest groups with their coverage aggregate.
+Python tests inspect many repository contracts, so they are not selected by test
+filename. Molecule selection also stays at the complete Ansible group because
+roles share imports, variables and full-stack interactions. The selector owns
+the exact path rules, including auxiliary test/tasking inputs.
+
+Main pushes and manual runs always execute the full graph. Invalid or missing
+PR history, a non-ancestor base and an empty diff also select everything. The
+Git diff covers the whole PR without API file limits, uses NUL delimiters and
+retains both sides of renames and deleted paths. No workflow-level path filter
+can suppress the required gate. Each run's summary lists the decisions.
+
+`required checks` compares every job result with the successful selector's plan.
+Only an explicitly unselected job may be skipped; failures, cancellations,
+unexpected skips and incomplete result maps fail. Keep the workflow jobs, plan
+and [branch protection](BRANCH-PROTECTION.md) consistent when adding a check.
+
 | Operator step | Tests that protect it |
 |---|---|
 | `git commit` (local) | pre-commit hooks: gitleaks, terraform fmt, ansible-lint, yamllint, **shellcheck**, **secrets-coverage**, **templates-render**, **Xray release/PQ-REALITY guards**, **placeholder-scan** |
-| `git push` (PR) | CI matrix: terraform fmt+validate (4 providers plus the inert exception root), terraform test (4 providers), cloud-init schema, ansible-lint + syntax, default Molecule scenarios for `baseline`, `firewall`, `network-exposure-gate`, `tailnet-management`, `xray`, `hysteria`, `nginx-xhttp`, `watchdog`, `monitoring`, `observability_agent`, `observability_control_plane`, `observability_deadman`, `backup`, `subscription-host`, `amneziawg`, `geodata`, `cascade-egress`, `cdn-front`, `warp-outbound`, `hysteria-realm`, `honeypot`, `dns-morph-bridge`, and `split-hop-egress`; required hosted full-stack scenarios `full-stack`, `full-stack-published`; non-default scenarios `watchdog/failure`, `observability_agent/enabled`, `observability_control_plane/enabled`, `observability_deadman/enabled`, `cascade-ingress/populated`, `cascade-ingress/forced-empty`, and `hysteria-realm/shared-tls`; shellcheck, secrets-coverage, templates-render, yamllint, gitleaks, strict offline zizmor, `pytest tests/unit/` (live collection count recorded above), Rust tests, bats tests, Conftest TF policy, Trivy image scan, snapshot diff, and secrets schema. |
+| `git push` (PR) | Dependency-selected CI matrix (complete on main pushes and manual runs): terraform fmt+validate (4 providers plus the inert exception root), terraform test (4 providers), cloud-init schema, ansible-lint + syntax, default Molecule scenarios for `baseline`, `firewall`, `network-exposure-gate`, `tailnet-management`, `xray`, `hysteria`, `nginx-xhttp`, `watchdog`, `monitoring`, `observability_agent`, `observability_control_plane`, `observability_deadman`, `backup`, `subscription-host`, `amneziawg`, `geodata`, `cascade-egress`, `cdn-front`, `warp-outbound`, `hysteria-realm`, `honeypot`, `dns-morph-bridge`, and `split-hop-egress`; required hosted full-stack scenarios `full-stack`, `full-stack-published`; non-default scenarios `watchdog/failure`, `observability_agent/enabled`, `observability_control_plane/enabled`, `observability_deadman/enabled`, `cascade-ingress/populated`, `cascade-ingress/forced-empty`, and `hysteria-realm/shared-tls`; shellcheck, secrets-coverage, templates-render, yamllint, gitleaks, strict offline zizmor, `pytest tests/unit/` (live collection count recorded above), Rust tests, bats tests, Conftest TF policy, Trivy image scan, snapshot diff, and secrets schema. |
 | PR labeled `ci-real-deploy` | **real-vps-deploy** workflow: provisions an ephemeral UpCloud VPS, runs site.yml + verify, destroys — closest approximation to production in CI. See `docs/CI-REAL-DEPLOY.md`. |
 | `make validate` (operator) | terraform fmt + validate + gitleaks + ansible-lint + ansible syntax-check |
 | `make ci-fast` (operator) | Portable credential-free CI jobs: actionlint, strict offline zizmor, cloud-init schema, all provider Terraform tests and Conftest policy tests, yamllint, shellcheck, cargo-deny, MSRV, render/schema/unit/bats, clippy, and Rust tests. Missing or wrong-version tools fail closed. |
@@ -169,7 +208,8 @@ failure; a live deploy does not turn that false failure into a passing test.
 ## Dependency updates
 
 Renovate opens weekly PRs for the ecosystems it supports, and each PR runs
-through the full CI matrix above before a human merges. Xray and AmneziaWG
+the common checks and affected consumer groups before a human merges. Shared
+tooling and workflow updates select full CI. Xray and AmneziaWG
 remain manual, policy-gated updates because their pins cannot be updated safely
 and completely by the current regex managers.
 

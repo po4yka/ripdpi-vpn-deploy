@@ -19,11 +19,12 @@ def _workflow(name):
 
 
 @pytest.mark.parametrize("workflow", PROTECTIVE)
-def test_protective_workflow_is_called_unconditionally_by_required_ci(workflow):
+def test_protective_workflow_is_selected_by_dependencies_and_required(workflow):
     ci = _workflow("ci")
     caller = ci["jobs"][workflow]
     assert caller["uses"] == f"./.github/workflows/{workflow}.yml"
-    assert "if" not in caller
+    assert caller["needs"] == "selection"
+    assert caller["if"] == "${{ fromJSON(needs.selection.outputs.checks)['" + workflow + "'] }}"
     assert "continue-on-error" not in caller
     assert "secrets" not in caller
     assert workflow in ci["jobs"]["required"]["needs"]
@@ -48,11 +49,15 @@ def test_unsuccessful_protective_workflow_rejects_merge(workflow, outcome):
 
 
 def _run_gate(gate, results):
-    step = gate["steps"][0]
-    assert step["env"]["RESULTS"] == "${{ toJSON(needs.*.result) }}"
+    step = gate["steps"][-1]
+    assert step["env"]["NEEDS"] == "${{ toJSON(needs) }}"
+    needs = {name: {"result": result} for name, result in zip(gate["needs"], results, strict=True)}
+    needs["selection"]["outputs"] = {
+        "checks": json.dumps({name: True for name in gate["needs"] if name != "selection"}),
+    }
     return subprocess.run(
         ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", step["run"]],
-        env={**os.environ, "RESULTS": json.dumps(results)},
+        cwd=ROOT, env={**os.environ, "NEEDS": json.dumps(needs)},
         capture_output=True, text=True, timeout=10,
     )
 
