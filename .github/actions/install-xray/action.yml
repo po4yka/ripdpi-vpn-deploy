@@ -1,0 +1,34 @@
+---
+name: Install verified Xray validator
+description: Install the shared Linux amd64 Xray CI runtime after archive verification
+runs:
+  using: composite
+  steps:
+    - name: Verify and install Xray
+      shell: bash
+      # Update version and archive digest together after upstream release review.
+      # This is the single CI pin for template and sentinel validation.
+      env:
+        XRAY_VERSION: "v26.3.27"
+        XRAY_SHA256: 23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import os
+        import yaml
+        with open("secrets/prod.secrets.example.yaml") as source:
+            version = yaml.safe_load(source)["xray"]["version"]
+        if version != os.environ["XRAY_VERSION"]:
+            raise SystemExit("Xray CI version/hash pin must match the example version")
+        PY
+        install_dir="$(mktemp -d "$RUNNER_TEMP/xray.XXXXXXXX")"
+        archive="$install_dir/xray.zip"
+        curl -fsSL --connect-timeout 10 --max-time 120 \
+          "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-64.zip" \
+          -o "$archive"
+        echo "${XRAY_SHA256}  ${archive}" | sha256sum -c -
+        unzip -q "$archive" -d "$install_dir"
+        chmod 0755 "$install_dir/xray"
+        "$install_dir/xray" version
+        sudo install -m 0644 "$install_dir/geoip.dat" "$install_dir/geosite.dat" /usr/local/bin
+        sudo install -m 0755 "$install_dir/xray" /usr/local/bin/xray
