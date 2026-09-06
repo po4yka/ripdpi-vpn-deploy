@@ -1701,9 +1701,11 @@ def _archive_prior_generation(
     history_dir = state_dir / "history"
     try:
         history_dir.mkdir(mode=0o700)
+    except FileExistsError as exc:
+        if not _state_entry_exists(history_dir):
+            raise ValueError("recurring state history creation raced") from exc
+    else:
         _fsync_directory(state_dir)
-    except FileExistsError:
-        pass
     history_info = history_dir.lstat()
     if (
         not stat.S_ISDIR(history_info.st_mode)
