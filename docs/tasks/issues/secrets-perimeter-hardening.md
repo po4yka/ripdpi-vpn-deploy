@@ -14,7 +14,7 @@ openspec_change: sec-1787496747898735-secrets-perimeter-hardening
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: [ANS-1787463116251274]
-status_detail: Implementation, full local check, and hosted Molecule passed at 984b452; security-verify check-mode and live fleet acceptance blocked by unavailable management access.
+status_detail: Source and hosted role checks are complete. A bounded 2026-09-06 passive recheck returned unknown/command-failed for all three inventory aliases; the strict SSH-context mapping is unavailable. Required security-verify check mode, reconvergence, header curl, and timer observation remain open.
 ---
 
 ## Goal

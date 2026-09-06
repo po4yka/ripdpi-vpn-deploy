@@ -14,7 +14,7 @@ openspec_change: ans-1787495907091073-transport-convergence-critical-fixes
 created: 2026-08-23
 updated: 2026-08-27
 related_tasks: []
-status_detail: Implementation, full local check, and hosted Molecule passed at 984b452; fleet dry-run/live acceptance blocked by SSH timeouts and expired Tailscale authentication.
+status_detail: Source and hosted role checks are complete. A bounded 2026-09-06 passive recheck returned unknown/command-failed for all three inventory aliases; the only online Tailnet peer is not an inventory endpoint, and the strict SSH-context mapping is unavailable. Required fleet dry-run and live convergence remain open.
 ---
 
 ## Goal

@@ -2,7 +2,7 @@
 id: TST-1787850553468536
 title: Deliver authenticated fleet probes and passive inspection
 kind: feature
-status: review
+status: blocked
 area: testing
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: tst-1787850553468536-fleet-observation
 created: 2026-08-27
-updated: 2026-08-28
+updated: 2026-09-06
 related_tasks: []
+status_detail: Source implementation is complete. A 2026-09-06 current-client check proved Hysteria2 with HTTP 204, while two REALITY profiles were refused; XHTTP and AWG traffic remain unproved. Passive inspection returned unknown for all three inventory aliases. Current target inputs are incomplete; external acceptance for all four transports remains required.
 ---
 
 ## Goal

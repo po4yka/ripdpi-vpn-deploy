@@ -1,17 +1,17 @@
 ---
 task_id: TST-1787497001212692
 change: tst-1787497001212692-verification-truthfulness
-commit_sha: null
-local: required
-local_evidence: null
-remote_ci: required
-remote_ci_evidence: null
+commit_sha: b9858085df8073f725670e2acfa0f0bb9cda41da
+local: passed
+local_evidence: "Full-stack and published idempotence plus listener and source-drift regressions passed on the recorded exact source revisions."
+remote_ci: passed
+remote_ci_evidence: "The delivered verification source is present on protected main 0da5dae31e12242baebde842ab632cd1e1843140; exact-main CI run 34030183169 passed all 75 jobs."
 dry_run: not_applicable
 dry_run_evidence: no Terraform surface changed; playbook gating verified via live-inventory runs
 staging: not_applicable
 staging_evidence: no separate staging environment exists; CI molecule covers scenario changes
-live: required
-live_evidence: null
+live: blocked
+live_evidence: "The required live-inventory verify plus source-drift cycle has not run. A bounded 2026-09-06 passive recheck returned unknown/command-failed for all three inventory aliases; source and hosted checks do not satisfy this category."
 client: not_applicable
 client_evidence: no client emitter changed
 artifact: not_applicable
