@@ -14,7 +14,7 @@ openspec_change: cic-1788708456909496-make-evidence-ownership-and-closure-links-
 created: 2026-09-06
 updated: 2026-09-06
 related_tasks: []
-status_detail: Review found two fail-open lifecycle paths; fix and exact-head verification are in progress.
+status_detail: All reproduced lifecycle review findings are fixed locally; exact-head protected CI and final review remain pending.
 ---
 
 ## Goal
