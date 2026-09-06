@@ -725,7 +725,10 @@ def shared_evidence_mappings(
     while index < len(lines) and lines[index].lstrip().startswith("|"):
         line = lines[index].strip()
         cells = (
-            [cell.strip() for cell in line[1:-1].split("|")]
+            [
+                cell.replace(r"\|", "|").strip()
+                for cell in re.split(r"(?<!\\)\|", line[1:-1])
+            ]
             if line.endswith("|")
             else []
         )
@@ -1473,6 +1476,16 @@ def git_tree_paths(root: Path, ref: str, prefix: str) -> list[str]:
     return sorted(filter(None, (result.stdout or "").splitlines()))
 
 
+def revision_is_ancestor(root: Path, ancestor: str, descendant: str) -> bool:
+    return (
+        run_command(
+            ("git", "merge-base", "--is-ancestor", ancestor, descendant),
+            root=root,
+        ).returncode
+        == 0
+    )
+
+
 def historical_execution_path(root: Path, ref: str, document: Document) -> str:
     if document.values["spec_mode"] == "not-required":
         return f"docs/tasks/work/{document.task_id}.md"
@@ -1531,6 +1544,39 @@ def historical_requirement_ids(root: Path, ref: str, document: Document) -> set[
                 re.findall(r"(?m)^### Requirement: (REQ-[A-Z0-9-]+)(?:\s|$)", text)
             )
     return requirements
+
+
+def validate_historical_requirement_evidence(
+    root: Path,
+    ref: str,
+    change_root: str,
+    steps: Sequence[Step],
+    *,
+    dropped_step_ids: set[str] | None = None,
+) -> None:
+    with tempfile.TemporaryDirectory(
+        prefix="taskctl-historical-requirements-"
+    ) as directory:
+        local_change = Path(directory) / "change"
+        paths = [
+            *git_tree_paths(root, ref, f"{change_root}/specs"),
+            f"{change_root}/verification.md",
+        ]
+        for path in paths:
+            text = git_show_text(root, ref, path)
+            if text is None:
+                fail(f"{path}: historical requirement evidence input is missing")
+            relative = Path(path).relative_to(change_root)
+            target = local_change / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8")
+        validate_requirement_evidence(
+            local_change,
+            steps,
+            archived=True,
+            dropped_step_ids=dropped_step_ids,
+        )
+
 
 def validate_historical_shared_transfer(
     root: Path,
@@ -2080,6 +2126,17 @@ def validate_terminal_snapshot(
             or any(verification[category] in {"required", "blocked"} for category in config.evidence_categories)
         ):
             fail(f"{relative}: archive receipt does not match resolved verification evidence")
+        validate_historical_requirement_evidence(
+            root,
+            deletion_ref,
+            archive_root,
+            terminal_steps,
+            dropped_step_ids=(
+                set(drop_receipt["dropped_step_ids"])
+                if drop_receipt is not None
+                else None
+            ),
+        )
         if outcome == "dropped":
             archived_drop = git_show_text(root, deletion_ref, f"{archive_root}/.taskctl-drop.json")
             if archived_drop is None or json.loads(archived_drop) != drop_receipt:
@@ -2434,6 +2491,7 @@ def resolve_terminal_task(
 ) -> dict[str, Any] | None:
     history_index = history_index or build_terminal_history_index(root, config)
     primary_error: ContractError | None = None
+    primary_resolved: dict[str, Any] | None = None
     try:
         resolved = resolve_terminal_task_from_index(
             root,
@@ -2447,11 +2505,24 @@ def resolve_terminal_task(
         primary_error = error
     else:
         if resolved is not None:
-            return resolved
+            primary_resolved = resolved
+            if resolved["deletion_revision"] is None:
+                return resolved
         if history_index.by_revision[history_index.revisions[-1]].get(task_id) is not None:
             return None
     candidate_lanes = history_index.merged_lanes
-    if primary_error is not None:
+    if primary_resolved is not None:
+        primary_deletion = primary_resolved["deletion_revision"]
+        assert primary_deletion is not None
+        candidate_lanes = tuple(
+            lane
+            for lane in candidate_lanes
+            if timeline_contains_deleted_task(history_index, lane, task_id)
+            and revision_is_ancestor(root, primary_deletion, lane[-1])
+        )
+        if not candidate_lanes:
+            return primary_resolved
+    elif primary_error is not None:
         primary_timeline = [
             history_index.by_revision[revision].get(task_id)
             for revision in history_index.revisions
@@ -2887,7 +2958,13 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 primary_deletion = timeline[deletion_indexes[-1]][0]
                 primary_final = timeline[deletion_indexes[-1] - 1][1]
                 assert primary_final is not None
-                if primary_final.document.values.get("status") not in {
+                candidate_lanes = [
+                    lane
+                    for lane in terminal_index.merged_lanes
+                    if timeline_contains_deleted_task(terminal_index, lane, task_id)
+                    and revision_is_ancestor(root, primary_deletion, lane[-1])
+                ]
+                if not candidate_lanes and primary_final.document.values.get("status") not in {
                     "done",
                     "dropped",
                 }:

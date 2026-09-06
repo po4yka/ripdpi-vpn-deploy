@@ -832,6 +832,32 @@ artifact_evidence: No shipped artifact.
         with self.assertRaisesRegex(taskctl.ContractError, "local_evidence required"):
             taskctl.evidence_values(path)
 
+    def test_shared_evidence_mapping_parses_escaped_command_pipe(self) -> None:
+        task_id = "ANS-1786234567890101"
+        self.add_active_spec_task(task_id=task_id, done=True)
+        verification_path = (
+            self.root
+            / "openspec/changes"
+            / f"{task_id.casefold()}-change"
+            / "verification.md"
+        )
+        self.add_shared_evidence_mapping(
+            verification_path,
+            source_task=task_id,
+            owner_task="OPS-1786234567890201",
+            requirement=f"REQ-{task_id}-001",
+            command=r"probe \| validator",
+            category="live",
+            source_revision="a" * 40,
+        )
+
+        mappings = taskctl.shared_evidence_mappings(
+            taskctl.read_document(verification_path),
+            taskctl.load_project_config(self.root),
+        )
+
+        self.assertEqual("probe | validator", mappings[0].command)
+
 
 class TaskctlHistoryTest(TaskctlFixture):
     def git(self, *args: str) -> str:
@@ -2753,6 +2779,117 @@ print("{}")
 
         with self.assertRaisesRegex(taskctl.ContractError, "invalid OpenSpec archive receipt"):
             taskctl.validate_deleted_history(self.root, base)
+
+    def test_historical_openspec_requires_resolved_requirement_evidence(self) -> None:
+        source_task = "ANS-1786234567890101"
+        source = self.add_archived_spec_task(receipt=True, task_id=source_task)
+        owner = self.add_simple_task(
+            task_id="CIC-1786234567890201",
+            related=[source_task],
+        )
+        self.write_board()
+        base = self.commit_all("add archived source and evidence owner")
+        taskctl.command_close_prepare(
+            argparse.Namespace(
+                root=self.root,
+                query=source_task,
+                outcome="done",
+                reason="All acceptance passed.",
+                evidence="Archived fixture evidence passed.",
+            )
+        )
+        self.write_board()
+        verification = next(
+            (self.root / "openspec/changes/archive").glob(
+                f"*-{source_task.casefold()}-change/verification.md"
+            )
+        )
+        verification.write_text(
+            "\n".join(
+                line
+                for line in verification.read_text(encoding="utf-8").splitlines()
+                if not line.startswith(f"| REQ-{source_task}-001 |")
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        self.commit_all("publish malformed terminal requirement evidence")
+        source.unlink()
+        owner_document = taskctl.read_document(owner)
+        owner_steps = taskctl.read_steps(
+            taskctl.expected_execution_path(self.root, owner_document)
+        )
+        (self.root / "docs/tasks/board.md").write_text(
+            taskctl.render_board(self.root, [owner_document], owner_steps),
+            encoding="utf-8",
+        )
+        self.commit_all("purge malformed OpenSpec source")
+
+        for action in (
+            lambda: taskctl.load_state(self.root),
+            lambda: taskctl.validate_deleted_history(self.root, base),
+        ):
+            with self.subTest(action=action):
+                with self.assertRaisesRegex(
+                    taskctl.ContractError,
+                    "requirement evidence mismatch",
+                ):
+                    action()
+
+    def test_later_malformed_merged_incarnation_supersedes_valid_purge(self) -> None:
+        source_task = "CIC-1786234567890001"
+        source = self.add_simple_task(task_id=source_task, status="review")
+        owner = self.add_simple_task(
+            task_id="CIC-1786234567890003",
+            related=[source_task],
+        )
+        self.write_board()
+        base = self.commit_all("add first source incarnation")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("complete first source incarnation")
+        self.purge_simple_task(source)
+        self.write_board()
+        self.commit_all("purge first source incarnation")
+        integration_branch = self.git("branch", "--show-current")
+
+        self.git("switch", "-c", "malformed-reincarnation")
+        source = self.add_simple_task(task_id=source_task, status="doing")
+        self.write_board()
+        self.commit_all("reintroduce source as doing in merged lane")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("forge direct terminal transition in merged lane")
+        self.purge_simple_task(source)
+        owner_document = taskctl.read_document(owner)
+        owner_steps = taskctl.read_steps(
+            taskctl.expected_execution_path(self.root, owner_document)
+        )
+        (self.root / "docs/tasks/board.md").write_text(
+            taskctl.render_board(self.root, [owner_document], owner_steps),
+            encoding="utf-8",
+        )
+        self.commit_all("purge malformed merged reincarnation")
+
+        self.git("switch", integration_branch)
+        self.git(
+            "merge",
+            "--no-ff",
+            "malformed-reincarnation",
+            "-m",
+            "merge malformed reincarnation",
+        )
+
+        for action in (
+            lambda: taskctl.load_state(self.root),
+            lambda: taskctl.validate_deleted_history(self.root, base),
+        ):
+            with self.subTest(action=action):
+                with self.assertRaisesRegex(
+                    taskctl.ContractError,
+                    "invalid terminal transition doing -> done",
+                ):
+                    action()
 
 
 class TaskctlFederationTest(TaskctlFixture):

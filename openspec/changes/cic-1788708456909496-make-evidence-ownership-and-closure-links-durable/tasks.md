@@ -31,3 +31,6 @@ Terraform, Ansible, secrets, providers, hosts, and clients are out of scope.
 - [x] CIC-1788729192473052 Add RED regressions for unmapped evidence transfers in merged lanes and purged historical related targets #bug !high @item:CIC-1788708456909496
 - [x] CIC-1788729193073535 Validate evidence-transfer history consistently across active merged lanes and terminal related-task resolution #bug !high @item:CIC-1788708456909496
 - [x] CIC-1788731559342267 Reject repaired malformed intermediate snapshots in historical resolution and deletion validation #bug !high @item:CIC-1788708456909496
+- [x] CIC-1788733500688116 Reject later malformed merged reincarnations after a valid first-parent purge #bug !high @item:CIC-1788708456909496
+- [x] CIC-1788733501332318 Validate archived OpenSpec requirement evidence before resolving historical links #bug !high @item:CIC-1788708456909496
+- [x] CIC-1788733501927997 Parse escaped Markdown delimiters in shared evidence acceptance commands #bug !high @item:CIC-1788708456909496
