@@ -2,7 +2,7 @@
 id: CIC-1788708456909496
 title: Make evidence ownership and closure links durable
 kind: feature
-status: review
+status: doing
 area: ci
 priority: high
 risk: high
@@ -14,7 +14,7 @@ openspec_change: cic-1788708456909496-make-evidence-ownership-and-closure-links-
 created: 2026-09-06
 updated: 2026-09-06
 related_tasks: []
-status_detail: Source implementation and exact-head PR checks passed; protected-main integration remains the delivery boundary.
+status_detail: Review found two fail-open lifecycle paths; fix and exact-head verification are in progress.
 ---
 
 ## Goal

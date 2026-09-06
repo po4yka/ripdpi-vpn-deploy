@@ -1776,6 +1776,7 @@ def resolve_terminal_task(
     config: ProjectConfig,
     *,
     allow_uncommitted_purge: bool = False,
+    prospective_purge: bool = False,
     history_index: TerminalHistoryIndex | None = None,
 ) -> dict[str, Any] | None:
     history_index = history_index or build_terminal_history_index(root, config)
@@ -1799,24 +1800,27 @@ def resolve_terminal_task(
                 return None
             final_snapshot = timeline[-1][1]
             assert final_snapshot is not None
-            if (root / final_snapshot.relative).exists():
-                return None
-            document = final_snapshot.document
-            if document.values.get("spec_mode") == "required":
-                change = document.values.get("openspec_change")
-                if (root / "openspec/changes" / str(change)).exists():
+            if not prospective_purge:
+                if (root / final_snapshot.relative).exists():
                     return None
-                archives = list((root / "openspec/changes/archive").glob(f"*-{change}"))
-                if len(archives) != 1:
-                    return None
-            else:
-                work = root / f"docs/tasks/work/{task_id}.md"
-                if (
-                    work.exists()
-                    or work.with_suffix(".close.json").exists()
-                    or work.with_suffix(".drop.json").exists()
-                ):
-                    return None
+                document = final_snapshot.document
+                if document.values.get("spec_mode") == "required":
+                    change = document.values.get("openspec_change")
+                    if (root / "openspec/changes" / str(change)).exists():
+                        return None
+                    archives = list(
+                        (root / "openspec/changes/archive").glob(f"*-{change}")
+                    )
+                    if len(archives) != 1:
+                        return None
+                else:
+                    work = root / f"docs/tasks/work/{task_id}.md"
+                    if (
+                        work.exists()
+                        or work.with_suffix(".close.json").exists()
+                        or work.with_suffix(".drop.json").exists()
+                    ):
+                        return None
             timeline.append((revisions[-1], None))
             synthetic_deletion = True
         deletion_indexes = [
@@ -2396,6 +2400,7 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 and final_document.values.get("spec_mode") == "required"
             ):
                 prior_evidence: dict[str, str] = {}
+                transferred_categories: dict[str, str] = {}
                 for revision, snapshot in incarnation:
                     assert snapshot is not None
                     evidence = historical_verification_values(
@@ -2423,7 +2428,39 @@ def validate_deleted_history(root: Path, base: str) -> None:
                                 config=config_at(revision),
                                 scratch=scratch,
                             )
+                            transferred_categories[category] = previous
                         prior_evidence[category] = current
+                for category, previous in sorted(transferred_categories.items()):
+                    terminal_verification = historical_verification_document(
+                        root,
+                        final_ref,
+                        final_snapshot.document,
+                        scratch,
+                    )
+                    terminal_mappings = shared_evidence_mappings(
+                        terminal_verification,
+                        config_at(final_ref),
+                    )
+                    if not any(
+                        mapping.source_task == task_id
+                        and mapping.category == category
+                        for mapping in terminal_mappings
+                    ):
+                        fail(
+                            f"{relative}: shared {category} mapping did not survive "
+                            "until terminal snapshot"
+                        )
+                    validate_historical_shared_transfer(
+                        root,
+                        task_id=task_id,
+                        category=category,
+                        previous_state=previous,
+                        source_ref=final_ref,
+                        source_snapshot=final_snapshot,
+                        snapshots_at_source=by_revision[final_ref],
+                        config=config_at(final_ref),
+                        scratch=scratch,
+                    )
 
             terminal_ref = final_ref
             terminal_document = final_document
@@ -3389,6 +3426,15 @@ def command_close_purge(args: argparse.Namespace) -> int:
             and document.values["status"] != "done"
         ):
             fail(f"{document.task_id}: incoming reference from {candidate.task_id}")
+    config = load_project_config(args.root)
+    if resolve_terminal_task(
+        args.root,
+        document.task_id,
+        config,
+        allow_uncommitted_purge=True,
+        prospective_purge=True,
+    ) is None:
+        fail(f"{document.task_id}: committed terminal history is not purgeable")
     execution = expected_execution_path(args.root, document)
     receipt_kinds = (
         ("close", "drop") if document.values["status"] == "dropped" else ("close",)

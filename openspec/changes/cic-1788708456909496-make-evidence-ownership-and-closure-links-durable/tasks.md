@@ -17,7 +17,7 @@ Terraform, Ansible, secrets, providers, hosts, and clients are out of scope.
 - [x] CIC-1788708671983805 Implement cached local terminal-history resolution and permit only safe incoming related-task edges across canonical done-task purge #feature !high @item:CIC-1788708456909496
 - [x] CIC-1788708672560736 Update proportional evidence documentation and the structured ownership-mapping contract without reclassifying any current evidence result #feature !high @item:CIC-1788708456909496
 - [x] CIC-1788708673268654 Verify dropped, malformed, invalid latest incarnation, parent, blocker, dirty-tree, and pre-commit purge failure paths remain fail-closed #bug !high @item:CIC-1788708456909496
-- [x] CIC-1788708673867480 Run focused pytest, taskctl validation, task-check, diff hygiene, clean-history review, and exact-head protected CI #chore !high @item:CIC-1788708456909496
+- [ ] CIC-1788708673867480 Run focused pytest, taskctl validation, task-check, diff hygiene, clean-history review, and exact-head protected CI #chore !high @item:CIC-1788708456909496
 
 ## Verification
 

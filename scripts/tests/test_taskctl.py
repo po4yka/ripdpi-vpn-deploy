@@ -1353,6 +1353,136 @@ class TaskctlHistoryTest(TaskctlFixture):
         ):
             taskctl.load_state(self.root)
 
+    def test_shared_mapping_must_survive_until_terminal_snapshot(self) -> None:
+        source_task = "ANS-1786234567890101"
+        owner_task = "OPS-1786234567890201"
+        change = f"{source_task.casefold()}-change"
+        source_issue = self.add_active_spec_task(
+            status="review", done=True, task_id=source_task, slug="source"
+        )
+        owner_issue = self.add_active_spec_task(
+            status="review",
+            done=True,
+            task_id=owner_task,
+            slug="owner",
+            related=[source_task],
+        )
+        source_verification = (
+            self.root / "openspec/changes" / change / "verification.md"
+        )
+        source_document = taskctl.read_document(source_verification)
+        source_values = dict(source_document.values)
+        source_values["local"] = "passed"
+        source_values["local_evidence"] = "Source checks passed."
+        source_values["live"] = "blocked"
+        source_values["live_evidence"] = "External acceptance is pending."
+        source_verification.write_text(
+            taskctl.render_document(
+                source_values,
+                source_document.body.replace(
+                    "| Pending | required |", "| Source passed. | passed |"
+                ),
+                order=tuple(source_values),
+            ),
+            encoding="utf-8",
+        )
+        owner_verification = (
+            self.root
+            / "openspec/changes"
+            / f"{owner_task.casefold()}-change"
+            / "verification.md"
+        )
+        owner_document = taskctl.read_document(owner_verification)
+        owner_values = dict(owner_document.values)
+        owner_values["live"] = "blocked"
+        owner_values["live_evidence"] = "Owned external acceptance is pending."
+        owner_verification.write_text(
+            taskctl.render_document(
+                owner_values, owner_document.body, order=tuple(owner_values)
+            ),
+            encoding="utf-8",
+        )
+        self.write_board()
+        source_revision = self.commit_all("record blocked source acceptance")
+
+        archive = self.root / "openspec/changes/archive" / f"2026-08-09-{change}"
+        source_verification.parent.rename(archive)
+        source_verification = archive / "verification.md"
+        source_document = taskctl.read_document(source_verification)
+        source_values = dict(source_document.values)
+        source_values["commit_sha"] = source_revision
+        source_values["live"] = "not_applicable"
+        source_values["live_evidence"] = f"Transferred to {owner_task}."
+        source_verification.write_text(
+            taskctl.render_document(
+                source_values, source_document.body, order=tuple(source_values)
+            ),
+            encoding="utf-8",
+        )
+        mapping = {
+            "source_task": source_task,
+            "owner_task": owner_task,
+            "requirement": f"REQ-{source_task}-001",
+            "command": "make verify LIMIT=fixture",
+            "category": "live",
+            "source_revision": source_revision,
+        }
+        self.add_shared_evidence_mapping(source_verification, **mapping)
+        self.add_shared_evidence_mapping(owner_verification, **mapping)
+        (archive / ".taskctl-archive.json").write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "task_id": source_task,
+                    "change": change,
+                    "outcome": "review",
+                    "commit_sha": source_revision,
+                    "archived_at": "2026-08-09T00:00:00Z",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        self.commit_all("record valid evidence transfer")
+
+        for verification_path in (source_verification, owner_verification):
+            document = taskctl.read_document(verification_path)
+            body = document.body.split(
+                "\n## Shared operational evidence ownership\n", 1
+            )[0].rstrip() + "\n"
+            verification_path.write_text(
+                taskctl.render_document(
+                    dict(document.values), body, order=tuple(document.values)
+                ),
+                encoding="utf-8",
+            )
+        owner = taskctl.read_document(owner_issue)
+        owner_values = dict(owner.values)
+        owner_values["related_tasks"] = []
+        owner_issue.write_text(
+            taskctl.render_document(owner_values, owner.body), encoding="utf-8"
+        )
+        taskctl.command_close_prepare(
+            argparse.Namespace(
+                root=self.root,
+                query=source_task,
+                outcome="done",
+                reason="Source acceptance transferred.",
+                evidence="Transfer was removed before closure.",
+            )
+        )
+        self.commit_all("remove transfer before terminal closure")
+        taskctl.command_close_purge(
+            argparse.Namespace(root=self.root, query=source_task)
+        )
+        self.commit_all("purge source without durable transfer")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "shared live mapping did not survive until terminal snapshot",
+        ):
+            taskctl.validate_deleted_history(self.root, source_revision)
+
     def test_source_revision_must_be_a_reachable_commit(self) -> None:
         base = self.commit_all("record integration history")
         with self.assertRaisesRegex(
@@ -1648,6 +1778,29 @@ class TaskctlHistoryTest(TaskctlFixture):
             node for node in committed["graph"] if node["id"] == "CIC-1786234567890001"
         )
         self.assertEqual(deletion, historical["deletion_revision"])
+
+    def test_related_purge_rejects_invalid_prospective_terminal_history(self) -> None:
+        target = self.add_simple_task(status="doing")
+        self.add_simple_task(
+            task_id="CIC-1786234567890003",
+            related=["CIC-1786234567890001"],
+        )
+        self.write_board()
+        self.commit_all("add doing task with evidence owner")
+        self.prepare_simple_terminal(target)
+        self.write_board()
+        self.commit_all("forge direct doing to done transition")
+        work = self.root / "docs/tasks/work/CIC-1786234567890001.md"
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "invalid terminal transition doing -> done"
+        ):
+            taskctl.command_close_purge(
+                argparse.Namespace(root=self.root, query="CIC-1786234567890001")
+            )
+        self.assertTrue(target.is_file())
+        self.assertTrue(work.is_file())
+        self.assertTrue(work.with_suffix(".close.json").is_file())
 
     def test_graph_reuses_one_terminal_history_index_for_multiple_related_tasks(
         self,
