@@ -19,8 +19,9 @@ evidence category.
 - Unsafe parent links, unresolved blockers, dropped history, malformed terminal
   transitions, and ambiguous task incarnations continue to fail closed.
 - Proportional verification explicitly requires client-layer evidence for
-  authenticated client traffic and cannot reclassify existing required or
-  blocked evidence without first moving and mapping that requirement.
+  authenticated client traffic and cannot turn existing required or blocked
+  evidence into `passed` or `not_applicable` without proof or an exact mapped
+  transfer. Current failed or unavailable observations may remain `blocked`.
 - Task-lifecycle policy changes are owned and verified by this OpenSpec change.
 
 ## Capabilities

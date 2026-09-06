@@ -20,6 +20,13 @@ lifecycle with outcome `done`.
 - **THEN** task validation and graph rendering resolve the historical task as `done`
 - **AND** the durable evidence-ownership edge remains visible
 
+#### Scenario: Completed lifecycle is integrated from a merged lane
+
+- **GIVEN** one merged lane contains the source task's complete valid create, terminal, archive, and purge lifecycle
+- **WHEN** the integration tree retains an active owner's related edge but no source issue
+- **THEN** validation resolves exactly one valid lane-local deletion candidate
+- **AND** zero, malformed, stale-only, or multiple candidates fail closed
+
 ### Requirement: REQ-CIC-1788708456909496-002 — fail closed on invalid historical targets
 
 The task contract MUST reject a local reference whose target is absent,
@@ -55,6 +62,13 @@ or any reference that would leave the active graph invalid.
 - **THEN** purge fails before deleting any task artifact
 - **AND** the active relationship remains unchanged
 
+#### Scenario: Terminal artifacts changed after their commit
+
+- **GIVEN** a terminal issue, execution record, verification, or lifecycle receipt differs from `HEAD`
+- **WHEN** `close purge` runs even with a rewritten self-consistent working receipt
+- **THEN** purge fails before deleting any artifact
+- **AND** every working-tree change remains intact
+
 ### Requirement: REQ-CIC-1788708456909496-004 — map shared operational evidence durably
 
 Shared operational evidence MUST discharge a source-task requirement only when
@@ -75,6 +89,13 @@ evidence category, and exact source revision covered by the observation.
 - **WHEN** closure readiness is evaluated
 - **THEN** the original required or blocked evidence remains open
 - **AND** the source task cannot be terminally closed
+
+#### Scenario: Historical transfer is checked before archival
+
+- **GIVEN** the transfer policy is active and a committed evidence state changed from `required` or `blocked` to `not_applicable`
+- **WHEN** archive readiness, OpenSpec archival, close preparation, or purge is evaluated
+- **THEN** the exact reciprocal mapping at the transition revision is validated before mutation
+- **AND** a later mapping cannot retroactively authorize the transfer
 
 ### Requirement: REQ-CIC-1788708456909496-005 — require evidence at the observed layer
 
@@ -97,3 +118,10 @@ NOT become `not_applicable` solely because another task exists.
 - **WHEN** maintainers want a linked operational task to own the evidence instead
 - **THEN** an OpenSpec update first moves and maps the requirement under REQ-CIC-1788708456909496-004
 - **AND** the source record is not reclassified by an evidence-only edit
+
+#### Scenario: Policy activation preserves legacy classifications
+
+- **GIVEN** an evidence category was already `not_applicable` before the transfer policy activated
+- **WHEN** policy activation leaves that category unchanged
+- **THEN** archive readiness does not require a retroactive mapping
+- **BUT** a `required` or `blocked` to `not_applicable` transition in the activation commit is rejected

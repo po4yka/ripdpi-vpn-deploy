@@ -10,13 +10,16 @@ data shaping are Python and use only stdlib + pinned `PyYAML`, `Jinja2`, or
 **One file per operator verb** — `bootstrap-secrets.sh`, `rotate-secrets.sh`,
 `fleet-rotate.sh`. The Makefile wraps these with `make <target>` shorthand.
 
-**Task lifecycle history is first-parent and revision-bound** — `taskctl`
-resolves purged local tasks from committed terminal snapshots, retains only
-validated `done` relationships in public graph output, and accepts shared
-operational evidence only through reciprocal requirement/command mappings at
-the recorded source revision. Keep transition scans anchored before the
-validation base, batch history reads, and never substitute current worktree
-specs or mutable archive discovery for the immutable transfer revision.
+**Task lifecycle history is first-parent canonical and revision-bound** —
+`taskctl` resolves purged local tasks from committed terminal snapshots,
+retains only validated `done` relationships in public graph output, and accepts
+shared operational evidence only through reciprocal requirement/command
+mappings at the recorded source revision. A completed lifecycle wholly inside
+one merged lane may resolve only through one unambiguous, independently valid
+lane; malformed first-parent state always wins and fails closed. Keep transition
+scans anchored before the validation base, batch history reads, and never
+substitute current worktree specs or mutable archive discovery for the
+immutable transfer revision.
 
 **Observability lifecycle shares one exact-host controller** — its public Make
 verbs remain distinct, while one bounded Python controller centralizes private

@@ -87,6 +87,7 @@ class TaskctlFixture(TestCase):
         project: str = "po4yka/ripdpi-vpn-deploy",
         peers: list[str] | None = None,
         contract: int = 1,
+        evidence_transfer_policy: int = 1,
     ) -> None:
         (self.root / "tools/tasking/project.json").write_text(
             json.dumps(
@@ -96,6 +97,7 @@ class TaskctlFixture(TestCase):
                     "project": project,
                     "areas": DEPLOY_AREA_PREFIXES,
                     "evidence_categories": list(DEPLOY_EVIDENCE_CATEGORIES),
+                    "evidence_transfer_policy": evidence_transfer_policy,
                     "openspec_schema": "ripdpi-deploy-change",
                     "allowed_peers": peers if peers is not None else ["po4yka/RIPDPI"],
                 },
@@ -256,6 +258,7 @@ class TaskctlFixture(TestCase):
                         "schema": 1,
                         "task_id": task_id,
                         "change": change,
+                        "outcome": "review",
                         "commit_sha": "a" * 40,
                         "archived_at": "2026-08-09T00:00:00Z",
                     }
@@ -1107,7 +1110,7 @@ class TaskctlHistoryTest(TaskctlFixture):
     def test_required_evidence_cannot_be_reclassified_not_applicable_before_purge(
         self,
     ) -> None:
-        self.add_active_spec_task(status="review", done=True)
+        path = self.add_active_spec_task(status="review", done=True)
         change = "ans-1786234567890101-change"
         active = self.root / "openspec/changes" / change
         verification_path = active / "verification.md"
@@ -1151,26 +1154,140 @@ class TaskctlHistoryTest(TaskctlFixture):
             + "\n",
             encoding="utf-8",
         )
-        taskctl.command_close_prepare(
-            argparse.Namespace(
-                root=self.root,
-                query="ANS-1786234567890101",
-                outcome="done",
-                reason="All acceptance passed.",
-                evidence="Source and delegated checks passed.",
-            )
-        )
-        self.commit_all("record invalid terminal closure")
-        taskctl.command_close_purge(
-            argparse.Namespace(root=self.root, query="ANS-1786234567890101")
-        )
-        self.commit_all("purge invalid closure")
-
         with self.assertRaisesRegex(
             taskctl.ContractError,
             "local evidence changed from blocked to not_applicable without a shared mapping",
         ):
-            taskctl.validate_deleted_history(self.root, base)
+            taskctl.command_close_prepare(
+                argparse.Namespace(
+                    root=self.root,
+                    query="ANS-1786234567890101",
+                    outcome="done",
+                    reason="All acceptance passed.",
+                    evidence="Source and delegated checks passed.",
+                )
+            )
+        self.assertEqual("review", taskctl.read_document(path).values["status"])
+        self.assertTrue(archive.is_dir())
+        self.assertFalse((archive / ".taskctl-close.json").exists())
+
+    def test_archive_rejects_unmapped_evidence_reclassification_before_mutation(
+        self,
+    ) -> None:
+        self.write_project_config(evidence_transfer_policy=0)
+        task_id = "ANS-1786234567890101"
+        change = f"{task_id.casefold()}-change"
+        source = self.add_active_spec_task(
+            status="review",
+            done=True,
+            task_id=task_id,
+        )
+        verification_path = self.root / "openspec/changes" / change / "verification.md"
+        verification = taskctl.read_document(verification_path)
+        values = dict(verification.values)
+        values["local"] = "passed"
+        values["local_evidence"] = "Source checks passed."
+        values["live"] = "blocked"
+        values["live_evidence"] = "Operational acceptance is unavailable."
+        verification_path.write_text(
+            taskctl.render_document(
+                values,
+                verification.body.replace(
+                    "| Pending | required |", "| Source checks passed. | passed |"
+                ),
+                order=tuple(values),
+            ),
+            encoding="utf-8",
+        )
+        self.write_board()
+        source_revision = self.commit_all("record blocked operational evidence")
+
+        config_path = self.root / "tools/tasking/project.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["evidence_transfer_policy"] = 1
+        config_path.write_text(json.dumps(config, sort_keys=True) + "\n", encoding="utf-8")
+        verification = taskctl.read_document(verification_path)
+        values = dict(verification.values)
+        values["commit_sha"] = source_revision
+        values["live"] = "not_applicable"
+        values["live_evidence"] = "Delegated elsewhere."
+        verification_path.write_text(
+            taskctl.render_document(values, verification.body, order=tuple(values)),
+            encoding="utf-8",
+        )
+        self.write_board()
+        self.commit_all("activate policy with invalid transfer")
+
+        openspec = self.root / "tools/tasking/node_modules/.bin/openspec"
+        marker = self.root / "archive-invoked"
+        openspec.parent.mkdir(parents=True)
+        openspec.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$1\" = archive ]; then touch archive-invoked; fi\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        openspec.chmod(0o755)
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "live evidence changed from blocked to not_applicable without a shared mapping",
+        ):
+            taskctl.command_openspec_archive(
+                argparse.Namespace(root=self.root, change=change)
+            )
+
+        self.assertTrue((self.root / "openspec/changes" / change).is_dir())
+        self.assertFalse(marker.exists())
+
+    def test_legacy_not_applicable_evidence_survives_policy_activation(self) -> None:
+        self.write_project_config(evidence_transfer_policy=0)
+        task_id = "ANS-1786234567890101"
+        task = self.add_active_spec_task(status="review", done=True, task_id=task_id)
+        verification_path = (
+            self.root
+            / "openspec/changes"
+            / f"{task_id.casefold()}-change"
+            / "verification.md"
+        )
+        verification = taskctl.read_document(verification_path)
+        values = dict(verification.values)
+        values["local"] = "passed"
+        values["local_evidence"] = "Source checks passed."
+        verification_path.write_text(
+            taskctl.render_document(
+                values,
+                verification.body.replace(
+                    "| Pending | required |", "| Source checks passed. | passed |"
+                ),
+                order=tuple(values),
+            ),
+            encoding="utf-8",
+        )
+        self.write_board()
+        source_revision = self.commit_all("record legacy not-applicable evidence")
+
+        self.write_project_config(evidence_transfer_policy=1)
+        verification = taskctl.read_document(verification_path)
+        values = dict(verification.values)
+        values["commit_sha"] = source_revision
+        verification_path.write_text(
+            taskctl.render_document(values, verification.body, order=tuple(values)),
+            encoding="utf-8",
+        )
+        self.write_board()
+        self.commit_all("activate evidence transfer policy")
+        openspec = self.root / "tools/tasking/node_modules/.bin/openspec"
+        openspec.parent.mkdir(parents=True)
+        openspec.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        openspec.chmod(0o755)
+
+        result = taskctl.command_verify(
+            argparse.Namespace(root=self.root, query=task_id, archive_ready=True)
+        )
+
+        self.assertEqual(0, result)
+        self.assertEqual("review", taskctl.read_document(task).values["status"])
 
     def test_exact_shared_mapping_allows_evidence_ownership_transfer(self) -> None:
         source_task = "ANS-1786234567890101"
@@ -1462,26 +1579,22 @@ class TaskctlHistoryTest(TaskctlFixture):
         owner_issue.write_text(
             taskctl.render_document(owner_values, owner.body), encoding="utf-8"
         )
-        taskctl.command_close_prepare(
-            argparse.Namespace(
-                root=self.root,
-                query=source_task,
-                outcome="done",
-                reason="Source acceptance transferred.",
-                evidence="Transfer was removed before closure.",
-            )
-        )
-        self.commit_all("remove transfer before terminal closure")
-        taskctl.command_close_purge(
-            argparse.Namespace(root=self.root, query=source_task)
-        )
-        self.commit_all("purge source without durable transfer")
-
         with self.assertRaisesRegex(
             taskctl.ContractError,
-            "shared live mapping did not survive until terminal snapshot",
+            "shared live mapping did not survive until current snapshot",
         ):
-            taskctl.validate_deleted_history(self.root, source_revision)
+            taskctl.command_close_prepare(
+                argparse.Namespace(
+                    root=self.root,
+                    query=source_task,
+                    outcome="done",
+                    reason="Source acceptance transferred.",
+                    evidence="Transfer was removed before closure.",
+                )
+            )
+        self.assertEqual("review", taskctl.read_document(source_issue).values["status"])
+        self.assertTrue(archive.is_dir())
+        self.assertFalse((archive / ".taskctl-close.json").exists())
 
     def test_source_revision_must_be_a_reachable_commit(self) -> None:
         base = self.commit_all("record integration history")
@@ -1620,7 +1733,7 @@ class TaskctlHistoryTest(TaskctlFixture):
         source_task = "ANS-1786234567890101"
         owner_task = "OPS-1786234567890201"
         change = f"{source_task.casefold()}-change"
-        self.add_active_spec_task(
+        source = self.add_active_spec_task(
             status="review",
             done=True,
             task_id=source_task,
@@ -1715,26 +1828,22 @@ class TaskctlHistoryTest(TaskctlFixture):
             + "\n",
             encoding="utf-8",
         )
-        taskctl.command_close_prepare(
-            argparse.Namespace(
-                root=self.root,
-                query=source_task,
-                outcome="done",
-                reason="Late ownership mapping added.",
-                evidence="Source and owner records now match.",
-            )
-        )
-        self.commit_all("add owner mapping after transfer")
-        taskctl.command_close_purge(
-            argparse.Namespace(root=self.root, query=source_task)
-        )
-        self.commit_all("purge source after late mapping")
-
         with self.assertRaisesRegex(
             taskctl.ContractError,
             "shared evidence owner lacks related task",
         ):
-            taskctl.validate_deleted_history(self.root, base)
+            taskctl.command_close_prepare(
+                argparse.Namespace(
+                    root=self.root,
+                    query=source_task,
+                    outcome="done",
+                    reason="Late ownership mapping added.",
+                    evidence="Source and owner records now match.",
+                )
+            )
+        self.assertEqual("review", taskctl.read_document(source).values["status"])
+        self.assertTrue(archive.is_dir())
+        self.assertFalse((archive / ".taskctl-close.json").exists())
 
     def test_purge_preserves_incoming_related_task_as_historical_done(self) -> None:
         target = self.add_simple_task(status="review")
@@ -1801,6 +1910,95 @@ class TaskctlHistoryTest(TaskctlFixture):
         self.assertTrue(target.is_file())
         self.assertTrue(work.is_file())
         self.assertTrue(work.with_suffix(".close.json").is_file())
+
+    def test_purge_rejects_dirty_terminal_artifacts_with_rewritten_receipt(self) -> None:
+        target = self.add_simple_task(status="review")
+        self.write_board()
+        self.commit_all("add reviewed task")
+        self.prepare_simple_terminal(target)
+        self.write_board()
+        self.commit_all("commit terminal task")
+
+        document = taskctl.read_document(target)
+        target.write_text(
+            target.read_text(encoding="utf-8") + "\nUncommitted issue change.\n",
+            encoding="utf-8",
+        )
+        work = self.root / "docs/tasks/work" / f"{document.task_id}.md"
+        work.write_text(
+            work.read_text(encoding="utf-8") + "\nUncommitted execution change.\n",
+            encoding="utf-8",
+        )
+        dirty_document = taskctl.read_document(target)
+        taskctl.write_lifecycle_receipt(
+            self.root,
+            dirty_document,
+            work,
+            "close",
+            {
+                "schema": 1,
+                "task_id": dirty_document.task_id,
+                "change": None,
+                "outcome": "done",
+                "issue_sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+                "execution_sha256": hashlib.sha256(work.read_bytes()).hexdigest(),
+            },
+        )
+        receipt = work.with_suffix(".close.json")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "working terminal artifacts differ from HEAD",
+        ):
+            taskctl.command_close_purge(
+                argparse.Namespace(root=self.root, query=document.task_id)
+            )
+
+        self.assertTrue(target.is_file())
+        self.assertTrue(work.is_file())
+        self.assertTrue(receipt.is_file())
+
+    def test_purge_rejects_dirty_archived_terminal_artifacts(self) -> None:
+        target = self.add_archived_spec_task(receipt=True)
+        self.write_board()
+        self.commit_all("add archived reviewed task")
+        taskctl.command_close_prepare(
+            argparse.Namespace(
+                root=self.root,
+                query="ANS-1786234567890101",
+                outcome="done",
+                reason="All acceptance passed.",
+                evidence="Archived fixture evidence passed.",
+            )
+        )
+        self.write_board()
+        self.commit_all("commit archived terminal task")
+
+        document = taskctl.read_document(target)
+        execution = taskctl.expected_execution_path(self.root, document)
+        terminal_paths = (
+            target,
+            execution,
+            execution.parent / ".taskctl-close.json",
+            execution.parent / ".taskctl-archive.json",
+            execution.parent / "verification.md",
+        )
+        for dirty_path in terminal_paths:
+            with self.subTest(path=dirty_path.name):
+                original = dirty_path.read_bytes()
+                try:
+                    dirty_path.write_bytes(original + b"\n")
+                    with self.assertRaisesRegex(
+                        taskctl.ContractError,
+                        "close receipt content hashes do not match terminal state|"
+                        "working terminal artifacts differ from HEAD",
+                    ):
+                        taskctl.command_close_purge(
+                            argparse.Namespace(root=self.root, query=document.task_id)
+                        )
+                    self.assertTrue(all(path.is_file() for path in terminal_paths))
+                finally:
+                    dirty_path.write_bytes(original)
 
     def test_graph_reuses_one_terminal_history_index_for_multiple_related_tasks(
         self,
@@ -2064,6 +2262,169 @@ class TaskctlHistoryTest(TaskctlFixture):
         assert resolved is not None
         self.assertEqual("done", resolved["status"])
         taskctl.validate_deleted_history(self.root, base)
+
+    def test_terminal_history_resolves_lifecycle_completed_in_merged_lane(self) -> None:
+        source_task = "CIC-1786234567890001"
+        owner_task = "CIC-1786234567890003"
+        owner = self.add_simple_task(task_id=owner_task)
+        self.write_board()
+        base = self.commit_all("bootstrap evidence owner")
+        integration_branch = self.git("branch", "--show-current")
+
+        self.git("switch", "-c", "completed-lifecycle")
+        source = self.add_simple_task(task_id=source_task, status="review")
+        owner_document = taskctl.read_document(owner)
+        owner_values = dict(owner_document.values)
+        owner_values["related_tasks"] = [source_task]
+        owner.write_text(
+            taskctl.render_document(owner_values, owner_document.body),
+            encoding="utf-8",
+        )
+        self.write_board()
+        self.commit_all("add source with evidence owner")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        terminal = self.commit_all("complete source in lane")
+        taskctl.command_close_purge(
+            argparse.Namespace(root=self.root, query=source_task)
+        )
+        self.write_board()
+        deletion = self.commit_all("purge source in lane")
+
+        self.git("switch", integration_branch)
+        self.git(
+            "merge",
+            "--no-ff",
+            "completed-lifecycle",
+            "-m",
+            "merge completed lifecycle",
+        )
+
+        taskctl.load_state(self.root)
+        output = StringIO()
+        with redirect_stdout(output):
+            taskctl.command_graph(argparse.Namespace(root=self.root, json=True))
+        graph = json.loads(output.getvalue())["graph"]
+        historical = next(node for node in graph if node["id"] == source_task)
+        self.assertEqual(terminal, historical["terminal_revision"])
+        self.assertEqual(deletion, historical["deletion_revision"])
+        taskctl.validate_deleted_history(self.root, base)
+
+    def test_terminal_history_rejects_ambiguous_completed_merged_lanes(self) -> None:
+        source_task = "CIC-1786234567890001"
+        owner_task = "CIC-1786234567890003"
+        owner = self.add_simple_task(task_id=owner_task)
+        self.write_board()
+        self.commit_all("bootstrap evidence owner")
+        integration_branch = self.git("branch", "--show-current")
+
+        for branch in ("completed-one", "completed-two"):
+            self.git("switch", "-c", branch, integration_branch)
+            source = self.add_simple_task(task_id=source_task, status="review")
+            self.write_board()
+            self.commit_all(f"add source on {branch}")
+            self.prepare_simple_terminal(source)
+            self.write_board()
+            self.commit_all(f"complete source on {branch}")
+            taskctl.command_close_purge(
+                argparse.Namespace(root=self.root, query=source_task)
+            )
+            self.write_board()
+            self.commit_all(f"purge source on {branch}")
+
+        self.git("switch", integration_branch)
+        for branch in ("completed-one", "completed-two"):
+            self.git("merge", "--no-ff", branch, "-m", f"merge {branch}")
+        owner_document = taskctl.read_document(owner)
+        owner_values = dict(owner_document.values)
+        owner_values["related_tasks"] = [source_task]
+        owner.write_text(
+            taskctl.render_document(owner_values, owner_document.body),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "ambiguous merged terminal history",
+        ):
+            taskctl.load_state(self.root)
+
+    def test_valid_merged_lane_cannot_mask_invalid_first_parent_lifecycle(self) -> None:
+        source_task = "CIC-1786234567890001"
+        owner_task = "CIC-1786234567890003"
+        owner = self.add_simple_task(task_id=owner_task)
+        self.write_board()
+        self.commit_all("bootstrap evidence owner")
+        integration_branch = self.git("branch", "--show-current")
+
+        self.git("switch", "-c", "valid-lifecycle")
+        source = self.add_simple_task(task_id=source_task, status="review")
+        owner_document = taskctl.read_document(owner)
+        owner_values = dict(owner_document.values)
+        owner_values["related_tasks"] = [source_task]
+        owner.write_text(
+            taskctl.render_document(owner_values, owner_document.body),
+            encoding="utf-8",
+        )
+        self.write_board()
+        self.commit_all("add source in valid lane")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("complete source in valid lane")
+        taskctl.command_close_purge(
+            argparse.Namespace(root=self.root, query=source_task)
+        )
+        self.write_board()
+        self.commit_all("purge source in valid lane")
+
+        self.git("switch", integration_branch)
+        self.git("merge", "--no-ff", "valid-lifecycle", "-m", "merge valid lifecycle")
+        source = self.add_simple_task(task_id=source_task, status="doing")
+        self.write_board()
+        self.commit_all("reintroduce source as doing")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("forge invalid first-parent terminal transition")
+        self.purge_simple_task(source)
+        self.commit_all("purge invalid first-parent lifecycle")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "invalid terminal transition doing -> done",
+        ):
+            taskctl.load_state(self.root)
+
+    def test_deleted_history_rejects_malformed_merged_lane(self) -> None:
+        source_task = "CIC-1786234567890001"
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        base = self.commit_all("bootstrap portfolio")
+        integration_branch = self.git("branch", "--show-current")
+
+        self.git("switch", "-c", "malformed-lifecycle")
+        source = self.add_simple_task(task_id=source_task, status="doing")
+        self.write_board()
+        self.commit_all("add doing source")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("forge direct doing to done transition")
+        self.purge_simple_task(source)
+        self.write_board()
+        self.commit_all("purge malformed source")
+        self.git("switch", integration_branch)
+        self.git(
+            "merge",
+            "--no-ff",
+            "malformed-lifecycle",
+            "-m",
+            "merge malformed lifecycle",
+        )
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "invalid terminal transition doing -> done",
+        ):
+            taskctl.validate_deleted_history(self.root, base)
 
     def test_dropped_openspec_change_archives_without_syncing_normative_specs(self) -> None:
         self.add_active_spec_task(status="review", done=False)

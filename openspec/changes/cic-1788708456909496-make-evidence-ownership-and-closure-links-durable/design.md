@@ -19,7 +19,8 @@ auditable.
   the repository closure policy.
 - Non-goal: permit a missing parent, unresolved blocker, dropped task, or prose
   pointer to satisfy an active dependency or acceptance requirement.
-- Non-goal: close, archive, or reclassify any existing Critical/High task.
+- Non-goal: close or archive any existing Critical/High task, or relax its
+  incomplete evidence to `passed` or `not_applicable` without the required proof.
 - Non-goal: change Terraform, Ansible, secrets, providers, deployed hosts,
   clients, or production infrastructure.
 
@@ -49,6 +50,9 @@ auditable.
   in both owning verification records. Each row names requirement ID, command,
   evidence category, and exact source revision. The task relationship points to
   the owner; it does not itself count as evidence.
+- Activate historical transfer auditing with the repository project contract's
+  `evidence_transfer_policy: 1`. Missing or zero preserves legacy history, while
+  the activation commit itself is audited so it cannot hide a reclassification.
 - Update the proportional policy to name `client` explicitly for authenticated
   client traffic. Evidence categories remain cumulative when more than one
   layer is applicable.
@@ -64,7 +68,8 @@ auditable.
   related-link semantics.
 - `docs/tasks/issues/` and active `verification.md` files use the new mapping
   only in a later OpenSpec update that actually transfers an exact requirement.
-  This change does not reclassify or transfer any current evidence result.
+  This change may record current observations as `blocked` and move a task back
+  from `review` to `blocked`; it does not transfer, pass, waive, or close them.
 - `openspec/specs/ci/task-contract-validation/spec.md`: synced normative task
   contract after implementation and acceptance.
 
@@ -92,7 +97,8 @@ auditable.
 2. Implement cached local history resolution and narrow purge allowance for
    incoming `related_tasks` only.
 3. Update the policy text and document the exact ownership-mapping contract.
-   Keep every current task's evidence ownership and result unchanged.
+   Preserve every incomplete acceptance boundary; record observed unavailable
+   inputs and failed probes as `blocked` without transferring requirements.
 4. Run focused pytest, `./taskctl generate-board`, `./taskctl validate --base
    origin/main`, `make task-check`, and `git diff --check`.
 5. Review every published commit message for repository-local rationale and the

@@ -92,6 +92,9 @@ deployment:
   OpenSpec update moves and maps that requirement before closure.
 
 This policy is owned by `CIC-1788708456909496` and its linked OpenSpec change.
+The repository project contract activates transition auditing with
+`evidence_transfer_policy: 1`; an omitted or zero value exists only so history
+before activation remains valid, and the activation transition is checked.
 It does not relax authentication, authorization,
 secret-handling, rollback, destructive-action confirmation, fail-closed input
 validation or the distinction between local, remote CI, dry-run, staging, live,
