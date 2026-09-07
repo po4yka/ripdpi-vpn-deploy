@@ -1187,7 +1187,7 @@ class TaskctlHistoryTest(TaskctlFixture):
 
     def test_openspec_adoption_ignores_pre_openspec_evidence_history(self) -> None:
         task_id = "CIC-1786234567890001"
-        path = self.add_simple_task(
+        self.add_simple_task(
             task_id=task_id,
             status="review",
             kind="bug",
@@ -1220,7 +1220,7 @@ class TaskctlHistoryTest(TaskctlFixture):
         self,
     ) -> None:
         task_id = "CIC-1786234567890001"
-        path = self.add_simple_task(
+        self.add_simple_task(
             task_id=task_id,
             status="review",
             kind="bug",
