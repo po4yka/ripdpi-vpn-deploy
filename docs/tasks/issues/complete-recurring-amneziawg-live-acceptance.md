@@ -14,7 +14,7 @@ openspec_change: tst-1786299293097217-complete-recurring-amneziawg-live-acceptan
 created: 2026-08-09
 updated: 2026-09-01
 related_tasks: ["po4yka/RIPDPI#TRN-1786264762917677"]
-status_detail: Offline deploy-side evidence now requires a private final-component-no-follow current RIPDPI source/artifact identity descriptor and records redacted INFRA_UNAVAILABLE launcher refusals without replacing latest PASS. No client-produced descriptor, disposable staging target, provider inputs, or recurring acceptance observation is available. Existing amneziawg-go evidence does not prove current RIPDPI client acceptance.
+status_detail: Deploy-side manifest v4 is an offline source candidate that separates immutable amneziawg-go engine provenance from a fresh Ed25519-signed, nonce/invocation-bound RIPDPI acceptance handoff and preserves a prior latest PASS on unavailable infrastructure. The client signer/relay is not implemented here, and no disposable staging target or initial plus recurring live observation has been supplied; the task remains open and engine evidence is not client acceptance.
 ---
 
 ## Goal
