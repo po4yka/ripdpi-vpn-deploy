@@ -19,12 +19,17 @@ tests, and operator scheduling. Serialize shared evidence and secrets contracts.
 
 ## Offline implementation note
 
-The deploy-side runner now fails closed unless a root-private descriptor with
-final-component symlink rejection binds the RIPDPI 40-hex source revision and
-immutable client artifact SHA-256. Launcher preflight refusals emit redacted
-`INFRA_UNAVAILABLE` records and retain an existing `latest.json`. These offline
-safeguards do not supply the descriptor, client artifact, provider inputs,
-disposable VPS, or recurring observation.
+The deploy-side v4 source candidate creates a fresh root-private nonce request
+per invocation and fails closed unless it consumes a canonical Ed25519-signed,
+nonce/invocation-bound handoff supplying a fresh correlated RIPDPI acceptance
+with exact source, APK and report digests plus every traffic/recovery/cleanup
+outcome.
+Standalone `amneziawg-go` provenance is recorded separately as engine identity.
+Launcher preflight and runtime `INFRA_UNAVAILABLE` outcomes retain an existing
+`latest.json`; a replacement PASS must be later and use distinct invocation,
+report and correlation identities. These offline safeguards do not supply the
+client signer/relay, client artifact, provider inputs, disposable VPS, or either
+live observation, so no execution step is closed here.
 
 ## Verification
 
