@@ -1,0 +1,11 @@
+{
+  "change": "cic-1788741692326070-require-committed-review-before-terminal-close",
+  "evidence_summary": "Protected main e20abbaddf9c4978025af2bf704897492ea91a28 passed CI 34099380224 (75/75), CodeQL 34099379996 (2/2), Scorecard 34099379941, and release-please 34099379820; archive-ready replay passed from committed review evidence 9dde8dd5.",
+  "execution_sha256": "00e0ce4937c08f25d4213f1bae26d9e75ac78ab857e274bf895b07c361327db6",
+  "issue_sha256": "7a304f42a7bdbaa1830a1d9481bd06468e8b426a90a1e9f26fbfda6336afd40a",
+  "outcome": "done",
+  "prepared_at": "2026-09-07T08:39:08Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1788741692326070"
+}
