@@ -2,7 +2,7 @@
 id: CIC-1788741692326070
 title: Require committed review before terminal close
 kind: bug
-status: doing
+status: review
 area: ci
 priority: critical
 risk: standard
@@ -14,7 +14,7 @@ openspec_change: cic-1788741692326070-require-committed-review-before-terminal-c
 created: 2026-09-07
 updated: 2026-09-07
 related_tasks: []
-status_detail: "Addressing PR #189 review findings: OpenSpec ownership, committed-review archive sequencing, and bounded selected-record lookup."
+status_detail: "Exact source 5f1d0896 passed full local gate and PR #189 CI run 34080044285 (75/75); ready for committed review snapshot."
 ---
 
 ## Goal

@@ -19,7 +19,7 @@ and OpenSpec records. Shared task files remain a serialized lane.
 - [x] CIC-1788741818900064 Run taskctl regressions and repository task validation #bug !crit @item:CIC-1788741692326070
 - [x] CIC-1788747290039529 Route the closure contract through OpenSpec and commit the review-state workflow boundary #feature !crit @item:CIC-1788741692326070
 - [x] CIC-1788747290653696 Read only the selected committed task record and prove bounded lookup #bug !crit @item:CIC-1788741692326070
-- [ ] CIC-1788747291263267 Run focused, full local, and protected pull-request validation #chore !crit @item:CIC-1788741692326070
+- [x] CIC-1788747291263267 Run focused, full local, and protected pull-request validation #chore !crit @item:CIC-1788741692326070
 
 ## Verification
 
