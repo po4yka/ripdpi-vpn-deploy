@@ -1,11 +1,11 @@
 ---
 task_id: CIC-1788708456909496
 change: cic-1788708456909496-make-evidence-ownership-and-closure-links-durable
-commit_sha: e7a73fd58237cb4299eacbe9e27953ab52c611de
+commit_sha: acd9fdf714e07e0317dadf59428699ebf1d6d6ca
 local: passed
 local_evidence: "Exact source e7a73fd58237cb4299eacbe9e27953ab52c611de passed all 118 targeted taskctl tests and 18 subtests, including multiple purged IDs in one validation range, a later malformed merged reincarnation forked before the valid first-parent purge, archived requirement-evidence, escaped Markdown delimiter, merged-lane, purged-target transfer, and repaired malformed-intermediate regressions. Python compilation, diff hygiene, base-aware task validation, and make task-check passed with 30 tasks and 168 steps."
-remote_ci: blocked
-remote_ci_evidence: "Exact source e7a73fd58237cb4299eacbe9e27953ab52c611de has not yet run on protected pull-request CI; the earlier green run covered the superseded head only."
+remote_ci: passed
+remote_ci_evidence: "Protected pull-request head 1a5a34d7f9903ab41426c47262e9a04d846f16cc passed every required check and final review found no actionable findings. Protected squash integration produced exact main acd9fdf714e07e0317dadf59428699ebf1d6d6ca; push runs ci 34068005302, codeql 34068005091, scorecard 34068005144, and release-please 34068005172 all completed successfully."
 dry_run: not_applicable
 dry_run_evidence: repository-local task tooling does not render or invoke deployment input
 staging: not_applicable
@@ -30,6 +30,5 @@ artifact_evidence: no release artifact is produced
 | REQ-CIC-1788708456909496-004 | CIC-1788733501927997 | Structured reciprocal source/owner mappings, escaped-pipe acceptance commands, pre-archive historical-transfer rejection, and merged-lane plus purged-target transfer regressions passed | passed |
 | REQ-CIC-1788708456909496-005 | CIC-1788708672560736 | Client-evidence policy and legacy activation-boundary regressions passed | passed |
 
-The implementation steps, local gates, and review fixes are recorded above.
-Exact-head protected checks and protected-main integration remain delivery
-boundaries and are not claimed by this pre-merge record.
+The implementation steps, local gates, review fixes, exact-head protected
+checks, and protected-main integration are recorded above.
