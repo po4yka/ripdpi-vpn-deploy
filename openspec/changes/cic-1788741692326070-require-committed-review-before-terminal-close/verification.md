@@ -1,11 +1,11 @@
 ---
 task_id: CIC-1788741692326070
 change: cic-1788741692326070-require-committed-review-before-terminal-close
-commit_sha: a13281eeeac3c9ecce2d490e826f19777e34c710
+commit_sha: e20abbaddf9c4978025af2bf704897492ea91a28
 local: passed
-local_evidence: "Exact source a13281eeeac3c9ecce2d490e826f19777e34c710 passed the focused CodeQL-targeted regressions, strict OpenSpec validation, make task-check (31 tasks and 176 steps), and build-gate -- make ci-fast: 4291 Python tests passed with 4 deselected and 18 subtests, 55 Bats tests, release Cargo clippy, and all Rust tests."
+local_evidence: "Implementation source a13281eeeac3c9ecce2d490e826f19777e34c710 passed build-gate -- make ci-fast: 4291 Python tests passed with 4 deselected and 18 subtests, 55 Bats tests, release Cargo clippy, and all Rust tests. Protected squash e20abbaddf9c4978025af2bf704897492ea91a28 contains the identical taskctl blob d5780b83c158c871bc0d7498c35168526df61215 and test blob 2293f66934c51698d79f64f02b2e672d17121aa2; its closure worktree also passed both OpenSpec-adoption regressions and make task-check with 31 tasks and 176 steps."
 remote_ci: passed
-remote_ci_evidence: "PR #189 exact source a13281eeeac3c9ecce2d490e826f19777e34c710 passed CI run 34096871763 with all 75 jobs successful and CodeQL run 34096871547 with both analysis jobs successful and no current findings."
+remote_ci_evidence: "PR #189 source a13281eeeac3c9ecce2d490e826f19777e34c710 passed CI 34096871763 (75/75) and CodeQL 34096871547 (2/2); review head f5b50272edcfdc6f2134cb69741087ab022cd15f passed CI 34098248842 (75/75) and CodeQL 34098248593 (2/2). Protected squash e20abbaddf9c4978025af2bf704897492ea91a28 passed push CI 34099380224 (75/75), CodeQL 34099379996 (2/2), Scorecard 34099379941, and release-please 34099379820."
 dry_run: not_applicable
 dry_run_evidence: repository-local task tooling does not render or consume deployment inputs
 staging: not_applicable
