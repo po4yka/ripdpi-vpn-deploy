@@ -1,11 +1,11 @@
 ---
 task_id: CIC-1788741692326070
 change: cic-1788741692326070-require-committed-review-before-terminal-close
-commit_sha: null
-local: required
-local_evidence: null
-remote_ci: required
-remote_ci_evidence: null
+commit_sha: ee18ea1d5bedef4cea68acd5d710b1caece9c50a
+local: passed
+local_evidence: "Exact source ee18ea1d5bedef4cea68acd5d710b1caece9c50a passed the focused history suite (50 tests and 14 subtests), strict OpenSpec validation, make task-check (31 tasks and 176 steps), origin/main-aware task validation, and build-gate -- make ci-fast: 4291 Python tests passed with 4 deselected and 18 subtests, 55 Bats tests, release Cargo clippy, and all Rust tests."
+remote_ci: passed
+remote_ci_evidence: "PR #189 exact source ee18ea1d5bedef4cea68acd5d710b1caece9c50a passed CI run 34092415550 with all 75 jobs successful and CodeQL run 34092415319 with both analysis jobs successful."
 dry_run: not_applicable
 dry_run_evidence: repository-local task tooling does not render or consume deployment inputs
 staging: not_applicable
