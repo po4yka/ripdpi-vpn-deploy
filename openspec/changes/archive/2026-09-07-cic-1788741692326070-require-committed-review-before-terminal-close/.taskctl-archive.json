@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-09-07T08:35:19Z",
+  "change": "cic-1788741692326070-require-committed-review-before-terminal-close",
+  "commit_sha": "e20abbaddf9c4978025af2bf704897492ea91a28",
+  "outcome": "review",
+  "schema": 1,
+  "task_id": "CIC-1788741692326070"
+}

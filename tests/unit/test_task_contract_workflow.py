@@ -23,6 +23,34 @@ def test_task_contract_validates_the_local_portfolio_only() -> None:
     assert "Check out federated RIPDPI portfolio" not in workflow
 
 
+def test_proportional_evidence_policy_requires_client_layer_for_client_traffic() -> (
+    None
+):
+    policy = " ".join((ROOT / "docs/tasks/README.md").read_text().split())
+
+    assert "Authenticated client traffic requires `client: passed`" in policy
+    assert (
+        "Host-side staging or live evidence does not substitute for client evidence"
+        in policy
+    )
+    assert "locally purged `done` source task" in policy
+
+
+def test_archive_workflow_commits_review_before_archive_and_close() -> None:
+    workflow = (
+        ROOT / ".agents/skills/openspec-archive-change/SKILL.md"
+    ).read_text()
+    review_commit = workflow.index(
+        "Require the review-state issue, execution, verification, and board to be committed"
+    )
+    archive_ready = workflow.index("./taskctl verify <task-id> --archive-ready")
+    archive = workflow.index("./taskctl openspec archive <change-name>")
+    close = workflow.index("./taskctl close prepare <task-id> --outcome done")
+
+    assert review_commit < archive_ready < archive < close
+    assert "`close purge` is a later, separately committed step" in workflow
+
+
 @pytest.fixture
 def portfolio(monkeypatch):
     from scripts.tests.test_taskctl import TaskctlFixture

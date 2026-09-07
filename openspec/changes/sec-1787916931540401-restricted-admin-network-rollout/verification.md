@@ -1,11 +1,11 @@
 ---
 task_id: SEC-1787916931540401
 change: sec-1787916931540401-restricted-admin-network-rollout
-commit_sha: e265689c83ca3ea16b8d84b19574000ea597bd3d
+commit_sha: 0da5dae31e12242baebde842ab632cd1e1843140
 local: passed
 local_evidence: the combined-tree make -j1 check passed with 2969 Python tests, one existing skip, 55 Bats tests, 184 Rust release tests and Clippy; isolated profile stopped and context and config were unchanged; log SHA256 0f31ada651e9c771887691eebb5701add05ac7894f25f0f37840385f38454fe5
-remote_ci: required
-remote_ci_evidence: null
+remote_ci: passed
+remote_ci_evidence: "The final Vultr exact-resource cleanup source merged through protected main as edaf905caaced070601cd374c4c85f5d429b4d35. Protected main 0da5dae31e12242baebde842ab632cd1e1843140 contains all six completed source steps, and exact-main CI run 34030183169 passed all 75 jobs. This is source and hosted evidence only; it does not satisfy staging or live acceptance."
 dry_run: required
 dry_run_evidence: null
 staging: required
@@ -38,10 +38,10 @@ remain open under the existing approved budget and cleanup deadlines.
 |---|---|---|---|
 | REQ-ADMIN-ISOLATION | SEC-1787917605386179 | Opt-in controller snapshots resolver bytes, canonical default routes and full `sshd -T`; unit and Molecule tests cover exact disabled DNS/routes/exit-node/Tailscale-SSH/netfilter preferences, rollback and unchanged repeat | local source and synthetic Molecule passed; real staged resolver, routing, host-key and dual-path SSH comparisons pending |
 | REQ-ADMIN-SCOPE | SEC-1787917605386179 | Exact canonical Tailnet source validation and guest nftables render on the existing effective SSH port; full Tailnet policy review plus approved/unapproved device connection tests | local guest-source policy passed; complete ACL diff and positive/negative live policy tests pending |
-| REQ-ADMIN-MIGRATION | SEC-1787917604306451 | 301 affected planner/core/adapter tests plus pinned Debian 13 and Ubuntu 24.04 packaged-main checks include real OpenSSH full effective parity, custom port, unknown-layout, bounded execution, read-set races and four-file crash boundaries | local source and packaged-main checks passed; complete local, hosted and staging pending |
+| REQ-ADMIN-MIGRATION | SEC-1787917604306451 | 301 affected planner/core/adapter tests plus pinned Debian 13 and Ubuntu 24.04 packaged-main checks include real OpenSSH full effective parity, custom port, unknown-layout, bounded execution, read-set races and four-file crash boundaries | local, packaged-main and exact-main hosted checks passed; real staging pending |
 | REQ-ADMIN-ROLLBACK | SEC-1787917604868749 | Durable fixed-path recovery, interruption reconciliation, exact guest nftables rollback and provider-side timed executor | source and isolated native checks passed; staging reboot pending |
 | REQ-ADMIN-PROMOTION | SEC-1787917605886845 | Exact-node selector, frozen strict transport, required DNS/VPN probes, private capability-bound provider rollback and promotion receipt | source passed; staging and live pending |
-| REQ-ADMIN-EVIDENCE | SEC-1788028226822310 | UpCloud cleanup coverage binds the authenticated API principal, server/root-storage resources and server-bound rules. The open Vultr extension `SEC-1788617074844018` separately binds the authenticated account, exact instance, SSH key, firewall group, every `for_each` firewall rule and embedded instance root. Both retain fixed 36/44/47-hour deadlines, no-follow private evidence, same-descriptor plan validation/apply, inventory preservation and typed provider absence. | UpCloud source is delivered; the Vultr source candidate still requires combined/full and exact hosted gates. Real deletion, provider absence and account billing observation remain pending. |
+| REQ-ADMIN-EVIDENCE | SEC-1788028226822310 | UpCloud cleanup coverage binds the authenticated API principal, server/root-storage resources and server-bound rules. The delivered Vultr extension `SEC-1788617074844018` separately binds the authenticated account, exact instance, SSH key, firewall group, every `for_each` firewall rule and embedded instance root. Both retain fixed 36/44/47-hour deadlines, no-follow private evidence, same-descriptor plan validation/apply, inventory preservation and typed provider absence. | UpCloud and Vultr source plus exact-main hosted checks passed. Real deletion, provider absence and account billing observation remain pending. |
 
 ## Gates and remaining boundaries
 
@@ -92,7 +92,7 @@ credited from source or fixture evidence.
 
 ### Vultr exact-resource cleanup extension
 
-The open Vultr extension keeps its state schema and API adapter separate from
+The delivered Vultr extension keeps its state schema and API adapter separate from
 UpCloud while reusing the guarded operator lifecycle. Its candidate manifest
 derives fixed 36/44/47-hour deadlines from authenticated provider creation
 time and binds the exact instance, SSH key, firewall group, every keyed ICMP,
@@ -128,8 +128,8 @@ checks passed. The mode-0600 full log has SHA-256
 This closes the source implementation step only. No Vultr resource has been
 created or deleted by these checks, and there is no staging, absence, billing,
 Tailnet, DNS, host or VPN acceptance evidence yet. Protected exact-head and
-exact-main hosted checks remain required before the adapter may gate a live
-staging lifecycle.
+exact-main hosted checks passed before the adapter may gate a live staging
+lifecycle; the live lifecycle itself remains unperformed.
 
 The SSH foundation on base `2009b6f694e326fa1f6d99333da497544b115cdd`
 passed the full local `make -j1 check` gate on 2026-08-28: 1688 unit tests

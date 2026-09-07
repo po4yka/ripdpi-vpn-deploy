@@ -6,16 +6,16 @@ local: passed
 local_evidence: "Final configuration candidate based on main 7da8b74: serialized build-gate -- make check exited 0. Python: 1524 passed, 1 skipped in 486.86 seconds. Bats: 55 passed. Rust: 169 release tests and strict release Clippy passed. Task/OpenSpec, four-provider Terraform validation/mocks, Conftest policy, cloud-init schema, production Ansible lint/syntax, gitleaks, render/snapshots, secret/bundle schemas and real pinned liveness parsers passed."
 remote_ci: passed
 remote_ci_evidence: "Exact-main CI 33357404456 passed 51/51 on 5f32a28b2fb3b789493e9b691c0ec8a9b26331bf, including molecule (backup) job 99382076199, pytest, and required contract gates."
-dry_run: required
-dry_run_evidence: null
-staging: required
-staging_evidence: null
-live: required
-live_evidence: null
-client: required
-client_evidence: null
-artifact: required
-artifact_evidence: null
+dry_run: blocked
+dry_run_evidence: "The bounded 2026-09-06 passive recheck returned unknown/command-failed for all three inventory aliases; the strict SSH-context mapping required by the deploy controller is unavailable. Private mode-0600 report SHA-256: 9989fb19da93ae5706cb430a2d1971b1419dd3a7167185094b34a5ad7337cbed."
+staging: blocked
+staging_evidence: "No authorized isolated target with the required target manifest and private inputs is available."
+live: blocked
+live_evidence: "A 2026-09-06 current-client check proved Hysteria2 with HTTP 204; two REALITY profiles were connection-refused, and XHTTP plus AWG traffic were not observed. All four transports remain required. Private mode-0600 summary SHA-256: 0d3e75791a4b9023248424b3fa2c91e56c68f6f00c204e66d60988af8729bbc8."
+client: blocked
+client_evidence: "Current-client Hysteria2 passed, but the remaining three transport classes lack passing external traffic evidence and the complete client/target input set is unavailable."
+artifact: blocked
+artifact_evidence: "The required current target manifest and restore input are unavailable; existing fixtures and source checks are not accepted as live artifacts."
 ---
 
 # Verification

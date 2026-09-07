@@ -1,30 +1,10 @@
-# ci/task-contract-validation Specification
-
 ## Purpose
-Keep pull-request task-contract validation authoritative for this repository
-after the formerly federated peer removes its incompatible task configuration,
-and preserve auditable evidence ownership after source-task archive and purge
-while invalid historical states and cross-layer evidence substitutions fail
-closed.
-## Requirements
-### Requirement: REQ-CIC-1787209937108078-001 — validate local contract history
 
-The task-contract job MUST validate this repository's current task contract
-and the applicable pull-request or push base history using the pinned local
-task tooling. It MUST NOT check out or validate a peer repository that no
-longer publishes a compatible federation contract.
+Extend the local task contract so evidence ownership remains verifiable after a
+completed source task is archived and purged, while every evidence category and
+unsafe historical state continues to fail closed.
 
-#### Scenario: Pull request after peer-contract retirement
-
-- **WHEN** a pull request changes this repository and the former peer lacks
-  `tools/tasking/project.json`
-- **THEN** local task validation runs against the pull request base and does
-  not fail because of that absent peer file
-
-#### Scenario: Invalid local task contract
-
-- **WHEN** this repository's task files violate the local contract
-- **THEN** the task-contract job fails
+## ADDED Requirements
 
 ### Requirement: REQ-CIC-1788708456909496-001 — resolve durable local evidence links
 
@@ -145,84 +125,3 @@ NOT become `not_applicable` solely because another task exists.
 - **WHEN** policy activation leaves that category unchanged
 - **THEN** archive readiness does not require a retroactive mapping
 - **BUT** a `required` or `blocked` to `not_applicable` transition in the activation commit is rejected
-
-### Requirement: REQ-CIC-1788741692326070-001 — require committed review before done closure
-
-`taskctl close prepare --outcome done` MUST accept a task only when the selected
-task record already exists at its current repository path in `HEAD`, carries
-the same task ID, and has `status: review` in that committed snapshot.
-
-#### Scenario: Working-tree-only review transition is refused
-
-- **GIVEN** `HEAD` contains the selected task in a non-review state
-- **AND** the working tree changes that task to `review`
-- **WHEN** done closure is prepared
-- **THEN** the command fails before changing the issue or creating a close receipt
-
-#### Scenario: Committed review proceeds to terminal preparation
-
-- **GIVEN** the selected task and completed execution are committed in `review`
-- **WHEN** all applicable verification and archive-readiness checks pass
-- **THEN** done closure prepares the existing terminal record and receipt
-- **AND** purge remains a later separately committed operation
-
-#### Scenario: Selected task path or identity differs from HEAD
-
-- **GIVEN** the working task is uncommitted at a new path or its committed record names another ID
-- **WHEN** done closure is prepared
-- **THEN** the command fails before any lifecycle artifact is mutated
-
-### Requirement: REQ-CIC-1788741692326070-002 — keep the archive workflow executable
-
-The canonical OpenSpec archive workflow MUST require the portfolio task and
-completed execution to be committed in `review` before archive readiness,
-OpenSpec archival, or done closure, and MUST retain a separate terminal-state
-commit before purge.
-
-#### Scenario: Operator finalizes an OpenSpec change
-
-- **GIVEN** implementation and required evidence are complete
-- **WHEN** the canonical archive workflow is followed
-- **THEN** the operator commits the review state before running the archive command
-- **AND** `close prepare --outcome done` observes that committed review snapshot
-
-### Requirement: REQ-CIC-1788741692326070-003 — bound the committed-review lookup
-
-The committed-review guard MUST read the selected task record directly from
-`HEAD` and MUST NOT perform one historical task-record read for every other
-active portfolio task.
-
-#### Scenario: Portfolio size grows independently of the selected close
-
-- **GIVEN** one reviewed task and multiple unrelated active task records
-- **WHEN** the committed-review guard checks the selected task
-- **THEN** it reads exactly that selected `HEAD` record
-- **AND** no repository-wide issue-tree scan is performed for this guard
-
-### Requirement: REQ-CIC-1788741692326070-004 — scope evidence history to OpenSpec ownership
-
-Historical evidence-transfer validation MUST require verification records only
-for task snapshots whose own `spec_mode` is `required`, and MUST retain all
-required snapshots when task mode or OpenSpec change identity later changes.
-
-#### Scenario: Existing simple-work task adopts OpenSpec
-
-- **GIVEN** a published task has earlier `spec_mode: not-required` snapshots
-  without OpenSpec verification files
-- **WHEN** that task adopts OpenSpec and archive readiness validates its evidence history
-- **THEN** the pre-OpenSpec snapshots do not require a fabricated verification record
-- **AND** every subsequent required snapshot remains subject to evidence-transfer validation
-
-### Requirement: REQ-CIC-1788741692326070-005 — preserve OpenSpec evidence scope after purge
-
-Deleted-task history validation MUST apply the same required-snapshot evidence
-timeline as active archive-readiness validation, including terminal mapping
-survival checks.
-
-#### Scenario: Adopted OpenSpec task completes and is purged
-
-- **GIVEN** a task has pre-OpenSpec history followed by a valid required OpenSpec lifecycle
-- **AND** its terminal state and later deletion are committed separately
-- **WHEN** deleted-task history is validated
-- **THEN** the pre-OpenSpec snapshots do not require verification files
-- **AND** required evidence transfers and terminal mapping survival still fail closed

@@ -4,12 +4,12 @@ change: ans-1786277767052693-add-network-exposure-denylist-gate
 commit_sha: ff944aece15746a7ae212808fa47d28effb806df
 local: passed
 local_evidence: "Canonical make -j1 check passed on the reviewed input-trust fix after integrating current deploy main: 2756 Python tests passed with one existing skip, 55 BATS passed, 184 Rust tests and release Clippy passed, plus Terraform 87, Conftest 45, cloud-init, schema, render, security, and real pinned liveness gates. External manifest, inventory, and evidence inputs reject duplicate keys, symlink or writable ancestry, unsafe ownership or mode, and hard links. Independent review found no P0-P2 blockers. Log SHA256 3591e354c0816fb751388c4b5fe3a281951c1aa02f0f61d9f22350444ef47629."
-remote_ci: required
-remote_ci_evidence: null
+remote_ci: passed
+remote_ci_evidence: "The delivered source is present on protected main 0da5dae31e12242baebde842ab632cd1e1843140; exact-main CI run 34030183169 passed all 75 jobs."
 dry_run: passed
 dry_run_evidence: "Controller and Molecule regressions exercise disabled parity, review-only and log-only outcomes, exact canary scoping, expiry refusal, redaction, and rollback without invoking firewall mutation."
-staging: required
-staging_evidence: null
+staging: blocked
+staging_evidence: "No isolated staging inventory or matching private inputs are available for the required disabled and log-only dry-run; no provider apply is claimed."
 live: not_applicable
 live_evidence: Live enforcement requires a later owner-authorized change.
 client: not_applicable
