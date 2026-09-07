@@ -24,6 +24,9 @@ boundary.
 - Evidence-transfer history begins with snapshots that actually require
   OpenSpec, so adopting OpenSpec for an existing task does not demand a
   verification file from its earlier simple-work history.
+- Active archive-readiness and purged-task history validation use the same
+  filtered evidence timeline, so terminal deletion cannot reintroduce the
+  pre-OpenSpec requirement.
 
 ## Capabilities
 

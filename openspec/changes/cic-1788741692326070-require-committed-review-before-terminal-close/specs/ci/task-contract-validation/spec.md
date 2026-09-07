@@ -72,3 +72,17 @@ required snapshots when task mode or OpenSpec change identity later changes.
 - **WHEN** that task adopts OpenSpec and archive readiness validates its evidence history
 - **THEN** the pre-OpenSpec snapshots do not require a fabricated verification record
 - **AND** every subsequent required snapshot remains subject to evidence-transfer validation
+
+### Requirement: REQ-CIC-1788741692326070-005 — preserve OpenSpec evidence scope after purge
+
+Deleted-task history validation MUST apply the same required-snapshot evidence
+timeline as active archive-readiness validation, including terminal mapping
+survival checks.
+
+#### Scenario: Adopted OpenSpec task completes and is purged
+
+- **GIVEN** a task has pre-OpenSpec history followed by a valid required OpenSpec lifecycle
+- **AND** its terminal state and later deletion are committed separately
+- **WHEN** deleted-task history is validated
+- **THEN** the pre-OpenSpec snapshots do not require verification files
+- **AND** required evidence transfers and terminal mapping survival still fail closed

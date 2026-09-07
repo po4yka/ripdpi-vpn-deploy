@@ -48,6 +48,10 @@ already known.
   observed change paths in the Git history query. This excludes history that
   cannot own a verification file without letting a later mode or change-name
   transition erase earlier required evidence.
+- Route deleted-task validation through that same evidence-timeline helper
+  instead of maintaining a second unfiltered loop. One implementation owns
+  required-snapshot filtering, transfer detection, and terminal mapping
+  survival for both active and purged lifecycles.
 
 ## Contracts and ownership
 
@@ -85,6 +89,8 @@ already known.
    protected check plus a clean final review before merge.
 6. Exercise archive readiness against the published pre-OpenSpec task history
    before preparing terminal closure.
+7. Exercise committed terminal deletion against the same published history
+   before accepting the purge commit.
 
 Rollback is a normal revert before any later task uses the new closure guard.
 After adoption, reverting requires restoring the former operator workflow and

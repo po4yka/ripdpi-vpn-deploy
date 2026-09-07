@@ -33,3 +33,4 @@ and OpenSpec records. Shared task files remain a serialized lane.
 - Dry-run, staging, live, client, and artifact evidence are not applicable to
   repository-local task tooling and workflow documentation.
 - [x] CIC-1788753354460219 Ignore pre-OpenSpec snapshots while preserving required evidence history #bug !crit @item:CIC-1788741692326070
+- [x] CIC-1788758091491061 Validate purged OpenSpec adoption through shared evidence history #bug !crit @item:CIC-1788741692326070

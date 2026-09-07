@@ -3128,68 +3128,14 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 outcome == "done"
                 and final_document.values.get("spec_mode") == "required"
             ):
-                prior_evidence: dict[str, str] = {}
-                transferred_categories: dict[str, str] = {}
-                for revision, snapshot in incarnation:
-                    assert snapshot is not None
-                    evidence = historical_verification_values(
-                        root,
-                        revision,
-                        snapshot.document,
-                        config_at(revision),
-                        scratch,
-                    )
-                    for category in config_at(revision).evidence_categories:
-                        previous = prior_evidence.get(category)
-                        current = evidence[category]
-                        if (
-                            previous in {"required", "blocked"}
-                            and current == "not_applicable"
-                        ):
-                            validate_historical_shared_transfer(
-                                root,
-                                task_id=task_id,
-                                category=category,
-                                previous_state=previous,
-                                source_ref=revision,
-                                source_snapshot=snapshot,
-                                snapshots_at_source=by_revision[revision],
-                                config=config_at(revision),
-                                scratch=scratch,
-                            )
-                            transferred_categories[category] = previous
-                        prior_evidence[category] = current
-                for category, previous in sorted(transferred_categories.items()):
-                    terminal_verification = historical_verification_document(
-                        root,
-                        final_ref,
-                        final_snapshot.document,
-                        scratch,
-                    )
-                    terminal_mappings = shared_evidence_mappings(
-                        terminal_verification,
-                        config_at(final_ref),
-                    )
-                    if not any(
-                        mapping.source_task == task_id
-                        and mapping.category == category
-                        for mapping in terminal_mappings
-                    ):
-                        fail(
-                            f"{relative}: shared {category} mapping did not survive "
-                            "until terminal snapshot"
-                        )
-                    validate_historical_shared_transfer(
-                        root,
-                        task_id=task_id,
-                        category=category,
-                        previous_state=previous,
-                        source_ref=final_ref,
-                        source_snapshot=final_snapshot,
-                        snapshots_at_source=by_revision[final_ref],
-                        config=config_at(final_ref),
-                        scratch=scratch,
-                    )
+                validate_historical_evidence_transfer_timeline(
+                    root,
+                    task_id=task_id,
+                    revisions=tuple(revision for revision, _ in incarnation),
+                    history_index=terminal_index,
+                    scratch=scratch,
+                    require_survival=True,
+                )
 
             terminal_ref = final_ref
             terminal_document = final_document
