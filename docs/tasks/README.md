@@ -130,7 +130,7 @@ write lock; coordinate lifecycle transitions and external editors separately.
 After editing steps and completing verification mappings, run `generate-board`
 before `validate`; `add` does not rewrite the generated board.
 
-Archive a completed OpenSpec change only through `./taskctl openspec archive`. Then run `close prepare`, commit the terminal record, run `close purge`, and commit the deletion separately. CI rejects deletion without the preceding terminal-state commit. Direct upstream archive, `--no-validate`, manual task IDs, and mdtask archive/ID assignment are unsupported.
+Commit the completed task, execution, verification, and regenerated board in `review` before archival. Archive a completed OpenSpec change only through `./taskctl openspec archive`. Then run `close prepare`, commit the terminal record, run `close purge`, and commit the deletion separately. CI rejects deletion without the preceding terminal-state commit. Direct upstream archive, `--no-validate`, manual task IDs, and mdtask archive/ID assignment are unsupported.
 
 ## Federation
 

@@ -1829,11 +1829,20 @@ def evidence_observation_revisions(
 ) -> set[str]:
     if not incarnation:
         return set()
-    change = incarnation[-1][1].document.values.get("openspec_change")
-    active_verification = f"openspec/changes/{change}/verification.md"
-    archived_verification = (
-        f":(glob)openspec/changes/archive/*-{change}/verification.md"
+    changes = sorted(
+        {
+            str(snapshot.document.values["openspec_change"])
+            for _, snapshot in incarnation
+        }
     )
+    verification_paths = [
+        path
+        for change in changes
+        for path in (
+            f"openspec/changes/{change}/verification.md",
+            f":(glob)openspec/changes/archive/*-{change}/verification.md",
+        )
+    ]
     changed = {incarnation[0][0], incarnation[-1][0]}
     if len(incarnation) > 1:
         history = run_command(
@@ -1845,8 +1854,7 @@ def evidence_observation_revisions(
                 "--format=%H",
                 f"{incarnation[0][0]}..{incarnation[-1][0]}",
                 "--",
-                active_verification,
-                archived_verification,
+                *verification_paths,
                 str(PROJECT_CONFIG_PATH),
             ),
             root=root,
@@ -1890,16 +1898,23 @@ def validate_historical_evidence_transfer_timeline(
         for revision, snapshot in timeline[last_absent + 1 :]
         if snapshot is not None
     ]
+    openspec_incarnation = [
+        (revision, snapshot)
+        for revision, snapshot in incarnation
+        if snapshot.document.values.get("spec_mode") == "required"
+    ]
+    if not openspec_incarnation:
+        return {}
     observations: list[
         tuple[str, HistoricalTaskSnapshot, dict[str, Any], ProjectConfig]
     ] = []
     observation_revisions = evidence_observation_revisions(
         root,
         task_id=task_id,
-        incarnation=incarnation,
+        incarnation=openspec_incarnation,
         history_index=history_index,
     )
-    for revision, snapshot in incarnation:
+    for revision, snapshot in openspec_incarnation:
         if revision not in observation_revisions:
             continue
         revision_config = historical_project_config(root, revision, scratch)
@@ -3113,68 +3128,14 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 outcome == "done"
                 and final_document.values.get("spec_mode") == "required"
             ):
-                prior_evidence: dict[str, str] = {}
-                transferred_categories: dict[str, str] = {}
-                for revision, snapshot in incarnation:
-                    assert snapshot is not None
-                    evidence = historical_verification_values(
-                        root,
-                        revision,
-                        snapshot.document,
-                        config_at(revision),
-                        scratch,
-                    )
-                    for category in config_at(revision).evidence_categories:
-                        previous = prior_evidence.get(category)
-                        current = evidence[category]
-                        if (
-                            previous in {"required", "blocked"}
-                            and current == "not_applicable"
-                        ):
-                            validate_historical_shared_transfer(
-                                root,
-                                task_id=task_id,
-                                category=category,
-                                previous_state=previous,
-                                source_ref=revision,
-                                source_snapshot=snapshot,
-                                snapshots_at_source=by_revision[revision],
-                                config=config_at(revision),
-                                scratch=scratch,
-                            )
-                            transferred_categories[category] = previous
-                        prior_evidence[category] = current
-                for category, previous in sorted(transferred_categories.items()):
-                    terminal_verification = historical_verification_document(
-                        root,
-                        final_ref,
-                        final_snapshot.document,
-                        scratch,
-                    )
-                    terminal_mappings = shared_evidence_mappings(
-                        terminal_verification,
-                        config_at(final_ref),
-                    )
-                    if not any(
-                        mapping.source_task == task_id
-                        and mapping.category == category
-                        for mapping in terminal_mappings
-                    ):
-                        fail(
-                            f"{relative}: shared {category} mapping did not survive "
-                            "until terminal snapshot"
-                        )
-                    validate_historical_shared_transfer(
-                        root,
-                        task_id=task_id,
-                        category=category,
-                        previous_state=previous,
-                        source_ref=final_ref,
-                        source_snapshot=final_snapshot,
-                        snapshots_at_source=by_revision[final_ref],
-                        config=config_at(final_ref),
-                        scratch=scratch,
-                    )
+                validate_historical_evidence_transfer_timeline(
+                    root,
+                    task_id=task_id,
+                    revisions=tuple(revision for revision, _ in incarnation),
+                    history_index=terminal_index,
+                    scratch=scratch,
+                    require_survival=True,
+                )
 
             terminal_ref = final_ref
             terminal_document = final_document
@@ -4064,12 +4025,33 @@ def prepare_dropped_execution(
     return execution
 
 
+def require_committed_review(root: Path, document: Document) -> None:
+    relative = document.path.relative_to(root).as_posix()
+    committed = git_show_text(root, "HEAD", relative)
+    if committed is None:
+        fail(f"{document.task_id}: done closure requires committed review status")
+    with tempfile.TemporaryDirectory(
+        prefix="taskctl-committed-review-"
+    ) as directory:
+        snapshot_path = Path(directory) / "issue.md"
+        snapshot_path.write_text(committed, encoding="utf-8")
+        snapshot = read_document(snapshot_path)
+    if (
+        snapshot.task_id != document.task_id
+        or snapshot.values.get("status") != "review"
+    ):
+        fail(
+            f"{document.task_id}: done closure requires committed review status"
+        )
+
+
 def command_close_prepare(args: argparse.Namespace) -> int:
     documents, steps = load_state(args.root)
     document = find_document(documents, args.query)
     if args.outcome == "done":
         if document.values["status"] != "review":
             fail("done closure requires review status")
+        require_committed_review(args.root, document)
         verify_task(args.root, document, steps, archive_ready=document.values["spec_mode"] == "required")
         if document.values["spec_mode"] == "required":
             change = document.values["openspec_change"]

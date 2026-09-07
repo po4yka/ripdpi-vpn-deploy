@@ -36,6 +36,21 @@ def test_proportional_evidence_policy_requires_client_layer_for_client_traffic()
     assert "locally purged `done` source task" in policy
 
 
+def test_archive_workflow_commits_review_before_archive_and_close() -> None:
+    workflow = (
+        ROOT / ".agents/skills/openspec-archive-change/SKILL.md"
+    ).read_text()
+    review_commit = workflow.index(
+        "Require the review-state issue, execution, verification, and board to be committed"
+    )
+    archive_ready = workflow.index("./taskctl verify <task-id> --archive-ready")
+    archive = workflow.index("./taskctl openspec archive <change-name>")
+    close = workflow.index("./taskctl close prepare <task-id> --outcome done")
+
+    assert review_commit < archive_ready < archive < close
+    assert "`close purge` is a later, separately committed step" in workflow
+
+
 @pytest.fixture
 def portfolio(monkeypatch):
     from scripts.tests.test_taskctl import TaskctlFixture

@@ -1153,6 +1153,227 @@ class TaskctlHistoryTest(TaskctlFixture):
 
         taskctl.validate_deleted_history(self.root, base)
 
+    def test_done_close_requires_committed_review_snapshot(self) -> None:
+        path = self.add_simple_task(status="doing")
+        work = self.root / "docs/tasks/work/CIC-1786234567890001.md"
+        work.write_text(
+            work.read_text(encoding="utf-8").replace("- [ ]", "- [x]"),
+            encoding="utf-8",
+        )
+        self.write_board()
+        self.commit_all("record implementation in progress")
+        document = taskctl.read_document(path)
+        values = dict(document.values)
+        values["status"] = "review"
+        path.write_text(
+            taskctl.render_document(values, document.body), encoding="utf-8"
+        )
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "done closure requires committed review status"
+        ):
+            taskctl.command_close_prepare(
+                argparse.Namespace(
+                    root=self.root,
+                    query="CIC-1786234567890001",
+                    outcome="done",
+                    reason="Verified.",
+                    evidence="Unit fixture passed.",
+                )
+            )
+
+        self.assertEqual("review", taskctl.read_document(path).values["status"])
+        self.assertFalse(work.with_suffix(".close.json").exists())
+
+    def test_openspec_adoption_ignores_pre_openspec_evidence_history(self) -> None:
+        task_id = "CIC-1786234567890001"
+        self.add_simple_task(
+            task_id=task_id,
+            status="review",
+            kind="bug",
+        )
+        work = self.root / f"docs/tasks/work/{task_id}.md"
+        work.write_text(
+            work.read_text(encoding="utf-8").replace("- [ ]", "- [x]"),
+            encoding="utf-8",
+        )
+        self.write_board()
+        self.commit_all("record pre-OpenSpec review")
+
+        path = self.add_active_spec_task(
+            status="doing",
+            done=False,
+            task_id=task_id,
+            slug=task_id.casefold(),
+        )
+        work.unlink()
+        self.write_board()
+        self.commit_all("adopt OpenSpec")
+
+        taskctl.validate_current_evidence_transfers(
+            self.root,
+            taskctl.read_document(path),
+            taskctl.load_project_config(self.root),
+        )
+
+    def test_purged_openspec_adoption_ignores_pre_openspec_evidence_history(
+        self,
+    ) -> None:
+        task_id = "CIC-1786234567890001"
+        self.add_simple_task(
+            task_id=task_id,
+            status="review",
+            kind="bug",
+        )
+        work = self.root / f"docs/tasks/work/{task_id}.md"
+        work.write_text(
+            work.read_text(encoding="utf-8").replace("- [ ]", "- [x]"),
+            encoding="utf-8",
+        )
+        self.write_board()
+        base = self.commit_all("record pre-OpenSpec review")
+
+        path = self.add_active_spec_task(
+            status="review",
+            done=True,
+            task_id=task_id,
+            slug=task_id.casefold(),
+        )
+        work.unlink()
+        change = f"{task_id.casefold()}-change"
+        active = self.root / "openspec/changes" / change
+        verification_path = active / "verification.md"
+        verification = taskctl.read_document(verification_path)
+        values = dict(verification.values)
+        values["commit_sha"] = base
+        values["local"] = "passed"
+        values["local_evidence"] = "Fixture passed."
+        verification_path.write_text(
+            taskctl.render_document(
+                values,
+                verification.body.replace(
+                    "| Pending | required |", "| Fixture passed. | passed |"
+                ),
+                order=tuple(values),
+            ),
+            encoding="utf-8",
+        )
+        self.write_board()
+        self.commit_all("adopt OpenSpec in review")
+
+        archive = self.root / "openspec/changes/archive" / f"2026-08-09-{change}"
+        active.rename(archive)
+        (archive / ".taskctl-archive.json").write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "task_id": task_id,
+                    "change": change,
+                    "outcome": "review",
+                    "commit_sha": base,
+                    "archived_at": "2026-08-09T00:00:00Z",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        taskctl.command_close_prepare(
+            argparse.Namespace(
+                root=self.root,
+                query=task_id,
+                outcome="done",
+                reason="Verified.",
+                evidence="Fixture passed.",
+            )
+        )
+        self.write_board()
+        self.commit_all("prepare terminal state")
+        path.unlink()
+        self.commit_all("purge task")
+
+        taskctl.validate_deleted_history(self.root, base)
+
+    def test_done_close_accepts_committed_review_snapshot(self) -> None:
+        path = self.add_simple_task(status="review")
+        work = self.root / "docs/tasks/work/CIC-1786234567890001.md"
+        work.write_text(
+            work.read_text(encoding="utf-8").replace("- [ ]", "- [x]"),
+            encoding="utf-8",
+        )
+        self.write_board()
+        self.commit_all("record reviewed task")
+
+        self.assertEqual(
+            0,
+            taskctl.command_close_prepare(
+                argparse.Namespace(
+                    root=self.root,
+                    query="CIC-1786234567890001",
+                    outcome="done",
+                    reason="Verified.",
+                    evidence="Unit fixture passed.",
+                )
+            ),
+        )
+
+        self.assertEqual("done", taskctl.read_document(path).values["status"])
+        self.assertTrue(work.with_suffix(".close.json").is_file())
+
+    def test_committed_review_requires_same_task_at_selected_path(self) -> None:
+        path = self.add_simple_task(status="review")
+        self.write_board()
+        self.commit_all("record reviewed task")
+
+        renamed = path.with_name("renamed.md")
+        path.rename(renamed)
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "done closure requires committed review status"
+        ):
+            taskctl.require_committed_review(
+                self.root, taskctl.read_document(renamed)
+            )
+
+        renamed.rename(path)
+        document = taskctl.read_document(path)
+        values = dict(document.values)
+        values["id"] = "CIC-1786234567890099"
+        path.write_text(
+            taskctl.render_document(values, document.body), encoding="utf-8"
+        )
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "done closure requires committed review status"
+        ):
+            taskctl.require_committed_review(
+                self.root, taskctl.read_document(path)
+            )
+
+    def test_committed_review_reads_only_selected_task_from_head(self) -> None:
+        path = self.add_simple_task(status="review")
+        for offset in range(10, 310, 10):
+            self.add_simple_task(
+                task_id=f"CIC-{1786234567890001 + offset:016d}"
+            )
+        self.write_board()
+        self.commit_all("record reviewed task with unrelated portfolio")
+        document = taskctl.read_document(path)
+        relative = path.relative_to(self.root).as_posix()
+
+        original = taskctl.run_command
+        git_commands: list[tuple[str, ...]] = []
+
+        def tracked(command, *, root, capture=True):
+            if command and command[0] == "git":
+                git_commands.append(tuple(command))
+            return original(command, root=root, capture=capture)
+
+        with mock.patch.object(taskctl, "run_command", side_effect=tracked):
+            taskctl.require_committed_review(self.root, document)
+
+        self.assertEqual(
+            [("git", "show", f"HEAD:{relative}")],
+            git_commands,
+        )
+
     def test_terminal_task_in_first_strict_revision_resolves(self) -> None:
         path = self.add_simple_task(status="review")
         self.add_simple_task(task_id="CIC-1786234567890003")
