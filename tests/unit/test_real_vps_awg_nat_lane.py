@@ -1044,6 +1044,7 @@ def test_unresolvable_repo_root_emits_source_unsafe_evidence(tmp_path: Path) -> 
         "openssl",
         "python3",
         "rm",
+        "sed",
         "sha256sum",
         "sleep",
         "stat",
