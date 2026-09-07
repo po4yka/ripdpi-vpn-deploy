@@ -1257,12 +1257,14 @@ def recover_reserved_evidence(
     *,
     request_json: JsonRequest | None = None,
     now: datetime | None = None,
+    clock: Callable[[], datetime] | None = None,
     expected_environment: str | None = None,
 ) -> str:
     """Recover a pre-apply reservation or finish an already-started cleanup.
 
     A retained ``apply_started`` receipt never permits a second Terraform
-    operation: it resumes only the provider absence observation.
+    operation: it resumes only the provider absence observation. Deterministic
+    callers inject ``clock`` so the absence observation stays reproducible.
     """
 
     manifest = load_manifest(
@@ -1355,6 +1357,7 @@ def recover_reserved_evidence(
             evidence_path,
             request_json=request_json,
             now=now,
+            clock=clock,
             expected_environment=expected_environment,
         )
         return "verified"
