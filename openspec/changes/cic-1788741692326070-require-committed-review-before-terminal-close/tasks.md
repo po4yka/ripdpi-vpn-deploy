@@ -32,3 +32,4 @@ and OpenSpec records. Shared task files remain a serialized lane.
   the full local gate, and all protected PR checks must pass on the final SHA.
 - Dry-run, staging, live, client, and artifact evidence are not applicable to
   repository-local task tooling and workflow documentation.
+- [x] CIC-1788753354460219 Ignore pre-OpenSpec snapshots while preserving required evidence history #bug !crit @item:CIC-1788741692326070

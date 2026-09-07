@@ -1829,11 +1829,20 @@ def evidence_observation_revisions(
 ) -> set[str]:
     if not incarnation:
         return set()
-    change = incarnation[-1][1].document.values.get("openspec_change")
-    active_verification = f"openspec/changes/{change}/verification.md"
-    archived_verification = (
-        f":(glob)openspec/changes/archive/*-{change}/verification.md"
+    changes = sorted(
+        {
+            str(snapshot.document.values["openspec_change"])
+            for _, snapshot in incarnation
+        }
     )
+    verification_paths = [
+        path
+        for change in changes
+        for path in (
+            f"openspec/changes/{change}/verification.md",
+            f":(glob)openspec/changes/archive/*-{change}/verification.md",
+        )
+    ]
     changed = {incarnation[0][0], incarnation[-1][0]}
     if len(incarnation) > 1:
         history = run_command(
@@ -1845,8 +1854,7 @@ def evidence_observation_revisions(
                 "--format=%H",
                 f"{incarnation[0][0]}..{incarnation[-1][0]}",
                 "--",
-                active_verification,
-                archived_verification,
+                *verification_paths,
                 str(PROJECT_CONFIG_PATH),
             ),
             root=root,
@@ -1890,16 +1898,23 @@ def validate_historical_evidence_transfer_timeline(
         for revision, snapshot in timeline[last_absent + 1 :]
         if snapshot is not None
     ]
+    openspec_incarnation = [
+        (revision, snapshot)
+        for revision, snapshot in incarnation
+        if snapshot.document.values.get("spec_mode") == "required"
+    ]
+    if not openspec_incarnation:
+        return {}
     observations: list[
         tuple[str, HistoricalTaskSnapshot, dict[str, Any], ProjectConfig]
     ] = []
     observation_revisions = evidence_observation_revisions(
         root,
         task_id=task_id,
-        incarnation=incarnation,
+        incarnation=openspec_incarnation,
         history_index=history_index,
     )
-    for revision, snapshot in incarnation:
+    for revision, snapshot in openspec_incarnation:
         if revision not in observation_revisions:
             continue
         revision_config = historical_project_config(root, revision, scratch)

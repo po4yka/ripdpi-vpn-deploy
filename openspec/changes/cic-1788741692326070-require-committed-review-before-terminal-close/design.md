@@ -18,6 +18,8 @@ already known.
   `review`, before any mutation.
 - Goal: keep the canonical archive skill ordered so the guard can succeed.
 - Goal: make guard cost independent of the number of unrelated active tasks.
+- Goal: let a published simple-work task adopt OpenSpec without fabricating a
+  verification record in its pre-OpenSpec commits.
 - Non-goal: change historical purge validation, evidence ownership, task status
   transitions, or OpenSpec archive receipt semantics.
 - Non-goal: mutate Terraform, Ansible, secrets, providers, hosts, clients, or
@@ -40,6 +42,12 @@ already known.
 - Verify bounded lookup by command shape and count, not wall time. Timing tests
   are noisy; one exact `git show` and zero `git ls-tree` calls prove the desired
   scaling contract deterministically.
+- Build evidence observations only from historical snapshots whose own
+  `spec_mode` is `required`. Retain every such snapshot, including snapshots
+  separated by another mode or naming a prior OpenSpec change, and include all
+  observed change paths in the Git history query. This excludes history that
+  cannot own a verification file without letting a later mode or change-name
+  transition erase earlier required evidence.
 
 ## Contracts and ownership
 
@@ -75,6 +83,8 @@ already known.
    `make task-check`, `git diff --check`, and the complete repository gate.
 5. Commit the updated task in `review`, push the same PR, and require every
    protected check plus a clean final review before merge.
+6. Exercise archive readiness against the published pre-OpenSpec task history
+   before preparing terminal closure.
 
 Rollback is a normal revert before any later task uses the new closure guard.
 After adoption, reverting requires restoring the former operator workflow and

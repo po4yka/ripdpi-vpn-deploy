@@ -21,6 +21,9 @@ boundary.
   before archival and close preparation.
 - The committed-review check reads only the selected task record rather than
   scanning every active task in Git.
+- Evidence-transfer history begins with snapshots that actually require
+  OpenSpec, so adopting OpenSpec for an existing task does not demand a
+  verification file from its earlier simple-work history.
 
 ## Capabilities
 

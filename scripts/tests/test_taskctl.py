@@ -1185,6 +1185,37 @@ class TaskctlHistoryTest(TaskctlFixture):
         self.assertEqual("review", taskctl.read_document(path).values["status"])
         self.assertFalse(work.with_suffix(".close.json").exists())
 
+    def test_openspec_adoption_ignores_pre_openspec_evidence_history(self) -> None:
+        task_id = "CIC-1786234567890001"
+        path = self.add_simple_task(
+            task_id=task_id,
+            status="review",
+            kind="bug",
+        )
+        work = self.root / f"docs/tasks/work/{task_id}.md"
+        work.write_text(
+            work.read_text(encoding="utf-8").replace("- [ ]", "- [x]"),
+            encoding="utf-8",
+        )
+        self.write_board()
+        self.commit_all("record pre-OpenSpec review")
+
+        path = self.add_active_spec_task(
+            status="doing",
+            done=False,
+            task_id=task_id,
+            slug=task_id.casefold(),
+        )
+        work.unlink()
+        self.write_board()
+        self.commit_all("adopt OpenSpec")
+
+        taskctl.validate_current_evidence_transfers(
+            self.root,
+            taskctl.read_document(path),
+            taskctl.load_project_config(self.root),
+        )
+
     def test_done_close_accepts_committed_review_snapshot(self) -> None:
         path = self.add_simple_task(status="review")
         work = self.root / "docs/tasks/work/CIC-1786234567890001.md"

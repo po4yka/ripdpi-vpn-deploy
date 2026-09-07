@@ -58,3 +58,17 @@ active portfolio task.
 - **WHEN** the committed-review guard checks the selected task
 - **THEN** it reads exactly that selected `HEAD` record
 - **AND** no repository-wide issue-tree scan is performed for this guard
+
+### Requirement: REQ-CIC-1788741692326070-004 — scope evidence history to OpenSpec ownership
+
+Historical evidence-transfer validation MUST require verification records only
+for task snapshots whose own `spec_mode` is `required`, and MUST retain all
+required snapshots when task mode or OpenSpec change identity later changes.
+
+#### Scenario: Existing simple-work task adopts OpenSpec
+
+- **GIVEN** a published task has earlier `spec_mode: not-required` snapshots
+  without OpenSpec verification files
+- **WHEN** that task adopts OpenSpec and archive readiness validates its evidence history
+- **THEN** the pre-OpenSpec snapshots do not require a fabricated verification record
+- **AND** every subsequent required snapshot remains subject to evidence-transfer validation
