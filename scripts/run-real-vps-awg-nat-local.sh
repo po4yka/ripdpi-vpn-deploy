@@ -40,7 +40,7 @@ preflight_fail() {
   exit 75
 }
 
-for tool in awk cmp find flock git install openssl python3 readlink sha256sum sleep stat; do
+for tool in awk cmp find flock git install openssl python3 readlink sed sha256sum sleep stat; do
   command -v "$tool" >/dev/null 2>&1 || preflight_fail PREFLIGHT_TOOL_MISSING
 done
 if ! REPO_ROOT="$(readlink -f "${RIPDPI_AWG_EVIDENCE_REPO_ROOT:-/opt/ripdpi-real-vps-awg-nat/current}")"; then
@@ -109,8 +109,47 @@ if ! nonce="$(
 fi
 [[ "$nonce" =~ ^[0-9a-f]{64}$ && "$nonce" != "$(printf '0%.0s' {1..64})" ]] || preflight_fail PREFLIGHT_RUNNER_INVALID
 handoff="$handoff_root/inbox/${nonce}.json"
-for (( attempt = 0; attempt < 300; attempt++ )); do
-  [[ -f "$handoff" && ! -L "$handoff" ]] && break
+# The systemd unit owns the whole invocation deadline (TimeoutStartSec; the
+# installed unit is byte-verified against the repo copy above). The handoff
+# wait is the only pre-lane phase this script controls, so it must absorb the
+# deadline pressure that the configured lane budgets leave behind instead of
+# spending the full request-validity window on top of them. A budget that no
+# longer fits the deadline fails closed as missing prerequisite evidence
+# rather than risking a SIGKILL during a durable write.
+unit_start_deadline=1800
+deadline_line="$(sed -n 's/^TimeoutStartSec=//p' "$REPO_ROOT/scripts/systemd/ripdpi-real-vps-awg-nat.service")"
+if [[ "$deadline_line" =~ ^([0-9]+)(min|s)?$ ]]; then
+  if [[ "${BASH_REMATCH[2]}" == "min" ]]; then
+    unit_start_deadline=$((BASH_REMATCH[1] * 60))
+  else
+    unit_start_deadline=${BASH_REMATCH[1]}
+  fi
+fi
+# Reserve beyond the config-declared phase budgets: source archiving and
+# hashing, handoff consumption, manifest validation, recurring-state
+# recording, and hook-call overhead outside those budgets.
+handoff_fixed_reserve=300
+lane_phase_reserve="$(python3 -c '
+import json, sys
+config = json.load(open(sys.argv[1], encoding="utf-8"))
+print(
+    int(config["deployTimeoutSeconds"])
+    + int(config["recoveryTimeoutSeconds"])
+    + int(config["probeTimeoutSeconds"])
+)
+' "$CONFIG" 2>/dev/null || true)"
+handoff_budget=300
+if [[ -n "$lane_phase_reserve" ]]; then
+  handoff_budget=$((unit_start_deadline - lane_phase_reserve - handoff_fixed_reserve - SECONDS))
+  if (( handoff_budget > 300 )); then
+    handoff_budget=300
+  fi
+fi
+if (( handoff_budget <= 0 )); then
+  preflight_fail PREREQUISITE_MISSING
+fi
+handoff_deadline=$((SECONDS + handoff_budget))
+until [[ -f "$handoff" && ! -L "$handoff" ]] || (( SECONDS >= handoff_deadline )); do
   sleep 1
 done
 [[ -f "$handoff" && ! -L "$handoff" ]] || preflight_fail PREREQUISITE_MISSING
