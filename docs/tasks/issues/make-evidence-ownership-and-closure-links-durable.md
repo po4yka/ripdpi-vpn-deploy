@@ -2,7 +2,7 @@
 id: CIC-1788708456909496
 title: Make evidence ownership and closure links durable
 kind: feature
-status: doing
+status: done
 area: ci
 priority: high
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: cic-1788708456909496-make-evidence-ownership-and-closure-links-durable
 created: 2026-09-06
-updated: 2026-09-06
+updated: 2026-09-07
 related_tasks: []
-status_detail: All reproduced lifecycle review findings are fixed locally; exact-head protected CI and final review remain pending.
+status_detail: Implementation and all reproduced review findings are complete. Protected pull-request checks passed, protected squash integration produced exact main acd9fdf714e07e0317dadf59428699ebf1d6d6ca, and its ci, codeql, scorecard, and release-please push runs all passed.
+closed_at: "2026-09-07T00:10:01Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Protected main acd9fdf714e07e0317dadf59428699ebf1d6d6ca; exact-main CI run 34068005302 and companion security/release workflows passed; archive-ready validation passed; OpenSpec archived with five requirements synced and its Purpose reconciled into the main specification.
 ---
 
 ## Goal

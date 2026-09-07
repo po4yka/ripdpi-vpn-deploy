@@ -1,0 +1,11 @@
+{
+  "change": "cic-1788708456909496-make-evidence-ownership-and-closure-links-durable",
+  "evidence_summary": "Protected main acd9fdf714e07e0317dadf59428699ebf1d6d6ca; exact-main CI run 34068005302 and companion security/release workflows passed; archive-ready validation passed; OpenSpec archived with five requirements synced and its Purpose reconciled into the main specification.",
+  "execution_sha256": "beec43916ff9ef0291794ca9d836a2a2dffef40d42b7eb0f2df7f03d85d769d6",
+  "issue_sha256": "0a62576f1c779d82a809ebcebb3226624c98eda72d904a8a87ab6979128ce285",
+  "outcome": "done",
+  "prepared_at": "2026-09-07T00:10:01Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1788708456909496"
+}
