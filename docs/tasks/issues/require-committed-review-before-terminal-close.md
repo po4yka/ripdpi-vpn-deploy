@@ -2,7 +2,7 @@
 id: CIC-1788741692326070
 title: Require committed review before terminal close
 kind: bug
-status: doing
+status: review
 area: ci
 priority: critical
 risk: standard
@@ -14,7 +14,7 @@ openspec_change: cic-1788741692326070-require-committed-review-before-terminal-c
 created: 2026-09-07
 updated: 2026-09-07
 related_tasks: []
-status_detail: CodeQL found two redundant pre-OpenSpec test assignments on review head 680cea13; removing them before final review evidence.
+status_detail: "Exact source a13281ee passed full local gate and PR #189 CI 34096871763 (75/75) plus CodeQL 34096871547 (2/2, no current findings); ready for committed-review replay."
 ---
 
 ## Goal
