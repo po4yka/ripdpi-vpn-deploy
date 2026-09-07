@@ -1947,6 +1947,24 @@ def prepare_retained_state(
                 now=now,
                 max_age_seconds=RECURRING_PAIR_MAX_AGE_SECONDS,
             )
+        # A crash between the fsync of a state temporary and its rename leaves
+        # the temporary beside its anchor. This upgrade pass must recover or
+        # archive the temporary together with that anchor, or the next lane
+        # run raises an ambiguous-recovery error against an anchor that no
+        # longer exists. Current-generation temporaries stay in place: their
+        # anchor is retained and the canonical record path recovers them.
+        for name in (".pending-initial.json.tmp", ".latest.json.tmp"):
+            path = state_dir / name
+            if not _state_entry_exists(path):
+                continue
+            recovered = _recover_state_temporary(path, now=now)
+            if recovered is None:
+                continue
+            _archive_prior_generation(
+                path,
+                recovered,
+                current_source_sha=current_source_sha,
+            )
     finally:
         if opened:
             os.close(descriptor)

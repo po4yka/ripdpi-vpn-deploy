@@ -871,6 +871,41 @@ def test_local_launcher_archives_exact_sha_and_validates_before_publish() -> Non
     assert "GITHUB_" not in launcher
 
 
+def test_local_launcher_budgets_handoff_wait_inside_service_deadline() -> None:
+    """The handoff wait must absorb deadline pressure, not add to it.
+
+    The launcher reads the unit start deadline from its byte-verified repo
+    copy, reserves the configured lane phase budgets plus fixed post-handoff
+    overhead, and bounds the wait so the whole invocation stays inside the
+    systemd deadline even when every configured phase runs to its limit.
+    """
+    launcher = (REPO_ROOT / "scripts" / "run-real-vps-awg-nat-local.sh").read_text()
+
+    assert (
+        "sed -n 's/^TimeoutStartSec=//p' "
+        '"$REPO_ROOT/scripts/systemd/ripdpi-real-vps-awg-nat.service"' in launcher
+    )
+    assert "unit_start_deadline=1800" in launcher
+    assert 'config["deployTimeoutSeconds"]' in launcher
+    assert 'config["recoveryTimeoutSeconds"]' in launcher
+    assert 'config["probeTimeoutSeconds"]' in launcher
+    assert "handoff_fixed_reserve=300" in launcher
+    assert (
+        "handoff_budget=$((unit_start_deadline - lane_phase_reserve "
+        "- handoff_fixed_reserve - SECONDS))" in launcher
+    )
+    assert "handoff_deadline=$((SECONDS + handoff_budget))" in launcher
+    assert "(( SECONDS >= handoff_deadline ))" in launcher
+    # A budget that cannot fit the deadline fails closed as prerequisite
+    # evidence instead of waiting into the systemd kill window.
+    assert "(( handoff_budget <= 0 ))" in launcher
+    assert launcher.index("unit_start_deadline=1800") < launcher.index(
+        "handoff_deadline=$((SECONDS + handoff_budget))"
+    )
+    # The request validity still covers the longest possible wait.
+    assert "--valid-seconds 300" in launcher
+
+
 def test_runtime_engine_identity_binds_actual_toolchain_binary(tmp_path: Path) -> None:
     toolchain = tmp_path / "toolchains" / ("a" * 64)
     binary_dir = toolchain / "bin"
@@ -1790,6 +1825,117 @@ def test_recurring_state_replays_pending_replace_idempotently(tmp_path: Path) ->
         == "pending"
     )
     assert (state / "pending-initial.json").read_bytes() == before
+
+
+def test_prepare_retained_state_archives_orphaned_temporary_from_prior_generation(
+    tmp_path: Path,
+) -> None:
+    """A crash that fsynced a latest temporary wedges the next source generation.
+
+    The upgrade pass must recover or archive the fsynced temporary together
+    with its anchor, or every later timer run raises an ambiguous-recovery
+    error against an anchor that was archived as a prior generation.
+    """
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    lock = tmp_path / "lane.lock"
+    first = recurring_manifest(1, source="1" * 40)
+    assert (
+        lane.record_recurring_state(first, state, lock_path=lock, now=2_000_000_300)
+        == "pending"
+    )
+    second = recurring_manifest(2, source="1" * 40)
+    with pytest.raises(lane.RecurringStateInterrupted):
+        lane.record_recurring_state(
+            second,
+            state,
+            lock_path=lock,
+            now=2_000_000_300,
+            failpoint="after-latest-temp-fsync",
+        )
+    assert (state / "pending-initial.json").exists()
+    assert (state / ".latest.json.tmp").exists()
+
+    lane.prepare_retained_state(
+        state,
+        current_source_sha="2" * 40,
+        lock_path=lock,
+        now=2_000_000_300,
+    )
+
+    assert not (state / "pending-initial.json").exists()
+    assert not (state / ".latest.json.tmp").exists()
+    archived = {entry.name for entry in (state / "history").iterdir()}
+    assert any(name.startswith("pending-initial-") for name in archived)
+    assert any(name.startswith(".latest.json-") for name in archived)
+    for name in archived:
+        payload = json.loads((state / "history" / name).read_text())
+        assert payload["sourceSha"] == "1" * 40
+
+    current = recurring_manifest(3, source="2" * 40)
+    assert (
+        lane.record_recurring_state(current, state, lock_path=lock, now=2_000_000_300)
+        == "pending"
+    )
+    assert json.loads((state / "pending-initial.json").read_text())["sourceSha"] == (
+        "2" * 40
+    )
+
+
+def test_prepare_retained_state_keeps_current_generation_temporary(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    lock = tmp_path / "lane.lock"
+    first = recurring_manifest(1, source="2" * 40)
+    assert (
+        lane.record_recurring_state(first, state, lock_path=lock, now=2_000_000_300)
+        == "pending"
+    )
+    second = recurring_manifest(2, source="2" * 40)
+    with pytest.raises(lane.RecurringStateInterrupted):
+        lane.record_recurring_state(
+            second,
+            state,
+            lock_path=lock,
+            now=2_000_000_300,
+            failpoint="after-latest-temp-fsync",
+        )
+
+    lane.prepare_retained_state(
+        state,
+        current_source_sha="2" * 40,
+        lock_path=lock,
+        now=2_000_000_300,
+    )
+
+    assert (state / "pending-initial.json").exists()
+    assert (state / ".latest.json.tmp").exists()
+    assert not (state / "history").exists()
+    assert (
+        lane.record_recurring_state(second, state, lock_path=lock, now=2_000_000_300)
+        == "published"
+    )
+
+
+def test_prepare_retained_state_discards_truncated_temporary(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    lock = tmp_path / "lane.lock"
+    truncated = state / ".pending-initial.json.tmp"
+    truncated.write_bytes(b'{"schemaVersion": 1')
+    truncated.chmod(0o600)
+
+    lane.prepare_retained_state(
+        state,
+        current_source_sha="2" * 40,
+        lock_path=lock,
+        now=2_000_000_300,
+    )
+
+    assert not truncated.exists()
+    assert not (state / "history").exists()
 
 
 def test_recurring_state_refuses_foreign_recovery_and_invalid_latest(
