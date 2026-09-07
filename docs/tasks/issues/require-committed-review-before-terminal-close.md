@@ -2,20 +2,19 @@
 id: CIC-1788741692326070
 title: Require committed review before terminal close
 kind: bug
-status: review
+status: doing
 area: ci
 priority: critical
 risk: standard
 owner: primary
 parent: null
 blocked_by: []
-spec_mode: not-required
-openspec_change: null
+spec_mode: required
+openspec_change: cic-1788741692326070-require-committed-review-before-terminal-close
 created: 2026-09-07
 updated: 2026-09-07
-spec_reason: regression-tested-single-module
 related_tasks: []
-status_detail: Guard and command-level regression pass the full targeted taskctl suite; awaiting protected-main source verification.
+status_detail: "Addressing PR #189 review findings: OpenSpec ownership, committed-review archive sequencing, and bounded selected-record lookup."
 ---
 
 ## Goal

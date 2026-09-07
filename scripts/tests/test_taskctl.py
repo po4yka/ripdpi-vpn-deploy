@@ -1211,6 +1211,61 @@ class TaskctlHistoryTest(TaskctlFixture):
         self.assertEqual("done", taskctl.read_document(path).values["status"])
         self.assertTrue(work.with_suffix(".close.json").is_file())
 
+    def test_committed_review_requires_same_task_at_selected_path(self) -> None:
+        path = self.add_simple_task(status="review")
+        self.write_board()
+        self.commit_all("record reviewed task")
+
+        renamed = path.with_name("renamed.md")
+        path.rename(renamed)
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "done closure requires committed review status"
+        ):
+            taskctl.require_committed_review(
+                self.root, taskctl.read_document(renamed)
+            )
+
+        renamed.rename(path)
+        document = taskctl.read_document(path)
+        values = dict(document.values)
+        values["id"] = "CIC-1786234567890099"
+        path.write_text(
+            taskctl.render_document(values, document.body), encoding="utf-8"
+        )
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "done closure requires committed review status"
+        ):
+            taskctl.require_committed_review(
+                self.root, taskctl.read_document(path)
+            )
+
+    def test_committed_review_reads_only_selected_task_from_head(self) -> None:
+        path = self.add_simple_task(status="review")
+        for offset in range(10, 310, 10):
+            self.add_simple_task(
+                task_id=f"CIC-{1786234567890001 + offset:016d}"
+            )
+        self.write_board()
+        self.commit_all("record reviewed task with unrelated portfolio")
+        document = taskctl.read_document(path)
+        relative = path.relative_to(self.root).as_posix()
+
+        original = taskctl.run_command
+        git_commands: list[tuple[str, ...]] = []
+
+        def tracked(command, *, root, capture=True):
+            if command and command[0] == "git":
+                git_commands.append(tuple(command))
+            return original(command, root=root, capture=capture)
+
+        with mock.patch.object(taskctl, "run_command", side_effect=tracked):
+            taskctl.require_committed_review(self.root, document)
+
+        self.assertEqual(
+            [("git", "show", f"HEAD:{relative}")],
+            git_commands,
+        )
+
     def test_terminal_task_in_first_strict_revision_resolves(self) -> None:
         path = self.add_simple_task(status="review")
         self.add_simple_task(task_id="CIC-1786234567890003")

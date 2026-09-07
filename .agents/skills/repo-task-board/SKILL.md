@@ -15,7 +15,7 @@ Use only `./taskctl` for lifecycle operations:
 - inspect: `list`, `show`, `ready`, `graph`;
 - create/start/update: `new`, `start`, `transition`, `steps`;
 - validate: `verify`, `validate`, `generate-board`;
-- complete: `openspec archive`, then `close prepare --outcome done`, commit, and later `close purge` in a separate commit;
+- complete: commit the task, execution, verification, and regenerated board in `review`; then verify archive readiness, run `openspec archive`, run `close prepare --outcome done`, commit, and later `close purge` in a separate commit;
 - drop: `close prepare --outcome dropped`, commit its receipts, then `openspec archive` and `close purge` before the deletion commit.
 
 Stable IDs are area-prefixed with globally unique 16-digit numeric suffixes. Worktrees share a locked allocator reservation through the Git common directory; committed validation catches cross-clone collisions. Local references use stable IDs; cross-repository references use qualified IDs such as `po4yka/RIPDPI#TRN-...`. `blocked_by` is canonical; reverse `blocks` is derived locally or through `./taskctl federation`. OpenSpec is mandatory for feature/behavior/contract/high-risk work. Never hand-edit the generated board, use direct upstream archive, pass `--no-validate`, close work without evidence, or delete a record before its terminal-state commit exists.

@@ -4064,15 +4064,24 @@ def prepare_dropped_execution(
     return execution
 
 
-def require_committed_review(root: Path, task_id: str) -> None:
+def require_committed_review(root: Path, document: Document) -> None:
+    relative = document.path.relative_to(root).as_posix()
+    committed = git_show_text(root, "HEAD", relative)
+    if committed is None:
+        fail(f"{document.task_id}: done closure requires committed review status")
     with tempfile.TemporaryDirectory(
         prefix="taskctl-committed-review-"
     ) as directory:
-        snapshot = historical_task_snapshots(root, "HEAD", Path(directory)).get(
-            task_id
+        snapshot_path = Path(directory) / "issue.md"
+        snapshot_path.write_text(committed, encoding="utf-8")
+        snapshot = read_document(snapshot_path)
+    if (
+        snapshot.task_id != document.task_id
+        or snapshot.values.get("status") != "review"
+    ):
+        fail(
+            f"{document.task_id}: done closure requires committed review status"
         )
-    if snapshot is None or snapshot.document.values.get("status") != "review":
-        fail(f"{task_id}: done closure requires committed review status")
 
 
 def command_close_prepare(args: argparse.Namespace) -> int:
@@ -4081,7 +4090,7 @@ def command_close_prepare(args: argparse.Namespace) -> int:
     if args.outcome == "done":
         if document.values["status"] != "review":
             fail("done closure requires review status")
-        require_committed_review(args.root, document.task_id)
+        require_committed_review(args.root, document)
         verify_task(args.root, document, steps, archive_ready=document.values["spec_mode"] == "required")
         if document.values["spec_mode"] == "required":
             change = document.values["openspec_change"]
