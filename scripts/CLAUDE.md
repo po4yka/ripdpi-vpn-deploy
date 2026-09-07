@@ -17,9 +17,10 @@ shared operational evidence only through reciprocal requirement/command
 mappings at the recorded source revision. A completed lifecycle wholly inside
 one merged lane may resolve only through one unambiguous, independently valid
 lane; malformed first-parent state always wins and fails closed. Keep transition
-scans anchored before the validation base, batch history reads, and never
-substitute current worktree specs or mutable archive discovery for the
-immutable transfer revision.
+scans anchored before the validation base, require the selected task to be
+committed in `review` before preparing a `done` snapshot, batch history reads,
+and never substitute current worktree specs or mutable archive discovery for
+the immutable transfer revision.
 
 **Observability lifecycle shares one exact-host controller** — its public Make
 verbs remain distinct, while one bounded Python controller centralizes private

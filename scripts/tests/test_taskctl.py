@@ -1153,6 +1153,64 @@ class TaskctlHistoryTest(TaskctlFixture):
 
         taskctl.validate_deleted_history(self.root, base)
 
+    def test_done_close_requires_committed_review_snapshot(self) -> None:
+        path = self.add_simple_task(status="doing")
+        work = self.root / "docs/tasks/work/CIC-1786234567890001.md"
+        work.write_text(
+            work.read_text(encoding="utf-8").replace("- [ ]", "- [x]"),
+            encoding="utf-8",
+        )
+        self.write_board()
+        self.commit_all("record implementation in progress")
+        document = taskctl.read_document(path)
+        values = dict(document.values)
+        values["status"] = "review"
+        path.write_text(
+            taskctl.render_document(values, document.body), encoding="utf-8"
+        )
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "done closure requires committed review status"
+        ):
+            taskctl.command_close_prepare(
+                argparse.Namespace(
+                    root=self.root,
+                    query="CIC-1786234567890001",
+                    outcome="done",
+                    reason="Verified.",
+                    evidence="Unit fixture passed.",
+                )
+            )
+
+        self.assertEqual("review", taskctl.read_document(path).values["status"])
+        self.assertFalse(work.with_suffix(".close.json").exists())
+
+    def test_done_close_accepts_committed_review_snapshot(self) -> None:
+        path = self.add_simple_task(status="review")
+        work = self.root / "docs/tasks/work/CIC-1786234567890001.md"
+        work.write_text(
+            work.read_text(encoding="utf-8").replace("- [ ]", "- [x]"),
+            encoding="utf-8",
+        )
+        self.write_board()
+        self.commit_all("record reviewed task")
+
+        self.assertEqual(
+            0,
+            taskctl.command_close_prepare(
+                argparse.Namespace(
+                    root=self.root,
+                    query="CIC-1786234567890001",
+                    outcome="done",
+                    reason="Verified.",
+                    evidence="Unit fixture passed.",
+                )
+            ),
+        )
+
+        self.assertEqual("done", taskctl.read_document(path).values["status"])
+        self.assertTrue(work.with_suffix(".close.json").is_file())
+
     def test_terminal_task_in_first_strict_revision_resolves(self) -> None:
         path = self.add_simple_task(status="review")
         self.add_simple_task(task_id="CIC-1786234567890003")

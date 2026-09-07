@@ -4064,12 +4064,24 @@ def prepare_dropped_execution(
     return execution
 
 
+def require_committed_review(root: Path, task_id: str) -> None:
+    with tempfile.TemporaryDirectory(
+        prefix="taskctl-committed-review-"
+    ) as directory:
+        snapshot = historical_task_snapshots(root, "HEAD", Path(directory)).get(
+            task_id
+        )
+    if snapshot is None or snapshot.document.values.get("status") != "review":
+        fail(f"{task_id}: done closure requires committed review status")
+
+
 def command_close_prepare(args: argparse.Namespace) -> int:
     documents, steps = load_state(args.root)
     document = find_document(documents, args.query)
     if args.outcome == "done":
         if document.values["status"] != "review":
             fail("done closure requires review status")
+        require_committed_review(args.root, document.task_id)
         verify_task(args.root, document, steps, archive_ready=document.values["spec_mode"] == "required")
         if document.values["spec_mode"] == "required":
             change = document.values["openspec_change"]
