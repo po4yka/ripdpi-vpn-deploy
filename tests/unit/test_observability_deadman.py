@@ -796,8 +796,8 @@ def test_enable_rolls_back_and_restarts_previous_but_disable_never_cleans_after_
     assert "Restart restored dead-man generation" in enable
     assert "observability-deadman-tick.timer" in enable
     assert "failed_when: false" not in enable
-    assert "Detect installed dead-man owned unit files" in disable
-    assert "Stop and disable installed dead-man owned units" in disable
+    assert "Probe dead-man owned unit manager state" in disable
+    assert "Stop and disable loaded dead-man owned units" in disable
     assert "failed_when: false" not in disable
     assert disable.index("Stop and disable") < disable.index("Remove dead-man owned")
 
