@@ -743,6 +743,7 @@ def test_apply_started_recovery_verifies_absence_without_a_second_plan_or_apply(
             evidence_path,
             request_json=_absent_request,
             now=NOW + timedelta(minutes=1),
+            clock=lambda: NOW + timedelta(minutes=1),
             expected_environment=ENV,
         )
         == "verified"
@@ -789,6 +790,7 @@ def test_apply_started_recovery_accepts_destroyed_state_before_absence_verificat
             evidence_path,
             request_json=_absent_request,
             now=NOW + timedelta(minutes=1),
+            clock=lambda: NOW + timedelta(minutes=1),
             expected_environment=ENV,
         )
         == "verified"
