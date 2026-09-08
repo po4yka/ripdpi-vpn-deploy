@@ -17,6 +17,8 @@ bypass the rule.
   of the terminal revision, so activation is monotonic.
 - Preserve pre-activation terminal history while rejecting post-activation
   downgrade attempts.
+- Keep unversioned federation peers strict and limit compatibility to the
+  historical `doing -> done` form.
 
 ## Capabilities
 

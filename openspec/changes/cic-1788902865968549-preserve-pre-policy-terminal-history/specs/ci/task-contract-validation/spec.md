@@ -21,6 +21,22 @@ terminal transitions even if a later config removes or lowers the policy field.
 - **THEN** the historical transition remains valid
 - **AND** current policy is not applied retroactively
 
+#### Scenario: Unversioned peer history remains fail-closed
+
+- **GIVEN** a federation peer has never declared committed-review policy
+- **WHEN** its task changes directly from `doing` to `done` and is purged
+- **THEN** terminal history validation rejects the transition
+- **AND** the malformed peer task cannot satisfy a local blocker
+
+#### Scenario: Pre-activation compatibility is narrow
+
+- **GIVEN** the current checkout proves a terminal revision predates policy
+  activation
+- **WHEN** the task reaches `done` directly from `todo`, `blocked`, or no prior
+  state
+- **THEN** terminal history validation rejects the transition
+- **AND** only the historical `doing` to `done` form receives compatibility
+
 #### Scenario: Post-activation downgrade cannot bypass review
 
 - **GIVEN** committed-review policy version 1 exists in the first-parent

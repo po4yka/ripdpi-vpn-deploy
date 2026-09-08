@@ -165,7 +165,7 @@ class ProjectConfig:
     areas: dict[str, str]
     evidence_categories: tuple[str, ...]
     evidence_transfer_policy: int
-    committed_review_policy: int
+    committed_review_policy: int | None
     openspec_schema: str
     allowed_peers: tuple[str, ...]
 
@@ -316,11 +316,11 @@ def parse_project_config(raw: Any, path: Path) -> ProjectConfig:
         1,
     }:
         fail(f"{path}: evidence_transfer_policy must be 0 or 1")
-    committed_review_policy = raw.get("committed_review_policy", 0)
-    if type(committed_review_policy) is not int or committed_review_policy not in {
-        0,
-        1,
-    }:
+    committed_review_policy = raw.get("committed_review_policy")
+    if committed_review_policy is not None and (
+        type(committed_review_policy) is not int
+        or committed_review_policy not in {0, 1}
+    ):
         fail(f"{path}: committed_review_policy must be 0 or 1")
     openspec_schema = raw["openspec_schema"]
     if not isinstance(openspec_schema, str) or not CHANGE_RE.fullmatch(openspec_schema):
@@ -2535,12 +2535,12 @@ def resolve_terminal_task_from_index(
         initial_strict_terminal = (
             terminal_index == 0 and incarnation[0][0] == history_index.strict_start
         )
-        invalid_done_transition = (
-            outcome == "done"
-            and committed_review_policy_active(
-                root, terminal_transition, config_at=config_at
-            )
-            and previous_status != "review"
+        review_required = committed_review_policy_enforced(
+            root, terminal_transition, config_at=config_at
+        )
+        invalid_done_transition = outcome == "done" and not (
+            previous_status == "review"
+            or (not review_required and previous_status == "doing")
         )
         invalid_dropped_transition = (
             outcome == "dropped"
@@ -3102,7 +3102,7 @@ def historical_project_config(root: Path, ref: str, scratch: Path) -> ProjectCon
     return parse_project_config(raw, path)
 
 
-def committed_review_policy_active(
+def committed_review_policy_enforced(
     root: Path,
     ref: str,
     *,
@@ -3127,13 +3127,20 @@ def committed_review_policy_active(
     active = False
     for revision in revisions:
         policy = config_at(revision).committed_review_policy
-        if active and policy < 1:
+        if active and policy != 1:
             fail(
                 f"{PROJECT_CONFIG_PATH} at {revision}: "
                 "committed_review_policy cannot downgrade after activation"
             )
-        active = active or policy >= 1
-    return active
+        active = active or policy == 1
+    if active:
+        return True
+
+    # An omitted policy is an unversioned contract, not proof that this
+    # repository intentionally permitted the legacy doing -> done form. Only a
+    # later explicit activation in the checkout containing this terminal
+    # revision proves that the revision genuinely predates local activation.
+    return config_at("HEAD").committed_review_policy != 1
 
 
 def validate_historical_incarnation(
@@ -3327,12 +3334,15 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 assert snapshot is not None
                 if snapshot.document.values.get("status") != outcome:
                     fail(f"{relative}: task transitioned out of terminal state")
+            review_required = committed_review_policy_enforced(
+                root, terminal_transition_ref, config_at=config_at
+            )
             if (
                 outcome == "done"
-                and committed_review_policy_active(
-                    root, terminal_transition_ref, config_at=config_at
+                and not (
+                    prior_status == "review"
+                    or (not review_required and prior_status == "doing")
                 )
-                and prior_status != "review"
                 and terminal_transition_ref != base
             ):
                 fail(

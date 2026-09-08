@@ -97,9 +97,11 @@ The repository project contract activates transition auditing with
 before activation remains valid, and the activation transition is checked.
 The companion `committed_review_policy: 1` field activates the committed
 `review` prerequisite for `done` transitions. Activation is monotonic along a
-terminal revision's first-parent config ancestry: historical lineages with no
-activation remain version 0, while removing or lowering the field after
-version 1 is rejected rather than disabling the rule.
+terminal revision's first-parent config ancestry. A legacy `doing -> done`
+transition is accepted only when the current checkout later activates version
+1; an unversioned peer remains fail-closed. Other pre-policy source states stay
+invalid, and removing or lowering the field after version 1 is rejected rather
+than disabling the rule.
 It does not relax authentication, authorization,
 secret-handling, rollback, destructive-action confirmation, fail-closed input
 validation or the distinction between local, remote CI, dry-run, staging, live,

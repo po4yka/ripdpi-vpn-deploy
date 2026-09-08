@@ -2551,6 +2551,33 @@ class TaskctlHistoryTest(TaskctlFixture):
 
         taskctl.validate_deleted_history(self.root, base)
 
+    def test_purge_rejects_invalid_done_source_before_review_policy_activation(self) -> None:
+        self.write_project_config(committed_review_policy=0)
+        target = self.add_simple_task(status="todo")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        base = self.commit_all("add pre-policy todo task")
+        self.prepare_simple_terminal(target)
+        self.write_board()
+        self.commit_all("forge pre-policy todo to done transition")
+        self.write_project_config(committed_review_policy=1)
+        self.commit_all("activate committed review policy")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "invalid terminal transition todo -> done"
+        ):
+            taskctl.command_close_purge(
+                argparse.Namespace(root=self.root, query="CIC-1786234567890001")
+            )
+
+        self.purge_simple_task(target)
+        self.write_board()
+        self.commit_all("purge malformed pre-policy task")
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "invalid terminal transition todo -> done"
+        ):
+            taskctl.validate_deleted_history(self.root, base)
+
     def test_purge_rejects_terminal_transition_after_review_policy_downgrade(self) -> None:
         target = self.add_simple_task(status="doing")
         self.add_simple_task(task_id="CIC-1786234567890003")
@@ -3704,6 +3731,35 @@ class TaskctlFederationTest(TaskctlFixture):
         self.assertTrue(historical["historical"])
         self.assertEqual("done", historical["status"])
         self.assertFalse(any(key.startswith("_") for key in historical))
+
+    def test_unversioned_peer_rejects_direct_doing_to_done_history(self) -> None:
+        blocker_id = "CIC-1786234567890001"
+        consumer_id = "CIC-1786234567890005"
+        config_path = self.peer / "tools/tasking/project.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        del config["committed_review_policy"]
+        config_path.write_text(json.dumps(config, sort_keys=True) + "\n", encoding="utf-8")
+        self.add_task(self.peer, "CIC-1786234567890003")
+        blocker = self.add_task(self.peer, blocker_id, status="doing")
+        self.commit(self.peer, "add unversioned peer tasks")
+        self.complete_simple_task(self.peer, blocker)
+        self.commit(self.peer, "forge direct peer terminal transition")
+        blocker.unlink()
+        work = self.peer / f"docs/tasks/work/{blocker_id}.md"
+        work.unlink()
+        work.with_suffix(".close.json").unlink()
+        anchor_docs, anchor_steps = taskctl.load_state(self.peer)
+        (self.peer / "docs/tasks/board.md").write_text(
+            taskctl.render_board(self.peer, anchor_docs, anchor_steps), encoding="utf-8"
+        )
+        self.commit(self.peer, "purge malformed peer blocker")
+        self.add_task(self.root, consumer_id, blockers=[f"po4yka/RIPDPI#{blocker_id}"])
+        self.commit(self.root, "add consumer")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "invalid terminal transition doing -> done"
+        ):
+            taskctl.federation_payload(self.root, self.peer)
 
     def test_renamed_done_blocker_resolves_by_id_history(self) -> None:
         blocker_id = "CIC-1786234567890001"

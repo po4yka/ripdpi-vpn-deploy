@@ -18,16 +18,19 @@ descendant commit to downgrade the bit and bypass review.
 
 ## Decisions
 
-- Add optional integer `committed_review_policy` to the project config. Missing
-  historical values parse as version 0; the current repository sets version 1.
+- Add optional integer `committed_review_policy` to the project config. Preserve
+  omission as an unversioned state; the current repository sets version 1.
 - Determine enforcement by scanning project-config revisions on the terminal
   commit's first-parent ancestry and treating any observed version 1 as
   permanent activation. A later version 0 or omission therefore cannot disable
   review enforcement.
 - Use the same helper in prospective purge resolution and committed deletion
   validation. This keeps the two public validation paths consistent.
-- Retain existing transition checks for dropped tasks and all current-policy
-  negative cases.
+- Permit the legacy `doing -> done` form only when the current checkout's
+  explicit version 1 proves the terminal revision predates local activation.
+  A wholly unversioned peer remains strict, and `todo`, `blocked`, or missing
+  source states remain invalid before activation.
+- Retain existing transition checks for dropped tasks.
 
 ## Contracts and ownership
 
@@ -44,8 +47,9 @@ descendant commit to downgrade the bit and bypass review.
 - Additional Git history reads during terminal validation increase runtime.
   Limit the scan to config-changing commits on the terminal revision's
   first-parent ancestry and reuse the caller's historical-config cache.
-- Accepting version 0 is safe only before activation. The ancestry scan, plus a
-  downgrade negative test, prevents version 0 from becoming a bypass.
+- Legacy compatibility is safe only when later local activation proves the
+  contract boundary. Unversioned-peer and invalid-source regressions prevent
+  omission or policy zero from becoming a general bypass.
 - Side-lane terminal commits inherit activation only when it exists in their
   first-parent ancestry, matching the contract actually available on that lane.
 

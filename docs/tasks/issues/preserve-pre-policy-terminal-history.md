@@ -14,7 +14,7 @@ openspec_change: cic-1788902865968549-preserve-pre-policy-terminal-history
 created: 2026-09-09
 updated: 2026-09-09
 related_tasks: []
-status_detail: Monotonic activation, required OpenSpec, full regressions, and real High purge validation pass; exact-head hosted checks and review remain pending.
+status_detail: Both P1 regressions and committed/prospective paths pass; full build-gate ci-fast, strict OpenSpec, governance, and base-aware validation pass; exact-head hosted checks and review remain required.
 ---
 
 ## Goal
@@ -25,8 +25,8 @@ review requirement for every transition made after policy activation.
 
 ## Acceptance criteria
 
-- The project config explicitly versions committed-review enforcement, with
-  historical configs that predate the field interpreted as policy version 0.
+- The project config explicitly versions committed-review enforcement while
+  preserving the distinction between an omitted field and explicit version 0.
 - Prospective and committed deletion validation derive monotonic activation
   from the exact terminal transition's first-parent config ancestry rather
   than applying the current config retroactively.
@@ -35,5 +35,7 @@ review requirement for every transition made after policy activation.
   continue to reject the same transition.
 - A downgrade regression proves version 0 or an omitted field cannot disable
   version 1 after activation.
+- An unversioned peer remains fail-closed, and pre-policy compatibility accepts
+  only the historical `doing` to `done` form rather than arbitrary sources.
 - The real High terminal record can be purged through `taskctl`, and the full
   task contract suite passes.

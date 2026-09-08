@@ -3,7 +3,7 @@ task_id: CIC-1788902865968549
 change: cic-1788902865968549-preserve-pre-policy-terminal-history
 commit_sha: null
 local: passed
-local_evidence: "python3 -m pytest -q scripts/tests/test_taskctl.py: 97 passed and 20 subtests; governance count test passed at 4360; strict OpenSpec validation passed; ./taskctl validate --base origin/main accepted the committed real High purge with 9 tasks and 22 steps."
+local_evidence: "python3 -m pytest -q scripts/tests/test_taskctl.py: 99 passed and 20 subtests; governance count passed at 4362; strict OpenSpec and base-aware task validation passed with 9 tasks and 23 steps; build-gate -- make ci-fast completed ci-fast: OK with 4358 passed, 4 deselected, 20 subtests, 55 bats, and all Terraform, policy, schema, snapshot, Ansible, shell, action, and Rust gates passing."
 remote_ci: required
 remote_ci_evidence: Exact-head protected PR checks, code review, and security review remain required.
 dry_run: not_applicable
@@ -25,3 +25,4 @@ artifact_evidence: No released runtime artifact changes.
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
 | REQ-CIC-1788902865968549-001 | CIC-1788905312419658 | Pre-activation compatibility and post-activation downgrade regressions passed; full taskctl suite passed; the committed real High purge validated against origin/main. | passed |
+| REQ-CIC-1788902865968549-001 | CIC-1788906708701940 | Unversioned-peer and invalid pre-policy source regressions passed; the peer cannot satisfy a blocker and only legacy doing-to-done remains compatible. | passed |
