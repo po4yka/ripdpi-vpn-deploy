@@ -5,7 +5,7 @@ use crate::cli::Cli;
 
 /// Resolved paths and flags for a single `vpnd` invocation.
 #[allow(dead_code)]
-// several fields (ansible_dir, tf_root, json) are reserved for subcommands not yet wired; removing them would break the Context contract
+// several fields (ansible_dir, tf_root) are reserved for subcommands not yet wired; removing them would break the Context contract
 #[derive(Debug, Clone)]
 pub struct Context {
     pub root: PathBuf,
@@ -18,7 +18,6 @@ pub struct Context {
     pub config_dir: PathBuf,
     pub explain: bool,
     pub yes: bool,
-    pub json: bool,
 }
 
 impl Context {
@@ -68,7 +67,6 @@ impl Context {
             config_dir,
             explain: cli.explain,
             yes: cli.yes,
-            json: cli.json,
         })
     }
 
@@ -172,7 +170,6 @@ mod tests {
             config_dir: dir.path().into(),
             explain: false,
             yes: false,
-            json: false,
         };
         let outcome = ctx.secure_secrets_file();
         let err = outcome.expect_err("chmod on procfs must fail");

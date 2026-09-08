@@ -399,7 +399,7 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
     report.completed = interruption.is_none();
     report.interrupted = interruption.is_some();
     checkpoint(&mut report, &config.protocols, &output, &mut journal, None).await?;
-    if ctx.json {
+    if args.json {
         println!("{}", json_summary(&report, &output)?);
     } else {
         println!("wrote {}", output.display());
@@ -410,9 +410,9 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
     Ok(())
 }
 
-/// Machine-readable run summary printed under the global --json flag: the
-/// report path plus the counts an automation wrapper needs without parsing
-/// the full report schema.
+/// Machine-readable run summary printed under the probe-matrix --json flag:
+/// the report path plus the counts an automation wrapper needs without
+/// parsing the full report schema.
 fn json_summary(report: &MatrixReport, output: &Path) -> Result<String> {
     Ok(serde_json::json!({
         "schema_version": REPORT_SCHEMA_VERSION,

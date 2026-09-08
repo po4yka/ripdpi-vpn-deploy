@@ -36,11 +36,6 @@ pub struct Cli {
     #[arg(long, short = 'y', global = true)]
     pub yes: bool,
 
-    /// Emit machine-readable JSON instead of human output for supported
-    /// subcommands (host list/show, probe-matrix).
-    #[arg(long, global = true)]
-    pub json: bool,
-
     /// Override the vpn-deploy repo root (default: discover from cwd).
     #[arg(long, global = true, env = "VPN_DEPLOY_ROOT")]
     pub root: Option<std::path::PathBuf>,
@@ -181,6 +176,9 @@ pub struct ProbeMatrixArgs {
     /// Output path for the report JSON. Default: <root>/vpnd/state/probe-matrix-<unix-ms>.json.
     #[arg(long)]
     pub output: Option<std::path::PathBuf>,
+    /// Emit a machine-readable run summary instead of the human path line.
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Args, Debug)]
@@ -225,9 +223,18 @@ pub struct HostArgs {
 #[derive(Subcommand, Debug)]
 pub enum HostAction {
     /// List registered hosts.
-    List,
+    List {
+        /// Emit a machine-readable JSON array instead of the table.
+        #[arg(long)]
+        json: bool,
+    },
     /// Show one host record.
-    Show { name: String },
+    Show {
+        name: String,
+        /// Emit compact single-line JSON instead of the pretty form.
+        #[arg(long)]
+        json: bool,
+    },
     /// Add a host record.
     Add {
         name: String,
@@ -289,5 +296,29 @@ mod tests {
             }
             other => panic!("expected doctor subcommand, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn json_flag_is_rejected_for_unsupported_subcommands() {
+        // --json is scoped to the subcommands that implement it; every other
+        // invocation must fail at parse time instead of silently emitting
+        // human output to a machine-readable caller.
+        for args in [
+            vec!["vpnd", "--json", "host", "list"],
+            vec!["vpnd", "host", "list", "--json", "--json"],
+            vec!["vpnd", "doctor", "--json"],
+            vec!["vpnd", "deploy", "--json"],
+            vec!["vpnd", "update", "--json"],
+        ] {
+            assert!(
+                Cli::try_parse_from(args.clone()).is_err(),
+                "--json must not parse for: {:?}",
+                args
+            );
+        }
+        // The supported surfaces still accept it.
+        assert!(Cli::try_parse_from(["vpnd", "host", "list", "--json"]).is_ok());
+        assert!(Cli::try_parse_from(["vpnd", "host", "show", "name", "--json"]).is_ok());
+        assert!(Cli::try_parse_from(["vpnd", "probe-matrix", "--json"]).is_ok());
     }
 }

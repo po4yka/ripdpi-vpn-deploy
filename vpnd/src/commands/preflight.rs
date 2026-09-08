@@ -49,7 +49,6 @@ mod tests {
             config_dir: PathBuf::from("/config"),
             explain: true,
             yes: true,
-            json: false,
         }
     }
 

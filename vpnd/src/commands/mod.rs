@@ -77,7 +77,6 @@ mod tests {
             config_dir: dir.into(),
             explain,
             yes: true,
-            json: false,
         }
     }
 

@@ -6,23 +6,23 @@ use crate::cli::{HostAction, HostArgs};
 use crate::config::Context;
 use crate::state::{Host, Registry};
 
-pub async fn run(ctx: &Context, args: HostArgs) -> Result<()> {
+pub async fn run(_ctx: &Context, args: HostArgs) -> Result<()> {
     let mut reg = Registry::load()?;
     match args.action {
-        HostAction::List => {
-            if ctx.json {
+        HostAction::List { json } => {
+            if json {
                 println!("{}", list_json(&reg)?);
             } else {
                 list(&reg);
             }
         }
-        HostAction::Show { name } => {
+        HostAction::Show { name, json } => {
             let host = reg
                 .get(&name)
                 .ok_or_else(|| anyhow!("no such host: {}", name))?;
             // The record is machine-readable in both modes; --json picks the
             // compact single-line form for pipelines.
-            if ctx.json {
+            if json {
                 println!("{}", serde_json::to_string(host)?);
             } else {
                 println!("{}", serde_json::to_string_pretty(host)?);

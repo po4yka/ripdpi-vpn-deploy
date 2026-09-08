@@ -181,7 +181,7 @@ _vpnd() {
 
     case "${cmd}" in
         vpnd)
-            opts="-e -p -y -h -V --explain --env --provider --yes --json --root --help --version deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help"
+            opts="-e -p -y -h -V --explain --env --provider --yes --root --help --version deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -215,7 +215,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__ai__subcmd__docs)
-            opts="-e -p -y -h --out --explain --env --provider --yes --json --root --help"
+            opts="-e -p -y -h --out --explain --env --provider --yes --root --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -253,7 +253,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__completions)
-            opts="-e -p -y -h --explain --env --provider --yes --json --root --help <SHELL>"
+            opts="-e -p -y -h --explain --env --provider --yes --root --help <SHELL>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -287,7 +287,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__deploy)
-            opts="-e -p -y -h --skip-precheck --tag-on-success --explain --env --provider --yes --json --root --help"
+            opts="-e -p -y -h --skip-precheck --tag-on-success --explain --env --provider --yes --root --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -321,7 +321,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__doctor)
-            opts="-e -p -y -h --host --ai --clip --bundle --explain --env --provider --yes --json --root --help"
+            opts="-e -p -y -h --host --ai --clip --bundle --explain --env --provider --yes --root --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -363,7 +363,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__fleet)
-            opts="-e -p -y -h --explain --env --provider --yes --json --root --help status rotate drift help"
+            opts="-e -p -y -h --explain --env --provider --yes --root --help status rotate drift help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -397,7 +397,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__fleet__subcmd__drift)
-            opts="-e -p -y -h --explain --env --provider --yes --json --root --help"
+            opts="-e -p -y -h --explain --env --provider --yes --root --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -501,7 +501,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__fleet__subcmd__rotate)
-            opts="-e -p -y -h --plan --resume --dry-run --explain --env --provider --yes --json --root --help"
+            opts="-e -p -y -h --plan --resume --dry-run --explain --env --provider --yes --root --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -539,7 +539,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__fleet__subcmd__status)
-            opts="-e -p -y -h --explain --env --provider --yes --json --root --help"
+            opts="-e -p -y -h --explain --env --provider --yes --root --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -867,7 +867,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__host)
-            opts="-e -p -y -h --explain --env --provider --yes --json --root --help list show add remove help"
+            opts="-e -p -y -h --explain --env --provider --yes --root --help list show add remove help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -901,7 +901,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__host__subcmd__add)
-            opts="-y -h --env --provider --ipv4 --ipv6 --explain --yes --json --root --help <NAME>"
+            opts="-y -h --env --provider --ipv4 --ipv6 --explain --yes --root --help <NAME>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1019,7 +1019,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__host__subcmd__list)
-            opts="-e -p -y -h --explain --env --provider --yes --json --root --help"
+            opts="-e -p -y -h --json --explain --env --provider --yes --root --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1053,7 +1053,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__host__subcmd__remove)
-            opts="-e -p -y -h --explain --env --provider --yes --json --root --help <NAME>"
+            opts="-e -p -y -h --explain --env --provider --yes --root --help <NAME>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1087,7 +1087,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__host__subcmd__show)
-            opts="-e -p -y -h --explain --env --provider --yes --json --root --help <NAME>"
+            opts="-e -p -y -h --json --explain --env --provider --yes --root --help <NAME>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1121,7 +1121,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__preflight)
-            opts="-e -p -y -h --skip-certs --explain --env --provider --yes --json --root --help"
+            opts="-e -p -y -h --skip-certs --explain --env --provider --yes --root --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1155,7 +1155,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__probe)
-            opts="-e -p -y -h --host --profile --explain --env --provider --yes --json --root --help"
+            opts="-e -p -y -h --host --profile --explain --env --provider --yes --root --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1197,7 +1197,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__probe__subcmd__matrix)
-            opts="-e -p -y -h --duration --poll-interval-seconds --config --output --explain --env --provider --yes --json --root --help"
+            opts="-e -p -y -h --duration --poll-interval-seconds --config --output --json --explain --env --provider --yes --root --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1247,7 +1247,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__reconverge)
-            opts="-e -p -y -h --host --dry-run --explain --env --provider --yes --json --root --help"
+            opts="-e -p -y -h --host --dry-run --explain --env --provider --yes --root --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1285,7 +1285,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__share)
-            opts="-e -p -y -h --qr --type --out --token-stdin --token-file --explain --env --provider --yes --json --root --help <CLIENT>"
+            opts="-e -p -y -h --qr --type --out --token-stdin --token-file --explain --env --provider --yes --root --help <CLIENT>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1331,7 +1331,7 @@ _vpnd() {
             return 0
             ;;
         vpnd__subcmd__update)
-            opts="-e -p -y -h --explain --env --provider --yes --json --root --help"
+            opts="-e -p -y -h --explain --env --provider --yes --root --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

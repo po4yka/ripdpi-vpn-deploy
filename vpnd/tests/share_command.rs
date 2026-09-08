@@ -23,7 +23,6 @@ fn context(root: &TempDir, secrets_file: PathBuf) -> Context {
         config_dir: root.path().join("config"),
         explain: false,
         yes: true,
-        json: false,
     }
 }
 

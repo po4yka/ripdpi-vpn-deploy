@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context as _, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -76,7 +77,14 @@ impl Registry {
         let temp = dir.join(unique);
         let write = || -> Result<()> {
             use std::io::Write;
-            let mut handle = std::fs::File::create(&temp)
+            // Exclusive private-mode creation: the temp file never exists
+            // under a world-readable mode and the rename carries 0600 onto
+            // hosts.toml instead of the umask default.
+            let mut handle = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&temp)
                 .with_context(|| format!("create temp registry at {}", temp.display()))?;
             handle.write_all(s.as_bytes())?;
             handle.sync_all()?;
