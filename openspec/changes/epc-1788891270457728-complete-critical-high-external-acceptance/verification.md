@@ -2,8 +2,8 @@
 task_id: EPC-1788891270457728
 change: epc-1788891270457728-complete-critical-high-external-acceptance
 commit_sha: b5682b9a8b0c30515a1e2576ac4ab385fb29d077
-local: passed
-local_evidence: Exact protected-main source b5682b9a8b0c30515a1e2576ac4ab385fb29d077 is clean and has deployable digest 5e2512c8a029a92cffc14251daea2ac56e6299ba7d358b536379d17c05753082. Task contracts passed for 9 tasks and 38 steps, strict OpenSpec validation passed, and the owner-only mode-0600 no-write preflight report has SHA-256 58868c86e0785a3d68290a8ab1685068bcfec88fcbfe742e9f90ab342558b1e1. A separate owner-only report with SHA-256 c3a70e3d911514155ce6d5850a858223aaacdb2ec0c84af34e13fe7e84fb7bd7 records successful canonical SOPS decrypt, strict secret validation, secret spot-check, certificate check, and plaintext removal. Both preflights performed zero provider reads, SSH connections, or mutations.
+local: blocked
+local_evidence: The clean protected-main source b5682b9a8b0c30515a1e2576ac4ab385fb29d077 has deployable digest 5e2512c8a029a92cffc14251daea2ac56e6299ba7d358b536379d17c05753082. Task contracts and strict OpenSpec validation passed. Owner-only reports 58868c86 and c3a70e3d record successful credential-class, SOPS decrypt, strict secret, spot-check, certificate, plaintext-removal, source-identity, and zero-mutation preflights. Overall local verification remains blocked because strict SSH contexts, promotion configs, provider-bound staging manifest, cleanup reservation, and their identity checks cannot yet run.
 remote_ci: passed
 remote_ci_evidence: Exact post-merge source b5682b9a8b0c30515a1e2576ac4ab385fb29d077 passed push CI run 34263738849 with all 75 jobs successful, CodeQL run 34263737976, Scorecard run 34263738091, and release-please run 34263738004.
 dry_run: blocked
