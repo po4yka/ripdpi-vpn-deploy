@@ -27,6 +27,13 @@ mode-`0600` non-secret vars file.
 rotating production peers. The operator must reserve its public UDP listener
 in the canonical provider/firewall contract before provisioning.
 
+**Client acceptance is independent of engine identity** — the sentinel installs
+only the client-signing Ed25519 public key. Every invocation creates a fresh
+root-private nonce request and consumes one signed, nonce/invocation-bound
+client handoff. The runner derives the standalone `amneziawg-go` commit and
+binary digest from its immutable toolchain; neither value can substitute for
+RIPDPI source, APK, report, correlation, or observed client outcomes.
+
 **Exact source is applied before a receipt exists** — the server hook validates
 the streamed Git archive, runs the archive's local Ansible playbook with a
 root-only variables file, and only then publishes source SHA/digest state.
@@ -51,10 +58,10 @@ root-only variables file, and only then publishes source SHA/digest state.
   and the next prepare discard those uncommitted staging files before acting.
 - The offline bundle must be built from a clean committed HEAD and supplied as
   a private Ansible variable; a moving branch or remote checkout is rejected.
-- Sentinel provisioning binds the client source to the pinned `amneziawg-go`
-  commit and its artifact digest to the immutable toolchain manifest. Every
-  run re-hashes the resolved binary and validates that manifest before evidence
-  collection; a hand-written descriptor is not a supported activation path.
+- Sentinel provisioning installs the client verification key root-private.
+  The deploy repository verifies and consumes signed handoffs but does not own
+  the client signer/relay. Every run independently re-hashes the resolved engine
+  binary; engine provenance is never presented as client acceptance.
 - An existing recurring timer is disabled before generation inputs change and
   remains disabled after any failed converge. Provisioning waits for the shared
   lane lock; only the exact-source installer re-enables the completed generation.

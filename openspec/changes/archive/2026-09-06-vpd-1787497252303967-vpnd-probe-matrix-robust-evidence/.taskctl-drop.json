@@ -1,0 +1,9 @@
+{
+  "change": "vpd-1787497252303967-vpnd-probe-matrix-robust-evidence",
+  "dropped_step_ids": [],
+  "outcome": "dropped",
+  "prepared_at": "2026-09-06T17:42:12Z",
+  "reason": "Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.",
+  "schema": 1,
+  "task_id": "VPD-1787497252303967"
+}

@@ -25,43 +25,116 @@ jobs:
       - name: Require default-branch evidence code
         run: test "$GITHUB_REF" = "refs/heads/main"
 
-      - name: Install immutable lane runner
+      - name: Prepare immutable source archive
         run: |
           install -d -m 0700 "$RUNNER_TEMP/real-vps-awg-nat"
           git archive --format=tar "$GITHUB_SHA" \
             > "$RUNNER_TEMP/real-vps-awg-nat/source.tar"
           echo "SOURCE_ARCHIVE_SHA256=$(sha256sum "$RUNNER_TEMP/real-vps-awg-nat/source.tar" | cut -d ' ' -f 1)" \
             >> "$GITHUB_ENV"
-          sudo -n install -o root -g root -m 0755 \
-            scripts/real-vps-awg-nat.py \
-            /usr/local/libexec/ripdpi-real-vps-awg-nat
 
-      - name: Exercise real AWG restart, rotated reload, TCP, UDP, and NAT
+      - name: Run locked lane and record recurring state
         run: |
-          sudo -n /usr/local/libexec/ripdpi-real-vps-awg-nat run \
-            --config "$RUNNER_CONFIG" \
-            --output "$RUNNER_TEMP/real-vps-awg-nat/manifest.json" \
-            --source-sha "$GITHUB_SHA" \
-            --source-archive "$RUNNER_TEMP/real-vps-awg-nat/source.tar" \
-            --executor github_actions \
+          set -euo pipefail
+          umask 077
+          sudo -n bash -s -- \
+            "$RUNNER_TEMP/real-vps-awg-nat" "$GITHUB_RUN_ID" \
+            "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$SOURCE_ARCHIVE_SHA256" <<'LOCKED'
+          set -euo pipefail
+          umask 077
+          work="$1" invocation_id="$2" invocation_attempt="$3"
+          source_sha="$4" archive_sha256="$5"
+          runner=/usr/local/libexec/ripdpi-real-vps-awg-nat
+          LOCK_DIR="/run/lock/ripdpi-real-vps-awg-nat"
+          request_dir=/var/lib/ripdpi-real-vps-awg-nat/client-acceptance/requests
+          inbox_dir=/var/lib/ripdpi-real-vps-awg-nat/client-acceptance/inbox
+          consumed_dir=/var/lib/ripdpi-real-vps-awg-nat/client-acceptance/consumed
+          evidence_dir=/var/lib/ripdpi-real-vps-awg-nat/evidence/github-actions
+          request="$request_dir/github-${invocation_id}-${invocation_attempt}.json"
+          acceptance="$consumed_dir/github-${invocation_id}-${invocation_attempt}.json"
+          private_manifest="$work/.manifest.private.json"
+          cleanup() {
+            test -z "${nonce:-}" || rm -f -- "$inbox_dir/${nonce}.json"
+            rm -f -- "$request" "$acceptance" "$work/source.tar" "$private_manifest"
+          }
+          trap cleanup EXIT
+          install -d -o root -g root -m 0700 \
+            "$LOCK_DIR" "$request_dir" "$inbox_dir" "$consumed_dir" "$evidence_dir"
+          exec 9>"$LOCK_DIR/lane.lock"
+          chmod 0600 "$LOCK_DIR/lane.lock"
+          flock -n 9
+          install -o root -g root -m 0755 \
+            scripts/real-vps-awg-nat.py "$runner"
+          test -f /etc/ripdpi/real-vps-awg-client-acceptance.pub
+          openssl pkey -pubin \
+            -in /etc/ripdpi/real-vps-awg-client-acceptance.pub -text -noout 2>/dev/null |
+            grep -Fx 'ED25519 Public-Key:' >/dev/null
+          nonce="$("$runner" create-client-acceptance-request \
+            --output "$request" --invocation-id "$invocation_id" \
+            --invocation-attempt "$invocation_attempt" --valid-seconds 300)"
+          for _ in $(seq 1 300); do
+            test -f "$inbox_dir/${nonce}.json" && break
+            sleep 1
+          done
+          "$runner" consume-client-acceptance \
+            --descriptor "$inbox_dir/${nonce}.json" \
+            --public-key /etc/ripdpi/real-vps-awg-client-acceptance.pub \
+            --request "$request" --invocation-id "$invocation_id" \
+            --invocation-attempt "$invocation_attempt" --output "$acceptance"
+          set +e
+          "$runner" run --config /etc/ripdpi/real-vps-awg-nat.json \
+            --output "$private_manifest" --source-sha "$source_sha" \
+            --source-archive "$work/source.tar" --executor github_actions \
             --entrypoint-path .github/workflows/real-vps-awg-nat.yml \
-            --invocation-id "$GITHUB_RUN_ID" \
-            --invocation-attempt "$GITHUB_RUN_ATTEMPT"
-
-      - name: Remove private source archive
-        if: always()
-        run: rm -f "$RUNNER_TEMP/real-vps-awg-nat/source.tar"
-
-      - name: Validate redacted AWG/NAT evidence
-        if: always()
-        run: |
-          python3 scripts/real-vps-awg-nat.py validate \
-            --manifest "$RUNNER_TEMP/real-vps-awg-nat/manifest.json" \
-            --expected-source-sha "$GITHUB_SHA" \
-            --expected-source-archive-sha256 "$SOURCE_ARCHIVE_SHA256" \
-            --expected-executor github_actions \
-            --expected-invocation-id "$GITHUB_RUN_ID" \
-            --expected-invocation-attempt "$GITHUB_RUN_ATTEMPT"
+            --invocation-id "$invocation_id" \
+            --invocation-attempt "$invocation_attempt" \
+            --client-acceptance-descriptor "$acceptance"
+          run_status=$?
+          set -e
+          structural_status=1 validate_status=1 record_status=1
+          if test -f "$private_manifest"; then
+            set +e
+            "$runner" validate --manifest "$private_manifest" \
+              --expected-source-sha "$source_sha" \
+              --expected-source-archive-sha256 "$archive_sha256" \
+              --expected-executor github_actions \
+              --expected-invocation-id "$invocation_id" \
+              --expected-invocation-attempt "$invocation_attempt" \
+              --allow-non-pass
+            structural_status=$?
+            set -e
+            if (( structural_status == 0 )); then
+              install -o "${SUDO_UID:?}" -g "${SUDO_GID:?}" -m 0600 \
+                "$private_manifest" "$work/manifest.json"
+              set +e
+              "$runner" validate --manifest "$private_manifest" \
+                --expected-source-sha "$source_sha" \
+                --expected-source-archive-sha256 "$archive_sha256" \
+                --expected-executor github_actions \
+                --expected-invocation-id "$invocation_id" \
+                --expected-invocation-attempt "$invocation_attempt"
+              validate_status=$?
+              set -e
+              if (( run_status == 0 && validate_status == 0 )); then
+                set +e
+                "$runner" record-recurring --manifest "$private_manifest" \
+                  --state-dir "$evidence_dir" \
+                  --lock-path "$LOCK_DIR/lane.lock" --lock-fd 9 \
+                  --expected-source-sha "$source_sha" \
+                  --expected-source-archive-sha256 "$archive_sha256" \
+                  --expected-executor github_actions \
+                  --expected-invocation-id "$invocation_id" \
+                  --expected-invocation-attempt "$invocation_attempt"
+                record_status=$?
+                set -e
+              fi
+            fi
+          fi
+          if (( run_status != 0 || structural_status != 0 || \
+                validate_status != 0 || record_status != 0 )); then
+            exit 1
+          fi
+          LOCKED
 
       - name: Publish redacted AWG/NAT evidence
         if: always()

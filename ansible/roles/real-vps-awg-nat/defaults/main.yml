@@ -33,10 +33,9 @@ real_vps_awg_nat_source_bundle: ""
 real_vps_awg_nat_source_bundle_sha256: ""
 real_vps_awg_nat_expected_source_sha: ""
 real_vps_awg_nat_expected_source_archive_sha256: ""
-# Exact RIPDPI client artifact executed by the recurring sentinel. These
-# public digests are kept outside the secret client configuration.
-real_vps_awg_nat_client_source_sha: ""
-real_vps_awg_nat_client_artifact_sha256: ""
+# Ed25519 public key used to authenticate one nonce-bound client acceptance per
+# invocation. The client-side signer and relay remain separately owned.
+real_vps_awg_nat_client_acceptance_public_key: ""
 real_vps_awg_nat_repo_path: /opt/ripdpi-real-vps-awg-nat/repository
 real_vps_awg_nat_awg_go_version: "v0.2.12"
 real_vps_awg_nat_awg_go_commit: "2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf"

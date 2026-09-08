@@ -1,0 +1,21 @@
+{
+  "change": "ans-1787497148207353-runtime-pattern-consolidation",
+  "dropped_step_ids": [
+    "ANS-1787496118906414",
+    "ANS-1787496118906586",
+    "ANS-1787496118906866",
+    "ANS-1787496118907037",
+    "ANS-1787496118907057",
+    "ANS-1787496118907125",
+    "ANS-1787496118907135",
+    "ANS-1787496118907152",
+    "ANS-1787496118907217",
+    "ANS-1787496118907278",
+    "ANS-1787496118907351"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-09-06T17:42:11Z",
+  "reason": "Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.",
+  "schema": 1,
+  "task_id": "ANS-1787497148207353"
+}

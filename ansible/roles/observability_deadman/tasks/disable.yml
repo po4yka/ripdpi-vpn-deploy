@@ -1,18 +1,23 @@
 ---
-- name: Gather dead-man service facts before disable
-  ansible.builtin.service_facts:
-
-- name: Stop and disable existing dead-man owned units
-  ansible.builtin.systemd_service:
-    name: "{{ item }}"
-    enabled: false
-    state: stopped
+- name: Probe dead-man owned unit manager state
+  ansible.builtin.command:
+    argv: [systemctl, is-active, --quiet, "{{ item }}"]
   loop:
     - observability-deadman.service
     - observability-deadman-tick.timer
+  register: _observability_deadman_unit_state
+  changed_when: false
+  failed_when: _observability_deadman_unit_state.rc not in [0, 1, 2, 3, 4]
+
+- name: Stop and disable loaded dead-man owned units
+  ansible.builtin.systemd_service:
+    name: "{{ item.item }}"
+    enabled: false
+    state: stopped
+  loop: "{{ _observability_deadman_unit_state.results }}"
   when:
     - not ansible_check_mode
-    - item in ansible_facts.services
+    - item.rc != 4
 
 - name: Remove dead-man owned surfaces and stale sender state
   ansible.builtin.file:

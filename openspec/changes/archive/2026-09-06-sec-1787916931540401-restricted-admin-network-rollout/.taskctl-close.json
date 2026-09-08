@@ -1,0 +1,11 @@
+{
+  "change": "sec-1787916931540401-restricted-admin-network-rollout",
+  "evidence_summary": "Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.",
+  "execution_sha256": "c8a4789df9d08f0017e6c0454b36bdcb124c8440689efd3ad41133cce89a7a47",
+  "issue_sha256": "e4230e047323f0bb034db982d640013ace7b8a06247eb1194b25815dc03cc4b0",
+  "outcome": "dropped",
+  "prepared_at": "2026-09-06T17:42:11Z",
+  "reason": "Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.",
+  "schema": 1,
+  "task_id": "SEC-1787916931540401"
+}
