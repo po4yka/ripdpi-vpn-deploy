@@ -814,7 +814,7 @@ def tick(
     state, reservation = _reserve_delivery(path, config, now)
     if reservation is not None:
         event, nonce = reservation
-        state = _complete_delivery(
+        _complete_delivery(
             path, event, nonce, _telegram(config, telegram_token, event), now
         )
     state = _reserve_reverse_sequence(path)

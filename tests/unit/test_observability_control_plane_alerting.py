@@ -831,7 +831,6 @@ def test_alerting_tasks_validate_before_activation_and_rollback() -> None:
 def test_alertmanager_restart_condition_uses_one_ansible_expression(
     tmp_path: Path,
 ) -> None:
-    tasks = yaml.safe_load((ROLE / "tasks/alerting.yml").read_text())
     activation = next(
         task
         for task in yaml.safe_load((ROLE / "tasks/alerting-authority.yml").read_text())

@@ -1603,7 +1603,7 @@ class TaskctlHistoryTest(TaskctlFixture):
         self.write_project_config(evidence_transfer_policy=0)
         task_id = "ANS-1786234567890101"
         change = f"{task_id.casefold()}-change"
-        source = self.add_active_spec_task(
+        self.add_active_spec_task(
             status="review",
             done=True,
             task_id=task_id,
