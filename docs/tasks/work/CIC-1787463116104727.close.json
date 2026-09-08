@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "All five execution steps re-audited against the tree: checksum-verified actionlint/gitleaks installs in .github/workflows/ci.yml, renovate customManagers for xcaddy/caddy, molecule-full-stack as a required gate, serde_yaml_ng 0.10 with no serde_yaml 0.9 left, and the vpnd/promote-spare/listeners.tf coverage; no stubs or placeholders found. remote CI observed green on the pushed final SHA fafb9cf3ff1366f6e657e6ed67e753562fef89ad (PR #86, 57 check runs: 56 success + 1 neutral Trivy config discovery, aggregate 'required checks' success), merged to main as bbb2f4189f4caf28714326b3cfbebe2716fcfdf0.",
+  "execution_sha256": "07759cc6972e986a05c79ea0769538e94c2f8e46decda7208505f581619fdf9f",
+  "issue_sha256": "05cfe4bf09872de0e5803eee92e65a3674f516eab48810901240d8d64c93f5f5",
+  "outcome": "done",
+  "prepared_at": "2026-09-08T08:51:27Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1787463116104727"
+}
