@@ -2,7 +2,7 @@
 id: SEC-1787497526094023
 title: Validate make variable values against make expansion metacharacters
 kind: bug
-status: review
+status: done
 area: security
 priority: medium
 risk: high
@@ -14,6 +14,9 @@ openspec_change: sec-1787497526094023-vpnd-make-variable-hardening
 created: 2026-08-23
 updated: 2026-09-08
 related_tasks: []
+closed_at: "2026-09-08T12:02:00Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "PR #203 rebase-merged through protected main as 6bda37bc0476adaef9b6b95eb03778cb890bdf42; local cargo fmt, clippy -D warnings and cargo test (191 tests, 0 failures) on final source commit 6972f6ed; exact-main CI run 34220827411 passed all required checks including vpnd cargo test, clippy, MSRV, dependency policy, SBOM and task-contract; OpenSpec change archived as 2026-09-08-sec-1787497526094023-vpnd-make-variable-hardening with the vpnd/make-interface capability synced to main specs."
 ---
 
 ## Goal
