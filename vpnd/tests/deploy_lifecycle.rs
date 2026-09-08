@@ -254,7 +254,7 @@ fn share_without_xdg_decrypts_once_through_the_canonical_script() {
     let token = fixture.dir.path().join("token");
     std::fs::write(&token, "synthetic_token\n").unwrap();
     std::fs::set_permissions(&token, std::fs::Permissions::from_mode(0o600)).unwrap();
-    let tmpdir = fixture.dir.path().join("temporary directory");
+    let tmpdir = fixture.dir.path().join("runtime-tmp");
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/decrypt-secrets.sh");
     for _ in 0..2 {
         let output = fixture

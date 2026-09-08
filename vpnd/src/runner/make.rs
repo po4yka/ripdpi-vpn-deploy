@@ -37,7 +37,7 @@ fn fake_ctx() -> Context {
 /// | Key | Rule | Source |
 /// |---|---|---|
 /// | ENV, PROVIDER | identifier | CLI via Context; PROVIDER is directory-checked at discovery, ENV gains explicit validation for defense in depth |
-/// | SECRETS_FILE | runtime-path | Context runtime path under XDG_RUNTIME_DIR — may contain spaces, never make/shell metacharacters |
+/// | SECRETS_FILE | runtime-path | Context runtime path under XDG_RUNTIME_DIR — no make/shell metacharacters, no whitespace (unquoted recipe consumers split on it) |
 /// | MATRIX_CONFIG, PLAN | path | canonicalized probe-matrix config, canonicalized fleet plan |
 /// | HOST | ip-literal | registry-resolved IPv4 from `state::registry::ipv4_limit` |
 /// | CLIENT, TARGET_ID | identifier | operator-typed client name, probe-matrix `technical_id` |
@@ -51,8 +51,11 @@ enum ValueRule {
     Path,
     /// Absolute runtime path (SECRETS_FILE): rejects make/shell
     /// metacharacters (including `#`, which starts a comment in unquoted
-    /// recipe expansions) and control characters, tolerates spaces — argv
-    /// carries it as one argument and recipes reference it quoted.
+    /// recipe expansions), whitespace (unquoted recipe consumers would
+    /// split the value) and control characters. Several Makefile recipes
+    /// still expand `$(SECRETS_FILE)` unquoted, so space-bearing runtime
+    /// directories are refused with a clear error instead of failing deep
+    /// inside a deploy; the design keeps Makefile recipes unchanged.
     RuntimePath,
     /// Strict dotted-quad IPv4 literal.
     IpLiteral,
@@ -63,7 +66,7 @@ impl ValueRule {
         match self {
             Self::Identifier => "identifier [A-Za-z0-9._-]",
             Self::Path => "absolute path [A-Za-z0-9._/-] without .. components",
-            Self::RuntimePath => "runtime path without make or shell metacharacters",
+            Self::RuntimePath => "runtime path without make, shell metacharacters, or whitespace",
             Self::IpLiteral => "IPv4 literal",
         }
     }
@@ -86,7 +89,8 @@ impl ValueRule {
             Self::RuntimePath => {
                 value.starts_with('/')
                     && value.chars().all(|c| {
-                        !c.is_control()
+                        !c.is_whitespace()
+                            && !c.is_control()
                             && !matches!(
                                 c,
                                 '$' | '`'
@@ -271,11 +275,9 @@ mod tests {
             ("PLAN", "/plans/fleet-rotation.yaml"),
             ("ENV", "prod"),
             ("PROVIDER", "upcloud"),
-            // Runtime paths may carry spaces (XDG_RUNTIME_DIR) — argv
-            // passes them as one argument.
             (
                 "SECRETS_FILE",
-                "/run/user/1000/my runtime/vpn-prod.secrets.yaml",
+                "/run/user/1000/vpn-runtime/vpn-prod.secrets.yaml",
             ),
             // Unknown keys ride the fail-closed identifier charset.
             ("RESUME", "1"),
@@ -318,10 +320,16 @@ mod tests {
                 "/tmp/$(id)/vpn-prod.secrets.yaml",
                 "runtime path",
             ),
-            // '#' would start a comment in an unquoted recipe expansion.
+            // '#' would start a comment in an unquoted recipe expansion and
+            // whitespace would split an unquoted consumer's argument.
             (
                 "SECRETS_FILE",
                 "/tmp/a #/vpn-prod.secrets.yaml",
+                "runtime path",
+            ),
+            (
+                "SECRETS_FILE",
+                "/tmp/a b/vpn-prod.secrets.yaml",
                 "runtime path",
             ),
             ("ENV", "prod;id", "identifier"),
