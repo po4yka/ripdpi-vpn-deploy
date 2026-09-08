@@ -1,0 +1,11 @@
+{
+  "change": "vpd-1787497426503364-vpnd-operator-output-contract",
+  "evidence_summary": "Implementation merged through protected main as c82a41c1b8784b01f58ff57ea035ef6e9f7904d0 via PR #205. OpenSpec change archived with vpnd/operator-output spec synced; verification records REQ-MANPAGE-SYNC, REQ-JSON-FLAG-HONESTY, REQ-CLIP-REQUIRES-AI and REQ-DOCTOR-RESILIENCE all passed with exact-main ci run 34249394952 and codeql run 34249394663 evidence.",
+  "execution_sha256": "7b9147fb1c580209b48b22f3a56e33803c20595644afbe6db714370f3f5489c8",
+  "issue_sha256": "b71d162f72cc148b656a9f51684ee0168618e75e795173f26721ea2c0131a217",
+  "outcome": "done",
+  "prepared_at": "2026-09-08T16:59:15Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "VPD-1787497426503364"
+}

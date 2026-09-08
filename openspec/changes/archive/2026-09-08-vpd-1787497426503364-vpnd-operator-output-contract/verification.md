@@ -1,11 +1,11 @@
 ---
 task_id: VPD-1787497426503364
 change: vpd-1787497426503364-vpnd-operator-output-contract
-commit_sha: null
-local: required
+commit_sha: c82a41c1b8784b01f58ff57ea035ef6e9f7904d0
+local: passed
 local_evidence: "cargo fmt --check, cargo clippy --all-features --all-targets -- -D warnings, cargo test: 24 test binaries, 207 tests, 0 failures on the review commit"
-remote_ci: required
-remote_ci_evidence: ""
+remote_ci: passed
+remote_ci_evidence: "protected-main ci run 34249394952 (all required checks) and codeql run 34249394663 green on exact merged main c82a41c1b8784b01f58ff57ea035ef6e9f7904d0"
 dry_run: not_applicable
 dry_run_evidence: no Terraform surface
 staging: not_applicable
