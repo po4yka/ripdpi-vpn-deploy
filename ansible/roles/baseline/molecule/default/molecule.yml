@@ -19,7 +19,7 @@ platforms:
     cgroupns_mode: host
 
   - name: vpn-baseline-ubuntu2404
-    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404@sha256:48e1ab7caa1e28148148576cd2f15e46fcd9d44601125bbce7f3056306f40cf1
+    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404@sha256:aac217bcf54e81524154dfab03e070fb63e83d0a86fb92bff94adf273bd9b552
     pre_build_image: true
     privileged: true
     command: /lib/systemd/systemd
