@@ -95,6 +95,10 @@ This policy is owned by `CIC-1788708456909496` and its linked OpenSpec change.
 The repository project contract activates transition auditing with
 `evidence_transfer_policy: 1`; an omitted or zero value exists only so history
 before activation remains valid, and the activation transition is checked.
+The companion `committed_review_policy: 1` field activates the committed
+`review` prerequisite for `done` transitions. Historical configs without that
+field remain policy version 0, so a terminal transition is judged by the
+contract committed at that exact revision rather than by today's config.
 It does not relax authentication, authorization,
 secret-handling, rollback, destructive-action confirmation, fail-closed input
 validation or the distinction between local, remote CI, dry-run, staging, live,

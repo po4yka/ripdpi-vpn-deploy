@@ -88,6 +88,7 @@ class TaskctlFixture(TestCase):
         peers: list[str] | None = None,
         contract: int = 1,
         evidence_transfer_policy: int = 1,
+        committed_review_policy: int = 1,
     ) -> None:
         (self.root / "tools/tasking/project.json").write_text(
             json.dumps(
@@ -98,6 +99,7 @@ class TaskctlFixture(TestCase):
                     "areas": DEPLOY_AREA_PREFIXES,
                     "evidence_categories": list(DEPLOY_EVIDENCE_CATEGORIES),
                     "evidence_transfer_policy": evidence_transfer_policy,
+                    "committed_review_policy": committed_review_policy,
                     "openspec_schema": "ripdpi-deploy-change",
                     "allowed_peers": peers if peers is not None else ["po4yka/RIPDPI"],
                 },
@@ -2529,6 +2531,26 @@ class TaskctlHistoryTest(TaskctlFixture):
         self.assertTrue(work.is_file())
         self.assertTrue(work.with_suffix(".close.json").is_file())
 
+    def test_purge_accepts_terminal_transition_before_review_policy_activation(self) -> None:
+        self.write_project_config(committed_review_policy=0)
+        target = self.add_simple_task(status="doing")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        base = self.commit_all("add pre-policy doing task")
+        self.prepare_simple_terminal(target)
+        self.write_board()
+        self.commit_all("publish pre-policy direct terminal state")
+        self.write_project_config(committed_review_policy=1)
+        self.commit_all("activate committed review policy")
+
+        taskctl.command_close_purge(
+            argparse.Namespace(root=self.root, query="CIC-1786234567890001")
+        )
+        self.write_board()
+        self.commit_all("purge pre-policy terminal task")
+
+        taskctl.validate_deleted_history(self.root, base)
+
     def test_purge_rejects_dirty_terminal_artifacts_with_rewritten_receipt(self) -> None:
         target = self.add_simple_task(status="review")
         self.write_board()
@@ -3343,6 +3365,7 @@ class TaskctlFederationTest(TaskctlFixture):
                     "evidence_categories": list(
                         DEPLOY_EVIDENCE_CATEGORIES if deploy else taskctl.EVIDENCE_CATEGORIES
                     ),
+                    "committed_review_policy": 1,
                     "openspec_schema": "ripdpi-deploy-change" if deploy else "ripdpi-change",
                     "allowed_peers": peers,
                 },

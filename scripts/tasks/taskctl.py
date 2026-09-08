@@ -165,6 +165,7 @@ class ProjectConfig:
     areas: dict[str, str]
     evidence_categories: tuple[str, ...]
     evidence_transfer_policy: int
+    committed_review_policy: int
     openspec_schema: str
     allowed_peers: tuple[str, ...]
 
@@ -272,7 +273,7 @@ def parse_project_config(raw: Any, path: Path) -> ProjectConfig:
     missing = (
         sorted(required - raw.keys()) if isinstance(raw, dict) else sorted(required)
     )
-    allowed = required | {"evidence_transfer_policy"}
+    allowed = required | {"evidence_transfer_policy", "committed_review_policy"}
     unknown = sorted(raw.keys() - allowed) if isinstance(raw, dict) else []
     if not isinstance(raw, dict) or missing or unknown:
         fail(f"{path}: project config fields missing={missing}, unknown={unknown}")
@@ -315,6 +316,12 @@ def parse_project_config(raw: Any, path: Path) -> ProjectConfig:
         1,
     }:
         fail(f"{path}: evidence_transfer_policy must be 0 or 1")
+    committed_review_policy = raw.get("committed_review_policy", 0)
+    if type(committed_review_policy) is not int or committed_review_policy not in {
+        0,
+        1,
+    }:
+        fail(f"{path}: committed_review_policy must be 0 or 1")
     openspec_schema = raw["openspec_schema"]
     if not isinstance(openspec_schema, str) or not CHANGE_RE.fullmatch(openspec_schema):
         fail(f"{path}: openspec_schema must be lowercase kebab-case")
@@ -337,6 +344,7 @@ def parse_project_config(raw: Any, path: Path) -> ProjectConfig:
         areas=dict(areas),
         evidence_categories=tuple(evidence),
         evidence_transfer_policy=evidence_transfer_policy,
+        committed_review_policy=committed_review_policy,
         openspec_schema=openspec_schema,
         allowed_peers=tuple(peers),
     )
@@ -2522,8 +2530,21 @@ def resolve_terminal_task_from_index(
         initial_strict_terminal = (
             terminal_index == 0 and incarnation[0][0] == history_index.strict_start
         )
+        terminal_config = historical_project_config(root, terminal_transition, scratch)
+        invalid_done_transition = (
+            outcome == "done"
+            and terminal_config.committed_review_policy >= 1
+            and previous_status != "review"
+        )
+        invalid_dropped_transition = (
+            outcome == "dropped"
+            and (
+                previous_status is None
+                or not transition_allowed(previous_status, outcome)
+            )
+        )
         if not initial_strict_terminal and (
-            previous_status is None or not transition_allowed(previous_status, outcome)
+            invalid_done_transition or invalid_dropped_transition
         ):
             fail(
                 f"{config.project}#{task_id}: invalid terminal transition "
@@ -3266,8 +3287,10 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 assert snapshot is not None
                 if snapshot.document.values.get("status") != outcome:
                     fail(f"{relative}: task transitioned out of terminal state")
+            terminal_config = config_at(terminal_transition_ref)
             if (
                 outcome == "done"
+                and terminal_config.committed_review_policy >= 1
                 and prior_status != "review"
                 and terminal_transition_ref != base
             ):

@@ -20,7 +20,10 @@ lane; malformed first-parent state always wins and fails closed. Keep transition
 scans anchored before the validation base, require the selected task to be
 committed in `review` before preparing a `done` snapshot, batch history reads,
 and never substitute current worktree specs or mutable archive discovery for
-the immutable transfer revision. Evidence-transfer history starts only when a
+the immutable transfer revision. Apply the committed-review transition rule
+from the project config stored at the terminal revision; configs predating its
+policy field remain version 0 rather than being retroactively invalidated.
+Evidence-transfer history starts only when a
 snapshot itself requires OpenSpec; retain every later required snapshot across
 task-mode or change-name transitions. Drop receipts bind the complete preserved
 `DROPPED:` record set: live and historical terminal validation both reject
