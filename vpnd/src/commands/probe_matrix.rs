@@ -261,7 +261,7 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
     let mut signals = InterruptSignals::new()?;
     let _session_lock = lock_output(&output)?;
     let mut journal = start_journal(&output)?;
-    checkpoint(&mut report, &config.protocols, &output, &mut journal, None)?;
+    checkpoint(&mut report, &config.protocols, &output, &mut journal, None).await?;
     let mut interruption = None;
     let mut tick = 0u32;
     while tokio::time::Instant::now() < deadline {
@@ -372,7 +372,8 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
             &output,
             &mut journal,
             Some(tick),
-        )?;
+        )
+        .await?;
         if interruption.is_some() {
             break;
         }
@@ -397,12 +398,34 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
     }
     report.completed = interruption.is_none();
     report.interrupted = interruption.is_some();
-    checkpoint(&mut report, &config.protocols, &output, &mut journal, None)?;
-    println!("wrote {}", output.display());
+    checkpoint(&mut report, &config.protocols, &output, &mut journal, None).await?;
+    if ctx.json {
+        println!("{}", json_summary(&report, &output)?);
+    } else {
+        println!("wrote {}", output.display());
+    }
     if let Some(signal) = interruption {
         return Err(Interrupted { signal }.into());
     }
     Ok(())
+}
+
+/// Machine-readable run summary printed under the global --json flag: the
+/// report path plus the counts an automation wrapper needs without parsing
+/// the full report schema.
+fn json_summary(report: &MatrixReport, output: &Path) -> Result<String> {
+    Ok(serde_json::json!({
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "report_path": output.display().to_string(),
+        "completed": report.completed,
+        "interrupted": report.interrupted,
+        "ticks": report.controls.len(),
+        "cells": report.cells.len(),
+        "observations": report.observations.len(),
+        "started_at_unix_ms": report.started_at_unix_ms,
+        "finished_at_unix_ms": report.finished_at_unix_ms,
+    })
+    .to_string())
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -1022,15 +1045,13 @@ fn start_journal(path: &Path) -> Result<std::fs::File> {
     Ok(journal)
 }
 
-fn checkpoint(
+async fn checkpoint(
     report: &mut MatrixReport,
     protocols: &[Protocol],
     path: &Path,
     journal: &mut std::fs::File,
     tick: Option<u32>,
 ) -> Result<()> {
-    use std::io::Write;
-
     report.finished_at_unix_ms = unix_ms(SystemTime::now());
     report.windows = windows(&report.cells);
     report.observations = analyze(protocols, &report.cells);
@@ -1047,16 +1068,32 @@ fn checkpoint(
         "interrupted": report.interrupted,
         "control": control,
         "cells": cells,
-    });
-    serde_json::to_writer(&mut *journal, &record)?;
-    journal.write_all(b"\n")?;
-    journal.sync_all()?;
-    crate::protected_file::write_private(path, report_to_json(report)?.as_bytes())?;
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    std::fs::File::open(parent)?.sync_all()?;
+    })
+    .to_string();
+    let report_json = report_to_json(report)?;
+
+    // Journal append + report write + parent-dir fsync are blocking disk
+    // work on the sweep loop: run them on the blocking pool so the tokio
+    // worker stays responsive to signals. The journal is opened in append
+    // mode, so a try_clone shares one safely-appending file description.
+    let journal = journal.try_clone().context("clone journal handle")?;
+    let owned_path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        use std::io::Write;
+        let mut journal = journal;
+        journal.write_all(record.as_bytes())?;
+        journal.write_all(b"\n")?;
+        journal.sync_all()?;
+        crate::protected_file::write_private(&owned_path, report_json.as_bytes())?;
+        let parent = owned_path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        std::fs::File::open(parent)?.sync_all()?;
+        Ok(())
+    })
+    .await
+    .map_err(|error| anyhow!("checkpoint task failed: {error}"))??;
     Ok(())
 }
 
@@ -1197,6 +1234,21 @@ pub fn report_to_json(report: &MatrixReport) -> Result<String, serde_json::Error
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn json_summary_reports_path_and_counts() {
+        let report = synthetic_report_for_snapshot();
+        let summary = json_summary(&report, Path::new("/tmp/report.json")).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&summary).unwrap();
+        assert_eq!(parsed["report_path"], "/tmp/report.json");
+        assert_eq!(parsed["completed"], report.completed);
+        assert_eq!(parsed["interrupted"], report.interrupted);
+        assert_eq!(parsed["cells"].as_u64().unwrap(), report.cells.len() as u64);
+        assert_eq!(
+            parsed["observations"].as_u64().unwrap(),
+            report.observations.len() as u64
+        );
+    }
 
     fn matrix_cells(
         verdict: impl Fn(Protocol, DestinationClass, Topology) -> Verdict,

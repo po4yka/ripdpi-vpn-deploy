@@ -47,14 +47,13 @@ serde_yaml_ng = "0.10.0"
 uzers = { version = "0.12", default-features = false }
 rustix = { version = "1", features = ["fs", "process"] }
 
-[build-dependencies]
-clap = { version = "4.5", features = ["derive", "env"] }
-clap_mangen = "0.2"
-
 [dev-dependencies]
 insta = "1"
 tempfile = "3"
 proptest = "1"
+clap_mangen = "0.2"
+flate2 = "1"
+tar = "0.4"
 
 [lints.rust]
 unsafe_code = "deny"

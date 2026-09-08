@@ -10,6 +10,10 @@ const GITHUB_API_URL: &str =
     "https://api.github.com/repos/po4yka/ripdpi-vpn-deploy/releases/latest";
 const CACHE_FILE: &str = "last-update-check.toml";
 const TTL_SECS: u64 = 86_400; // 24 h
+/// The check is advisory: a stalled connection must fail the fetch well
+/// below any operator patience threshold, never hang the CLI.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Cache {
@@ -87,7 +91,21 @@ fn load_cache(path: &std::path::Path, now: u64) -> Option<Cache> {
 }
 
 fn fetch_latest_tag(url: &str) -> Result<String> {
-    let mut resp = ureq::get(url)
+    fetch_latest_tag_with_timeout(url, REQUEST_TIMEOUT)
+}
+
+/// The network boundary is explicitly bounded: connect and overall request
+/// timeouts mean a black-holed connection errors instead of blocking the
+/// async caller indefinitely. Failure stays advisory — the caller converts
+/// it into a debug log and exit 0.
+fn fetch_latest_tag_with_timeout(url: &str, request_timeout: Duration) -> Result<String> {
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(request_timeout))
+        .timeout_connect(Some(CONNECT_TIMEOUT))
+        .build()
+        .into();
+    let mut resp = agent
+        .get(url)
         .header("User-Agent", format!("vpnd/{}", env!("CARGO_PKG_VERSION")))
         .call()
         .context("GitHub releases API request failed")?;
@@ -98,19 +116,54 @@ fn fetch_latest_tag(url: &str) -> Result<String> {
     Ok(release.tag_name)
 }
 
-fn print_notice(latest_tag: &str) {
-    let current = format!("v{}", env!("CARGO_PKG_VERSION"));
-    // Only show notice when the tags differ.
-    if latest_tag != format!("vpnd-{current}") && latest_tag.starts_with("vpnd-v") {
-        let stripped = latest_tag.trim_start_matches("vpnd-");
-        eprintln!(
-            "{} A newer vpnd release is available: {} (you have {}). \
-             See https://github.com/po4yka/ripdpi-vpn-deploy/releases",
-            "notice:".yellow(),
-            stripped.green().bold(),
-            current.dimmed(),
-        );
+/// Strip release-train tag schemes down to the bare version. Two trains
+/// publish releases in this repository: repo-wide release-please tags
+/// (`vX.Y.Z`) and vpnd-specific tags (`vpnd-vX.Y.Z`). Both carry the same
+/// version numbers, so both must normalize to the comparable form — a
+/// repo-wide tag must not be discarded as an unknown scheme.
+fn normalize_tag(tag: &str) -> Option<&str> {
+    let bare = tag.trim().strip_prefix("vpnd-").unwrap_or(tag);
+    bare.strip_prefix('v')
+}
+
+/// Parse a plain three-part numeric release version. Prerelease or
+/// build-suffixed tags fail to parse; an unparseable latest version must
+/// never produce a notice, so None is the conservative answer everywhere.
+fn parse_version(value: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = value.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    if parts.next().is_some() {
+        return None;
     }
+    Some((major, minor, patch))
+}
+
+/// A notice fires only when the latest tag parses to a version strictly
+/// newer than the running CLI: a locally newer build never receives a
+/// downgrade recommendation, and an equal version stays silent.
+fn is_newer(latest_tag: &str) -> bool {
+    let current = parse_version(env!("CARGO_PKG_VERSION"));
+    let latest = normalize_tag(latest_tag).and_then(parse_version);
+    match (current, latest) {
+        (Some(current), Some(latest)) => latest > current,
+        _ => false,
+    }
+}
+
+fn print_notice(latest_tag: &str) {
+    if !is_newer(latest_tag) {
+        return;
+    }
+    let stripped = latest_tag.trim_start_matches("vpnd-");
+    eprintln!(
+        "{} A newer vpnd release is available: {} (you have {}). \
+         See https://github.com/po4yka/ripdpi-vpn-deploy/releases",
+        "notice:".yellow(),
+        stripped.green().bold(),
+        format!("v{}", env!("CARGO_PKG_VERSION")).dimmed(),
+    );
 }
 
 #[cfg(test)]
@@ -229,5 +282,62 @@ mod tests {
                 assert_eq!(cache.latest_tag, "vpnd-v9.0.0");
             }
         }
+    }
+
+    #[test]
+    fn normalize_tag_accepts_both_release_train_schemes() {
+        assert_eq!(normalize_tag("vpnd-v9.0.0"), Some("9.0.0"));
+        assert_eq!(normalize_tag("v9.0.0"), Some("9.0.0"));
+        assert_eq!(normalize_tag("vpnd-v0.1.0"), Some("0.1.0"));
+        assert_eq!(normalize_tag("release-2026-08-23"), None);
+        assert_eq!(normalize_tag("9.0.0"), None, "bare version is not a tag");
+    }
+
+    #[test]
+    fn notice_requires_a_strictly_newer_parseable_release() {
+        let current = parse_version(env!("CARGO_PKG_VERSION")).unwrap();
+        let bump = |delta: i64| {
+            let total =
+                current.0 as i64 * 10_000 + current.1 as i64 * 100 + current.2 as i64 + delta;
+            format!(
+                "vpnd-v{}.{}.{}",
+                total / 10_000,
+                total / 100 % 100,
+                total % 100
+            )
+        };
+        // Older or equal latest must never produce a downgrade notice.
+        assert!(!is_newer(&bump(-1)));
+        assert!(!is_newer(&bump(0)));
+        // A strictly newer release in either train fires: the vpnd-specific
+        // tag and the repo-wide tag carry the same version numbers.
+        assert!(is_newer(&bump(1)));
+        assert!(is_newer(bump(1).trim_start_matches("vpnd-")));
+        // Prerelease suffixes fail the plain parse and stay silent.
+        assert!(!is_newer(&format!("{}-rc1", bump(1))));
+        // Unparseable tags can never claim to be newer.
+        assert!(!is_newer("release-2026-08-23"));
+    }
+
+    #[test]
+    fn stalled_connection_fails_within_the_explicit_timeout() {
+        // The test server accepts the connection and never answers, so only
+        // the configured timeout can end the request.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/releases/latest", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            std::thread::sleep(Duration::from_secs(2));
+            drop(socket);
+        });
+        let started = std::time::Instant::now();
+        let result = fetch_latest_tag_with_timeout(&url, Duration::from_secs(1));
+        let elapsed = started.elapsed();
+        assert!(result.is_err(), "a stalled connection must fail, not hang");
+        assert!(
+            elapsed < Duration::from_secs(4),
+            "the explicit timeout must bound the request, took {elapsed:?}"
+        );
+        server.join().unwrap();
     }
 }

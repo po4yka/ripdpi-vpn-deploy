@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context as _, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Local-only host registry, persisted at `~/.config/vpn-provision/hosts.toml`.
 ///
@@ -45,12 +46,51 @@ impl Registry {
 
     pub fn save(&self) -> Result<()> {
         let p = Self::path()?;
-        if let Some(dir) = p.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
+        let dir = p
+            .parent()
+            .ok_or_else(|| anyhow!("registry path has no parent directory"))?;
+        std::fs::create_dir_all(dir)?;
         let s = toml::to_string_pretty(self)?;
-        std::fs::write(&p, s).with_context(|| format!("write {}", p.display()))?;
-        Ok(())
+
+        // Persist through a unique temp file in the same directory and an
+        // atomic rename, matching the private-artifact writer used for share
+        // bundles: a crash mid-write leaves the previous complete registry
+        // intact instead of a truncated hosts.toml. Concurrent invocations
+        // resolve to last-write-wins — readers only ever observe one full
+        // file, never a torn mix.
+        // Nanos plus a process-wide counter keep concurrent invocations from
+        // colliding on one temp file.
+        static TEMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let unique = format!(
+            ".{}.tmp.{}.{}.{}",
+            p.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("hosts.toml"),
+            std::process::id(),
+            TEMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default()
+        );
+        let temp = dir.join(unique);
+        let write = || -> Result<()> {
+            use std::io::Write;
+            let mut handle = std::fs::File::create(&temp)
+                .with_context(|| format!("create temp registry at {}", temp.display()))?;
+            handle.write_all(s.as_bytes())?;
+            handle.sync_all()?;
+            std::fs::rename(&temp, &p)
+                .with_context(|| format!("rename registry into {}", p.display()))
+        };
+        match write() {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                // A failed write removes only its own temp file.
+                let _ = std::fs::remove_file(&temp);
+                Err(error)
+            }
+        }
     }
 
     pub fn upsert(&mut self, name: &str, host: Host) {

@@ -12,16 +12,38 @@ use crate::config::Context;
 /// - `md/<slug>.md`     — raw markdown per doc
 pub async fn run(ctx: &Context, args: AiDocsArgs) -> Result<()> {
     let out = args.out.unwrap_or_else(|| ctx.root.join("ai-docs"));
-    let md_dir = out.join("md");
-    if !ctx.explain {
-        std::fs::create_dir_all(&md_dir)?;
+    if ctx.explain {
+        eprintln!(
+            "{} would emit llms.txt, llms-full.txt, and per-doc markdown to {}",
+            "→".cyan(),
+            out.display()
+        );
+        return Ok(());
     }
 
+    // Reading every doc and writing the emit tree is bulk blocking IO: it
+    // runs on the blocking pool so the async worker is never stalled.
     let docs = ctx.root.join("docs");
+    let emit_dir = out.clone();
+    tokio::task::spawn_blocking(move || emit_docs(&docs, &emit_dir))
+        .await
+        .map_err(|error| anyhow!("ai-docs emit task failed: {error}"))??;
+
+    println!("{} ai-docs emitted to {}", "✓".green(), out.display());
+    print_endpoints(&out);
+    Ok(())
+}
+
+/// All filesystem work for one emit: read every `docs/*.md`, write the
+/// per-doc markdown plus both indexes.
+fn emit_docs(docs: &Path, out: &Path) -> Result<()> {
+    let md_dir = out.join("md");
+    std::fs::create_dir_all(&md_dir)?;
+
     let mut index = String::from("# vpn-deploy docs index\n\n");
     let mut full = String::new();
 
-    let mut entries: Vec<_> = std::fs::read_dir(&docs)?
+    let mut entries: Vec<_> = std::fs::read_dir(docs)?
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
         .collect();
@@ -38,25 +60,11 @@ pub async fn run(ctx: &Context, args: AiDocsArgs) -> Result<()> {
             std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
         index.push_str(&format!("- [{}](/md/{}.md)\n", slug, slug));
         full.push_str(&format!("\n\n---\n\n## {}\n\n{}", slug, body));
-        if !ctx.explain {
-            std::fs::write(md_dir.join(format!("{slug}.md")), &body)?;
-        }
-    }
-
-    if ctx.explain {
-        eprintln!(
-            "{} would emit llms.txt, llms-full.txt, and per-doc markdown to {}",
-            "→".cyan(),
-            out.display()
-        );
-        return Ok(());
+        std::fs::write(md_dir.join(format!("{slug}.md")), &body)?;
     }
 
     std::fs::write(out.join("llms.txt"), &index)?;
     std::fs::write(out.join("llms-full.txt"), &full)?;
-
-    println!("{} ai-docs emitted to {}", "✓".green(), out.display());
-    print_endpoints(&out);
     Ok(())
 }
 

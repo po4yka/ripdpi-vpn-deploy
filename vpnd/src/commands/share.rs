@@ -118,11 +118,6 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
     let out = args
         .out
         .unwrap_or_else(|| ctx.root.join("share").join(&args.client));
-    std::fs::create_dir_all(&out)?;
-    set_private_mode(&out, 0o700)?;
-
-    // sing-box JSON (always emitted)
-    write_private(&out.join("config.singbox.json"), singbox.stdout.as_bytes())?;
 
     // Recipient landing page. ripdpi:// one-tap import derives from the
     // (token-aware) subscription URL computed above.
@@ -137,20 +132,39 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
         ripdpi_deeplink: &ripdpi_deeplink,
         apps: per_platform_apps(),
     })?;
-    write_private(&out.join("index.html"), page.as_bytes())?;
-
-    // QR
-    if args.qr {
-        let payload = match args.r#type {
-            ShareType::Singbox => &urls.qr_singbox,
-            ShareType::Uri => &urls.qr_uri,
-        };
+    let (qr_singbox, qr_ripdpi) = if args.qr {
         // Emit SVG QR codes only. write_png produces a PBM file renamed to
         // .png (no real PNG encoder — no-new-deps constraint), which browsers
         // refuse to render; the recipient page references qr.svg / qr-ripdpi.svg.
-        qr::write_svg(payload, &out.join("qr.svg"))?;
-        qr::write_svg(&ripdpi_deeplink, &out.join("qr-ripdpi.svg"))?;
-    }
+        (
+            Some(match args.r#type {
+                ShareType::Singbox => urls.qr_singbox.clone(),
+                ShareType::Uri => urls.qr_uri.clone(),
+            }),
+            Some(ripdpi_deeplink.clone()),
+        )
+    } else {
+        (None, None)
+    };
+
+    // Every bundle write is a temp+sync+rename private-file operation plus
+    // SVG encoding: bulk blocking disk work runs on the blocking pool.
+    let out_dir = out.clone();
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        std::fs::create_dir_all(&out_dir)?;
+        set_private_mode(&out_dir, 0o700)?;
+        write_private(&out_dir.join("config.singbox.json"), singbox.stdout.as_bytes())?;
+        write_private(&out_dir.join("index.html"), page.as_bytes())?;
+        if let Some(payload) = &qr_singbox {
+            qr::write_svg(payload, &out_dir.join("qr.svg"))?;
+        }
+        if let Some(deeplink) = &qr_ripdpi {
+            qr::write_svg(deeplink, &out_dir.join("qr-ripdpi.svg"))?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|error| anyhow!("share emit task failed: {error}"))??;
 
     println!();
     println!("{} {}", "share bundle:".green().bold(), out.display());

@@ -2,7 +2,7 @@
 id: VPD-1787497584598165
 title: Move blocking IO out of async contexts in vpnd
 kind: chore
-status: backlog
+status: review
 area: vpnd
 priority: low
 risk: standard
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-09-08
 spec_reason: mechanical-refactor
 related_tasks: []
 ---

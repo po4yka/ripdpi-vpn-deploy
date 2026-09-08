@@ -28,7 +28,7 @@ _vpnd() {
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 '-V[Print version]' \
@@ -54,7 +54,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -71,7 +71,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -91,7 +91,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ':client -- Client name:_default' \
@@ -111,7 +111,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -128,7 +128,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -147,7 +147,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -163,7 +163,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -178,7 +178,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ":: :_vpnd__subcmd__fleet_commands" \
@@ -201,7 +201,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -219,7 +219,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -234,7 +234,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -285,7 +285,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ":: :_vpnd__subcmd__host_commands" \
@@ -308,7 +308,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -323,7 +323,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ':name:_default' \
@@ -339,7 +339,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ':name:_default' \
@@ -355,7 +355,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ':name:_default' \
@@ -412,7 +412,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -427,7 +427,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the GitHub API URL that would be queried and exit without fetching]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -442,7 +442,7 @@ _arguments "${_arguments_options[@]}" : \
 '--explain[Print the underlying shell invocations and exit without running them]' \
 '-y[Skip interactive confirmation prompts]' \
 '--yes[Skip interactive confirmation prompts]' \
-'--json[Emit machine-readable JSON instead of human output (where supported)]' \
+'--json[Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ':shell -- Shell to generate completions for\: bash, zsh, fish, powershell:_default' \

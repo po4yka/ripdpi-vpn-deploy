@@ -211,6 +211,7 @@ impl Cmd {
             return Ok(Output {
                 rc: 0,
                 stdout: String::new(),
+                stderr: String::new(),
             });
         }
 
@@ -257,16 +258,91 @@ impl Cmd {
                 self.redacted(self.description.as_deref().unwrap_or(&self.program))
             ));
         }
-        Ok(Output { rc, stdout: buf })
+        // Stderr was inherited by the terminal, never piped.
+        Ok(Output {
+            rc,
+            stdout: buf,
+            stderr: String::new(),
+        })
+    }
+
+    /// Diagnostic mode: capture both stdout and stderr and never treat a
+    /// nonzero exit as an error — only spawn/IO failures return Err.
+    /// Consumers that must present a failing step's full output (doctor)
+    /// use this instead of capture(), whose nonzero contract would discard
+    /// exactly the evidence the report exists to collect.
+    pub async fn capture_detailed(&self, explain_only: bool) -> Result<Output> {
+        self.print_explain();
+        if explain_only {
+            return Ok(Output {
+                rc: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            });
+        }
+
+        let mut cmd = Command::new(&self.program);
+        cmd.kill_on_drop(true)
+            .args(self.args.iter())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        if self.capture_policy == CapturePolicy::OwnedProcessGroup {
+            cmd.process_group(0);
+        }
+        for (k, v) in &self.env {
+            cmd.env(k, v);
+        }
+        if let Some(cwd) = &self.cwd {
+            cmd.current_dir(cwd);
+        }
+        let mut child = cmd.spawn()?;
+        let mut group = match self.capture_policy {
+            CapturePolicy::Foreground => None,
+            CapturePolicy::OwnedProcessGroup => Some(CaptureGroup::new(child.id())?),
+        };
+        let stdout = child.stdout.take().ok_or_else(|| anyhow!("no stdout"))?;
+        let stderr = child.stderr.take().ok_or_else(|| anyhow!("no stderr"))?;
+        // Both pipes are read concurrently: sequential drains deadlock once a
+        // child fills the pipe buffer of the stream nobody is reading.
+        let stdout_reader = tokio::spawn(async move {
+            let mut buf = String::new();
+            let mut reader = BufReader::new(stdout).lines();
+            while let Some(line) = reader.next_line().await? {
+                buf.push_str(&line);
+                buf.push('\n');
+            }
+            anyhow::Ok(buf)
+        });
+        let stderr_reader = tokio::spawn(async move {
+            let mut buf = String::new();
+            let mut reader = BufReader::new(stderr).lines();
+            while let Some(line) = reader.next_line().await? {
+                buf.push_str(&line);
+                buf.push('\n');
+            }
+            anyhow::Ok(buf)
+        });
+        let (stdout_buf, stderr_buf) = (stdout_reader.await, stderr_reader.await);
+        let status = child.wait().await;
+        // No await between reaping and disarming: never signal a recycled ID.
+        if let Some(group) = &mut group {
+            group.disarm();
+        }
+        let status = status?;
+        let rc = status.code().unwrap_or(-1);
+        Ok(Output {
+            rc,
+            stdout: stdout_buf??,
+            stderr: stderr_buf??,
+        })
     }
 }
 
-#[allow(dead_code)]
-// rc field kept for callers that need to distinguish exit codes under --explain semantics; stdout is used today, rc not yet read externally
 #[derive(Debug)]
 pub struct Output {
     pub rc: i32,
     pub stdout: String,
+    pub stderr: String,
 }
 
 #[cfg(test)]

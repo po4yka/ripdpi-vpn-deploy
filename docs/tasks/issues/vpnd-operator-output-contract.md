@@ -2,7 +2,7 @@
 id: VPD-1787497426503364
 title: "Align vpnd operator output contract: man page, json flag, clip flag, doctor resilience"
 kind: bug
-status: backlog
+status: review
 area: vpnd
 priority: medium
 risk: standard
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: vpd-1787497426503364-vpnd-operator-output-contract
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-09-08
 related_tasks: []
 ---
 
