@@ -1,0 +1,11 @@
+{
+  "change": "sec-1787497526094023-vpnd-make-variable-hardening",
+  "evidence_summary": "PR #203 rebase-merged through protected main as 6bda37bc0476adaef9b6b95eb03778cb890bdf42; local cargo fmt, clippy -D warnings and cargo test (191 tests, 0 failures) on final source commit 6972f6ed; exact-main CI run 34220827411 passed all required checks including vpnd cargo test, clippy, MSRV, dependency policy, SBOM and task-contract; OpenSpec change archived as 2026-09-08-sec-1787497526094023-vpnd-make-variable-hardening with the vpnd/make-interface capability synced to main specs.",
+  "execution_sha256": "37c754a9438f5d9796de72ec03b8c8766985a7867164e4f8b187ea7cfaf4c583",
+  "issue_sha256": "d5a5b8ab5aa4b832dce5e86a717650628bcb5d994eae2edc47325746b239bf3d",
+  "outcome": "done",
+  "prepared_at": "2026-09-08T12:02:00Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1787497526094023"
+}
