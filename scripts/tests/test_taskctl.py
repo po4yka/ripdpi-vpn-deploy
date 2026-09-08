@@ -2618,6 +2618,43 @@ class TaskctlHistoryTest(TaskctlFixture):
                 finally:
                     dirty_path.write_bytes(original)
 
+    def test_validate_command_accepts_symbolic_base_for_purged_spec_task(self) -> None:
+        target = self.add_archived_spec_task(receipt=True)
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        base = self.commit_all("add archived reviewed task")
+        taskctl.command_close_prepare(
+            argparse.Namespace(
+                root=self.root,
+                query="ANS-1786234567890101",
+                outcome="done",
+                reason="All acceptance passed.",
+                evidence="Archived fixture evidence passed.",
+            )
+        )
+        self.write_board()
+        self.commit_all("commit archived terminal task")
+        taskctl.command_close_purge(
+            argparse.Namespace(root=self.root, query="ANS-1786234567890101")
+        )
+        self.write_board()
+        self.commit_all("purge archived terminal task")
+        self.git("branch", "validation-base", base)
+
+        output = StringIO()
+        with redirect_stdout(output):
+            result = taskctl.command_validate(
+                argparse.Namespace(
+                    root=self.root,
+                    base="validation-base",
+                    json=False,
+                    skip_upstreams=True,
+                )
+            )
+
+        self.assertEqual(0, result)
+        self.assertIn("Task contracts valid", output.getvalue())
+
     def test_graph_reuses_one_terminal_history_index_for_multiple_related_tasks(
         self,
     ) -> None:
