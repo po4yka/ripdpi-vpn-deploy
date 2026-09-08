@@ -205,11 +205,17 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
         .with_context(|| format!("resolving {}", requested.display()))?;
     let config = load_config(&config_path)?;
 
-    // REQ-MAKE-KV-CHARSET: these config-derived values reach make
-    // command-line assignments, so validate them once here; a rejected
-    // value aborts the subcommand before the sweep — or its --explain
-    // rendering — starts. Protocol and control-verdict names are static
-    // enum names that always satisfy the identifier charset.
+    // REQ-MAKE-KV-CHARSET: these values reach make command-line assignments,
+    // so validate every one of them here — config-derived values AND the
+    // context-derived ENV/PROVIDER/SECRETS_FILE trio that target() will
+    // check again at construction. A rejected value aborts the subcommand
+    // before the sweep — or its --explain rendering — starts, so a hostile
+    // context can never degrade the sweep into all-unknown verdicts.
+    // Protocol and control-verdict names are static enum names that always
+    // satisfy the identifier charset.
+    make::validate_kv("ENV", &ctx.env)?;
+    make::validate_kv("PROVIDER", &ctx.provider)?;
+    make::validate_kv("SECRETS_FILE", &ctx.secrets_file.display().to_string())?;
     make::validate_kv("MATRIX_CONFIG", &config_path.display().to_string())?;
     for target in &config.targets {
         make::validate_kv("TARGET_ID", &target.id)?;

@@ -50,7 +50,8 @@ enum ValueRule {
     /// `..` component (callers canonicalize before handing a path over).
     Path,
     /// Absolute runtime path (SECRETS_FILE): rejects make/shell
-    /// metacharacters and control characters, tolerates spaces — argv
+    /// metacharacters (including `#`, which starts a comment in unquoted
+    /// recipe expansions) and control characters, tolerates spaces — argv
     /// carries it as one argument and recipes reference it quoted.
     RuntimePath,
     /// Strict dotted-quad IPv4 literal.
@@ -99,6 +100,7 @@ impl ValueRule {
                                     | '('
                                     | ')'
                                     | '\\'
+                                    | '#'
                             )
                     })
             }
@@ -121,13 +123,20 @@ fn rule_for(key: &str) -> ValueRule {
 
 /// Validate one make command-line variable value against its per-key rule
 /// (REQ-MAKE-KV-CHARSET). The error names both the key and the failed rule.
+/// SECRETS_FILE values are never echoed: the runner's redaction contract
+/// forbids logging the secrets-file location.
 pub fn validate_kv(key: &str, value: &str) -> Result<()> {
     let rule = rule_for(key);
     if rule.accepts(value) {
         return Ok(());
     }
+    let rendered = if key == "SECRETS_FILE" {
+        "(redacted)".to_string()
+    } else {
+        format!("{value:?}")
+    };
     Err(anyhow!(
-        "refusing to spawn make: variable {key} value {value:?} fails the {} rule — \
+        "refusing to spawn make: variable {key} value {rendered} fails the {} rule — \
          make expands command-line variable values inside recipe shells",
         rule.name()
     ))
@@ -309,6 +318,12 @@ mod tests {
                 "/tmp/$(id)/vpn-prod.secrets.yaml",
                 "runtime path",
             ),
+            // '#' would start a comment in an unquoted recipe expansion.
+            (
+                "SECRETS_FILE",
+                "/tmp/a #/vpn-prod.secrets.yaml",
+                "runtime path",
+            ),
             ("ENV", "prod;id", "identifier"),
             ("PROVIDER", "$(shell id)", "identifier"),
         ];
@@ -346,6 +361,20 @@ mod tests {
         ctx.secrets_file = PathBuf::from("/tmp/$(id)/vpn-prod.secrets.yaml");
         let err = target(&ctx, "decrypt").expect_err("hostile SECRETS_FILE must abort");
         assert!(err.to_string().contains("SECRETS_FILE"), "{err}");
+    }
+
+    #[test]
+    fn secrets_file_rejection_redacts_the_value() {
+        // The runner never logs the secrets-file location, so the
+        // validation error must not echo the rejected path either.
+        let err = validate_kv("SECRETS_FILE", "/tmp/$(id)/vpn-prod.secrets.yaml")
+            .expect_err("hostile SECRETS_FILE must abort");
+        let msg = err.to_string();
+        assert!(msg.contains("SECRETS_FILE"), "{msg}");
+        assert!(
+            !msg.contains("/tmp/$(id)"),
+            "validation error must redact the SECRETS_FILE value: {msg}"
+        );
     }
 
     /// Integration-style contract: any rejected value in any position
