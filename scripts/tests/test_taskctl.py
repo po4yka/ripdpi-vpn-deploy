@@ -2619,7 +2619,7 @@ class TaskctlHistoryTest(TaskctlFixture):
                     dirty_path.write_bytes(original)
 
     def test_validate_command_accepts_symbolic_base_for_purged_spec_task(self) -> None:
-        target = self.add_archived_spec_task(receipt=True)
+        self.add_archived_spec_task(receipt=True)
         self.add_simple_task(task_id="CIC-1786234567890003")
         self.write_board()
         base = self.commit_all("add archived reviewed task")
