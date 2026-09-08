@@ -5,6 +5,27 @@ Do not edit by hand — write [Conventional Commits](https://www.conventionalcom
 on `main` and the next merge of the auto-generated release PR will populate
 this file.
 
+## [1.4.1](https://github.com/po4yka/ripdpi-vpn-deploy/compare/vpnd-v1.4.0...vpnd-v1.4.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **ci:** repin molecule-ubuntu2404 base image after rebuild ([dad54bc](https://github.com/po4yka/ripdpi-vpn-deploy/commit/dad54bc5c7758a7aaf7b04fc5922e8fdd961dddd))
+* **tasks:** bind cancellation receipts to preserved execution steps ([a16605f](https://github.com/po4yka/ripdpi-vpn-deploy/commit/a16605f43663da48971e5d1593399a98cf4d8b20))
+* **tasks:** bind drop receipts to preserved execution records in history ([bb5c707](https://github.com/po4yka/ripdpi-vpn-deploy/commit/bb5c707c45fe0cee67fe3fd46027c44083c3a345))
+* **tasks:** preserve cross-area steps during cancellation ([b4f412c](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b4f412c44d0ed0b7d97a813cf821d59a1139ec32))
+* **tasks:** split forbidden identifier literals for policy scan ([318a8a1](https://github.com/po4yka/ripdpi-vpn-deploy/commit/318a8a19850b874bf0eca5190c385ae4ab81982d))
+
+
+### Tests
+
+* **molecule:** expect the repinned scan-clean ubuntu2404 digest ([5247ae9](https://github.com/po4yka/ripdpi-vpn-deploy/commit/5247ae9f09eb7666a84963f138e19e3f632a51ee))
+
+
+### Documentation
+
+* **testing:** refresh collected test count for drop-receipt regressions ([1cea647](https://github.com/po4yka/ripdpi-vpn-deploy/commit/1cea6477542ff1d2b4354672daecda0ff13fd21b))
+
 ## [1.4.0](https://github.com/po4yka/ripdpi-vpn-deploy/compare/vpnd-v1.3.0...vpnd-v1.4.0) (2026-09-07)
 
 
