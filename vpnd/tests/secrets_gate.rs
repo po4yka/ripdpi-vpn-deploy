@@ -23,7 +23,6 @@ fn harden(path: &std::path::Path) -> anyhow::Result<()> {
         config_dir: root.into(),
         explain: false,
         yes: true,
-        json: false,
     }
     .secure_secrets_file()
 }

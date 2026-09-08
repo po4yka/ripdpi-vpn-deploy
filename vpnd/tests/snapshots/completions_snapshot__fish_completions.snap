@@ -5,7 +5,7 @@ expression: output
 ---
 # Print an optspec for argparse to handle cmd's options that are independent of any subcommand.
 function __fish_vpnd_global_optspecs
-	string join \n explain e/env= p/provider= y/yes json root= h/help V/version
+	string join \n explain e/env= p/provider= y/yes root= h/help V/version
 end
 
 function __fish_vpnd_needs_command
@@ -34,7 +34,6 @@ complete -c vpnd -n "__fish_vpnd_needs_command" -s p -l provider -d 'Cloud provi
 complete -c vpnd -n "__fish_vpnd_needs_command" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
 complete -c vpnd -n "__fish_vpnd_needs_command" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_needs_command" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_needs_command" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_needs_command" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_needs_command" -s V -l version -d 'Print version'
 complete -c vpnd -n "__fish_vpnd_needs_command" -f -a "deploy" -d 'Interactive deploy wizard'
@@ -57,7 +56,6 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand deploy" -l skip-precheck -d 'S
 complete -c vpnd -n "__fish_vpnd_using_subcommand deploy" -l tag-on-success -d 'Tag a known-good commit after a successful verify run'
 complete -c vpnd -n "__fish_vpnd_using_subcommand deploy" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand deploy" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand deploy" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand deploy" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand reconverge" -l host -d 'Limit to a single host from the registry' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand reconverge" -s e -l env -d 'Target environment' -r
@@ -66,7 +64,6 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand reconverge" -l root -d 'Overri
 complete -c vpnd -n "__fish_vpnd_using_subcommand reconverge" -l dry-run -d 'Stop after dry-run; do not apply'
 complete -c vpnd -n "__fish_vpnd_using_subcommand reconverge" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand reconverge" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand reconverge" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand reconverge" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand share" -l type -d 'QR payload type' -r -f -a "singbox\t''
 uri\t''"
@@ -79,7 +76,6 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand share" -l qr -d 'Also emit a Q
 complete -c vpnd -n "__fish_vpnd_using_subcommand share" -l token-stdin -d 'Read the opaque subscription token from stdin'
 complete -c vpnd -n "__fish_vpnd_using_subcommand share" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand share" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand share" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand share" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand doctor" -l host -d 'Host alias from the registry; omitted = active env\'s primary host' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand doctor" -l bundle -d 'Pack a diagnostic gzip-tar bundle at this path (orthogonal to --ai)' -r -F
@@ -90,7 +86,6 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand doctor" -l ai -d 'Format outpu
 complete -c vpnd -n "__fish_vpnd_using_subcommand doctor" -l clip -d 'Copy AI prompt to the system clipboard (requires --ai)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand doctor" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand doctor" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand doctor" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand doctor" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe" -l host -d 'Host alias from the registry; omitted = active env\'s primary host' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe" -l profile -d 'Which profile to probe' -r -f -a "p0\t''
@@ -102,7 +97,6 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand probe" -s p -l provider -d 'Cl
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand probe" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -l duration -d 'Run duration. Accepts plain seconds or NN{s,m,h,d}' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -l poll-interval-seconds -d 'Poll interval between matrix sweeps (seconds). Overrides config' -r
@@ -111,9 +105,9 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -l output -d 'Ou
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -s e -l env -d 'Target environment' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -s p -l provider -d 'Cloud provider Terraform root' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
+complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -l json -d 'Emit a machine-readable run summary instead of the human path line'
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand probe-matrix" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand preflight" -s e -l env -d 'Target environment' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand preflight" -s p -l provider -d 'Cloud provider Terraform root' -r
@@ -121,14 +115,12 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand preflight" -l root -d 'Overrid
 complete -c vpnd -n "__fish_vpnd_using_subcommand preflight" -l skip-certs -d 'Skip the certificate-validity check (faster smoke)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand preflight" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand preflight" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand preflight" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand preflight" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and not __fish_seen_subcommand_from status rotate drift help" -s e -l env -d 'Target environment' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and not __fish_seen_subcommand_from status rotate drift help" -s p -l provider -d 'Cloud provider Terraform root' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and not __fish_seen_subcommand_from status rotate drift help" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and not __fish_seen_subcommand_from status rotate drift help" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and not __fish_seen_subcommand_from status rotate drift help" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and not __fish_seen_subcommand_from status rotate drift help" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and not __fish_seen_subcommand_from status rotate drift help" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and not __fish_seen_subcommand_from status rotate drift help" -f -a "status" -d 'Summary table across every host:env pair'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and not __fish_seen_subcommand_from status rotate drift help" -f -a "rotate" -d 'Coordinated rotation across the fleet (`scripts/fleet-rotate.sh`)'
@@ -139,7 +131,6 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcomm
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from status" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from status" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from status" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from status" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from status" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from rotate" -l plan -d 'Path to the fleet plan YAML' -r -F
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from rotate" -s e -l env -d 'Target environment' -r
@@ -149,14 +140,12 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcomm
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from rotate" -l dry-run -d 'Show what would happen without making changes'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from rotate" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from rotate" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from rotate" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from rotate" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from drift" -s e -l env -d 'Target environment' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from drift" -s p -l provider -d 'Cloud provider Terraform root' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from drift" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from drift" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from drift" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from drift" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from drift" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from help" -f -a "status" -d 'Summary table across every host:env pair'
 complete -c vpnd -n "__fish_vpnd_using_subcommand fleet; and __fish_seen_subcommand_from help" -f -a "rotate" -d 'Coordinated rotation across the fleet (`scripts/fleet-rotate.sh`)'
@@ -167,7 +156,6 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand host; and not __fish_seen_subc
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and not __fish_seen_subcommand_from list show add remove help" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and not __fish_seen_subcommand_from list show add remove help" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and not __fish_seen_subcommand_from list show add remove help" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand host; and not __fish_seen_subcommand_from list show add remove help" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and not __fish_seen_subcommand_from list show add remove help" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and not __fish_seen_subcommand_from list show add remove help" -f -a "list" -d 'List registered hosts'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and not __fish_seen_subcommand_from list show add remove help" -f -a "show" -d 'Show one host record'
@@ -177,16 +165,16 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand host; and not __fish_seen_subc
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from list" -s e -l env -d 'Target environment' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from list" -s p -l provider -d 'Cloud provider Terraform root' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from list" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
+complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from list" -l json -d 'Emit a machine-readable JSON array instead of the table'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from list" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from list" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from list" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from list" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from show" -s e -l env -d 'Target environment' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from show" -s p -l provider -d 'Cloud provider Terraform root' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from show" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
+complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from show" -l json -d 'Emit compact single-line JSON instead of the pretty form'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from show" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from show" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from show" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from show" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from add" -l env -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from add" -l provider -r
@@ -195,14 +183,12 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcomma
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from add" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from add" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from add" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from add" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from add" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from remove" -s e -l env -d 'Target environment' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from remove" -s p -l provider -d 'Cloud provider Terraform root' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from remove" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from remove" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from remove" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from remove" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from remove" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from help" -f -a "list" -d 'List registered hosts'
 complete -c vpnd -n "__fish_vpnd_using_subcommand host; and __fish_seen_subcommand_from help" -f -a "show" -d 'Show one host record'
@@ -215,21 +201,18 @@ complete -c vpnd -n "__fish_vpnd_using_subcommand ai-docs" -s p -l provider -d '
 complete -c vpnd -n "__fish_vpnd_using_subcommand ai-docs" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
 complete -c vpnd -n "__fish_vpnd_using_subcommand ai-docs" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand ai-docs" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand ai-docs" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand ai-docs" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand update" -s e -l env -d 'Target environment' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand update" -s p -l provider -d 'Cloud provider Terraform root' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand update" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
 complete -c vpnd -n "__fish_vpnd_using_subcommand update" -l explain -d 'Print the GitHub API URL that would be queried and exit without fetching'
 complete -c vpnd -n "__fish_vpnd_using_subcommand update" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand update" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand update" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand completions" -s e -l env -d 'Target environment' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand completions" -s p -l provider -d 'Cloud provider Terraform root' -r
 complete -c vpnd -n "__fish_vpnd_using_subcommand completions" -l root -d 'Override the vpn-deploy repo root (default: discover from cwd)' -r -F
 complete -c vpnd -n "__fish_vpnd_using_subcommand completions" -l explain -d 'Print the underlying shell invocations and exit without running them'
 complete -c vpnd -n "__fish_vpnd_using_subcommand completions" -s y -l yes -d 'Skip interactive confirmation prompts'
-complete -c vpnd -n "__fish_vpnd_using_subcommand completions" -l json -d 'Emit machine-readable JSON instead of human output for supported subcommands (host list/show, probe-matrix)'
 complete -c vpnd -n "__fish_vpnd_using_subcommand completions" -s h -l help -d 'Print help'
 complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help" -f -a "deploy" -d 'Interactive deploy wizard'
 complete -c vpnd -n "__fish_vpnd_using_subcommand help; and not __fish_seen_subcommand_from deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions help" -f -a "reconverge" -d 'Idempotent re-deploy against existing host(s)'

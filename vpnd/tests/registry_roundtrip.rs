@@ -1,6 +1,7 @@
 //! Production Registry::save/load, isolated in a child process so HOME is never
 //! mutated in a concurrent test process.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
+use std::os::unix::fs::PermissionsExt;
 use vpnd::state::{Host, Registry};
 
 #[test]
@@ -122,6 +123,13 @@ fn production_registry_io_roundtrip_and_fail_closed_errors() {
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
     let observations = reader.join().unwrap();
     assert!(observations > 0, "reader must have observed the writes");
+    // The atomic rename must carry a private mode onto hosts.toml: temp
+    // files are created 0600, never the umask default.
+    let saved_mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(
+        saved_mode, 0o600,
+        "registry must persist with owner-only permissions"
+    );
     let settled = Registry::load().unwrap();
     assert_eq!(settled.hosts.len(), 1, "final file is one complete write");
     let directory = path.parent().unwrap();

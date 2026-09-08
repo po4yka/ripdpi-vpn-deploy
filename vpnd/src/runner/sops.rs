@@ -17,7 +17,6 @@ fn fake_ctx() -> Context {
         config_dir: PathBuf::from("/config"),
         explain: false,
         yes: false,
-        json: false,
     }
 }
 

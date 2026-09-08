@@ -153,7 +153,10 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
     tokio::task::spawn_blocking(move || -> Result<()> {
         std::fs::create_dir_all(&out_dir)?;
         set_private_mode(&out_dir, 0o700)?;
-        write_private(&out_dir.join("config.singbox.json"), singbox.stdout.as_bytes())?;
+        write_private(
+            &out_dir.join("config.singbox.json"),
+            singbox.stdout.as_bytes(),
+        )?;
         write_private(&out_dir.join("index.html"), page.as_bytes())?;
         if let Some(payload) = &qr_singbox {
             qr::write_svg(payload, &out_dir.join("qr.svg"))?;

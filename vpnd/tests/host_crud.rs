@@ -88,7 +88,7 @@ fn json_flag_emits_machine_readable_list_and_show() {
     };
 
     // Empty registry: --json emits an empty JSON array on stdout.
-    let empty = invoke(&["--json", "host", "list"]);
+    let empty = invoke(&["host", "list", "--json"]);
     assert!(empty.status.success());
     let parsed: serde_json::Value = serde_json::from_slice(&empty.stdout).unwrap();
     assert!(parsed.as_array().unwrap().is_empty());
@@ -108,7 +108,7 @@ fn json_flag_emits_machine_readable_list_and_show() {
     .success());
 
     // List: a JSON array with one record carrying the registered fields.
-    let listed = invoke(&["--json", "host", "list"]);
+    let listed = invoke(&["host", "list", "--json"]);
     assert!(listed.status.success());
     let hosts: serde_json::Value = serde_json::from_slice(&listed.stdout).unwrap();
     let entries = hosts.as_array().unwrap();
@@ -119,7 +119,7 @@ fn json_flag_emits_machine_readable_list_and_show() {
     assert!(entries[0]["deployed_with"].is_null());
 
     // Show: compact single-line JSON under --json, pretty object without.
-    let shown = invoke(&["--json", "host", "show", "phone"]);
+    let shown = invoke(&["host", "show", "phone", "--json"]);
     assert!(shown.status.success());
     let one_line = String::from_utf8_lossy(&shown.stdout);
     assert_eq!(

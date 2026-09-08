@@ -18,7 +18,6 @@ fn make_ctx(root: &std::path::Path, config_dir: &std::path::Path, explain: bool)
         config_dir: config_dir.to_path_buf(),
         explain,
         yes: false,
-        json: false,
     }
 }
 
