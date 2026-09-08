@@ -5,6 +5,18 @@ Do not edit by hand — write [Conventional Commits](https://www.conventionalcom
 on `main` and the next merge of the auto-generated release PR will populate
 this file.
 
+## [1.4.2](https://github.com/po4yka/ripdpi-vpn-deploy/compare/vpnd-v1.4.1...vpnd-v1.4.2) (2026-09-08)
+
+
+### Documentation
+
+* **exposure:** resolve open questions in ASN denylist boundary ([0b2cef5](https://github.com/po4yka/ripdpi-vpn-deploy/commit/0b2cef596cea5e506e32b245aa99b7c8a9f953c1))
+
+
+### Refactoring
+
+* drop dead local bindings flagged by code scanning ([94bb1bc](https://github.com/po4yka/ripdpi-vpn-deploy/commit/94bb1bccae4ea859f2c66a75275f167e878e7825))
+
 ## [1.4.1](https://github.com/po4yka/ripdpi-vpn-deploy/compare/vpnd-v1.4.0...vpnd-v1.4.1) (2026-09-08)
 
 
