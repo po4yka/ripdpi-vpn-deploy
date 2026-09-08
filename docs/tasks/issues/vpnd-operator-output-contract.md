@@ -2,7 +2,7 @@
 id: VPD-1787497426503364
 title: "Align vpnd operator output contract: man page, json flag, clip flag, doctor resilience"
 kind: bug
-status: review
+status: done
 area: vpnd
 priority: medium
 risk: standard
@@ -14,6 +14,9 @@ openspec_change: vpd-1787497426503364-vpnd-operator-output-contract
 created: 2026-08-23
 updated: 2026-09-08
 related_tasks: []
+closed_at: "2026-09-08T16:59:15Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Implementation merged through protected main as c82a41c1b8784b01f58ff57ea035ef6e9f7904d0 via PR #205. OpenSpec change archived with vpnd/operator-output spec synced; verification records REQ-MANPAGE-SYNC, REQ-JSON-FLAG-HONESTY, REQ-CLIP-REQUIRES-AI and REQ-DOCTOR-RESILIENCE all passed with exact-main ci run 34249394952 and codeql run 34249394663 evidence."
 ---
 
 ## Goal

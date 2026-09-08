@@ -2,7 +2,7 @@
 id: VPD-1787497584598165
 title: Move blocking IO out of async contexts in vpnd
 kind: chore
-status: review
+status: done
 area: vpnd
 priority: low
 risk: standard
@@ -15,6 +15,9 @@ created: 2026-08-23
 updated: 2026-09-08
 spec_reason: mechanical-refactor
 related_tasks: []
+closed_at: "2026-09-08T16:59:15Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "spawn_blocking wrapping for ai-docs emit, probe-matrix checkpoints, doctor bundle gzip and share artifact writes merged as c82a41c1b8784b01f58ff57ea035ef6e9f7904d0 via PR #205; uid resolution already in-process via uzers with zero subprocess spawns on async paths; cargo clippy -D warnings green. Exact-main ci run 34249394952 and codeql run 34249394663 green."
 ---
 
 ## Goal

@@ -2,7 +2,7 @@
 id: VPD-1787497584429255
 title: Make host registry persistence atomic
 kind: bug
-status: review
+status: done
 area: vpnd
 priority: medium
 risk: standard
@@ -15,6 +15,9 @@ created: 2026-08-23
 updated: 2026-09-08
 spec_reason: regression-tested-single-module
 related_tasks: []
+closed_at: "2026-09-08T16:59:15Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Atomic temp+rename registry persistence with exclusive 0600 temp files merged as c82a41c1b8784b01f58ff57ea035ef6e9f7904d0 via PR #205; registry_roundtrip.rs covers concurrent writers, torn-read readers, mode 0600, corrupt-file load errors and temp-file cleanup. Exact-main ci run 34249394952 and codeql run 34249394663 green."
 ---
 
 ## Goal
