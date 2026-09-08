@@ -2,7 +2,7 @@
 id: VPD-1787497584287174
 title: Fix update-check version comparison and add network timeout
 kind: bug
-status: review
+status: done
 area: vpnd
 priority: medium
 risk: standard
@@ -15,6 +15,9 @@ created: 2026-08-23
 updated: 2026-09-08
 spec_reason: regression-tested-single-module
 related_tasks: []
+closed_at: "2026-09-08T16:59:15Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Version ordering plus both release-train tag schemes and explicit connect/request timeouts merged as c82a41c1b8784b01f58ff57ea035ef6e9f7904d0 via PR #205; unit tests pin newer, older, equal, cross-train, prerelease, unparseable and stalled-connection cases. Exact-main ci run 34249394952 and codeql run 34249394663 green."
 ---
 
 ## Goal
