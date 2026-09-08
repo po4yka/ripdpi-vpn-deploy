@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "All six execution steps re-audited against the tree: dead security_controls keys removed from all.yml and vpn-prod-hardened.yml, node_manifest crowdsec rewired to intrusion_prevention.crowdsec.enabled, os-maintenance test asserts package_updates.automatic_reboot, AGENTS.md lists every role and points the Xray pin at the SOPS secret, PROVIDER-NOTES documents the UpCloud zone allowlist plus ssh_port/public_listeners, Vultr tfvars examples on Debian 13 os_id 2284; no stubs or placeholders found. remote CI observed green on the pushed final SHA fafb9cf3ff1366f6e657e6ed67e753562fef89ad (PR #86, 57 check runs: 56 success + 1 neutral Trivy config discovery, aggregate 'required checks' success), merged to main as bbb2f4189f4caf28714326b3cfbebe2716fcfdf0.",
+  "execution_sha256": "140ed77650e3361919857ae24a7fb207f84dc2fe44f3babbd3e89db5de2b57e8",
+  "issue_sha256": "64b856c866f3fdcaa76650299eab0dc12f706c922cdd27455882622bfef53d5f",
+  "outcome": "done",
+  "prepared_at": "2026-09-08T08:51:37Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "DOC-1787463115965497"
+}
