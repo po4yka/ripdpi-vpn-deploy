@@ -2551,6 +2551,26 @@ class TaskctlHistoryTest(TaskctlFixture):
 
         taskctl.validate_deleted_history(self.root, base)
 
+    def test_purge_rejects_terminal_transition_after_review_policy_downgrade(self) -> None:
+        target = self.add_simple_task(status="doing")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        self.commit_all("add task after review policy activation")
+        self.write_project_config(committed_review_policy=0)
+        self.prepare_simple_terminal(target)
+        self.write_board()
+        self.commit_all("downgrade policy and bypass review")
+        self.write_project_config(committed_review_policy=1)
+        self.commit_all("restore review policy")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "committed_review_policy cannot downgrade after activation",
+        ):
+            taskctl.command_close_purge(
+                argparse.Namespace(root=self.root, query="CIC-1786234567890001")
+            )
+
     def test_purge_rejects_dirty_terminal_artifacts_with_rewritten_receipt(self) -> None:
         target = self.add_simple_task(status="review")
         self.write_board()

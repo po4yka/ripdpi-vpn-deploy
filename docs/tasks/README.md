@@ -96,9 +96,10 @@ The repository project contract activates transition auditing with
 `evidence_transfer_policy: 1`; an omitted or zero value exists only so history
 before activation remains valid, and the activation transition is checked.
 The companion `committed_review_policy: 1` field activates the committed
-`review` prerequisite for `done` transitions. Historical configs without that
-field remain policy version 0, so a terminal transition is judged by the
-contract committed at that exact revision rather than by today's config.
+`review` prerequisite for `done` transitions. Activation is monotonic along a
+terminal revision's first-parent config ancestry: historical lineages with no
+activation remain version 0, while removing or lowering the field after
+version 1 is rejected rather than disabling the rule.
 It does not relax authentication, authorization,
 secret-handling, rollback, destructive-action confirmation, fail-closed input
 validation or the distinction between local, remote CI, dry-run, staging, live,

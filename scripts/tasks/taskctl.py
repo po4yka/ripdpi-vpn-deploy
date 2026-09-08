@@ -2443,6 +2443,13 @@ def resolve_terminal_task_from_index(
 
     with tempfile.TemporaryDirectory(prefix="taskctl-federation-history-") as directory:
         scratch = Path(directory)
+        config_cache: dict[str, ProjectConfig] = {}
+
+        def config_at(ref: str) -> ProjectConfig:
+            if ref not in config_cache:
+                config_cache[ref] = historical_project_config(root, ref, scratch)
+            return config_cache[ref]
+
         timeline = [
             (revision, by_revision[revision].get(task_id)) for revision in revisions
         ]
@@ -2486,7 +2493,7 @@ def resolve_terminal_task_from_index(
         deletion = timeline[deletion_index][0]
         final_ref, final_snapshot = timeline[deletion_index - 1]
         assert final_snapshot is not None
-        historical_config = historical_project_config(root, final_ref, scratch)
+        historical_config = config_at(final_ref)
         if (
             historical_config.project != config.project
             or historical_config.federation_contract != config.federation_contract
@@ -2510,9 +2517,7 @@ def resolve_terminal_task_from_index(
         incarnation = timeline[last_absent + 1 : deletion_index]
         validate_historical_incarnation(
             incarnation,
-            config_at=lambda revision: historical_project_config(
-                root, revision, scratch
-            ),
+            config_at=config_at,
         )
         previous_status: str | None = None
         terminal_transition: str | None = None
@@ -2530,10 +2535,11 @@ def resolve_terminal_task_from_index(
         initial_strict_terminal = (
             terminal_index == 0 and incarnation[0][0] == history_index.strict_start
         )
-        terminal_config = historical_project_config(root, terminal_transition, scratch)
         invalid_done_transition = (
             outcome == "done"
-            and terminal_config.committed_review_policy >= 1
+            and committed_review_policy_active(
+                root, terminal_transition, config_at=config_at
+            )
             and previous_status != "review"
         )
         invalid_dropped_transition = (
@@ -3096,6 +3102,40 @@ def historical_project_config(root: Path, ref: str, scratch: Path) -> ProjectCon
     return parse_project_config(raw, path)
 
 
+def committed_review_policy_active(
+    root: Path,
+    ref: str,
+    *,
+    config_at: Callable[[str], ProjectConfig],
+) -> bool:
+    history = run_command(
+        (
+            "git",
+            "log",
+            "--first-parent",
+            "--reverse",
+            "--format=%H",
+            ref,
+            "--",
+            str(PROJECT_CONFIG_PATH),
+        ),
+        root=root,
+    )
+    revisions = list(filter(None, (history.stdout or "").splitlines()))
+    if history.returncode != 0 or not revisions:
+        fail(f"cannot inspect committed-review policy history at {ref}")
+    active = False
+    for revision in revisions:
+        policy = config_at(revision).committed_review_policy
+        if active and policy < 1:
+            fail(
+                f"{PROJECT_CONFIG_PATH} at {revision}: "
+                "committed_review_policy cannot downgrade after activation"
+            )
+        active = active or policy >= 1
+    return active
+
+
 def validate_historical_incarnation(
     incarnation: Sequence[tuple[str, HistoricalTaskSnapshot | None]],
     *,
@@ -3287,10 +3327,11 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 assert snapshot is not None
                 if snapshot.document.values.get("status") != outcome:
                     fail(f"{relative}: task transitioned out of terminal state")
-            terminal_config = config_at(terminal_transition_ref)
             if (
                 outcome == "done"
-                and terminal_config.committed_review_policy >= 1
+                and committed_review_policy_active(
+                    root, terminal_transition_ref, config_at=config_at
+                )
                 and prior_status != "review"
                 and terminal_transition_ref != base
             ):
