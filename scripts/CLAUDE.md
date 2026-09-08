@@ -22,7 +22,9 @@ committed in `review` before preparing a `done` snapshot, batch history reads,
 and never substitute current worktree specs or mutable archive discovery for
 the immutable transfer revision. Evidence-transfer history starts only when a
 snapshot itself requires OpenSpec; retain every later required snapshot across
-task-mode or change-name transitions.
+task-mode or change-name transitions. Drop receipts bind the complete preserved
+`DROPPED:` record set: live and historical terminal validation both reject
+phantom, missing or duplicate step IDs before deletion history is accepted.
 
 **Observability lifecycle shares one exact-host controller** — its public Make
 verbs remain distinct, while one bounded Python controller centralizes private

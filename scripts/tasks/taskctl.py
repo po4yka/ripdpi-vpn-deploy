@@ -1316,6 +1316,10 @@ def _load_state(
                 fail(
                     f"{lifecycle_receipt_path(root, document, path, 'drop')}: invalid dropped_step_ids"
                 )
+            if len(set(raw_dropped_ids)) != len(raw_dropped_ids):
+                fail(
+                    f"{lifecycle_receipt_path(root, document, path, 'drop')}: duplicate dropped_step_ids"
+                )
             dropped_step_ids = set(raw_dropped_ids)
             for dropped_step_id in dropped_step_ids:
                 prefix = ID_RE.fullmatch(dropped_step_id).group(1)  # type: ignore[union-attr]
@@ -1330,8 +1334,12 @@ def _load_state(
                 r"(?m)^- ([A-Z][A-Z0-9]*-\d{16}) DROPPED: ",
                 path.read_text(encoding="utf-8"),
             )
+            if len(set(preserved_ids)) != len(preserved_ids):
+                fail(f"{document.path}: duplicate dropped execution records")
             if sorted(raw_dropped_ids) != sorted(preserved_ids):
-                fail(f"{document.path}: dropped receipt IDs do not match execution records")
+                fail(
+                    f"{document.path}: dropped receipt IDs do not match execution records"
+                )
         if not steps and document.values["status"] != "dropped" and not authoring:
             fail(f"{path}: no mdtask execution steps")
         for step in steps:
@@ -2205,6 +2213,16 @@ def validate_terminal_snapshot(
             )
         ):
             fail(f"{relative}: invalid drop receipt in terminal commit")
+        if len(set(dropped_ids)) != len(dropped_ids):
+            fail(f"{relative}: duplicate dropped step IDs in drop receipt")
+        preserved_ids = re.findall(
+            r"(?m)^- ([A-Z][A-Z0-9]*-\d{16}) DROPPED: ",
+            execution_text,
+        )
+        if len(set(preserved_ids)) != len(preserved_ids):
+            fail(f"{relative}: duplicate dropped execution records")
+        if sorted(dropped_ids) != sorted(preserved_ids):
+            fail(f"{relative}: dropped receipt IDs do not match execution records")
 
     if document.values["spec_mode"] == "required":
         change = document.values["openspec_change"]
