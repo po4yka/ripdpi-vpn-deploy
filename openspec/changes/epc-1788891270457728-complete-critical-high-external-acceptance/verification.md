@@ -7,11 +7,11 @@ local_evidence: Exact protected-main source b5682b9a8b0c30515a1e2576ac4ab385fb29
 remote_ci: passed
 remote_ci_evidence: Exact post-merge source b5682b9a8b0c30515a1e2576ac4ab385fb29d077 passed push CI run 34263738849 with all 75 jobs successful, CodeQL run 34263737976, Scorecard run 34263738091, and release-please run 34263738004.
 dry_run: blocked
-dry_run_evidence: Three-host generated inventory plus encrypted production secrets and a private age key are available and no-output SOPS decryption passed. The canonical pre-deploy secret and certificate gate passed and its plaintext was removed. The required mode-0600 exact-alias SSH-context snapshot is absent, the Tailnet backend is Stopped with the local node offline, and no dry-run was started.
+dry_run_evidence: Three-host generated inventory plus encrypted production secrets and a private age key are available. The canonical secret, certificate, and plaintext-removal gate passed. Tailscale was restored to Running with the local node online, but passive inspection returned unknown command-failed for all three exact targets and all six public or management configured-SSH-port reachability checks timed out. Owner-only evidence reports have SHA-256 62c3679d00f7cac64e01337d76b02803d0a9ae41ba177b5d21f7db351860e4c7 and 6d1e796e6f9711d7739611624411aeb61b37e248376bd4edcea1c8df599a5563. Strict SSH contexts are absent and no Ansible dry-run was started.
 staging: blocked
 staging_evidence: No provider credential mode is present and no current provider account binding, owner-approved cost ceiling or expiry, unique staging identity, or cleanup reservation exists. No provider read or resource creation was attempted.
 live: blocked
-live_evidence: The required strict SSH-context and promotion-config snapshots are absent and the Tailnet backend is Stopped with the local node offline. No host or network mutation was attempted.
+live_evidence: All three exact fleet targets time out on both public and management SSH transports, strict SSH-context and promotion-config snapshots are absent, and passive inspection returned no observed node report. No host or network mutation was attempted.
 client: blocked
 client_evidence: No current signed RIPDPI artifact or invocation-bound signer or relay handoff is available. Prior source, fixture, and server evidence cannot satisfy current-client four-transport or recurring AmneziaWG acceptance.
 artifact: blocked
@@ -27,8 +27,8 @@ artifact_evidence: No authenticated primary or independent alert-delivery capabi
 | REQ-EPC-1788891270457728-001 | EPC-1788891640190305 | Exact protected-main source `b5682b9a` and deployable digest `5e2512c8` passed push CI 75/75, CodeQL, and Scorecard | passed |
 | REQ-EPC-1788891270457728-002 | EPC-1788891643660976 | Maintain separate category states and reject closure while any required category lacks scope-matching evidence | pending |
 | REQ-EPC-1788891270457728-003 | EPC-1788891640866927 | Guarded staging manifest, account and state binding, approved cost and expiry, exercised node, and post-destroy provider absence | blocked: provider capability and authorization not verified |
-| REQ-EPC-1788891270457728-004 | EPC-1788891641535013 | Canonical precheck, fleet dry-run, serial convergence, verify, security-verify, and source-drift outcomes | blocked: strict SSH contexts and online management reachability unavailable |
-| REQ-EPC-1788891270457728-005 | EPC-1788891641535013 | Isolated custom-listener rehearsal, recovery path, listener and firewall parity, and unchanged VPN paths before promotion | blocked: isolated staging and SSH capabilities unavailable |
+| REQ-EPC-1788891270457728-004 | EPC-1788891641535013 | Canonical precheck, fleet dry-run, serial convergence, verify, security-verify, and source-drift outcomes | blocked: all three public and management SSH transports time out and strict contexts are unavailable |
+| REQ-EPC-1788891270457728-005 | EPC-1788891641535013 | Isolated custom-listener rehearsal, recovery path, listener and firewall parity, and unchanged VPN paths before promotion | blocked: isolated staging unavailable and all fleet SSH transports time out |
 | REQ-EPC-1788891270457728-006 | EPC-1788891642225067 | Current signed artifact and independent authenticated REALITY, XHTTP, Hysteria2, and AmneziaWG traffic observations | blocked: current client and signer or relay handoff unavailable |
 | REQ-EPC-1788891270457728-007 | EPC-1788891642225067 | Fresh recurring nonce, revision, source, artifact, traffic, recovery, and cleanup evidence with replay negatives | blocked: current client and disposable executor inputs unavailable |
 | REQ-EPC-1788891270457728-008 | EPC-1788891642969936 | Fresh expected-target metrics plus controlled primary and independent alert firing, recovery, rotation, rollback, and cutover | blocked: alert-delivery capability not verified |
