@@ -712,10 +712,35 @@ class TaskctlContractTest(TaskctlFixture):
                 receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
                 with self.assertRaisesRegex(taskctl.ContractError, "do not match execution"):
                     taskctl.load_state(self.root)
-        receipt["dropped_step_ids"] = original_ids
+        receipt["dropped_step_ids"] = list(original_ids)
         receipt["dropped_step_ids"].append("UNKNOWN-1786234567890104")
         (execution.parent / ".taskctl-drop.json").write_text(json.dumps(receipt), encoding="utf-8")
         with self.assertRaisesRegex(taskctl.ContractError, "not a configured area"):
+            taskctl.load_state(self.root)
+
+        receipt["dropped_step_ids"] = original_ids + original_ids[:1]
+        receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "duplicate dropped_step_ids"
+        ):
+            taskctl.load_state(self.root)
+
+        receipt["dropped_step_ids"] = original_ids
+        receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+        tasks_text = execution.read_text(encoding="utf-8")
+        dropped_line = next(
+            line for line in tasks_text.splitlines() if " DROPPED: " in line
+        )
+        execution.write_text(tasks_text + f"{dropped_line}\n", encoding="utf-8")
+        close_path = execution.parent / ".taskctl-close.json"
+        close_receipt = json.loads(close_path.read_text(encoding="utf-8"))
+        close_receipt["execution_sha256"] = hashlib.sha256(
+            execution.read_bytes()
+        ).hexdigest()
+        close_path.write_text(json.dumps(close_receipt), encoding="utf-8")
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "duplicate dropped execution records"
+        ):
             taskctl.load_state(self.root)
 
     def test_new_simple_task_uses_global_allocator_and_execution_contract(self) -> None:
@@ -1169,6 +1194,104 @@ class TaskctlHistoryTest(TaskctlFixture):
         self.commit_all("purge task")
 
         taskctl.validate_deleted_history(self.root, base)
+
+    def prepare_dropped_terminal(self, task_id: str = "CIC-1786234567890001") -> Path:
+        path = self.root / "docs/tasks/issues" / f"{task_id.casefold()}.md"
+        self.assertEqual(
+            0,
+            taskctl.command_close_prepare(
+                argparse.Namespace(
+                    root=self.root,
+                    query=task_id,
+                    outcome="dropped",
+                    reason="Owner cancelled the capability.",
+                    evidence="Cancellation decision recorded.",
+                )
+            ),
+        )
+        return path
+
+    def purge_task_files(self, path: Path, work: Path, *, dropped: bool) -> None:
+        path.unlink()
+        work.unlink()
+        work.with_suffix(".close.json").unlink()
+        if dropped:
+            work.with_suffix(".drop.json").unlink()
+
+    def test_purged_dropped_task_history_validates(self) -> None:
+        path = self.add_simple_task(status="review")
+        self.add_simple_task(task_id="CIC-1786234567890005")
+        self.write_board()
+        base = self.commit_all("add reviewed tasks")
+        self.prepare_dropped_terminal()
+        self.write_board()
+        self.commit_all("prepare dropped terminal state")
+        work = self.root / "docs/tasks/work/CIC-1786234567890001.md"
+        self.purge_task_files(path, work, dropped=True)
+        self.write_board()
+        self.commit_all("purge dropped task")
+
+        taskctl.validate_deleted_history(self.root, base)
+
+    def test_purged_drop_receipt_with_phantom_id_is_rejected(self) -> None:
+        path = self.add_simple_task(status="review")
+        self.write_board()
+        base = self.commit_all("add reviewed task")
+        self.prepare_dropped_terminal()
+        self.write_board()
+        self.commit_all("prepare dropped terminal state")
+        work = self.root / "docs/tasks/work/CIC-1786234567890001.md"
+        drop_receipt = json.loads(
+            work.with_suffix(".drop.json").read_text(encoding="utf-8")
+        )
+        drop_receipt["dropped_step_ids"].append("CIC-1786234567890104")
+        work.with_suffix(".drop.json").write_text(
+            json.dumps(drop_receipt) + "\n", encoding="utf-8"
+        )
+        self.commit_all("forge terminal state with phantom drop ID")
+        self.purge_task_files(path, work, dropped=True)
+        self.commit_all("purge forged dropped task")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "dropped receipt IDs do not match execution records"
+        ):
+            taskctl.validate_deleted_history(self.root, base)
+
+    def test_purged_drop_receipt_with_duplicate_ids_is_rejected(self) -> None:
+        path = self.add_simple_task(status="review")
+        self.write_board()
+        base = self.commit_all("add reviewed task")
+        self.prepare_dropped_terminal()
+        self.write_board()
+        self.commit_all("prepare dropped terminal state")
+        work = self.root / "docs/tasks/work/CIC-1786234567890001.md"
+        text = work.read_text(encoding="utf-8")
+        dropped_line = next(line for line in text.splitlines() if " DROPPED: " in line)
+        work.write_text(text + f"{dropped_line}\n", encoding="utf-8")
+        close_receipt = json.loads(
+            work.with_suffix(".close.json").read_text(encoding="utf-8")
+        )
+        close_receipt["execution_sha256"] = hashlib.sha256(
+            work.read_bytes()
+        ).hexdigest()
+        work.with_suffix(".close.json").write_text(
+            json.dumps(close_receipt) + "\n", encoding="utf-8"
+        )
+        drop_receipt = json.loads(
+            work.with_suffix(".drop.json").read_text(encoding="utf-8")
+        )
+        drop_receipt["dropped_step_ids"] = drop_receipt["dropped_step_ids"] * 2
+        work.with_suffix(".drop.json").write_text(
+            json.dumps(drop_receipt) + "\n", encoding="utf-8"
+        )
+        self.commit_all("forge terminal state with duplicated drop records")
+        self.purge_task_files(path, work, dropped=True)
+        self.commit_all("purge duplicated dropped task")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "duplicate dropped step IDs in drop receipt"
+        ):
+            taskctl.validate_deleted_history(self.root, base)
 
     def test_done_close_requires_committed_review_snapshot(self) -> None:
         path = self.add_simple_task(status="doing")
