@@ -10,8 +10,8 @@ One choke point validates every make variable value; nothing that can execute or
 
 ## Execution
 
-- [ ] SEC-1787497526525445 Implement the per-key allowlist validator in the make runner and wire it into target_with with abort-before-spawn errors #bug !high @item:SEC-1787497526094023
-- [ ] SEC-1787497526527350 Add acceptance/rejection table tests per key (CLIENT, HOST, TARGET_ID, MATRIX_CONFIG, PLAN, ENV, PROVIDER) and audit each call site for the right key class #bug !high @item:SEC-1787497526094023
+- [x] SEC-1787497526525445 Implement the per-key allowlist validator in the make runner and wire it into target_with with abort-before-spawn errors #bug !high @item:SEC-1787497526094023
+- [x] SEC-1787497526527350 Add acceptance/rejection table tests per key (CLIENT, HOST, TARGET_ID, MATRIX_CONFIG, PLAN, ENV, PROVIDER) and audit each call site for the right key class #bug !high @item:SEC-1787497526094023
 
 ## Verification
 

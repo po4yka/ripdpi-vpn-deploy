@@ -2,7 +2,7 @@
 id: SEC-1787497526094023
 title: Validate make variable values against make expansion metacharacters
 kind: bug
-status: backlog
+status: review
 area: security
 priority: medium
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1787497526094023-vpnd-make-variable-hardening
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-09-08
 related_tasks: []
 ---
 
