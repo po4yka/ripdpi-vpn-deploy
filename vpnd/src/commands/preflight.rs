@@ -6,26 +6,26 @@ use crate::runner::{make, Cmd};
 
 /// Pre-deploy guards in execution order; `check-certs` is skippable because
 /// cert renewal is an operator decision, never an accident.
-fn required_steps(ctx: &Context, skip_certs: bool) -> Vec<Cmd> {
+fn required_steps(ctx: &Context, skip_certs: bool) -> Result<Vec<Cmd>> {
     let mut steps: Vec<Cmd> = vec![
-        make::target(ctx, "validate-secrets"),
-        make::target(ctx, "spot-check-secrets"),
-        make::target(ctx, "audit-permissions"),
+        make::target(ctx, "validate-secrets")?,
+        make::target(ctx, "spot-check-secrets")?,
+        make::target(ctx, "audit-permissions")?,
     ];
     if !skip_certs {
-        steps.push(make::target(ctx, "check-certs"));
+        steps.push(make::target(ctx, "check-certs")?);
     }
-    steps
+    Ok(steps)
 }
 
 pub async fn run(ctx: &Context, args: PreflightArgs) -> Result<()> {
     // Ensure we have a decrypted secrets file to inspect.
     if !ctx.secrets_file.is_file() {
-        make::target(ctx, "decrypt").run(ctx.explain).await?;
+        make::target(ctx, "decrypt")?.run(ctx.explain).await?;
         ctx.secure_secrets_file()?;
     }
 
-    for cmd in &required_steps(ctx, args.skip_certs) {
+    for cmd in &required_steps(ctx, args.skip_certs)? {
         cmd.run(ctx.explain).await?;
     }
     Ok(())
@@ -57,6 +57,7 @@ mod tests {
     fn guards_run_in_order_and_include_certs_by_default() {
         let ctx = fake_ctx();
         let rendered: Vec<String> = required_steps(&ctx, false)
+            .expect("valid steps")
             .iter()
             .map(|cmd| cmd.explain())
             .collect();
@@ -76,6 +77,7 @@ mod tests {
     fn skip_certs_drops_only_the_cert_check() {
         let ctx = fake_ctx();
         let rendered: Vec<String> = required_steps(&ctx, true)
+            .expect("valid steps")
             .iter()
             .map(|cmd| cmd.explain())
             .collect();

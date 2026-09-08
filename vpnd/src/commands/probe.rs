@@ -22,9 +22,9 @@ pub async fn run(ctx: &Context, args: ProbeArgs) -> Result<()> {
     let mut steps: Vec<Cmd> = Vec::new();
 
     if matches!(args.profile, Profile::P0 | Profile::All) {
-        steps.push(make::target(ctx, "validate-target"));
-        steps.push(make::target(ctx, "probing-summary"));
-        steps.push(make::target(ctx, "tspu-canary"));
+        steps.push(make::target(ctx, "validate-target")?);
+        steps.push(make::target(ctx, "probing-summary")?);
+        steps.push(make::target(ctx, "tspu-canary")?);
     }
     if matches!(args.profile, Profile::P1 | Profile::All) {
         if let Some(host) = &address {
@@ -32,7 +32,7 @@ pub async fn run(ctx: &Context, args: ProbeArgs) -> Result<()> {
                 ctx,
                 "test-tls-policing",
                 &[("HOST", host)],
-            ));
+            )?);
         } else {
             eprintln!(
                 "{} skipping P1 TLS policing test — needs --host",
@@ -41,8 +41,8 @@ pub async fn run(ctx: &Context, args: ProbeArgs) -> Result<()> {
         }
     }
     if matches!(args.profile, Profile::P2 | Profile::All) {
-        steps.push(make::target(ctx, "burn-check"));
-        steps.push(make::target(ctx, "asn-drift"));
+        steps.push(make::target(ctx, "burn-check")?);
+        steps.push(make::target(ctx, "asn-drift")?);
     }
 
     for cmd in &steps {

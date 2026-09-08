@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
 use crate::cli::{FleetAction, FleetArgs};
 use crate::config::Context;
@@ -10,8 +10,14 @@ fn rotation_target(
     plan: &std::path::Path,
     resume: bool,
     dry_run: bool,
-) -> crate::runner::Cmd {
-    let plan_str = plan.to_string_lossy().to_string();
+) -> Result<crate::runner::Cmd> {
+    // PLAN is a path-class make variable: canonicalize first so relative
+    // operator input lands on the absolute canonical form the validator
+    // requires and no traversal survives into the value.
+    let plan = plan
+        .canonicalize()
+        .context("resolving fleet rotation plan")?;
+    let plan_str = plan.display().to_string();
     let mut kvs = vec![("PLAN", plan_str.as_str())];
     if resume {
         kvs.push(("RESUME", "1"));
@@ -25,19 +31,19 @@ fn rotation_target(
 pub async fn run(ctx: &Context, args: FleetArgs) -> Result<()> {
     match args.action {
         FleetAction::Status => {
-            make::target(ctx, "fleet-status").run(ctx.explain).await?;
+            make::target(ctx, "fleet-status")?.run(ctx.explain).await?;
         }
         FleetAction::Rotate {
             plan,
             resume,
             dry_run,
         } => {
-            rotation_target(ctx, &plan, resume, dry_run)
+            rotation_target(ctx, &plan, resume, dry_run)?
                 .run(ctx.explain)
                 .await?;
         }
         FleetAction::Drift => {
-            make::target(ctx, "drift-since-tag")
+            make::target(ctx, "drift-since-tag")?
                 .run(ctx.explain)
                 .await?;
         }
@@ -49,7 +55,6 @@ pub async fn run(ctx: &Context, args: FleetArgs) -> Result<()> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     fn fake_ctx() -> Context {
         use std::path::PathBuf;
@@ -71,14 +76,26 @@ mod tests {
     #[test]
     fn rotate_flags_map_to_make_kvs() {
         let ctx = fake_ctx();
-        let plain = rotation_target(&ctx, Path::new("/p/fleet.yaml"), false, false).explain();
-        assert!(plain.contains("PLAN=/p/fleet.yaml"), "{plain}");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let plan = dir.path().join("fleet.yaml");
+        std::fs::write(&plan, "").expect("write plan");
+        let canonical = plan.canonicalize().expect("canonical plan");
+
+        let plain = rotation_target(&ctx, &plan, false, false)
+            .expect("valid plan")
+            .explain();
+        assert!(
+            plain.contains(&format!("PLAN={}", canonical.display())),
+            "{plain}"
+        );
         assert!(
             !plain.contains("RESUME=") && !plain.contains("DRY_RUN="),
             "{plain}"
         );
 
-        let full = rotation_target(&ctx, Path::new("/p/fleet.yaml"), true, true).explain();
+        let full = rotation_target(&ctx, &plan, true, true)
+            .expect("valid plan")
+            .explain();
         assert!(full.contains("RESUME=1"), "{full}");
         assert!(full.contains("DRY_RUN=1"), "{full}");
     }

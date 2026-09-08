@@ -50,10 +50,10 @@ pub async fn run(ctx: &Context, args: ReconvergeArgs) -> Result<()> {
     // Reconverge = re-decrypt, re-plan, dry-run, then site.yml (idempotent steps will no-op).
     // Any failure triggers best-effort plaintext-secrets cleanup first.
     let outcome: Result<()> = async {
-        make::target(ctx, "decrypt").run(ctx.explain).await?;
+        make::target(ctx, "decrypt")?.run(ctx.explain).await?;
         ctx.secure_secrets_file()?;
-        make::target(ctx, "init").run(ctx.explain).await?;
-        make::target(ctx, "plan").run(ctx.explain).await?;
+        make::target(ctx, "init")?.run(ctx.explain).await?;
+        make::target(ctx, "plan")?.run(ctx.explain).await?;
         let dry_run = ansible::dry_run(ctx).arg("--limit").arg(&limit);
         dry_run.run(ctx.explain).await?;
 

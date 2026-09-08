@@ -204,6 +204,16 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
         .canonicalize()
         .with_context(|| format!("resolving {}", requested.display()))?;
     let config = load_config(&config_path)?;
+
+    // REQ-MAKE-KV-CHARSET: these config-derived values reach make
+    // command-line assignments, so validate them once here; a rejected
+    // value aborts the subcommand before the sweep — or its --explain
+    // rendering — starts. Protocol and control-verdict names are static
+    // enum names that always satisfy the identifier charset.
+    make::validate_kv("MATRIX_CONFIG", &config_path.display().to_string())?;
+    for target in &config.targets {
+        make::validate_kv("TARGET_ID", &target.id)?;
+    }
     let interval = Duration::from_secs(
         args.poll_interval_seconds
             .or(config.poll_interval_seconds)
@@ -218,7 +228,7 @@ pub async fn run(ctx: &Context, args: ProbeMatrixArgs) -> Result<()> {
         .checked_add(duration)
         .context("duration exceeds the monotonic clock range")?;
     if ctx.explain {
-        explain(ctx, &config, duration, interval, &config_path);
+        explain(ctx, &config, duration, interval, &config_path)?;
         return Ok(());
     }
 
@@ -592,15 +602,25 @@ async fn run_control(
     timeout: Duration,
 ) -> ControlResult {
     let path = path.to_string_lossy();
-    let command = make::target_with(ctx, "probe-matrix-control", &[("MATRIX_CONFIG", &path)])
-        .capture_policy(CapturePolicy::OwnedProcessGroup);
-    let probe = match tokio::time::timeout(timeout, command.capture(false)).await {
-        Ok(result) => capture(result),
-        Err(_) => ProbeOutput {
+    // Values are validated before the sweep starts; this arm only keeps the
+    // constructor's fail-closed contract honest mid-flight.
+    let probe = match make::target_with(ctx, "probe-matrix-control", &[("MATRIX_CONFIG", &path)]) {
+        Err(err) => ProbeOutput {
             verdict: Verdict::Unknown,
             rtt_ms: None,
-            error_kind: Some("control_timeout".to_string()),
+            error_kind: Some(format!("make_validation_failed: {err}")),
         },
+        Ok(command) => {
+            let command = command.capture_policy(CapturePolicy::OwnedProcessGroup);
+            match tokio::time::timeout(timeout, command.capture(false)).await {
+                Ok(result) => capture(result),
+                Err(_) => ProbeOutput {
+                    verdict: Verdict::Unknown,
+                    rtt_ms: None,
+                    error_kind: Some("control_timeout".to_string()),
+                },
+            }
+        }
     };
     ControlResult {
         tick,
@@ -623,7 +643,7 @@ async fn run_cell(
     control: Verdict,
 ) -> CellResult {
     let path = path.to_string_lossy();
-    let command = make::target_with(
+    let probe = match make::target_with(
         ctx,
         "probe-matrix-cell",
         &[
@@ -632,9 +652,19 @@ async fn run_cell(
             ("PROTOCOL", protocol.name()),
             ("CONTROL_VERDICT", control.name()),
         ],
-    )
-    .capture_policy(CapturePolicy::OwnedProcessGroup);
-    let probe = capture(command.capture(false).await);
+    ) {
+        Err(_) => ProbeOutput {
+            verdict: Verdict::Unknown,
+            rtt_ms: None,
+            error_kind: Some("make_validation_failed".to_string()),
+        },
+        Ok(command) => capture(
+            command
+                .capture_policy(CapturePolicy::OwnedProcessGroup)
+                .capture(false)
+                .await,
+        ),
+    };
     CellResult {
         tick,
         timestamp_unix_ms: unix_ms(now),
@@ -1030,7 +1060,7 @@ fn explain(
     duration: Duration,
     interval: Duration,
     path: &Path,
-) {
+) -> Result<()> {
     let ticks = duration.as_secs().div_ceil(interval.as_secs());
     println!("# vpnd probe-matrix would orchestrate:");
     println!("  vantage: {}", config.vantage);
@@ -1047,18 +1077,21 @@ fn explain(
             .collect::<Vec<_>>()
             .join(", ")
     );
+    // Placeholders stay inside the identifier charset so the rendered
+    // invocation has exactly the shape a validated sweep would spawn.
     let path = path.to_string_lossy();
     let command = make::target_with(
         ctx,
         "probe-matrix-cell",
         &[
             ("MATRIX_CONFIG", &path),
-            ("TARGET_ID", "<target-id>"),
-            ("PROTOCOL", "<protocol>"),
-            ("CONTROL_VERDICT", "<verdict>"),
+            ("TARGET_ID", "target-id"),
+            ("PROTOCOL", "protocol"),
+            ("CONTROL_VERDICT", "verdict"),
         ],
-    );
+    )?;
     println!("  {}", command.explain());
+    Ok(())
 }
 
 fn ms(duration: Duration) -> u64 {

@@ -18,12 +18,12 @@ pub async fn run(ctx: &Context, args: DoctorArgs) -> Result<()> {
     }
 
     let steps: Vec<Cmd> = vec![
-        make::target(ctx, "fleet-status"),
-        make::target(ctx, "burn-check"),
-        make::target(ctx, "asn-drift"),
-        make::target(ctx, "check-ip-reputation"),
-        make::target(ctx, "probing-summary"),
-        make::target(ctx, "audit-permissions"),
+        make::target(ctx, "fleet-status")?,
+        make::target(ctx, "burn-check")?,
+        make::target(ctx, "asn-drift")?,
+        make::target(ctx, "check-ip-reputation")?,
+        make::target(ctx, "probing-summary")?,
+        make::target(ctx, "audit-permissions")?,
     ];
 
     let mut report = String::new();
@@ -138,7 +138,8 @@ async fn write_bundle(ctx: &Context, report: &str, out_path: &std::path::Path) -
     ));
 
     // 5. audit-log via make (already captured in report; include raw)
-    let audit_cmd = make::target(ctx, "audit-log").capture_policy(CapturePolicy::OwnedProcessGroup);
+    let audit_cmd =
+        make::target(ctx, "audit-log")?.capture_policy(CapturePolicy::OwnedProcessGroup);
     let audit_out = audit_cmd
         .capture(false)
         .await

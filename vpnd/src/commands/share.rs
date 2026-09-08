@@ -59,7 +59,7 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
 
     // Decrypt happens via the Makefile, so SOPS gating and audit-log behavior match operator habit.
     if !ctx.secrets_file.is_file() {
-        make::target(ctx, "decrypt").run(ctx.explain).await?;
+        make::target(ctx, "decrypt")?.run(ctx.explain).await?;
         ctx.secure_secrets_file()?;
     }
 
@@ -111,7 +111,7 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
     let urls = build_sub_urls(&base, &token);
 
     // sing-box bundle from existing script — preserves multi-host + cohort awareness.
-    let singbox = make::target_with(ctx, "emit-singbox", &[("CLIENT", &args.client)])
+    let singbox = make::target_with(ctx, "emit-singbox", &[("CLIENT", &args.client)])?
         .capture(false)
         .await?;
 
