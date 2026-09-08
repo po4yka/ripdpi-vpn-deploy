@@ -14,7 +14,7 @@ openspec_change: epc-1788891270457728-complete-critical-high-external-acceptance
 created: 2026-09-08
 updated: 2026-09-08
 related_tasks: []
-status_detail: Exact protected source b5682b9a passed push CI 75/75, CodeQL and Scorecard; no-write and secret prechecks passed. Blocked on provider credentials and cost approval; all three exact fleet targets time out on both public and management SSH transports and strict SSH contexts are absent; current client handoff, alert delivery, and isolated restore capabilities are unavailable.
+status_detail: Exact source b5682b9a passed push CI 75/75, CodeQL and Scorecard; no-write and secret prechecks passed. Blocked on provider credentials and cost approval; all three exact targets time out on public and management SSH, and zero inventory management identities match the current Tailnet peer set, so current Tailnet membership or inventory must be restored before strict SSH contexts can be captured. Current client handoff, alert delivery, and isolated restore capabilities are also unavailable.
 ---
 
 ## Goal
