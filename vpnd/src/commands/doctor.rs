@@ -1,4 +1,4 @@
-use anyhow::{Context as _, Result};
+use anyhow::{anyhow, Context as _, Result};
 use owo_colors::OwoColorize;
 
 use crate::cli::DoctorArgs;
@@ -26,15 +26,40 @@ pub async fn run(ctx: &Context, args: DoctorArgs) -> Result<()> {
         make::target(ctx, "audit-permissions")?,
     ];
 
+    // A failing step is evidence, not a reason to abort: the loop collects
+    // every step's captured streams, marks failures, and keeps going so a
+    // partial failure yields a complete report instead of nothing.
+    let total = steps.len();
+    let mut failed_steps = 0usize;
     let mut report = String::new();
     for cmd in steps {
         let cmd = cmd.capture_policy(CapturePolicy::OwnedProcessGroup);
-        let out = cmd.capture(ctx.explain).await?;
-        report.push_str(&format!(
-            "### {}\n\n```\n{}\n```\n\n",
-            cmd.redacted_explain(),
-            out.stdout
-        ));
+        let header = cmd.redacted_explain();
+        match cmd.capture_detailed(ctx.explain).await {
+            Ok(out) => {
+                let failed = out.rc != 0;
+                if failed {
+                    failed_steps += 1;
+                }
+                report.push_str(&render_step_section(
+                    &header,
+                    &out.stdout,
+                    &out.stderr,
+                    failed,
+                ));
+            }
+            Err(error) => {
+                // Spawn/IO failure is still a completed observation about
+                // this step; record it and continue with the rest.
+                failed_steps += 1;
+                report.push_str(&render_step_section(
+                    &header,
+                    "",
+                    &format!("(capture failed: {error})"),
+                    true,
+                ));
+            }
+        }
     }
 
     if ctx.explain {
@@ -73,7 +98,33 @@ pub async fn run(ctx: &Context, args: DoctorArgs) -> Result<()> {
             redact_secrets(report, &ctx.secrets_file.to_string_lossy())
         );
     }
+    if failed_steps > 0 {
+        // The report, bundle, and prompt above carry the full evidence; the
+        // nonzero exit tells automation that at least one diagnostic failed.
+        return Err(anyhow!(
+            "{failed_steps} of {total} doctor diagnostic steps failed"
+        ));
+    }
     Ok(())
+}
+
+/// One report section: the redacted invocation, its captured streams, and an
+/// explicit Failed marker so a failing step cannot blend into healthy output.
+fn render_step_section(explain: &str, stdout: &str, stderr: &str, failed: bool) -> String {
+    let mut section = format!("### {explain}\n\n");
+    if failed {
+        section.push_str("**Failed**\n\n");
+    }
+    if !stdout.is_empty() {
+        section.push_str(&format!("```\n{stdout}```\n\n"));
+    }
+    if !stderr.is_empty() {
+        section.push_str(&format!("stderr:\n\n```\n{stderr}```\n\n"));
+    }
+    if stdout.is_empty() && stderr.is_empty() && !failed {
+        section.push_str("```\n(no output)\n```\n\n");
+    }
+    section
 }
 
 fn ai_prompt(ctx: &Context, host: Option<&str>, report: &str, excerpts: &str) -> String {
@@ -106,9 +157,6 @@ propose the smallest safe remediation, and cite which runbook or script applies.
 }
 
 async fn write_bundle(ctx: &Context, report: &str, out_path: &std::path::Path) -> Result<()> {
-    use flate2::{write::GzEncoder, Compression};
-    use tar::Builder;
-
     // Collect all bundle entries as (filename, content) pairs.
     let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
 
@@ -156,27 +204,33 @@ async fn write_bundle(ctx: &Context, report: &str, out_path: &std::path::Path) -
         redact_secrets(report.to_owned(), &secrets_display).into_bytes(),
     ));
 
-    // Build gzip-tar in memory.
-    let gz_buf: Vec<u8> = Vec::new();
-    let enc = GzEncoder::new(gz_buf, Compression::default());
-    let mut tar = Builder::new(enc);
+    // Encoding and the final write are bulk CPU+disk work with no awaits:
+    // run them on the blocking pool so the async worker is never stalled.
+    let out_path = out_path.to_path_buf();
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        use flate2::{write::GzEncoder, Compression};
+        use tar::Builder;
 
-    for (name, data) in &entries {
-        let data = redact_secrets(String::from_utf8_lossy(data).into_owned(), &secrets_display)
-            .into_bytes();
-        let mut header = tar::Header::new_gnu();
-        header.set_size(data.len() as u64);
-        header.set_mode(0o644);
-        header.set_cksum();
-        tar.append_data(&mut header, name, data.as_slice())
-            .with_context(|| format!("tar append {name}"))?;
-    }
-
-    let enc = tar.into_inner().context("tar finish")?;
-    let gz_bytes = enc.finish().context("gzip finish")?;
-
-    std::fs::write(out_path, &gz_bytes)
-        .with_context(|| format!("write bundle to {}", out_path.display()))?;
+        let enc = GzEncoder::new(Vec::new(), Compression::default());
+        let mut tar = Builder::new(enc);
+        for (name, data) in &entries {
+            let data = redact_secrets(String::from_utf8_lossy(data).into_owned(), &secrets_display)
+                .into_bytes();
+            let mut header = tar::Header::new_gnu();
+            header.set_size(data.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            tar.append_data(&mut header, name, data.as_slice())
+                .with_context(|| format!("tar append {name}"))?;
+        }
+        let enc = tar.into_inner().context("tar finish")?;
+        let gz_bytes = enc.finish().context("gzip finish")?;
+        std::fs::write(&out_path, &gz_bytes)
+            .with_context(|| format!("write bundle to {}", out_path.display()))?;
+        Ok(())
+    })
+    .await
+    .map_err(|error| anyhow!("bundle encode task failed: {error}"))??;
 
     Ok(())
 }
@@ -256,4 +310,49 @@ async fn try_copy_to_clipboard(s: &str) -> Result<()> {
     Err(anyhow::anyhow!(
         "no clipboard binary found (tried pbcopy, wl-copy, xclip, xsel)"
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+    use super::render_step_section;
+
+    #[test]
+    fn healthy_section_renders_invocation_and_stdout() {
+        let section = render_step_section("make fleet-status", "all green\n", "", false);
+        assert!(
+            section.starts_with("### make fleet-status\n\n"),
+            "{section}"
+        );
+        assert!(!section.contains("Failed"), "{section}");
+        assert!(section.contains("```\nall green\n```"), "{section}");
+        assert!(!section.contains("stderr:"), "{section}");
+    }
+
+    #[test]
+    fn failed_section_marks_failure_and_keeps_both_streams() {
+        let section = render_step_section(
+            "make burn-check",
+            "partial stdout\n",
+            "IP is burned\n",
+            true,
+        );
+        assert!(section.contains("**Failed**"), "{section}");
+        assert!(section.contains("```\npartial stdout\n```"), "{section}");
+        assert!(
+            section.contains("stderr:\n\n```\nIP is burned\n```"),
+            "{section}"
+        );
+        // Ordering: the failed step's stdout comes before its stderr block.
+        let stdout_pos = section.find("partial stdout").unwrap();
+        let stderr_pos = section.find("IP is burned").unwrap();
+        assert!(stdout_pos < stderr_pos, "{section}");
+    }
+
+    #[test]
+    fn capture_failure_section_records_the_error_without_streams() {
+        let section = render_step_section("make fleet-status", "", "(capture failed: boom)", true);
+        assert!(section.contains("**Failed**"), "{section}");
+        assert!(section.contains("(capture failed: boom)"), "{section}");
+    }
 }

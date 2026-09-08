@@ -2,7 +2,7 @@
 id: VPD-1787497584287174
 title: Fix update-check version comparison and add network timeout
 kind: bug
-status: backlog
+status: review
 area: vpnd
 priority: medium
 risk: standard
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-09-08
 spec_reason: regression-tested-single-module
 related_tasks: []
 ---

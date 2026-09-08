@@ -36,7 +36,8 @@ pub struct Cli {
     #[arg(long, short = 'y', global = true)]
     pub yes: bool,
 
-    /// Emit machine-readable JSON instead of human output (where supported).
+    /// Emit machine-readable JSON instead of human output for supported
+    /// subcommands (host list/show, probe-matrix).
     #[arg(long, global = true)]
     pub json: bool,
 
@@ -141,7 +142,7 @@ pub struct DoctorArgs {
     #[arg(long)]
     pub ai: bool,
     /// Copy AI prompt to the system clipboard (requires --ai).
-    #[arg(long)]
+    #[arg(long, requires = "ai")]
     pub clip: bool,
     /// Pack a diagnostic gzip-tar bundle at this path (orthogonal to --ai).
     #[arg(long)]
@@ -261,4 +262,32 @@ pub struct UpdateArgs {
 pub struct CompletionsArgs {
     /// Shell to generate completions for: bash, zsh, fish, powershell.
     pub shell: String,
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+    use super::*;
+
+    #[test]
+    fn clip_without_ai_is_a_parse_time_error() {
+        let error = Cli::try_parse_from(["vpnd", "doctor", "--clip"]).unwrap_err();
+        let rendered = error.to_string();
+        assert!(
+            rendered.contains("--ai"),
+            "error must name the required flag, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn clip_with_ai_parses_and_carries_both_flags() {
+        let cli = Cli::try_parse_from(["vpnd", "doctor", "--ai", "--clip"]).unwrap();
+        match cli.command {
+            Command::Doctor(args) => {
+                assert!(args.ai);
+                assert!(args.clip);
+            }
+            other => panic!("expected doctor subcommand, got {other:?}"),
+        }
+    }
 }

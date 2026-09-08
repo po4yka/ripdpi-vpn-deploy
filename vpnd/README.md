@@ -29,6 +29,7 @@ vpnd doctor --host prod --ai      # diagnostic bundle as AI-ready prompt
 vpnd probe --profile p0           # profile-aware probing
 vpnd preflight                    # pre-deploy guards
 vpnd host list                    # local host registry
+vpnd host list --json             # machine-readable host list
 vpnd ai-docs [--out DIR]          # emit repo docs as structured markdown for AI context (default: ./ai-docs/)
 ```
 
@@ -41,13 +42,14 @@ targets without trusting the binary blindly.
 
 ## Man page
 
-A man page is generated at build time via `clap_mangen` and written to
-`target/man/vpnd.1`. To install it system-wide:
+Man pages render from the live clap tree (never a hand-maintained copy, so
+the documented surface cannot drift from the parsed surface). The test run
+writes `target/man/vpnd.1` plus one page per subcommand:
 
 ```bash
-cargo build --release
+cargo test --test man_page
 sudo install -m 644 target/man/vpnd.1 /usr/local/share/man/man1/vpnd.1
-man vpnd
+man vpnd            # subcommand pages: vpnd-doctor.1, vpnd-host.1, …
 ```
 
 ## Working directory

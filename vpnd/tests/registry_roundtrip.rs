@@ -82,4 +82,57 @@ fn production_registry_io_roundtrip_and_fail_closed_errors() {
         "an unreadable registry path must not become an empty registry"
     );
     assert!(registry.save().is_err());
+
+    // Atomic persistence: concurrent writers must never leave a torn or
+    // unparsable hosts.toml, a concurrent reader must always observe one
+    // complete file, and no temp files survive completed saves.
+    std::fs::remove_dir(&path).unwrap();
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let reader_stop = stop.clone();
+    let reader = std::thread::spawn(move || {
+        let mut observations = 0usize;
+        while !reader_stop.load(std::sync::atomic::Ordering::Relaxed) {
+            Registry::load().expect("reader saw a torn registry");
+            observations += 1;
+        }
+        observations
+    });
+    let mut writers = Vec::new();
+    for worker in 0..4u32 {
+        writers.push(std::thread::spawn(move || {
+            for round in 0..25u32 {
+                let mut registry = Registry::default();
+                registry.upsert(
+                    "worker",
+                    Host {
+                        env: format!("env-{worker}-{round}"),
+                        provider: "upcloud".into(),
+                        ipv4: None,
+                        ipv6: None,
+                        deployed_with: None,
+                    },
+                );
+                registry.save().unwrap();
+            }
+        }));
+    }
+    for writer in writers {
+        writer.join().unwrap();
+    }
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    let observations = reader.join().unwrap();
+    assert!(observations > 0, "reader must have observed the writes");
+    let settled = Registry::load().unwrap();
+    assert_eq!(settled.hosts.len(), 1, "final file is one complete write");
+    let directory = path.parent().unwrap();
+    let leftovers: Vec<String> = std::fs::read_dir(directory)
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.contains(".tmp."))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "completed saves must not leave temp files: {leftovers:?}"
+    );
 }
