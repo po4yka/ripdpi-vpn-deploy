@@ -22,9 +22,13 @@ pub mod update;
 /// never mask the root cause. Explain mode never executes cleanup, like
 /// every other step.
 pub(crate) async fn finish_with_cleanup(ctx: &Context, outcome: Result<()>) -> Result<()> {
-    let cleanup = crate::runner::make::target(ctx, "clean")
-        .run(ctx.explain)
-        .await;
+    // A validation failure while building the cleanup invocation is a
+    // cleanup error like any other: logged, never masking the root cause.
+    let cleanup = async {
+        let cmd = crate::runner::make::target(ctx, "clean")?;
+        cmd.run(ctx.explain).await
+    }
+    .await;
     match outcome {
         Err(err) => {
             eprintln!(

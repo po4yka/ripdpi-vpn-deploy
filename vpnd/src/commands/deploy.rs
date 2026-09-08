@@ -8,34 +8,34 @@ use crate::wizard::{confirm, section, Summary};
 
 /// Ordered make targets mirroring the Makefile pipeline, so `--explain` is
 /// the README of the deploy flow.
-fn plan_steps(ctx: &Context, args: &DeployArgs) -> Vec<Cmd> {
+fn plan_steps(ctx: &Context, args: &DeployArgs) -> Result<Vec<Cmd>> {
     let mut steps: Vec<Cmd> = vec![
-        make::target(ctx, "check-prereqs"),
-        make::target(ctx, "validate"),
-        make::target(ctx, "decrypt"),
-        make::target(ctx, "init"),
-        make::target(ctx, "plan"),
-        make::target(ctx, "apply"),
-        make::target(ctx, "inventory"),
-        make::target(ctx, "wait"),
+        make::target(ctx, "check-prereqs")?,
+        make::target(ctx, "validate")?,
+        make::target(ctx, "decrypt")?,
+        make::target(ctx, "init")?,
+        make::target(ctx, "plan")?,
+        make::target(ctx, "apply")?,
+        make::target(ctx, "inventory")?,
+        make::target(ctx, "wait")?,
     ];
 
     let deploy_step = if args.skip_precheck {
-        make::target_with(ctx, "deploy", &[("SKIP_PRECHECK", "1")])
+        make::target_with(ctx, "deploy", &[("SKIP_PRECHECK", "1")])?
     } else {
-        make::target(ctx, "deploy")
+        make::target(ctx, "deploy")?
     };
 
     let verify_step = if args.tag_on_success {
-        make::target_with(ctx, "verify", &[("TAG_ON_SUCCESS", "1")])
+        make::target_with(ctx, "verify", &[("TAG_ON_SUCCESS", "1")])?
     } else {
-        make::target(ctx, "verify")
+        make::target(ctx, "verify")?
     };
 
     steps.push(deploy_step);
     steps.push(verify_step);
-    steps.push(make::target(ctx, "smoke-test"));
-    steps
+    steps.push(make::target(ctx, "smoke-test")?);
+    Ok(steps)
 }
 
 fn build_plan_summary(ctx: &Context, args: &DeployArgs) -> Summary {
@@ -73,7 +73,7 @@ pub async fn run(ctx: &Context, args: DeployArgs) -> Result<()> {
 
     // Any step failure triggers best-effort plaintext-secrets cleanup
     // before the original error surfaces.
-    let steps = plan_steps(ctx, &args);
+    let steps = plan_steps(ctx, &args)?;
     let outcome: Result<()> = async {
         for cmd in &steps {
             cmd.run(ctx.explain).await?;
@@ -145,6 +145,7 @@ mod tests {
 
     fn target_names(ctx: &Context, args: &DeployArgs) -> Vec<String> {
         plan_steps(ctx, args)
+            .expect("valid pipeline")
             .iter()
             .map(|cmd| cmd.explain())
             .collect()
