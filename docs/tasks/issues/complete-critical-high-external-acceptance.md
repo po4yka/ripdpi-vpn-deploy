@@ -14,7 +14,7 @@ openspec_change: epc-1788891270457728-complete-critical-high-external-acceptance
 created: 2026-09-08
 updated: 2026-09-08
 related_tasks: []
-status_detail: Exact protected source b5682b9a passed push CI 75/75, CodeQL and Scorecard; no-write preflight completed. Blocked on provider credentials and cost approval, strict SSH contexts and online Tailnet, current client handoff, alert delivery, and isolated restore capabilities.
+status_detail: Exact protected source b5682b9a passed push CI 75/75, CodeQL and Scorecard; no-write and secret prechecks passed. Blocked on provider credentials and cost approval; all three exact fleet targets time out on both public and management SSH transports and strict SSH contexts are absent; current client handoff, alert delivery, and isolated restore capabilities are unavailable.
 ---
 
 ## Goal
