@@ -18,9 +18,11 @@ done
 
 [[ "$EUID" -eq 0 ]] || { echo "installer must run as root" >&2; exit 1; }
 [[ -n "$REPO" ]] || usage
+umask 077
 LOCK_DIR="/run/lock/ripdpi-real-vps-awg-nat"
 install -d -o root -g root -m 0700 "$LOCK_DIR"
 exec 9>"$LOCK_DIR/lane.lock"
+chmod 0600 "$LOCK_DIR/lane.lock"
 flock -n 9 || {
   echo "real-VPS AWG/NAT lane is currently running or being installed" >&2
   exit 75
@@ -32,12 +34,27 @@ source_sha="$(git -C "$REPO" rev-parse --verify 'HEAD^{commit}')"
 [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid source SHA" >&2; exit 1; }
 SOURCE_CONFIG="/etc/ripdpi/real-vps-awg-nat.json"
 INSTALLED_CONFIG="/etc/ripdpi/real-vps-awg-nat-local.json"
+CLIENT_ACCEPTANCE_PUBLIC_KEY="/etc/ripdpi/real-vps-awg-client-acceptance.pub"
+RUNNER="/usr/local/libexec/ripdpi-real-vps-awg-nat"
 [[ -f "$SOURCE_CONFIG" && ! -L "$SOURCE_CONFIG" ]] || {
   echo "/etc/ripdpi/real-vps-awg-nat.json must exist before enabling the timer" >&2
   exit 1
 }
 [[ "$(stat -c '%u:%a' "$SOURCE_CONFIG")" == "0:600" ]] || {
   echo "private runner config must be root-owned mode 0600" >&2
+  exit 1
+}
+[[ -f "$CLIENT_ACCEPTANCE_PUBLIC_KEY" && ! -L "$CLIENT_ACCEPTANCE_PUBLIC_KEY" ]] || {
+  echo "client acceptance verification key must be a regular file" >&2
+  exit 1
+}
+[[ "$(stat -c '%u:%a' "$CLIENT_ACCEPTANCE_PUBLIC_KEY")" == "0:600" ]] || {
+  echo "client acceptance verification key must be root-owned mode 0600" >&2
+  exit 1
+}
+openssl pkey -pubin -in "$CLIENT_ACCEPTANCE_PUBLIC_KEY" -text -noout 2>/dev/null |
+  grep -Fx 'ED25519 Public-Key:' >/dev/null || {
+  echo "client acceptance verification key must be Ed25519" >&2
   exit 1
 }
 
@@ -76,9 +93,51 @@ for index in 0 1 2; do
   validate_root_hook "${hook_sources[$index]}" || { echo "private hook path chain is unsafe" >&2; exit 1; }
   hook_sources[index]="$VALIDATED_ROOT_HOOK"
 done
-rm -f -- \
-  /var/lib/ripdpi-real-vps-awg-nat/evidence/latest.json \
-  /var/lib/ripdpi-real-vps-awg-nat/evidence/.latest.json.tmp
+
+archive_legacy_latest() {
+  local evidence_dir="/var/lib/ripdpi-real-vps-awg-nat/evidence"
+  local latest="$evidence_dir/latest.json" identity digest archive_dir archived
+  [[ -e "$latest" || -L "$latest" ]] || return 0
+  [[ -f "$latest" && ! -L "$latest" ]] || {
+    echo "existing latest evidence is not a regular file" >&2
+    return 1
+  }
+  [[ "$(stat -c '%u:%a:%s' "$latest")" =~ ^0:600:([1-9][0-9]{0,5})$ ]] || {
+    echo "existing latest evidence has unsafe metadata" >&2
+    return 1
+  }
+  identity="$(python3 - "$latest" <<'PY'
+import json
+import pathlib
+import sys
+
+raw = pathlib.Path(sys.argv[1]).read_bytes()
+value = json.loads(raw)
+if (
+    not isinstance(value, dict)
+    or not isinstance(value.get("version"), str)
+    or value.get("classification") != "PASS"
+):
+    raise SystemExit(1)
+print(value["version"] + ":PASS")
+PY
+  )" || return 1
+  if [[ "$identity" == "real_vps_awg_nat_evidence_v4:PASS" ]]; then
+    return 0
+  fi
+  digest="$(sha256sum "$latest" | awk '{print $1}')"
+  [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || return 1
+  archive_dir="$evidence_dir/legacy"
+  archived="$archive_dir/latest-${digest}.json"
+  install -d -o root -g root -m 0700 "$archive_dir"
+  if [[ -e "$archived" || -L "$archived" ]]; then
+    [[ -f "$archived" && ! -L "$archived" ]] || return 1
+    cmp -s "$latest" "$archived" || return 1
+    rm -f -- "$latest"
+  else
+    mv -T -- "$latest" "$archived"
+  fi
+}
 
 source_base="/opt/ripdpi-real-vps-awg-nat"
 source_dir="$source_base/sources/$source_sha"
@@ -117,7 +176,7 @@ mv -Tf -- "$source_base/.current.tmp" "$source_base/current"
 
 install -o root -g root -m 0755 \
   "$source_dir/scripts/real-vps-awg-nat.py" \
-  /usr/local/libexec/ripdpi-real-vps-awg-nat
+  "$RUNNER"
 install -o root -g root -m 0755 \
   "$source_dir/scripts/run-real-vps-awg-nat-local.sh" \
   /usr/local/libexec/ripdpi-real-vps-awg-nat-local
@@ -164,5 +223,17 @@ systemctl daemon-reload
 systemd-analyze verify \
   /etc/systemd/system/ripdpi-real-vps-awg-nat.service \
   /etc/systemd/system/ripdpi-real-vps-awg-nat.timer
+# Only a completely installed generation may version an incompatible prior
+# manifest. Retained v4 evidence must pass the canonical executable semantics
+# before the periodic executor can be enabled.
+systemctl disable --now ripdpi-real-vps-awg-nat.timer
+if ! archive_legacy_latest || ! "$RUNNER" prepare-retained-state \
+  --state-dir /var/lib/ripdpi-real-vps-awg-nat/evidence \
+  --lock-path "$LOCK_DIR/lane.lock" \
+  --lock-fd 9 \
+  --expected-source-sha "$source_sha"; then
+  echo "unable to preserve incompatible prior evidence; timer disabled" >&2
+  exit 1
+fi
 systemctl enable --now ripdpi-real-vps-awg-nat.timer
 echo "installed recurring AWG/NAT lane at source $source_sha"

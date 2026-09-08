@@ -14,3 +14,7 @@ file://
 
 # RFC link rot is upstream's problem
 ^https?://datatracker\.ietf\.org/doc/html/rfc
+
+# release-please compare links point at release tags that are created only
+# when the release PR merges; lychee sees them as 404 until then.
+^https://github\.com/po4yka/ripdpi-vpn-deploy/compare/

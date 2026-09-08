@@ -97,7 +97,21 @@ SPEC_REASONS = frozenset(
 EVIDENCE_CATEGORIES = ("local", "remote_ci", "device", "artifact", "deployment")
 EVIDENCE_STATES = frozenset(("required", "passed", "not_applicable", "blocked"))
 SAFE_OPENSPEC_COMMANDS = frozenset(
-    ("list", "show", "status", "instructions", "templates", "schemas", "schema", "validate", "doctor", "context", "new", "change", "spec")
+    (
+        "list",
+        "show",
+        "status",
+        "instructions",
+        "templates",
+        "schemas",
+        "schema",
+        "validate",
+        "doctor",
+        "context",
+        "new",
+        "change",
+        "spec",
+    )
 )
 ID_RE = re.compile(r"^([A-Z][A-Z0-9]*)-(\d{16})$")
 STEP_RE = re.compile(r"^- \[([ xX])\] ([A-Z][A-Z0-9]*-\d{16})\s+(.+)$")
@@ -197,6 +211,7 @@ class SharedEvidenceMapping:
     category: str
     source_revision: str
 
+
 @dataclass(frozen=True)
 class TerminalHistoryIndex:
     root: Path
@@ -207,6 +222,7 @@ class TerminalHistoryIndex:
     by_revision: dict[str, dict[str, HistoricalTaskSnapshot]]
     merged_lanes: tuple[tuple[str, ...], ...]
     merge_side_parents: dict[str, tuple[str, ...]]
+
 
 @dataclass
 class TerminalHistoryResolver:
@@ -253,7 +269,9 @@ def parse_project_config(raw: Any, path: Path) -> ProjectConfig:
         "openspec_schema",
         "allowed_peers",
     }
-    missing = sorted(required - raw.keys()) if isinstance(raw, dict) else sorted(required)
+    missing = (
+        sorted(required - raw.keys()) if isinstance(raw, dict) else sorted(required)
+    )
     allowed = required | {"evidence_transfer_policy"}
     unknown = sorted(raw.keys() - allowed) if isinstance(raw, dict) else []
     if not isinstance(raw, dict) or missing or unknown:
@@ -285,11 +303,17 @@ def parse_project_config(raw: Any, path: Path) -> ProjectConfig:
         not isinstance(evidence, list)
         or not evidence
         or len(evidence) != len(set(evidence))
-        or not all(isinstance(item, str) and re.fullmatch(r"[a-z][a-z0-9_]*", item) for item in evidence)
+        or not all(
+            isinstance(item, str) and re.fullmatch(r"[a-z][a-z0-9_]*", item)
+            for item in evidence
+        )
     ):
         fail(f"{path}: evidence_categories must be unique snake-case names")
     evidence_transfer_policy = raw.get("evidence_transfer_policy", 0)
-    if type(evidence_transfer_policy) is not int or evidence_transfer_policy not in {0, 1}:
+    if type(evidence_transfer_policy) is not int or evidence_transfer_policy not in {
+        0,
+        1,
+    }:
         fail(f"{path}: evidence_transfer_policy must be 0 or 1")
     openspec_schema = raw["openspec_schema"]
     if not isinstance(openspec_schema, str) or not CHANGE_RE.fullmatch(openspec_schema):
@@ -298,10 +322,14 @@ def parse_project_config(raw: Any, path: Path) -> ProjectConfig:
     if (
         not isinstance(peers, list)
         or len(peers) != len(set(peers))
-        or not all(isinstance(peer, str) and PROJECT_RE.fullmatch(peer) for peer in peers)
+        or not all(
+            isinstance(peer, str) and PROJECT_RE.fullmatch(peer) for peer in peers
+        )
         or project in peers
     ):
-        fail(f"{path}: allowed_peers must contain unique external owner/repository names")
+        fail(
+            f"{path}: allowed_peers must contain unique external owner/repository names"
+        )
     return ProjectConfig(
         schema=raw["schema"],
         federation_contract=raw["federation_contract"],
@@ -329,7 +357,9 @@ def reference_parts(value: str, config: ProjectConfig) -> tuple[str, str]:
         return config.project, value
     match = QUALIFIED_REF_RE.fullmatch(value)
     if match is None:
-        fail(f"invalid task reference {value!r}; expected TASK-ID or owner/repository#TASK-ID")
+        fail(
+            f"invalid task reference {value!r}; expected TASK-ID or owner/repository#TASK-ID"
+        )
     project, task_id = match.groups()
     if project == config.project:
         fail(f"qualified local reference {value!r} must use {task_id}")
@@ -373,7 +403,11 @@ def read_document(path: Path) -> Document:
     if not lines or lines[0].rstrip("\r\n") != "---":
         fail(f"{path}: missing opening frontmatter delimiter")
     end = next(
-        (index for index, line in enumerate(lines[1:], 1) if line.rstrip("\r\n") == "---"),
+        (
+            index
+            for index, line in enumerate(lines[1:], 1)
+            if line.rstrip("\r\n") == "---"
+        ),
         None,
     )
     if end is None:
@@ -419,7 +453,11 @@ def quote_scalar(value: Any) -> str:
             return "[]"
         return "[" + ", ".join(quote_scalar(item) for item in value) + "]"
     text = str(value)
-    if not text or text != text.strip() or any(token in text for token in (":", "#", "[", "]", "{", "}")):
+    if (
+        not text
+        or text != text.strip()
+        or any(token in text for token in (":", "#", "[", "]", "{", "}"))
+    ):
         return json.dumps(text, ensure_ascii=False)
     return text
 
@@ -469,7 +507,9 @@ def git_common_dir(root: Path) -> Path | None:
     return path if path.is_absolute() else (root / path).resolve()
 
 
-def allocate_id(root: Path, area: str, used_suffixes: set[str], config: ProjectConfig | None = None) -> str:
+def allocate_id(
+    root: Path, area: str, used_suffixes: set[str], config: ProjectConfig | None = None
+) -> str:
     config = config or load_project_config(root)
     if area not in config.areas:
         fail(f"unknown task area {area!r}")
@@ -479,7 +519,9 @@ def allocate_id(root: Path, area: str, used_suffixes: set[str], config: ProjectC
 
     def generate(reserved: set[str]) -> str:
         for _ in range(10_000):
-            suffix = str(int(time.time() * 1000) * 1000 + random.SystemRandom().randrange(1000))
+            suffix = str(
+                int(time.time() * 1000) * 1000 + random.SystemRandom().randrange(1000)
+            )
             if len(suffix) != 16:
                 continue
             if suffix not in used_suffixes and suffix not in reserved:
@@ -540,7 +582,9 @@ def read_steps(path: Path) -> list[Step]:
     return steps
 
 
-def lifecycle_receipt_path(root: Path, document: Document, execution: Path, kind: str) -> Path:
+def lifecycle_receipt_path(
+    root: Path, document: Document, execution: Path, kind: str
+) -> Path:
     if document.values["spec_mode"] == "required":
         return execution.parent / f".taskctl-{kind}.json"
     return execution.with_suffix(f".{kind}.json")
@@ -554,23 +598,33 @@ def read_lifecycle_receipt(
 ) -> dict[str, Any]:
     path = lifecycle_receipt_path(root, document, execution, kind)
     if not path.is_file():
-        fail(f"{document.path}: terminal {document.values['status']} state lacks taskctl {kind} receipt")
+        fail(
+            f"{document.path}: terminal {document.values['status']} state lacks taskctl {kind} receipt"
+        )
     receipt = json.loads(path.read_text(encoding="utf-8"))
     if receipt.get("task_id") != document.task_id:
         fail(f"{path}: receipt task backlink mismatch")
     if receipt.get("outcome") != document.values["status"]:
         fail(f"{path}: receipt outcome does not match terminal task")
-    if document.values["spec_mode"] == "required" and receipt.get("change") != document.values["openspec_change"]:
+    if (
+        document.values["spec_mode"] == "required"
+        and receipt.get("change") != document.values["openspec_change"]
+    ):
         fail(f"{path}: receipt change backlink mismatch")
     if kind == "close":
         issue_hash = hashlib.sha256(document.path.read_bytes()).hexdigest()
         execution_hash = hashlib.sha256(execution.read_bytes()).hexdigest()
-        if receipt.get("issue_sha256") != issue_hash or receipt.get("execution_sha256") != execution_hash:
+        if (
+            receipt.get("issue_sha256") != issue_hash
+            or receipt.get("execution_sha256") != execution_hash
+        ):
             fail(f"{path}: close receipt content hashes do not match terminal state")
     return receipt
 
 
-def validate_issue_shape(document: Document, config: ProjectConfig | None = None) -> None:
+def validate_issue_shape(
+    document: Document, config: ProjectConfig | None = None
+) -> None:
     config = config or config_for_path(document.path)
     values = document.values
     missing = [field for field in REQUIRED_FIELDS if field not in values]
@@ -620,23 +674,33 @@ def validate_issue_shape(document: Document, config: ProjectConfig | None = None
     for blocker in values["blocked_by"]:
         reference_parts(blocker, config)
     related = values.get("related_tasks", [])
-    if not isinstance(related, list) or not all(isinstance(value, str) for value in related):
+    if not isinstance(related, list) or not all(
+        isinstance(value, str) for value in related
+    ):
         fail(f"{document.path}: related_tasks must be a list of task references")
     for relation in related:
         reference_parts(relation, config)
-    if values["status"] == "blocked" and not values["blocked_by"] and not values.get("status_detail"):
+    if (
+        values["status"] == "blocked"
+        and not values["blocked_by"]
+        and not values.get("status_detail")
+    ):
         fail(f"{document.path}: blocked task requires blocked_by or status_detail")
     if values["spec_mode"] not in {"required", "not-required"}:
         fail(f"{document.path}: spec_mode must be required or not-required")
     change = values["openspec_change"]
     if values["spec_mode"] == "required":
         if not isinstance(change, str) or not CHANGE_RE.fullmatch(change):
-            fail(f"{document.path}: required OpenSpec change must be lowercase kebab-case")
+            fail(
+                f"{document.path}: required OpenSpec change must be lowercase kebab-case"
+            )
         if values.get("spec_reason") is not None:
             fail(f"{document.path}: required OpenSpec task cannot have spec_reason")
     else:
         if change is not None:
-            fail(f"{document.path}: spec-not-required task cannot link an OpenSpec change")
+            fail(
+                f"{document.path}: spec-not-required task cannot link an OpenSpec change"
+            )
         if values.get("spec_reason") not in SPEC_REASONS:
             fail(f"{document.path}: invalid or missing spec_reason")
         if values["kind"] in {"feature", "epic"}:
@@ -645,13 +709,17 @@ def validate_issue_shape(document: Document, config: ProjectConfig | None = None
             fail(f"{document.path}: high-risk task cannot waive OpenSpec")
     for field in ("source_" "wiki_pages", "blocked_by", "related_tasks"):
         value = values.get(field, [])
-        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        if not isinstance(value, list) or not all(
+            isinstance(item, str) for item in value
+        ):
             fail(f"{document.path}: {field} must be a string list")
     if values["status"] in {"done", "dropped"}:
         for field in ("closed_at", "closed_reason", "evidence_summary"):
             if not isinstance(values.get(field), str) or not values[field].strip():
                 fail(f"{document.path}: terminal task requires {field}")
-    elif any(field in values for field in ("closed_at", "closed_reason", "evidence_summary")):
+    elif any(
+        field in values for field in ("closed_at", "closed_reason", "evidence_summary")
+    ):
         fail(f"{document.path}: non-terminal task cannot contain closure fields")
 
 
@@ -842,9 +910,7 @@ def archived_source_mappings(
     config: ProjectConfig,
 ) -> dict[str, set[SharedEvidenceMapping]]:
     result: dict[str, set[SharedEvidenceMapping]] = {}
-    for path in sorted(
-        (root / "openspec/changes/archive").glob("*/verification.md")
-    ):
+    for path in sorted((root / "openspec/changes/archive").glob("*/verification.md")):
         verification = read_document(path)
         task_id = verification.values.get("task_id")
         for mapping in shared_evidence_mappings(verification, config):
@@ -864,7 +930,10 @@ def validate_requirement_evidence(
     requirement_ids: list[str] = []
     for spec in sorted((change_dir / "specs").glob("**/*.md")):
         requirement_ids.extend(
-            re.findall(r"(?m)^### Requirement: (REQ-[A-Z0-9-]+)(?:\s|$)", spec.read_text(encoding="utf-8"))
+            re.findall(
+                r"(?m)^### Requirement: (REQ-[A-Z0-9-]+)(?:\s|$)",
+                spec.read_text(encoding="utf-8"),
+            )
         )
     if not requirement_ids:
         fail(f"{change_dir}: no stable REQ-* requirement IDs")
@@ -882,20 +951,32 @@ def validate_requirement_evidence(
         if match:
             if allow_incomplete and match.group(1) in rows:
                 fail(f"{verification.path}: duplicate requirement evidence row")
-            rows[match.group(1)] = (match.group(2), match.group(3).strip(), match.group(4).strip())
-    if set(rows) - set(requirement_ids) or (not allow_incomplete and set(rows) != set(requirement_ids)):
+            rows[match.group(1)] = (
+                match.group(2),
+                match.group(3).strip(),
+                match.group(4).strip(),
+            )
+    if set(rows) - set(requirement_ids) or (
+        not allow_incomplete and set(rows) != set(requirement_ids)
+    ):
         missing = sorted(set(requirement_ids) - set(rows))
         extra = sorted(set(rows) - set(requirement_ids))
-        fail(f"{verification.path}: requirement evidence mismatch missing={missing}, extra={extra}")
+        fail(
+            f"{verification.path}: requirement evidence mismatch missing={missing}, extra={extra}"
+        )
     step_ids = {step.task_id for step in steps} | (dropped_step_ids or set())
     for requirement_id, (step_id, evidence, result) in rows.items():
         if step_id not in step_ids:
-            fail(f"{verification.path}: {requirement_id} maps to unknown step {step_id}")
+            fail(
+                f"{verification.path}: {requirement_id} maps to unknown step {step_id}"
+            )
         if archived and (
             evidence.casefold() in {"pending", "required", "blocked"}
             or result.casefold() not in {"passed", "not_applicable"}
         ):
-            fail(f"{verification.path}: {requirement_id} lacks resolved archive evidence")
+            fail(
+                f"{verification.path}: {requirement_id} lacks resolved archive evidence"
+            )
 
 
 def requirement_ids(change_dir: Path) -> set[str]:
@@ -962,9 +1043,8 @@ def validate_active_shared_evidence(
                 for related in owner.values.get("related_tasks", [])
                 if (local := local_reference(related, config)) is not None
             }
-            if (
-                source_task in owner_related
-                and mapping not in mappings_by_task.get(mapping.owner_task, set())
+            if source_task in owner_related and mapping not in mappings_by_task.get(
+                mapping.owner_task, set()
             ):
                 fail(
                     f"{mapping.owner_task}: shared {mapping.category} mapping "
@@ -1085,13 +1165,17 @@ def expected_execution_path(root: Path, document: Document) -> Path:
             fail(f"{document.path}: multiple archives found for {change}")
         if archives:
             if document.values["status"] not in {"review", "done", "dropped"}:
-                fail(f"{document.path}: archived change requires review or terminal status")
+                fail(
+                    f"{document.path}: archived change requires review or terminal status"
+                )
             return archives[0] / "tasks.md"
         return active
     return root / "docs/tasks/work" / f"{document.task_id}.md"
 
 
-def load_state(root: Path, config: ProjectConfig | None = None) -> tuple[list[Document], list[Step]]:
+def load_state(
+    root: Path, config: ProjectConfig | None = None
+) -> tuple[list[Document], list[Step]]:
     return _load_state(root, config)
 
 
@@ -1232,16 +1316,30 @@ def _load_state(
                 fail(
                     f"{lifecycle_receipt_path(root, document, path, 'drop')}: invalid dropped_step_ids"
                 )
+            if len(set(raw_dropped_ids)) != len(raw_dropped_ids):
+                fail(
+                    f"{lifecycle_receipt_path(root, document, path, 'drop')}: duplicate dropped_step_ids"
+                )
             dropped_step_ids = set(raw_dropped_ids)
             for dropped_step_id in dropped_step_ids:
                 prefix = ID_RE.fullmatch(dropped_step_id).group(1)  # type: ignore[union-attr]
-                if config.prefix_areas.get(prefix) != document.values["area"]:
+                if prefix not in config.prefix_areas:
                     fail(
-                        f"{document.path}: dropped step prefix does not match task area"
+                        f"{document.path}: dropped step prefix is not a configured area"
                     )
                 if dropped_step_id in all_dropped_step_ids:
                     fail(f"duplicate dropped execution step ID {dropped_step_id}")
                 all_dropped_step_ids[dropped_step_id] = document.task_id
+            preserved_ids = re.findall(
+                r"(?m)^- ([A-Z][A-Z0-9]*-\d{16}) DROPPED: ",
+                path.read_text(encoding="utf-8"),
+            )
+            if len(set(preserved_ids)) != len(preserved_ids):
+                fail(f"{document.path}: duplicate dropped execution records")
+            if sorted(raw_dropped_ids) != sorted(preserved_ids):
+                fail(
+                    f"{document.path}: dropped receipt IDs do not match execution records"
+                )
         if not steps and document.values["status"] != "dropped" and not authoring:
             fail(f"{path}: no mdtask execution steps")
         for step in steps:
@@ -1411,7 +1509,9 @@ def validate_export_checkout(root: Path) -> None:
         fail(f"cannot inspect export checkout state in {root}")
     dirty = (result.stdout or "").strip()
     if dirty:
-        fail("task export requires committed portfolio, OpenSpec, project config, and federation contract state")
+        fail(
+            "task export requires committed portfolio, OpenSpec, project config, and federation contract state"
+        )
 
 
 def export_payload(
@@ -1470,7 +1570,9 @@ def git_show_text(root: Path, ref: str, path: str) -> str | None:
 
 
 def git_tree_paths(root: Path, ref: str, prefix: str) -> list[str]:
-    result = run_command(("git", "ls-tree", "-r", "--name-only", ref, "--", prefix), root=root)
+    result = run_command(
+        ("git", "ls-tree", "-r", "--name-only", ref, "--", prefix), root=root
+    )
     if result.returncode != 0:
         fail(f"cannot inspect Git tree {ref} in {root}")
     return sorted(filter(None, (result.stdout or "").splitlines()))
@@ -1499,7 +1601,9 @@ def historical_execution_path(root: Path, ref: str, document: Document) -> str:
         if path.endswith(f"-{change}/tasks.md")
     ]
     if len(matches) != 1:
-        fail(f"{document.task_id}: terminal history has no unique OpenSpec execution file")
+        fail(
+            f"{document.task_id}: terminal history has no unique OpenSpec execution file"
+        )
     return matches[0]
 
 
@@ -1521,6 +1625,7 @@ def historical_verification_document(
     verification_path.write_text(verification_text, encoding="utf-8")
     return read_document(verification_path)
 
+
 def historical_verification_values(
     root: Path,
     ref: str,
@@ -1530,6 +1635,7 @@ def historical_verification_values(
 ) -> dict[str, Any]:
     verification = historical_verification_document(root, ref, document, scratch)
     return evidence_values(verification.path, config)
+
 
 def historical_requirement_ids(root: Path, ref: str, document: Document) -> set[str]:
     execution = historical_execution_path(root, ref, document)
@@ -1867,11 +1973,9 @@ def evidence_observation_revisions(
         previous_revision, previous = incarnation[index - 1]
         if snapshot.text != previous.text:
             changed.add(revision)
-        if (
-            revision in history_index.merge_side_parents
-            and historical_task_signature(root, previous_revision, previous)
-            != historical_task_signature(root, revision, snapshot)
-        ):
+        if revision in history_index.merge_side_parents and historical_task_signature(
+            root, previous_revision, previous
+        ) != historical_task_signature(root, revision, snapshot):
             changed.add(revision)
     return changed
 
@@ -2004,10 +2108,12 @@ def validate_current_evidence_transfers(
                 )
             )
 
-        committed_snapshot = history_index.by_revision[
-            history_index.revisions[-1]
-        ].get(document.task_id)
-        current_verification = expected_execution_path(root, document).parent / "verification.md"
+        committed_snapshot = history_index.by_revision[history_index.revisions[-1]].get(
+            document.task_id
+        )
+        current_verification = (
+            expected_execution_path(root, document).parent / "verification.md"
+        )
         current = evidence_values(current_verification, config)
         if committed_snapshot is not None:
             committed_config = historical_project_config(
@@ -2084,8 +2190,10 @@ def validate_terminal_snapshot(
         or close_receipt.get("task_id") != document.task_id
         or close_receipt.get("change") != document.values["openspec_change"]
         or close_receipt.get("outcome") != outcome
-        or close_receipt.get("issue_sha256") != hashlib.sha256(issue_text.encode()).hexdigest()
-        or close_receipt.get("execution_sha256") != hashlib.sha256(execution_text.encode()).hexdigest()
+        or close_receipt.get("issue_sha256")
+        != hashlib.sha256(issue_text.encode()).hexdigest()
+        or close_receipt.get("execution_sha256")
+        != hashlib.sha256(execution_text.encode()).hexdigest()
     ):
         fail(f"{relative}: close receipt does not match the terminal snapshot")
     drop_receipt: dict[str, Any] | None = None
@@ -2099,9 +2207,22 @@ def validate_terminal_snapshot(
             or drop_receipt.get("change") != document.values["openspec_change"]
             or drop_receipt.get("outcome") != "dropped"
             or not isinstance(dropped_ids, list)
-            or not all(isinstance(value, str) and ID_RE.fullmatch(value) for value in dropped_ids)
+            or not all(
+                isinstance(value, str) and ID_RE.fullmatch(value)
+                for value in dropped_ids
+            )
         ):
             fail(f"{relative}: invalid drop receipt in terminal commit")
+        if len(set(dropped_ids)) != len(dropped_ids):
+            fail(f"{relative}: duplicate dropped step IDs in drop receipt")
+        preserved_ids = re.findall(
+            r"(?m)^- ([A-Z][A-Z0-9]*-\d{16}) DROPPED: ",
+            execution_text,
+        )
+        if len(set(preserved_ids)) != len(preserved_ids):
+            fail(f"{relative}: duplicate dropped execution records")
+        if sorted(dropped_ids) != sorted(preserved_ids):
+            fail(f"{relative}: dropped receipt IDs do not match execution records")
 
     if document.values["spec_mode"] == "required":
         change = document.values["openspec_change"]
@@ -2111,12 +2232,18 @@ def validate_terminal_snapshot(
             if path.endswith(f"-{change}/.taskctl-archive.json")
         }
         if len(archive_roots) != 1:
-            fail(f"{relative}: terminal OpenSpec change was not archived before deletion")
+            fail(
+                f"{relative}: terminal OpenSpec change was not archived before deletion"
+            )
         archive_root = next(iter(archive_roots))
-        archived_close = git_show_text(root, deletion_ref, f"{archive_root}/.taskctl-close.json")
+        archived_close = git_show_text(
+            root, deletion_ref, f"{archive_root}/.taskctl-close.json"
+        )
         if archived_close is None or json.loads(archived_close) != close_receipt:
             fail(f"{relative}: archived close receipt differs from terminal commit")
-        archive_text = git_show_text(root, deletion_ref, f"{archive_root}/.taskctl-archive.json")
+        archive_text = git_show_text(
+            root, deletion_ref, f"{archive_root}/.taskctl-archive.json"
+        )
         archive_receipt = json.loads(archive_text) if archive_text is not None else {}
         expected_outcome = "dropped" if outcome == "dropped" else "review"
         if (
@@ -2127,10 +2254,14 @@ def validate_terminal_snapshot(
             or not SHA_RE.fullmatch(str(archive_receipt.get("commit_sha", "")))
         ):
             fail(f"{relative}: invalid OpenSpec archive receipt")
-        verification_text = git_show_text(root, deletion_ref, f"{archive_root}/verification.md")
+        verification_text = git_show_text(
+            root, deletion_ref, f"{archive_root}/verification.md"
+        )
         if verification_text is None:
             fail(f"{relative}: archived verification record is missing")
-        with tempfile.TemporaryDirectory(prefix="taskctl-terminal-verification-") as directory:
+        with tempfile.TemporaryDirectory(
+            prefix="taskctl-terminal-verification-"
+        ) as directory:
             verification_path = Path(directory) / "verification.md"
             verification_path.write_text(verification_text, encoding="utf-8")
             verification = evidence_values(verification_path, config)
@@ -2138,9 +2269,14 @@ def validate_terminal_snapshot(
             verification.get("task_id") != document.task_id
             or verification.get("change") != change
             or verification.get("commit_sha") != archive_receipt.get("commit_sha")
-            or any(verification[category] in {"required", "blocked"} for category in config.evidence_categories)
+            or any(
+                verification[category] in {"required", "blocked"}
+                for category in config.evidence_categories
+            )
         ):
-            fail(f"{relative}: archive receipt does not match resolved verification evidence")
+            fail(
+                f"{relative}: archive receipt does not match resolved verification evidence"
+            )
         validate_historical_requirement_evidence(
             root,
             deletion_ref,
@@ -2153,7 +2289,9 @@ def validate_terminal_snapshot(
             ),
         )
         if outcome == "dropped":
-            archived_drop = git_show_text(root, deletion_ref, f"{archive_root}/.taskctl-drop.json")
+            archived_drop = git_show_text(
+                root, deletion_ref, f"{archive_root}/.taskctl-drop.json"
+            )
             if archived_drop is None or json.loads(archived_drop) != drop_receipt:
                 fail(f"{relative}: archived drop receipt differs from terminal commit")
     return execution_text, terminal_steps
@@ -2257,9 +2395,7 @@ def build_terminal_history_index(
             merged_lanes.append(lane)
             pending_revisions.extend((entry[0], entry[1:]) for entry in lane_entries)
     all_revisions = dict.fromkeys(
-        revision
-        for timeline in (revisions, *merged_lanes)
-        for revision in timeline
+        revision for timeline in (revisions, *merged_lanes) for revision in timeline
     )
     with tempfile.TemporaryDirectory(prefix="taskctl-terminal-history-") as directory:
         scratch = Path(directory)
@@ -2384,8 +2520,7 @@ def resolve_terminal_task_from_index(
         if terminal_transition is None or terminal_index is None:
             fail(f"{config.project}#{task_id}: terminal transition commit is missing")
         initial_strict_terminal = (
-            terminal_index == 0
-            and incarnation[0][0] == history_index.strict_start
+            terminal_index == 0 and incarnation[0][0] == history_index.strict_start
         )
         if not initial_strict_terminal and (
             previous_status is None or not transition_allowed(previous_status, outcome)
@@ -2488,7 +2623,9 @@ def timeline_contains_deleted_task(
     revisions: Sequence[str],
     task_id: str,
 ) -> bool:
-    timeline = [history_index.by_revision[revision].get(task_id) for revision in revisions]
+    timeline = [
+        history_index.by_revision[revision].get(task_id) for revision in revisions
+    ]
     return timeline[-1] is None and any(
         timeline[index - 1] is not None and timeline[index] is None
         for index in range(1, len(timeline))
@@ -2540,7 +2677,10 @@ def resolve_terminal_task(
             primary_resolved = resolved
             if resolved["deletion_revision"] is None:
                 return resolved
-        if history_index.by_revision[history_index.revisions[-1]].get(task_id) is not None:
+        if (
+            history_index.by_revision[history_index.revisions[-1]].get(task_id)
+            is not None
+        ):
             return None
     candidate_lanes = history_index.merged_lanes
     if primary_resolved is not None:
@@ -2571,9 +2711,7 @@ def resolve_terminal_task(
             and primary_timeline[index] is None
         ]
         deletion_ref = (
-            history_index.revisions[deletion_indexes[-1]]
-            if deletion_indexes
-            else None
+            history_index.revisions[deletion_indexes[-1]] if deletion_indexes else None
         )
         integration_parents = set(
             history_index.merge_side_parents.get(str(deletion_ref), ())
@@ -2740,7 +2878,9 @@ def render_board(root: Path, documents: list[Document], steps: list[Step]) -> st
         "",
     ]
     for status in STATUS_ORDER:
-        rows = [document for document in documents if document.values["status"] == status]
+        rows = [
+            document for document in documents if document.values["status"] == status
+        ]
         rows.sort(
             key=lambda document: (
                 PRIORITY_ORDER[document.values["priority"]],
@@ -2782,7 +2922,9 @@ def render_board(root: Path, documents: list[Document], steps: list[Step]) -> st
     return "\n".join(lines)
 
 
-def run_command(command: Sequence[str], *, root: Path, capture: bool = True) -> subprocess.CompletedProcess[str]:
+def run_command(
+    command: Sequence[str], *, root: Path, capture: bool = True
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["OPENSPEC_TELEMETRY"] = "0"
     return subprocess.run(
@@ -2799,7 +2941,9 @@ def run_command(command: Sequence[str], *, root: Path, capture: bool = True) -> 
 def tool_binary(root: Path, name: str) -> Path:
     binary = root / "tools/tasking/node_modules/.bin" / name
     if not binary.exists():
-        fail(f"missing pinned {name}; run npm ci --prefix tools/tasking --ignore-scripts")
+        fail(
+            f"missing pinned {name}; run npm ci --prefix tools/tasking --ignore-scripts"
+        )
     return binary
 
 
@@ -2809,7 +2953,11 @@ def validate_upstreams(root: Path, documents: list[Document]) -> None:
     for args in (("validate",), ("list", "--all")):
         result = run_command((str(mdtask), *args), root=root)
         output = result.stdout or ""
-        if result.returncode != 0 or "warning:" in output.casefold() or "without ids" in output.casefold():
+        if (
+            result.returncode != 0
+            or "warning:" in output.casefold()
+            or "without ids" in output.casefold()
+        ):
             fail(f"mdtask {' '.join(args)} failed:\n{output.rstrip()}")
     if any(document.values["spec_mode"] == "required" for document in documents):
         openspec = tool_binary(root, "openspec")
@@ -2820,7 +2968,9 @@ def validate_upstreams(root: Path, documents: list[Document]) -> None:
         for args in commands:
             result = run_command((str(openspec), *args), root=root)
             if result.returncode != 0:
-                fail(f"openspec {' '.join(args)} failed:\n{(result.stdout or '').rstrip()}")
+                fail(
+                    f"openspec {' '.join(args)} failed:\n{(result.stdout or '').rstrip()}"
+                )
 
 
 def validate_generated_assets(root: Path) -> None:
@@ -2846,7 +2996,9 @@ def validate_generated_assets(root: Path) -> None:
             if isinstance(files, dict)
             else []
         )
-        fail(f"generated asset lock has wrong canonical set: missing={missing}, extra={extra}")
+        fail(
+            f"generated asset lock has wrong canonical set: missing={missing}, extra={extra}"
+        )
     for relative, expected in files.items():
         path = root / relative
         if not path.is_file():
@@ -2891,7 +3043,10 @@ def historical_task_snapshots(
         shown = run_command(("git", "show", f"{ref}:{relative}"), root=root)
         if shown.returncode != 0:
             fail(f"cannot read task record {relative} at {ref}")
-        issue = scratch / f"issue-{hashlib.sha256(ref.encode()).hexdigest()[:12]}-{index}.md"
+        issue = (
+            scratch
+            / f"issue-{hashlib.sha256(ref.encode()).hexdigest()[:12]}-{index}.md"
+        )
         issue.write_text(shown.stdout or "", encoding="utf-8")
         document = read_document(issue)
         task_id = document.values.get("id")
@@ -2968,9 +3123,7 @@ def validate_deleted_history(root: Path, base: str) -> None:
             task_id
             for lane in terminal_index.merged_lanes
             for task_id in {
-                candidate
-                for revision in lane
-                for candidate in by_revision[revision]
+                candidate for revision in lane for candidate in by_revision[revision]
             }
             if timeline_contains_deleted_task(terminal_index, lane, task_id)
         )
@@ -3006,7 +3159,9 @@ def validate_deleted_history(root: Path, base: str) -> None:
                         primary_deletion,
                     )
                 ]
-                if not candidate_lanes and primary_final.document.values.get("status") not in {
+                if not candidate_lanes and primary_final.document.values.get(
+                    "status"
+                ) not in {
                     "done",
                     "dropped",
                 }:
@@ -3037,8 +3192,7 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 deletion_indexes = [
                     index
                     for index in range(1, len(timeline))
-                    if timeline[index - 1][1] is not None
-                    and timeline[index][1] is None
+                    if timeline[index - 1][1] is not None and timeline[index][1] is None
                 ]
             if not deletion_indexes:
                 fail(f"{task_id}: cannot resolve disappearance commit")
@@ -3332,7 +3486,10 @@ def validate_deleted_history(root: Path, base: str) -> None:
                             f"{relative}: archived drop receipt differs from terminal commit"
                         )
 
-def validate_repository(root: Path, *, base: str | None, upstreams: bool = True) -> tuple[list[Document], list[Step]]:
+
+def validate_repository(
+    root: Path, *, base: str | None, upstreams: bool = True
+) -> tuple[list[Document], list[Step]]:
     documents, steps = load_state(root)
     expected = render_board(root, documents, steps)
     board = root / "docs/tasks/board.md"
@@ -3350,7 +3507,9 @@ def find_document(documents: Sequence[Document], query: str) -> Document:
     exact = [document for document in documents if document.task_id == query]
     if exact:
         return exact[0]
-    suffix = [document for document in documents if document.task_id.endswith(f"-{query}")]
+    suffix = [
+        document for document in documents if document.task_id.endswith(f"-{query}")
+    ]
     if len(suffix) == 1:
         return suffix[0]
     slug = [document for document in documents if document.path.stem == query]
@@ -3364,15 +3523,18 @@ def write_document(document: Document, values: dict[str, Any]) -> None:
 
 
 def transition_allowed(current: str, target: str) -> bool:
-    return target in {
-        "backlog": {"todo", "dropped"},
-        "todo": {"backlog", "doing", "blocked", "dropped"},
-        "doing": {"review", "blocked", "todo", "dropped"},
-        "review": {"doing", "blocked", "done", "dropped"},
-        "blocked": {"todo", "doing", "dropped"},
-        "done": set(),
-        "dropped": set(),
-    }[current]
+    return (
+        target
+        in {
+            "backlog": {"todo", "dropped"},
+            "todo": {"backlog", "doing", "blocked", "dropped"},
+            "doing": {"review", "blocked", "todo", "dropped"},
+            "review": {"doing", "blocked", "done", "dropped"},
+            "blocked": {"todo", "doing", "dropped"},
+            "done": set(),
+            "dropped": set(),
+        }[current]
+    )
 
 
 def command_generate_board(args: argparse.Namespace) -> int:
@@ -3384,9 +3546,15 @@ def command_generate_board(args: argparse.Namespace) -> int:
 
 
 def command_validate(args: argparse.Namespace) -> int:
-    documents, steps = validate_repository(args.root, base=args.base, upstreams=not args.skip_upstreams)
+    documents, steps = validate_repository(
+        args.root, base=args.base, upstreams=not args.skip_upstreams
+    )
     payload = {"schema": 1, "tasks": len(documents), "steps": len(steps), "valid": True}
-    print(json.dumps(payload, sort_keys=True) if args.json else f"Task contracts valid ({len(documents)} tasks, {len(steps)} steps)")
+    print(
+        json.dumps(payload, sort_keys=True)
+        if args.json
+        else f"Task contracts valid ({len(documents)} tasks, {len(steps)} steps)"
+    )
     return 0
 
 
@@ -3412,10 +3580,14 @@ def command_list(args: argparse.Namespace) -> int:
         for document in selected
     ]
     if args.json:
-        print(json.dumps({"schema": 1, "tasks": rows}, ensure_ascii=False, sort_keys=True))
+        print(
+            json.dumps({"schema": 1, "tasks": rows}, ensure_ascii=False, sort_keys=True)
+        )
     else:
         for row in rows:
-            print(f"{row['id']}\t{row['status']}\t{row['priority']}\t{row['title']}\t{row['progress']['done']}/{row['progress']['total']}")
+            print(
+                f"{row['id']}\t{row['status']}\t{row['priority']}\t{row['title']}\t{row['progress']['done']}/{row['progress']['total']}"
+            )
     return 0
 
 
@@ -3430,8 +3602,15 @@ def command_show(args: argparse.Namespace) -> int:
                     "schema": 1,
                     "task": document.values,
                     "path": str(document.path.relative_to(args.root)),
-                    "execution": str(expected_execution_path(args.root, document).relative_to(args.root)),
-                    "steps": [step.__dict__ | {"path": str(step.path.relative_to(args.root))} for step in item_steps],
+                    "execution": str(
+                        expected_execution_path(args.root, document).relative_to(
+                            args.root
+                        )
+                    ),
+                    "steps": [
+                        step.__dict__ | {"path": str(step.path.relative_to(args.root))}
+                        for step in item_steps
+                    ],
                 },
                 ensure_ascii=False,
                 default=str,
@@ -3440,7 +3619,9 @@ def command_show(args: argparse.Namespace) -> int:
         )
     else:
         print(document.path.read_text(encoding="utf-8"), end="")
-        print(f"\nExecution: {expected_execution_path(args.root, document).relative_to(args.root)}")
+        print(
+            f"\nExecution: {expected_execution_path(args.root, document).relative_to(args.root)}"
+        )
     return 0
 
 
@@ -3461,16 +3642,29 @@ def command_ready(args: argparse.Namespace) -> int:
     ]
     for document in documents:
         external = [
-            blocker for blocker in document.values["blocked_by"]
+            blocker
+            for blocker in document.values["blocked_by"]
             if local_reference(blocker, config) is None
         ]
         if external:
             unresolved[document.task_id] = external
     if args.json:
-        print(json.dumps({"schema": 1, "ready": [document.values for document in ready], "unresolved_external": unresolved}, ensure_ascii=False, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "ready": [document.values for document in ready],
+                    "unresolved_external": unresolved,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
     else:
         for document in ready:
-            print(f"{document.task_id}\t{document.values['priority']}\t{document.values['title']}")
+            print(
+                f"{document.task_id}\t{document.values['priority']}\t{document.values['title']}"
+            )
         for task_id, blockers in sorted(unresolved.items()):
             print(f"UNRESOLVED_EXTERNAL\t{task_id}\t{','.join(blockers)}")
     return 0
@@ -3586,7 +3780,14 @@ def command_federation(args: argparse.Namespace) -> int:
             "tasks": [
                 {
                     key: node[key]
-                    for key in ("id", "status", "kind", "path", "progress", "historical")
+                    for key in (
+                        "id",
+                        "status",
+                        "kind",
+                        "path",
+                        "progress",
+                        "historical",
+                    )
                 }
                 for node in payload["tasks"]
             ],
@@ -3596,8 +3797,12 @@ def command_federation(args: argparse.Namespace) -> int:
     elif args.federation_command == "validate":
         print(f"Federation contracts valid ({selected['tasks']} tasks)")
     else:
-        for node in selected["ready" if args.federation_command == "ready" else "tasks"]:
-            print(f"{node['id']}\t{node['status']}\t{node['progress']['done']}/{node['progress']['total']}")
+        for node in selected[
+            "ready" if args.federation_command == "ready" else "tasks"
+        ]:
+            print(
+                f"{node['id']}\t{node['status']}\t{node['progress']['done']}/{node['progress']['total']}"
+            )
     return 0
 
 
@@ -3654,7 +3859,11 @@ def command_new(args: argparse.Namespace) -> int:
     }
     if spec_reason is not None:
         values["spec_reason"] = spec_reason
-    document = Document(path=path, values=values, body="## Goal\n\nDescribe the observable outcome.\n\n## Acceptance criteria\n\nDefine verifiable completion criteria.\n")
+    document = Document(
+        path=path,
+        values=values,
+        body="## Goal\n\nDescribe the observable outcome.\n\n## Acceptance criteria\n\nDefine verifiable completion criteria.\n",
+    )
     path.write_text(render_document(values, document.body), encoding="utf-8")
     if args.spec_mode == "not-required":
         work = args.root / "docs/tasks/work" / f"{task_id}.md"
@@ -3746,36 +3955,55 @@ def require_owned_execution_path(root: Path, path: Path) -> None:
         fail(f"execution authoring requires a regular file: {path}")
 
 
-def validate_step_planning(root: Path, document: Document, config: ProjectConfig) -> None:
+def validate_step_planning(
+    root: Path, document: Document, config: ProjectConfig
+) -> None:
     change = root / "openspec/changes" / document.values["openspec_change"]
-    for path in (change / "proposal.md", change / "design.md", change / ".openspec.yaml"):
+    for path in (
+        change / "proposal.md",
+        change / "design.md",
+        change / ".openspec.yaml",
+    ):
         require_owned_execution_path(root, path)
         if not path.is_file() or not path.read_text(encoding="utf-8").strip():
             fail(f"step authoring requires nonempty {path.relative_to(root)}")
     require_owned_execution_path(root, change / "verification.md")
-    if f"Task ID: `{document.task_id}`" not in (change / "proposal.md").read_text(encoding="utf-8"):
+    if f"Task ID: `{document.task_id}`" not in (change / "proposal.md").read_text(
+        encoding="utf-8"
+    ):
         fail("step authoring proposal lacks exact portfolio backlink")
     specs = sorted((change / "specs").glob("**/*.md"))
     if not specs:
         fail("step authoring requires delta specs")
     for path in specs:
         require_owned_execution_path(root, path)
-    requirements = [requirement for path in specs for requirement in re.findall(
-        r"(?m)^### Requirement: (REQ-[A-Z0-9-]+)(?:\s|$)", path.read_text(encoding="utf-8"),
-    )]
+    requirements = [
+        requirement
+        for path in specs
+        for requirement in re.findall(
+            r"(?m)^### Requirement: (REQ-[A-Z0-9-]+)(?:\s|$)",
+            path.read_text(encoding="utf-8"),
+        )
+    ]
     if not requirements or len(requirements) != len(set(requirements)):
         fail("step authoring requires unique stable REQ-* requirements")
     openspec = str(tool_binary(root, "openspec"))
-    status = run_command((openspec, "status", "--change", change.name, "--json"), root=root)
+    status = run_command(
+        (openspec, "status", "--change", change.name, "--json"), root=root
+    )
     if status.returncode != 0:
         fail(f"OpenSpec planning status failed:\n{status.stdout}")
     planning = json.loads(status.stdout)
     if planning.get("schemaName") != config.openspec_schema:
         fail("step authoring requires the repository OpenSpec schema")
-    completed = {item["id"] for item in planning["artifacts"] if item["status"] == "done"}
+    completed = {
+        item["id"] for item in planning["artifacts"] if item["status"] == "done"
+    }
     if not {"proposal", "specs", "design"} <= completed:
         fail("step authoring requires complete proposal, specs and design")
-    result = run_command((openspec, "validate", change.name, "--strict", "--json"), root=root)
+    result = run_command(
+        (openspec, "validate", change.name, "--strict", "--json"), root=root
+    )
     if result.returncode != 0:
         fail(f"OpenSpec planning validation failed:\n{result.stdout}")
 
@@ -3787,29 +4015,44 @@ def command_steps_add(args: argparse.Namespace) -> int:
     parser.add_argument("--priority", choices=PRIORITIES)
     addition = parser.parse_args(args.mdtask_args[1:])
     title = addition.title
-    if (not title.strip() or title != title.strip() or len(title.splitlines()) != 1
-            or any(ord(char) < 32 or char == "\x7f" for char in title)
-            or re.search(r"(?:^|\s)[@#!]|\b[A-Z][A-Z0-9]*-\d{16}\b", title)):
+    if (
+        not title.strip()
+        or title != title.strip()
+        or len(title.splitlines()) != 1
+        or any(ord(char) < 32 or char == "\x7f" for char in title)
+        or re.search(r"(?:^|\s)[@#!]|\b[A-Z][A-Z0-9]*-\d{16}\b", title)
+    ):
         fail("step title must be plain single-line text without IDs or mdtask metadata")
     config = load_project_config(args.root)
-    document = find_document([read_document(path) for path in issue_paths(args.root)], args.query)
+    document = find_document(
+        [read_document(path) for path in issue_paths(args.root)], args.query
+    )
     validate_issue_shape(document, config)
     path = expected_execution_path(args.root, document)
     require_owned_execution_path(args.root, path)
-    if document.values["status"] in {"done", "dropped"} or path.parent.parent.name == "archive":
+    if (
+        document.values["status"] in {"done", "dropped"}
+        or path.parent.parent.name == "archive"
+    ):
         fail("cannot add steps to terminal or archived work")
     authoring = document.values["spec_mode"] == "required"
     if authoring:
         validate_step_planning(args.root, document, config)
     documents, steps = _load_state(
-        args.root, config, authoring_task_id=document.task_id if authoring else None,
+        args.root,
+        config,
+        authoring_task_id=document.task_id if authoring else None,
     )
     used = {item.task_id.split("-", 1)[1] for item in (*documents, *steps)}
     # Dropped execution IDs remain reserved even when imported from another clone.
     for item in documents:
         if item.values["status"] == "dropped":
-            receipt = read_lifecycle_receipt(args.root, item, expected_execution_path(args.root, item), "drop")
-            used.update(step_id.split("-", 1)[1] for step_id in receipt["dropped_step_ids"])
+            receipt = read_lifecycle_receipt(
+                args.root, item, expected_execution_path(args.root, item), "drop"
+            )
+            used.update(
+                step_id.split("-", 1)[1] for step_id in receipt["dropped_step_ids"]
+            )
     step_id = allocate_id(args.root, document.values["area"], used, config)
     kind = addition.kind or document.values["kind"]
     priority = addition.priority or document.values["priority"]
@@ -3837,18 +4080,28 @@ def command_steps(args: argparse.Namespace) -> int:
     if not args.mdtask_args or args.mdtask_args[0] not in allowed:
         fail(f"steps exposes only: {', '.join(sorted(allowed))}")
     action = args.mdtask_args[0]
-    with steps_write_lock(args.root) if action in {"add", "done", "set"} else nullcontext():
+    with (
+        steps_write_lock(args.root)
+        if action in {"add", "done", "set"}
+        else nullcontext()
+    ):
         if action == "add":
             return command_steps_add(args)
         documents, _ = load_state(args.root)
         document = find_document(documents, args.query)
         path = expected_execution_path(args.root, document)
         mdtask = tool_binary(args.root, "mdtask")
-        result = run_command((str(mdtask), *args.mdtask_args, "--path", str(path)), root=args.root, capture=False)
+        result = run_command(
+            (str(mdtask), *args.mdtask_args, "--path", str(path)),
+            root=args.root,
+            capture=False,
+        )
         return result.returncode
 
 
-def verify_task(root: Path, document: Document, steps: list[Step], *, archive_ready: bool) -> None:
+def verify_task(
+    root: Path, document: Document, steps: list[Step], *, archive_ready: bool
+) -> None:
     config = load_project_config(root)
     item_steps = [step for step in steps if step.item_id == document.task_id]
     open_steps = [step.task_id for step in item_steps if not step.done]
@@ -3859,16 +4112,27 @@ def verify_task(root: Path, document: Document, steps: list[Step], *, archive_re
         execution = expected_execution_path(root, document)
         if execution.parent.parent.name != "archive":
             openspec = tool_binary(root, "openspec")
-            result = run_command((str(openspec), "validate", change, "--strict", "--json"), root=root)
+            result = run_command(
+                (str(openspec), "validate", change, "--strict", "--json"), root=root
+            )
             if result.returncode != 0:
-                fail(f"OpenSpec change {change} is invalid:\n{(result.stdout or '').rstrip()}")
+                fail(
+                    f"OpenSpec change {change} is invalid:\n{(result.stdout or '').rstrip()}"
+                )
         evidence = evidence_values(execution.parent / "verification.md", config)
         if archive_ready:
             validate_current_evidence_transfers(root, document, config)
-            if any(evidence[category] in {"required", "blocked"} for category in config.evidence_categories):
+            if any(
+                evidence[category] in {"required", "blocked"}
+                for category in config.evidence_categories
+            ):
                 fail(f"{change}: verification evidence is incomplete")
-            if not isinstance(evidence["commit_sha"], str) or not SHA_RE.fullmatch(evidence["commit_sha"]):
-                fail(f"{change}: verification commit_sha must be an exact 40-character SHA")
+            if not isinstance(evidence["commit_sha"], str) or not SHA_RE.fullmatch(
+                evidence["commit_sha"]
+            ):
+                fail(
+                    f"{change}: verification commit_sha must be an exact 40-character SHA"
+                )
 
 
 def command_verify(args: argparse.Namespace) -> int:
@@ -3904,13 +4168,17 @@ def command_openspec_archive(args: argparse.Namespace) -> int:
         for kind in ("drop", "close"):
             receipt = lifecycle_receipt_path(args.root, document, execution, kind)
             receipt_relative = receipt.relative_to(args.root).as_posix()
-            present = run_command(("git", "cat-file", "-e", f"HEAD:{receipt_relative}"), root=args.root)
+            present = run_command(
+                ("git", "cat-file", "-e", f"HEAD:{receipt_relative}"), root=args.root
+            )
             if present.returncode != 0:
                 fail(f"commit the taskctl {kind} receipt before archival")
         verification_path = execution.parent / "verification.md"
         verification = read_document(verification_path)
         values = dict(verification.values)
-        values["commit_sha"] = run_command(("git", "rev-parse", "HEAD"), root=args.root).stdout.strip()
+        values["commit_sha"] = run_command(
+            ("git", "rev-parse", "HEAD"), root=args.root
+        ).stdout.strip()
         verification_path.write_text(
             render_document(values, verification.body, order=tuple(values)),
             encoding="utf-8",
@@ -3923,15 +4191,22 @@ def command_openspec_archive(args: argparse.Namespace) -> int:
         return result.returncode
     archives = sorted((args.root / "openspec/changes/archive").glob(f"*-{args.change}"))
     if len(archives) != 1:
-        fail(f"archive completed but exactly one archive for {args.change} was not found")
-    evidence = evidence_values(archives[0] / "verification.md", load_project_config(args.root))
+        fail(
+            f"archive completed but exactly one archive for {args.change} was not found"
+        )
+    evidence = evidence_values(
+        archives[0] / "verification.md", load_project_config(args.root)
+    )
     receipt = {
         "schema": 1,
         "task_id": document.task_id,
         "change": args.change,
         "outcome": document.values["status"],
         "commit_sha": evidence["commit_sha"],
-        "archived_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "archived_at": datetime.now(UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
     }
     (archives[0] / ".taskctl-archive.json").write_text(
         json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -3960,7 +4235,9 @@ def write_lifecycle_receipt(
     payload: dict[str, Any],
 ) -> None:
     path = lifecycle_receipt_path(root, document, execution, kind)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def prepare_dropped_execution(
@@ -4019,7 +4296,10 @@ def prepare_dropped_execution(
             "outcome": "dropped",
             "reason": safe_reason,
             "dropped_step_ids": sorted(dropped_step_ids),
-            "prepared_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            "prepared_at": datetime.now(UTC)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z"),
         },
     )
     return execution
@@ -4030,9 +4310,7 @@ def require_committed_review(root: Path, document: Document) -> None:
     committed = git_show_text(root, "HEAD", relative)
     if committed is None:
         fail(f"{document.task_id}: done closure requires committed review status")
-    with tempfile.TemporaryDirectory(
-        prefix="taskctl-committed-review-"
-    ) as directory:
+    with tempfile.TemporaryDirectory(prefix="taskctl-committed-review-") as directory:
         snapshot_path = Path(directory) / "issue.md"
         snapshot_path.write_text(committed, encoding="utf-8")
         snapshot = read_document(snapshot_path)
@@ -4040,9 +4318,7 @@ def require_committed_review(root: Path, document: Document) -> None:
         snapshot.task_id != document.task_id
         or snapshot.values.get("status") != "review"
     ):
-        fail(
-            f"{document.task_id}: done closure requires committed review status"
-        )
+        fail(f"{document.task_id}: done closure requires committed review status")
 
 
 def command_close_prepare(args: argparse.Namespace) -> int:
@@ -4052,12 +4328,19 @@ def command_close_prepare(args: argparse.Namespace) -> int:
         if document.values["status"] != "review":
             fail("done closure requires review status")
         require_committed_review(args.root, document)
-        verify_task(args.root, document, steps, archive_ready=document.values["spec_mode"] == "required")
+        verify_task(
+            args.root,
+            document,
+            steps,
+            archive_ready=document.values["spec_mode"] == "required",
+        )
         if document.values["spec_mode"] == "required":
             change = document.values["openspec_change"]
             active = args.root / "openspec/changes" / change
             if active.exists():
-                fail(f"archive {change} with taskctl openspec archive before preparing done closure")
+                fail(
+                    f"archive {change} with taskctl openspec archive before preparing done closure"
+                )
     else:
         if not args.reason:
             fail("dropped closure requires --reason")
@@ -4068,11 +4351,17 @@ def command_close_prepare(args: argparse.Namespace) -> int:
     values = dict(document.values)
     values["status"] = args.outcome
     values["updated"] = date.today().isoformat()
-    values["closed_at"] = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    values["closed_reason"] = args.reason or "All acceptance criteria and required evidence passed."
+    values["closed_at"] = (
+        datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    )
+    values["closed_reason"] = (
+        args.reason or "All acceptance criteria and required evidence passed."
+    )
     values["evidence_summary"] = args.evidence
     write_document(document, values)
-    execution = expected_execution_path(args.root, Document(document.path, values, document.body))
+    execution = expected_execution_path(
+        args.root, Document(document.path, values, document.body)
+    )
     write_lifecycle_receipt(
         args.root,
         Document(document.path, values, document.body),
@@ -4106,7 +4395,10 @@ def command_close_purge(args: argparse.Namespace) -> int:
     terminal_paths = [
         document.path,
         execution,
-        *(lifecycle_receipt_path(args.root, document, execution, kind) for kind in receipt_kinds),
+        *(
+            lifecycle_receipt_path(args.root, document, execution, kind)
+            for kind in receipt_kinds
+        ),
     ]
     if document.values["spec_mode"] == "required":
         terminal_paths.extend(
@@ -4124,7 +4416,9 @@ def command_close_purge(args: argparse.Namespace) -> int:
             or committed is None
             or path.read_text(encoding="utf-8") != committed
         ):
-            fail("working terminal artifacts differ from HEAD; commit them before purge")
+            fail(
+                "working terminal artifacts differ from HEAD; commit them before purge"
+            )
     for candidate in documents:
         if candidate.task_id == document.task_id:
             continue
@@ -4140,13 +4434,16 @@ def command_close_purge(args: argparse.Namespace) -> int:
             fail(f"{document.task_id}: incoming reference from {candidate.task_id}")
     config = load_project_config(args.root)
     validate_current_evidence_transfers(args.root, document, config)
-    if resolve_terminal_task(
-        args.root,
-        document.task_id,
-        config,
-        allow_uncommitted_purge=True,
-        prospective_purge=True,
-    ) is None:
+    if (
+        resolve_terminal_task(
+            args.root,
+            document.task_id,
+            config,
+            allow_uncommitted_purge=True,
+            prospective_purge=True,
+        )
+        is None
+    ):
         fail(f"{document.task_id}: committed terminal history is not purgeable")
     for kind in receipt_kinds:
         receipt = lifecycle_receipt_path(args.root, document, execution, kind)
@@ -4191,13 +4488,17 @@ def command_close_purge(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=DEFAULT_ROOT, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--root", type=Path, default=DEFAULT_ROOT, help=argparse.SUPPRESS
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     validate = subparsers.add_parser("validate")
     validate.add_argument("--base")
     validate.add_argument("--json", action="store_true")
-    validate.add_argument("--skip-upstreams", action="store_true", help=argparse.SUPPRESS)
+    validate.add_argument(
+        "--skip-upstreams", action="store_true", help=argparse.SUPPRESS
+    )
     validate.set_defaults(handler=command_validate)
 
     board = subparsers.add_parser("generate-board")
@@ -4299,7 +4600,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     args.root = args.root.resolve()
     try:
         return int(args.handler(args))
-    except (ContractError, OSError, ValueError, SyntaxError, json.JSONDecodeError) as error:
+    except (
+        ContractError,
+        OSError,
+        ValueError,
+        SyntaxError,
+        json.JSONDecodeError,
+    ) as error:
         print(f"taskctl: {error}", file=sys.stderr)
         return 2
 

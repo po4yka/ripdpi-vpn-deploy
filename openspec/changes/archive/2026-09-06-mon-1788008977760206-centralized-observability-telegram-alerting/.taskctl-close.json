@@ -1,0 +1,11 @@
+{
+  "change": "mon-1788008977760206-centralized-observability-telegram-alerting",
+  "evidence_summary": "Owner-authorized cancellation only. Existing implementation is retained; no staging, live, client, provider or operational acceptance success is claimed. Prior evidence remains in Git history.",
+  "execution_sha256": "44176671b52c10dc7a07da453fdb862d38099954289947003ba147b721cd409f",
+  "issue_sha256": "71cb8c1a57c1e2553b751cd624aa42ae62e5931ce0c3157f236fec8e93b8e345",
+  "outcome": "dropped",
+  "prepared_at": "2026-09-06T17:40:41Z",
+  "reason": "Owner explicitly cancelled this task and its outstanding external acceptance on 2026-09-06 and authorized removal from the active portfolio. Unperformed acceptance is cancelled, not passed.",
+  "schema": 1,
+  "task_id": "MON-1788008977760206"
+}

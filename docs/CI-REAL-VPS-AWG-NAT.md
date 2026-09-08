@@ -47,12 +47,13 @@ during an active run. Private hooks must therefore use absolute paths for any
 helpers or data they need; they cannot rely on files adjacent to their original
 location.
 
-The service accepts no arguments. It removes `evidence/latest.json` as soon as
-it owns the shared lock. A new `latest.json` is published atomically only after
-the runner returns success and strict validation proves a `PASS`. Structurally
-valid non-PASS manifests remain versioned under `evidence/`; malformed output
-is isolated under the mode-0700 `quarantine/` directory and can never preserve
-a stale PASS. Inspect a run with:
+The service accepts no arguments. It preserves an existing validated
+`evidence/latest.json` while an invocation is running. A new `latest.json` is
+published atomically only after the runner returns success, strict validation
+proves a later and distinct `PASS`, and the recurring pair is valid.
+Structurally valid non-PASS manifests remain versioned under `evidence/`;
+malformed output is isolated under the mode-0700 `quarantine/` directory and
+cannot replace the prior PASS. Inspect a run with:
 
 ```bash
 sudo systemctl start ripdpi-real-vps-awg-nat.service
@@ -182,11 +183,33 @@ domain-separated hashes.
 
 Each executor publishes only canonical `manifest.json`:
 
-The current `real_vps_awg_nat_evidence_v3` schema requires the validated
-RIPDPI source commit and client artifact SHA-256 in `clientIdentity`; v2 output
-predates that required identity and is rejected rather than ambiguously decoded.
+The public `contract/real-vps-awg-nat-evidence.schema.json` contract checks the
+structure of `real_vps_awg_nat_evidence_v4`. JSON Schema cannot compare a
+correlation digest or order timestamps across fields, so schema acceptance
+never grants PASS. Every deploy-side and client-side consumer MUST also execute
+the canonical `scripts/real-vps-awg-nat.py validate` semantics. The contract
+deliberately separates the standalone
+`amneziawg-go` executable in `engineIdentity` from a client-produced
+`clientAcceptance`. The latter must use
+`ripdpi_awg_live_acceptance_v1` and bind an exact 40-hex RIPDPI source commit,
+APK/report/correlation SHA-256 values, a bounded timestamp window,
+`transport=amneziawg`, and positive routed TCP, routed UDP, recovery, stale-key
+rejection, and cleanup outcomes. Engine source or binary digests cannot stand
+in for client acceptance. Older manifests are rejected rather than decoded
+ambiguously.
 
-- `PASS` means exact deployed-source provenance, all five phases, three PCAP
+Every executor first creates a root-private, atomic
+`ripdpi_awg_live_acceptance_request_v1` with a fresh nonce and the current
+invocation ID. It accepts only a mode-`0600`, single-link canonical
+`ripdpi_awg_live_acceptance_handoff_v1` signed by the provisioned Ed25519 public
+key over the nonce, invocation ID, and complete acceptance. The handoff is
+renamed out of the inbox, re-read through the same strict descriptor boundary,
+and consumed once. Requests expire after five minutes. The client-side signer
+and privileged atomic relay are a separate client deliverable and are not
+implemented by this deploy-side source slice.
+
+- `PASS` means exact deployed-source provenance, a fresh correlated client
+  acceptance, all five phases, three PCAP
   digests, observed restart/reload generations, old-key rejection,
   transactional promotion, complete cleanup, fresh evidence-peer handshakes,
   positive peer RX/TX, and NAT deltas are complete.
@@ -200,6 +223,13 @@ predates that required identity and is rejected rather than ambiguously decoded.
   not contain exactly one `PrivateKey` and `PresharedKey`) from
   `CONFIG_INVALID` (malformed runner JSON, unsafe paths, or missing hooks) and
   `PREREQUISITE_MISSING` (runner privilege, binaries, or source archive).
+
+The first executable-validator-approved PASS is durably recorded only as
+`pending-initial.json`. A distinct ordered pair is required before the
+canonical locked state machine atomically publishes `latest.json`. Fsynced
+temporary files and a pending/latest replay rule recover interrupted
+publication. Invalid and infrastructure-unavailable attempts cannot create or
+replace pending/latest state.
 
 Both non-PASS classifications fail the executor. Raw PCAPs, hook logs, config
 paths, targets, and secrets stay on the runner and are deleted during cleanup.
