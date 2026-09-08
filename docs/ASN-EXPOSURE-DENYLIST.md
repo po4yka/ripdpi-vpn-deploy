@@ -1,6 +1,8 @@
 # ASN Exposure Denylist Gate
 
-This note defines a safe design boundary for a future server-side denylist gate based on external ASN and service-network feeds. It is intentionally non-deployable: it contains no ranges, no generated rule payloads, no firewall commands, and no provider-specific policy.
+This note defines a safe design boundary for the server-side denylist gate based on external ASN and service-network feeds. It is intentionally non-deployable: it contains no ranges, no generated rule payloads, no firewall commands, and no provider-specific policy.
+
+Status: the review-only first pass has landed (PR #137). The operator contract for the delivered gate is `docs/NETWORK-EXPOSURE-GATE.md`.
 
 ## Objective
 
@@ -61,8 +63,12 @@ Before any enforcement code lands, a task must define:
 - a molecule or integration test that proves disabled-by-default behavior leaves the rendered firewall unchanged;
 - an operator runbook section documenting review, canary, false-positive monitoring, and rollback without deployable rule payloads.
 
-## Open Questions
+## Resolved Design Decisions
 
-- Which source-trust states are needed: primary maintained repository, supplemental sheet, local operator override, and rejected source may be enough for the first schema.
-- Whether egress exposure policy should apply to host-originated traffic only, forwarded VPN client traffic only, or both must be an explicit operator choice.
-- Whether feed refresh belongs outside Ansible as a human-reviewed artifact update, or inside automation as a dry-run-only fetcher, remains unresolved.
+The review-only first pass has landed (PR #137). This section records the decisions that retired the former open questions. `docs/NETWORK-EXPOSURE-GATE.md` is the operator contract; this note stays the design boundary.
+
+- **Source-trust states.** Former question: which trust states (primary, supplemental, operator override, rejected) the first schema needs. Decision: the delivered contract attaches trust to each signed artifact, not to a per-source enum. Trust requires an RSA/SHA-256 signature, a review public key pinned by the SHA-256 digest of its DER SubjectPublicKeyInfo, an approved review identity and review ID, and a timezone-qualified expiry. Unsigned, unapproved, or expired input fails closed. Fixtures stay placeholder-only, and `python3 scripts/network-exposure-gate.py --check-fixtures` rejects deployable fixture data without printing its values.
+
+- **Egress scope.** Former question: host-originated traffic, forwarded VPN client traffic, or both. Decision: the policy schema makes this a structural operator choice with three independent direction arrays — `ingress` (input chain, source address), `host_egress` (output chain, destination address), and `forwarded` (forward chain, destination address). No direction inherits another; an empty array means no decision. `host_egress` covers sockets opened by proxy services and does not claim to separate their clients from other host-originated traffic.
+
+- **Feed refresh.** Former question: human-reviewed artifact update or dry-run-only automation. Decision: refresh is manual only. The operator creates and reviews a new signed local artifact and approves its new complete-file digest. The gate has no timer, no remote fetch, no hidden refresh, and no unattended apply path.
