@@ -3086,6 +3086,14 @@ def validate_historical_incarnation(
 
 
 def validate_deleted_history(root: Path, base: str) -> None:
+    resolved = run_command(
+        ("git", "rev-parse", "--verify", "--end-of-options", f"{base}^{{commit}}"),
+        root=root,
+    )
+    resolved_base = (resolved.stdout or "").strip()
+    if resolved.returncode != 0 or not SHA_RE.fullmatch(resolved_base):
+        fail(f"cannot resolve task history base {base}")
+    base = resolved_base
     ancestry = run_command(
         ("git", "merge-base", "--is-ancestor", base, "HEAD"), root=root
     )
