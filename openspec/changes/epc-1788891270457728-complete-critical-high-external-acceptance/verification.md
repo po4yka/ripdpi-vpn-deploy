@@ -3,11 +3,11 @@ task_id: EPC-1788891270457728
 change: epc-1788891270457728-complete-critical-high-external-acceptance
 commit_sha: b5682b9a8b0c30515a1e2576ac4ab385fb29d077
 local: passed
-local_evidence: Exact protected-main source b5682b9a8b0c30515a1e2576ac4ab385fb29d077 is clean and has deployable digest 5e2512c8a029a92cffc14251daea2ac56e6299ba7d358b536379d17c05753082. Task contracts passed for 9 tasks and 38 steps, strict OpenSpec validation passed, and the owner-only mode-0600 no-write preflight report has SHA-256 58868c86e0785a3d68290a8ab1685068bcfec88fcbfe742e9f90ab342558b1e1. The preflight performed zero provider reads, SSH connections, or mutations.
+local_evidence: Exact protected-main source b5682b9a8b0c30515a1e2576ac4ab385fb29d077 is clean and has deployable digest 5e2512c8a029a92cffc14251daea2ac56e6299ba7d358b536379d17c05753082. Task contracts passed for 9 tasks and 38 steps, strict OpenSpec validation passed, and the owner-only mode-0600 no-write preflight report has SHA-256 58868c86e0785a3d68290a8ab1685068bcfec88fcbfe742e9f90ab342558b1e1. A separate owner-only report with SHA-256 c3a70e3d911514155ce6d5850a858223aaacdb2ec0c84af34e13fe7e84fb7bd7 records successful canonical SOPS decrypt, strict secret validation, secret spot-check, certificate check, and plaintext removal. Both preflights performed zero provider reads, SSH connections, or mutations.
 remote_ci: passed
 remote_ci_evidence: Exact post-merge source b5682b9a8b0c30515a1e2576ac4ab385fb29d077 passed push CI run 34263738849 with all 75 jobs successful, CodeQL run 34263737976, Scorecard run 34263738091, and release-please run 34263738004.
 dry_run: blocked
-dry_run_evidence: Three-host generated inventory plus encrypted production secrets and a private age key are available and no-output SOPS decryption passed. The required mode-0600 exact-alias SSH-context snapshot is absent, the Tailnet backend is Stopped with the local node offline, and no dry-run was started.
+dry_run_evidence: Three-host generated inventory plus encrypted production secrets and a private age key are available and no-output SOPS decryption passed. The canonical pre-deploy secret and certificate gate passed and its plaintext was removed. The required mode-0600 exact-alias SSH-context snapshot is absent, the Tailnet backend is Stopped with the local node offline, and no dry-run was started.
 staging: blocked
 staging_evidence: No provider credential mode is present and no current provider account binding, owner-approved cost ceiling or expiry, unique staging identity, or cleanup reservation exists. No provider read or resource creation was attempted.
 live: blocked
@@ -33,6 +33,6 @@ artifact_evidence: No authenticated primary or independent alert-delivery capabi
 | REQ-EPC-1788891270457728-007 | EPC-1788891642225067 | Fresh recurring nonce, revision, source, artifact, traffic, recovery, and cleanup evidence with replay negatives | blocked: current client and disposable executor inputs unavailable |
 | REQ-EPC-1788891270457728-008 | EPC-1788891642969936 | Fresh expected-target metrics plus controlled primary and independent alert firing, recovery, rotation, rollback, and cutover | blocked: alert-delivery capability not verified |
 | REQ-EPC-1788891270457728-009 | EPC-1788891642969936 | Observed offsite copy and isolated non-pruning restore | blocked: storage capability and restore target not verified |
-| REQ-EPC-1788891270457728-010 | EPC-1788891640190305 | Owner-only mode-0600 preflight report `58868c86` checked credential classes and private inputs without values; zero external calls or mutations | passed |
+| REQ-EPC-1788891270457728-010 | EPC-1788891640190305 | Owner-only reports `58868c86` and `c3a70e3d` checked credential classes, SOPS decrypt, strict secrets and certificates, then removed plaintext; zero external calls or mutations | passed |
 | REQ-EPC-1788891270457728-011 | EPC-1788891640190305 | Successor remains active as blocked with exact provider, SSH, Tailnet, client, alert, and restore capability gaps | passed |
 | REQ-EPC-1788891270457728-012 | EPC-1788891643660976 | Thirteen-row predecessor matrix, exact evidence, rollback and cleanup reconciliation, strict validation, and archive readiness | pending |
