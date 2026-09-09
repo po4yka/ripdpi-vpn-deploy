@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Protected main d0c83539 contains the symbolic-base fix and PR #210 passed exact-main CI 34315383102 with 75/75 jobs plus CodeQL 34315382910; taskctl validate --base accepted the protected base.",
+  "execution_sha256": "d5d236b718ff9d24b1262d3a98fb9ee084278bf1a6782d2d75c8a2462c2fa310",
+  "issue_sha256": "31a17c84b527c95ac36a8d02716290d8fa326f41e4d06b3b63cc7c133403689e",
+  "outcome": "done",
+  "prepared_at": "2026-09-09T06:04:17Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1788896215087324"
+}
