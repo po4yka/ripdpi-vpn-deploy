@@ -21,4 +21,10 @@
 - Enabling the role without first changing `xray.target` to the exact loopback listener is intentionally rejected.
 - `server_names` must contain only the owned certificate hostname; borrowed fallback names defeat the same-ASN design.
 - Do not add a public nginx listener here. Public HTTP behavior requires a separate Terraform/firewall/listener-contract change.
+- The loopback site is its own decoy identity. For new decoy surfaces the
+  canonical scaffold is `ansible/roles/nginx-xhttp/templates/public-site/`
+  plus `ansible/roles/nginx-xhttp/files/public-site/` (pages and served
+  assets); copy and re-theme both per identity. Never share exact assets or
+  the 404 body across domains — identical content hashes make the fleet
+  clusterable.
 - DNS, certificate issuance, client SNI rotation, and filtered-vantage survival remain operator promotion gates outside this role.

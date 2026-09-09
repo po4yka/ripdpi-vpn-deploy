@@ -37,7 +37,7 @@ tiers:
   nginx-xhttp: core         # P1 XHTTP direct (TCP/8443)
   hysteria: core            # P2 Hysteria2 (UDP/443)
   amneziawg: core           # P2 device-VPN (obfuscated WG UDP)
-  geodata: core             # geosite/geoip feed; firewall geo-block depends on it
+  geodata: core             # pinned geosite/geoip feeds for Xray egress routing and the cascade-ingress classifier (not a firewall control)
   monitoring: core          # local-first node_exporter + log rotation
   observability_agent: core # bounded remote-write sender; default-off during migration
   observability_control_plane: tactical # dedicated default-off authenticated metrics receiver

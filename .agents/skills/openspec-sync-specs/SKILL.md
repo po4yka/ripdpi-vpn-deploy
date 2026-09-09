@@ -140,12 +140,12 @@ This is an **agent-driven** operation - you will read delta specs and directly e
 
       **`## Purpose` in the delta:**
       - The main spec already has one and it is authoritative - leave it alone
-        (this is what `./taskctl openspec cli archive` does; it warns and moves on)
+        (this is what `./taskctl openspec archive` does; it warns and moves on)
 
    d. **Create new main spec** if capability doesn't exist yet:
       - Create `<planningHome.root>/openspec/specs/<capability-path>/spec.md`
       - Add Purpose section: copy the delta's `## Purpose` body verbatim when it has one
-        (this is what `./taskctl openspec cli archive` does); only write a brief TBD placeholder when it does not
+        (this is what `./taskctl openspec archive` does); only write a brief TBD placeholder when it does not
       - Add Requirements section with the ADDED requirements
       - Follow the **Main Spec Format Reference** below
 
@@ -226,7 +226,7 @@ The system SHALL do something new.
 **Key Principle: Intelligent Merging**
 
 Unlike programmatic merging, you merge rather than overwrite:
-- A MODIFIED block carries the whole requirement - body plus every scenario that survives the change. `./taskctl openspec cli validate` and `./taskctl openspec cli archive` both reject one that drops a scenario the main spec still has.
+- A MODIFIED block carries the whole requirement - body plus every scenario that survives the change. `./taskctl openspec cli validate` and `./taskctl openspec archive` both reject one that drops a scenario the main spec still has.
 - Keep anything the delta does not mention, in the main spec's existing order
 - Use your judgment to merge changes sensibly
 

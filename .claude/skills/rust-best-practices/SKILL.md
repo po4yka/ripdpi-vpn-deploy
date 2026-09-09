@@ -14,7 +14,7 @@ generic Rust library because this binary runs against production secrets and inf
 - Error strategy: `anyhow::Result<T>` end-to-end. No custom error enum unless we expose a
   library boundary.
 - Tests: unit + `cargo insta` snapshots for rendered output. Snapshots live in
-  `vpnd/src/snapshots/`. Run `cargo insta review` before committing.
+  `vpnd/tests/snapshots/`. Run `cargo insta review` before committing.
 - CI: `cargo check`, `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`.
 - Version pin moves through release-please — do not bump `Cargo.toml` by hand.
 

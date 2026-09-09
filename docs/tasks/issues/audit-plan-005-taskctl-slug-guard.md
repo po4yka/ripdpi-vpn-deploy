@@ -2,7 +2,7 @@
 id: CIC-1787495848625122
 title: Reject path-traversal values in taskctl new slug flag
 kind: bug
-status: backlog
+status: review
 area: ci
 priority: medium
 risk: standard
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-09-09
 spec_reason: regression-tested-single-module
 related_tasks: []
 ---
@@ -27,4 +27,3 @@ Execution plan: `plans/005-taskctl-slug-validation.md`.
 
 - Traversal probes (`../evil`, absolute path) exit 2 with zero side effects outside a temp root.
 - Happy-path creation inside a temp root still works; `./taskctl validate` stays green.
-

@@ -80,6 +80,12 @@ defaults. Don't mix these — XHTTP needs long-lived streams.
   suspicious by RU active-probing assessments. Return an ordinary branded
   404 for this one site identity; never reuse its exact assets and 404 body
   across unrelated domains because content hashes make a fleet clusterable.
+  The canonical decoy scaffold for new surfaces is two trees under this role:
+  `templates/public-site/` holds the Jinja pages (which reference
+  `/assets/site.css`, `/favicon.svg`, and `/logo.svg`), and
+  `files/public-site/` holds the served static assets plus `404.html`. Copy
+  and re-theme BOTH per identity; copying only the templates produces a decoy
+  with missing assets and 404.
 - **The CDN-front role is not a default** — if you find yourself touching
   `cdn-front`, re-read the ADR; the RU baseline is direct.
 - **Do not pin the hostname to loopback** — use `vpn_service_address` so

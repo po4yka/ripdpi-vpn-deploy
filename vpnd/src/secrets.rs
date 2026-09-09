@@ -2,9 +2,12 @@ use anyhow::{Context as _, Result};
 use serde::Deserialize;
 use std::path::Path;
 
-/// Minimal typed view of the SOPS-decrypted payload at the resolved runtime path.
+/// Minimal typed view of the SOPS-decrypted payload at the configured runtime path.
 ///
-/// This is read-only and intentionally tolerant: unknown keys are preserved as raw YAML
+/// The path is never a fixed `/tmp` location: `config.rs` resolves it through
+/// `resolve_runtime_dir()` (XDG runtime dir or a user-specific temp directory)
+/// and `make decrypt` writes to that exact path. Read-only and intentionally
+/// tolerant: unknown keys are preserved as raw YAML
 /// so the schema lives in `scripts/validate-secrets.py`, not here.
 #[derive(Deserialize)]
 pub struct Secrets {

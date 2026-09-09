@@ -2,7 +2,7 @@
 id: CIC-1787495859628443
 title: Point sync-specs skill at the supported archive command
 kind: bug
-status: backlog
+status: review
 area: ci
 priority: medium
 risk: standard
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-09-09
 spec_reason: docs-only
 related_tasks: []
 ---
@@ -28,4 +28,3 @@ Execution plan: `plans/009-sync-specs-archive-command.md`.
 - Zero `openspec cli archive` references remain under `.agents/skills/`.
 - `generated-assets.lock.json` hash for the skill updated; JSON parses.
 - `./taskctl validate` and `make task-check` exit 0.
-
