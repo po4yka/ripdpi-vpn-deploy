@@ -1,0 +1,11 @@
+{
+  "change": "cic-1788902865968549-preserve-pre-policy-terminal-history",
+  "evidence_summary": "Protected main d0c83539 contains the policy fix; exact-main CI 34315383102 passed 75/75, CodeQL 34315382910 passed, final diff review found no actionable defects, and committed review evidence at 3851ba82 passed archive-ready validation.",
+  "execution_sha256": "964ef80c5a9a306a3f116b2a44b51b44dd9cfc205b1ded29b44f7302203ec0b5",
+  "issue_sha256": "6573555babeb41feb80e5dc35481ab25dfc0c324c5c9edf1687fa066b64b90bb",
+  "outcome": "done",
+  "prepared_at": "2026-09-09T06:03:17Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1788902865968549"
+}

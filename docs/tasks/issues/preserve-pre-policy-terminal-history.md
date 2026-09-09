@@ -2,7 +2,7 @@
 id: CIC-1788902865968549
 title: Preserve pre-policy terminal history validation
 kind: bug
-status: review
+status: done
 area: ci
 priority: medium
 risk: standard
@@ -14,7 +14,10 @@ openspec_change: cic-1788902865968549-preserve-pre-policy-terminal-history
 created: 2026-09-09
 updated: 2026-09-09
 related_tasks: []
-status_detail: Exact source d8fe945e passed focused regressions and full ci-fast; PR #210 merged through protected main as d0c83539. Exact-main CI run 34315383102 passed all 75 jobs, CodeQL run 34315382910 passed, and final diff review found no further actionable defects.
+status_detail: "Exact source d8fe945e passed focused regressions and full ci-fast; PR #210 merged through protected main as d0c83539. Exact-main CI run 34315383102 passed all 75 jobs, CodeQL run 34315382910 passed, and final diff review found no further actionable defects."
+closed_at: "2026-09-09T06:03:17Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Protected main d0c83539 contains the policy fix; exact-main CI 34315383102 passed 75/75, CodeQL 34315382910 passed, final diff review found no actionable defects, and committed review evidence at 3851ba82 passed archive-ready validation.
 ---
 
 ## Goal
