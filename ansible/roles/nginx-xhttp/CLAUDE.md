@@ -80,6 +80,8 @@ defaults. Don't mix these — XHTTP needs long-lived streams.
   suspicious by RU active-probing assessments. Return an ordinary branded
   404 for this one site identity; never reuse its exact assets and 404 body
   across unrelated domains because content hashes make a fleet clusterable.
+  `templates/public-site/` is the canonical content tree for new decoy
+  surfaces: copy and re-theme it per identity instead of sharing bytes.
 - **The CDN-front role is not a default** — if you find yourself touching
   `cdn-front`, re-read the ADR; the RU baseline is direct.
 - **Do not pin the hostname to loopback** — use `vpn_service_address` so

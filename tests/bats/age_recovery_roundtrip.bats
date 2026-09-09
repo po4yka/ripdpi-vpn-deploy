@@ -14,7 +14,8 @@ AGE_KEY_FILE="${REPO_ROOT}/tests/fixtures/age-test.key"
 EXPECTED_KEY="AGE-SECRET-KEY-1V070XMWMW3TKQZFQCEUK8ZV82VFRD4EG8Z7LHECG5VP7CXP7XP2QMMQY9M"
 
 setup() {
-  : # nothing to set up per-test
+  command -v ssss-combine >/dev/null 2>&1 \
+    || skip "ssss-combine not installed; install it (e.g. 'brew install ssss' / 'apt-get install ssss') to run the recovery roundtrip"
 }
 
 # Load share N (1-indexed), stripping trailing whitespace

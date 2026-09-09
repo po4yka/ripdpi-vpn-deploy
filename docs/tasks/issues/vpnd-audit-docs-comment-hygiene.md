@@ -2,7 +2,7 @@
 id: DOC-1787497584916859
 title: Fix stale doc comments and dead QR helper from audit
 kind: bug
-status: backlog
+status: review
 area: docs
 priority: low
 risk: standard
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-09-09
 spec_reason: docs-only
 related_tasks: []
 ---

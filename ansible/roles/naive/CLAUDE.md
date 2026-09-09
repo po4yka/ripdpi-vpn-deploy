@@ -31,7 +31,9 @@ and publishes only after the expected digest passes.
 
 - **v147 preamble change is breaking** — clients on < v147 cannot connect to
   server on ≥ v147. Coordinate upgrades; staging environment exists for this.
-- **Authentication is HTTP Basic over TLS** — credentials in SOPS; the
-  generated config emits them via env so they don't sit in plain config.
+- **Authentication is HTTP Basic over TLS** — credentials come from SOPS and
+  render inline into the Caddyfile (`basic_auth` line), owned `0640`
+  root:naive. There is no env-delivery path; the render is `no_log` with diff
+  disabled so the pair never reaches Ansible output.
 - **Don't share the auth pair across clients** — one credential per device,
   same rule as VLESS UUIDs.

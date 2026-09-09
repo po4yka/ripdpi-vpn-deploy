@@ -12,14 +12,14 @@ Scope of the audit that produced these plans: `scripts/**` (bash + python), `tes
 | 002 | Make snapshot-update fail loudly on render errors | P1 | S | — | DONE |
 | 003 | Match pinned Xray version exactly in probe-matrix-driver | P1 | S | — | DONE |
 | 004 | Lock down and gitignore credential-bearing QR artifacts | P1 | S | 001 | DONE |
-| 005 | Reject path-traversal values in taskctl new --slug | P2 | S | — | TODO |
+| 005 | Reject path-traversal values in taskctl new --slug | P2 | S | — | DONE |
 | 006 | Add the conftest Rego gate to the local union gate | P1 | S | — | DONE |
 | 007 | Bound every external curl with connect/total timeouts | P1 | S | — | DONE |
 | 008 | Replace GNU-only ms timestamps in idle-cycle-measure.sh | P1 | S | — | DONE |
-| 009 | Fix rejected `openspec cli archive` refs in sync-specs skill | P2 | S | — | TODO |
+| 009 | Fix rejected `openspec cli archive` refs in sync-specs skill | P2 | S | — | DONE |
 | 010 | Validate SUBSCRIPTION_DIR before remote root commands | P1 | S | none (land after 004) | DONE |
 | 011 | Refuse canary deploys scoped to non-canary secrets files | P1 | S | — | DONE |
-| 012 | Skip age-recovery roundtrip suite when ssss-combine absent | P2 | S | — | TODO |
+| 012 | Skip age-recovery roundtrip suite when ssss-combine absent | P2 | S | — | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
