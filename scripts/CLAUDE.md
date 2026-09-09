@@ -201,6 +201,11 @@ Independent controller homes are not a supported shared-ownership mechanism.
 
 ## Pitfalls
 
+- **Bootstrap transport is node-scoped, never global extra vars.** Ansible
+  extra vars override `delegate_to: localhost` too, redirecting controller
+  validation to the VPS. Keep pinned connection settings in the private
+  one-node inventory group and exercise real Ansible delegation in tests.
+
 - **Mutation builds require sibling inputs** — `test-vpnd-mutants.sh` copies
   tracked working-tree files before using cargo-mutants in-place in that owned
   temporary tree. Never mutate the operator checkout or suppress its exit code.
