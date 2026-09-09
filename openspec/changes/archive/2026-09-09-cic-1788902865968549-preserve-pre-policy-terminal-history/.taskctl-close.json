@@ -1,0 +1,11 @@
+{
+  "change": "cic-1788902865968549-preserve-pre-policy-terminal-history",
+  "evidence_summary": "OpenSpec change archived 2026-09-09 with task-contract-validation requirements synced including the trusted-base activation semantics; 103-test taskctl suite with 20 subtests passed; base-aware validation green; PR #210 exact-head checks (run 34306549038 at 15267007) passed with Codex code and security reviews completing without blocking findings.",
+  "execution_sha256": "964ef80c5a9a306a3f116b2a44b51b44dd9cfc205b1ded29b44f7302203ec0b5",
+  "issue_sha256": "72f4d28eda337a66dd84a1b9b70bd41e9c49c55591a2775bd84a5436c08bbd13",
+  "outcome": "done",
+  "prepared_at": "2026-09-09T06:00:13Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1788902865968549"
+}

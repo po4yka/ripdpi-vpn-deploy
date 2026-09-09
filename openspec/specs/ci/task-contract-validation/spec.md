@@ -226,3 +226,86 @@ survival checks.
 - **WHEN** deleted-task history is validated
 - **THEN** the pre-OpenSpec snapshots do not require verification files
 - **AND** required evidence transfers and terminal mapping survival still fail closed
+
+### Requirement: REQ-CIC-1788902865968549-001 — version committed-review history enforcement
+
+The task validator MUST determine whether committed-review enforcement was
+activated anywhere in the first-parent project-config ancestry of the exact
+terminal transition and MUST keep that activation effective for all descendant
+terminal transitions even if a later config removes or lowers the policy field.
+Base-aware validation MUST reject that downgrade independently of whether the
+selected range contains a terminal task candidate. A terminal transition
+without version 1 in its own first-parent ancestry MUST receive legacy treatment
+only when its commit is an ancestor of the first version-1 activation already
+present in the trusted validation base. An activation introduced after that
+base MUST NOT grandfather an earlier transition in the same untrusted change.
+
+#### Scenario: Pre-activation terminal history remains valid
+
+- **GIVEN** a task reached `done` through a transition accepted before the
+  committed-review policy was first activated
+- **WHEN** a later policy-aware revision validates or purges that terminal record
+- **THEN** the historical transition remains valid
+- **AND** current policy is not applied retroactively
+- **AND** an authoring purge names a trusted ref that already contains the
+  activation boundary
+
+#### Scenario: Unversioned peer history remains fail-closed
+
+- **GIVEN** a federation peer has never declared committed-review policy
+- **WHEN** its task changes directly from `doing` to `done` and is purged
+- **THEN** terminal history validation rejects the transition
+- **AND** the malformed peer task cannot satisfy a local blocker
+
+#### Scenario: Pre-activation compatibility is narrow
+
+- **GIVEN** the current checkout proves a terminal revision predates policy
+  activation
+- **WHEN** the task reaches `done` directly from `todo`, `blocked`, or no prior
+  state
+- **THEN** terminal history validation rejects the transition
+- **AND** only the historical `doing` to `done` form receives compatibility
+
+#### Scenario: Post-activation downgrade cannot bypass review
+
+- **GIVEN** committed-review policy version 1 exists in the first-parent
+  ancestry of a task's terminal revision
+- **AND** a descendant config removes the field or sets it to version 0
+- **WHEN** the task changes directly from `doing` to `done`
+- **THEN** prospective and committed deletion validation reject the transition
+- **AND** restoring version 1 later does not repair the malformed history
+
+#### Scenario: Policy-only downgrade is rejected
+
+- **GIVEN** committed-review policy version 1 is active
+- **WHEN** a later commit removes or lowers it without deleting any task
+- **THEN** base-aware validation rejects the downgrade
+- **AND** validation does not depend on entering a terminal-candidate loop
+
+#### Scenario: Stale merged lane inherits active policy
+
+- **GIVEN** a side lane forked before committed-review policy activation
+- **AND** the integration branch activated version 1 before the side lane
+  committed a direct `doing` to `done` transition
+- **WHEN** the side lane is merged and base-aware history validation runs
+- **THEN** validation rejects the transition as missing committed review
+- **AND** the stale lane is not treated as pre-activation history
+
+#### Scenario: Late activation cannot manufacture legacy history
+
+- **GIVEN** the trusted validation base has no committed-review policy
+- **AND** an untrusted change commits a direct `doing` to `done` transition
+- **WHEN** that same change later activates version 1 and purges the task
+- **THEN** base-aware validation rejects the transition as missing committed
+  review
+- **AND** federation without a pre-established activation boundary also rejects
+  the historical task
+
+#### Scenario: Current committed review path remains accepted
+
+- **GIVEN** policy version 1 is active and the task has a committed `review`
+  snapshot
+- **WHEN** a later separate commit prepares `done` and another commit purges it
+- **THEN** terminal history validation accepts the lifecycle
+- **AND** the existing review, receipt, archive, and evidence checks still apply
+

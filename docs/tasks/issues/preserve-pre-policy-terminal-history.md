@@ -2,7 +2,7 @@
 id: CIC-1788902865968549
 title: Preserve pre-policy terminal history validation
 kind: bug
-status: review
+status: done
 area: ci
 priority: medium
 risk: standard
@@ -14,7 +14,10 @@ openspec_change: cic-1788902865968549-preserve-pre-policy-terminal-history
 created: 2026-09-09
 updated: 2026-09-09
 related_tasks: []
-status_detail: Exact source d8fe945e passed focused regressions, 103-test taskctl suite, strict OpenSpec, base-aware validation, and full ci-fast; exact-source hosted CI and reviews remain required.
+status_detail: "Exact source d8fe945e passed focused regressions, the 103-test taskctl suite, strict OpenSpec, base-aware validation, and full ci-fast; PR #210 exact-head checks (run 34306549038 at 15267007) and Codex code and security reviews completed without blocking findings."
+closed_at: "2026-09-09T06:00:13Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "OpenSpec change archived 2026-09-09 with task-contract-validation requirements synced including the trusted-base activation semantics; 103-test taskctl suite with 20 subtests passed; base-aware validation green; PR #210 exact-head checks (run 34306549038 at 15267007) passed with Codex code and security reviews completing without blocking findings."
 ---
 
 ## Goal

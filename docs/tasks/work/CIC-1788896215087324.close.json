@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Symbolic base refs resolve to commit SHAs before deleted-history indexing; focused regression plus full taskctl suite and validate --base origin/main green at the exact PR head; PR #210 checks and Codex reviews passed with no blocking findings.",
+  "execution_sha256": "d5d236b718ff9d24b1262d3a98fb9ee084278bf1a6782d2d75c8a2462c2fa310",
+  "issue_sha256": "ee44b94fb1001dbf33de2c45f7369bb9a085279ab3a9e46f2b66c114b458d1de",
+  "outcome": "done",
+  "prepared_at": "2026-09-09T06:00:13Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1788896215087324"
+}

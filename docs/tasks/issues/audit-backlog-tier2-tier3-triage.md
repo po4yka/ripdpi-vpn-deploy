@@ -2,7 +2,7 @@
 id: OPS-1787495860232652
 title: Triage tier-2 and tier-3 findings from 2026-08-23 plumbing audit
 kind: research
-status: review
+status: done
 area: operations
 priority: low
 risk: standard
@@ -15,6 +15,9 @@ created: 2026-08-23
 updated: 2026-09-09
 spec_reason: research-only
 related_tasks: []
+closed_at: "2026-09-09T06:00:13Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "All tier-2 findings dispositioned: plans 013-018 created under plans/; UTF-8 sweep, exception-root validation, and ci-fast parallelization rejected with rationale in plans/README.md; TASKING-07 folded into plan 014; decision summary recorded in the work record."
 ---
 
 ## Goal
