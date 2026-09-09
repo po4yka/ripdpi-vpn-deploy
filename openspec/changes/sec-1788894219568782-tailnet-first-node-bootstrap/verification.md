@@ -289,3 +289,31 @@ transport round-trip with a spaced key path and refusal of accidental SSH or
 sudo in the delegated local task. This is local regression evidence only;
 the corrected revision still requires full local/hosted gates and renewed
 staging, protocol, recovery and live acceptance. No step is closed.
+
+## Corrected installer and staging shutdown — 2026-09-09
+
+Revision `09e178b0b78e5501cccfc08f96dcfb895f63de7b` passed the frozen
+`ci-fast` gate: 4478 pytest cases passed, 4 deselected, 20 subtests; all 55
+Bats cases and Rust checks passed. The targeted three-module suite passed
+227 tests; `make validate` passed. Hosted CI run `34336075772` completed
+with 75 successful jobs. The revision's PR checks were rechecked before
+shutdown: 80 successful checks and one neutral result.
+
+The corrected installer installed the real components and enrolled an
+ephemeral node. External SSH/SFTP confirmation failed: the temporary exact
+TCP/22 policy was confirmed after the controller's bounded pause had ended.
+No handoff was produced. Subsequent guest inspection observed transaction
+status `idle`, Tailscale `NeedsLogin`, and a passing strict public-socket
+preflight. This is active-controller failed-bootstrap recovery evidence,
+not positive bootstrap acceptance or a controller-loss/reboot fault test.
+
+The exact temporary Tailnet rule and its two tests were removed, preserving
+the original policy. UUID-bound cleanup verified the second server and root
+storage absent at 10:05:41 UTC. A final authenticated provider read during
+shutdown returned `SERVER_NOT_FOUND` / `STORAGE_NOT_FOUND` for both staging
+attempts. No additional enrollment keys or paid resources were created.
+
+The user requested a bounded shutdown. Positive bootstrap, both enrolled
+fault tests, normal staging deployment, protocol liveness, provider promotion
+and serial live acceptance remain incomplete. All six execution steps remain
+open; neither CI nor the cleanup receipt closes these acceptance categories.
