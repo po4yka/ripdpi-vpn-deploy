@@ -95,6 +95,19 @@ This policy is owned by `CIC-1788708456909496` and its linked OpenSpec change.
 The repository project contract activates transition auditing with
 `evidence_transfer_policy: 1`; an omitted or zero value exists only so history
 before activation remains valid, and the activation transition is checked.
+The companion `committed_review_policy: 1` field activates the committed
+`review` prerequisite for `done` transitions. Activation is monotonic along a
+terminal revision's first-parent config ancestry. A legacy `doing -> done`
+transition is accepted only when its terminal commit is an ancestor of the
+first version-1 activation already present in the trusted validation base; a
+stale merged lane or a later activation in the change being validated cannot
+manufacture legacy eligibility. Base-aware validation uses its `--base` ref;
+purging a legitimate pre-policy terminal record requires an explicit
+`close purge --trusted-base <protected-ref>` anchor. With no trust anchor,
+including federation exports, unversioned history remains fail-closed. Other
+pre-policy source states stay invalid, and removing or lowering the field after
+version 1 is rejected rather than disabling the rule, even when the downgrade
+range contains no terminal task candidate.
 It does not relax authentication, authorization,
 secret-handling, rollback, destructive-action confirmation, fail-closed input
 validation or the distinction between local, remote CI, dry-run, staging, live,

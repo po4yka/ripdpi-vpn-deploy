@@ -165,6 +165,7 @@ class ProjectConfig:
     areas: dict[str, str]
     evidence_categories: tuple[str, ...]
     evidence_transfer_policy: int
+    committed_review_policy: int | None
     openspec_schema: str
     allowed_peers: tuple[str, ...]
 
@@ -228,6 +229,7 @@ class TerminalHistoryIndex:
 class TerminalHistoryResolver:
     root: Path
     config: ProjectConfig
+    trusted_ref: str | None = None
     index: TerminalHistoryIndex | None = None
 
     def resolve(
@@ -243,6 +245,7 @@ class TerminalHistoryResolver:
             task_id,
             self.config,
             allow_uncommitted_purge=allow_uncommitted_purge,
+            trusted_ref=self.trusted_ref,
             history_index=self.index,
         )
 
@@ -272,7 +275,7 @@ def parse_project_config(raw: Any, path: Path) -> ProjectConfig:
     missing = (
         sorted(required - raw.keys()) if isinstance(raw, dict) else sorted(required)
     )
-    allowed = required | {"evidence_transfer_policy"}
+    allowed = required | {"evidence_transfer_policy", "committed_review_policy"}
     unknown = sorted(raw.keys() - allowed) if isinstance(raw, dict) else []
     if not isinstance(raw, dict) or missing or unknown:
         fail(f"{path}: project config fields missing={missing}, unknown={unknown}")
@@ -315,6 +318,12 @@ def parse_project_config(raw: Any, path: Path) -> ProjectConfig:
         1,
     }:
         fail(f"{path}: evidence_transfer_policy must be 0 or 1")
+    committed_review_policy = raw.get("committed_review_policy")
+    if committed_review_policy is not None and (
+        type(committed_review_policy) is not int
+        or committed_review_policy not in {0, 1}
+    ):
+        fail(f"{path}: committed_review_policy must be 0 or 1")
     openspec_schema = raw["openspec_schema"]
     if not isinstance(openspec_schema, str) or not CHANGE_RE.fullmatch(openspec_schema):
         fail(f"{path}: openspec_schema must be lowercase kebab-case")
@@ -337,6 +346,7 @@ def parse_project_config(raw: Any, path: Path) -> ProjectConfig:
         areas=dict(areas),
         evidence_categories=tuple(evidence),
         evidence_transfer_policy=evidence_transfer_policy,
+        committed_review_policy=committed_review_policy,
         openspec_schema=openspec_schema,
         allowed_peers=tuple(peers),
     )
@@ -2423,6 +2433,7 @@ def resolve_terminal_task_from_index(
     history_index: TerminalHistoryIndex,
     allow_uncommitted_purge: bool = False,
     prospective_purge: bool = False,
+    trusted_ref: str | None = None,
 ) -> dict[str, Any] | None:
     if (
         history_index.root != root.resolve()
@@ -2435,6 +2446,13 @@ def resolve_terminal_task_from_index(
 
     with tempfile.TemporaryDirectory(prefix="taskctl-federation-history-") as directory:
         scratch = Path(directory)
+        config_cache: dict[str, ProjectConfig] = {}
+
+        def config_at(ref: str) -> ProjectConfig:
+            if ref not in config_cache:
+                config_cache[ref] = historical_project_config(root, ref, scratch)
+            return config_cache[ref]
+
         timeline = [
             (revision, by_revision[revision].get(task_id)) for revision in revisions
         ]
@@ -2478,7 +2496,7 @@ def resolve_terminal_task_from_index(
         deletion = timeline[deletion_index][0]
         final_ref, final_snapshot = timeline[deletion_index - 1]
         assert final_snapshot is not None
-        historical_config = historical_project_config(root, final_ref, scratch)
+        historical_config = config_at(final_ref)
         if (
             historical_config.project != config.project
             or historical_config.federation_contract != config.federation_contract
@@ -2502,9 +2520,7 @@ def resolve_terminal_task_from_index(
         incarnation = timeline[last_absent + 1 : deletion_index]
         validate_historical_incarnation(
             incarnation,
-            config_at=lambda revision: historical_project_config(
-                root, revision, scratch
-            ),
+            config_at=config_at,
         )
         previous_status: str | None = None
         terminal_transition: str | None = None
@@ -2522,8 +2538,25 @@ def resolve_terminal_task_from_index(
         initial_strict_terminal = (
             terminal_index == 0 and incarnation[0][0] == history_index.strict_start
         )
+        review_required = committed_review_policy_enforced(
+            root,
+            terminal_transition,
+            config_at=config_at,
+            trusted_ref=trusted_ref,
+        )
+        invalid_done_transition = outcome == "done" and not (
+            previous_status == "review"
+            or (not review_required and previous_status == "doing")
+        )
+        invalid_dropped_transition = (
+            outcome == "dropped"
+            and (
+                previous_status is None
+                or not transition_allowed(previous_status, outcome)
+            )
+        )
         if not initial_strict_terminal and (
-            previous_status is None or not transition_allowed(previous_status, outcome)
+            invalid_done_transition or invalid_dropped_transition
         ):
             fail(
                 f"{config.project}#{task_id}: invalid terminal transition "
@@ -2656,6 +2689,7 @@ def resolve_terminal_task(
     *,
     allow_uncommitted_purge: bool = False,
     prospective_purge: bool = False,
+    trusted_ref: str | None = None,
     history_index: TerminalHistoryIndex | None = None,
 ) -> dict[str, Any] | None:
     history_index = history_index or build_terminal_history_index(root, config)
@@ -2669,6 +2703,7 @@ def resolve_terminal_task(
             history_index=history_index,
             allow_uncommitted_purge=allow_uncommitted_purge,
             prospective_purge=prospective_purge,
+            trusted_ref=trusted_ref,
         )
     except ContractError as error:
         primary_error = error
@@ -2745,6 +2780,7 @@ def resolve_terminal_task(
             task_id,
             config,
             history_index=lane_index,
+            trusted_ref=trusted_ref,
         )
     if primary_error is not None:
         raise primary_error
@@ -3075,6 +3111,73 @@ def historical_project_config(root: Path, ref: str, scratch: Path) -> ProjectCon
     return parse_project_config(raw, path)
 
 
+def committed_review_policy_enforced(
+    root: Path,
+    ref: str,
+    *,
+    config_at: Callable[[str], ProjectConfig],
+    trusted_ref: str | None = None,
+) -> bool:
+    def activation(history_ref: str) -> tuple[bool, str | None]:
+        history = run_command(
+            (
+                "git",
+                "log",
+                "--first-parent",
+                "--reverse",
+                "--format=%H",
+                history_ref,
+                "--",
+                str(PROJECT_CONFIG_PATH),
+            ),
+            root=root,
+        )
+        revisions = list(filter(None, (history.stdout or "").splitlines()))
+        if history.returncode != 0 or not revisions:
+            fail(f"cannot inspect committed-review policy history at {history_ref}")
+        active = False
+        first_activation: str | None = None
+        for revision in revisions:
+            policy = config_at(revision).committed_review_policy
+            if active and policy != 1:
+                fail(
+                    f"{PROJECT_CONFIG_PATH} at {revision}: "
+                    "committed_review_policy cannot downgrade after activation"
+                )
+            if not active and policy == 1:
+                first_activation = revision
+            active = active or policy == 1
+        return active, first_activation
+
+    active, _ = activation(ref)
+    if active:
+        return True
+
+    # An omitted policy is an unversioned contract, not proof that this
+    # repository intentionally permitted the legacy doing -> done form. Only a
+    # pre-established activation in a trusted validation ref can grandfather a
+    # terminal revision that predates it. A later activation in the untrusted
+    # change being validated must not manufacture legacy eligibility.
+    if trusted_ref is None:
+        return True
+    trusted_ancestry = run_command(
+        ("git", "merge-base", "--is-ancestor", trusted_ref, "HEAD"), root=root
+    )
+    if trusted_ancestry.returncode == 1:
+        fail(f"trusted policy base {trusted_ref} is not an ancestor of HEAD")
+    if trusted_ancestry.returncode != 0:
+        fail(f"cannot validate trusted policy base {trusted_ref}")
+    trusted_active, first_activation = activation(trusted_ref)
+    if not trusted_active or first_activation is None:
+        return True
+    ancestry = run_command(
+        ("git", "merge-base", "--is-ancestor", ref, first_activation), root=root
+    )
+    if ancestry.returncode not in (0, 1):
+        fail(f"cannot compare committed-review activation ancestry for {ref}")
+    return ancestry.returncode == 1
+
+
 def validate_historical_incarnation(
     incarnation: Sequence[tuple[str, HistoricalTaskSnapshot | None]],
     *,
@@ -3141,6 +3244,12 @@ def validate_deleted_history(root: Path, base: str) -> None:
             if ref not in config_cache:
                 config_cache[ref] = historical_project_config(root, ref, scratch)
             return config_cache[ref]
+
+        # Policy monotonicity is a repository-history invariant, so validate it
+        # even when this base range contains no deleted terminal candidates.
+        committed_review_policy_enforced(
+            root, "HEAD", config_at=config_at, trusted_ref=base
+        )
 
         for task_id in sorted(candidate_ids - head_ids):
             timeline = [
@@ -3266,9 +3375,18 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 assert snapshot is not None
                 if snapshot.document.values.get("status") != outcome:
                     fail(f"{relative}: task transitioned out of terminal state")
+            review_required = committed_review_policy_enforced(
+                root,
+                terminal_transition_ref,
+                config_at=config_at,
+                trusted_ref=base,
+            )
             if (
                 outcome == "done"
-                and prior_status != "review"
+                and not (
+                    prior_status == "review"
+                    or (not review_required and prior_status == "doing")
+                )
                 and terminal_transition_ref != base
             ):
                 fail(
@@ -4454,6 +4572,7 @@ def command_close_purge(args: argparse.Namespace) -> int:
             config,
             allow_uncommitted_purge=True,
             prospective_purge=True,
+            trusted_ref=getattr(args, "trusted_base", None),
         )
         is None
     ):
@@ -4603,6 +4722,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.set_defaults(handler=command_close_prepare)
     purge = close_sub.add_parser("purge")
     purge.add_argument("query")
+    purge.add_argument("--trusted-base")
     purge.set_defaults(handler=command_close_purge)
     return parser
 

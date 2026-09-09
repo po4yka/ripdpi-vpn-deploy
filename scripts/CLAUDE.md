@@ -20,7 +20,15 @@ lane; malformed first-parent state always wins and fails closed. Keep transition
 scans anchored before the validation base, require the selected task to be
 committed in `review` before preparing a `done` snapshot, batch history reads,
 and never substitute current worktree specs or mutable archive discovery for
-the immutable transfer revision. Evidence-transfer history starts only when a
+the immutable transfer revision. Apply the committed-review transition rule
+monotonically across the terminal revision's first-parent project-config
+ancestry. Permit only the legacy `doing -> done` form when the current checkout
+proves the terminal commit is ancestral to its first local activation; a stale
+merged lane otherwise inherits the active policy. A wholly unversioned peer
+remains strict, and a descendant omission or downgrade cannot disable version 1.
+Validate that monotonic policy ancestry before terminal-candidate iteration so
+a policy-only commit cannot escape base-aware validation.
+Evidence-transfer history starts only when a
 snapshot itself requires OpenSpec; retain every later required snapshot across
 task-mode or change-name transitions. Drop receipts bind the complete preserved
 `DROPPED:` record set: live and historical terminal validation both reject

@@ -88,6 +88,7 @@ class TaskctlFixture(TestCase):
         peers: list[str] | None = None,
         contract: int = 1,
         evidence_transfer_policy: int = 1,
+        committed_review_policy: int = 1,
     ) -> None:
         (self.root / "tools/tasking/project.json").write_text(
             json.dumps(
@@ -98,6 +99,7 @@ class TaskctlFixture(TestCase):
                     "areas": DEPLOY_AREA_PREFIXES,
                     "evidence_categories": list(DEPLOY_EVIDENCE_CATEGORIES),
                     "evidence_transfer_policy": evidence_transfer_policy,
+                    "committed_review_policy": committed_review_policy,
                     "openspec_schema": "ripdpi-deploy-change",
                     "allowed_peers": peers if peers is not None else ["po4yka/RIPDPI"],
                 },
@@ -2529,6 +2531,92 @@ class TaskctlHistoryTest(TaskctlFixture):
         self.assertTrue(work.is_file())
         self.assertTrue(work.with_suffix(".close.json").is_file())
 
+    def test_purge_accepts_terminal_transition_before_review_policy_activation(self) -> None:
+        self.write_project_config(committed_review_policy=0)
+        target = self.add_simple_task(status="doing")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        self.commit_all("add pre-policy doing task")
+        self.prepare_simple_terminal(target)
+        self.write_board()
+        self.commit_all("publish pre-policy direct terminal state")
+        self.write_project_config(committed_review_policy=1)
+        trusted_base = self.commit_all("activate committed review policy")
+
+        taskctl.command_close_purge(
+            argparse.Namespace(
+                root=self.root,
+                query="CIC-1786234567890001",
+                trusted_base=trusted_base,
+            )
+        )
+        self.write_board()
+        self.commit_all("purge pre-policy terminal task")
+
+        taskctl.validate_deleted_history(self.root, trusted_base)
+
+    def test_purge_rejects_invalid_done_source_before_review_policy_activation(self) -> None:
+        self.write_project_config(committed_review_policy=0)
+        target = self.add_simple_task(status="todo")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        base = self.commit_all("add pre-policy todo task")
+        self.prepare_simple_terminal(target)
+        self.write_board()
+        self.commit_all("forge pre-policy todo to done transition")
+        self.write_project_config(committed_review_policy=1)
+        self.commit_all("activate committed review policy")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "invalid terminal transition todo -> done"
+        ):
+            taskctl.command_close_purge(
+                argparse.Namespace(root=self.root, query="CIC-1786234567890001")
+            )
+
+        self.purge_simple_task(target)
+        self.write_board()
+        self.commit_all("purge malformed pre-policy task")
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "invalid terminal transition todo -> done"
+        ):
+            taskctl.validate_deleted_history(self.root, base)
+
+    def test_purge_rejects_terminal_transition_after_review_policy_downgrade(self) -> None:
+        target = self.add_simple_task(status="doing")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        self.commit_all("add task after review policy activation")
+        self.write_project_config(committed_review_policy=0)
+        self.prepare_simple_terminal(target)
+        self.write_board()
+        self.commit_all("downgrade policy and bypass review")
+        self.write_project_config(committed_review_policy=1)
+        self.commit_all("restore review policy")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "committed_review_policy cannot downgrade after activation",
+        ):
+            taskctl.command_close_purge(
+                argparse.Namespace(root=self.root, query="CIC-1786234567890001")
+            )
+
+    def test_deleted_history_rejects_policy_downgrade_without_terminal_candidates(
+        self,
+    ) -> None:
+        self.add_simple_task()
+        self.write_board()
+        base = self.commit_all("add active task under review policy")
+        self.write_project_config(committed_review_policy=0)
+        self.commit_all("downgrade policy without terminal changes")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "committed_review_policy cannot downgrade after activation",
+        ):
+            taskctl.validate_deleted_history(self.root, base)
+
     def test_purge_rejects_dirty_terminal_artifacts_with_rewritten_receipt(self) -> None:
         target = self.add_simple_task(status="review")
         self.write_board()
@@ -3144,6 +3232,74 @@ class TaskctlHistoryTest(TaskctlFixture):
         ):
             taskctl.validate_deleted_history(self.root, base)
 
+    def test_deleted_history_enforces_policy_for_stale_merged_lane(self) -> None:
+        source_task = "CIC-1786234567890001"
+        self.write_project_config(committed_review_policy=0)
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        base = self.commit_all("bootstrap pre-policy portfolio")
+        integration_branch = self.git("branch", "--show-current")
+        self.git("branch", "stale-pre-policy-lane")
+
+        self.write_project_config(committed_review_policy=1)
+        self.commit_all("activate review policy on integration branch")
+
+        self.git("switch", "stale-pre-policy-lane")
+        source = self.add_simple_task(task_id=source_task, status="doing")
+        self.write_board()
+        self.commit_all("add doing source on stale lane")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("forge direct terminal transition on stale lane")
+        self.purge_simple_task(source)
+        self.write_board()
+        self.commit_all("purge malformed stale-lane source")
+
+        self.git("switch", integration_branch)
+        self.git(
+            "merge",
+            "--no-ff",
+            "stale-pre-policy-lane",
+            "-m",
+            "merge stale pre-policy lane after activation",
+        )
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "invalid terminal transition doing -> done",
+        ):
+            taskctl.validate_deleted_history(self.root, base)
+
+    def test_deleted_history_rejects_branch_local_late_policy_activation(self) -> None:
+        source_task = "CIC-1786234567890001"
+        self.write_project_config(committed_review_policy=0)
+        source = self.add_simple_task(task_id=source_task, status="doing")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        base = self.commit_all("bootstrap unversioned portfolio")
+
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("forge direct terminal transition")
+        self.write_project_config(committed_review_policy=1)
+        self.commit_all("activate review policy after forged transition")
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "invalid terminal transition doing -> done",
+        ):
+            taskctl.command_close_purge(
+                argparse.Namespace(root=self.root, query=source_task)
+            )
+        self.purge_simple_task(source)
+        self.write_board()
+        self.commit_all("purge forged terminal history")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "invalid terminal transition doing -> done",
+        ):
+            taskctl.validate_deleted_history(self.root, base)
+
     def test_dropped_openspec_change_archives_without_syncing_normative_specs(self) -> None:
         self.add_active_spec_task(status="review", done=False)
         openspec = self.root / "tools/tasking/node_modules/.bin/openspec"
@@ -3343,6 +3499,7 @@ class TaskctlFederationTest(TaskctlFixture):
                     "evidence_categories": list(
                         DEPLOY_EVIDENCE_CATEGORIES if deploy else taskctl.EVIDENCE_CATEGORIES
                     ),
+                    "committed_review_policy": 1,
                     "openspec_schema": "ripdpi-deploy-change" if deploy else "ripdpi-change",
                     "allowed_peers": peers,
                 },
@@ -3661,6 +3818,69 @@ class TaskctlFederationTest(TaskctlFixture):
         self.assertTrue(historical["historical"])
         self.assertEqual("done", historical["status"])
         self.assertFalse(any(key.startswith("_") for key in historical))
+
+    def test_unversioned_peer_rejects_direct_doing_to_done_history(self) -> None:
+        blocker_id = "CIC-1786234567890001"
+        consumer_id = "CIC-1786234567890005"
+        config_path = self.peer / "tools/tasking/project.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        del config["committed_review_policy"]
+        config_path.write_text(json.dumps(config, sort_keys=True) + "\n", encoding="utf-8")
+        self.add_task(self.peer, "CIC-1786234567890003")
+        blocker = self.add_task(self.peer, blocker_id, status="doing")
+        self.commit(self.peer, "add unversioned peer tasks")
+        self.complete_simple_task(self.peer, blocker)
+        self.commit(self.peer, "forge direct peer terminal transition")
+        blocker.unlink()
+        work = self.peer / f"docs/tasks/work/{blocker_id}.md"
+        work.unlink()
+        work.with_suffix(".close.json").unlink()
+        anchor_docs, anchor_steps = taskctl.load_state(self.peer)
+        (self.peer / "docs/tasks/board.md").write_text(
+            taskctl.render_board(self.peer, anchor_docs, anchor_steps), encoding="utf-8"
+        )
+        self.commit(self.peer, "purge malformed peer blocker")
+        self.add_task(self.root, consumer_id, blockers=[f"po4yka/RIPDPI#{blocker_id}"])
+        self.commit(self.root, "add consumer")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "invalid terminal transition doing -> done"
+        ):
+            taskctl.federation_payload(self.root, self.peer)
+
+    def test_peer_late_policy_activation_cannot_grandfather_terminal_history(
+        self,
+    ) -> None:
+        blocker_id = "CIC-1786234567890001"
+        consumer_id = "CIC-1786234567890005"
+        config_path = self.peer / "tools/tasking/project.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        del config["committed_review_policy"]
+        config_path.write_text(json.dumps(config, sort_keys=True) + "\n", encoding="utf-8")
+        self.add_task(self.peer, "CIC-1786234567890003")
+        blocker = self.add_task(self.peer, blocker_id, status="doing")
+        self.commit(self.peer, "add unversioned peer tasks")
+        self.complete_simple_task(self.peer, blocker)
+        self.commit(self.peer, "forge direct peer terminal transition")
+        config["committed_review_policy"] = 1
+        config_path.write_text(json.dumps(config, sort_keys=True) + "\n", encoding="utf-8")
+        self.commit(self.peer, "activate policy after forged transition")
+        blocker.unlink()
+        work = self.peer / f"docs/tasks/work/{blocker_id}.md"
+        work.unlink()
+        work.with_suffix(".close.json").unlink()
+        anchor_docs, anchor_steps = taskctl.load_state(self.peer)
+        (self.peer / "docs/tasks/board.md").write_text(
+            taskctl.render_board(self.peer, anchor_docs, anchor_steps), encoding="utf-8"
+        )
+        self.commit(self.peer, "purge forged peer terminal history")
+        self.add_task(self.root, consumer_id, blockers=[f"po4yka/RIPDPI#{blocker_id}"])
+        self.commit(self.root, "add consumer")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "invalid terminal transition doing -> done"
+        ):
+            taskctl.federation_payload(self.root, self.peer)
 
     def test_renamed_done_blocker_resolves_by_id_history(self) -> None:
         blocker_id = "CIC-1786234567890001"
