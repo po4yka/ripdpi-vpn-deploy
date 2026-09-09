@@ -475,10 +475,11 @@ def test_units_dispatch_immutable_bundle_and_write_only_sshd_fragments(adapter):
         writes = next(
             line for line in unit.splitlines() if line.startswith("ReadWritePaths=")
         )
-        assert "/etc/ssh" not in writes.split()
-        assert "/etc/ssh/sshd_config.d" in writes.split()
-        assert "/usr/local/lib/vpn-sshd/bundle.lock" in writes.split()
-        assert "/usr/local/lib/vpn-sshd" not in writes.split()
+        paths = writes.partition("=")[2].split()
+        assert "/etc/ssh" not in paths
+        assert "/etc/ssh/sshd_config.d" in paths
+        assert "/usr/local/lib/vpn-sshd/bundle.lock" in paths
+        assert "/usr/local/lib/vpn-sshd" not in paths
 
 
 def test_installation_uses_one_publisher_not_sequential_live_modules(adapter):
