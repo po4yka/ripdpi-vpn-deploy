@@ -304,9 +304,15 @@ def _require_source(inputs):
 def _install(inputs):
     from bootstrap_readiness import run_command
     _require_source(inputs)
-    path = deploy.private_file(inputs.directory / "bootstrap-inventory.ini", ("[vpn]\n" + inputs.host["name"] + "\n").encode())
-    variables = {**deploy.transport_variables(inputs.host, inputs.ssh),
-                 "bootstrap_inventory_alias": inputs.host["name"], "bootstrap_public_preflight": True,
+    # Extra vars also override localhost during delegation. Scope connection
+    # settings to this one-node group so local validation stays local.
+    transport = deploy.transport_variables(inputs.host, inputs.ssh)
+    if any(any(char in str(value) for char in "\r\n\x00") for value in transport.values()):
+        raise BootstrapError("bootstrap-transport-invalid")
+    inventory = "[vpn]\n" + inputs.host["name"] + "\n\n[vpn:vars]\n"
+    inventory += "".join(f"{name}={value}\n" for name, value in transport.items())
+    path = deploy.private_file(inputs.directory / "bootstrap-inventory.ini", inventory.encode())
+    variables = {"bootstrap_inventory_alias": inputs.host["name"], "bootstrap_public_preflight": True,
                  "tailnet_management": {"approved_sources": inputs.config["approved_sources"]}}
     extra = deploy.private_file(inputs.directory / "bootstrap-variables.json", json.dumps(variables).encode())
     command = ["ansible-playbook", "-i", str(path), str(ROOT / "ansible/playbooks/bootstrap-tailnet.yml"),

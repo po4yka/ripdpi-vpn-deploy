@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 import pytest
 
@@ -90,6 +91,59 @@ def test_fresh_node_inputs_freeze_public_transport_and_one_host_key(controller, 
     assert "198.51.100.10" not in " ".join(command)
     assert selected.config["approved_sources"] == inputs[3]["approved_sources"]
     assert not Path(selected.config["output"]).exists()
+
+
+def test_installer_real_ansible_preserves_local_delegation(controller, inputs, monkeypatch):
+    """Exercise Ansible variable precedence, not package or guest acceptance."""
+    selected = load(controller, inputs, monkeypatch)
+    key = selected.directory / "identity with spaces"
+    key.write_bytes(Path(selected.host["key"]).read_bytes())
+    key.chmod(0o600)
+    host = {**selected.host, "key": str(key)}
+    ssh = controller.inspection.ssh_command(host, selected.known_hosts)
+    ssh[1:1] = ["-o", "HostKeyAlgorithms=ssh-ed25519"]
+    project = inputs[0] / "project"
+    playbooks = project / "ansible/playbooks"
+    playbooks.mkdir(parents=True)
+    (project / "ansible/ansible.cfg").write_text("[defaults]\n")
+    transport = controller.deploy.transport_variables(host, ssh)
+    play = [{"hosts": "vpn", "gather_facts": False, "vars": {"expected_transport": transport},
+             "tasks": [
+                 {"name": "Keep every pinned connection value on the selected node",
+                  "ansible.builtin.assert": {"that": [
+                      "hostvars[inventory_hostname][item.key] | string == item.value | string"]},
+                  "loop": "{{ expected_transport | dict2items }}"},
+                 {"name": "Run the real source validator on the controller",
+                  "ansible.builtin.command": {
+                      "argv": [sys.executable, str(ROOT / "scripts/tailnet-validate-sources.py")],
+                      "stdin": "{{ tailnet_management.approved_sources | to_json }}"},
+                  "delegate_to": "localhost", "become": False, "changed_when": False}]}]
+    (playbooks / "bootstrap-tailnet.yml").write_text(json.dumps(play))
+    bin_dir = inputs[0] / "bin"
+    bin_dir.mkdir()
+    executable = bin_dir / "ansible-playbook"
+    # Match the existing real-Ansible deploy tests: accidental SSH/sudo must
+    # fail before any network or privilege operation, rather than be mocked OK.
+    executable.write_text(f"""#!{sys.executable}
+import runpy
+from ansible.plugins.connection.ssh import Connection
+from ansible.plugins.become.sudo import BecomeModule
+def forbidden(*args, **kwargs):
+    raise AssertionError('local delegation attempted SSH or sudo')
+Connection._run = forbidden
+BecomeModule.build_become_command = forbidden
+runpy.run_module('ansible.cli.playbook', run_name='__main__')
+""")
+    executable.chmod(0o700)
+    environment = controller.deploy.execution_environment(project, selected.directory)
+    environment.update(PATH=str(bin_dir) + os.pathsep + os.environ["PATH"],
+                       HOME=str(inputs[0]), LANG="en_US.UTF-8" if sys.platform == "darwin" else "C.UTF-8",
+                       LC_ALL="en_US.UTF-8" if sys.platform == "darwin" else "C.UTF-8")
+    selected = selected._replace(host=host, ssh=ssh, environment=environment)
+    monkeypatch.setattr(controller, "ROOT", project)
+    monkeypatch.setattr(controller, "_installed", lambda *_: "ready")
+
+    controller._install(selected)
 
 
 @pytest.mark.parametrize("changes", [

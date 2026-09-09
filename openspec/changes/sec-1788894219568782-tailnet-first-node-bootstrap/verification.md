@@ -266,3 +266,26 @@ pass 198 tests in 5.11 seconds. Both guards and destroy caller pass 294 tests
 in 35.11 seconds. Collection contains 4481 tests, including 4378 unit tests.
 The final immutable full gate, hosted revision and external acceptance remain
 required. No implementation step or external evidence category is closed.
+
+## Staging installer delegation regression — 2026-09-09
+
+Exact revision `b2262981b6f95599ac36b3fc3fdadd94f2702858` passed hosted CI,
+but authorized staging exposed a controller integration gap. The initial
+provider Ubuntu image had active/exited `ufw.service` despite inactive UFW;
+the specified preflight refused it without changing that state. UUID-bound
+cleanup then verified that server and its root storage absent.
+
+A fresh Debian 13 node passed cloud-init, strict public preflight and SSH
+recovery installation. Bootstrap then failed before package installation or
+enrollment: global transport extra vars redirected the role's localhost source
+validator to the VPS. The diagnostic play recap was `ok=3 changed=0 failed=1`.
+The enrollment key remained unused and no Tailnet ACL change occurred.
+
+A new real-Ansible regression failed with the same transport precedence bug.
+The installer now scopes all pinned transport settings to its private one-node
+inventory group, preserving ordinary local delegation without removing any
+connection restriction. All 42 bootstrap-module tests pass, including exact
+transport round-trip with a spaced key path and refusal of accidental SSH or
+sudo in the delegated local task. This is local regression evidence only;
+the corrected revision still requires full local/hosted gates and renewed
+staging, protocol, recovery and live acceptance. No step is closed.
