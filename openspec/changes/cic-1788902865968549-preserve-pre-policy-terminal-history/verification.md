@@ -2,8 +2,8 @@
 task_id: CIC-1788902865968549
 change: cic-1788902865968549-preserve-pre-policy-terminal-history
 commit_sha: null
-local: required
-local_evidence: "The focused late-activation regressions first failed and then passed with base-aware and federation validation anchored correctly. A final full gate remains required after making legacy authoring purge require an explicit trusted base."
+local: passed
+local_evidence: "Exact source d8fe945e698f9c5887fa32dd2d1e55becf3ce2a9 passed the focused late-activation regressions, the full taskctl suite with 103 tests and 20 subtests, governance count, strict OpenSpec, base-aware task validation with 4 tasks and 16 steps, and build-gate -- make ci-fast: 4362 Python tests passed with 4 deselected and 20 subtests, 55 Bats tests, release Cargo clippy, and all Rust tests; ci-fast: OK."
 remote_ci: required
 remote_ci_evidence: Exact-head protected PR checks, code review, and security review remain required.
 dry_run: not_applicable
