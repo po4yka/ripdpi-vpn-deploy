@@ -38,55 +38,92 @@ narrow rule does not neutralize an existing broad grant. Applying that policy
 is an external authorization change and requires its own fresh diff and
 action-time approval.
 
-## Enroll one node
+## Bootstrap one node
 
-Create a short-lived one-node auth key in the Tailnet administration UI. Do not
-put it in Git, SOPS, inventory, a Make argument or shell history. Read it into
-the environment, select exactly one canonical inventory alias, and keep the
-SSH recovery and promotion inputs required by the normal deploy runbook:
+First enrollment uses `make bootstrap-tailnet`, not ordinary deploy. Before
+any guest writes on disposable staging, create the exact-state cleanup
+manifest described in [CI-REAL-DEPLOY.md](CI-REAL-DEPLOY.md#uuid-bound-operator-staging-cleanup).
+Wait for cloud-init, acquire and verify the public host-key pin, and install
+the exact SSH recovery foundation through `make install-ssh-recovery` in the
+approved exclusive window. Bootstrap refuses a dirty or mismatched source.
+
+Create an operator-owned mode-`0600` JSON config in a private directory. Its
+exact fields are:
+
+| Field | Required value |
+|---|---|
+| `schema_version` | Integer `1` |
+| `environment`, `provider` | Selected `prod` or `ci-staging-*`; `upcloud` or `vultr` |
+| `inventory_alias`, `public_address`, `ssh_port` | One exact canonical inventory node and its current public SSH endpoint |
+| `host_key_sha256` | Lowercase hex SHA256 of the decoded pinned Ed25519 public-key blob |
+| `public_sources` | Exact observed controller public source IPs, not CIDRs |
+| `approved_sources` | Exact reviewed Tailnet controller IPs, matching the later cohort policy |
+| `source_revision`, `deployable_digest` | Clean source revision and deployable digest from `scripts/deploy-source-identity.sh --identity` |
+| `known_hosts` | Absolute path to the verified known-hosts file, keyed by the inventory host-key alias |
+| `cleanup_manifest` | Absolute current exact-state staging manifest path; JSON `null` for production |
+| `output` | New absolute handoff path under an operator-owned mode-`0700` directory |
+
+Unknown fields, ambiguous nodes, unsafe files and missing pins refuse before
+remote writes. Do not invent a management address or reuse a stale cleanup
+manifest. Create a short-lived one-node enrollment key separately; do not put
+it in Git, SOPS, inventory, a Make argument or shell history:
 
 ```bash
 IFS= read -r -s TAILSCALE_AUTH_KEY </dev/tty
 export TAILSCALE_AUTH_KEY
-
-make deploy ANSIBLE_LIMIT=<exact-inventory-alias> \
-  DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json" \
-  DEPLOY_PROMOTION_CONFIG_FILE="$HOME/.config/vpn-provision/promotion-configs.json"
-
+make bootstrap-tailnet ANSIBLE_LIMIT=<exact-inventory-alias> \
+  TAILNET_BOOTSTRAP_CONFIG="$HOME/.config/vpn-provision/bootstrap-tailnet.json"
 unset TAILSCALE_AUTH_KEY
 ```
 
-The Make boundary rejects command-line credentials. The deploy controller
-validates the auth-key shape and one-node selection, then forwards it only to
-the `site.yml` Ansible process. The role sends it on controller stdin. The host
-controller writes a random mode-`0600` file under the owner-controlled
-`/run/vpn-tailnet-management` runtime directory, uses
-Tailscale's `--auth-key=file:` form, and removes and fsyncs that file before
-returning. Logs and task results remain redacted.
+The controller validates inputs and public-path readiness, installs pinned
+inert components through the dedicated bootstrap playbook, then sends the key
+only on strict SSH stdin. Ansible never receives the key. The guest creates a
+random mode-`0600` auth file under `/run/vpn-tailnet-management`, uses
+`--auth-key=file:`, and removes and fsyncs it after login. Bootstrap never
+changes provider firewall policy or Tailnet ACLs.
 
-Before `tailscale login`, the controller verifies that the persistent recovery
-timer is enabled and active, executes the sandboxed recovery worker successfully,
-then fsyncs a private mode-`0600` transaction under
-`/var/lib/vpn-tailnet-management`. The record contains a fresh nonce, the exact
-recovery generation, the original backend state, and bounded resolver,
-default-route and `sshd -T` snapshots with resolver ownership and mode. The
-controller and periodic worker serialize on the same root-only lock. The worker
-is also a required boot dependency before `ssh.service` or `ssh.socket`; it starts
-after `tailscaled`, reconciles an armed record, and only then permits the ordinary
-SSH listener to start. Controller loss or reboot while the record is armed makes
-the worker log out the new node, verify the original snapshots and remove the
-record. Corrupt state or unrelated drift is retained and refused for manual
-recovery instead of being overwritten.
+Before changing access, the guest arms one durable generation-, target-,
+nonce- and snapshot-bound transaction. Its 300-second lease uses monotonic
+time and boot identity; reboot cannot extend it. The minimal guest firewall
+preserves exact approved public SSH sources, allows exact `tailscale0` sources
+on the same port and opens no VPN listeners. Foreign firewall ownership or
+pending network transactions refuse without flushing unrelated policy. The
+exact four empty daemon tables (`ip/ip6 filter/nat`) may remain as inert
+baseline objects; any chains, rules, sets, maps or extra attributes disqualify
+that exception. Their original state is included in apply and rollback.
 
-After all local postconditions pass, the controller durably marks the record
-confirmed before removing it. A crash after that commit can only finish receipt
-cleanup; it cannot log out the confirmed node. This local transaction protects
-enrollment itself. It does not replace the later provider rollback and fresh
-public-plus-Tailnet SSH proof required by the serial promotion workflow.
+After login, fresh public and Tailnet SSH and SFTP connections must verify the
+same original host key and real socket addresses. Local status alone cannot
+confirm. A durable confirmation prevents later recovery from logging out the
+node. The private handoff contains the observed socket contexts and binding,
+not the auth key or a VPN acceptance result. If output publication fails after
+confirmation, inspect status and rerun with the same binding and a new output
+path, without an enrollment key; do not log out a committed identity.
 
-`make dry-run` never forwards or consumes the capability. It uses the installed
-controller's read-only `check` action when available; on a fresh node it reports
-the pending enrollment without creating the controller or joining the Tailnet.
+## Recovery and ordinary deployment
+
+A persistent worker rolls back an expired unconfirmed transaction. At boot,
+the early worker restores firewall files and effective policy before nftables,
+networking and `ssh.socket`, without calling tailscaled. The late worker runs
+after tailscaled and gates only `ssh.service`, completing owned-identity logout
+and firewall service reconciliation. A socket may listen after early recovery,
+but sshd cannot serve/authenticate connections until late recovery succeeds.
+This separation avoids the socket/basic-target/daemon dependency cycle.
+
+Both workers share the same private lock and durable rollback decision.
+Interrupted restoration is replayable; confirmation refuses once rollback
+begins. Corrupt or foreign state remains for diagnosis. Pinned inert packages
+may remain after rollback, but the access-changing runtime policy is restored.
+
+After bootstrap, use the handoff's actual management address and `contexts`
+in the reviewed inventory and `DEPLOY_SSH_CONTEXTS_FILE` mapping for that exact
+node. The handoff itself is not the deploy input schema. Keep the separate
+`DEPLOY_PROMOTION_CONFIG_FILE` required by
+[RUNBOOK-deploy.md](RUNBOOK-deploy.md); bootstrap does not satisfy protocol proof.
+Both `make dry-run` and `make deploy` reject enrollment keys and require the
+existing dual paths. The ordinary Tailnet role verifies installed state only;
+it never installs or enrolls implicitly.
 
 ## Fail-closed postconditions
 
@@ -116,8 +153,8 @@ access on the strength of source or container tests.
 An offline boot inspection on the pre-rollout P0 node found no Tailscale
 binary, service, recovery unit or state. That is a clean missing-foundation
 boundary, not a daemon boot failure: rebooting alone cannot create this
-management path. Install and enrollment must use the canonical one-node deploy
-flow above; do not install ad hoc through the provider console.
+management path. Installation and enrollment must use the canonical one-node
+bootstrap flow above; do not install ad hoc through the provider console.
 
 The package defaults pin Tailscale stable `1.102.3` and the official repository
 key digest. Updating either pin requires reviewing the official stable package

@@ -147,7 +147,10 @@ removal and exact profile deletion; it never invokes the persistent AWG role.
 
 **Disposable staging onboarding precedes SSH prepare** — a typed one-node
 intent is validated and its explicit SOPS/age/key capabilities snapshotted by
-the deploy controller before host writes. The baseline adapter publishes a
+the deploy controller before host writes. Keep the cleanup manifest at its
+registered canonical path and revalidate its journal-bound inode at preparation
+and finalization; a temporary copy cannot carry cleanup authority.
+The baseline adapter publishes a
 persistent binding epoch after data-plane roles, invokes only the canonical
 installer and requires fresh evidence even for unchanged SSH policy. Exact
 completed binding/receipt reuse avoids generating a conflicting executor
@@ -176,6 +179,13 @@ portable strict SSH options for transfers. Caller fields remain literal data
 through Make and argv; no general site/backup task runs during installation.
 
 ## What's done well
+
+Staging cleanup has one private controller journal per provider/account/server
+UUID. Keep publication/reissue and receipt operations under its shared lock;
+`destroy.sh` inherits that lock through Terraform. Alternative artifact paths
+must never create a second reservation or recover an active controller. Reissue
+binds the previous generation, original state path and unchanged deadlines.
+Independent controller homes are not a supported shared-ownership mechanism.
 
 - **`set -euo pipefail` everywhere** — fail-loud is the default.
 - **`shellcheck` in CI** — the `ci.yml` workflow runs shellcheck on every

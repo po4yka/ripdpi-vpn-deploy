@@ -1,0 +1,20 @@
+[Unit]
+Description=Restore unconfirmed Tailnet firewall policy before networking
+DefaultDependencies=no
+After=local-fs.target
+Before=nftables.service network-pre.target tailscaled.service ssh.socket shutdown.target
+Conflicts=shutdown.target
+RequiresMountsFor=/var/lib/vpn-tailnet-management /etc
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3 /usr/local/lib/vpn-tailnet/tailnet-firewall-recover.py
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/vpn-tailnet-management /etc
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+
+[Install]
+RequiredBy=nftables.service network-pre.target tailscaled.service ssh.socket

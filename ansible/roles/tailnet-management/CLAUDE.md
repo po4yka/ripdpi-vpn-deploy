@@ -9,23 +9,21 @@ authentication and the single effective sshd port remain authoritative.
 advertised routes, exit-node use and Tailscale netfilter management off. The
 firewall role owns exact `tailscale0` SSH source rules.
 
-**Ephemeral enrollment capability** — `TAILSCALE_AUTH_KEY` is accepted only on
-Ansible stdin, written to a root-owned mode-0600 file in the dedicated
-`/run/vpn-tailnet-management` directory, and removed after the bounded login
-attempt. The recovery unit preserves the same volatile runtime directory across
-timer runs so a busy recovery cannot remove another controller's key. The key
-never belongs in inventory or SOPS, and an already enrolled host receives empty
-stdin even when an ambient key still exists.
+**Bootstrap owns first enrollment** — ordinary `tasks/main.yml` only verifies
+existing access and rejects enrollment keys. The dedicated bootstrap playbook
+uses `tasks/bootstrap.yml` to install inert components. The controller sends
+its key only in the guest transaction RPC on strict SSH stdin; Ansible never
+receives it. The guest keeps the temporary auth file private and removes it.
 
-**Durable unconfirmed enrollment recovery** — a private transaction is fsynced
-before `tailscale login`; the controller first executes the sandboxed worker as
-a readiness proof. A persistent timer serializes on the same lock, while a
-required boot unit reconciles after `tailscaled` and before the ordinary SSH
-listener starts. Lock contention is a boot-gate failure, not a successful
-recovery exit. The fresh worker result is revalidated under the controller lock
-immediately before the receipt is armed. Any confirmation-directory fsync
-ambiguity reports failure rather than treating page-cache bytes as a durable
-commit.
+**One transaction, two recovery phases** — the early worker restores firewall
+without tailscaled or service activation; the late worker completes owned
+identity logout and service reconciliation. Both use the same private lock and
+journal. `rolling_back` and `firewall_restored` forbid later confirmation.
+Early recovery gates `ssh.socket`; late recovery gates only `ssh.service`,
+so socket activation cannot cycle through `basic.target` and tailscaled.
+Confirmed recovery never logs out a committed node. Installation and runtime
+acceptance for this bootstrap change remain in progress; see
+`SEC-1788894219568782` before deployment.
 
 ## What's done well
 
@@ -43,8 +41,17 @@ commit.
   must reject arrays, null and nonempty route strings.
 - This role does not edit Tailnet ACLs. ACL review and application are a
   separate controller-side action requiring a fresh approved policy diff.
-- `netfilter-mode=off` means the firewall role must run first and retain the
-  exact approved source addresses.
+- `netfilter-mode=off` requires the bootstrap firewall foundation before login
+  and exact approved source addresses during ordinary firewall convergence.
+- Validate the complete boot graph, including `basic.target` and `ssh.socket`.
+  A late service before the socket can cycle through `sockets.target`;
+  systemd-analyze may remove a job and return 0, so inspect diagnostics too.
+- Real tailscaled startup creates empty ip/ip6 filter/nat tables before
+  login. Only that exact object-free quartet qualifies as inert; preserve it
+  in snapshots and replay without accepting foreign chains, sets or rules.
+- Recovery's address-family sandbox can reorder sshd's IPv4/IPv6 listener
+  output. Normalize only listenaddress enumeration, preserving values and
+  multiplicity; never sort the whole policy or weaken its validation.
 - Recovery state is root-owned mode `0700`/`0600`; an unsafe lock, receipt,
   snapshot or generation refuses without guessing or deleting evidence.
 - Local or Molecule success does not prove the Tailnet path, host identity or

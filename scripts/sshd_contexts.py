@@ -19,9 +19,17 @@ def validate_contexts(value):
     for context in value:
         if not isinstance(context, dict) or set(context) != {"user", "host", "addr", "laddr", "lport"}:
             raise ContextError("invalid-contexts")
-        if any(not isinstance(context[key], str) or NAME.fullmatch(context[key]) is None
-               for key in ("user", "host")):
+        if not isinstance(context["user"], str) or NAME.fullmatch(context["user"]) is None:
             raise ContextError("invalid-contexts")
+        host = context["host"]
+        if not isinstance(host, str):
+            raise ContextError("invalid-contexts")
+        if NAME.fullmatch(host) is None:
+            try:
+                if "%" in host or str(ipaddress.ip_address(host)) != host:
+                    raise ValueError
+            except ValueError:
+                raise ContextError("invalid-contexts") from None
         try:
             for key in ("addr", "laddr"):
                 if not isinstance(context[key], str) or "%" in context[key]:

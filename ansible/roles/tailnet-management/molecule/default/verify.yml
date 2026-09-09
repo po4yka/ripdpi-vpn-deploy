@@ -5,7 +5,7 @@
   tasks:
     - name: Read fixture enrollment calls
       ansible.builtin.slurp:
-        src: /run/tailscale-fixture-calls
+        src: /var/lib/tailscale-fixture-calls
       register: _tailnet_fixture_calls
 
     - name: Verify exact privacy and preference flags
@@ -32,7 +32,7 @@
 
     - name: Controller repeat is unchanged without an enrollment credential
       ansible.builtin.command:
-        cmd: /usr/bin/python3 /usr/local/lib/vpn-tailnet/tailnet-configure.py
+        cmd: /usr/bin/python3 /usr/local/lib/vpn-tailnet/tailnet-check.py
       register: _tailnet_repeat
       changed_when: false
 
