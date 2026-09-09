@@ -3,7 +3,7 @@ task_id: CIC-1788902865968549
 change: cic-1788902865968549-preserve-pre-policy-terminal-history
 commit_sha: null
 local: passed
-local_evidence: "python3 -m pytest -q scripts/tests/test_taskctl.py: 100 passed and 20 subtests; governance count passed at 4363; strict OpenSpec and base-aware task validation passed with 9 tasks and 24 steps; build-gate -- make ci-fast completed ci-fast: OK with 4359 passed, 4 deselected, 20 subtests, 55 bats, and all Terraform, policy, schema, snapshot, Ansible, shell, action, and Rust gates passing."
+local_evidence: "python3 -m pytest -q scripts/tests/test_taskctl.py: 101 passed and 20 subtests; governance count passed at 4364; strict OpenSpec and base-aware task validation passed with 9 tasks and 25 steps; build-gate -- make ci-fast completed ci-fast: OK with 4360 passed, 4 deselected, 20 subtests, 55 bats, and all Terraform, policy, schema, snapshot, Ansible, shell, action, and Rust gates passing."
 remote_ci: required
 remote_ci_evidence: Exact-head protected PR checks, code review, and security review remain required.
 dry_run: not_applicable
@@ -24,4 +24,4 @@ artifact_evidence: No released runtime artifact changes.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-CIC-1788902865968549-001 | CIC-1788910133884752 | Pre-activation, unversioned-peer, invalid-source, post-activation, and policy-only downgrade regressions passed across prospective, committed, and federation paths; full taskctl and base-aware validation passed. | passed |
+| REQ-CIC-1788902865968549-001 | CIC-1788915773921284 | Pre-activation, unversioned-peer, invalid-source, post-activation, policy-only downgrade, and stale merged-lane regressions passed across prospective, committed, and federation paths; full taskctl and base-aware validation passed. | passed |

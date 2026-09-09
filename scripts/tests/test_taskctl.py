@@ -3228,6 +3228,44 @@ class TaskctlHistoryTest(TaskctlFixture):
         ):
             taskctl.validate_deleted_history(self.root, base)
 
+    def test_deleted_history_enforces_policy_for_stale_merged_lane(self) -> None:
+        source_task = "CIC-1786234567890001"
+        self.write_project_config(committed_review_policy=0)
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        base = self.commit_all("bootstrap pre-policy portfolio")
+        integration_branch = self.git("branch", "--show-current")
+        self.git("branch", "stale-pre-policy-lane")
+
+        self.write_project_config(committed_review_policy=1)
+        self.commit_all("activate review policy on integration branch")
+
+        self.git("switch", "stale-pre-policy-lane")
+        source = self.add_simple_task(task_id=source_task, status="doing")
+        self.write_board()
+        self.commit_all("add doing source on stale lane")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("forge direct terminal transition on stale lane")
+        self.purge_simple_task(source)
+        self.write_board()
+        self.commit_all("purge malformed stale-lane source")
+
+        self.git("switch", integration_branch)
+        self.git(
+            "merge",
+            "--no-ff",
+            "stale-pre-policy-lane",
+            "-m",
+            "merge stale pre-policy lane after activation",
+        )
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "invalid terminal transition doing -> done",
+        ):
+            taskctl.validate_deleted_history(self.root, base)
+
     def test_dropped_openspec_change_archives_without_syncing_normative_specs(self) -> None:
         self.add_active_spec_task(status="review", done=False)
         openspec = self.root / "tools/tasking/node_modules/.bin/openspec"

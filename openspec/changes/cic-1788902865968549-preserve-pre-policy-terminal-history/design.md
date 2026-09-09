@@ -9,7 +9,8 @@ descendant commit to downgrade the bit and bypass review.
 ## Goals / Non-Goals
 
 - Goal: bind committed-review enforcement to monotonic activation in the exact
-  terminal revision's first-parent config ancestry.
+  terminal revision's first-parent config ancestry and the integration branch's
+  first activation boundary.
 - Goal: make the existing pre-activation High record purgeable without changing
   its historical evidence or terminal receipt.
 - Non-goal: relax current close preparation, transition, archive, evidence, or
@@ -29,8 +30,9 @@ descendant commit to downgrade the bit and bypass review.
   deleted in the selected range.
 - Use the same helper in prospective purge resolution and committed deletion
   validation. This keeps the two public validation paths consistent.
-- Permit the legacy `doing -> done` form only when the current checkout's
-  explicit version 1 proves the terminal revision predates local activation.
+- Permit the legacy `doing -> done` form only when the terminal revision is an
+  ancestor of the current checkout's first explicit version-1 activation. A
+  stale side lane otherwise inherits the integration branch's active policy.
   A wholly unversioned peer remains strict, and `todo`, `blocked`, or missing
   source states remain invalid before activation.
 - Retain existing transition checks for dropped tasks.
@@ -53,8 +55,9 @@ descendant commit to downgrade the bit and bypass review.
 - Legacy compatibility is safe only when later local activation proves the
   contract boundary. Unversioned-peer and invalid-source regressions prevent
   omission or policy zero from becoming a general bypass.
-- Side-lane terminal commits inherit activation only when it exists in their
-  first-parent ancestry, matching the contract actually available on that lane.
+- Side-lane terminal commits that are not ancestors of the integration branch's
+  first activation inherit its active policy. This intentionally rejects work
+  authored from a stale pre-policy fork after the repository activated review.
 
 ## Migration Plan
 

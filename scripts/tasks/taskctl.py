@@ -3108,39 +3108,59 @@ def committed_review_policy_enforced(
     *,
     config_at: Callable[[str], ProjectConfig],
 ) -> bool:
-    history = run_command(
-        (
-            "git",
-            "log",
-            "--first-parent",
-            "--reverse",
-            "--format=%H",
-            ref,
-            "--",
-            str(PROJECT_CONFIG_PATH),
-        ),
-        root=root,
-    )
-    revisions = list(filter(None, (history.stdout or "").splitlines()))
-    if history.returncode != 0 or not revisions:
-        fail(f"cannot inspect committed-review policy history at {ref}")
-    active = False
-    for revision in revisions:
-        policy = config_at(revision).committed_review_policy
-        if active and policy != 1:
-            fail(
-                f"{PROJECT_CONFIG_PATH} at {revision}: "
-                "committed_review_policy cannot downgrade after activation"
-            )
-        active = active or policy == 1
+    def activation(history_ref: str) -> tuple[bool, str | None]:
+        history = run_command(
+            (
+                "git",
+                "log",
+                "--first-parent",
+                "--reverse",
+                "--format=%H",
+                history_ref,
+                "--",
+                str(PROJECT_CONFIG_PATH),
+            ),
+            root=root,
+        )
+        revisions = list(filter(None, (history.stdout or "").splitlines()))
+        if history.returncode != 0 or not revisions:
+            fail(f"cannot inspect committed-review policy history at {history_ref}")
+        active = False
+        first_activation: str | None = None
+        for revision in revisions:
+            policy = config_at(revision).committed_review_policy
+            if active and policy != 1:
+                fail(
+                    f"{PROJECT_CONFIG_PATH} at {revision}: "
+                    "committed_review_policy cannot downgrade after activation"
+                )
+            if not active and policy == 1:
+                first_activation = revision
+            active = active or policy == 1
+        return active, first_activation
+
+    active, _ = activation(ref)
     if active:
         return True
 
     # An omitted policy is an unversioned contract, not proof that this
     # repository intentionally permitted the legacy doing -> done form. Only a
-    # later explicit activation in the checkout containing this terminal
+    # later explicit activation whose commit descends from this terminal
     # revision proves that the revision genuinely predates local activation.
-    return config_at("HEAD").committed_review_policy != 1
+    # A stale side lane must inherit the integration branch's active policy.
+    if ref == "HEAD":
+        return True
+    head_active, first_activation = activation("HEAD")
+    if not head_active or first_activation is None:
+        return True
+    ancestry = run_command(
+        ("git", "merge-base", "--is-ancestor", ref, first_activation), root=root
+    )
+    if ancestry.returncode == 0:
+        return False
+    if ancestry.returncode == 1:
+        return True
+    fail(f"cannot compare committed-review activation ancestry for {ref}")
 
 
 def validate_historical_incarnation(

@@ -14,7 +14,7 @@ openspec_change: cic-1788902865968549-preserve-pre-policy-terminal-history
 created: 2026-09-09
 updated: 2026-09-09
 related_tasks: []
-status_detail: Three P1 regressions pass; exact-diff build-gate ci-fast, strict OpenSpec, governance, and base-aware validation pass; exact-head hosted checks and reviews remain required.
+status_detail: Stale merged-lane regression, full taskctl suite, base-aware validation, and exact-diff ci-fast pass; new exact-head hosted checks and reviews remain required.
 ---
 
 ## Goal
@@ -28,8 +28,9 @@ review requirement for every transition made after policy activation.
 - The project config explicitly versions committed-review enforcement while
   preserving the distinction between an omitted field and explicit version 0.
 - Prospective and committed deletion validation derive monotonic activation
-  from the exact terminal transition's first-parent config ancestry rather
-  than applying the current config retroactively.
+  from the exact terminal transition's first-parent config ancestry and the
+  integration branch's first activation boundary rather than applying the
+  current config retroactively.
 - A regression proves a pre-policy `doing` to `done` transition remains
   purgeable after activation, while existing current-policy negative tests
   continue to reject the same transition.
@@ -39,5 +40,7 @@ review requirement for every transition made after policy activation.
   only the historical `doing` to `done` form rather than arbitrary sources.
 - Base-aware validation rejects a policy-only downgrade even when no task is
   deleted in the validation range.
+- A stale lane forked before activation cannot merge a direct `doing` to `done`
+  transition committed after activation as legacy history.
 - The real High terminal record can be purged through `taskctl`, and the full
   task contract suite passes.

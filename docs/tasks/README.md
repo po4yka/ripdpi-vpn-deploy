@@ -98,11 +98,12 @@ before activation remains valid, and the activation transition is checked.
 The companion `committed_review_policy: 1` field activates the committed
 `review` prerequisite for `done` transitions. Activation is monotonic along a
 terminal revision's first-parent config ancestry. A legacy `doing -> done`
-transition is accepted only when the current checkout later activates version
-1; an unversioned peer remains fail-closed. Other pre-policy source states stay
-invalid, and removing or lowering the field after version 1 is rejected rather
-than disabling the rule, even when the downgrade range contains no terminal
-task candidate.
+transition is accepted only when its terminal commit is an ancestor of the
+current checkout's first version-1 activation; a stale merged lane that commits
+the transition after activation inherits the active policy. An unversioned peer
+remains fail-closed. Other pre-policy source states stay invalid, and removing
+or lowering the field after version 1 is rejected rather than disabling the
+rule, even when the downgrade range contains no terminal task candidate.
 It does not relax authentication, authorization,
 secret-handling, rollback, destructive-action confirmation, fail-closed input
 validation or the distinction between local, remote CI, dry-run, staging, live,

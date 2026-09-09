@@ -13,7 +13,10 @@ activated anywhere in the first-parent project-config ancestry of the exact
 terminal transition and MUST keep that activation effective for all descendant
 terminal transitions even if a later config removes or lowers the policy field.
 Base-aware validation MUST reject that downgrade independently of whether the
-selected range contains a terminal task candidate.
+selected range contains a terminal task candidate. A terminal transition
+without version 1 in its own first-parent ancestry MUST receive legacy treatment
+only when its commit is an ancestor of the integration branch's first
+version-1 activation.
 
 #### Scenario: Pre-activation terminal history remains valid
 
@@ -54,6 +57,15 @@ selected range contains a terminal task candidate.
 - **WHEN** a later commit removes or lowers it without deleting any task
 - **THEN** base-aware validation rejects the downgrade
 - **AND** validation does not depend on entering a terminal-candidate loop
+
+#### Scenario: Stale merged lane inherits active policy
+
+- **GIVEN** a side lane forked before committed-review policy activation
+- **AND** the integration branch activated version 1 before the side lane
+  committed a direct `doing` to `done` transition
+- **WHEN** the side lane is merged and base-aware history validation runs
+- **THEN** validation rejects the transition as missing committed review
+- **AND** the stale lane is not treated as pre-activation history
 
 #### Scenario: Current committed review path remains accepted
 
