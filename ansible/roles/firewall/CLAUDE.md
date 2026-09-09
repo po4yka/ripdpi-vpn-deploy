@@ -35,8 +35,10 @@ enabled transport data-plane needs.
 
 **Geo blocking is documented, not implemented** — the firewall role ships no
 country-set rules and has no `vpn.geo_block` toggle. The `geodata` role feeds
-Xray egress routing only. Any inbound geo filtering needs a build decision and
-a real template change first; do not claim this control until then.
+Xray egress routing and, when the exception-gated cascade-ingress role is
+deployed, the classifier's `geoip.dat` preflight — the firewall consumes
+neither. Any inbound geo filtering needs a build decision and a real template
+change first; do not claim this control until then.
 
 **Dependent sets apply synchronously** — a rendered firewall config is
 reloaded before roles that pre-flight firewall-owned nftables sets run in the

@@ -31,6 +31,7 @@ that state requires a separately authorized recovery.
 - Egress forwarding/NAT remains outside this implementation-only ingress
   scaffold. Live authorization must add and prove a scoped egress forwarding
   contract; it must not widen the empty ingress table or install a host default.
-  The code fix belongs to the cascade consolidation change (landed as PR #167
-  for the routing-contract pass); keep this scaffold repository-disabled until
-  a separately reviewed change ships the forwarding contract.
+  The consolidation pass that pinned the `Table = off` contract and the
+  pre-convergence refusal owns the current routing shape; keep this scaffold
+  repository-disabled until a separately reviewed change ships the forwarding
+  contract.
