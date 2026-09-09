@@ -46,12 +46,15 @@ Decryptable only with the audit-log key. See `scripts/sub-reads.sh`.
 - **Restic restores must expose `DEST/sub` directly** — the mirror refuses a
   missing or symlinked root `sub/` before recursive ownership or mode repair,
   so unexpected snapshot nesting cannot leave stale payloads served silently.
-  The snapshot layout is fixed: `restic restore latest --target <stage>` must
-  root the payload tree so `sub/` (mandatory) and `bootstrap/` (optional,
-  auto-created) are the only entries at the stage root. Point
-  `RESTIC_SNAPSHOT_PATH` at that payload-tree root, not at a parent — a
-  layout like `<stage>/<snapshot-path>/sub/` fails as an unexpected root
-  entry instead of serving stale payloads.
+  The snapshot must be created with the payload tree as its root — run
+  `restic backup` from the payload-tree parent with relative paths (e.g.
+  `restic backup sub bootstrap`) so the snapshot root holds `sub/` (mandatory)
+  and `bootstrap/` (optional; auto-created) directly. `restic restore latest
+  --target <stage>` then reproduces that root at the stage root; the mirror's
+  `restic_snapshot_path` is only a restore `--include` filter over
+  snapshot-internal paths and cannot flatten a hierarchy. A snapshot taken
+  from an absolute host path (e.g. `/var/lib/vpn-subscription`) restores as
+  `<stage>/var/lib/...` and fails closed as an unexpected root entry.
 - **Mirror routes share one generation pointer** — `sub/` and `bootstrap/`
   are validated, hardened and fsynced beneath one private immutable generation
   before the single current-pointer rename. A prior generation is retained for

@@ -134,8 +134,11 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
     })?;
     let (qr_singbox, qr_ripdpi) = if args.qr {
         // Emit SVG QR codes only. There is no PNG encoder in the crate
-        // (no-new-deps constraint) and scripts/emit-qr.sh remains the
-        // canonical PNG path; the recipient page references
+        // (no-new-deps constraint), and scripts/emit-qr.sh cannot stand in:
+        // it accepts only a full sing-box JSON document or a VLESS URI, while
+        // these QR payloads are the token-aware subscription URL and the
+        // `ripdpi://` deep link. Operators needing a raster render the SVG
+        // with any QR-capable converter; the recipient page references
         // qr.svg / qr-ripdpi.svg.
         (
             Some(match args.r#type {
