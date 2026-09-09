@@ -2536,20 +2536,24 @@ class TaskctlHistoryTest(TaskctlFixture):
         target = self.add_simple_task(status="doing")
         self.add_simple_task(task_id="CIC-1786234567890003")
         self.write_board()
-        base = self.commit_all("add pre-policy doing task")
+        self.commit_all("add pre-policy doing task")
         self.prepare_simple_terminal(target)
         self.write_board()
         self.commit_all("publish pre-policy direct terminal state")
         self.write_project_config(committed_review_policy=1)
-        self.commit_all("activate committed review policy")
+        trusted_base = self.commit_all("activate committed review policy")
 
         taskctl.command_close_purge(
-            argparse.Namespace(root=self.root, query="CIC-1786234567890001")
+            argparse.Namespace(
+                root=self.root,
+                query="CIC-1786234567890001",
+                trusted_base=trusted_base,
+            )
         )
         self.write_board()
         self.commit_all("purge pre-policy terminal task")
 
-        taskctl.validate_deleted_history(self.root, base)
+        taskctl.validate_deleted_history(self.root, trusted_base)
 
     def test_purge_rejects_invalid_done_source_before_review_policy_activation(self) -> None:
         self.write_project_config(committed_review_policy=0)
@@ -3266,6 +3270,36 @@ class TaskctlHistoryTest(TaskctlFixture):
         ):
             taskctl.validate_deleted_history(self.root, base)
 
+    def test_deleted_history_rejects_branch_local_late_policy_activation(self) -> None:
+        source_task = "CIC-1786234567890001"
+        self.write_project_config(committed_review_policy=0)
+        source = self.add_simple_task(task_id=source_task, status="doing")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        base = self.commit_all("bootstrap unversioned portfolio")
+
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("forge direct terminal transition")
+        self.write_project_config(committed_review_policy=1)
+        self.commit_all("activate review policy after forged transition")
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "invalid terminal transition doing -> done",
+        ):
+            taskctl.command_close_purge(
+                argparse.Namespace(root=self.root, query=source_task)
+            )
+        self.purge_simple_task(source)
+        self.write_board()
+        self.commit_all("purge forged terminal history")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "invalid terminal transition doing -> done",
+        ):
+            taskctl.validate_deleted_history(self.root, base)
+
     def test_dropped_openspec_change_archives_without_syncing_normative_specs(self) -> None:
         self.add_active_spec_task(status="review", done=False)
         openspec = self.root / "tools/tasking/node_modules/.bin/openspec"
@@ -3806,6 +3840,40 @@ class TaskctlFederationTest(TaskctlFixture):
             taskctl.render_board(self.peer, anchor_docs, anchor_steps), encoding="utf-8"
         )
         self.commit(self.peer, "purge malformed peer blocker")
+        self.add_task(self.root, consumer_id, blockers=[f"po4yka/RIPDPI#{blocker_id}"])
+        self.commit(self.root, "add consumer")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "invalid terminal transition doing -> done"
+        ):
+            taskctl.federation_payload(self.root, self.peer)
+
+    def test_peer_late_policy_activation_cannot_grandfather_terminal_history(
+        self,
+    ) -> None:
+        blocker_id = "CIC-1786234567890001"
+        consumer_id = "CIC-1786234567890005"
+        config_path = self.peer / "tools/tasking/project.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        del config["committed_review_policy"]
+        config_path.write_text(json.dumps(config, sort_keys=True) + "\n", encoding="utf-8")
+        self.add_task(self.peer, "CIC-1786234567890003")
+        blocker = self.add_task(self.peer, blocker_id, status="doing")
+        self.commit(self.peer, "add unversioned peer tasks")
+        self.complete_simple_task(self.peer, blocker)
+        self.commit(self.peer, "forge direct peer terminal transition")
+        config["committed_review_policy"] = 1
+        config_path.write_text(json.dumps(config, sort_keys=True) + "\n", encoding="utf-8")
+        self.commit(self.peer, "activate policy after forged transition")
+        blocker.unlink()
+        work = self.peer / f"docs/tasks/work/{blocker_id}.md"
+        work.unlink()
+        work.with_suffix(".close.json").unlink()
+        anchor_docs, anchor_steps = taskctl.load_state(self.peer)
+        (self.peer / "docs/tasks/board.md").write_text(
+            taskctl.render_board(self.peer, anchor_docs, anchor_steps), encoding="utf-8"
+        )
+        self.commit(self.peer, "purge forged peer terminal history")
         self.add_task(self.root, consumer_id, blockers=[f"po4yka/RIPDPI#{blocker_id}"])
         self.commit(self.root, "add consumer")
 

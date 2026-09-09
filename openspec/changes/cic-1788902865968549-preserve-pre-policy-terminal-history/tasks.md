@@ -27,3 +27,4 @@ applicable because the change affects only repository task lifecycle behavior.
 - [x] CIC-1788910133884752 Reject policy-only downgrades without terminal candidates #bug !high @item:CIC-1788902865968549
 - [x] CIC-1788915773921284 Enforce post-activation review policy on stale merged lanes #bug !high @item:CIC-1788902865968549
 - [x] CIC-1788918662569160 Make committed-review policy return total for CodeQL #bug !high @item:CIC-1788902865968549
+- [x] CIC-1788924940528030 Anchor legacy eligibility to a trusted validation base #bug !high @item:CIC-1788902865968549

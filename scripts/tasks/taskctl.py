@@ -229,6 +229,7 @@ class TerminalHistoryIndex:
 class TerminalHistoryResolver:
     root: Path
     config: ProjectConfig
+    trusted_ref: str | None = None
     index: TerminalHistoryIndex | None = None
 
     def resolve(
@@ -244,6 +245,7 @@ class TerminalHistoryResolver:
             task_id,
             self.config,
             allow_uncommitted_purge=allow_uncommitted_purge,
+            trusted_ref=self.trusted_ref,
             history_index=self.index,
         )
 
@@ -2431,6 +2433,7 @@ def resolve_terminal_task_from_index(
     history_index: TerminalHistoryIndex,
     allow_uncommitted_purge: bool = False,
     prospective_purge: bool = False,
+    trusted_ref: str | None = None,
 ) -> dict[str, Any] | None:
     if (
         history_index.root != root.resolve()
@@ -2536,7 +2539,10 @@ def resolve_terminal_task_from_index(
             terminal_index == 0 and incarnation[0][0] == history_index.strict_start
         )
         review_required = committed_review_policy_enforced(
-            root, terminal_transition, config_at=config_at
+            root,
+            terminal_transition,
+            config_at=config_at,
+            trusted_ref=trusted_ref,
         )
         invalid_done_transition = outcome == "done" and not (
             previous_status == "review"
@@ -2683,6 +2689,7 @@ def resolve_terminal_task(
     *,
     allow_uncommitted_purge: bool = False,
     prospective_purge: bool = False,
+    trusted_ref: str | None = None,
     history_index: TerminalHistoryIndex | None = None,
 ) -> dict[str, Any] | None:
     history_index = history_index or build_terminal_history_index(root, config)
@@ -2696,6 +2703,7 @@ def resolve_terminal_task(
             history_index=history_index,
             allow_uncommitted_purge=allow_uncommitted_purge,
             prospective_purge=prospective_purge,
+            trusted_ref=trusted_ref,
         )
     except ContractError as error:
         primary_error = error
@@ -2772,6 +2780,7 @@ def resolve_terminal_task(
             task_id,
             config,
             history_index=lane_index,
+            trusted_ref=trusted_ref,
         )
     if primary_error is not None:
         raise primary_error
@@ -3107,6 +3116,7 @@ def committed_review_policy_enforced(
     ref: str,
     *,
     config_at: Callable[[str], ProjectConfig],
+    trusted_ref: str | None = None,
 ) -> bool:
     def activation(history_ref: str) -> tuple[bool, str | None]:
         history = run_command(
@@ -3145,13 +3155,20 @@ def committed_review_policy_enforced(
 
     # An omitted policy is an unversioned contract, not proof that this
     # repository intentionally permitted the legacy doing -> done form. Only a
-    # later explicit activation whose commit descends from this terminal
-    # revision proves that the revision genuinely predates local activation.
-    # A stale side lane must inherit the integration branch's active policy.
-    if ref == "HEAD":
+    # pre-established activation in a trusted validation ref can grandfather a
+    # terminal revision that predates it. A later activation in the untrusted
+    # change being validated must not manufacture legacy eligibility.
+    if trusted_ref is None:
         return True
-    head_active, first_activation = activation("HEAD")
-    if not head_active or first_activation is None:
+    trusted_ancestry = run_command(
+        ("git", "merge-base", "--is-ancestor", trusted_ref, "HEAD"), root=root
+    )
+    if trusted_ancestry.returncode == 1:
+        fail(f"trusted policy base {trusted_ref} is not an ancestor of HEAD")
+    if trusted_ancestry.returncode != 0:
+        fail(f"cannot validate trusted policy base {trusted_ref}")
+    trusted_active, first_activation = activation(trusted_ref)
+    if not trusted_active or first_activation is None:
         return True
     ancestry = run_command(
         ("git", "merge-base", "--is-ancestor", ref, first_activation), root=root
@@ -3230,7 +3247,9 @@ def validate_deleted_history(root: Path, base: str) -> None:
 
         # Policy monotonicity is a repository-history invariant, so validate it
         # even when this base range contains no deleted terminal candidates.
-        committed_review_policy_enforced(root, "HEAD", config_at=config_at)
+        committed_review_policy_enforced(
+            root, "HEAD", config_at=config_at, trusted_ref=base
+        )
 
         for task_id in sorted(candidate_ids - head_ids):
             timeline = [
@@ -3357,7 +3376,10 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 if snapshot.document.values.get("status") != outcome:
                     fail(f"{relative}: task transitioned out of terminal state")
             review_required = committed_review_policy_enforced(
-                root, terminal_transition_ref, config_at=config_at
+                root,
+                terminal_transition_ref,
+                config_at=config_at,
+                trusted_ref=base,
             )
             if (
                 outcome == "done"
@@ -4550,6 +4572,7 @@ def command_close_purge(args: argparse.Namespace) -> int:
             config,
             allow_uncommitted_purge=True,
             prospective_purge=True,
+            trusted_ref=getattr(args, "trusted_base", None),
         )
         is None
     ):
@@ -4699,6 +4722,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.set_defaults(handler=command_close_prepare)
     purge = close_sub.add_parser("purge")
     purge.add_argument("query")
+    purge.add_argument("--trusted-base")
     purge.set_defaults(handler=command_close_purge)
     return parser
 

@@ -15,8 +15,9 @@ terminal transitions even if a later config removes or lowers the policy field.
 Base-aware validation MUST reject that downgrade independently of whether the
 selected range contains a terminal task candidate. A terminal transition
 without version 1 in its own first-parent ancestry MUST receive legacy treatment
-only when its commit is an ancestor of the integration branch's first
-version-1 activation.
+only when its commit is an ancestor of the first version-1 activation already
+present in the trusted validation base. An activation introduced after that
+base MUST NOT grandfather an earlier transition in the same untrusted change.
 
 #### Scenario: Pre-activation terminal history remains valid
 
@@ -25,6 +26,8 @@ version-1 activation.
 - **WHEN** a later policy-aware revision validates or purges that terminal record
 - **THEN** the historical transition remains valid
 - **AND** current policy is not applied retroactively
+- **AND** an authoring purge names a trusted ref that already contains the
+  activation boundary
 
 #### Scenario: Unversioned peer history remains fail-closed
 
@@ -66,6 +69,16 @@ version-1 activation.
 - **WHEN** the side lane is merged and base-aware history validation runs
 - **THEN** validation rejects the transition as missing committed review
 - **AND** the stale lane is not treated as pre-activation history
+
+#### Scenario: Late activation cannot manufacture legacy history
+
+- **GIVEN** the trusted validation base has no committed-review policy
+- **AND** an untrusted change commits a direct `doing` to `done` transition
+- **WHEN** that same change later activates version 1 and purges the task
+- **THEN** base-aware validation rejects the transition as missing committed
+  review
+- **AND** federation without a pre-established activation boundary also rejects
+  the historical task
 
 #### Scenario: Current committed review path remains accepted
 
