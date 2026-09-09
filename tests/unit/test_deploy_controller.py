@@ -485,34 +485,16 @@ def test_make_refuses_command_line_tailnet_credential_before_expansion(
     assert calls(workspace) == []
 
 
-def test_tailnet_credential_reaches_only_one_node_site_playbook(workspace):
+@pytest.mark.parametrize("target", ["deploy", "dry-run"])
+def test_ordinary_deployment_refuses_enrollment_before_guest_commands(workspace, target):
     write(workspace["root"] / "ansible/group_vars/vpn-p0.yml",
           "vpn: {enable_tailnet_management: true}\n")
     commit_fixture(workspace)
     workspace["env"]["TAILSCALE_AUTH_KEY"] = "tskey-auth-fixture_12345678"
-    result = invoke(workspace, target="deploy", limit="node-one")
-
-    assert result.returncode == 0, result.stderr
-    observed = calls(workspace)
-    site = [
-        entry
-        for entry in observed
-        if entry["program"] == "ansible-playbook"
-        and Path(entry["args"][0]).stem.endswith("-site")
-    ]
-    assert len(site) == 1 and site[0]["tailnet_auth"] == "present"
-    assert all(
-        entry["tailnet_auth"] == "absent"
-        for entry in observed
-        if entry not in site
-    )
-
-
-def test_dry_run_never_forwards_ambient_tailnet_credential(workspace):
-    workspace["env"]["TAILSCALE_AUTH_KEY"] = "tskey-auth-fixture_12345678"
-    result = invoke(workspace, target="dry-run", limit="node-one")
-
-    assert result.returncode == 0, result.stderr
+    result = invoke(workspace, target=target, limit="node-one")
+    assert result.returncode != 0
+    assert "requires bootstrap-tailnet" in result.stderr
+    assert not any(entry["program"] in ("ssh", "ansible-playbook") for entry in calls(workspace))
     assert all(entry["tailnet_auth"] == "absent" for entry in calls(workspace))
 
 
@@ -530,7 +512,7 @@ def test_tailnet_credential_refuses_invalid_or_multi_node_use_before_ssh(
     result = invoke(workspace, target="deploy", limit=limit)
 
     assert result.returncode != 0
-    assert "Tailnet enrollment credential invalid" in result.stderr
+    assert "Tailnet enrollment requires bootstrap-tailnet" in result.stderr
     assert not any(entry["program"] in ("ssh", "ansible-playbook") for entry in calls(workspace))
 
 

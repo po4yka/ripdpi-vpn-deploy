@@ -37,6 +37,13 @@ make deploy ANSIBLE_LIMIT=<exact-inventory-alias> \
   DEPLOY_PROMOTION_CONFIG_FILE="$HOME/.config/vpn-provision/promotion-configs.json"
 ```
 
+For a fresh Tailnet node, stop after the recovery installer and run the
+[one-node Tailnet bootstrap](TAILNET-MANAGEMENT.md#bootstrap-one-node) before
+`dry-run`. Bootstrap obtains the real management address and socket contexts;
+do not manufacture them to pass deployment readiness. On disposable staging,
+create the cleanup manifest before either installer. Unset the enrollment
+key before ordinary `dry-run`/`deploy`, which now reject it.
+
 Run the installer serially in an exclusive maintenance window. Ordinary
 deployment never installs or repairs this capability implicitly. Before its
 first site-playbook write, the deploy controller uses the same frozen strict

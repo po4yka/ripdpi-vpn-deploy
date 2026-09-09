@@ -212,6 +212,13 @@ def _mark_started(manifest_path: Path, evidence_path: Path) -> dict[str, object]
     )
 
 
+@pytest.fixture(autouse=True)
+def _isolated_controller_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "controller-home"
+    home.mkdir(mode=0o700)
+    monkeypatch.setenv("HOME", str(home))
+
+
 def test_manifest_is_canonical_private_and_bound_to_exact_state_ids(
     tmp_path: Path,
 ) -> None:
@@ -698,7 +705,10 @@ def test_private_paths_refuse_symlinked_higher_ancestor(
     manifest_path = private / "manifest.json"
 
     if kind == "state":
-        with pytest.raises(guard.GuardError, match="ancestor.*symlink"):
+        with pytest.raises(
+            guard.GuardError,
+            match="ancestor.*symlink|lifecycle artifact parent is unavailable or unsafe",
+        ):
             guard.create_manifest(
                 output_path=manifest_path,
                 provider="upcloud",
@@ -722,10 +732,16 @@ def test_private_paths_refuse_symlinked_higher_ancestor(
         now=CREATED,
     )
     if kind == "manifest":
-        with pytest.raises(guard.GuardError, match="ancestor.*symlink"):
+        with pytest.raises(
+            guard.GuardError,
+            match="ancestor.*symlink|lifecycle artifact parent is unavailable or unsafe",
+        ):
             guard.load_manifest(alias / "private/manifest.json", now=CREATED)
     else:
-        with pytest.raises(guard.GuardError, match="ancestor.*symlink"):
+        with pytest.raises(
+            guard.GuardError,
+            match="ancestor.*symlink|lifecycle artifact parent is unavailable or unsafe",
+        ):
             guard.reserve_evidence(
                 manifest_path,
                 alias / "private/post-destroy.json",
@@ -974,7 +990,7 @@ def test_destroy_plan_refuses_manifest_replacement_after_reservation(
     manifest["expiry_at"] = guard._format_time(shifted + timedelta(hours=47))
     _private_file(manifest_path, guard.canonical_json(manifest))
 
-    with pytest.raises(guard.GuardError, match="reservation"):
+    with pytest.raises(guard.GuardError, match="registered current generation"):
         guard.validate_destroy_plan(
             manifest_path, plan_path, evidence_path, now=CREATED
         )
@@ -1344,7 +1360,10 @@ def test_evidence_reservation_refuses_unsafe_output_before_cleanup(
         evidence_parent.chmod(0o755)
         evidence_path = evidence_parent / "post-destroy.json"
 
-    with pytest.raises(guard.GuardError, match="already exists|mode must be 0700"):
+    with pytest.raises(
+        guard.GuardError,
+        match="already exists|mode must be 0700|lifecycle artifact parent ownership or mode is unsafe",
+    ):
         guard.reserve_evidence(
             manifest_path,
             evidence_path,
@@ -1636,3 +1655,427 @@ def test_post_destroy_refuses_auth_existing_or_ambiguous_resources(
         )
 
     assert evidence_path.read_bytes() == guard.canonical_json(reserved)
+
+
+@pytest.mark.parametrize("started", [False, True], ids=["reserved", "apply-started"])
+def test_new_manifest_path_cannot_bypass_node_reservation(
+    tmp_path: Path, started: bool
+) -> None:
+    manifest_path, before = _manifest(tmp_path)
+    evidence_path = _reserved_evidence_path(manifest_path)
+    if started:
+        _mark_started(manifest_path, evidence_path)
+    state_path = Path(before["state"]["path"])
+    refreshed = _state_view()
+    refreshed["serial"] += 1
+    refreshed["resources"][1]["instances"][0]["attributes"]["firewall"] = True
+    _private_file(state_path, guard.canonical_json(refreshed))
+    output = manifest_path.with_name("refreshed.json")
+    with pytest.raises(guard.GuardError):
+        guard.create_manifest(
+            output_path=output,
+            provider="upcloud",
+            environment="ci-staging-20260829",
+            workspace="ci-staging-20260829",
+            state_path=state_path,
+            hostname=HOSTNAME,
+            request_json=_creation_get,
+            now=CREATED,
+        )
+    assert not output.exists()
+    assert evidence_path.exists()
+
+
+def test_same_node_cannot_reserve_a_second_evidence_path(tmp_path: Path) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    _reserved_evidence_path(manifest_path)
+    second = manifest_path.with_name("other-evidence.json")
+    with pytest.raises(guard.GuardError):
+        guard.reserve_evidence(manifest_path, second, now=CREATED)
+    assert not second.exists()
+
+
+def _refresh_manifest_state(manifest: dict[str, object]) -> Path:
+    state = _state_view()
+    state["serial"] += 1
+    state["resources"][1]["instances"][0]["attributes"]["firewall"] = True
+    return _private_file(Path(manifest["state"]["path"]), guard.canonical_json(state))
+
+
+def _reissue(previous: Path, before: dict[str, object], output: Path | None = None):
+    return guard.create_manifest(
+        output_path=output or previous.with_name("refreshed.json"),
+        previous_manifest_path=previous,
+        provider="upcloud",
+        environment="ci-staging-20260829",
+        workspace="ci-staging-20260829",
+        state_path=Path(before["state"]["path"]),
+        hostname=HOSTNAME,
+        request_json=_creation_get,
+        now=CREATED,
+    )
+
+
+def test_explicit_reissue_preserves_resources_deadlines_and_prior_artifacts(
+    tmp_path: Path,
+) -> None:
+    previous, before = _manifest(tmp_path)
+    original = previous.read_bytes()
+    evidence = _reserved_evidence_path(previous)
+    receipt = evidence.read_bytes()
+    guard.release_evidence(previous, evidence, now=CREATED)
+    _refresh_manifest_state(before)
+    after = _reissue(previous, before)
+    assert {key: value for key, value in after.items() if key != "state"} == {
+        key: value for key, value in before.items() if key != "state"
+    }
+    assert after["state"]["sha256"] != before["state"]["sha256"]
+    assert previous.read_bytes() == original
+    with pytest.raises(guard.GuardError, match="state digest"):
+        guard.load_manifest(previous, now=CREATED)
+    refreshed = previous.with_name("refreshed.json")
+    assert guard.load_manifest(refreshed, now=CREATED) == after
+    with guard.lifecycle.locked(after) as journal:
+        assert journal.record["history"][0]["manifest"] == before
+        assert guard.canonical_json(journal.record["released"][0]["receipt"]) == receipt
+    guard.reserve_evidence(
+        refreshed, refreshed.with_name("new-evidence.json"), now=CREATED
+    )
+
+
+@pytest.mark.parametrize("started", [False, True], ids=["reserved", "apply-started"])
+def test_explicit_reissue_refuses_outstanding_cleanup(
+    tmp_path: Path, started: bool
+) -> None:
+    previous, before = _manifest(tmp_path)
+    evidence = _reserved_evidence_path(previous)
+    if started:
+        _mark_started(previous, evidence)
+    saved = evidence.read_bytes()
+    _refresh_manifest_state(before)
+    with pytest.raises(guard.GuardError, match="outstanding destruction reservation"):
+        _reissue(previous, before)
+    assert evidence.read_bytes() == saved
+    assert not previous.with_name("refreshed.json").exists()
+
+
+def test_reissue_refuses_changed_storage_identity(tmp_path: Path) -> None:
+    import json
+
+    previous, before = _manifest(tmp_path)
+    state_path = _refresh_manifest_state(before)
+    state = json.loads(state_path.read_bytes())
+    state["resources"][1]["instances"][0]["attributes"]["template"][0]["id"] = (
+        SERVER_UUID
+    )
+    _private_file(state_path, guard.canonical_json(state))
+    with pytest.raises(guard.GuardError, match="preserve identity"):
+        _reissue(previous, before)
+    assert not previous.with_name("refreshed.json").exists()
+
+
+def test_manifest_and_state_copies_do_not_change_node_coordination(
+    tmp_path: Path,
+) -> None:
+    previous, before = _manifest(tmp_path)
+    evidence = _reserved_evidence_path(previous)
+    copied_manifest = _private_file(
+        previous.with_name("copied.json"), previous.read_bytes()
+    )
+    with pytest.raises(guard.GuardError, match="registered current generation"):
+        guard.reserve_evidence(
+            copied_manifest, previous.with_name("other.json"), now=CREATED
+        )
+    copied_state = _private_file(
+        previous.with_name("copied-state.json"),
+        Path(before["state"]["path"]).read_bytes(),
+    )
+    with pytest.raises(guard.GuardError, match="outstanding destruction reservation"):
+        guard.create_manifest(
+            output_path=previous.with_name("new.json"),
+            provider="upcloud",
+            environment="ci-staging-20260829",
+            workspace="ci-staging-20260829",
+            state_path=copied_state,
+            hostname=HOSTNAME,
+            request_json=_creation_get,
+            now=CREATED,
+        )
+    assert evidence.exists()
+
+
+def test_pending_manifest_publication_resumes_only_exact_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    previous, before = _manifest(tmp_path)
+    _refresh_manifest_state(before)
+    atomic = guard.lifecycle._atomic
+
+    def fail_commit(parent, name, raw, *, replace):
+        data = json.loads(raw)
+        if (
+            data.get("version") == 1
+            and data.get("current") is not None
+            and data.get("publish") is None
+        ):
+            raise OSError("injected journal commit failure")
+        return atomic(parent, name, raw, replace=replace)
+
+    monkeypatch.setattr(guard.lifecycle, "_atomic", fail_commit)
+    with pytest.raises((OSError, guard.GuardError)):
+        _reissue(previous, before)
+    output = previous.with_name("refreshed.json")
+    assert output.exists()
+    with pytest.raises(guard.GuardError, match="publication requires recovery"):
+        guard.load_manifest(output, now=CREATED)
+    monkeypatch.setattr(guard.lifecycle, "_atomic", atomic)
+    with pytest.raises(guard.GuardError, match="publication requires recovery"):
+        _reissue(previous, before, previous.with_name("different.json"))
+    after = _reissue(previous, before)
+    assert guard.load_manifest(output, now=CREATED) == after
+    with guard.lifecycle.locked(after) as journal:
+        assert len(journal.record["history"]) == 1
+
+
+def test_release_recovers_after_artifact_removal_before_journal_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    previous, before = _manifest(tmp_path)
+    evidence = _reserved_evidence_path(previous)
+    finish = guard.lifecycle._finish_release
+    monkeypatch.setattr(
+        guard.lifecycle,
+        "_finish_release",
+        lambda *args: (_ for _ in ()).throw(OSError("injected release interruption")),
+    )
+    with pytest.raises((OSError, guard.GuardError)):
+        guard.release_evidence(previous, evidence, now=CREATED)
+    assert not evidence.exists()
+    monkeypatch.setattr(guard.lifecycle, "_finish_release", finish)
+    assert (
+        guard.recover_reserved_evidence(previous, evidence, now=CREATED) == "released"
+    )
+    _refresh_manifest_state(before)
+    _reissue(previous, before)
+
+
+def test_registry_lock_serializes_another_controller_process(tmp_path: Path) -> None:
+    import subprocess
+    import sys
+
+    previous, before = _manifest(tmp_path)
+    script = """import runpy, sys
+from pathlib import Path
+from datetime import datetime
+sys.path.insert(0, str(Path(sys.argv[1]).parent))
+g = runpy.run_path(sys.argv[1])
+g['reserve_evidence'](Path(sys.argv[2]), Path(sys.argv[3]), now=datetime.fromisoformat(sys.argv[4]))
+"""
+    evidence = previous.with_name("child-evidence.json")
+    with guard.lifecycle.locked(before):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                script,
+                str(SCRIPT),
+                str(previous),
+                str(evidence),
+                CREATED.isoformat(),
+            ],
+            capture_output=True,
+            timeout=10,
+        )
+    assert result.returncode != 0
+    assert b"another node lifecycle operation is active" in result.stderr
+    assert not evidence.exists()
+    guard.reserve_evidence(previous, evidence, now=CREATED)
+
+
+def test_process_loss_before_evidence_write_releases_only_registered_intent(
+    tmp_path: Path,
+) -> None:
+    import subprocess
+    import sys
+
+    previous, before = _manifest(tmp_path)
+    script = """import importlib.util, os, sys
+from pathlib import Path
+from datetime import datetime
+sys.path.insert(0, str(Path(sys.argv[1]).parent))
+spec = importlib.util.spec_from_file_location('guard', sys.argv[1])
+g = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(g)
+g._private_write_new = lambda *args, **kwargs: os._exit(73)
+g.reserve_evidence(Path(sys.argv[2]), Path(sys.argv[3]), now=datetime.fromisoformat(sys.argv[4]))
+"""
+    evidence = previous.with_name("interrupted-evidence.json")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            script,
+            str(SCRIPT),
+            str(previous),
+            str(evidence),
+            CREATED.isoformat(),
+        ],
+        capture_output=True,
+        timeout=10,
+    )
+    assert result.returncode == 73
+    with pytest.raises(guard.GuardError, match="evidence path"):
+        guard.recover_reserved_evidence(
+            previous, previous.with_name("alternate.json"), now=CREATED
+        )
+    assert (
+        guard.recover_reserved_evidence(previous, evidence, now=CREATED) == "released"
+    )
+    _refresh_manifest_state(before)
+    _reissue(previous, before)
+
+
+def test_outer_destroy_controller_passes_one_real_lock_to_guard_children(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import subprocess
+    import sys
+
+    previous, before = _manifest(tmp_path)
+    evidence = previous.with_name("child-evidence.json")
+    script = """import importlib.util, sys
+from pathlib import Path
+from datetime import datetime
+sys.path.insert(0, str(Path(sys.argv[1]).parent))
+spec = importlib.util.spec_from_file_location('guard', sys.argv[1])
+g = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(g)
+g.reserve_evidence(Path(sys.argv[2]), Path(sys.argv[3]), now=datetime.fromisoformat(sys.argv[4]))
+"""
+    real_run = subprocess.run
+    calls = []
+
+    def child(command, *, env, pass_fds, check):
+        assert command == [
+            "bash",
+            str(SCRIPT.with_name("destroy.sh")),
+            "--non-interactive",
+        ]
+        assert int(env["VPN_STAGING_LOCK_FD"]) == pass_fds[0]
+        arguments = [
+            sys.executable,
+            "-c",
+            script,
+            str(SCRIPT),
+            str(previous),
+            str(evidence),
+            CREATED.isoformat(),
+        ]
+        accepted = real_run(
+            arguments, env=env, pass_fds=pass_fds, capture_output=True, timeout=10
+        )
+        assert accepted.returncode == 0, accepted.stderr
+        independent = dict(env)
+        independent.pop("VPN_STAGING_LOCK_FD")
+        refused = real_run(arguments, env=independent, capture_output=True, timeout=10)
+        assert refused.returncode != 0
+        assert b"another node lifecycle operation is active" in refused.stderr
+        calls.append(True)
+        return accepted
+
+    monkeypatch.setattr(guard.lifecycle.subprocess, "run", child)
+    assert (
+        guard.lifecycle.main(
+            ["run-destroy", "--manifest", str(previous), "--", "--non-interactive"]
+        )
+        == 0
+    )
+    assert calls == [True]
+    assert evidence.exists()
+    assert (
+        guard.recover_reserved_evidence(previous, evidence, now=CREATED) == "released"
+    )
+
+
+@pytest.mark.parametrize("descriptor", ["-1", "not-a-descriptor", "9999999", "9" * 50])
+def test_invalid_inherited_lock_cannot_authorize_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    descriptor: str,
+) -> None:
+    previous, _ = _manifest(tmp_path)
+    monkeypatch.setenv("VPN_STAGING_LOCK_FD", descriptor)
+    evidence = previous.with_name("evidence.json")
+    with pytest.raises(guard.GuardError, match="inherited lifecycle lock descriptor"):
+        guard.reserve_evidence(previous, evidence, now=CREATED)
+    assert not evidence.exists()
+
+
+def test_malformed_registry_claim_refuses_instead_of_resetting(tmp_path: Path) -> None:
+    import json
+
+    previous, before = _manifest(tmp_path)
+    registry = guard.lifecycle._registry() / (guard.lifecycle.key(before) + ".json")
+    record = json.loads(registry.read_bytes())
+    record["claim"] = {
+        "phase": "unknown",
+        "path": str(previous.with_name("evidence.json")),
+    }
+    registry.write_bytes(guard.canonical_json(record))
+    damaged = registry.read_bytes()
+    with pytest.raises(guard.GuardError, match="reservation intent is invalid"):
+        guard.reserve_evidence(previous, previous.with_name("other.json"), now=CREATED)
+    assert registry.read_bytes() == damaged
+
+
+def test_journal_replacement_during_operation_is_not_overwritten(
+    tmp_path: Path,
+) -> None:
+    previous, before = _manifest(tmp_path)
+    registry = guard.lifecycle._registry() / (guard.lifecycle.key(before) + ".json")
+    with guard.lifecycle.locked(before) as journal:
+        replacement = _private_file(
+            registry.with_name("replacement.json"), registry.read_bytes()
+        )
+        replacement.replace(registry)
+        replaced_identity = registry.stat().st_ino
+        with pytest.raises(guard.GuardError, match="journal changed during operation"):
+            journal.save()
+        assert registry.stat().st_ino == replaced_identity
+
+
+def test_initial_manifest_accepts_explicitly_disabled_provider_firewall(
+    tmp_path: Path,
+) -> None:
+    state = _state_view()
+    state["resources"][1]["instances"][0]["attributes"]["firewall"] = False
+    state_path = _private_file(
+        tmp_path / "private" / "terraform.tfstate", guard.canonical_json(state)
+    )
+    output = state_path.with_name("manifest.json")
+    manifest = guard.create_manifest(
+        output_path=output,
+        provider="upcloud",
+        environment="ci-staging-disabled",
+        workspace="ci-staging-disabled",
+        state_path=state_path,
+        hostname=HOSTNAME,
+        request_json=_creation_get,
+        now=CREATED,
+    )
+    assert guard.load_manifest(output, now=CREATED) == manifest
+
+
+def test_legacy_upcloud_manifest_cannot_enter_registered_lifecycle(
+    tmp_path: Path,
+) -> None:
+    path, manifest = _manifest(tmp_path)
+    legacy = {**manifest, "schema_version": 2}
+    copied = _private_file(path.with_name("legacy.json"), guard.canonical_json(legacy))
+    with pytest.raises(guard.GuardError, match="schema"):
+        guard.load_manifest(copied, now=CREATED)

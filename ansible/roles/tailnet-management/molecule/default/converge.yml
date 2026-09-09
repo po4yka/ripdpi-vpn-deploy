@@ -10,5 +10,25 @@
         - 100.64.10.20
         - fd7a:115c:a1e0::1234
     tailnet_management_install_package: false
+  pre_tasks:
+    - name: Install inert bootstrap components separately from ordinary deployment
+      ansible.builtin.include_role:
+        name: tailnet-management
+        tasks_from: bootstrap
+
+    - name: Copy native firewall and transaction test driver
+      ansible.builtin.copy:
+        src: bootstrap-fixture.py
+        dest: /usr/local/lib/vpn-tailnet/bootstrap-fixture.py
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Enroll and externally confirm the explicitly synthetic Tailnet fixture
+      ansible.builtin.command:
+        cmd: /usr/bin/python3 /usr/local/lib/vpn-tailnet/bootstrap-fixture.py
+      register: _tailnet_bootstrap_fixture
+      changed_when: (_tailnet_bootstrap_fixture.stdout | from_json).changed | bool
+
   roles:
     - role: tailnet-management

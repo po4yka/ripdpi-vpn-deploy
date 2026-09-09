@@ -36,6 +36,13 @@ HOST = "vpn-ci-staging-20260905"
 PLAN_VIEWS: dict[tuple[int, int], bytes] = {}
 
 
+@pytest.fixture(autouse=True)
+def _isolated_controller_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "controller-home"
+    home.mkdir(mode=0o700)
+    monkeypatch.setenv("HOME", str(home))
+
+
 def test_operator_guard_is_executable() -> None:
     assert SCRIPT.stat().st_mode & stat.S_IXUSR
 
@@ -2450,3 +2457,71 @@ def test_platform_without_nofollow_refuses_private_manifest_access(
     monkeypatch.delattr(guard.os, "O_NOFOLLOW", raising=False)
     with pytest.raises(guard.GuardError, match="no-follow"):
         guard._private_read(path, "manifest", max_bytes=1024)
+
+
+def test_vultr_reissue_preserves_owned_resources_after_state_refresh(
+    tmp_path: Path,
+) -> None:
+    previous, before = _manifest(tmp_path)
+    state = _state()
+    state["serial"] = 17
+    state_path = _private(Path(before["state"]["path"]), guard.canonical_json(state))
+    output = previous.with_name("refreshed.json")
+    after = guard.create_manifest(
+        output_path=output,
+        previous_manifest_path=previous,
+        provider="vultr",
+        environment=ENV,
+        workspace=ENV,
+        state_path=state_path,
+        hostname=HOST,
+        request_json=_request,
+        now=NOW,
+    )
+    assert after["resources"] == before["resources"]
+    assert after["expiry_at"] == before["expiry_at"]
+    assert previous.read_bytes() == guard.canonical_json(before)
+    assert guard.load_manifest(output, now=NOW) == after
+    with pytest.raises(guard.GuardError, match="state digest"):
+        guard.load_manifest(previous, now=NOW)
+
+
+def test_vultr_reservation_blocks_reissue_and_alternate_evidence(
+    tmp_path: Path,
+) -> None:
+    previous, before = _manifest(tmp_path)
+    evidence = previous.with_name("evidence.json")
+    guard.reserve_evidence(previous, evidence, now=NOW)
+    with pytest.raises(guard.GuardError, match="outstanding destruction reservation"):
+        guard.reserve_evidence(
+            previous, previous.with_name("other-evidence.json"), now=NOW
+        )
+    state = _state()
+    state["serial"] = 17
+    state_path = _private(Path(before["state"]["path"]), guard.canonical_json(state))
+    with pytest.raises(guard.GuardError, match="outstanding destruction reservation"):
+        guard.create_manifest(
+            output_path=previous.with_name("refreshed.json"),
+            previous_manifest_path=previous,
+            provider="vultr",
+            environment=ENV,
+            workspace=ENV,
+            state_path=state_path,
+            hostname=HOST,
+            request_json=_request,
+            now=NOW,
+        )
+    assert evidence.exists()
+    assert guard._reservation_path(evidence).exists()
+
+
+def test_legacy_vultr_manifest_cannot_enter_registered_lifecycle(
+    tmp_path: Path,
+) -> None:
+    path, manifest = _manifest(tmp_path)
+    copied = _private(
+        path.with_name("legacy.json"),
+        guard.canonical_json({**manifest, "schema_version": 1}),
+    )
+    with pytest.raises(guard.GuardError, match="schema"):
+        guard.load_manifest(copied, now=NOW)

@@ -175,12 +175,23 @@ make plan
 make apply
 make inventory
 make wait              # 30–120 s, waits for cloud-init
+# Before ordinary deploy: install exact-node SSH recovery, then establish
+# Tailnet with make bootstrap-tailnet; see TAILNET-MANAGEMENT.md.
+# Supply observed DEPLOY_SSH_CONTEXTS_FILE and the reviewed promotion config.
 make dry-run           # ansible --check --diff; review what will change
 make deploy            # real run
 make verify            # post-deploy gates
 make smoke-test        # end-to-end real-traffic test through each profile
 make clean             # shred the configured plaintext SECRETS_FILE
 ```
+
+For disposable `ci-staging-*` nodes, create the UUID-bound cleanup manifest
+from the private exact state immediately after `apply`, before any guest
+installer or bootstrap write. Follow
+[the staging sequence](CI-REAL-DEPLOY.md#uuid-bound-operator-staging-cleanup).
+A fresh node has no management path until the explicit
+[Tailnet bootstrap](TAILNET-MANAGEMENT.md#bootstrap-one-node) succeeds;
+ordinary deployment cannot enroll it and rejects enrollment keys.
 
 If `dry-run` shows changes you didn't expect, stop and investigate. Don't
 proceed to `deploy`.
