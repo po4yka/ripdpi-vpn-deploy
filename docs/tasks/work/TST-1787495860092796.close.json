@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Local gates: make ci-fast targets green in the worktree (actionlint, zizmor, cloud-init schema, tf-test, tf-policy, yamllint, shellcheck, vpnd-deny, MSRV, 139 golden snapshots, secrets schema, bundle contract, full bats suite, vpnd clippy -D warnings and debug/release tests); make validate green; taskctl validate + make task-check green. Remote CI: exact-main ci.yml run on 2c5544fe20471bc43c649aef2278e3efe34503b6 merged via PR #211 with all pytest groups, codeql and required checks green.",
+  "execution_sha256": "0a78ebf6734057921c44f8d4d116977fc7f3ff02e566ac8820d1fc7df9c242a6",
+  "issue_sha256": "273d001ade29afba99dfd7cec92820ef001dc227521590a95eac545222356413",
+  "outcome": "done",
+  "prepared_at": "2026-09-09T02:31:09Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "TST-1787495860092796"
+}
