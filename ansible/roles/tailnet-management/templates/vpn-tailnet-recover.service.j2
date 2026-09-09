@@ -1,8 +1,10 @@
 [Unit]
 Description=Recover an unconfirmed restricted Tailnet enrollment
 After=tailscaled.service
+After=vpn-tailnet-firewall-recover.service
+Requires=vpn-tailnet-firewall-recover.service
 Wants=tailscaled.service
-Before=ssh.service ssh.socket
+Before=ssh.service
 
 [Service]
 Type=oneshot
@@ -15,7 +17,8 @@ RuntimeDirectory=vpn-tailnet-management
 RuntimeDirectoryMode=0700
 RuntimeDirectoryPreserve=yes
 ReadWritePaths=/var/lib/vpn-tailnet-management /run/vpn-tailnet-management
+ReadWritePaths=/etc
 RestrictAddressFamilies=AF_UNIX AF_NETLINK
 
 [Install]
-RequiredBy=ssh.service ssh.socket
+RequiredBy=ssh.service

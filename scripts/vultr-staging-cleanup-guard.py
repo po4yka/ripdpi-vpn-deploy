@@ -25,7 +25,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+import staging_lifecycle as lifecycle
+from staging_lifecycle import GuardError
+
+SCHEMA_VERSION = 2
 MAX_JSON_BYTES = 16 * 1024 * 1024
 MAX_STATE_BYTES = 64 * 1024 * 1024
 TARGET_AFTER = timedelta(hours=36)
@@ -44,10 +47,6 @@ ALLOWED_BASE_ADDRESSES = {
     "vultr_firewall_group.vpn",
     "vultr_instance.vpn",
 }
-
-
-class GuardError(ValueError):
-    """A categorical failure which is safe to show an operator."""
 
 
 JsonRequest = Callable[[str], tuple[int, dict[str, Any]]]
@@ -953,6 +952,7 @@ def _extract_identity(state: dict[str, Any], hostname: str) -> dict[str, Any]:
 def create_manifest(
     *,
     output_path: Path,
+    previous_manifest_path: Path | None = None,
     provider: str,
     environment: str,
     workspace: str,
@@ -998,7 +998,7 @@ def create_manifest(
         "escalation_at": _format_time(created + ESCALATION_AFTER),
         "expiry_at": _format_time(created + EXPIRY_AFTER),
     }
-    _private_write_new(output_path.absolute(), canonical_json(manifest), "manifest")
+    lifecycle.publish(manifest, output_path, previous_manifest_path)
     return manifest
 
 
@@ -1071,6 +1071,7 @@ def load_manifest(
             raise GuardError("state digest does not match manifest")
     else:
         _validate_manifest_resources(resources)
+    lifecycle.check_manifest(path, manifest)
     return (manifest, manifest_identity) if return_identity else manifest
 
 
@@ -1115,6 +1116,7 @@ def _validate_manifest_resources(resources: dict[str, Any]) -> None:
         _decimal_id(rule_id, "firewall rule ID")
 
 
+@lifecycle.operation("reserve")
 def reserve_evidence(
     manifest_path: Path,
     evidence_path: Path,
@@ -1142,6 +1144,7 @@ def reserve_evidence(
         "manifest_identity": [identity[0], identity[1]],
         "state_binding": _state_binding(manifest),
     }
+    lifecycle.begin_reservation(manifest, evidence_path)
     evidence_identity = _private_write_new(
         evidence_path.absolute(), canonical_json(evidence), "evidence"
     )
@@ -1180,6 +1183,7 @@ def _tombstone_unlink(path: Path, identity: tuple[int, int], label: str) -> None
         os.close(parent)
 
 
+@lifecycle.operation("release")
 def release_evidence(
     manifest_path: Path,
     evidence_path: Path,
@@ -1226,6 +1230,7 @@ def release_evidence(
         or confirmed_reservation_identity != reservation_identity
     ):
         raise GuardError("evidence reservation identity or bytes changed")
+    lifecycle.begin_release(manifest, evidence_path, evidence)
     journal_path = _transition_path(evidence_path)
     journal = {
         "operation": "release",
@@ -1251,6 +1256,7 @@ def release_evidence(
     )
 
 
+@lifecycle.operation("recover")
 def recover_reserved_evidence(
     manifest_path: Path,
     evidence_path: Path,
@@ -1485,6 +1491,7 @@ def _terraform_show_json(plan_fd: int, environment: str) -> bytes:
     return result.stdout
 
 
+@lifecycle.operation("advance")
 def validate_destroy_plan(
     manifest_path: Path,
     evidence_path: Path,
@@ -1556,6 +1563,7 @@ def validate_destroy_plan(
     }
 
 
+@lifecycle.operation("advance")
 def mark_apply_started(
     manifest_path: Path,
     evidence_path: Path,
@@ -1647,6 +1655,7 @@ def mark_apply_started(
     return started
 
 
+@lifecycle.operation("advance")
 def verify_vultr_absence(
     manifest_path: Path,
     evidence_path: Path,
@@ -1782,13 +1791,16 @@ def rewind_plan_fd(fd: int) -> None:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=True)
     commands = parser.add_subparsers(dest="command", required=True)
-    create = commands.add_parser("create-manifest")
-    create.add_argument("--output", type=Path, required=True)
-    create.add_argument("--provider", required=True)
-    create.add_argument("--environment", required=True)
-    create.add_argument("--workspace", required=True)
-    create.add_argument("--state", type=Path, required=True)
-    create.add_argument("--hostname", required=True)
+    for verb in ("create-manifest", "reissue-manifest"):
+        create = commands.add_parser(verb)
+        create.add_argument("--output", type=Path, required=True)
+        create.add_argument("--provider", required=True)
+        create.add_argument("--environment", required=True)
+        create.add_argument("--workspace", required=True)
+        create.add_argument("--state", type=Path, required=True)
+        create.add_argument("--hostname", required=True)
+        if verb == "reissue-manifest":
+            create.add_argument("--previous-manifest", type=Path, required=True)
     for name in ("authorize-reserve-evidence", "recover-evidence", "release-evidence"):
         command = commands.add_parser(name)
         command.add_argument("--manifest", type=Path, required=True)
@@ -1823,10 +1835,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "rewind-plan-fd":
         rewind_plan_fd(args.fd_number)
         return 0
-    if args.command == "create-manifest":
+    if args.command in {"create-manifest", "reissue-manifest"}:
         token = _vultr_request_from_environment()
         create_manifest(
             output_path=args.output,
+            previous_manifest_path=getattr(args, "previous_manifest", None),
             provider=args.provider,
             environment=args.environment,
             workspace=args.workspace,

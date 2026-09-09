@@ -15,6 +15,7 @@ import subprocess
 import sys
 
 import pytest
+import staging_lifecycle
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -79,7 +80,10 @@ class SopsRunner:
 
 
 @pytest.fixture
-def setup(tmp_path: Path):
+def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    home = tmp_path / "controller-home"
+    home.mkdir(mode=0o700)
+    monkeypatch.setenv("HOME", str(home))
     root = tmp_path / "private"
     root.mkdir(mode=0o700)
     server_uuid = "00112233-4455-4677-8899-aabbccddeeff"
@@ -100,7 +104,7 @@ def setup(tmp_path: Path):
         ),
     )
     manifest = {
-        "schema_version": 2,
+        "schema_version": 3,
         "provider": "upcloud",
         "environment": environment,
         "workspace": environment,
@@ -117,9 +121,10 @@ def setup(tmp_path: Path):
         "escalation_at": "2026-09-06T03:58:43Z",
         "expiry_at": "2026-09-06T06:58:43Z",
     }
-    manifest_path = _private(root / "cleanup.json", _canonical(manifest))
+    manifest_path = root / "cleanup.json"
+    staging_lifecycle.publish(manifest, manifest_path)
     absence = {
-        "schema_version": 2,
+        "schema_version": 3,
         "status": "verified",
         "deadline_status": "within_deadline",
         "provider": "upcloud",

@@ -218,16 +218,13 @@ def execution_environment(root, directory):
 
 
 def tailnet_site_environment(environment, host_count, mode, *, enabled):
-    """Forward a validated one-node enrollment capability only to site.yml."""
+    """Ordinary deployment verifies existing access and never enrolls."""
     credential = os.environ.get("TAILSCALE_AUTH_KEY")
     if enabled and host_count != 1:
         raise DeployError("Tailnet management requires one exact inventory node")
-    if credential is None or mode != "deploy":
-        return environment
-    if (not enabled or re.fullmatch(r"tskey-auth-[A-Za-z0-9_-]{8,480}", credential)
-            is None):
-        raise DeployError("Tailnet enrollment credential invalid")
-    return {**environment, "TAILSCALE_AUTH_KEY": credential}
+    if credential is not None:
+        raise DeployError("Tailnet enrollment requires bootstrap-tailnet")
+    return environment
 
 
 def tailnet_enabled_for_selection(root, hosts, memberships, metadata, override_values):
