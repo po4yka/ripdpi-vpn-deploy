@@ -14,7 +14,7 @@ openspec_change: cic-1788902865968549-preserve-pre-policy-terminal-history
 created: 2026-09-09
 updated: 2026-09-09
 related_tasks: []
-status_detail: Exact source d8fe945e passed focused regressions, 103-test taskctl suite, strict OpenSpec, base-aware validation, and full ci-fast; exact-source hosted CI and reviews remain required.
+status_detail: Exact source d8fe945e passed focused regressions and full ci-fast; PR #210 merged through protected main as d0c83539. Exact-main CI run 34315383102 passed all 75 jobs, CodeQL run 34315382910 passed, and final diff review found no further actionable defects.
 ---
 
 ## Goal
