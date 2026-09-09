@@ -3156,11 +3156,9 @@ def committed_review_policy_enforced(
     ancestry = run_command(
         ("git", "merge-base", "--is-ancestor", ref, first_activation), root=root
     )
-    if ancestry.returncode == 0:
-        return False
-    if ancestry.returncode == 1:
-        return True
-    fail(f"cannot compare committed-review activation ancestry for {ref}")
+    if ancestry.returncode not in (0, 1):
+        fail(f"cannot compare committed-review activation ancestry for {ref}")
+    return ancestry.returncode == 1
 
 
 def validate_historical_incarnation(

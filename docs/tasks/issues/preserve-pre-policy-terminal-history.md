@@ -14,7 +14,7 @@ openspec_change: cic-1788902865968549-preserve-pre-policy-terminal-history
 created: 2026-09-09
 updated: 2026-09-09
 related_tasks: []
-status_detail: Stale merged-lane regression, full taskctl suite, base-aware validation, and exact-diff ci-fast pass; new exact-head hosted checks and reviews remain required.
+status_detail: Stale merged-lane and total-return fixes, full taskctl suite, base-aware validation, and exact-diff ci-fast pass; new exact-head hosted checks and reviews remain required.
 ---
 
 ## Goal
