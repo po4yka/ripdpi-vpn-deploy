@@ -20,6 +20,12 @@ Scope of the audit that produced these plans: `scripts/**` (bash + python), `tes
 | 010 | Validate SUBSCRIPTION_DIR before remote root commands | P1 | S | none (land after 004) | DONE |
 | 011 | Refuse canary deploys scoped to non-canary secrets files | P1 | S | — | DONE |
 | 012 | Skip age-recovery roundtrip suite when ssss-combine absent | P2 | S | — | DONE |
+| 013 | Add automated coverage for decrypt-secrets.sh | P1 | S | — | TODO |
+| 014 | Build the taskctl negative-path test harness | P2 | M | — | TODO |
+| 015 | Cover blue-green and fleet-rotate happy paths with stubs | P2 | M | — | TODO |
+| 016 | Shellcheck rendered root-side shell templates | P2 | S | — | TODO |
+| 017 | Local validate parity — plugin cache, galaxy, prereqs | P3 | S | — | TODO |
+| 018 | Single source for pinned tool versions | P3 | S | — | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -28,13 +34,16 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 - **004 depends on 001** only because both append to `.gitignore` — land sequentially to avoid textual conflicts; no logical coupling.
 - **010 lands after 004** for the same reason (both touch `issue-sub-token.sh` / `issue-bootstrap.sh`; disjoint hunks).
 - Everything else is independent and may run in parallel worktrees.
-- A future assurance batch (tier-2 findings: decrypt-secrets.sh coverage, orchestrator happy-path tests, taskctl negative-path test harness, .j2 template shellcheck gate, UTF-8 sweep) is NOT yet planned; the taskctl negative-path harness would absorb plan 005's inline probes as permanent regression cases.
+- Tier-2 batch triaged on 2026-09-09 under OPS-1787495860232652: plans 013–018 cover decrypt-secrets coverage, the taskctl negative-path harness (which absorbs plan 005's inline probes), orchestrator happy-path tests, root-side template shellcheck, local validate parity (plugin cache, galaxy, prereqs), and tool-version sourcing. Three findings rejected with rationale below.
 
 ## Findings considered and rejected
 
 - **BASHCORRECT-01 "empty-array crash on bash 3.2 macOS" (prior-audit class)**: DOWNGRADED after empirical verification on this host — `/bin/bash` 3.2.57 (arm64-darwin25) expands empty indexed AND associative arrays safely under `set -u` (probes survived). The claimed alert-loss mechanism is not reproducible here; residual risk exists only on bash 4.0–4.3 Linux. The six unguarded sites (`emit-bundle.sh:99,102`, `sub-reads.sh:46-54`, `asn-drift.sh`,`check-ip-reputation`/`tspu-canary`/`monitor-reality-target` ntfy auth arrays) remain a LOW-priority consistency item with the established `${auth[@]+"${auth[@]}"}` idiom — not worth one of twelve plan slots this round.
-- **TASKING-07 "receipts prove consistency, not provenance"**: real trust boundary, but the fix (extending history walks to head-present terminal tasks) touches the hottest validator paths and wants the negative-path harness first. Decision deferred to maintainer: extend enforcement or document the boundary in docs/tasks/README.md.
-- **Tier-2/tier-3 findings (~40 more)**: triaged and documented in the audit report of 2026-08-23 but intentionally not planned this round per user selection (Tier 1 only). Re-audit should consult that report before re-deriving them.
+- **TASKING-07 "receipts prove consistency, not provenance"**: real trust boundary, but the fix (extending history walks to head-present terminal tasks) touches the hottest validator paths and wants the negative-path harness first. Decision (2026-09-09, OPS-1787495860232652): folded into plan 014 — document the provenance boundary in docs/tasks/README.md when the harness lands; enforcement extension stays deferred until then.
+- **UTF-8 encoding sweep (~40 sites)**: REJECTED (deferred) — no observed misbehavior on any supported host, and the handled data domain (IDs, hostnames, config keys, secret material) is ASCII. A 40-site mechanical sweep is churn without a triggering defect. Revisit on the first real encoding bug.
+- **Exception-root local validation**: REJECTED — terraform/exception/cascade-ingress is an inert, governance-gated scaffold by design (docs/CDN-DECISION.md); its shell scripts are already inside the `make shellcheck` target. Standing up init/validate for a zero-deployable root adds maintenance, not assurance.
+- **ci-fast parallelization**: REJECTED — hosted CI already runs these legs as parallel GitHub jobs. The local union is serial by design because steps share generated state (snapshot render → diff, template render → probes); a parallel re-architecture introduces race hazards for local-only convenience.
+- **Tier-2/tier-3 findings (~40 more)**: tier-2 candidates dispositioned on 2026-09-09 under OPS-1787495860232652 (plans 013–018 above, plus the rejections in this section). Tier-3 polish: TASKING-07 folded into plan 014; the BASHCORRECT-01 residual array-hygiene item above stays rejected.
 
 ## Verification baseline
 

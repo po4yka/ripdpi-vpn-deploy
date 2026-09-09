@@ -2,7 +2,7 @@
 id: OPS-1787495860232652
 title: Triage tier-2 and tier-3 findings from 2026-08-23 plumbing audit
 kind: research
-status: backlog
+status: review
 area: operations
 priority: low
 risk: standard
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-09-09
 spec_reason: research-only
 related_tasks: []
 ---
@@ -28,4 +28,3 @@ Execution: no handoff plan yet — produce plans for the selected tier-2 batch a
 - Every tier-2 finding has either a handoff plan under `plans/` or an explicit rejection rationale in `plans/README.md`.
 - Tier-3 polish items are either folded into tier-2 plans or explicitly rejected with rationale.
 - Decision summary recorded in this task's execution record before any implementation starts.
-
