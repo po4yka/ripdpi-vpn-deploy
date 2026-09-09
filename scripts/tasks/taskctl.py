@@ -3838,6 +3838,11 @@ def command_new(args: argparse.Namespace) -> int:
         reference_parts(args.parent, config)
     task_id = allocate_id(args.root, args.area, used, config)
     slug = args.slug or slugify(args.title)
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", slug):
+        fail(
+            f"invalid slug {slug!r}: must match [a-z0-9][a-z0-9-]* "
+            "(no slashes, dots, '..' or absolute paths)"
+        )
     path = args.root / "docs/tasks/issues" / f"{slug}.md"
     if path.exists():
         fail(f"task file already exists: {path.relative_to(args.root)}")

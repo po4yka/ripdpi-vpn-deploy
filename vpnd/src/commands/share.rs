@@ -133,9 +133,10 @@ pub async fn run(ctx: &Context, args: ShareArgs) -> Result<()> {
         apps: per_platform_apps(),
     })?;
     let (qr_singbox, qr_ripdpi) = if args.qr {
-        // Emit SVG QR codes only. write_png produces a PBM file renamed to
-        // .png (no real PNG encoder — no-new-deps constraint), which browsers
-        // refuse to render; the recipient page references qr.svg / qr-ripdpi.svg.
+        // Emit SVG QR codes only. There is no PNG encoder in the crate
+        // (no-new-deps constraint) and scripts/emit-qr.sh remains the
+        // canonical PNG path; the recipient page references
+        // qr.svg / qr-ripdpi.svg.
         (
             Some(match args.r#type {
                 ShareType::Singbox => urls.qr_singbox.clone(),

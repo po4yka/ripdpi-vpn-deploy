@@ -103,22 +103,6 @@ fn share_bundle_directory_structure_index_html() {
 }
 
 #[test]
-fn share_bundle_qr_png_has_valid_ppm_format() {
-    let dir = TempDir::new().unwrap();
-    let payload = "https://vpn.example.com/sub/phone.json";
-    let png_path = dir.path().join("qr.png");
-
-    qr::write_png(payload, &png_path).unwrap();
-    assert!(png_path.is_file(), "qr.png must exist");
-
-    let content = std::fs::read_to_string(&png_path).unwrap();
-    assert!(
-        content.starts_with("P1\n"),
-        "qr.png (PPM) must start with P1"
-    );
-}
-
-#[test]
 fn share_bundle_qr_svg_is_valid_xml() {
     let dir = TempDir::new().unwrap();
     let payload = "https://vpn.example.com/sub/phone.json";

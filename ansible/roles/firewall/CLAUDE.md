@@ -33,8 +33,10 @@ enabled transport data-plane needs.
 
 **AWG NAT is evidence-addressable** — each masquerade rule owns a stable `awg-nat-<interface>` comment and counter. Recurring real-VPS tests consume only that counter; preserve the comment when changing rule shape.
 
-**Geo blocking is optional** — `vpn.geo_block` toggles the geo set; default
-is on. Geo set is sourced from MaxMind via the `geodata` role.
+**Geo blocking is documented, not implemented** — the firewall role ships no
+country-set rules and has no `vpn.geo_block` toggle. The `geodata` role feeds
+Xray egress routing only. Any inbound geo filtering needs a build decision and
+a real template change first; do not claim this control until then.
 
 **Dependent sets apply synchronously** — a rendered firewall config is
 reloaded before roles that pre-flight firewall-owned nftables sets run in the
