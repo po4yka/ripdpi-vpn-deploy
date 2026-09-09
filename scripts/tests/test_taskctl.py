@@ -2598,6 +2598,21 @@ class TaskctlHistoryTest(TaskctlFixture):
                 argparse.Namespace(root=self.root, query="CIC-1786234567890001")
             )
 
+    def test_deleted_history_rejects_policy_downgrade_without_terminal_candidates(
+        self,
+    ) -> None:
+        self.add_simple_task()
+        self.write_board()
+        base = self.commit_all("add active task under review policy")
+        self.write_project_config(committed_review_policy=0)
+        self.commit_all("downgrade policy without terminal changes")
+
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "committed_review_policy cannot downgrade after activation",
+        ):
+            taskctl.validate_deleted_history(self.root, base)
+
     def test_purge_rejects_dirty_terminal_artifacts_with_rewritten_receipt(self) -> None:
         target = self.add_simple_task(status="review")
         self.write_board()

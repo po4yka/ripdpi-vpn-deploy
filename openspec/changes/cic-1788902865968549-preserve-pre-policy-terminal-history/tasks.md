@@ -24,3 +24,4 @@ Runtime, provider, staging, live, client, and artifact evidence are not
 applicable because the change affects only repository task lifecycle behavior.
 - [x] CIC-1788905312419658 Prevent post-activation policy downgrade and satisfy required OpenSpec review #bug !high @item:CIC-1788902865968549
 - [x] CIC-1788906708701940 Keep unversioned peers strict and constrain legacy done sources #bug !high @item:CIC-1788902865968549
+- [x] CIC-1788910133884752 Reject policy-only downgrades without terminal candidates #bug !high @item:CIC-1788902865968549

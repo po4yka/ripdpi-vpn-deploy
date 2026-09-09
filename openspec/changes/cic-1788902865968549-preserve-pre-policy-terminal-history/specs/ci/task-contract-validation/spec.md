@@ -12,6 +12,8 @@ The task validator MUST determine whether committed-review enforcement was
 activated anywhere in the first-parent project-config ancestry of the exact
 terminal transition and MUST keep that activation effective for all descendant
 terminal transitions even if a later config removes or lowers the policy field.
+Base-aware validation MUST reject that downgrade independently of whether the
+selected range contains a terminal task candidate.
 
 #### Scenario: Pre-activation terminal history remains valid
 
@@ -45,6 +47,13 @@ terminal transitions even if a later config removes or lowers the policy field.
 - **WHEN** the task changes directly from `doing` to `done`
 - **THEN** prospective and committed deletion validation reject the transition
 - **AND** restoring version 1 later does not repair the malformed history
+
+#### Scenario: Policy-only downgrade is rejected
+
+- **GIVEN** committed-review policy version 1 is active
+- **WHEN** a later commit removes or lowers it without deleting any task
+- **THEN** base-aware validation rejects the downgrade
+- **AND** validation does not depend on entering a terminal-candidate loop
 
 #### Scenario: Current committed review path remains accepted
 

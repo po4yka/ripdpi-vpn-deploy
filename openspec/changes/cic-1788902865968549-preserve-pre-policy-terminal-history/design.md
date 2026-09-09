@@ -24,6 +24,9 @@ descendant commit to downgrade the bit and bypass review.
   commit's first-parent ancestry and treating any observed version 1 as
   permanent activation. A later version 0 or omission therefore cannot disable
   review enforcement.
+- Run the same monotonic scan against `HEAD` before base-aware terminal
+  candidate iteration. Policy-only commits must fail even when no task was
+  deleted in the selected range.
 - Use the same helper in prospective purge resolution and committed deletion
   validation. This keeps the two public validation paths consistent.
 - Permit the legacy `doing -> done` form only when the current checkout's
@@ -45,8 +48,8 @@ descendant commit to downgrade the bit and bypass review.
 ## Risks / Trade-offs
 
 - Additional Git history reads during terminal validation increase runtime.
-  Limit the scan to config-changing commits on the terminal revision's
-  first-parent ancestry and reuse the caller's historical-config cache.
+  Limit each scan to config-changing commits on the relevant first-parent
+  ancestry and reuse the caller's historical-config cache.
 - Legacy compatibility is safe only when later local activation proves the
   contract boundary. Unversioned-peer and invalid-source regressions prevent
   omission or policy zero from becoming a general bypass.

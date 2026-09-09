@@ -25,6 +25,8 @@ monotonically across the terminal revision's first-parent project-config
 ancestry. Permit only the legacy `doing -> done` form when the current checkout
 proves later local activation; a wholly unversioned peer remains strict, and a
 descendant omission or downgrade cannot disable version 1.
+Validate that monotonic policy ancestry before terminal-candidate iteration so
+a policy-only commit cannot escape base-aware validation.
 Evidence-transfer history starts only when a
 snapshot itself requires OpenSpec; retain every later required snapshot across
 task-mode or change-name transitions. Drop receipts bind the complete preserved

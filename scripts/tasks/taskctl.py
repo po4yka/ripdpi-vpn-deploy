@@ -3210,6 +3210,10 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 config_cache[ref] = historical_project_config(root, ref, scratch)
             return config_cache[ref]
 
+        # Policy monotonicity is a repository-history invariant, so validate it
+        # even when this base range contains no deleted terminal candidates.
+        committed_review_policy_enforced(root, "HEAD", config_at=config_at)
+
         for task_id in sorted(candidate_ids - head_ids):
             timeline = [
                 (revision, by_revision[revision].get(task_id)) for revision in revisions

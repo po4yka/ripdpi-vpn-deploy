@@ -14,7 +14,7 @@ openspec_change: cic-1788902865968549-preserve-pre-policy-terminal-history
 created: 2026-09-09
 updated: 2026-09-09
 related_tasks: []
-status_detail: Both P1 regressions and committed/prospective paths pass; full build-gate ci-fast, strict OpenSpec, governance, and base-aware validation pass; exact-head hosted checks and review remain required.
+status_detail: Three P1 regressions pass; exact-diff build-gate ci-fast, strict OpenSpec, governance, and base-aware validation pass; exact-head hosted checks and reviews remain required.
 ---
 
 ## Goal
@@ -37,5 +37,7 @@ review requirement for every transition made after policy activation.
   version 1 after activation.
 - An unversioned peer remains fail-closed, and pre-policy compatibility accepts
   only the historical `doing` to `done` form rather than arbitrary sources.
+- Base-aware validation rejects a policy-only downgrade even when no task is
+  deleted in the validation range.
 - The real High terminal record can be purged through `taskctl`, and the full
   task contract suite passes.
