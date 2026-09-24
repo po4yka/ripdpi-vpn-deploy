@@ -41,13 +41,13 @@ def test_exact_argv_and_debug_false_override_config(controller, monkeypatch):
     host = dict(name='vpn-fixture', transport='192.0.2.1', address='192.0.2.1',alias='192.0.2.1',
                 port=2222,user='deploy',key='/keys/private key')
     monkeypatch.setattr(controller.inspection, 'select_hosts', lambda *_:[host])
-    monkeypatch.setattr(controller.inspection, 'ssh_command', lambda *_:['ssh','-F','/dev/null','-o','StrictHostKeyChecking=yes',host['transport'],'sudo fixed'])
+    monkeypatch.setattr(controller.inspection, 'ssh_command', lambda *_:['ssh','-F','/dev/null','-o','StrictHostKeyChecking=yes','-o','ConnectionAttempts=1',host['transport'],'sudo fixed'])
     argv, env, inventory = controller.build_invocation({'SSH_RECOVERY_TARGET':'vpn-fixture','SSH_RECOVERY_WINDOW':'1',
                                             'PATH':os.environ['PATH'],'ANSIBLE_DEBUG':'false'})
     assert argv[argv.index('--limit')+1] == 'vpn-fixture'
     assert '--diff' not in argv and '--tags' not in argv
     assert env['ANSIBLE_DEBUG'] == 'false'
-    assert env['ANSIBLE_SSH_ARGS'] == '-F /dev/null -o StrictHostKeyChecking=yes'
+    assert env['ANSIBLE_SSH_ARGS'] == '-F /dev/null -o StrictHostKeyChecking=yes -o ConnectionAttempts=3'
     assert env['ANSIBLE_SSH_COMMON_ARGS'] == env['ANSIBLE_SSH_EXTRA_ARGS'] == ''
     assert env['ANSIBLE_HOST_KEY_CHECKING'] == 'true'
     assert inventory == '[vpn]\nvpn-fixture\n'
@@ -114,7 +114,7 @@ def test_manifest_covers_exact_bundle_source_and_binds_generation(controller):
 def test_inherited_environment_cannot_skip_install_or_override_git_and_plugins(controller, monkeypatch):
     host = dict(name='vpn-fixture',transport='192.0.2.1',address='192.0.2.1',alias='192.0.2.1',port=2222,user='deploy',key='/keys/key')
     monkeypatch.setattr(controller.inspection,'select_hosts',lambda *_:[host])
-    monkeypatch.setattr(controller.inspection,'ssh_command',lambda *_:['ssh','-F','/dev/null',host['transport'],'sudo fixed'])
+    monkeypatch.setattr(controller.inspection,'ssh_command',lambda *_:['ssh','-F','/dev/null','-o','ConnectionAttempts=1',host['transport'],'sudo fixed'])
     result = controller.build_invocation({'SSH_RECOVERY_TARGET':'vpn-fixture','SSH_RECOVERY_WINDOW':'1','PATH':os.environ['PATH'],
         'ANSIBLE_RUN_TAGS':'nonexistent','ANSIBLE_SKIP_TAGS':'all','ANSIBLE_SSH_EXECUTABLE':'/tmp/fake-ssh',
         'ANSIBLE_CALLBACK_PLUGINS':'/tmp/plugins','GIT_DIR':'/tmp/other-repo','PROVIDER_TOKEN':'private'})
@@ -135,6 +135,21 @@ def test_strict_arguments_are_also_valid_for_sftp_and_scp(controller, monkeypatc
     result = subprocess.run(['ssh', '-G', *options, host['transport']], capture_output=True, text=True, timeout=5)
     assert result.returncode == 0, result.stderr
     assert 'identityfile /keys/private key\n' in result.stdout
+
+
+def test_install_retries_only_transport_with_pinned_identity(controller, monkeypatch):
+    host = dict(name='vpn-fixture', transport='192.0.2.1', address='192.0.2.1', alias='192.0.2.1',
+                port=22, user='deploy', key='/keys/private')
+    monkeypatch.setattr(controller.inspection, 'select_hosts', lambda *_: [host])
+    monkeypatch.setattr(controller.inspection, '_local_file', lambda path, **kwargs: str(path))
+    _, env, _ = controller.build_invocation({'SSH_RECOVERY_TARGET': 'vpn-fixture',
+                                             'SSH_RECOVERY_WINDOW': '1', 'PATH': os.environ['PATH']})
+    arguments = env['ANSIBLE_SSH_ARGS']
+    assert 'ConnectionAttempts=3' in arguments
+    assert 'ConnectionAttempts=1' not in arguments
+    for option in ('StrictHostKeyChecking=yes', 'HostKeyAlias=192.0.2.1',
+                   'IdentitiesOnly=yes', 'ControlMaster=no', 'ControlPersist=no'):
+        assert option in arguments
 
 
 def test_real_ansible_cannot_load_external_host_vars(controller, monkeypatch, tmp_path):
