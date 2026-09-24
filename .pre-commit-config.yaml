@@ -1,4 +1,7 @@
 ---
+# make install-hooks also installs the commit-msg hook type; without this,
+# every file hook would run a second time against the commit message file.
+default_stages: [pre-commit]
 repos:
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
@@ -140,6 +143,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^vpnd/
+
+      - id: no-co-authored-by
+        name: no Co-Authored-By trailers (commit message)
+        language: pygrep
+        entry: '(?i)^co-authored-by:'
+        stages: [commit-msg]
 
   - repo: https://github.com/rbubley/mirrors-prettier
     rev: v3.5.3
