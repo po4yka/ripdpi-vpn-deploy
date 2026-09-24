@@ -52,7 +52,7 @@
       ansible.builtin.apt:
         name: curl
         state: present
-        update_cache: false
+        update_cache: true
 
     - name: Create local pinned archive and mTLS fixture
       ansible.builtin.shell: |

@@ -341,6 +341,30 @@ Fresh read-only consoles show the three permanent VPN VPS still running;
 Tailnet last saw them on 23 August. P1 and P2 provider ingress rules permit
 public SSH only from saved exact source addresses that exclude this Mac's
 current egress; their public SSH timeouts are consistent with those rules.
-P0's detail page returned 404, so its current edge rule remains unverified.
+P0's firewall page returned 401 after the console session expired, so its
+current edge rule remains unverified.
 No paid staging, ACL, production or task lifecycle mutation was made. All
 six SEC execution steps remain open pending fresh authorized runtime proof.
+
+## Refreshed Molecule image and hosted gate — 2026-09-24
+
+The hosted checks for `4d90415aaf5c7f34ac4323215f3c0d7093951fb4`
+finished with two underlying failures. Trivy rejected the old pinned Debian 13
+Molecule digest with fixable HIGH/CRITICAL packages. The enabled
+`observability_control_plane` fixture also failed before convergence: its
+`curl` installation used a stale apt index and received HTTP 404 for
+`libcurl4t64`. The required-checks aggregate failed accordingly.
+
+An already published immutable Debian 13 image from successful publish run
+`35583069099` has digest
+`sha256:5c50bf51be9ac3bef7a6795f3e52dfebefa0767bf3c475226222be0fc02a2662`.
+A fresh local Trivy 0.74 scan of that exact remote digest returned zero
+fixable HIGH/CRITICAL findings. All 47 in-repository references to the former
+digest now point to this one; the fixture refreshes apt metadata before its
+bounded `curl` install. The affected image-pin, cloud-init and control-plane
+modules passed 48 tests. The final `build-gate -- make ci-fast` returned
+`ci-fast: OK` with 4489 pytest cases, 4 deselected, 20 subtests, 55 Bats
+cases and Rust tests. Final `build-gate -- make validate` passed all provider
+roots, gitleaks, production-profile Ansible lint and site syntax. New
+exact-SHA hosted checks remain pending. No image was published, and no staging
+or permanent resource changed.
