@@ -46,9 +46,10 @@ GENERATED_ASSET_PATHS = frozenset(
         *(f".agents/skills/{name}/SKILL.md" for name in GENERATED_SKILL_NAMES),
     )
 )
+# Codex reads .agents/skills directly; these roots expose the same skills to
+# tools that only scan their own directory.
 COMPATIBILITY_SKILL_ROOTS = {
     ".claude/skills": "../../.agents/skills",
-    ".codex/skills": "../../.claude/skills",
     ".github/skills": "../../.agents/skills",
 }
 STATUS_ORDER = ("doing", "review", "blocked", "todo", "backlog")

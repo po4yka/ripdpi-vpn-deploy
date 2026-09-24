@@ -539,9 +539,9 @@ class TaskctlContractTest(TaskctlFixture):
             taskctl.validate_generated_assets(self.root)
 
     def test_generated_skill_alias_cannot_be_retargeted(self) -> None:
-        alias = self.root / ".codex/skills/repo-task-board"
+        alias = self.root / ".claude/skills/repo-task-board"
         alias.unlink()
-        alias.symlink_to("../../.agents/skills/repo-task-board")
+        alias.symlink_to("../../.github/skills/repo-task-board")
 
         with self.assertRaisesRegex(taskctl.ContractError, "alias retargeted"):
             taskctl.validate_generated_assets(self.root)
@@ -581,9 +581,6 @@ class TaskctlContractTest(TaskctlFixture):
         }
         expected_aliases = {
             (f".claude/skills/{name}", f"../../.agents/skills/{name}")
-            for name in skill_names
-        } | {
-            (f".codex/skills/{name}", f"../../.claude/skills/{name}")
             for name in skill_names
         } | {
             (f".github/skills/{name}", f"../../.agents/skills/{name}")
