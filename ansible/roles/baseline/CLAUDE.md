@@ -8,8 +8,8 @@ AmneziaWG is in scope. The controller-owned second site play publishes SSH
 policy only after the VPN stack converges. Doesn't open ports or install
 Xray/nginx; other roles layer on top.
 
-**No reboots from this role** — package upgrades that need a reboot are
-flagged via the `reboot_required` fact and surfaced at the end of `verify.yml`.
+**No reboots from this role** — reboots belong to `playbooks/os-maintenance.yml`,
+which checks `/var/run/reboot-required` and reboots one host at a time.
 A reboot mid-deploy would burn idempotency.
 
 **SSH policy lives in `security_controls`** — the role still owns the drop-in,

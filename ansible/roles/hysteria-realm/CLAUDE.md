@@ -37,7 +37,7 @@ Ansible rejects `append: true` without a `groups` argument.
   sing-box tarball, extracts only its architecture-bound member, records the
   installed digest, and publishes `current`, public, and `previous` links as
   one compensated transaction.
-- **`MemoryDenyWriteExecute=true` in the systemd unit** — sing-box is a
+- **`MemoryDenyWriteExecute=yes` in the systemd unit** — sing-box is a
   static Go binary so JIT pressure does not apply; lock down W^X.
 
 ## Pitfalls

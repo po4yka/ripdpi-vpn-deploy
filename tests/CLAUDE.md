@@ -6,7 +6,7 @@
 |-------|------|-------|-------|
 | Unit | Python validators + Jinja-render assertions | `tests/unit/` (pytest) | seconds |
 | Snapshot | Golden Jinja renders for every template | `tests/snapshot/` | seconds |
-| Schema | `validate-secrets.py` jsonschema | `tests/unit/test_schema.py` | seconds |
+| Schema | `validate-secrets.py` jsonschema | `tests/unit/test_secrets_schema.py` | seconds |
 | Molecule (role) | Per-role Ansible scenario in Docker | `ansible/roles/<role>/molecule/` | ~1 min/role |
 | Molecule (full-stack) | `site.yml` end-to-end | `ansible/molecule/full-stack/` | ~10 min |
 | TF test | `mock_provider` plan-shape tests | per `terraform/providers/<name>/` | seconds |
@@ -92,7 +92,7 @@ and permits only planned skips; adding a job must update the selector and tests.
   Failing-to-find-docker is a setup error, not a test failure; the harness
   surfaces it explicitly.
 - **`validate-secrets.py` runs against the **schema**, not your real
-  secrets** — by design. Strict mode (`--strict`) loads `SECRETS_FILE`
+  secrets** — by design. Strict mode (`--strict`) loads `VPN_SECRETS_FILE`
   and is operator-only.
 - **Don't snapshot the diff of binaries** — QR PNGs, restic repos, etc.
   Snapshot the inputs, render the binary fresh, hash-assert if needed.

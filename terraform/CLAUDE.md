@@ -4,9 +4,10 @@
 
 **Per-provider root, identical outputs** — Terraform module sources can't
 be variable-driven, so each provider gets its own root under
-`providers/<name>/`. Output schema is fixed: `server_ipv4`, `server_ipv6`,
-`admin_user`, `ssh_port`, `server_hostname`. `scripts/render-inventory.sh` is
-therefore provider-neutral.
+`providers/<name>/`. Every root exports the same outputs: `server_ipv4`,
+`server_ipv6`, `honeypot_ipv4`, `admin_user`, `ssh_port`, `server_hostname`,
+`zone`, `public_listeners`. `scripts/render-inventory.sh` reads all but `zone`
+and is therefore provider-neutral.
 
 **SSH port is one cross-layer input** — `var.ssh_port` configures cloud-init,
 the provider edge allowlist, the canonical Terraform output, inventory's
@@ -27,6 +28,19 @@ Blue-green moves follow the disposable-node path instead.
 
 **Typed listener contract crosses the cloud/runtime boundary** — `public_listeners` in tfvars is the provider-edge allowlist. Its resolved Terraform output is rendered into inventory, verified against Ansible's enabled listener manifest before deploy, and used by nftables and security verification. An empty contract fails the plan; the historical implicit default set survives only behind the explicit `use_legacy_public_listeners = true` opt-in.
 
+**New providers follow one recipe** — create `providers/<name>/` exporting
+the same outputs so `render-inventory.sh` keeps its generic path (add provider
+code there only for incompatible keys or a guest-convergence check such as
+Vultr's secondary IPv4). Validate constrained inputs with `contains([...])`
+allowlists like the existing roots, add `mock_provider` cases under `tests/`
+for `make tf-test`, and keep DNS inside the owning root behind an explicit
+opt-in variable (`providers/vultr/dns.tf`). Add the name to the hardcoded
+provider lists: Makefile loops, the `ci.yml` provider matrices,
+`scripts/terraform-env.sh`, `scripts/backup-tf-state.sh`, and
+`scripts/tf-policy-test.sh`. Then add a `docs/PROVIDER-NOTES.md` row and
+`providers/<name>/CLAUDE.md` with its `AGENTS.md -> CLAUDE.md` symlink. Roots
+never compose each other as modules.
+
 ## What's done well
 
 - **Validation blocks on every input** — region, plan, CIDR, key formats
@@ -44,8 +58,9 @@ Blue-green moves follow the disposable-node path instead.
 - **Cloud-init `user_data` is plaintext in state** — never put secrets
   there. Even with state encryption, this is operator-readable.
 - **`terraform destroy` does not remove backups** — the `backup` role's
-  remote restic repo persists. Destroy + recreate gives you back state
-  via `make restore`.
+  remote restic repo persists. Destroy + recreate restores node data
+  from that restic repository (`ansible/roles/backup/CLAUDE.md`,
+  `docs/RUNBOOK-incident.md`); there is no `make restore` target.
 - **Provider auth via env vars only** — never `provider` block credentials
   in code. The block must be empty (the provider auto-reads env).
 - **`tf-test`** uses `mock_provider`** — these tests verify the *shape*

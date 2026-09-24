@@ -18,7 +18,7 @@ Revise a change's existing planning artifacts and keep them coherent. Never edit
 
 **Input**: Optionally specify a change name. If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
-`$openspec-continue-change (Codex) or /openspec-continue-change (other agents)` is an expanded-profile workflow and may not be installed. Before suggesting it anywhere below, verify that it is available. If it is unavailable, `./taskctl openspec cli status --change "<name>" --json` shows the next artifact and `./taskctl openspec cli instructions "<artifact-id>" --change "<name>" --json` explains how to create it.
+This repo installs no `openspec-continue-change` skill, so wherever this workflow points to it below, use the in-repo fallback instead: `./taskctl openspec cli status --change "<name>" --json` shows the next artifact and `./taskctl openspec cli instructions "<artifact-id>" --change "<name>" --json` explains how to create it. Planning artifacts (proposal, specs, design, tasks) are created through `$openspec-propose`, which re-running is the way to fill in an artifact this workflow finds missing.
 
 **Steps**
 
@@ -61,7 +61,7 @@ Revise a change's existing planning artifacts and keep them coherent. Never edit
    - Read the artifact(s) the request touches and the change's other existing artifacts.
    - Apply the requested edit. Then check every other existing artifact against it - in ANY direction: an edit to a later artifact may require revising an earlier one, not only the other way around. Build order is a useful reading order, not a constraint on which artifacts may be revised.
    - Note everything that is now inconsistent, missing, or contradictory.
-   - Revise only files that already exist (`existingOutputPaths`). Do NOT create artifacts that don't exist yet, and do NOT invent new files under a glob artifact - note them and point the user to `$openspec-continue-change (Codex) or /openspec-continue-change (other agents)` to create them.
+   - Revise only files that already exist (`existingOutputPaths`). Do NOT create artifacts that don't exist yet, and do NOT invent new files under a glob artifact - note them and point the user to `$openspec-propose` to create them.
    - If the change is already coherent, say so and make no edits.
 
 5. **Confirm and apply, one artifact at a time**
@@ -73,7 +73,7 @@ Revise a change's existing planning artifacts and keep them coherent. Never edit
      ```
 
 6. **Point to the next step (guidance only - NEVER act on it)**
-   - Artifacts still missing -> suggest `$openspec-continue-change (Codex) or /openspec-continue-change (other agents)` to create them.
+   - Artifacts still missing -> suggest `$openspec-propose` to create them.
    - Change already implemented (tasks checked off / already applied) -> the code may no longer match the revised plan; suggest `$openspec-apply-change (Codex) or /openspec-apply-change (other agents)` to carry the delta into code.
    - Everything done and implemented -> suggest `$openspec-archive-change (Codex) or /openspec-archive-change (other agents)`.
 
@@ -81,13 +81,13 @@ Revise a change's existing planning artifacts and keep them coherent. Never edit
 
 After each invocation, show:
 - Which artifacts were revised (and which proposed revisions were rejected)
-- Anything deferred to `$openspec-continue-change (Codex) or /openspec-continue-change (other agents)` (not-yet-created artifacts or files)
+- Anything deferred to `$openspec-propose` (not-yet-created artifacts or files)
 - Where the change stands and the recommended next command
 
 **Guardrails**
 - Planning artifacts only - NEVER edit implementation code. If the revised plan implies code changes, stop and point to `$openspec-apply-change (Codex) or /openspec-apply-change (other agents)`.
 - Use the artifact ids and paths reported by `./taskctl openspec cli status`; never branch on hardcoded artifact names.
 - Edit only the concrete files in `existingOutputPaths`; never write to a glob `resolvedOutputPath`.
-- Do not advance the build frontier: no new artifacts, no new files under glob artifacts - that is `$openspec-continue-change (Codex) or /openspec-continue-change (other agents)`'s job.
+- Do not advance the build frontier: no new artifacts, no new files under glob artifacts - that is `$openspec-propose`'s job.
 - Confirm every edit with the user before writing.
-- If the request changes the change's *intent* rather than refining it, first verify whether the expanded-profile `$openspec-new-change (Codex) or /openspec-new-change (other agents)` workflow is available. If it is, recommend starting fresh with `$openspec-new-change (Codex) or /openspec-new-change (other agents)` (the "Update vs. Start Fresh" heuristic). If it is unavailable, ask for a distinct unused change name and recommend `./taskctl openspec cli new change "<new-change-name>"` instead.
+- If the request changes the change's *intent* rather than refining it, recommend starting fresh instead of forcing the revision (the "Update vs. Start Fresh" heuristic): create its own linked portfolio task with `$mdtask-create` (`./taskctl new --spec-mode required`), then generate its artifacts with `$openspec-propose`. This repo has no `openspec-new-change` skill and no bare `./taskctl openspec cli new change` scaffold outside that flow.

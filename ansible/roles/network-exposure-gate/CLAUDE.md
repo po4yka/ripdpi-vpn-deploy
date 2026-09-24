@@ -24,5 +24,7 @@
   the canonical firewall before the artifact deadline; never add an updater.
 - Ingress matches source addresses; host egress and forwarded traffic match
   destinations. They must never inherit one another's prefixes.
-- Log-only review invokes only this role. A full site deployment still owns
+- Log-only review (`make network-exposure-review`) runs
+  `scripts/network-exposure-review-controller.py`, which runs the shared
+  `scripts/network-exposure-gate.py` validator directly, without Ansible. A full site deployment still owns
   baseline firewall convergence and is not the non-mutating review command.

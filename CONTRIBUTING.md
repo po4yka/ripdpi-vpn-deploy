@@ -30,8 +30,9 @@ make task-tools
 make install-hooks
 ```
 
-This installs the pinned tasking tools plus commit-time and commit-message
-hooks for the repository's quality and Conventional Commit policies.
+This installs the pinned tasking tools, the commit-time quality hooks, and a
+commit-message hook that rejects `Co-Authored-By:` trailers. Conventional
+Commit subjects are not validated locally; follow the table below.
 
 ## Task and OpenSpec contract
 
@@ -115,9 +116,11 @@ If your PR touches `ansible/roles/<X>/`, `terraform/providers/<X>/`,
 (Design decisions / Done well / Pitfalls). The CI warn-gate
 (`claude-md-touch.yml`) surfaces omissions but does not block merge.
 
-Step-by-step recipes for the four most common contribution types (new role,
-new provider, new vpnd subcommand, new AWG cohort) are in the root
-`CLAUDE.md` under "Change recipes".
+Step-by-step recipes for the four most common contribution types live next
+to the code they change: new role in `ansible/CLAUDE.md`, new provider in
+`terraform/CLAUDE.md`, new vpnd subcommand in `vpnd/CLAUDE.md`, new AWG cohort
+in `ansible/roles/amneziawg/CLAUDE.md`. Agent-facing project rules are in the
+root `AGENTS.md`, which the root `CLAUDE.md` imports.
 
 ## What not to PR
 

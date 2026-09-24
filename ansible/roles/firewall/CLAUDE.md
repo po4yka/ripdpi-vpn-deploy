@@ -6,9 +6,9 @@
 managed by `templates/nftables.conf.j2`. ufw is too coarse-grained for the
 multi-profile stack; raw iptables is too easy to leak state.
 
-**Allow-list only** — explicit accepts for SSH (effective port, not always 22),
-P0 (`xray_port` 443/tcp), P1 (`nginx_xhttp_public_port`), P2 (`hysteria_port`
-udp). Default policy drop.
+**Allow-list only** — an explicit accept for SSH (effective port, not always 22);
+every other public port is accepted only through the `public_listener_contract`
+loop, never by transport variable name. Default policy drop.
 
 **Tailnet SSH is interface-separated** — exact approved `tailscale0` sources
 are accepted first, then every other SSH packet on that interface is dropped
@@ -66,14 +66,16 @@ preserve baseline bytes. The rule-bearing render is no_log with diff disabled.
 ## Pitfalls
 
 - **`ufw` is not installed by us, but VPS images may pre-install it** — if
-  it's enabled, our nftables ruleset is masked. The role disables `ufw` (and
-  warns) before applying nftables.
+  it's enabled, our nftables ruleset is masked. The role disables `ufw` before
+  applying nftables.
 - **`iptables-nft` shim packages clash with native nftables** — Debian 11
   uses `iptables-nft` by default; Debian 12 ships `nftables` directly.
-  Don't mix — the role pins the legacy iptables-nft shim away on D12+.
+  Don't mix. The role does not detect or remove an active `iptables-nft`
+  shim; only the `ufw` conflict above is guarded, so treat such a host as an
+  open risk.
 - **Concurrent `nft` writes corrupt the ruleset** — apply via atomic file
-  swap + `nft -f`, not by piping individual rules. The template handler does
-  this correctly; don't bypass it.
+  swap + `nft -f`, not by piping individual rules. The template task's
+  `validate: nft -c -f` step does this correctly; don't bypass it.
 - **Hysteria UDP port reuse** — if a host enables both Hysteria2 and AWG, do
   not put both on UDP 443 — only the first listener will bind. Pick distinct
   ports or disable one.
