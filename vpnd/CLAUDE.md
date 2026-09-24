@@ -39,6 +39,25 @@ Pass a token from stdin or a `0600` file through `--token-stdin` or
 `--token-file` to use an opaque subscription URL; the token is validated
 against `^[A-Za-z0-9_-]+$` before use.
 
+**New subcommands follow one shape** — add a variant to the `Command` enum in
+`src/cli.rs`; create `src/commands/<name>.rs` with
+`pub async fn run(ctx: &Context, args: <Name>Args) -> Result<()>` (args by
+value, like every existing handler); wire it in `src/commands/mod.rs` and add a
+match arm in `src/main.rs`. Add an `insta` snapshot under `tests/` if it
+renders output.
+
+**Crate conventions** — `vpnd` is one crate with a `[lib]` (`src/lib.rs`) and a
+`[[bin]]`; there is no Cargo workspace. `anyhow::Result` is used end to end;
+the one typed error, `probe_matrix::Interrupted` (`thiserror`), exists so
+`main.rs` can map a caught signal to its exit code. `Cargo.toml` denies
+`clippy::unwrap_used`, `expect_used`, and `panic`; test modules opt out with a
+module-level `#![allow(...)]`. MSRV is pinned by `rust-version` and checked by
+`make vpnd-msrv`. The tokio runtime is multi-threaded: ProbeMatrix fans out
+with `JoinSet`, and long-running commands handle signals through
+`InterruptSignals` in `commands/probe_matrix.rs`. Make and Terraform calls go
+through the runner builders; only local diagnostics in `doctor.rs` spawn
+processes directly.
+
 ## What's done well
 
 - **`--explain` is side-effect free** — env vars and cwd are encoded in
@@ -64,6 +83,9 @@ against `^[A-Za-z0-9_-]+$` before use.
 - **`secrets_file` is operator-trusted** — it is the configured runtime path
   produced by `make decrypt`, with `0600`. Never log it. Never copy it across
   the network.
+- **Snapshots are reviewed, never blindly accepted** — `insta` files live in
+  `vpnd/tests/snapshots/`; inspect each change with `cargo insta review`.
+  `tracing` writes to stderr so stdout stays clean for output assertions.
 - **clap global flags need `global = true`** — adding a new flag without it
   causes "argument not allowed here" on subcommands.
 - **askama escapes by default** — `escape = "html"` in the template attribute.

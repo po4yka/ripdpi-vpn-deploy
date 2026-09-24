@@ -73,7 +73,7 @@ for tool in openssl jq python3; do
 done
 
 # Reject vantage labels that smuggle in carrier / ISP / operator /
-# geographic identifiers. See root CLAUDE.md hard rules — pilot reports
+# geographic identifiers. See root AGENTS.md hard rules — pilot reports
 # get cross-linked into the repo, and the vantage label propagates
 # verbatim through the JSON output and the report template.
 case "$(echo "$VANTAGE" | tr '[:upper:]' '[:lower:]')" in

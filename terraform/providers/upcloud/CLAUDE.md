@@ -9,7 +9,7 @@ across providers so `scripts/render-inventory.sh` is provider-neutral.
 
 **Local TF state by default** — we don't trust remote state with VPN secrets
 even though we keep them out of TF. State is age-encrypted via
-`make backup-state`. Loss → re-import (see `RUNBOOK-restore.md`).
+`make backup-state`. Loss → re-import (see `docs/RUNBOOK-incident.md`, "State loss").
 
 **Secondary public IP is opt-in** — `additional_public_ip = true` allocates a
 second public IPv4 for the honeypot role; there is no generic floating-IP

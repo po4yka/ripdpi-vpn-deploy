@@ -2,7 +2,7 @@
 
 ## Design decisions
 
-This helper uses gotd's MTProxy resolver and Telegram test application identity to perform an MTProto key exchange plus `help.getNearestDC` without creating or reading a user session. Its only interface is one request JSON on stdin and one redacted result JSON on stdout.
+This helper uses gotd's MTProxy resolver and Telegram test application identity to perform an MTProto key exchange plus `help.getNearestDC` without creating or reading a user session. Its probe interface is one request JSON on stdin and one redacted result JSON on stdout; a separate `--version` flag, which the driver checks before any probe, prints the pinned helper version.
 
 ## What's done well
 

@@ -21,7 +21,7 @@ same project-wide rule that governs the probe-matrix destination classes
 (see `PROBE-MATRIX.md`, "Destination classes"). The `ORG` and `COUNTRY`
 columns returned by `scripts/probe-asn.sh` MUST NOT appear in any slug,
 filename, state path, comment, or verdict field. Class the path by ASN
-behaviour, never by operator or geography (root `CLAUDE.md` hard rule).
+behaviour, never by operator or geography (root `AGENTS.md` hard rule).
 
 ASN resolution reuses `scripts/probe-asn.sh` (Team Cymru whois) — the same
 primitive `asn-drift.sh` uses. Field 2 is the ASN, field 3 the prefix.

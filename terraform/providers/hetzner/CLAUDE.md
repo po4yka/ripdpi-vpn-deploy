@@ -18,18 +18,21 @@ shared template as UpCloud (`terraform/shared/cloud-init.yaml.tftpl`).
 
 ## Pitfalls
 
-- **SSH key handling differs from UpCloud** — Hetzner uses key *names*, not
-  fingerprints. The variable description spells this out.
+- **SSH key handling differs from UpCloud** — Hetzner creates a named
+  `hcloud_ssh_key` resource referenced by ID; UpCloud has no key resource and
+  inlines the public key through `login.keys`.
 - **Volume attachment is async** — adding a separate volume needs a
   `depends_on` against the server resource; otherwise `cloud-init` boots
   without the volume mounted.
 - **Floating IP is region-scoped** — moving a host across regions invalidates
   any attached FIP; plan blue-green carefully.
-- **Hetzner ASN (24940) is a known VPN exit ASN** — REALITY camouflage still
-  helps, but cohort tuning should account for "Hetzner egress" appearing in
-  recipient ASN logs as a known signal.
-- **UDP/443 edge rule ≠ UDP delivery** — `firewall.tf` opens UDP/443 under
-  `enable_hysteria` (public v4+v6 `source_ips`), but a present rule does not
+- **AS24940 is in the Avoid tier** — `docs/PROVIDER-NOTES.md` records the
+  datacenter-ASN TCP freeze (~14-25 KB) on filtered mobile paths. Use this
+  root for development and unaffected cohorts, and rotate IPs more often than
+  on UpCloud.
+- **UDP/443 edge rule ≠ UDP delivery** — UDP/443 is opened by the typed
+  `public_listeners` contract (`enable_hysteria` only feeds the legacy
+  fallback), but a present rule does not
   guarantee the provider network delivers inbound UDP. After deploy, verify
   externally with `make burn-check` (QUIC probe); on-host `nft`/`ss` ACCEPT is
   not evidence. See `docs/PROVIDER-NOTES.md` → "UDP/443 edge reachability".
