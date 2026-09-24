@@ -3,6 +3,8 @@
   hosts: all
   become: true
   vars:
+    vpn_service_address: 192.0.2.10
+    ansible_port: 22
     vpn:
       enable_tailnet_management: true
     tailnet_management:

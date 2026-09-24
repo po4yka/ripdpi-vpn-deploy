@@ -6,7 +6,7 @@ from tailnet_firewall import Firewall
 
 paths = domain._production_paths()
 binding = {
-    "inventory_alias": "fixture-node", "public_address": "192.0.2.10",
+    "inventory_alias": "vpn-tailnet-management-debian13", "public_address": "192.0.2.10",
     "ssh_port": 22, "public_sources": ["198.51.100.10"],
     "approved_sources": ["100.64.10.20", "fd7a:115c:a1e0::1234"],
     "host_key_sha256": "c" * 64, "source_revision": "a" * 40,

@@ -317,3 +317,30 @@ The user requested a bounded shutdown. Positive bootstrap, both enrolled
 fault tests, normal staging deployment, protocol liveness, provider promotion
 and serial live acceptance remain incomplete. All six execution steps remain
 open; neither CI nor the cleanup receipt closes these acceptance categories.
+
+## Confirmed identity guard and current access diagnosis — 2026-09-24
+
+Review found that ordinary `tailnet-check.py` accepted any running Tailnet
+identity with the expected preferences. It now requires a durable confirmed
+receipt for the exact inventory alias, public endpoint, SSH port and approved
+sources, and compares the current node ID and both Tailnet addresses to the
+confirmed enrollment. The site play checks this before role convergence.
+Enrollment now requires the enabled early firewall recovery worker to execute
+successfully before arming, alongside the late worker and timer.
+
+The targeted Tailnet/bootstrap/security suite passed 177 tests. `make validate`,
+`./taskctl validate` and the complete `build-gate -- make ci-fast` passed;
+the latter observed 4489 pytest cases, 4 deselected, 20 subtests,
+55 Bats cases, and Rust checks. A local Molecule attempt reached the early
+service but could not start it: the arm64 Colima host ran the pinned amd64
+image under QEMU, where systemd-journald, DBus and mount units also failed
+with `Result=resources` before their executables ran. The scenario container
+was destroyed. This is no native systemd or staging acceptance proof.
+
+Fresh read-only consoles show the three permanent VPN VPS still running;
+Tailnet last saw them on 23 August. P1 and P2 provider ingress rules permit
+public SSH only from saved exact source addresses that exclude this Mac's
+current egress; their public SSH timeouts are consistent with those rules.
+P0's detail page returned 404, so its current edge rule remains unverified.
+No paid staging, ACL, production or task lifecycle mutation was made. All
+six SEC execution steps remain open pending fresh authorized runtime proof.

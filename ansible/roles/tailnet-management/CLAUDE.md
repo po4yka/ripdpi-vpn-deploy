@@ -9,8 +9,10 @@ authentication and the single effective sshd port remain authoritative.
 advertised routes, exit-node use and Tailscale netfilter management off. The
 firewall role owns exact `tailscale0` SSH source rules.
 
-**Bootstrap owns first enrollment** — ordinary `tasks/main.yml` only verifies
-existing access and rejects enrollment keys. The dedicated bootstrap playbook
+**Bootstrap owns first enrollment** — ordinary `tasks/main.yml` requires a
+confirmed receipt bound to the exact inventory target and current Tailnet
+identity, then rejects enrollment keys. An existing node without that receipt
+requires a separately approved bootstrap. The dedicated bootstrap playbook
 uses `tasks/bootstrap.yml` to install inert components. The controller sends
 its key only in the guest transaction RPC on strict SSH stdin; Ansible never
 receives it. The guest keeps the temporary auth file private and removes it.
@@ -25,10 +27,15 @@ Confirmed recovery never logs out a committed node. Installation and runtime
 acceptance for this bootstrap change remain in progress; see
 `SEC-1788894219568782` before deployment.
 
+**Both recovery workers are prerequisites** — before arming, verify the early
+boot firewall unit is enabled and succeeds, as well as the late worker and
+persistent timer. Revalidate their results under the transaction lock.
+
 ## What's done well
 
 - Exact stable package and repository key pins fail closed.
-- Existing running nodes with different preferences are refused without writes.
+- Existing running nodes without a matching confirmed identity are refused
+  without writes, including when their preferences look correct.
 - Resolver bytes, default route and full `sshd -T` policy are compared across
   fresh enrollment; a failed postcondition logs the new node out.
 - Armed and confirmed transaction phases make process death unambiguous: only

@@ -12,6 +12,11 @@
     argv:
       - /usr/bin/python3
       - /usr/local/lib/vpn-tailnet/tailnet-check.py
+    stdin: >-
+      {{ {'inventory_alias': inventory_hostname,
+          'public_address': vpn_service_address,
+          'ssh_port': ansible_port | int,
+          'approved_sources': tailnet_management.approved_sources} | to_json }}
   environment:
     PATH: /usr/sbin:/usr/bin:/sbin:/bin
   check_mode: false
