@@ -290,6 +290,9 @@ class FakeRunner:
         login_failure_after_enrollment: bool = False,
         recovery_status: int = 0,
         recovery_recheck_status: int | None = None,
+        early_enabled: bool = True,
+        early_status: int = 0,
+        early_recheck_status: int | None = None,
     ) -> None:
         self.root = root
         self.drift = drift
@@ -302,9 +305,16 @@ class FakeRunner:
         self.recovery_status = recovery_status
         self.recovery_recheck_status = recovery_recheck_status
         self.recovery_show_calls = 0
+        self.early_enabled = early_enabled
+        self.early_status = early_status
+        self.early_recheck_status = early_recheck_status
+        self.early_show_calls = 0
         self.route_reads = 0
         self.running = False
         self.hostname = "original-node"
+        self.node_id = "fixture-node"
+        self.ipv4 = "100.64.1.9"
+        self.ipv6 = "fd7a:115c:a1e0::9"
         self.calls: list[list[str]] = []
         self.auth_file_mode: int | None = None
         self.auth_file_bytes: bytes | None = None
@@ -321,7 +331,7 @@ class FakeRunner:
                 if self.running
                 else "Stopped" if self.stopped else "NeedsLogin"
             )
-            stdout = json.dumps({"BackendState": backend, "Self": {"ID": "fixture-node", "HostName": self.hostname}})
+            stdout = json.dumps({"BackendState": backend, "Self": {"ID": self.node_id, "HostName": self.hostname}})
         elif command == ["get", "--json", "all"]:
             preferences = {
                 "accept-dns": False,
@@ -351,9 +361,9 @@ class FakeRunner:
             if self.login_failure_after_enrollment:
                 raise subprocess.TimeoutExpired(argv, timeout)
         elif command == ["ip", "-4"]:
-            stdout = "100.64.1.9\n"
+            stdout = self.ipv4 + "\n"
         elif command == ["ip", "-6"]:
-            stdout = "fd7a:115c:a1e0::9\n"
+            stdout = self.ipv6 + "\n"
         elif argv[0].endswith("ip") and command == [
             "-json",
             "address",
@@ -365,8 +375,8 @@ class FakeRunner:
                 []
                 if self.drift == "tailnet-interface"
                 else [
-                    {"local": "100.64.1.9"},
-                    {"local": "fd7a:115c:a1e0::9"},
+                    {"local": self.ipv4},
+                    {"local": self.ipv6},
                 ]
             )
             stdout = json.dumps([{"ifname": "tailscale0", "addr_info": addresses}])
@@ -423,6 +433,26 @@ class FakeRunner:
             ["is-active", "vpn-tailnet-recover.timer"],
         ):
             pass
+        elif argv[0].endswith("systemctl") and command == [
+            "is-enabled", "vpn-tailnet-firewall-recover.service"
+        ]:
+            stdout = "enabled\n" if self.early_enabled else "disabled\n"
+        elif argv[0].endswith("systemctl") and command == [
+            "start", "vpn-tailnet-firewall-recover.service"
+        ]:
+            pass
+        elif argv[0].endswith("systemctl") and command == [
+            "show", "vpn-tailnet-firewall-recover.service",
+            "--property=Result", "--property=ExecMainCode",
+            "--property=ExecMainStatus", "--no-pager",
+        ]:
+            self.early_show_calls += 1
+            status = (
+                self.early_recheck_status
+                if self.early_show_calls > 1 and self.early_recheck_status is not None
+                else self.early_status
+            )
+            stdout = "Result=success\nExecMainCode=1\n" f"ExecMainStatus={status}\n"
         elif argv[0].endswith("systemctl") and command == [
             "start",
             "vpn-tailnet-recover.service",
@@ -496,6 +526,13 @@ def _bootstrap_binding():
         "host_key_sha256": "c" * 64, "source_revision": "a" * 40,
         "deployable_digest": "b" * 64,
     }
+
+
+def _target(binding=None):
+    source = binding or _bootstrap_binding()
+    return {name: source[name] for name in (
+        "inventory_alias", "public_address", "ssh_port", "approved_sources"
+    )}
 
 
 class FirewallFixture:
@@ -637,9 +674,9 @@ def test_early_boot_never_restores_confirmed_access(tmp_path):
     (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
     runner, firewall = FakeRunner(tmp_path), FirewallFixture(tmp_path)
     paths = _paths(controller, tmp_path)
-    controller.enroll(paths=paths, runner=runner, firewall=firewall,
+    pending = controller.enroll(paths=paths, runner=runner, firewall=firewall,
         binding=_bootstrap_binding(), auth_key="tskey-auth-fixture_1234", clock=_clock)
-    controller._mark_transaction_confirmed(paths)
+    controller._mark_transaction_confirmed(paths, pending["node"])
     assert controller.recover_firewall(paths=paths, firewall=firewall)["status"] == "confirmed"
     assert firewall.path.read_text() == "restricted"
     assert runner.running
@@ -649,13 +686,20 @@ def _configure_and_confirm(controller, *, paths, runner, auth_key):
     # Reuse the existing postcondition cases across the new real domain API.
     # Seeded existing identities exercise verification, not a second login path.
     if runner.running:
-        return controller.check(paths=paths, runner=runner)
+        return controller.check(paths=paths, target=_target(), runner=runner)
     firewall, binding = FirewallFixture(paths.state_directory), _bootstrap_binding()
     pending = controller.enroll(paths=paths, runner=runner, firewall=firewall,
                                binding=binding, auth_key=auth_key, clock=_clock)
     confirmed = controller.confirm(paths=paths, runner=runner, firewall=firewall,
         capability=pending, contexts=_proof(binding, pending["node"]), clock=_clock)
     return {"status": confirmed["status"], "changed": True}
+
+
+def _seed_confirmed(controller, tmp_path, runner):
+    paths = _paths(controller, tmp_path)
+    _configure_and_confirm(controller, paths=paths, runner=runner,
+                           auth_key="tskey-auth-fixture_1234")
+    return paths
 
 
 def _recover_fixture(controller, *, paths, runner):
@@ -744,8 +788,8 @@ def test_check_refuses_stopped_authenticated_state_without_mutation(tmp_path) ->
     (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
     runner = FakeRunner(tmp_path, stopped=True)
 
-    with pytest.raises(controller.Refusal, match="tailnet-existing-state-unsupported"):
-        controller.check(paths=_paths(controller, tmp_path), runner=runner)
+    with pytest.raises(controller.Refusal, match="tailnet-unowned-existing-identity"):
+        controller.check(paths=_paths(controller, tmp_path), target=_target(), runner=runner)
 
     assert not any(call[1:2] in (["login"], ["logout"]) for call in runner.calls)
 
@@ -951,10 +995,13 @@ def test_recovery_receipt_reserves_all_phase_growth_before_arming(
     value = _arm_fixture(controller, paths, backend_state="NeedsLogin",
         snapshot=snapshot, auth_file="vpn-tailnet-auth-0123456789abcdef0123456789abcdef")
     (tmp_path / "transaction.json").unlink()
-    confirmed_size = len(controller._canonical_bytes({**value, "phase": "confirmed"}))
+    confirmed_size = len(controller._canonical_bytes({**value, "phase": "confirmed", "node": {
+        "id": "x" * 128, "hostname": "vpn-enroll-" + value["nonce"],
+        "ipv4": "100.127.255.255", "ipv6": "fd7a:115c:a1e0:ffff:ffff:ffff:ffff:ffff",
+    }}))
     recovery_size = len(controller._canonical_bytes({**value, "phase": "firewall_restored"}))
-    assert recovery_size > confirmed_size
-    monkeypatch.setattr(controller, "RECOVERY_STATE_MAX_BYTES", recovery_size - 1)
+    assert confirmed_size > recovery_size
+    monkeypatch.setattr(controller, "RECOVERY_STATE_MAX_BYTES", confirmed_size - 1)
 
     with pytest.raises(controller.Refusal, match="tailnet-recovery-state-write-failed"):
         _arm_fixture(controller,
@@ -980,7 +1027,7 @@ def test_confirmation_rechecks_receipt_limit_before_replacement(
         resolver_uid=os.geteuid(),
         resolver_gid=os.getegid(),
     )
-    _arm_fixture(controller,
+    value = _arm_fixture(controller,
         paths,
         backend_state="NeedsLogin",
         snapshot=snapshot,
@@ -991,7 +1038,10 @@ def test_confirmation_rechecks_receipt_limit_before_replacement(
     monkeypatch.setattr(controller, "RECOVERY_STATE_MAX_BYTES", len(armed) + 3)
 
     with pytest.raises(controller.Refusal, match="tailnet-recovery-confirm-uncertain"):
-        controller._mark_transaction_confirmed(paths)
+        controller._mark_transaction_confirmed(paths, {
+            "id": "fixture-node", "hostname": "vpn-enroll-" + value["nonce"],
+            "ipv4": "100.64.1.9", "ipv6": "fd7a:115c:a1e0::9",
+        })
 
     assert receipt.read_bytes() == armed
 
@@ -1175,6 +1225,27 @@ def test_recovery_worker_must_execute_before_arming(tmp_path) -> None:
     assert not any(call[1:2] == ["login"] for call in runner.calls)
 
 
+@pytest.mark.parametrize("condition", ["disabled", "failed", "failed-recheck"])
+def test_early_firewall_recovery_must_be_boot_ready_before_arming(tmp_path, condition) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner = FakeRunner(
+        tmp_path,
+        early_enabled=condition != "disabled",
+        early_status=75 if condition == "failed" else 0,
+        early_recheck_status=75 if condition == "failed-recheck" else None,
+    )
+
+    with pytest.raises(controller.Refusal, match="tailnet-recovery-unavailable"):
+        _configure_and_confirm(
+            controller, paths=_paths(controller, tmp_path), runner=runner,
+            auth_key="tskey-auth-fixture_1234",
+        )
+
+    assert not (tmp_path / "transaction.json").exists()
+    assert not any(call[1:2] == ["login"] for call in runner.calls)
+
+
 def test_recovery_worker_proof_is_revalidated_under_transaction_lock(tmp_path) -> None:
     controller = _load_controller()
     (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
@@ -1209,29 +1280,66 @@ def test_non_auth_key_material_refuses_before_login(tmp_path, auth_key) -> None:
     assert not any(call[1:2] == ["login"] for call in runner.calls)
 
 
-def test_check_mode_predicts_enrollment_without_login(tmp_path) -> None:
+def test_check_mode_refuses_missing_receipt_without_login(tmp_path) -> None:
     controller = _load_controller()
     (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
     runner = FakeRunner(tmp_path)
 
-    assert controller.check(paths=_paths(controller, tmp_path), runner=runner) == {
-        "status": "pending",
-        "changed": True,
-    }
+    with pytest.raises(controller.Refusal, match="tailnet-unowned-existing-identity"):
+        controller.check(paths=_paths(controller, tmp_path), target=_target(), runner=runner)
     assert not any(call[1:2] in (["login"], ["logout"]) for call in runner.calls)
 
 
-def test_check_mode_accepts_existing_exact_configuration_without_key(tmp_path) -> None:
+def test_check_mode_refuses_unowned_running_identity_without_key(tmp_path) -> None:
     controller = _load_controller()
     (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
     runner = FakeRunner(tmp_path)
     runner.running = True
 
-    assert controller.check(paths=_paths(controller, tmp_path), runner=runner) == {
+    with pytest.raises(controller.Refusal, match="tailnet-unowned-existing-identity"):
+        controller.check(paths=_paths(controller, tmp_path), target=_target(), runner=runner)
+    assert not any(call[1:2] in (["login"], ["logout"]) for call in runner.calls)
+
+
+def test_check_mode_accepts_confirmed_identity_without_key(tmp_path) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner = FakeRunner(tmp_path)
+    paths = _seed_confirmed(controller, tmp_path, runner)
+    runner.calls.clear()
+
+    assert controller.check(paths=paths, target=_target(), runner=runner) == {
         "status": "configured",
         "changed": False,
     }
     assert not any(call[1:2] in (["login"], ["logout"]) for call in runner.calls)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("inventory_alias", "other"), ("public_address", "192.0.2.11"),
+    ("ssh_port", 22), ("approved_sources", ["100.64.0.11"]),
+])
+def test_check_refuses_binding_drift(tmp_path, field, value) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner = FakeRunner(tmp_path)
+    paths = _seed_confirmed(controller, tmp_path, runner)
+    with pytest.raises(controller.Refusal, match="tailnet-binding-mismatch"):
+        controller.check(paths=paths, target={**_target(), field: value}, runner=runner)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("node_id", "replacement-node"), ("ipv4", "100.64.1.10"),
+    ("ipv6", "fd7a:115c:a1e0::10"),
+])
+def test_check_refuses_identity_replacement(tmp_path, field, value) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner = FakeRunner(tmp_path)
+    paths = _seed_confirmed(controller, tmp_path, runner)
+    setattr(runner, field, value)
+    with pytest.raises(controller.Refusal, match="tailnet-identity-mismatch"):
+        controller.check(paths=paths, target=_target(), runner=runner)
 
 
 @pytest.mark.parametrize("drift", ["route-v4", "route-v6"])
@@ -1273,15 +1381,13 @@ def test_tailscale_owned_firewall_state_is_rejected_and_rolled_back(tmp_path) ->
 def test_existing_mismatched_tailnet_refuses_without_mutation(tmp_path) -> None:
     controller = _load_controller()
     (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
-    runner = FakeRunner(tmp_path, preference_mismatch=True)
-    runner.running = True
+    runner = FakeRunner(tmp_path)
+    paths = _seed_confirmed(controller, tmp_path, runner)
+    runner.preference_mismatch = True
+    runner.calls.clear()
 
     with pytest.raises(controller.Refusal, match="tailnet-preferences-mismatch"):
-        _configure_and_confirm(controller,
-            paths=_paths(controller, tmp_path),
-            runner=runner,
-            auth_key="tskey-auth-fixture_1234",
-        )
+        controller.check(paths=paths, target=_target(), runner=runner)
 
     assert not any(call[1:2] in (["login"], ["logout"]) for call in runner.calls)
 
@@ -1292,13 +1398,13 @@ def test_existing_advertised_routes_require_exact_cli_empty_string(
 ) -> None:
     controller = _load_controller()
     (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
-    runner = FakeRunner(tmp_path, advertised_routes=advertised_routes)
-    runner.running = True
+    runner = FakeRunner(tmp_path)
+    paths = _seed_confirmed(controller, tmp_path, runner)
+    runner.advertised_routes = advertised_routes
+    runner.calls.clear()
 
     with pytest.raises(controller.Refusal, match="tailnet-preferences-mismatch"):
-        _configure_and_confirm(controller,
-            paths=_paths(controller, tmp_path), runner=runner, auth_key=""
-        )
+        controller.check(paths=paths, target=_target(), runner=runner)
 
     assert not any(call[1:2] in (["login"], ["logout"]) for call in runner.calls)
     assert not (tmp_path / "transaction.json").exists()
@@ -1405,7 +1511,8 @@ def test_role_never_puts_auth_key_in_command_or_inventory() -> None:
     assert "lookup('env', 'TAILSCALE_AUTH_KEY') == ''" in tasks
     assert "no_log: true" in tasks
     assert "tailnet-configure.py" not in tasks
-    assert "stdin:" not in tasks
+    assert "'inventory_alias': inventory_hostname" in tasks
+    assert "'approved_sources': tailnet_management.approved_sources" in tasks
     assert "tailnet-check.py" in tasks
     assert "check_mode: false" in tasks
     assert "TAILSCALE_AUTH_KEY" not in bootstrap

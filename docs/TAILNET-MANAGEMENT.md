@@ -83,8 +83,10 @@ random mode-`0600` auth file under `/run/vpn-tailnet-management`, uses
 `--auth-key=file:`, and removes and fsyncs it after login. Bootstrap never
 changes provider firewall policy or Tailnet ACLs.
 
-Before changing access, the guest arms one durable generation-, target-,
-nonce- and snapshot-bound transaction. Its 300-second lease uses monotonic
+Before changing access, the guest verifies both the enabled early boot
+firewall recovery unit and the late recovery worker, then arms one durable
+generation-, target-, nonce- and snapshot-bound transaction. Its 300-second
+lease uses monotonic
 time and boot identity; reboot cannot extend it. The minimal guest firewall
 preserves exact approved public SSH sources, allows exact `tailscale0` sources
 on the same port and opens no VPN listeners. Foreign firewall ownership or
@@ -96,8 +98,9 @@ that exception. Their original state is included in apply and rollback.
 After login, fresh public and Tailnet SSH and SFTP connections must verify the
 same original host key and real socket addresses. Local status alone cannot
 confirm. A durable confirmation prevents later recovery from logging out the
-node. The private handoff contains the observed socket contexts and binding,
-not the auth key or a VPN acceptance result. If output publication fails after
+node and records the confirmed Tailnet node ID and addresses. The private
+handoff contains the observed socket contexts and binding, not the auth key
+or a VPN acceptance result. If output publication fails after
 confirmation, inspect status and rerun with the same binding and a new output
 path, without an enrollment key; do not log out a committed identity.
 
@@ -123,7 +126,11 @@ node. The handoff itself is not the deploy input schema. Keep the separate
 [RUNBOOK-deploy.md](RUNBOOK-deploy.md); bootstrap does not satisfy protocol proof.
 Both `make dry-run` and `make deploy` reject enrollment keys and require the
 existing dual paths. The ordinary Tailnet role verifies installed state only;
-it never installs or enrolls implicitly.
+it never installs or enrolls implicitly. Before convergence, it requires a
+confirmed guest receipt matching the inventory alias, public address, SSH port,
+approved controller sources and current Tailnet node identity. A missing or
+mismatched receipt refuses without host writes. Previously enrolled nodes
+without this receipt require a separately approved bootstrap decision.
 
 ## Fail-closed postconditions
 

@@ -32,7 +32,7 @@ EXPECTED_PREFS = {
     "shields-up": False,
     "ssh": False,
 }
-RECOVERY_GENERATION = "tailnet-recovery-v2"
+RECOVERY_GENERATION = "tailnet-recovery-v3"
 LEASE_SECONDS = 300
 CONFIRMED_NAME = "confirmed.json"
 TRANSACTION_NAME = "transaction.json"
@@ -249,7 +249,15 @@ def _publish_record(paths, value, *, name):
     nonce = value["nonce"]
     payload = _canonical_bytes(value)
     recovery_payload = _canonical_bytes({**value, "phase": "firewall_restored"})
-    if max(len(payload), len(recovery_payload)) > RECOVERY_STATE_MAX_BYTES:
+    # Reserve the largest permitted confirmed identity before access changes.
+    # Confirmation must always fit the same durable journal size limit.
+    largest_node = {
+        "id": "x" * 128, "hostname": "vpn-enroll-" + nonce,
+        "ipv4": "100.127.255.255",
+        "ipv6": "fd7a:115c:a1e0:ffff:ffff:ffff:ffff:ffff",
+    }
+    confirmed_payload = _canonical_bytes({**value, "phase": "confirmed", "node": largest_node})
+    if max(len(payload), len(recovery_payload), len(confirmed_payload)) > RECOVERY_STATE_MAX_BYTES:
         raise Refusal("tailnet-recovery-state-write-failed")
     temporary = paths.state_directory / f".{name}.{nonce}"
     canonical = paths.state_directory / name
@@ -293,11 +301,11 @@ def _write_transaction(
     if str(UUID(boot)) != boot or type(monotonic) is not int or monotonic < 0:
         raise Refusal("tailnet-boot-identity-invalid")
     value = {
-        "schema_version": 2, "generation": RECOVERY_GENERATION,
+        "schema_version": 3, "generation": RECOVERY_GENERATION,
         "nonce": secrets.token_hex(16), "phase": "armed",
         "original_backend_state": backend_state, "auth_file": auth_file,
         "snapshot": _snapshot_document(snapshot), "binding": binding,
-        "firewall": firewall_snapshot,
+        "firewall": firewall_snapshot, "node": None,
         "lease": {"boot_id": boot, "started_ms": monotonic,
                   "deadline_ms": monotonic + LEASE_SECONDS * 1000},
     }
@@ -352,9 +360,9 @@ def _read_transaction(paths: CommandPaths, *, name=TRANSACTION_NAME) -> tuple[di
             "phase",
             "original_backend_state",
             "auth_file",
-            "snapshot", "binding", "firewall", "lease",
+            "snapshot", "binding", "firewall", "lease", "node",
         }
-        or value["schema_version"] != 2
+        or value["schema_version"] != 3
         or value["generation"] != RECOVERY_GENERATION
         or not isinstance(value["nonce"], str)
         or re.fullmatch(r"[0-9a-f]{32}", value["nonce"]) is None
@@ -366,6 +374,10 @@ def _read_transaction(paths: CommandPaths, *, name=TRANSACTION_NAME) -> tuple[di
     ):
         raise Refusal("tailnet-recovery-state-invalid")
     validate_binding(value["binding"])
+    if value["phase"] == "confirmed":
+        _validate_confirmed_node(value["node"], value["nonce"])
+    elif value["node"] is not None:
+        raise Refusal("tailnet-recovery-state-invalid")
     lease = value["lease"]
     if (not isinstance(lease, dict) or set(lease) != {"boot_id", "started_ms", "deadline_ms"}
             or not isinstance(lease["boot_id"], str)
@@ -401,20 +413,41 @@ def _read_transaction(paths: CommandPaths, *, name=TRANSACTION_NAME) -> tuple[di
     return value, snapshot
 
 
-def _mark_transaction_confirmed(paths: CommandPaths) -> None:
-    _transition(paths, "confirmed", allowed={"armed"})
+def _validate_confirmed_node(node, nonce):
+    if (not isinstance(node, dict) or set(node) != {"id", "hostname", "ipv4", "ipv6"}
+            or not isinstance(node["id"], str)
+            or re.fullmatch(r"[A-Za-z0-9:_-]{1,128}", node["id"]) is None
+            or node["hostname"] != "vpn-enroll-" + nonce):
+        raise Refusal("tailnet-recovery-state-invalid")
+    for field, network in (("ipv4", TAILNET_V4), ("ipv6", TAILNET_V6)):
+        raw = node[field]
+        try:
+            address = ipaddress.ip_address(raw)
+        except (TypeError, ValueError) as error:
+            raise Refusal("tailnet-recovery-state-invalid") from error
+        if not isinstance(raw, str) or str(address) != raw or address not in network:
+            raise Refusal("tailnet-recovery-state-invalid")
 
 
-def _transition(paths, phase, *, allowed):
+def _mark_transaction_confirmed(paths: CommandPaths, node: dict) -> None:
+    _transition(paths, "confirmed", allowed={"armed"}, node=node)
+
+
+def _transition(paths, phase, *, allowed, node=None):
     """Publish one monotonic state change under the transaction lock."""
     value, _snapshot_value = _read_transaction(paths)
     if value["phase"] == phase:
+        if phase == "confirmed" and value["node"] != node:
+            raise Refusal("tailnet-recovery-transition-invalid")
         # A prior directory fsync may have failed after the rename.
         _fsync_directory(paths.state_directory)
         return
     if value["phase"] not in allowed:
         raise Refusal("tailnet-recovery-transition-invalid")
     value["phase"] = phase
+    if phase == "confirmed":
+        _validate_confirmed_node(node, value["nonce"])
+        value["node"] = node
     payload = _canonical_bytes(value)
     if len(payload) > RECOVERY_STATE_MAX_BYTES:
         raise Refusal("tailnet-recovery-confirm-uncertain")
@@ -844,12 +877,14 @@ def _require_recovery_scheduler(paths: CommandPaths, runner: Runner) -> None:
     )
 
 
-def _require_recovery_service_success(paths: CommandPaths, runner: Runner) -> None:
+def _require_recovery_service_success(
+    paths: CommandPaths, runner: Runner, unit: str = "vpn-tailnet-recover.service"
+) -> None:
     status = runner(
         [
             paths.systemctl,
             "show",
-            "vpn-tailnet-recover.service",
+            unit,
             "--property=Result",
             "--property=ExecMainCode",
             "--property=ExecMainStatus",
@@ -871,8 +906,23 @@ def _require_recovery_service_success(paths: CommandPaths, runner: Runner) -> No
         raise Refusal("tailnet-recovery-unavailable")
 
 
+def _require_early_recovery_enabled(paths: CommandPaths, runner: Runner) -> None:
+    status = runner(
+        [paths.systemctl, "is-enabled", "vpn-tailnet-firewall-recover.service"],
+        timeout=COMMAND_TIMEOUT_SECONDS,
+    ).stdout.strip()
+    if status != "enabled":
+        raise Refusal("tailnet-recovery-unavailable")
+
+
 def _require_recovery_ready(paths: CommandPaths, runner: Runner) -> None:
     _require_recovery_scheduler(paths, runner)
+    _require_early_recovery_enabled(paths, runner)
+    runner(
+        [paths.systemctl, "start", "vpn-tailnet-firewall-recover.service"],
+        timeout=COMMAND_TIMEOUT_SECONDS,
+    )
+    _require_recovery_service_success(paths, runner, "vpn-tailnet-firewall-recover.service")
     runner(
         [paths.systemctl, "start", "vpn-tailnet-recover.service"],
         timeout=COMMAND_TIMEOUT_SECONDS,
@@ -882,6 +932,8 @@ def _require_recovery_ready(paths: CommandPaths, runner: Runner) -> None:
 
 def _revalidate_recovery_ready(paths: CommandPaths, runner: Runner) -> None:
     _require_recovery_scheduler(paths, runner)
+    _require_early_recovery_enabled(paths, runner)
+    _require_recovery_service_success(paths, runner, "vpn-tailnet-firewall-recover.service")
     _require_recovery_service_success(paths, runner)
 
 
@@ -909,6 +961,15 @@ def _owned_identity(paths, runner, transaction):
 def _node(paths, runner, transaction):
     return {**_owned_identity(paths, runner, transaction),
             **_require_tailnet_addresses(paths, runner)}
+
+
+def _confirmed_identity(paths, runner, transaction):
+    if transaction["phase"] != "confirmed":
+        raise Refusal("tailnet-confirmation-missing")
+    node = _node(paths, runner, transaction)
+    if node != transaction["node"]:
+        raise Refusal("tailnet-identity-mismatch")
+    return node
 
 
 def _capability(transaction, node, *, configured=False):
@@ -1033,7 +1094,7 @@ def enroll(*, paths: CommandPaths, firewall, binding: dict, auth_key: str,
             if previous["binding"] != binding:
                 raise Refusal("tailnet-binding-mismatch")
             _postconditions(paths=paths, runner=runner, before=before)
-            return _capability(previous, _node(paths, runner, previous), configured=True)
+            return _capability(previous, _confirmed_identity(paths, runner, previous), configured=True)
         if state != "NeedsLogin":
             raise Refusal("tailnet-existing-state-unsupported")
         if (paths.state_directory / CONFIRMED_NAME).exists():
@@ -1107,7 +1168,7 @@ def confirm(*, paths, firewall, capability, contexts, runner=_run, clock=_lease_
         _postconditions(paths=paths, runner=runner, before=before)
         if _expired(transaction, clock):
             raise Refusal("tailnet-transaction-expired")
-        _mark_transaction_confirmed(paths)
+        _mark_transaction_confirmed(paths, node)
         # Confirmed publication is the commit point. A later archive or output
         # failure reports uncertainty but must never authorize an enrollment logout.
         outcome = _recover_locked(paths=paths, runner=runner, firewall=firewall, clock=clock)
@@ -1144,22 +1205,35 @@ def transaction_status(*, paths, firewall, binding, runner=_run, clock=_lease_cl
             return {"status": "expired"}
         _postconditions(paths=paths, runner=runner, before=before)
         firewall.verify(transaction["firewall"], binding)
-        node = _node(paths, runner, transaction)
+        node = (_confirmed_identity(paths, runner, transaction)
+                if transaction["phase"] == "confirmed" else _node(paths, runner, transaction))
         return _capability(transaction, node, configured=transaction["phase"] == "confirmed")
 
 
-def check(*, paths: CommandPaths, runner: Runner = _run) -> dict[str, object]:
+def check(*, paths: CommandPaths, target: dict, runner: Runner = _run) -> dict[str, object]:
     """Inspect the exact managed state without enrollment or another mutation."""
+    if not isinstance(target, dict) or set(target) != {
+        "inventory_alias", "public_address", "ssh_port", "approved_sources"
+    }:
+        raise Refusal("tailnet-binding-invalid")
+    validate_sources(target["approved_sources"])
     with _transaction_lock(paths, blocking=False):
         if _transaction_path(paths).exists():
             raise Refusal("tailnet-recovery-pending")
+        try:
+            confirmed, _baseline = _read_transaction(paths, name=CONFIRMED_NAME)
+        except FileNotFoundError:
+            raise Refusal("tailnet-unowned-existing-identity") from None
+        if any(confirmed["binding"][name] != value for name, value in target.items()):
+            raise Refusal("tailnet-binding-mismatch")
         before = _snapshot(paths, runner)
         state = _status(paths, runner)
         if state == "NeedsLogin":
-            return {"status": "pending", "changed": True}
+            raise Refusal("tailnet-confirmed-identity-missing")
         if state != "Running":
             raise Refusal("tailnet-existing-state-unsupported")
         _require_expected_preferences(_preferences(paths, runner))
+        _confirmed_identity(paths, runner, confirmed)
         _postconditions(paths=paths, runner=runner, before=before)
         return {"status": "configured", "changed": False}
 
