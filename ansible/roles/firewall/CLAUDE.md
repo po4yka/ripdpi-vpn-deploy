@@ -74,8 +74,11 @@ preserve baseline bytes. The rule-bearing render is no_log with diff disabled.
   shim; only the `ufw` conflict above is guarded, so treat such a host as an
   open risk.
 - **Concurrent `nft` writes corrupt the ruleset** — apply via atomic file
-  swap + `nft -f`, not by piping individual rules. The template task's
-  `validate: nft -c -f` step does this correctly; don't bypass it.
+  swap + `nft -f`, not by piping individual rules. Publication is two
+  steps: the template task's `validate: "nft -c -f %s"` only syntax-checks
+  the candidate before the atomic swap, and the later `Reload nftables
+  before dependent roles run` task loads it. Keep both; without the reload
+  the host keeps running the old rules.
 - **Hysteria UDP port reuse** — if a host enables both Hysteria2 and AWG, do
   not put both on UDP 443 — only the first listener will bind. Pick distinct
   ports or disable one.
