@@ -39,7 +39,8 @@ def inputs(tmp_path):
     known_hosts.write_text(f"[192.0.2.10]:2222 {public[0]} {public[1]}\n")
     inventory = root / "inventory.ini"
     inventory.write_text(
-        "[vpn]\nnode-one ansible_host=192.0.2.10 ansible_user=deploy ansible_port=2222\n"
+        "[vpn]\nnode-one ansible_host=192.0.2.10 ansible_user=deploy ansible_port=2222"
+        " provider=upcloud env=prod\n"
         f"[vpn:vars]\nansible_ssh_private_key_file={key}\n"
     )
     config = {
@@ -151,11 +152,20 @@ runpy.run_module('ansible.cli.playbook', run_name='__main__')
     {"ssh_port": True}, {"source_revision": "c" * 40},
     {"host_key_sha256": "0" * 64}, {"public_sources": ["0.0.0.0/0"]},
     {"approved_sources": ["100.64.0.10/32"]}, {"extra": "unknown"},
-    {"environment": "ci-staging-test", "cleanup_manifest": None},
+    {"environment": "ci-staging-test", "cleanup_manifest": None}, {"provider": "vultr"},
 ])
 def test_invalid_inputs_refuse_before_guest_commands(controller, inputs, monkeypatch, changes):
     with pytest.raises(controller.BootstrapError):
         load(controller, inputs, monkeypatch, **changes)
+    assert not (inputs[0] / "handoff.json").exists()
+
+
+@pytest.mark.parametrize("variables", [" provider=upcloud env=ci-staging-test", " provider=vultr env=prod", ""])
+def test_config_must_match_inventory_provider_and_environment(controller, inputs, monkeypatch, variables):
+    inventory = inputs[1]
+    inventory.write_text(inventory.read_text().replace(" provider=upcloud env=prod", variables))
+    with pytest.raises(controller.BootstrapError):
+        load(controller, inputs, monkeypatch)
     assert not (inputs[0] / "handoff.json").exists()
 
 
@@ -442,19 +452,32 @@ def test_preinstall_resumes_only_pinned_identity_free_package(controller, monkey
             operation()
 
 
-@pytest.mark.parametrize(("state", "allowed"), [("NeedsLogin", True), ("Running", False)])
-def test_preinstall_existing_daemon_requires_needs_login(controller, monkeypatch, state, allowed):
+@pytest.mark.parametrize(("state", "change", "allowed"), [
+    ("NeedsLogin", {}, True), ("Running", {}, False),
+    ("NeedsLogin", {"owner": "other: /usr/bin/tailscale"}, False),
+    ("NeedsLogin", {"version": "1.101.0"}, False),
+    ("NeedsLogin", {"executable": "/usr/local/bin/tailscale"}, False),
+])
+def test_preinstall_existing_daemon_requires_needs_login_package(controller, monkeypatch, state, change, allowed):
     import stat
     from types import SimpleNamespace
     import tailnet_bootstrap_probe as probe
 
+    values = {"owner": "tailscale: /usr/bin/tailscale", "version": "1.102.3",
+              "executable": "/usr/bin/tailscale", **change}
+    calls = []
+    def command(argv):
+        calls.append(argv)
+        assert argv[0] == "dpkg-query", "a NeedsLogin daemon must not be inspected as inactive"
+        return (values["owner"] if argv[1] == "-S" else values["version"]).encode()
     monkeypatch.setattr(probe.subprocess, "run", lambda *a, **kw: SimpleNamespace(
         returncode=0, stdout=json.dumps({"BackendState": state}).encode(), stderr=b""))
     monkeypatch.setattr(probe.Path, "lstat", lambda *_: SimpleNamespace(st_mode=stat.S_IFREG | 0o755, st_uid=0))
-    monkeypatch.setattr(probe, "command", lambda *_: pytest.fail("package query after successful status"))
-    operation = lambda: probe.preflight_tailnet_command(probe.Path("/usr/bin/tailscale"), "1.102.3")
+    monkeypatch.setattr(probe, "command", command)
+    operation = lambda: probe.preflight_tailnet_command(probe.Path(values["executable"]), "1.102.3")
     if allowed:
         operation()
+        assert len(calls) == 2
     else:
         with pytest.raises(probe.ProbeError):
             operation()

@@ -202,9 +202,12 @@ def load_inputs(environment, directory):
         deploy.validate_discovery_paths(ROOT)
         inventory, inventory_fence = deploy.read_fenced_input(INVENTORY)
         frozen = deploy.private_file(directory / "inventory-source", inventory)
-        host = inspection.select_hosts(frozen, [target])[0]
+        host = inspection.select_hosts(frozen, [target], include_variables=True)[0]
+        variables = host.pop("variables")
         if (type(config["ssh_port"]) is not int or host["port"] != config["ssh_port"]
-                or host["address"] != config["public_address"]):
+                or host["address"] != config["public_address"]
+                or variables.get("provider") != config["provider"]
+                or variables.get("env") != config["environment"]):
             raise BootstrapError("inventory-target-mismatch")
         host["transport"] = host["address"]
         key, key_fence = deploy.read_fenced_input(host["key"], private=True, exact_mode=0o600)
