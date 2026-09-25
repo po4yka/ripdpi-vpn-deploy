@@ -1,6 +1,39 @@
 PROVIDER ?= upcloud
 ENV      ?= prod
 
+# Bootstrap accepts a literal one-node selector and private configuration.
+# Reject capability assignments before Make can expand exported expressions.
+ifneq ($(filter bootstrap-tailnet,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error Tailnet bootstrap requires exactly one Make goal)
+endif
+_TAILNET_BOOTSTRAP_ALLOWED := ANSIBLE_LIMIT TAILNET_BOOTSTRAP_CONFIG
+_TAILNET_BOOTSTRAP_COMMAND := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
+ifneq ($(strip $(filter-out $(_TAILNET_BOOTSTRAP_ALLOWED),$(_TAILNET_BOOTSTRAP_COMMAND))),)
+$(error Tailnet bootstrap accepts only ANSIBLE_LIMIT and TAILNET_BOOTSTRAP_CONFIG command-line fields)
+endif
+ifneq ($(filter-out undefined environment,$(origin TAILSCALE_AUTH_KEY)),)
+$(error Tailnet bootstrap credentials must come from the environment)
+endif
+override BOOTSTRAP_TARGET := $(value ANSIBLE_LIMIT)
+override TAILNET_BOOTSTRAP_CONFIG := $(value TAILNET_BOOTSTRAP_CONFIG)
+_TAILNET_BOOTSTRAP_KEY_ORIGIN := $(origin TAILSCALE_AUTH_KEY)
+override TAILSCALE_AUTH_KEY := $(value TAILSCALE_AUTH_KEY)
+override ENV := $(value ENV)
+override PROVIDER := $(value PROVIDER)
+override HOME := $(value HOME)
+override DEPLOY_SOURCE_REVISION :=
+override DEPLOYABLE_SOURCE_DIGEST :=
+export BOOTSTRAP_TARGET TAILNET_BOOTSTRAP_CONFIG
+ifeq ($(_TAILNET_BOOTSTRAP_KEY_ORIGIN),environment)
+export TAILSCALE_AUTH_KEY
+else
+unexport TAILSCALE_AUTH_KEY
+endif
+unexport ANSIBLE_LIMIT MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+endif
+
 # This target accepts operator paths and aliases.  Keep them literal before
 # included Makefiles, exported variables, or eager source-identity recipes can
 # evaluate command-line Make syntax.
@@ -173,11 +206,18 @@ $(error unbound staging client retirement inputs must be literal values)
 endif
 endif
 
+ifneq ($(filter staging-cleanup-manifest staging-cleanup-reissue staging-destroy,$(MAKECMDGOALS)),)
+ifneq ($(filter-out undefined environment,$(origin HOME)),)
+$(error staging lifecycle home must come from the trusted controller environment)
+endif
+override HOME := $(value HOME)
+endif
+
 -include .fleet.mk
 
 # Capture deployment labels before the eager Terraform path assignments below.
 # The included fleet file remains trusted executable Make configuration.
-ifneq ($(filter deploy dry-run deploy-canary backup-configure install-ssh-recovery staging-cleanup-manifest staging-destroy $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
+ifneq ($(filter deploy dry-run deploy-canary backup-configure install-ssh-recovery staging-cleanup-manifest staging-cleanup-reissue staging-destroy $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
 override ENV := $(value ENV)
 override PROVIDER := $(value PROVIDER)
 endif
@@ -185,7 +225,7 @@ endif
 # Staging credentials are ambient capabilities, never Make expressions. Reject
 # every non-environment origin before eager assignments or child-environment
 # construction can expand attacker-controlled Make syntax.
-ifneq ($(filter staging-cleanup-manifest staging-destroy,$(MAKECMDGOALS)),)
+ifneq ($(filter staging-cleanup-manifest staging-cleanup-reissue staging-destroy,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error staging cleanup requires exactly one Make goal)
 endif
@@ -343,6 +383,7 @@ help:
 	@echo "  source-drift               Require live deployable digest to match the clean checkout"
 	@echo "  security-verify            Host hardening checks (SSH/sysctl/firewall/services)"
 	@echo "  staging-cleanup-manifest   Bind one provider-owned ci-staging state to a private cleanup manifest"
+	@echo "  staging-cleanup-reissue    Refresh a registered idle node from its previous manifest"
 	@echo "  staging-destroy            Destroy only the exact manifest-bound staging resources"
 	@echo "  awg-evidence-provision     Provision the three-host AWG evidence lane (after decrypt)"
 	@echo "  smoke-test                 End-to-end traffic test through every enabled profile"
@@ -669,6 +710,10 @@ export SSH_RECOVERY_TARGET SSH_RECOVERY_WINDOW SSH_RECOVERY_INVENTORY SSH_RECOVE
 endif
 
 .PHONY: install-ssh-recovery
+.PHONY: bootstrap-tailnet
+
+bootstrap-tailnet:
+	@python3 ./scripts/bootstrap-tailnet.py
 # The controller checks debug, exact inventory and clean source before Ansible.
 install-ssh-recovery:
 	@python3 ./scripts/install-sshd-recovery.py
@@ -694,24 +739,27 @@ DESTROY_ARGS ?=
 
 # These staging goals treat caller fields as literal data. Keep them separate
 # from the free-form generic destroy surface and reject mixed goal execution.
-ifneq ($(filter staging-cleanup-manifest staging-destroy,$(MAKECMDGOALS)),)
-export STAGING_CLEANUP_MANIFEST STAGING_CLEANUP_STATE STAGING_CLEANUP_HOSTNAME STAGING_POST_DESTROY_EVIDENCE
+ifneq ($(filter staging-cleanup-manifest staging-cleanup-reissue staging-destroy,$(MAKECMDGOALS)),)
+export STAGING_CLEANUP_MANIFEST STAGING_CLEANUP_PREVIOUS_MANIFEST STAGING_CLEANUP_STATE STAGING_CLEANUP_HOSTNAME STAGING_POST_DESTROY_EVIDENCE
 unexport MAKEFLAGS MFLAGS
 MAKEOVERRIDES :=
 endif
 
-.PHONY: staging-cleanup-manifest staging-destroy
-staging-cleanup-manifest: override STAGING_CLEANUP_MANIFEST := $(value STAGING_CLEANUP_MANIFEST)
-staging-cleanup-manifest: override STAGING_CLEANUP_STATE := $(value STAGING_CLEANUP_STATE)
-staging-cleanup-manifest: override STAGING_CLEANUP_HOSTNAME := $(value STAGING_CLEANUP_HOSTNAME)
+.PHONY: staging-cleanup-manifest staging-cleanup-reissue staging-destroy
+staging-cleanup-manifest staging-cleanup-reissue: override STAGING_CLEANUP_MANIFEST := $(value STAGING_CLEANUP_MANIFEST)
+staging-cleanup-manifest staging-cleanup-reissue: override STAGING_CLEANUP_STATE := $(value STAGING_CLEANUP_STATE)
+staging-cleanup-manifest staging-cleanup-reissue: override STAGING_CLEANUP_HOSTNAME := $(value STAGING_CLEANUP_HOSTNAME)
+staging-cleanup-reissue: override STAGING_CLEANUP_PREVIOUS_MANIFEST := $(value STAGING_CLEANUP_PREVIOUS_MANIFEST)
 staging-destroy: override STAGING_CLEANUP_MANIFEST := $(value STAGING_CLEANUP_MANIFEST)
 staging-destroy: override STAGING_POST_DESTROY_EVIDENCE := $(value STAGING_POST_DESTROY_EVIDENCE)
-staging-cleanup-manifest staging-destroy: override DEPLOY_SOURCE_REVISION :=
-staging-cleanup-manifest staging-destroy: override DEPLOYABLE_SOURCE_DIGEST :=
+staging-cleanup-manifest staging-cleanup-reissue staging-destroy: override DEPLOY_SOURCE_REVISION :=
+staging-cleanup-manifest staging-cleanup-reissue staging-destroy: override DEPLOYABLE_SOURCE_DIGEST :=
 
-staging-cleanup-manifest:
+staging-cleanup-manifest staging-cleanup-reissue:
 	@case "$${PROVIDER}" in upcloud) guard=./scripts/staging-cleanup-guard.py ;; vultr) guard=./scripts/vultr-staging-cleanup-guard.py ;; *) echo "unsupported staging provider" >&2; exit 2 ;; esac; \
-	"$$guard" create-manifest \
+	verb=create-manifest; set --; \
+	if [ "$@" = staging-cleanup-reissue ]; then verb=reissue-manifest; set -- --previous-manifest "$${STAGING_CLEANUP_PREVIOUS_MANIFEST}"; fi; \
+	"$$guard" "$$verb" "$$@" \
 	  --output "$${STAGING_CLEANUP_MANIFEST}" \
 	  --provider "$${PROVIDER}" \
 	  --environment "$${ENV}" \

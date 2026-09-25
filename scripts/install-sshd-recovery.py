@@ -58,6 +58,10 @@ def build_invocation(environment):
     # Reuse the established strict SSH identity boundary, including custom-port
     # aliases, no agent, no inherited proxy, and no multiplexed connection.
     ssh = inspection.ssh_command(host, known_hosts)
+    # A disposable node can transiently drop a TCP SYN while Ansible opens its
+    # many independent SSH sessions. Retry transport establishment only; every
+    # attempt still uses the same pinned identity and non-multiplexed session.
+    ssh[ssh.index('ConnectionAttempts=1')] = 'ConnectionAttempts=3'
     generation, manifest = bundle_manifest()
     extra_vars = {
         'ssh_recovery_generation': generation, 'ssh_recovery_manifest': manifest,

@@ -162,10 +162,13 @@ def test_intent_refuses_ambiguous_or_broader_authority_without_io(intent, case):
 
 
 @pytest.fixture
-def capabilities(intent, tmp_path):
+def capabilities(intent, tmp_path, monkeypatch):
     from datetime import datetime, timezone
     import hashlib
 
+    home = tmp_path.resolve() / "controller-home"
+    home.mkdir(mode=0o700)
+    monkeypatch.setenv("HOME", str(home))
     fixture = load("cleanup_fixture", ROOT / "tests/unit/test_staging_cleanup_guard.py")
     guard = fixture.guard
     private = tmp_path.resolve() / "capabilities"
@@ -268,7 +271,10 @@ def test_capabilities_bind_state_and_snapshot_exact_secrets_before_deployment(
     assert len(calls) == 1
     for name, source in original["inputs"].items():
         snapshot = Path(prepared["inputs"][name])
-        assert snapshot != Path(source)
+        if name == "cleanup_manifest":
+            assert snapshot == Path(source)
+        else:
+            assert snapshot != Path(source)
         assert snapshot.read_bytes() == Path(source).read_bytes()
         assert snapshot.stat().st_mode & 0o777 == 0o600
     assert prepared["outputs"] == original["outputs"]
@@ -461,6 +467,8 @@ def test_capability_snapshot_decrypts_with_real_sops_yaml(capabilities, tmp_path
         "unsafe-key",
         "symlink-key",
         "ephemeral-output",
+        "cleanup-copy",
+        "cleanup-replaced",
     ],
 )
 def test_capability_refusal_never_becomes_host_action(capabilities, monkeypatch, case):
@@ -486,6 +494,15 @@ def test_capability_refusal_never_becomes_host_action(capabilities, monkeypatch,
         capabilities["intent"]["outputs"]["binding"] = str(
             capabilities["directory"] / "lost-binding"
         )
+    elif case in {"cleanup-copy", "cleanup-replaced"}:
+        source = Path(capabilities["intent"]["inputs"]["cleanup_manifest"])
+        copy_path = source.with_name("copied-cleanup.json")
+        copy_path.write_bytes(source.read_bytes())
+        copy_path.chmod(0o600)
+        if case == "cleanup-copy":
+            capabilities["intent"]["inputs"]["cleanup_manifest"] = str(copy_path)
+        else:
+            copy_path.replace(source)
 
     def decrypt(sops, age, output, environment):
         doc = yaml.safe_load(capabilities["deployed_secrets"])

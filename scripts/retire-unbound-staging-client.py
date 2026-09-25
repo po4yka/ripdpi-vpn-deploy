@@ -351,7 +351,7 @@ def _validate_absence(
     expired = observed >= expiry
     if (
         set(absence) != fields
-        or absence.get("schema_version") != 2
+        or absence.get("schema_version") != guard.SCHEMA_VERSION
         or absence.get("status") not in {"verified", "verified_after_expiry"}
         or absence.get("deadline_status")
         not in {"within_deadline", "expired_after_apply"}

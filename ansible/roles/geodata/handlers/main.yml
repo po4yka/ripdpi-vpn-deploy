@@ -7,3 +7,4 @@
   ansible.builtin.command:
     cmd: /usr/local/sbin/vpn-xray-geodata-activate.sh
   changed_when: true
+  when: not ansible_check_mode

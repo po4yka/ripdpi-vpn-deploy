@@ -40,6 +40,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
                 "Restart unbound",
             ),
         ),
+        ("geodata", ("Reload xray geodata",)),
+        ("nginx-xhttp", ("Reload nginx-xhttp",)),
+        ("amneziawg", ("Restart amneziawg",)),
     ],
 )
 def test_restart_handlers_skip_runtime_checks_in_check_mode(

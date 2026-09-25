@@ -32,3 +32,7 @@ versions are restarted and must be active before the refresh succeeds.
   support safe geodata hot-reload, so active connections can briefly reset.
 - **Timer fires even when dat files are unchanged** — idempotent but wastes
   bandwidth. Consider mirroring to a local cache if bandwidth is constrained.
+- **A fresh check-mode host has no geodata directory or timer yet** — require
+  their planned creation and check the pinned URLs with read-only HEAD requests.
+  Defer downloads and activation only until real convergence can write their
+  destinations and verify both SHA256 pins.

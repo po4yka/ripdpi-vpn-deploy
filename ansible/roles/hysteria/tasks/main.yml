@@ -153,9 +153,27 @@
     owner: root
     group: root
     mode: "0644"
+  register: _hysteria_unit_plan
   notify:
     - Reload systemd
     - Restart hysteria
+
+- name: Inspect Hysteria unit before check-mode activation
+  ansible.builtin.stat:
+    path: /etc/systemd/system/hysteria-server.service
+    follow: false
+  register: _hysteria_unit_before
+  changed_when: false
+  when: ansible_check_mode
+
+- name: Require planned Hysteria unit on a fresh check-mode host
+  ansible.builtin.assert:
+    that:
+      - _hysteria_unit_plan.changed
+    fail_msg: Check mode found no Hysteria unit and no planned installation.
+  when:
+    - ansible_check_mode
+    - not (_hysteria_unit_before.stat.exists | default(false))
 
 - name: Ensure hysteria-server is enabled and started
   ansible.builtin.systemd_service:
@@ -163,3 +181,4 @@
     enabled: true
     state: started
     daemon_reload: true
+  when: not ansible_check_mode or _hysteria_unit_before.stat.exists | default(false)

@@ -131,8 +131,8 @@ same-owner directory that is not group/other writable. Keep the cleanup
 manifest and post-destroy evidence in one operator-owned `0700` directory;
 each file is a regular `0600` file. Do not put that private directory in the
 repository. After the server exists, create the manifest through the canonical
-Make goal directly from the exact local state before running any destructive
-command. The goal authenticates `/1.3/account`, stores the exact API username
+Make goal directly from the exact local state before any guest installation,
+bootstrap, deployment or destructive command. The goal authenticates `/1.3/account`, stores the exact API username
 only in private artifacts, reads the exact state-bound server through
 `/1.3/server`, and derives creation, target, escalation and hard deadlines from
 the provider's integer `server.created` value at 36, 44 and 47 hours. Provider
@@ -144,16 +144,50 @@ never emits the authorization value. This binds the
 exact API principal used for creation and deletion, not a parent billing
 account, and does not claim that provider usernames are immutable identifiers.
 
-Before creating that manifest, promote the UpCloud provider firewall in two
-phases. The private tfvars starts with `enable_provider_firewall=false`; apply,
-wait for cloud-init, deploy the guest stateful firewall, and verify strict SSH,
+After creating the initial manifest, promote the UpCloud provider firewall in
+two phases. The private tfvars starts with `enable_provider_firewall=false`; apply,
+create the cleanup manifest, wait for cloud-init, install SSH recovery and
+bootstrap Tailnet, then deploy the guest stateful firewall and verify strict SSH,
 DNS, outbound TCP/UDP and every required public listener. Confirm the live
 kernel ephemeral range equals `provider_return_ephemeral_ports` (the repository
 default is `32768..60999`). Then set `enable_provider_firewall=true`, inspect a
 plan that updates only the same server's firewall flag, apply it, and repeat the
 same acceptance. A server/storage/network replacement or any failed probe is a
 stop condition. Roll back by setting the flag false on that exact node and
-rechecking strict SSH; guarded cleanup is still required.
+rechecking strict SSH; guarded cleanup is still required. After each authorized
+same-node firewall update or rollback, explicitly reissue the cleanup manifest at a new
+private path from the refreshed exact state before further guest writes or
+destruction. Keep earlier manifests and evidence. Resource identities and
+provider-creation-derived deadlines must remain unchanged; stale manifests
+still refuse. Never reissue while a destruction reservation or apply is pending.
+
+Both provider guards share the private resource journal under the trusted
+controller user's `~/.local/state/vpn-deploy/staging-cleanup/`. Its identity is
+provider/account/server UUID, not a checkout or artifact path. Use one controller
+home for the complete node lifetime; do not copy artifacts to an independent
+controller or select another home to recover an operation. The registry is part
+of the private recovery data and must be retained with manifests and evidence.
+Changing `HOME` as a Make command field is refused.
+
+After the authorized Terraform state transition, use the explicit reissue verb:
+
+```bash
+PROVIDER=upcloud ENV="$ENV" \
+STAGING_CLEANUP_PREVIOUS_MANIFEST=/absolute/private/path/cleanup-manifest.json \
+STAGING_CLEANUP_MANIFEST=/absolute/private/path/cleanup-manifest-refreshed.json \
+STAGING_CLEANUP_STATE="$STATE_PATH" \
+STAGING_CLEANUP_HOSTNAME=vpn-ci-staging-<run> \
+make staging-cleanup-reissue
+```
+
+The previous generation must be the registered current manifest, at its original
+inode, and the refreshed state must remain at its original path. Initial
+`staging-cleanup-manifest` refuses a previously registered node. Repeating an
+interrupted publication must use the exact same request and output path; a
+different path cannot bypass its intent. The new UpCloud v3 and Vultr v2
+manifests require this journal; legacy manifests are not accepted or migrated
+implicitly. Preserve legacy artifacts and resolve their existing lifecycle
+before starting a node under the new contract.
 
 The private staging tfvars must explicitly keep `enable_backups=false` and
 `additional_public_ip=false`. The guard refuses a server state with a provider
@@ -178,7 +212,15 @@ bytes; an operator does not type either UUID or account identity into the
 manifest. Every path ancestor is opened without following symlinks, and final
 files are accessed relative to a held parent directory descriptor.
 
-Destroy the staging environment through the guarded path. One authorization
+Destroy the staging environment through the guarded path. A verified inherited
+lock descriptor holds the resource lock across the entire shell and Terraform
+operation, so a second controller process cannot recover a still-running
+reservation. Do not set `VPN_STAGING_LOCK_FD` manually. On retry after process
+loss, recovery uses only the journaled evidence path; a started apply resumes
+absence observation and never starts Terraform again. A released reservation's
+receipt remains archived in the journal.
+
+One authorization
 step validates the same manifest/state inodes and bytes, rechecks its
 authenticated account username, and reserves evidence before creating the
 lifecycle override or allowing Terraform to refresh provider state. Plan

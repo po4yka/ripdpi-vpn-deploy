@@ -91,6 +91,7 @@
     state: present
     update_cache: true
     cache_valid_time: 3600
+  register: _nginx_xhttp_install_plan
 
 - name: Ensure TLS material directory
   ansible.builtin.file:
@@ -249,8 +250,26 @@
 - name: Activate the validated nginx site before later roles run
   ansible.builtin.meta: flush_handlers
 
+- name: Inspect nginx unit before check-mode activation
+  ansible.builtin.stat:
+    path: /lib/systemd/system/nginx.service
+    follow: false
+  register: _nginx_xhttp_unit_before
+  changed_when: false
+  when: ansible_check_mode
+
+- name: Require planned nginx installation on a fresh check-mode host
+  ansible.builtin.assert:
+    that:
+      - _nginx_xhttp_install_plan.changed
+    fail_msg: Check mode found no nginx unit and no planned installation.
+  when:
+    - ansible_check_mode
+    - not (_nginx_xhttp_unit_before.stat.exists | default(false))
+
 - name: Ensure nginx is enabled and started
   ansible.builtin.systemd_service:
     name: nginx
     enabled: true
     state: started
+  when: not ansible_check_mode or _nginx_xhttp_unit_before.stat.exists | default(false)

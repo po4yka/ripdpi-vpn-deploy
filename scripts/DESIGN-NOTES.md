@@ -41,6 +41,15 @@ Canonical variables load per host with real Ansible; frozen strict transport
 records govern wait, site and source-drift without rereading original inputs.
 `bootstrap_readiness.py` is shared with the Terraform first-boot adapter, whose
 trust policy stays separate. Do not duplicate its deadlines or cancellation loop.
+The public bootstrap probe reads the role's pinned Tailscale version from its
+defaults before sending the read-only guest check. A failed status command is
+resumable only for the dpkg-owned, exact-version CLI with no identity and an
+inactive daemon; a `NeedsLogin` CLI needs the same package ownership and version.
+The later Ansible prewrite guard independently checks both. The private config's
+provider and environment must equal the inventory host's `provider`/`env`, so a
+staging node cannot skip its cleanup manifest by claiming `prod`. Every
+pre-write checkpoint reloads that manifest semantically, so a run that crosses
+`expiry_at` during readiness or installation stops before the next host write.
 
 **Vultr secondary IPv4 inventory is live-gated** — Terraform output proves allocation only. `render-inventory.sh` polls the primary SSH endpoint and publishes `honeypot_listen_addr` only after the exact IPv4 appears on a guest interface.
 
@@ -96,7 +105,10 @@ removal and exact profile deletion; it never invokes the persistent AWG role.
 
 **Disposable staging onboarding precedes SSH prepare** — a typed one-node
 intent is validated and its explicit SOPS/age/key capabilities snapshotted by
-the deploy controller before host writes. The baseline adapter publishes a
+the deploy controller before host writes. Keep the cleanup manifest at its
+registered canonical path and revalidate its journal-bound inode at preparation
+and finalization; a temporary copy cannot carry cleanup authority.
+The baseline adapter publishes a
 persistent binding epoch after data-plane roles, invokes only the canonical
 installer and requires fresh evidence even for unchanged SSH policy. Exact
 completed binding/receipt reuse avoids generating a conflicting executor

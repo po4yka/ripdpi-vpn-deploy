@@ -23,7 +23,6 @@ provisioner:
   name: ansible
   env:
     ANSIBLE_ROLES_PATH: ../../..
-    TAILSCALE_AUTH_KEY: tskey-auth-molecule-fixture
   inventory:
     host_vars:
       vpn-tailnet-management-debian13:

@@ -69,6 +69,10 @@ ownership-only migration, and do not treat local tests as staging acceptance.
 - **`systemd-resolved` stub listener is disabled** — the role drops
   `/etc/systemd/resolved.conf.d/no-stub.conf` (`DNSStubListener=no`) so
   port 53 is free for the dns-morph-bridge role when enabled.
+- **Fresh Debian check mode has no timesync unit yet** — apt plans its
+  installation, but cannot create the unit during a dry run. Require that
+  package change before deferring service activation; real convergence always
+  starts and enables the service.
 - **Cloud-init still creates the admin user first** — baseline hardens sshd
   after the first connection succeeds. Don't remove the cloud-init admin-user
   path unless another first-boot access path replaces it.
