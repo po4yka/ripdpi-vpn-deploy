@@ -96,8 +96,13 @@ def resolve_latest_version(name: str, workdir: Path) -> str:
             f"ansible-galaxy list failed for {name}:\n{listed.stdout}\n{listed.stderr}"
         )
 
+    # `list` also reports the configured default paths (e.g. ~/.ansible/collections),
+    # so read only the temp install; resolve() absorbs /tmp -> /private/tmp symlinks.
+    wanted = (collection_dir / "ansible_collections").resolve()
     payload = json.loads(listed.stdout)
-    for collections in payload.values():
+    for path, collections in payload.items():
+        if Path(path).resolve() != wanted:
+            continue
         meta = collections.get(name)
         if meta and meta.get("version"):
             return str(meta["version"])

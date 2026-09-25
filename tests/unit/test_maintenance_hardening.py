@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
+import subprocess
 import sys
 from unittest.mock import patch
 
@@ -59,3 +61,20 @@ def test_galaxy_resolution_failures_return_tooling_error(monkeypatch, capsys):
         assert galaxy_checker.main() == 2
 
     assert "error: Galaxy unavailable" in capsys.readouterr().err
+
+
+def test_galaxy_latest_version_ignores_default_collection_paths(tmp_path):
+    workdir = tmp_path / "work"
+    payload = {
+        "/home/operator/.ansible/collections/ansible_collections": {
+            "community.general": {"version": "12.6.0"}
+        },
+        str(workdir / "collections" / "ansible_collections"): {"community.general": {"version": "13.4.0"}},
+    }
+
+    def fake_run(cmd, **_kwargs):
+        stdout = json.dumps(payload) if "list" in cmd else ""
+        return subprocess.CompletedProcess(cmd, 0, stdout=stdout, stderr="")
+
+    with patch.object(galaxy_checker, "run", side_effect=fake_run):
+        assert galaxy_checker.resolve_latest_version("community.general", workdir) == "13.4.0"
