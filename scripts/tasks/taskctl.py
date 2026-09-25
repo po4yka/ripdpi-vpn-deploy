@@ -3961,8 +3961,7 @@ def command_new(args: argparse.Namespace) -> int:
             f"invalid slug {slug!r}: must match [a-z0-9][a-z0-9-]* "
             "(no slashes, dots, '..' or absolute paths)"
         )
-    if args.spec_mode == "required":
-        openspec = tool_binary(args.root, "openspec")
+    openspec = tool_binary(args.root, "openspec") if args.spec_mode == "required" else None
     task_id = allocate_id(args.root, args.area, used, config)
     path = args.root / "docs/tasks/issues" / f"{slug}.md"
     if path.exists():
@@ -3999,7 +3998,7 @@ def command_new(args: argparse.Namespace) -> int:
         body="## Goal\n\nDescribe the observable outcome.\n\n## Acceptance criteria\n\nDefine verifiable completion criteria.\n",
     )
     path.write_text(render_document(values, document.body), encoding="utf-8")
-    if args.spec_mode == "not-required":
+    if openspec is None:
         work = args.root / "docs/tasks/work" / f"{task_id}.md"
         work.parent.mkdir(parents=True, exist_ok=True)
         step_id = allocate_id(
