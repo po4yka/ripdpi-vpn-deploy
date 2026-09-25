@@ -44,7 +44,9 @@ against `^[A-Za-z0-9_-]+$` before use.
 `pub async fn run(ctx: &Context, args: <Name>Args) -> Result<()>` (args by
 value, like every existing handler); wire it in `src/commands/mod.rs` and add a
 match arm in `src/main.rs`. Add an `insta` snapshot under `tests/` if it
-renders output.
+renders output. Document the command and its flags in the root `README.md`
+subcommand list and `vpnd/README.md`, and update any `docs/RUNBOOK-*.md` that
+covers the workflow it changes.
 
 **Crate conventions** — `vpnd` is one crate with a `[lib]` (`src/lib.rs`) and a
 `[[bin]]`; there is no Cargo workspace. `anyhow::Result` is used end to end;
