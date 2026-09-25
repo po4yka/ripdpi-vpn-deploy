@@ -7,7 +7,7 @@
 # endpoint, measures per-size completion + RTT, and classifies the
 # path's behaviour by the OBSERVED SIGNATURE (size threshold, RTT
 # spike, completion cliff) keyed to the target ASN — never to a carrier
-# or geographic name (root CLAUDE.md hard rule).
+# or geographic name (root AGENTS.md hard rule).
 #
 # Run from a client network you care about — NOT from the VPS itself,
 # exactly like scripts/test-tls-policing.sh. A common pattern is to ssh

@@ -1,6 +1,6 @@
 ---
 name: openspec-propose
-description: Propose a new change with all artifacts generated in one step. Use when the user wants to quickly describe what they want to build and get a complete proposal with design, specs, and tasks ready for implementation.
+description: Generate the full OpenSpec artifact set (proposal, specs, design, tasks) for a portfolio task's linked change. Use when the user wants a ready-for-implementation proposal; creates the portfolio task first if none exists.
 allowed-tools: Bash(./taskctl:*)
 license: MIT
 compatibility: Requires the repository-pinned ./taskctl wrapper.
@@ -41,36 +41,27 @@ When the user is ready to implement, they must start the apply workflow explicit
 
    From their description, derive a kebab-case name (e.g., "add user authentication" → `add-user-auth`).
 
-   **IMPORTANT**: Do NOT proceed without understanding what the user wants to build.
+   Make sure you understand what the user wants to build before creating anything.
 
    If the request contains ambiguity that would materially affect scope, externally observable behavior, compatibility, or acceptance criteria, ask the user before creating the change. For minor details, make a reasonable assumption and record it in the planning artifacts.
 
-2. **Determine the workflow schema**
+2. **Confirm the workflow schema**
 
-   Use the configured default schema unless the user explicitly requests a different workflow.
+   Task-linked changes always use the project schema (`openspec_schema` in `tools/tasking/project.json`, currently `ripdpi-deploy-change`), which `./taskctl new` applies when it scaffolds the change; `taskctl` accepts no other schema. If the user explicitly asks for a different schema or workflow, explain that this task-backed flow supports only the project schema and stop before creating anything, rather than silently producing the default artifact graph. To show the available schemas, run `./taskctl openspec cli schemas --json`.
 
-   **Use a different schema only if the user:**
-   - Explicitly requests a specific schema by name → use `--schema <schema-name>`
-   - Asks to "show workflows" or asks "what workflows" exist → resolve the authoritative root by running `./taskctl openspec cli context --json` from the current working directory. If the user explicitly selected a registered store, use `./taskctl openspec cli context --json --store "<store-id>"`. Then run `./taskctl openspec cli schemas --json` with its working directory set to the returned `root.path` and let them choose. This preserves roots selected by a local `store:` pointer or the global `defaultStore`; `schemas` does not accept `--store`. If context reports only `no_openspec_root`, run `./taskctl openspec cli schemas --json` from the current working directory instead. Do not use this fallback for invalid or unavailable stores.
+3. **Resolve the linked portfolio task**
 
-   Otherwise, omit `--schema` to preserve the configured default.
+   Every OpenSpec change here is linked to a portfolio task, and checkbox IDs in `tasks.md` are never hand-written - they come from that task's execution file. Before creating or reusing a change directory:
+   - Search `./taskctl list --json` for a task with a non-null `openspec_change` (only `spec_mode: required` tasks have one) whose change name or title matches the user's description. A matching task without `openspec_change` is not a match: it waived OpenSpec and cannot be linked afterwards. Tell the user and ask whether to create a separate spec-required task (and whether the waived one should be dropped through its own lifecycle). A new task needs a distinct `--slug`: `./taskctl new` derives the issue file name from the title and refuses when that file already exists, so reusing the waived task's title fails with `task file already exists`.
+   - If exactly one match is found, use that task's `openspec_change` value as `<name>` for the rest of this workflow; `./taskctl new --spec-mode required` already scaffolded it (see step 4).
+   - If more than one plausible match is found, ask the user which task this proposal belongs to.
+   - If no matching task exists, create it first with `$mdtask-create` (`./taskctl new --title "<title>" --kind <kind> --area <area> --priority <priority> --risk <risk> --spec-mode required`). Read the new task's `openspec_change` field back with `./taskctl show <task-id> --json` and use that value as `<name>`; the change directory is already scaffolded (see step 4).
 
-3. **Create the change directory**
+4. **Do not create a separate change directory**
 
-   Choose one schema form below. If a registered store is selected, append `--store "<store-id>"` to that command and each later OpenSpec command shown below that accepts `--store`.
+   Step 3 always ends with a change that `./taskctl new` scaffolded with the project schema. Never run `./taskctl openspec cli new change` in this flow: it would create a change that no portfolio task links to.
 
-   Using the configured default:
-   ```bash
-   ./taskctl openspec cli new change "<name>"
-   ```
-
-   Using an explicitly requested schema:
-   ```bash
-   ./taskctl openspec cli new change "<name>" --schema "<schema-name>"
-   ```
-   This creates a scaffolded change in the planning home resolved by the CLI with `.openspec.yaml`.
-
-4. **Get the artifact build order**
+5. **Get the artifact build order**
    ```bash
    ./taskctl openspec cli status --change "<name>" --json
    ```
@@ -79,7 +70,7 @@ When the user is ready to implement, they must start the apply workflow explicit
    - `artifacts`: list of all artifacts, each with its `status` and its `requires` edges (the artifact IDs it directly depends on)
    - `planningHome`, `changeRoot`, `artifactPaths`, and `actionContext`: path and scope context. Use these instead of assuming repo-local paths.
 
-5. **Create every artifact in the required set**
+6. **Create every artifact in the required set**
 
    Use a todo list to track progress through the artifacts.
 
@@ -100,6 +91,7 @@ When the user is ready to implement, they must start the apply workflow explicit
         - `dependencies`: Completed artifacts to read for context
       - Read any completed dependency files for context - always re-read them from disk, even if you saw them earlier in the conversation (the user may have edited them)
       - If the `instruction` field delegates creation to a specific skill or command, invoke it to produce the artifact instead of writing the file yourself, then verify the artifact file exists at `resolvedOutputPath`
+      - **For the `tasks` artifact specifically**: this file's checkbox IDs are never hand-written. Use `template` and `instruction` to decide what implementation steps are needed, then allocate each one with `./taskctl steps <TASK-ID> add "<step title>"` (optionally `--kind <kind>` / `--priority <priority>`, defaulting to the portfolio task's own values). This appends a properly ID'd checkbox to the change's `tasks.md`, creating the file if it does not exist yet - do not write `- [ ] ...` lines or invent step IDs yourself. `steps add` creates only a `# <TASK-ID>` heading and an `## Execution` list, so after allocating the steps edit `tasks.md` to complete the rest of `template` around that list: the `# <TASK-ID>: <title>` heading, `## Objective` and `## Ownership` above `## Execution`, and `## Verification` below it. `status` checks only that the file exists, so it reads `done` before these sections are written.
       - Otherwise create the artifact file using `template` as the structure and write it to `resolvedOutputPath`. If `resolvedOutputPath` is a glob, follow `instruction` to choose the concrete file path
       - Apply `context` and `rules` as constraints - but do NOT copy them into the file
       - Show brief progress: "Created <artifact-id>"
@@ -118,7 +110,7 @@ When the user is ready to implement, they must start the apply workflow explicit
       - Ask the user to clarify
       - Then continue with creation
 
-6. **Show final status**
+7. **Show final status**
    ```bash
    ./taskctl openspec cli status --change "<name>"
    ```

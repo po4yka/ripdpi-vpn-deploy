@@ -1,6 +1,6 @@
 ---
 name: sdd
-description: Route RIPDPI VPN deployment changes through the risk-based OpenSpec specification workflow.
+description: Route RIPDPI VPN deployment changes through the risk-based OpenSpec specification workflow. Use when deciding whether a change needs an OpenSpec change or may waive it, before creating or starting tracked work.
 ---
 
 # Specification-driven development

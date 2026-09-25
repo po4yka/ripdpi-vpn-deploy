@@ -46,9 +46,10 @@ GENERATED_ASSET_PATHS = frozenset(
         *(f".agents/skills/{name}/SKILL.md" for name in GENERATED_SKILL_NAMES),
     )
 )
+# Codex reads .agents/skills directly; these roots expose the same skills to
+# tools that only scan their own directory.
 COMPATIBILITY_SKILL_ROOTS = {
     ".claude/skills": "../../.agents/skills",
-    ".codex/skills": "../../.claude/skills",
     ".github/skills": "../../.agents/skills",
 }
 STATUS_ORDER = ("doing", "review", "blocked", "todo", "backlog")
@@ -3960,6 +3961,8 @@ def command_new(args: argparse.Namespace) -> int:
             f"invalid slug {slug!r}: must match [a-z0-9][a-z0-9-]* "
             "(no slashes, dots, '..' or absolute paths)"
         )
+    if args.spec_mode == "required":
+        openspec = tool_binary(args.root, "openspec")
     task_id = allocate_id(args.root, args.area, used, config)
     path = args.root / "docs/tasks/issues" / f"{slug}.md"
     if path.exists():
@@ -4010,7 +4013,6 @@ def command_new(args: argparse.Namespace) -> int:
             encoding="utf-8",
         )
     else:
-        openspec = tool_binary(args.root, "openspec")
         result = run_command(
             (
                 str(openspec),

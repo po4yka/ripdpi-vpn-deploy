@@ -53,7 +53,7 @@ Implement tasks from an OpenSpec change.
    - Optional `operationGuidance`: current advisory guidance for apply
 
    **Handle states:**
-   - If `state: "blocked"` (missing artifacts): show message, suggest using `$openspec-continue-change (Codex) or /openspec-continue-change (other agents)` (if it is not installed, run `./taskctl openspec cli status --change "<name>" --json` to see the next artifact and `./taskctl openspec cli instructions <artifact-id> --change "<name>" --json` for how to create it)
+   - If `state: "blocked"` (missing artifacts): this repo has no `openspec-continue-change` skill, so use the in-repo fallback directly - run `./taskctl openspec cli status --change "<name>" --json` to see the next missing artifact and `./taskctl openspec cli instructions <artifact-id> --change "<name>" --json` for how to create it. Planning artifacts (proposal, specs, design, tasks) come from `$openspec-propose`; tell the user to re-run it to fill the gap.
    - If `state: "all_done"`: congratulate, suggest archive
    - Otherwise: proceed to implementation
 
@@ -96,7 +96,7 @@ Implement tasks from an OpenSpec change.
    - Show which task is being worked on
    - Make the code changes required
    - Keep changes minimal and focused
-   - Mark task complete in the tasks file: `- [ ]` → `- [x]`
+   - Mark the step complete with `./taskctl steps <task-id> done <step-id>`. `done` TOGGLES the checkbox (`- [ ]` <-> `- [x]`) rather than setting it, so run `./taskctl steps <task-id> view` first to confirm the step is still open, and never call `done` on the same step twice without re-checking its state in between. Never hand-edit the checkbox in the tasks file.
    - Continue to next task
 
    **Pause if:**
@@ -105,64 +105,9 @@ Implement tasks from an OpenSpec change.
    - Error or blocker encountered → report and wait for guidance
    - User interrupts
 
-7. **On completion or pause, show status**
+7. **On completion or pause, report status**
 
-   Display:
-   - Tasks completed this session
-   - Overall progress: "N/M tasks complete"
-   - If all done: suggest archive
-   - If paused: explain why and wait for guidance
-
-**Output During Implementation**
-
-```
-## Implementing: <change-name> (schema: <schema-name>)
-
-Working on task 3/7: <task description>
-[...implementation happening...]
-✓ Task complete
-
-Working on task 4/7: <task description>
-[...implementation happening...]
-✓ Task complete
-```
-
-**Output On Completion**
-
-```
-## Implementation Complete
-
-**Change:** <change-name>
-**Schema:** <schema-name>
-**Progress:** 7/7 tasks complete ✓
-
-### Completed This Session
-- [x] Task 1
-- [x] Task 2
-...
-
-All tasks complete! You can archive this change with `$openspec-archive-change (Codex) or /openspec-archive-change (other agents)`.
-```
-
-**Output On Pause (Issue Encountered)**
-
-```
-## Implementation Paused
-
-**Change:** <change-name>
-**Schema:** <schema-name>
-**Progress:** 4/7 tasks complete
-
-### Issue Encountered
-<description of the issue>
-
-**Options:**
-1. <option 1>
-2. <option 2>
-3. Other approach
-
-What would you like to do?
-```
+   Keep progress updates short. Report the change and schema, `N/M` steps complete, the steps completed this session, and either the next step (`$openspec-archive-change` once everything is done and reviewed) or the blocking issue with concrete options, then wait for guidance.
 
 **Guardrails**
 - Keep going through tasks until done or blocked
@@ -170,7 +115,7 @@ What would you like to do?
 - If task is ambiguous, pause and ask before implementing
 - If implementation reveals issues, pause and suggest artifact updates
 - Keep code changes minimal and scoped to each task
-- Update task checkbox immediately after completing each task
+- Update the step's checkbox immediately after completing each task, via `./taskctl steps <task-id> done <step-id>` (view its state first; never hand-edit `- [ ]`/`- [x]`, and never call `done` twice in a row without re-checking)
 - Pause on errors, blockers, or unclear requirements - don't guess
 - Use contextFiles from CLI output, don't assume specific file names
 - Do not use context or operation guidance as proof that a task is complete

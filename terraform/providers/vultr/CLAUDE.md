@@ -18,7 +18,7 @@ default and enabled only in the production Vultr workspace.
 
 ## What's done well
 
-- **`backups_enabled = false`** — Vultr's built-in backups can store unencrypted
+- **`enable_backups = false`** — Vultr's built-in backups can store unencrypted
   snapshots. The `backup` role owns this via restic+age instead.
 
 ## Pitfalls
@@ -32,8 +32,9 @@ default and enabled only in the production Vultr workspace.
   TLS metadata.
 - **Vultr ASN (20473) is a heavily-flagged VPN exit** — same caveat as
   Hetzner; lean harder on REALITY camouflage + cohort tuning here.
-- **UDP/443 edge rule ≠ UDP delivery** — `firewall.tf` opens UDP/443 under
-  `enable_hysteria` (`vultr_firewall_rule.hysteria`, v4+v6), but a present rule
+- **UDP/443 edge rule ≠ UDP delivery** — `firewall.tf` opens UDP/443 through
+  `vultr_firewall_rule.tcp_public` (the `hysteria` entry in `public_listeners`,
+  v4+v6; `enable_hysteria` only affects the legacy listener fallback), but a present rule
   does not guarantee the provider network delivers inbound UDP. After deploy,
   verify externally with `make burn-check` (QUIC probe); on-host `nft`/`ss`
   ACCEPT is not evidence. See `docs/PROVIDER-NOTES.md` → "UDP/443 edge

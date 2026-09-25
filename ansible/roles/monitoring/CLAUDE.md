@@ -18,7 +18,8 @@ without granting those producers ownership or cross-producer replacement.
 **Xray diagnostics exclude user identity at the source** — per-user counters
 stay disabled. A hardened one-shot queries loopback StatsService every 60
 seconds and exports only repository-owned technical inbound/outbound tags. It
-runs as the local node_exporter account so its atomic textfile can remain 0600
+runs as node_exporter's own account (`prometheus` by default,
+`monitoring.node_exporter_user`) so its atomic textfile can remain 0600
 instead of granting group or world read access.
 
 ## What's done well
@@ -39,7 +40,9 @@ instead of granting group or world read access.
 ## Pitfalls
 
 - **node_exporter on a public port = fingerprint** — never bind anything
-  other than 127.0.0.1. Verified by `verify.yml`.
+  other than 127.0.0.1. The role's Molecule verify asserts the loopback bind;
+  `verify.yml` only scrapes the loopback address and does not prove the
+  port is closed publicly.
 - **Logrotate postrotate signal** — the Nginx logrotate stanza uses
   `systemctl reload nginx`. If nginx is not running (e.g. on a Hysteria-only
   node), the `|| true` guard prevents a failure, but confirm the service name

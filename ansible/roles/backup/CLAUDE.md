@@ -26,10 +26,6 @@ evidence.
 
 ## What's done well
 
-- **Pre-restore validation** — `RUNBOOK-restore.md` requires checksum
-  verification before any restore touches `/etc/`. The role's restore
-  playbook refuses to overwrite if the target file's hash matches the backup
-  (idempotent restore).
 - **Daily by default; manual trigger via `scripts/`** — no surprise weekend
   backup storms.
 - **Monthly restore drill** — restores the exact latest snapshot into a

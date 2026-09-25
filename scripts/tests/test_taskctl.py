@@ -539,9 +539,9 @@ class TaskctlContractTest(TaskctlFixture):
             taskctl.validate_generated_assets(self.root)
 
     def test_generated_skill_alias_cannot_be_retargeted(self) -> None:
-        alias = self.root / ".codex/skills/repo-task-board"
+        alias = self.root / ".claude/skills/repo-task-board"
         alias.unlink()
-        alias.symlink_to("../../.agents/skills/repo-task-board")
+        alias.symlink_to("../../.github/skills/repo-task-board")
 
         with self.assertRaisesRegex(taskctl.ContractError, "alias retargeted"):
             taskctl.validate_generated_assets(self.root)
@@ -581,9 +581,6 @@ class TaskctlContractTest(TaskctlFixture):
         }
         expected_aliases = {
             (f".claude/skills/{name}", f"../../.agents/skills/{name}")
-            for name in skill_names
-        } | {
-            (f".codex/skills/{name}", f"../../.claude/skills/{name}")
             for name in skill_names
         } | {
             (f".github/skills/{name}", f"../../.agents/skills/{name}")
@@ -796,6 +793,29 @@ class TaskctlContractTest(TaskctlFixture):
             taskctl.command_new(args)
 
         self.assertEqual(before, set(self.root.glob("docs/tasks/issues/*.md")))
+
+    def test_new_rejects_missing_openspec_before_writing(self) -> None:
+        self.add_simple_task()
+        before = set(self.root.glob("docs/tasks/*/*.md"))
+        args = argparse.Namespace(
+            root=self.root,
+            title="Add spec backed check",
+            kind="bug",
+            area="ci",
+            priority="medium",
+            risk="standard",
+            owner="test",
+            parent=None,
+            slug=None,
+            spec_mode="required",
+            spec_reason=None,
+            openspec_change=None,
+        )
+
+        with self.assertRaisesRegex(taskctl.ContractError, "missing pinned openspec"):
+            taskctl.command_new(args)
+
+        self.assertEqual(before, set(self.root.glob("docs/tasks/*/*.md")))
 
     def test_new_task_uses_supported_mdtask_priority_tokens(self) -> None:
         self.add_simple_task()

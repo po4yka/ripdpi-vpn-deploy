@@ -102,7 +102,7 @@ scripts/idle-cycle-measure.sh \
 ```
 
 The script rejects vantage labels that smuggle in carrier / ISP /
-operator identifiers (per the hard rules in root CLAUDE.md). Use
+operator identifiers (per the hard rules in root AGENTS.md). Use
 "residential-vantage-A", "datacenter-vantage-B" or similar technical-
 signature labels.
 
