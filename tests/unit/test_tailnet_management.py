@@ -1436,6 +1436,7 @@ def test_installed_ansible_checks_exact_cli_routes_before_later_tasks(
                     "vars": {
                         "_tailnet_existing_cli_candidates": ["/usr/bin/tailscale"],
                         "_tailnet_existing_status": {
+                            "rc": 0,
                             "stdout": '{"BackendState":"Running"}'
                         },
                         "_tailnet_existing_preferences": {
@@ -1538,6 +1539,64 @@ def test_role_pins_the_official_signed_stable_package_source() -> None:
     assert "tailnet_management.install_package" not in tasks
 
 
+@pytest.mark.parametrize(
+    ("changes", "allowed"),
+    [
+        ({}, True),
+        ({"_tailnet_inactive_package_owner": {"rc": 0, "stdout": "other: /usr/bin/tailscale"}}, False),
+        ({"_tailnet_inactive_package_version": {"rc": 0, "stdout": "1.101.0"}}, False),
+        ({"_tailnet_inactive_identity": {"stat": {"exists": True}}}, False),
+        ({"_tailnet_inactive_daemon": {"rc": 0, "stdout": "active"}}, False),
+        ({"tailnet_management_install_package": False}, False),
+        ({"_tailnet_existing_cli_candidates": ["/usr/local/bin/tailscale"]}, False),
+    ],
+)
+def test_inactive_tailnet_cli_resumes_only_pinned_identity_free_package(
+    tmp_path, changes, allowed
+) -> None:
+    tasks = yaml.safe_load((ROLE / "tasks/bootstrap.yml").read_text())
+    names = {
+        "Refuse an inactive CLI outside package-managed first enrollment",
+        "Refuse unsafe partial Tailnet installation before host writes",
+    }
+    guards = [task for task in tasks if task["name"] in names]
+    values = {
+        "tailnet_management_install_package": True,
+        "tailnet_management_package_version": "1.102.3",
+        "_tailnet_existing_cli_candidates": ["/usr/bin/tailscale"],
+        "_tailnet_existing_status": {"rc": 1},
+        "_tailnet_inactive_package_owner": {"rc": 0, "stdout": "tailscale: /usr/bin/tailscale"},
+        "_tailnet_inactive_package_version": {"rc": 0, "stdout": "1.102.3"},
+        "_tailnet_inactive_identity": {"stat": {"exists": False}},
+        "_tailnet_inactive_daemon": {"rc": 0, "stdout": "inactive"},
+    }
+    values.update(changes)
+    playbook = tmp_path / "inactive-package-guard.yml"
+    playbook.write_text(yaml.safe_dump([{
+        "hosts": "localhost",
+        "gather_facts": False,
+        "vars": values,
+        "tasks": [*guards, {"ansible.builtin.debug": {"msg": "GUARD_PASSED"}}],
+    }]))
+    result = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", "-c", "local", str(playbook)],
+        env={
+            "PATH": os.environ["PATH"],
+            "HOME": str(tmp_path),
+            "LANG": "en_US.UTF-8",
+            "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
+            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
+            "ANSIBLE_NOCOLOR": "1",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert (result.returncode == 0) is allowed, result.stdout + result.stderr
+    assert ("GUARD_PASSED" in result.stdout) is allowed
+
+
 def test_role_preflights_existing_tailnet_before_every_host_write() -> None:
     tasks = yaml.safe_load((ROLE / "tasks/bootstrap.yml").read_text())
     names = [task["name"] for task in tasks]
@@ -1561,6 +1620,15 @@ def test_role_preflights_existing_tailnet_before_every_host_write() -> None:
         names.index("Refuse unsupported existing Tailnet state before host writes")
         < first_write
     )
+    for name in (
+        "Refuse an inactive CLI outside package-managed first enrollment",
+        "Inspect inactive Tailscale package ownership before host writes",
+        "Inspect inactive Tailscale package version before host writes",
+        "Inspect inactive Tailnet identity before host writes",
+        "Inspect inactive Tailscale daemon before host writes",
+        "Refuse unsafe partial Tailnet installation before host writes",
+    ):
+        assert status < names.index(name) < first_write
     assert (
         names.index("Refuse unmanaged running Tailnet preferences before host writes")
         < first_write

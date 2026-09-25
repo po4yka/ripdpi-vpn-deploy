@@ -72,7 +72,82 @@
       - --json
   register: _tailnet_existing_status
   changed_when: false
+  failed_when: false
   when: _tailnet_existing_cli_candidates | length == 1
+  no_log: true
+
+- name: Refuse an inactive CLI outside package-managed first enrollment
+  ansible.builtin.assert:
+    that:
+      - tailnet_management_install_package | bool
+      - _tailnet_existing_cli_candidates == ['/usr/bin/tailscale']
+    fail_msg: An inactive existing Tailnet command is not a resumable package install.
+  when:
+    - _tailnet_existing_cli_candidates | length == 1
+    - _tailnet_existing_status.rc != 0
+  no_log: true
+
+- name: Inspect inactive Tailscale package ownership before host writes
+  ansible.builtin.command:
+    argv: [dpkg-query, -S, /usr/bin/tailscale]
+  register: _tailnet_inactive_package_owner
+  changed_when: false
+  failed_when: false
+  when:
+    - _tailnet_existing_cli_candidates | length == 1
+    - _tailnet_existing_status.rc != 0
+  no_log: true
+
+- name: Inspect inactive Tailscale package version before host writes
+  ansible.builtin.command:
+    argv: [dpkg-query, -W, '-f=${Version}', tailscale]
+  register: _tailnet_inactive_package_version
+  changed_when: false
+  failed_when: false
+  when:
+    - _tailnet_existing_cli_candidates | length == 1
+    - _tailnet_existing_status.rc != 0
+  no_log: true
+
+- name: Inspect inactive Tailnet identity before host writes
+  ansible.builtin.stat:
+    path: /var/lib/tailscale/tailscaled.state
+    follow: false
+    get_attributes: false
+    get_checksum: false
+    get_mime: false
+  register: _tailnet_inactive_identity
+  changed_when: false
+  when:
+    - _tailnet_existing_cli_candidates | length == 1
+    - _tailnet_existing_status.rc != 0
+  no_log: true
+
+- name: Inspect inactive Tailscale daemon before host writes
+  ansible.builtin.command:
+    argv: [systemctl, show, --value, -p, ActiveState, tailscaled.service]
+  register: _tailnet_inactive_daemon
+  changed_when: false
+  failed_when: false
+  when:
+    - _tailnet_existing_cli_candidates | length == 1
+    - _tailnet_existing_status.rc != 0
+  no_log: true
+
+- name: Refuse unsafe partial Tailnet installation before host writes
+  ansible.builtin.assert:
+    that:
+      - _tailnet_inactive_package_owner.rc == 0
+      - "_tailnet_inactive_package_owner.stdout == 'tailscale: /usr/bin/tailscale'"
+      - _tailnet_inactive_package_version.rc == 0
+      - _tailnet_inactive_package_version.stdout == tailnet_management_package_version
+      - not _tailnet_inactive_identity.stat.exists
+      - _tailnet_inactive_daemon.rc == 0
+      - _tailnet_inactive_daemon.stdout == 'inactive'
+    fail_msg: Inactive Tailnet state is not a pinned, identity-free package install.
+  when:
+    - _tailnet_existing_cli_candidates | length == 1
+    - _tailnet_existing_status.rc != 0
   no_log: true
 
 - name: Refuse unsupported existing Tailnet state before host writes
@@ -80,7 +155,9 @@
     that:
       - (_tailnet_existing_status.stdout | from_json).BackendState in ['Running', 'NeedsLogin']
     fail_msg: Existing Tailnet state is unsupported for managed enrollment.
-  when: _tailnet_existing_cli_candidates | length == 1
+  when:
+    - _tailnet_existing_cli_candidates | length == 1
+    - _tailnet_existing_status.rc == 0
   no_log: true
 
 - name: Read existing running Tailnet preferences before host writes
@@ -94,6 +171,7 @@
   changed_when: false
   when:
     - _tailnet_existing_cli_candidates | length == 1
+    - _tailnet_existing_status.rc == 0
     - (_tailnet_existing_status.stdout | from_json).BackendState == 'Running'
   no_log: true
 
@@ -113,6 +191,7 @@
     fail_msg: Existing Tailnet preferences are outside the managed policy.
   when:
     - _tailnet_existing_cli_candidates | length == 1
+    - _tailnet_existing_status.rc == 0
     - (_tailnet_existing_status.stdout | from_json).BackendState == 'Running'
   no_log: true
 
