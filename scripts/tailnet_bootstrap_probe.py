@@ -69,6 +69,16 @@ def preflight_tailnet_command(executable: Path, package_version: str) -> None:
         raise ProbeError("existing-tailnet-identity")
 
 
+def preflight_tailnet_commands(package_version):
+    present = [executable for executable in (Path("/usr/bin/tailscale"), Path("/usr/local/bin/tailscale"))
+               if os.path.lexists(executable)]
+    for executable in present:
+        preflight_tailnet_command(executable, package_version)
+    # Installing the package would start tailscaled on a leftover identity.
+    if not present and os.path.lexists("/var/lib/tailscale/tailscaled.state"):
+        raise ProbeError("existing-tailnet-identity")
+
+
 def nftables_empty():
     """Dump table existence through Linux UAPI; no nft binary or guest file needed.
 
@@ -320,7 +330,5 @@ def probe(binding, user, address, *, fragment_parser, preinstall=False, package_
                 raise ProbeError("unowned-firewall-configuration")
             if _firewall_service() != {"ActiveState": "inactive", "UnitFileState": "disabled"}:
                 raise ProbeError("unowned-empty-firewall-service")
-        for executable in (Path("/usr/bin/tailscale"), Path("/usr/local/bin/tailscale")):
-            if executable.exists():
-                preflight_tailnet_command(executable, package_version)
+        preflight_tailnet_commands(package_version)
     return {"user": user, "host": peer, "addr": peer, "laddr": local, "lport": port}

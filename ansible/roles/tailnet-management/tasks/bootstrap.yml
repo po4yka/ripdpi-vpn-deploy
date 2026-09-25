@@ -123,9 +123,19 @@
     get_mime: false
   register: _tailnet_inactive_identity
   changed_when: false
-  when:
-    - _tailnet_existing_cli_candidates | length == 1
-    - _tailnet_existing_status.rc != 0
+  when: >-
+    _tailnet_existing_cli_candidates | length == 0 or
+    _tailnet_existing_status.rc != 0
+  no_log: true
+
+- name: Refuse a leftover Tailnet identity without a Tailscale command
+  ansible.builtin.assert:
+    that:
+      - not _tailnet_inactive_identity.stat.exists
+    fail_msg: >-
+      Tailnet identity state exists without a Tailscale command; installing the
+      package would reactivate an unconfirmed identity.
+  when: _tailnet_existing_cli_candidates | length == 0
   no_log: true
 
 - name: Inspect inactive Tailscale daemon before host writes
