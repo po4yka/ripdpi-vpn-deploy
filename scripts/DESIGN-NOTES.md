@@ -47,7 +47,9 @@ resumable only for the dpkg-owned, exact-version CLI with no identity and an
 inactive daemon; a `NeedsLogin` CLI needs the same package ownership and version.
 The later Ansible prewrite guard independently checks both. The private config's
 provider and environment must equal the inventory host's `provider`/`env`, so a
-staging node cannot skip its cleanup manifest by claiming `prod`.
+staging node cannot skip its cleanup manifest by claiming `prod`. Every
+pre-write checkpoint reloads that manifest semantically, so a run that crosses
+`expiry_at` during readiness or installation stops before the next host write.
 
 **Vultr secondary IPv4 inventory is live-gated** — Terraform output proves allocation only. `render-inventory.sh` polls the primary SSH endpoint and publishes `honeypot_listen_addr` only after the exact IPv4 appears on a guest interface.
 

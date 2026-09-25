@@ -425,6 +425,13 @@ def _publish(inputs, capability, contexts, parent_identity):
         os.close(fd)
 
 
+def _verify_inputs(inputs):
+    """Recheck frozen inputs; staging also rechecks cleanup authority and expiry now."""
+    for fence in inputs.fences:
+        deploy.verify_input_fence(fence)
+    _cleanup_fences(inputs.config, inputs.host)
+
+
 def run(inputs, auth_key):
     from bootstrap_readiness import wait_for_bootstrap
     from sshd_bundle_source import bundle_manifest
@@ -432,8 +439,7 @@ def run(inputs, auth_key):
         tailnet._validate_auth_key(auth_key)
     parent_identity = inputs.output_parent_identity
     binding = _binding(inputs)
-    for fence in inputs.fences:
-        deploy.verify_input_fence(fence)
+    _verify_inputs(inputs)
     wait_for_bootstrap(inputs.ssh[:-1], environment=inputs.environment)
     generation, _manifest = bundle_manifest()
     deploy.require_recovery_foundation(inputs.ssh, generation, inputs.environment)
@@ -442,8 +448,7 @@ def run(inputs, auth_key):
     if existing["status"] == "configured":
         configured = _capability(inputs, existing)
         contexts = _proofs(inputs, configured)
-        for fence in inputs.fences:
-            deploy.verify_input_fence(fence)
+        _verify_inputs(inputs)
         _require_source(inputs)
         _publish(inputs, configured, contexts, parent_identity)
         return {"status": "configured", "changed": False, "vpn_acceptance": "not-performed"}
@@ -452,12 +457,10 @@ def run(inputs, auth_key):
     if auth_key is None:
         raise BootstrapError("bootstrap-enrollment-key-required")
     _probe(inputs, inputs.host, preinstall=True)
-    for fence in inputs.fences:
-        deploy.verify_input_fence(fence)
+    _verify_inputs(inputs)
     if installed != "ready":
         _install(inputs)
-    for fence in inputs.fences:
-        deploy.verify_input_fence(fence)
+    _verify_inputs(inputs)
     _require_source(inputs)
     deploy.require_recovery_foundation(inputs.ssh, generation, inputs.environment)
     # The guest arms before all access writes. If an enroll reply is lost,
@@ -469,8 +472,7 @@ def run(inputs, auth_key):
         except BootstrapError:
             pending = _capability(inputs, _rpc(inputs, "status", binding=binding))
         contexts = _proofs(inputs, pending)
-        for fence in inputs.fences:
-            deploy.verify_input_fence(fence)
+        _verify_inputs(inputs)
         _require_source(inputs)
         try:
             configured = _capability(inputs, _rpc(inputs, "confirm", capability=pending, contexts=contexts))

@@ -483,6 +483,43 @@ def test_preinstall_existing_daemon_requires_needs_login_package(controller, mon
             operation()
 
 
+@pytest.mark.parametrize(("present", "allowed"), [
+    (set(), True), ({"/var/lib/tailscale/tailscaled.state"}, False),
+    ({"/usr/bin/tailscale", "/var/lib/tailscale/tailscaled.state"}, True),
+])
+def test_preinstall_refuses_leftover_identity_without_command(controller, monkeypatch, present, allowed):
+    import tailnet_bootstrap_probe as probe
+
+    checked = []
+    monkeypatch.setattr(probe.os.path, "lexists", lambda path: str(path) in present)
+    monkeypatch.setattr(probe, "preflight_tailnet_command", lambda executable, _version: checked.append(str(executable)))
+    if allowed:
+        probe.preflight_tailnet_commands("1.102.3")
+        assert checked == sorted(present - {"/var/lib/tailscale/tailscaled.state"})
+    else:
+        with pytest.raises(probe.ProbeError):
+            probe.preflight_tailnet_commands("1.102.3")
+
+
+def test_cleanup_authority_is_rechecked_before_each_host_write(controller, inputs, monkeypatch):
+    selected, pending, _ = execution_fixture(controller, inputs, monkeypatch)
+    monkeypatch.setattr(controller, "_installed", lambda *_: "absent")
+    events = []
+    def cleanup(config, host):
+        events.append("cleanup")
+        if events.count("install"):
+            raise controller.BootstrapError("cleanup-ownership-refused")
+        return []
+    monkeypatch.setattr(controller, "_cleanup_fences", cleanup)
+    monkeypatch.setattr(controller, "_install", lambda *_: events.append("install"))
+    monkeypatch.setattr(controller, "_rpc", lambda _inputs, action, **_values: (
+        events.append(action), {"status": "idle"} if action == "status" else pending)[1])
+    with pytest.raises(controller.BootstrapError, match="cleanup-ownership-refused"):
+        controller.run(selected, "tskey-auth-fixture_key")
+    # An expired manifest after installation stops the run before enrollment.
+    assert events == ["cleanup", "cleanup", "install", "cleanup"]
+
+
 def test_input_change_during_install_refuses_before_enrollment(controller, inputs, monkeypatch):
     selected, pending, _ = execution_fixture(controller, inputs, monkeypatch)
     monkeypatch.setattr(controller, "_installed", lambda *_: "absent")
