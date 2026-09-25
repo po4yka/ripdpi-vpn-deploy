@@ -41,6 +41,15 @@ acceptance harnesses; SSH recovery installation.
 
 ## What's done well
 
+Staging cleanup has one private controller journal per provider/account/server
+UUID. Keep publication/reissue and receipt operations under its shared lock;
+`destroy.sh` inherits that lock through Terraform. Alternative artifact paths
+must never create a second reservation or recover an active controller. Reissue
+binds the previous generation, original state path and unchanged deadlines.
+An exact retry of a committed publication is acknowledged only when the journal's
+prior generation matches the retried request.
+Independent controller homes are not a supported shared-ownership mechanism.
+
 - **`set -euo pipefail` everywhere** — fail-loud is the default.
 - **`shellcheck` in CI** — the `ci.yml` workflow runs shellcheck on every
   `.sh` file; warnings break the build.
@@ -54,6 +63,11 @@ acceptance harnesses; SSH recovery installation.
   matches the host architecture or is complete.
 
 ## Pitfalls
+
+- **Bootstrap transport is node-scoped, never global extra vars.** Ansible
+  extra vars override `delegate_to: localhost` too, redirecting controller
+  validation to the VPS. Keep pinned connection settings in the private
+  one-node inventory group and exercise real Ansible delegation in tests.
 
 - **Mutation builds require sibling inputs** — `test-vpnd-mutants.sh` copies
   tracked working-tree files before using cargo-mutants in-place in that owned

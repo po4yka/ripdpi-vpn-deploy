@@ -16,3 +16,4 @@
   loop_control:
     label: "{{ item.name }}"
   changed_when: true
+  when: not ansible_check_mode

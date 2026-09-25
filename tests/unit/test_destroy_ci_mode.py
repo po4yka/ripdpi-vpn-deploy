@@ -8,6 +8,8 @@ import os
 import shlex
 import shutil
 import stat
+import sys
+import staging_lifecycle
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -19,6 +21,13 @@ SERVER_UUID = "00112233-4455-4677-8899-aabbccddeeff"
 STORAGE_UUID = "ffeeddcc-bbaa-4988-8766-554433221100"
 
 
+@pytest.fixture(autouse=True)
+def _isolated_controller_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "controller-home"
+    home.mkdir(mode=0o700)
+    monkeypatch.setenv("HOME", str(home))
+
+
 def _test_repo(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     scripts = root / "scripts"
@@ -27,6 +36,7 @@ def _test_repo(tmp_path: Path) -> Path:
         "check-vultr-control-plane.py",
         "destroy.sh",
         "staging-cleanup-guard.py",
+        "staging_lifecycle.py",
         "vultr-staging-cleanup-guard.py",
         "terraform-env.sh",
     ):
@@ -54,6 +64,7 @@ def _terraform_stub(tmp_path: Path, *, fail_apply: bool = False) -> Path:
     python = tmp_path / "python3"
     python.write_text(
         "#!/usr/bin/env bash\n"
+        f'if [[ "${{1##*/}}" == staging_lifecycle.py ]]; then exec {shlex.quote(sys.executable)} "$@"; fi\n'
         '[[ -n "${PYTHON_STUB_LOG:-}" ]] && printf \'%s\\n\' "$*" >> "$PYTHON_STUB_LOG"\n'
         'if [[ "${FAIL_CONTROL_PLANE:-false}" == true ]]; then\n'
         '  count=0; [[ ! -f "$CONTROL_PLANE_COUNT" ]] || read -r count < "$CONTROL_PLANE_COUNT"\n'
@@ -210,7 +221,9 @@ def _run_staging_make(
     )
 
 
-@pytest.mark.parametrize("goal", ["staging-cleanup-manifest", "staging-destroy"])
+@pytest.mark.parametrize(
+    "goal", ["staging-cleanup-manifest", "staging-cleanup-reissue", "staging-destroy"]
+)
 @pytest.mark.parametrize(
     "credential",
     [
@@ -243,7 +256,9 @@ def test_staging_make_refuses_command_line_credentials_before_expansion(
     assert not (tmp_path / "make-git-spy.log").exists()
 
 
-@pytest.mark.parametrize("goal", ["staging-cleanup-manifest", "staging-destroy"])
+@pytest.mark.parametrize(
+    "goal", ["staging-cleanup-manifest", "staging-cleanup-reissue", "staging-destroy"]
+)
 @pytest.mark.parametrize("mode", ["primary", "alias", "token"])
 def test_staging_make_canonicalizes_one_literal_ambient_credential_mode(
     tmp_path: Path, goal: str, mode: str
@@ -353,7 +368,9 @@ def test_staging_make_exports_only_the_selected_provider_credential(
     )
 
 
-@pytest.mark.parametrize("goal", ["staging-cleanup-manifest", "staging-destroy"])
+@pytest.mark.parametrize(
+    "goal", ["staging-cleanup-manifest", "staging-cleanup-reissue", "staging-destroy"]
+)
 @pytest.mark.parametrize(
     "credential_env",
     [
@@ -440,6 +457,42 @@ def _run(
     command.extend(destroy_args or [])
     if ambient_umask is not None:
         command = ["bash", "-c", f'umask {ambient_umask}; exec "$@"', "bash", *command]
+    guard_name = (
+        "vultr-staging-cleanup-guard.py"
+        if provider == "vultr"
+        else "staging-cleanup-guard.py"
+    )
+    guard_is_stub = (
+        (root / "scripts" / guard_name).read_text().startswith("#!/usr/bin/env bash")
+    )
+    if guard_is_stub and env_name.startswith("ci-staging-"):
+        # These tests own only the inner shell/guard protocol. Give that shell
+        # a real inherited lock descriptor, like the outer controller does.
+        # Separate lifecycle tests exercise registration and the outer process.
+        fixture = (
+            {
+                "provider": "vultr",
+                "provider_account_binding": "fixture-account",
+                "resources": {"server_id": SERVER_UUID},
+            }
+            if provider == "vultr"
+            else {
+                "provider": "upcloud",
+                "provider_account_username": "fixture-account",
+                "server_uuid": SERVER_UUID,
+            }
+        )
+        with staging_lifecycle.locked(fixture) as journal:
+            env["VPN_STAGING_LOCK_FD"] = str(journal.lock_fd)
+            return subprocess.run(
+                command,
+                cwd=root,
+                env=env,
+                text=True,
+                capture_output=True,
+                input=input_text,
+                pass_fds=(journal.lock_fd,),
+            )
     return subprocess.run(
         command,
         cwd=root,
@@ -450,7 +503,9 @@ def _run(
     )
 
 
-@pytest.mark.parametrize("goal", ["staging-cleanup-manifest", "staging-destroy"])
+@pytest.mark.parametrize(
+    "goal", ["staging-cleanup-manifest", "staging-cleanup-reissue", "staging-destroy"]
+)
 @pytest.mark.parametrize("field", ["ENV", "PROVIDER"])
 def test_staging_make_captures_labels_before_eager_path_expansion(
     tmp_path: Path, goal: str, field: str
@@ -586,7 +641,7 @@ def test_staging_destroy_make_ignores_free_form_destroy_args(tmp_path: Path) -> 
     "goals",
     [
         ["staging-destroy", "help"],
-        ["staging-cleanup-manifest", "staging-destroy"],
+        ["staging-cleanup-manifest", "staging-cleanup-reissue", "staging-destroy"],
         ["staging-destroy", "staging-destroy"],
     ],
 )
@@ -667,7 +722,7 @@ def _real_staging_manifest(root: Path, private: Path, environment: str) -> Path:
     manifest = private / "manifest.json"
     state_bytes = state_path.read_bytes()
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "provider": "upcloud",
         "environment": environment,
         "workspace": environment,
@@ -686,10 +741,7 @@ def _real_staging_manifest(root: Path, private: Path, environment: str) -> Path:
         .replace("+00:00", "Z"),
         "expiry_at": (created + timedelta(hours=47)).isoformat().replace("+00:00", "Z"),
     }
-    manifest.write_text(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
-    )
-    manifest.chmod(0o600)
+    staging_lifecycle.publish(payload, manifest)
     return manifest
 
 
@@ -889,6 +941,9 @@ def test_staging_destroy_refuses_foreign_account_before_override_or_terraform(
 
     assert result.returncode == 9
     assert guard_log.read_text().splitlines() == [
+        f"recover-evidence --manifest {manifest} "
+        f"--evidence-output {evidence} --expected-provider upcloud "
+        f"--expected-environment {env_name}",
         f"authorize-reserve-evidence --manifest {manifest} "
         f"--evidence-output {evidence} --expected-provider upcloud "
         f"--expected-environment {env_name}",
@@ -1016,51 +1071,52 @@ def test_staging_destroy_refuses_cross_environment_manifest_before_override_or_t
     assert not (stub.parent / "terraform.log").exists()
 
 
+@pytest.mark.parametrize("kind", ["existing", "symlink", "unsafe-parent"])
 def test_staging_destroy_refuses_unsafe_evidence_before_override_or_terraform(
     tmp_path: Path,
+    kind: str,
 ) -> None:
-    for kind in ("existing", "symlink", "unsafe-parent"):
-        case = tmp_path / kind
-        root = _test_repo(case)
-        env_name = f"ci-staging-{kind}"
-        (
-            root / f"terraform/providers/upcloud/environments/{env_name}.tfvars"
-        ).write_text('server_name = "vpn-ci-staging.test"\n')
-        private = case / "private-real"
-        manifest = _real_staging_manifest(root, private, env_name)
-        if kind == "unsafe-parent":
-            evidence_parent = case / "unsafe-evidence"
-            evidence_parent.mkdir(mode=0o755)
-            evidence_parent.chmod(0o755)
-            evidence = evidence_parent / "post-destroy.json"
+    case = tmp_path / kind
+    root = _test_repo(case)
+    env_name = f"ci-staging-{kind}"
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci-staging.test"\n'
+    )
+    private = case / "private-real"
+    manifest = _real_staging_manifest(root, private, env_name)
+    if kind == "unsafe-parent":
+        evidence_parent = case / "unsafe-evidence"
+        evidence_parent.mkdir(mode=0o755)
+        evidence_parent.chmod(0o755)
+        evidence = evidence_parent / "post-destroy.json"
+    else:
+        evidence = private / "post-destroy.json"
+        if kind == "existing":
+            evidence.write_text("existing\n")
+            evidence.chmod(0o600)
         else:
-            evidence = private / "post-destroy.json"
-            if kind == "existing":
-                evidence.write_text("existing\n")
-                evidence.chmod(0o600)
-            else:
-                target = private / "target.json"
-                target.write_text("target\n")
-                target.chmod(0o600)
-                evidence.symlink_to(target.name)
-        stub = _terraform_stub(case)
-        (case / "python3").unlink()
+            target = private / "target.json"
+            target.write_text("target\n")
+            target.chmod(0o600)
+            evidence.symlink_to(target.name)
+    stub = _terraform_stub(case)
+    (case / "python3").unlink()
 
-        result = _run(
-            root,
-            stub.parent,
-            env_name,
-            destroy_args=[
-                "--staging-manifest",
-                str(manifest),
-                "--post-destroy-evidence",
-                str(evidence),
-            ],
-        )
+    result = _run(
+        root,
+        stub.parent,
+        env_name,
+        destroy_args=[
+            "--staging-manifest",
+            str(manifest),
+            "--post-destroy-evidence",
+            str(evidence),
+        ],
+    )
 
-        assert result.returncode == 1, (kind, result.stderr)
-        assert not (root / "terraform/providers/upcloud/_destroy_override.tf").exists()
-        assert not (stub.parent / "terraform.log").exists()
+    assert result.returncode == 1, (kind, result.stderr)
+    assert not (root / "terraform/providers/upcloud/_destroy_override.tf").exists()
+    assert not (stub.parent / "terraform.log").exists()
 
 
 def test_staging_destroy_validates_manifest_and_plan_before_apply_then_verifies_absence(
@@ -1109,6 +1165,10 @@ def test_staging_destroy_validates_manifest_and_plan_before_apply_then_verifies_
     assert result.returncode == 0, result.stderr
     guard_calls = guard_log.read_text().splitlines()
     target = f"--expected-provider upcloud --expected-environment {env_name}"
+    assert guard_calls[0] == (
+        f"recover-evidence --manifest {manifest} --evidence-output {evidence} {target}"
+    )
+    guard_calls = guard_calls[1:]
     assert guard_calls[0] == (
         f"authorize-reserve-evidence --manifest {manifest} "
         f"--evidence-output {evidence} {target}"
@@ -1645,3 +1705,46 @@ def test_ci_workflows_do_not_suppress_destroy_failure_or_cleanup_tfvars_early() 
             in source
         )
         assert "env.CI_ENV != ''" in source
+
+
+@pytest.mark.parametrize("provider", ["upcloud", "vultr"])
+def test_staging_reissue_passes_previous_manifest_as_literal_argv(
+    tmp_path: Path, provider: str
+) -> None:
+    root = _make_staging_repo(tmp_path)
+    marker = tmp_path / "must-not-execute"
+    previous = (
+        f"/private/previous $$(touch {marker}) `touch {marker}` $(shell touch {marker})"
+    )
+    credentials = {"VULTR_API_KEY": "vultr-secret"} if provider == "vultr" else None
+    result = _run_staging_make(
+        root,
+        tmp_path,
+        "staging-cleanup-reissue",
+        f"PROVIDER={provider}",
+        "ENV=ci-staging-reissue",
+        "STAGING_CLEANUP_MANIFEST=/private/new.json",
+        f"STAGING_CLEANUP_PREVIOUS_MANIFEST={previous}",
+        "STAGING_CLEANUP_STATE=/private/state.json",
+        "STAGING_CLEANUP_HOSTNAME=vpn-ci-staging.test",
+        extra_env=credentials,
+    )
+    assert result.returncode == 0, result.stderr
+    record = json.loads((tmp_path / "make-staging.jsonl").read_text())
+    assert record["argv"][:3] == ["reissue-manifest", "--previous-manifest", previous]
+    assert not marker.exists()
+
+
+def test_staging_make_refuses_alternate_home_command_field(tmp_path: Path) -> None:
+    root = _make_staging_repo(tmp_path)
+    result = _run_staging_make(
+        root,
+        tmp_path,
+        "staging-cleanup-reissue",
+        f"HOME={tmp_path / 'another-home'}",
+        "PROVIDER=upcloud",
+        "ENV=ci-staging-home",
+    )
+    assert result.returncode != 0
+    assert "trusted controller environment" in result.stderr
+    assert not (tmp_path / "make-staging.jsonl").exists()

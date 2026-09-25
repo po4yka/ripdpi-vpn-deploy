@@ -23,6 +23,7 @@ rollback links to `runtime-release`.
 
 ## What's done well
 
+- **Fresh-host check mode remains a plan** — the role requires a planned unit install when the Hysteria service does not yet exist, then leaves activation to the real converge.
 - **TLS reuses the P1 certificate material** — saves a renewal path. The
   operator supplies the same PEM pair to `hysteria.cert_pem`/`key_pem` and
   `nginx_xhttp.cert_pem`/`key_pem`; each role writes its own copy (no shared

@@ -21,6 +21,7 @@
     state: present
     update_cache: true
     cache_valid_time: 3600
+  register: baseline_packages
 
 - name: Remove VPS firmware update tooling
   ansible.builtin.apt:
@@ -59,6 +60,15 @@
   notify: Restart systemd-resolved
   when: "'systemd-resolved.service' in ansible_facts.services"
 
+- name: Require planned timesync installation when check mode lacks the unit
+  ansible.builtin.assert:
+    that:
+      - baseline_packages.changed
+    fail_msg: Check mode found no timesync unit and no planned package installation.
+  when:
+    - ansible_check_mode
+    - "'systemd-timesyncd.service' not in ansible_facts.services"
+
 - name: Ensure timesync is enabled
   ansible.builtin.systemd_service:
     name: systemd-timesyncd
@@ -68,6 +78,9 @@
   changed_when: >-
     baseline_timesync.changed and
     ansible_facts.get("virtualization_type", "") != "docker"
+  when: >-
+    not ansible_check_mode or
+    'systemd-timesyncd.service' in ansible_facts.services
 
 - name: Ensure sshd drop-in directory exists
   ansible.builtin.file:

@@ -29,6 +29,7 @@ def test_pinned_source_bumps_use_distinct_immutable_checkouts_before_attestation
 
     assert len(clones) == 2
     assert all(task["ansible.builtin.git"]["update"] is False for task in clones)
+    assert all(task.get("when") == "not ansible_check_mode" for task in clones)
     assert clones[0]["ansible.builtin.git"]["dest"].endswith(
         "-{{ amneziawg_go_commit }}"
     )
