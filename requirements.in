@@ -15,7 +15,7 @@ referencing<0.38
 typing-extensions==4.16.0
 
 # Operator-triggered reachability baselines; installed from the hash-pinned lock in CI.
-rkn-block-checker==0.5.1
+rkn-block-checker==0.6.0
 
 # Test-only; installed from the hash-pinned lock in CI.
 pytest==9.1.1
