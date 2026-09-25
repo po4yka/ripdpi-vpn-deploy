@@ -552,7 +552,8 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
     assert curl_dependency["ansible.builtin.apt"] == {
         "name": "curl",
         "state": "present",
-        "update_cache": False,
+        "update_cache": True,
+        "cache_valid_time": 3600,
     }
     client = next(
         task
