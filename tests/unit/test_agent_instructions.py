@@ -45,6 +45,20 @@ def test_every_nested_claude_md_has_an_agents_md_symlink() -> None:
     assert not missing, f"AGENTS.md must be a symlink to the sibling CLAUDE.md: {missing}"
 
 
+def test_every_nested_agents_md_points_at_a_tracked_claude_md() -> None:
+    tracked_claude = set(_tracked("*/CLAUDE.md"))
+    orphaned = []
+    for agents_md in _tracked("*/AGENTS.md"):
+        path = ROOT / agents_md
+        if (
+            not path.is_symlink()
+            or path.readlink() != Path("CLAUDE.md")
+            or agents_md.removesuffix("AGENTS.md") + "CLAUDE.md" not in tracked_claude
+        ):
+            orphaned.append(agents_md)
+    assert not orphaned, f"AGENTS.md must be a symlink to a tracked sibling CLAUDE.md: {orphaned}"
+
+
 def test_skills_have_portable_frontmatter() -> None:
     for skill in _skill_dirs():
         text = (skill / "SKILL.md").read_text()
