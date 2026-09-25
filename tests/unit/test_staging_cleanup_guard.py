@@ -1840,6 +1840,45 @@ def test_pending_manifest_publication_resumes_only_exact_request(
         assert len(journal.record["history"]) == 1
 
 
+def test_committed_manifest_publication_retry_acknowledges_exact_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    previous, before = _manifest(tmp_path)
+    initial = guard.create_manifest(
+        output_path=previous,
+        provider="upcloud",
+        environment="ci-staging-20260829",
+        workspace="ci-staging-20260829",
+        state_path=Path(before["state"]["path"]),
+        hostname=HOSTNAME,
+        request_json=_creation_get,
+        now=CREATED,
+    )
+    assert initial == before
+    _refresh_manifest_state(before)
+    save = guard.lifecycle.Journal.save
+
+    def lose_reply(journal):
+        save(journal)
+        if journal.record["publish"] is None:
+            raise OSError("injected loss after final journal commit")
+
+    monkeypatch.setattr(guard.lifecycle.Journal, "save", lose_reply)
+    with pytest.raises((OSError, guard.GuardError)):
+        _reissue(previous, before)
+    monkeypatch.setattr(guard.lifecycle.Journal, "save", save)
+    output = previous.with_name("refreshed.json")
+    committed = output.read_bytes()
+    after = _reissue(previous, before)
+    assert output.read_bytes() == committed
+    assert guard.load_manifest(output, now=CREATED) == after
+    with guard.lifecycle.locked(after) as journal:
+        assert [entry["manifest"] for entry in journal.record["history"]] == [before]
+    with pytest.raises(guard.GuardError, match="registered by another publication"):
+        guard.lifecycle.publish(after, output)
+
+
 def test_release_recovers_after_artifact_removal_before_journal_commit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

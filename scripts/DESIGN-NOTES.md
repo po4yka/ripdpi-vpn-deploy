@@ -44,7 +44,10 @@ trust policy stays separate. Do not duplicate its deadlines or cancellation loop
 The public bootstrap probe reads the role's pinned Tailscale version from its
 defaults before sending the read-only guest check. A failed status command is
 resumable only for the dpkg-owned, exact-version CLI with no identity and an
-inactive daemon; the later Ansible prewrite guard independently checks it.
+inactive daemon; a `NeedsLogin` CLI needs the same package ownership and version.
+The later Ansible prewrite guard independently checks both. The private config's
+provider and environment must equal the inventory host's `provider`/`env`, so a
+staging node cannot skip its cleanup manifest by claiming `prod`.
 
 **Vultr secondary IPv4 inventory is live-gated** — Terraform output proves allocation only. `render-inventory.sh` polls the primary SSH endpoint and publishes `honeypot_listen_addr` only after the exact IPv4 appears on a guest interface.
 

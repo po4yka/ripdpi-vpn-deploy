@@ -46,6 +46,8 @@ UUID. Keep publication/reissue and receipt operations under its shared lock;
 `destroy.sh` inherits that lock through Terraform. Alternative artifact paths
 must never create a second reservation or recover an active controller. Reissue
 binds the previous generation, original state path and unchanged deadlines.
+An exact retry of a committed publication is acknowledged only when the journal's
+prior generation matches the retried request.
 Independent controller homes are not a supported shared-ownership mechanism.
 
 - **`set -euo pipefail` everywhere** — fail-loud is the default.

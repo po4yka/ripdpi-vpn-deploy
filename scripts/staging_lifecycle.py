@@ -435,6 +435,19 @@ def publish(
             if record["claim"] is not None:
                 raise GuardError("node has an outstanding destruction reservation")
             current = record["current"]
+            if (
+                current is not None
+                and current["path"] == proposed["path"]
+                and current["manifest"] == manifest
+            ):
+                # A retry after the final commit acknowledges the durable
+                # generation only when it names the same prior generation.
+                history = record["history"]
+                prior = history[-1]["path"] if history else None
+                if prior != proposed["previous"]:
+                    raise GuardError("manifest was registered by another publication")
+                journal.current(output, manifest)
+                return
             if previous is None:
                 if current is not None:
                     raise GuardError(
