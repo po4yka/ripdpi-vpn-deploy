@@ -1533,9 +1533,10 @@ def test_role_never_puts_auth_key_in_command_or_inventory() -> None:
     assert "'approved_sources': tailnet_management.approved_sources" in tasks
     assert "tailnet-check.py" in tasks
     assert "check_mode: false" in tasks
-    # Ordinary convergence must prove Ansible uses the confirmed Tailnet address.
-    assert "'transport_address': ansible_host" in tasks
+    # The site guard proves Ansible uses the confirmed Tailnet address before
+    # any role runs; the role check also runs under Molecule's Docker transport.
     assert "'transport_address': ansible_host" in site
+    assert "transport_address" not in tasks
     assert "TAILSCALE_AUTH_KEY" not in bootstrap
     assert "--auth-key" not in bootstrap
     assert "auth_key" not in defaults

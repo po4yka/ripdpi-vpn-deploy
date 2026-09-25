@@ -64,8 +64,10 @@ persistent timer. Revalidate their results under the transaction lock.
   overwrite it, so it needs the same dpkg ownership and exact version.
   With no CLI at all, a surviving `tailscaled.state` still refuses: the package
   install would start the daemon on that unconfirmed identity.
-- Ordinary convergence sends `ansible_host` as `transport_address`; the check
-  refuses unless it is the confirmed node's Tailnet IPv4 or IPv6 address.
+- The `site.yml` guard sends `ansible_host` as `transport_address`; the check
+  refuses unless it is the confirmed node's Tailnet IPv4 or IPv6 address. The
+  role's own check omits it: Molecule connects through Docker, where
+  `ansible_host` is a container name, and the site guard already runs first.
 - Recovery's address-family sandbox can reorder sshd's IPv4/IPv6 listener
   output. Normalize only listenaddress enumeration, preserving values and
   multiplicity; never sort the whole policy or weaken its validation.

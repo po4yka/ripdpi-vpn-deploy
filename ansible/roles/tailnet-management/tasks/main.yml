@@ -16,8 +16,7 @@
       {{ {'inventory_alias': inventory_hostname,
           'public_address': vpn_service_address,
           'ssh_port': ansible_port | int,
-          'approved_sources': tailnet_management.approved_sources,
-          'transport_address': ansible_host} | to_json }}
+          'approved_sources': tailnet_management.approved_sources} | to_json }}
   environment:
     PATH: /usr/sbin:/usr/bin:/sbin:/bin
   check_mode: false
