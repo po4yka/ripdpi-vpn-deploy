@@ -8,6 +8,8 @@
 # values and exists only for short-lived CI nodes.
 set -euo pipefail
 
+ORIGINAL_ARGS=("$@")
+
 NON_INTERACTIVE=false
 STAGING_MANIFEST=""
 POST_DESTROY_EVIDENCE=""
@@ -64,6 +66,11 @@ if [[ "$ENV" =~ ^ci-staging-[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
 elif [[ -n "$STAGING_MANIFEST" || -n "$POST_DESTROY_EVIDENCE" ]]; then
   echo "staging cleanup arguments require a ci-staging-* environment" >&2
   exit 2
+fi
+
+if [[ "$STAGING_GUARDED" == "true" && -z "${VPN_STAGING_LOCK_FD:-}" ]]; then
+  exec python3 "${REPO_ROOT}/scripts/staging_lifecycle.py" run-destroy \
+    --manifest "$STAGING_MANIFEST" -- "${ORIGINAL_ARGS[@]}"
 fi
 
 if [[ -e "$OVERRIDE" ]]; then
@@ -142,22 +149,20 @@ else
 fi
 
 if [[ "$STAGING_GUARDED" == "true" ]]; then
-  if [[ "$PROVIDER" == "vultr" ]]; then
-    RECOVERY_RESULT="$("$STAGING_GUARD" recover-evidence \
-      --manifest "$STAGING_MANIFEST" \
-      --evidence-output "$POST_DESTROY_EVIDENCE" \
-      --expected-provider "$PROVIDER" \
-      --expected-environment "$ENV")"
-    if [[ "$RECOVERY_RESULT" == "staging provider absence verified" ]]; then
-      env ENV="$ENV" PROVIDER="$PROVIDER" \
-        "${REPO_ROOT}/scripts/audit-log.sh" append-best-effort \
-          --action staging-destroy \
-          --env "$ENV" \
-          --provider "$PROVIDER" \
-          --note exact-owned-resources-absent
-      echo "previous staging destroy absence verified"
-      exit 0
-    fi
+  RECOVERY_RESULT="$("$STAGING_GUARD" recover-evidence \
+    --manifest "$STAGING_MANIFEST" \
+    --evidence-output "$POST_DESTROY_EVIDENCE" \
+    --expected-provider "$PROVIDER" \
+    --expected-environment "$ENV")"
+  if [[ "$RECOVERY_RESULT" == "staging provider absence verified" ]]; then
+    env ENV="$ENV" PROVIDER="$PROVIDER" \
+      "${REPO_ROOT}/scripts/audit-log.sh" append-best-effort \
+        --action staging-destroy \
+        --env "$ENV" \
+        --provider "$PROVIDER" \
+        --note exact-owned-resources-absent
+    echo "previous staging destroy absence verified"
+    exit 0
   fi
   "$STAGING_GUARD" authorize-reserve-evidence \
     --manifest "$STAGING_MANIFEST" \

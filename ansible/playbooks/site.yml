@@ -216,6 +216,25 @@
       when: vpn.enable_tailnet_management | default(false)
       tags: [always, tailnet-management]
 
+    - name: Guard — require confirmed Tailnet identity before host convergence
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - /usr/local/lib/vpn-tailnet/tailnet-check.py
+        stdin: >-
+          {{ {'inventory_alias': inventory_hostname,
+              'public_address': vpn_service_address,
+              'ssh_port': ansible_port | int,
+              'approved_sources': tailnet_management.approved_sources,
+              'transport_address': ansible_host} | to_json }}
+      environment:
+        PATH: /usr/sbin:/usr/bin:/sbin:/bin
+      check_mode: false
+      changed_when: false
+      no_log: true
+      when: vpn.enable_tailnet_management | default(false)
+      tags: [always, tailnet-management]
+
     - name: Guard — block public listener collisions before convergence
       ansible.builtin.command:
         cmd: "python3 {{ playbook_dir }}/../../scripts/check-listener-collisions.py"

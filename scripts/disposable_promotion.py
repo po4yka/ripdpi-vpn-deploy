@@ -267,6 +267,11 @@ def prepare_intent(intent, host, memberships, directory, deployed_secrets, envir
             Path(sops_source_file), "onboarding input", max_bytes=262144
         )
         for name, path in value["inputs"].items():
+            if name == "cleanup_manifest":
+                # The lifecycle journal binds this immutable generation's path
+                # and inode. Revalidate it below and at finalization; a copied
+                # manifest is not cleanup authority.
+                continue
             raw = (
                 source_raw
                 if name == "sops_file"

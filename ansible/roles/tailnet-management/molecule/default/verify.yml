@@ -2,10 +2,17 @@
 - name: Verify Tailnet management role
   hosts: all
   become: true
+  vars:
+    vpn_service_address: 192.0.2.10
+    ansible_port: 22
+    tailnet_management:
+      approved_sources:
+        - 100.64.10.20
+        - fd7a:115c:a1e0::1234
   tasks:
     - name: Read fixture enrollment calls
       ansible.builtin.slurp:
-        src: /run/tailscale-fixture-calls
+        src: /var/lib/tailscale-fixture-calls
       register: _tailnet_fixture_calls
 
     - name: Verify exact privacy and preference flags
@@ -32,7 +39,12 @@
 
     - name: Controller repeat is unchanged without an enrollment credential
       ansible.builtin.command:
-        cmd: /usr/bin/python3 /usr/local/lib/vpn-tailnet/tailnet-configure.py
+        cmd: /usr/bin/python3 /usr/local/lib/vpn-tailnet/tailnet-check.py
+        stdin: >-
+          {{ {'inventory_alias': inventory_hostname,
+              'public_address': vpn_service_address,
+              'ssh_port': ansible_port | int,
+              'approved_sources': tailnet_management.approved_sources} | to_json }}
       register: _tailnet_repeat
       changed_when: false
 

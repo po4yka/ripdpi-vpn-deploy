@@ -1,0 +1,31 @@
+---
+# Access foundation only. Enrollment is a separate bounded controller RPC.
+- name: Install one Tailnet bootstrap recovery foundation
+  hosts: vpn
+  become: true
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  pre_tasks:
+    - name: Require one exact controller-selected node before remote modules
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+          - ansible_limit is defined
+          - ansible_limit == inventory_hostname
+          - bootstrap_inventory_alias == inventory_hostname
+          - bootstrap_public_preflight | default(false) | bool
+          - not ansible_check_mode
+          - lookup('env', 'TAILSCALE_AUTH_KEY') == ''
+        fail_msg: Bootstrap requires one pinned public preflight and no Ansible enrollment key.
+      no_log: true
+    - name: Gather platform facts after public preflight
+      ansible.builtin.setup:
+        gather_subset:
+          - '!all'
+          - min
+  tasks:
+    - name: Install the bootstrap-only Tailnet foundation
+      ansible.builtin.include_role:
+        name: tailnet-management
+        tasks_from: bootstrap
