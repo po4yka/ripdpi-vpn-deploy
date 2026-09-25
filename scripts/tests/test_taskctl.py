@@ -817,6 +817,35 @@ class TaskctlContractTest(TaskctlFixture):
 
         self.assertEqual(before, set(self.root.glob("docs/tasks/*/*.md")))
 
+    def test_new_removes_task_when_openspec_scaffold_fails(self) -> None:
+        self.add_simple_task()
+        before = set(self.root.glob("docs/tasks/*/*.md"))
+        openspec = self.root / "tools/tasking/node_modules/.bin/openspec"
+        openspec.parent.mkdir(parents=True)
+        openspec.write_text(
+            '#!/bin/sh\necho "scaffold $1 $2 refused"\nexit 1\n', encoding="utf-8"
+        )
+        openspec.chmod(0o755)
+        args = argparse.Namespace(
+            root=self.root,
+            title="Add spec backed check",
+            kind="bug",
+            area="ci",
+            priority="medium",
+            risk="standard",
+            owner="test",
+            parent=None,
+            slug=None,
+            spec_mode="required",
+            spec_reason=None,
+            openspec_change=None,
+        )
+
+        with self.assertRaisesRegex(taskctl.ContractError, "scaffold new change refused"):
+            taskctl.command_new(args)
+
+        self.assertEqual(before, set(self.root.glob("docs/tasks/*/*.md")))
+
     def test_new_task_uses_supported_mdtask_priority_tokens(self) -> None:
         self.add_simple_task()
         for priority, token in (
