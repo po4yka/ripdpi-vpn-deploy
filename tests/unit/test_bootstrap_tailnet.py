@@ -237,7 +237,7 @@ def test_lost_confirm_reply_reconciles_without_logout(controller, inputs, monkey
             return {"status": "idle"} if len(actions) == 1 else capability(controller, selected, status="configured")
         if action == "enroll": return pending
         if action == "confirm": raise controller.BootstrapError("lost-reply")
-        pytest.fail("confirmed identity must not be rolled back")
+        raise AssertionError("confirmed identity must not be rolled back")
     monkeypatch.setattr(controller, "_rpc", rpc)
     assert controller.run(selected, "tskey-auth-fixture_key")["status"] == "configured"
     assert actions == ["status", "enroll", "confirm", "status"]

@@ -26,7 +26,8 @@ from pathlib import Path
 from typing import Any
 
 import staging_lifecycle as lifecycle
-from staging_lifecycle import GuardError
+
+GuardError = lifecycle.GuardError
 
 SCHEMA_VERSION = 2
 MAX_JSON_BYTES = 16 * 1024 * 1024

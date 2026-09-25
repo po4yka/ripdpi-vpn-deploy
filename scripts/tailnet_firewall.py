@@ -15,7 +15,6 @@ import os
 from pathlib import Path
 import re
 import secrets
-import stat
 
 import tailnet_management as domain
 from tailnet_bootstrap_probe import ProbeError, firewall_service_state, split_inert_tables, stable_rules, validate_owned_rules

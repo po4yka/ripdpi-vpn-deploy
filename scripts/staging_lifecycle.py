@@ -149,10 +149,8 @@ def _atomic(parent: int, name: str, raw: bytes, *, replace: bool) -> tuple[int, 
         return info.st_dev, info.st_ino
     finally:
         os.close(fd)
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(temporary, dir_fd=parent)
-        except FileNotFoundError:
-            pass
         os.fsync(parent)
 
 
@@ -166,11 +164,9 @@ def _registry() -> Path:
         fd = os.dup(home_fd)
         try:
             for part in (".local", "state", "vpn-deploy", "staging-cleanup"):
-                try:
+                with contextlib.suppress(FileExistsError):
                     os.mkdir(part, 0o700, dir_fd=fd)
                     os.fsync(fd)
-                except FileExistsError:
-                    pass
                 child = os.open(
                     part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd
                 )
