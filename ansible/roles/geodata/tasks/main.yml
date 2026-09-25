@@ -24,6 +24,14 @@
     update_cache: true
     cache_valid_time: 3600
 
+- name: Inspect geodata directory before check-mode publication
+  ansible.builtin.stat:
+    path: "{{ geodata.install_dir }}"
+    follow: false
+  register: _geodata_directory_before
+  changed_when: false
+  when: ansible_check_mode
+
 - name: Ensure geodata install directory
   ansible.builtin.file:
     path: "{{ geodata.install_dir }}"
@@ -31,6 +39,32 @@
     owner: root
     group: root
     mode: "0755"
+  register: _geodata_directory_plan
+
+- name: Require a planned geodata directory on a fresh check-mode host
+  ansible.builtin.assert:
+    that:
+      - _geodata_directory_plan.changed
+    fail_msg: Check mode found no geodata directory and no planned creation.
+  when:
+    - ansible_check_mode
+    - not (_geodata_directory_before.stat.isdir | default(false))
+
+- name: Check pinned geodata URLs without writing on a fresh check-mode host
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    method: HEAD
+    follow_redirects: all
+    status_code: 200
+    timeout: 30
+  loop:
+    - "{{ geodata.geosite_url }}"
+    - "{{ geodata.geoip_url }}"
+  check_mode: false
+  changed_when: false
+  when:
+    - ansible_check_mode
+    - not (_geodata_directory_before.stat.isdir | default(false))
 
 - name: Drop version-aware Xray geodata activation helper
   ansible.builtin.template:
@@ -47,6 +81,7 @@
     mode: "0644"
     checksum: "sha256:{{ geodata.geosite_sha256 }}"
   notify: Reload xray geodata
+  when: not ansible_check_mode or (_geodata_directory_before.stat.isdir | default(false))
 
 - name: Download geoip.dat
   ansible.builtin.get_url:
@@ -55,6 +90,7 @@
     mode: "0644"
     checksum: "sha256:{{ geodata.geoip_sha256 }}"
   notify: Reload xray geodata
+  when: not ansible_check_mode or (_geodata_directory_before.stat.isdir | default(false))
 
 - name: Drop refresh script
   ansible.builtin.template:
@@ -75,6 +111,14 @@
     group: root
     mode: "0644"
 
+- name: Inspect existing geodata timer before check-mode publication
+  ansible.builtin.stat:
+    path: /etc/systemd/system/vpn-geodata-refresh.timer
+    follow: false
+  register: _geodata_timer_before
+  changed_when: false
+  when: ansible_check_mode
+
 - name: Drop refresh systemd timer
   ansible.builtin.copy:
     dest: /etc/systemd/system/vpn-geodata-refresh.timer
@@ -93,6 +137,16 @@
       [Install]
       WantedBy=timers.target
   notify: Reload systemd
+  register: _geodata_timer_plan
+
+- name: Require a planned geodata timer on a fresh check-mode host
+  ansible.builtin.assert:
+    that:
+      - _geodata_timer_plan.changed
+    fail_msg: Check mode found no geodata timer and no planned installation.
+  when:
+    - ansible_check_mode
+    - not (_geodata_timer_before.stat.exists | default(false))
 
 - name: Enable refresh timer
   ansible.builtin.systemd_service:
@@ -100,3 +154,4 @@
     enabled: true
     state: started
     daemon_reload: true
+  when: not ansible_check_mode or (_geodata_timer_before.stat.exists | default(false))

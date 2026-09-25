@@ -182,6 +182,7 @@
     owner: root
     group: root
     mode: "0644"
+  register: _awg_unit_plan
   notify: Reload systemd
 
 - name: Install awg-quick target (resolves PartOf= dependency)
@@ -213,6 +214,23 @@
     _inst: "{{ item }}"
   notify: Restart amneziawg
 
+- name: Inspect AmneziaWG unit before check-mode activation
+  ansible.builtin.stat:
+    path: /etc/systemd/system/awg-quick@.service
+    follow: false
+  register: _awg_unit_before
+  changed_when: false
+  when: ansible_check_mode
+
+- name: Require planned AmneziaWG unit on a fresh check-mode host
+  ansible.builtin.assert:
+    that:
+      - _awg_unit_plan.changed
+    fail_msg: Check mode found no AmneziaWG unit and no planned installation.
+  when:
+    - ansible_check_mode
+    - not (_awg_unit_before.stat.exists | default(false))
+
 - name: Enable and start awg-quick@<iface> for every instance
   ansible.builtin.systemd_service:
     name: "awg-quick@{{ item.name }}"
@@ -222,3 +240,4 @@
   loop: "{{ _awg_instances }}"
   loop_control:
     label: "{{ item.name }}"
+  when: not ansible_check_mode or _awg_unit_before.stat.exists | default(false)

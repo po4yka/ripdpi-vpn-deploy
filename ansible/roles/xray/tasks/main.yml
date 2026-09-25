@@ -131,6 +131,7 @@
   notify:
     - Reload systemd
     - Restart xray
+  register: _xray_unit_plan
 
 - name: Check if previous Xray config exists
   ansible.builtin.stat:
@@ -185,9 +186,27 @@
     p0_reality_shape_template: >-
       {{ role_path }}/../../templates/p0-reality-shape.json.j2
 
+- name: Inspect xray unit before check-mode activation
+  ansible.builtin.stat:
+    path: /etc/systemd/system/xray.service
+    follow: false
+  register: _xray_unit_before
+  changed_when: false
+  when: ansible_check_mode
+
+- name: Require planned xray unit on a fresh check-mode host
+  ansible.builtin.assert:
+    that:
+      - _xray_unit_plan.changed
+    fail_msg: Check mode found no xray unit and no planned installation.
+  when:
+    - ansible_check_mode
+    - not (_xray_unit_before.stat.exists | default(false))
+
 - name: Ensure xray is enabled and started
   ansible.builtin.systemd_service:
     name: xray
     enabled: true
     state: started
     daemon_reload: true
+  when: not ansible_check_mode or _xray_unit_before.stat.exists | default(false)

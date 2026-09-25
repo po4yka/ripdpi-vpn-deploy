@@ -50,6 +50,9 @@ retention; this role owns only the Xray-side counter contract.
 - **No client identifiers in exported metrics** — Xray necessarily keys user
   counters by email, but the monitoring exporter aggregates those records
   before they leave the local StatsService boundary.
+- **Fresh-host check mode** — the unit template must report a planned change
+  when the unit is absent. Service activation waits for a real converge; an
+  existing unit can still be checked without changing its state.
 
 ## Pitfalls
 

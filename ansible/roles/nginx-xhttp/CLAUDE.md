@@ -53,6 +53,7 @@ defaults. Don't mix these — XHTTP needs long-lived streams.
 
 - **SOPS-delivered public certificate** — the role writes `nginx_xhttp.cert_pem` and `key_pem` to the nginx TLS directory with restricted key permissions. Certificate issuance and renewal remain operator-owned; `check-certs.sh` verifies SAN, expiry, and key match before deploy.
 - **Validate before activation** — the role enables the rendered site, runs `nginx -t`, then flushes its reload handler immediately so a recovery converge cannot leave nginx serving the previous listener set until the end of a long full-stack play.
+- **Fresh-host check mode plans nginx without activating it** — the role checks for the distro unit and requires a planned package installation when it is absent. Reload and start remain runtime actions on a real converge; check mode does not claim a nonexistent service is active.
 - **No public admin path** — there is no admin/status/management endpoint on
   this vhost. The only non-XHTTP public path is the opt-in, secret-token Snell
   evaluation fixture location; it disables access logging and compression and

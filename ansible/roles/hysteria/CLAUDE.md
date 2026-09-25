@@ -23,6 +23,7 @@ rollback links to `runtime-release`.
 
 ## What's done well
 
+- **Fresh-host check mode remains a plan** — the role requires a planned unit install when the Hysteria service does not yet exist, then leaves activation to the real converge.
 - **TLS uses the same cert as P1** — saves a renewal path. The `nginx-xhttp`
   role's cert directory is read-only-mounted into the Hysteria service.
 - **Brutal-style congestion control is off by default** — toggled via
