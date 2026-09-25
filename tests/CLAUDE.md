@@ -59,6 +59,10 @@ and permits only planned skips; adding a job must update the selector and tests.
 
 ## What's done well
 
+- **Provider example parity is checked** — every explicit staging/prod listener
+  example includes the default nginx HTTP redirect, so a copied environment
+  reaches the same fail-closed runtime contract as the provider roots.
+
 - **Quirk-named tests** — `test_xhttp_path_matches_both_slash_and_unslashed`,
   `test_relay_sni_fails_closed_when_local_sni_missing`. The name *is* the
   doc.

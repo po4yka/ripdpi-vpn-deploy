@@ -35,6 +35,9 @@ return rules limited to the host ephemeral range.
 
 ## Pitfalls
 
+- **Example listener completeness** — the explicit staging/prod contracts include
+  HTTP/80 for the nginx public-site redirect. Deploy compares the provider
+  contract with the runtime manifest and fails closed when this port is absent.
 - **UpCloud plan names change** — `STARTER-2xCPU-4GB` and the legacy
   `DEV-2xCPU-4GB` are distinct SKUs with different bundled storage and prices.
   Pin the authenticated catalog's exact SKU; never alias one to the other or

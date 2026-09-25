@@ -21,6 +21,8 @@ requirement may add one.
 
 ## Pitfalls
 
+- **Example listener completeness** — the explicit staging/prod contracts include
+  HTTP/80 for the nginx public-site redirect; deploy fails closed without it.
 - Scaleway IPv6 address resources expose a prefix; read the full attached address from `scaleway_instance_server.public_ips`, as `server_ipv6` does.
 - Instance type and Marketplace image availability can vary by zone; keep the approved allowlists narrow and verify availability before changing examples.
 - A security-group UDP rule proves declared policy, not end-to-end UDP delivery. Confirm Hysteria2 and AmneziaWG from the filtered client path after deployment.
