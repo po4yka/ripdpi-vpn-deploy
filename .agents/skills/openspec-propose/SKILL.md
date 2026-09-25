@@ -45,38 +45,21 @@ When the user is ready to implement, they must start the apply workflow explicit
 
    If the request contains ambiguity that would materially affect scope, externally observable behavior, compatibility, or acceptance criteria, ask the user before creating the change. For minor details, make a reasonable assumption and record it in the planning artifacts.
 
-2. **Resolve the linked portfolio task**
+2. **Confirm the workflow schema**
+
+   Task-linked changes always use the project schema (`openspec_schema` in `tools/tasking/project.json`, currently `ripdpi-deploy-change`), which `./taskctl new` applies when it scaffolds the change; `taskctl` accepts no other schema. If the user explicitly asks for a different schema or workflow, explain that this task-backed flow supports only the project schema and stop before creating anything, rather than silently producing the default artifact graph. To show the available schemas, run `./taskctl openspec cli schemas --json`.
+
+3. **Resolve the linked portfolio task**
 
    Every OpenSpec change here is linked to a portfolio task, and checkbox IDs in `tasks.md` are never hand-written - they come from that task's execution file. Before creating or reusing a change directory:
    - Search `./taskctl list --json` for a task with a non-null `openspec_change` (only `spec_mode: required` tasks have one) whose change name or title matches the user's description. A matching task without `openspec_change` is not a match: it waived OpenSpec and cannot be linked afterwards, so tell the user and continue as if no task exists.
-   - If exactly one match is found, use that task's `openspec_change` value as `<name>` for the rest of this workflow, and skip **Create the change directory** below - `./taskctl new --spec-mode required` already scaffolded it.
+   - If exactly one match is found, use that task's `openspec_change` value as `<name>` for the rest of this workflow; `./taskctl new --spec-mode required` already scaffolded it (see step 4).
    - If more than one plausible match is found, ask the user which task this proposal belongs to.
-   - If no matching task exists, create it first with `$mdtask-create` (`./taskctl new --title "<title>" --kind <kind> --area <area> --priority <priority> --risk <risk> --spec-mode required`). Read the new task's `openspec_change` field back with `./taskctl show <task-id> --json` and use that value as `<name>`; the change directory is already scaffolded, so skip **Create the change directory** below.
+   - If no matching task exists, create it first with `$mdtask-create` (`./taskctl new --title "<title>" --kind <kind> --area <area> --priority <priority> --risk <risk> --spec-mode required`). Read the new task's `openspec_change` field back with `./taskctl show <task-id> --json` and use that value as `<name>`; the change directory is already scaffolded (see step 4).
 
-3. **Determine the workflow schema**
+4. **Do not create a separate change directory**
 
-   Use the configured default schema unless the user explicitly requests a different workflow.
-
-   **Use a different schema only if the user:**
-   - Explicitly requests a specific schema by name → use `--schema <schema-name>`
-   - Asks to "show workflows" or asks "what workflows" exist → run `./taskctl openspec cli schemas --json` from the repository root and let them choose.
-
-   Otherwise, omit `--schema` to preserve the configured default.
-
-4. **Create the change directory (only if step 2 did not already resolve one)**
-
-   Skip this step entirely when step 2 found or created the linked task - `./taskctl new --spec-mode required` already scaffolded the change. Otherwise choose one schema form below:
-
-   Using the configured default:
-   ```bash
-   ./taskctl openspec cli new change "<name>"
-   ```
-
-   Using an explicitly requested schema:
-   ```bash
-   ./taskctl openspec cli new change "<name>" --schema "<schema-name>"
-   ```
-   This creates a scaffolded change in the planning home resolved by the CLI with `.openspec.yaml`.
+   Step 3 always ends with a change that `./taskctl new` scaffolded with the project schema. Never run `./taskctl openspec cli new change` in this flow: it would create a change that no portfolio task links to.
 
 5. **Get the artifact build order**
    ```bash
