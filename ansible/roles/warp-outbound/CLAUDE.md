@@ -15,9 +15,9 @@ through WARP — too easy to lock yourself out.
 ## What's done well
 
 - **Reversible** — disabling the toggle and re-running puts outbound routing
-  back. Tested in `RUNBOOK-rollback.md`.
-- **Version-tolerant CLI** — both `warp-cli set-mode proxy` (old) and
-  `warp-cli mode proxy` (new) are tried; the role doesn't pin to one syntax.
+  back.
+- **Current CLI syntax only** — the role runs `warp-cli --accept-tos mode
+  <mode>`; there is no fallback to the older `warp-cli set-mode` form.
 
 ## Pitfalls
 

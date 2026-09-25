@@ -13,6 +13,14 @@ a YAML file: `narrow-junk-sequential`. The broad-rule baseline (long junks
 hard-coded defaults — no separate cohort file needed, that profile is the
 safe starting point on any unmeasured network.
 
+**New cohort recipe** — add `vars/cohorts/<technical-slug>.yml` with the
+obfuscation parameters, naming the slug after the packet shape (e.g.
+`narrow-junk-sequential`, `wide-junk-random-headers`), never after the
+carrier, ISP, or geography where it was measured. Add its row to
+`docs/AWG-COHORTS.md` (junk sizes, init/response sizes, H1..H4 strategy), and
+a `group_vars` comment if operators must know something non-default before
+selecting it with `vpn.awg_cohort`.
+
 **One peer key per device, never shared** — enforced by `scripts/new-client.sh`.
 Reused keys break replay protection.
 
@@ -47,8 +55,9 @@ This proves role ownership and idempotence, not upstream builds or tunnel traffi
 - **AWG 2.0 client app version skew** — issue #2457: clients on AmneziaWG
   client v1.0.x silently fall back to vanilla WG handshake when the server
   uses 2.0 finalmask. Pin client version in `docs/CLIENT-NOTES.md`.
-- **MTU mismatch breaks roaming** — set `mtu = 1280` for cellular cohorts;
-  1420 for Wi-Fi-primary. Wrong value silently corrupts large packets.
+- **Client MTU is fixed, not per cohort** — `scripts/emit-awg.sh` and
+  `scripts/liveness_profiles.py` write `MTU = 1420`; cohort files carry no MTU
+  knob. A path that needs a smaller MTU needs a new, explicit emitter input.
 - **Endpoint port reuse with Hysteria** — both use UDP. See `firewall/CLAUDE.md`
   pitfall; pick distinct ports.
 - **`jc` of 0 is not "off", it's "junk count 0"** — older clients interpret

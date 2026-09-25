@@ -2,7 +2,7 @@
 
 ## Design decisions
 
-**Single source of REALITY config** — `templates/xray-config.json.j2` is the
+**Single source of REALITY config** — `templates/config.json.j2` is the
 SOT for the Reality inbound. Other roles (firewall, nginx-xhttp) read ports
 from `defaults/main.yml`; they never copy the inbound config.
 
@@ -11,8 +11,9 @@ is the sole renderer for the accepted Vision and mux shape declarations in
 `group_vars/all.yml`. Xray and watchdog pass raw overrides to that template;
 unknown modes fail before render.
 
-**Pinned binary** — Xray version is pinned in `defaults/main.yml`; upgrades
-go through `docs/XRAY-RELEASE-LINE.md`. The release-line tracker exists
+**Pinned binary** — the Xray version is the SOPS secret `xray.version`;
+`defaults/main.yml` holds only an empty sentinel that the role asserts is
+overridden. Upgrades go through `docs/XRAY-RELEASE-LINE.md`. The release-line tracker exists
 because v26.2.6 → v26.5.3 had silent flow-mode breakage on some clients.
 Binary acquisition is delegated to `xray-runtime`; this role owns only the
 primary service user, configuration, logs, and lifecycle.
@@ -47,9 +48,9 @@ retention; this role owns only the Xray-side counter contract.
   same idea explicitly. Set the port to 0 to disable.
 - **Backup-before-write** — the previous config is copied to `.prev` so
   `rollback-config.yml` has a target.
-- **No client identifiers in exported metrics** — Xray necessarily keys user
-  counters by email, but the monitoring exporter aggregates those records
-  before they leave the local StatsService boundary.
+- **No client identifiers in exported metrics** — per-user counters are
+  disabled in the Xray policy (only inbound/outbound aggregates are on), so
+  client emails never reach the StatsService the monitoring exporter reads.
 - **Fresh-host check mode** — the unit template must report a planned change
   when the unit is absent. Service activation waits for a real converge; an
   existing unit can still be checked without changing its state.
@@ -61,9 +62,10 @@ retention; this role owns only the Xray-side counter contract.
   Don't try to express this in `settings.fallbacks` — those only apply *after*
   Reality has authenticated the client.
 - **Short ID length must be even hex** — odd-length values silently break
-  some clients (sing-box ≤ 1.10). `validate-reality-target.sh` checks this.
+  some clients (sing-box ≤ 1.10). The role's Molecule `verify.yml` asserts it.
 - **Flow `xtls-rprx-vision` and XHTTP are mutually exclusive** — the XHTTP
-  inbound must run with `flow: ""` (empty string), not omit the key.
+  inbound's client entries omit `flow` entirely; only the REALITY inbound
+  sets it. Don't add `flow` to the XHTTP client object.
 - **`serverNames` first entry is special** — uTLS clients send the first
   entry as SNI. Rotating its order *is* a config change even though the set
   is identical.

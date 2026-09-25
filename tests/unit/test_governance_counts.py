@@ -43,7 +43,8 @@ def test_governance_counts_match_live_repository():
     test_count = int(re.search(r"(\d+) tests collected", collected).group(1))
     testing = (ROOT / "docs/TESTING.md").read_text()
     assert f"{roles} roles" in (ROOT / "AGENTS.md").read_text()
-    assert f"{roles} roles" in (ROOT / "CLAUDE.md").read_text()
+    # CLAUDE.md imports AGENTS.md rather than restating the count.
+    assert (ROOT / "CLAUDE.md").read_text().startswith("@AGENTS.md\n")
     assert f"({templates} templates)" in testing
     assert f"({test_count} collected)" in testing
     assert "molecule / per-role tests. v2." not in (ROOT / "docs/ARCHITECTURE.md").read_text()

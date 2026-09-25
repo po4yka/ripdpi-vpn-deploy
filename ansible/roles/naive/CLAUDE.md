@@ -24,8 +24,8 @@ and publishes only after the expected digest passes.
 
 - **Pinned binary + version** — pinned per `docs/CLIENT-NOTES.md` because
   client/server version skew is a real breakage class here.
-- **Padding leak fix is monitored** — sing-box ≤ 1.10 NaiveProxy padding leak
-  is noted; the role bumps the client recommendation when applicable.
+- **Padding leak fix is monitored** — sing-box ≤ 1.13.7 NaiveProxy padding leak
+  (fixed in 1.13.8, `docs/CLIENT-NOTES.md`) is noted; the role bumps the client recommendation when applicable.
 
 ## Pitfalls
 

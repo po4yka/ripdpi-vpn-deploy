@@ -20,7 +20,7 @@ Decryptable only with the audit-log key. See `scripts/sub-reads.sh`.
   TTL.
 - **Tokens are hashed-at-rest** — SHA-256 hex digest. The inbound URL token is a high-entropy opaque random value (128–384 bit); a plain hash is adequate and avoids KDF overhead on the hot path.
 - **Share-bundle ingest is zero-trust on nginx** — `tasks/share-bundles.yml`
-  rsync's operator-built bundles to `/var/www/subscription-host/share/<token>/`
+  copies operator-built bundles (`ansible.builtin.copy`) to `/var/www/subscription-host/share/<token>/`
   with `access_log off` on the location; the raw token never appears in any
   nginx log line.
 

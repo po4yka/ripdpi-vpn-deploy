@@ -19,26 +19,25 @@ once in `config.yaml`; per-client tuning is in the client config emitted by
 the role delegates verified candidate publication and `current`/public/previous
 rollback links to `runtime-release`.
 
-**Masquerade follows an owned site** — `hysteria.masquerade_url` is required in production secrets and must be an HTTPS origin controlled by the operator. This keeps QUIC probes on the same public identity without coupling the UDP-only role to nginx state.
+**Masquerade follows an owned site** — `hysteria.masquerade_url` is required in production secrets and must equal `public_site_canonical_url` exactly (asserted in `tasks/main.yml`). This keeps QUIC probes on the same public identity without coupling the UDP-only role to nginx state.
 
 ## What's done well
 
 - **Fresh-host check mode remains a plan** — the role requires a planned unit install when the Hysteria service does not yet exist, then leaves activation to the real converge.
-- **TLS uses the same cert as P1** — saves a renewal path. The `nginx-xhttp`
-  role's cert directory is read-only-mounted into the Hysteria service.
-- **Brutal-style congestion control is off by default** — toggled via
-  `vpn.hysteria_brutal`. Brutal aggressive ramp can attract DPI heuristics
-  on some carriers.
+- **TLS reuses the P1 certificate material** — saves a renewal path. The
+  operator supplies the same PEM pair to `hysteria.cert_pem`/`key_pem` and
+  `nginx_xhttp.cert_pem`/`key_pem`; each role writes its own copy (no shared
+  mount).
 
 ## Pitfalls
 
 - **UDP/443 is heavily policed in RU** — some carriers QUIC-throttle on UDP/443
   but not UDP/8443. Have `--port` flexibility ready; don't assume 443.
-- **Hysteria does not survive a kernel UDP buffer too small** — the role sets
-  `net.core.rmem_max` and `net.core.wmem_max` (baseline does the same; we
-  re-assert to be sure).
+- **UDP buffer sizes are not tuned** — no role sets `net.core.rmem_max` or
+  `wmem_max`; if Hysteria shows receive-buffer drops, add the tuning to
+  baseline's sysctl template rather than to this role.
 - **systemd unit `LimitNOFILE` matters** — default 1024 caps concurrent
-  flows. Set to `65536` in the unit file template.
+  flows. The unit template sets `LimitNOFILE=1048576`.
 - **No JSON API surface** — Hysteria's optional traffic API would be a
   fingerprint vector if exposed; it's disabled.
-- **Do not point masquerade at an unrelated public site** — override `hysteria.masquerade_url` only with another operator-owned HTTPS origin.
+- **Do not point masquerade at an unrelated public site** — keep `hysteria.masquerade_url` equal to `public_site_canonical_url`; the pre-flight assert rejects anything else.

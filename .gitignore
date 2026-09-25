@@ -84,9 +84,10 @@ Thumbs.db
 .pytest_cache/
 
 # Claude Code / oh-my-claudecode local state
-# Track project-scoped skills only; ignore runtime state under .claude/.
+# Track project-scoped skills and shared settings only; ignore runtime state under .claude/.
 /.claude/*
 !/.claude/skills/
+!/.claude/settings.json
 .omc/
 .omo/
 

@@ -27,8 +27,9 @@ and exits. The Ansible run handles the rest. Anything secret stays in SOPS.
 - **`runcmd:` runs every boot if not gated** — guard with a marker check or
   cloud-init's `once-per-instance` semantics.
 - **`packages:` is provider-quirky** — some providers' images strip apt
-  sources at boot. The template installs only the bare minimum
-  (`python3`, `sudo`); everything else is Ansible's job.
+  sources at boot. The template installs only what first-boot
+  bootstrap needs (`python3`, `python3-apt`, `sudo`, `ca-certificates`, `curl`,
+  `jq`); everything else is Ansible's job.
 - **SSH host key regeneration is one-shot** — done by cloud-init on first
   boot. Don't re-run, or recipients pinning host keys will see a "MITM" warning.
 - **Newer distro images socket-activate SSH** — `ssh.service` is inactive on
