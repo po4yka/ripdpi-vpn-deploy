@@ -34,10 +34,16 @@ code there only for incompatible keys or a guest-convergence check such as
 Vultr's secondary IPv4). Validate constrained inputs with `contains([...])`
 allowlists like the existing roots, add `mock_provider` cases under `tests/`
 for `make tf-test`, and keep DNS inside the owning root behind an explicit
-opt-in variable (`providers/vultr/dns.tf`). Add the name to the hardcoded
-provider lists: Makefile loops, the `ci.yml` provider matrices,
-`scripts/terraform-env.sh`, `scripts/backup-tf-state.sh`, and
-`scripts/tf-policy-test.sh`. Then add a `docs/PROVIDER-NOTES.md` row and
+opt-in variable (`providers/vultr/dns.tf`). Add the name to every hardcoded
+provider list: Makefile loops, the `ci.yml` provider matrices,
+`scripts/terraform-env.sh`, `scripts/backup-tf-state.sh`,
+`scripts/tf-policy-test.sh`, `scripts/destroy.sh`, the liveness allowlists
+(`contract/protocol-liveness.schema.json`, `scripts/liveness_profiles.py`,
+`scripts/install_liveness_sentinel.py`), `vpnd/src/config.rs`, and the
+provider tuples in `tests/unit/` (for example
+`test_provider_listeners_parity.py`). This list drifts, so finish with
+`rg -il scaleway --hidden -g '!terraform/providers/**'` and cover every
+enumeration it finds. Then add a `docs/PROVIDER-NOTES.md` row and
 `providers/<name>/CLAUDE.md` with its `AGENTS.md -> CLAUDE.md` symlink. Roots
 never compose each other as modules.
 
