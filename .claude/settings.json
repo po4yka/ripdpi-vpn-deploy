@@ -12,7 +12,10 @@
       "Read(./secrets/local/**)",
       "Read(**/*.tfstate)",
       "Read(**/*.tfstate.*)",
-      "Read(//**/vpn-*.secrets.yaml)",
+      "Read(//**/*.secrets.yaml)",
+      "Read(//**/*.secrets.yml)",
+      "Read(//**/*.sops.yaml.dec)",
+      "Read(//**/*.sops.json.dec)",
       "Read(//**/vpn-blue-green.*/**)"
     ]
   }
