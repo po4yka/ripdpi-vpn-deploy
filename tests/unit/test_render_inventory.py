@@ -585,14 +585,14 @@ def test_duplicate_host_alias_preserves_last_inventory(tmp_path):
 
 def test_tailnet_transport_keeps_terraform_public_service_address(tmp_path):
     root, env = _isolated_inventory_repo(tmp_path)
-    env["TAILNET_TRANSPORTS"] = "100.102.91.83"
+    env["TAILNET_TRANSPORTS"] = "100.64.0.42"
     result = subprocess.run(
         ["bash", str(root / "scripts/render-inventory.sh")],
         env=env, capture_output=True, text=True, timeout=20,
     )
     assert result.returncode == 0, result.stderr
     inventory = (root / "ansible/inventory/generated.ini").read_text()
-    assert "ansible_host=100.102.91.83" in inventory
+    assert "ansible_host=100.64.0.42" in inventory
     assert "vpn_service_address=198.51.100.10" in inventory
 
     env["TAILNET_TRANSPORTS"] = "-"
@@ -605,7 +605,7 @@ def test_tailnet_transport_keeps_terraform_public_service_address(tmp_path):
 
 
 @pytest.mark.parametrize("transport", [
-    "8.8.8.8", "100.102.91.83 bad", "100.102.91.83,100.102.91.84", "100.102.91.83,",
+    "8.8.8.8", "100.64.0.42 bad", "100.64.0.42,100.64.0.43", "100.64.0.42,",
 ])
 def test_invalid_tailnet_transport_preserves_inventory_before_terraform(tmp_path, transport):
     root, env = _isolated_inventory_repo(tmp_path)

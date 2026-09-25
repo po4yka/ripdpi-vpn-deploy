@@ -18,7 +18,7 @@
 #   HOSTS="scaleway:prod,vultr:prod" AWG_EVIDENCE_MODES="echo,server" ./scripts/render-inventory.sh
 # Restricted Tailnet SSH transport: optional TAILNET_TRANSPORTS has one
 # Tailscale IPv4 or '-' per HOSTS item. Terraform still owns service addresses.
-#   HOSTS="upcloud:staging" TAILNET_TRANSPORTS="100.102.91.83" ./scripts/render-inventory.sh
+#   HOSTS="upcloud:staging" TAILNET_TRANSPORTS="100.64.0.42" ./scripts/render-inventory.sh
 # Central observability topology is opt-in and requires all three variables.
 # HOST_CLASSES and FAILURE_DOMAINS have one entry per HOSTS item. Use `-` as
 # the COHORTS placeholder for non-VPN hosts. Sentinels are technical identities
