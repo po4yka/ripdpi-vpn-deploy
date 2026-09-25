@@ -120,6 +120,22 @@ and verify existing Tailnet state without invoking login. All existing callers
 and tests MUST migrate; no legacy credential-forwarding fallback is permitted.
 An already bootstrapped node may be verified idempotently without consuming a
 new key, mutating its identity, or replacing mismatched operator inputs.
+On a fresh Debian node with known shadowed packaged SSH directives, an
+explicit policy-preserving ownership transaction MUST precede ordinary
+deployment. It MUST preview without writes, bind one source revision and node,
+retain durable rollback, and require fresh pinned public and Tailnet SSH/SFTP
+proof before confirmation. Bootstrap and ordinary deploy MUST NOT perform this
+migration implicitly.
+
+#### Scenario: Fresh Debian has packaged main-file SSH directives
+
+- **WHEN** bootstrap confirms both access paths but the packaged main SSH file still has recognized shadowed directives
+- **THEN** the separate ownership transaction normalizes only those directives while preserving full effective policy, and ordinary dry-run can subsequently preview baseline hardening.
+
+#### Scenario: One management path fails after ownership activation
+
+- **WHEN** either fresh SSH/SFTP path fails before ownership confirmation
+- **THEN** the controller requests bounded rollback and cannot report success; uncertain rollback remains subject to durable recovery.
 
 #### Scenario: Deploy receives a new enrollment capability
 

@@ -30,19 +30,38 @@ ordinary `dry-run` or `deploy`:
 ```bash
 make install-ssh-recovery ANSIBLE_LIMIT=<exact-inventory-alias> \
   SSH_RECOVERY_EXCLUSIVE_WINDOW=1
+```
+
+For a fresh Tailnet node, stop after the recovery installer and run the
+[one-node Tailnet bootstrap](TAILNET-MANAGEMENT.md#bootstrap-one-node) before
+`dry-run`. Bootstrap obtains the real management address and socket contexts.
+On a fresh Debian node, run the separate policy-preserving SSH ownership
+migration after bootstrap and before ordinary `dry-run`:
+
+```bash
+SSH_OWNERSHIP_CONFIG="$HOME/.config/vpn-provision/ssh-ownership.json" make migrate-ssh-ownership
+```
+
+The same target accepts `mode: check` for a read-only preview, then
+`mode: deploy` for the bounded transaction. The private input file must be mode 0600
+and contain exactly `schema_version: 1`, `mode`, one `inventory_alias`, absolute
+`inventory_path`, `known_hosts_path`, `contexts_path`, and the current checkout's
+`source_revision` and `deployable_digest` from `scripts/deploy-source-identity.sh`.
+The contexts file is the same private per-alias JSON used by ordinary deploy.
+Migration requires the installed recovery generation and fresh strict SSH/SFTP
+proof on both public and Tailnet paths before confirmation. It preserves the
+effective SSH policy; the later baseline transaction applies desired hardening.
+Do not manufacture socket contexts to pass deployment readiness. On disposable staging,
+create the cleanup manifest before either installer. Unset the enrollment
+key before ordinary `dry-run`/`deploy`, which now reject it.
+
+```bash
 make dry-run ANSIBLE_LIMIT=<exact-inventory-alias> \
   DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json"
 make deploy ANSIBLE_LIMIT=<exact-inventory-alias> \
   DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json" \
   DEPLOY_PROMOTION_CONFIG_FILE="$HOME/.config/vpn-provision/promotion-configs.json"
 ```
-
-For a fresh Tailnet node, stop after the recovery installer and run the
-[one-node Tailnet bootstrap](TAILNET-MANAGEMENT.md#bootstrap-one-node) before
-`dry-run`. Bootstrap obtains the real management address and socket contexts;
-do not manufacture them to pass deployment readiness. On disposable staging,
-create the cleanup manifest before either installer. Unset the enrollment
-key before ordinary `dry-run`/`deploy`, which now reject it.
 
 Run the installer serially in an exclusive maintenance window. Ordinary
 deployment never installs or repairs this capability implicitly. Before its

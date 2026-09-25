@@ -206,7 +206,10 @@ the exact-source local/hosted and authorized staging gates.
    acquisition, Tailnet key, approved sources, and required reviewer gate. Use
    the existing authorized disposable budget and deadlines; no automatic refill.
 4. Provision one isolated node, create cleanup manifest, install SSH recovery,
-   bootstrap Tailnet, and verify both paths. Exercise controller loss and reboot
+   bootstrap Tailnet, and verify both paths. Preview and confirm the separate
+   SSH ownership transaction for recognized fresh Debian main-file directives
+   before ordinary dry-run; retain full effective-policy parity and dual-path
+   SSH/SFTP proof. Exercise controller loss and reboot
    with unconfirmed enrollment, verify restored public access, then repeat the
    positive bootstrap. Never simulate provider or live success with fixtures.
 5. Use the handoff with ordinary dual-path deploy and exact-node VPN proof.

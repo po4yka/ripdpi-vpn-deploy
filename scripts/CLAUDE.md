@@ -9,6 +9,9 @@ data shaping are Python and use only stdlib + pinned `PyYAML`, `Jinja2`, or
 
 **One file per operator verb** — `bootstrap-secrets.sh`, `rotate-secrets.sh`,
 `fleet-rotate.sh`. The Makefile wraps these with `make <target>` shorthand.
+`ssh-ownership.py` is the explicit fresh-node SSH ownership verb between
+dual-path Tailnet bootstrap and ordinary deployment. Its private configuration
+binds the exact source and one inventory alias; check mode only previews.
 
 **SOPS gate everywhere** — anything that reads decrypted secrets refuses
 without `VPN_SECRETS_FILE` or the Make-resolved `SECRETS_FILE` produced by

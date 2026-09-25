@@ -223,6 +223,13 @@ host/group vars, allows only tool/home/locale environment inheritance, and uses
 portable strict SSH options for transfers. Caller fields remain literal data
 through Make and argv; no general site/backup task runs during installation.
 
+**Fresh-node ownership is a separate operator transaction** —
+`ssh-ownership.py` requires the installed exact bundle generation, a clean
+source for mutation, one pinned inventory alias, and real public plus Tailnet
+contexts. It previews the policy-preserving ownership plan or applies it with
+fresh strict SSH/SFTP proof on both paths before confirmation. A failed proof
+requests rollback; an uncertain rollback remains an explicit refusal.
+
 ## Probe matrix — `probe-matrix-driver.py`
 
 **Probe-matrix drivers keep secrets file-bound** — `probe-matrix-driver.py` reads an owner-controlled `0600` target profile, writes Xray configs only inside `0700` temporary directories, and sends MTProxy requests to the pinned Go helper on stdin. Keep credentials out of argv, environment variables, diagnostics, and reports; only same-tick failures with a healthy direct control can become `blocked`.

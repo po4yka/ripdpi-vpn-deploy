@@ -23,7 +23,10 @@ daemon able to degrade systemd after a partial package update.
 recovery installer does not import baseline or edit SSH configuration. Its
 planner preserves full effective policy for known 10/20/50 layouts; the durable
 helper restores unconfirmed changes. Never use a full baseline converge as
-ownership-only migration, and do not treat local tests as staging acceptance.
+ownership-only migration. On a fresh Debian node, run the explicit
+`migrate-ssh-ownership` controller after dual-path bootstrap and before the
+first ordinary dry-run. It requires strict public and Tailnet SSH/SFTP proof
+and the installed recovery generation. Local tests are not staging acceptance.
 
 ## What's done well
 
