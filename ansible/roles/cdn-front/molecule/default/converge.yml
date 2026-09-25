@@ -21,7 +21,6 @@
       upstream_port: 10085
       xhttp_path: "/app-sync"
       cf_prefix_dir: /etc/cdn-front
-      cf_refresh_cron_hour: 4
       origin_firewall: true
       aop_cert_path: ""
   pre_tasks:
