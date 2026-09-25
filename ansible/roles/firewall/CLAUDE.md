@@ -24,6 +24,8 @@ role, and guest transaction helper must keep the same schema-1 grammar.
 
 **Public listener ports come from Terraform's contract** — `site.yml` verifies `public_listener_contract` against the runtime manifest before this template renders. Do not add transport ports directly to `nftables.conf.j2`.
 
+**The SSH port is reserved from the contract** — the contract loop accepts without the SSH source restriction, so a TCP listener or range covering the `sshd -T` port would bypass `allowed_ssh_cidrs`. The assert mirrors the template's `port`-before-`port_range` precedence; keep them in step. The role asserts no such entry exists before its first mutation. It is not allowlistable, and it lives here rather than in `site.yml` pre_tasks because the effective port is host state and the full-stack Molecule image gets `openssh-server` only from `baseline`.
+
 **Egress modes are opt-in** — `firewall_egress_policy: permissive` preserves
 the historical output-chain `policy accept`. `logged` adds counters only, and
 `strict` changes host-originated egress to default-drop while preserving

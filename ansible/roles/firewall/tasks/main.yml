@@ -81,6 +81,30 @@
       - firewall_effective_ssh_ports[0] | int <= 65535
     fail_msg: "sshd -T must expose exactly one valid listener port before firewall convergence."
 
+# The contract loop in nftables.conf.j2 accepts listener ports without the
+# SSH source restriction, so a TCP listener on the SSH port would bypass
+# allowed_ssh_cidrs. Not allowlistable: that accept is the defect itself.
+# Port precedence mirrors the template's listener_target.
+- name: Reject public listeners on the effective SSH port
+  vars:
+    _firewall_ssh_port_listeners: >-
+      {%- set ns = namespace(names=[]) -%}
+      {%- for listener in public_listener_contract | default([]) if listener.protocol | trim | lower == 'tcp' -%}
+      {%-   set bounds = ((listener.port ~ '-' ~ listener.port) if listener.port is not none else listener.port_range).split('-') -%}
+      {%-   if bounds[0] | int <= firewall_effective_ssh_ports[0] | int <= bounds[1] | int -%}
+      {%-     set ns.names = ns.names + [listener.name] -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ ns.names }}
+  ansible.builtin.assert:
+    that:
+      - _firewall_ssh_port_listeners | length == 0
+    fail_msg: >-
+      Public listener contract entries [{{ _firewall_ssh_port_listeners | join(', ') }}]
+      claim the effective SSH port tcp/{{ firewall_effective_ssh_ports[0] }}.
+      Move them to another port; the firewall would otherwise accept SSH from
+      sources outside allowed_ssh_cidrs.
+
 - name: Check whether UFW is installed
   ansible.builtin.stat:
     path: /usr/sbin/ufw
