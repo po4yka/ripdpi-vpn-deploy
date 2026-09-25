@@ -30,9 +30,9 @@ it or letting one producer replace another producer's metrics.
 ## Pitfalls
 
 - **Don't expose a honeypot port that legit ops uses** — e.g., if you SSH on
-  2222 yourself, do not honeypot 2222. Nothing checks this automatically:
-  neither the firewall role nor `check-listener-collisions.py` compares the
-  honeypot port with the effective SSH port.
+  2222 yourself, do not honeypot 2222. The firewall role fails convergence
+  when any TCP public listener, the honeypot included, claims the effective
+  `sshd -T` port. Other operator ports you use are not checked.
 - **Honeypot ports must be in the firewall allow-list** — otherwise nftables
   drops before the honeypot sees the hit, and you record nothing.
 - **Verify each enabled address family separately** — a matching TCP port on IPv4 does not prove the provider's IPv6 firewall opening has a consumer. Keep Molecule and `security-verify.yml` assertions split across `ss -4` and `ss -6`.

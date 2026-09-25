@@ -39,7 +39,7 @@ templates must address them with bracket notation rather than attribute syntax.
 reads `terraform output -json` and emits `inventory/<env>.yml`. Don't edit
 the rendered file.
 
-**Listener collisions fail before convergence** — `site.yml` renders a sanitized public listener manifest and runs `scripts/check-listener-collisions.py` in pre_tasks before any role mutates services or nftables.
+**Listener collisions fail before convergence** — `site.yml` renders a sanitized public listener manifest and runs `scripts/check-listener-collisions.py` in pre_tasks before any role mutates services or nftables. Collisions with the effective SSH port are host state and fail in the firewall role instead (see `roles/firewall/CLAUDE.md`).
 
 **Safety pre-tasks run under role tags** — secrets presence, SSH allowlist,
 role-tier loading and approval guards use `always`, just like listener checks.
