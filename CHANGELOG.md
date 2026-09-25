@@ -5,6 +5,81 @@ Do not edit by hand — write [Conventional Commits](https://www.conventionalcom
 on `main` and the next merge of the auto-generated release PR will populate
 this file.
 
+## [2.0.0](https://github.com/po4yka/ripdpi-vpn-deploy/compare/vpnd-v1.4.2...vpnd-v2.0.0) (2026-09-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **tailnet:** first enrollment requires bootstrap-tailnet; deploy rejects enrollment keys. UpCloud schema 3 and Vultr schema 2 cleanup manifests require registration and explicit previous-generation reissue.
+
+### Features
+
+* **tailnet:** bootstrap restricted access with durable recovery ([#216](https://github.com/po4yka/ripdpi-vpn-deploy/issues/216)) ([669cd7e](https://github.com/po4yka/ripdpi-vpn-deploy/commit/669cd7e3d0f4669fdfe65f391289c132fa716f90))
+
+
+### Bug Fixes
+
+* **ci:** repin molecule base images after security rebuild ([0317847](https://github.com/po4yka/ripdpi-vpn-deploy/commit/03178477f75f049cf02c867747c2dcaced303100))
+* **ci:** repin ubuntu2404 cloud-init fixture base image ([729658c](https://github.com/po4yka/ripdpi-vpn-deploy/commit/729658cd4e321404914072d284c5225224524407))
+* **firewall:** reject public listeners on the effective SSH port ([#225](https://github.com/po4yka/ripdpi-vpn-deploy/issues/225)) ([a670cb2](https://github.com/po4yka/ripdpi-vpn-deploy/commit/a670cb28d71d1e4d1ce53ea1d4a6dcece8116be2))
+* **observability:** refresh apt cache before molecule curl install ([330b7f8](https://github.com/po4yka/ripdpi-vpn-deploy/commit/330b7f8ae90d563de6fd31327cdcf2c784088933))
+* resolve the 45 open code scanning alerts ([#230](https://github.com/po4yka/ripdpi-vpn-deploy/issues/230)) ([2f1337a](https://github.com/po4yka/ripdpi-vpn-deploy/commit/2f1337aca2be950974a028570537851940cb739e))
+* **scripts:** read only the temp path in galaxy latest-version lookup ([#232](https://github.com/po4yka/ripdpi-vpn-deploy/issues/232)) ([dbad4b2](https://github.com/po4yka/ripdpi-vpn-deploy/commit/dbad4b205cae31e8e34eb7ac1f9282b974cdbbea))
+* **tasking:** close audit batch across tasking, tests, and vpnd docs ([d6ca447](https://github.com/po4yka/ripdpi-vpn-deploy/commit/d6ca447aac6372c29d162235c43e6ed3390bdca2))
+* **tasking:** resolve openspec before writing a new task ([d732879](https://github.com/po4yka/ripdpi-vpn-deploy/commit/d732879033996ad4a7418dbcac3c1f513b70809b))
+* **tasking:** validate the slug before reserving a task id ([1b25da3](https://github.com/po4yka/ripdpi-vpn-deploy/commit/1b25da35bddfe358509dd6fe2575acac7fb70507))
+* **tasks:** complete committed review purge ([#209](https://github.com/po4yka/ripdpi-vpn-deploy/issues/209)) ([54f27b9](https://github.com/po4yka/ripdpi-vpn-deploy/commit/54f27b972448757fb52dfdf46cf8bfee9fbf6902))
+* **tasks:** keep incomplete local evidence blocked ([1d816a4](https://github.com/po4yka/ripdpi-vpn-deploy/commit/1d816a4f9cd02dc193d9c6d775b382f606c964e8))
+* **tasks:** preserve legacy terminal policy ([#210](https://github.com/po4yka/ripdpi-vpn-deploy/issues/210)) ([d0c8353](https://github.com/po4yka/ripdpi-vpn-deploy/commit/d0c83539988b9999d2bf352919fa964a0192bd66))
+* **tests:** make CN-less certificate coverage real ([0b71fbd](https://github.com/po4yka/ripdpi-vpn-deploy/commit/0b71fbdc331ea220317d04b055a0a544555e0326))
+* **vpnd:** address review findings on make variable validation ([6002d6a](https://github.com/po4yka/ripdpi-vpn-deploy/commit/6002d6a175a65dafc20985b2bc431a8c3aee0514))
+* **vpnd:** align operator output contract and move blocking IO off async paths ([3dacd66](https://github.com/po4yka/ripdpi-vpn-deploy/commit/3dacd665dc6c7ef2c30e613fe4afce5e084de058))
+* **vpnd:** bump rustls to 0.23.45 for RUSTSEC-2026-0285 ([641488b](https://github.com/po4yka/ripdpi-vpn-deploy/commit/641488b9fe185aeba39fb30f3a48e3e780a48805))
+* **vpnd:** gate make variable values behind per-key charset allowlists ([79f23b7](https://github.com/po4yka/ripdpi-vpn-deploy/commit/79f23b70536f5c4ec7bb4c8ec25bb7776e501bb4))
+* **vpnd:** reject whitespace in runtime-path make values ([6bda37b](https://github.com/po4yka/ripdpi-vpn-deploy/commit/6bda37bc0476adaef9b6b95eb03778cb890bdf42))
+* **vpnd:** scope --json to supported subcommands and harden registry temp files ([c82a41c](https://github.com/po4yka/ripdpi-vpn-deploy/commit/c82a41c1b8784b01f58ff57ea035ef6e9f7904d0))
+
+
+### Tests
+
+* **agents:** check explicit relative path references ([66a89ff](https://github.com/po4yka/ripdpi-vpn-deploy/commit/66a89ff0a589d49b194cab3e1c05edba34f8973e))
+* **agents:** fail on file references that resolve nowhere ([e3e4690](https://github.com/po4yka/ripdpi-vpn-deploy/commit/e3e46908c588762fc1260c332cc2637755d2d172))
+* **agents:** fail on orphaned nested AGENTS.md symlinks ([46fc899](https://github.com/po4yka/ripdpi-vpn-deploy/commit/46fc899c1fd96642d9f6ce27174dcd7a74c030ea))
+* **agents:** guard the instruction layout and cited paths ([15ee509](https://github.com/po4yka/ripdpi-vpn-deploy/commit/15ee5096cd4abbe8857788e1695300d257b64e12))
+* **agents:** judge cited paths against the index ([283c2c4](https://github.com/po4yka/ripdpi-vpn-deploy/commit/283c2c4d4ea6f2715d96defbcd5e669e7d079ade))
+* **emit-singbox:** pin fleet inputs in make round-trip tests ([8bb0f3c](https://github.com/po4yka/ripdpi-vpn-deploy/commit/8bb0f3c9c7f86ea2b1026efbd761f3ddf8dc2261))
+
+
+### Documentation
+
+* **agents:** complete the tasks template after allocating steps ([8d99916](https://github.com/po4yka/ripdpi-vpn-deploy/commit/8d99916247b3313586b0a6535dba7b96adb6dfa0))
+* **agents:** confirm the schema before propose creates a task ([c0e5955](https://github.com/po4yka/ripdpi-vpn-deploy/commit/c0e595592283b36b6007f281a84ed16eb42969c2))
+* **agents:** cover static units and real validation order in systemd skill ([fb51b78](https://github.com/po4yka/ripdpi-vpn-deploy/commit/fb51b78b13e9f1ac3ab588e50cbac0600d6962fd))
+* **agents:** let security review accept fake fixture values ([9562f94](https://github.com/po4yka/ripdpi-vpn-deploy/commit/9562f94e9fe80f37963231056774161173a6e1f0))
+* **agents:** make AGENTS.md canonical and fact-check agent notes ([a66006f](https://github.com/po4yka/ripdpi-vpn-deploy/commit/a66006fa11ee264a02769aeaa15de582198bb950))
+* **agents:** note the pinned toolchain and local make overrides ([6701ef1](https://github.com/po4yka/ripdpi-vpn-deploy/commit/6701ef1cd0517c247e27a1d4c2f14838a5d80ead))
+* **agents:** review uncommitted changes in security review ([e285df5](https://github.com/po4yka/ripdpi-vpn-deploy/commit/e285df55926f1d166116cd3ec83ab0e51a7e4eb7))
+* answer review on decoy scaffold, restic layout, geodata consumers, and QR guidance ([2c5544f](https://github.com/po4yka/ripdpi-vpn-deploy/commit/2c5544fe20471bc43c649aef2278e3efe34503b6))
+* **firewall:** name the reload that applies nftables changes ([da4ed97](https://github.com/po4yka/ripdpi-vpn-deploy/commit/da4ed973dd2fe3822e10e041ae4a92fcc6378d15))
+* **tasks:** bind fleet Tailnet blocker ([b81bbe0](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b81bbe0576adb0ab93843466200056c902a15075))
+* **tasks:** read the execution file and avoid slug collisions ([2f7eda3](https://github.com/po4yka/ripdpi-vpn-deploy/commit/2f7eda341662d515293d0b8b0b77a11e14ea73e6))
+* **tasks:** record fleet reachability blocker ([0b0151f](https://github.com/po4yka/ripdpi-vpn-deploy/commit/0b0151f5823b0e420522791a9f21b65ca02489a0))
+* **tasks:** record protected-source preflight ([b3ea3b7](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b3ea3b7c063de2af4aa375be782c1d970671ad81))
+* **tasks:** record secret precheck ([ca4b50f](https://github.com/po4yka/ripdpi-vpn-deploy/commit/ca4b50fd740d3c5e70bb7652a9347745e836d523))
+* **tasks:** record terminal policy main evidence ([#213](https://github.com/po4yka/ripdpi-vpn-deploy/issues/213)) ([3851ba8](https://github.com/po4yka/ripdpi-vpn-deploy/commit/3851ba8259b79142e46ccd0d0daf69d2f46c590a))
+* **tasks:** refresh external blockers ([01719cc](https://github.com/po4yka/ripdpi-vpn-deploy/commit/01719cc24030097f0d56d0867ea47113b835e033))
+* **tasks:** regenerate board after rebase onto committed review purge ([87edd2f](https://github.com/po4yka/ripdpi-vpn-deploy/commit/87edd2f9bfc77e8f37f41e4e80897150d1884c09))
+* **tasks:** require archiving a dropped OpenSpec change before purge ([3e23324](https://github.com/po4yka/ripdpi-vpn-deploy/commit/3e233245ca9eacea30e79d2b1fb635076f130a0f))
+* **tasks:** restore critical external acceptance ([b5682b9](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b5682b9a8b0c30515a1e2576ac4ab385fb29d077))
+* **terraform:** list every hardcoded provider consumer ([ff0c392](https://github.com/po4yka/ripdpi-vpn-deploy/commit/ff0c392603904c2ba84c3f3b8e940131417e9513))
+* **testing:** record 4367 collected tests ([9b63822](https://github.com/po4yka/ripdpi-vpn-deploy/commit/9b63822ac32fbfb933d154ecdf552969eb243839))
+* **vpnd:** keep CLI docs in the subcommand recipe ([f194bfe](https://github.com/po4yka/ripdpi-vpn-deploy/commit/f194bfea9d2fb6afa62b366933b3f24eb3c0ec76))
+
+
+### Refactoring
+
+* **cdn-front:** drop unused cf_refresh_cron_hour ([4620381](https://github.com/po4yka/ripdpi-vpn-deploy/commit/462038140bb2b8f7a186981df503db34c01c7d02))
+
 ## [1.4.2](https://github.com/po4yka/ripdpi-vpn-deploy/compare/vpnd-v1.4.1...vpnd-v1.4.2) (2026-09-08)
 
 
