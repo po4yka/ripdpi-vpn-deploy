@@ -6,6 +6,7 @@ CLAUDE.md is canonical and AGENTS.md is a symlink to it. Skills live in
 .claude/skills symlinks. Paths the instructions cite must exist.
 """
 
+import posixpath
 import re
 import subprocess
 from pathlib import Path, PurePosixPath
@@ -20,6 +21,8 @@ PORTABLE_FRONTMATTER = {"name", "description", "license", "compatibility", "meta
 SKILL_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 BACKTICK = re.compile(r"`([^`\s]+)`")
 FILE_NAME = re.compile(r"/[^/]*\.[a-z][a-z0-9]*$")
+# The leading ./ or ../ path of any span, so commands with arguments are checked too.
+RELATIVE = re.compile(r"`(\.\.?/[^`\s]+)")
 
 
 def _tracked(*patterns: str) -> list[str]:
@@ -95,14 +98,22 @@ def test_agent_instructions_reference_existing_paths() -> None:
     stale = []
     for document in documents:
         folder = PurePosixPath(document).parent
-        for match in BACKTICK.finditer((ROOT / document).read_text()):
-            reference = re.sub(r":\d+(?:-\d+)?$|::\w+$", "", match.group(1).rstrip(".,:;)"))
-            if "/" not in reference or reference.startswith(("/", "./", "../", "http")):
+        text = (ROOT / document).read_text()
+        for raw in {*BACKTICK.findall(text), *RELATIVE.findall(text)}:
+            reference = re.sub(r":\d+(?:-\d+)?$|::\w+$", "", raw.rstrip(".,:;)"))
+            if "/" not in reference or reference.startswith(("/", "http")):
                 continue
             # Placeholders, globs, and shell or systemd expansions are patterns, not paths.
             if re.search(r"[<>*{}$\[\]|~=@%]|\.\.\.|…", reference):
                 continue
             reference = reference.rstrip("/")
+            if reference.startswith(("./", "../")):
+                # Explicit relative paths resolve against the note's folder or, for
+                # commands run from the checkout root such as ./taskctl, the repo root.
+                candidates = [posixpath.normpath(str(base / reference)) for base in (folder, PurePosixPath("."))]
+                if not any(c in tracked or c in tracked_dirs or _ignored(c) for c in candidates):
+                    stale.append(f"{document}: {reference}")
+                continue
             first = reference.split("/")[0]
             # Nested notes cite paths relative to either the repo or their folder.
             candidates = [reference] if first in top_level else []
