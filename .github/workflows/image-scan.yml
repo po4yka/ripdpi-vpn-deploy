@@ -61,6 +61,16 @@ jobs:
         if: matrix.image == '__none__'
         run: echo "No Molecule base images are configured."
 
+      # Code scanning closes an alert only when a later upload in the same
+      # category omits it. A digest in the category would orphan the previous
+      # digest's alerts on every repin, so key the category by image name.
+      - name: Derive digest-free SARIF category
+        id: sarif-category
+        if: matrix.image != '__none__'
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: echo "category=trivy-${IMAGE%@sha256:*}" >> "$GITHUB_OUTPUT"
+
       - name: Run Trivy vulnerability scanner
         if: matrix.image != '__none__'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.31.0
@@ -83,4 +93,4 @@ jobs:
         uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd  # v4
         with:
           sarif_file: trivy-results.sarif
-          category: trivy-${{ matrix.image }}
+          category: ${{ steps.sarif-category.outputs.category }}

@@ -1,5 +1,9 @@
+import os
 import re
+import subprocess
 from pathlib import Path
+
+import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -26,3 +30,31 @@ def test_molecule_base_images_use_the_verified_scan_clean_digests() -> None:
             observed[match.group("name")].add(match.group("digest"))
 
     assert observed == EXPECTED_DIGESTS
+
+
+def test_image_scan_sarif_category_survives_a_digest_repin(tmp_path: Path) -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/image-scan.yml").read_text())
+    steps = {step.get("name"): step for step in workflow["jobs"]["scan"]["steps"]}
+    derive = steps["Derive digest-free SARIF category"]
+    upload = steps["Upload Trivy SARIF results"]
+    assert (
+        upload["with"]["category"] == "${{ steps.%s.outputs.category }}" % derive["id"]
+    )
+
+    categories = set()
+    for digest in (next(iter(digests)) for digests in EXPECTED_DIGESTS.values()):
+        for image in EXPECTED_DIGESTS:
+            output = tmp_path / "github-output"
+            subprocess.run(
+                ["bash", "-c", derive["run"]],
+                check=True,
+                env={
+                    **os.environ,
+                    "IMAGE": f"{image}@sha256:{digest}",
+                    "GITHUB_OUTPUT": str(output),
+                },
+            )
+            categories.add(output.read_text())
+            output.unlink()
+
+    assert categories == {f"category=trivy-{image}\n" for image in EXPECTED_DIGESTS}
