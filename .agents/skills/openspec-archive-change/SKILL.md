@@ -22,4 +22,4 @@ Use this skill only when implementation is complete and the user asks to finaliz
 6. Run `./taskctl close prepare <task-id> --outcome done --evidence "<concise evidence summary>"`.
 7. Stop and ask for the terminal-state commit. `close purge` is a later, separately committed step.
 
-For a dropped task, do not archive incomplete behavior deltas as completed. Prepare `dropped` with an explicit reason and preserve the active change until the owner decides whether to revise or remove it.
+For a dropped task, prepare `dropped` with an explicit reason and commit it first. `./taskctl openspec archive <change-name>` then archives the change with `--skip-specs`, so incomplete behavior deltas never reach the main specs; commit the archive before `close purge`, which refuses an active or unarchived change. Do not delete the change directory instead.
