@@ -56,6 +56,10 @@ persistent timer. Revalidate their results under the transaction lock.
 - Real tailscaled startup creates empty ip/ip6 filter/nat tables before
   login. Only that exact object-free quartet qualifies as inert; preserve it
   in snapshots and replay without accepting foreign chains, sets or rules.
+- An interrupted package install can leave the pinned `/usr/bin/tailscale`
+  present while `tailscaled.service` is inactive. Resume only when dpkg owns
+  that exact binary and version, no identity state exists, and the daemon is
+  inactive; any existing identity or unowned CLI still refuses before writes.
 - Recovery's address-family sandbox can reorder sshd's IPv4/IPv6 listener
   output. Normalize only listenaddress enumeration, preserving values and
   multiplicity; never sort the whole policy or weaken its validation.
