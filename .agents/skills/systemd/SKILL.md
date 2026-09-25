@@ -1,11 +1,11 @@
 ---
 name: systemd
-description: Conventions for the systemd units and timers that Ansible roles render (hardening floor, capabilities, secret delivery, timers, verification). Use when adding or changing a *.service.j2 or *.timer.j2 template under ansible/roles/, or the tasks and handlers that install and restart one.
+description: Conventions for the systemd units and timers that Ansible roles render (hardening floor, capabilities, secret delivery, timers, verification). Use when adding or changing a *.service.j2 or *.timer.j2 template or a static *.service or *.timer file under ansible/roles/, or the tasks and handlers that install and restart one.
 ---
 
 # systemd units (vpn-deploy)
 
-Every runtime service is a unit rendered from `ansible/roles/<role>/templates/*.service.j2` (and `*.timer.j2`) into `/etc/systemd/system/`. List them with `fd -e j2 'service|timer' ansible/roles`. Unit names do not always match role names: `awg-quick@<iface>` (amneziawg), `caddy-naive` (naive), `vpn-watchdog` (watchdog), `vpn-backup` and `vpn-backup-restore-drill` (backup). Role-specific lifecycle pitfalls live in each role's `CLAUDE.md`.
+Most runtime services are units rendered from `ansible/roles/<role>/templates/*.service.j2` (and `*.timer.j2`) into `/etc/systemd/system/`. Six security-sensitive recovery units are static files installed as-is: the SSH recovery units in `ansible/roles/baseline/templates/` (`vpn-sshd-*`) and the Tailnet firewall recovery units in `ansible/roles/firewall/files/` (`vpn-tailnet-network-*`); the same rules apply to them. List every unit with `git ls-files 'ansible/roles/**' | rg '\.(service|timer)(\.j2)?$'`. Unit names do not always match role names: `awg-quick@<iface>` (amneziawg), `caddy-naive` (naive), `vpn-watchdog` (watchdog), `vpn-backup` and `vpn-backup-restore-drill` (backup). Role-specific lifecycle pitfalls live in each role's `CLAUDE.md`.
 
 ## Authoring a unit
 
@@ -18,5 +18,5 @@ Every runtime service is a unit rendered from `ansible/roles/<role>/templates/*.
 
 ## Lifecycle and verification
 
-- Install with `ansible.builtin.template`, then `daemon_reload` before enabling or restarting. Restart through handlers; handlers for Xray, nftables, and nginx validate the new config before restarting (see `docs/TESTING.md`), so keep that order when adding a service with a config test.
+- Install with `ansible.builtin.template` (or `ansible.builtin.copy` for a static unit), then `daemon_reload` before enabling or restarting. Validation lives in tasks, not handlers, and must run before anything loads the new config: Xray validates through the template's `validate:` (`xray run -test`); nftables validates through `validate: "nft -c -f %s"` and is loaded by the explicit `Reload nftables before dependent roles run` task (firewall has no handler); nginx-xhttp runs an explicit `nginx -t` task and then `flush_handlers` to trigger its reload-only handler. Keep that validate-then-apply order when adding a service with a config test.
 - Check the rendered unit with `make snapshot-check` (golden files under `tests/snapshot/golden/<role>/templates/`) and converge it with `make molecule-test ROLE=<role>`. Only `backup` and `geodata` currently run `systemd-analyze verify` in their Molecule `verify.yml`; add it when you introduce a new unit. Molecule verifies otherwise assert `systemctl is-active` or unit presence.
