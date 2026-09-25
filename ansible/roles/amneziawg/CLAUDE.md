@@ -43,6 +43,7 @@ This proves role ownership and idempotence, not upstream builds or tunnel traffi
 ## Pitfalls
 
 - **Fresh-host check mode cannot start an absent instance** — require a planned shared unit installation, then defer activation and restart until the real converge.
+- **Fresh-host check mode has no Git yet** — apt only plans the Git dependency, so defer source checkout and commit attestation until convergence. Receipt inspection still reports installed binary drift in check mode.
 - **AWG 2.0 client app version skew** — issue #2457: clients on AmneziaWG
   client v1.0.x silently fall back to vanilla WG handshake when the server
   uses 2.0 finalmask. Pin client version in `docs/CLIENT-NOTES.md`.
