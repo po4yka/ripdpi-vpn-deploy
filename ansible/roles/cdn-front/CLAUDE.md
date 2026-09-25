@@ -29,8 +29,12 @@ must reload successfully; they retain transactional rollback on failure.
 - **Do not enable this for the RU baseline** — re-read the ADR. Use it only
   when the failure shape is "TLS handshake never completes from this network,
   completes from elsewhere" and a non-RU CDN PoP is reachable.
-- **CF ranges drift** — keep `cloudflare_ranges.txt` fresh via the
-  `update-cf-ranges.sh` script (run from operator workstation, not server).
+- **CF ranges drift** — the server refreshes them itself:
+  `cdn-front-prefix-refresh.timer` runs `refresh-cf-prefixes.sh` daily at
+  06:25 (up to 45 min jitter) into `cdn_front.cf_prefix_dir`. 06:25 keeps the
+  Debian `cron.daily` slot the role used before the timer. There is no
+  schedule variable; change the time in the timer template itself.
+  Check the timer is enabled; there is no workstation script.
 - **`Authenticated Origin Pulls` is mandatory** — without it, anyone with the
   origin IP can bypass the CDN. The role refuses to start if the AOP cert is
   missing.
