@@ -1315,6 +1315,23 @@ def test_check_mode_accepts_confirmed_identity_without_key(tmp_path) -> None:
     assert not any(call[1:2] in (["login"], ["logout"]) for call in runner.calls)
 
 
+@pytest.mark.parametrize(("transport", "allowed"), [
+    ("100.64.1.9", True), ("fd7a:115c:a1e0:0::9", True),
+    ("192.0.2.10", False), ("100.64.1.10", False), ("node.example", False), (1684013321, False),
+])
+def test_check_binds_ansible_transport_to_confirmed_tailnet_address(tmp_path, transport, allowed) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner = FakeRunner(tmp_path)
+    paths = _seed_confirmed(controller, tmp_path, runner)
+    target = {**_target(), "transport_address": transport}
+    if allowed:
+        assert controller.check(paths=paths, target=target, runner=runner)["status"] == "configured"
+    else:
+        with pytest.raises(controller.Refusal, match="tailnet-transport-mismatch"):
+            controller.check(paths=paths, target=target, runner=runner)
+
+
 @pytest.mark.parametrize("field,value", [
     ("inventory_alias", "other"), ("public_address", "192.0.2.11"),
     ("ssh_port", 22), ("approved_sources", ["100.64.0.11"]),
@@ -1516,6 +1533,9 @@ def test_role_never_puts_auth_key_in_command_or_inventory() -> None:
     assert "'approved_sources': tailnet_management.approved_sources" in tasks
     assert "tailnet-check.py" in tasks
     assert "check_mode: false" in tasks
+    # Ordinary convergence must prove Ansible uses the confirmed Tailnet address.
+    assert "'transport_address': ansible_host" in tasks
+    assert "'transport_address': ansible_host" in site
     assert "TAILSCALE_AUTH_KEY" not in bootstrap
     assert "--auth-key" not in bootstrap
     assert "auth_key" not in defaults
@@ -1577,6 +1597,42 @@ def test_inactive_tailnet_cli_resumes_only_pinned_identity_free_package(
         "gather_facts": False,
         "vars": values,
         "tasks": [*guards, {"ansible.builtin.debug": {"msg": "GUARD_PASSED"}}],
+    }]))
+    result = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", "-c", "local", str(playbook)],
+        env={
+            "PATH": os.environ["PATH"],
+            "HOME": str(tmp_path),
+            "LANG": "en_US.UTF-8",
+            "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
+            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
+            "ANSIBLE_NOCOLOR": "1",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert (result.returncode == 0) is allowed, result.stdout + result.stderr
+    assert ("GUARD_PASSED" in result.stdout) is allowed
+
+
+@pytest.mark.parametrize(("candidates", "identity", "allowed"), [
+    ([], False, True), ([], True, False), (["/usr/bin/tailscale"], True, True),
+])
+def test_leftover_identity_without_cli_refuses_before_install(
+    tmp_path, candidates, identity, allowed
+) -> None:
+    tasks = yaml.safe_load((ROLE / "tasks/bootstrap.yml").read_text())
+    guard = next(task for task in tasks
+                 if task["name"] == "Refuse a leftover Tailnet identity without a Tailscale command")
+    playbook = tmp_path / "leftover-identity-guard.yml"
+    playbook.write_text(yaml.safe_dump([{
+        "hosts": "localhost",
+        "gather_facts": False,
+        "vars": {"_tailnet_existing_cli_candidates": candidates,
+                 "_tailnet_inactive_identity": {"stat": {"exists": identity}}},
+        "tasks": [guard, {"ansible.builtin.debug": {"msg": "GUARD_PASSED"}}],
     }]))
     result = subprocess.run(
         ["ansible-playbook", "-i", "localhost,", "-c", "local", str(playbook)],
@@ -1685,6 +1741,7 @@ def test_role_preflights_existing_tailnet_before_every_host_write() -> None:
         "Inspect inactive Tailnet identity before host writes",
         "Inspect inactive Tailscale daemon before host writes",
         "Refuse unsafe partial Tailnet installation before host writes",
+        "Refuse a leftover Tailnet identity without a Tailscale command",
     ):
         assert status < names.index(name) < first_write
     assert (

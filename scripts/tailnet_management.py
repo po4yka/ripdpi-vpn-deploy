@@ -1211,11 +1211,16 @@ def transaction_status(*, paths, firewall, binding, runner=_run, clock=_lease_cl
 
 
 def check(*, paths: CommandPaths, target: dict, runner: Runner = _run) -> dict[str, object]:
-    """Inspect the exact managed state without enrollment or another mutation."""
-    if not isinstance(target, dict) or set(target) != {
-        "inventory_alias", "public_address", "ssh_port", "approved_sources"
-    }:
+    """Inspect the exact managed state without enrollment or another mutation.
+
+    An optional ``transport_address`` is the address Ansible is connected to;
+    it must be one of the confirmed node's Tailnet addresses.
+    """
+    binding_fields = {"inventory_alias", "public_address", "ssh_port", "approved_sources"}
+    if not isinstance(target, dict) or set(target) - {"transport_address"} != binding_fields:
         raise Refusal("tailnet-binding-invalid")
+    transport = target.get("transport_address")
+    target = {name: target[name] for name in binding_fields}
     validate_sources(target["approved_sources"])
     with _transaction_lock(paths, blocking=False):
         if _transaction_path(paths).exists():
@@ -1233,7 +1238,16 @@ def check(*, paths: CommandPaths, target: dict, runner: Runner = _run) -> dict[s
         if state != "Running":
             raise Refusal("tailnet-existing-state-unsupported")
         _require_expected_preferences(_preferences(paths, runner))
-        _confirmed_identity(paths, runner, confirmed)
+        node = _confirmed_identity(paths, runner, confirmed)
+        if transport is not None:
+            try:
+                if not isinstance(transport, str):
+                    raise ValueError
+                address = str(ipaddress.ip_address(transport))
+            except ValueError:
+                raise Refusal("tailnet-transport-mismatch") from None
+            if address not in {node["ipv4"], node["ipv6"]}:
+                raise Refusal("tailnet-transport-mismatch")
         _postconditions(paths=paths, runner=runner, before=before)
         return {"status": "configured", "changed": False}
 

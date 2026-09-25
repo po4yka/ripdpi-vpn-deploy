@@ -62,6 +62,10 @@ persistent timer. Revalidate their results under the transaction lock.
   inactive; any existing identity or unowned CLI still refuses before writes.
   A `NeedsLogin` CLI answers status, but package installation would still
   overwrite it, so it needs the same dpkg ownership and exact version.
+  With no CLI at all, a surviving `tailscaled.state` still refuses: the package
+  install would start the daemon on that unconfirmed identity.
+- Ordinary convergence sends `ansible_host` as `transport_address`; the check
+  refuses unless it is the confirmed node's Tailnet IPv4 or IPv6 address.
 - Recovery's address-family sandbox can reorder sshd's IPv4/IPv6 listener
   output. Normalize only listenaddress enumeration, preserving values and
   multiplicity; never sort the whole policy or weaken its validation.
