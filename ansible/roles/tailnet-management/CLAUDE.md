@@ -60,6 +60,8 @@ persistent timer. Revalidate their results under the transaction lock.
   present while `tailscaled.service` is inactive. Resume only when dpkg owns
   that exact binary and version, no identity state exists, and the daemon is
   inactive; any existing identity or unowned CLI still refuses before writes.
+  A `NeedsLogin` CLI answers status, but package installation would still
+  overwrite it, so it needs the same dpkg ownership and exact version.
 - Recovery's address-family sandbox can reorder sshd's IPv4/IPv6 listener
   output. Normalize only listenaddress enumeration, preserving values and
   multiplicity; never sort the whole policy or weaken its validation.

@@ -87,15 +87,22 @@
     - _tailnet_existing_status.rc != 0
   no_log: true
 
+- name: Select existing Tailscale commands that package installation may overwrite
+  ansible.builtin.set_fact:
+    _tailnet_verify_existing_package: >-
+      {{ _tailnet_existing_cli_candidates | length == 1 and
+         (_tailnet_existing_status.rc != 0 or
+          (tailnet_management_install_package | bool and
+           (_tailnet_existing_status.stdout | from_json).BackendState == 'NeedsLogin')) }}
+  no_log: true
+
 - name: Inspect inactive Tailscale package ownership before host writes
   ansible.builtin.command:
     argv: [dpkg-query, -S, /usr/bin/tailscale]
   register: _tailnet_inactive_package_owner
   changed_when: false
   failed_when: false
-  when:
-    - _tailnet_existing_cli_candidates | length == 1
-    - _tailnet_existing_status.rc != 0
+  when: _tailnet_verify_existing_package | bool
   no_log: true
 
 - name: Inspect inactive Tailscale package version before host writes
@@ -104,9 +111,7 @@
   register: _tailnet_inactive_package_version
   changed_when: false
   failed_when: false
-  when:
-    - _tailnet_existing_cli_candidates | length == 1
-    - _tailnet_existing_status.rc != 0
+  when: _tailnet_verify_existing_package | bool
   no_log: true
 
 - name: Inspect inactive Tailnet identity before host writes
@@ -148,6 +153,20 @@
   when:
     - _tailnet_existing_cli_candidates | length == 1
     - _tailnet_existing_status.rc != 0
+  no_log: true
+
+- name: Refuse a NeedsLogin Tailscale command outside the pinned package
+  ansible.builtin.assert:
+    that:
+      - _tailnet_existing_cli_candidates == ['/usr/bin/tailscale']
+      - _tailnet_inactive_package_owner.rc == 0
+      - "_tailnet_inactive_package_owner.stdout == 'tailscale: /usr/bin/tailscale'"
+      - _tailnet_inactive_package_version.rc == 0
+      - _tailnet_inactive_package_version.stdout == tailnet_management_package_version
+    fail_msg: A NeedsLogin Tailscale command is not the dpkg-owned pinned package.
+  when:
+    - _tailnet_verify_existing_package | bool
+    - _tailnet_existing_status.rc == 0
   no_log: true
 
 - name: Refuse unsupported existing Tailnet state before host writes

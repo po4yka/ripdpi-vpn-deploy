@@ -49,18 +49,23 @@ def preflight_tailnet_command(executable: Path, package_version: str) -> None:
         raise ProbeError("unsafe-tailnet-command")
     result = subprocess.run([str(executable), "status", "--json"], capture_output=True,
                             timeout=15, env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"}, check=False)
-    if result.returncode == 0:
-        if len(result.stdout) > 262144 or json.loads(result.stdout).get("BackendState") != "NeedsLogin":
-            raise ProbeError("existing-tailnet-identity")
-        return
+    # A NeedsLogin daemon or an inactive partial install is resumable only for
+    # the dpkg-owned pinned package; package installation would overwrite it.
+    logged_out = result.returncode == 0
+    if logged_out and (len(result.stdout) > 262144
+                       or json.loads(result.stdout).get("BackendState") != "NeedsLogin"):
+        raise ProbeError("existing-tailnet-identity")
     if (executable != Path("/usr/bin/tailscale") or not isinstance(package_version, str)
             or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", package_version)):
         raise ProbeError("existing-tailnet-identity")
     owner = command(["dpkg-query", "-S", "/usr/bin/tailscale"]).decode().strip()
     version = command(["dpkg-query", "-W", "-f=${Version}", "tailscale"]).decode().strip()
+    if owner != "tailscale: /usr/bin/tailscale" or version != package_version:
+        raise ProbeError("existing-tailnet-identity")
+    if logged_out:
+        return
     daemon = command(["systemctl", "show", "--value", "-p", "ActiveState", "tailscaled.service"]).decode().strip()
-    if (owner != "tailscale: /usr/bin/tailscale" or version != package_version
-            or os.path.lexists("/var/lib/tailscale/tailscaled.state") or daemon != "inactive"):
+    if os.path.lexists("/var/lib/tailscale/tailscaled.state") or daemon != "inactive":
         raise ProbeError("existing-tailnet-identity")
 
 

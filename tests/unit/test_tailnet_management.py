@@ -1597,6 +1597,64 @@ def test_inactive_tailnet_cli_resumes_only_pinned_identity_free_package(
     assert ("GUARD_PASSED" in result.stdout) is allowed
 
 
+@pytest.mark.parametrize(
+    ("changes", "allowed"),
+    [
+        ({}, True),
+        ({"_tailnet_inactive_package_owner": {"rc": 1, "stdout": ""}}, False),
+        ({"_tailnet_inactive_package_owner": {"rc": 0, "stdout": "other: /usr/bin/tailscale"}}, False),
+        ({"_tailnet_inactive_package_version": {"rc": 0, "stdout": "1.101.0"}}, False),
+        ({"_tailnet_existing_cli_candidates": ["/usr/local/bin/tailscale"]}, False),
+        # Without package installation nothing overwrites the existing command.
+        ({"tailnet_management_install_package": False,
+          "_tailnet_inactive_package_owner": {"rc": 1, "stdout": ""}}, True),
+    ],
+)
+def test_needs_login_tailnet_cli_requires_pinned_package_before_install(
+    tmp_path, changes, allowed
+) -> None:
+    tasks = yaml.safe_load((ROLE / "tasks/bootstrap.yml").read_text())
+    names = {
+        "Select existing Tailscale commands that package installation may overwrite",
+        "Refuse a NeedsLogin Tailscale command outside the pinned package",
+    }
+    guards = [task for task in tasks if task["name"] in names]
+    assert len(guards) == 2
+    values = {
+        "tailnet_management_install_package": True,
+        "tailnet_management_package_version": "1.102.3",
+        "_tailnet_existing_cli_candidates": ["/usr/bin/tailscale"],
+        "_tailnet_existing_status": {"rc": 0, "stdout": '{"BackendState": "NeedsLogin"}'},
+        "_tailnet_inactive_package_owner": {"rc": 0, "stdout": "tailscale: /usr/bin/tailscale"},
+        "_tailnet_inactive_package_version": {"rc": 0, "stdout": "1.102.3"},
+    }
+    values.update(changes)
+    playbook = tmp_path / "needs-login-package-guard.yml"
+    playbook.write_text(yaml.safe_dump([{
+        "hosts": "localhost",
+        "gather_facts": False,
+        "vars": values,
+        "tasks": [*guards, {"ansible.builtin.debug": {"msg": "GUARD_PASSED"}}],
+    }]))
+    result = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", "-c", "local", str(playbook)],
+        env={
+            "PATH": os.environ["PATH"],
+            "HOME": str(tmp_path),
+            "LANG": "en_US.UTF-8",
+            "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
+            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
+            "ANSIBLE_NOCOLOR": "1",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert (result.returncode == 0) is allowed, result.stdout + result.stderr
+    assert ("GUARD_PASSED" in result.stdout) is allowed
+
+
 def test_role_preflights_existing_tailnet_before_every_host_write() -> None:
     tasks = yaml.safe_load((ROLE / "tasks/bootstrap.yml").read_text())
     names = [task["name"] for task in tasks]
