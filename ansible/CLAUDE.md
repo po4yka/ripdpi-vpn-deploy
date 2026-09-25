@@ -19,7 +19,7 @@ recovery rehearsal. It inherits the reviewed exact Tailnet sources from all.yml;
 its complete `vpn` map follows the controller's replacement semantics. This
 profile does not establish monitoring or backup acceptance.
 
-**Per-role `defaults/main.yml`** — every variable a role consumes has a
+**Per-role `roles/<role>/defaults/main.yml`** — every variable a role consumes has a
 default. `group_vars` only overrides. Reading a role's defaults file tells
 you most of what it exposes; a few toggles (e.g. firewall's
 `firewall_egress_policy`) still default only in `group_vars/all.yml`.

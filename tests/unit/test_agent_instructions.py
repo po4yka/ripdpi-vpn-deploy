@@ -19,6 +19,7 @@ CLAUDE_SKILLS = ROOT / ".claude/skills"
 PORTABLE_FRONTMATTER = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
 SKILL_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 BACKTICK = re.compile(r"`([^`\s]+)`")
+FILE_NAME = re.compile(r"/[^/]*\.[a-z][a-z0-9]*$")
 
 
 def _tracked(*patterns: str) -> list[str]:
@@ -95,11 +96,11 @@ def test_agent_instructions_reference_existing_paths() -> None:
     for document in documents:
         folder = PurePosixPath(document).parent
         for match in BACKTICK.finditer((ROOT / document).read_text()):
-            reference = re.sub(r":\d+(?:-\d+)?$", "", match.group(1).rstrip(".,:;)"))
+            reference = re.sub(r":\d+(?:-\d+)?$|::\w+$", "", match.group(1).rstrip(".,:;)"))
             if "/" not in reference or reference.startswith(("/", "./", "../", "http")):
                 continue
-            # Placeholders, globs, and shell expansions are patterns, not paths.
-            if re.search(r"[<>*{}$\[\]|~=@]|\.\.\.|…", reference):
+            # Placeholders, globs, and shell or systemd expansions are patterns, not paths.
+            if re.search(r"[<>*{}$\[\]|~=@%]|\.\.\.|…", reference):
                 continue
             reference = reference.rstrip("/")
             first = reference.split("/")[0]
@@ -107,6 +108,12 @@ def test_agent_instructions_reference_existing_paths() -> None:
             candidates = [reference] if first in top_level else []
             if str(folder / first) in tracked_dirs:
                 candidates.append(str(folder / reference))
+            if not candidates and FILE_NAME.search(reference):
+                # An unanchored file name may be relative to a parent folder (sibling roles,
+                # ansible/group_vars) or a crate's src/; resolving nowhere means stale, which
+                # catches a misspelled first directory. Unanchored non-file text (MIME types,
+                # CIDRs, owner/repo) stays unchecked.
+                candidates = [str(base / reference) for base in (folder, *folder.parents, folder / "src")]
             if candidates and not any(
                 candidate in tracked or candidate in tracked_dirs or _ignored(candidate) for candidate in candidates
             ):
