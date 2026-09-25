@@ -36,7 +36,7 @@ def test_fresh_check_mode_requires_planned_timesync_package_before_activation() 
     assert package["register"] == "baseline_packages"
     assert tasks.index(package) < tasks.index(by_name["Collect service facts"]) < tasks.index(guard) < tasks.index(service)
     assert guard["ansible.builtin.assert"]["that"] == ["baseline_packages.changed"]
-    environment = Environment()
+    environment = Environment(autoescape=True)
 
     def selected(task: dict, *, check: bool, installed: bool) -> bool:
         conditions = task["when"]
