@@ -33,6 +33,11 @@ opt-out flag.
 
 **Inventory inputs fail before publication** — nonempty cohort slugs must name an existing `group_vars/vpn-*.yml` profile, and host aliases must be unique across provider/environment pairs. Reject malformed profiles before Terraform calls and preserve the last valid inventory on either failure.
 
+**Tailnet inventory transport is explicit** — `TAILNET_TRANSPORTS` accepts one
+Tailscale IPv4 or `-` per selected Terraform host. The renderer validates the
+complete list before Terraform calls and changes only `ansible_host`; the
+Terraform public service address and listener contract remain authoritative.
+
 **Xray migrations are changelog-driven** — `docs/XRAY-RELEASE-LINE.md` embeds the declarative guard registry consumed by `check-xray-breaking-changes.py`. Add version-aware rules there instead of hardcoding release cases in unrelated validators; render-sensitive rules use `template_render.py` so every fast check sees the same canonical Ansible context.
 
 **Subsystem notes live in `scripts/DESIGN-NOTES.md`** — read the matching

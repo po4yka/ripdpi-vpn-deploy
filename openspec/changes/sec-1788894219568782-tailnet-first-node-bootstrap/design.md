@@ -106,6 +106,12 @@ weakening its mature-node preconditions.
 
 ### External proof and safe handoff
 
+The subsequent inventory render takes an explicit per-host confirmed Tailnet
+IPv4 transport. It validates the full list before Terraform calls and changes
+only `ansible_host`; the provider's public service address remains unchanged.
+This lets ordinary Ansible restore a public SSH source after controller egress
+changes without bypassing its one-node dual-path transaction.
+
 After local enrollment succeeds, obtain both real Tailnet addresses over the
 pinned public connection. Select the reachable approved family by actual
 connection, never by generating an address. Use the existing strict fresh SSH

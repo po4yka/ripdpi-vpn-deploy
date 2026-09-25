@@ -137,6 +137,12 @@ migration implicitly.
 - **WHEN** either fresh SSH/SFTP path fails before ownership confirmation
 - **THEN** the controller requests bounded rollback and cannot report success; uncertain rollback remains subject to durable recovery.
 
+#### Scenario: Controller public address changes after bootstrap
+
+- **WHEN** the operator renders one node with its confirmed Tailnet IPv4 as the SSH transport
+- **THEN** Ansible uses that address while the Terraform public service address remains distinct, allowing normal firewall convergence to restore the public SSH source.
+- **AND** a malformed, non-Tailnet, or wrong-length transport list refuses before Terraform access and preserves the previously rendered inventory.
+
 #### Scenario: Deploy receives a new enrollment capability
 
 - **WHEN** an enrollment key is supplied to ordinary deploy

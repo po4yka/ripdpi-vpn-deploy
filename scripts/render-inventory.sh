@@ -16,6 +16,9 @@
 # fail_closed, echo, or server and are emitted as host vars beside the exact
 # Terraform listener contract.
 #   HOSTS="scaleway:prod,vultr:prod" AWG_EVIDENCE_MODES="echo,server" ./scripts/render-inventory.sh
+# Restricted Tailnet SSH transport: optional TAILNET_TRANSPORTS has one
+# Tailscale IPv4 or '-' per HOSTS item. Terraform still owns service addresses.
+#   HOSTS="upcloud:staging" TAILNET_TRANSPORTS="100.102.91.83" ./scripts/render-inventory.sh
 # Central observability topology is opt-in and requires all three variables.
 # HOST_CLASSES and FAILURE_DOMAINS have one entry per HOSTS item. Use `-` as
 # the COHORTS placeholder for non-VPN hosts. Sentinels are technical identities
@@ -48,6 +51,7 @@ fi
 IFS=',' read -r -a host_pairs <<< "$HOST_LIST"
 IFS=',' read -r -a cohort_list <<< "${COHORTS:-}"
 IFS=',' read -r -a awg_evidence_mode_list <<< "${AWG_EVIDENCE_MODES:-}"
+IFS=',' read -r -a tailnet_transport_list <<< "${TAILNET_TRANSPORTS:-}"
 IFS=',' read -r -a observability_host_class_list <<< "${OBSERVABILITY_HOST_CLASSES:-}"
 IFS=',' read -r -a observability_failure_domain_list <<< "${OBSERVABILITY_FAILURE_DOMAINS:-}"
 
@@ -106,6 +110,29 @@ done
 
 if [[ -n "${AWG_EVIDENCE_MODES:-}" && ${#awg_evidence_mode_list[@]} -ne ${#host_pairs[@]} ]]; then
   echo "AWG_EVIDENCE_MODES count (${#awg_evidence_mode_list[@]}) must equal HOSTS count (${#host_pairs[@]})" >&2
+  exit 1
+fi
+
+if [[ -n "${TAILNET_TRANSPORTS:-}" ]] && ! python3 - "$TAILNET_TRANSPORTS" "${#host_pairs[@]}" <<'PY'
+import ipaddress
+import sys
+
+items = sys.argv[1].split(",")
+network = ipaddress.ip_network("100.64.0.0/10")
+if len(items) != int(sys.argv[2]):
+    raise SystemExit(1)
+for item in items:
+    if item == "-":
+        continue
+    try:
+        address = ipaddress.ip_address(item)
+    except ValueError:
+        raise SystemExit(1) from None
+    if address not in network:
+        raise SystemExit(1)
+PY
+then
+  echo "TAILNET_TRANSPORTS must contain one Tailscale IPv4 or '-' per host" >&2
   exit 1
 fi
 
@@ -206,9 +233,12 @@ for i in "${!host_pairs[@]}"; do
     echo "invalid ssh_port output for ${prov}:${env}: ${ssh_port}" >&2
     exit 1
   fi
-  # Keep the public service endpoint independent from ansible_host. Operators
-  # may override ansible_host with a Tailscale address for administration;
-  # data-plane probes must continue to target the Terraform-owned public IP.
+  # Keep the Terraform-owned public service endpoint independent from the
+  # selected SSH transport; data-plane probes always use the public address.
+  transport_ip="${tailnet_transport_list[$i]:--}"
+  if [[ "$transport_ip" == "-" ]]; then
+    transport_ip="$ip"
+  fi
   host_class="vpn"
   failure_domain=""
   if [[ "$observability_enabled" == true ]]; then
@@ -222,9 +252,9 @@ for i in "${!host_pairs[@]}"; do
     fi
   fi
   if [[ "$host_class" == vpn ]]; then
-    vpn_line="${hostname} ansible_host=${ip} vpn_service_address=${ip} ansible_user=${user} ansible_port=${ssh_port} provider=${prov} env=${env}"
+    vpn_line="${hostname} ansible_host=${transport_ip} vpn_service_address=${ip} ansible_user=${user} ansible_port=${ssh_port} provider=${prov} env=${env}"
   else
-    vpn_line="${hostname} ansible_host=${ip} ansible_user=${user} ansible_port=${ssh_port} provider=${prov} env=${env}"
+    vpn_line="${hostname} ansible_host=${transport_ip} ansible_user=${user} ansible_port=${ssh_port} provider=${prov} env=${env}"
   fi
   # The INI inventory plugin tokenizes host vars with shlex before applying
   # Python literal parsing. Quote the complete JSON value so the inner string
