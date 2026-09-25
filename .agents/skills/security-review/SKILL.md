@@ -11,7 +11,7 @@ Review the diff (`git diff <base>...HEAD`), run the gates below that apply, and 
 
 ## Checklist
 
-- **Secrets in Git or state.** No keys, tokens, UUIDs, shortIds, private IPs or hostnames in tracked files. Only the example, schema, README, and `.sops.yaml.example` under `secrets/` are tracked. `make validate` runs gitleaks over history and the staged tree.
+- **Secrets in Git or state.** No real credentials or deployment-specific identifiers (keys, tokens, live device UUIDs or shortIds, node addresses or hostnames) in tracked files. Clearly fake fixture values are expected: `tests/fixtures/secrets-sample.yml` uses placeholder UUIDs and shortIds, RFC 5737 addresses, and `example.com` hosts that the strict schema tests require. Only the example, schema, README, and `.sops.yaml.example` under `secrets/` are tracked. `make validate` runs gitleaks over history and the staged tree.
 - **Secret schema.** New secret keys appear in `secrets/prod.secrets.example.yaml` and `secrets/schema.json`; `scripts/check-secrets-coverage.py` and `scripts/validate-secrets.py` pass (both run in `make ci-fast`).
 - **Terraform and cloud-init.** Nothing secret in `user_data`, variables, or outputs; outputs stay minimal. `make tf-policy-verify` runs the Conftest policies in `terraform/policy/` (including `no_secrets_in_user_data.rego`, `admin_port.rego`, `ssh_cidrs.rego`).
 - **Ansible.** Tasks that template, register, or print secret values set `no_log: true`. Decrypted secrets exist on disk only as the operator-local `SECRETS_FILE` (mode 0600, default under `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/vpn-provision-<uid>/`, see `docs/SECRETS.md`); nothing copies it elsewhere.
@@ -27,7 +27,7 @@ Review the diff (`git diff <base>...HEAD`), run the gates below that apply, and 
 | Finding | Severity | Fix |
 |---|---|---|
 | Secret value reaches Ansible output or a debug task | HIGH | `no_log: true`; re-run the play and check the operator-side output |
-| Hard-coded UUID or token in a test fixture | HIGH | Generate it in the fixture; keep production profiles free of it |
+| Real device UUID, shortId, key, or token copied into a fixture or doc | HIGH | Replace it with a placeholder in the style of `tests/fixtures/secrets-sample.yml` and rotate the real value |
 | Listener opened in a provider firewall or nftables template without the contract | HIGH | Add it to `public_listeners` and the role together |
 | Pre-release version on a production toggle | HIGH | Move it to a staging profile |
 | Second rate-limit layer stacked on an HTTP route | MEDIUM | Keep nginx `limit_req` only for that surface |
