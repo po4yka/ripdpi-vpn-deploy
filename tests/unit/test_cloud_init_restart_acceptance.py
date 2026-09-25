@@ -26,7 +26,7 @@ BASE_IMAGES = {
     ),
     "ubuntu2404.Dockerfile": (
         "ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404",
-        "48e1ab7caa1e28148148576cd2f15e46fcd9d44601125bbce7f3056306f40cf1",
+        "3269bf4d8ed2d1ac182b212227512eca0a6712476a5ed02a98c9cf658b33935a",
     ),
 }
 
