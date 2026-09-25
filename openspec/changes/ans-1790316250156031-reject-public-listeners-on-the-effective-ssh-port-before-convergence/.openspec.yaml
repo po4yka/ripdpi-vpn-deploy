@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-09-25
+goal: ANS-1790316250156031 Reject public listeners on the effective SSH port
+  before convergence
