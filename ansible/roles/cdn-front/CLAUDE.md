@@ -35,9 +35,9 @@ must reload successfully; they retain transactional rollback on failure.
   Debian `cron.daily` slot the role used before the timer. There is no
   schedule variable; change the time in the timer template itself.
   Check the timer is enabled; there is no workstation script.
-- **`Authenticated Origin Pulls` is mandatory** — without it, anyone with the
-  origin IP can bypass the CDN. The role refuses to start if the AOP cert is
-  missing.
+- **`Authenticated Origin Pulls` is opt-in, not enforced** — it is off while
+  `cdn_front.aop_cert_path` is empty (the default), and then anyone with the
+  origin IP can bypass the CDN. Set it explicitly when enabling this role.
 - **Mixing CF and direct on the same vhost is forbidden** — separate
   `server_name`/`listen` blocks. Header inheritance otherwise leaks origin IP.
 - **`nginx -t` needs writable PID/log files even for validation** — the

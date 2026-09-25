@@ -70,10 +70,6 @@ defaults. Don't mix these — XHTTP needs long-lived streams.
   multiplexing-protection pattern, which applies only to Russian-cloud-AS
   servers; the foreign-VPS baseline uses a different enforcement path (TCP
   port-range) and that pattern is irrelevant here.
-- **Stream module is dynamic on Ubuntu distro nginx** — we use nginx.org
-  official repo to get a build with stream as static. If you ever swap to the
-  distro package, `libnginx-mod-stream` must be installed and the module
-  loaded; the role currently assumes static.
 - **SNI ALPN ordering matters for camouflage** — keep `ssl_protocols TLSv1.3`
   + `ssl_ecdh_curve X25519`; weakening these makes the profile fingerprintable.
 - **Don't add a `return 444`** — silent close after handshake is rated 9/10

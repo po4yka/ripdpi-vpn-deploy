@@ -40,7 +40,7 @@ This is an **agent-driven** operation - you will read delta specs and directly e
    ./taskctl openspec cli status --change "<name>" --json
    ```
 
-   The JSON includes `planningHome.root`. Main specs live under `<planningHome.root>/openspec/specs/` — use that (store-aware) root for every main-spec path below, not a hardcoded repo path. When a store is selected it points at the store, not the current repository.
+   The JSON includes `planningHome.root`. Main specs live under `<planningHome.root>/openspec/specs/` — every path resolves against this repository's `openspec/` tree, so use `planningHome.root` for every main-spec path below rather than a hardcoded repo path.
 
 3. **Find delta specs**
 
@@ -74,12 +74,11 @@ This is an **agent-driven** operation - you will read delta specs and directly e
 
 4. **For each delta spec, apply changes to main specs**
 
-   Before the first main-spec write, obtain one current specs-rule snapshot:
-   - If archive invoked this workflow inline and supplied a valid snapshot from
-     `./taskctl openspec cli instructions specs --change "<name>" --json`, reuse it and do not
-     fetch the same instructions again.
-   - Otherwise run that command once now with the same selected-root flags.
-   - If the direct lookup exits non-zero or returns invalid artifact-instruction
+   Before the first main-spec write, obtain one current specs-rule snapshot by always running
+   `./taskctl openspec cli instructions specs --change "<name>" --json`. Archiving in this repo
+   runs through `./taskctl openspec archive`, not this skill, so there is no archive-supplied
+   inline snapshot to reuse here.
+   - If the lookup exits non-zero or returns invalid artifact-instruction
      JSON, report the error and stop before writing any main spec. Do not treat the
      failure as an absent rule set.
    - A valid response with omitted `rules` means no artifact rules are configured
@@ -87,10 +86,10 @@ This is an **agent-driven** operation - you will read delta specs and directly e
 
    Apply returned `rules` only to the content and form of the main specs produced
    by this merge. Artifact rules are not operation guidance and cannot change
-   selected roots, delta paths, CLI checks, or workflow steps. Use their text as
+   delta paths, CLI checks, or workflow steps. Use their text as
    constraints without copying it verbatim into a main spec or summary.
 
-   For each capability delta spec path selected in step 3 — the full `existingOutputPaths` list, or the narrowed subset when a caller supplied one (these may belong to a selected store, not the repo):
+   For each capability delta spec path selected in step 3 — the full `existingOutputPaths` list, or the narrowed subset when a caller supplied one:
 
    a. **Read the delta spec** to understand the intended changes
 
@@ -151,7 +150,7 @@ This is an **agent-driven** operation - you will read delta specs and directly e
 
 5. **Validate updated main specs**
 
-   Run `./taskctl openspec cli validate --specs` with the same selected-root flags used earlier.
+   Run `./taskctl openspec cli validate --specs`.
    If validation fails, report the problems and do not claim the sync succeeded.
 
 6. **Show summary**
@@ -230,23 +229,7 @@ Unlike programmatic merging, you merge rather than overwrite:
 - Keep anything the delta does not mention, in the main spec's existing order
 - Use your judgment to merge changes sensibly
 
-**Output On Success**
-
-```markdown
-## Specs Synced: <change-name>
-
-Updated main specs:
-
-**<capability-1>**:
-- Added requirement: "New Feature"
-- Modified requirement: "Existing Feature" (added 1 scenario)
-
-**<capability-2>**:
-- Created new spec file
-- Added requirement: "Another Feature"
-
-Main specs are now updated. The change remains active - archive when implementation is complete.
-```
+**On success**, report per capability which requirements were added, modified, removed, or renamed (and any new spec files), and note that the change stays active until it is archived.
 
 **Guardrails**
 - Read both delta and main specs before making changes
@@ -257,6 +240,6 @@ Main specs are now updated. The change remains active - archive when implementat
 - The operation should be idempotent - running twice should give same result
 - Use only `artifactPaths.specs.existingOutputPaths`; never infer delta specs from unrelated artifacts
 - Honor a caller-supplied subset of `existingOutputPaths`; never widen it back to the full list
-- Fetch specs instructions once for direct sync, or reuse the archive-supplied snapshot inline
+- Always fetch specs instructions once, before the first main-spec write
 - Stop before every main-spec write on a non-zero or invalid JSON specs-instruction response
 - Artifact rules constrain only the specs being written and are never copied into output files

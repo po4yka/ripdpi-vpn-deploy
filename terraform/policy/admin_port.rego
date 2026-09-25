@@ -30,7 +30,7 @@ admin_ports := {ssh_port, "3389"}
 world_cidrs := {"0.0.0.0/0", "::/0"}
 
 # panel_port rules removed: no admin panel is deployed in this stack (see
-# docs/CDN-DECISION.md and the hard rules in the root CLAUDE.md). The
+# docs/CDN-DECISION.md and the hard rules in the root AGENTS.md). The
 # input.variables.panel_port path does not exist in any provider root, so
 # deny rules referencing it silently never fired — removing them keeps the
 # policy honest.

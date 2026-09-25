@@ -43,8 +43,7 @@ carrier-NAT pool takes out legitimate clients first.
   browser-facing vhosts (snell-evaluation, subscription endpoints) throttle
   at nginx `limit_req` by design; nftables cannot express per-route/burst
   granularity. Do not add duplicate nginx limits behind these chains or
-  nft chains in front of those vhosts — one layer per surface, recorded in
-  the hardening conventions.
+  nft chains in front of those vhosts — one layer per surface.
 - **CDN-fronted paths break source attribution** — behind a CDN the source
   IP is the edge IP. Disable this role when `cdn-front` is on.
 - **Don't tune below the carrier-NAT threshold** — banning a NAT IP bans
