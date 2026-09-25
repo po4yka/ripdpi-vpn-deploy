@@ -43,6 +43,27 @@ def command(argv, *, input_data=None):
     return result.stdout
 
 
+def preflight_tailnet_command(executable: Path, package_version: str) -> None:
+    info = executable.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+        raise ProbeError("unsafe-tailnet-command")
+    result = subprocess.run([str(executable), "status", "--json"], capture_output=True,
+                            timeout=15, env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"}, check=False)
+    if result.returncode == 0:
+        if len(result.stdout) > 262144 or json.loads(result.stdout).get("BackendState") != "NeedsLogin":
+            raise ProbeError("existing-tailnet-identity")
+        return
+    if (executable != Path("/usr/bin/tailscale") or not isinstance(package_version, str)
+            or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", package_version)):
+        raise ProbeError("existing-tailnet-identity")
+    owner = command(["dpkg-query", "-S", "/usr/bin/tailscale"]).decode().strip()
+    version = command(["dpkg-query", "-W", "-f=${Version}", "tailscale"]).decode().strip()
+    daemon = command(["systemctl", "show", "--value", "-p", "ActiveState", "tailscaled.service"]).decode().strip()
+    if (owner != "tailscale: /usr/bin/tailscale" or version != package_version
+            or os.path.lexists("/var/lib/tailscale/tailscaled.state") or daemon != "inactive"):
+        raise ProbeError("existing-tailnet-identity")
+
+
 def nftables_empty():
     """Dump table existence through Linux UAPI; no nft binary or guest file needed.
 
@@ -258,7 +279,7 @@ def ssh_socket():
     return next(iter(found))
 
 
-def probe(binding, user, address, *, fragment_parser, preinstall=False):
+def probe(binding, user, address, *, fragment_parser, preinstall=False, package_version=None):
     local, port, peer, _peer_port = ssh_socket()
     sources = binding["public_sources"] if address == binding["public_address"] else binding["approved_sources"]
     if local != address or port != binding["ssh_port"] or peer not in sources:
@@ -296,10 +317,5 @@ def probe(binding, user, address, *, fragment_parser, preinstall=False):
                 raise ProbeError("unowned-empty-firewall-service")
         for executable in (Path("/usr/bin/tailscale"), Path("/usr/local/bin/tailscale")):
             if executable.exists():
-                info = executable.lstat()
-                if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
-                    raise ProbeError("unsafe-tailnet-command")
-                value = json.loads(command([str(executable), "status", "--json"]))
-                if value.get("BackendState") != "NeedsLogin":
-                    raise ProbeError("existing-tailnet-identity")
+                preflight_tailnet_command(executable, package_version)
     return {"user": user, "host": peer, "addr": peer, "laddr": local, "lport": port}

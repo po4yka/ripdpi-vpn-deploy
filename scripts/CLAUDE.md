@@ -85,6 +85,10 @@ Canonical variables load per host with real Ansible; frozen strict transport
 records govern wait, site and source-drift without rereading original inputs.
 `bootstrap_readiness.py` is shared with the Terraform first-boot adapter, whose
 trust policy stays separate. Do not duplicate its deadlines or cancellation loop.
+The public bootstrap probe reads the role's pinned Tailscale version from its
+defaults before sending the read-only guest check. A failed status command is
+resumable only for the dpkg-owned, exact-version CLI with no identity and an
+inactive daemon; the later Ansible prewrite guard independently checks it.
 
 **Bundle topology is host-order independent** — `emit-bundle.sh` aggregates
 split-hop ingress and realm metadata across every `HOSTS` entry. Never infer

@@ -14,6 +14,8 @@ import stat
 import tempfile
 from typing import NamedTuple
 
+import yaml
+
 import fleet_inspection as inspection
 import tailnet_management as tailnet
 
@@ -249,8 +251,18 @@ def _probe(inputs, host, *, preinstall=False):
         parser = (b"shared = {'__name__': 'tailnet_preflight_fragment'}\nexec(" + repr(helper).encode()
                   + b", shared)\nfragment_parser = shared['canonical_fragment']\n")
     request = json.dumps([_binding(inputs), host["user"], host["transport"]]).encode()
+    package_version = None
+    if preinstall:
+        try:
+            defaults = yaml.safe_load((ROOT / "ansible/roles/tailnet-management/defaults/main.yml").read_text())
+            package_version = defaults["tailnet_management_package_version"]
+        except (OSError, yaml.YAMLError, KeyError, TypeError):
+            raise BootstrapError("bootstrap-package-pin-invalid") from None
+        if not isinstance(package_version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", package_version):
+            raise BootstrapError("bootstrap-package-pin-invalid")
     invocation = (b"\n" + parser + b"print(json.dumps(probe(*json.loads(" + repr(request).encode()
-                  + b"),fragment_parser=fragment_parser,preinstall=" + str(preinstall).encode() + b")))\n")
+                  + b"),fragment_parser=fragment_parser,preinstall=" + str(preinstall).encode()
+                  + b",package_version=" + repr(package_version).encode() + b")))\n")
     context = _remote(inputs, host, "sudo -n /usr/bin/python3 -I -B -S -", source + invocation)
     expected = {"user", "host", "addr", "laddr", "lport"}
     sources = inputs.config["public_sources"] if host["transport"] == host["address"] else inputs.config["approved_sources"]

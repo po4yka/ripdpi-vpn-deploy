@@ -387,6 +387,7 @@ def test_preinstall_payload_loads_shared_parser_without_guest_install(controller
     import sys
     selected = load(controller, inputs, monkeypatch)
     def remote(_inputs, _host, _command, payload):
+        assert b"package_version='1.102.3'" in payload
         program = ast.parse(payload)
         # Inspect the source payload without invoking the remote host probe.
         program.body.pop()
@@ -399,6 +400,64 @@ def test_preinstall_payload_loads_shared_parser_without_guest_install(controller
         return {"user": "deploy", "host": "198.51.100.10", "addr": "198.51.100.10", "laddr": "192.0.2.10", "lport": 2222}
     monkeypatch.setattr(controller, "_remote", remote)
     assert controller._probe(selected, selected.host, preinstall=True)["lport"] == 2222
+
+
+@pytest.mark.parametrize(("change", "allowed"), [
+    ({}, True),
+    ({"owner": "other: /usr/bin/tailscale"}, False),
+    ({"version": "1.101.0"}, False),
+    ({"daemon": "active"}, False),
+    ({"identity": True}, False),
+    ({"executable": "/usr/local/bin/tailscale"}, False),
+    ({"package_version": None}, False),
+])
+def test_preinstall_resumes_only_pinned_identity_free_package(controller, monkeypatch, change, allowed):
+    import stat
+    from types import SimpleNamespace
+    import tailnet_bootstrap_probe as probe
+
+    values = {"owner": "tailscale: /usr/bin/tailscale", "version": "1.102.3",
+              "daemon": "inactive", "identity": False,
+              "executable": "/usr/bin/tailscale", "package_version": "1.102.3"}
+    values.update(change)
+    calls = []
+    def command(argv):
+        calls.append(argv)
+        if argv[:2] == ["dpkg-query", "-S"]:
+            return values["owner"].encode()
+        if argv[:2] == ["dpkg-query", "-W"]:
+            return values["version"].encode()
+        assert argv[0] == "systemctl"
+        return values["daemon"].encode()
+    monkeypatch.setattr(probe, "command", command)
+    monkeypatch.setattr(probe.subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=1, stdout=b"", stderr=b""))
+    monkeypatch.setattr(probe.Path, "lstat", lambda *_: SimpleNamespace(st_mode=stat.S_IFREG | 0o755, st_uid=0))
+    monkeypatch.setattr(probe.os.path, "lexists", lambda *_: values["identity"])
+    operation = lambda: probe.preflight_tailnet_command(probe.Path(values["executable"]), values["package_version"])
+    if allowed:
+        operation()
+        assert len(calls) == 3
+    else:
+        with pytest.raises(probe.ProbeError):
+            operation()
+
+
+@pytest.mark.parametrize(("state", "allowed"), [("NeedsLogin", True), ("Running", False)])
+def test_preinstall_existing_daemon_requires_needs_login(controller, monkeypatch, state, allowed):
+    import stat
+    from types import SimpleNamespace
+    import tailnet_bootstrap_probe as probe
+
+    monkeypatch.setattr(probe.subprocess, "run", lambda *a, **kw: SimpleNamespace(
+        returncode=0, stdout=json.dumps({"BackendState": state}).encode(), stderr=b""))
+    monkeypatch.setattr(probe.Path, "lstat", lambda *_: SimpleNamespace(st_mode=stat.S_IFREG | 0o755, st_uid=0))
+    monkeypatch.setattr(probe, "command", lambda *_: pytest.fail("package query after successful status"))
+    operation = lambda: probe.preflight_tailnet_command(probe.Path("/usr/bin/tailscale"), "1.102.3")
+    if allowed:
+        operation()
+    else:
+        with pytest.raises(probe.ProbeError):
+            operation()
 
 
 def test_input_change_during_install_refuses_before_enrollment(controller, inputs, monkeypatch):
