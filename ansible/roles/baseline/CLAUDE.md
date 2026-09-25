@@ -15,6 +15,11 @@ A reboot mid-deploy would burn idempotency.
 **SSH policy lives in `security_controls`** — the role still owns the drop-in,
 but operator posture knobs live under `security_controls.ssh_*`, not `vpn.*`.
 
+**One SSH transaction timeout ceiling** — the installed request adapter uses
+the transaction engine's maximum. The controller's promotion proof budget can
+consume that full interval; a narrower adapter bound refuses otherwise valid
+check-mode and deploy requests before the engine sees them.
+
 **No host-firmware daemon on VPS guests** — cloud nodes cannot flash their
 hypervisor firmware. Baseline removes `fwupd` instead of leaving an irrelevant
 daemon able to degrade systemd after a partial package update.
