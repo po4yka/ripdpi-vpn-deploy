@@ -467,6 +467,13 @@ def test_emit_singbox_rejects_plaintext_and_per_host_sops_sources(tmp_path):
     assert not Path(env["STUB_LOG"]).exists()
 
 
+def _make_fleet_pins(sops_file):
+    # The Makefile -includes an operator-local .fleet.mk whose file assignments
+    # beat the environment; command-line assignments beat both, so pin every
+    # fleet input the emit-singbox recipe reads.
+    return ["HOSTS=", "COHORTS=", "SOPS_FILES=", f"SOPS_FILE={sops_file}"]
+
+
 def test_make_decrypt_then_emit_singbox_decrypts_exactly_once(tmp_path):
     plaintext, env = _plaintext_emitter(tmp_path)
     source = tmp_path / "source.yaml"
@@ -480,9 +487,7 @@ def test_make_decrypt_then_emit_singbox_decrypts_exactly_once(tmp_path):
         "make",
         "--no-print-directory",
         f"SECRETS_FILE={plaintext}",
-        f"SOPS_FILE={source}",
-        "HOSTS=",
-        "SOPS_FILES=",
+        *_make_fleet_pins(source),
         "CLIENT=laptop",
     ]
     decrypt = subprocess.run(
@@ -520,7 +525,7 @@ def test_make_emit_singbox_rejects_missing_explicit_plaintext(tmp_path):
             "emit-singbox",
             "CLIENT=laptop",
             f"SECRETS_FILE={plaintext}",
-            "SOPS_FILES=",
+            *_make_fleet_pins(env["SOPS_FILE"]),
         ],
         env=env,
         cwd=REPO_ROOT,
