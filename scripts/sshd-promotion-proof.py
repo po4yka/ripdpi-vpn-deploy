@@ -177,7 +177,7 @@ def load_config(path: Path) -> tuple[dict, bytes]:
 
 def evaluate(liveness: bytes, *, executor: dict[str, bytes] | None = None) -> dict:
     with tempfile.TemporaryDirectory(prefix="vpn-promotion-proof-") as directory:
-        root = Path(directory)
+        root = Path(directory).resolve(strict=True)
         root.chmod(0o700)
         config = root / "liveness.yaml"
         fd = os.open(config, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)

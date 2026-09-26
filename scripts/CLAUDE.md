@@ -47,6 +47,17 @@ includes the role's validated IPv4 DNS servers. The runner writes a private
 removes it with the namespace. Never use a fixed `curl --resolve` address as
 proof of tunneled DNS.
 
+**Promotion proof snapshots use canonical temporary paths** — macOS may give
+`TemporaryDirectory` a path beneath symlinked `/var`. Resolve the controller's
+new private directory before passing its executor snapshots to the evaluator;
+the evaluator still rejects symlinked private input paths.
+
+**Disposable de-onboarding consumes current guarded UpCloud absence** — its
+provider receipt is schema 3; keep the provider and version check aligned
+before removing encrypted client state or the executor profile.
+The sentinel registry uses the installer's sorted JSON serialization, which
+the de-onboarding reader must preserve exactly during removal.
+
 **Xray migrations are changelog-driven** — `docs/XRAY-RELEASE-LINE.md` embeds the declarative guard registry consumed by `check-xray-breaking-changes.py`. Add version-aware rules there instead of hardcoding release cases in unrelated validators; render-sensitive rules use `template_render.py` so every fast check sees the same canonical Ansible context.
 
 **Subsystem notes live in `scripts/DESIGN-NOTES.md`** — read the matching

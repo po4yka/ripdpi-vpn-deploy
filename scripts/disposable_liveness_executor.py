@@ -215,6 +215,21 @@ def _read_private(path: Path) -> tuple[dict[str, Any], bytes]:
     return value, payload
 
 
+def _installer_registry_bytes(value: dict[str, Any]) -> bytes:
+    return (json.dumps(value, sort_keys=True) + "\n").encode("ascii")
+
+
+def _read_installer_registry(path: Path) -> dict[str, Any]:
+    payload = _read_raw_private(path)
+    try:
+        value = json.loads(payload)
+    except (ValueError, UnicodeError) as exc:
+        raise ExecutorError("private-input") from exc
+    if not isinstance(value, dict) or _installer_registry_bytes(value) != payload:
+        raise ExecutorError("private-input")
+    return value
+
+
 def _profile(value: str) -> str:
     if (
         value in FORBIDDEN_PROFILES
@@ -710,7 +725,8 @@ def verify_report_binding(
 def _verified_absence(path: Path) -> dict[str, Any]:
     value, _ = _read_private(path)
     if (
-        value.get("schema_version") != 2
+        value.get("schema_version") != 3
+        or value.get("provider") != "upcloud"
         or value.get("status") not in ("verified", "verified_after_expiry")
         or value.get("server_status") != "absent"
         or value.get("root_storage_status") != "absent"
@@ -793,7 +809,7 @@ def _deonboard_locked(
     binding_digest = hashlib.sha256(_read_private(binding_path)[1]).hexdigest()
     registry = None
     if registry_path.exists():
-        registry, _ = _read_private(registry_path)
+        registry = _read_installer_registry(registry_path)
         if (
             set(registry) != {"schema_version", "sentinels"}
             or registry.get("schema_version") != 2
@@ -882,7 +898,7 @@ def _deonboard_locked(
         updated = dict(registry)
         updated["sentinels"] = dict(registry["sentinels"])
         del updated["sentinels"][sentinel]
-        _replace_private(registry_path, _canonical(updated))
+        _replace_private(registry_path, _installer_registry_bytes(updated))
     if config_payload is not None:
         _unlink_exact(config_path, config_payload, "deonboard-config")
 

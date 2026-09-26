@@ -40,6 +40,13 @@ checks identical collections/profiles, disjoint selections and full execution.
 Refresh the profile from the verified artifact; local `test-unit` stays complete.
 Give clock-dependent parameter values stable IDs so collection agrees across runners.
 
+**Promotion proof covers aliased temp roots** — the controller's snapshots
+must reach the evaluator through canonical private paths even when the OS
+returns a symlinked temporary root.
+Disposable de-onboarding fixtures use the current UpCloud schema-3 absence
+receipt and reject an obsolete version before mutation. Its registry fixture
+uses the installer's exact sorted JSON format.
+
 **Molecule per role > monolithic test** — role-level scenarios catch
 config drift inside a role. Full-stack catches order/handler interactions.
 The two full-stack scenarios run on separate matrix runners with fail-fast
