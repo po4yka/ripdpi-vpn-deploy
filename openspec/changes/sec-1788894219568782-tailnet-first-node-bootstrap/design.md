@@ -106,6 +106,12 @@ weakening its mature-node preconditions.
 
 ### External proof and safe handoff
 
+The subsequent inventory render takes an explicit per-host confirmed Tailnet
+IPv4 transport. It validates the full list before Terraform calls and changes
+only `ansible_host`; the provider's public service address remains unchanged.
+This lets ordinary Ansible restore a public SSH source after controller egress
+changes without bypassing its one-node dual-path transaction.
+
 After local enrollment succeeds, obtain both real Tailnet addresses over the
 pinned public connection. Select the reachable approved family by actual
 connection, never by generating an address. Use the existing strict fresh SSH
@@ -206,7 +212,10 @@ the exact-source local/hosted and authorized staging gates.
    acquisition, Tailnet key, approved sources, and required reviewer gate. Use
    the existing authorized disposable budget and deadlines; no automatic refill.
 4. Provision one isolated node, create cleanup manifest, install SSH recovery,
-   bootstrap Tailnet, and verify both paths. Exercise controller loss and reboot
+   bootstrap Tailnet, and verify both paths. Preview and confirm the separate
+   SSH ownership transaction for recognized fresh Debian main-file directives
+   before ordinary dry-run; retain full effective-policy parity and dual-path
+   SSH/SFTP proof. Exercise controller loss and reboot
    with unconfirmed enrollment, verify restored public access, then repeat the
    positive bootstrap. Never simulate provider or live success with fixtures.
 5. Use the handoff with ordinary dual-path deploy and exact-node VPN proof.

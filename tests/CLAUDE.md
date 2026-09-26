@@ -40,6 +40,16 @@ checks identical collections/profiles, disjoint selections and full execution.
 Refresh the profile from the verified artifact; local `test-unit` stays complete.
 Give clock-dependent parameter values stable IDs so collection agrees across runners.
 
+**Promotion proof covers aliased temp roots** — the controller's snapshots
+must reach the evaluator through canonical private paths even when the OS
+returns a symlinked temporary root.
+Provider promotion tests include an instruction symlink and generated cache in
+`terraform/shared`; they must be ignored while the required shared inputs stay
+regular, pinned files.
+Disposable de-onboarding fixtures use the current UpCloud schema-3 absence
+receipt and reject an obsolete version before mutation. Its registry fixture
+uses the installer's exact sorted JSON format.
+
 **Molecule per role > monolithic test** — role-level scenarios catch
 config drift inside a role. Full-stack catches order/handler interactions.
 The two full-stack scenarios run on separate matrix runners with fail-fast
@@ -58,6 +68,10 @@ main/manual/shared/unknown changes. The final gate requires every selected job
 and permits only planned skips; adding a job must update the selector and tests.
 
 ## What's done well
+
+- **Provider example parity is checked** — every explicit staging/prod listener
+  example includes the default nginx HTTP redirect, so a copied environment
+  reaches the same fail-closed runtime contract as the provider roots.
 
 - **Quirk-named tests** — `test_xhttp_path_matches_both_slash_and_unslashed`,
   `test_relay_sni_fails_closed_when_local_sni_missing`. The name *is* the

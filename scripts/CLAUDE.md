@@ -9,6 +9,9 @@ data shaping are Python and use only stdlib + pinned `PyYAML`, `Jinja2`, or
 
 **One file per operator verb** — `bootstrap-secrets.sh`, `rotate-secrets.sh`,
 `fleet-rotate.sh`. The Makefile wraps these with `make <target>` shorthand.
+`ssh-ownership.py` is the explicit fresh-node SSH ownership verb between
+dual-path Tailnet bootstrap and ordinary deployment. Its private configuration
+binds the exact source and one inventory alias; check mode only previews.
 
 **SOPS gate everywhere** — anything that reads decrypted secrets refuses
 without `VPN_SECRETS_FILE` or the Make-resolved `SECRETS_FILE` produced by
@@ -29,6 +32,37 @@ opt-out flag.
 **Provider roots share one inventory schema** — UpCloud, Hetzner, Vultr, and Scaleway export the same canonical outputs, so `render-inventory.sh` stays provider-neutral. Add provider-specific inventory code only when a control-plane address needs extra guest convergence proof, as Vultr's secondary IPv4 does.
 
 **Inventory inputs fail before publication** — nonempty cohort slugs must name an existing `group_vars/vpn-*.yml` profile, and host aliases must be unique across provider/environment pairs. Reject malformed profiles before Terraform calls and preserve the last valid inventory on either failure.
+
+**Tailnet inventory transport is explicit** — `TAILNET_TRANSPORTS` accepts one
+Tailscale IPv4 or `-` per selected Terraform host. The renderer validates the
+complete list before Terraform calls and changes only `ansible_host`; the
+Terraform public service address and listener contract remain authoritative.
+`fleet_inspection.select_hosts` uses `vpn_service_address` as the public
+identity and `ansible_host` as the transport; a distinct Tailnet transport
+must retain the public host-key alias for dual-path SSH proof.
+
+**AWG liveness DNS follows the role profile** — the private sentinel runtime
+includes the role's validated IPv4 DNS servers. The runner writes a private
+`/etc/netns/<generated-name>/resolv.conf` before the real hostname probe and
+removes it with the namespace. Never use a fixed `curl --resolve` address as
+proof of tunneled DNS.
+
+**Promotion proof snapshots use canonical temporary paths** — macOS may give
+`TemporaryDirectory` a path beneath symlinked `/var`. Resolve the controller's
+new private directory before passing its executor snapshots to the evaluator;
+the evaluator still rejects symlinked private input paths.
+
+**Provider promotion snapshots only Terraform inputs** — pin the two referenced
+`terraform/shared` files explicitly. A recursive shared-directory copy would
+include the `AGENTS.md` instruction symlink and generated Python cache, causing
+promotion to refuse before planning. Required input files still fail closed if
+missing, symlinked, or unsafe.
+
+**Disposable de-onboarding consumes current guarded UpCloud absence** — its
+provider receipt is schema 3; keep the provider and version check aligned
+before removing encrypted client state or the executor profile.
+The sentinel registry uses the installer's sorted JSON serialization, which
+the de-onboarding reader must preserve exactly during removal.
 
 **Xray migrations are changelog-driven** — `docs/XRAY-RELEASE-LINE.md` embeds the declarative guard registry consumed by `check-xray-breaking-changes.py`. Add version-aware rules there instead of hardcoding release cases in unrelated validators; render-sensitive rules use `template_render.py` so every fast check sees the same canonical Ansible context.
 

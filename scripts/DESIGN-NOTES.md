@@ -53,6 +53,12 @@ pre-write checkpoint reloads that manifest semantically, so a run that crosses
 
 **Vultr secondary IPv4 inventory is live-gated** — Terraform output proves allocation only. `render-inventory.sh` polls the primary SSH endpoint and publishes `honeypot_listen_addr` only after the exact IPv4 appears on a guest interface.
 
+**Tailnet transport remains node-scoped** — after external bootstrap proof,
+render inventory with `TAILNET_TRANSPORTS` aligned to `HOSTS` (`-` retains the
+public SSH endpoint). Only Tailscale IPv4 addresses in `100.64.0.0/10` are
+accepted. The Terraform public address still drives VPN probes and the SSH
+transaction's distinct public path; host keys and socket contexts stay pinned.
+
 ## Provider control plane, destroy, and staging cleanup — `destroy.sh`, `check-vultr-control-plane.py`, `ci-staging-*`
 
 **Vultr control-plane access fails before Terraform** — state-changing and refresh-capable Vultr commands run a redacted authenticated API preflight through `check-vultr-control-plane.py`. Keep the key environment-only; classify exact-IP allowlist rejection separately from credential and network failures, and never print the rejected egress address or response body.
@@ -157,6 +163,10 @@ emitted variants for one sentinel target the same canonical server. The fixed
 promotion proof accepts only exact `ok` profile evidence after the binding
 epoch, including tunneled DNS and authentication plus a fresh AWG handshake;
 its receipt exposes only the safe target subset and observation epoch.
+For AWG, the isolated network namespace uses the canonical role DNS servers
+through its private `resolv.conf`; inheriting an executor-only underlay
+resolver can fail after a real authenticated handshake. The namespace resolver
+is created before the probe and removed with the namespace.
 The same fixed tool's `--validate-config` mode performs full local schema,
 semantic and exact-node cross-link validation without probes or writes; a
 multi-node controller must validate every split private config before the first
@@ -222,6 +232,13 @@ and clean source before Ansible. It isolates the selected alias from external
 host/group vars, allows only tool/home/locale environment inheritance, and uses
 portable strict SSH options for transfers. Caller fields remain literal data
 through Make and argv; no general site/backup task runs during installation.
+
+**Fresh-node ownership is a separate operator transaction** —
+`ssh-ownership.py` requires the installed exact bundle generation, a clean
+source for mutation, one pinned inventory alias, and real public plus Tailnet
+contexts. It previews the policy-preserving ownership plan or applies it with
+fresh strict SSH/SFTP proof on both paths before confirmation. A failed proof
+requests rollback; an uncertain rollback remains an explicit refusal.
 
 ## Probe matrix — `probe-matrix-driver.py`
 

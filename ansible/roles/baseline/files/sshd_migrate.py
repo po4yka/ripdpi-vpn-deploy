@@ -307,7 +307,7 @@ def validate_request(action, request):
                 transaction._context(context)
             if len({transaction._digest(context) for context in request['contexts']}) != len(request['contexts']):
                 raise ValueError
-            if type(request['timeout']) is not int or not 60 <= request['timeout'] <= 600:
+            if type(request['timeout']) is not int or not 60 <= request['timeout'] <= transaction.MAX_TRANSACTION_TIMEOUT:
                 raise ValueError
             if request['intent'] == 'sshd-baseline':
                 encoded = request['hardening_b64']

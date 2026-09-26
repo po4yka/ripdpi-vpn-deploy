@@ -524,8 +524,9 @@ def test_deonboard_refuses_without_exact_provider_absence_before_mutation(setup)
         json.dumps(
             {
                 "billing_status": "no-active-owned-resources",
+                "provider": "upcloud",
                 "root_storage_status": "absent",
-                "schema_version": 2,
+                "schema_version": 3,
                 "server_status": "absent",
                 "status": "apply_started",
             },
@@ -630,7 +631,6 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup):
                 },
             },
             sort_keys=True,
-            separators=(",", ":"),
         )
         + "\n"
     )
@@ -641,8 +641,9 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup):
             {
                 "billing_status": "no-active-owned-resources",
                 "manifest_sha256": bound["cleanup_manifest_sha256"],
+                "provider": "upcloud",
                 "root_storage_status": "absent",
-                "schema_version": 2,
+                "schema_version": 3,
                 "server_status": "absent",
                 "status": "verified",
             },
@@ -652,6 +653,23 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup):
         + "\n"
     )
     absence.chmod(0o600)
+
+    obsolete = json.loads(absence.read_text())
+    obsolete["schema_version"] = 2
+    absence.write_text(json.dumps(obsolete, sort_keys=True, separators=(",", ":")) + "\n")
+    with pytest.raises(module.ExecutorError, match="target-absence"):
+        module.deonboard(
+            binding_path=binding,
+            manifest_path=manifest,
+            absence_evidence_path=absence,
+            registry_path=registry,
+            config_path=config,
+            sops_file=sops_file,
+            output_path=output,
+            home=home,
+            runner=runner,
+        )
+    absence.write_text(json.dumps({**obsolete, "schema_version": 3}, sort_keys=True, separators=(",", ":")) + "\n")
 
     runner.delete_fail_once = True
     with pytest.raises(RuntimeError, match="fixture delete failure"):
@@ -683,6 +701,7 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup):
 
     assert result["status"] == "deonboarded"
     assert json.loads(registry.read_text()) == {"schema_version": 2, "sentinels": {}}
+    assert registry.read_bytes() == (json.dumps({"schema_version": 2, "sentinels": {}}, sort_keys=True) + "\n").encode()
     assert not config.exists()
     assert not (home / ".colima/vpn-liveness-one-shot").exists()
     assert output.stat().st_mode & 0o777 == 0o600

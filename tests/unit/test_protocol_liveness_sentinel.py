@@ -55,6 +55,7 @@ spec = importlib.util.spec_from_file_location('fixture_sentinel', sys.argv[1])
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
 module.AWG_TOOLCHAIN_BASE = pathlib.Path(sys.argv[2]).parent / 'toolchains'
 module.AWG_TOOLCHAIN_UID = os.geteuid(); module.AWG_TOOLCHAIN_GID = os.getegid()
+module.NETNS_RESOLV_ROOT = pathlib.Path(sys.argv[2]).parent / 'netns-resolv'
 original_getaddrinfo = socket.getaddrinfo
 module.socket.getaddrinfo = lambda host, *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('192.0.2.20', 443))] if host == 'www.gstatic.com' else original_getaddrinfo(host, *a, **k)
 sys.argv = [sys.argv[1], '--config', sys.argv[2]]
@@ -109,6 +110,9 @@ if "--socks5-hostname" in args and {sing_auth_fails!r}:
 if "--socks5-hostname" not in args and os.environ.get("IN_AWG_NETNS") != "1" and {control_curl_fails!r}:
     raise SystemExit(28)
 if os.environ.get("IN_AWG_NETNS") == "1":
+    resolver = pathlib.Path(os.environ["NETNS_RESOLV_ROOT"]) / os.environ["VPN_NETNS_NAME"] / "resolv.conf"
+    if resolver.read_text() != "nameserver 1.1.1.1\\nnameserver 1.0.0.1\\n":
+        raise SystemExit(6)
     if {awg_curl_sleeps!r}:
         time.sleep(30)
     if {awg_curl_fails!r}:
@@ -183,8 +187,9 @@ if [[ "${1:-} ${2:-}" == 'link set' && "${FAIL_AWG_MOVE:-}" == 1 ]]; then exit 1
 if [[ "$*" == *'link delete awglive'* && "${FAIL_LINK_DELETE:-}" == 1 ]]; then exit 2; fi
 if [[ "${1:-} ${2:-} ${3:-}" == 'netns delete vpn-live-'* && "${FAIL_NETNS_DELETE:-}" == 1 ]]; then exit 42; fi
 if [[ "${1:-} ${2:-} ${3:-}" == 'netns exec vpn-live-'* ]]; then
+  namespace="$3"
   shift 3
-  IN_AWG_NETNS=1 exec "$@"
+  IN_AWG_NETNS=1 VPN_NETNS_NAME="$namespace" exec "$@"
 fi
 exit 0
 """,
@@ -270,7 +275,8 @@ signal.pause()
                 "expected_runtime": {"sing_box": "1.14.0", "xray": "26.3.27", "awg": "1.0.0", "awg_toolchain": toolchain_id},
                 "sing_box": {"config": str(profile_config), "profiles": sing_profiles},
                 "xray": {"config": str(xray_config), "profiles": {"p1-xhttp": [18181]}},
-                "amneziawg": {"config": str(awg), "address": "10.66.66.2/32"},
+                "amneziawg": {"config": str(awg), "address": "10.66.66.2/32",
+                               "dns_servers": ["1.1.1.1", "1.0.0.1"]},
             }
         )
     )
@@ -284,6 +290,7 @@ signal.pause()
             "AWG_PID_FILE": str(tmp_path / "awg.pid"),
             "SING_PID_FILE": str(tmp_path / "sing.pid"),
             "XRAY_PID_FILE": str(tmp_path / "xray.pid"),
+            "NETNS_RESOLV_ROOT": str(tmp_path / "netns-resolv"),
         }
     )
     return config, env
@@ -357,6 +364,7 @@ def test_sentinel_reports_authenticated_data_plane_success_without_secrets(
     assert calls.index("xray run -test -config") < calls.index("xray run -config")
     assert subprocess.run(["ps", "-p", (tmp_path / "xray.pid").read_text().strip()], capture_output=True).returncode != 0
     assert "netns delete vpn-live-" in calls
+    assert list((tmp_path / "netns-resolv").iterdir()) == []
     interface = next(line.split()[-1] for line in calls.splitlines() if line.startswith("ip link show "))
     assert len(interface) <= 15
     awg_pid = (tmp_path / "awg.pid").read_text().strip()
@@ -922,7 +930,8 @@ def test_namespace_partial_creation_is_reconciled_without_deleting_collision(mon
             return subprocess.CompletedProcess(command, 0, b"", b"")
         raise AssertionError("unexpected namespace fixture command")
     monkeypatch.setattr(module.subprocess, "run", run)
-    config = {"probe_url": "https://probe.example/", "amneziawg": {"config": "/fixture", "address": "10.66.66.2/32"}}
+    config = {"probe_url": "https://probe.example/", "amneziawg": {"config": "/fixture", "address": "10.66.66.2/32",
+                                                                     "dns_servers": ["1.1.1.1"]}}
     if failure == "signal":
         with pytest.raises(KeyboardInterrupt):
             module.probe_awg(config, True, {})
@@ -971,6 +980,20 @@ def test_awg_validation_failure_precedes_namespace_mutation(monkeypatch):
 
     assert result["verdict"] == "error"
     assert result["duration_ms"] is None
+    assert result["error_kind"] == "valueerror"
+
+
+@pytest.mark.parametrize("servers", [[], ["127.0.0.1"], ["1.1.1.1", "1.1.1.1"], ["not-an-ip"]])
+def test_awg_dns_validation_precedes_namespace_mutation(monkeypatch, servers):
+    spec = importlib.util.spec_from_file_location("sentinel_awg_dns_validation", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module.subprocess, "run", lambda *_a, **_k: (_ for _ in ()).throw(
+        AssertionError("DNS validation must precede namespace mutation")))
+    config = {"probe_url": "https://probe.example/", "amneziawg": {
+        "config": "/fixture", "address": "10.66.66.2/32", "dns_servers": servers}}
+    result = module.probe_awg(config, True, {})
+    assert result["verdict"] == "error"
     assert result["error_kind"] == "valueerror"
 
 

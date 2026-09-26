@@ -52,7 +52,8 @@ def inputs():
                 endpoint="192.0.2.3", private_key=key(1),
                 derive_public_key=lambda private: {key(1): key(2), key(4): key(5)}[private],
                 generation_root="/etc/vpn-liveness/generations/example",
-                awg_defaults={"interface": "awg0", "listen_port": 51820, "address_v4": "10.66.66.1/24"},
+                awg_defaults={"interface": "awg0", "listen_port": 51820, "address_v4": "10.66.66.1/24",
+                              "dns_servers": ["1.1.1.1", "1.0.0.1"]},
                 awg_cohort={"jc": 9, "jmin": 21})
 
 
@@ -75,10 +76,20 @@ def test_four_profiles_are_materialized_with_only_named_client_material():
     assert "Jc = 0" in awg and "Jmin = 21" in awg and "Jmax = 70" in awg
     assert "Endpoint = 192.0.2.3:51820" in awg
     assert built["runtime"]["amneziawg"]["address"] == "10.66.66.2/32"
+    assert built["runtime"]["amneziawg"]["dns_servers"] == ["1.1.1.1", "1.0.0.1"]
     assert before == {k: v for k, v in args.items() if k != "derive_public_key"}
     public = json.dumps(built["public_profiles"])
     for private in (key(1), key(2), key(3), key(4), key(5), "private-password", "0011223344556677", args["secrets_doc"]["xray"]["clients"][0]["uuid"]):
         assert private not in public
+
+
+@pytest.mark.parametrize("servers", [[], ["127.0.0.1"], ["1.1.1.1", "1.1.1.1"], ["not-an-ip"]])
+def test_awg_profile_rejects_unsafe_dns(servers):
+    args = inputs()
+    args["awg_defaults"]["dns_servers"] = servers
+    module = load()
+    with pytest.raises(module.ProfileError, match="invalid-awg-dns"):
+        module.build_profiles(**args)
 
 
 def test_real_canonical_emitter_outputs_materialize_for_both_runtimes(tmp_path):

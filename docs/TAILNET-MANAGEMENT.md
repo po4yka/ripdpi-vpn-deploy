@@ -119,9 +119,12 @@ Interrupted restoration is replayable; confirmation refuses once rollback
 begins. Corrupt or foreign state remains for diagnosis. Pinned inert packages
 may remain after rollback, but the access-changing runtime policy is restored.
 
-After bootstrap, use the handoff's actual management address and `contexts`
-in the reviewed inventory and `DEPLOY_SSH_CONTEXTS_FILE` mapping for that exact
-node. The handoff itself is not the deploy input schema. Keep the separate
+After bootstrap, render the exact node with
+`TAILNET_TRANSPORTS=<confirmed-Tailscale-IPv4> make inventory`, using the
+handoff's actual management address and `contexts` in the reviewed inventory
+and `DEPLOY_SSH_CONTEXTS_FILE` mapping. For multiple hosts, supply one address
+or `-` per `HOSTS` entry. The renderer keeps Terraform's public service address
+separate. The handoff itself is not the deploy input schema. Keep the separate
 `DEPLOY_PROMOTION_CONFIG_FILE` required by
 [RUNBOOK-deploy.md](RUNBOOK-deploy.md); bootstrap does not satisfy protocol proof.
 Both `make dry-run` and `make deploy` reject enrollment keys and require the

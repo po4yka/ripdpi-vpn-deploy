@@ -289,6 +289,7 @@ def _terraform_snapshot_source(tmp_path):
         provider / "variables.tf": b'variable "enable_provider_firewall" {}\n',
         provider / ".terraform.lock.hcl": b"# lock\n",
         provider / "environments/prod.tfvars": b"enable_provider_firewall = false\n",
+        source / "terraform/shared/bootstrap-sshd-ownership.py": b"# cloud-init helper\n",
         source / "terraform/shared/cloud-init.yaml.tftpl": b"#cloud-config\n",
         provider / ".terraform-env/default/environment": b"default",
         provider / ".terraform-env/default/providers/plugin": b"plugin",
@@ -326,6 +327,41 @@ def test_terraform_snapshot_binds_full_selected_config_and_ignores_live_drift(
         "TF_DATA_DIR": str(destination / "terraform-data"),
     }
     assert str(source) not in " ".join(command)
+
+
+def test_terraform_snapshot_ignores_shared_instruction_symlink_and_cache(tmp_path):
+    m = mod()
+    source = _terraform_snapshot_source(tmp_path)
+    shared = source / "terraform/shared"
+    (shared / "CLAUDE.md").write_text("operator instructions\n")
+    (shared / "AGENTS.md").symlink_to("CLAUDE.md")
+    cache = shared / "__pycache__"
+    cache.mkdir()
+    (cache / "bootstrap.pyc").write_bytes(b"generated cache")
+    destination = tmp_path / "private/terraform-snapshot"
+    destination.parent.mkdir(mode=0o700)
+
+    snapshot = m.TerraformConfigSnapshot.create(source, destination, "prod")
+
+    snapshot.verify()
+    assert not (destination / "terraform/shared/AGENTS.md").exists()
+    assert not (destination / "terraform/shared/__pycache__").exists()
+    assert (destination / "terraform/shared/cloud-init.yaml.tftpl").is_file()
+
+
+@pytest.mark.parametrize("fault", ["missing", "symlink"])
+def test_terraform_snapshot_requires_regular_shared_inputs(tmp_path, fault):
+    m = mod()
+    source = _terraform_snapshot_source(tmp_path)
+    required = source / "terraform/shared/cloud-init.yaml.tftpl"
+    required.unlink()
+    if fault == "symlink":
+        required.symlink_to("bootstrap-sshd-ownership.py")
+    destination = tmp_path / "private/terraform-snapshot"
+    destination.parent.mkdir(mode=0o700)
+
+    with pytest.raises(m.PromotionError, match="terraform-snapshot-invalid"):
+        m.TerraformConfigSnapshot.create(source, destination, "prod")
 
 
 @pytest.mark.parametrize("fault", ["config", "tfvars", "wrapper", "data", "extra"])

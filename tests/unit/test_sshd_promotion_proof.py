@@ -388,6 +388,39 @@ def test_disposable_executor_inputs_are_private_and_forwarded_as_exact_snapshots
     assert result['colima'] == __import__('shutil').which('colima', path=module.EXECUTOR_PATH)
 
 
+def test_executor_snapshots_use_canonical_temp_path_when_temp_root_is_aliased(tmp_path, monkeypatch):
+    module = _load()
+    real_root = tmp_path / 'real-temp'
+    real_root.mkdir(mode=0o700)
+    alias = tmp_path / 'alias'
+    alias.symlink_to(real_root, target_is_directory=True)
+
+    class AliasedTemp:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return str(alias)
+
+        def __exit__(self, *args):
+            return False
+
+    evaluator = tmp_path / 'canonical-path.py'
+    evaluator.write_text(
+        'import json,pathlib,sys\n'
+        'paths = [sys.argv[sys.argv.index(flag) + 1] for flag in '
+        '("--config", "--executor-manifest", "--executor-binding")]\n'
+        'print(json.dumps({"canonical": all(str(pathlib.Path(path).resolve(strict=True)) == path '
+        'for path in paths)}))\n'
+    )
+    monkeypatch.setattr(module.tempfile, 'TemporaryDirectory', AliasedTemp)
+    monkeypatch.setattr(module, 'EVALUATOR', evaluator)
+
+    result = module.evaluate(b'schema_version: 2\n', executor={'manifest': b'{}', 'binding': b'{}'})
+
+    assert result == {'canonical': True}
+
+
 @pytest.mark.parametrize('failure', ['unpaired', 'mode', 'symlink'])
 def test_disposable_executor_input_refusal_precedes_evaluation(tmp_path, failure):
     module = _load()

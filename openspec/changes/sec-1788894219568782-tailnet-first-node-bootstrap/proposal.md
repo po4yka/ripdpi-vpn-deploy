@@ -24,6 +24,9 @@ both dependencies before resources are created.
 - Keep the ordinary deploy controller's dual-path and protocol proof gates.
   Bootstrap establishes access only; it does not publish a deployed manifest
   or declare any VPN profile accepted.
+- Give fresh Debian nodes an explicit policy-preserving SSH ownership
+  transaction after bootstrap and before ordinary deployment. The packaged
+  main-file directives cannot be normalized implicitly by baseline.
 - Keep enrollment and firewall changes unconfirmed until external path proof;
   controller loss, reboot, timeout, and failure restore the previous state.
   Boot recovery restores firewall before networking and revokes enrollment
