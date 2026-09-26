@@ -52,6 +52,12 @@ proof of tunneled DNS.
 new private directory before passing its executor snapshots to the evaluator;
 the evaluator still rejects symlinked private input paths.
 
+**Provider promotion snapshots only Terraform inputs** — pin the two referenced
+`terraform/shared` files explicitly. A recursive shared-directory copy would
+include the `AGENTS.md` instruction symlink and generated Python cache, causing
+promotion to refuse before planning. Required input files still fail closed if
+missing, symlinked, or unsafe.
+
 **Disposable de-onboarding consumes current guarded UpCloud absence** — its
 provider receipt is schema 3; keep the provider and version check aligned
 before removing encrypted client state or the executor profile.

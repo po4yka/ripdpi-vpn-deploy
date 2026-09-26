@@ -409,9 +409,8 @@ class TerraformConfigSnapshot:
         )
         shared = source_root / "terraform/shared"
         sources.extend(
-            (path, str(path.relative_to(source_root)))
-            for path in sorted(shared.rglob("*"))
-            if path.is_file()
+            (shared / name, f"terraform/shared/{name}")
+            for name in ("bootstrap-sshd-ownership.py", "cloud-init.yaml.tftpl")
         )
         data_root = provider / ".terraform-env" / workspace
         sources.extend(
