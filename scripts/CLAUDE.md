@@ -37,6 +37,15 @@ opt-out flag.
 Tailscale IPv4 or `-` per selected Terraform host. The renderer validates the
 complete list before Terraform calls and changes only `ansible_host`; the
 Terraform public service address and listener contract remain authoritative.
+`fleet_inspection.select_hosts` uses `vpn_service_address` as the public
+identity and `ansible_host` as the transport; a distinct Tailnet transport
+must retain the public host-key alias for dual-path SSH proof.
+
+**AWG liveness DNS follows the role profile** — the private sentinel runtime
+includes the role's validated IPv4 DNS servers. The runner writes a private
+`/etc/netns/<generated-name>/resolv.conf` before the real hostname probe and
+removes it with the namespace. Never use a fixed `curl --resolve` address as
+proof of tunneled DNS.
 
 **Xray migrations are changelog-driven** — `docs/XRAY-RELEASE-LINE.md` embeds the declarative guard registry consumed by `check-xray-breaking-changes.py`. Add version-aware rules there instead of hardcoding release cases in unrelated validators; render-sensitive rules use `template_render.py` so every fast check sees the same canonical Ansible context.
 

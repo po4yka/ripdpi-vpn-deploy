@@ -163,6 +163,10 @@ emitted variants for one sentinel target the same canonical server. The fixed
 promotion proof accepts only exact `ok` profile evidence after the binding
 epoch, including tunneled DNS and authentication plus a fresh AWG handshake;
 its receipt exposes only the safe target subset and observation epoch.
+For AWG, the isolated network namespace uses the canonical role DNS servers
+through its private `resolv.conf`; inheriting an executor-only underlay
+resolver can fail after a real authenticated handshake. The namespace resolver
+is created before the probe and removed with the namespace.
 The same fixed tool's `--validate-config` mode performs full local schema,
 semantic and exact-node cross-link validation without probes or writes; a
 multi-node controller must validate every split private config before the first

@@ -9,6 +9,7 @@ stdout.  We capture stdout for the comparison.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import stat
@@ -585,6 +586,10 @@ def test_duplicate_host_alias_preserves_last_inventory(tmp_path):
 
 def test_tailnet_transport_keeps_terraform_public_service_address(tmp_path):
     root, env = _isolated_inventory_repo(tmp_path)
+    key = tmp_path / "identity"
+    key.write_text("test-only-key")
+    key.chmod(0o600)
+    env["ANSIBLE_SSH_PRIVATE_KEY_FILE"] = str(key)
     env["TAILNET_TRANSPORTS"] = "100.64.0.42"
     result = subprocess.run(
         ["bash", str(root / "scripts/render-inventory.sh")],
@@ -594,6 +599,13 @@ def test_tailnet_transport_keeps_terraform_public_service_address(tmp_path):
     inventory = (root / "ansible/inventory/generated.ini").read_text()
     assert "ansible_host=100.64.0.42" in inventory
     assert "vpn_service_address=198.51.100.10" in inventory
+    spec = importlib.util.spec_from_file_location("fleet_inspection", REPO_ROOT / "scripts/fleet_inspection.py")
+    inspection = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(inspection)
+    host = inspection.select_hosts(root / "ansible/inventory/generated.ini", ["vpn-test.example.com"])[0]
+    assert host["address"] == "198.51.100.10"
+    assert host["transport"] == "100.64.0.42"
+    assert host["alias"] == "198.51.100.10"
 
     env["TAILNET_TRANSPORTS"] = "-"
     public = subprocess.run(

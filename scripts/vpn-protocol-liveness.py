@@ -35,6 +35,7 @@ AUTH_ERROR = re.compile(r"auth|credential|invalid user|rejected|bad certificate"
 AWG_TOOLCHAIN_BASE = Path("/opt/ripdpi-real-vps-awg-nat/toolchains")
 AWG_TOOLCHAIN_UID = 0
 AWG_TOOLCHAIN_GID = 0
+NETNS_RESOLV_ROOT = Path("/etc/netns")
 TARGET_IDENTITY_KEYS = {
     "inventory_alias", "public_service_address_sha256", "deployable_digest", "applied_at",
     "required_profiles", "source_revision", "runner_sha256", "public_profile_digest",
@@ -175,6 +176,21 @@ def awg_probe_url(config: dict):
     if ipaddress.ip_interface(config["amneziawg"]["address"]).version != 4:
         raise ValueError("AWG requires IPv4 client address")
     return parsed
+
+
+def awg_dns_servers(config: dict) -> list[str]:
+    settings = config.get("amneziawg")
+    servers = settings.get("dns_servers") if isinstance(settings, dict) else None
+    if not isinstance(servers, list) or not 1 <= len(servers) <= 4:
+        raise ValueError("AWG DNS invalid")
+    try:
+        valid = all(isinstance(server, str) and ipaddress.IPv4Address(server).is_global
+                    and str(ipaddress.IPv4Address(server)) == server for server in servers)
+    except ipaddress.AddressValueError:
+        valid = False
+    if not valid or len(set(servers)) != len(servers):
+        raise ValueError("AWG DNS invalid")
+    return servers
 
 
 def command_version(command: list[str]) -> str:
@@ -521,8 +537,11 @@ def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
     go_process: subprocess.Popen[str] | None = None
     result: dict
     cleanup_failed = False
+    resolv_directory = NETNS_RESOLV_ROOT / namespace
+    resolver_created = False
     try:
         awg_probe_url(config)
+        dns_servers = awg_dns_servers(config)
         address_family = "ipv4"
         existing = subprocess.run(["ip", "link", "show", interface], timeout=2, check=False, capture_output=True)
         if existing.returncode != 1:
@@ -535,6 +554,18 @@ def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
         namespace_attempted = True
         subprocess.run(["ip", "netns", "add", namespace], timeout=5, check=True, capture_output=True)
         created = True
+        NETNS_RESOLV_ROOT.mkdir(mode=0o700, exist_ok=True)
+        root_stat = NETNS_RESOLV_ROOT.lstat()
+        if not stat.S_ISDIR(root_stat.st_mode) or root_stat.st_uid != os.geteuid() or root_stat.st_mode & 0o022:
+            raise ValueError("AWG resolver root unsafe")
+        resolv_directory.mkdir(mode=0o700)
+        resolver_created = True
+        resolver_path = resolv_directory / "resolv.conf"
+        fd = os.open(resolver_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w", encoding="ascii") as stream:
+            stream.write("".join(f"nameserver {server}\n" for server in dns_servers))
+            stream.flush()
+            os.fsync(stream.fileno())
         stripped = subprocess.run(
             [toolchain["binaries"]["awg-quick"], "strip", awg_config], text=True, capture_output=True, timeout=5, check=True
         )
@@ -622,6 +653,12 @@ def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
                 cleanup_failed |= deleted.returncode != 0
             except (OSError, subprocess.TimeoutExpired):
                 cleanup_failed = True
+        if resolver_created:
+            try:
+                (resolv_directory / "resolv.conf").unlink(missing_ok=True)
+                resolv_directory.rmdir()
+            except OSError:
+                cleanup_failed = True
     if cleanup_failed:
         result = {**result, "verdict": "error", "duration_ms": None, "error_kind": "cleanup"}
     return process_result(profile, {**result, "target_address_family": address_family})
@@ -681,6 +718,7 @@ def main() -> int:
     if "amneziawg" in config:
         try:
             awg_probe_url(config)
+            awg_dns_servers(config)
             toolchain = verify_awg_toolchain(config.get("expected_runtime", {}).get("awg_toolchain"))
         except (OSError, ValueError, TypeError, KeyError):
             print("vpn-protocol-liveness: invalid AWG toolchain or IPv4 HTTPS profile", file=sys.stderr)

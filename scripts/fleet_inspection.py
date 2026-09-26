@@ -422,7 +422,16 @@ def select_hosts(inventory_path, selected, *, primary_section="vpn", include_var
             raise InspectionError("ambiguous-inventory-variable")
         values = {**inherited, **host_values}
         try:
-            address = _connection_name(values["ansible_host"])
+            connection = _connection_name(values["ansible_host"])
+            address = connection
+            if "vpn_service_address" in values:
+                service = values["vpn_service_address"]
+                try:
+                    if str(ipaddress.ip_address(service)) != service:
+                        raise ValueError
+                except ValueError:
+                    raise InspectionError("invalid-service-address") from None
+                address = service
             user = values["ansible_user"]
             port = int(values["ansible_port"])
             if not re.fullmatch(r"[a-z_][a-z_0-9-]{0,31}", user) or not 1 <= port <= 65535:
@@ -433,8 +442,13 @@ def select_hosts(inventory_path, selected, *, primary_section="vpn", include_var
         override = "inspection_transport_host" in values
         if override != ("inspection_host_key_alias" in values):
             raise InspectionError("paired-transport-identity-required")
+        if address != connection and override and (
+            _connection_name(values["inspection_transport_host"]) != connection
+            or _connection_name(values["inspection_host_key_alias"]) != address
+        ):
+            raise InspectionError("conflicting-transport-identity")
         host = {"name": name, "address": address, "port": port, "user": user, "key": key,
-                "transport": _connection_name(values.get("inspection_transport_host", address)),
+                "transport": _connection_name(values.get("inspection_transport_host", connection)),
                 "alias": _connection_name(values.get("inspection_host_key_alias", address))}
         if include_variables:
             host["variables"] = {key: value for key, value in values.items() if key != "__section"}
