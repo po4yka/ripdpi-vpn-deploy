@@ -460,6 +460,12 @@ class TerraformConfigSnapshot:
                 manifest_files.append(
                     {"path": relative, "sha256": digest.hexdigest(), "mode": mode}
                 )
+            if workspace != "default":
+                # Terraform creates the selected workspace directory on first
+                # use, otherwise with permissions outside our private floor.
+                (stage / "terraform/providers/upcloud/terraform.tfstate.d" / workspace).mkdir(
+                    mode=0o700, parents=True, exist_ok=True
+                )
             # mkdir(parents=True) applies its requested mode only to the leaf;
             # normalize every private snapshot directory before publication.
             for directory, _names, _files in os.walk(stage, followlinks=False):

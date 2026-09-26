@@ -56,7 +56,9 @@ the evaluator still rejects symlinked private input paths.
 `terraform/shared` files explicitly. A recursive shared-directory copy would
 include the `AGENTS.md` instruction symlink and generated Python cache, causing
 promotion to refuse before planning. Required input files still fail closed if
-missing, symlinked, or unsafe.
+missing, symlinked, or unsafe. Pre-create the selected non-default workspace
+directories inside the private snapshot so Terraform cannot add `0755`
+directories during its first command.
 
 **Disposable de-onboarding consumes current guarded UpCloud absence** — its
 provider receipt is schema 3; keep the provider and version check aligned

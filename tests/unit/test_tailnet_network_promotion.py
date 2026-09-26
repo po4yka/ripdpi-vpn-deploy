@@ -349,6 +349,39 @@ def test_terraform_snapshot_ignores_shared_instruction_symlink_and_cache(tmp_pat
     assert (destination / "terraform/shared/cloud-init.yaml.tftpl").is_file()
 
 
+def test_terraform_snapshot_precreates_private_workspace_directories(tmp_path):
+    m = mod()
+    source = _terraform_snapshot_source(tmp_path)
+    provider = source / "terraform/providers/upcloud"
+    workspace = "ci-staging-test"
+    (provider / f"environments/{workspace}.tfvars").write_bytes(
+        b"enable_provider_firewall = false\n"
+    )
+    data = provider / ".terraform-env" / workspace
+    data.mkdir(parents=True)
+    (data / "environment").write_text(workspace)
+    (data / "environment").chmod(0o600)
+    state = provider / "terraform.tfstate.d" / workspace / "terraform.tfstate"
+    state.parent.mkdir(parents=True)
+    state.write_bytes(b'{"version":4,"resources":[]}\n')
+    state.chmod(0o600)
+    destination = tmp_path / "private/terraform-snapshot"
+    destination.parent.mkdir(mode=0o700)
+
+    snapshot = m.TerraformConfigSnapshot.create(source, destination, workspace)
+    workspace_dir = destination / "terraform/providers/upcloud/terraform.tfstate.d"
+    selected_dir = workspace_dir / workspace
+    assert workspace_dir.stat().st_mode & 0o777 == 0o700
+    assert selected_dir.stat().st_mode & 0o777 == 0o700
+
+    # Terraform's workspace setup must find these directories already private.
+    selected_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+    snapshot.verify()
+    (selected_dir / "unexpected.tfstate").write_text("unexpected")
+    with pytest.raises(m.PromotionError, match="terraform-snapshot-invalid"):
+        snapshot.verify()
+
+
 @pytest.mark.parametrize("fault", ["missing", "symlink"])
 def test_terraform_snapshot_requires_regular_shared_inputs(tmp_path, fault):
     m = mod()

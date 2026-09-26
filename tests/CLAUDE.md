@@ -45,7 +45,8 @@ must reach the evaluator through canonical private paths even when the OS
 returns a symlinked temporary root.
 Provider promotion tests include an instruction symlink and generated cache in
 `terraform/shared`; they must be ignored while the required shared inputs stay
-regular, pinned files.
+regular, pinned files. A non-default workspace test also checks that Terraform's
+first directory setup cannot violate the private snapshot mode floor.
 Disposable de-onboarding fixtures use the current UpCloud schema-3 absence
 receipt and reject an obsolete version before mutation. Its registry fixture
 uses the installer's exact sorted JSON format.
