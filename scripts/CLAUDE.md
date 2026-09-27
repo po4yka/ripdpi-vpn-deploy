@@ -15,7 +15,12 @@ binds the exact source and one inventory alias; check mode only previews.
 `staging-tailnet-recovery.py` is the disposable-only acceptance verb behind two
 fixed Make targets. It deliberately kills the enrollment worker or reboots the
 node after durable pending state; it never exposes a general fault selector or
-adds a guest RPC.
+adds a guest RPC. Reboot failures after observed SSH loss publish a separate
+redacted private `incomplete` diagnostic; that artifact is never success
+evidence and never emits the success audit record. Once SSH loss is observed,
+its already validated path and parent inode stay frozen so a later wrapper
+change cannot suppress the failure receipt. Wrapper schema 2 requires that
+fresh diagnostic path; obsolete schema 1 refuses before SSH.
 
 **SOPS gate everywhere** — anything that reads decrypted secrets refuses
 without `VPN_SECRETS_FILE` or the Make-resolved `SECRETS_FILE` produced by

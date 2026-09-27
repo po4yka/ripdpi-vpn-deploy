@@ -35,6 +35,22 @@
         executable: /bin/sh
       changed_when: false
 
+    - name: Install inert Tailscale daemon unit for dependency-graph validation
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/tailscaled.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Inert Molecule Tailscale daemon fixture
+          Wants=network-pre.target
+          After=network-pre.target
+
+          [Service]
+          Type=simple
+          ExecStart=/bin/sleep infinity
+
     - name: Install stateful Tailscale CLI fixture
       ansible.builtin.copy:
         dest: /usr/bin/tailscale

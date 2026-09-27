@@ -33,14 +33,34 @@ class ForbiddenRuntime:
 
 def test_invalid_wrapper_refuses_before_ssh(controller, tmp_path):
     config = tmp_path / "recovery.json"
-    config.write_text(json.dumps({"schema_version": 1, "bootstrap_config": "relative",
-                                  "evidence": str(tmp_path / "evidence.json")}))
+    config.write_text(json.dumps({"schema_version": 2, "bootstrap_config": "relative",
+                                  "evidence": str(tmp_path / "evidence.json"),
+                                  "diagnostic": str(tmp_path / "diagnostic.json")}))
     config.chmod(0o600)
 
     with pytest.raises(controller.RecoveryError, match="recovery-inputs-refused"):
         controller.execute({
             "TAILNET_RECOVERY_CONFIG": str(config),
             "TAILNET_RECOVERY_SCENARIO": "controller-loss",
+            "TAILNET_RECOVERY_TARGET": "node-one",
+        }, runtime=ForbiddenRuntime())
+
+    assert not (tmp_path / "evidence.json").exists()
+
+
+def test_obsolete_v1_wrapper_refuses_before_ssh(controller, tmp_path):
+    config = tmp_path / "recovery.json"
+    config.write_text(json.dumps({
+        "schema_version": 1,
+        "bootstrap_config": str(tmp_path / "bootstrap.json"),
+        "evidence": str(tmp_path / "evidence.json"),
+    }))
+    config.chmod(0o600)
+
+    with pytest.raises(controller.RecoveryError, match="recovery-inputs-refused"):
+        controller.execute({
+            "TAILNET_RECOVERY_CONFIG": str(config),
+            "TAILNET_RECOVERY_SCENARIO": "reboot",
             "TAILNET_RECOVERY_TARGET": "node-one",
         }, runtime=ForbiddenRuntime())
 
@@ -81,6 +101,7 @@ class ScenarioRuntime:
 
     def reboot(self, inputs):
         self.events.append(("reboot", inputs.name))
+        return "accepted"
 
     def wait_after_reboot(self, inputs):
         self.events.append(("wait-after-reboot", inputs.name))
@@ -184,9 +205,10 @@ def test_execute_uses_external_scenario_and_publishes_only_redacted_evidence(
     bootstrap_config = tmp_path / "bootstrap.json"
     bootstrap_config.write_text("private bootstrap fixture")
     wrapper.write_text(json.dumps({
-        "schema_version": 1,
+        "schema_version": 2,
         "bootstrap_config": str(bootstrap_config),
         "evidence": str(tmp_path / "evidence.json"),
+        "diagnostic": str(tmp_path / "diagnostic.json"),
     }))
     wrapper.chmod(0o600)
     runtime = ExecuteRuntime("controller-loss")
@@ -213,6 +235,213 @@ def test_execute_uses_external_scenario_and_publishes_only_redacted_evidence(
     assert runtime.events[-1] == (
         "audit", "ci-staging-fixture", "upcloud", "controller-loss",
     )
+    assert not (tmp_path / "diagnostic.json").exists()
+
+
+def test_reboot_timeout_publishes_only_redacted_incomplete_diagnostic(
+        controller, tmp_path):
+    import bootstrap_readiness
+
+    class UnavailableRuntime(ExecuteRuntime):
+        def __init__(self):
+            super().__init__("reboot")
+
+        def wait_after_reboot(self, inputs):
+            self.events.append(("wait-after-reboot", inputs.name))
+            raise bootstrap_readiness.SshTransportError("fixture address and secret text")
+
+        def recovered_status(self, inputs):
+            self.events.append(("recovery", inputs.name, "transport"))
+            raise bootstrap_readiness.SshTransportError("fixture address and secret text")
+
+    bootstrap_config = tmp_path / "bootstrap.json"
+    bootstrap_config.write_text("private bootstrap fixture")
+    evidence = tmp_path / "evidence.json"
+    diagnostic = tmp_path / "diagnostic.json"
+    wrapper = tmp_path / "recovery.json"
+    wrapper.write_text(json.dumps({
+        "schema_version": 2,
+        "bootstrap_config": str(bootstrap_config),
+        "evidence": str(evidence),
+        "diagnostic": str(diagnostic),
+    }))
+    wrapper.chmod(0o600)
+    runtime = UnavailableRuntime()
+
+    with pytest.raises(controller.RecoveryError, match="recovery-postconditions-timeout"):
+        controller.execute({
+            "TAILNET_RECOVERY_CONFIG": str(wrapper),
+            "TAILNET_RECOVERY_SCENARIO": "reboot",
+            "TAILNET_RECOVERY_TARGET": "node-one",
+            "TAILSCALE_AUTH_KEY": "tskey-auth-fixture_key",
+        }, runtime=runtime)
+
+    assert not evidence.exists()
+    assert diagnostic.stat().st_mode & 0o777 == 0o600
+    assert json.loads(diagnostic.read_text()) == {
+        "schema_version": 1,
+        "status": "incomplete",
+        "scenario": "reboot",
+        "reboot_request": "accepted",
+        "ssh_down_observed": True,
+        "ssh_up_observed": False,
+        "recovery_status": "not_observed",
+        "unit_proof_stage": "not_started",
+    }
+    encoded = diagnostic.read_text()
+    assert all(value not in encoded for value in (
+        "node-one", "tskey-auth", "192.0.2.10", "100.64.0.1", "nonce",
+        "capability", "fixture address and secret text",
+    ))
+    assert not any(event[0] == "audit" for event in runtime.events)
+
+
+def test_successful_reboot_publishes_success_only(controller, tmp_path):
+    bootstrap_config = tmp_path / "bootstrap.json"
+    bootstrap_config.write_text("private bootstrap fixture")
+    evidence = tmp_path / "evidence.json"
+    diagnostic = tmp_path / "diagnostic.json"
+    wrapper = tmp_path / "recovery.json"
+    wrapper.write_text(json.dumps({
+        "schema_version": 2,
+        "bootstrap_config": str(bootstrap_config),
+        "evidence": str(evidence),
+        "diagnostic": str(diagnostic),
+    }))
+    wrapper.chmod(0o600)
+    runtime = ExecuteRuntime("reboot")
+
+    result = controller.execute({
+        "TAILNET_RECOVERY_CONFIG": str(wrapper),
+        "TAILNET_RECOVERY_SCENARIO": "reboot",
+        "TAILNET_RECOVERY_TARGET": "node-one",
+        "TAILSCALE_AUTH_KEY": "tskey-auth-fixture_key",
+    }, runtime=runtime)
+
+    assert result["status"] == "passed"
+    assert json.loads(evidence.read_text()) == result
+    assert not diagnostic.exists()
+    assert runtime.events[-1] == (
+        "audit", "ci-staging-fixture", "upcloud", "reboot",
+    )
+
+
+def test_reboot_failure_uses_frozen_diagnostic_after_wrapper_changes(
+        controller, tmp_path):
+    class WrapperChangingRuntime(ExecuteRuntime):
+        def reboot(self, inputs):
+            result = super().reboot(inputs)
+            wrapper.write_text("changed after public SSH loss")
+            return result
+
+    bootstrap_config = tmp_path / "bootstrap.json"
+    bootstrap_config.write_text("private bootstrap fixture")
+    evidence = tmp_path / "evidence.json"
+    diagnostic = tmp_path / "diagnostic.json"
+    wrapper = tmp_path / "recovery.json"
+    wrapper.write_text(json.dumps({
+        "schema_version": 2,
+        "bootstrap_config": str(bootstrap_config),
+        "evidence": str(evidence),
+        "diagnostic": str(diagnostic),
+    }))
+    wrapper.chmod(0o600)
+
+    with pytest.raises(controller.deploy.DeployError, match="input changed during validation"):
+        controller.execute({
+            "TAILNET_RECOVERY_CONFIG": str(wrapper),
+            "TAILNET_RECOVERY_SCENARIO": "reboot",
+            "TAILNET_RECOVERY_TARGET": "node-one",
+            "TAILSCALE_AUTH_KEY": "tskey-auth-fixture_key",
+        }, runtime=WrapperChangingRuntime("reboot"))
+
+    assert not evidence.exists()
+    assert json.loads(diagnostic.read_text())["ssh_down_observed"] is True
+
+
+@pytest.mark.parametrize(("failure", "recovery_status", "unit_proof_stage"), [
+    ("semantic-status", "not_observed", "not_started"),
+    ("unit-proof", "idle", "rejected"),
+    ("postcondition", "idle", "passed"),
+])
+def test_post_reboot_failures_publish_only_categorical_diagnostics(
+        controller, tmp_path, failure, recovery_status, unit_proof_stage):
+    class FailingRuntime(ExecuteRuntime):
+        def recovered_status(self, inputs):
+            if failure == "semantic-status":
+                raise controller.RecoveryError("private fixture failure text")
+            return super().recovered_status(inputs)
+
+        def reboot_recovery(self, inputs, previous_boot):
+            if failure == "unit-proof":
+                return False
+            return super().reboot_recovery(inputs, previous_boot)
+
+        def postconditions(self, inputs):
+            if failure == "postcondition":
+                raise controller.RecoveryError("private fixture failure text")
+            return super().postconditions(inputs)
+
+    bootstrap_config = tmp_path / "bootstrap.json"
+    bootstrap_config.write_text("private bootstrap fixture")
+    evidence = tmp_path / "evidence.json"
+    diagnostic = tmp_path / "diagnostic.json"
+    wrapper = tmp_path / "recovery.json"
+    wrapper.write_text(json.dumps({
+        "schema_version": 2,
+        "bootstrap_config": str(bootstrap_config),
+        "evidence": str(evidence),
+        "diagnostic": str(diagnostic),
+    }))
+    wrapper.chmod(0o600)
+    runtime = FailingRuntime("reboot")
+
+    with pytest.raises(controller.RecoveryError):
+        controller.execute({
+            "TAILNET_RECOVERY_CONFIG": str(wrapper),
+            "TAILNET_RECOVERY_SCENARIO": "reboot",
+            "TAILNET_RECOVERY_TARGET": "node-one",
+            "TAILSCALE_AUTH_KEY": "tskey-auth-fixture_key",
+        }, runtime=runtime)
+
+    payload = json.loads(diagnostic.read_text())
+    assert payload == {
+        "schema_version": 1,
+        "status": "incomplete",
+        "scenario": "reboot",
+        "reboot_request": "accepted",
+        "ssh_down_observed": True,
+        "ssh_up_observed": True,
+        "recovery_status": recovery_status,
+        "unit_proof_stage": unit_proof_stage,
+    }
+    assert not evidence.exists()
+    assert "private fixture failure text" not in diagnostic.read_text()
+    assert not any(event[0] == "audit" for event in runtime.events)
+
+
+def test_recovery_outputs_must_be_distinct_before_remote_inputs(controller, tmp_path):
+    bootstrap_config = tmp_path / "bootstrap.json"
+    bootstrap_config.write_text("private bootstrap fixture")
+    output = tmp_path / "shared.json"
+    wrapper = tmp_path / "recovery.json"
+    wrapper.write_text(json.dumps({
+        "schema_version": 2,
+        "bootstrap_config": str(bootstrap_config),
+        "evidence": str(output),
+        "diagnostic": str(output),
+    }))
+    wrapper.chmod(0o600)
+
+    with pytest.raises(controller.RecoveryError, match="recovery-inputs-refused"):
+        controller.execute({
+            "TAILNET_RECOVERY_CONFIG": str(wrapper),
+            "TAILNET_RECOVERY_SCENARIO": "reboot",
+            "TAILNET_RECOVERY_TARGET": "node-one",
+            "TAILSCALE_AUTH_KEY": "tskey-auth-fixture_key",
+        }, runtime=ForbiddenRuntime())
+
+    assert not output.exists()
 
 
 def test_evidence_cannot_alias_bootstrap_output_before_destructive_action(
@@ -222,8 +451,9 @@ def test_evidence_cannot_alias_bootstrap_output_before_destructive_action(
     bootstrap_config.write_text("private bootstrap fixture")
     wrapper = tmp_path / "recovery.json"
     wrapper.write_text(json.dumps({
-        "schema_version": 1, "bootstrap_config": str(bootstrap_config),
+        "schema_version": 2, "bootstrap_config": str(bootstrap_config),
         "evidence": str(evidence),
+        "diagnostic": str(tmp_path / "diagnostic.json"),
     }))
     wrapper.chmod(0o600)
     runtime = ExecuteRuntime("controller-loss")
@@ -254,8 +484,9 @@ def test_production_wrapper_refuses_before_fault_or_evidence(controller, tmp_pat
     bootstrap_config.write_text("private bootstrap fixture")
     wrapper = tmp_path / "recovery.json"
     wrapper.write_text(json.dumps({
-        "schema_version": 1, "bootstrap_config": str(bootstrap_config),
+        "schema_version": 2, "bootstrap_config": str(bootstrap_config),
         "evidence": str(tmp_path / "evidence.json"),
+        "diagnostic": str(tmp_path / "diagnostic.json"),
     }))
     wrapper.chmod(0o600)
     runtime = ProductionRuntime("controller-loss")
@@ -275,6 +506,13 @@ def test_production_wrapper_refuses_before_fault_or_evidence(controller, tmp_pat
 def test_reboot_refuses_unchanged_boot_before_public_postconditions(controller):
     runtime = ScenarioRuntime("reboot")
     runtime.reboot_recovery = lambda *_args: False
+    diagnostic = {
+        "reboot_request": "indeterminate",
+        "ssh_down_observed": False,
+        "ssh_up_observed": False,
+        "recovery_status": "not_observed",
+        "unit_proof_stage": "not_started",
+    }
 
     @contextmanager
     def fresh_inputs():
@@ -283,10 +521,17 @@ def test_reboot_refuses_unchanged_boot_before_public_postconditions(controller):
     with pytest.raises(controller.RecoveryError, match="recovery-current-boot-proof-failed"):
         controller.run_scenario(
             "reboot", SimpleNamespace(name="initial"), "tskey-auth-fixture_key",
-            fresh_inputs=fresh_inputs, runtime=runtime,
+            fresh_inputs=fresh_inputs, runtime=runtime, diagnostic=diagnostic,
         )
 
     assert not any(event[0] == "public-ssh-sftp-preinstall" for event in runtime.events)
+    assert diagnostic == {
+        "reboot_request": "accepted",
+        "ssh_down_observed": True,
+        "ssh_up_observed": True,
+        "recovery_status": "idle",
+        "unit_proof_stage": "rejected",
+    }
 
 
 def test_reboot_uses_bounded_first_boot_retry_after_public_ssh_goes_down(
@@ -312,7 +557,7 @@ def test_reboot_uses_bounded_first_boot_retry_after_public_ssh_goes_down(
     monkeypatch.setattr(bootstrap_readiness, "run_command", run_command)
     monkeypatch.setattr(bootstrap_readiness, "wait_for_bootstrap", wait_for_bootstrap)
 
-    runtime.reboot(inputs)
+    assert runtime.reboot(inputs) == "accepted"
     runtime.wait_after_reboot(inputs)
 
     assert events == [
@@ -321,6 +566,22 @@ def test_reboot_uses_bounded_first_boot_retry_after_public_ssh_goes_down(
         ("command", ["ssh", "-F", "pinned-config", "true"], 5, environment),
         ("wait", ["ssh", "-F", "pinned-config"], environment, True),
     ]
+
+
+def test_reboot_disconnect_reply_is_categorically_indeterminate(
+        controller, monkeypatch):
+    import bootstrap_readiness
+    runtime = controller.Runtime()
+    inputs = SimpleNamespace(
+        ssh=["ssh", "-F", "pinned-config", "node-one"], environment={})
+    replies = iter([(255, b""), (255, b"")])
+    monkeypatch.setattr(runtime, "_guard", lambda *_args: None)
+    monkeypatch.setattr(
+        bootstrap_readiness, "run_command",
+        lambda *_args, **_kwargs: next(replies),
+    )
+
+    assert runtime.reboot(inputs) == "indeterminate"
 
 
 def test_first_boot_maps_raw_command_timeout_to_ssh_transport_error(monkeypatch):
@@ -556,6 +817,13 @@ def test_reboot_does_not_retry_semantic_recovery_error(controller):
 
     runtime = RefusingStatusRuntime()
     opened = []
+    diagnostic = {
+        "reboot_request": "indeterminate",
+        "ssh_down_observed": False,
+        "ssh_up_observed": False,
+        "recovery_status": "not_observed",
+        "unit_proof_stage": "not_started",
+    }
 
     @contextmanager
     def fresh_inputs():
@@ -565,12 +833,14 @@ def test_reboot_does_not_retry_semantic_recovery_error(controller):
     with pytest.raises(controller.RecoveryError, match="recovery-status-refused"):
         controller.run_scenario(
             "reboot", SimpleNamespace(name="initial"), "tskey-auth-fixture_key",
-            fresh_inputs=fresh_inputs, runtime=runtime,
+            fresh_inputs=fresh_inputs, runtime=runtime, diagnostic=diagnostic,
         )
 
     assert runtime.status_attempts == 1
     assert opened == ["attempt"]
     assert not any(event[0] == "sleep" for event in runtime.events)
+    assert diagnostic["ssh_up_observed"] is True
+    assert diagnostic["recovery_status"] == "not_observed"
 
 
 def test_reboot_does_not_retry_semantic_remote_refusal(controller):

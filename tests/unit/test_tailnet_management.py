@@ -191,6 +191,39 @@ def test_tailnet_molecule_uses_the_published_image_architecture() -> None:
     assert scenario["platforms"][0]["platform"] == "linux/amd64"
 
 
+def test_tailnet_molecule_checks_complete_systemd_graph_and_diagnostics() -> None:
+    prepare = yaml.safe_load((ROLE / "molecule/default/prepare.yml").read_text())[0]
+    verify = yaml.safe_load((ROLE / "molecule/default/verify.yml").read_text())[0]
+    fixture = next(
+        task for task in prepare["tasks"]
+        if task["name"] == "Install inert Tailscale daemon unit for dependency-graph validation"
+    )
+    graph = next(
+        task for task in verify["tasks"]
+        if task["name"] == "Verify the complete recovery and SSH boot dependency graph"
+    )
+
+    assert fixture["ansible.builtin.copy"]["dest"] == "/etc/systemd/system/tailscaled.service"
+    assert "After=network-pre.target" in fixture["ansible.builtin.copy"]["content"]
+    argv = graph["ansible.builtin.command"]["argv"]
+    assert argv[:3] == ["systemd-analyze", "verify", "--man=no"]
+    assert set(argv[3:]) == {
+        "vpn-tailnet-firewall-recover.service",
+        "vpn-tailnet-recover.service",
+        "vpn-tailnet-recover.timer",
+        "tailscaled.service",
+        "ssh.socket",
+        "ssh.service",
+        "basic.target",
+        "sockets.target",
+        "multi-user.target",
+        "network-pre.target",
+        "nftables.service",
+    }
+    assert "stdout" in graph["failed_when"]
+    assert "stderr" in graph["failed_when"]
+
+
 def test_firewall_allows_only_exact_approved_tailnet_sources() -> None:
     variables = merge_render_vars()
     variables["vpn"] = {**variables["vpn"], "enable_tailnet_management": True}

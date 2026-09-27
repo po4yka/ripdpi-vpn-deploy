@@ -69,6 +69,25 @@ Record failures and rollbacks with the same scope precision as successes.
 Never copy secrets, raw provider state, or sensitive capability material into
 this document. No requirement may close on refusal-only implementation.
 
+## Reboot acceptance diagnostic checkpoint — 2026-09-27
+
+Controller-loss staging acceptance passed on an exact earlier main revision.
+The first provider reboot exercise observed public SSH go down but exhausted
+all bounded reconnect attempts without producing reboot success evidence. A
+later operator-authorized provider power cycle restored the node; fresh public
+checks then observed idle Tailnet state, successful current recovery units and
+no failed units. The image did not retain the prior boot journal, so that later
+recovery cannot prove the failed reboot attempt.
+
+Before consuming another one-use enrollment key, the in-progress harness patch
+adds a separate redacted private `incomplete` diagnostic for failures after SSH
+loss and adds static complete-graph parsing with real `systemd-analyze` inside
+a PID 1 container. The inert daemon fixture is not vendor-unit, activation, or
+reboot evidence. This checkpoint is failure analysis, not acceptance. The patch,
+its exact-SHA local/hosted gates, the repeated reboot exercise, positive
+bootstrap, ordinary deployment, protocol proof and guarded deletion all remain
+required; execution step `SEC-1788894504951632` stays open.
+
 ## Two-phase implementation checkpoint — 2026-09-09
 
 The domain now persists irreversible `rolling_back` and `firewall_restored`

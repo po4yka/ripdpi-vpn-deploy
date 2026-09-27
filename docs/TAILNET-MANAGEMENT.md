@@ -141,13 +141,19 @@ make staging-tailnet-reboot-recovery-test ANSIBLE_LIMIT=<exact-inventory-alias> 
 unset TAILSCALE_AUTH_KEY
 ```
 
-Each owner-controlled mode-`0600` config has exactly `schema_version: 1`, an
-absolute `bootstrap_config` path, and a new absolute `evidence` path beneath an
-owner-controlled mode-`0700` directory. The referenced bootstrap config uses
-the same contract as positive bootstrap, but its handoff output must still be
-absent and must differ from recovery `evidence`. Recovery exercises accept only
-`ci-staging-*` with current cleanup ownership; production is categorically
+Each owner-controlled mode-`0600` config has exactly `schema_version: 2`, an
+absolute `bootstrap_config` path, and new absolute `evidence` and `diagnostic`
+paths beneath owner-controlled mode-`0700` directories. The referenced
+bootstrap config uses the same contract as positive bootstrap, but its handoff
+output must still be absent and must differ from both recovery outputs; the two
+recovery outputs must also differ from each other. Recovery exercises accept
+only `ci-staging-*` with current cleanup ownership; production is categorically
 refused.
+
+Schema 2 replaces schema 1: add a fresh, absent `diagnostic` path before the
+next recovery run. Schema-1 files are rejected before SSH or guest changes;
+there is no compatibility fallback because an unrecorded reboot failure is the
+defect this contract closes.
 
 The controller-loss verb obtains a durable pending enrollment in a dedicated
 worker, kills that worker with `SIGKILL`, waits through the guest lease and
@@ -160,8 +166,12 @@ probe. They never call confirmation or explicit rollback. Success evidence is
 atomically published mode `0600` and contains only hashes and categorical
 verdicts; it excludes addresses, raw nonces/capabilities, keys, provider state
 and remote output. A categorical best-effort audit record follows successful
-publication. Any ambiguous result retains private and guest evidence for
-diagnosis and publishes no success artifact.
+publication. A reboot failure after public SSH is observed down may publish the
+separate `diagnostic` artifact with `status: incomplete` and only categorical
+reboot-request, SSH down/up, recovery-status and unit-proof stages. It contains
+no addresses, exception text or remote output, is not success evidence, and
+does not emit the passed audit record. Any ambiguous result retains private and
+guest evidence for diagnosis and publishes no success artifact.
 
 After bootstrap, render the exact node with
 `TAILNET_HANDOFFS=<private-bootstrap-handoff-path> make inventory`. For

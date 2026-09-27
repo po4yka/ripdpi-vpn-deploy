@@ -212,10 +212,13 @@ paused worker after controller death. The parent has no confirmation or explicit
 rollback path. Controller loss requires a fresh post-deadline recovery invocation;
 reboot requires a new boot identity and current-boot success from both phases.
 Both finish through pinned public SSH/SFTP and idle-state proof. The only
-published artifact is atomic mode-`0600` redacted evidence at a path distinct
+success artifact is atomic mode-`0600` redacted evidence at a path distinct
 from the positive bootstrap handoff; a categorical `append-best-effort` audit
-record follows publication. Do not deepen this interface with a general fault
-selector or a new permanent guest capability.
+record follows publication. Reboot failures after observed SSH loss instead
+publish a distinct atomic mode-`0600` `incomplete` diagnostic containing only
+the reboot request, SSH down/up, recovery-status and unit-proof categories. It
+is never success evidence and does not emit a passed audit. Do not deepen this
+interface with a general fault selector or a new permanent guest capability.
 
 ## Observability — `observability-operator.py`
 
