@@ -449,30 +449,44 @@ def run_scenario(scenario, inputs, auth_key, *, fresh_inputs, runtime):
         previous_boot = runtime.boot_id(inputs)
         runtime.reboot(inputs)
 
+    from bootstrap_readiness import ReadinessError
+
     recovered = None
+    transient_failure = False
     for attempt in range(RECOVERY_ATTEMPTS):
-        with fresh_inputs() as candidate:
-            status = runtime.recovered_status(candidate)
-            if status == "idle":
-                if (scenario == "controller-loss"
-                        and not runtime.autonomous_recovery(
-                            candidate, (recovery_baseline, pending_recovery))):
-                    raise RecoveryError("recovery-autonomous-proof-failed")
-                if scenario == "reboot":
-                    if previous_boot is None:
-                        raise RecoveryError("recovery-previous-boot-missing")
-                    if not runtime.reboot_recovery(candidate, previous_boot):
-                        raise RecoveryError("recovery-current-boot-proof-failed")
-                runtime.postconditions(candidate)
-                runtime.final_guard(candidate)
-                recovered = candidate
-                break
-            if status not in {"pending", "expired", "rolling_back", "firewall_restored"}:
-                raise RecoveryError("recovery-status-refused")
+        try:
+            with fresh_inputs() as candidate:
+                status = runtime.recovered_status(candidate)
+                if status == "idle":
+                    if (scenario == "controller-loss"
+                            and not runtime.autonomous_recovery(
+                                candidate, (recovery_baseline, pending_recovery))):
+                        raise RecoveryError("recovery-autonomous-proof-failed")
+                    if scenario == "reboot":
+                        if previous_boot is None:
+                            raise RecoveryError("recovery-previous-boot-missing")
+                        if not runtime.reboot_recovery(candidate, previous_boot):
+                            raise RecoveryError("recovery-current-boot-proof-failed")
+                    runtime.postconditions(candidate)
+                    runtime.final_guard(candidate)
+                    recovered = candidate
+                    break
+                if status not in {"pending", "expired", "rolling_back", "firewall_restored"}:
+                    raise RecoveryError("recovery-status-refused")
+        except ReadinessError as error:
+            if str(error) not in {"SSH session timeout", "bootstrap SSH transport failure"}:
+                raise
+            transient_failure = True
+        except bootstrap.BootstrapError as error:
+            if str(error) != "bootstrap-remote-refused":
+                raise
+            transient_failure = True
         if attempt + 1 < RECOVERY_ATTEMPTS:
             runtime.sleep(RECOVERY_POLL_SECONDS)
     if recovered is None:
-        raise RecoveryError("recovery-timeout")
+        raise RecoveryError(
+            "recovery-postconditions-timeout" if transient_failure else "recovery-timeout"
+        )
 
     return {
         "schema_version": 1,
