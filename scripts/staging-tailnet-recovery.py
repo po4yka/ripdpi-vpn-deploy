@@ -277,7 +277,7 @@ print(json.dumps({'units':units},sort_keys=True))
             time.sleep(min(0.2, remaining))
 
     def reboot(self, inputs):
-        from bootstrap_readiness import ReadinessError, run_command, wait_for_bootstrap
+        from bootstrap_readiness import ReadinessError, run_command
         self._guard(inputs)
         command = [*inputs.ssh[:-1], "sudo -n /usr/bin/systemctl reboot --no-wall"]
         try:
@@ -302,6 +302,10 @@ print(json.dumps({'units':units},sort_keys=True))
             self.sleep(2)
         if not down:
             raise RecoveryError("recovery-reboot-unobserved")
+
+    def wait_after_reboot(self, inputs):
+        from bootstrap_readiness import wait_for_bootstrap
+        self._guard(inputs)
         wait_for_bootstrap(
             inputs.ssh[:-1], environment=inputs.environment, first_boot=True,
         )
@@ -449,13 +453,15 @@ def run_scenario(scenario, inputs, auth_key, *, fresh_inputs, runtime):
         previous_boot = runtime.boot_id(inputs)
         runtime.reboot(inputs)
 
-    from bootstrap_readiness import ReadinessError
+    from bootstrap_readiness import SshTransportError
 
     recovered = None
     transient_failure = False
     for attempt in range(RECOVERY_ATTEMPTS):
         try:
             with fresh_inputs() as candidate:
+                if scenario == "reboot" and attempt == 0:
+                    runtime.wait_after_reboot(candidate)
                 status = runtime.recovered_status(candidate)
                 if status == "idle":
                     if (scenario == "controller-loss"
@@ -473,13 +479,7 @@ def run_scenario(scenario, inputs, auth_key, *, fresh_inputs, runtime):
                     break
                 if status not in {"pending", "expired", "rolling_back", "firewall_restored"}:
                     raise RecoveryError("recovery-status-refused")
-        except ReadinessError as error:
-            if str(error) not in {"SSH session timeout", "bootstrap SSH transport failure"}:
-                raise
-            transient_failure = True
-        except bootstrap.BootstrapError as error:
-            if str(error) != "bootstrap-remote-refused":
-                raise
+        except SshTransportError:
             transient_failure = True
         if attempt + 1 < RECOVERY_ATTEMPTS:
             runtime.sleep(RECOVERY_POLL_SECONDS)
