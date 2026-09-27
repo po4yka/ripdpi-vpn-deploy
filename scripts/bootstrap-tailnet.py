@@ -231,13 +231,33 @@ def _binding(inputs):
 
 
 def _remote(inputs, host, command, payload=b"", *, timeout=45):
-    from bootstrap_readiness import run_command
+    from bootstrap_readiness import CommandTimeout, SshTransportError, run_command
     argv = inspection.ssh_command(host, inputs.known_hosts)
     argv[1:1] = ["-o", "HostKeyAlgorithms=ssh-ed25519"]
-    argv[-1] = command
-    status, raw = run_command(argv, timeout=timeout, environment=inputs.environment,
-                              capture=True, input_data=payload)
-    if status or len(raw) > 32768:
+    marker = "__VPN_REMOTE_STATUS_" + os.urandom(16).hex() + "__="
+    argv[-1] = (
+        "( " + command + "\n)\n"
+        "status=$?\n"
+        "printf '\\n" + marker + "%s\\n' \"$status\"\n"
+        "exit 0"
+    )
+    try:
+        status, raw = run_command(argv, timeout=timeout, environment=inputs.environment,
+                                  capture=True, input_data=payload)
+    except CommandTimeout:
+        raise SshTransportError("bootstrap remote session timeout") from None
+    if status:
+        raise SshTransportError("bootstrap remote transport failure")
+    lines = raw.splitlines()
+    prefix = marker.encode()
+    if not lines or not lines[-1].startswith(prefix):
+        raise SshTransportError("bootstrap remote status unavailable")
+    try:
+        remote_status = int(lines[-1][len(prefix):].decode("ascii"))
+    except (UnicodeError, ValueError):
+        raise BootstrapError("bootstrap-remote-refused") from None
+    raw = b"\n".join(lines[:-1])
+    if remote_status or len(raw) > 32768:
         raise BootstrapError("bootstrap-remote-refused")
     result = json.loads(raw, object_pairs_hook=deploy.unique_object)
     if not isinstance(result, dict) or result.get("status") == "error":
@@ -372,10 +392,15 @@ def _capability(inputs, result):
 
 
 def _sftp(inputs, host):
-    from bootstrap_readiness import run_command
+    from bootstrap_readiness import CommandTimeout, SshTransportError, run_command
     command = inspection.sftp_command(host, inputs.known_hosts)
     command[1:1] = ["-o", "HostKeyAlgorithms=ssh-ed25519"]
-    status, _ = run_command(command, timeout=20, environment=inputs.environment, input_data=b"pwd\nquit\n")
+    try:
+        status, _ = run_command(
+            command, timeout=20, environment=inputs.environment, input_data=b"pwd\nquit\n",
+        )
+    except CommandTimeout:
+        raise SshTransportError("bootstrap SFTP session timeout") from None
     if status:
         raise BootstrapError("bootstrap-sftp-failed")
 

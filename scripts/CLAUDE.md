@@ -127,7 +127,12 @@ Independent controller homes are not a supported shared-ownership mechanism.
   results plus public SSH/SFTP and idle state. Recovery evidence must not reuse
   the positive handoff path, and a successful run must append its categorical
   best-effort audit record. Never add a caller-selected fault mode to the
-  production bootstrap.
+  production bootstrap. After the destructive fault, retry only bounded,
+  explicitly typed `SshTransportError` failures with fresh frozen inputs;
+  cloud-init, semantic remote/recovery, source, unit and state refusals remain
+  immediate failures. Reboot readiness
+  belongs inside that post-fault retry boundary and must never issue a second
+  reboot. Exhausting those transport retries publishes no success evidence.
 
 - **Mutation builds require sibling inputs** — `test-vpnd-mutants.sh` copies
   tracked working-tree files before using cargo-mutants in-place in that owned
