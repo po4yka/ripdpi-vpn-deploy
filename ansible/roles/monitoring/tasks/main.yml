@@ -13,6 +13,7 @@
     state: present
     update_cache: true
     cache_valid_time: 3600
+  register: _monitoring_node_exporter_package
 
 - name: Configure node_exporter listen address (loopback only by default)
   ansible.builtin.copy:
@@ -206,6 +207,7 @@
     name: prometheus-node-exporter
     enabled: true
     state: started
+  when: not ansible_check_mode or not _monitoring_node_exporter_package.changed
 
 - name: Ensure journald drop-in directory
   ansible.builtin.file:

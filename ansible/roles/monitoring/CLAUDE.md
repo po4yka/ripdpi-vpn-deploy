@@ -39,6 +39,10 @@ instead of granting group or world read access.
 
 ## Pitfalls
 
+- **Fresh-host check mode has no node_exporter unit yet** — the package task
+  reports its planned change without installing the service. Check service
+  state only when the package was already present; normal convergence must
+  still enable and restart node_exporter.
 - **node_exporter on a public port = fingerprint** — never bind anything
   other than 127.0.0.1. The role's Molecule verify asserts the loopback bind;
   `verify.yml` only scrapes the loopback address and does not prove the
