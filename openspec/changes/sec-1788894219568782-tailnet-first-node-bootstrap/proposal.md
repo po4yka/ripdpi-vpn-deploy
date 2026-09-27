@@ -24,6 +24,12 @@ both dependencies before resources are created.
 - Keep the ordinary deploy controller's dual-path and protocol proof gates.
   Bootstrap establishes access only; it does not publish a deployed manifest
   or declare any VPN profile accepted.
+- Derive inventory's Tailnet SSH transport only from the private confirmed
+  bootstrap handoff bound to the exact Terraform node; raw Tailnet addresses
+  are no longer an accepted inventory input.
+- Give fresh Debian nodes an explicit policy-preserving SSH ownership
+  transaction after bootstrap and before ordinary deployment. The packaged
+  main-file directives cannot be normalized implicitly by baseline.
 - Keep enrollment and firewall changes unconfirmed until external path proof;
   controller loss, reboot, timeout, and failure restore the previous state.
   Boot recovery restores firewall before networking and revokes enrollment
@@ -38,6 +44,10 @@ both dependencies before resources are created.
   destruction reservations in one resource-bound controller journal. Reissue
   becomes an explicit operation using the registered previous manifest; copied
   paths cannot bypass pending cleanup. Update manifest versions and callers.
+- Include the staging-discovered prerequisites for the required ordinary
+  protocol proof: AWG hostname probes use the role-profile DNS inside their
+  network namespace, and every provider example declares nginx's public TCP/80
+  redirect listener alongside the canonical data-plane listeners.
 
 ## Capabilities
 
@@ -55,7 +65,8 @@ both dependencies before resources are created.
 
 - Make/controller boundary, Tailnet transaction and Ansible role, firewall
   bootstrap/rollback, SSH recovery readiness, deploy credential handling,
-  staging manifest sequence, operator documentation, and runtime tests.
+  staging manifest sequence, protocol-proof runtime prerequisites, provider
+  listener examples, operator documentation, and runtime tests.
 - Terraform remains the owner of provider resources; bootstrap does not change
   provider firewall policy, create nodes, or edit Tailnet ACLs.
 - Reuse pinned packages and existing recovery primitives. No new production

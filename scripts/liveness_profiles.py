@@ -335,8 +335,19 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
     if "p2-amneziawg" in needed:
         awg, address, metadata = _awg(secrets_doc, client, awg_binding, endpoint, private_key,
                                      derive_public_key, awg_defaults, awg_cohort)
+        dns_servers = awg_defaults.get("dns_servers") if isinstance(awg_defaults, dict) else None
+        if not isinstance(dns_servers, list) or not 1 <= len(dns_servers) <= 4:
+            raise ProfileError("invalid-awg-dns")
+        try:
+            valid_dns = all(isinstance(server, str) and ipaddress.IPv4Address(server).is_global
+                            and str(ipaddress.IPv4Address(server)) == server for server in dns_servers)
+        except ipaddress.AddressValueError:
+            valid_dns = False
+        if not valid_dns or len(set(dns_servers)) != len(dns_servers):
+            raise ProfileError("invalid-awg-dns")
         files["awg.conf"] = awg
-        runtime["amneziawg"] = {"config": str(root / "awg.conf"), "address": address}
+        runtime["amneziawg"] = {"config": str(root / "awg.conf"), "address": address,
+                                 "dns_servers": list(dns_servers)}
         public.append(metadata)
     digest = hashlib.sha256(json.dumps(public, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return {"files": files, "runtime": runtime, "public_profiles": public, "public_profile_digest": digest}

@@ -21,7 +21,7 @@ EXPECTED_FIXED_LISTENERS = [
 
 _ENTRY = re.compile(
     r'\{\s*name\s*=\s*(?P<name>"[^"]+")\s*,\s*protocol\s*=\s*(?P<protocol>"[^"]+")\s*,'
-    r"\s*port\s*=\s*(?P<port>\d+)\s*,"
+    r"\s*port\s*=\s*(?P<port>\d+)\s*[,}]"
 )
 
 
@@ -61,3 +61,18 @@ def test_nginx_xhttp_listener_port_matches_ansible_default() -> None:
     # all.yml default 8443; direct-only cohorts override to 443. Anything
     # else would silently desync the four provider roots.
     assert set(group_vars.values()) <= {8443, 443}
+
+
+def test_explicit_provider_examples_include_every_default_runtime_listener() -> None:
+    expected = set(EXPECTED_FIXED_LISTENERS)
+    expected.add(('"nginx-xhttp"', '"tcp"', "8443"))
+    for provider in PROVIDERS:
+        for environment in ("staging", "prod"):
+            path = REPO_ROOT / f"terraform/providers/{provider}/environments/{environment}.tfvars.example"
+            source = path.read_text()
+            contract = re.search(r"public_listeners\s*=\s*\[(.*?)\]", source, re.DOTALL)
+            assert contract is not None, f"{path}: missing explicit public_listeners"
+            entries = _entries(contract.group(1))
+            assert len(entries) == len(expected) and set(entries) == expected, (
+                f"{path}: explicit provider contract differs from the enabled default runtime listeners"
+            )

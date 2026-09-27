@@ -98,6 +98,18 @@ def test_prepare_requires_typed_check_mode_and_exact_bundle_generation(adapter, 
         adapter.validate_request('prepare', request)
 
 
+def test_prepare_timeout_uses_the_transaction_engine_limit(adapter):
+    limit = adapter.transaction.MAX_TRANSACTION_TIMEOUT
+    for intent, check_mode in (('sshd-ownership', True), ('sshd-baseline', False)):
+        request = {'intent': intent, 'contexts': CONTEXTS, 'timeout': limit,
+                   'check_mode': check_mode, 'bundle_generation': 'a' * 64}
+        if intent == 'sshd-baseline':
+            request['hardening_b64'] = base64.b64encode(b'X11Forwarding no\n').decode()
+        assert adapter.validate_request('prepare', request)['timeout'] == limit
+        with pytest.raises(adapter.TransactionError, match='request-invalid'):
+            adapter.validate_request('prepare', dict(request, timeout=limit + 1))
+
+
 def test_unit_design_avoids_boot_reload_deadlock_and_repeated_timer_noop(adapter):
     templates = ROOT / 'ansible/roles/baseline/templates'
     boot = (templates / 'vpn-sshd-boot-recover.service').read_text()

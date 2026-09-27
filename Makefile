@@ -375,6 +375,7 @@ help:
 	@echo "  pre-deploy-check           spot-check-secrets + check-certs (auto for deploy/verify; SKIP_PRECHECK=1 to bypass)"
 	@echo "  backup-configure          Configure one exact ANSIBLE_LIMIT during an exclusive stopped-backup window; never runs backups or timers"
 	@echo "  dry-run                    Serial exact-node check; requires DEPLOY_SSH_CONTEXTS_FILE"
+	@echo "  migrate-ssh-ownership      Explicit one-node policy-preserving SSH ownership transaction"
 	@echo "  deploy                     Serial exact-node transaction; also requires DEPLOY_PROMOTION_CONFIG_FILE"
 	@echo "  deploy-canary              Deploy ENV=canary through the normal deploy flow"
 	@echo "  os-maintenance             Rolling full OS upgrade + required reboot + verification"
@@ -709,14 +710,29 @@ MAKEOVERRIDES :=
 export SSH_RECOVERY_TARGET SSH_RECOVERY_WINDOW SSH_RECOVERY_INVENTORY SSH_RECOVERY_KNOWN_HOSTS
 endif
 
+ifneq ($(filter migrate-ssh-ownership,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error migrate-ssh-ownership requires exactly one goal)
+endif
+override SSH_OWNERSHIP_CONFIG := $(value SSH_OWNERSHIP_CONFIG)
+export SSH_OWNERSHIP_CONFIG
+unexport MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+endif
+
 .PHONY: install-ssh-recovery
 .PHONY: bootstrap-tailnet
+.PHONY: migrate-ssh-ownership
 
 bootstrap-tailnet:
 	@python3 ./scripts/bootstrap-tailnet.py
 # The controller checks debug, exact inventory and clean source before Ansible.
 install-ssh-recovery:
 	@python3 ./scripts/install-sshd-recovery.py
+
+# Read the private input path from the environment, never interpolate it in a recipe.
+migrate-ssh-ownership:
+	@python3 ./scripts/ssh-ownership.py
 
 rollback-xray:
 	@test -n "$(ROLLBACK_XRAY_VERSION)" || { echo "ROLLBACK_XRAY_VERSION required"; exit 1; }

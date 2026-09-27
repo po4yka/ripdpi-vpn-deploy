@@ -28,6 +28,8 @@
       - golang
       - git
       - make
+      - gcc
+      - libc6-dev
       - libmnl-dev
       - resolvconf
       - iproute2

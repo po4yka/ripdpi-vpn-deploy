@@ -21,15 +21,19 @@ EOF
 cat > "$fixture/amneziawg-tools/src/Makefile" <<'EOF'
 .PHONY: all install
 all: wg
-wg: fixture-wg
-	install -m 0755 fixture-wg wg
+wg: fixture-wg.c
+	cc -std=c11 -Wall -Wextra -Werror -o wg fixture-wg.c
 install: wg
 	install -D -m 0755 wg "$(DESTDIR)/usr/bin/awg"
 	install -D -m 0755 fixture-awg-quick "$(DESTDIR)/usr/bin/awg-quick"
 EOF
-cat > "$fixture/amneziawg-tools/src/fixture-wg" <<'EOF'
-#!/bin/sh
-printf 'synthetic AmneziaWG tools fixture; no tunnel\n'
+cat > "$fixture/amneziawg-tools/src/fixture-wg.c" <<'EOF'
+#include <stdio.h>
+
+int main(void) {
+    puts("synthetic AmneziaWG tools fixture; no tunnel");
+    return 0;
+}
 EOF
 cat > "$fixture/amneziawg-tools/src/fixture-awg-quick" <<'EOF'
 #!/bin/sh

@@ -68,6 +68,23 @@ def test_amneziawg_molecule_requests_the_pinned_image_architecture():
     assert molecule["platforms"][0]["platform"] == "linux/amd64"
 
 
+def test_amneziawg_native_tools_build_installs_its_compiler():
+    tasks = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/amneziawg/tasks/main.yml").read_text()
+    )
+    dependencies = next(
+        task for task in tasks
+        if task["name"] == "Install build dependencies for AmneziaWG userspace"
+    )
+    assert {"gcc", "libc6-dev", "libmnl-dev", "make"} <= set(
+        dependencies["ansible.builtin.apt"]["name"]
+    )
+    fixture = (
+        REPO_ROOT / "ansible/roles/amneziawg/molecule/default/files/prepare-sources.sh"
+    ).read_text()
+    assert "cc -std=c11 -Wall -Wextra -Werror -o wg fixture-wg.c" in fixture
+
+
 def test_amneziawg_molecule_verifies_the_exact_commit_keyed_checkouts():
     verify = yaml.safe_load(
         (REPO_ROOT / "ansible/roles/amneziawg/molecule/default/verify.yml").read_text()

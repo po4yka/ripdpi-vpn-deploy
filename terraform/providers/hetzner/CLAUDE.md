@@ -18,6 +18,8 @@ shared template as UpCloud (`terraform/shared/cloud-init.yaml.tftpl`).
 
 ## Pitfalls
 
+- **Example listener completeness** — the explicit staging/prod contracts include
+  HTTP/80 for the nginx public-site redirect; deploy fails closed without it.
 - **SSH key handling differs from UpCloud** — Hetzner creates a named
   `hcloud_ssh_key` resource referenced by ID; UpCloud has no key resource and
   inlines the public key through `login.keys`.

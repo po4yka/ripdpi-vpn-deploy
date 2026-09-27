@@ -106,6 +106,25 @@ weakening its mature-node preconditions.
 
 ### External proof and safe handoff
 
+The subsequent inventory render takes one explicit private bootstrap handoff
+path per host. It validates the path-list shape before Terraform calls, reads
+each same-owner mode-0600 handoff without following its final path, and binds
+the confirmation digest, alias, public address, SSH port and public/Tailnet
+socket contexts to the selected Terraform node. Only the node address whose
+IPv4 or IPv6 path was actually confirmed may become `ansible_host`; the
+provider's public service address remains
+unchanged. A raw Tailnet address is not an accepted interface. This lets
+ordinary Ansible restore a public SSH source after controller egress changes
+without bypassing its one-node dual-path transaction.
+
+The ordinary protocol-proof gate also needs two staging-discovered runtime
+preconditions in this change. The AWG sentinel copies the validated DNS server
+list from the deployed role profile into a private per-run network-namespace
+resolver and removes that resolver state on every exit, including partial
+creation. Provider example listener contracts include nginx's TCP/80 redirect
+listener so a deployment generated from the examples does not fail listener
+parity before protocol proof.
+
 After local enrollment succeeds, obtain both real Tailnet addresses over the
 pinned public connection. Select the reachable approved family by actual
 connection, never by generating an address. Use the existing strict fresh SSH
@@ -206,7 +225,10 @@ the exact-source local/hosted and authorized staging gates.
    acquisition, Tailnet key, approved sources, and required reviewer gate. Use
    the existing authorized disposable budget and deadlines; no automatic refill.
 4. Provision one isolated node, create cleanup manifest, install SSH recovery,
-   bootstrap Tailnet, and verify both paths. Exercise controller loss and reboot
+   bootstrap Tailnet, and verify both paths. Preview and confirm the separate
+   SSH ownership transaction for recognized fresh Debian main-file directives
+   before ordinary dry-run; retain full effective-policy parity and dual-path
+   SSH/SFTP proof. Exercise controller loss and reboot
    with unconfirmed enrollment, verify restored public access, then repeat the
    positive bootstrap. Never simulate provider or live success with fixtures.
 5. Use the handoff with ordinary dual-path deploy and exact-node VPN proof.

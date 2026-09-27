@@ -53,6 +53,28 @@ def test_generated_inventory_fixture_is_supported(tmp_path):
     assert selected[0]["address"] == "198.51.100.10"
 
 
+def test_service_address_and_tailnet_transport_remain_distinct(tmp_path):
+    m = module()
+    path = inventory(tmp_path, "vpn_service_address=192.0.2.1")
+    path.write_text(path.read_text().replace(
+        "node-a ansible_host=192.0.2.1", "node-a ansible_host=100.64.0.2"))
+    host = m.select_hosts(path, ["node-a"])[0]
+    assert (host["address"], host["transport"], host["alias"]) == (
+        "192.0.2.1", "100.64.0.2", "192.0.2.1")
+
+    path.write_text(path.read_text().replace(
+        "vpn_service_address=192.0.2.1", "vpn_service_address=example.com"))
+    with pytest.raises(m.InspectionError, match="invalid-service-address"):
+        m.select_hosts(path, ["node-a"])
+
+    path.write_text(path.read_text().replace(
+        "vpn_service_address=example.com",
+        "vpn_service_address=192.0.2.1 inspection_transport_host=100.64.0.3 "
+        "inspection_host_key_alias=192.0.2.1"))
+    with pytest.raises(m.InspectionError, match="conflicting-transport-identity"):
+        m.select_hosts(path, ["node-a"])
+
+
 @pytest.mark.parametrize("extra", [
     "ansible_ssh_common_args='-o ProxyCommand=unsafe'",
     "ansible_connection=local", "ansible_host=192.0.2.3",

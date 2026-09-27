@@ -120,6 +120,28 @@ and verify existing Tailnet state without invoking login. All existing callers
 and tests MUST migrate; no legacy credential-forwarding fallback is permitted.
 An already bootstrapped node may be verified idempotently without consuming a
 new key, mutating its identity, or replacing mismatched operator inputs.
+On a fresh Debian node with known shadowed packaged SSH directives, an
+explicit policy-preserving ownership transaction MUST precede ordinary
+deployment. It MUST preview without writes, bind one source revision and node,
+retain durable rollback, and require fresh pinned public and Tailnet SSH/SFTP
+proof before confirmation. Bootstrap and ordinary deploy MUST NOT perform this
+migration implicitly.
+
+#### Scenario: Fresh Debian has packaged main-file SSH directives
+
+- **WHEN** bootstrap confirms both access paths but the packaged main SSH file still has recognized shadowed directives
+- **THEN** the separate ownership transaction normalizes only those directives while preserving full effective policy, and ordinary dry-run can subsequently preview baseline hardening.
+
+#### Scenario: One management path fails after ownership activation
+
+- **WHEN** either fresh SSH/SFTP path fails before ownership confirmation
+- **THEN** the controller requests bounded rollback and cannot report success; uncertain rollback remains subject to durable recovery.
+
+#### Scenario: Controller public address changes after bootstrap
+
+- **WHEN** the operator renders one node with its private confirmed bootstrap handoff
+- **THEN** the renderer binds the handoff digest, alias, public address, SSH port and external path contexts to the selected Terraform node, then uses only the Tailnet IPv4 or IPv6 whose path was actually confirmed while the Terraform public service address remains distinct.
+- **AND** a malformed or wrong-length handoff path list refuses before Terraform access; an unsafe, unconfirmed, non-Tailnet or node-mismatched handoff refuses before publication and preserves the previously rendered inventory.
 
 #### Scenario: Deploy receives a new enrollment capability
 
@@ -130,6 +152,16 @@ new key, mutating its identity, or replacing mismatched operator inputs.
 
 - **WHEN** ordinary deployment cannot prove required VPN profiles
 - **THEN** deployment fails under its existing rollback contract and bootstrap evidence cannot satisfy that gate.
+
+#### Scenario: AWG protocol proof resolves a hostname in its namespace
+
+- **WHEN** ordinary deployment validates the required AWG profile with a hostname probe
+- **THEN** the sentinel uses the validated role-profile IPv4 DNS servers through a private resolver file for the generated network namespace and removes the resolver file and directory on success, failure, or partial creation.
+
+#### Scenario: Provider examples drive listener parity
+
+- **WHEN** an operator starts from any tracked production or staging provider example
+- **THEN** its public listener contract includes nginx's TCP/80 redirect listener as well as the enabled VPN listeners, so ordinary deployment can reach protocol proof without a known example-contract mismatch.
 
 ### Requirement: REQ-TFB-ACCEPTANCE — Positive runtime behavior is required for delivery
 

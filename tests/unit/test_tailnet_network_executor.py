@@ -1715,6 +1715,7 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
         provider / "environments/prod.tfvars": b"enable_provider_firewall=false\n",
         provider / ".terraform-env/default/environment": b"default",
         provider / "terraform.tfstate": state_raw,
+        source / "terraform/shared/bootstrap-sshd-ownership.py": b"# cloud-init helper\n",
         source / "terraform/shared/cloud-init.yaml.tftpl": b"#cloud-config\n",
     }
     for path, raw in snapshot_files.items():

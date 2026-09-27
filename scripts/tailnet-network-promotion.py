@@ -409,9 +409,8 @@ class TerraformConfigSnapshot:
         )
         shared = source_root / "terraform/shared"
         sources.extend(
-            (path, str(path.relative_to(source_root)))
-            for path in sorted(shared.rglob("*"))
-            if path.is_file()
+            (shared / name, f"terraform/shared/{name}")
+            for name in ("bootstrap-sshd-ownership.py", "cloud-init.yaml.tftpl")
         )
         data_root = provider / ".terraform-env" / workspace
         sources.extend(
@@ -460,6 +459,12 @@ class TerraformConfigSnapshot:
                     os.close(target_fd)
                 manifest_files.append(
                     {"path": relative, "sha256": digest.hexdigest(), "mode": mode}
+                )
+            if workspace != "default":
+                # Terraform creates the selected workspace directory on first
+                # use, otherwise with permissions outside our private floor.
+                (stage / "terraform/providers/upcloud/terraform.tfstate.d" / workspace).mkdir(
+                    mode=0o700, parents=True, exist_ok=True
                 )
             # mkdir(parents=True) applies its requested mode only to the leaf;
             # normalize every private snapshot directory before publication.

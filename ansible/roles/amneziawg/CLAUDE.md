@@ -34,8 +34,9 @@ reports only actionable binary drift and never runs a compiler.
 
 **Molecule runs the real role** — preparation supplies local synthetic Git
 repositories, not installed binaries or receipts. File-only Git transport
-prevents upstream fallback; no-TUN tools exercise the real systemd unit.
-This proves role ownership and idempotence, not upstream builds or tunnel traffic.
+prevents upstream fallback; a small C fixture requires the role-installed
+compiler, and no-TUN tools exercise the real systemd unit. This proves role
+ownership and idempotence, not upstream builds or tunnel traffic.
 
 **arm64 S3/S4 floor is a cross-repo policy** — `contract/amneziawg-arm64-version-floor.json` records known-broken versions, tracked upstream issue states, and candidate/verified floors. A release claim only opens a revalidation issue; the role and client remain fail-closed until physical arm64 evidence establishes a safe floor.
 
@@ -73,3 +74,5 @@ This proves role ownership and idempotence, not upstream builds or tunnel traffi
 - **The tools build output is `src/wg`, not `src/awg`** — `/usr/bin/awg` is
   created by `make install`. Using the installed name as the source artifact
   makes every check-mode run report false drift.
+- **Fresh hosts need a C toolchain for tools** — `amneziawg-tools/src/Makefile`
+  invokes `cc`; install `gcc` and `libc6-dev` before the source-build helper.
