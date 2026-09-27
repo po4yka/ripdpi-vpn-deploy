@@ -119,6 +119,50 @@ Interrupted restoration is replayable; confirmation refuses once rollback
 begins. Corrupt or foreign state remains for diagnosis. Pinned inert packages
 may remain after rollback, but the access-changing runtime policy is restored.
 
+### Disposable staging recovery exercises
+
+Do not approximate controller loss by interrupting `make bootstrap-tailnet`:
+its normal cancellation path requests an explicit rollback. After the cleanup
+manifest and SSH recovery foundation exist, exercise the two autonomous paths
+through their fixed staging-only verbs. Each run consumes a different one-use
+enrollment key and MUST complete before positive bootstrap:
+
+```bash
+IFS= read -r -s TAILSCALE_AUTH_KEY </dev/tty
+export TAILSCALE_AUTH_KEY
+make staging-tailnet-controller-loss-test ANSIBLE_LIMIT=<exact-inventory-alias> \
+  TAILNET_RECOVERY_CONFIG="$HOME/.config/vpn-provision/controller-loss.json"
+unset TAILSCALE_AUTH_KEY
+
+IFS= read -r -s TAILSCALE_AUTH_KEY </dev/tty
+export TAILSCALE_AUTH_KEY
+make staging-tailnet-reboot-recovery-test ANSIBLE_LIMIT=<exact-inventory-alias> \
+  TAILNET_RECOVERY_CONFIG="$HOME/.config/vpn-provision/reboot-recovery.json"
+unset TAILSCALE_AUTH_KEY
+```
+
+Each owner-controlled mode-`0600` config has exactly `schema_version: 1`, an
+absolute `bootstrap_config` path, and a new absolute `evidence` path beneath an
+owner-controlled mode-`0700` directory. The referenced bootstrap config uses
+the same contract as positive bootstrap, but its handoff output must still be
+absent and must differ from recovery `evidence`. Recovery exercises accept only
+`ci-staging-*` with current cleanup ownership; production is categorically
+refused.
+
+The controller-loss verb obtains a durable pending enrollment in a dedicated
+worker, kills that worker with `SIGKILL`, waits through the guest lease and
+requires a fresh successful recovery invocation. A private ownership pipe also
+terminates the paused worker if its parent controller disappears. The reboot
+verb kills the worker, initiates a real reboot over pinned public SSH, requires
+a changed boot identity and current-boot success from both recovery units. Both
+require final idle state plus fresh public SSH and SFTP and the strict preinstall
+probe. They never call confirmation or explicit rollback. Success evidence is
+atomically published mode `0600` and contains only hashes and categorical
+verdicts; it excludes addresses, raw nonces/capabilities, keys, provider state
+and remote output. A categorical best-effort audit record follows successful
+publication. Any ambiguous result retains private and guest evidence for
+diagnosis and publishes no success artifact.
+
 After bootstrap, render the exact node with
 `TAILNET_HANDOFFS=<private-bootstrap-handoff-path> make inventory`. For
 multiple hosts, supply one absolute handoff path or `-` per `HOSTS` entry. The

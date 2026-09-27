@@ -35,6 +35,11 @@ make install-ssh-recovery ANSIBLE_LIMIT=<exact-inventory-alias> \
 For a fresh Tailnet node, stop after the recovery installer and run the
 [one-node Tailnet bootstrap](TAILNET-MANAGEMENT.md#bootstrap-one-node) before
 `dry-run`. Bootstrap obtains the real management address and socket contexts.
+On disposable staging, first run both fixed
+[autonomous recovery exercises](TAILNET-MANAGEMENT.md#disposable-staging-recovery-exercises)
+with separate one-use keys. They deliberately leave enrollment unconfirmed and
+must publish their redacted private evidence before the later positive
+bootstrap; do not substitute `SIGTERM` or an ordinary bootstrap failure.
 On a fresh Debian node, run the separate policy-preserving SSH ownership
 migration after bootstrap and before ordinary `dry-run`:
 

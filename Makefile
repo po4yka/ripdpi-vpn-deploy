@@ -34,6 +34,45 @@ unexport ANSIBLE_LIMIT MAKEFLAGS MFLAGS
 MAKEOVERRIDES :=
 endif
 
+# Recovery acceptance has two fixed staging-only operations. Reject caller
+# selection of a generic fault and keep the one-use enrollment key ambient.
+_TAILNET_RECOVERY_GOALS := staging-tailnet-controller-loss-test staging-tailnet-reboot-recovery-test
+ifneq ($(filter $(_TAILNET_RECOVERY_GOALS),$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error Tailnet recovery acceptance requires exactly one Make goal)
+endif
+_TAILNET_RECOVERY_ALLOWED := ANSIBLE_LIMIT TAILNET_RECOVERY_CONFIG
+_TAILNET_RECOVERY_COMMAND := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
+ifneq ($(strip $(filter-out $(_TAILNET_RECOVERY_ALLOWED),$(_TAILNET_RECOVERY_COMMAND))),)
+$(error Tailnet recovery acceptance accepts only ANSIBLE_LIMIT and TAILNET_RECOVERY_CONFIG command-line fields)
+endif
+ifneq ($(filter-out undefined environment,$(origin TAILSCALE_AUTH_KEY)),)
+$(error Tailnet recovery acceptance credentials must come from the environment)
+endif
+override TAILNET_RECOVERY_TARGET := $(value ANSIBLE_LIMIT)
+override TAILNET_RECOVERY_CONFIG := $(value TAILNET_RECOVERY_CONFIG)
+_TAILNET_RECOVERY_KEY_ORIGIN := $(origin TAILSCALE_AUTH_KEY)
+override TAILSCALE_AUTH_KEY := $(value TAILSCALE_AUTH_KEY)
+override ENV := $(value ENV)
+override PROVIDER := $(value PROVIDER)
+override HOME := $(value HOME)
+override DEPLOY_SOURCE_REVISION :=
+override DEPLOYABLE_SOURCE_DIGEST :=
+ifeq ($(filter staging-tailnet-controller-loss-test,$(MAKECMDGOALS)),staging-tailnet-controller-loss-test)
+override TAILNET_RECOVERY_SCENARIO := controller-loss
+else
+override TAILNET_RECOVERY_SCENARIO := reboot
+endif
+export TAILNET_RECOVERY_TARGET TAILNET_RECOVERY_CONFIG TAILNET_RECOVERY_SCENARIO
+ifeq ($(_TAILNET_RECOVERY_KEY_ORIGIN),environment)
+export TAILSCALE_AUTH_KEY
+else
+unexport TAILSCALE_AUTH_KEY
+endif
+unexport ANSIBLE_LIMIT MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+endif
+
 # This target accepts operator paths and aliases.  Keep them literal before
 # included Makefiles, exported variables, or eager source-identity recipes can
 # evaluate command-line Make syntax.
@@ -376,6 +415,8 @@ help:
 	@echo "  backup-configure          Configure one exact ANSIBLE_LIMIT during an exclusive stopped-backup window; never runs backups or timers"
 	@echo "  dry-run                    Serial exact-node check; requires DEPLOY_SSH_CONTEXTS_FILE"
 	@echo "  migrate-ssh-ownership      Explicit one-node policy-preserving SSH ownership transaction"
+	@echo "  staging-tailnet-controller-loss-test  Prove autonomous lease recovery after controller SIGKILL"
+	@echo "  staging-tailnet-reboot-recovery-test  Prove two-phase recovery across a real reboot"
 	@echo "  deploy                     Serial exact-node transaction; also requires DEPLOY_PROMOTION_CONFIG_FILE"
 	@echo "  deploy-canary              Deploy ENV=canary through the normal deploy flow"
 	@echo "  os-maintenance             Rolling full OS upgrade + required reboot + verification"
@@ -723,9 +764,12 @@ endif
 .PHONY: install-ssh-recovery
 .PHONY: bootstrap-tailnet
 .PHONY: migrate-ssh-ownership
+.PHONY: staging-tailnet-controller-loss-test staging-tailnet-reboot-recovery-test
 
 bootstrap-tailnet:
 	@python3 ./scripts/bootstrap-tailnet.py
+staging-tailnet-controller-loss-test staging-tailnet-reboot-recovery-test:
+	@python3 ./scripts/staging-tailnet-recovery.py
 # The controller checks debug, exact inventory and clean source before Ansible.
 install-ssh-recovery:
 	@python3 ./scripts/install-sshd-recovery.py
