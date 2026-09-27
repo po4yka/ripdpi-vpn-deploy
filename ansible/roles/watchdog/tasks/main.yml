@@ -196,6 +196,11 @@
     mode: "0644"
   notify: Reload systemd
 
+- name: Inspect existing watchdog timer
+  ansible.builtin.stat:
+    path: /etc/systemd/system/vpn-watchdog.timer
+  register: _watchdog_timer_preexisting
+
 - name: Install watchdog systemd timer
   ansible.builtin.template:
     src: vpn-watchdog.timer.j2
@@ -213,3 +218,4 @@
     enabled: true
     state: started
     daemon_reload: true
+  when: not ansible_check_mode or _watchdog_timer_preexisting.stat.exists

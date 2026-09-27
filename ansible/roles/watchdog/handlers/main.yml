@@ -7,3 +7,4 @@
   ansible.builtin.systemd_service:
     name: vpn-watchdog.timer
     state: restarted
+  when: not ansible_check_mode or _watchdog_timer_preexisting.stat.exists

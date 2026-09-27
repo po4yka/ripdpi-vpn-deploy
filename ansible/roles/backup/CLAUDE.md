@@ -37,6 +37,9 @@ evidence.
 
 ## Pitfalls
 
+- **Fresh-host check mode cannot activate new timers** — stat both backup
+  timers before rendering. Check systemd state only for pre-existing units;
+  normal convergence still enables them after writing their unit files.
 - **Both recovery secrets matter** — losing either the restic password or all
   SOPS/age recovery shares breaks the complete rebuild path.
 - **restic forget policy is destructive** — keep at least 7 daily + 4 weekly.

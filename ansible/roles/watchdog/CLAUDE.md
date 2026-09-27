@@ -44,6 +44,9 @@ oneshot open indefinitely.
 
 ## Pitfalls
 
+- **Fresh-host check mode has no watchdog timer yet** — inspect the existing
+  unit before rendering. Skip only its systemd operations when the unit is
+  absent in check mode; normal convergence must still start it.
 - **The canary is part of the contract** — it must be operator-owned, have valid public TLS, and return `watchdog_secrets.reality_probe_expected_status` (default `204`). A normal public site root can use `200` without exposing a dedicated health endpoint. Canary failure correctly makes the
   protocol signal red.
 - **On-node is not outside-in** — self-dialing the public listener validates
