@@ -349,7 +349,7 @@ print(json.dumps({'units':units},sort_keys=True))
     def audit(self, environment, environment_name, provider, scenario, evidence):
         """Append one categorical best-effort record after evidence is durable."""
         import sys
-        from bootstrap_readiness import ReadinessError, run_command
+        from bootstrap_readiness import ReadinessError, check_cancelled, run_command
         audit_environment = {
             key: environment[key]
             for key in ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE",
@@ -366,11 +366,13 @@ print(json.dumps({'units':units},sort_keys=True))
         try:
             status, _output = run_command(
                 command, environment=audit_environment, cwd=ROOT, timeout=30,
+                defer_cancellation=True,
             )
         except ReadinessError:
             status = 1
         if status:
             print("warning: staging Tailnet recovery audit unavailable", file=sys.stderr)
+        check_cancelled()
 
 
 def _absolute(value, reason):

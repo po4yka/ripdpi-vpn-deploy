@@ -545,9 +545,40 @@ def test_audit_uses_canonical_redacted_best_effort_record(controller, monkeypatc
     ]
     assert observed[0][1]["cwd"] == ROOT
     assert observed[0][1]["timeout"] == 30
+    assert observed[0][1]["defer_cancellation"] is True
     assert set(observed[0][1]["environment"]) == {"PATH", "HOME"}
     encoded = json.dumps(observed, default=str)
     assert "tskey-auth-secret" not in encoded and "192.0.2.10" not in encoded
+
+
+def test_audit_propagates_cancellation_only_after_append_finishes(
+        controller, monkeypatch, tmp_path):
+    import bootstrap_readiness
+    events = []
+
+    def append_audit(_command, **kwargs):
+        events.append(("append-finished", kwargs["defer_cancellation"]))
+        return 0, b""
+
+    def propagate_cancellation():
+        events.append(("cancellation-propagated",))
+        raise SystemExit(143)
+
+    monkeypatch.setattr(bootstrap_readiness, "run_command", append_audit)
+    monkeypatch.setattr(bootstrap_readiness, "check_cancelled", propagate_cancellation)
+    evidence = tmp_path / "evidence.json"
+    evidence.write_text("{}")
+
+    with pytest.raises(SystemExit, match="143"):
+        controller.Runtime().audit(
+            {"PATH": "/usr/bin", "HOME": str(tmp_path)},
+            "ci-staging-fixture", "upcloud", "controller-loss", evidence,
+        )
+
+    assert events == [
+        ("append-finished", True),
+        ("cancellation-propagated",),
+    ]
 
 
 def test_cancellation_after_spawn_still_kills_blocked_child(controller):
