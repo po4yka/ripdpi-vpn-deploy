@@ -172,6 +172,48 @@ controller-loss recovery. Staging MUST then exercise normal deployment and
 real protocol proof followed by UUID-bound deletion and provider absence.
 Fixtures, refusal-only behavior, and source checks MUST NOT close this feature.
 
+The supported staging interface MUST expose distinct controller-loss and reboot
+recovery operations rather than a caller-selected arbitrary fault. Each
+operation MUST accept only a disposable `ci-staging-*` target with current
+cleanup ownership and a new private evidence path distinct from the positive
+bootstrap handoff. It MUST obtain a durable pending enrollment, prevent the
+enrollment worker from confirming or requesting rollback, and terminate that
+worker if its controller parent disappears. It MUST accept success only after
+the corresponding autonomous recovery path, fresh pinned public SSH and SFTP,
+and a final idle unconfirmed state.
+Reboot acceptance MUST additionally prove a changed boot identity and current-
+boot success of both recovery phases. Published evidence MUST be mode `0600`,
+atomic, redacted, and exclude addresses, enrollment keys, raw capabilities,
+nonces, provider state, and remote command output. After durable evidence
+publication, the controller MUST append the categorical operation and result
+through the canonical best-effort audit interface without forwarding the
+enrollment key, addresses, or private artifact paths.
+
+#### Scenario: The enrollment controller disappears
+
+- **WHEN** the staging controller-loss operation receives a durable pending enrollment
+- **THEN** it terminates that exact worker without confirmation or rollback and waits through the lease for a fresh successful recovery invocation before accepting restored public SSH/SFTP and idle state.
+
+#### Scenario: The node reboots while enrollment is pending
+
+- **WHEN** the staging reboot operation receives a durable pending enrollment
+- **THEN** it terminates that exact worker, reboots through pinned public SSH, and accepts only a new boot whose early firewall and late identity recovery both succeeded before fresh public SSH/SFTP and idle state.
+
+#### Scenario: Recovery proof is stale or ambiguous
+
+- **WHEN** a recovery unit result predates the transaction, the controller worker was not killed as specified, a boot identity did not change, or final state is not idle
+- **THEN** no success evidence is published and the remaining private/guest state is retained for diagnosis.
+
+#### Scenario: Recovery controller exits unexpectedly
+
+- **WHEN** the parent controller disappears before it can terminate the paused enrollment worker
+- **THEN** the worker observes loss of parent ownership and exits without confirmation or explicit rollback, while durable guest recovery remains authoritative.
+
+#### Scenario: Recovery evidence collides with positive bootstrap output
+
+- **WHEN** a recovery operation names the referenced bootstrap handoff path as its evidence path
+- **THEN** it refuses before enrollment, reboot, or any other destructive action.
+
 #### Scenario: Local tests pass without staging
 
 - **WHEN** only unit or container evidence exists

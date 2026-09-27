@@ -144,10 +144,19 @@ never emits the authorization value. This binds the
 exact API principal used for creation and deletion, not a parent billing
 account, and does not claim that provider usernames are immutable identifiers.
 
+Before positive Tailnet bootstrap, run both fixed recovery exercises from
+[TAILNET-MANAGEMENT.md](TAILNET-MANAGEMENT.md#disposable-staging-recovery-exercises)
+with separate one-use enrollment keys. An ordinary bootstrap interruption is
+not controller-loss evidence because its cancellation handler requests
+rollback. Retain both redacted mode-`0600` recovery artifacts alongside the
+cleanup generations and require the controller-loss artifact before the reboot
+artifact. Neither artifact is VPN, provider-firewall or client-path acceptance.
+
 After creating the initial manifest, promote the UpCloud provider firewall in
 two phases. The private tfvars starts with `enable_provider_firewall=false`; apply,
 create the cleanup manifest, wait for cloud-init, install SSH recovery and
-bootstrap Tailnet, then deploy the guest stateful firewall and verify strict SSH,
+exercise both autonomous recovery paths, bootstrap Tailnet, then deploy the
+guest stateful firewall and verify strict SSH,
 DNS, outbound TCP/UDP and every required public listener. Confirm the live
 kernel ephemeral range equals `provider_return_ephemeral_ports` (the repository
 default is `32768..60999`). Then set `enable_provider_firewall=true`, inspect a

@@ -34,6 +34,10 @@ both dependencies before resources are created.
   controller loss, reboot, timeout, and failure restore the previous state.
   Boot recovery restores firewall before networking and revokes enrollment
   after tailscaled, using two phases of the same durable transaction.
+- Add two explicit disposable-staging recovery exercises for controller loss
+  and reboot. They stop after durable enrollment, never call confirmation or
+  rollback, and publish only redacted private evidence after autonomous
+  recovery and fresh public SSH/SFTP succeed.
 - BREAKING: first Tailnet enrollment must use the bootstrap command; ordinary
   deploy becomes verification-only for Tailnet and rejects enrollment keys.
   Update every documented and tested caller; no alternate enrollment path.
@@ -65,8 +69,9 @@ both dependencies before resources are created.
 
 - Make/controller boundary, Tailnet transaction and Ansible role, firewall
   bootstrap/rollback, SSH recovery readiness, deploy credential handling,
-  staging manifest sequence, protocol-proof runtime prerequisites, provider
-  listener examples, operator documentation, and runtime tests.
+  staging recovery harness and manifest sequence, protocol-proof runtime
+  prerequisites, provider listener examples, operator documentation, and
+  runtime tests.
 - Terraform remains the owner of provider resources; bootstrap does not change
   provider firewall policy, create nodes, or edit Tailnet ACLs.
 - Reuse pinned packages and existing recovery primitives. No new production
