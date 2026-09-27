@@ -12,6 +12,10 @@ data shaping are Python and use only stdlib + pinned `PyYAML`, `Jinja2`, or
 `ssh-ownership.py` is the explicit fresh-node SSH ownership verb between
 dual-path Tailnet bootstrap and ordinary deployment. Its private configuration
 binds the exact source and one inventory alias; check mode only previews.
+`staging-tailnet-recovery.py` is the disposable-only acceptance verb behind two
+fixed Make targets. It deliberately kills the enrollment worker or reboots the
+node after durable pending state; it never exposes a general fault selector or
+adds a guest RPC.
 
 **SOPS gate everywhere** — anything that reads decrypted secrets refuses
 without `VPN_SECRETS_FILE` or the Make-resolved `SECRETS_FILE` produced by
@@ -107,6 +111,12 @@ Independent controller homes are not a supported shared-ownership mechanism.
   extra vars override `delegate_to: localhost` too, redirecting controller
   validation to the VPS. Keep pinned connection settings in the private
   one-node inventory group and exercise real Ansible delegation in tests.
+
+- **Normal bootstrap cancellation is not controller-loss evidence.** Its
+  exception path requests rollback. Recovery acceptance must use the fixed
+  staging-only harness, observe exact worker `SIGKILL`, and accept only fresh
+  timer or current-boot recovery unit results plus public SSH/SFTP and idle
+  state. Never add a caller-selected fault mode to the production bootstrap.
 
 - **Mutation builds require sibling inputs** — `test-vpnd-mutants.sh` copies
   tracked working-tree files before using cargo-mutants in-place in that owned

@@ -203,6 +203,17 @@ Only then may the executor terminalize it. A retry observes an already-disabled
 provider as idempotent and continues guest cleanup instead of replaying the
 Terraform rollback.
 
+**Staging recovery faults are two fixed deep operations** —
+`staging-tailnet-recovery.py` reuses the bootstrap module's validation,
+installation, durable enrollment and status implementation behind distinct
+controller-loss and reboot Make verbs. A dedicated child reaches `pending` and
+is killed with `SIGKILL`; the parent has no confirmation or explicit rollback
+path. Controller loss requires a fresh post-deadline recovery invocation;
+reboot requires a new boot identity and current-boot success from both phases.
+Both finish through pinned public SSH/SFTP and idle-state proof. The only
+published artifact is atomic mode-`0600` redacted evidence. Do not deepen this
+interface with a general fault selector or a new permanent guest capability.
+
 ## Observability — `observability-operator.py`
 
 **Observability lifecycle shares one exact-host controller** — its public Make

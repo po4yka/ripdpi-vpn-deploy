@@ -189,6 +189,10 @@ For disposable `ci-staging-*` nodes, create the UUID-bound cleanup manifest
 from the private exact state immediately after `apply`, before any guest
 installer or bootstrap write. Follow
 [the staging sequence](CI-REAL-DEPLOY.md#uuid-bound-operator-staging-cleanup).
+A staging acceptance run exercises the fixed
+[controller-loss and reboot recovery verbs](TAILNET-MANAGEMENT.md#disposable-staging-recovery-exercises)
+with separate one-use enrollment keys after SSH recovery installation and
+before positive bootstrap. A normal bootstrap interruption is not equivalent.
 A fresh node has no management path until the explicit
 [Tailnet bootstrap](TAILNET-MANAGEMENT.md#bootstrap-one-node) succeeds;
 ordinary deployment cannot enroll it and rejects enrollment keys.

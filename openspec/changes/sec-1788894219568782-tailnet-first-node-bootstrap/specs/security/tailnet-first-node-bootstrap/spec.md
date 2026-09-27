@@ -172,6 +172,33 @@ controller-loss recovery. Staging MUST then exercise normal deployment and
 real protocol proof followed by UUID-bound deletion and provider absence.
 Fixtures, refusal-only behavior, and source checks MUST NOT close this feature.
 
+The supported staging interface MUST expose distinct controller-loss and reboot
+recovery operations rather than a caller-selected arbitrary fault. Each
+operation MUST accept only a disposable `ci-staging-*` target with current
+cleanup ownership and a new private evidence path. It MUST obtain a durable
+pending enrollment, prevent the enrollment worker from confirming or requesting
+rollback, and accept success only after the corresponding autonomous recovery
+path, fresh pinned public SSH and SFTP, and a final idle unconfirmed state.
+Reboot acceptance MUST additionally prove a changed boot identity and current-
+boot success of both recovery phases. Published evidence MUST be mode `0600`,
+atomic, redacted, and exclude addresses, enrollment keys, raw capabilities,
+nonces, provider state, and remote command output.
+
+#### Scenario: The enrollment controller disappears
+
+- **WHEN** the staging controller-loss operation receives a durable pending enrollment
+- **THEN** it terminates that exact worker without confirmation or rollback and waits through the lease for a fresh successful recovery invocation before accepting restored public SSH/SFTP and idle state.
+
+#### Scenario: The node reboots while enrollment is pending
+
+- **WHEN** the staging reboot operation receives a durable pending enrollment
+- **THEN** it terminates that exact worker, reboots through pinned public SSH, and accepts only a new boot whose early firewall and late identity recovery both succeeded before fresh public SSH/SFTP and idle state.
+
+#### Scenario: Recovery proof is stale or ambiguous
+
+- **WHEN** a recovery unit result predates the transaction, the controller worker was not killed as specified, a boot identity did not change, or final state is not idle
+- **THEN** no success evidence is published and the remaining private/guest state is retained for diagnosis.
+
 #### Scenario: Local tests pass without staging
 
 - **WHEN** only unit or container evidence exists

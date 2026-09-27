@@ -38,7 +38,7 @@ and external evidence below remain required.
 | REQ-TFB-PROOF | SEC-1788894503869488 | Fresh public/Tailnet SSH and SFTP with matching host key and observed socket identities | Required |
 | REQ-TFB-DEPLOY | SEC-1788894503869488 | Deploy tests reject enrollment keys and absent management; normal VPN proof still runs | Required |
 | REQ-UPF-STAGING | SEC-1788894504408980 | Cleanup guard tests and exact-state manifests before bootstrap and after firewall transitions | Required |
-| REQ-TFB-ACCEPTANCE | SEC-1788894504951632 | Exact-SHA local/hosted gates, positive staging, recovery, deployment, protocol proof, provider absence | Required |
+| REQ-TFB-ACCEPTANCE | SEC-1788894504951632 | Fixed staging-only controller-loss/reboot harness, exact-SHA local/hosted gates, positive staging, recovery, deployment, protocol proof, provider absence | Required |
 
 ## Required evidence scopes
 
@@ -49,17 +49,20 @@ and external evidence below remain required.
   with current run URLs and conclusions; queued or skipped work is not proof.
 - Dry-run: ordinary deploy with actual observed bootstrap socket contexts and
   a valid exact-node promotion configuration; no capability consumed.
-- Staging: one authorized disposable clean node; positive bootstrap, interrupted
-  enrollment, reboot recovery, public access after rollback, repeated positive
-  bootstrap, ordinary deploy, provider firewall promotion and acceptance.
+- Staging: one authorized disposable clean node; redacted private evidence from
+  the fixed controller-loss and reboot operations, including exact worker death,
+  fresh recovery invocations, changed boot identity for reboot, idle state and
+  restored public SSH/SFTP; then positive bootstrap, ordinary deploy, provider
+  firewall promotion and acceptance.
 - Live: agreed serial one-node checks after staging and a valid operator
   window, preserving public recovery. Lack of current authority blocks this
   category and must not be relabeled as a local-only success.
 - Client: real authenticated required VPN profiles with exact target binding;
   successful enrollment or on-node status does not satisfy this category.
-- Artifact: private mode-0600 observed-context handoff, unchanged host identity,
-  cleanup manifests with unchanged resource identities/deadlines, redacted
-  guarded-delete receipts, and authenticated exact-resource provider absence.
+- Artifact: private mode-0600 recovery evidence and observed-context handoff,
+  unchanged host identity, cleanup manifests with unchanged resource
+  identities/deadlines, redacted guarded-delete receipts, and authenticated
+  exact-resource provider absence.
 
 Record failures and rollbacks with the same scope precision as successes.
 Never copy secrets, raw provider state, or sensitive capability material into

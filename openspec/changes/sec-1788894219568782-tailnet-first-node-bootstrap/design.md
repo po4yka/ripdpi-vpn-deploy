@@ -184,6 +184,16 @@ the exact-source local/hosted and authorized staging gates.
 - Controller: `scripts/bootstrap-tailnet.py` and a bounded domain helper only
   if needed; reuse `fleet_inspection.py`, `bootstrap_readiness.py`, and source
   identity checks rather than duplicating transport logic.
+- Recovery acceptance: one staging-only controller behind two fixed Make verbs
+  reuses bootstrap validation, installation, enrollment and status. A dedicated
+  child owns the pending enrollment and is killed with `SIGKILL`; the parent
+  never receives a general fault selector and never calls confirm or rollback.
+  Controller-loss waits through the durable lease and requires a new successful
+  recovery invocation. Reboot requires a changed boot identity plus current-
+  boot success from both recovery units. The harness adds no guest RPC or
+  persistent privilege. Its atomic mode-`0600` evidence contains hashes and
+  categorical verdicts only, never addresses, raw nonce/capability material,
+  keys, provider state, or remote output.
 - Guest: `scripts/tailnet_management.py`, its configure/check/recover entry
   points, recovery units, `ansible/roles/tailnet-management/`, and a dedicated
   `ansible/playbooks/bootstrap-tailnet.yml`.
@@ -225,12 +235,12 @@ the exact-source local/hosted and authorized staging gates.
    acquisition, Tailnet key, approved sources, and required reviewer gate. Use
    the existing authorized disposable budget and deadlines; no automatic refill.
 4. Provision one isolated node, create cleanup manifest, install SSH recovery,
-   bootstrap Tailnet, and verify both paths. Preview and confirm the separate
+   exercise the fixed controller-loss and reboot recovery verbs with a fresh
+   one-use enrollment key for each, and require their redacted private evidence.
+   Bootstrap Tailnet with another fresh key and verify both paths. Preview and confirm the separate
    SSH ownership transaction for recognized fresh Debian main-file directives
    before ordinary dry-run; retain full effective-policy parity and dual-path
-   SSH/SFTP proof. Exercise controller loss and reboot
-   with unconfirmed enrollment, verify restored public access, then repeat the
-   positive bootstrap. Never simulate provider or live success with fixtures.
+   SSH/SFTP proof. Never simulate provider or live success with fixtures.
 5. Use the handoff with ordinary dual-path deploy and exact-node VPN proof.
    Promote the provider firewall only after required guest probes, reissue the
    manifest, repeat acceptance, then guarded-delete and verify provider absence.

@@ -370,21 +370,24 @@ def _capability(inputs, result):
     return result
 
 
+def _sftp(inputs, host):
+    from bootstrap_readiness import run_command
+    command = inspection.sftp_command(host, inputs.known_hosts)
+    command[1:1] = ["-o", "HostKeyAlgorithms=ssh-ed25519"]
+    status, _ = run_command(command, timeout=20, environment=inputs.environment, input_data=b"pwd\nquit\n")
+    if status:
+        raise BootstrapError("bootstrap-sftp-failed")
+
+
 def _proofs(inputs, capability):
-    from bootstrap_readiness import run_command, ReadinessError
+    from bootstrap_readiness import ReadinessError
     public = _probe(inputs, inputs.host)
-    def sftp(host):
-        command = inspection.sftp_command(host, inputs.known_hosts)
-        command[1:1] = ["-o", "HostKeyAlgorithms=ssh-ed25519"]
-        status, _ = run_command(command, timeout=20, environment=inputs.environment, input_data=b"pwd\nquit\n")
-        if status:
-            raise BootstrapError("bootstrap-sftp-failed")
-    sftp(inputs.host)
+    _sftp(inputs, inputs.host)
     for family in ("ipv4", "ipv6"):
         host = {**inputs.host, "transport": capability["node"][family]}
         try:
             context = _probe(inputs, host)
-            sftp(host)
+            _sftp(inputs, host)
         except (BootstrapError, ReadinessError):
             continue
         contexts = [public, context]
@@ -432,7 +435,7 @@ def _verify_inputs(inputs):
     _cleanup_fences(inputs.config, inputs.host)
 
 
-def run(inputs, auth_key):
+def run(inputs, auth_key, *, pending_hook=None):
     from bootstrap_readiness import wait_for_bootstrap
     from sshd_bundle_source import bundle_manifest
     if auth_key is not None:
@@ -471,6 +474,8 @@ def run(inputs, auth_key):
             pending = _capability(inputs, _rpc(inputs, "enroll", binding=binding, auth_key=auth_key))
         except BootstrapError:
             pending = _capability(inputs, _rpc(inputs, "status", binding=binding))
+        if pending_hook is not None:
+            pending_hook()
         contexts = _proofs(inputs, pending)
         _verify_inputs(inputs)
         _require_source(inputs)

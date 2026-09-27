@@ -1,0 +1,439 @@
+"""Staging recovery acceptance controller at its public execute seam."""
+from __future__ import annotations
+
+import importlib.util
+import json
+from pathlib import Path
+from contextlib import contextmanager
+from types import SimpleNamespace
+
+import pytest
+
+
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = ROOT / "scripts/staging-tailnet-recovery.py"
+
+
+@pytest.fixture
+def controller(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
+    spec = importlib.util.spec_from_file_location("staging_tailnet_recovery", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class ForbiddenRuntime:
+    def __getattr__(self, name):
+        def forbidden(*_args, **_kwargs):
+            pytest.fail(f"external boundary reached through {name}")
+        return forbidden
+
+
+def test_invalid_wrapper_refuses_before_ssh(controller, tmp_path):
+    config = tmp_path / "recovery.json"
+    config.write_text(json.dumps({"schema_version": 1, "bootstrap_config": "relative",
+                                  "evidence": str(tmp_path / "evidence.json")}))
+    config.chmod(0o600)
+
+    with pytest.raises(controller.RecoveryError, match="recovery-inputs-refused"):
+        controller.execute({
+            "TAILNET_RECOVERY_CONFIG": str(config),
+            "TAILNET_RECOVERY_SCENARIO": "controller-loss",
+            "TAILNET_RECOVERY_TARGET": "node-one",
+        }, runtime=ForbiddenRuntime())
+
+    assert not (tmp_path / "evidence.json").exists()
+
+
+class ScenarioRuntime:
+    def __init__(self, scenario):
+        self.scenario = scenario
+        self.events = []
+        self.recovery = (["expired", "rolling_back", "firewall_restored", "idle"]
+                         if scenario == "controller-loss" else ["idle"])
+
+    def prepare(self, inputs):
+        self.events.append(("prepare", inputs.name))
+
+    def recovery_baseline(self, inputs):
+        self.events.append(("recovery-baseline", inputs.name))
+        count = len([event for event in self.events if event[0] == "recovery-baseline"])
+        return f"baseline-invocation-{count}"
+
+    def boot_id(self, inputs):
+        self.events.append(("boot-id", inputs.name))
+        return "12345678-1234-4234-9234-123456789abc"
+
+    def spawn_pending(self, inputs, auth_key):
+        self.events.append(("spawn-pending", inputs.name, auth_key))
+        return 42
+
+    def kill_pending(self, child):
+        self.events.append(("sigkill", child))
+
+    def cleanup_pending(self, child):
+        self.events.append(("cleanup-sigkill", child))
+
+    def sleep(self, seconds):
+        self.events.append(("sleep", seconds))
+
+    def reboot(self, inputs):
+        self.events.append(("reboot", inputs.name))
+
+    def recovered_status(self, inputs):
+        status = self.recovery.pop(0)
+        self.events.append(("recovery", inputs.name, status))
+        return status
+
+    def reboot_recovery(self, inputs, previous_boot):
+        self.events.append(("current-boot-units", inputs.name, previous_boot))
+        return True
+
+    def autonomous_recovery(self, inputs, baseline):
+        self.events.append(("autonomous-recovery", inputs.name, baseline))
+        return True
+
+    def postconditions(self, inputs):
+        self.events.append(("public-ssh-sftp-preinstall", inputs.name))
+
+    def final_guard(self, inputs):
+        self.events.append(("final-guard", inputs.name))
+
+
+class ExecuteRuntime(ScenarioRuntime):
+    @contextmanager
+    def open_inputs(self, environment, bootstrap_config, inventory_alias):
+        self.events.append(("inputs", str(bootstrap_config), inventory_alias))
+        number = len([event for event in self.events if event[0] == "inputs"])
+        yield SimpleNamespace(
+            name=f"generation-{number}",
+            config={
+                "environment": "ci-staging-fixture", "inventory_alias": inventory_alias,
+                "source_revision": "a" * 40, "deployable_digest": "b" * 64,
+                "public_address": "192.0.2.10", "ssh_port": 2222,
+                "public_sources": ["198.51.100.10"],
+                "approved_sources": ["100.64.0.10", "fd7a:115c:a1e0::10"],
+                "host_key_sha256": "c" * 64,
+            },
+        )
+
+
+@pytest.mark.parametrize("scenario", ["controller-loss", "reboot"])
+def test_pending_child_is_killed_then_fresh_recovery_proves_public_postconditions(
+        controller, scenario):
+    runtime = ScenarioRuntime(scenario)
+    generations = iter([SimpleNamespace(name=f"fresh-{number}") for number in range(1, 5)])
+
+    @contextmanager
+    def fresh_inputs():
+        yield next(generations)
+
+    result = controller.run_scenario(
+        scenario, SimpleNamespace(name="initial"), "tskey-auth-fixture_key",
+        fresh_inputs=fresh_inputs, runtime=runtime,
+    )
+
+    assert result == {
+        "schema_version": 1,
+        "status": "passed",
+        "scenario": scenario,
+        "checks": {
+            "durable_pending_killed": True,
+            "idle": True,
+            "public_ssh": True,
+            "public_sftp": True,
+            "preinstall": True,
+            "boot_changed": scenario == "reboot",
+            "recovery_units_current_boot": scenario == "reboot",
+        },
+    }
+    encoded = json.dumps(result, sort_keys=True)
+    assert all(value not in encoded for value in (
+        "192.0.2.10", "100.64.0.1", "tskey-auth", "nonce", "capability", "state",
+    ))
+    assert runtime.events[0] == ("prepare", "initial")
+    assert ("spawn-pending", "initial", "tskey-auth-fixture_key") in runtime.events
+    assert ("sigkill", 42) in runtime.events
+    assert runtime.events[-2][0] == "public-ssh-sftp-preinstall"
+    assert runtime.events[-1][0] == "final-guard"
+    if scenario == "controller-loss":
+        assert ("autonomous-recovery", "fresh-4",
+                ("baseline-invocation-1", "baseline-invocation-2")) in runtime.events
+        assert [event[:2] for event in runtime.events if event[0] == "recovery-baseline"] == [
+            ("recovery-baseline", "initial"), ("recovery-baseline", "initial"),
+        ]
+
+
+def test_execute_uses_external_scenario_and_publishes_only_redacted_evidence(
+        controller, tmp_path):
+    wrapper = tmp_path / "recovery.json"
+    bootstrap_config = tmp_path / "bootstrap.json"
+    bootstrap_config.write_text("private bootstrap fixture")
+    wrapper.write_text(json.dumps({
+        "schema_version": 1,
+        "bootstrap_config": str(bootstrap_config),
+        "evidence": str(tmp_path / "evidence.json"),
+    }))
+    wrapper.chmod(0o600)
+    runtime = ExecuteRuntime("controller-loss")
+
+    result = controller.execute({
+        "TAILNET_RECOVERY_CONFIG": str(wrapper),
+        "TAILNET_RECOVERY_SCENARIO": "controller-loss",
+        "TAILNET_RECOVERY_TARGET": "node-one",
+        "TAILSCALE_AUTH_KEY": "tskey-auth-fixture_key",
+    }, runtime=runtime)
+
+    evidence = tmp_path / "evidence.json"
+    assert result["status"] == "passed"
+    assert evidence.stat().st_mode & 0o777 == 0o600
+    assert json.loads(evidence.read_text()) == result
+    assert all(value not in evidence.read_text() for value in (
+        "node-one", "bootstrap", "tskey-auth", "192.0.2.10", "100.64.0.1",
+        "nonce", "capability", "state",
+    ))
+    assert len(result["input_sha256"]) == 64
+    assert result["source_revision"] == "a" * 40
+    assert result["deployable_digest"] == "b" * 64
+    assert len(result["binding_sha256"]) == 64
+
+
+def test_production_wrapper_refuses_before_fault_or_evidence(controller, tmp_path):
+    class ProductionRuntime(ExecuteRuntime):
+        @contextmanager
+        def open_inputs(self, environment, bootstrap_config, inventory_alias):
+            self.events.append(("inputs", str(bootstrap_config), inventory_alias))
+            yield SimpleNamespace(name="production", config={
+                "environment": "prod", "inventory_alias": inventory_alias,
+            })
+
+    bootstrap_config = tmp_path / "bootstrap.json"
+    bootstrap_config.write_text("private bootstrap fixture")
+    wrapper = tmp_path / "recovery.json"
+    wrapper.write_text(json.dumps({
+        "schema_version": 1, "bootstrap_config": str(bootstrap_config),
+        "evidence": str(tmp_path / "evidence.json"),
+    }))
+    wrapper.chmod(0o600)
+    runtime = ProductionRuntime("controller-loss")
+
+    with pytest.raises(controller.RecoveryError, match="recovery-staging-only"):
+        controller.execute({
+            "TAILNET_RECOVERY_CONFIG": str(wrapper),
+            "TAILNET_RECOVERY_SCENARIO": "controller-loss",
+            "TAILNET_RECOVERY_TARGET": "node-one",
+            "TAILSCALE_AUTH_KEY": "tskey-auth-fixture_key",
+        }, runtime=runtime)
+
+    assert [event[0] for event in runtime.events] == ["inputs"]
+    assert not (tmp_path / "evidence.json").exists()
+
+
+def test_reboot_refuses_unchanged_boot_before_public_postconditions(controller):
+    runtime = ScenarioRuntime("reboot")
+    runtime.reboot_recovery = lambda *_args: False
+
+    @contextmanager
+    def fresh_inputs():
+        yield SimpleNamespace(name="fresh")
+
+    with pytest.raises(controller.RecoveryError, match="recovery-current-boot-proof-failed"):
+        controller.run_scenario(
+            "reboot", SimpleNamespace(name="initial"), "tskey-auth-fixture_key",
+            fresh_inputs=fresh_inputs, runtime=runtime,
+        )
+
+    assert not any(event[0] == "public-ssh-sftp-preinstall" for event in runtime.events)
+
+
+def test_controller_loss_refuses_stale_recovery_invocation(controller):
+    runtime = ScenarioRuntime("controller-loss")
+    runtime.recovery = ["idle"]
+    runtime.autonomous_recovery = lambda *_args: False
+
+    @contextmanager
+    def fresh_inputs():
+        yield SimpleNamespace(name="fresh")
+
+    with pytest.raises(controller.RecoveryError, match="recovery-autonomous-proof-failed"):
+        controller.run_scenario(
+            "controller-loss", SimpleNamespace(name="initial"), "tskey-auth-fixture_key",
+            fresh_inputs=fresh_inputs, runtime=runtime,
+        )
+
+    assert not any(event[0] == "public-ssh-sftp-preinstall" for event in runtime.events)
+
+
+def test_reboot_accepts_only_changed_boot_with_both_current_boot_units(controller, monkeypatch):
+    runtime = controller.Runtime()
+    monkeypatch.setattr(runtime, "_guard", lambda *_args: None)
+    previous = "12345678-1234-4234-9234-123456789abc"
+    current = "87654321-4321-4321-9234-cba987654321"
+    unit = {"InvocationID": "d" * 32, "Result": "success", "ExecMainCode": "1", "ExecMainStatus": "0",
+            "ExecMainStartTimestampMonotonic": "1523"}
+    unit_reply = {"units": {
+        "vpn-tailnet-firewall-recover.service": dict(unit),
+        "vpn-tailnet-recover.service": dict(unit),
+    }}
+    replies = iter([{"boot_id": current}, unit_reply])
+    monkeypatch.setattr(controller.bootstrap, "_remote", lambda *_args, **_kwargs: next(replies))
+
+    assert runtime.reboot_recovery(SimpleNamespace(host={}), previous) is True
+    assert all("ExecMainStartTimestampMonotonic" in fields for fields in unit_reply["units"].values())
+    replies = iter([{"boot_id": previous}, unit_reply])
+    monkeypatch.setattr(controller.bootstrap, "_remote", lambda *_args, **_kwargs: next(replies))
+    assert runtime.reboot_recovery(SimpleNamespace(host={}), previous) is False
+
+
+@pytest.mark.parametrize("status", ["expired", "rolling_back", "firewall_restored"])
+def test_recovered_status_polls_transitions_without_running_recovery(
+        controller, monkeypatch, status):
+    import bootstrap_readiness
+    runtime = controller.Runtime()
+    inputs = SimpleNamespace(ssh=["ssh", "host"], environment={}, host={})
+    monkeypatch.setattr(runtime, "_guard", lambda *_args: None)
+    monkeypatch.setattr(bootstrap_readiness, "wait_for_bootstrap", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(controller.deploy, "require_recovery_foundation", lambda *_args: None)
+    monkeypatch.setattr(controller.bootstrap, "_installed", lambda *_args: "ready")
+    monkeypatch.setattr(controller.bootstrap, "_binding", lambda *_args: {})
+    monkeypatch.setattr(controller.bootstrap, "_rpc", lambda *_args, **_kwargs: {"status": status})
+    monkeypatch.setattr(controller.bootstrap, "_remote",
+                        lambda *_args, **_kwargs: pytest.fail("controller ran guest recovery"))
+
+    assert runtime.recovered_status(inputs) == status
+
+
+def test_spawn_cancellation_kills_and_reaps_blocked_child(controller, monkeypatch):
+    runtime = controller.Runtime()
+    closed = []
+    killed = []
+    waited = []
+    monkeypatch.setattr(controller.os, "pipe", lambda: (10, 11))
+    monkeypatch.setattr(controller.os, "fork", lambda: 321)
+    monkeypatch.setattr(controller.os, "close", lambda fd: closed.append(fd))
+    monkeypatch.setattr(controller.select, "select", lambda *_args: (_ for _ in ()).throw(KeyboardInterrupt()))
+    monkeypatch.setattr(controller.os, "kill", lambda pid, sig: killed.append((pid, sig)))
+    monkeypatch.setattr(controller.os, "waitpid", lambda pid, flags: waited.append((pid, flags)) or (pid, 9))
+
+    with pytest.raises(KeyboardInterrupt):
+        runtime.spawn_pending(SimpleNamespace(), "tskey-auth-fixture_key")
+
+    assert killed == [(321, controller.signal.SIGKILL)]
+    assert waited == [(321, 0)]
+    assert sorted(closed) == [10, 11]
+
+
+def test_spawn_select_poll_observes_recorded_signal_and_reaps_child(controller, monkeypatch):
+    import bootstrap_readiness
+    runtime = controller.Runtime()
+    delays = []
+    killed = []
+    waited = []
+    monkeypatch.setattr(bootstrap_readiness, "_cancelled", 0)
+    monkeypatch.setattr(controller.os, "pipe", lambda: (10, 11))
+    monkeypatch.setattr(controller.os, "fork", lambda: 321)
+    monkeypatch.setattr(controller.os, "close", lambda _fd: None)
+
+    def interrupted_select(_read, _write, _error, delay):
+        delays.append(delay)
+        bootstrap_readiness._cancelled = controller.signal.SIGTERM
+        return [], [], []
+
+    monkeypatch.setattr(controller.select, "select", interrupted_select)
+    monkeypatch.setattr(controller.os, "kill", lambda pid, sig: killed.append((pid, sig)))
+    monkeypatch.setattr(controller.os, "waitpid", lambda pid, flags: waited.append((pid, flags)) or (pid, 9))
+
+    with pytest.raises(SystemExit, match=str(128 + controller.signal.SIGTERM)):
+        runtime.spawn_pending(SimpleNamespace(), "tskey-auth-fixture_key")
+
+    assert len(delays) == 1 and 0 < delays[0] <= 0.25
+    assert killed == [(321, controller.signal.SIGKILL)]
+    assert waited == [(321, 0)]
+
+
+def test_cancellation_after_spawn_still_kills_blocked_child(controller):
+    runtime = ScenarioRuntime("controller-loss")
+    runtime.kill_pending = lambda _child: (_ for _ in ()).throw(KeyboardInterrupt())
+
+    @contextmanager
+    def fresh_inputs():
+        pytest.fail("recovery must not begin after cancellation")
+        yield
+
+    with pytest.raises(KeyboardInterrupt):
+        controller.run_scenario(
+            "controller-loss", SimpleNamespace(name="initial"), "tskey-auth-fixture_key",
+            fresh_inputs=fresh_inputs, runtime=runtime,
+        )
+
+    assert ("cleanup-sigkill", 42) in runtime.events
+
+
+def test_lease_wait_observes_cancellation_between_short_sleeps(controller, monkeypatch):
+    import bootstrap_readiness
+    runtime = controller.Runtime()
+    delays = []
+    monkeypatch.setattr(bootstrap_readiness, "_cancelled", 0)
+
+    def interrupt(delay):
+        delays.append(delay)
+        bootstrap_readiness._cancelled = controller.signal.SIGTERM
+
+    monkeypatch.setattr(controller.time, "sleep", interrupt)
+
+    with pytest.raises(SystemExit, match=str(128 + controller.signal.SIGTERM)):
+        runtime.sleep(controller.tailnet.LEASE_SECONDS + 1)
+
+    assert len(delays) == 1
+    assert 0 < delays[0] <= 0.25
+
+
+def test_bootstrap_pending_notification_precedes_external_proofs(controller, monkeypatch):
+    import bootstrap_readiness
+
+    config = {
+        "inventory_alias": "node-one", "public_address": "192.0.2.10", "ssh_port": 2222,
+        "public_sources": ["198.51.100.10"],
+        "approved_sources": ["100.64.0.10", "fd7a:115c:a1e0::10"],
+        "host_key_sha256": "a" * 64, "source_revision": "b" * 40,
+        "deployable_digest": "c" * 64, "environment": "prod", "cleanup_manifest": None,
+    }
+    inputs = SimpleNamespace(
+        config=config, host={"name": "node-one"}, ssh=["ssh", "host"], environment={},
+        fences=[], output_parent_identity=(1, 2),
+    )
+    binding = controller.bootstrap._binding(inputs)
+    nonce = "d" * 32
+    pending = {
+        "status": "pending", "changed": True, "nonce": nonce,
+        "generation": controller.tailnet.RECOVERY_GENERATION,
+        "binding_sha256": __import__("hashlib").sha256(
+            controller.tailnet._canonical_bytes(binding)).hexdigest(),
+        "lease": {"boot_id": "12345678-1234-4234-9234-123456789abc",
+                  "started_ms": 1, "deadline_ms": 300001},
+        "node": {"id": "node-id", "hostname": "vpn-enroll-" + nonce,
+                 "ipv4": "100.64.1.9", "ipv6": "fd7a:115c:a1e0::9"},
+    }
+    events = []
+    monkeypatch.setattr(bootstrap_readiness, "wait_for_bootstrap", lambda *_a, **_kw: None)
+    monkeypatch.setattr(controller.bootstrap.deploy, "require_recovery_foundation",
+                        lambda *_a, **_kw: None)
+    monkeypatch.setattr(controller.bootstrap.deploy, "source_identity", lambda *_a, **_kw: {
+        "DEPLOY_SOURCE_REVISION": "b" * 40, "DEPLOYABLE_SOURCE_DIGEST": "c" * 64,
+    })
+    monkeypatch.setattr(controller.bootstrap, "_installed", lambda *_a: "ready")
+    monkeypatch.setattr(controller.bootstrap, "_probe", lambda *_a, **_kw: {})
+    actions = iter([{"status": "idle"}, pending,
+                    {**pending, "status": "configured", "changed": False}])
+    monkeypatch.setattr(controller.bootstrap, "_rpc", lambda *_a, **_kw: next(actions))
+    monkeypatch.setattr(controller.bootstrap, "_proofs",
+                        lambda *_a: events.append("proofs") or [])
+    monkeypatch.setattr(controller.bootstrap, "_publish", lambda *_a: None)
+
+    result = controller.bootstrap.run(
+        inputs, "tskey-auth-fixture_key", pending_hook=lambda: events.append("pending"),
+    )
+
+    assert result["status"] == "configured"
+    assert events == ["pending", "proofs"]
