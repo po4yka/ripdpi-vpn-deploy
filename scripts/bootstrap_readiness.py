@@ -26,6 +26,14 @@ class ReadinessError(Exception):
     """Only categorical messages, never remote output or private paths."""
 
 
+class CommandTimeout(ReadinessError):
+    """A bounded local subprocess exceeded its session deadline."""
+
+
+class SshTransportError(ReadinessError):
+    """A pinned SSH/SFTP transport failed before a semantic reply."""
+
+
 def check_cancelled():
     if _cancelled:
         raise SystemExit(128 + _cancelled)
@@ -87,7 +95,7 @@ def run_command(command, *, timeout, environment=None, cwd=None, capture=False, 
                     check_cancelled()
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    raise ReadinessError("session timeout")
+                    raise CommandTimeout("session timeout")
                 if capture:
                     for key, _event in selector.select(min(0.1, remaining)):
                         data = os.read(key.fd, 4096)
@@ -126,10 +134,8 @@ def wait_for_bootstrap(ssh, *, environment=None, first_boot=False):
         for _attempt in range(30):
             try:
                 status, _ = run_command([*probe, "true"], timeout=15, environment=environment)
-            except ReadinessError as error:
-                if str(error) == "session timeout":
-                    raise ReadinessError("SSH session timeout") from None
-                raise
+            except CommandTimeout:
+                raise SshTransportError("SSH session timeout") from None
             if status == 0:
                 break
             until = time.monotonic() + 5
@@ -137,21 +143,21 @@ def wait_for_bootstrap(ssh, *, environment=None, first_boot=False):
                 check_cancelled()
                 time.sleep(min(0.1, max(0, until - time.monotonic())))
         else:
-            raise ReadinessError("SSH did not come up after 30 attempts")
+            raise SshTransportError("SSH did not come up after 30 attempts")
     for _attempt in range(30):
         try:
             status, _ = run_command([*ssh, REMOTE_WAIT], timeout=10, environment=environment)
-        except ReadinessError as error:
-            if str(error) == "session timeout":
-                raise ReadinessError("SSH session timeout") from None
-            raise
+        except CommandTimeout:
+            raise SshTransportError("SSH session timeout") from None
         if status == 0:
             return
         if status == 21:
             continue
-        raise ReadinessError({20: "cloud-init error", 23: "cloud-init recoverable error",
-                              22: "bootstrap marker missing", 24: "cloud-init status unavailable"}
-                             .get(status, "bootstrap SSH transport failure"))
+        semantic = {20: "cloud-init error", 23: "cloud-init recoverable error",
+                    22: "bootstrap marker missing", 24: "cloud-init status unavailable"}
+        if status not in semantic:
+            raise SshTransportError("bootstrap SSH transport failure")
+        raise ReadinessError(semantic[status])
     raise ReadinessError("cloud-init timeout: still waiting after 30 bounded attempts")
 
 

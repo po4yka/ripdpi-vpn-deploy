@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+import re
 from contextlib import contextmanager
 from types import SimpleNamespace
 
@@ -80,6 +81,9 @@ class ScenarioRuntime:
 
     def reboot(self, inputs):
         self.events.append(("reboot", inputs.name))
+
+    def wait_after_reboot(self, inputs):
+        self.events.append(("wait-after-reboot", inputs.name))
 
     def recovered_status(self, inputs):
         status = self.recovery.pop(0)
@@ -309,6 +313,7 @@ def test_reboot_uses_bounded_first_boot_retry_after_public_ssh_goes_down(
     monkeypatch.setattr(bootstrap_readiness, "wait_for_bootstrap", wait_for_bootstrap)
 
     runtime.reboot(inputs)
+    runtime.wait_after_reboot(inputs)
 
     assert events == [
         ("command", ["ssh", "-F", "pinned-config",
@@ -316,6 +321,104 @@ def test_reboot_uses_bounded_first_boot_retry_after_public_ssh_goes_down(
         ("command", ["ssh", "-F", "pinned-config", "true"], 5, environment),
         ("wait", ["ssh", "-F", "pinned-config"], environment, True),
     ]
+
+
+def test_first_boot_maps_raw_command_timeout_to_ssh_transport_error(monkeypatch):
+    import bootstrap_readiness
+
+    monkeypatch.setattr(
+        bootstrap_readiness, "run_command",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            bootstrap_readiness.CommandTimeout("session timeout")),
+    )
+
+    with pytest.raises(bootstrap_readiness.SshTransportError):
+        bootstrap_readiness.wait_for_bootstrap(["ssh", "node-one"], first_boot=True)
+
+
+@pytest.mark.parametrize(("failure", "expected"), [
+    ("timeout", "transport"),
+    ("transport-status", "transport"),
+    ("semantic-status", "semantic"),
+])
+def test_bootstrap_remote_classifies_transport_and_semantic_failures(
+        controller, monkeypatch, failure, expected):
+    import bootstrap_readiness
+
+    inputs = SimpleNamespace(known_hosts=Path("/tmp/known-hosts"), environment={})
+    monkeypatch.setattr(
+        controller.bootstrap.inspection, "ssh_command",
+        lambda *_args: ["ssh", "node-one", "placeholder"],
+    )
+
+    def run_command(*_args, **_kwargs):
+        if failure == "timeout":
+            raise bootstrap_readiness.CommandTimeout("session timeout")
+        if failure == "transport-status":
+            return 255, b"{}"
+        marker = re.search(
+            r"(__VPN_REMOTE_STATUS_[0-9a-f]{32}__=)", _args[0][-1],
+        ).group(1)
+        return 0, b"{}\n" + marker.encode() + b"1\n"
+
+    monkeypatch.setattr(bootstrap_readiness, "run_command", run_command)
+    error = (bootstrap_readiness.SshTransportError
+             if expected == "transport" else controller.bootstrap.BootstrapError)
+
+    with pytest.raises(error):
+        controller.bootstrap._remote(inputs, {}, "true")
+
+
+@pytest.mark.parametrize(("failure", "expected"), [
+    ("timeout", "transport"),
+    ("transport-status", "semantic"),
+    ("semantic-status", "semantic"),
+])
+def test_bootstrap_sftp_classifies_transport_and_semantic_failures(
+        controller, monkeypatch, failure, expected):
+    import bootstrap_readiness
+
+    inputs = SimpleNamespace(known_hosts=Path("/tmp/known-hosts"), environment={})
+    monkeypatch.setattr(
+        controller.bootstrap.inspection, "sftp_command",
+        lambda *_args: ["sftp", "node-one"],
+    )
+
+    def run_command(*_args, **_kwargs):
+        if failure == "timeout":
+            raise bootstrap_readiness.CommandTimeout("session timeout")
+        return (255 if failure == "transport-status" else 1), b""
+
+    monkeypatch.setattr(bootstrap_readiness, "run_command", run_command)
+    error = (bootstrap_readiness.SshTransportError
+             if expected == "transport" else controller.bootstrap.BootstrapError)
+
+    with pytest.raises(error):
+        controller.bootstrap._sftp(inputs, {})
+
+
+@pytest.mark.parametrize(("failure", "expected"), [
+    ("timeout", "transport"),
+    ("transport-status", "transport"),
+    ("semantic-status", "semantic"),
+])
+def test_recovery_foundation_classifies_transport_and_semantic_failures(
+        controller, monkeypatch, failure, expected):
+    import bootstrap_readiness
+
+    def run_command(*_args, **_kwargs):
+        if failure == "timeout":
+            raise bootstrap_readiness.CommandTimeout("session timeout")
+        return (255 if failure == "transport-status" else 1), b""
+
+    monkeypatch.setattr(controller.deploy, "run_command", run_command)
+    error = (bootstrap_readiness.SshTransportError
+             if expected == "transport" else controller.deploy.DeployError)
+
+    with pytest.raises(error):
+        controller.deploy.require_recovery_foundation(
+            ["ssh", "node-one"], "a" * 64, {},
+        )
 
 
 def test_controller_loss_refuses_stale_recovery_invocation(controller):
@@ -334,6 +437,239 @@ def test_controller_loss_refuses_stale_recovery_invocation(controller):
         )
 
     assert not any(event[0] == "public-ssh-sftp-preinstall" for event in runtime.events)
+
+
+@pytest.mark.parametrize("error_factory", [
+    lambda _controller: __import__("bootstrap_readiness").SshTransportError("transport-unavailable"),
+])
+def test_reboot_retries_transient_readiness_errors_before_recovery(
+        controller, error_factory):
+    class TransientStatusRuntime(ScenarioRuntime):
+        def __init__(self):
+            super().__init__("reboot")
+            self.status_attempts = 0
+
+        def recovered_status(self, inputs):
+            self.status_attempts += 1
+            self.events.append(("recovery", inputs.name, self.status_attempts))
+            if self.status_attempts == 1:
+                raise error_factory(controller)
+            return "idle"
+
+    runtime = TransientStatusRuntime()
+    generations = iter([SimpleNamespace(name="first"), SimpleNamespace(name="second")])
+
+    @contextmanager
+    def fresh_inputs():
+        yield next(generations)
+
+    result = controller.run_scenario(
+        "reboot", SimpleNamespace(name="initial"), "tskey-auth-fixture_key",
+        fresh_inputs=fresh_inputs, runtime=runtime,
+    )
+
+    assert result["status"] == "passed"
+    assert runtime.status_attempts == 2
+    assert [event for event in runtime.events if event[0] == "sleep"] == [
+        ("sleep", controller.RECOVERY_POLL_SECONDS),
+    ]
+    assert ("public-ssh-sftp-preinstall", "second") in runtime.events
+
+
+def test_controller_loss_retries_transient_public_postconditions(controller):
+    class TransientPostconditionsRuntime(ScenarioRuntime):
+        def __init__(self):
+            super().__init__("controller-loss")
+            self.postcondition_attempts = 0
+
+        def postconditions(self, inputs):
+            self.postcondition_attempts += 1
+            self.events.append(("public-ssh-sftp-preinstall", inputs.name))
+            if self.postcondition_attempts == 1:
+                raise __import__("bootstrap_readiness").SshTransportError("transport-unavailable")
+
+    runtime = TransientPostconditionsRuntime()
+    runtime.recovery = ["idle", "idle"]
+    generations = iter([SimpleNamespace(name="first"), SimpleNamespace(name="second")])
+
+    @contextmanager
+    def fresh_inputs():
+        yield next(generations)
+
+    result = controller.run_scenario(
+        "controller-loss", SimpleNamespace(name="initial"), "tskey-auth-fixture_key",
+        fresh_inputs=fresh_inputs, runtime=runtime,
+    )
+
+    assert result["status"] == "passed"
+    assert runtime.postcondition_attempts == 2
+    assert [event for event in runtime.events if event[0] == "sleep"][-1] == (
+        "sleep", controller.RECOVERY_POLL_SECONDS,
+    )
+    assert [event for event in runtime.events if event[0] == "final-guard"] == [
+        ("final-guard", "second"),
+    ]
+
+
+@pytest.mark.parametrize("error_factory", [
+    lambda _controller: __import__("bootstrap_readiness").SshTransportError("transport-unavailable"),
+])
+def test_reboot_bounds_transient_readiness_retries(controller, error_factory):
+    class UnavailableStatusRuntime(ScenarioRuntime):
+        def __init__(self):
+            super().__init__("reboot")
+            self.status_attempts = 0
+
+        def recovered_status(self, inputs):
+            self.status_attempts += 1
+            raise error_factory(controller)
+
+    runtime = UnavailableStatusRuntime()
+    generations = iter(SimpleNamespace(name=f"attempt-{number}")
+                       for number in range(controller.RECOVERY_ATTEMPTS))
+
+    @contextmanager
+    def fresh_inputs():
+        yield next(generations)
+
+    with pytest.raises(controller.RecoveryError, match="recovery-postconditions-timeout"):
+        controller.run_scenario(
+            "reboot", SimpleNamespace(name="initial"), "tskey-auth-fixture_key",
+            fresh_inputs=fresh_inputs, runtime=runtime,
+        )
+
+    assert runtime.status_attempts == controller.RECOVERY_ATTEMPTS
+    assert [event for event in runtime.events if event[0] == "sleep"] == [
+        ("sleep", controller.RECOVERY_POLL_SECONDS),
+    ] * (controller.RECOVERY_ATTEMPTS - 1)
+
+
+def test_reboot_does_not_retry_semantic_recovery_error(controller):
+    class RefusingStatusRuntime(ScenarioRuntime):
+        def __init__(self):
+            super().__init__("reboot")
+            self.status_attempts = 0
+
+        def recovered_status(self, inputs):
+            self.status_attempts += 1
+            raise controller.RecoveryError("recovery-status-refused")
+
+    runtime = RefusingStatusRuntime()
+    opened = []
+
+    @contextmanager
+    def fresh_inputs():
+        opened.append("attempt")
+        yield SimpleNamespace(name="first")
+
+    with pytest.raises(controller.RecoveryError, match="recovery-status-refused"):
+        controller.run_scenario(
+            "reboot", SimpleNamespace(name="initial"), "tskey-auth-fixture_key",
+            fresh_inputs=fresh_inputs, runtime=runtime,
+        )
+
+    assert runtime.status_attempts == 1
+    assert opened == ["attempt"]
+    assert not any(event[0] == "sleep" for event in runtime.events)
+
+
+def test_reboot_does_not_retry_semantic_remote_refusal(controller):
+    class RefusingStatusRuntime(ScenarioRuntime):
+        def __init__(self):
+            super().__init__("reboot")
+            self.status_attempts = 0
+
+        def recovered_status(self, inputs):
+            self.status_attempts += 1
+            raise controller.bootstrap.BootstrapError("bootstrap-remote-refused")
+
+    runtime = RefusingStatusRuntime()
+    opened = []
+
+    @contextmanager
+    def fresh_inputs():
+        opened.append("attempt")
+        yield SimpleNamespace(name="first")
+
+    with pytest.raises(controller.bootstrap.BootstrapError, match="bootstrap-remote-refused"):
+        controller.run_scenario(
+            "reboot", SimpleNamespace(name="initial"), "tskey-auth-fixture_key",
+            fresh_inputs=fresh_inputs, runtime=runtime,
+        )
+
+    assert runtime.status_attempts == 1
+    assert opened == ["attempt"]
+    assert not any(event[0] == "sleep" for event in runtime.events)
+
+
+def test_reboot_continues_after_final_readiness_transport_failure_without_rebooting(
+        controller):
+    class FinalReadinessRuntime(ScenarioRuntime):
+        def __init__(self):
+            super().__init__("reboot")
+            self.status_attempts = 0
+
+        def wait_after_reboot(self, inputs):
+            self.wait_attempts += 1
+            self.events.append(("wait-after-reboot", inputs.name))
+            raise __import__("bootstrap_readiness").SshTransportError("session timeout")
+
+        def recovered_status(self, inputs):
+            self.status_attempts += 1
+            self.events.append(("recovery", inputs.name))
+            return "idle"
+
+    runtime = FinalReadinessRuntime()
+    runtime.wait_attempts = 0
+    generations = iter([SimpleNamespace(name="first"), SimpleNamespace(name="fresh")])
+
+    @contextmanager
+    def fresh_inputs():
+        yield next(generations)
+
+    result = controller.run_scenario(
+        "reboot", SimpleNamespace(name="initial"), "tskey-auth-fixture_key",
+        fresh_inputs=fresh_inputs, runtime=runtime,
+    )
+
+    assert result["status"] == "passed"
+    assert [event for event in runtime.events if event[0] == "reboot"] == [
+        ("reboot", "initial"),
+    ]
+    assert runtime.wait_attempts == 1
+    assert runtime.status_attempts == 1
+    assert ("public-ssh-sftp-preinstall", "fresh") in runtime.events
+
+
+@pytest.mark.parametrize("reason", [
+    "cloud-init error",
+    "bootstrap marker missing",
+    "cloud-init status unavailable",
+])
+def test_reboot_does_not_retry_semantic_readiness_error(controller, reason):
+    class RefusingStatusRuntime(ScenarioRuntime):
+        def __init__(self):
+            super().__init__("reboot")
+            self.status_attempts = 0
+
+        def recovered_status(self, inputs):
+            self.status_attempts += 1
+            raise __import__("bootstrap_readiness").ReadinessError(reason)
+
+    runtime = RefusingStatusRuntime()
+
+    @contextmanager
+    def fresh_inputs():
+        yield SimpleNamespace(name="first")
+
+    with pytest.raises(__import__("bootstrap_readiness").ReadinessError, match=reason):
+        controller.run_scenario(
+            "reboot", SimpleNamespace(name="initial"), "tskey-auth-fixture_key",
+            fresh_inputs=fresh_inputs, runtime=runtime,
+        )
+
+    assert runtime.status_attempts == 1
+    assert not any(event[0] == "sleep" for event in runtime.events)
 
 
 def test_reboot_accepts_only_changed_boot_with_both_current_boot_units(controller, monkeypatch):

@@ -277,7 +277,7 @@ print(json.dumps({'units':units},sort_keys=True))
             time.sleep(min(0.2, remaining))
 
     def reboot(self, inputs):
-        from bootstrap_readiness import ReadinessError, run_command, wait_for_bootstrap
+        from bootstrap_readiness import ReadinessError, run_command
         self._guard(inputs)
         command = [*inputs.ssh[:-1], "sudo -n /usr/bin/systemctl reboot --no-wall"]
         try:
@@ -302,6 +302,10 @@ print(json.dumps({'units':units},sort_keys=True))
             self.sleep(2)
         if not down:
             raise RecoveryError("recovery-reboot-unobserved")
+
+    def wait_after_reboot(self, inputs):
+        from bootstrap_readiness import wait_for_bootstrap
+        self._guard(inputs)
         wait_for_bootstrap(
             inputs.ssh[:-1], environment=inputs.environment, first_boot=True,
         )
@@ -449,30 +453,40 @@ def run_scenario(scenario, inputs, auth_key, *, fresh_inputs, runtime):
         previous_boot = runtime.boot_id(inputs)
         runtime.reboot(inputs)
 
+    from bootstrap_readiness import SshTransportError
+
     recovered = None
+    transient_failure = False
     for attempt in range(RECOVERY_ATTEMPTS):
-        with fresh_inputs() as candidate:
-            status = runtime.recovered_status(candidate)
-            if status == "idle":
-                if (scenario == "controller-loss"
-                        and not runtime.autonomous_recovery(
-                            candidate, (recovery_baseline, pending_recovery))):
-                    raise RecoveryError("recovery-autonomous-proof-failed")
-                if scenario == "reboot":
-                    if previous_boot is None:
-                        raise RecoveryError("recovery-previous-boot-missing")
-                    if not runtime.reboot_recovery(candidate, previous_boot):
-                        raise RecoveryError("recovery-current-boot-proof-failed")
-                runtime.postconditions(candidate)
-                runtime.final_guard(candidate)
-                recovered = candidate
-                break
-            if status not in {"pending", "expired", "rolling_back", "firewall_restored"}:
-                raise RecoveryError("recovery-status-refused")
+        try:
+            with fresh_inputs() as candidate:
+                if scenario == "reboot" and attempt == 0:
+                    runtime.wait_after_reboot(candidate)
+                status = runtime.recovered_status(candidate)
+                if status == "idle":
+                    if (scenario == "controller-loss"
+                            and not runtime.autonomous_recovery(
+                                candidate, (recovery_baseline, pending_recovery))):
+                        raise RecoveryError("recovery-autonomous-proof-failed")
+                    if scenario == "reboot":
+                        if previous_boot is None:
+                            raise RecoveryError("recovery-previous-boot-missing")
+                        if not runtime.reboot_recovery(candidate, previous_boot):
+                            raise RecoveryError("recovery-current-boot-proof-failed")
+                    runtime.postconditions(candidate)
+                    runtime.final_guard(candidate)
+                    recovered = candidate
+                    break
+                if status not in {"pending", "expired", "rolling_back", "firewall_restored"}:
+                    raise RecoveryError("recovery-status-refused")
+        except SshTransportError:
+            transient_failure = True
         if attempt + 1 < RECOVERY_ATTEMPTS:
             runtime.sleep(RECOVERY_POLL_SECONDS)
     if recovered is None:
-        raise RecoveryError("recovery-timeout")
+        raise RecoveryError(
+            "recovery-postconditions-timeout" if transient_failure else "recovery-timeout"
+        )
 
     return {
         "schema_version": 1,

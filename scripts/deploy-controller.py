@@ -15,7 +15,8 @@ import tempfile
 import yaml
 
 import fleet_inspection
-from bootstrap_readiness import ReadinessError, cancellation, run_command, wait_for_bootstrap
+from bootstrap_readiness import (CommandTimeout, ReadinessError, SshTransportError,
+                                 cancellation, run_command, wait_for_bootstrap)
 from sshd_bundle_source import BundleSourceError, bundle_manifest
 from sshd_contexts import ContextError, bind_contexts
 from sshd_transaction_limits import TRANSACTION_TIMEOUT_SECONDS
@@ -277,10 +278,20 @@ def require_recovery_foundation(command, generation, environment):
         raise DeployError("SSH recovery foundation unavailable")
     remote = RECOVERY_PREFLIGHT.replace("__EXPECTED_GENERATION__", generation).replace(
         "__STATUS_VALIDATOR__", shlex.quote(RECOVERY_STATUS_VALIDATOR))
+    remote = (
+        "(\n" + remote + "\n)\n"
+        "status=$?\n"
+        "if [ \"$status\" -eq 0 ]; then exit 0; fi\n"
+        "exit 42"
+    )
     try:
         status, _output = run_command([*command[:-1], remote], environment=environment, timeout=45)
+    except CommandTimeout:
+        raise SshTransportError("SSH recovery foundation transport failure") from None
     except ReadinessError:
         raise DeployError("SSH recovery foundation unavailable") from None
+    if status == 255:
+        raise SshTransportError("SSH recovery foundation transport failure")
     if status:
         raise DeployError("SSH recovery foundation unavailable")
 
