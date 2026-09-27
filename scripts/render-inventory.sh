@@ -16,9 +16,10 @@
 # fail_closed, echo, or server and are emitted as host vars beside the exact
 # Terraform listener contract.
 #   HOSTS="scaleway:prod,vultr:prod" AWG_EVIDENCE_MODES="echo,server" ./scripts/render-inventory.sh
-# Restricted Tailnet SSH transport: optional TAILNET_TRANSPORTS has one
-# Tailscale IPv4 or '-' per HOSTS item. Terraform still owns service addresses.
-#   HOSTS="upcloud:staging" TAILNET_TRANSPORTS="100.64.0.42" ./scripts/render-inventory.sh
+# Restricted Tailnet SSH transport: optional TAILNET_HANDOFFS has one private
+# bootstrap handoff path or '-' per HOSTS item. Terraform still owns service
+# addresses; the renderer accepts only the handoff's confirmed Tailscale address.
+#   HOSTS="upcloud:staging" TAILNET_HANDOFFS="/private/path/handoff.json" ./scripts/render-inventory.sh
 # Central observability topology is opt-in and requires all three variables.
 # HOST_CLASSES and FAILURE_DOMAINS have one entry per HOSTS item. Use `-` as
 # the COHORTS placeholder for non-VPN hosts. Sentinels are technical identities
@@ -51,7 +52,7 @@ fi
 IFS=',' read -r -a host_pairs <<< "$HOST_LIST"
 IFS=',' read -r -a cohort_list <<< "${COHORTS:-}"
 IFS=',' read -r -a awg_evidence_mode_list <<< "${AWG_EVIDENCE_MODES:-}"
-IFS=',' read -r -a tailnet_transport_list <<< "${TAILNET_TRANSPORTS:-}"
+IFS=',' read -r -a tailnet_handoff_list <<< "${TAILNET_HANDOFFS:-}"
 IFS=',' read -r -a observability_host_class_list <<< "${OBSERVABILITY_HOST_CLASSES:-}"
 IFS=',' read -r -a observability_failure_domain_list <<< "${OBSERVABILITY_FAILURE_DOMAINS:-}"
 
@@ -113,26 +114,26 @@ if [[ -n "${AWG_EVIDENCE_MODES:-}" && ${#awg_evidence_mode_list[@]} -ne ${#host_
   exit 1
 fi
 
-if [[ -n "${TAILNET_TRANSPORTS:-}" ]] && ! python3 - "$TAILNET_TRANSPORTS" "${#host_pairs[@]}" <<'PY'
-import ipaddress
+if [[ -n "${TAILNET_TRANSPORTS:-}" ]]; then
+  echo "TAILNET_TRANSPORTS is unsupported; use private TAILNET_HANDOFFS" >&2
+  exit 1
+fi
+
+if [[ -n "${TAILNET_HANDOFFS:-}" ]] && ! python3 - "$TAILNET_HANDOFFS" "${#host_pairs[@]}" <<'PY'
+from pathlib import Path
 import sys
 
 items = sys.argv[1].split(",")
-network = ipaddress.ip_network("100.64.0.0/10")
 if len(items) != int(sys.argv[2]):
     raise SystemExit(1)
 for item in items:
     if item == "-":
         continue
-    try:
-        address = ipaddress.ip_address(item)
-    except ValueError:
+    if not item or not Path(item).is_absolute():
         raise SystemExit(1) from None
-    if address not in network:
-        raise SystemExit(1)
 PY
 then
-  echo "TAILNET_TRANSPORTS must contain one Tailscale IPv4 or '-' per host" >&2
+  echo "TAILNET_HANDOFFS must contain one absolute private handoff path or '-' per host" >&2
   exit 1
 fi
 
@@ -194,6 +195,150 @@ confirm_vultr_guest_ipv4() {
   return 1
 }
 
+confirmed_tailnet_transport() {
+  local handoff="$1"
+  local expected_alias="$2"
+  local expected_public="$3"
+  local expected_port="$4"
+  python3 - "$handoff" "$expected_alias" "$expected_public" "$expected_port" <<'PY'
+import hashlib
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import sys
+from uuid import UUID
+
+
+def reject():
+    raise SystemExit(1)
+
+
+def unique(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            reject()
+        value[key] = item
+    return value
+
+
+path = Path(sys.argv[1])
+try:
+    if not path.is_absolute():
+        reject()
+    for parent in reversed(path.parents):
+        info = parent.lstat()
+        sticky_root = info.st_uid == 0 and info.st_mode & stat.S_ISVTX
+        if (info.st_uid not in (0, os.geteuid())
+                or (not stat.S_ISLNK(info.st_mode) and info.st_mode & 0o022 and not sticky_root)):
+            reject()
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_nlink != 1 or stat.S_IMODE(info.st_mode) != 0o600):
+            reject()
+        canonical_fd = os.open(path.resolve(strict=True), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            canonical_info = os.fstat(canonical_fd)
+            if (info.st_dev, info.st_ino) != (canonical_info.st_dev, canonical_info.st_ino):
+                reject()
+        finally:
+            os.close(canonical_fd)
+        raw = stream.read(65537)
+    if not raw or len(raw) > 65536:
+        reject()
+    document = json.loads(raw, object_pairs_hook=unique)
+    if (not isinstance(document, dict)
+            or set(document) != {"schema_version", "status", "binding", "confirmation", "contexts"}
+            or type(document["schema_version"]) is not int or document["schema_version"] != 1
+            or document["status"] != "configured"):
+        reject()
+    binding = document["binding"]
+    binding_fields = {"inventory_alias", "public_address", "ssh_port", "public_sources",
+                      "approved_sources", "host_key_sha256", "source_revision", "deployable_digest"}
+    if (not isinstance(binding, dict) or set(binding) != binding_fields
+            or binding["inventory_alias"] != sys.argv[2]
+            or binding["public_address"] != sys.argv[3]
+            or type(binding["ssh_port"]) is not int or binding["ssh_port"] != int(sys.argv[4])):
+        reject()
+    if (not re.fullmatch(r"[0-9a-f]{64}", binding["host_key_sha256"])
+            or not re.fullmatch(r"[0-9a-f]{40}", binding["source_revision"])
+            or not re.fullmatch(r"[0-9a-f]{64}", binding["deployable_digest"])):
+        reject()
+    for name in ("public_sources", "approved_sources"):
+        sources = binding[name]
+        if (not isinstance(sources, list) or not 1 <= len(sources) <= 8
+                or len(set(sources)) != len(sources)):
+            reject()
+        for source in sources:
+            address = ipaddress.ip_address(source)
+            if str(address) != source:
+                reject()
+            in_tailnet = address in (ipaddress.ip_network("100.64.0.0/10")
+                                     if address.version == 4 else ipaddress.ip_network("fd7a:115c:a1e0::/48"))
+            if (name == "approved_sources") != in_tailnet:
+                reject()
+    confirmation = document["confirmation"]
+    if (not isinstance(confirmation, dict)
+            or set(confirmation) != {"status", "changed", "nonce", "generation", "binding_sha256", "lease", "node"}
+            or confirmation["status"] != "configured" or confirmation["changed"] is not False
+            or not re.fullmatch(r"[0-9a-f]{32}", confirmation["nonce"])
+            or confirmation["generation"] != "tailnet-recovery-v3"):
+        reject()
+    canonical = (json.dumps(binding, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    if confirmation["binding_sha256"] != hashlib.sha256(canonical).hexdigest():
+        reject()
+    lease = confirmation["lease"]
+    if (not isinstance(lease, dict) or set(lease) != {"boot_id", "started_ms", "deadline_ms"}
+            or str(UUID(lease["boot_id"])) != lease["boot_id"]
+            or type(lease["started_ms"]) is not int or lease["started_ms"] < 0
+            or type(lease["deadline_ms"]) is not int
+            or lease["deadline_ms"] - lease["started_ms"] != 300000):
+        reject()
+    node = confirmation["node"]
+    if (not isinstance(node, dict) or set(node) != {"id", "hostname", "ipv4", "ipv6"}
+            or not re.fullmatch(r"[A-Za-z0-9:_-]{1,128}", node["id"])
+            or node["hostname"] != "vpn-enroll-" + confirmation["nonce"]):
+        reject()
+    management = ipaddress.ip_address(node["ipv4"])
+    management_v6 = ipaddress.ip_address(node["ipv6"])
+    if (str(management) != node["ipv4"] or management not in ipaddress.ip_network("100.64.0.0/10")
+            or str(management_v6) != node["ipv6"] or management_v6 not in ipaddress.ip_network("fd7a:115c:a1e0::/48")):
+        reject()
+    contexts = document["contexts"]
+    if not isinstance(contexts, list) or len(contexts) != 2:
+        reject()
+    local_addresses = set()
+    for context in contexts:
+        if (not isinstance(context, dict)
+                or set(context) != {"user", "host", "addr", "laddr", "lport"}
+                or not isinstance(context["user"], str)
+                or not isinstance(context["host"], str) or context["host"] != context["addr"]
+                or type(context["lport"]) is not int or context["lport"] != binding["ssh_port"]):
+            reject()
+        remote = ipaddress.ip_address(context["addr"])
+        local = ipaddress.ip_address(context["laddr"])
+        if remote.version != local.version:
+            reject()
+        allowed = binding["public_sources"] if context["laddr"] == binding["public_address"] else binding["approved_sources"]
+        if context["addr"] not in allowed:
+            reject()
+        local_addresses.add(context["laddr"])
+    management_addresses = local_addresses - {binding["public_address"]}
+    if (len(management_addresses) != 1
+            or not management_addresses <= {node["ipv4"], node["ipv6"]}
+            or binding["public_address"] not in local_addresses):
+        reject()
+    print(next(iter(management_addresses)))
+except (OSError, ValueError, TypeError, KeyError, UnicodeError):
+    reject()
+PY
+}
+
 for i in "${!host_pairs[@]}"; do
   pair="${host_pairs[$i]}"
   prov="${pair%:*}"
@@ -235,9 +380,12 @@ for i in "${!host_pairs[@]}"; do
   fi
   # Keep the Terraform-owned public service endpoint independent from the
   # selected SSH transport; data-plane probes always use the public address.
-  transport_ip="${tailnet_transport_list[$i]:--}"
-  if [[ "$transport_ip" == "-" ]]; then
+  handoff="${tailnet_handoff_list[$i]:--}"
+  if [[ "$handoff" == "-" ]]; then
     transport_ip="$ip"
+  elif ! transport_ip="$(confirmed_tailnet_transport "$handoff" "$hostname" "$ip" "$ssh_port")"; then
+    echo "refusing unbound or unsafe confirmed Tailnet handoff for ${prov}:${env}" >&2
+    exit 1
   fi
   host_class="vpn"
   failure_domain=""

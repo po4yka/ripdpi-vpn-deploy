@@ -139,9 +139,9 @@ migration implicitly.
 
 #### Scenario: Controller public address changes after bootstrap
 
-- **WHEN** the operator renders one node with its confirmed Tailnet IPv4 as the SSH transport
-- **THEN** Ansible uses that address while the Terraform public service address remains distinct, allowing normal firewall convergence to restore the public SSH source.
-- **AND** a malformed, non-Tailnet, or wrong-length transport list refuses before Terraform access and preserves the previously rendered inventory.
+- **WHEN** the operator renders one node with its private confirmed bootstrap handoff
+- **THEN** the renderer binds the handoff digest, alias, public address, SSH port and external path contexts to the selected Terraform node, then uses only the Tailnet IPv4 or IPv6 whose path was actually confirmed while the Terraform public service address remains distinct.
+- **AND** a malformed or wrong-length handoff path list refuses before Terraform access; an unsafe, unconfirmed, non-Tailnet or node-mismatched handoff refuses before publication and preserves the previously rendered inventory.
 
 #### Scenario: Deploy receives a new enrollment capability
 
@@ -152,6 +152,16 @@ migration implicitly.
 
 - **WHEN** ordinary deployment cannot prove required VPN profiles
 - **THEN** deployment fails under its existing rollback contract and bootstrap evidence cannot satisfy that gate.
+
+#### Scenario: AWG protocol proof resolves a hostname in its namespace
+
+- **WHEN** ordinary deployment validates the required AWG profile with a hostname probe
+- **THEN** the sentinel uses the validated role-profile IPv4 DNS servers through a private resolver file for the generated network namespace and removes the resolver file and directory on success, failure, or partial creation.
+
+#### Scenario: Provider examples drive listener parity
+
+- **WHEN** an operator starts from any tracked production or staging provider example
+- **THEN** its public listener contract includes nginx's TCP/80 redirect listener as well as the enabled VPN listeners, so ordinary deployment can reach protocol proof without a known example-contract mismatch.
 
 ### Requirement: REQ-TFB-ACCEPTANCE — Positive runtime behavior is required for delivery
 

@@ -33,9 +33,12 @@ opt-out flag.
 
 **Inventory inputs fail before publication** — nonempty cohort slugs must name an existing `group_vars/vpn-*.yml` profile, and host aliases must be unique across provider/environment pairs. Reject malformed profiles before Terraform calls and preserve the last valid inventory on either failure.
 
-**Tailnet inventory transport is explicit** — `TAILNET_TRANSPORTS` accepts one
-Tailscale IPv4 or `-` per selected Terraform host. The renderer validates the
-complete list before Terraform calls and changes only `ansible_host`; the
+**Tailnet inventory transport is confirmed** — `TAILNET_HANDOFFS` accepts one
+private mode-0600 bootstrap handoff path or `-` per selected Terraform host.
+The renderer validates the complete path list before Terraform calls, then
+binds each handoff to the Terraform alias, public address, SSH port,
+confirmation digest and actually proven Tailnet address family before changing
+only `ansible_host`; the
 Terraform public service address and listener contract remain authoritative.
 `fleet_inspection.select_hosts` uses `vpn_service_address` as the public
 identity and `ansible_host` as the transport; a distinct Tailnet transport

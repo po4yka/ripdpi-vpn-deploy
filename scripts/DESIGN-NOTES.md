@@ -54,10 +54,12 @@ pre-write checkpoint reloads that manifest semantically, so a run that crosses
 **Vultr secondary IPv4 inventory is live-gated** — Terraform output proves allocation only. `render-inventory.sh` polls the primary SSH endpoint and publishes `honeypot_listen_addr` only after the exact IPv4 appears on a guest interface.
 
 **Tailnet transport remains node-scoped** — after external bootstrap proof,
-render inventory with `TAILNET_TRANSPORTS` aligned to `HOSTS` (`-` retains the
-public SSH endpoint). Only Tailscale IPv4 addresses in `100.64.0.0/10` are
-accepted. The Terraform public address still drives VPN probes and the SSH
-transaction's distinct public path; host keys and socket contexts stay pinned.
+render inventory with private `TAILNET_HANDOFFS` aligned to `HOSTS` (`-`
+retains the public SSH endpoint). The renderer derives the transport only from
+the confirmed node-bound handoff after validating its binding digest and
+public/Tailnet socket contexts. The Terraform public address still drives VPN
+probes and the SSH transaction's distinct public path; host keys and socket
+contexts stay pinned.
 
 ## Provider control plane, destroy, and staging cleanup — `destroy.sh`, `check-vultr-control-plane.py`, `ci-staging-*`
 

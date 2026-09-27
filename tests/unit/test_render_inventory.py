@@ -10,6 +10,7 @@ stdout.  We capture stdout for the comparison.
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
 import stat
@@ -557,6 +558,67 @@ def _isolated_inventory_repo(tmp_path):
     return root, env
 
 
+def _tailnet_handoff(tmp_path, *, alias="vpn-test.example.com",
+                     public_address="198.51.100.10", ssh_port=2222,
+                     management_address="100.64.0.42"):
+    management_source = "100.64.0.10" if ":" not in management_address else "fd7a:115c:a1e0::10"
+    binding = {
+        "inventory_alias": alias,
+        "public_address": public_address,
+        "ssh_port": ssh_port,
+        "public_sources": ["192.0.2.10"],
+        "approved_sources": [management_source],
+        "host_key_sha256": "a" * 64,
+        "source_revision": "b" * 40,
+        "deployable_digest": "c" * 64,
+    }
+    canonical = (json.dumps(binding, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    nonce = "d" * 32
+    handoff = {
+        "schema_version": 1,
+        "status": "configured",
+        "binding": binding,
+        "confirmation": {
+            "status": "configured",
+            "changed": False,
+            "nonce": nonce,
+            "generation": "tailnet-recovery-v3",
+            "binding_sha256": hashlib.sha256(canonical).hexdigest(),
+            "lease": {
+                "boot_id": "12345678-1234-4234-9234-123456789abc",
+                "started_ms": 1000,
+                "deadline_ms": 301000,
+            },
+            "node": {
+                "id": "node-id",
+                "hostname": "vpn-enroll-" + nonce,
+                "ipv4": "100.64.0.42",
+                "ipv6": "fd7a:115c:a1e0::42",
+            },
+        },
+        "contexts": [
+            {
+                "user": "deploy",
+                "host": "192.0.2.10",
+                "addr": "192.0.2.10",
+                "laddr": public_address,
+                "lport": ssh_port,
+            },
+            {
+                "user": "deploy",
+                "host": management_source,
+                "addr": management_source,
+                "laddr": management_address,
+                "lport": ssh_port,
+            },
+        ],
+    }
+    path = tmp_path / "tailnet-handoff.json"
+    path.write_text(json.dumps(handoff), encoding="utf-8")
+    path.chmod(0o600)
+    return path
+
+
 @pytest.mark.parametrize("cohort", ["missing", "../p0", "p0]"])
 def test_unknown_cohort_fails_before_terraform_and_preserves_inventory(tmp_path, cohort):
     root, env = _isolated_inventory_repo(tmp_path)
@@ -590,7 +652,7 @@ def test_tailnet_transport_keeps_terraform_public_service_address(tmp_path):
     key.write_text("test-only-key")
     key.chmod(0o600)
     env["ANSIBLE_SSH_PRIVATE_KEY_FILE"] = str(key)
-    env["TAILNET_TRANSPORTS"] = "100.64.0.42"
+    env["TAILNET_HANDOFFS"] = str(_tailnet_handoff(tmp_path))
     result = subprocess.run(
         ["bash", str(root / "scripts/render-inventory.sh")],
         env=env, capture_output=True, text=True, timeout=20,
@@ -607,7 +669,7 @@ def test_tailnet_transport_keeps_terraform_public_service_address(tmp_path):
     assert host["transport"] == "100.64.0.42"
     assert host["alias"] == "198.51.100.10"
 
-    env["TAILNET_TRANSPORTS"] = "-"
+    env["TAILNET_HANDOFFS"] = "-"
     public = subprocess.run(
         ["bash", str(root / "scripts/render-inventory.sh")],
         env=env, capture_output=True, text=True, timeout=20,
@@ -616,17 +678,66 @@ def test_tailnet_transport_keeps_terraform_public_service_address(tmp_path):
     assert "ansible_host=198.51.100.10" in (root / "ansible/inventory/generated.ini").read_text()
 
 
-@pytest.mark.parametrize("transport", [
-    "8.8.8.8", "100.64.0.42 bad", "100.64.0.42,100.64.0.43", "100.64.0.42,",
-])
-def test_invalid_tailnet_transport_preserves_inventory_before_terraform(tmp_path, transport):
+def test_tailnet_ipv6_proof_selects_confirmed_management_transport(tmp_path):
     root, env = _isolated_inventory_repo(tmp_path)
-    env["TAILNET_TRANSPORTS"] = transport
+    handoff = _tailnet_handoff(tmp_path, management_address="fd7a:115c:a1e0::42")
+    env["TAILNET_HANDOFFS"] = str(handoff)
+    result = subprocess.run(
+        ["bash", str(root / "scripts/render-inventory.sh")],
+        env=env, capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    inventory = (root / "ansible/inventory/generated.ini").read_text()
+    assert "ansible_host=fd7a:115c:a1e0::42" in inventory
+    assert "vpn_service_address=198.51.100.10" in inventory
+
+
+@pytest.mark.parametrize("handoff", [
+    "relative.json", "relative path.json", "/one.json,/two.json", "/one.json,",
+])
+def test_invalid_tailnet_handoff_list_preserves_inventory_before_terraform(tmp_path, handoff):
+    root, env = _isolated_inventory_repo(tmp_path)
+    env["TAILNET_HANDOFFS"] = handoff
     result = subprocess.run(
         ["bash", str(root / "scripts/render-inventory.sh")],
         env=env, capture_output=True, text=True, timeout=10,
     )
     assert result.returncode != 0
-    assert "TAILNET_TRANSPORTS" in result.stderr
+    assert "TAILNET_HANDOFFS" in result.stderr
     assert not Path(env["STUB_LOG"]).exists()
+    assert (root / "ansible/inventory/generated.ini").read_text() == "last-good\n"
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("alias", "other.example.com"),
+    ("public_address", "198.51.100.11"),
+    ("ssh_port", 22),
+    ("management_address", "100.128.0.1"),
+])
+def test_tailnet_handoff_mismatch_preserves_inventory(tmp_path, field, value):
+    root, env = _isolated_inventory_repo(tmp_path)
+    handoff = _tailnet_handoff(tmp_path, **{field: value})
+    env["TAILNET_HANDOFFS"] = str(handoff)
+    result = subprocess.run(
+        ["bash", str(root / "scripts/render-inventory.sh")],
+        env=env, capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode != 0
+    assert "confirmed Tailnet handoff" in result.stderr
+    assert (root / "ansible/inventory/generated.ini").read_text() == "last-good\n"
+
+
+def test_tailnet_handoff_binding_digest_mismatch_preserves_inventory(tmp_path):
+    root, env = _isolated_inventory_repo(tmp_path)
+    handoff = _tailnet_handoff(tmp_path)
+    document = json.loads(handoff.read_text())
+    document["confirmation"]["binding_sha256"] = "0" * 64
+    handoff.write_text(json.dumps(document), encoding="utf-8")
+    env["TAILNET_HANDOFFS"] = str(handoff)
+    result = subprocess.run(
+        ["bash", str(root / "scripts/render-inventory.sh")],
+        env=env, capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode != 0
+    assert "confirmed Tailnet handoff" in result.stderr
     assert (root / "ansible/inventory/generated.ini").read_text() == "last-good\n"

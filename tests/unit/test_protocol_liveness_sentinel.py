@@ -941,6 +941,64 @@ def test_namespace_partial_creation_is_reconciled_without_deleting_collision(mon
     assert any(c[:3] == ["ip", "netns", "delete"] for c in calls) == (failure != "collision")
 
 
+def test_awg_resolver_directory_is_removed_when_mkdir_raises_after_creation(
+    monkeypatch, tmp_path
+):
+    spec = importlib.util.spec_from_file_location("sentinel_resolver_cleanup", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    resolver_root = tmp_path / "netns-resolv"
+    module.NETNS_RESOLV_ROOT = resolver_root
+    namespace_present = False
+    calls = []
+    original_mkdir = Path.mkdir
+
+    monkeypatch.setattr(module, "namespace_exists", lambda _name: namespace_present)
+    monkeypatch.setattr(
+        module.socket,
+        "getaddrinfo",
+        lambda *_a, **_k: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.9", 443))
+        ],
+    )
+
+    def run(command, **_kwargs):
+        nonlocal namespace_present
+        calls.append(command)
+        if command[:3] == ["ip", "link", "show"]:
+            return subprocess.CompletedProcess(command, 1, b"", b"")
+        if command[:3] == ["ip", "netns", "add"]:
+            namespace_present = True
+            return subprocess.CompletedProcess(command, 0, b"", b"")
+        if command[:3] == ["ip", "netns", "delete"]:
+            namespace_present = False
+            return subprocess.CompletedProcess(command, 0, b"", b"")
+        raise AssertionError("unexpected resolver fixture command")
+
+    def mkdir_then_fail(path, *args, **kwargs):
+        original_mkdir(path, *args, **kwargs)
+        if path.parent == resolver_root:
+            raise OSError("injected interruption after resolver mkdir")
+
+    monkeypatch.setattr(module.subprocess, "run", run)
+    monkeypatch.setattr(Path, "mkdir", mkdir_then_fail)
+    config = {
+        "probe_url": "https://probe.example/",
+        "amneziawg": {
+            "config": "/fixture",
+            "address": "10.66.66.2/32",
+            "dns_servers": ["1.1.1.1"],
+        },
+    }
+
+    result = module.probe_awg(config, True, {})
+
+    assert result["verdict"] == "error"
+    assert namespace_present is False
+    assert any(c[:3] == ["ip", "netns", "delete"] for c in calls)
+    assert list(resolver_root.iterdir()) == []
+
+
 def test_awg_validation_call_is_retained_without_an_unused_result():
     tree = ast.parse(SCRIPT.read_text())
     probe = next(

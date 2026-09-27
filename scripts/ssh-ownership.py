@@ -78,16 +78,20 @@ def _transport_status(controller, host, pin, environment, identity, status):
         controller.fresh_sftp(transport, pin, environment)
 
 
+def _require_source_identity(deploy, config, environment):
+    source = deploy.source_identity(ROOT, environment, require_clean=config["mode"] == "deploy")
+    if (source["DEPLOY_SOURCE_REVISION"] != config["source_revision"]
+            or source["DEPLOYABLE_SOURCE_DIGEST"] != config["deployable_digest"]):
+        raise OwnershipControllerError("source-changed")
+
+
 def execute(config_path, *, controller=None):
     deploy = _module("deploy-controller")
     controller = controller or _module("sshd-baseline-controller")
     config = _document(deploy.read_input(config_path, private=True, exact_mode=0o600, limit=8192))
     environment = {key: os.environ[key] for key in ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE")
                    if key in os.environ}
-    source = deploy.source_identity(ROOT, environment, require_clean=config["mode"] == "deploy")
-    if (source["DEPLOY_SOURCE_REVISION"] != config["source_revision"]
-            or source["DEPLOYABLE_SOURCE_DIGEST"] != config["deployable_digest"]):
-        raise OwnershipControllerError("source-changed")
+    _require_source_identity(deploy, config, environment)
     inventory, inventory_fence = deploy.read_fenced_input(config["inventory_path"])
     pin, pin_fence = deploy.read_fenced_input(config["known_hosts_path"])
     contexts_raw, contexts_fence = deploy.read_fenced_input(
@@ -116,12 +120,14 @@ def execute(config_path, *, controller=None):
         identity = controller._identity(receipt)
         controller._same_identity(receipt, identity, "prepared")
         try:
+            _require_source_identity(deploy, config, environment)
             applied = controller.transaction_rpc(host, pin_path, "apply", {
                 "generation": identity["generation"], "nonce": identity["nonce"]}, environment)
             controller._same_identity(applied, identity, "applied")
             _transport_status(controller, host, pin_path, environment, identity, "applied")
             current = controller.transaction_rpc(host, pin_path, "status", None, environment)
             controller._same_identity(current, identity, "applied")
+            _require_source_identity(deploy, config, environment)
             confirmed = controller.transaction_rpc(host, pin_path, "confirm", identity, environment)
             controller._same_identity(confirmed, identity, "committed")
         except BaseException:

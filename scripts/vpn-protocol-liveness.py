@@ -539,6 +539,7 @@ def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
     cleanup_failed = False
     resolv_directory = NETNS_RESOLV_ROOT / namespace
     resolver_created = False
+    resolver_creation_attempted = False
     try:
         awg_probe_url(config)
         dns_servers = awg_dns_servers(config)
@@ -558,7 +559,13 @@ def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
         root_stat = NETNS_RESOLV_ROOT.lstat()
         if not stat.S_ISDIR(root_stat.st_mode) or root_stat.st_uid != os.geteuid() or root_stat.st_mode & 0o022:
             raise ValueError("AWG resolver root unsafe")
-        resolv_directory.mkdir(mode=0o700)
+        resolver_creation_attempted = True
+        try:
+            resolv_directory.mkdir(mode=0o700)
+        except FileExistsError:
+            # A colliding directory was not created by this probe.
+            resolver_creation_attempted = False
+            raise
         resolver_created = True
         resolver_path = resolv_directory / "resolv.conf"
         fd = os.open(resolver_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
@@ -653,7 +660,9 @@ def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
                 cleanup_failed |= deleted.returncode != 0
             except (OSError, subprocess.TimeoutExpired):
                 cleanup_failed = True
-        if resolver_created:
+        if resolver_created or (
+            resolver_creation_attempted and os.path.lexists(resolv_directory)
+        ):
             try:
                 (resolv_directory / "resolv.conf").unlink(missing_ok=True)
                 resolv_directory.rmdir()

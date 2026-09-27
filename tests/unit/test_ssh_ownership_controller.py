@@ -124,6 +124,71 @@ def test_failed_management_sftp_rolls_back(configured, monkeypatch):
     assert "confirm" not in calls
 
 
+def test_source_drift_after_prepare_rolls_back_without_apply(configured, monkeypatch):
+    operator, controller, config, data, _ = configured
+    data["mode"] = "deploy"
+    config.write_text(json.dumps(data))
+    deploy = operator._module("deploy-controller")
+    calls = []
+    source_calls = 0
+    receipt = {"generation": "00000000-0000-4000-8000-000000000001",
+               "nonce": "d" * 64, "deadline": 999, "snapshot_digest": "e" * 64}
+
+    def source(*args, **kwargs):
+        nonlocal source_calls
+        source_calls += 1
+        if source_calls == 1:
+            return {"DEPLOY_SOURCE_REVISION": "a" * 40,
+                    "DEPLOYABLE_SOURCE_DIGEST": "b" * 64}
+        return {"DEPLOY_SOURCE_REVISION": "f" * 40,
+                "DEPLOYABLE_SOURCE_DIGEST": "0" * 64}
+
+    def rpc(host, pin, action, request, environment, **kwargs):
+        calls.append(action)
+        return receipt | {"status": {"prepare": "prepared", "rollback": "rolled_back"}[action]}
+
+    monkeypatch.setattr(deploy, "source_identity", source)
+    monkeypatch.setattr(controller, "transaction_rpc", rpc)
+    with pytest.raises(operator.OwnershipControllerError, match="source-changed"):
+        operator.execute(config)
+    assert source_calls == 2
+    assert calls == ["prepare", "rollback"]
+
+
+def test_source_drift_before_confirm_rolls_back_without_confirm(configured, monkeypatch):
+    operator, controller, config, data, _ = configured
+    data["mode"] = "deploy"
+    config.write_text(json.dumps(data))
+    deploy = operator._module("deploy-controller")
+    calls = []
+    source_calls = 0
+    receipt = {"generation": "00000000-0000-4000-8000-000000000001",
+               "nonce": "d" * 64, "deadline": 999, "snapshot_digest": "e" * 64}
+
+    def source(*args, **kwargs):
+        nonlocal source_calls
+        source_calls += 1
+        if source_calls < 3:
+            return {"DEPLOY_SOURCE_REVISION": "a" * 40,
+                    "DEPLOYABLE_SOURCE_DIGEST": "b" * 64}
+        return {"DEPLOY_SOURCE_REVISION": "f" * 40,
+                "DEPLOYABLE_SOURCE_DIGEST": "0" * 64}
+
+    def rpc(host, pin, action, request, environment, **kwargs):
+        calls.append(action)
+        return receipt | {"status": {"prepare": "prepared", "apply": "applied",
+                                    "status": "applied", "rollback": "rolled_back"}[action]}
+
+    monkeypatch.setattr(deploy, "source_identity", source)
+    monkeypatch.setattr(controller, "transaction_rpc", rpc)
+    monkeypatch.setattr(controller, "fresh_sftp", lambda *args: None)
+    with pytest.raises(operator.OwnershipControllerError, match="source-changed"):
+        operator.execute(config)
+    assert source_calls == 3
+    assert calls == ["prepare", "apply", "status", "status", "status", "rollback"]
+    assert "confirm" not in calls
+
+
 def test_unrelated_context_or_source_refuses_before_rpc(configured, monkeypatch):
     operator, controller, config, data, contexts = configured
     calls = []

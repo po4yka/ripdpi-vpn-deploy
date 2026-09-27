@@ -120,10 +120,13 @@ begins. Corrupt or foreign state remains for diagnosis. Pinned inert packages
 may remain after rollback, but the access-changing runtime policy is restored.
 
 After bootstrap, render the exact node with
-`TAILNET_TRANSPORTS=<confirmed-Tailscale-IPv4> make inventory`, using the
-handoff's actual management address and `contexts` in the reviewed inventory
-and `DEPLOY_SSH_CONTEXTS_FILE` mapping. For multiple hosts, supply one address
-or `-` per `HOSTS` entry. The renderer keeps Terraform's public service address
+`TAILNET_HANDOFFS=<private-bootstrap-handoff-path> make inventory`. For
+multiple hosts, supply one absolute handoff path or `-` per `HOSTS` entry. The
+renderer reads each mode-0600 handoff without following the final path,
+validates its confirmation digest and public/Tailnet socket contexts, binds it
+to the exact Terraform alias, public address and SSH port, and derives the
+management address whose IPv4 or IPv6 path was actually confirmed. It keeps
+Terraform's public service address
 separate. The handoff itself is not the deploy input schema. Keep the separate
 `DEPLOY_PROMOTION_CONFIG_FILE` required by
 [RUNBOOK-deploy.md](RUNBOOK-deploy.md); bootstrap does not satisfy protocol proof.
