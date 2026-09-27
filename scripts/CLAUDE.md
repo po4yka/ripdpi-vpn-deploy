@@ -44,6 +44,10 @@ binds each handoff to the Terraform alias, public address, SSH port,
 confirmation digest and actually proven Tailnet address family before changing
 only `ansible_host`; the
 Terraform public service address and listener contract remain authoritative.
+The public-listener verifier reads the complete nftables `inet filter` table:
+Tailnet SSH source matches refer to named sets, so their live members and
+address-family types must be checked alongside the input-chain rules. ICMP
+accepts require an explicit type match; a protocol-only accept is broad.
 `fleet_inspection.select_hosts` uses `vpn_service_address` as the public
 identity and `ansible_host` as the transport; a distinct Tailnet transport
 must retain the public host-key alias for dual-path SSH proof.

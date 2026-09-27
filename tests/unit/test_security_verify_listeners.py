@@ -69,7 +69,7 @@ def _nft_rule(
             }
         )
     if source_restricted or source_address is not None:
-        source_value = source_address or "@allowed_sources"
+        source_value = source_address or "203.0.113.7"
         source_protocol = "ip6" if ":" in source_value else "ip"
         expressions.append(
             {
@@ -142,9 +142,7 @@ def _verify_listeners(
     resolved_nft = nft_output if nft_output is not None else _nft_for_contract(contract)
     if include_tailnet_drop:
         document = json.loads(resolved_nft)
-        drop = _nft_rule(
-            "tcp", ssh_port, input_interface="tailscale0", verdict="drop"
-        )
+        drop = _nft_rule("tcp", ssh_port, input_interface="tailscale0", verdict="drop")
         insertion = len(document["nftables"]) if tailnet_sources else 0
         document["nftables"].insert(insertion, drop)
         resolved_nft = json.dumps(document)
@@ -399,6 +397,85 @@ def test_unrestricted_ssh_rule_is_rejected(tmp_path: Path) -> None:
     assert result.stdout == "unexpected unrestricted firewall tcp 22\n"
 
 
+def test_tailnet_ssh_resolves_exact_members_of_named_nft_sets(tmp_path: Path) -> None:
+    source = "100.64.10.20"
+    rule = _nft_rule(
+        "tcp", 22, source_address="@vpn_tailnet_ssh_v4", input_interface="tailscale0"
+    )
+    nft_set = {
+        "set": {
+            "family": "inet",
+            "table": "filter",
+            "name": "vpn_tailnet_ssh_v4",
+            "type": "ipv4_addr",
+            "elem": [source],
+        }
+    }
+    drop = _nft_rule("tcp", 22, input_interface="tailscale0", verdict="drop")
+    public = _nft_rule("tcp", 22, source_restricted=True)
+
+    accepted = _verify_listeners(
+        tmp_path,
+        [],
+        "",
+        nft_output=_nft_document(nft_set, rule, drop, public),
+        tailnet_sources=[source],
+        include_tailnet_drop=False,
+    )
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+
+    for members in ([], [source, "100.64.10.21"], ["100.64.10.21"]):
+        nft_set["set"]["elem"] = members
+        refused = _verify_listeners(
+            tmp_path,
+            [],
+            "",
+            nft_output=_nft_document(nft_set, rule, drop, public),
+            tailnet_sources=[source],
+            include_tailnet_drop=False,
+        )
+        assert refused.returncode == 1
+        assert "missing Tailnet SSH source rule" in refused.stdout
+
+
+def test_icmp_type_accept_is_narrow_but_broad_icmp_accept_is_rejected(
+    tmp_path: Path,
+) -> None:
+    typed = {
+        "rule": {
+            "family": "inet",
+            "table": "filter",
+            "chain": "input",
+            "expr": [
+                {
+                    "match": {
+                        "op": "==",
+                        "left": {"payload": {"protocol": "icmpv6", "field": "type"}},
+                        "right": "echo-request",
+                    }
+                },
+                {"accept": None},
+            ],
+        }
+    }
+    accepted = _verify_listeners(tmp_path, [], "", nft_output=_nft_document(typed))
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+
+    typed["rule"]["expr"] = [
+        {
+            "match": {
+                "op": "==",
+                "left": {"meta": {"key": "l4proto"}},
+                "right": "ipv6-icmp",
+            }
+        },
+        {"accept": None},
+    ]
+    refused = _verify_listeners(tmp_path, [], "", nft_output=_nft_document(typed))
+    assert refused.returncode == 1
+    assert "unexpected broad firewall accept" in refused.stdout
+
+
 def test_ordinary_ssh_accepts_nested_nftables_prefix_sets(tmp_path: Path) -> None:
     rule = _nft_rule("tcp", 22, source_restricted=True)
     source_match = next(
@@ -606,8 +683,12 @@ def test_baseline_loopback_conntrack_and_icmp_accepts_are_allowed(
         nft_output=_nft_document(
             accepted({"meta": {"key": "iif"}}, "lo"),
             accepted({"ct": {"key": "state"}}, ["established", "related"]),
-            accepted({"payload": {"protocol": "ip", "field": "protocol"}}, "icmp"),
-            accepted({"payload": {"protocol": "ip6", "field": "nexthdr"}}, "ipv6-icmp"),
+            accepted(
+                {"payload": {"protocol": "icmp", "field": "type"}}, "echo-request"
+            ),
+            accepted(
+                {"payload": {"protocol": "icmpv6", "field": "type"}}, "echo-request"
+            ),
         ),
     )
 
