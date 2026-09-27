@@ -44,6 +44,10 @@ binds each handoff to the Terraform alias, public address, SSH port,
 confirmation digest and actually proven Tailnet address family before changing
 only `ansible_host`; the
 Terraform public service address and listener contract remain authoritative.
+The public-listener verifier reads the complete nftables `inet filter` table:
+Tailnet SSH source matches refer to named sets, so their live members and
+address-family types must be checked alongside the input-chain rules. ICMP
+accepts require an explicit type match; a protocol-only accept is broad.
 `fleet_inspection.select_hosts` uses `vpn_service_address` as the public
 identity and `ansible_host` as the transport; a distinct Tailnet transport
 must retain the public host-key alias for dual-path SSH proof.
@@ -58,6 +62,10 @@ proof of tunneled DNS.
 `TemporaryDirectory` a path beneath symlinked `/var`. Resolve the controller's
 new private directory before passing its executor snapshots to the evaluator;
 the evaluator still rejects symlinked private input paths.
+Disposable liveness de-onboarding after provider firewall promotion supplies
+both the original binding manifest and its reissued cleanup manifest. Their
+private hashes, immutable resource identity, account, deadline and state path
+must match the verified provider absence receipt before local removal.
 
 **Provider promotion snapshots only Terraform inputs** — pin the two referenced
 `terraform/shared` files explicitly. A recursive shared-directory copy would

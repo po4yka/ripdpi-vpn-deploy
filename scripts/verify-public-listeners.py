@@ -38,6 +38,7 @@ class FirewallAcceptRule:
     loopback_only: bool
     established_only: bool
     protocols: frozenset[str]
+    icmp_type_restricted: bool
     source_addresses: frozenset[str]
     input_interfaces: frozenset[str]
     unknown_predicate: bool
@@ -170,9 +171,31 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
     if not isinstance(objects, list):
         raise ValueError("nftables JSON output is missing nftables array")
 
+    source_sets: dict[str, tuple[str, set[object]]] = {}
+    for item in objects:
+        nft_set = item.get("set") if isinstance(item, dict) else None
+        if not isinstance(nft_set, dict) or nft_set.get("table") != "filter":
+            continue
+        name = nft_set.get("name")
+        if (
+            nft_set.get("family") == "inet"
+            and name in {"vpn_tailnet_ssh_v4", "vpn_tailnet_ssh_v6"}
+            and isinstance(nft_set.get("elem"), list)
+        ):
+            source_sets[name] = (nft_set.get("type"), _right_values(nft_set["elem"]))
+
     accepted: list[FirewallAcceptRule] = []
     for position, item in enumerate(objects):
         rule = item.get("rule") if isinstance(item, dict) else None
+        if not isinstance(rule, dict) or any(
+            rule.get(key) != value
+            for key, value in (
+                ("family", "inet"),
+                ("table", "filter"),
+                ("chain", "input"),
+            )
+        ):
+            continue
         expressions = rule.get("expr") if isinstance(rule, dict) else None
         if not isinstance(expressions, list):
             continue
@@ -195,6 +218,7 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
         loopback_only = False
         established_only = False
         protocols: set[str] = set()
+        icmp_type_restricted = False
         source_addresses: set[str] = set()
         input_interfaces: set[str] = set()
         unknown_predicate = False
@@ -231,6 +255,13 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
                 elif payload_protocol in {"ip", "ip6"} and field == "saddr":
                     source_restricted = True
                     values = _right_values(right)
+                    if isinstance(right, str) and right.startswith("@"):
+                        name = right[1:]
+                        family = (
+                            "ipv4_addr" if payload_protocol == "ip" else "ipv6_addr"
+                        )
+                        entry = source_sets.get(name)
+                        values = entry[1] if entry and entry[0] == family else set()
                     if values and all(isinstance(value, str) for value in values):
                         source_addresses.update(str(value) for value in values)
                     else:
@@ -239,6 +270,11 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
                     protocols.update(str(value) for value in _right_values(right))
                 elif payload_protocol == "ip6" and field == "nexthdr":
                     protocols.update(str(value) for value in _right_values(right))
+                elif payload_protocol in {"icmp", "icmpv6"} and field == "type":
+                    icmp_type_restricted = bool(_right_values(right))
+                    protocols.add("icmp" if payload_protocol == "icmp" else "ipv6-icmp")
+                elif payload_protocol == "ip6" and field == "hoplimit" and right == 255:
+                    pass
                 else:
                     unknown_predicate = True
             elif isinstance(meta, dict) and meta.get("key") == "l4proto":
@@ -272,6 +308,7 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
                 loopback_only=loopback_only,
                 established_only=established_only,
                 protocols=frozenset(protocols),
+                icmp_type_restricted=icmp_type_restricted,
                 source_addresses=frozenset(source_addresses),
                 input_interfaces=frozenset(input_interfaces),
                 unknown_predicate=unknown_predicate,
@@ -360,7 +397,12 @@ def _violations(
         if selector is None:
             if rule.loopback_only or rule.established_only:
                 continue
-            if rule.protocols and rule.protocols <= {"icmp", "ipv6-icmp"}:
+            if (
+                rule.protocols
+                and rule.protocols <= {"icmp", "ipv6-icmp"}
+                and rule.icmp_type_restricted
+                and not rule.unknown_predicate
+            ):
                 continue
             violations.append("unexpected broad firewall accept")
             continue
@@ -415,9 +457,9 @@ def _violations(
         violations.append("invalid Tailnet SSH drop ordering")
     else:
         drop_position = tailnet_drop_positions[0]
-        if any(position >= drop_position for position in tailnet_accept_positions) or any(
-            position <= drop_position for position in public_ssh_positions
-        ):
+        if any(
+            position >= drop_position for position in tailnet_accept_positions
+        ) or any(position <= drop_position for position in public_ssh_positions):
             violations.append("invalid Tailnet SSH drop ordering")
     for selector in sorted(expected):
         for port in range(selector.start, selector.end + 1):
@@ -443,9 +485,7 @@ def main() -> int:
     try:
         expected = _decode_contract(args.contract_b64)
         tailnet_sources = _decode_tailnet_sources(args.tailnet_sources_b64)
-        firewall = _firewall_rules(
-            _run("nft", "-j", "list", "chain", "inet", "filter", "input")
-        )
+        firewall = _firewall_rules(_run("nft", "-j", "list", "table", "inet", "filter"))
         sockets = _public_socket_ports(_run("ss", "-H", "-lntu"))
     except (ValueError, subprocess.CalledProcessError) as exc:
         print(f"verify-public-listeners: {exc}", file=sys.stderr)

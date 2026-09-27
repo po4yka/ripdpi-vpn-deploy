@@ -52,6 +52,11 @@
 - name: Render backup configuration
   ansible.builtin.import_tasks: configuration.yml
 
+- name: Inspect existing backup restore drill timer
+  ansible.builtin.stat:
+    path: /etc/systemd/system/vpn-backup-restore-drill.timer
+  register: _backup_restore_drill_timer_preexisting
+
 - name: Drop backup restore drill systemd service
   ansible.builtin.template:
     src: vpn-backup-restore-drill.service.j2
@@ -83,6 +88,11 @@
     group: root
     mode: "0644"
 
+- name: Inspect existing backup timer
+  ansible.builtin.stat:
+    path: /etc/systemd/system/vpn-backup.timer
+  register: _backup_timer_preexisting
+
 - name: Drop backup systemd timer
   ansible.builtin.copy:
     dest: /etc/systemd/system/vpn-backup.timer
@@ -108,6 +118,7 @@
     enabled: true
     state: started
     daemon_reload: true
+  when: not ansible_check_mode or _backup_timer_preexisting.stat.exists
 
 - name: Apply backup restore drill timer state
   ansible.builtin.systemd_service:
@@ -115,3 +126,4 @@
     enabled: "{{ backup_restore_drill_enabled | bool }}"
     state: "{{ 'started' if (backup_restore_drill_enabled | bool) else 'stopped' }}"
     daemon_reload: true
+  when: not ansible_check_mode or _backup_restore_drill_timer_preexisting.stat.exists

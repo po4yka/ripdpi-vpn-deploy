@@ -582,7 +582,19 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup):
     }
     config.write_text(yaml.safe_dump(config_doc))
     config.chmod(0o600)
-    cleanup.write_text('{"schema_version":2}\n')
+    cleanup_doc = {
+        "schema_version": 3,
+        "provider": "upcloud",
+        "environment": "ci-staging-fixture",
+        "provider_account_username": "fixture-account",
+        "server_uuid": "11111111-1111-4111-8111-111111111111",
+        "root_storage_uuid": "22222222-2222-4222-8222-222222222222",
+        "expiry_at": "2026-09-28T00:00:00Z",
+        "state": {"path": "/private/fixture.tfstate", "sha256": "0" * 64},
+    }
+    cleanup.write_text(
+        json.dumps(cleanup_doc, sort_keys=True, separators=(",", ":")) + "\n"
+    )
     cleanup.chmod(0o600)
     sops_file.write_text("encrypted\n")
     sops_file.chmod(0o600)
@@ -656,7 +668,9 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup):
 
     obsolete = json.loads(absence.read_text())
     obsolete["schema_version"] = 2
-    absence.write_text(json.dumps(obsolete, sort_keys=True, separators=(",", ":")) + "\n")
+    absence.write_text(
+        json.dumps(obsolete, sort_keys=True, separators=(",", ":")) + "\n"
+    )
     with pytest.raises(module.ExecutorError, match="target-absence"):
         module.deonboard(
             binding_path=binding,
@@ -669,7 +683,79 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup):
             home=home,
             runner=runner,
         )
-    absence.write_text(json.dumps({**obsolete, "schema_version": 3}, sort_keys=True, separators=(",", ":")) + "\n")
+    absence.write_text(
+        json.dumps(
+            {**obsolete, "schema_version": 3}, sort_keys=True, separators=(",", ":")
+        )
+        + "\n"
+    )
+
+    reissued = evidence / "cleanup-manifest-reissued.json"
+    reissued_doc = {
+        **cleanup_doc,
+        "state": {**cleanup_doc["state"], "sha256": "1" * 64},
+    }
+    reissued.write_text(
+        json.dumps(reissued_doc, sort_keys=True, separators=(",", ":")) + "\n"
+    )
+    reissued.chmod(0o600)
+    reissued_absence = json.loads(absence.read_text())
+    reissued_absence.update(
+        manifest_sha256=hashlib.sha256(reissued.read_bytes()).hexdigest(),
+        provider_account_username=cleanup_doc["provider_account_username"],
+        environment=cleanup_doc["environment"],
+        server_uuid=cleanup_doc["server_uuid"],
+        root_storage_uuid=cleanup_doc["root_storage_uuid"],
+        expiry_at=cleanup_doc["expiry_at"],
+    )
+    absence.write_text(
+        json.dumps(reissued_absence, sort_keys=True, separators=(",", ":")) + "\n"
+    )
+    with pytest.raises(module.ExecutorError, match="deonboard-binding"):
+        module.deonboard(
+            binding_path=binding,
+            manifest_path=manifest,
+            absence_evidence_path=absence,
+            registry_path=registry,
+            config_path=config,
+            sops_file=sops_file,
+            output_path=output,
+            home=home,
+            runner=runner,
+        )
+    foreign = {**reissued_doc, "server_uuid": "33333333-3333-4333-8333-333333333333"}
+    reissued.write_text(
+        json.dumps(foreign, sort_keys=True, separators=(",", ":")) + "\n"
+    )
+    reissued_absence["manifest_sha256"] = hashlib.sha256(
+        reissued.read_bytes()
+    ).hexdigest()
+    absence.write_text(
+        json.dumps(reissued_absence, sort_keys=True, separators=(",", ":")) + "\n"
+    )
+    with pytest.raises(module.ExecutorError, match="deonboard-binding"):
+        module.deonboard(
+            binding_path=binding,
+            manifest_path=manifest,
+            absence_evidence_path=absence,
+            registry_path=registry,
+            config_path=config,
+            sops_file=sops_file,
+            output_path=output,
+            home=home,
+            runner=runner,
+            bound_cleanup_manifest_path=cleanup,
+            reissued_cleanup_manifest_path=reissued,
+        )
+    reissued.write_text(
+        json.dumps(reissued_doc, sort_keys=True, separators=(",", ":")) + "\n"
+    )
+    reissued_absence["manifest_sha256"] = hashlib.sha256(
+        reissued.read_bytes()
+    ).hexdigest()
+    absence.write_text(
+        json.dumps(reissued_absence, sort_keys=True, separators=(",", ":")) + "\n"
+    )
 
     runner.delete_fail_once = True
     with pytest.raises(RuntimeError, match="fixture delete failure"):
@@ -683,6 +769,8 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup):
             output_path=output,
             home=home,
             runner=runner,
+            bound_cleanup_manifest_path=cleanup,
+            reissued_cleanup_manifest_path=reissued,
         )
     assert runner.profile_status == "Stopped"
     assert not output.exists()
@@ -697,11 +785,18 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup):
         output_path=output,
         home=home,
         runner=runner,
+        bound_cleanup_manifest_path=cleanup,
+        reissued_cleanup_manifest_path=reissued,
     )
 
     assert result["status"] == "deonboarded"
     assert json.loads(registry.read_text()) == {"schema_version": 2, "sentinels": {}}
-    assert registry.read_bytes() == (json.dumps({"schema_version": 2, "sentinels": {}}, sort_keys=True) + "\n").encode()
+    assert (
+        registry.read_bytes()
+        == (
+            json.dumps({"schema_version": 2, "sentinels": {}}, sort_keys=True) + "\n"
+        ).encode()
+    )
     assert not config.exists()
     assert not (home / ".colima/vpn-liveness-one-shot").exists()
     assert output.stat().st_mode & 0o777 == 0o600
@@ -720,6 +815,8 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup):
             output_path=output,
             home=home,
             runner=runner,
+            bound_cleanup_manifest_path=cleanup,
+            reissued_cleanup_manifest_path=reissued,
         )
         == result
     )

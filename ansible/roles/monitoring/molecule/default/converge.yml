@@ -7,9 +7,9 @@
     xray_log_dir: /var/log/xray
     xray_api_listen: 127.0.0.1:10086
     vpn:
-      enable_xray_reality: true
-      enable_nginx_xhttp: true
-      enable_honeypot: true
+      enable_xray_reality: "{{ not ansible_check_mode }}"
+      enable_nginx_xhttp: "{{ not ansible_check_mode }}"
+      enable_honeypot: "{{ not ansible_check_mode }}"
   pre_tasks:
     - name: Create synthetic Xray runtime account
       ansible.builtin.user:
@@ -18,6 +18,7 @@
         shell: /usr/sbin/nologin
         home: /var/lib/xray
         create_home: true
+      when: not ansible_check_mode
 
     - name: Install synthetic Xray StatsService client
       ansible.builtin.copy:
@@ -32,6 +33,7 @@
             exit 0
           fi
           exit 2
+      when: not ansible_check_mode
 
     - name: Install synthetic active Xray service
       ansible.builtin.copy:
@@ -45,6 +47,7 @@
           [Service]
           Type=simple
           ExecStart=/bin/sleep infinity
+      when: not ansible_check_mode
 
     - name: Start synthetic Xray service
       ansible.builtin.systemd_service:
@@ -52,6 +55,8 @@
         enabled: true
         state: started
         daemon_reload: true
+      when: not ansible_check_mode
   roles:
     - role: honeypot
+      when: not ansible_check_mode
     - role: monitoring

@@ -749,6 +749,8 @@ def deonboard(
     output_path: Path,
     home: Path,
     runner: Command,
+    bound_cleanup_manifest_path: Path | None = None,
+    reissued_cleanup_manifest_path: Path | None = None,
 ) -> dict[str, Any]:
     with _exclusive_locks(
         (
@@ -766,6 +768,8 @@ def deonboard(
             output_path=output_path,
             home=home,
             runner=runner,
+            bound_cleanup_manifest_path=bound_cleanup_manifest_path,
+            reissued_cleanup_manifest_path=reissued_cleanup_manifest_path,
         )
 
 
@@ -780,6 +784,8 @@ def _deonboard_locked(
     output_path: Path,
     home: Path,
     runner: Command,
+    bound_cleanup_manifest_path: Path | None,
+    reissued_cleanup_manifest_path: Path | None,
 ) -> dict[str, Any]:
     absence = _verified_absence(absence_evidence_path)
     binding, _ = _read_private(binding_path)
@@ -792,9 +798,43 @@ def _deonboard_locked(
         or binding.get("profile") != manifest.get("profile")
         or binding.get("executor_manifest_sha256")
         != hashlib.sha256(manifest_payload).hexdigest()
-        or binding.get("cleanup_manifest_sha256") != absence["manifest_sha256"]
     ):
         raise ExecutorError("deonboard-binding")
+    if binding.get("cleanup_manifest_sha256") != absence["manifest_sha256"]:
+        if (
+            bound_cleanup_manifest_path is None
+            or reissued_cleanup_manifest_path is None
+        ):
+            raise ExecutorError("deonboard-binding")
+        bound, bound_payload = _read_private(bound_cleanup_manifest_path)
+        reissued, reissued_payload = _read_private(reissued_cleanup_manifest_path)
+        immutable = set(bound) - {"state"}
+        if (
+            bound.get("schema_version") != 3
+            or set(bound) != set(reissued)
+            or hashlib.sha256(bound_payload).hexdigest()
+            != binding["cleanup_manifest_sha256"]
+            or hashlib.sha256(reissued_payload).hexdigest()
+            != absence["manifest_sha256"]
+            or any(bound[key] != reissued[key] for key in immutable)
+            or not isinstance(bound.get("state"), dict)
+            or not isinstance(reissued.get("state"), dict)
+            or set(bound["state"]) != {"path", "sha256"}
+            or set(reissued["state"]) != {"path", "sha256"}
+            or bound["state"]["path"] != reissued["state"]["path"]
+            or any(
+                absence.get(receipt_key) != reissued.get(manifest_key)
+                for receipt_key, manifest_key in (
+                    ("provider", "provider"),
+                    ("environment", "environment"),
+                    ("provider_account_username", "provider_account_username"),
+                    ("server_uuid", "server_uuid"),
+                    ("root_storage_uuid", "root_storage_uuid"),
+                    ("expiry_at", "expiry_at"),
+                )
+            )
+        ):
+            raise ExecutorError("deonboard-binding")
     profile = _profile(binding["profile"])
     client = binding.get("client")
     sentinel = binding.get("sentinel")
@@ -1126,6 +1166,8 @@ def main() -> int:
         "output",
     ):
         remove.add_argument("--" + name, required=True, type=Path)
+    remove.add_argument("--bound-cleanup-manifest", type=Path)
+    remove.add_argument("--reissued-cleanup-manifest", type=Path)
     args = parser.parse_args()
     now = int(time.time())
     try:
@@ -1156,6 +1198,8 @@ def main() -> int:
                 output_path=args.output,
                 home=Path.home(),
                 runner=_run_command,
+                bound_cleanup_manifest_path=args.bound_cleanup_manifest,
+                reissued_cleanup_manifest_path=args.reissued_cleanup_manifest,
             )
         if args.command == "prepare":
             public = {

@@ -65,6 +65,7 @@ scenario:
     - syntax
     - create
     - prepare
+    - check
     - converge
     - idempotence
     - verify
